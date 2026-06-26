@@ -6,14 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "discover:rets": "node --env-file=.env.local node_modules/.bin/tsx scripts/discover-rets.ts"
   },
   "dependencies": {
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "rets-client": "^5.2.4"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.12",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -21,6 +24,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

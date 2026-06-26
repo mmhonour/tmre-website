@@ -1,0 +1,326 @@
+{
+  "5696070c-bbf7-4586-b654-ca7bedf0d4ad": {
+    "vid": "5696070c-bbf7-4586-b654-ca7bedf0d4ad",
+    "firstSeen": "2026-06-26T15:55:59.636Z",
+    "lastSeen": "2026-06-26T17:04:08.113Z",
+    "pageviews": 55,
+    "ip": "::1",
+    "geo": {
+      "city": null,
+      "region": null,
+      "postal": null,
+      "country": null,
+      "org": null
+    },
+    "pages": [
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:13:03.109Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:13:11.782Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:14:06.877Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:14:27.036Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:16:50.205Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:16:52.262Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:16:53.190Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:23:06.448Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:23:10.398Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:27:05.206Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:27:16.549Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:27:17.699Z"
+      },
+      {
+        "path": "/",
+        "at": "2026-06-26T16:32:37.539Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:32:41.354Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:34:35.559Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:34:36.664Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:34:47.288Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:41:04.437Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:43:21.715Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:45:42.797Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:45:46.294Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:46:11.871Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:46:17.299Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:47:50.443Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:47:52.436Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:53:23.393Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:53:42.770Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:53:50.128Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:55:35.271Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:57:07.584Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:57:24.063Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:59:38.038Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:59:59.306Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:59:59.547Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:00:02.880Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:00:19.493Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T17:00:48.182Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:01:59.769Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T17:02:20.055Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:02:52.000Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:02:54.504Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T17:03:32.089Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:03:35.264Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T17:03:36.106Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:03:37.102Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T17:03:38.329Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:03:42.286Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T17:04:05.544Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T17:04:06.873Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T17:04:08.113Z"
+      }
+    ],
+    "email": null,
+    "zip": null,
+    "name": null,
+    "audienceType": null,
+    "leadId": null
+  },
+  "5f2cf362-b684-4766-a3c6-e91fc8e7f00e": {
+    "vid": "5f2cf362-b684-4766-a3c6-e91fc8e7f00e",
+    "firstSeen": "2026-06-26T15:57:07.100Z",
+    "lastSeen": "2026-06-26T15:57:07.100Z",
+    "pageviews": 1,
+    "ip": "8.8.8.8",
+    "geo": {
+      "city": "Mountain View",
+      "region": "California",
+      "postal": "94043",
+      "country": "United States",
+      "org": "Google LLC"
+    },
+    "pages": [
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T15:57:07.100Z"
+      }
+    ],
+    "email": null,
+    "zip": null,
+    "name": null,
+    "audienceType": null,
+    "leadId": null
+  },
+  "6cfd2ffc-629a-4cda-bcdb-47d446650e06": {
+    "vid": "6cfd2ffc-629a-4cda-bcdb-47d446650e06",
+    "firstSeen": "2026-06-26T16:16:33.892Z",
+    "lastSeen": "2026-06-26T16:16:33.892Z",
+    "pageviews": 1,
+    "ip": "::1",
+    "geo": {
+      "city": null,
+      "region": null,
+      "postal": null,
+      "country": null,
+      "org": null
+    },
+    "pages": [
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:16:33.892Z"
+      }
+    ],
+    "email": null,
+    "zip": null,
+    "name": null,
+    "audienceType": null,
+    "leadId": null
+  },
+  "be12b920-8a67-4306-b0a3-2e2eb2b61f60": {
+    "vid": "be12b920-8a67-4306-b0a3-2e2eb2b61f60",
+    "firstSeen": "2026-06-26T16:17:40.922Z",
+    "lastSeen": "2026-06-26T16:28:39.251Z",
+    "pageviews": 8,
+    "ip": "::1",
+    "geo": {
+      "city": null,
+      "region": null,
+      "postal": null,
+      "country": null,
+      "org": null
+    },
+    "pages": [
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:17:40.922Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:18:11.554Z"
+      },
+      {
+        "path": "/properties",
+        "at": "2026-06-26T16:18:12.828Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:18:30.618Z"
+      },
+      {
+        "path": "/listings/24172092",
+        "at": "2026-06-26T16:22:31.266Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:22:38.448Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-06-26T16:28:13.951Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-06-26T16:28:39.251Z"
+      }
+    ],
+    "email": null,
+    "zip": null,
+    "name": null,
+    "audienceType": null,
+    "leadId": null
+  }
+}

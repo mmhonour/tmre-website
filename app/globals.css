@@ -1,26 +1,101 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-navy: #1B2A4A;
+  --color-navy-dark: #131F38;
+  --color-navy-light: #2A3D6B;
+  --color-gold: #C8A951;
+  --color-gold-light: #D8BC6E;
+  --color-cream: #FAF8F2;
+  --color-charcoal: #2C2C2A;
+  --color-slate: #5A5A56;
+  --color-sage: #4A7C6F;
+  --color-coral: #C85A3A;
+  --color-sky: #4A8DB7;
+
+  --color-background: var(--color-cream);
+  --color-foreground: var(--color-charcoal);
+
+  --font-serif: var(--font-playfair);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-jetbrains);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-cream);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-up-delay-1 { animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+.animate-fade-up-delay-2 { animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both; }
+.animate-fade-up-delay-3 { animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both; }
+
+.animate-fade-in {
+  animation: fadeIn 1s ease-out both;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.gold-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-gold) 0%,
+    var(--color-gold-light) 50%,
+    var(--color-gold) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 6s linear infinite;
+}
+
+.navy-gradient {
+  background: radial-gradient(ellipse at top, #2A3D6B 0%, #1B2A4A 45%, #131F38 100%);
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(200, 169, 81, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 169, 81, 0.06) 1px, transparent 1px);
+  background-size: 64px 64px;
 }
