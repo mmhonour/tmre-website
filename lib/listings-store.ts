@@ -2,6 +2,7 @@ import 'server-only'
 
 import {
   getSyncMeta,
+  isListingsDbAvailable,
   readAllListingsFromDb,
   readListingByIdFromDb,
   readListingsFromDb,
@@ -81,6 +82,7 @@ export function setSyncedActiveCount(city: string, count: number): void {
 
 /** True if the DB has been populated at least once. */
 export function hasLocalListingsCache(): boolean {
+  if (!isListingsDbAvailable()) return false
   return getLastFullSync() != null
 }
 

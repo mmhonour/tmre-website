@@ -1,9 +1,9 @@
 [build]
-  command   = "npm run build"
-  publish   = ".next"
+  command = "npm run build"
 
 [build.environment]
   NODE_VERSION = "20"
+  LISTINGS_DB_PATH = "/tmp/listings.db"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

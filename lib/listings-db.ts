@@ -1,30 +1,88 @@
 import 'server-only'
 
-import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { streetsMatch } from '@/lib/listing-history'
 import type { Listing } from '@/lib/rets'
 
-let db: Database.Database | null = null
+type SqliteDatabase = import('better-sqlite3').Database
+
+let db: SqliteDatabase | null = null
+let dbDisabled = false
 
 const DEFAULT_DB_PATH = path.join(process.cwd(), 'data', 'listings.db')
 
+function serverlessDbPath(): string {
+  if (process.env.LISTINGS_DB_PATH?.trim()) {
+    return process.env.LISTINGS_DB_PATH.trim()
+  }
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY) {
+    return '/tmp/listings.db'
+  }
+  return DEFAULT_DB_PATH
+}
+
 export function listingsDbPath(): string {
-  return process.env.LISTINGS_DB_PATH?.trim() || DEFAULT_DB_PATH
+  return serverlessDbPath()
 }
 
-export function getListingsDb(): Database.Database {
+/** False on Netlify/Lambda when the native better-sqlite3 module cannot load. */
+export function isListingsDbAvailable(): boolean {
+  return tryGetListingsDb() != null
+}
+
+type SqliteConstructor = new (filename: string) => SqliteDatabase
+
+function loadSqliteDatabase(): SqliteConstructor | null {
+  try {
+    // Dynamic require avoids crashing the whole server when native bindings are missing.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('better-sqlite3') as SqliteConstructor
+  } catch (err) {
+    if (!dbDisabled) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn('[listings-db] SQLite unavailable — falling back to live RETS:', message)
+    }
+    dbDisabled = true
+    return null
+  }
+}
+
+function tryGetListingsDb(): SqliteDatabase | null {
+  if (dbDisabled) return null
   if (db) return db
-  const dbPath = listingsDbPath()
-  mkdirSync(path.dirname(dbPath), { recursive: true })
-  db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
-  initSchema(db)
-  return db
+
+  const Database = loadSqliteDatabase()
+  if (!Database) return null
+
+  try {
+    const dbPath = listingsDbPath()
+    mkdirSync(path.dirname(dbPath), { recursive: true })
+    db = new Database(dbPath)
+    db.pragma('journal_mode = WAL')
+    initSchema(db)
+    return db
+  } catch (err) {
+    if (!dbDisabled) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn('[listings-db] SQLite open failed — falling back to live RETS:', message)
+    }
+    dbDisabled = true
+    db = null
+    return null
+  }
 }
 
-function initSchema(database: Database.Database): void {
+/** @throws when SQLite is unavailable (local sync scripts). */
+export function getListingsDb(): SqliteDatabase {
+  const database = tryGetListingsDb()
+  if (!database) {
+    throw new Error('Listings DB unavailable in this runtime')
+  }
+  return database
+}
+
+function initSchema(database: SqliteDatabase): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS listings (
       id TEXT PRIMARY KEY,
@@ -74,14 +132,18 @@ function initSchema(database: Database.Database): void {
 }
 
 export function getSyncMeta(key: string): string | null {
-  const row = getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return null
+  const row = database
     .prepare('SELECT value FROM sync_meta WHERE key = ?')
     .get(key) as { value: string } | undefined
   return row?.value ?? null
 }
 
 export function setSyncMeta(key: string, value: string): void {
-  getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return
+  database
     .prepare(
       'INSERT INTO sync_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     )
@@ -108,6 +170,9 @@ export function upsertTownListings(
   statusBucket: string,
   listings: Listing[],
 ): number {
+  const database = tryGetListingsDb()
+  if (!database) return 0
+
   // Never wipe a town bucket on an empty pull — transient RETS gaps would delete good cache.
   if (listings.length === 0) return 0
 
@@ -121,7 +186,6 @@ export function upsertTownListings(
     return 0
   }
 
-  const database = getListingsDb()
   const syncedAt = new Date().toISOString()
   const seen = new Set<string>()
 
@@ -146,8 +210,8 @@ export function upsertTownListings(
       synced_at = excluded.synced_at
   `)
 
-  const tx = database.transaction((rows: Listing[]) => {
-    for (const listing of rows) {
+  const tx = database.transaction((batch: Listing[]) => {
+    for (const listing of batch) {
       const id = listingRowId(listing)
       if (!id) continue
       seen.add(id)
@@ -167,9 +231,7 @@ export function upsertTownListings(
     }
 
     const existing = database
-      .prepare(
-        'SELECT id FROM listings WHERE town = ? AND status_bucket = ?',
-      )
+      .prepare('SELECT id FROM listings WHERE town = ? AND status_bucket = ?')
       .all(town, statusBucket) as { id: string }[]
 
     const remove = database.prepare('DELETE FROM listings WHERE id = ?')
@@ -187,6 +249,9 @@ export function readListingsFromDb(
   statusBucket: string,
   limit?: number,
 ): Listing[] {
+  const database = tryGetListingsDb()
+  if (!database) return []
+
   const sql = limit
     ? `SELECT data FROM listings
        WHERE town = ? AND status_bucket = ?
@@ -197,8 +262,8 @@ export function readListingsFromDb(
        ORDER BY CASE WHEN price IS NULL THEN 1 ELSE 0 END, price DESC`
 
   const rows = limit
-    ? (getListingsDb().prepare(sql).all(town, statusBucket, limit) as { data: string }[])
-    : (getListingsDb().prepare(sql).all(town, statusBucket) as { data: string }[])
+    ? (database.prepare(sql).all(town, statusBucket, limit) as { data: string }[])
+    : (database.prepare(sql).all(town, statusBucket) as { data: string }[])
 
   return rows.map((row) => JSON.parse(row.data) as Listing)
 }
@@ -207,19 +272,24 @@ export function readAllListingsFromDb(
   towns: readonly string[],
   statusBucket: string,
 ): Listing[] {
-  if (towns.length === 0) return []
+  const database = tryGetListingsDb()
+  if (!database || towns.length === 0) return []
+
   const placeholders = towns.map(() => '?').join(', ')
   const sql = `SELECT data FROM listings
     WHERE status_bucket = ? AND town IN (${placeholders})
     ORDER BY price DESC NULLS LAST`
-  const rows = getListingsDb()
+  const rows = database
     .prepare(sql)
     .all(statusBucket, ...towns) as { data: string }[]
   return rows.map((row) => JSON.parse(row.data) as Listing)
 }
 
 export function readListingByIdFromDb(id: string): Listing | null {
-  const row = getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return null
+
+  const row = database
     .prepare('SELECT data FROM listings WHERE id = ? OR mls_id = ? OR listing_key = ? LIMIT 1')
     .get(id, id, id) as { data: string } | undefined
   if (!row) return null
@@ -232,7 +302,10 @@ export function readAddressListingsFromDb(
   street: string,
   excludeMlsId?: string,
 ): Listing[] {
-  const rows = getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return []
+
+  const rows = database
     .prepare('SELECT data FROM listings WHERE town = ?')
     .all(town) as { data: string }[]
 
@@ -254,7 +327,10 @@ export function recordSyncRun(input: {
   ok: boolean
   error?: string | null
 }): void {
-  getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return
+
+  database
     .prepare(
       `INSERT INTO sync_runs (
         started_at, finished_at, town, status_bucket, listings_count, ok, error
@@ -280,10 +356,23 @@ export function getListingsDbStats(): {
   dealOfTheDayCacheEntries: number
   lastDealOfTheDayCache: string | null
 } {
-  const totalRow = getListingsDb()
+  const empty = {
+    total: 0,
+    byTown: {} as Record<string, number>,
+    lastFullSync: null as string | null,
+    statsCacheEntries: 0,
+    lastStatsCache: null as string | null,
+    dealOfTheDayCacheEntries: 0,
+    lastDealOfTheDayCache: null as string | null,
+  }
+
+  const database = tryGetListingsDb()
+  if (!database) return empty
+
+  const totalRow = database
     .prepare('SELECT COUNT(*) AS count FROM listings')
     .get() as { count: number }
-  const townRows = getListingsDb()
+  const townRows = database
     .prepare(
       `SELECT town, COUNT(*) AS count
        FROM listings
@@ -300,13 +389,13 @@ export function getListingsDbStats(): {
     byTown,
     lastFullSync: getSyncMeta('last_full_sync'),
     statsCacheEntries: (
-      getListingsDb().prepare('SELECT COUNT(*) AS count FROM stats_cache').get() as {
+      database.prepare('SELECT COUNT(*) AS count FROM stats_cache').get() as {
         count: number
       }
     ).count,
     lastStatsCache: getSyncMeta('last_stats_cache'),
     dealOfTheDayCacheEntries: (
-      getListingsDb()
+      database
         .prepare(`SELECT COUNT(*) AS count FROM stats_cache WHERE cache_key LIKE 'deal-of-the-day:%'`)
         .get() as { count: number }
     ).count,
@@ -315,14 +404,20 @@ export function getListingsDbStats(): {
 }
 
 export function readStatsCacheRow(key: string): { payload: string; computedAt: string } | null {
-  const row = getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return null
+
+  const row = database
     .prepare('SELECT payload, computed_at AS computedAt FROM stats_cache WHERE cache_key = ?')
     .get(key) as { payload: string; computedAt: string } | undefined
   return row ?? null
 }
 
 export function writeStatsCacheRow(key: string, payload: unknown): void {
-  getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return
+
+  database
     .prepare(
       `INSERT INTO stats_cache (cache_key, payload, computed_at)
        VALUES (?, ?, ?)
@@ -334,13 +429,17 @@ export function writeStatsCacheRow(key: string, payload: unknown): void {
 }
 
 export function clearStatsCache(): void {
-  getListingsDb()
+  const database = tryGetListingsDb()
+  if (!database) return
+
+  database
     .prepare(`DELETE FROM stats_cache WHERE cache_key NOT LIKE 'deal-of-the-day:%'`)
     .run()
 }
 
 export function clearCacheByPrefix(prefix: string): void {
-  getListingsDb()
-    .prepare('DELETE FROM stats_cache WHERE cache_key LIKE ?')
-    .run(`${prefix}%`)
+  const database = tryGetListingsDb()
+  if (!database) return
+
+  database.prepare('DELETE FROM stats_cache WHERE cache_key LIKE ?').run(`${prefix}%`)
 }
