@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { fetchListingByMlsId } from '@/lib/listings-store'
 import { fetchPreferredPhotoUrl } from '@/lib/rets'
 
 export const runtime = 'nodejs'
@@ -13,7 +14,10 @@ export async function GET(
   if (!id) return NextResponse.json({ url: null })
 
   try {
-    const url = await fetchPreferredPhotoUrl(id)
+    // Resolve listing to get listingKey, which RETS needs for photo retrieval
+    const { listing } = await fetchListingByMlsId(id)
+    const photoKey = listing?.listingKey || id
+    const url = await fetchPreferredPhotoUrl(photoKey, id)
     return NextResponse.json({ url })
   } catch {
     return NextResponse.json({ url: null })

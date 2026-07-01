@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { searchListings, fetchPreferredPhotoUrl } from '@/lib/rets'
-import { runScoring, buildInsight, cheapShortlist } from '@/lib/goldilocks'
-import { resolveSchoolRatings } from '@/lib/greatschools'
+import { fetchActiveListingsAcrossTowns, listingCacheHeaders } from '@/lib/listings-store'
+import { TMRE_MARKET_TOWNS } from '@/lib/rets'
+import { computeTopDeal } from '@/lib/deal-pick'
+import { filterListingsToTmreTowns, TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,53 +17,31 @@ export async function GET() {
   }
 
   try {
-    const listings = await searchListings({
-      county: 'Fairfield',
-      status: 'Active',
-      limit: 2500,
-    })
+    const { listings: rawListings, source } = await fetchActiveListingsAcrossTowns(
+      TMRE_MARKET_TOWNS,
+      { limit: 500 },
+    )
+    const listings = filterListingsToTmreTowns(rawListings)
 
-    const shortlist = cheapShortlist(listings)
-    const schoolRatings = await resolveSchoolRatings(shortlist)
-    const { scored, rejected } = runScoring(listings, { schoolRatings })
-    const winner = scored[0]
-
-    if (!winner) {
+    const payload = await computeTopDeal(listings)
+    if (!payload) {
       return NextResponse.json(
         {
           error: 'No qualifying listings found',
           totalReviewed: listings.length,
-          rejectedCount: rejected.length,
+          towns: [...TMRE_TOWNS],
         },
         { status: 404 },
       )
     }
 
-    const insight = buildInsight(winner)
-    const photoUrl = await fetchPreferredPhotoUrl(
-      winner.listing.mlsId || winner.listing.listingKey,
-    )
-
-    const payload = {
-      generatedAt: new Date().toISOString(),
-      totalReviewed: listings.length,
-      qualifiedCount: scored.length,
-      rejectedCount: rejected.length,
-      kind: winner.kind,
-      insight,
-      score: winner.score,
-      pricePerSqft: winner.pricePerSqft,
-      cityMedianPricePerSqft: winner.cityMedianPpsf,
-      photoUrl,
-      listing: winner.listing,
-      runnerUps: scored.slice(1, 4).map((s) => ({
-        mlsId: s.listing.mlsId,
-        address: s.listing.address.full,
-        composite: s.score.composite,
-      })),
+    const response = {
+      ...payload,
+      scope: { towns: [...TMRE_TOWNS] },
+      source,
     }
-    cache = { value: payload, expiresAt: Date.now() + CACHE_TTL_MS }
-    return NextResponse.json(payload)
+    cache = { value: response, expiresAt: Date.now() + CACHE_TTL_MS }
+    return NextResponse.json(response, { headers: listingCacheHeaders(source) })
   } catch (err) {
     console.error('[/api/deal-of-the-week] error', err)
     return NextResponse.json(

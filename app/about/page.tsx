@@ -1,4 +1,4 @@
-import Image from "next/image";
+import ProfileContactTrigger from "@/components/ProfileContactTrigger";
 
 export const metadata = {
   title: "About — TMRE",
@@ -32,119 +32,125 @@ const values = [
 export default function AboutPage() {
   return (
     <>
-      {/* SECTION 1 — Mission */}
-      <section className="navy-gradient text-white pt-24 pb-12 lg:pt-40 lg:pb-28 relative overflow-hidden">
+      {/* HERO — matches site-wide nav banner style */}
+      <section className="navy-gradient text-white pt-20 pb-10 lg:pt-28 lg:pb-14 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             About TMRE
           </p>
-          <h1 className="font-serif italic text-4xl sm:text-5xl lg:text-7xl text-white leading-[1.05] max-w-4xl animate-fade-up">
-            Making data-driven real estate decisions simple.
+          <h1 className="font-serif italic text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
+            Making Real Estate Simple.
           </h1>
-          <p className="mt-4 text-base lg:text-xl text-slate-200/80 max-w-2xl animate-fade-up-delay-1">
-            TMRE answers the questions that matter most — with data, not
-            guesswork.
+          <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
+            TMRE answers the questions that matter most — with data, not guesswork.
           </p>
         </div>
       </section>
 
-      {/* SECTION 2 — Meet the Founder */}
+      {/* SECTION 1+2 — About frame (left) + Meet the Founder (right) */}
       <section className="bg-white border-b border-charcoal/[0.06] py-12 lg:py-24">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          <div className="max-w-2xl mb-10 lg:mb-14">
-            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
-              Meet the founder
-            </p>
-            <h2 className="font-serif text-3xl lg:text-5xl text-navy leading-[1.1]">
-              Three markets, one lens.{" "}
-              <span className="italic">Built for Fairfield County.</span>
-            </h2>
-          </div>
+          <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-stretch">
 
-          <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
-            {/* Photo column */}
-            <div className="lg:col-span-5">
-              <div className="group relative aspect-square overflow-hidden rounded-3xl shadow-2xl shadow-navy/10 ring-1 ring-charcoal/[0.06]">
-                <Image
-                  src="/timothy-tmre.png"
-                  alt="Timothy Marks, Founder and CEO of TMRE"
-                  fill
-                  sizes="(min-width: 1024px) 40vw, 100vw"
-                  className="object-cover grayscale transition-[filter] duration-500 group-hover:grayscale-0"
-                  priority
-                />
-              </div>
-              <div className="mt-6">
-                <h3 className="font-serif text-3xl lg:text-4xl text-navy leading-tight">
-                  Timothy Marks
-                </h3>
-                <p className="mt-1 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                  Founder &amp; CEO
+            {/* LEFT — About TMRE frame */}
+            <div className="lg:col-span-4 flex">
+              <div className="navy-gradient relative overflow-hidden rounded-3xl p-8 lg:p-10 text-white w-full flex flex-col justify-between">
+                <div className="absolute inset-0 hero-grid opacity-30" aria-hidden />
+                <div className="relative">
+                  <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-4">
+                    About TMRE
+                  </p>
+                  <h1 className="font-serif italic text-3xl lg:text-5xl text-white leading-[1.08]">
+                    Making Real Estate Simple.
+                  </h1>
+                  <p className="mt-5 text-sm lg:text-base text-white/70 leading-relaxed">
+                    TMRE answers the questions that matter most — with data,
+                    not guesswork.
+                  </p>
+                </div>
+                <p className="relative mt-10 font-mono text-[10px] tracking-[0.2em] uppercase text-white/35">
+                  Fairfield County · Greater Boston · South Florida
                 </p>
               </div>
             </div>
 
-            {/* Bio column */}
-            <div className="lg:col-span-7">
-              <blockquote className="border-l-4 border-gold pl-5 mb-8 lg:mb-10">
-                <p className="font-serif italic text-xl lg:text-3xl text-navy leading-snug">
-                  &ldquo;Most agents see one market. I read three at once.
-                  When the cycle is turning in Westport, I&rsquo;ve usually
-                  already watched it move in Boston or Palm Beach
-                  first.&rdquo;
-                </p>
-              </blockquote>
+            {/* RIGHT — Meet the Founder */}
+            <div className="lg:col-span-8">
+              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-6">
+                Meet the founder
+              </p>
+              <div className="grid sm:grid-cols-[1fr_auto] gap-8 items-start">
+                {/* Photo */}
+                <div className="sm:w-52 lg:w-64 shrink-0 sm:order-2">
+                  <ProfileContactTrigger
+                    src="/timothy-tmre.png"
+                    alt="Timothy Marks, Agent and Insight Provacateur at TMRE"
+                    sizes="(min-width: 1024px) 256px, (min-width: 640px) 208px, 100vw"
+                    priority
+                  />
+                  <div className="mt-4">
+                    <h2 className="font-serif text-2xl lg:text-3xl text-navy leading-tight">
+                      Timothy Marks
+                    </h2>
+                    <p className="mt-1 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+                      Agent and Insight Provacateur
+                    </p>
+                  </div>
+                </div>
 
-              <div className="space-y-5 text-base lg:text-lg text-charcoal leading-relaxed">
-                <p>
-                  Timothy operates three markets at the same time: Fairfield
-                  County, Greater Boston, and South Florida. That&rsquo;s not
-                  a marketing footprint — it&rsquo;s a data lens. Cycles,
-                  rate sensitivity, buyer migration, renovation costs, and
-                  inventory shocks rarely hit all three at once, and seeing
-                  them in parallel changes what you can tell a Fairfield
-                  County client. When inventory tightens in Wellesley before
-                  it tightens in Norwalk, that&rsquo;s a signal. When Palm
-                  Beach price-per-sqft starts compressing, that&rsquo;s
-                  another. Most Fairfield County agents have never worked
-                  outside the county. Timothy reads three feeds every
-                  morning.
-                </p>
-                <p>
-                  The discipline behind that lens came from nearly two
-                  decades at JP Morgan. Pricing models, risk frameworks,
-                  market-cycle analysis — the tools of a global bank are
-                  the tools real estate has been waiting for. Most homeowners
-                  on Compo Beach Road have never had an advisor who actually
-                  built one. The pricing recommendation you&rsquo;ll get from
-                  Timothy is a model, not an opinion. The comps are
-                  weighted, not eyeballed.
-                </p>
-                <p>
-                  Alongside that career, Timothy spent 20+ years investing as
-                  a principal — buying, renovating, holding, and selling
-                  across all three markets with his own capital, his own
-                  permits, and his own contractor list. The active projects
-                  on this site are his. When he tells a Fairfield County
-                  seller what to skip and where to invest before listing,
-                  it&rsquo;s because he&rsquo;s done both versions on his
-                  own homes and watched what the comps actually did.
-                </p>
-                <p>
-                  That experience runs deeper than transactions. Sellers
-                  across Fairfield County — Westport, Darien, New Canaan,
-                  Norwalk — are often sitting on enormous unrealized gains
-                  and rarely have an advisor who can model the cap-gains
-                  exposure, structure a 1031 exchange, or quantify what a
-                  $40K kitchen actually returns at closing in their
-                  micro-market. Timothy can. He&rsquo;s a licensed broker,
-                  he and his family live in Westport, his kids attend
-                  Westport schools, and the homes he underwrites for clients
-                  are the same kind he underwrites for himself.
-                </p>
+                {/* Bio */}
+                <div className="sm:order-1">
+                  <blockquote className="border-l-4 border-gold pl-5 mb-7">
+                    <p className="font-serif italic text-lg lg:text-2xl text-navy leading-snug">
+                      &ldquo;Distilling markets and making it easier for you to
+                      navigate — whether it&rsquo;s listing your home or buying
+                      a new one, I&rsquo;m going to put it all together for
+                      you.&rdquo;
+                    </p>
+                  </blockquote>
+                  <div className="space-y-4 text-sm lg:text-base text-charcoal leading-relaxed">
+                    <p>
+                      Timothy is here to work for you. With the pulse of the East
+                      Coast he has successfully managed real estate in 3 of the
+                      hottest markets — South Florida, Fairfield County, and Boston
+                      (Suffolk County) — in addition to having a foothold in NYC.
+                      That&rsquo;s not a marketing footprint — it&rsquo;s a data
+                      lens. Cycles, rate sensitivity, buyer migration, renovation
+                      costs, and inventory shocks rarely hit all three at once, and
+                      seeing them in parallel changes what you can tell a Fairfield
+                      County client.
+                    </p>
+                    <p>
+                      The discipline behind that lens came from nearly two
+                      decades on Wall Street — Rates, Equities, Commodities, and
+                      Mortgage Desks at various investment banks. Pricing models,
+                      risk frameworks, market-cycle analysis — the tools of a global
+                      bank applied to real estate. The pricing recommendation
+                      you&rsquo;ll get from Timothy is grounded in data, common
+                      sense, and <em>not</em> just another CMA (generic Real Estate comparative
+                      market analysis) / opinion.
+                    </p>
+                    <p>
+                      Alongside that career, Timothy spent 20+ years investing as
+                      a principal — buying, renovating, holding, and selling
+                      across all three markets with his own capital and his own
+                      contractor list. When he tells a seller what to skip and
+                      where to invest before listing, it&rsquo;s because
+                      he&rsquo;s done both versions on his own homes.
+                    </p>
+                    <p>
+                      He&rsquo;s a licensed agent for Berkshire Hathaway Home
+                      Services NE, and he and his family live in
+                      Westport, his kids attend Westport schools, and the homes
+                      he underwrites for clients are the same kind he underwrites
+                      for himself.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
+
           </div>
         </div>
       </section>

@@ -1,0 +1,274 @@
+import 'server-only'
+
+import { fetchPreferredPhotoUrl, type Listing } from './rets'
+import { isMarketListing } from './listings-store'
+import { parseLotAcres } from './fixer-listings'
+import {
+  buildInsight,
+  kindOf,
+  type ScoredListing,
+} from './goldilocks'
+import { scoreListingsWithBoardPeers } from './board-scoring'
+import { filterListingsToTmreTowns } from './tmre-towns'
+import { isNewConstructionListing } from './new-construction-server'
+
+export type DealPickPayload = {
+  generatedAt: string
+  totalReviewed: number
+  qualifiedCount: number
+  rejectedCount: number
+  salesReviewed: number
+  rentalsReviewed: number
+  kind: 'sale' | 'rental'
+  pickMode: 'below-median' | 'board-top'
+  insight: string
+  score: ScoredListing['score']
+  pricePerSqft: number | null
+  cityMedianPricePerSqft: number | null
+  cityMedianPrice: number | null
+  valueDiscountPct: number | null
+  lotAcres: number | null
+  photoUrl: string | null
+  listing: Listing
+  runnerUps: { mlsId: string; address: string; composite: number; kind: 'sale' | 'rental' }[]
+}
+
+const RENDERING_KEYWORDS = [
+  'rendering',
+  'architectural render',
+  'artist rendering',
+  "artist's rendering",
+  'photorealistic render',
+  'proposed dwelling',
+  'to be built',
+  'pre-construction',
+  'pre construction',
+  'under construction',
+  'build to suit',
+  'conceptual design',
+  'architectural plans',
+]
+
+function collectRemarks(l: Listing): string {
+  return [l.raw.PublicRemarks, l.raw.RemarksPublicAddendum, l.raw.RoomsAdditional, l.raw.PropertyInfo]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function listingHaystack(l: Listing): string {
+  return `${l.propertyType} ${l.style} ${collectRemarks(l)}`.toLowerCase()
+}
+
+function median(nums: number[]): number | null {
+  if (!nums.length) return null
+  const sorted = [...nums].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+}
+
+function cityKey(l: Listing): string {
+  return `${(l.address.city || 'unknown').toLowerCase()}::${kindOf(l)}`
+}
+
+function cityMedianListPrices(listings: Listing[]): Map<string, number> {
+  const groups = new Map<string, number[]>()
+  for (const l of listings) {
+    if (!l.price || l.price <= 0) continue
+    const key = cityKey(l)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(l.price)
+  }
+  const out = new Map<string, number>()
+  for (const [key, prices] of groups) {
+    const m = median(prices)
+    if (m != null) out.set(key, m)
+  }
+  return out
+}
+
+export { isNewConstructionListing } from './new-construction-server'
+
+export function isRenderingOrProposedListing(l: Listing): boolean {
+  const hay = listingHaystack(l)
+  return RENDERING_KEYWORDS.some((k) => hay.includes(k))
+}
+
+function isBelowTownMedian(l: Listing, medians: Map<string, number>): boolean {
+  if (!l.price || l.price <= 0) return false
+  const med = medians.get(cityKey(l))
+  if (med == null || med <= 0) return false
+  return l.price < med
+}
+
+function valueDiscountPct(l: Listing, medians: Map<string, number>): number | null {
+  if (!l.price) return null
+  const med = medians.get(cityKey(l))
+  if (!med || med <= 0) return null
+  return Math.round((1 - l.price / med) * 100)
+}
+
+function valueDealRank(s: ScoredListing, medians: Map<string, number>): number {
+  const discount = valueDiscountPct(s.listing, medians) ?? 0
+  const ppsfBonus = s.score.pricePerSqftFit >= 75 ? 8 : s.score.pricePerSqftFit >= 65 ? 4 : 0
+  return s.score.composite * 0.65 + Math.min(discount, 30) * 0.35 + ppsfBonus
+}
+
+function buildValueDealInsight(s: ScoredListing, medians: Map<string, number>): string {
+  const discount = valueDiscountPct(s.listing, medians)
+  const city = s.listing.address.city || 'the area'
+  const med = medians.get(cityKey(s.listing))
+  const priceLabel = s.kind === 'rental' ? 'monthly rent' : 'list price'
+
+  let lead = ''
+  if (discount != null && discount > 0 && med != null) {
+    const medFmt =
+      s.kind === 'rental'
+        ? `$${Math.round(med).toLocaleString()}/mo`
+        : `$${Math.round(med).toLocaleString()}`
+    lead = `Today's pick lists ${discount}% below the ${city} median ${priceLabel} (${medFmt}) — real value in established inventory, not new construction. `
+  } else {
+    lead = `Today's pick reflects below-median value in ${city} — established inventory, not new construction. `
+  }
+
+  return lead + buildInsight(s)
+}
+
+async function finalizePayload(
+  listings: Listing[],
+  scored: ScoredListing[],
+  rejectedCount: number,
+  medians: Map<string, number>,
+  winner: ScoredListing,
+  insight: string,
+  pickMode: DealPickPayload['pickMode'],
+): Promise<DealPickPayload> {
+  const sorted = [...scored].sort((a, b) => {
+    if (pickMode === 'below-median') {
+      return valueDealRank(b, medians) - valueDealRank(a, medians)
+    }
+    return b.score.composite - a.score.composite
+  })
+
+  return {
+    generatedAt: new Date().toISOString(),
+    totalReviewed: listings.length,
+    qualifiedCount: scored.length,
+    rejectedCount,
+    salesReviewed: listings.filter((l) => kindOf(l) === 'sale').length,
+    rentalsReviewed: listings.filter((l) => kindOf(l) === 'rental').length,
+    kind: winner.kind,
+    pickMode,
+    insight,
+    score: winner.score,
+    pricePerSqft: winner.pricePerSqft,
+    cityMedianPricePerSqft: winner.cityMedianPpsf,
+    cityMedianPrice: medians.get(cityKey(winner.listing)) ?? null,
+    valueDiscountPct: valueDiscountPct(winner.listing, medians),
+    lotAcres: parseLotAcres(winner.listing),
+    photoUrl: await fetchPreferredPhotoUrl(
+      winner.listing.listingKey || winner.listing.mlsId,
+      winner.listing.mlsId,
+    ),
+    listing: winner.listing,
+    runnerUps: sorted.slice(1, 4).map((s) => ({
+      mlsId: s.listing.mlsId,
+      address: s.listing.address.full,
+      composite: s.score.composite,
+      kind: s.kind,
+    })),
+  }
+}
+
+/** Same 0–100 composite path as Intelligence `/api/listings` (Deal Table). */
+async function scoreActiveListingsForBoard(
+  active: Listing[],
+  peerListings: Listing[],
+): Promise<ScoredListing[]> {
+  return scoreListingsWithBoardPeers(active, peerListings)
+}
+
+/** Deal of the Week — highest Goldilocks composite across the pool. */
+export async function computeTopDeal(
+  listings: Listing[],
+  opts?: { peerListings?: Listing[] },
+): Promise<DealPickPayload | null> {
+  const medians = cityMedianListPrices(listings)
+  const active = listings.filter(isMarketListing)
+  const peers = opts?.peerListings ?? active
+  const ranked = await scoreActiveListingsForBoard(active, peers)
+  const winner = ranked[0]
+  if (!winner) return null
+
+  return finalizePayload(
+    listings,
+    ranked,
+    0,
+    medians,
+    winner,
+    buildInsight(winner),
+    'board-top',
+  )
+}
+
+/**
+ * Deal of the Day — below town median when available; otherwise the top
+ * Goldilocks score from the Deal Table (same 0–100 composite as Intelligence).
+ */
+export async function computeDealOfTheDay(
+  listings: Listing[],
+  opts?: { kind?: 'sale' | 'rental'; peerListings?: Listing[] },
+): Promise<DealPickPayload | null> {
+  let scoped = filterListingsToTmreTowns(listings)
+  if (opts?.kind) {
+    scoped = scoped.filter((l) => kindOf(l) === opts.kind)
+  }
+  if (!scoped.length) return null
+
+  const medians = cityMedianListPrices(scoped)
+  const active = scoped.filter(isMarketListing)
+  if (!active.length) return null
+
+  const peers = opts?.peerListings ?? active
+  const boardScored = await scoreActiveListingsForBoard(active, peers)
+
+  const valuePool = active.filter(
+    (l) =>
+      !isNewConstructionListing(l) &&
+      !isRenderingOrProposedListing(l) &&
+      isBelowTownMedian(l, medians),
+  )
+
+  if (valuePool.length) {
+    const valueIds = new Set(valuePool.map((l) => l.mlsId))
+    const candidates = boardScored.filter((s) => valueIds.has(s.listing.mlsId))
+    if (candidates.length) {
+      const sorted = [...candidates].sort(
+        (a, b) => valueDealRank(b, medians) - valueDealRank(a, medians),
+      )
+      const winner = sorted[0]
+
+      return finalizePayload(
+        scoped,
+        candidates,
+        0,
+        medians,
+        winner,
+        buildValueDealInsight(winner, medians),
+        'below-median',
+      )
+    }
+  }
+
+  if (!boardScored.length) return null
+
+  return finalizePayload(
+    scoped,
+    boardScored,
+    0,
+    medians,
+    boardScored[0],
+    buildInsight(boardScored[0]),
+    'board-top',
+  )
+}

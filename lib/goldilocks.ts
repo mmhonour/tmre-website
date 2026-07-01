@@ -1,4 +1,5 @@
 import type { Listing } from './rets'
+import type { ScoreBreakdown } from './goldilocks-score-info'
 
 const RENO_KEYWORDS = [
   'renovated',
@@ -65,21 +66,7 @@ function aggregateKey(city: string, kind: ListingKind): string {
   return `${(city || 'unknown').toLowerCase()}::${kind}`
 }
 
-export type ScoreBreakdown = {
-  ageCondition: number
-  finishesQuality: number
-  pricePerSqftFit: number
-  layoutQuality: number
-  schoolRating: number
-  composite: number
-  weights: {
-    age: number
-    finishes: number
-    ppsf: number
-    layout: number
-    schools: number
-  }
-}
+export type { ScoreBreakdown } from './goldilocks-score-info'
 
 const SCHOOL_RATINGS: Record<string, number> = {
   // Westport — uniformly strong public system
@@ -219,24 +206,28 @@ function clamp(n: number, lo = 0, hi = 100): number {
   return Math.max(lo, Math.min(hi, n))
 }
 
-function scoreAge(yearBuilt: number | null, hasReno: boolean): number {
-  if (yearBuilt != null && yearBuilt >= 2015) return hasReno ? 100 : 92
-  if (hasReno && (yearBuilt == null || yearBuilt >= 2000)) return 90
-  if (yearBuilt != null && yearBuilt >= 2000) return hasReno ? 85 : 68
-  if (yearBuilt != null && yearBuilt >= 1980) return hasReno ? 68 : 42
-  if (yearBuilt != null) return hasReno ? 48 : 28
-  return hasReno ? 70 : 50
+function scoreAge(yearBuilt: number | null): number {
+  if (yearBuilt != null && yearBuilt >= 2015) return 92
+  if (yearBuilt != null && yearBuilt >= 2000) return 68
+  if (yearBuilt != null && yearBuilt >= 1980) return 42
+  if (yearBuilt != null) return 28
+  return 50
+}
+
+function scoreCondition(reno: string[], lowQuality: string[]): number {
+  let s = 50
+  s += Math.min(reno.length * 12, 45)
+  s -= lowQuality.length * 12
+  return clamp(s)
 }
 
 function scoreFinishes(
   quality: string[],
-  lowQuality: string[],
   photoCount: number | null,
   hasVirtualTour: boolean,
 ): number {
   let s = 50
   s += Math.min(quality.length * 7, 35)
-  s -= lowQuality.length * 10
   if (photoCount != null && photoCount > 20) s += 8
   if (photoCount != null && photoCount >= 30) s += 4
   if (hasVirtualTour) s += 5
@@ -332,7 +323,9 @@ export function disqualify(
   aggregates: Map<string, CityAggregate>,
   opts: DisqualifyOptions = {},
 ): DisqualifyReason | null {
-  if (l.status.toLowerCase() !== 'active') return 'status_not_active'
+  if (l.status.toLowerCase() !== 'active' && l.status.toLowerCase() !== 'coming soon' && l.status.toLowerCase() !== 'cs') {
+    return 'status_not_active'
+  }
   if (l.photoCount == null || l.photoCount === 0) return 'no_photos'
   const kind = kindOf(l)
   const minSqft = kind === 'rental' ? MIN_RENTAL_SQFT : MIN_SQFT
@@ -349,12 +342,16 @@ export function disqualify(
 }
 
 const WEIGHTS = {
-  age: 0.3,
-  finishes: 0.2,
-  ppsf: 0.2,
-  layout: 0.15,
-  schools: 0.15,
+  age: 0.1,
+  condition: 0.2,
+  finishes: 0.25,
+  ppsf: 0.25,
+  layout: 0.1,
+  schools: 0.1,
 }
+
+/** Active listings used to compute city medians / PPSF benchmarks when scoring. */
+export const SCORE_PEER_LIMIT = 500
 
 export function scoreListing(
   l: Listing,
@@ -374,8 +371,9 @@ export function scoreListing(
   const cityAgg = aggregates.get(aggregateKey(l.address.city, kind))
   const ppsf = l.price && l.sqft && l.sqft > 0 ? l.price / l.sqft : null
 
-  const age = scoreAge(l.yearBuilt, reno.length > 0)
-  const finishes = scoreFinishes(quality, lowQuality, l.photoCount, hasVirtualTour)
+  const age = scoreAge(l.yearBuilt)
+  const condition = scoreCondition(reno, lowQuality)
+  const finishes = scoreFinishes(quality, l.photoCount, hasVirtualTour)
   const ppsfFit = scorePpsf(
     ppsf,
     cityAgg?.medianPpsf ?? null,
@@ -387,6 +385,7 @@ export function scoreListing(
 
   const composite =
     age * WEIGHTS.age +
+    condition * WEIGHTS.condition +
     finishes * WEIGHTS.finishes +
     ppsfFit * WEIGHTS.ppsf +
     layout * WEIGHTS.layout +
@@ -396,7 +395,8 @@ export function scoreListing(
     listing: l,
     kind,
     score: {
-      ageCondition: Math.round(age * 10) / 10,
+      age: Math.round(age * 10) / 10,
+      condition: Math.round(condition * 10) / 10,
       finishesQuality: Math.round(finishes * 10) / 10,
       pricePerSqftFit: Math.round(ppsfFit * 10) / 10,
       layoutQuality: Math.round(layout * 10) / 10,
@@ -546,13 +546,43 @@ export type ScoringRunResult = {
 
 export type RunScoringOptions = {
   schoolRatings?: Map<string, number>
+  /** Full active inventory for city medians / PPSF benchmarks (defaults to scored set). */
+  peerListings?: Listing[]
+}
+
+/** Full scored rows for the Deal Table (0–100 composite, no disqualify filter). */
+export function scoreListingsForBoard(
+  listings: Listing[],
+  opts: RunScoringOptions = {},
+): ScoredListing[] {
+  const aggregates = aggregateByCity(opts.peerListings ?? listings)
+  const scored: ScoredListing[] = []
+  for (const l of listings) {
+    const override = opts.schoolRatings?.get(l.mlsId) ?? null
+    scored.push(scoreListing(l, aggregates, override))
+  }
+  scored.sort((a, b) => b.score.composite - a.score.composite)
+  return scored
+}
+
+/** Score every listing on the 0–100 Goldilocks composite (no disqualify filter). */
+export function scoreBoardListings(
+  listings: Listing[],
+  opts: RunScoringOptions = {},
+): Map<string, number> {
+  const scores = new Map<string, number>()
+  for (const s of scoreListingsForBoard(listings, opts)) {
+    const id = s.listing.mlsId || s.listing.listingKey
+    if (id) scores.set(id, s.score.composite)
+  }
+  return scores
 }
 
 export function runScoring(
   listings: Listing[],
   opts: RunScoringOptions = {},
 ): ScoringRunResult {
-  const aggregates = aggregateByCity(listings)
+  const aggregates = aggregateByCity(opts.peerListings ?? listings)
   const scored: ScoredListing[] = []
   const rejected: { listing: Listing; reason: DisqualifyReason }[] = []
   for (const l of listings) {

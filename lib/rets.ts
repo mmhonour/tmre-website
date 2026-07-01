@@ -1,3 +1,5 @@
+import 'server-only'
+
 import * as rets from 'rets-client'
 
 export type RawRetsRecord = Record<string, string>
@@ -53,6 +55,8 @@ export type SearchParams = {
   minPrice?: number
   maxPrice?: number
   limit?: number
+  closedAfter?: string   // ISO date e.g. "2024-01-01"
+  closedBefore?: string  // ISO date e.g. "2024-12-31"
 }
 
 export type MarketStats = {
@@ -61,6 +65,7 @@ export type MarketStats = {
   medianPrice: number | null
   avgDaysOnMarket: number | null
   avgPricePerSqft: number | null
+  avgBeds: number | null
   sampleSize: number
 }
 
@@ -150,6 +155,7 @@ function buildSchools(r: RawRetsRecord): Schools {
       'ElementarySchool1',
     ]),
     middle: pickField(r, [
+      'MiddleJrHighSchool',
       'MiddleSchool',
       'MiddleSchoolName',
       'IntermediateSchool',
@@ -158,6 +164,12 @@ function buildSchools(r: RawRetsRecord): Schools {
     high: pickField(r, ['HighSchool', 'HighSchoolName', 'SeniorHighSchool']),
     district: pickField(r, ['SchoolDistrict', 'SchoolDistrictName', 'SchoolDistrict1']),
   }
+}
+
+/** Re-derive schools from raw RETS fields (handles newly mapped names on cached rows). */
+export function refreshListingSchools(listing: Listing): Listing {
+  if (!listing.raw || Object.keys(listing.raw).length === 0) return listing
+  return { ...listing, schools: buildSchools(listing.raw) }
 }
 
 function mapListing(r: RawRetsRecord): Listing {
@@ -205,15 +217,19 @@ function escapeDmqlValue(v: string): string {
 const CITY_CODES: Record<string, string> = {
   norwalk: '350',
   westport: '540',
-  wilton: '530',
+  wilton: '550',
+  weston: '530',
   fairfield: '200',
   greenwich: '220',
   stamford: '470',
+  'new canaan': '310',
   'new fairfield': '320',
+  ridgefield: '390',
 }
 
 const STATUS_CODES: Record<string, string> = {
   active: 'A',
+  'coming soon': 'CS',
   pending: 'P',
   closed: 'C',
   expired: 'X',
@@ -236,9 +252,14 @@ function resolveStatusCode(name: string): string | null {
 
 function buildDmql(params: SearchParams): string {
   const clauses: string[] = []
+  const statusKey = params.status?.trim().toLowerCase() ?? ''
+  const closedWindow = Boolean(params.closedAfter || params.closedBefore)
   if (params.status) {
     const code = resolveStatusCode(params.status)
-    if (code) clauses.push(`(MLSStatus=|${code})`)
+    // SmartMLS throws NO_RECORDS_FOUND on MLSStatus=|C — use a date window for closed sales.
+    if (code && !(statusKey === 'closed' && closedWindow)) {
+      clauses.push(`(MLSStatus=|${code})`)
+    }
   }
   if (params.city) {
     const code = resolveCityCode(params.city)
@@ -259,6 +280,11 @@ function buildDmql(params: SearchParams): string {
     clauses.push(
       lo && hi ? `(ListPrice=${lo}-${hi})` : lo ? `(ListPrice=${lo}+)` : `(ListPrice=0-${hi})`,
     )
+  }
+  if (params.closedAfter || params.closedBefore) {
+    const lo = params.closedAfter ?? '2000-01-01'
+    const hi = params.closedBefore ?? new Date().toISOString().slice(0, 10)
+    clauses.push(`(StatusChangeTimestamp=${lo}-${hi})`)
   }
   if (clauses.length === 0) clauses.push('(ModificationTimestamp=1900-01-01+)')
   return clauses.join(',')
@@ -291,11 +317,16 @@ export async function searchListings(params: SearchParams = {}): Promise<Listing
   if (cached) return cached
 
   const records = await withClient(async (client) => {
-    const result = await client.search.query('Property', 'Property', dmql, {
-      limit,
-      offset: 1,
-    })
-    return (result?.results ?? []) as RawRetsRecord[]
+    try {
+      const result = await client.search.query('Property', 'Property', dmql, {
+        limit,
+        offset: 1,
+      })
+      return (result?.results ?? []) as RawRetsRecord[]
+    } catch (err) {
+      if (isRetsNoRecordsError(err)) return []
+      throw err
+    }
   })
 
   const listings = records.map(mapListing)
@@ -326,32 +357,125 @@ function extractFirstUrl(value: unknown, depth = 0): string | null {
 
 const PHOTO_TTL_MS = 12 * 60 * 60 * 1000
 
+const PHOTO_TYPES = ['Photo', 'LargePhoto', 'HiRes', 'Thumbnail']
+
+function isRetsNoRecordsError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = String((err as { replyCode?: string }).replyCode ?? '')
+  const tag = String((err as { replyTag?: string }).replyTag ?? '')
+  return code === '20201' || tag === 'NO_RECORDS_FOUND'
+}
+
+function isPhotoMedia(record: RawRetsRecord): boolean {
+  const category = str(record.MediaCategory).toLowerCase()
+  return !category || category === 'photo'
+}
+
+function mediaPhotoUrl(
+  record: RawRetsRecord,
+  size: 'full' | 'mid' | 'thumb' = 'full',
+): string | null {
+  const full = str(record.MediaURL)
+  const mid = str(record.MediaMidsizeURL)
+  const thumb = str(record.MediaThumbnailURL)
+  if (size === 'thumb') return thumb || mid || full || null
+  if (size === 'mid') return mid || full || thumb || null
+  return full || mid || thumb || null
+}
+
+function sortMediaRecords(records: RawRetsRecord[]): RawRetsRecord[] {
+  return [...records].sort((a, b) => {
+    const pa = str(a.PreferredPhoto).toUpperCase() === 'Y' ? 0 : 1
+    const pb = str(b.PreferredPhoto).toUpperCase() === 'Y' ? 0 : 1
+    if (pa !== pb) return pa - pb
+    return (num(a.MediaOrder) ?? 999) - (num(b.MediaOrder) ?? 999)
+  })
+}
+
+async function queryMediaRecords(
+  dmql: string,
+  limit: number,
+): Promise<RawRetsRecord[]> {
+  try {
+    return await withClient(async (client) => {
+      const result = await client.search.query('Media', 'Media', dmql, {
+        limit,
+        offset: 1,
+      })
+      return ((result?.results ?? []) as RawRetsRecord[]).filter(isPhotoMedia)
+    })
+  } catch (err) {
+    if (isRetsNoRecordsError(err)) return []
+    throw err
+  }
+}
+
+async function fetchMediaRecordsForListing(
+  listingKey: string,
+  mlsId?: string | null,
+  limit = 250,
+): Promise<RawRetsRecord[]> {
+  const key = listingKey.trim()
+  const id = mlsId?.trim() ?? ''
+  if (key) {
+    const byKey = await queryMediaRecords(
+      `(MediaResourceKey=${escapeDmqlValue(key)})`,
+      limit,
+    )
+    if (byKey.length) return sortMediaRecords(byKey)
+  }
+  if (id) {
+    const byId = await queryMediaRecords(
+      `(MediaResourceId=${escapeDmqlValue(id)})`,
+      limit,
+    )
+    if (byId.length) return sortMediaRecords(byId)
+  }
+  return []
+}
+
 export async function fetchPreferredPhotoUrl(
-  mlsId: string,
+  listingKey: string,
+  mlsId?: string,
 ): Promise<string | null> {
-  const id = mlsId.trim()
-  if (!id) return null
-  const cacheKey = `photo:preferred:${id}`
+  const key = listingKey.trim()
+  const id = mlsId?.trim() ?? ''
+  if (!key && !id) return null
+  const cacheKey = `photo:preferred:${key}:${id}`
   const cached = getCached<string | null>(cacheKey)
   if (cached !== null) return cached
 
-  try {
-    const url = await withClient(async (client) => {
-      const result = await client.objects.getPreferredObjects(
-        'Property',
-        'Photo',
-        id,
-        { Location: 1, alwaysGroupObjects: true },
-      )
-      return extractFirstUrl(result)
-    })
-    setCached(cacheKey, url, PHOTO_TTL_MS)
-    return url
-  } catch (err) {
-    console.error('[rets.fetchPreferredPhotoUrl] failed', err)
-    setCached(cacheKey, null, 5 * 60 * 1000)
-    return null
+  const media = await fetchMediaRecordsForListing(key, id, 10)
+  const fromMedia = media
+    .map((record) => mediaPhotoUrl(record, 'mid'))
+    .find((url): url is string => Boolean(url))
+  if (fromMedia) {
+    setCached(cacheKey, fromMedia, PHOTO_TTL_MS)
+    return fromMedia
   }
+
+  const objectKey = key || id
+  for (const photoType of PHOTO_TYPES) {
+    try {
+      const url = await withClient(async (client) => {
+        const result = await client.objects.getPreferredObjects(
+          'Property',
+          photoType,
+          objectKey,
+          { Location: 1, alwaysGroupObjects: true },
+        )
+        return extractFirstUrl(result)
+      })
+      if (url) {
+        setCached(cacheKey, url, PHOTO_TTL_MS)
+        return url
+      }
+    } catch {
+      // try next type
+    }
+  }
+  setCached(cacheKey, null, 5 * 60 * 1000)
+  return null
 }
 
 function collectAllUrls(value: unknown, out: string[], depth = 0): void {
@@ -371,54 +495,197 @@ function collectAllUrls(value: unknown, out: string[], depth = 0): void {
   }
 }
 
-export async function fetchAllPhotoUrls(mlsId: string): Promise<string[]> {
-  const id = mlsId.trim()
-  if (!id) return []
-  const cacheKey = `photo:all:${id}`
+export async function fetchAllPhotoUrls(
+  listingKey: string,
+  /** If provided, proxy URLs like /api/listings/{mlsId}/photos/{index} will be
+   *  returned as a fallback when the RETS server doesn't support Location:1. */
+  mlsIdForProxy?: string,
+  photoCountHint?: number | null,
+): Promise<string[]> {
+  const id = listingKey.trim()
+  const mlsId = mlsIdForProxy?.trim() ?? ''
+  if (!id && !mlsId) return []
+  const cacheKey = `photo:all:${id}:${mlsId}`
   const cached = getCached<string[]>(cacheKey)
-  if (cached) return cached
+  if (cached && cached.length > 0) return cached
 
-  try {
-    const urls = await withClient(async (client) => {
-      const result = await client.objects.getAllObjects(
-        'Property',
-        'Photo',
-        id,
-        { Location: 1, alwaysGroupObjects: true },
-      )
-      const acc: string[] = []
-      collectAllUrls(result, acc)
-      return acc
-    })
-    setCached(cacheKey, urls, PHOTO_TTL_MS)
-    return urls
-  } catch (err) {
-    console.error('[rets.fetchAllPhotoUrls] failed', err)
-    setCached(cacheKey, [], 5 * 60 * 1000)
-    return []
+  const photoLimit = Math.min(Math.max(photoCountHint ?? 60, 1), 250)
+  const media = await fetchMediaRecordsForListing(id, mlsId, photoLimit)
+  const mediaUrls = media
+    .map((record) => mediaPhotoUrl(record, 'full'))
+    .filter((url): url is string => Boolean(url))
+  if (mediaUrls.length > 0) {
+    setCached(cacheKey, mediaUrls, PHOTO_TTL_MS)
+    return mediaUrls
   }
+
+  const objectKey = id || mlsId
+  for (const photoType of PHOTO_TYPES) {
+    try {
+      const urls = await withClient(async (client) => {
+        const result = await client.objects.getAllObjects(
+          'Property',
+          photoType,
+          objectKey,
+          { Location: 1, alwaysGroupObjects: true },
+        )
+        const acc: string[] = []
+        collectAllUrls(result, acc)
+        return acc
+      })
+      if (urls.length > 0) {
+        setCached(cacheKey, urls, PHOTO_TTL_MS)
+        return urls
+      }
+    } catch {
+      // try next type
+    }
+  }
+
+  // Location:1 returned no URLs — check how many photos exist via binary fetch
+  // and return proxy URLs that the browser can call to stream the image.
+  if (mlsId) {
+    for (const photoType of PHOTO_TYPES) {
+      try {
+        const count = await withClient(async (client) => {
+          const all = await client.objects.getAllObjects(
+            'Property',
+            photoType,
+            objectKey,
+            { Location: 0, alwaysGroupObjects: true },
+          )
+          const items: unknown[] = Array.isArray(all)
+            ? all
+            : Array.isArray((all as any)?.objects)
+            ? (all as any).objects
+            : []
+          return items.filter((it) => {
+            const buf = (it as any)?.dataBuffer ?? (it as any)?.data
+            return Buffer.isBuffer(buf) && buf.length > 100
+          }).length
+        })
+        if (count > 0) {
+          const proxyUrls = Array.from({ length: count }, (_, i) =>
+            `/api/listings/${encodeURIComponent(mlsId)}/photos/${i}`,
+          )
+          setCached(cacheKey, proxyUrls, PHOTO_TTL_MS)
+          return proxyUrls
+        }
+      } catch {
+        // try next type
+      }
+    }
+  }
+
+  const preferred = await fetchPreferredPhotoUrl(id, mlsId)
+  if (preferred) {
+    const single = [preferred]
+    setCached(cacheKey, single, PHOTO_TTL_MS)
+    return single
+  }
+
+  setCached(cacheKey, [], 5 * 60 * 1000)
+  return []
 }
 
-export async function getListingByMlsId(mlsId: string): Promise<Listing | null> {
-  const trimmed = mlsId.trim()
+/** Up to `maxPhotos` JPEG buffers for vision / finish-quality assessment. */
+export async function fetchPhotoBuffers(
+  listingKey: string,
+  mlsId: string,
+  maxPhotos = 5,
+  photoCountHint?: number | null,
+): Promise<Buffer[]> {
+  const key = listingKey.trim()
+  const id = mlsId.trim()
+  if (!key && !id) return []
+
+  const urls = await fetchAllPhotoUrls(key, id, photoCountHint)
+  const buffers: Buffer[] = []
+
+  for (const url of urls) {
+    if (buffers.length >= maxPhotos) break
+    if (!/^https?:\/\//i.test(url)) continue
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(12_000) })
+      if (!res.ok) continue
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length > 500) buffers.push(buf)
+    } catch {
+      // try next url
+    }
+  }
+
+  if (buffers.length >= maxPhotos) return buffers.slice(0, maxPhotos)
+
+  const objectKey = key || id
+  for (const photoType of PHOTO_TYPES) {
+    try {
+      const items: unknown[] = await withClient(async (client) => {
+        const all = await client.objects.getAllObjects(
+          'Property',
+          photoType,
+          objectKey,
+          { Location: 0, alwaysGroupObjects: true },
+        )
+        return Array.isArray(all)
+          ? all
+          : Array.isArray((all as { objects?: unknown[] })?.objects)
+            ? (all as { objects: unknown[] }).objects
+            : []
+      })
+      for (const item of items) {
+        if (buffers.length >= maxPhotos) break
+        const row = item as { dataBuffer?: Buffer; data?: Buffer }
+        const buf = row?.dataBuffer ?? row?.data
+        if (Buffer.isBuffer(buf) && buf.length > 500) buffers.push(buf)
+      }
+      if (buffers.length > 0) break
+    } catch {
+      // try next type
+    }
+  }
+
+  return buffers.slice(0, maxPhotos)
+}
+
+export async function getListingByMlsId(id: string): Promise<Listing | null> {
+  const trimmed = id.trim()
   if (!trimmed) return null
   const cacheKey = `mls:${trimmed}`
   const cached = getCached<Listing | null>(cacheKey)
   if (cached !== null) return cached
 
-  const records = await withClient(async (client) => {
-    const result = await client.search.query(
-      'Property',
-      'Property',
-      `(ListingId=${escapeDmqlValue(trimmed)})`,
-      { limit: 1, offset: 1 },
-    )
-    return (result?.results ?? []) as RawRetsRecord[]
-  })
+  const listing =
+    (await searchListingByField('ListingId', trimmed)) ??
+    (await searchListingByField('ListingKey', trimmed))
 
-  const listing = records[0] ? mapListing(records[0]) : null
   setCached(cacheKey, listing, SEARCH_TTL_MS)
   return listing
+}
+
+async function searchListingByField(
+  field: 'ListingKey' | 'ListingId',
+  value: string,
+): Promise<Listing | null> {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const records = await withClient(async (client) => {
+    try {
+      const result = await client.search.query(
+        'Property',
+        'Property',
+        `(${field}=${escapeDmqlValue(trimmed)})`,
+        { limit: 1, offset: 1 },
+      )
+      return (result?.results ?? []) as RawRetsRecord[]
+    } catch (err) {
+      if (isRetsNoRecordsError(err)) return []
+      throw err
+    }
+  })
+
+  return records[0] ? mapListing(records[0]) : null
 }
 
 function median(nums: number[]): number | null {
@@ -431,6 +698,38 @@ function median(nums: number[]): number | null {
 function mean(nums: number[]): number | null {
   if (nums.length === 0) return null
   return nums.reduce((a, b) => a + b, 0) / nums.length
+}
+
+import { TMRE_TOWNS, type TmreTown } from './tmre-towns'
+
+/** @deprecated Prefer `TMRE_TOWNS` from `./tmre-towns`. */
+export const TMRE_MARKET_TOWNS = TMRE_TOWNS
+
+/** @deprecated Prefer `TmreTown` from `./tmre-towns`. */
+export type TmreMarketTown = TmreTown
+
+/** Fetch active listings across multiple towns, deduped by MLS id. */
+export async function searchListingsAcrossTowns(
+  towns: readonly string[],
+  params: Omit<SearchParams, 'city' | 'county'> = {},
+): Promise<Listing[]> {
+  const perTownLimit = params.limit ?? 500
+  const batches = await Promise.all(
+    towns.map((city) =>
+      searchListings({ ...params, city, limit: perTownLimit }).catch(() => [] as Listing[]),
+    ),
+  )
+  const seen = new Set<string>()
+  const merged: Listing[] = []
+  for (const batch of batches) {
+    for (const l of batch) {
+      const key = l.mlsId || l.listingKey
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      merged.push(l)
+    }
+  }
+  return merged
 }
 
 export async function getMarketStats(city: string): Promise<MarketStats> {
@@ -449,6 +748,9 @@ export async function getMarketStats(city: string): Promise<MarketStats> {
   const ppsf = listings
     .map((l) => (l.price && l.sqft && l.sqft > 0 ? l.price / l.sqft : null))
     .filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
+  const beds = listings
+    .map((l) => l.beds)
+    .filter((b): b is number => b != null && b > 0)
 
   const stats: MarketStats = {
     city,
@@ -456,6 +758,7 @@ export async function getMarketStats(city: string): Promise<MarketStats> {
     medianPrice: median(prices),
     avgDaysOnMarket: mean(doms),
     avgPricePerSqft: mean(ppsf),
+    avgBeds: mean(beds),
     sampleSize: listings.length,
   }
   setCached(cacheKey, stats, STATS_TTL_MS)

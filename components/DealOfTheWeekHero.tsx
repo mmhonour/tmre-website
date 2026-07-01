@@ -2,6 +2,24 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import GoldilocksScoreExplainModal, {
+  type ScoreExplainTopic,
+} from "@/components/GoldilocksScoreExplainModal";
+import { factorContribution } from "@/lib/goldilocks-score-info";
+import { TMRE_TOWNS, TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { dealOfTheDayHref, listingDetailHref, listingPhotosHref } from "@/lib/listing-url";
+import DealPhotoThumbnailDeck from "@/components/DealPhotoThumbnailDeck";
+import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
+import {
+  useDealOfTheDayCarousel,
+  type DealCarouselPayload,
+} from "@/hooks/useDealOfTheDayCarousel";
+import { usePersistedFilter } from "@/hooks/usePersistedFilter";
+import {
+  filterPillButtonClass,
+  filterPillContainerClass,
+} from "@/lib/filter-pill-styles";
 
 type ListingKind = "sale" | "rental";
 
@@ -9,10 +27,13 @@ type ApiResponse = {
   generatedAt: string;
   totalReviewed: number;
   qualifiedCount: number;
+  salesReviewed?: number;
+  rentalsReviewed?: number;
   kind: ListingKind;
   insight: string;
   score: {
-    ageCondition: number;
+    age: number;
+    condition: number;
     finishesQuality: number;
     pricePerSqftFit: number;
     layoutQuality: number;
@@ -20,6 +41,7 @@ type ApiResponse = {
     composite: number;
     weights: {
       age: number;
+      condition: number;
       finishes: number;
       ppsf: number;
       layout: number;
@@ -28,7 +50,10 @@ type ApiResponse = {
   };
   pricePerSqft: number | null;
   cityMedianPricePerSqft: number | null;
+  cityMedianPrice?: number | null;
+  valueDiscountPct?: number | null;
   photoUrl: string | null;
+  lotAcres?: number | null;
   listing: {
     mlsId: string;
     propertyType: string;
@@ -58,25 +83,28 @@ const FALLBACK: ApiResponse = {
   qualifiedCount: 0,
   kind: "sale",
   insight:
-    "Our Goldilocks model scans every active Fairfield County listing each morning, weighting age and condition, finishes, price-per-sqft fit, layout, and school ratings. This week's pick is loading — refresh in a moment to see it.",
+    `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, and school ratings. This week's pick is loading — refresh in a moment to see it.`,
   score: {
-    ageCondition: 90,
+    age: 88,
+    condition: 92,
     finishesQuality: 82,
     pricePerSqftFit: 88,
     layoutQuality: 84,
     schoolRating: 88,
     composite: 87.0,
     weights: {
-      age: 0.3,
-      finishes: 0.2,
-      ppsf: 0.2,
-      layout: 0.15,
-      schools: 0.15,
+      age: 0.1,
+      condition: 0.2,
+      finishes: 0.25,
+      ppsf: 0.25,
+      layout: 0.1,
+      schools: 0.1,
     },
   },
   pricePerSqft: 378,
   cityMedianPricePerSqft: 425,
   photoUrl: null,
+  lotAcres: 0.28,
   listing: {
     mlsId: "—",
     propertyType: "Single Family",
@@ -115,14 +143,194 @@ function shortType(t: string): string {
   return t.replace(/ For Sale$/i, "").replace(/ For Lease$/i, "");
 }
 
-export default function DealOfTheWeekHero() {
+function DealShowcaseCarouselControls({
+  paused,
+  onTogglePause,
+  onPrev,
+  onNext,
+  canStep,
+  townLabel,
+  carouselIndex,
+  carouselTotal,
+  overlay = false,
+}: {
+  paused: boolean;
+  onTogglePause: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  canStep: boolean;
+  townLabel: string | null;
+  carouselIndex: number;
+  carouselTotal: number;
+  overlay?: boolean;
+}) {
+  const btnBase = overlay
+    ? "border-white/25 text-white bg-black/35 backdrop-blur-sm hover:text-white hover:border-gold/50 hover:bg-black/50"
+    : "border-white/15 text-white/70 hover:text-white hover:border-gold/40 hover:bg-white/5";
+
+  return (
+    <div
+      className={
+        overlay
+          ? "absolute bottom-0 left-0 right-0 z-20 px-4 py-2.5 flex items-center justify-between gap-2 bg-gradient-to-t from-black/75 via-black/45 to-transparent"
+          : "px-5 py-3 flex items-center justify-between gap-2 border-t border-white/10 bg-white/[0.03]"
+      }
+    >
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onPrev}
+          disabled={!canStep}
+          aria-label="Previous town deal"
+          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          onClick={onTogglePause}
+          aria-label={paused ? "Resume town rotation" : "Pause town rotation"}
+          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${btnBase}`}
+        >
+          {paused ? "▶" : "⏸"}
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={!canStep}
+          aria-label="Next town deal"
+          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
+        >
+          ›
+        </button>
+      </div>
+      <span
+        className={`font-mono text-[9px] tracking-[0.12em] uppercase truncate ${overlay ? "text-white/75" : "text-white/45"}`}
+      >
+        {townLabel}
+        {carouselTotal > 0 ? ` · ${carouselIndex + 1}/${carouselTotal}` : ""}
+      </span>
+    </div>
+  );
+}
+
+function DealDayTownList({ activeTown }: { activeTown: string | null }) {
+  const towns = usePersonalizedTowns(TMRE_TOWNS);
+  const activeKey = activeTown?.trim().toLowerCase() ?? null;
+
+  return (
+    <div className="font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
+      <p>
+        {towns.map((town, i) => {
+          const isActive = activeKey === town.toLowerCase();
+          const separator =
+            i === 0 ? null : i === towns.length - 1 ? ", and " : ", ";
+          return (
+            <span key={town}>
+              {separator ? (
+                <span className="text-white/45">{separator}</span>
+              ) : null}
+              <Link
+                href={dealOfTheDayHref(town)}
+                aria-current={isActive ? "page" : undefined}
+                className={`transition-colors duration-300 underline-offset-2 hover:underline ${
+                  isActive
+                    ? "text-gold font-bold hover:text-gold-light"
+                    : "text-white/45 font-normal hover:text-white/70"
+                }`}
+              >
+                {town}
+              </Link>
+            </span>
+          );
+        })}
+      </p>
+      <p className="text-white/45 mt-1">BELOW THE TOWN MEDIAN · established homes</p>
+    </div>
+  );
+}
+
+function fmtLotAcres(acres: number | null | undefined): string | null {
+  if (acres == null || acres <= 0) return null;
+  return `${acres.toFixed(2)} ac`;
+}
+
+function mapDayDealToApi(deal: DealCarouselPayload): ApiResponse {
+  const l = deal.listing;
+  return {
+    generatedAt: new Date().toISOString(),
+    totalReviewed: deal.totalReviewed ?? 0,
+    qualifiedCount: deal.qualifiedCount ?? 0,
+    kind: deal.kind ?? "sale",
+    insight: deal.insight ?? "",
+    score: deal.score,
+    pricePerSqft: deal.pricePerSqft ?? null,
+    cityMedianPricePerSqft: deal.cityMedianPricePerSqft ?? null,
+    cityMedianPrice: deal.cityMedianPrice ?? null,
+    valueDiscountPct: deal.valueDiscountPct ?? null,
+    lotAcres: deal.lotAcres ?? null,
+    photoUrl: deal.photoUrl,
+    listing: {
+      mlsId: l.mlsId,
+      propertyType: l.propertyType ?? "Single Family",
+      style: l.style ?? "",
+      address: {
+        street: l.address.street,
+        city: l.address.city,
+        state: l.address.state ?? "CT",
+        full: l.address.full,
+      },
+      price: l.price,
+      originalListPrice: l.originalListPrice ?? null,
+      beds: l.beds,
+      baths: l.baths,
+      sqft: l.sqft ?? null,
+      yearBuilt: l.yearBuilt ?? null,
+      dom: l.dom,
+      listDate: l.listDate ?? null,
+      photoCount: l.photoCount ?? null,
+      schools: l.schools ?? {
+        elementary: null,
+        middle: null,
+        high: null,
+        district: null,
+      },
+    },
+  };
+}
+
+export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "day" }) {
+  const searchParams = useSearchParams();
+  const city = searchParams.get("city");
+  const periodLabel = mode === "day" ? "Day" : "Week";
+  const headlineLead = mode === "day" ? "Today's" : "This week's";
+  const apiPath =
+    mode === "day"
+      ? city
+        ? `/api/deal-of-the-day?city=${encodeURIComponent(city)}`
+        : "/api/deal-of-the-day"
+      : "/api/deal-of-the-week";
+  const isDay = mode === "day";
+  const [txFilter, setTxFilter] = usePersistedFilter<"sale" | "rental">(
+    "deal-of-the-day-tx",
+    "sale",
+    ["sale", "rental"],
+  );
+  const carousel = useDealOfTheDayCarousel({
+    initialTown: city,
+    rotate: isDay && !city,
+    enabled: isDay,
+    transactionFilter: txFilter,
+  });
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [usedFallback, setUsedFallback] = useState(false);
 
   useEffect(() => {
+    if (isDay) return;
     let cancelled = false;
-    fetch("/api/deal-of-the-week", { cache: "no-store" })
+    setLoading(true);
+    fetch(apiPath, { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as ApiResponse;
@@ -142,19 +350,33 @@ export default function DealOfTheWeekHero() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apiPath, city, mode, isDay]);
 
+  const dayShowing =
+    isDay && carousel.currentDeal ? mapDayDealToApi(carousel.currentDeal) : null;
+  const dayEmpty = isDay && !carousel.loading && !dayShowing;
+  const showing = isDay ? dayShowing : (data ?? FALLBACK);
+  const loadingState = isDay ? carousel.loading : loading;
+  const slideDir = carousel.slideDir;
+  const slideKey = isDay
+    ? `${txFilter}-${carousel.currentTown ?? "none"}-${carousel.carouselIndex}`
+    : "static";
+  const dayInsight = dayEmpty
+    ? txFilter === "rental"
+      ? `No below-median rental picks${city ? ` in ${city}` : " available"} right now.`
+      : `No below-median for-sale picks${city ? ` in ${city}` : " available"} right now.`
+    : showing?.insight ?? "Scanning listings…";
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
-  const showing = data ?? FALLBACK;
-  const l = showing.listing;
+  const l = showing?.listing ?? FALLBACK.listing;
   const typeLine = [
     shortType(l.propertyType || "Home"),
     l.beds && l.baths ? `${l.beds}BR/${l.baths}BA` : null,
     l.sqft ? `${l.sqft.toLocaleString()} sqft` : null,
+    fmtLotAcres(showing?.lotAcres),
     l.yearBuilt ? `Built ${l.yearBuilt}` : null,
   ]
     .filter(Boolean)
@@ -164,11 +386,27 @@ export default function DealOfTheWeekHero() {
       ? Math.round(((l.originalListPrice - l.price) / l.originalListPrice) * 100)
       : null;
   const ppsfDiscount =
-    showing.pricePerSqft && showing.cityMedianPricePerSqft
+    showing?.pricePerSqft && showing?.cityMedianPricePerSqft
       ? Math.round(
           ((showing.pricePerSqft - showing.cityMedianPricePerSqft) /
             showing.cityMedianPricePerSqft) *
             100,
+        )
+      : null;
+  const detailHref =
+    l.mlsId && l.mlsId !== "—"
+      ? listingDetailHref(
+          l.mlsId,
+          l.address.street || l.address.full,
+          l.address.city,
+        )
+      : null;
+  const photosHref =
+    isDay && detailHref
+      ? listingPhotosHref(
+          l.mlsId,
+          l.address.street || l.address.full,
+          l.address.city,
         )
       : null;
 
@@ -179,13 +417,21 @@ export default function DealOfTheWeekHero() {
         className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-navy"
         aria-hidden
       />
-      <div className="relative mx-auto max-w-7xl px-6 lg:px-10 pt-32 pb-28 lg:pt-40 lg:pb-36">
-        <div className="grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 items-center">
+      <div
+        className={`relative mx-auto max-w-7xl px-6 lg:px-10 ${
+          isDay ? "pt-20 pb-8 lg:pt-28 lg:pb-12" : "pt-32 pb-28 lg:pt-40 lg:pb-36"
+        }`}
+      >
+        <div
+          className={`grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 ${
+            isDay ? "items-start" : "items-center"
+          }`}
+        >
           <div>
             <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5 mb-8">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  loading
+                  loadingState
                     ? "bg-gold animate-pulse-dot"
                     : usedFallback
                       ? "bg-coral"
@@ -193,62 +439,168 @@ export default function DealOfTheWeekHero() {
                 }`}
               />
               <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold/90">
-                Deal of the Week · {today}
+                Deal of the {periodLabel} · {today}
+                {isDay && carousel.currentTown ? (
+                  <span className="text-white/50 normal-case tracking-normal">
+                    {" "}
+                    · {carousel.currentTown}
+                  </span>
+                ) : null}
               </span>
             </div>
+            {mode === "day" && (
+              <DealDayTownList activeTown={city ?? carousel.currentTown} />
+            )}
             <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
-              This week's{" "}
-              <span className="italic gold-shimmer">
-                {showing.score.composite.toFixed(1)}.
-              </span>
-              <br />
-              <span className="italic text-white/85">One listing.</span>
+              {mode === "day" ? (
+                <>
+                  Today&apos;s{" "}
+                  <span className="italic gold-shimmer">
+                    {(showing ?? FALLBACK).score.composite.toFixed(1)}.
+                  </span>
+                  <br />
+                  <span className="italic text-white/85">One listing.</span>
+                </>
+              ) : (
+                <>
+                  {headlineLead}{" "}
+                  <span className="italic gold-shimmer">
+                    {(data ?? FALLBACK).score.composite.toFixed(1)}.
+                  </span>
+                  <br />
+                  <span className="italic text-white/85">One listing.</span>
+                </>
+              )}
             </h1>
-            <p className="mt-8 max-w-xl text-lg text-white/70 leading-relaxed animate-fade-up-delay-1">
-              {showing.insight}
-            </p>
+            {isDay ? (
+              <div className="mt-8 max-w-xl">
+                <p
+                  key={`insight-${slideKey}`}
+                  className="text-lg text-white/70 leading-relaxed animate-deal-copy-refresh"
+                >
+                  {dayInsight}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-8 max-w-xl text-lg text-white/70 leading-relaxed animate-fade-up-delay-1">
+                {(showing ?? FALLBACK).insight}
+              </p>
+            )}
             <div className="mt-10 animate-fade-up-delay-2 flex flex-wrap items-center gap-4">
               <Link
                 href="/intelligence"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
               >
-                See the full deal board
+                {mode === "day" ? "See more deals" : "See the full deal board"}
                 <span aria-hidden>→</span>
               </Link>
-              {!loading && !usedFallback && (
+              {!loadingState && !usedFallback && showing ? (
                 <span className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/45">
-                  Scanned {showing.totalReviewed.toLocaleString()} active
-                  listings · {showing.qualifiedCount.toLocaleString()} qualified
+                  {mode === "day"
+                    ? `${showing.totalReviewed.toLocaleString()} scanned in TMRE towns · ${showing.qualifiedCount.toLocaleString()} below median`
+                    : `Scanned ${showing.totalReviewed.toLocaleString()} active listings in TMRE towns · ${showing.qualifiedCount.toLocaleString()} qualified`}
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
 
-          <DealCard
-            address={l.address.street || l.address.full}
-            city={l.address.city || l.address.state || ""}
-            type={typeLine}
-            kind={showing.kind}
-            price={l.price}
-            originalPrice={l.originalListPrice}
-            reductionPct={reductionPct}
-            ppsf={showing.pricePerSqft}
-            cityMedianPpsf={showing.cityMedianPricePerSqft}
-            ppsfDiscount={ppsfDiscount}
-            dom={l.dom}
-            photoCount={l.photoCount}
-            photoUrl={showing.photoUrl}
-            schools={l.schools}
-            score={showing.score}
-            loading={loading}
-          />
+          <div
+            className={`min-w-0 ${
+              isDay
+                ? "lg:sticky lg:top-24 deal-showcase-stage overflow-visible"
+                : "overflow-hidden"
+            }`}
+          >
+            <DealCard
+              key={isDay ? slideKey : "week"}
+              slideDir={isDay ? slideDir : undefined}
+              detailHref={dayEmpty ? null : detailHref}
+              photosHref={dayEmpty ? null : photosHref}
+              mlsId={dayEmpty || l.mlsId === "—" ? null : l.mlsId}
+              photoCount={l.photoCount}
+              address={l.address.street || l.address.full}
+              city={l.address.city || l.address.state || ""}
+              type={typeLine}
+              kind={showing?.kind ?? txFilter}
+              price={l.price}
+              originalPrice={l.originalListPrice}
+              reductionPct={reductionPct}
+              cityMedianPrice={showing?.cityMedianPrice}
+              valueDiscountPct={showing?.valueDiscountPct}
+              ppsf={showing?.pricePerSqft ?? null}
+              cityMedianPpsf={showing?.cityMedianPricePerSqft ?? null}
+              ppsfDiscount={ppsfDiscount}
+              lotAcres={showing?.lotAcres ?? null}
+              dom={l.dom}
+              photoUrl={showing?.photoUrl ?? null}
+              schools={l.schools}
+              score={showing?.score ?? FALLBACK.score}
+              loading={loadingState}
+              empty={dayEmpty}
+              scoreExplains={mode === "day" && !dayEmpty}
+              valueDealMode={mode === "day"}
+              townLabel={isDay ? carousel.currentTown : null}
+              transactionFilter={isDay ? txFilter : undefined}
+              onTransactionFilterChange={isDay ? setTxFilter : undefined}
+              carouselControls={
+                isDay && !city && carousel.carouselTowns.length > 0
+                  ? {
+                      paused: carousel.paused,
+                      onTogglePause: carousel.togglePause,
+                      onPrev: carousel.goPrev,
+                      onNext: carousel.goNext,
+                      canStep: carousel.canNavigate,
+                      townLabel: carousel.currentTown,
+                      carouselIndex: carousel.carouselIndex,
+                      carouselTotal: carousel.carouselTowns.length,
+                    }
+                  : null
+              }
+            />
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
+function DealTransactionFilterPills({
+  value,
+  onChange,
+}: {
+  value: "sale" | "rental";
+  onChange: (value: "sale" | "rental") => void;
+}) {
+  const options = [
+    { value: "sale" as const, label: "For Sale" },
+    { value: "rental" as const, label: "Rental" },
+  ];
+  return (
+    <div
+      className={`${filterPillContainerClass("compact", { wrap: false, bordered: false })} shrink-0`}
+      role="group"
+      aria-label="Listing type"
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          aria-pressed={value === opt.value}
+          className={filterPillButtonClass(value === opt.value, "compact")}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DealCard({
+  detailHref = null,
+  photosHref = null,
+  mlsId = null,
+  photoCount = null,
   address,
   city,
   type,
@@ -256,16 +608,30 @@ function DealCard({
   price,
   originalPrice,
   reductionPct,
+  cityMedianPrice,
+  valueDiscountPct,
   ppsf,
   cityMedianPpsf,
   ppsfDiscount,
+  lotAcres = null,
   dom,
-  photoCount,
   photoUrl,
   schools,
   score,
   loading,
+  scoreExplains = false,
+  valueDealMode = false,
+  townLabel = null,
+  slideDir = null,
+  carouselControls = null,
+  transactionFilter,
+  onTransactionFilterChange,
+  empty = false,
 }: {
+  detailHref?: string | null;
+  photosHref?: string | null;
+  mlsId?: string | null;
+  photoCount?: number | null;
   address: string;
   city: string;
   type: string;
@@ -273,16 +639,36 @@ function DealCard({
   price: number | null;
   originalPrice: number | null;
   reductionPct: number | null;
+  cityMedianPrice?: number | null;
+  valueDiscountPct?: number | null;
   ppsf: number | null;
   cityMedianPpsf: number | null;
   ppsfDiscount: number | null;
+  lotAcres?: number | null;
   dom: number | null;
-  photoCount: number | null;
   photoUrl: string | null;
   schools: ApiResponse["listing"]["schools"];
   score: ApiResponse["score"];
   loading: boolean;
+  scoreExplains?: boolean;
+  valueDealMode?: boolean;
+  townLabel?: string | null;
+  slideDir?: "next" | "prev" | null;
+  carouselControls?: {
+    paused: boolean;
+    onTogglePause: () => void;
+    onPrev: () => void;
+    onNext: () => void;
+    canStep: boolean;
+    townLabel: string | null;
+    carouselIndex: number;
+    carouselTotal: number;
+  } | null;
+  transactionFilter?: "sale" | "rental";
+  onTransactionFilterChange?: (value: "sale" | "rental") => void;
+  empty?: boolean;
 }) {
+  const [explainTopic, setExplainTopic] = useState<ScoreExplainTopic | null>(null);
   const isRental = kind === "rental";
   const cityShort = city ? city.split(",")[0] : "";
   const priceLabel = isRental ? "Monthly rent" : "List price";
@@ -295,18 +681,85 @@ function DealCard({
     : isRental
       ? "vs rent median"
       : "vs city median";
+  const showcaseAnimClass = slideDir
+    ? slideDir === "next"
+      ? "animate-deal-book-flip-next"
+      : "animate-deal-book-flip-prev"
+    : "animate-fade-up-delay-2";
   return (
-    <aside className="animate-fade-up-delay-2 relative rounded-3xl bg-gradient-to-br from-navy-light/70 to-navy-dark/90 border border-white/10 shadow-2xl shadow-black/40 overflow-hidden backdrop-blur-sm">
+    <>
+    <aside className={`${showcaseAnimClass} relative rounded-3xl bg-gradient-to-br from-navy-light/70 to-navy-dark/90 border border-white/10 shadow-2xl shadow-black/40 overflow-hidden backdrop-blur-sm`}>
       <div
         aria-hidden
         className="absolute -inset-px rounded-3xl bg-gradient-to-br from-gold/30 via-transparent to-transparent opacity-50 pointer-events-none"
         style={{ mask: "linear-gradient(white, transparent)" }}
       />
-      <PhotoBanner src={photoUrl} alt={address} loading={loading} />
+      <div className="relative">
+        {(townLabel || (transactionFilter && onTransactionFilterChange)) ? (
+          <div
+            className={`flex items-center gap-3 px-5 py-2.5 border-b border-white/10 bg-white/[0.03] ${
+              townLabel ? "justify-between" : "justify-end"
+            }`}
+          >
+            {townLabel ? (
+              <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 shrink-0">
+                {townLabel}, CT
+              </p>
+            ) : null}
+            {transactionFilter && onTransactionFilterChange ? (
+              <DealTransactionFilterPills
+                value={transactionFilter}
+                onChange={onTransactionFilterChange}
+              />
+            ) : null}
+          </div>
+        ) : null}
+        <div className="relative">
+          {empty ? (
+            <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark flex items-center justify-center px-6">
+              <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
+                {transactionFilter === "rental"
+                  ? townLabel
+                    ? `No below-median rental pick in ${townLabel} right now.`
+                    : "No below-median rental picks available right now."
+                  : townLabel
+                    ? `No below-median for-sale pick in ${townLabel} right now.`
+                    : "No below-median for-sale picks available right now."}
+              </p>
+            </div>
+          ) : (
+            <>
+          <PhotoBanner
+            src={photoUrl}
+            alt={address}
+            loading={loading}
+            reveal={false}
+            priority
+            photoDeck={
+              photosHref && mlsId
+                ? { mlsId, photoCount, photosHref, address, priority: true }
+                : null
+            }
+          />
+          {detailHref ? (
+            <Link
+              href={detailHref}
+              className="absolute inset-0 z-[15] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+              aria-label={`View listing: ${address}`}
+            />
+          ) : null}
+          {carouselControls ? (
+            <DealShowcaseCarouselControls {...carouselControls} overlay />
+          ) : null}
+            </>
+          )}
+        </div>
+      </div>
+      {!empty ? (
       <div className="relative p-7 lg:p-8 pt-6 lg:pt-7">
         <div className="flex items-center justify-between mb-7">
           <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-            Goldilocks Pick
+            {valueDealMode ? "Value Pick" : "Goldilocks Pick"}
           </span>
           <span className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.15em] uppercase text-sage border border-sage/30 bg-sage/10 rounded-full px-2.5 py-1">
             <span className="w-1 h-1 rounded-full bg-sage animate-pulse-dot" />
@@ -316,6 +769,21 @@ function DealCard({
         </div>
 
         <div className="flex items-start gap-5 mb-7">
+          {scoreExplains ? (
+            <button
+              type="button"
+              onClick={() => setExplainTopic("composite")}
+              className="relative z-20 flex-shrink-0 w-20 h-20 rounded-2xl bg-sage text-white flex flex-col items-center justify-center shadow-lg shadow-sage/30 hover:brightness-110 transition-all underline-offset-2"
+              aria-label="Explain composite score"
+            >
+              <span className="font-mono text-2xl font-medium tabular-nums leading-none">
+                {score.composite.toFixed(1)}
+              </span>
+              <span className="font-mono text-[9px] tracking-[0.15em] uppercase mt-1 opacity-80">
+                Score
+              </span>
+            </button>
+          ) : (
           <div className="flex-shrink-0 w-20 h-20 rounded-2xl bg-sage text-white flex flex-col items-center justify-center shadow-lg shadow-sage/30">
             <span className="font-mono text-2xl font-medium tabular-nums leading-none">
               {score.composite.toFixed(1)}
@@ -324,10 +792,20 @@ function DealCard({
               Score
             </span>
           </div>
+          )}
           <div className="min-w-0">
-            <h2 className="font-serif text-2xl lg:text-3xl text-white leading-tight">
-              {address}
-            </h2>
+            {detailHref ? (
+              <Link
+                href={detailHref}
+                className="relative z-20 block font-serif text-2xl lg:text-3xl text-white leading-tight hover:text-gold transition-colors"
+              >
+                {address}
+              </Link>
+            ) : (
+              <h2 className="font-serif text-2xl lg:text-3xl text-white leading-tight">
+                {address}
+              </h2>
+            )}
             <p className="text-sm text-white/60 mt-1.5">{city}</p>
             <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 mt-2.5">
               {type}
@@ -339,21 +817,71 @@ function DealCard({
           <Stat
             label={priceLabel}
             value={price != null ? `${fmtMoney(price)}${priceSuffix}` : "—"}
+            href={detailHref}
           />
           <Stat
-            label={wasLabel}
-            value={
-              originalPrice && originalPrice !== price
-                ? `${fmtMoney(originalPrice)}${priceSuffix}`
-                : "—"
+            label={
+              valueDealMode
+                ? cityShort
+                  ? `${cityShort} median`
+                  : "Town median"
+                : wasLabel
             }
-            sub={reductionPct ? `−${reductionPct}%` : undefined}
-            accent={reductionPct ? "coral" : undefined}
+            value={
+              valueDealMode
+                ? cityMedianPrice
+                  ? `${fmtMoney(cityMedianPrice)}${priceSuffix}`
+                  : "—"
+                : originalPrice && originalPrice !== price
+                  ? `${fmtMoney(originalPrice)}${priceSuffix}`
+                  : "—"
+            }
+            sub={
+              valueDealMode
+                ? valueDiscountPct
+                  ? `−${valueDiscountPct}% below`
+                  : undefined
+                : reductionPct
+                  ? `−${reductionPct}%`
+                  : undefined
+            }
+            accent={
+              valueDealMode
+                ? valueDiscountPct
+                  ? "sage"
+                  : undefined
+                : reductionPct
+                  ? "coral"
+                  : undefined
+            }
+            subExplain={
+              scoreExplains && !valueDealMode && reductionPct
+                ? () => setExplainTopic("priceReduction")
+                : undefined
+            }
           />
           <Stat
             label={ppsfLabel}
             value={ppsf ? `$${Math.round(ppsf)}${ppsfSuffix}` : "—"}
+            sub={
+              lotAcres != null && lotAcres > 0 && ppsfDiscount != null
+                ? `${ppsfDiscount > 0 ? "+" : ""}${ppsfDiscount}% vs median`
+                : undefined
+            }
+            accent={
+              lotAcres != null && lotAcres > 0 && ppsfDiscount != null && ppsfDiscount < 0
+                ? "sage"
+                : undefined
+            }
+            subExplain={
+              scoreExplains && lotAcres != null && lotAcres > 0 && ppsfDiscount != null
+                ? () => setExplainTopic("ppsfVsMedian")
+                : undefined
+            }
           />
+          {lotAcres != null && lotAcres > 0 ? (
+            <Stat label="Lot size" value={fmtLotAcres(lotAcres) ?? "—"} />
+          ) : (
           <Stat
             label={medianLabel}
             value={
@@ -367,7 +895,13 @@ function DealCard({
                 : undefined
             }
             accent={ppsfDiscount != null && ppsfDiscount < 0 ? "sage" : undefined}
+            subExplain={
+              scoreExplains && ppsfDiscount != null
+                ? () => setExplainTopic("ppsfVsMedian")
+                : undefined
+            }
           />
+          )}
         </div>
 
         <div className="mb-7">
@@ -375,9 +909,19 @@ function DealCard({
             <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/60">
               Goldilocks composite
             </span>
+            {scoreExplains ? (
+              <button
+                type="button"
+                onClick={() => setExplainTopic("composite")}
+                className="relative z-20 font-mono text-sage text-lg tabular-nums hover:text-gold transition-colors underline underline-offset-2 decoration-white/20"
+              >
+                {score.composite.toFixed(1)}/100
+              </button>
+            ) : (
             <span className="font-mono text-sage text-lg tabular-nums">
               {score.composite.toFixed(1)}/100
             </span>
+            )}
           </div>
           <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
             <div
@@ -386,27 +930,59 @@ function DealCard({
             />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3">
-            <Factor label="Age & condition" value={score.ageCondition} weight={score.weights.age} />
-            <Factor label="Finishes" value={score.finishesQuality} weight={score.weights.finishes} />
-            <Factor label="PPSF fit" value={score.pricePerSqftFit} weight={score.weights.ppsf} />
-            <Factor label="Layout" value={score.layoutQuality} weight={score.weights.layout} />
-            <Factor label="Schools" value={score.schoolRating} weight={score.weights.schools} />
+            <Factor label="Age" value={score.age} weight={score.weights.age} factorKey="age" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Condition" value={score.condition} weight={score.weights.condition} factorKey="condition" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Finishes" value={score.finishesQuality} weight={score.weights.finishes} factorKey="finishes" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="PPSF fit" value={score.pricePerSqftFit} weight={score.weights.ppsf} factorKey="ppsf" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Layout" value={score.layoutQuality} weight={score.weights.layout} factorKey="layout" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Schools" value={score.schoolRating} weight={score.weights.schools} factorKey="schools" onExplain={scoreExplains ? setExplainTopic : undefined} />
           </div>
         </div>
 
-        <SchoolsBlock schools={schools} rating={score.schoolRating} />
+        <SchoolsBlock schools={schools} rating={score.schoolRating} onExplainRating={scoreExplains ? () => setExplainTopic("schools") : undefined} />
 
         <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
           <span>{photoCount != null ? `${photoCount} photos` : "—"}</span>
           <Link
             href="/intelligence"
-            className="text-gold hover:text-gold-light"
+            className="relative z-20 text-gold hover:text-gold-light"
           >
             See full board →
           </Link>
         </div>
       </div>
+      ) : null}
     </aside>
+
+    {explainTopic && scoreExplains && (
+      <GoldilocksScoreExplainModal
+        topic={explainTopic}
+        context={{
+          composite: score.composite,
+          factorScore:
+            explainTopic === "age" ? score.age
+            : explainTopic === "condition" ? score.condition
+            : explainTopic === "finishes" ? score.finishesQuality
+            : explainTopic === "ppsf" ? score.pricePerSqftFit
+            : explainTopic === "layout" ? score.layoutQuality
+            : explainTopic === "schools" ? score.schoolRating
+            : undefined,
+          weight:
+            explainTopic === "age" ? score.weights.age
+            : explainTopic === "condition" ? score.weights.condition
+            : explainTopic === "finishes" ? score.weights.finishes
+            : explainTopic === "ppsf" ? score.weights.ppsf
+            : explainTopic === "layout" ? score.weights.layout
+            : explainTopic === "schools" ? score.weights.schools
+            : undefined,
+          ppsfDiscount: ppsfDiscount ?? undefined,
+          reductionPct: reductionPct ?? undefined,
+          isRental,
+        }}
+        onClose={() => setExplainTopic(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -414,20 +990,47 @@ function PhotoBanner({
   src,
   alt,
   loading,
+  reveal = false,
+  priority = false,
+  photoDeck = null,
 }: {
   src: string | null;
   alt: string;
   loading: boolean;
+  reveal?: boolean;
+  priority?: boolean;
+  photoDeck?: {
+    mlsId: string;
+    photoCount: number | null;
+    photosHref: string;
+    address: string;
+    priority?: boolean;
+  } | null;
 }) {
   return (
     <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden">
+      {photoDeck ? (
+        <div className="absolute top-4 right-4 z-30">
+          <DealPhotoThumbnailDeck
+            mlsId={photoDeck.mlsId}
+            photoCount={photoDeck.photoCount}
+            photosHref={photoDeck.photosHref}
+            address={photoDeck.address}
+            priority={photoDeck.priority}
+          />
+        </div>
+      ) : null}
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
+          key={src}
           src={src}
           alt={alt}
-          className="absolute inset-0 w-full h-full object-cover"
-          loading="lazy"
+          className={`absolute inset-0 w-full h-full object-cover ${
+            reveal ? "animate-deal-photo-reveal" : ""
+          }`}
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
         />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -447,9 +1050,11 @@ function PhotoBanner({
 function SchoolsBlock({
   schools,
   rating,
+  onExplainRating,
 }: {
   schools: ApiResponse["listing"]["schools"];
   rating: number;
+  onExplainRating?: () => void;
 }) {
   const items: { label: string; value: string }[] = [];
   if (schools.elementary) items.push({ label: "Elementary", value: schools.elementary });
@@ -473,9 +1078,19 @@ function SchoolsBlock({
         <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/60">
           Schools
         </span>
+        {onExplainRating ? (
+          <button
+            type="button"
+            onClick={onExplainRating}
+            className={`relative z-20 font-mono text-[11px] tabular-nums underline underline-offset-2 decoration-white/25 hover:decoration-gold transition-colors ${tone}`}
+          >
+            {rating.toFixed(0)}/100
+          </button>
+        ) : (
         <span className={`font-mono text-[11px] tabular-nums ${tone}`}>
           {rating.toFixed(0)}/100
         </span>
+        )}
       </div>
       <ul className="space-y-1.5">
         {items.map((s) => (
@@ -499,11 +1114,15 @@ function Stat({
   value,
   sub,
   accent,
+  subExplain,
+  href = null,
 }: {
   label: string;
   value: string;
   sub?: string;
   accent?: "gold" | "sage" | "coral";
+  subExplain?: () => void;
+  href?: string | null;
 }) {
   const color =
     accent === "gold"
@@ -513,37 +1132,78 @@ function Stat({
         : accent === "coral"
           ? "text-coral"
           : "text-white";
+  const subColor =
+    accent === "sage"
+      ? "text-sage"
+      : accent === "coral"
+        ? "text-coral"
+        : "text-white/55";
   return (
     <div>
       <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/50 mb-1.5">
         {label}
       </p>
-      <p className={`font-mono text-xl tabular-nums ${color}`}>{value}</p>
-      {sub && (
-        <p
-          className={`font-mono text-[11px] mt-0.5 tabular-nums ${
-            accent === "sage"
-              ? "text-sage"
-              : accent === "coral"
-                ? "text-coral"
-                : "text-white/55"
-          }`}
+      {href ? (
+        <Link
+          href={href}
+          className={`relative z-20 inline-block font-mono text-xl tabular-nums ${color} hover:text-gold transition-colors`}
         >
+          {value}
+        </Link>
+      ) : (
+        <p className={`font-mono text-xl tabular-nums ${color}`}>{value}</p>
+      )}
+      {sub && (
+        subExplain ? (
+          <button
+            type="button"
+            onClick={subExplain}
+            className={`relative z-20 font-mono text-[11px] mt-0.5 tabular-nums underline underline-offset-2 decoration-white/25 hover:decoration-gold transition-colors ${subColor}`}
+          >
+            {sub}
+          </button>
+        ) : (
+        <p className={`font-mono text-[11px] mt-0.5 tabular-nums ${subColor}`}>
           {sub}
         </p>
+        )
       )}
     </div>
   );
 }
 
-function Factor({ label, value, weight }: { label: string; value: number; weight: number }) {
+function Factor({
+  label,
+  value,
+  weight,
+  factorKey,
+  onExplain,
+}: {
+  label: string;
+  value: number;
+  weight: number;
+  factorKey: ScoreExplainTopic;
+  onExplain?: (topic: ScoreExplainTopic) => void;
+}) {
+  const contribution = factorContribution(value, weight);
   return (
     <div>
       <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-white/55 mb-1">
         <span>{label}</span>
         <span>
           {Math.round(value)}
-          <span className="text-white/35"> · {Math.round(weight * 100)}%</span>
+          {onExplain ? (
+            <button
+              type="button"
+              onClick={() => onExplain(factorKey)}
+              className="relative z-20 text-white/35 hover:text-gold transition-colors underline underline-offset-2 decoration-white/20"
+              title={`${Math.round(weight * 100)}% of composite · +${contribution.toFixed(1)} pts`}
+            >
+              {" "}· {Math.round(weight * 100)}%
+            </button>
+          ) : (
+            <span className="text-white/35"> · {Math.round(weight * 100)}%</span>
+          )}
         </span>
       </div>
       <div className="h-1 rounded-full bg-white/10 overflow-hidden">

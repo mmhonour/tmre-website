@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server'
-import { searchListings, type Listing } from '@/lib/rets'
+import { fetchActiveListingsForCity, listingCacheHeaders } from '@/lib/listings-store'
+import { isNewConstructionListing } from '@/lib/new-construction-server'
+import { type Listing } from '@/lib/rets'
+import {
+  listingInTmreCoverage,
+  resolveListingTown,
+  TMRE_TOWNS,
+} from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const CITIES = ['Norwalk', 'Westport', 'Wilton', 'Fairfield'] as const
-const MIN_YEAR = new Date().getFullYear() - 4
+const PER_TOWN_LIMIT = 500
 
 function daysBetween(iso: string | null): number | null {
   if (!iso) return null
@@ -15,11 +21,12 @@ function daysBetween(iso: string | null): number | null {
 }
 
 function enrich(l: Listing) {
+  const city = resolveListingTown(l.address.city) ?? l.address.city
   return {
     mlsId: l.mlsId,
     propertyType: l.propertyType,
     style: l.style,
-    address: l.address,
+    address: { ...l.address, city },
     price: l.price,
     beds: l.beds,
     baths: l.baths,
@@ -34,19 +41,33 @@ function enrich(l: Listing) {
 
 export async function GET() {
   try {
-    const results = await Promise.all(
-      CITIES.map((city) =>
-        searchListings({ city, status: 'Active', limit: 200 }).catch(() => [] as Listing[]),
-      ),
+    const batches = await Promise.all(
+      TMRE_TOWNS.map((city) => fetchActiveListingsForCity(city, PER_TOWN_LIMIT)),
     )
+    const source = batches.some((b) => b.source === 'rets') ? 'rets' : 'db'
 
-    const listings = results
-      .flat()
-      .filter((l) => l.yearBuilt != null && l.yearBuilt >= MIN_YEAR && l.price != null && l.price > 0)
+    const seen = new Set<string>()
+    const flat: Listing[] = []
+    for (const batch of batches) {
+      for (const l of batch.listings) {
+        const key = l.listingKey || l.mlsId
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        flat.push(l)
+      }
+    }
+
+    const listings = flat
+      .filter((l) => l.price != null && l.price > 0)
+      .filter((l) => listingInTmreCoverage(l.address.postalCode, l.address.city))
+      .filter(isNewConstructionListing)
       .map(enrich)
       .sort((a, b) => (b.yearBuilt ?? 0) - (a.yearBuilt ?? 0))
 
-    return NextResponse.json({ listings, generatedAt: new Date().toISOString() })
+    return NextResponse.json(
+      { listings, generatedAt: new Date().toISOString(), source },
+      { headers: listingCacheHeaders(source) },
+    )
   } catch (err) {
     console.error('[/api/listings/new-construction] error', err)
     return NextResponse.json({ error: 'Failed to fetch new construction listings' }, { status: 502 })

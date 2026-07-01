@@ -1,7 +1,10 @@
-export const metadata = {
+import type { Metadata } from "next";
+import { formatTownList } from "@/lib/tmre-towns";
+
+export const metadata: Metadata = {
   title: "For Investors — TMRE",
   description:
-    "See the deal, not just the listing. Live deal scoring, multifamily pipeline, flip velocity, and below-replacement-cost alerts in Norwalk and Westport.",
+    `See the deal, not just the listing. Live deal scoring, multifamily pipeline, flip velocity, and below-replacement-cost alerts in ${formatTownList(["Norwalk", "Westport"])}.`,
 };
 
 const features = [
@@ -13,7 +16,7 @@ const features = [
   {
     icon: "◇",
     label: "Multifamily Pipeline",
-    body: "2-to-12 unit properties surfaced from MLS, owner-direct, and pre-foreclosure. Filtered to rent-grade neighborhoods only.",
+    body: "2-to-12 unit properties surfaced from listings, owner-direct, and pre-foreclosure. Filtered to rent-grade neighborhoods only.",
   },
   {
     icon: "△",
@@ -42,7 +45,7 @@ export default function InvestorsPage() {
                 <span className="italic">not just the listing.</span>
               </h1>
               <p className="mt-6 text-lg text-slate max-w-xl leading-relaxed animate-fade-up-delay-1">
-                The MLS shows you what's for sale. We show you what's worth
+                The market shows you what's for sale. We show you what's worth
                 buying. Same data, smarter signal — built by operators, for
                 operators.
               </p>
@@ -96,7 +99,7 @@ export default function InvestorsPage() {
               Request the deck →
             </a>
             <a
-              href="/properties"
+              href="/new-construction"
               className="inline-flex items-center justify-center gap-2 rounded-full border border-white/25 px-7 py-4 text-sm font-medium text-white hover:bg-white/5 hover:border-white/40 transition-all"
             >
               See active projects

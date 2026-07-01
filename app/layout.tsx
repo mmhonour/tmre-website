@@ -4,6 +4,7 @@ import "./globals.css";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import VisitorBeacon from "@/components/VisitorBeacon";
+import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -27,7 +28,7 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "TMRE — Confidence through clarity",
   description:
-    "TMRE. AI-native market intelligence and investment for Norwalk, Westport, Wilton, and Fairfield, CT. Where smart real estate decisions begin.",
+    `TMRE. Market intelligence and investment for ${TMRE_CORE_TOWNS_LABEL}, CT. Where smart real estate decisions begin.`,
 };
 
 export default function RootLayout({

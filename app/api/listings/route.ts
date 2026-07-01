@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { searchListings, type Listing } from '@/lib/rets'
+import { fetchActiveListingsForCity, listingCacheHeaders } from '@/lib/listings-store'
+import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
+import { type Listing } from '@/lib/rets'
+import { SCORE_PEER_LIMIT, type ScoreBreakdown } from '@/lib/goldilocks'
+import { isTmreTown, type TmreTown } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-const SUPPORTED_CITIES = ['Norwalk', 'Westport'] as const
-type SupportedCity = (typeof SUPPORTED_CITIES)[number]
-
-function isSupportedCity(s: string): s is SupportedCity {
-  return (SUPPORTED_CITIES as readonly string[]).includes(s)
-}
 
 function daysBetween(iso: string | null, now: Date = new Date()): number | null {
   if (!iso) return null
@@ -18,7 +15,7 @@ function daysBetween(iso: string | null, now: Date = new Date()): number | null 
   return Math.max(0, Math.floor((now.getTime() - t) / 86_400_000))
 }
 
-function enrich(l: Listing) {
+function enrich(l: Listing, score: ScoreBreakdown | null) {
   const pricePerSqft = l.price && l.sqft && l.sqft > 0 ? l.price / l.sqft : null
   const daysOnMarket =
     l.dom != null ? l.dom : daysBetween(l.listDate ?? l.modificationTimestamp)
@@ -32,6 +29,8 @@ function enrich(l: Listing) {
       pricePerSqft,
       daysOnMarket,
       priceReductionPercent,
+      goldilocksScore: score?.composite ?? null,
+      goldilocksBreakdown: score,
     },
   }
 }
@@ -39,7 +38,6 @@ function enrich(l: Listing) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const city = (searchParams.get('city') ?? '').trim()
-  const status = (searchParams.get('status') ?? 'Active').trim()
   const limitRaw = Number(searchParams.get('limit') ?? '50')
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 250) : 50
 
@@ -49,23 +47,36 @@ export async function GET(req: NextRequest) {
       { status: 400 },
     )
   }
-  if (!isSupportedCity(city)) {
+  if (!isTmreTown(city)) {
     return NextResponse.json(
-      {
-        error: `Unsupported city '${city}'. Supported: ${SUPPORTED_CITIES.join(', ')}`,
-      },
+      { error: `Unsupported city '${city}'` },
       { status: 400 },
     )
   }
 
   try {
-    const listings = await searchListings({ city, status, limit })
-    return NextResponse.json({
+    const { listings: peerPool, source } = await fetchActiveListingsForCity(
       city,
-      status,
-      count: listings.length,
-      listings: listings.map(enrich),
-    })
+      SCORE_PEER_LIMIT,
+    )
+    const listings = peerPool.slice(0, limit)
+    const boardScores = await scoreListingsWithBoardPeers(listings, peerPool)
+    const scoreById = new Map(
+      boardScores.map((s) => [s.listing.mlsId || s.listing.listingKey, s.score]),
+    )
+
+    return NextResponse.json(
+      {
+        city,
+        status: 'Active',
+        count: listings.length,
+        source,
+        listings: listings.map((l) =>
+          enrich(l, scoreById.get(l.mlsId || l.listingKey) ?? null),
+        ),
+      },
+      { headers: listingCacheHeaders(source) },
+    )
   } catch (err) {
     console.error('[/api/listings] error', err)
     return NextResponse.json(

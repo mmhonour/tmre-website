@@ -1,5 +1,7 @@
 import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
 import LeadForm from "@/components/LeadForm";
+import { TMRE_CORE_TOWNS_LABEL, TMRE_PROPERTIES_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { Suspense } from "react";
 
 const norwalkStats = [
   { label: "Median price", value: "$711K", trend: "+4.2% YoY" },
@@ -33,7 +35,7 @@ const tools = [
   {
     name: "Market Pulse",
     tagline: "Daily city signal",
-    body: "Real-time read on inventory, velocity, and pricing pressure across Norwalk, Westport, Wilton, and Fairfield — refreshed every 24 hours.",
+    body: `Real-time read on inventory, velocity, and pricing pressure across ${TMRE_CORE_TOWNS_LABEL} — refreshed every 24 hours.`,
     icon: "◐",
   },
   {
@@ -51,7 +53,7 @@ const tools = [
   {
     name: "Smart Alerts",
     tagline: "Movers before they move",
-    body: "Tell us your buy box. We watch the MLS, off-market, and pre-foreclosure feeds and ping you within minutes of a match.",
+    body: "Tell us your buy box. We watch listings, off-market, and pre-foreclosure feeds and ping you within minutes of a match.",
     icon: "◈",
   },
 ];
@@ -82,7 +84,9 @@ const audiences = [
 export default function Home() {
   return (
     <>
-      <DealOfTheWeekHero />
+      <Suspense fallback={null}>
+        <DealOfTheWeekHero />
+      </Suspense>
       <MarketPulseSection />
       <ToolsSection />
       <AudiencesSection />
@@ -276,7 +280,7 @@ function EmailCtaSection() {
           <span className="italic gold-shimmer">begin Monday.</span>
         </h2>
         <p className="mt-6 text-white/70 text-lg leading-relaxed">
-          One email a week. Norwalk, Westport + Fairfield intel, scored deals, and the
+          One email a week. {TMRE_PROPERTIES_TOWNS_LABEL} intel, scored deals, and the
           one chart that mattered. Free.
         </p>
         <div className="mt-10">

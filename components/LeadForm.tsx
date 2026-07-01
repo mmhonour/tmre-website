@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatTownList } from "@/lib/tmre-towns";
 
 type AudienceType = "seller" | "buyer" | "investor" | "contractor";
 
@@ -73,8 +74,8 @@ export default function LeadForm({ source = "home-cta" }: { source?: string }) {
           Welcome to the brief.
         </h3>
         <p className="mt-3 text-sm text-white/70 leading-relaxed">
-          Look for the next edition in your inbox Monday morning — Norwalk +
-          Westport intel, deals scored, the chart that mattered.
+          Look for the next edition in your inbox Monday morning —{" "}
+          {formatTownList(["Norwalk", "Westport"])} intel, deals scored, the chart that mattered.
         </p>
         <button
           type="button"
