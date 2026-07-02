@@ -1,6 +1,16 @@
 import 'server-only'
 
-import * as rets from 'rets-client'
+type RetsClientModule = typeof import('rets-client')
+
+let retsClientPromise: Promise<RetsClientModule> | null = null
+
+/** Lazy-load rets-client so native deps (node-expat) don't crash route modules at import time. */
+async function loadRetsClient(): Promise<RetsClientModule> {
+  if (!retsClientPromise) {
+    retsClientPromise = import('rets-client')
+  }
+  return retsClientPromise
+}
 
 export type RawRetsRecord = Record<string, string>
 
@@ -290,8 +300,9 @@ function buildDmql(params: SearchParams): string {
   return clauses.join(',')
 }
 
-async function withClient<T>(fn: (c: any) => Promise<T>): Promise<T> {
+export async function withRetsClient<T>(fn: (c: any) => Promise<T>): Promise<T> {
   const settings = requireEnv()
+  const rets = await loadRetsClient()
   let value: T | undefined
   let error: unknown
   let captured = false
@@ -307,6 +318,10 @@ async function withClient<T>(fn: (c: any) => Promise<T>): Promise<T> {
   if (!captured) throw new Error('RETS client closed without returning a result')
   if (error) throw error
   return value as T
+}
+
+async function withClient<T>(fn: (c: any) => Promise<T>): Promise<T> {
+  return withRetsClient(fn)
 }
 
 export async function searchListings(params: SearchParams = {}): Promise<Listing[]> {
