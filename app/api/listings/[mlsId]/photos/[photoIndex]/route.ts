@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
+import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
 import { fetchListingByMlsId } from '@/lib/listings-store'
-import { fetchAllPhotoUrls, withRetsClient } from '@/lib/rets'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const PHOTO_TYPES = ['Photo', 'LargePhoto', 'HiRes', 'Thumbnail']
+const PHOTO_CACHE_CONTROL = 'public, max-age=1800, stale-while-revalidate=3600'
 
 export async function GET(
   _req: Request,
@@ -16,53 +16,31 @@ export async function GET(
   const index = parseInt(photoIndex ?? '0', 10)
 
   if (!id) return new NextResponse('Missing mlsId', { status: 400 })
+  if (!Number.isFinite(index) || index < 0) {
+    return new NextResponse('Invalid photo index', { status: 400 })
+  }
 
   try {
     const { listing } = await fetchListingByMlsId(id)
     const photoKey = listing?.listingKey || id
-    const photos = await fetchAllPhotoUrls(photoKey, id, listing?.photoCount)
-    const direct = photos[index]
-    if (direct?.startsWith('http')) {
-      return NextResponse.redirect(direct)
+    const resolved = await resolveListingPhotoBuffer({
+      mlsId: id,
+      listingKey: photoKey,
+      photoIndex: index,
+      photoCountHint: listing?.photoCount,
+    })
+
+    if (!resolved) {
+      return new NextResponse('No photo found', { status: 404 })
     }
 
-    for (const photoType of PHOTO_TYPES) {
-      try {
-        const result: Buffer | null = await withRetsClient(async (client) => {
-          const all = await client.objects.getAllObjects(
-            'Property',
-            photoType,
-            photoKey,
-            { Location: 0, alwaysGroupObjects: true },
-          )
-          const items: any[] = Array.isArray(all)
-            ? all
-            : Array.isArray(all?.objects)
-            ? all.objects
-            : []
-          const item = items[index]
-          if (!item) return null
-          const buf =
-            item.dataBuffer ??
-            item.data ??
-            (Buffer.isBuffer(item) ? item : null)
-          return buf instanceof Buffer ? buf : null
-        })
-
-        if (result) {
-          return new NextResponse(result as unknown as BodyInit, {
-            headers: {
-              'Content-Type': 'image/jpeg',
-              'Cache-Control': 'public, max-age=3600',
-            },
-          })
-        }
-      } catch {
-        // try next type
-      }
-    }
-
-    return new NextResponse('No photo found', { status: 404 })
+    return new NextResponse(resolved.data as unknown as BodyInit, {
+      headers: {
+        'Content-Type': resolved.contentType,
+        'Cache-Control': PHOTO_CACHE_CONTROL,
+        'X-Photo-Cache': resolved.cacheHit ? 'hit' : 'miss',
+      },
+    })
   } catch (err) {
     console.error('[photo-proxy] error', err)
     return new NextResponse('Photo unavailable', { status: 502 })

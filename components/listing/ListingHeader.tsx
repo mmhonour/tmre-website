@@ -1,3 +1,11 @@
+"use client";
+
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
+import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
+import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge";
+import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
+
 type ListingHeaderProps = {
   mlsId: string;
   status: string;
@@ -15,7 +23,30 @@ type ListingHeaderProps = {
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
+  bedBathSearchHref?: string | null;
+  hideMarketMeta?: boolean;
+  /** Spotlight: hide street/city address line and MLS status (title-only header). */
+  privacyMode?: boolean;
+  goldilocksScore?: number | null;
+  goldilocksBreakdown?: ScoreBreakdown | null;
+  scoreTitle?: string | null;
+  scoreSubtitle?: string | null;
+  isRental?: boolean;
 };
+
+function joinMetaSegments(segments: ReactNode[]): ReactNode {
+  const filtered = segments.filter(
+    (segment) => segment != null && segment !== "",
+  );
+  if (filtered.length === 0) return null;
+
+  return filtered.map((segment, index) => (
+    <span key={index}>
+      {index > 0 ? " · " : null}
+      {segment}
+    </span>
+  ));
+}
 
 export default function ListingHeader({
   mlsId,
@@ -28,37 +59,105 @@ export default function ListingHeader({
   baths,
   sqft,
   yearBuilt,
+  bedBathSearchHref,
+  hideMarketMeta = false,
+  privacyMode = false,
+  goldilocksScore = null,
+  goldilocksBreakdown = null,
+  scoreTitle,
+  scoreSubtitle = null,
+  isRental = false,
+  compact = false,
   className = "",
-}: ListingHeaderProps & { className?: string }) {
+}: ListingHeaderProps & { className?: string; compact?: boolean }) {
+  const hideMeta = hideMarketMeta || privacyMode;
+  const [scoreOpen, setScoreOpen] = useState(false);
+  const bedBathLabel =
+    beds != null && baths != null && beds > 0 && baths > 0
+      ? `${beds}BR/${baths}BA`
+      : null;
+
+  const bedBathSegment =
+    bedBathLabel && bedBathSearchHref ? (
+      <Link
+        href={bedBathSearchHref}
+        className="text-gold hover:text-gold-light transition-colors"
+        title="Search Intelligence for similar bed and bath counts in this area"
+      >
+        {bedBathLabel}
+      </Link>
+    ) : (
+      bedBathLabel
+    );
+
+  const title = address.street || address.full;
+  const showScore = goldilocksScore != null && goldilocksScore > 0;
+
   return (
     <div className={className ? className : "mb-6"}>
-      <div className="flex items-center justify-between mb-4">
-        <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-          #{mlsId} · {status}
-        </span>
-        {dom != null && (
-          <span className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
-            {dom}d on market
-          </span>
-        )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {showScore ? (
+          <ListingValueScoreBadge
+            score={goldilocksScore}
+            compact={compact}
+            onClick={
+              goldilocksBreakdown
+                ? () => setScoreOpen(true)
+                : undefined
+            }
+          />
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1
+            className={`font-serif text-white leading-tight min-w-0 ${
+              compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
+            }`}
+          >
+            {title}
+          </h1>
+          {!privacyMode && (address.city || address.postalCode) ? (
+            <span className="font-mono text-[11px] sm:text-xs tracking-[0.12em] uppercase text-white/65 shrink-0">
+              {[address.city, address.postalCode].filter(Boolean).join(" · ")}
+            </span>
+          ) : null}
+          {!hideMeta ? (
+            <>
+              {dom != null && (
+                <span className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/55 whitespace-nowrap shrink-0">
+                  {dom}d on market
+                </span>
+              )}
+              <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap shrink-0">
+                #{mlsId} · {status}
+              </span>
+            </>
+          ) : null}
+        </div>
       </div>
-      <h1 className="font-serif text-3xl lg:text-4xl text-white leading-tight">
-        {address.street || address.full}
-      </h1>
-      <p className="text-white/65 mt-2">
-        {[address.city, address.state, address.postalCode].filter(Boolean).join(" ")}
-      </p>
-      <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 mt-3">
-        {[
+      <p
+        className={`font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 ${
+          compact ? "mt-2" : "mt-3"
+        }`}
+      >
+        {joinMetaSegments([
           propertyType?.replace(/ For Sale$/i, ""),
           style,
-          beds && baths ? `${beds}BR/${baths}BA` : null,
+          bedBathSegment,
           sqft ? `${sqft.toLocaleString()} sqft` : null,
           yearBuilt ? `Built ${yearBuilt}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
+        ])}
       </p>
+
+      {goldilocksBreakdown && scoreOpen ? (
+        <ListingScoreBreakdownModal
+          open={scoreOpen}
+          onClose={() => setScoreOpen(false)}
+          score={goldilocksBreakdown}
+          title={scoreTitle ?? title}
+          subtitle={scoreSubtitle}
+          isRental={isRental}
+        />
+      ) : null}
     </div>
   );
 }

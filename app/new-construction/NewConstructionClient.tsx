@@ -10,8 +10,11 @@ import {
   filterPillButtonClass,
   filterPillContainerClass,
   filterPillSeparatorClass,
+  type FilterPillTheme,
 } from "@/lib/filter-pill-styles";
 import { listingDetailHref } from "@/lib/listing-url";
+import ListingThumbImage from "@/components/ListingThumbImage";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { isRentalListing } from "@/lib/listing-kind";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 
@@ -19,6 +22,7 @@ const NC_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
 const NC_STATUS_VALUES = ["all", "new", "active"] as const;
 const NC_TX_VALUES = ["all", "sale", "rental"] as const;
 const NC_VIEW_VALUES = ["grid", "rows", "line"] as const;
+const NC_PRICE_SORT_VALUES = ["asc", "desc"] as const;
 
 type ViewMode = (typeof NC_VIEW_VALUES)[number];
 
@@ -94,6 +98,86 @@ function isNcRental(l: NCListing): boolean {
   return isRentalListing({ propertyType: l.propertyType });
 }
 
+const PHOTO_PREVIEW_HEIGHT = "h-[5.67rem]"; // rows layout
+const PHOTO_PREVIEW_GRID = "h-[8.51rem]"; // grid layout (+50% vs 5.67rem)
+const PHOTO_PREVIEW_ROWS = `${PHOTO_PREVIEW_HEIGHT} w-[7.8rem]`;
+const PHOTO_PREVIEW_LINE = "h-[2.7rem] w-[3.6rem]"; // h-9 w-12 + 20%
+
+function NcFilterBar({
+  theme,
+  className = "",
+  txFilter,
+  setTxFilter,
+  statusFilter,
+  setStatusFilter,
+  townFilter,
+  setTownFilter,
+  orderedTowns,
+  townCounts,
+  loadState,
+}: {
+  theme: FilterPillTheme;
+  className?: string;
+  txFilter: TxFilter;
+  setTxFilter: (value: TxFilter) => void;
+  statusFilter: StatusFilter;
+  setStatusFilter: (value: StatusFilter) => void;
+  townFilter: TownFilter;
+  setTownFilter: (value: TownFilter) => void;
+  orderedTowns: readonly TownName[];
+  townCounts: Partial<Record<TownFilter | TownName, number>>;
+  loadState: LoadState;
+}) {
+  return (
+    <div className={`flex flex-col gap-3 ${className}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className={filterPillContainerClass("compact", { wrap: false, theme })}>
+          {TX_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setTxFilter(f.value)}
+              aria-pressed={txFilter === f.value}
+              className={filterPillButtonClass(txFilter === f.value, "compact", theme)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className={`hidden sm:block ${filterPillSeparatorClass("compact", theme)}`} aria-hidden />
+
+        <div className={filterPillContainerClass("compact", { wrap: false, theme })}>
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setStatusFilter(f.value)}
+              aria-pressed={statusFilter === f.value}
+              className={filterPillButtonClass(statusFilter === f.value, "compact", theme)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <TownFilterPills
+        towns={orderedTowns}
+        selected={townFilter}
+        onSelect={setTownFilter}
+        counts={loadState === "ready" ? townCounts : undefined}
+        allLabel="All Towns"
+        showSeparatorAfterAll
+        size="compact"
+        scrollable
+        theme={theme}
+        className="w-full min-w-0"
+      />
+    </div>
+  );
+}
+
 export default function NewConstructionClient() {
   const [allListings, setAllListings] = useState<NCListing[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -113,7 +197,9 @@ export default function NewConstructionClient() {
     "all",
     NC_TX_VALUES,
   );
-  const [priceSortDir, setPriceSortDir] = useState<"asc" | "desc">("asc");
+  const [priceSortDir, setPriceSortDir] = usePersistedFilter<
+    (typeof NC_PRICE_SORT_VALUES)[number]
+  >("tmre_nc_price_sort", "asc", NC_PRICE_SORT_VALUES);
   const [viewMode, setViewMode] = usePersistedFilter<ViewMode>(
     "tmre_nc_view",
     "grid",
@@ -125,11 +211,12 @@ export default function NewConstructionClient() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/listings/new-construction", { cache: "no-store" })
+    fetch("/api/listings/new-construction")
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<ApiResponse>; })
       .then((d) => {
         if (cancelled) return;
-        setAllListings(d.listings.length ? d.listings : FALLBACK);
+        const next = d.listings.length ? d.listings : FALLBACK;
+        setAllListings(next);
         if (!d.listings.length) setUsedFallback(true);
         setLoadState("ready");
       })
@@ -147,7 +234,7 @@ export default function NewConstructionClient() {
     let cancelled = false;
     setSupplyLoading(true);
     const cityParam = townFilter === "All" ? "" : `?city=${encodeURIComponent(townFilter)}`;
-    fetch(`/api/listings/new-construction/supply${cityParam}`, { cache: "no-store" })
+    fetch(`/api/listings/new-construction/supply${cityParam}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d: { avgMonthlyClosings?: number | null } | null) => {
         if (cancelled) return;
@@ -179,14 +266,15 @@ export default function NewConstructionClient() {
     return result;
   }, [allListings, statusFilter, townFilter, txFilter]);
 
-  const sortedListings = useMemo(() => {
+  const displayListings = useMemo(() => {
+    if (viewMode === "grid") return listings;
     const mult = priceSortDir === "asc" ? 1 : -1;
     return [...listings].sort((a, b) => {
       const pa = a.price ?? (priceSortDir === "asc" ? Infinity : -Infinity);
       const pb = b.price ?? (priceSortDir === "asc" ? Infinity : -Infinity);
       return mult * (pa - pb);
     });
-  }, [listings, priceSortDir]);
+  }, [listings, priceSortDir, viewMode]);
 
   const townCounts = useMemo(() => {
     let pool = allListings.filter((l) =>
@@ -215,47 +303,19 @@ export default function NewConstructionClient() {
             New construction across {formatTownList(TOWN_NAMES)} — sourced live and scored by TMRE.
           </p>
 
-          {/* Status + transaction filters, then town */}
-          <div className="mt-5 flex flex-col gap-3 animate-fade-up-delay-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className={filterPillContainerClass("default", { wrap: false })}>
-                {TX_FILTERS.map((f) => (
-                  <button
-                    key={f.value}
-                    type="button"
-                    onClick={() => setTxFilter(f.value)}
-                    aria-pressed={txFilter === f.value}
-                    className={filterPillButtonClass(txFilter === f.value)}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className={`hidden sm:block ${filterPillSeparatorClass()}`} aria-hidden />
-
-              <div className={filterPillContainerClass("default", { wrap: false })}>
-                {STATUS_FILTERS.map((f) => (
-                  <button
-                    key={f.value}
-                    type="button"
-                    onClick={() => setStatusFilter(f.value)}
-                    aria-pressed={statusFilter === f.value}
-                    className={filterPillButtonClass(statusFilter === f.value)}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <TownFilterPills
-              towns={orderedTowns}
-              selected={townFilter}
-              onSelect={setTownFilter}
-              counts={loadState === "ready" ? townCounts : undefined}
-            />
-          </div>
+          <NcFilterBar
+            theme="dark"
+            className="mt-5 animate-fade-up-delay-2"
+            txFilter={txFilter}
+            setTxFilter={setTxFilter}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            townFilter={townFilter}
+            setTownFilter={setTownFilter}
+            orderedTowns={orderedTowns}
+            townCounts={townCounts}
+            loadState={loadState}
+          />
 
           {/* Live status dot */}
           <div className="mt-4 flex items-center gap-2 font-mono text-xs">
@@ -350,43 +410,76 @@ export default function NewConstructionClient() {
           ) : (
             <>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
-                    Sort by
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPriceSortDir((d) => (d === "asc" ? "desc" : "asc"))
-                    }
-                    className="inline-flex items-center gap-1 rounded-full border border-charcoal/[0.08] bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:border-gold/40"
-                    aria-sort={priceSortDir === "asc" ? "ascending" : "descending"}
-                  >
-                    Price
-                    <span className="text-[9px] tabular-nums" aria-hidden>
-                      {priceSortDir === "asc" ? "↑" : "↓"}
-                    </span>
-                  </button>
+                <div className="flex flex-wrap items-center gap-3 min-h-8">
+                  {viewMode === "rows" || viewMode === "line" ? (
+                    <>
+                      <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                        Sort by
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPriceSortDir(priceSortDir === "asc" ? "desc" : "asc")
+                        }
+                        className="inline-flex items-center gap-1 rounded-full border border-charcoal/[0.08] bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:border-gold/40"
+                        aria-sort={priceSortDir === "asc" ? "ascending" : "descending"}
+                      >
+                        Price
+                        <span className="text-[9px] tabular-nums" aria-hidden>
+                          {priceSortDir === "asc" ? "↑" : "↓"}
+                        </span>
+                      </button>
+                    </>
+                  ) : null}
                 </div>
                 <ViewModeToggle value={viewMode} onChange={setViewMode} />
               </div>
-              <div
-                className={
-                  viewMode === "grid"
-                    ? "grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
-                    : viewMode === "rows"
-                      ? "flex flex-col gap-3"
-                      : "flex flex-col divide-y divide-charcoal/[0.08] rounded-xl border border-charcoal/[0.08] bg-white overflow-hidden"
-                }
-              >
-                {sortedListings.map((l) => (
-                  <ListingCard
-                    key={l.mlsId + l.address.full + l.address.street}
-                    listing={l}
-                    view={viewMode}
-                  />
-                ))}
-              </div>
+              {viewMode === "line" ? (
+                <div className="flex flex-col rounded-xl border border-charcoal/[0.08] bg-white overflow-hidden">
+                  <div className="flex items-center gap-2.5 px-3 py-2 border-b border-charcoal/[0.08] bg-cream/60 font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
+                    <div className={`${PHOTO_PREVIEW_LINE} shrink-0`} aria-hidden />
+                    <span className="min-w-0 flex-1">Property</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPriceSortDir(priceSortDir === "asc" ? "desc" : "asc")
+                      }
+                      className="inline-flex items-center gap-1 shrink-0 text-navy hover:text-gold transition-colors"
+                      aria-sort={priceSortDir === "asc" ? "ascending" : "descending"}
+                    >
+                      Price
+                      <span className="tabular-nums" aria-hidden>
+                        {priceSortDir === "asc" ? "↑" : "↓"}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="flex flex-col divide-y divide-charcoal/[0.08]">
+                    {displayListings.map((l) => (
+                      <ListingCard
+                        key={l.mlsId + l.address.full + l.address.street}
+                        listing={l}
+                        view={viewMode}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className={
+                    viewMode === "grid"
+                      ? "grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
+                      : "flex flex-col gap-3"
+                  }
+                >
+                  {displayListings.map((l) => (
+                    <ListingCard
+                      key={l.mlsId + l.address.full + l.address.street}
+                      listing={l}
+                      view={viewMode}
+                    />
+                  ))}
+                </div>
+              )}
             </>
           )}
 
@@ -436,18 +529,6 @@ function useOwnerLookup(city: string, street: string, retsOwner: string | null):
   return owner ?? "Not disclosed";
 }
 
-function useFirstPhoto(mlsId: string | null): string | null {
-  const [photo, setPhoto] = useState<string | null>(null);
-  useEffect(() => {
-    if (!mlsId || mlsId === "—") return;
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}/photo`, { cache: "default" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { url?: string | null } | null) => { if (d?.url) setPhoto(d.url); })
-      .catch(() => {});
-  }, [mlsId]);
-  return photo;
-}
-
 function listingMeta(l: NCListing) {
   const isRental = isNcRental(l);
   const type = l.propertyType.replace(/ For Sale$/i, "").replace(/ For Lease$/i, "");
@@ -486,16 +567,45 @@ function listingMeta(l: NCListing) {
   };
 }
 
+function useFirstPhoto(mlsId: string | null): string | null {
+  const [photo, setPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!mlsId || mlsId === "—") {
+      setPhoto(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/listings/${encodeURIComponent(mlsId)}/photo`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { url?: string | null } | null) => {
+        if (!cancelled && d?.url) setPhoto(d.url);
+      })
+      .catch(() => {
+        if (!cancelled) setPhoto(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mlsId]);
+
+  return photo;
+}
+
 function ListingPhoto({
   listing: l,
   photo,
   className = "",
   iconClass = "w-8 h-8",
+  priority = true,
+  alignTop = false,
 }: {
   listing: NCListing;
   photo: string | null;
   className?: string;
   iconClass?: string;
+  priority?: boolean;
+  alignTop?: boolean;
 }) {
   const { detailHref } = listingMeta(l);
   const placeholder = (
@@ -508,8 +618,12 @@ function ListingPhoto({
   );
 
   const image = photo ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={photo} alt="" className={`w-full h-full object-cover ${className}`} />
+    <ListingThumbImage
+      src={photo}
+      priority={priority}
+      className={`relative block w-full h-full overflow-hidden ${className}`}
+      imgClassName={`block w-full h-full object-cover${alignTop ? " object-top" : ""}`}
+    />
   ) : (
     placeholder
   );
@@ -626,15 +740,18 @@ function LineViewIcon() {
 }
 
 function ListingCard({ listing: l, view }: { listing: NCListing; view: ViewMode }) {
-  const photo = useFirstPhoto(l.mlsId);
   const ownerDisplay = useOwnerLookup(l.address.city, l.address.street, l.ownerName);
   const meta = listingMeta(l);
+  const photo = useFirstPhoto(l.mlsId !== "—" ? l.mlsId : null);
 
   if (view === "line") {
     return (
-      <article className="flex items-center gap-2.5 px-3 py-2 hover:bg-gold/[0.04] transition-colors">
-        <div className="relative h-9 w-12 shrink-0 overflow-hidden rounded-md border border-charcoal/[0.08]">
-          <ListingPhoto listing={l} photo={photo} iconClass="w-5 h-5" />
+      <article
+        {...listingHoverHandlers(l.mlsId !== "—" ? l.mlsId : null)}
+        className="flex items-center gap-2.5 px-3 py-2 hover:bg-gold/[0.04] transition-colors"
+      >
+        <div className={`relative ${PHOTO_PREVIEW_LINE} shrink-0 overflow-hidden rounded-md border border-charcoal/[0.08]`}>
+          <ListingPhoto listing={l} photo={photo} iconClass="w-6 h-6" />
         </div>
         <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
           {meta.detailHref ? (
@@ -659,9 +776,12 @@ function ListingCard({ listing: l, view }: { listing: NCListing; view: ViewMode 
 
   if (view === "rows") {
     return (
-      <article className="flex gap-3 rounded-xl bg-white border border-charcoal/[0.08] p-3 transition-all hover:border-gold/40 hover:shadow-md hover:shadow-navy/5">
-        <div className="relative h-[4.5rem] w-[6.5rem] shrink-0 overflow-hidden rounded-lg border border-charcoal/[0.06] bg-cream">
-          <ListingPhoto listing={l} photo={photo} />
+      <article
+        {...listingHoverHandlers(l.mlsId !== "—" ? l.mlsId : null)}
+        className="flex gap-3 rounded-xl bg-white border border-charcoal/[0.08] p-3 transition-all hover:border-gold/40 hover:shadow-md hover:shadow-navy/5"
+      >
+        <div className={`relative ${PHOTO_PREVIEW_ROWS} shrink-0 overflow-hidden rounded-lg border border-charcoal/[0.06] bg-cream`}>
+          <ListingPhoto listing={l} photo={photo} alignTop />
           <span className="absolute top-1.5 left-1.5">
             <StatusBadge label={meta.statusLabel} colorClass={meta.statusColor} compact />
           </span>
@@ -691,9 +811,12 @@ function ListingCard({ listing: l, view }: { listing: NCListing; view: ViewMode 
   }
 
   return (
-    <article className="rounded-xl bg-white border border-charcoal/[0.08] overflow-hidden transition-all hover:border-gold/40 hover:shadow-lg hover:shadow-navy/5 hover:-translate-y-0.5 flex flex-col">
-      <div className="relative h-[4.5rem] w-full bg-cream border-b border-charcoal/[0.06]">
-        <ListingPhoto listing={l} photo={photo} />
+    <article
+      {...listingHoverHandlers(l.mlsId !== "—" ? l.mlsId : null)}
+      className="rounded-xl bg-white border border-charcoal/[0.08] overflow-hidden transition-all hover:border-gold/40 hover:shadow-lg hover:shadow-navy/5 hover:-translate-y-0.5 flex flex-col"
+    >
+      <div className={`relative ${PHOTO_PREVIEW_GRID} w-full bg-cream border-b border-charcoal/[0.06]`}>
+        <ListingPhoto listing={l} photo={photo} alignTop />
         <span className="absolute top-2 left-2">
           <StatusBadge label={meta.statusLabel} colorClass={meta.statusColor} />
         </span>

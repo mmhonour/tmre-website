@@ -9,12 +9,16 @@ import {
   type SnapshotListingsStatus,
 } from "@/lib/intelligence-url";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
+import { fmtDate } from "@/lib/listing-history";
+import ListingThumbImage from "@/components/ListingThumbImage";
+import { prefetchMlsPhotoThumbs } from "@/lib/prefetch-listing-images";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { listingZipMatchesTown, TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 type TxFilter = "all" | "sale" | "rental";
 type ClsFilter = "all" | "residential" | "commercial";
 type SalePropertyFilter = "all" | "homes" | "multi" | "condos";
-type RowStatus = "Active" | "Pending" | "New" | "Reduced";
+type RowStatus = "Active" | "Pending" | "New" | "Reduced" | "Closed";
 
 type ApiListing = {
   mlsId: string;
@@ -28,6 +32,7 @@ type ApiListing = {
     postalCode?: string | null;
   };
   price: number | null;
+  closeDate?: string | null;
   beds: number | null;
   baths: number | null;
   sqft: number | null;
@@ -52,6 +57,7 @@ type BoardListing = {
   pricePerSqft: number | null;
   sqft: number | null;
   dom: number | null;
+  closeDate: string | null;
   status: RowStatus;
   isRental: boolean;
   isCommercial: boolean;
@@ -64,7 +70,7 @@ function parseTown(value: string | null): TmreTown | null {
 }
 
 function parseStatus(value: string | null): SnapshotListingsStatus | null {
-  if (value === "new" || value === "reduced") return value;
+  if (value === "new" || value === "reduced" || value === "closed") return value;
   return null;
 }
 
@@ -136,6 +142,7 @@ function mapListings(api: ApiListing[], townName: TmreTown): BoardListing[] {
         pricePerSqft: rental ? null : l.calculated.pricePerSqft,
         sqft: l.sqft,
         dom: l.calculated.daysOnMarket,
+        closeDate: null,
         status: deriveStatus(l),
         isRental: rental,
         isCommercial: commercial,
@@ -143,6 +150,47 @@ function mapListings(api: ApiListing[], townName: TmreTown): BoardListing[] {
       };
     })
     .filter((l) => listingZipMatchesTown(l.zip, townName));
+}
+
+function mapClosedListings(api: ApiListing[], townName: TmreTown): BoardListing[] {
+  return api
+    .filter((l) => l.price != null && l.price > 0)
+    .map((l) => {
+      const rental = isRentalType(l.propertyType);
+      const commercial = isCommercialType(l.propertyType);
+      return {
+        key: l.listingKey || l.mlsId,
+        mlsId: l.mlsId,
+        score: l.calculated.goldilocksScore ?? 0,
+        address: l.address.street || l.address.full,
+        city: townName,
+        zip: l.address.postalCode ?? null,
+        type: [shortType(l.propertyType), l.beds && l.baths ? `${l.beds}bd/${l.baths}ba` : null]
+          .filter(Boolean)
+          .join(" · "),
+        price: l.price!,
+        pricePerSqft: rental ? null : l.calculated.pricePerSqft,
+        sqft: l.sqft,
+        dom: l.calculated.daysOnMarket,
+        closeDate: l.closeDate ?? null,
+        status: "Closed" as RowStatus,
+        isRental: rental,
+        isCommercial: commercial,
+        propertyType: l.propertyType,
+      };
+    })
+    .filter((l) => listingZipMatchesTown(l.zip, townName));
+}
+
+function compareCloseDate(a: string | null, b: string | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return Date.parse(b) - Date.parse(a);
+}
+
+function sortClosedListings(rows: BoardListing[]): BoardListing[] {
+  return [...rows].sort((a, b) => compareCloseDate(a.closeDate, b.closeDate));
 }
 
 function compareDom(a: number | null, b: number | null): number {
@@ -224,6 +272,7 @@ export default function IntelligenceListingsClient() {
   const activeSortDir = sortDirs[newSort];
 
   const sortedListings = useMemo(() => {
+    if (status === "closed") return sortClosedListings(listings);
     if (status === "new" || status === "reduced") {
       return sortNewListings(listings, newSort, activeSortDir);
     }
@@ -249,17 +298,24 @@ export default function IntelligenceListingsClient() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/api/listings?city=${encodeURIComponent(city)}&status=Active&limit=250`, {
-      cache: "no-store",
-    })
+    const apiUrl =
+      status === "closed"
+        ? `/api/intelligence/closed-listings?city=${encodeURIComponent(city)}&limit=250`
+        : `/api/listings?city=${encodeURIComponent(city)}&status=Active&limit=250`;
+    fetch(apiUrl)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as { listings: ApiListing[] };
       })
       .then((body) => {
         if (cancelled) return;
-        const mapped = mapListings(body.listings, city);
-        setListings(filterListings(mapped, tx, cls, zip, status, saleProperty));
+        const mapped =
+          status === "closed"
+            ? mapClosedListings(body.listings, city)
+            : mapListings(body.listings, city);
+        const filtered = filterListings(mapped, tx, cls, zip, status, saleProperty);
+        setListings(filtered);
+        prefetchMlsPhotoThumbs(filtered.map((l) => l.mlsId));
         setNewSort("dom");
         setSortDirs(DEFAULT_NEW_SORT_DIRS);
         setLoading(false);
@@ -276,13 +332,17 @@ export default function IntelligenceListingsClient() {
 
   const title = useMemo(() => {
     if (!city || !status) return "Listings";
-    return snapshotListingsTitle(status, city, zip);
-  }, [city, status, zip]);
+    return snapshotListingsTitle(status, city, zip, tx);
+  }, [city, status, zip, tx]);
 
   const subtitle =
     status === "new"
       ? "Listed within the last 7 days on market"
-      : "Active listings with a recent price reduction";
+      : status === "reduced"
+        ? "Active listings with a recent price reduction"
+        : tx === "rental"
+          ? "Leased within the last 7 days"
+          : "Closed within the last 7 days";
 
   return (
     <>
@@ -338,7 +398,7 @@ export default function IntelligenceListingsClient() {
                 Invalid link
               </p>
               <p className="text-charcoal/70 mb-6">
-                Choose a town snapshot on Intelligence and open new or reduced listings from there.
+                Choose a town snapshot on Intelligence and open new, reduced, or closed listings from there.
               </p>
               <Link
                 href="/intelligence"
@@ -458,31 +518,39 @@ function ListingCard({
   const photoSrc = listingPhotoProxyUrl(l.mlsId, 0);
   const scoreColor =
     l.score >= 85 ? "text-sage" : l.score >= 70 ? "text-gold" : "text-charcoal/60";
+  const closedLabel = l.isRental ? "Leased" : "Closed";
   const statusLabel =
     status === "new"
       ? l.dom != null
         ? `${l.dom}d on market`
         : "New this week"
-      : "Price reduced";
+      : status === "closed"
+        ? l.closeDate && fmtDate(l.closeDate)
+          ? `${closedLabel} ${fmtDate(l.closeDate)}`
+          : closedLabel
+        : "Price reduced";
 
   return (
-    <article className="rounded-2xl bg-white border border-charcoal/[0.08] overflow-hidden transition-all hover:border-gold/40 hover:shadow-xl hover:shadow-navy/5 hover:-translate-y-1 flex flex-col">
+    <article
+      {...listingHoverHandlers(l.mlsId)}
+      className="rounded-2xl bg-white border border-charcoal/[0.08] overflow-hidden transition-all hover:border-gold/40 hover:shadow-xl hover:shadow-navy/5 hover:-translate-y-1 flex flex-col"
+    >
       <Link href={detailHref} className="relative block aspect-[16/10] bg-cream overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <ListingThumbImage
           src={photoSrc}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
-          loading="lazy"
+          className="absolute inset-0 block w-full h-full"
+          imgClassName="absolute inset-0 w-full h-full object-cover"
         />
         <div className="absolute top-3 left-3 font-mono text-[10px] tracking-[0.12em] uppercase bg-navy text-white px-2.5 py-1 rounded-full">
           {statusLabel}
         </div>
-        <div
-          className={`absolute top-3 right-3 font-mono text-sm tabular-nums font-semibold bg-white/95 px-2.5 py-1 rounded-full shadow-sm ${scoreColor}`}
-        >
-          {l.score.toFixed(1)}
-        </div>
+        {status !== "closed" && l.score > 0 ? (
+          <div
+            className={`absolute top-3 right-3 font-mono text-sm tabular-nums font-semibold bg-white/95 px-2.5 py-1 rounded-full shadow-sm ${scoreColor}`}
+          >
+            {l.score.toFixed(1)}
+          </div>
+        ) : null}
       </Link>
 
       <div className="p-5 flex flex-col flex-1">
@@ -503,7 +571,13 @@ function ListingCard({
         <div className="mt-4 pt-4 border-t border-charcoal/[0.06] flex items-end justify-between gap-3">
           <div>
             <p className="font-mono text-[9px] tracking-[0.15em] uppercase text-slate/60 mb-1">
-              {l.isRental ? "Rent" : "Price"}
+              {status === "closed"
+                ? l.isRental
+                  ? "Lease"
+                  : "Sold"
+                : l.isRental
+                  ? "Rent"
+                  : "Price"}
             </p>
             <p className="font-mono text-xl tabular-nums text-navy">
               {fmtMoney(l.price)}
@@ -512,10 +586,14 @@ function ListingCard({
           </div>
           <div className="text-right">
             <p className="font-mono text-[9px] tracking-[0.15em] uppercase text-slate mb-1">
-              DOM
+              {status === "closed" ? (l.isRental ? "Leased" : "Closed") : "DOM"}
             </p>
             <p className="font-mono text-sm tabular-nums text-navy">
-              {l.dom != null ? `${l.dom}d` : "—"}
+              {status === "closed"
+                ? fmtDate(l.closeDate) ?? "—"
+                : l.dom != null
+                  ? `${l.dom}d`
+                  : "—"}
             </p>
           </div>
         </div>

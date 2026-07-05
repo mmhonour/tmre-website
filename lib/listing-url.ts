@@ -10,8 +10,14 @@ export function listingPhotosHref(
   id: string,
   address?: string | null,
   town?: string | null,
+  photoIndex?: number,
 ): string {
-  return listingSectionHref(id, "photos", address, town);
+  const extra = new URLSearchParams();
+  if (photoIndex != null && photoIndex >= 0) {
+    extra.set("photo", String(photoIndex));
+  }
+  const extraQs = extra.toString();
+  return listingSectionHref(id, "photos", address, town, extraQs || undefined);
 }
 
 export function listingHistoryHref(
@@ -22,9 +28,39 @@ export function listingHistoryHref(
   return listingSectionHref(id, "history", address, town);
 }
 
+export function listingComparablesHref(
+  id: string,
+  address?: string | null,
+  town?: string | null,
+): string {
+  return listingSectionHref(id, "comparables", address, town);
+}
+
+export function listingComparableRentalsHref(
+  id: string,
+  address?: string | null,
+  town?: string | null,
+): string {
+  return listingSectionHref(id, "comparable-rentals", address, town);
+}
+
+export function listingIfHref(
+  id: string,
+  address?: string | null,
+  town?: string | null,
+): string {
+  return listingSectionHref(id, "if", address, town);
+}
+
 export function listingSectionHref(
   id: string,
-  section: "overview" | "history" | "photos",
+  section:
+    | "overview"
+    | "history"
+    | "photos"
+    | "comparables"
+    | "comparable-rentals"
+    | "if",
   address?: string | null,
   town?: string | null,
   extraQuery?: string,
@@ -40,7 +76,13 @@ export function listingSectionHref(
       ? `/listings/${listingId}/history`
       : section === "photos"
         ? `/listings/${listingId}/photos`
-        : `/listings/${listingId}`;
+        : section === "comparables"
+          ? `/listings/${listingId}/comparables`
+          : section === "comparable-rentals"
+            ? `/listings/${listingId}/comparable-rentals`
+            : section === "if"
+              ? `/listings/${listingId}/if`
+              : `/listings/${listingId}`;
   return qs ? `${path}?${qs}` : path;
 }
 
@@ -78,7 +120,19 @@ export function listingDetailHrefForListing(listing: {
   );
 }
 
-export function dealOfTheDayHref(city?: string | null): string {
-  if (!city || city === "All") return "/deal-of-the-day";
-  return `/deal-of-the-day?city=${encodeURIComponent(city)}`;
+export function dealOfTheDayHref(
+  city?: string | null,
+  opts?: {
+    mlsId?: string | null;
+    listingKey?: string | null;
+    kind?: "sale" | "rental" | null;
+  },
+): string {
+  const params = new URLSearchParams();
+  if (city && city !== "All") params.set("city", city);
+  const listingId = opts?.listingKey?.trim() || opts?.mlsId?.trim();
+  if (listingId) params.set("listing", listingId);
+  if (opts?.kind) params.set("kind", opts.kind);
+  const qs = params.toString();
+  return qs ? `/deal-of-the-day?${qs}` : "/deal-of-the-day";
 }

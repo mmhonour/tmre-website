@@ -52,9 +52,9 @@ export const FACTOR_LABELS: Record<GoldilocksFactorKey, string> = {
 export const FACTOR_DESCRIPTIONS: Record<GoldilocksFactorKey, string> = {
   age: "Rates how new the home is based on year built — newer construction scores higher regardless of finishes.",
   condition:
-    "Move-in readiness from listing remarks — renovation language boosts the score; dated or tired-condition signals pull it down.",
+    "How move-in ready the home sounds — fresh new construction (built within ~12 months, never occupied/resold) defaults to 100 unless remarks mention dated finishes or distress; otherwise renovation language in the remarks helps and tired-finish language pulls the score down.",
   finishes:
-    "Signals quality of materials and presentation — granite, hardwood, photo count, and virtual tour availability.",
+    "Quality of materials and how well the listing shows them — granite, hardwood, and similar details in the remarks, plus whether photos actually show updates and layout clearly.",
   ppsf:
     "Measures whether price-per-sqft sits in the Goldilocks zone versus the city median — not too cheap, not overpriced.",
   layout:
@@ -70,16 +70,13 @@ export function factorContribution(factorScore: number, weight: number): number 
 export function buildFactorExplain(
   key: GoldilocksFactorKey,
   factorScore: number,
-  weight: number,
+  _weight: number,
 ): { title: string; lines: string[] } {
   const label = FACTOR_LABELS[key];
-  const pct = Math.round(weight * 100);
-  const contribution = factorContribution(factorScore, weight);
   return {
     title: label,
     lines: [
       `This listing scores ${Math.round(factorScore)}/100 on ${label.toLowerCase()}.`,
-      `${pct}% of the composite Goldilocks score comes from this factor — it adds about ${contribution.toFixed(1)} points toward the total out of 100.`,
       FACTOR_DESCRIPTIONS[key],
     ],
   };
@@ -89,8 +86,7 @@ export function buildCompositeExplain(composite: number): { title: string; lines
   return {
     title: "Goldilocks composite",
     lines: [
-      `${composite.toFixed(1)}/100 is the weighted sum of six factors: age (10%), condition (20%), finishes (25%), PPSF fit (25%), layout (10%), and schools (10%).`,
-      "Each factor is scored 0–100 on its own, then multiplied by its weight and added together.",
+      `${composite.toFixed(1)}/100 summarizes how this listing ranks on age, condition, finishes, PPSF fit, layout, and schools.`,
       "Scores above 85 are exceptional picks; 70–84 are strong; below 70 still qualify but with more trade-offs.",
     ],
   };
@@ -111,7 +107,7 @@ export function buildPpsfVsMedianExplain(
     title: "vs city median",
     lines: [
       `This listing's ${unit} is ${direction} the local median for similar ${isRental ? "rentals" : "sales"}.`,
-      "PPSF fit is 25% of the Goldilocks composite. The model rewards listings in the 80–90% of median band — enough discount to feel like value, not so cheap that something is wrong.",
+      "PPSF fit rewards listings in the 80–90% of median band — enough discount to feel like value, not so cheap that something is wrong.",
       "This market comparison is separate from the factor score bar above, but feeds directly into the PPSF fit score.",
     ],
   };
@@ -122,7 +118,7 @@ export function buildPriceReductionExplain(reductionPct: number): { title: strin
     title: "Price reduction",
     lines: [
       `The list price is ${reductionPct}% below the original ask — a signal the seller may be motivated.`,
-      "Goldilocks does not add this cut as a separate line item, but lower effective pricing often improves PPSF fit (25% of the composite).",
+      "Goldilocks does not add this cut as a separate line item, but lower effective pricing often improves PPSF fit.",
       "A meaningful reduction can push a listing into the value band buyers actively shop.",
     ],
   };

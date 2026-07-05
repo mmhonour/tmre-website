@@ -2,8 +2,8 @@
   "5696070c-bbf7-4586-b654-ca7bedf0d4ad": {
     "vid": "5696070c-bbf7-4586-b654-ca7bedf0d4ad",
     "firstSeen": "2026-06-26T15:55:59.636Z",
-    "lastSeen": "2026-06-28T14:02:47.090Z",
-    "pageviews": 667,
+    "lastSeen": "2026-07-05T05:06:20.273Z",
+    "pageviews": 1693,
     "ip": "::1",
     "geo": {
       "city": null,
@@ -14,204 +14,204 @@
     },
     "pages": [
       {
-        "path": "/listings/24186977",
-        "at": "2026-06-27T21:54:25.310Z"
+        "path": "/spotlight",
+        "at": "2026-07-05T03:06:03.629Z"
       },
       {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T21:55:17.919Z"
+        "path": "/spotlight/if",
+        "at": "2026-07-05T03:06:06.083Z"
+      },
+      {
+        "path": "/spotlight/comparable-rentals",
+        "at": "2026-07-05T03:06:42.682Z"
+      },
+      {
+        "path": "/spotlight/comparables",
+        "at": "2026-07-05T03:06:48.488Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:06:50.953Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-05T03:06:53.558Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:06:57.011Z"
+      },
+      {
+        "path": "/spotlight/if",
+        "at": "2026-07-05T03:07:38.364Z"
+      },
+      {
+        "path": "/spotlight/if",
+        "at": "2026-07-05T03:07:39.280Z"
+      },
+      {
+        "path": "/spotlight/if",
+        "at": "2026-07-05T03:07:39.830Z"
+      },
+      {
+        "path": "/spotlight/if",
+        "at": "2026-07-05T03:07:42.168Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-05T03:07:46.614Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:07:46.887Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:08:29.238Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:08:29.493Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:08:29.734Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:10:04.386Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-05T03:10:09.235Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:10:12.233Z"
+      },
+      {
+        "path": "/spotlight/if",
+        "at": "2026-07-05T03:10:30.671Z"
+      },
+      {
+        "path": "/spotlight/comparables",
+        "at": "2026-07-05T03:10:54.983Z"
+      },
+      {
+        "path": "/spotlight/comparable-rentals",
+        "at": "2026-07-05T03:10:59.366Z"
+      },
+      {
+        "path": "/spotlight/comparables",
+        "at": "2026-07-05T03:11:01.784Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-05T03:11:19.084Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T03:11:23.846Z"
       },
       {
         "path": "/intelligence",
-        "at": "2026-06-27T21:55:19.278Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T21:56:47.691Z"
+        "at": "2026-07-05T03:11:32.830Z"
       },
       {
         "path": "/intelligence",
-        "at": "2026-06-27T21:56:53.541Z"
+        "at": "2026-07-05T03:12:37.072Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T03:17:02.226Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T03:17:03.512Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T03:21:52.076Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-05T03:22:21.638Z"
+      },
+      {
+        "path": "/spotlight/if",
+        "at": "2026-07-05T03:22:24.989Z"
+      },
+      {
+        "path": "/spotlight/comparable-rentals",
+        "at": "2026-07-05T03:22:40.934Z"
+      },
+      {
+        "path": "/spotlight/comparables",
+        "at": "2026-07-05T03:22:44.153Z"
+      },
+      {
+        "path": "/spotlight/comparable-rentals",
+        "at": "2026-07-05T03:22:54.741Z"
+      },
+      {
+        "path": "/about",
+        "at": "2026-07-05T03:23:45.966Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T03:23:50.580Z"
       },
       {
         "path": "/",
-        "at": "2026-06-27T21:57:32.582Z"
+        "at": "2026-07-05T03:30:23.705Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T03:31:53.215Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T03:33:49.182Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-05T04:44:31.431Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T04:44:36.317Z"
+      },
+      {
+        "path": "/listings/4B9AFBCD68B645DAE063E201100A7525/photos",
+        "at": "2026-07-05T04:46:01.000Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-05T04:46:19.033Z"
       },
       {
         "path": "/deal-of-the-day",
-        "at": "2026-06-27T21:57:46.625Z"
+        "at": "2026-07-05T04:46:22.833Z"
+      },
+      {
+        "path": "/",
+        "at": "2026-07-05T04:46:29.638Z"
       },
       {
         "path": "/intelligence",
-        "at": "2026-06-27T21:57:56.519Z"
+        "at": "2026-07-05T04:50:45.258Z"
       },
       {
-        "path": "/listings/54728651A70A61FFE063E201100A4D9F",
-        "at": "2026-06-27T21:58:17.323Z"
-      },
-      {
-        "path": "/lookey",
-        "at": "2026-06-27T21:59:41.372Z"
+        "path": "/",
+        "at": "2026-07-05T05:03:39.155Z"
       },
       {
         "path": "/deal-of-the-day",
-        "at": "2026-06-27T21:59:44.431Z"
-      },
-      {
-        "path": "/lookey",
-        "at": "2026-06-27T21:59:45.927Z"
-      },
-      {
-        "path": "/listings/518CD0BB9755BEADE063E201100A340C",
-        "at": "2026-06-27T21:59:54.229Z"
-      },
-      {
-        "path": "/lookey",
-        "at": "2026-06-27T22:00:14.951Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T22:00:19.788Z"
+        "at": "2026-07-05T05:06:14.750Z"
       },
       {
         "path": "/intelligence",
-        "at": "2026-06-27T22:00:39.433Z"
-      },
-      {
-        "path": "/listings/52415B27D2391775E0631A01100AB024",
-        "at": "2026-06-27T22:08:06.993Z"
-      },
-      {
-        "path": "/listings/52415B27D2391775E0631A01100AB024/photos",
-        "at": "2026-06-27T22:09:04.813Z"
-      },
-      {
-        "path": "/listings/52415B27D2391775E0631A01100AB024",
-        "at": "2026-06-27T22:09:09.707Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T22:09:56.677Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:09:58.528Z"
-      },
-      {
-        "path": "/lookey",
-        "at": "2026-06-27T22:10:21.632Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:10:25.844Z"
-      },
-      {
-        "path": "/deal-model",
-        "at": "2026-06-27T22:10:54.377Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:11:00.226Z"
-      },
-      {
-        "path": "/listings/50A2EDC8EB6571DFE063E201100A8455",
-        "at": "2026-06-27T22:12:26.441Z"
-      },
-      {
-        "path": "/listings/50A2EDC8EB6571DFE063E201100A8455/history",
-        "at": "2026-06-27T22:12:41.985Z"
-      },
-      {
-        "path": "/listings/50A2EDC8EB6571DFE063E201100A8455",
-        "at": "2026-06-27T22:12:54.123Z"
-      },
-      {
-        "path": "/listings/50A2EDC8EB6571DFE063E201100A8455/photos",
-        "at": "2026-06-27T22:13:08.891Z"
-      },
-      {
-        "path": "/listings/50A2EDC8EB6571DFE063E201100A8455/history",
-        "at": "2026-06-27T22:13:10.413Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:13:19.756Z"
-      },
-      {
-        "path": "/listings/52415B27D2391775E0631A01100AB024",
-        "at": "2026-06-27T22:15:26.316Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:15:30.720Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-06-27T22:17:18.837Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-06-27T22:17:29.211Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:18:31.815Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:19:59.197Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:21:12.537Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T22:24:27.713Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:26:17.304Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T22:27:41.350Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:28:24.354Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:28:27.475Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T22:30:05.174Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:30:23.584Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:30:33.758Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-06-27T22:30:46.291Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-06-27T22:31:29.834Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-27T22:32:00.015Z"
-      },
-      {
-        "path": "/deal-of-the-day",
-        "at": "2026-06-28T14:02:47.090Z"
+        "at": "2026-07-05T05:06:20.273Z"
       }
     ],
     "email": null,
@@ -248,8 +248,8 @@
   "6cfd2ffc-629a-4cda-bcdb-47d446650e06": {
     "vid": "6cfd2ffc-629a-4cda-bcdb-47d446650e06",
     "firstSeen": "2026-06-26T16:16:33.892Z",
-    "lastSeen": "2026-06-26T16:16:33.892Z",
-    "pageviews": 1,
+    "lastSeen": "2026-07-05T05:05:55.123Z",
+    "pageviews": 23,
     "ip": "::1",
     "geo": {
       "city": null,
@@ -262,6 +262,94 @@
       {
         "path": "/about",
         "at": "2026-06-26T16:16:33.892Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-1",
+        "at": "2026-07-05T03:17:33.159Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-3",
+        "at": "2026-07-05T03:17:57.798Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-1",
+        "at": "2026-07-05T03:18:06.536Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T03:18:21.916Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-3",
+        "at": "2026-07-05T03:19:08.860Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T03:19:19.329Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-1",
+        "at": "2026-07-05T03:19:23.033Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T03:19:40.004Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-1",
+        "at": "2026-07-05T03:19:41.514Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T03:19:42.957Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-3",
+        "at": "2026-07-05T03:19:46.068Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-1",
+        "at": "2026-07-05T03:19:48.025Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-3",
+        "at": "2026-07-05T03:19:50.462Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-3",
+        "at": "2026-07-05T03:29:33.781Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-3",
+        "at": "2026-07-05T03:31:44.615Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T03:31:44.718Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-3",
+        "at": "2026-07-05T03:33:48.976Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T04:44:13.150Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T04:46:34.488Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T04:46:37.896Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T05:03:38.854Z"
+      },
+      {
+        "path": "/intelligence/board-preview/option-2",
+        "at": "2026-07-05T05:05:55.123Z"
       }
     ],
     "email": null,
@@ -315,6 +403,31 @@
       {
         "path": "/intelligence",
         "at": "2026-06-26T16:28:39.251Z"
+      }
+    ],
+    "email": null,
+    "zip": null,
+    "name": null,
+    "audienceType": null,
+    "leadId": null
+  },
+  "cf42bead-297f-4af0-9568-2ae8285194e6": {
+    "vid": "cf42bead-297f-4af0-9568-2ae8285194e6",
+    "firstSeen": "2026-07-02T13:57:41.826Z",
+    "lastSeen": "2026-07-02T13:57:41.826Z",
+    "pageviews": 1,
+    "ip": "::1",
+    "geo": {
+      "city": null,
+      "region": null,
+      "postal": null,
+      "country": null,
+      "org": null
+    },
+    "pages": [
+      {
+        "path": "/",
+        "at": "2026-07-02T13:57:41.826Z"
       }
     ],
     "email": null,

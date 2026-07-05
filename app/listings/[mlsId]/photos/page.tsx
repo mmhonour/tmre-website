@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import ListingPhotosClient from "./ListingPhotosClient";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +8,7 @@ export async function generateMetadata({
   searchParams,
 }: {
   params: Promise<{ mlsId: string }>;
-  searchParams: Promise<{ address?: string; city?: string }>;
+  searchParams: Promise<{ address?: string; city?: string; photo?: string }>;
 }) {
   const { mlsId } = await params;
   const { address } = await searchParams;
@@ -23,15 +24,17 @@ export default async function ListingPhotosPage({
   searchParams,
 }: {
   params: Promise<{ mlsId: string }>;
-  searchParams: Promise<{ address?: string; city?: string }>;
+  searchParams: Promise<{ address?: string; city?: string; photo?: string }>;
 }) {
   const { mlsId } = await params;
   const { address, city } = await searchParams;
   return (
-    <ListingPhotosClient
-      mlsId={mlsId}
-      addressHint={address?.trim() || null}
-      townHint={city?.trim() || null}
-    />
+    <Suspense fallback={null}>
+      <ListingPhotosClient
+        mlsId={mlsId}
+        addressHint={address?.trim() || null}
+        townHint={city?.trim() || null}
+      />
+    </Suspense>
   );
 }

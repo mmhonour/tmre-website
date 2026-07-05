@@ -1,5 +1,23 @@
 export const navIconClass = "w-6 h-6 shrink-0";
 
+export function HouseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className ?? "h-5 w-5"}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      stroke="white"
+      strokeWidth={1.25}
+      aria-hidden
+    >
+      <path
+        d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function PhoneIcon({ className }: { className?: string }) {
   return (
     <svg

@@ -4,6 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { listingDetailHref } from "@/lib/listing-url";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import type { StatsKind, Town } from "./stats-towns";
 
 const MedianPriceUnderlyingChart = dynamic(
@@ -466,6 +467,7 @@ export default function MedianPriceListingsTable({
                     return (
                       <tr
                         key={`${row.town}-${row.mlsId}`}
+                        {...listingHoverHandlers(id)}
                         className="border-b border-charcoal/[0.06] last:border-0 hover:bg-gold/5 transition-colors"
                       >
                         {showTownCol && (

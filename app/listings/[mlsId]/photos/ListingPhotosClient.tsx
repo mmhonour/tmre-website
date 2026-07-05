@@ -1,13 +1,27 @@
 "use client";
 
-import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
-import ListingHeader from "@/components/listing/ListingHeader";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
+import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
+import ListingSidebar from "@/components/listing/ListingSidebar";
+import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import { ListingShell } from "@/components/listing/ListingShell";
-import ListingSubnav from "@/components/listing/ListingSubnav";
 import PhotoGallery from "@/components/listing/PhotoGallery";
-import { formatMlsStatus } from "@/lib/listing-history";
-import { listingDetailHref } from "@/lib/listing-url";
+import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
+import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
+import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import {
+  listingHeaderScoreProps,
+  type ListingScoreApiFields,
+} from "@/lib/listing-header-score-props";
+
+type Schools = {
+  elementary: string | null;
+  middle: string | null;
+  high: string | null;
+  district: string | null;
+};
 
 type Listing = {
   mlsId: string;
@@ -22,20 +36,33 @@ type Listing = {
     state: string;
     postalCode: string;
   };
+  price: number | null;
+  originalListPrice: number | null;
   beds: number | null;
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
   dom: number | null;
   photoCount: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  schools: Schools;
+  raw: Record<string, string>;
 };
 
-type ApiResponse = {
+type ApiResponse = ListingScoreApiFields & {
   listing: Listing;
   photos: string[];
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
+
+function initialPhotoIndex(param: string | null, photoCount: number): number {
+  if (!param) return 0;
+  const idx = Number.parseInt(param, 10);
+  if (!Number.isFinite(idx) || idx < 0) return 0;
+  return photoCount > 0 ? Math.min(idx, photoCount - 1) : 0;
+}
 
 export default function ListingPhotosClient({
   mlsId,
@@ -50,11 +77,13 @@ export default function ListingPhotosClient({
   const [state, setState] = useState<LoadState>("loading");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activePhoto, setActivePhoto] = useState(0);
+  const searchParams = useSearchParams();
+  const photoParam = searchParams.get("photo");
 
   useEffect(() => {
     let cancelled = false;
     setState("loading");
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}`, { cache: "no-store" })
+    fetch(`/api/listings/${encodeURIComponent(mlsId)}`)
       .then(async (r) => {
         if (r.status === 404) {
           if (!cancelled) setState("not-found");
@@ -66,7 +95,7 @@ export default function ListingPhotosClient({
       .then((d) => {
         if (!d || cancelled) return;
         setData(d);
-        setActivePhoto(0);
+        setActivePhoto(initialPhotoIndex(photoParam, d.photos.length));
         setState("ready");
       })
       .catch((err) => {
@@ -78,7 +107,17 @@ export default function ListingPhotosClient({
     return () => {
       cancelled = true;
     };
-  }, [mlsId]);
+  }, [mlsId, photoParam]);
+
+  useEffect(() => {
+    if (state !== "ready" || !data) return;
+    setActivePhoto(initialPhotoIndex(photoParam, data.photos.length));
+  }, [state, data, photoParam]);
+
+  useRecordLookedAtListing(state === "ready", data?.listing ?? null, {
+    addressHint,
+    townHint,
+  });
 
   if (state === "loading") {
     return (
@@ -96,7 +135,7 @@ export default function ListingPhotosClient({
   if (state === "not-found") {
     return (
       <ListingShell>
-        <ErrorPanel
+        <ListingErrorPanel
           title="Listing not found"
           body={`${addressHint?.trim() || "This listing"} isn't in the active feed right now.`}
         />
@@ -107,7 +146,7 @@ export default function ListingPhotosClient({
   if (state === "error" || !data) {
     return (
       <ListingShell>
-        <ErrorPanel
+        <ListingErrorPanel
           title="Couldn't load photos"
           body={errorMsg ?? "Try again in a moment."}
         />
@@ -117,67 +156,80 @@ export default function ListingPhotosClient({
 
   const { listing, photos } = data;
   const street = listing.address.street || listing.address.full;
+  const mapsQuery =
+    listing.address.full?.trim() ||
+    [
+      street,
+      listing.address.city,
+      listing.address.state,
+      listing.address.postalCode,
+    ]
+      .filter(Boolean)
+      .join(", ");
   const isClosed = formatMlsStatus(listing.status) === "Closed";
-  const detailHref = listingDetailHref(
-    mlsId,
-    street || addressHint,
-    townHint || listing.address.city,
+  const details = buildListingDetailsPanelProps(
+    { ...listing, townHint: townHint ?? null },
+    fmtMoney,
+    {
+      listingId: mlsId,
+      addressHint: street || addressHint,
+      townHint: townHint || listing.address.city,
+    },
   );
 
   return (
     <ListingShell>
-      <ListingHeader
-        mlsId={listing.mlsId}
-        status={listing.status}
-        dom={listing.dom}
-        address={listing.address}
-        propertyType={listing.propertyType}
-        style={listing.style}
-        beds={listing.beds}
-        baths={listing.baths}
-        sqft={listing.sqft}
-        yearBuilt={listing.yearBuilt}
-      />
-      <Suspense fallback={null}>
-        <ListingSubnav
-          mlsId={mlsId}
-          active="photos"
-          addressHint={street || addressHint}
-          townHint={townHint}
-          interest={
-            !isClosed
-              ? {
-                  mlsId: listing.mlsId,
-                  address: street,
-                  city: townHint || listing.address.city,
-                }
-              : null
-          }
-        />
-      </Suspense>
-      <div className="mb-6">
-        <Link
-          href={detailHref}
-          className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.15em] uppercase text-gold hover:text-gold-light transition-colors"
-        >
-          ← Property details
-        </Link>
-      </div>
-      <PhotoGallery
-        photos={photos}
-        active={activePhoto}
-        setActive={setActivePhoto}
-        address={street}
+      <ListingHeroPanels
+        header={{
+          mlsId: listing.mlsId,
+          status: listing.status,
+          dom: listing.dom,
+          address: listing.address,
+          propertyType: listing.propertyType,
+          style: listing.style,
+          beds: listing.beds,
+          baths: listing.baths,
+          sqft: listing.sqft,
+          yearBuilt: listing.yearBuilt,
+          bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
+          ...listingHeaderScoreProps({
+            goldilocksScore: data.goldilocksScore,
+            goldilocksBreakdown: data.goldilocksBreakdown,
+            title: street,
+            subtitle: townHint || listing.address.city,
+            propertyType: listing.propertyType,
+          }),
+        }}
+        location={{
+          latitude: listing.latitude,
+          longitude: listing.longitude,
+          addressQuery: mapsQuery,
+        }}
+        subnav={{
+          mlsId,
+          active: "photos",
+          addressHint: street || addressHint,
+          townHint,
+        }}
+        interest={
+          !isClosed
+            ? {
+                mlsId: listing.mlsId,
+                address: street,
+                city: townHint || listing.address.city,
+              }
+            : null
+        }
+        belowTabs={
+          <PhotoGallery
+            photos={photos}
+            active={activePhoto}
+            setActive={setActivePhoto}
+            address={street}
+          />
+        }
+        sidebar={<ListingSidebar details={details} />}
       />
     </ListingShell>
-  );
-}
-
-function ErrorPanel({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="text-center py-24 max-w-md mx-auto">
-      <h1 className="font-serif text-2xl text-white mb-3">{title}</h1>
-      <p className="text-white/60 text-sm leading-relaxed">{body}</p>
-    </div>
   );
 }

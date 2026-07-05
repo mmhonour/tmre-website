@@ -6,7 +6,6 @@ import GoldilocksScoreExplainModal, {
   type ExplainContext,
 } from "@/components/GoldilocksScoreExplainModal";
 import ModalPortal from "@/components/ModalPortal";
-import { factorContribution } from "@/lib/goldilocks-score-info";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 import type { ScoreExplainTopic } from "@/lib/goldilocks-score-info";
 
@@ -140,8 +139,6 @@ export default function ListingScoreBreakdownModal({
           <div className="space-y-4 mb-6">
             {FACTORS.map(({ key, label, scoreKey, explainKey }) => {
               const value = score[scoreKey] as number;
-              const weight = score.weights[key];
-              const contribution = factorContribution(value, weight);
               return (
                 <div key={key}>
                   <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/70 mb-1.5">
@@ -152,10 +149,9 @@ export default function ListingScoreBreakdownModal({
                         type="button"
                         onClick={() => setExplainTopic(explainKey)}
                         className="text-slate/50 hover:text-gold transition-colors underline underline-offset-2 decoration-charcoal/15"
-                        title={`+${contribution.toFixed(1)} pts toward composite`}
+                        aria-label={`Explain ${label}`}
                       >
-                        {" "}
-                        · {Math.round(weight * 100)}% weight
+                        {" →"}
                       </button>
                     </span>
                   </div>

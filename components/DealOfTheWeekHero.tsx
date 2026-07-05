@@ -6,9 +6,9 @@ import { useSearchParams } from "next/navigation";
 import GoldilocksScoreExplainModal, {
   type ScoreExplainTopic,
 } from "@/components/GoldilocksScoreExplainModal";
-import { factorContribution } from "@/lib/goldilocks-score-info";
 import { TMRE_TOWNS, TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
 import { dealOfTheDayHref, listingDetailHref, listingPhotosHref } from "@/lib/listing-url";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import DealPhotoThumbnailDeck from "@/components/DealPhotoThumbnailDeck";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import {
@@ -20,17 +20,45 @@ import {
   filterPillButtonClass,
   filterPillContainerClass,
 } from "@/lib/filter-pill-styles";
+import {
+  deriveDealSuperlatives,
+  type DealSuperlativeInput,
+} from "@/lib/deal-superlatives";
+import { splitSentences } from "@/lib/split-sentences";
 
 type ListingKind = "sale" | "rental";
+
+function formatScannedTowns(towns: readonly string[]): string {
+  return towns.join(", ");
+}
+
+function scannedTownsLabel(options: {
+  isDay: boolean;
+  city: string | null;
+  currentTown: string | null;
+  scopeTowns?: readonly string[] | null;
+}): string {
+  if (options.isDay) {
+    const town = options.city?.trim() || options.currentTown;
+    if (town) return formatScannedTowns([town]);
+  }
+  const towns =
+    options.scopeTowns && options.scopeTowns.length > 0
+      ? options.scopeTowns
+      : TMRE_TOWNS;
+  return formatScannedTowns(towns);
+}
 
 type ApiResponse = {
   generatedAt: string;
   totalReviewed: number;
   qualifiedCount: number;
+  scope?: { towns: string[] };
   salesReviewed?: number;
   rentalsReviewed?: number;
   kind: ListingKind;
   insight: string;
+  superlatives?: string[];
   score: {
     age: number;
     condition: number;
@@ -84,6 +112,7 @@ const FALLBACK: ApiResponse = {
   kind: "sale",
   insight:
     `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, and school ratings. This week's pick is loading — refresh in a moment to see it.`,
+  superlatives: ["Value", "Turnkey", "Schools", "Fresh"],
   score: {
     age: 88,
     condition: 92,
@@ -143,76 +172,8 @@ function shortType(t: string): string {
   return t.replace(/ For Sale$/i, "").replace(/ For Lease$/i, "");
 }
 
-function DealShowcaseCarouselControls({
-  paused,
-  onTogglePause,
-  onPrev,
-  onNext,
-  canStep,
-  townLabel,
-  carouselIndex,
-  carouselTotal,
-  overlay = false,
-}: {
-  paused: boolean;
-  onTogglePause: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-  canStep: boolean;
-  townLabel: string | null;
-  carouselIndex: number;
-  carouselTotal: number;
-  overlay?: boolean;
-}) {
-  const btnBase = overlay
-    ? "border-white/25 text-white bg-black/35 backdrop-blur-sm hover:text-white hover:border-gold/50 hover:bg-black/50"
-    : "border-white/15 text-white/70 hover:text-white hover:border-gold/40 hover:bg-white/5";
-
-  return (
-    <div
-      className={
-        overlay
-          ? "absolute bottom-0 left-0 right-0 z-20 px-4 py-2.5 flex items-center justify-between gap-2 bg-gradient-to-t from-black/75 via-black/45 to-transparent"
-          : "px-5 py-3 flex items-center justify-between gap-2 border-t border-white/10 bg-white/[0.03]"
-      }
-    >
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={onPrev}
-          disabled={!canStep}
-          aria-label="Previous town deal"
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
-        >
-          ‹
-        </button>
-        <button
-          type="button"
-          onClick={onTogglePause}
-          aria-label={paused ? "Resume town rotation" : "Pause town rotation"}
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${btnBase}`}
-        >
-          {paused ? "▶" : "⏸"}
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!canStep}
-          aria-label="Next town deal"
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
-        >
-          ›
-        </button>
-      </div>
-      <span
-        className={`font-mono text-[9px] tracking-[0.12em] uppercase truncate ${overlay ? "text-white/75" : "text-white/45"}`}
-      >
-        {townLabel}
-        {carouselTotal > 0 ? ` · ${carouselIndex + 1}/${carouselTotal}` : ""}
-      </span>
-    </div>
-  );
-}
+const townCarouselBtnClass =
+  "inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-white/70 hover:text-white hover:border-gold/40 hover:bg-white/5 transition-colors disabled:opacity-30 disabled:pointer-events-none";
 
 function DealDayTownList({ activeTown }: { activeTown: string | null }) {
   const towns = usePersonalizedTowns(TMRE_TOWNS);
@@ -255,6 +216,72 @@ function fmtLotAcres(acres: number | null | undefined): string | null {
   return `${acres.toFixed(2)} ac`;
 }
 
+const dealInsightCopyClass = "text-base text-white/70 leading-relaxed";
+
+function DealInsightCopy({
+  text,
+  className,
+  paragraphKey,
+}: {
+  text: string;
+  className?: string;
+  paragraphKey?: string;
+}) {
+  const sentences = splitSentences(text);
+  const copyClass = className ?? dealInsightCopyClass;
+
+  if (sentences.length <= 1) {
+    return <p className={copyClass}>{text}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {sentences.map((sentence, index) => (
+        <p key={paragraphKey ? `${paragraphKey}-${index}` : index} className={copyClass}>
+          {sentence}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function resolveSuperlatives(
+  deal: Pick<
+    ApiResponse,
+    "score" | "listing" | "valueDiscountPct" | "lotAcres" | "superlatives"
+  > & { pickMode?: DealSuperlativeInput["pickMode"] },
+): string[] {
+  if (deal.superlatives?.length) return deal.superlatives;
+  return deriveDealSuperlatives({
+    score: deal.score,
+    listing: deal.listing,
+    valueDiscountPct: deal.valueDiscountPct,
+    pickMode: deal.pickMode,
+    lotAcres: deal.lotAcres,
+  });
+}
+
+function DealSuperlatives({ words }: { words: string[] }) {
+  if (!words.length) return null;
+  return (
+    <div className="animate-fade-up-delay-1">
+      <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2.5">
+        Superlatives
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {words.map((word) => (
+          <span
+            key={word}
+            className="inline-flex items-center rounded-full border border-gold/25 bg-gold/5 px-3 py-1 font-mono text-[10px] tracking-[0.15em] uppercase text-gold/90"
+          >
+            {word}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function mapDayDealToApi(deal: DealCarouselPayload): ApiResponse {
   const l = deal.listing;
   return {
@@ -263,6 +290,7 @@ function mapDayDealToApi(deal: DealCarouselPayload): ApiResponse {
     qualifiedCount: deal.qualifiedCount ?? 0,
     kind: deal.kind ?? "sale",
     insight: deal.insight ?? "",
+    superlatives: deal.superlatives,
     score: deal.score,
     pricePerSqft: deal.pricePerSqft ?? null,
     cityMedianPricePerSqft: deal.cityMedianPricePerSqft ?? null,
@@ -302,6 +330,10 @@ function mapDayDealToApi(deal: DealCarouselPayload): ApiResponse {
 export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "day" }) {
   const searchParams = useSearchParams();
   const city = searchParams.get("city");
+  const listingParam = searchParams.get("listing");
+  const kindParam = searchParams.get("kind");
+  const pinnedKind =
+    kindParam === "sale" || kindParam === "rental" ? kindParam : null;
   const periodLabel = mode === "day" ? "Day" : "Week";
   const headlineLead = mode === "day" ? "Today's" : "This week's";
   const apiPath =
@@ -316,11 +348,16 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
     "sale",
     ["sale", "rental"],
   );
+  useEffect(() => {
+    if (isDay && pinnedKind) setTxFilter(pinnedKind);
+  }, [isDay, pinnedKind, setTxFilter]);
+  const dayTxFilter = pinnedKind ?? txFilter;
   const carousel = useDealOfTheDayCarousel({
     initialTown: city,
-    rotate: isDay && !city,
+    rotate: isDay && !city && !listingParam,
     enabled: isDay,
-    transactionFilter: txFilter,
+    transactionFilter: dayTxFilter,
+    pinnedListingId: listingParam,
   });
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -330,7 +367,7 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
     if (isDay) return;
     let cancelled = false;
     setLoading(true);
-    fetch(apiPath, { cache: "no-store" })
+    fetch(apiPath)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as ApiResponse;
@@ -359,10 +396,10 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
   const loadingState = isDay ? carousel.loading : loading;
   const slideDir = carousel.slideDir;
   const slideKey = isDay
-    ? `${txFilter}-${carousel.currentTown ?? "none"}-${carousel.carouselIndex}`
+    ? `${dayTxFilter}-${listingParam ?? "auto"}-${carousel.currentTown ?? "none"}-${carousel.carouselIndex}`
     : "static";
   const dayInsight = dayEmpty
-    ? txFilter === "rental"
+    ? dayTxFilter === "rental"
       ? `No below-median rental picks${city ? ` in ${city}` : " available"} right now.`
       : `No below-median for-sale picks${city ? ` in ${city}` : " available"} right now.`
     : showing?.insight ?? "Scanning listings…";
@@ -409,6 +446,18 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
           l.address.city,
         )
       : null;
+  const townsScanned = scannedTownsLabel({
+    isDay,
+    city,
+    currentTown: carousel.currentTown,
+    scopeTowns: data?.scope?.towns,
+  });
+  const superlatives = showing
+    ? resolveSuperlatives({
+        ...showing,
+        pickMode: isDay ? "below-median" : "board-top",
+      })
+    : [];
 
   return (
     <section className="relative navy-gradient overflow-hidden">
@@ -419,16 +468,14 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
       />
       <div
         className={`relative mx-auto max-w-7xl px-6 lg:px-10 ${
-          isDay ? "pt-20 pb-8 lg:pt-28 lg:pb-12" : "pt-32 pb-28 lg:pt-40 lg:pb-36"
+          isDay
+            ? "pt-20 pb-8 lg:pt-28 lg:pb-12"
+            : "pt-20 pb-12 lg:pt-24 lg:pb-16"
         }`}
       >
-        <div
-          className={`grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 ${
-            isDay ? "items-start" : "items-center"
-          }`}
-        >
-          <div>
-            <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5 mb-8">
+        <div className="grid lg:grid-cols-[1.05fr_1fr] gap-8 lg:gap-12 items-start">
+          <div className="space-y-3">
+            <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
                   loadingState
@@ -473,20 +520,26 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
               )}
             </h1>
             {isDay ? (
-              <div className="mt-8 max-w-xl">
-                <p
-                  key={`insight-${slideKey}`}
-                  className="text-lg text-white/70 leading-relaxed animate-deal-copy-refresh"
-                >
-                  {dayInsight}
-                </p>
+              <div key={`insight-${slideKey}`} className="max-w-xl space-y-4">
+                <DealInsightCopy
+                  text={dayInsight}
+                  paragraphKey={`insight-${slideKey}`}
+                  className={`${dealInsightCopyClass} animate-deal-copy-refresh`}
+                />
+                {!dayEmpty && superlatives.length > 0 ? (
+                  <DealSuperlatives words={superlatives} />
+                ) : null}
               </div>
             ) : (
-              <p className="mt-8 max-w-xl text-lg text-white/70 leading-relaxed animate-fade-up-delay-1">
-                {(showing ?? FALLBACK).insight}
-              </p>
+              <div className="max-w-xl space-y-4">
+                <DealInsightCopy
+                  text={(showing ?? FALLBACK).insight}
+                  className={`${dealInsightCopyClass} animate-fade-up-delay-1`}
+                />
+                <DealSuperlatives words={superlatives} />
+              </div>
             )}
-            <div className="mt-10 animate-fade-up-delay-2 flex flex-wrap items-center gap-4">
+            <div className="animate-fade-up-delay-2 flex flex-wrap items-center gap-4">
               <Link
                 href="/intelligence"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
@@ -497,8 +550,8 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
               {!loadingState && !usedFallback && showing ? (
                 <span className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/45">
                   {mode === "day"
-                    ? `${showing.totalReviewed.toLocaleString()} scanned in TMRE towns · ${showing.qualifiedCount.toLocaleString()} below median`
-                    : `Scanned ${showing.totalReviewed.toLocaleString()} active listings in TMRE towns · ${showing.qualifiedCount.toLocaleString()} qualified`}
+                    ? `${showing.totalReviewed.toLocaleString()} scanned in ${townsScanned} · ${showing.qualifiedCount.toLocaleString()} below median`
+                    : `Scanned ${showing.totalReviewed.toLocaleString()} active listings in ${townsScanned} · ${showing.qualifiedCount.toLocaleString()} qualified`}
                 </span>
               ) : null}
             </div>
@@ -521,7 +574,7 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
               address={l.address.street || l.address.full}
               city={l.address.city || l.address.state || ""}
               type={typeLine}
-              kind={showing?.kind ?? txFilter}
+              kind={showing?.kind ?? dayTxFilter}
               price={l.price}
               originalPrice={l.originalListPrice}
               reductionPct={reductionPct}
@@ -540,7 +593,7 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
               scoreExplains={mode === "day" && !dayEmpty}
               valueDealMode={mode === "day"}
               townLabel={isDay ? carousel.currentTown : null}
-              transactionFilter={isDay ? txFilter : undefined}
+              transactionFilter={isDay ? dayTxFilter : undefined}
               onTransactionFilterChange={isDay ? setTxFilter : undefined}
               carouselControls={
                 isDay && !city && carousel.carouselTowns.length > 0
@@ -688,7 +741,10 @@ function DealCard({
     : "animate-fade-up-delay-2";
   return (
     <>
-    <aside className={`${showcaseAnimClass} relative rounded-3xl bg-gradient-to-br from-navy-light/70 to-navy-dark/90 border border-white/10 shadow-2xl shadow-black/40 overflow-hidden backdrop-blur-sm`}>
+    <aside
+      {...listingHoverHandlers(mlsId)}
+      className={`${showcaseAnimClass} relative rounded-3xl bg-gradient-to-br from-navy-light/70 to-navy-dark/90 border border-white/10 shadow-2xl shadow-black/40 overflow-hidden backdrop-blur-sm`}
+    >
       <div
         aria-hidden
         className="absolute -inset-px rounded-3xl bg-gradient-to-br from-gold/30 via-transparent to-transparent opacity-50 pointer-events-none"
@@ -702,9 +758,54 @@ function DealCard({
             }`}
           >
             {townLabel ? (
-              <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 shrink-0">
-                {townLabel}, CT
-              </p>
+              carouselControls ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={carouselControls.onTogglePause}
+                    aria-label={
+                      carouselControls.paused
+                        ? "Resume town rotation"
+                        : "Pause town rotation"
+                    }
+                    className={townCarouselBtnClass}
+                  >
+                    {carouselControls.paused ? "▶" : "⏸"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={carouselControls.onPrev}
+                    disabled={!carouselControls.canStep}
+                    aria-label="Previous town deal"
+                    className={townCarouselBtnClass}
+                  >
+                    ‹
+                  </button>
+                  <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 px-0.5">
+                    {townLabel}, CT
+                    {carouselControls.carouselTotal > 1 ? (
+                      <span className="text-white/45">
+                        {" "}
+                        · {carouselControls.carouselIndex + 1}/
+                        {carouselControls.carouselTotal}
+                      </span>
+                    ) : null}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={carouselControls.onNext}
+                    disabled={!carouselControls.canStep}
+                    aria-label="Next town deal"
+                    className={townCarouselBtnClass}
+                  >
+                    ›
+                  </button>
+                </div>
+              ) : (
+                <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 shrink-0">
+                  {townLabel}, CT
+                </p>
+              )
             ) : null}
             {transactionFilter && onTransactionFilterChange ? (
               <DealTransactionFilterPills
@@ -748,16 +849,13 @@ function DealCard({
               aria-label={`View listing: ${address}`}
             />
           ) : null}
-          {carouselControls ? (
-            <DealShowcaseCarouselControls {...carouselControls} overlay />
-          ) : null}
             </>
           )}
         </div>
       </div>
       {!empty ? (
-      <div className="relative p-7 lg:p-8 pt-6 lg:pt-7">
-        <div className="flex items-center justify-between mb-7">
+      <div className="relative p-7 lg:p-8 pt-6 lg:pt-7 space-y-4">
+        <div className="flex items-center justify-between">
           <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
             {valueDealMode ? "Value Pick" : "Goldilocks Pick"}
           </span>
@@ -768,7 +866,7 @@ function DealCard({
           </span>
         </div>
 
-        <div className="flex items-start gap-5 mb-7">
+        <div className="flex items-start gap-5">
           {scoreExplains ? (
             <button
               type="button"
@@ -813,7 +911,7 @@ function DealCard({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-6 gap-y-5 mb-7 pb-7 border-b border-white/10">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-5 pb-7 border-b border-white/10">
           <Stat
             label={priceLabel}
             value={price != null ? `${fmtMoney(price)}${priceSuffix}` : "—"}
@@ -904,7 +1002,7 @@ function DealCard({
           )}
         </div>
 
-        <div className="mb-7">
+        <div>
           <div className="flex items-end justify-between mb-3">
             <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/60">
               Goldilocks composite
@@ -930,16 +1028,20 @@ function DealCard({
             />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3">
-            <Factor label="Age" value={score.age} weight={score.weights.age} factorKey="age" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Condition" value={score.condition} weight={score.weights.condition} factorKey="condition" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Finishes" value={score.finishesQuality} weight={score.weights.finishes} factorKey="finishes" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="PPSF fit" value={score.pricePerSqftFit} weight={score.weights.ppsf} factorKey="ppsf" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Layout" value={score.layoutQuality} weight={score.weights.layout} factorKey="layout" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Schools" value={score.schoolRating} weight={score.weights.schools} factorKey="schools" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Age" value={score.age} factorKey="age" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Condition" value={score.condition} factorKey="condition" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Finishes" value={score.finishesQuality} factorKey="finishes" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="PPSF fit" value={score.pricePerSqftFit} factorKey="ppsf" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Layout" value={score.layoutQuality} factorKey="layout" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Schools" value={score.schoolRating} factorKey="schools" onExplain={scoreExplains ? setExplainTopic : undefined} />
           </div>
         </div>
 
-        <SchoolsBlock schools={schools} rating={score.schoolRating} onExplainRating={scoreExplains ? () => setExplainTopic("schools") : undefined} />
+        <SchoolsBlock
+          schools={schools}
+          rating={score.schoolRating}
+          onExplainRating={scoreExplains ? () => setExplainTopic("schools") : undefined}
+        />
 
         <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
           <span>{photoCount != null ? `${photoCount} photos` : "—"}</span>
@@ -1007,19 +1109,8 @@ function PhotoBanner({
     priority?: boolean;
   } | null;
 }) {
-  return (
-    <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden">
-      {photoDeck ? (
-        <div className="absolute top-4 right-4 z-30">
-          <DealPhotoThumbnailDeck
-            mlsId={photoDeck.mlsId}
-            photoCount={photoDeck.photoCount}
-            photosHref={photoDeck.photosHref}
-            address={photoDeck.address}
-            priority={photoDeck.priority}
-          />
-        </div>
-      ) : null}
+  const mainPhoto = (
+    <div className="relative min-w-0 flex-1 aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -1030,6 +1121,52 @@ function PhotoBanner({
             reveal ? "animate-deal-photo-reveal" : ""
           }`}
           loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          decoding="async"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-white/40">
+            {loading ? "Loading photo…" : "Photo unavailable"}
+          </span>
+        </div>
+      )}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-navy-dark/90 to-transparent"
+      />
+    </div>
+  );
+
+  if (photoDeck) {
+    return (
+      <div className="flex w-full items-center gap-2 sm:gap-2.5">
+        {mainPhoto}
+        <DealPhotoThumbnailDeck
+          mlsId={photoDeck.mlsId}
+          photoCount={photoDeck.photoCount}
+          photosHref={photoDeck.photosHref}
+          address={photoDeck.address}
+          priority={photoDeck.priority}
+          variant="strip"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={src}
+          src={src}
+          alt={alt}
+          className={`absolute inset-0 w-full h-full object-cover ${
+            reveal ? "animate-deal-photo-reveal" : ""
+          }`}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           decoding="async"
         />
       ) : (
@@ -1175,17 +1312,14 @@ function Stat({
 function Factor({
   label,
   value,
-  weight,
   factorKey,
   onExplain,
 }: {
   label: string;
   value: number;
-  weight: number;
   factorKey: ScoreExplainTopic;
   onExplain?: (topic: ScoreExplainTopic) => void;
 }) {
-  const contribution = factorContribution(value, weight);
   return (
     <div>
       <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-white/55 mb-1">
@@ -1197,13 +1331,11 @@ function Factor({
               type="button"
               onClick={() => onExplain(factorKey)}
               className="relative z-20 text-white/35 hover:text-gold transition-colors underline underline-offset-2 decoration-white/20"
-              title={`${Math.round(weight * 100)}% of composite · +${contribution.toFixed(1)} pts`}
+              aria-label={`Explain ${label}`}
             >
-              {" "}· {Math.round(weight * 100)}%
+              {" →"}
             </button>
-          ) : (
-            <span className="text-white/35"> · {Math.round(weight * 100)}%</span>
-          )}
+          ) : null}
         </span>
       </div>
       <div className="h-1 rounded-full bg-white/10 overflow-hidden">

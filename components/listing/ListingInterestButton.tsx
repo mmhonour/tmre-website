@@ -39,7 +39,7 @@ export default function ListingInterestButton({
             : "w-full inline-flex items-center justify-center rounded-full bg-gold px-5 py-3 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-lg hover:shadow-gold/25"
         }
       >
-        I&apos;m interested in…
+        I&apos;m interested !
       </button>
 
       <ModalPortal
@@ -55,6 +55,7 @@ export default function ListingInterestButton({
             source="listing-interest"
             listingInfo={listingInfo}
             title="Get in touch"
+            onClose={() => setOpen(false)}
             onDone={() => {
               window.setTimeout(() => setOpen(false), 1800);
             }}

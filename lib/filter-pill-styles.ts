@@ -1,4 +1,5 @@
 export type FilterPillSize = "default" | "compact";
+export type FilterPillTheme = "dark" | "light";
 
 const SIZES: Record<
   FilterPillSize,
@@ -19,31 +20,46 @@ const SIZES: Record<
 export function filterPillButtonClass(
   active: boolean,
   size: FilterPillSize = "default",
+  theme: FilterPillTheme = "dark",
 ): string {
   const { button } = SIZES[size];
+  const inactive =
+    theme === "light"
+      ? "text-navy/65 hover:text-navy"
+      : "text-white/70 hover:text-white";
   return `${button} rounded-full font-medium whitespace-nowrap transition-all ${
     active
       ? "bg-gold text-navy shadow-lg shadow-gold/20"
-      : "text-white/70 hover:text-white"
+      : inactive
   }`;
 }
 
 export function filterPillContainerClass(
   size: FilterPillSize = "default",
-  options?: { wrap?: boolean; bordered?: boolean },
+  options?: { wrap?: boolean; bordered?: boolean; theme?: FilterPillTheme },
 ): string {
+  const theme = options?.theme ?? "dark";
   const { container } = SIZES[size];
   const layout =
     options?.wrap === false
       ? "inline-flex items-center"
       : "inline-flex flex-wrap items-center";
   const border =
-    options?.bordered === false ? null : "border border-white/10";
-  return [layout, "rounded-full", "bg-white/5", border, container]
+    options?.bordered === false
+      ? null
+      : theme === "light"
+        ? "border border-charcoal/[0.08]"
+        : "border border-white/10";
+  const surface = theme === "light" ? "bg-white" : "bg-white/5";
+  return [layout, "rounded-full", surface, border, container]
     .filter(Boolean)
     .join(" ");
 }
 
-export function filterPillSeparatorClass(size: FilterPillSize = "default"): string {
-  return `w-px bg-white/15 shrink-0 ${SIZES[size].separator}`;
+export function filterPillSeparatorClass(
+  size: FilterPillSize = "default",
+  theme: FilterPillTheme = "dark",
+): string {
+  const tone = theme === "light" ? "bg-charcoal/15" : "bg-white/15";
+  return `w-px shrink-0 ${tone} ${SIZES[size].separator}`;
 }

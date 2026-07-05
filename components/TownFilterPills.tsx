@@ -6,6 +6,7 @@ import {
   filterPillContainerClass,
   filterPillSeparatorClass,
   type FilterPillSize,
+  type FilterPillTheme,
 } from "@/lib/filter-pill-styles";
 import { isTmreTown, neighborTownsFor, type TmreTown } from "@/lib/tmre-towns";
 
@@ -19,6 +20,8 @@ type TownFilterPillsProps<T extends string> = {
   showSeparatorAfterAll?: boolean;
   /** Tighter pills for dense hero toolbars (Intelligence). */
   size?: "default" | "compact";
+  /** Dark hero vs light content surfaces. */
+  theme?: FilterPillTheme;
   /** Keep towns on one row with horizontal scroll instead of wrapping. */
   scrollable?: boolean;
   className?: string;
@@ -30,16 +33,19 @@ function TownCountBadge({
   count,
   active,
   compact,
+  theme = "dark",
 }: {
   count: number;
   active: boolean;
   compact?: boolean;
+  theme?: FilterPillTheme;
 }) {
+  const inactiveTone = theme === "light" ? "text-slate/45" : "text-white/40";
   return (
     <span
       className={`font-mono tabular-nums ${
         compact ? "ml-1 text-[9px]" : "ml-1.5 text-[11px]"
-      } ${active ? "text-navy/55" : "text-white/40"}`}
+      } ${active ? "text-navy/55" : inactiveTone}`}
       aria-label={`${count.toLocaleString()} homes`}
     >
       {count.toLocaleString()}
@@ -55,6 +61,7 @@ export default function TownFilterPills<T extends string>({
   allLabel = "All Towns",
   showSeparatorAfterAll = false,
   size = "default",
+  theme = "dark",
   scrollable = false,
   className = "",
   onTownMouseEnter,
@@ -62,7 +69,7 @@ export default function TownFilterPills<T extends string>({
 }: TownFilterPillsProps<T>) {
   const pillSize: FilterPillSize = size;
   const compact = pillSize === "compact";
-  const pillClass = (active: boolean) => filterPillButtonClass(active, pillSize);
+  const pillClass = (active: boolean) => filterPillButtonClass(active, pillSize, theme);
   const [hoveredTown, setHoveredTown] = useState<T | null>(null);
   const borderingHint =
     !onTownMouseEnter && hoveredTown && isTmreTown(hoveredTown)
@@ -79,12 +86,12 @@ export default function TownFilterPills<T extends string>({
       >
         {allLabel}
         {counts?.All != null ? (
-          <TownCountBadge count={counts.All} active={selected === "All"} compact={compact} />
+          <TownCountBadge count={counts.All} active={selected === "All"} compact={compact} theme={theme} />
         ) : null}
       </button>
 
       {showSeparatorAfterAll ? (
-        <span className={filterPillSeparatorClass(pillSize)} aria-hidden />
+        <span className={filterPillSeparatorClass(pillSize, theme)} aria-hidden />
       ) : null}
 
       <div
@@ -111,7 +118,7 @@ export default function TownFilterPills<T extends string>({
           >
             {town}
             {count != null ? (
-              <TownCountBadge count={count} active={active} compact={compact} />
+              <TownCountBadge count={count} active={active} compact={compact} theme={theme} />
             ) : null}
           </button>
         );
@@ -121,10 +128,14 @@ export default function TownFilterPills<T extends string>({
   );
 
   const hint = borderingHint.length > 0 ? (
-    <p className="font-mono text-[8px] leading-snug tracking-[0.06em] text-white/45 mt-1.5">
+    <p className={`font-mono text-[8px] leading-snug tracking-[0.06em] mt-1.5 ${
+      theme === "light" ? "text-slate/55" : "text-white/45"
+    }`}>
       {borderingHint.join(" · ")}
     </p>
   ) : null;
+
+  const containerClass = filterPillContainerClass(pillSize, { theme });
 
   if (scrollable) {
     return (
@@ -133,7 +144,7 @@ export default function TownFilterPills<T extends string>({
           className="max-w-full min-w-0 overflow-x-auto scroll-pr-2"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <div className={`${filterPillContainerClass(pillSize, { wrap: false })} w-max`}>
+          <div className={`${containerClass} w-max`}>
             {inner}
           </div>
         </div>
@@ -144,7 +155,7 @@ export default function TownFilterPills<T extends string>({
 
   return (
     <div className={className}>
-      <div className={filterPillContainerClass(pillSize)}>
+      <div className={containerClass}>
         {inner}
       </div>
       {hint}

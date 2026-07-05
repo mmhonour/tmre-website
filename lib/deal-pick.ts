@@ -11,6 +11,7 @@ import {
 import { scoreListingsWithBoardPeers } from './board-scoring'
 import { filterListingsToTmreTowns } from './tmre-towns'
 import { isNewConstructionListing } from './new-construction-server'
+import { deriveDealSuperlatives } from './deal-superlatives'
 
 export type DealPickPayload = {
   generatedAt: string
@@ -22,6 +23,7 @@ export type DealPickPayload = {
   kind: 'sale' | 'rental'
   pickMode: 'below-median' | 'board-top'
   insight: string
+  superlatives: string[]
   score: ScoredListing['score']
   pricePerSqft: number | null
   cityMedianPricePerSqft: number | null
@@ -150,7 +152,7 @@ async function finalizePayload(
     return b.score.composite - a.score.composite
   })
 
-  return {
+  const payloadBase = {
     generatedAt: new Date().toISOString(),
     totalReviewed: listings.length,
     qualifiedCount: scored.length,
@@ -177,6 +179,17 @@ async function finalizePayload(
       composite: s.score.composite,
       kind: s.kind,
     })),
+  }
+
+  return {
+    ...payloadBase,
+    superlatives: deriveDealSuperlatives({
+      score: payloadBase.score,
+      listing: payloadBase.listing,
+      valueDiscountPct: payloadBase.valueDiscountPct,
+      pickMode: payloadBase.pickMode,
+      lotAcres: payloadBase.lotAcres,
+    }),
   }
 }
 
@@ -215,9 +228,17 @@ export async function computeTopDeal(
  * Deal of the Day — below town median when available; otherwise the top
  * Goldilocks score from the Deal Table (same 0–100 composite as Intelligence).
  */
+function matchesListingId(l: Listing, listingId: string): boolean {
+  const needle = listingId.trim().toLowerCase()
+  if (!needle) return false
+  if (l.mlsId?.trim().toLowerCase() === needle) return true
+  if (l.listingKey?.trim().toLowerCase() === needle) return true
+  return false
+}
+
 export async function computeDealOfTheDay(
   listings: Listing[],
-  opts?: { kind?: 'sale' | 'rental'; peerListings?: Listing[] },
+  opts?: { kind?: 'sale' | 'rental'; peerListings?: Listing[]; listingId?: string },
 ): Promise<DealPickPayload | null> {
   let scoped = filterListingsToTmreTowns(listings)
   if (opts?.kind) {
@@ -231,6 +252,46 @@ export async function computeDealOfTheDay(
 
   const peers = opts?.peerListings ?? active
   const boardScored = await scoreActiveListingsForBoard(active, peers)
+
+  if (opts?.listingId?.trim()) {
+    const pinned = boardScored.find((s) => matchesListingId(s.listing, opts.listingId!))
+    if (!pinned) return null
+
+    const belowMedian =
+      !isNewConstructionListing(pinned.listing) &&
+      !isRenderingOrProposedListing(pinned.listing) &&
+      isBelowTownMedian(pinned.listing, medians)
+
+    if (belowMedian) {
+      return finalizePayload(
+        scoped,
+        boardScored.filter((s) =>
+          active.some(
+            (l) =>
+              l.mlsId === s.listing.mlsId &&
+              !isNewConstructionListing(l) &&
+              !isRenderingOrProposedListing(l) &&
+              isBelowTownMedian(l, medians),
+          ),
+        ),
+        0,
+        medians,
+        pinned,
+        buildValueDealInsight(pinned, medians),
+        'below-median',
+      )
+    }
+
+    return finalizePayload(
+      scoped,
+      boardScored,
+      0,
+      medians,
+      pinned,
+      buildInsight(pinned),
+      'board-top',
+    )
+  }
 
   const valuePool = active.filter(
     (l) =>

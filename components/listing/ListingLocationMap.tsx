@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { HouseIcon } from "@/components/icons";
 
 const DEFAULT_ZOOM = 15;
 const MIN_ZOOM = 12;
@@ -79,11 +80,18 @@ export default function ListingLocationMap({
   longitude,
   addressQuery,
   className = "",
+  variant = "compact",
+  hideLabel = false,
+  hidePin = false,
 }: {
   latitude: number | null;
   longitude: number | null;
   addressQuery: string;
   className?: string;
+  variant?: "compact" | "hero";
+  hideLabel?: boolean;
+  /** Spotlight: show map area without a property pin. */
+  hidePin?: boolean;
 }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const lat = latitude != null ? Number(latitude) : null;
@@ -91,16 +99,22 @@ export default function ListingLocationMap({
   const coordsOk = hasValidCoords(lat, lon);
   const pin =
     coordsOk && lat != null && lon != null ? markerPosition(lat, lon, zoom) : null;
+  const isHero = variant === "hero";
+  const mapHeightClass = isHero
+    ? "h-full min-h-[10rem] lg:min-h-[12rem]"
+    : "h-20 sm:h-[5.5rem]";
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
-      <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold">
-        Location
-      </p>
+      {!hideLabel ? (
+        <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold">
+          Location
+        </p>
+      ) : null}
 
       {coordsOk && lat != null && lon != null ? (
         <div
-          className="relative block h-20 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] sm:h-[5.5rem]"
+          className={`relative block overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] ${mapHeightClass}`}
           aria-label={`Map for ${addressQuery}`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -111,11 +125,14 @@ export default function ListingLocationMap({
             className="block h-full w-full object-cover"
             loading="lazy"
           />
-          {pin ? (
+          {pin && !hidePin ? (
             <span
-              className="pointer-events-none absolute z-10 h-3 w-3 -translate-x-1/2 -translate-y-full rounded-full border-2 border-white bg-red-500 shadow-md"
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full text-blue-600 drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]"
               style={{ left: pin.left, top: pin.top }}
-            />
+              aria-hidden
+            >
+              <HouseIcon className="h-5 w-5" />
+            </span>
           ) : null}
           <MapZoomControls
             zoom={zoom}
@@ -124,7 +141,9 @@ export default function ListingLocationMap({
           />
         </div>
       ) : (
-        <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.03] px-2 text-center sm:h-[5.5rem]">
+        <div
+          className={`flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-2 text-center ${mapHeightClass}`}
+        >
           <span className="font-mono text-[8px] leading-snug tracking-[0.1em] uppercase text-white/50">
             Map unavailable
           </span>

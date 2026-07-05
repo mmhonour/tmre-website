@@ -1,5 +1,6 @@
 import type { Listing } from './rets'
 import type { ScoreBreakdown } from './goldilocks-score-info'
+import { isFreshFirstSaleNewConstruction } from './new-construction'
 
 const RENO_KEYWORDS = [
   'renovated',
@@ -25,6 +26,21 @@ const QUALITY_KEYWORDS = [
 ]
 
 const LOW_QUALITY_KEYWORDS = ['carpet throughout', 'dated', 'original']
+
+/** Pulls condition down from the fresh new-construction default of 100. */
+const CONDITION_DOWNGRADE_KEYWORDS = [
+  'as-is',
+  'as is',
+  'needs tlc',
+  'needs work',
+  'fixer',
+  'handyman',
+  'estate condition',
+  'tear down',
+  'teardown',
+  'investor special',
+  'mold',
+]
 
 const GOOD_LAYOUT_KEYWORDS = [
   'open floor plan',
@@ -192,7 +208,13 @@ export type ScoredListing = {
 }
 
 function collectRemarks(l: Listing): string {
-  return [l.raw.PublicRemarks, l.raw.RemarksPublicAddendum, l.raw.RoomsAdditional, l.raw.PropertyInfo]
+  return [
+    l.remarks,
+    l.raw.PublicRemarks,
+    l.raw.RemarksPublicAddendum,
+    l.raw.RoomsAdditional,
+    l.raw.PropertyInfo,
+  ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
@@ -214,10 +236,23 @@ function scoreAge(yearBuilt: number | null): number {
   return 50
 }
 
-function scoreCondition(reno: string[], lowQuality: string[]): number {
+function scoreCondition(
+  l: Listing,
+  remarks: string,
+  reno: string[],
+  lowQuality: string[],
+): number {
+  const downgrade = matched(remarks, CONDITION_DOWNGRADE_KEYWORDS)
+  const hasNegative = lowQuality.length > 0 || downgrade.length > 0
+
+  if (isFreshFirstSaleNewConstruction(l, remarks) && !hasNegative) {
+    return 100
+  }
+
   let s = 50
   s += Math.min(reno.length * 12, 45)
   s -= lowQuality.length * 12
+  s -= downgrade.length * 12
   return clamp(s)
 }
 
@@ -372,7 +407,7 @@ export function scoreListing(
   const ppsf = l.price && l.sqft && l.sqft > 0 ? l.price / l.sqft : null
 
   const age = scoreAge(l.yearBuilt)
-  const condition = scoreCondition(reno, lowQuality)
+  const condition = scoreCondition(l, remarks, reno, lowQuality)
   const finishes = scoreFinishes(quality, l.photoCount, hasVirtualTour)
   const ppsfFit = scorePpsf(
     ppsf,
@@ -429,11 +464,73 @@ function describeEra(l: Listing, hasReno: boolean): string {
   return 'move-in ready'
 }
 
-function describeConditionSignals(s: ScoredListing): string {
-  const n = s.remarksMatched.quality.length + s.remarksMatched.reno.length
-  if (n >= 3) return 'strong condition signals across the listing remarks'
-  if (n > 0) return 'clean condition signals in the remarks'
-  return 'solid bones'
+function describeRemarksCondition(s: ScoredListing, opts?: { rental?: boolean }): string {
+  const qualityCount = s.remarksMatched.quality.length
+  const renoCount = s.remarksMatched.reno.length
+  const total = qualityCount + renoCount
+  const subject = opts?.rental ? 'The unit' : 'The property'
+
+  if (total >= 3) return `${subject} has been well cared for.`
+  if (renoCount > 0) return `${subject} looks like it's had recent updates.`
+  if (qualityCount > 0) {
+    return `${subject} comes across as move-in ready in the remarks.`
+  }
+  if (s.remarksMatched.lowQuality.length > 0) {
+    return `${subject} mentions some dated finishes — worth seeing in person.`
+  }
+  return `${subject} doesn't say much about condition — a showing is the best way to tell.`
+}
+
+function describePhotoPresentation(s: ScoredListing): string | null {
+  const photos = s.listing.photoCount ?? 0
+  const hasReno = s.remarksMatched.reno.length > 0
+  const hasQuality = s.remarksMatched.quality.length > 0
+  const highlightsUpdates = hasReno || hasQuality
+
+  if (photos <= 2) {
+    return 'Only a couple of photos are online, so a tour is the best way to get a feel for the place.'
+  }
+
+  if (photos >= 3 && photos <= 8 && highlightsUpdates) {
+    return 'The photos do a nice job showing the updates.'
+  }
+
+  if (hasReno && photos >= 9) {
+    return 'The renovation shows nicely in the photos.'
+  }
+
+  if (photos >= 6 && !hasReno) {
+    return 'There are enough photos to get a good sense of the layout.'
+  }
+
+  if (photos >= 3 && photos < 6) {
+    if (highlightsUpdates) {
+      return 'The photos highlight the main rooms and updates.'
+    }
+    return 'The photo gallery is thin — a showing will tell you more.'
+  }
+
+  if (photos >= 9) {
+    return 'Browse the gallery to make sure the layout and finishes are what you want.'
+  }
+
+  return null
+}
+
+function describeListingPresentation(s: ScoredListing, opts?: { rental?: boolean }): string {
+  const qualityCount = s.remarksMatched.quality.length
+  const renoCount = s.remarksMatched.reno.length
+  const total = qualityCount + renoCount
+  const photos = s.listing.photoCount ?? 0
+  const subject = opts?.rental ? 'The unit' : 'The property'
+
+  if (total >= 3 && renoCount > 0 && photos >= 3) {
+    return `${subject} has been well cared for, and the renovation shows nicely.`
+  }
+
+  const remarks = describeRemarksCondition(s, opts)
+  const photoNote = describePhotoPresentation(s)
+  return photoNote ? `${remarks} ${photoNote}` : remarks
 }
 
 function buildSaleInsight(s: ScoredListing): string {
@@ -455,12 +552,11 @@ function buildSaleInsight(s: ScoredListing): string {
   }
 
   const composite = s.score.composite.toFixed(1)
-  const photos = l.photoCount ?? 0
-  const conditionSignals = describeConditionSignals(s)
+  const presentation = describeListingPresentation(s)
 
   const sentence1 = `This ${era} ${type} at ${l.address.street || 'this address'}${
     l.address.city ? ` in ${l.address.city}` : ''
-  } hits the Goldilocks zone: ${ppsfClause || 'in the price band buyers actively shop'}, with ${conditionSignals} and ${photos} photos backing it up.`
+  } hits the Goldilocks zone: ${ppsfClause || 'in the price band buyers actively shop'}. ${presentation}`
 
   const sentence2 = `Goldilocks composite ${composite}/100 — high enough to draw multiple offers in the first weekend if it's listed strategically.`
 
@@ -508,14 +604,13 @@ function buildRentalInsight(s: ScoredListing): string {
   }
 
   const composite = s.score.composite.toFixed(1)
-  const photos = l.photoCount ?? 0
-  const conditionSignals = describeConditionSignals(s)
+  const presentation = describeListingPresentation(s, { rental: true })
 
   const sentence1 = `This ${era} ${type} rental at ${l.address.street || 'this address'}${
     l.address.city ? ` in ${l.address.city}` : ''
   } is the standout lease this week: ${
     rentClause || 'in the rent band tenants actively shop'
-  }, with ${conditionSignals} and ${photos} photos to back it up.`
+  }. ${presentation}`
 
   const sentence2 = `Goldilocks composite ${composite}/100 against the local rental pool — at this rating, expect showings within the first week.`
 

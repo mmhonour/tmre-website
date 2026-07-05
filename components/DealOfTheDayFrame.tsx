@@ -12,9 +12,23 @@ import {
   type DealCarouselScore,
   type DealTransactionFilter,
 } from "@/hooks/useDealOfTheDayCarousel";
-import { factorContribution } from "@/lib/goldilocks-score-info";
 import type { FinishQualityAssessment } from "@/lib/finish-quality-types";
 import { dealOfTheDayHref, listingDetailHrefForListing } from "@/lib/listing-url";
+import ListingThumbImage from "@/components/ListingThumbImage";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+
+function fullDealOfTheDayHref(
+  town: string | null | undefined,
+  deal: DealCarouselPayload | null | undefined,
+  transactionFilter: DealTransactionFilter,
+): string {
+  const listing = deal?.listing;
+  return dealOfTheDayHref(town, {
+    mlsId: listing?.mlsId,
+    listingKey: listing?.listingKey,
+    kind: deal?.kind ?? (transactionFilter === "all" ? null : transactionFilter),
+  });
+}
 
 function fmtMoney(n: number | null): string {
   if (n == null) return "—";
@@ -111,43 +125,112 @@ function CarouselControls({
         isHero ? "border-t border-white/10 bg-white/[0.03]" : "border-t border-charcoal/[0.06] bg-cream/40"
       }`}
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-1 items-center justify-center gap-1.5 min-w-0">
         <button
           type="button"
           onClick={onPrev}
           disabled={!canNavigate}
           aria-label="Previous town deal"
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
         >
           ‹
         </button>
-        <button
-          type="button"
-          onClick={onTogglePause}
-          disabled={!canNavigate}
-          aria-label={paused ? "Resume town rotation" : "Pause town rotation"}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
+        <span
+          className={`font-mono text-[9px] tracking-[0.12em] uppercase text-center truncate ${
+            isHero ? "text-white/75" : "text-slate/80"
+          }`}
         >
-          {paused ? "▶" : "⏸"}
-        </button>
+          {townLabel}
+          {positionLabel ? ` · ${positionLabel}` : ""}
+        </span>
         <button
           type="button"
           onClick={onNext}
           disabled={!canNavigate}
           aria-label="Next town deal"
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
         >
           ›
         </button>
       </div>
-      <span
-        className={`font-mono text-[9px] tracking-[0.12em] uppercase truncate ${
-          isHero ? "text-white/45" : "text-slate/70"
-        }`}
+      <button
+        type="button"
+        onClick={onTogglePause}
+        disabled={!canNavigate}
+        aria-label={paused ? "Resume town rotation" : "Pause town rotation"}
+        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-30 disabled:pointer-events-none ${btnBase}`}
       >
-        {townLabel}
-        {positionLabel ? ` · ${positionLabel}` : ""}
-      </span>
+        {paused ? "▶" : "⏸"}
+      </button>
+    </div>
+  );
+}
+
+function DealPhoto({
+  deal,
+  listing,
+  isHero,
+  layout,
+}: {
+  deal: DealCarouselPayload;
+  listing: DealCarouselPayload["listing"];
+  isHero: boolean;
+  layout: "left" | "top-right";
+}) {
+  const sizeClass = isHero ? "w-20 h-[3.75rem]" : "w-20 h-16";
+  const positionClass =
+    layout === "top-right" ? "absolute top-3 right-3 z-10" : "shrink-0";
+  const frameClass = `${
+    isHero
+      ? "bg-navy-dark border border-white/10"
+      : "bg-cream border border-charcoal/[0.08]"
+  }`;
+
+  const photoInner = deal.photoUrl ? (
+    <ListingThumbImage
+      src={deal.photoUrl}
+      className="relative block w-full h-full"
+      imgClassName="absolute inset-0 w-full h-full object-cover"
+    />
+  ) : (
+    <div className="w-full h-full flex items-center justify-center">
+      <svg
+        className={`w-5 h-5 ${isHero ? "text-white/20" : "text-slate/30"}`}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1}
+          d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+        />
+      </svg>
+    </div>
+  );
+
+  if (listing.mlsId || listing.listingKey) {
+    return (
+      <Link
+        href={listingDetailHrefForListing(listing)}
+        aria-label={`View all photos for ${listing.address.street || listing.address.full}`}
+        className={`${sizeClass} ${positionClass} rounded-lg overflow-hidden transition-all hover:border-gold/40 hover:ring-2 hover:ring-gold/20 ${frameClass}`}
+      >
+        {photoInner}
+      </Link>
+    );
+  }
+
+  return (
+    <div className={`${sizeClass} ${positionClass} rounded-lg overflow-hidden ${frameClass}`}>
+      {deal.photoUrl ? (
+        <ListingThumbImage
+          src={deal.photoUrl}
+          className="relative block w-full h-full"
+          imgClassName="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : null}
     </div>
   );
 }
@@ -182,61 +265,22 @@ function DealContent({
       ? "Assessing…"
       : null;
 
+  const photoLayout = isHero ? "top-right" : "left";
+
   return (
     <div
       key={slideKey}
-      className={`${isHero ? "p-3" : "p-4"} flex gap-2.5 ${
+      {...listingHoverHandlers(l.mlsId || l.listingKey || null)}
+      className={`${isHero ? "relative p-3" : "p-4 flex gap-2.5"} ${
         slideDir === "next" ? "animate-deal-carousel-next" : "animate-deal-carousel-prev"
       }`}
       style={{ transformStyle: "preserve-3d" }}
     >
-      {(l.mlsId || l.listingKey) ? (
-        <Link
-          href={listingDetailHrefForListing(l)}
-          aria-label={`View all photos for ${l.address.street || l.address.full}`}
-          className={`${isHero ? "w-16 h-12" : "w-20 h-16"} rounded-lg overflow-hidden shrink-0 transition-all hover:border-gold/40 hover:ring-2 hover:ring-gold/20 ${
-            isHero
-              ? "bg-navy-dark border border-white/10"
-              : "bg-cream border border-charcoal/[0.08]"
-          }`}
-        >
-          {deal.photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={deal.photoUrl} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <svg
-                className={`w-5 h-5 ${isHero ? "text-white/20" : "text-slate/30"}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1}
-                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                />
-              </svg>
-            </div>
-          )}
-        </Link>
-      ) : (
-        <div
-          className={`${isHero ? "w-16 h-12" : "w-20 h-16"} rounded-lg overflow-hidden shrink-0 ${
-            isHero
-              ? "bg-navy-dark border border-white/10"
-              : "bg-cream border border-charcoal/[0.08]"
-          }`}
-        >
-          {deal.photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={deal.photoUrl} alt="" className="w-full h-full object-cover" />
-          ) : null}
-        </div>
-      )}
+      {photoLayout === "left" ? (
+        <DealPhoto deal={deal} listing={l} isHero={isHero} layout="left" />
+      ) : null}
 
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 ${isHero ? "pr-[5.625rem]" : "flex-1"}`}>
         {(l.mlsId || l.listingKey) ? (
           <Link
             href={listingDetailHrefForListing(l)}
@@ -297,6 +341,10 @@ function DealContent({
           </button>
         </div>
       </div>
+
+      {photoLayout === "top-right" ? (
+        <DealPhoto deal={deal} listing={l} isHero={isHero} layout="top-right" />
+      ) : null}
     </div>
   );
 }
@@ -335,11 +383,27 @@ export default function DealOfTheDayFrame({
   });
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [breakdownDeal, setBreakdownDeal] = useState<DealCarouselPayload | null>(null);
   const [explainTopic, setExplainTopic] = useState<ScoreExplainTopic | null>(null);
 
   const deal = currentDeal;
   const l = deal?.listing;
   const score = deal?.score;
+  const modalDeal = breakdownOpen ? breakdownDeal : null;
+  const modalListing = modalDeal?.listing;
+  const modalScore = modalDeal?.score;
+
+  const openBreakdown = () => {
+    if (currentDeal) setBreakdownDeal(currentDeal);
+    setBreakdownOpen(true);
+  };
+
+  const closeBreakdown = () => {
+    setBreakdownOpen(false);
+    setBreakdownDeal(null);
+    setExplainTopic(null);
+  };
+
   const composite = score?.composite;
   const { assessment: finishQuality, loading: finishLoading } = useFinishQuality(l?.mlsId);
   const isHero = theme === "hero";
@@ -373,7 +437,7 @@ export default function DealOfTheDayFrame({
           }`}
         >
           <Link
-            href={dealOfTheDayHref(currentTown ?? city)}
+            href={fullDealOfTheDayHref(currentTown ?? city, deal, transactionFilter)}
             className={`font-mono text-[10px] tracking-[0.2em] uppercase text-gold transition-colors ${
               isHero ? "hover:text-gold-light" : "hover:text-navy"
             }`}
@@ -397,7 +461,7 @@ export default function DealOfTheDayFrame({
           ) : composite != null && score ? (
             <button
               type="button"
-              onClick={() => setBreakdownOpen(true)}
+              onClick={openBreakdown}
               className={`font-mono text-sm tabular-nums font-medium underline underline-offset-2 transition-colors ${scoreColor} ${
                 isHero
                   ? "decoration-white/30 hover:decoration-gold"
@@ -437,7 +501,7 @@ export default function DealOfTheDayFrame({
               slideDir={slideDir}
               slideKey={`${currentTown}-${carouselIndex}`}
               isHero={isHero}
-              onOpenBreakdown={() => setBreakdownOpen(true)}
+              onOpenBreakdown={openBreakdown}
               finishQuality={finishQuality}
               finishLoading={finishLoading}
             />
@@ -459,11 +523,11 @@ export default function DealOfTheDayFrame({
       </aside>
 
       <ModalPortal
-        open={Boolean(breakdownOpen && score)}
-        onClose={() => setBreakdownOpen(false)}
+        open={Boolean(breakdownOpen && modalScore)}
+        onClose={closeBreakdown}
         ariaLabel="Score breakdown"
       >
-        {score && (
+        {modalScore && (
           <div
             className="relative bg-white rounded-3xl shadow-2xl shadow-navy/20 max-w-md w-full p-8 max-h-[min(85vh,calc(100vh-6rem))] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -475,12 +539,12 @@ export default function DealOfTheDayFrame({
                   {currentTown ? ` · ${currentTown}` : ""}
                 </p>
                 <h2 className="font-serif text-2xl text-navy">
-                  {l?.address.street ?? "Today's pick"}
+                  {modalListing?.address.street ?? "Today's pick"}
                 </h2>
               </div>
               <button
                 type="button"
-                onClick={() => setBreakdownOpen(false)}
+                onClick={closeBreakdown}
                 className="text-slate hover:text-navy transition-colors font-mono text-lg leading-none mt-1"
                 aria-label="Close"
               >
@@ -493,14 +557,14 @@ export default function DealOfTheDayFrame({
                 type="button"
                 onClick={() => setExplainTopic("composite")}
                 className={`font-mono text-4xl tabular-nums font-medium hover:opacity-80 transition-opacity underline underline-offset-4 decoration-charcoal/20 ${
-                  score.composite >= 85
+                  modalScore.composite >= 85
                     ? "text-sage"
-                    : score.composite >= 70
+                    : modalScore.composite >= 70
                       ? "text-gold"
                       : "text-navy"
                 }`}
               >
-                {score.composite.toFixed(1)}
+                {modalScore.composite.toFixed(1)}
               </button>
               <div>
                 <p className="text-sm text-charcoal">Composite score out of 100</p>
@@ -519,9 +583,7 @@ export default function DealOfTheDayFrame({
             </p>
             <div className="space-y-4 mb-6">
               {FACTORS.map(({ key, label, scoreKey, explainKey }) => {
-                const value = score[scoreKey] as number;
-                const weight = score.weights[key];
-                const contribution = factorContribution(value, weight);
+                const value = modalScore[scoreKey] as number;
                 return (
                   <div key={key}>
                     <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/70 mb-1.5">
@@ -532,10 +594,9 @@ export default function DealOfTheDayFrame({
                           type="button"
                           onClick={() => setExplainTopic(explainKey)}
                           className="text-slate/50 hover:text-gold transition-colors underline underline-offset-2 decoration-charcoal/15"
-                          title={`+${contribution.toFixed(1)} pts toward composite`}
+                          aria-label={`Explain ${label}`}
                         >
-                          {" "}
-                          · {Math.round(weight * 100)}% weight
+                          {" →"}
                         </button>
                       </span>
                     </div>
@@ -551,16 +612,16 @@ export default function DealOfTheDayFrame({
             </div>
 
             <div className="flex items-center justify-between gap-4 pt-4 border-t border-charcoal/[0.06]">
-              {(l?.mlsId || l?.listingKey) && (
+              {(modalListing?.mlsId || modalListing?.listingKey) && (
                 <Link
-                  href={listingDetailHrefForListing(l)}
+                  href={listingDetailHrefForListing(modalListing)}
                   className="font-mono text-[10px] tracking-[0.15em] uppercase text-navy hover:text-gold transition-colors"
                 >
                   View listing →
                 </Link>
               )}
               <Link
-                href={dealOfTheDayHref(currentTown ?? city)}
+                href={fullDealOfTheDayHref(currentTown ?? city, modalDeal, transactionFilter)}
                 className="font-mono text-[10px] tracking-[0.15em] uppercase text-gold hover:underline ml-auto"
               >
                 Full Deal of the Day →
@@ -570,38 +631,38 @@ export default function DealOfTheDayFrame({
         )}
       </ModalPortal>
 
-      {explainTopic && score && (
+      {explainTopic && modalScore && (
         <GoldilocksScoreExplainModal
           topic={explainTopic}
           context={{
-            composite: score.composite,
+            composite: modalScore.composite,
             factorScore:
               explainTopic === "age"
-                ? score.age
+                ? modalScore.age
                 : explainTopic === "condition"
-                  ? score.condition
+                  ? modalScore.condition
                 : explainTopic === "finishes"
-                  ? score.finishesQuality
+                  ? modalScore.finishesQuality
                   : explainTopic === "ppsf"
-                    ? score.pricePerSqftFit
+                    ? modalScore.pricePerSqftFit
                     : explainTopic === "layout"
-                      ? score.layoutQuality
+                      ? modalScore.layoutQuality
                       : explainTopic === "schools"
-                        ? score.schoolRating
+                        ? modalScore.schoolRating
                         : undefined,
             weight:
               explainTopic === "age"
-                ? score.weights.age
+                ? modalScore.weights.age
                 : explainTopic === "condition"
-                  ? score.weights.condition
+                  ? modalScore.weights.condition
                 : explainTopic === "finishes"
-                  ? score.weights.finishes
+                  ? modalScore.weights.finishes
                   : explainTopic === "ppsf"
-                    ? score.weights.ppsf
+                    ? modalScore.weights.ppsf
                     : explainTopic === "layout"
-                      ? score.weights.layout
+                      ? modalScore.weights.layout
                       : explainTopic === "schools"
-                        ? score.weights.schools
+                        ? modalScore.weights.schools
                         : undefined,
           }}
           onClose={() => setExplainTopic(null)}

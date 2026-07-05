@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "LISTINGS_DB_PATH=data/listings.bundle.db npm run sync:listings && npm run build"
 
 [build.environment]
   NODE_VERSION = "20"
@@ -7,3 +7,14 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["rets-client", "node-expat", "better-sqlite3", "bindings"]
+  included_files = [
+    "node_modules/rets-client/**",
+    "node_modules/node-expat/**",
+    "node_modules/better-sqlite3/**",
+    "node_modules/bindings/**",
+    "data/listings.bundle.db",
+  ]

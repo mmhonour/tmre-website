@@ -52,3 +52,40 @@ export function emptyVintageCounts(): Record<VintageBucketId, number> {
     unknown: 0,
   }
 }
+
+/** Adjacent vintage buckets allowed when matching comparables. */
+export const COMPARABLES_VINTAGE_BUCKET_TOLERANCE = 1
+
+function vintageBucketIndex(id: VintageBucketId): number | null {
+  const idx = VINTAGE_BUCKETS.findIndex((b) => b.id === id)
+  return idx >= 0 ? idx : null
+}
+
+/** Bucket index distance for ranking comparables (0 = same bucket). */
+export function vintageBucketDistance(
+  subject: VintageBucketId,
+  comp: VintageBucketId,
+): number {
+  if (subject === 'unknown' || comp === 'unknown') {
+    return subject === comp ? 0 : Number.POSITIVE_INFINITY
+  }
+  const subjectIdx = vintageBucketIndex(subject)
+  const compIdx = vintageBucketIndex(comp)
+  if (subjectIdx == null || compIdx == null) return subject === comp ? 0 : 1
+  return Math.abs(subjectIdx - compIdx)
+}
+
+/** True when comp vintage is within ±tolerance buckets of the subject. */
+export function vintageBucketsWithinTolerance(
+  subject: VintageBucketId,
+  comp: VintageBucketId,
+  tolerance = COMPARABLES_VINTAGE_BUCKET_TOLERANCE,
+): boolean {
+  if (subject === 'unknown' || comp === 'unknown') {
+    return subject === comp
+  }
+  const subjectIdx = vintageBucketIndex(subject)
+  const compIdx = vintageBucketIndex(comp)
+  if (subjectIdx == null || compIdx == null) return subject === comp
+  return Math.abs(subjectIdx - compIdx) <= tolerance
+}

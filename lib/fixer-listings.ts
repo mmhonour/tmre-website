@@ -1,5 +1,6 @@
 import type { Listing } from './rets'
 import { isMarketListing } from './listings-store'
+import { parseLotAcresFromRaw } from './listing-lot-acres'
 
 export const FIXER_KEYWORDS = [
   'fixer',
@@ -150,21 +151,7 @@ function buildHeadline(
 }
 
 export function parseLotAcres(l: Listing): number | null {
-  const r = l.raw
-  const direct =
-    num(r.LotSizeAcres) ??
-    num(r.Acres) ??
-    num(r.LotAcres) ??
-    num(r.TotalAcres)
-  if (direct != null && direct > 0) return direct
-
-  const lotArea = num(r.LotSizeArea) ?? num(r.LotSize) ?? num(r.LotSqFt)
-  if (lotArea == null || lotArea <= 0) return null
-
-  const units = (r.LotSizeUnits ?? r.LotSizeAreaUnits ?? '').toLowerCase()
-  if (/acre/i.test(units)) return lotArea
-  if (lotArea < 50) return lotArea
-  return lotArea / 43_560
+  return parseLotAcresFromRaw(l.raw)
 }
 
 function num(v: string | undefined): number | null {

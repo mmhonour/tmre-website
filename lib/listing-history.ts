@@ -38,9 +38,12 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function pickField(r: Record<string, string>, candidates: string[]): string | null {
+function pickField(
+  r: Record<string, string> | null | undefined,
+  candidates: string[],
+): string | null {
   for (const key of candidates) {
-    const v = str(r[key])
+    const v = str(r?.[key])
     if (v) return v
   }
   return null
@@ -121,11 +124,14 @@ export function streetsMatch(a: string, b: string): boolean {
   return Boolean(wordA && wordB && wordA === wordB)
 }
 
-export function closeFieldsFromListing(listing: Listing): {
+export function closeFieldsFromListing(
+  listing: Pick<Listing, 'status' | 'price'> & { raw?: Listing['raw'] | null },
+): {
   closeDate: string | null
   closePrice: number | null
 } {
-  const raw = listing.raw
+  const raw =
+    listing?.raw && typeof listing.raw === 'object' ? listing.raw : {}
   return {
     closeDate: pickField(raw, [
       'CloseDate',
@@ -137,7 +143,7 @@ export function closeFieldsFromListing(listing: Listing): {
       num(raw.ClosePrice) ??
       num(raw.SoldPrice) ??
       num(raw.SalePrice) ??
-      (formatMlsStatus(listing.status) === 'Closed' ? listing.price : null),
+      (formatMlsStatus(listing?.status) === 'Closed' ? listing.price : null),
   }
 }
 

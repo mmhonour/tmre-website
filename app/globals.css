@@ -311,3 +311,27 @@ body {
     linear-gradient(90deg, rgba(200, 169, 81, 0.06) 1px, transparent 1px);
   background-size: 64px 64px;
 }
+
+.intel-price-range {
+  pointer-events: none;
+}
+
+.intel-price-range::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.875rem;
+  width: 0.875rem;
+  border-radius: 9999px;
+  background: #c8a951;
+  border: none;
+}
+
+.intel-price-range::-moz-range-thumb {
+  pointer-events: auto;
+  height: 0.875rem;
+  width: 0.875rem;
+  border-radius: 9999px;
+  background: #c8a951;
+  border: none;
+}

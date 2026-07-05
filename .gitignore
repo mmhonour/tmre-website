@@ -25,6 +25,11 @@
 *.pem
 data/listings.db
 data/listings.db-*
+data/listings.read.db
+data/listings.read.db-*
+data/listing-photos.db
+data/listing-photos.db-*
+data/listings.bundle.db
 
 # debug
 npm-debug.log*

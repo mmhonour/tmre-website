@@ -66,6 +66,8 @@ export type SalesByMonthPayload = {
   city: string
   kind: ListingKind
   data: { year: number; month: number; count: number }[]
+  closedThisWeek: number
+  closedThisWeekByZip: Record<string, number>
 }
 
 export type StatsBucketRow = {
@@ -135,6 +137,41 @@ export function computeMarketStats(
   }
 }
 
+export const CLOSED_THIS_WEEK_DAYS = 7
+
+export function isClosedWithinDays(iso: string | null, days: number): boolean {
+  if (!iso) return false
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return false
+  return t >= Date.now() - days * 86_400_000
+}
+
+function listingZip(l: Listing): string | null {
+  const zip = l.address.postalCode?.trim()
+  return zip || null
+}
+
+export function computeClosedThisWeekCounts(
+  listings: Listing[],
+  kind: ListingKind,
+): Pick<SalesByMonthPayload, 'closedThisWeek' | 'closedThisWeekByZip'> {
+  const filtered = filterListingsByKind(listings, kind)
+  let closedThisWeek = 0
+  const closedThisWeekByZip: Record<string, number> = {}
+
+  for (const l of filtered) {
+    const { closeDate } = closeFieldsFromListing(l)
+    if (!isClosedWithinDays(closeDate, CLOSED_THIS_WEEK_DAYS)) continue
+    closedThisWeek += 1
+    const zip = listingZip(l)
+    if (zip) {
+      closedThisWeekByZip[zip] = (closedThisWeekByZip[zip] ?? 0) + 1
+    }
+  }
+
+  return { closedThisWeek, closedThisWeekByZip }
+}
+
 export function computeSalesByMonth(
   listings: Listing[],
   city: string,
@@ -164,7 +201,7 @@ export function computeSalesByMonth(
     }
   }
 
-  return { city, kind, data }
+  return { city, kind, data, ...computeClosedThisWeekCounts(listings, kind) }
 }
 
 export function computeSalesByVintage(

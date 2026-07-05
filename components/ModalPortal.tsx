@@ -41,6 +41,16 @@ export default function ModalPortal({
     return () => unlockBodyScroll();
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !onClose) return;
+    const close = onClose;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(

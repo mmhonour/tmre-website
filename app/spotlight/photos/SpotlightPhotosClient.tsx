@@ -1,0 +1,121 @@
+"use client";
+
+import PhotoGallery from "@/components/listing/PhotoGallery";
+import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
+import ListingSidebar from "@/components/listing/ListingSidebar";
+import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome";
+import { useSpotlightListing } from "@/hooks/useSpotlightListing";
+import { ListingShell } from "@/components/listing/ListingShell";
+import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
+import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { spotlightObfuscatesPhoto } from "@/lib/spotlight-display";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+
+function initialPhotoIndex(param: string | null, photoCount: number): number {
+  if (photoCount <= 0) return 0;
+  const n = Number.parseInt(param ?? "", 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, photoCount - 1);
+}
+
+export default function SpotlightPhotosClient() {
+  const {
+    display,
+    loadState,
+    mlsListing,
+    goldilocksScore,
+    goldilocksBreakdown,
+    photos,
+    photosState,
+  } = useSpotlightListing({
+    photos: true,
+  });
+  const [activePhoto, setActivePhoto] = useState(0);
+  const searchParams = useSearchParams();
+  const photoParam = searchParams.get("photo");
+
+  useEffect(() => {
+    if (photos.length > 0) {
+      setActivePhoto(initialPhotoIndex(photoParam, photos.length));
+    }
+  }, [photoParam, photos.length]);
+
+  if (loadState === "error") {
+    return (
+      <ListingShell variant="spotlight">
+        <ListingErrorPanel
+          title="Couldn't load spotlight"
+          body="Try again in a moment."
+        />
+      </ListingShell>
+    );
+  }
+
+  const isClosed = formatMlsStatus(display.status) === "Closed";
+  const obfuscatePhoto = (index: number) =>
+    spotlightObfuscatesPhoto(display.config, index);
+  const details = buildListingDetailsPanelProps(
+    {
+      mlsId: display.mlsId,
+      propertyTitle: display.config.displayTitle,
+      townHint: display.headerAddress.city,
+      status: display.status,
+      propertyType: display.propertyType,
+      price: display.price,
+      originalListPrice: display.originalListPrice,
+      sqft: display.sqft,
+      photoCount: display.photoCount,
+      schools: display.schools,
+      raw: mlsListing?.raw,
+    },
+    fmtMoney,
+    { routeBase: "spotlight" },
+  );
+
+  const belowTabs =
+    photosState === "loading" ? (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] aspect-[16/10] flex items-center justify-center">
+        <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/45">
+          Loading photography…
+        </span>
+      </div>
+    ) : photosState === "error" ? (
+      <ListingErrorPanel
+        title="Couldn't load photos"
+        body="Try again in a moment."
+      />
+    ) : photos.length > 0 ? (
+      <PhotoGallery
+        photos={photos}
+        active={activePhoto}
+        setActive={setActivePhoto}
+        address={display.config.displayTitle}
+        obfuscatePhotoIndex={obfuscatePhoto}
+      />
+    ) : (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] aspect-[16/10] flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-gold">
+          Spotlight
+        </span>
+        <p className="font-serif italic text-2xl sm:text-3xl text-white">
+          Coming Soon...
+        </p>
+        <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
+          Photography releasing shortly
+        </p>
+      </div>
+    );
+
+  return (
+    <SpotlightPageChrome
+      active="photos"
+      display={display}
+      isClosed={isClosed}
+      goldilocksScore={goldilocksScore}
+      goldilocksBreakdown={goldilocksBreakdown}
+      belowTabs={belowTabs}
+      sidebar={<ListingSidebar details={details} />}
+    />
+  );
+}

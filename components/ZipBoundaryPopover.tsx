@@ -222,9 +222,10 @@ export default function ZipBoundaryPopover({
       ? `zip:${highlightZip}:${resolvedContextZips.join(",")}`
       : "";
 
-  const label = highlightTown ?? highlightZip ?? "";
+  const badgeLabel = highlightTown ?? highlightZip ?? "";
   const borderingTowns = highlightTown ? neighborTownsFor(highlightTown) : [];
-  const zipFooterText = `ZIP ${highlightZip}${resolvedContextZips.length > 0 ? " · surrounding zips in grey" : " · coverage area"}`;
+  const zipFooterSubtext =
+    resolvedContextZips.length > 0 ? "Surrounding areas in grey" : "Coverage area";
 
   const [boundary, setBoundary] = useState<BoundaryState>({ status: "idle" });
   const [pos, setPos] = useState<{ top: number; left: number; placeAbove: boolean } | null>(null);
@@ -328,10 +329,10 @@ export default function ZipBoundaryPopover({
       ? [...boundary.byZip.entries()].map(([zip, rings]) => ({ zip, rings }))
       : [];
 
-  const { layers, highlightCx, highlightCy, projection } =
+  const { layers, projection } =
     boundary.status === "ready"
       ? projectMultipleZips(zipBoundaries, highlightZipSet, W, H)
-      : { layers: [], highlightCx: W / 2, highlightCy: H / 2, projection: null };
+      : { layers: [], projection: null };
 
   const neighborLabels =
     highlightTown && boundary.status === "ready" && projection
@@ -348,6 +349,21 @@ export default function ZipBoundaryPopover({
           .filter((entry): entry is { town: TmreTown; cx: number; cy: number } => entry != null)
       : [];
 
+  const zipLabels =
+    !highlightTown && boundary.status === "ready" && projection
+      ? zipBoundaries
+          .filter(({ zip }) => zip !== highlightZip)
+          .map(({ zip, rings }) => {
+            const center = ringBBoxCenter(rings);
+            if (!center) return null;
+            const [lon, lat] = center;
+            const cx = projection.offsetX + (lon - projection.minLon) * projection.scale;
+            const cy = projection.offsetY + (projection.maxLat - lat) * projection.scale;
+            return { zip, cx, cy };
+          })
+          .filter((entry): entry is { zip: string; cx: number; cy: number } => entry != null)
+      : [];
+
   const contextLayers = layers.filter((l) => l.role === "context");
   const highlightLayers = layers.filter((l) => l.role === "highlight");
   const patternId = `zip-grid-${loadKey.replace(/[^a-z0-9]+/gi, "-")}`;
@@ -361,6 +377,13 @@ export default function ZipBoundaryPopover({
     >
       <div className="rounded-2xl bg-white border border-charcoal/10 shadow-2xl shadow-black/25 overflow-hidden">
         <div className="relative bg-slate-50" style={{ height: H }}>
+          {badgeLabel ? (
+            <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
+              <span className="font-mono text-[10px] font-semibold tracking-[0.12em] uppercase text-navy/90 bg-white/90 backdrop-blur-sm rounded-md px-2 py-1 border border-charcoal/10 shadow-sm">
+                {badgeLabel}
+              </span>
+            </div>
+          ) : null}
           {boundary.status === "loading" && (
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse-dot" />
@@ -426,20 +449,6 @@ export default function ZipBoundaryPopover({
                 )),
               )}
 
-              <text
-                x={highlightCx}
-                y={highlightCy}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fontFamily="monospace"
-                fontSize={highlightTown ? "10" : "11"}
-                fontWeight="600"
-                fill="#1e293b"
-                letterSpacing={highlightTown ? "1" : "2"}
-              >
-                {label}
-              </text>
-
               {neighborLabels.map(({ town, cx, cy }) => (
                 <text
                   key={town}
@@ -456,18 +465,38 @@ export default function ZipBoundaryPopover({
                   {town}
                 </text>
               ))}
+
+              {zipLabels.map(({ zip, cx, cy }) => (
+                <text
+                  key={`zip-${zip}`}
+                  x={cx}
+                  y={cy}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontFamily="monospace"
+                  fontSize="6.5"
+                  fontWeight="600"
+                  fill="rgba(15,23,42,0.88)"
+                  letterSpacing="0.3"
+                >
+                  {zip}
+                </text>
+              ))}
             </svg>
           )}
         </div>
         <div className="px-3 py-2 border-t border-charcoal/[0.08] bg-white">
-          <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate text-center">
-            {highlightTown ? highlightTown : zipFooterText}
-          </p>
-          {borderingTowns.length > 0 ? (
-            <p className="font-mono text-[8px] leading-snug tracking-[0.06em] text-slate/55 text-center mt-1">
-              {borderingTowns.join(" · ")}
+          {highlightTown ? (
+            borderingTowns.length > 0 ? (
+              <p className="font-mono text-[8px] leading-snug tracking-[0.06em] text-slate/55 text-center">
+                {borderingTowns.join(" · ")}
+              </p>
+            ) : null
+          ) : (
+            <p className="font-mono text-[8px] leading-snug tracking-[0.06em] text-slate/55 text-center">
+              {zipFooterSubtext}
             </p>
-          ) : null}
+          )}
         </div>
       </div>
       <span

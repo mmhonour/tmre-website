@@ -34,11 +34,13 @@ export default function ContactFormPanel({
   listingInfo = null,
   title = "Get in touch",
   onDone,
+  onClose,
 }: {
   source: string;
   listingInfo?: string | null;
   title?: string;
   onDone?: () => void;
+  onClose?: () => void;
 }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -98,7 +100,17 @@ export default function ContactFormPanel({
 
   if (formState === "done") {
     return (
-      <div className="text-center py-3">
+      <div className="relative text-center py-3">
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-0 top-0 text-white/45 hover:text-white transition-colors font-mono text-lg leading-none"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        ) : null}
         <p className="text-gold font-mono text-[10px] tracking-[0.2em] uppercase mb-1">
           Sent
         </p>
@@ -109,9 +121,21 @@ export default function ContactFormPanel({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-        {title}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          {title}
+        </p>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 text-white/45 hover:text-white transition-colors font-mono text-lg leading-none -mt-0.5"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
 
       {listingInfo ? (
         <div className="flex flex-col gap-1">

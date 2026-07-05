@@ -4,6 +4,7 @@ import "./globals.css";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import VisitorBeacon from "@/components/VisitorBeacon";
+import ListingThumbPriority from "@/components/ListingThumbPriority";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
 const playfair = Playfair_Display({
@@ -41,8 +42,16 @@ export default function RootLayout({
       lang="en"
       className={`${playfair.variable} ${dmSans.variable} ${jetbrains.variable} h-full antialiased`}
     >
+      <head>
+        <link
+          rel="preconnect"
+          href="https://smartmls-assets.cdn-connectmls.com"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-cream text-charcoal">
         <VisitorBeacon />
+        <ListingThumbPriority />
         <Navigation />
         <main className="flex-1">{children}</main>
         <Footer />

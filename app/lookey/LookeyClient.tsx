@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   clearLookedAtListings,
+  LOOKED_AT_CHANGED_EVENT,
+  LOOKED_AT_STORAGE_KEY,
   readLookedAtListings,
   type LookedAtEntry,
 } from "@/lib/looked-at-listings";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
+import ListingThumbImage from "@/components/ListingThumbImage";
+import { prefetchMlsPhotoThumbs } from "@/lib/prefetch-listing-images";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 
 function fmtMoney(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -38,18 +44,41 @@ function shortType(propertyType: string | null): string {
 export default function LookeyClient() {
   const [entries, setEntries] = useState<LookedAtEntry[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const pathname = usePathname();
+
+  const refresh = useCallback(() => {
+    const next = readLookedAtListings();
+    setEntries(next);
+    prefetchMlsPhotoThumbs(next.map((e) => e.id));
+  }, []);
 
   useEffect(() => {
-    const refresh = () => setEntries(readLookedAtListings());
     refresh();
     setHydrated(true);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === LOOKED_AT_STORAGE_KEY || event.key === null) refresh();
+    };
+
     window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener(LOOKED_AT_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", onStorage);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener(LOOKED_AT_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (pathname === "/lookey") refresh();
+  }, [pathname, refresh]);
 
   const orderedEntries = useMemo(
     () =>
@@ -154,80 +183,22 @@ export default function LookeyClient() {
   );
 }
 
-function useListingPreviewPhoto(mlsId: string): {
-  photo: string | null;
-  failed: boolean;
-  setFailed: (failed: boolean) => void;
-} {
-  const [photo, setPhoto] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (!mlsId || mlsId === "—") return;
-    let cancelled = false;
-    setFailed(false);
-    setPhoto(null);
-
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}/photo`, { cache: "default" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { url?: string | null } | null) => {
-        if (cancelled) return;
-        if (d?.url) {
-          setPhoto(d.url);
-          return;
-        }
-        setPhoto(listingPhotoProxyUrl(mlsId, 0));
-      })
-      .catch(() => {
-        if (!cancelled) setPhoto(listingPhotoProxyUrl(mlsId, 0));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mlsId]);
-
-  return { photo, failed, setFailed };
-}
-
 function LookeyCard({ entry }: { entry: LookedAtEntry }) {
-  const { photo, failed, setFailed } = useListingPreviewPhoto(entry.id);
-  const showPhoto = photo && !failed;
-
   return (
-    <article className="rounded-2xl bg-white border border-charcoal/[0.08] hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5 transition-all overflow-hidden flex flex-col">
+    <article
+      {...listingHoverHandlers(entry.id)}
+      className="rounded-2xl bg-white border border-charcoal/[0.08] hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5 transition-all overflow-hidden flex flex-col"
+    >
       <Link
         href={entry.href}
         className="relative block aspect-[16/10] bg-cream border-b border-charcoal/[0.06] shrink-0"
         aria-label={`View listing: ${entry.address}`}
       >
-        {showPhoto ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={photo}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover"
-            loading="lazy"
-            onError={() => setFailed(true)}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-cream">
-            <svg
-              className="w-8 h-8 text-navy/15"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1}
-                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-              />
-            </svg>
-          </div>
-        )}
+        <ListingThumbImage
+          src={listingPhotoProxyUrl(entry.id, 0)}
+          className="absolute inset-0 block w-full h-full"
+          imgClassName="absolute inset-0 w-full h-full object-cover"
+        />
       </Link>
 
       <div className="p-5 lg:p-6 flex flex-col gap-3 flex-1">

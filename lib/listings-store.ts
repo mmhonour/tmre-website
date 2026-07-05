@@ -1,12 +1,19 @@
 import 'server-only'
 
 import {
+  refreshListingPropertyTax,
+} from '@/lib/listing-property-tax'
+import { refreshListingIfEstimate } from '@/lib/listing-if-compute'
+import {
   getSyncMeta,
   isListingsDbAvailable,
+  listingsDbHasRows,
   readAllListingsFromDb,
   readListingByIdFromDb,
   readListingsFromDb,
   setSyncMeta,
+  upsertListing,
+  upsertTownListings,
 } from '@/lib/listings-db'
 import {
   getListingByMlsId,
@@ -35,6 +42,11 @@ export const COMING_SOON_MLS_STATUS = 'Coming Soon'
 /** Closed sales pulled from RETS for stats/charts since this date. */
 export const CLOSED_LISTINGS_SINCE = '2024-01-01'
 
+/** Max listings pulled per town during sync and broad fetches. */
+export const ACTIVE_LISTINGS_FETCH_LIMIT = 2000
+export const CLOSED_LISTINGS_FETCH_LIMIT = 5000
+export const EXPIRED_LISTINGS_FETCH_LIMIT = 500
+
 /** True for on-market MLS rows: Active and Coming Soon (excludes pending, closed, withdrawn). */
 export function isMarketListing(l: Listing): boolean {
   const s = l.status?.trim().toLowerCase()
@@ -60,6 +72,7 @@ export const filterActiveListings = filterMarketListings
 function normalizeStatusBucket(status: string): string {
   const key = status.trim().toLowerCase()
   if (key === 'closed' || key === 'c') return 'Closed'
+  if (key === 'expired' || key === 'x') return 'Expired'
   return 'Active'
 }
 
@@ -80,10 +93,10 @@ export function setSyncedActiveCount(city: string, count: number): void {
   setSyncMeta(`active_count:${city}`, String(count))
 }
 
-/** True if the DB has been populated at least once. */
+/** True if SQLite has synced or warmed listing rows. */
 export function hasLocalListingsCache(): boolean {
   if (!isListingsDbAvailable()) return false
-  return getLastFullSync() != null
+  return getLastFullSync() != null || listingsDbHasRows()
 }
 
 /** HTTP headers for fast edge/browser caching when serving from SQLite. */
@@ -106,7 +119,8 @@ function readDbListings(
   limit?: number,
 ): Listing[] | null {
   if (!hasLocalListingsCache()) return null
-  return readListingsFromDb(city, bucket, limit)
+  const all = readListingsFromDb(city, bucket)
+  return limit != null ? all.slice(0, limit) : all
 }
 
 function readDbListingsAcrossTowns(
@@ -164,13 +178,20 @@ function dbActiveListingsUsable(
 ): boolean {
   if (filtered.length > 0) {
     const expected = getSyncedActiveCount(city)
-    // Partial cache (e.g. interrupted sync or accidental row loss) — prefer live RETS.
-    if (expected != null && filtered.length < expected * 0.85) return false
+    // Compare raw bucket size — town zip filters can shrink filtered count without stale cache.
+    if (expected != null && cached.length < expected * 0.85) return false
     return true
   }
   if (cached.length === 0) return false
   // Rows exist but none belong to this town — stale sync data.
   return !isTmreTown(city)
+}
+
+function persistListingsBatch(listings: Listing[]): void {
+  if (!isListingsDbAvailable() || listings.length === 0) return
+  for (const listing of listings) {
+    persistListingRecord(listing)
+  }
 }
 
 function mergeListings(a: Listing[], b: Listing[]): Listing[] {
@@ -193,14 +214,18 @@ export async function fetchListingsForCity(
 ): Promise<{ listings: Listing[]; source: ListingsSource }> {
   const bucket = normalizeStatusBucket(status)
   const cached = readDbListings(city, bucket, limit)
-  if (cached != null && cached.length > 0) {
+  if (cached != null && (cached.length > 0 || getLastFullSync() != null)) {
     const listings =
       bucket === 'Active' ? applyActiveBucketFilters(cached, city) : cached
     if (
       bucket !== 'Active' ||
+      cached.length === 0 ||
       dbActiveListingsUsable(cached, listings, city)
     ) {
-      return { listings, source: 'db' }
+      return {
+        listings: limit != null ? listings.slice(0, limit) : listings,
+        source: 'db',
+      }
     }
     // Stale/wrong-town active cache — fall through to RETS.
   }
@@ -219,6 +244,7 @@ export async function fetchListingsForCity(
       listings = applyActiveBucketFilters(listings, city)
     }
   }
+  persistListingsBatch(listings)
   return { listings, source: 'rets' }
 }
 
@@ -250,6 +276,111 @@ export async function fetchClosedListingsForCity(
   return fetchListingsForCity(city, 'Closed', limit)
 }
 
+export const EXPIRED_MLS_STATUS = 'Expired'
+
+/** Minimum days since expiry before a listing appears on the Expired Listings page. */
+export const EXPIRED_MIN_AGE_DAYS = 30
+
+/** True for expired MLS rows (SmartMLS status X). */
+export function isExpiredListing(l: Listing): boolean {
+  const s = l.status?.trim().toLowerCase()
+  return s === 'expired' || s === 'x'
+}
+
+/** Days since status change (expiry), or null when unknown. */
+export function expiredListingAgeDays(l: Listing): number | null {
+  const ts = l.statusChangeTimestamp ?? l.modificationTimestamp
+  if (!ts) return null
+  const t = Date.parse(ts)
+  if (Number.isNaN(t)) return null
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000))
+}
+
+export function isExpiredListingOlderThan(l: Listing, minDays: number): boolean {
+  const age = expiredListingAgeDays(l)
+  return age != null && age >= minDays
+}
+
+type ExpiredSearchOptions = {
+  /** When set, restrict StatusChangeTimestamp to listings expired at least this many days ago. */
+  minAgeDays?: number
+}
+
+function expiredSearchParams(limit: number, options: ExpiredSearchOptions = {}) {
+  const params: SearchParams = {
+    status: EXPIRED_MLS_STATUS,
+    limit,
+  }
+  const minAge = options.minAgeDays ?? 0
+  if (minAge > 0) {
+    params.closedAfter = '2000-01-01'
+    const d = new Date()
+    d.setDate(d.getDate() - minAge)
+    params.closedBefore = d.toISOString().slice(0, 10)
+  }
+  return params
+}
+
+function applyExpiredTownFilter(listings: Listing[], city: string): Listing[] {
+  let out = listings.filter(isExpiredListing)
+  if (isTmreTown(city)) {
+    out = filterListingsForTown(out, city as TmreTown)
+  }
+  return out
+}
+
+/** Expired inventory for one town — fetched from RETS (sync pulls all; page filters age in API). */
+export async function searchExpiredListingsForTown(
+  town: TmreTown,
+  limit: number,
+  options: ExpiredSearchOptions = {},
+): Promise<Listing[]> {
+  const params = expiredSearchParams(limit, options)
+  const byCity = await searchListings({ city: town, ...params })
+  let listings = applyExpiredTownFilter(byCity, town)
+  if (listings.length > 0) return listings.slice(0, limit)
+
+  const perZip = Math.max(50, Math.ceil(limit / zipsForTown(town).length))
+  const batches = await Promise.all(
+    zipsForTown(town).map((zip) =>
+      searchListings({ zip, ...params, limit: perZip }).catch(() => [] as Listing[]),
+    ),
+  )
+  listings = applyExpiredTownFilter(batches.flat(), town)
+  return listings.slice(0, limit)
+}
+
+/** Expired listings — SQLite first, RETS fallback with upsert into Expired bucket. */
+export async function fetchExpiredListingsForCity(
+  city: string,
+  limit: number,
+): Promise<{ listings: Listing[]; source: ListingsSource }> {
+  const bucket = 'Expired'
+  const cached = readDbListings(city, bucket, limit)
+  if (cached != null && (cached.length > 0 || getLastFullSync() != null)) {
+    return {
+      listings: applyExpiredTownFilter(cached, city).slice(0, limit),
+      source: 'db',
+    }
+  }
+
+  let listings: Listing[]
+  if (isTmreTown(city)) {
+    listings = await searchExpiredListingsForTown(city as TmreTown, limit)
+  } else {
+    listings = applyExpiredTownFilter(
+      await searchListings({ city, ...expiredSearchParams(limit) }),
+      city,
+    )
+  }
+
+  if (isTmreTown(city) && listings.length > 0) {
+    upsertTownListings(city, bucket, listings)
+  }
+
+  return { listings, source: 'rets' }
+}
+
 export async function fetchClosedListingsAcrossTowns(
   towns: readonly string[],
   params: Omit<SearchParams, 'city' | 'county' | 'status'> = {},
@@ -265,7 +396,7 @@ export async function fetchListingsAcrossTowns(
   const limit = params.limit
   const cached = readDbListingsAcrossTowns(towns, bucket, limit)
   if (cached != null) {
-    if (cached.length > 0 || bucket !== 'Active') {
+    if (cached.length > 0 || bucket !== 'Active' || getLastFullSync() != null) {
       let listings =
         bucket === 'Active' ? filterListingsToTowns(cached, towns) : cached
       if (bucket === 'Active' && towns.length === 1 && isTmreTown(towns[0])) {
@@ -303,6 +434,7 @@ export async function fetchListingsAcrossTowns(
       status: params.status ?? ACTIVE_MLS_STATUS,
     })
   }
+  persistListingsBatch(listings)
   return { listings, source: 'rets' }
 }
 
@@ -328,17 +460,64 @@ export async function fetchAllActiveListings(): Promise<{
   listings: Listing[]
   source: ListingsSource
 }> {
-  return fetchActiveListingsAcrossTowns(TMRE_TOWNS, { limit: 500 })
+  return fetchActiveListingsAcrossTowns(TMRE_TOWNS, {
+    limit: ACTIVE_LISTINGS_FETCH_LIMIT,
+  })
 }
 
 export async function fetchListingByMlsId(
   id: string,
 ): Promise<{ listing: Listing | null; source: ListingsSource }> {
-  if (hasLocalListingsCache()) {
+  if (isListingsDbAvailable()) {
     const cached = readListingByIdFromDb(id)
-    if (cached) return { listing: refreshListingSchools(cached), source: 'db' }
+    if (cached) {
+      return {
+        listing: refreshListingPropertyTax(refreshListingSchools(cached)),
+        source: 'db',
+      }
+    }
   }
 
   const listing = await getListingByMlsId(id)
+  if (listing) persistListingRecord(listing)
   return { listing, source: 'rets' as const }
+}
+
+function townForListingRecord(listing: Listing): string {
+  return (
+    resolveListingTown(listing.address.city) ||
+    townForZip(listing.address.postalCode ?? '') ||
+    listing.address.city?.trim() ||
+    'Unknown'
+  )
+}
+
+/** Upsert an already-loaded listing into SQLite. */
+export function persistListingRecord(listing: Listing): boolean {
+  if (!isListingsDbAvailable()) return false
+  const town = townForListingRecord(listing)
+  const statusBucket = normalizeStatusBucket(listing.status ?? ACTIVE_MLS_STATUS)
+  const cached = upsertListing(listing, town, statusBucket)
+  if (cached && isMarketListing(listing)) {
+    try {
+      refreshListingIfEstimate(listing)
+    } catch (err) {
+      console.warn('[listings-store] If estimate refresh skipped:', err)
+    }
+  }
+  return cached
+}
+
+/** Fetch live from MLS and upsert into SQLite when available. */
+export async function persistListingByMlsId(
+  id: string,
+): Promise<{ cached: boolean; found: boolean; source: ListingsSource }> {
+  const trimmed = id.trim()
+  if (!trimmed) return { cached: false, found: false, source: 'rets' }
+
+  const listing = await getListingByMlsId(trimmed)
+  if (!listing) return { cached: false, found: false, source: 'rets' }
+
+  const cached = persistListingRecord(listing)
+  return { cached, found: true, source: 'rets' }
 }

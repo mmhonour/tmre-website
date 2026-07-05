@@ -12,7 +12,10 @@ import {
   filterPillContainerClass,
   filterPillSeparatorClass,
 } from "@/lib/filter-pill-styles";
-import { listingDetailHref } from "@/lib/listing-url";
+import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
+import ListingThumbImage from "@/components/ListingThumbImage";
+import { prefetchMlsPhotoThumbs } from "@/lib/prefetch-listing-images";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 
 const FIXER_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
@@ -154,14 +157,16 @@ export default function FixerUppersClient() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/listings/fixer-uppers", { cache: "no-store" })
+    fetch("/api/listings/fixer-uppers")
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<ApiResponse>;
       })
       .then((d) => {
         if (cancelled) return;
-        setAllListings(d.listings.length ? d.listings : FALLBACK);
+        const next = d.listings.length ? d.listings : FALLBACK;
+        setAllListings(next);
+        prefetchMlsPhotoThumbs(next.map((l) => l.mlsId));
         setTotalScanned(d.totalScanned ?? 0);
         if (!d.listings.length) setUsedFallback(true);
         setLoadState("ready");
@@ -169,6 +174,7 @@ export default function FixerUppersClient() {
       .catch(() => {
         if (cancelled) return;
         setAllListings(FALLBACK);
+        prefetchMlsPhotoThumbs(FALLBACK.map((l) => l.mlsId));
         setUsedFallback(true);
         setLoadState("ready");
       });
@@ -364,22 +370,7 @@ export default function FixerUppersClient() {
   );
 }
 
-function useFirstPhoto(mlsId: string | null): string | null {
-  const [photo, setPhoto] = useState<string | null>(null);
-  useEffect(() => {
-    if (!mlsId || mlsId === "—") return;
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}/photo`, { cache: "default" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { url?: string | null } | null) => {
-        if (d?.url) setPhoto(d.url);
-      })
-      .catch(() => {});
-  }, [mlsId]);
-  return photo;
-}
-
 function ListingCard({ listing: l }: { listing: FixerListing }) {
-  const photo = useFirstPhoto(l.mlsId);
   const type = l.propertyType.replace(/ For Sale$/i, "").replace(/ For Lease$/i, "");
   const specs = [
     l.beds ? `${l.beds}BR` : null,
@@ -398,7 +389,10 @@ function ListingCard({ listing: l }: { listing: FixerListing }) {
         : "bg-sky/10 text-sky border-sky/30";
 
   return (
-    <article className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 lg:p-6 transition-all hover:border-gold/40 hover:shadow-xl hover:shadow-navy/5 hover:-translate-y-1 flex flex-col">
+    <article
+      {...listingHoverHandlers(l.mlsId && l.mlsId !== "—" ? l.mlsId : null)}
+      className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 lg:p-6 transition-all hover:border-gold/40 hover:shadow-xl hover:shadow-navy/5 hover:-translate-y-1 flex flex-col"
+    >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           {l.mlsId && l.mlsId !== "—" ? (
@@ -425,9 +419,12 @@ function ListingCard({ listing: l }: { listing: FixerListing }) {
             {CATEGORY_LABELS[l.category]}
           </span>
           <div className="w-16 h-12 rounded-lg overflow-hidden border border-charcoal/10 bg-cream">
-            {photo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={photo} alt="" className="w-full h-full object-cover" />
+            {l.mlsId && l.mlsId !== "—" ? (
+              <ListingThumbImage
+                src={listingPhotoProxyUrl(l.mlsId, 0)}
+                className="relative block w-full h-full"
+                imgClassName="absolute inset-0 w-full h-full object-cover"
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <svg

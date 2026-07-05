@@ -12,6 +12,7 @@ import {
 import { countListingsByTown } from "@/lib/town-listing-counts";
 import TownFilterPills from "@/components/TownFilterPills";
 import { listingDetailHref } from "@/lib/listing-url";
+import { listingHoverHandlers, warmListingCache } from "@/lib/warm-listing-cache";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 
 const FIND_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
@@ -102,7 +103,6 @@ export default function FindClient() {
         const params = new URLSearchParams({ q, limit: "8" });
         if (townFilter !== "All") params.set("city", townFilter);
         const res = await fetch(`/api/listings/find?${params}`, {
-          cache: "no-store",
           signal: ac.signal,
         });
         const data = (await res.json()) as ApiResponse;
@@ -143,7 +143,7 @@ export default function FindClient() {
     try {
       const params = new URLSearchParams({ q });
       if (townFilter !== "All") params.set("city", townFilter);
-      const res = await fetch(`/api/listings/find?${params}`, { cache: "no-store" });
+      const res = await fetch(`/api/listings/find?${params}`);
       const data = (await res.json()) as ApiResponse;
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setResults(data.listings);
@@ -248,7 +248,10 @@ export default function FindClient() {
                           aria-selected={highlightIndex === i}
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => pickSuggestion(l)}
-                          onMouseEnter={() => setHighlightIndex(i)}
+                          onMouseEnter={() => {
+                            setHighlightIndex(i);
+                            warmListingCache(l.mlsId);
+                          }}
                           className={`w-full px-4 py-3 text-left transition-colors ${
                             highlightIndex === i ? "bg-gold/15" : "hover:bg-white/5"
                           }`}
@@ -336,7 +339,10 @@ function FindCard({ listing: l }: { listing: FindListing }) {
     .join(" · ");
 
   return (
-    <article className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 transition-all hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5">
+    <article
+      {...listingHoverHandlers(l.mlsId)}
+      className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 transition-all hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5"
+    >
       <Link
         href={listingDetailHref(
           l.mlsId,

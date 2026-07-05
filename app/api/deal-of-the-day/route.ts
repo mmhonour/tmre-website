@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const cityParam = searchParams.get('city')
   const kind = resolveKindParam(searchParams.get('kind'))
+  const listingId = searchParams.get('listing')?.trim() || null
   const town = resolveTown(cityParam)
   if (cityParam?.trim() && cityParam.trim().toLowerCase() !== 'all' && !town) {
     return NextResponse.json(
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
 
   const scope: DealOfTheDayScope = town ?? 'All'
 
-  if (!kind) {
+  if (!kind && !listingId) {
     const cached = readDealOfTheDayCache(scope)
     if (cached) {
       return NextResponse.json(
@@ -91,6 +92,7 @@ export async function GET(req: NextRequest) {
     const payload = await computeDealOfTheDay(listings, {
       peerListings,
       ...(kind ? { kind } : {}),
+      ...(listingId ? { listingId } : {}),
     })
     if (!payload) {
       return NextResponse.json(
@@ -112,7 +114,7 @@ export async function GET(req: NextRequest) {
       source,
     }
 
-    if (source === 'db' && !kind) {
+    if (source === 'db' && !kind && !listingId) {
       writeDealOfTheDayCache(scope, response)
     }
 

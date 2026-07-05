@@ -1,13 +1,25 @@
 "use client";
 
-import { Suspense } from "react";
 import { useEffect, useState } from "react";
-import { recordLookedAtListing } from "@/lib/looked-at-listings";
-import { formatMlsStatus } from "@/lib/listing-history";
-import ListingHeader from "@/components/listing/ListingHeader";
+import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
+import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
+import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
+import ListingSidebar from "@/components/listing/ListingSidebar";
+import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
+import {
+  listingHeaderScoreProps,
+  type ListingScoreApiFields,
+} from "@/lib/listing-header-score-props";
 import { ListingShell } from "@/components/listing/ListingShell";
-import ListingSubnav from "@/components/listing/ListingSubnav";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
+
+type Schools = {
+  elementary: string | null;
+  middle: string | null;
+  high: string | null;
+  district: string | null;
+};
 
 type Listing = {
   mlsId: string;
@@ -24,11 +36,17 @@ type Listing = {
     full: string;
   };
   price: number | null;
+  originalListPrice: number | null;
   beds: number | null;
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
   dom: number | null;
+  photoCount: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  schools: Schools;
+  raw: Record<string, string>;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -43,23 +61,28 @@ export default function ListingHistoryClient({
   townHint?: string | null;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
+  const [goldilocksScore, setGoldilocksScore] = useState<number | null>(null);
+  const [goldilocksBreakdown, setGoldilocksBreakdown] =
+    useState<ListingScoreApiFields["goldilocksBreakdown"]>(null);
   const [state, setState] = useState<LoadState>("loading");
 
   useEffect(() => {
     let cancelled = false;
     setState("loading");
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}`, { cache: "no-store" })
+    fetch(`/api/listings/${encodeURIComponent(mlsId)}`)
       .then(async (r) => {
         if (r.status === 404) {
           if (!cancelled) setState("not-found");
           return null;
         }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return (await r.json()) as { listing: Listing };
+        return (await r.json()) as ListingScoreApiFields & { listing: Listing };
       })
       .then((d) => {
         if (!d || cancelled) return;
         setListing(d.listing);
+        setGoldilocksScore(d.goldilocksScore ?? null);
+        setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
         setState("ready");
       })
       .catch(() => {
@@ -70,23 +93,10 @@ export default function ListingHistoryClient({
     };
   }, [mlsId]);
 
-  useEffect(() => {
-    if (state !== "ready" || !listing) return;
-    const id = listing.listingKey?.trim() || listing.mlsId;
-    const address =
-      listing.address.street?.trim() ||
-      listing.address.full?.trim() ||
-      addressHint?.trim() ||
-      id;
-    recordLookedAtListing({
-      id,
-      address,
-      city: townHint || listing.address.city || null,
-      zip: listing.address.postalCode || null,
-      price: listing.price,
-      propertyType: listing.propertyType || null,
-    });
-  }, [state, listing, addressHint, townHint]);
+  useRecordLookedAtListing(state === "ready", listing, {
+    addressHint,
+    townHint,
+  });
 
   if (state === "loading") {
     return (
@@ -115,40 +125,79 @@ export default function ListingHistoryClient({
   }
 
   const street = listing.address.street || listing.address.full;
+  const mapsQuery =
+    listing.address.full?.trim() ||
+    [
+      street,
+      listing.address.city,
+      listing.address.state,
+      listing.address.postalCode,
+    ]
+      .filter(Boolean)
+      .join(", ");
   const isClosed = formatMlsStatus(listing.status) === "Closed";
+  const details = buildListingDetailsPanelProps(
+    { ...listing, townHint: townHint ?? null },
+    fmtMoney,
+    {
+      listingId: mlsId,
+      addressHint: street || addressHint,
+      townHint: townHint || listing.address.city,
+    },
+  );
 
   return (
     <ListingShell>
-      <ListingHeader
-        mlsId={listing.mlsId}
-        status={listing.status}
-        dom={listing.dom}
-        address={listing.address}
-        propertyType={listing.propertyType}
-        style={listing.style}
-        beds={listing.beds}
-        baths={listing.baths}
-        sqft={listing.sqft}
-        yearBuilt={listing.yearBuilt}
+      <ListingHeroPanels
+        header={{
+          mlsId: listing.mlsId,
+          status: listing.status,
+          dom: listing.dom,
+          address: listing.address,
+          propertyType: listing.propertyType,
+          style: listing.style,
+          beds: listing.beds,
+          baths: listing.baths,
+          sqft: listing.sqft,
+          yearBuilt: listing.yearBuilt,
+          bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
+          ...listingHeaderScoreProps({
+            goldilocksScore,
+            goldilocksBreakdown,
+            title: street,
+            subtitle: townHint || listing.address.city,
+            propertyType: listing.propertyType,
+          }),
+        }}
+        location={{
+          latitude: listing.latitude,
+          longitude: listing.longitude,
+          addressQuery: mapsQuery,
+        }}
+        subnav={{
+          mlsId,
+          active: "history",
+          addressHint: street || addressHint,
+          townHint,
+        }}
+        interest={
+          !isClosed
+            ? {
+                mlsId: listing.mlsId,
+                address: street,
+                city: townHint || listing.address.city,
+              }
+            : null
+        }
+        belowTabs={
+          <ListingHistoryPanel
+            mlsId={listing.mlsId}
+            townHint={townHint}
+            variant="page"
+          />
+        }
+        sidebar={<ListingSidebar details={details} />}
       />
-      <Suspense fallback={null}>
-        <ListingSubnav
-          mlsId={mlsId}
-          active="history"
-          addressHint={street || addressHint}
-          townHint={townHint}
-          interest={
-            !isClosed
-              ? {
-                  mlsId: listing.mlsId,
-                  address: street,
-                  city: townHint || listing.address.city,
-                }
-              : null
-          }
-        />
-      </Suspense>
-      <ListingHistoryPanel mlsId={listing.mlsId} townHint={townHint} variant="page" />
     </ListingShell>
   );
 }

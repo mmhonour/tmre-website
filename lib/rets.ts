@@ -1,15 +1,30 @@
 import 'server-only'
 
+import { parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
+import { propertyTaxFromRaw } from '@/lib/listing-property-tax'
+
 type RetsClientModule = typeof import('rets-client')
 
-let retsClientPromise: Promise<RetsClientModule> | null = null
+let retsLib: RetsClientModule | null = null
+let retsUnavailable = false
 
 /** Lazy-load rets-client so native deps (node-expat) don't crash route modules at import time. */
-async function loadRetsClient(): Promise<RetsClientModule> {
-  if (!retsClientPromise) {
-    retsClientPromise = import('rets-client')
+function loadRetsClient(): RetsClientModule {
+  if (retsUnavailable) {
+    throw new Error('RETS client unavailable in this runtime')
   }
-  return retsClientPromise
+  if (!retsLib) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      retsLib = require('rets-client') as RetsClientModule
+    } catch (err) {
+      retsUnavailable = true
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn('[rets] native RETS client unavailable:', message)
+      throw new Error(`RETS client unavailable: ${message}`)
+    }
+  }
+  return retsLib
 }
 
 export type RawRetsRecord = Record<string, string>
@@ -42,6 +57,8 @@ export type Listing = {
   beds: number | null
   baths: number | null
   sqft: number | null
+  /** Lot size in acres when disclosed in MLS. */
+  lotAcres: number | null
   yearBuilt: number | null
   dom: number | null
   listDate: string | null
@@ -52,6 +69,11 @@ export type Listing = {
   longitude: number | null
   photoCount: number | null
   ownerName: string | null
+  remarks: string | null
+  /** Annual property tax from MLS (cached in SQLite). */
+  propertyTax?: number | null
+  /** Tax fiscal year label from MLS (cached in SQLite). */
+  propertyTaxYear?: string | null
   schools: Schools
   raw: RawRetsRecord
 }
@@ -104,7 +126,7 @@ function requireEnv() {
   const { RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD } = process.env
   if (!RETS_SERVER_URL || !RETS_USERNAME || !RETS_PASSWORD) {
     throw new Error(
-      'RETS env vars missing — set RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD in .env.local',
+      'RETS env vars missing - set RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD in .env.local',
     )
   }
   return {
@@ -183,6 +205,8 @@ export function refreshListingSchools(listing: Listing): Listing {
 }
 
 function mapListing(r: RawRetsRecord): Listing {
+  const { annualAmount: propertyTax, yearLabel: propertyTaxYear } =
+    propertyTaxFromRaw(r)
   return {
     mlsId: str(r.ListingId),
     listingKey: str(r.ListingKey),
@@ -192,12 +216,13 @@ function mapListing(r: RawRetsRecord): Listing {
     address: buildAddress(r),
     price: num(r.ListPrice) ?? num(r.CurrentPrice) ?? num(r.Price),
     originalListPrice: num(r.OriginalListPrice),
-    beds: num(r.BedsTotal),
-    baths: num(r.BathsTotal),
+    beds: num(r.BedsTotal) ?? num(r.BedroomsTotal),
+    baths: num(r.BathsTotal) ?? num(r.BathroomsTotalInteger) ?? num(r.BathroomsFull),
     sqft:
       num(r.SqFtTotal) ??
       num(r.LivingAreaSQFTPerPublicRecord) ??
       num(r.SqFtEstHeatedAboveGrade),
+    lotAcres: parseLotAcresFromRaw(r),
     yearBuilt: num(r.YearBuilt),
     dom: num(r.DOM),
     listDate: str(r.ListingContractDate) || null,
@@ -206,7 +231,7 @@ function mapListing(r: RawRetsRecord): Listing {
     statusChangeTimestamp: str(r.StatusChangeTimestamp) || null,
     latitude: num(r.Latitude),
     longitude: num(r.Longitude),
-    photoCount: num(r.PhotoCount),
+    photoCount: num(r.PhotoCount) ?? num(r.PhotosCount),
     ownerName: pickField(r, [
       'OwnerName',
       'TaxOwnerName',
@@ -215,6 +240,9 @@ function mapListing(r: RawRetsRecord): Listing {
       'OwnerOfRecord',
       'TaxAssessorName',
     ]),
+    remarks: pickField(r, ['PublicRemarks', 'Remarks', 'MarketingRemarks']),
+    propertyTax,
+    propertyTaxYear,
     schools: buildSchools(r),
     raw: r,
   }
@@ -266,7 +294,7 @@ function buildDmql(params: SearchParams): string {
   const closedWindow = Boolean(params.closedAfter || params.closedBefore)
   if (params.status) {
     const code = resolveStatusCode(params.status)
-    // SmartMLS throws NO_RECORDS_FOUND on MLSStatus=|C — use a date window for closed sales.
+    // SmartMLS throws NO_RECORDS_FOUND on MLSStatus=|C - use a date window for closed sales.
     if (code && !(statusKey === 'closed' && closedWindow)) {
       clauses.push(`(MLSStatus=|${code})`)
     }
@@ -302,7 +330,7 @@ function buildDmql(params: SearchParams): string {
 
 export async function withRetsClient<T>(fn: (c: any) => Promise<T>): Promise<T> {
   const settings = requireEnv()
-  const rets = await loadRetsClient()
+  const rets = loadRetsClient()
   let value: T | undefined
   let error: unknown
   let captured = false
@@ -557,7 +585,7 @@ export async function fetchAllPhotoUrls(
     }
   }
 
-  // Location:1 returned no URLs — check how many photos exist via binary fetch
+  // Location:1 returned no URLs - check how many photos exist via binary fetch
   // and return proxy URLs that the browser can call to stream the image.
   if (mlsId) {
     for (const photoType of PHOTO_TYPES) {
@@ -603,7 +631,69 @@ export async function fetchAllPhotoUrls(
   return []
 }
 
-/** Up to `maxPhotos` JPEG buffers for vision / finish-quality assessment. */
+/** Photo count for a listing - prefers MLS hint, then media, then RETS binary inventory. */
+export async function discoverListingPhotoCount(
+  listingKey: string,
+  mlsId?: string | null,
+  photoCountHint?: number | null,
+): Promise<number> {
+  const hint = photoCountHint ?? 0
+  if (hint > 0) return Math.min(hint, 250)
+
+  const id = listingKey.trim()
+  const mid = mlsId?.trim() ?? ''
+  const media = await fetchMediaRecordsForListing(id, mid, 250)
+  if (media.length > 0) return media.length
+
+  const objectKey = id || mid
+  if (!objectKey) return 0
+
+  for (const photoType of PHOTO_TYPES) {
+    try {
+      const count = await withClient(async (client) => {
+        const all = await client.objects.getAllObjects(
+          'Property',
+          photoType,
+          objectKey,
+          { Location: 0, alwaysGroupObjects: true },
+        )
+        const items: unknown[] = Array.isArray(all)
+          ? all
+          : Array.isArray((all as { objects?: unknown[] })?.objects)
+            ? (all as { objects: unknown[] }).objects
+            : []
+        return items.filter((it) => {
+          const buf = (it as { dataBuffer?: Buffer; data?: Buffer })?.dataBuffer
+            ?? (it as { data?: Buffer })?.data
+          return Buffer.isBuffer(buf) && buf.length > 100
+        }).length
+      })
+      if (count > 0) return count
+    } catch {
+      // try next type
+    }
+  }
+
+  const preferred = await fetchPreferredPhotoUrl(id, mid)
+  return preferred ? 1 : 0
+}
+
+/** Media CDN URL for one photo index (full, mid, or thumb). */
+export async function fetchMediaPhotoUrlForIndex(
+  listingKey: string,
+  mlsId: string | null | undefined,
+  index: number,
+  size: 'full' | 'mid' | 'thumb' = 'full',
+): Promise<string | null> {
+  if (index < 0) return null
+  const limit = Math.min(Math.max(index + 1, 12), 250)
+  const media = await fetchMediaRecordsForListing(listingKey.trim(), mlsId, limit)
+  if (media.length === 0) return null
+  const record = sortMediaRecords(media)[index]
+  return record ? mediaPhotoUrl(record, size) : null
+}
+
+/** Up to maxPhotos JPEG buffers - SQLite first, then media/RETS with persist. */
 export async function fetchPhotoBuffers(
   listingKey: string,
   mlsId: string,
@@ -614,50 +704,26 @@ export async function fetchPhotoBuffers(
   const id = mlsId.trim()
   if (!key && !id) return []
 
-  const urls = await fetchAllPhotoUrls(key, id, photoCountHint)
-  const buffers: Buffer[] = []
+  const { readCachedListingPhotoBuffers, resolveListingPhotoBuffer } = await import(
+    '@/lib/listing-photo-store'
+  )
+  const cacheId = key || id
+  const cached = readCachedListingPhotoBuffers(cacheId, maxPhotos)
+  if (cached.length >= maxPhotos) return cached.slice(0, maxPhotos)
 
-  for (const url of urls) {
+  const buffers = [...cached]
+  const startIndex = buffers.length
+  const target = Math.min(maxPhotos, photoCountHint ?? maxPhotos, 60)
+
+  for (let i = startIndex; i < target; i++) {
     if (buffers.length >= maxPhotos) break
-    if (!/^https?:\/\//i.test(url)) continue
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(12_000) })
-      if (!res.ok) continue
-      const buf = Buffer.from(await res.arrayBuffer())
-      if (buf.length > 500) buffers.push(buf)
-    } catch {
-      // try next url
-    }
-  }
-
-  if (buffers.length >= maxPhotos) return buffers.slice(0, maxPhotos)
-
-  const objectKey = key || id
-  for (const photoType of PHOTO_TYPES) {
-    try {
-      const items: unknown[] = await withClient(async (client) => {
-        const all = await client.objects.getAllObjects(
-          'Property',
-          photoType,
-          objectKey,
-          { Location: 0, alwaysGroupObjects: true },
-        )
-        return Array.isArray(all)
-          ? all
-          : Array.isArray((all as { objects?: unknown[] })?.objects)
-            ? (all as { objects: unknown[] }).objects
-            : []
-      })
-      for (const item of items) {
-        if (buffers.length >= maxPhotos) break
-        const row = item as { dataBuffer?: Buffer; data?: Buffer }
-        const buf = row?.dataBuffer ?? row?.data
-        if (Buffer.isBuffer(buf) && buf.length > 500) buffers.push(buf)
-      }
-      if (buffers.length > 0) break
-    } catch {
-      // try next type
-    }
+    const resolved = await resolveListingPhotoBuffer({
+      mlsId: cacheId,
+      listingKey: key || id,
+      photoIndex: i,
+      photoCountHint,
+    })
+    if (resolved) buffers.push(resolved.data)
   }
 
   return buffers.slice(0, maxPhotos)

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import IntelligenceClient from "@/components/IntelligenceClient";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
@@ -8,5 +9,9 @@ export const metadata = {
 };
 
 export default function IntelligencePage() {
-  return <IntelligenceClient />;
+  return (
+    <Suspense fallback={null}>
+      <IntelligenceClient />
+    </Suspense>
+  );
 }

@@ -61,6 +61,7 @@ export type DealCarouselPayload = {
   cityMedianPrice?: number | null;
   valueDiscountPct?: number | null;
   lotAcres?: number | null;
+  superlatives?: string[];
 };
 
 type SlideDirection = "next" | "prev";
@@ -80,6 +81,8 @@ export function useDealOfTheDayCarousel(options?: {
   enabled?: boolean;
   /** Match Intelligence tx filter — sale/rental only, or all property types. */
   transactionFilter?: DealTransactionFilter;
+  /** When set, fetch this exact listing instead of the town's auto-pick. */
+  pinnedListingId?: string | null;
 }) {
   const rotate = options?.rotate !== false;
   const enabled = options?.enabled !== false;
@@ -108,6 +111,7 @@ export function useDealOfTheDayCarousel(options?: {
       : options?.transactionFilter === "rental"
         ? "rental"
         : null;
+  const pinnedListingId = options?.pinnedListingId?.trim() || null;
 
   useEffect(() => {
     if (!enabled) {
@@ -122,9 +126,8 @@ export function useDealOfTheDayCarousel(options?: {
         try {
           const qs = new URLSearchParams({ city: town });
           if (kindParam) qs.set("kind", kindParam);
-          const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`, {
-            cache: "no-store",
-          });
+          if (pinnedListingId) qs.set("listing", pinnedListingId);
+          const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
           if (!r.ok) return { town, deal: null as DealCarouselPayload | null };
           const deal = (await r.json()) as DealCarouselPayload;
           const picked = hasListing(deal) ? deal : null;
@@ -145,7 +148,7 @@ export function useDealOfTheDayCarousel(options?: {
     return () => {
       cancelled = true;
     };
-  }, [townsToFetch, enabled, kindParam]);
+  }, [townsToFetch, enabled, kindParam, pinnedListingId]);
 
   const carouselTowns = useMemo(
     () => townsToFetch.filter((town) => hasListing(dealsByTown[town])),
@@ -162,7 +165,7 @@ export function useDealOfTheDayCarousel(options?: {
 
   useEffect(() => {
     setIndex(0);
-  }, [rotate, options?.initialTown, kindParam]);
+  }, [rotate, options?.initialTown, kindParam, pinnedListingId]);
 
   useEffect(() => {
     if (pinnedTown || carouselTowns.length === 0) return;

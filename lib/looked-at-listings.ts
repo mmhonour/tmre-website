@@ -1,12 +1,14 @@
 import {
   clearClientPref,
   readClientPref,
-  writeClientPref,
 } from "@/lib/client-prefs";
 import { listingDetailHref } from "@/lib/listing-url";
 import { resolveListingTown } from "@/lib/tmre-towns";
 
+/** Legacy cookie name — migrated to localStorage on first read. */
 export const LOOKED_AT_COOKIE = "tmre_looked_at";
+export const LOOKED_AT_STORAGE_KEY = "tmre_looked_at";
+export const LOOKED_AT_CHANGED_EVENT = "tmre:looked-at-changed";
 const MAX_ENTRIES = 40;
 
 export type LookedAtEntry = {
@@ -26,27 +28,109 @@ function sortLookedAtNewestFirst(entries: LookedAtEntry[]): LookedAtEntry[] {
   );
 }
 
+function readRawLookedAtPref(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(LOOKED_AT_STORAGE_KEY);
+    if (stored) return stored;
+  } catch {
+    // localStorage unavailable (private mode, etc.)
+  }
+
+  const legacy = readClientPref(LOOKED_AT_COOKIE);
+  if (!legacy) return null;
+
+  try {
+    localStorage.setItem(LOOKED_AT_STORAGE_KEY, legacy);
+    clearClientPref(LOOKED_AT_COOKIE);
+  } catch {
+    // Keep using cookie fallback below if localStorage fails.
+  }
+  return legacy;
+}
+
+function writeRawLookedAtPref(value: string): void {
+  if (typeof window === "undefined") return;
+
+  let wrote = false;
+  try {
+    localStorage.setItem(LOOKED_AT_STORAGE_KEY, value);
+    wrote = true;
+    clearClientPref(LOOKED_AT_COOKIE);
+  } catch {
+    // Fall back to cookie for a single entry if localStorage is full/unavailable.
+  }
+
+  if (!wrote) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        document.cookie = `${LOOKED_AT_COOKIE}=${encodeURIComponent(
+          JSON.stringify([parsed[0]]),
+        )}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+      }
+    } catch {
+      return;
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent(LOOKED_AT_CHANGED_EVENT));
+}
+
+function clearRawLookedAtPref(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(LOOKED_AT_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+  clearClientPref(LOOKED_AT_COOKIE);
+  window.dispatchEvent(new CustomEvent(LOOKED_AT_CHANGED_EVENT));
+}
+
+function normalizeEntry(value: unknown): LookedAtEntry | null {
+  if (!value || typeof value !== "object") return null;
+  const entry = value as Partial<LookedAtEntry>;
+  if (
+    typeof entry.id !== "string" ||
+    typeof entry.address !== "string" ||
+    typeof entry.viewedAt !== "string"
+  ) {
+    return null;
+  }
+
+  const town =
+    resolveListingTown(entry.city) || entry.city?.trim() || undefined;
+
+  return {
+    id: entry.id,
+    href:
+      typeof entry.href === "string" && entry.href.trim()
+        ? entry.href
+        : listingDetailHref(entry.id, entry.address, town),
+    address: entry.address,
+    city: entry.city?.trim() || null,
+    zip: entry.zip?.trim() || null,
+    price: entry.price ?? null,
+    propertyType: entry.propertyType?.trim() || null,
+    viewedAt: entry.viewedAt,
+  };
+}
+
 export function readLookedAtListings(): LookedAtEntry[] {
-  const raw = readClientPref(LOOKED_AT_COOKIE);
+  const raw = readRawLookedAtPref();
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return sortLookedAtNewestFirst(parsed.filter(isLookedAtEntry));
+    return sortLookedAtNewestFirst(
+      parsed
+        .map(normalizeEntry)
+        .filter((entry): entry is LookedAtEntry => entry != null),
+    );
   } catch {
     return [];
   }
-}
-
-function isLookedAtEntry(value: unknown): value is LookedAtEntry {
-  if (!value || typeof value !== "object") return false;
-  const entry = value as Partial<LookedAtEntry>;
-  return (
-    typeof entry.id === "string" &&
-    typeof entry.href === "string" &&
-    typeof entry.address === "string" &&
-    typeof entry.viewedAt === "string"
-  );
 }
 
 export function recordLookedAtListing(input: {
@@ -80,9 +164,9 @@ export function recordLookedAtListing(input: {
     ...readLookedAtListings().filter((item) => item.id !== id),
   ].slice(0, MAX_ENTRIES);
 
-  writeClientPref(LOOKED_AT_COOKIE, JSON.stringify(next));
+  writeRawLookedAtPref(JSON.stringify(next));
 }
 
 export function clearLookedAtListings(): void {
-  clearClientPref(LOOKED_AT_COOKIE);
+  clearRawLookedAtPref();
 }

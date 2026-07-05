@@ -32,7 +32,14 @@ export async function GET(req: NextRequest) {
     )
     if (cached) {
       return NextResponse.json(
-        { ...cached, source: 'db', statsCache: true, generatedAt: cached.generatedAt ?? new Date().toISOString() },
+        {
+          ...cached,
+          closedThisWeek: cached.closedThisWeek ?? 0,
+          closedThisWeekByZip: cached.closedThisWeekByZip ?? {},
+          source: 'db',
+          statsCache: true,
+          generatedAt: cached.generatedAt ?? new Date().toISOString(),
+        },
         { headers: { ...listingCacheHeaders('db'), 'X-Stats-Cache': 'hit' } },
       )
     }
@@ -55,6 +62,8 @@ export async function GET(req: NextRequest) {
       city,
       kind,
       data: generateFallback(city, kind),
+      closedThisWeek: 0,
+      closedThisWeekByZip: {},
       fallback: true,
       generatedAt: new Date().toISOString(),
     })

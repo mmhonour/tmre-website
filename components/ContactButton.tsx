@@ -31,8 +31,15 @@ export default function ContactButton({ className }: { className?: string }) {
         setOpen(false);
       }
     }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
     document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handle);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [open]);
 
   return (
@@ -51,7 +58,10 @@ export default function ContactButton({ className }: { className?: string }) {
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-navy border border-white/10 shadow-2xl shadow-black/40 p-4 z-50">
-          <ContactFormPanel source="nav-contact" />
+          <ContactFormPanel
+            source="nav-contact"
+            onClose={() => setOpen(false)}
+          />
         </div>
       )}
     </div>

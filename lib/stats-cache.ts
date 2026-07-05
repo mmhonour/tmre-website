@@ -2,12 +2,14 @@ import {
   clearStatsCache,
   getListingsDbStats,
   getSyncMeta,
+  publishListingsReadSnapshot,
   readAllListingsFromDb,
   readListingsFromDb,
   readStatsCacheRow,
   setSyncMeta,
   writeStatsCacheRow,
 } from '@/lib/listings-db'
+import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-status'
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import { filterListingsByKind, LISTING_KINDS, type ListingKind } from '@/lib/listing-kind'
 import {
@@ -22,8 +24,8 @@ import { listingToStatsRow, type StatsListingRow } from '@/lib/stats-listing-row
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
-/** Stats payloads are refreshed on this interval (30 minutes). */
-export const STATS_CACHE_TTL_MS = 30 * 60 * 1000
+/** Stats payloads are refreshed on this interval (1 hour). */
+export const STATS_CACHE_TTL_MS = 60 * 60 * 1000
 
 let emptyCacheRebuildAttempted = false
 
@@ -128,13 +130,21 @@ export function computeTownBundleFromListings(
 }
 
 /** Recompute all Stats API payloads from SQLite listings and persist to stats_cache. */
-export function rebuildStatsCache(): { written: number; durationMs: number } {
+export function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): {
+  written: number
+  durationMs: number
+} {
+  const trackRefresh = options.trackRefresh !== false
+  if (trackRefresh) beginSqliteRefresh()
   const t0 = Date.now()
+  try {
   clearStatsCache()
 
   if (!hasLocalListingsCache()) {
     return { written: 0, durationMs: Date.now() - t0 }
   }
+
+  publishListingsReadSnapshot()
 
   let written = 0
   const generatedAt = new Date().toISOString()
@@ -207,6 +217,9 @@ export function rebuildStatsCache(): { written: number; durationMs: number } {
   console.info(`[stats-cache] rebuilt ${written} entries in ${Date.now() - t0}ms`)
 
   return { written, durationMs: Date.now() - t0 }
+  } finally {
+    if (trackRefresh) endSqliteRefresh(new Date().toISOString())
+  }
 }
 
 /** Rebuild stats cache when missing or older than STATS_CACHE_TTL_MS. */

@@ -1,20 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ZipBoundaryPopover, { prefetchTownBoundaries, prefetchZipBoundaries } from "./ZipBoundaryPopover";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
+import AllTownsDescriptor from "@/components/AllTownsDescriptor";
+import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
+import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
+import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
+import type { VintageBucketId } from "@/lib/vintage-buckets";
 import DealOfTheDayFrame from "./DealOfTheDayFrame";
+import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
+import {
+  DEAL_BOARD_VIEW_DEFAULT,
+  DEAL_BOARD_VIEW_PREF_KEY,
+  DEAL_BOARD_VIEW_VALUES,
+  type DealBoardView,
+} from "@/lib/deal-board-view";
+import type { TownDescriptorStats } from "@/lib/intelligence-all-towns-descriptor";
 import ListingScoreBreakdownModal from "./ListingScoreBreakdownModal";
+import ListingHistoryModal from "./ListingHistoryModal";
 import TownFilterPills from "./TownFilterPills";
 import {
   filterPillButtonClass,
   filterPillContainerClass,
   filterPillSeparatorClass,
 } from "@/lib/filter-pill-styles";
-import { formatTownList, formatTownZipPlace, formatTownZipTagline, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
+import { formatTownZipPlace, formatTownZipTagline, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
+import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
+import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
+import { parseIntelligenceSearchParams } from "@/lib/intelligence-search-url";
+import {
+  bumpIntelligenceSnapshotGeneration,
+  getOrSetIntelligenceSnapshotCache,
+  intelligenceSnapshotBenchmarksKey,
+  intelligenceSnapshotTownKey,
+  type IntelligenceSnapshotFilters,
+} from "@/lib/intelligence-snapshot-cache";
 import { intelligenceListingsHref } from "@/lib/intelligence-url";
 import { matchesNewConstruction } from "@/lib/new-construction";
 import { statsMedianListingsHref } from "@/lib/stats-url";
@@ -24,6 +49,26 @@ import {
   usePersistedFilter,
   usePersistedNullableFilter,
 } from "@/hooks/usePersistedFilter";
+import {
+  INTEL_PRICE_MAX_INDEX,
+  boardPriceMaxIndex,
+  defaultPriceIndicesFromBoard,
+  formatIntelPriceRangeLabelFromSteps,
+  intelPriceFilterActiveOnBoard,
+  intelPriceStepsForBoard,
+  listingMatchesIntelPriceRange,
+  resolveIntelPriceRangeFromSteps,
+} from "@/lib/intel-price-filter";
+import {
+  formatVintageRangeLabel,
+  listingMatchesVintageFilter,
+  VINTAGE_FILTER_MAX,
+  VINTAGE_INDEX_VALUES,
+  vintageBucketFilterIndex,
+  vintageFilterActive,
+  type VintageIndexFilter,
+} from "@/lib/intelligence-vintage-filter";
+import { readClientPref, writeClientPref } from "@/lib/client-prefs";
 
 type TxFilter = "all" | "sale" | "rental";
 type ClsFilter = "all" | "residential" | "commercial";
@@ -33,23 +78,18 @@ type BoardStatusFilter = "all" | "new" | "reduced";
 const TX_VALUES = ["all", "sale", "rental"] as const;
 const CLS_VALUES = ["all", "residential", "commercial"] as const;
 const MIN_BED_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
+const MIN_BATH_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
 const SALE_PROPERTY_VALUES = ["all", "homes", "multi", "condos"] as const;
 const NEW_CONSTRUCTION_VALUES = ["all", "new"] as const;
+const STATS_EXPANDED_PREF = "tmre_intel_stats_expanded_towns";
 type MinBedFilter = (typeof MIN_BED_VALUES)[number];
+type MinBathFilter = (typeof MIN_BATH_VALUES)[number];
 type NewConstructionFilter = (typeof NEW_CONSTRUCTION_VALUES)[number];
 const INTEL_CITIES = ["All", ...TMRE_TOWNS] as const;
 type IntelCity = (typeof INTEL_CITIES)[number];
 
 /** Market positioning copy — separate from offline mock data. */
-const TOWN_TAGLINES: Record<TmreTown, string> = {
-  Norwalk: "Premium-velocity market",
-  "New Canaan": "Premier Fairfield County address",
-  Westport: "Trophy-tier inventory",
-  Wilton: "Upscale residential enclave",
-  Weston: "Quiet luxury enclave",
-  Fairfield: "Balanced Fairfield County market",
-  Ridgefield: "Historic charm, upscale inventory",
-};
+const TOWN_TAGLINES = TOWN_MARKET_TAGLINES;
 
 function formatTownTagline(town: TmreTown, zip?: string | null): string {
   return formatTownZipTagline(town, zip, TOWN_TAGLINES[town]);
@@ -73,8 +113,22 @@ function monthsSupplyColorClass(monthsSupply: number | null): string {
 
 type RowStatus = "Active" | "Pending" | "New" | "Reduced";
 
-type SortKey = "score" | "address" | "town" | "price" | "ppsf" | "sqft" | "dom" | "status";
+type SortKey = "score" | "town" | "beds" | "baths" | "price" | "ppsf" | "sqft" | "dom" | "year" | "status";
 type SortDir = "asc" | "desc";
+
+const SORT_KEY_VALUES = [
+  "score",
+  "town",
+  "beds",
+  "baths",
+  "price",
+  "ppsf",
+  "sqft",
+  "dom",
+  "year",
+  "status",
+] as const satisfies readonly SortKey[];
+const SORT_DIR_VALUES = ["asc", "desc"] as const satisfies readonly SortDir[];
 
 const STATUS_SORT_ORDER: Record<RowStatus, number> = {
   New: 0,
@@ -83,6 +137,51 @@ const STATUS_SORT_ORDER: Record<RowStatus, number> = {
   Pending: 3,
 };
 
+const BOARD_LISTING_LIMIT = 100;
+/** Primary photos for listings at or above this score rank load eagerly (0 = best). */
+const PHOTO_PRIORITY_RANK_COUNT = 12;
+const BED_BATH_MAX = 6;
+const INTEL_SLIDER_WIDTH_CLASS = "w-[7.5rem]";
+
+function formatBedBathRangeLabel(min: number, max: number, unit: "Bed" | "Bath"): string {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  if (lo <= 0 && hi >= BED_BATH_MAX) {
+    return unit === "Bed" ? "Any Bed" : "Any Bath";
+  }
+  const suffix = (n: number) => (n === 1 ? unit : `${unit}s`);
+  if (lo <= 0 && hi < BED_BATH_MAX) {
+    return `Up to ${hi} ${suffix(hi)}`;
+  }
+  if (lo > 0 && hi >= BED_BATH_MAX) {
+    return `${lo}+ ${suffix(lo)}`;
+  }
+  if (lo === hi) {
+    return `${lo} ${suffix(lo)}`;
+  }
+  return `${lo}–${hi} ${unit === "Bed" ? "Beds" : "Baths"}`;
+}
+
+function bedBathFilterActive(min: number, max: number): boolean {
+  return min > 0 || max < BED_BATH_MAX;
+}
+
+function listingMatchesBedBathCount(
+  value: number | null | undefined,
+  min: number,
+  max: number,
+): boolean {
+  if (!bedBathFilterActive(min, max)) return true;
+  if (value == null) return false;
+  if (min > 0 && value < min) return false;
+  if (max < BED_BATH_MAX && value > max) return false;
+  return true;
+}
+
+function rankListingsByScore(listings: DisplayListing[]): DisplayListing[] {
+  return [...listings].sort((a, b) => b.score - a.score);
+}
+
 function compareNullable(a: number | null, b: number | null, dir: SortDir): number {
   if (a == null && b == null) return 0;
   if (a == null) return 1;
@@ -90,16 +189,10 @@ function compareNullable(a: number | null, b: number | null, dir: SortDir): numb
   return dir === "asc" ? a - b : b - a;
 }
 
-function formatBoardAddress(l: DisplayListing, allTowns: boolean): string {
-  if (!allTowns) return l.address;
-  return l.zip ? `${l.address}, ${l.zip}` : l.address;
-}
-
 function sortListings(
   rows: DisplayListing[],
   sortKey: SortKey,
   sortDir: SortDir,
-  includeTownAndZipInAddress = false,
 ): DisplayListing[] {
   const sorted = [...rows];
   sorted.sort((a, b) => {
@@ -108,19 +201,16 @@ function sortListings(
       case "score":
         cmp = a.score - b.score;
         break;
-      case "address":
-        cmp = formatBoardAddress(a, includeTownAndZipInAddress).localeCompare(
-          formatBoardAddress(b, includeTownAndZipInAddress),
-          undefined,
-          { sensitivity: "base" },
-        );
-        break;
       case "town": {
         const townName = (l: DisplayListing) =>
           (l.city ? normalizeTownName(l.city) : "") ?? "";
         cmp = townName(a).localeCompare(townName(b), undefined, { sensitivity: "base" });
         break;
       }
+      case "beds":
+        return compareNullable(a.beds ?? null, b.beds ?? null, sortDir);
+      case "baths":
+        return compareNullable(a.baths ?? null, b.baths ?? null, sortDir);
       case "price":
         cmp = a.price - b.price;
         break;
@@ -130,6 +220,8 @@ function sortListings(
         return compareNullable(a.sqft, b.sqft, sortDir);
       case "dom":
         return compareNullable(a.dom, b.dom, sortDir);
+      case "year":
+        return compareNullable(a.yearBuilt ?? null, b.yearBuilt ?? null, sortDir);
       case "status":
         cmp = STATUS_SORT_ORDER[a.status] - STATUS_SORT_ORDER[b.status];
         break;
@@ -169,44 +261,6 @@ function splitBoardByScoreTier(listings: DisplayListing[]): BoardScoreTiers {
   };
 }
 
-const RANK_COLOR_SAGE = { r: 74, g: 124, b: 111 };
-const RANK_COLOR_NEUTRAL = { r: 220, g: 220, b: 216 };
-const RANK_COLOR_CORAL = { r: 200, g: 90, b: 58 };
-
-function lerpChannel(a: number, b: number, t: number): number {
-  return Math.round(a + (b - a) * t);
-}
-
-function rgbString(rgb: { r: number; g: number; b: number }): string {
-  return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-}
-
-function lerpRgb(
-  from: { r: number; g: number; b: number },
-  to: { r: number; g: number; b: number },
-  t: number,
-): string {
-  return rgbString({
-    r: lerpChannel(from.r, to.r, t),
-    g: lerpChannel(from.g, to.g, t),
-    b: lerpChannel(from.b, to.b, t),
-  });
-}
-
-/** Green at top rank → neutral by 20th percentile; neutral until 80th; → red at bottom. */
-function boardRankColor(scoreRank: number, total: number): string {
-  if (total <= 1) return rgbString(RANK_COLOR_SAGE);
-  const percentile = scoreRank / (total - 1);
-
-  if (percentile <= 0.2) {
-    return lerpRgb(RANK_COLOR_SAGE, RANK_COLOR_NEUTRAL, percentile / 0.2);
-  }
-  if (percentile >= 0.8) {
-    return lerpRgb(RANK_COLOR_NEUTRAL, RANK_COLOR_CORAL, (percentile - 0.8) / 0.2);
-  }
-  return rgbString(RANK_COLOR_NEUTRAL);
-}
-
 function buildScoreRankMap(listings: DisplayListing[]): Map<string, number> {
   const sorted = [...listings].sort((a, b) => b.score - a.score);
   const map = new Map<string, number>();
@@ -225,6 +279,7 @@ type DisplayListing = {
   price: number;
   pricePerSqft: number | null;
   sqft: number | null;
+  lotAcres?: number | null;
   dom: number | null;
   status: RowStatus;
   isRental: boolean;
@@ -232,8 +287,10 @@ type DisplayListing = {
   propertyType?: string;
   yearBuilt?: number | null;
   beds?: number | null;
+  baths?: number | null;
   headline: string;
   zip: string | null;
+  photoCount?: number | null;
 };
 
 type InsightCandidate = {
@@ -252,7 +309,7 @@ type SnapshotMetric = {
   trend: string;
   tone: MetricTone;
   valueSignal?: SnapshotValueSignal;
-  action?: "new" | "reduced";
+  action?: "new" | "reduced" | "closed";
   linkMedian?: boolean;
 };
 
@@ -290,6 +347,7 @@ function priceValueSignal(
 type SnapshotBenchmarks = {
   medianPrice: number | null;
   avgPpsf: number | null;
+  medianSqft: number | null;
 };
 
 function snapshotBenchmarks(rows: DisplayListing[]): SnapshotBenchmarks {
@@ -298,9 +356,13 @@ function snapshotBenchmarks(rows: DisplayListing[]): SnapshotBenchmarks {
     .filter((l) => !l.isRental)
     .map((l) => l.pricePerSqft)
     .filter((p): p is number => p != null && p > 0);
+  const sqfts = rows
+    .filter((l) => !l.isCommercial && l.sqft != null && l.sqft > 0)
+    .map((l) => l.sqft as number);
   return {
     medianPrice: median(prices),
     avgPpsf: average(ppsfs),
+    medianSqft: median(sqfts),
   };
 }
 
@@ -308,10 +370,31 @@ function isNewThisWeek(l: DisplayListing): boolean {
   return l.dom != null && l.dom <= 7;
 }
 
+function closedThisWeekLabel(tx: TxFilter): string {
+  return tx === "rental" ? "Leased(s) this week" : "Closed(s) this week";
+}
+
+function closedThisWeekForTown(
+  town: string,
+  zip: string | null | undefined,
+  closedByTown: Record<string, number>,
+  closedByTownZip: Record<string, Record<string, number>>,
+): number {
+  if (zip) return closedByTownZip[town]?.[zip] ?? 0;
+  return closedByTown[town] ?? 0;
+}
+
+function salesByMonthKinds(tx: TxFilter): ("sale" | "rental")[] {
+  if (tx === "rental") return ["rental"];
+  if (tx === "sale") return ["sale"];
+  return ["sale", "rental"];
+}
+
 type TownSnapshot = {
   town: string;
   zip?: string | null;
   metrics: SnapshotMetric[];
+  stats: TownDescriptorStats;
 };
 
 function median(nums: number[]): number | null {
@@ -342,6 +425,11 @@ function formatAvgBedrooms(avg: number | null): string {
   return `${low}-${high} bedrooms`;
 }
 
+function filterCountLabel(count: number, unit: "Bed" | "Bath", exact = false): string {
+  const suffix = count === 1 ? unit : `${unit}(s)`;
+  return exact ? `${count} ${suffix}` : `${count}+ ${suffix}`;
+}
+
 function listingTown(l: DisplayListing): string | null {
   return l.city ? normalizeTownName(l.city) : null;
 }
@@ -361,7 +449,15 @@ function filterBoardListings(
   statusFilter: BoardStatusFilter = "all",
   saleProperty: SalePropertyFilter = "all",
   minBeds = 0,
+  maxBeds = BED_BATH_MAX,
+  minBaths = 0,
+  maxBaths = BED_BATH_MAX,
   newConstructionOnly = false,
+  exactBeds = false,
+  minPrice = 0,
+  maxPrice: number | null = null,
+  minVintage = 0,
+  maxVintage = VINTAGE_FILTER_MAX,
 ): DisplayListing[] {
   return rows.filter((l) => {
     if (tx === "sale" && l.isRental) return false;
@@ -374,7 +470,22 @@ function filterBoardListings(
       if (saleProperty === "multi" && !isMultiFamilyPropertyType(propertyType)) return false;
       if (saleProperty === "condos" && !isCondoPropertyType(propertyType)) return false;
     }
-    if (minBeds > 0 && (l.beds == null || l.beds < minBeds)) return false;
+    if (exactBeds && minBeds > 0) {
+      if (l.beds == null || l.beds !== minBeds) return false;
+    } else if (!listingMatchesBedBathCount(l.beds, minBeds, maxBeds)) {
+      return false;
+    }
+    if (!listingMatchesBedBathCount(l.baths, minBaths, maxBaths)) return false;
+    if (!listingMatchesVintageFilter(l.yearBuilt, minVintage, maxVintage)) {
+      return false;
+    }
+    if (
+      (minPrice > 0 || maxPrice != null) &&
+      !(tx === "all" && l.isRental) &&
+      !listingMatchesIntelPriceRange(l.price, minPrice, maxPrice)
+    ) {
+      return false;
+    }
     if (newConstructionOnly && !matchesNewConstruction(l.yearBuilt, l.propertyType)) return false;
     if (zip && l.zip !== zip) return false;
     if (statusFilter === "new" && !isNewThisWeek(l)) return false;
@@ -383,12 +494,19 @@ function filterBoardListings(
   });
 }
 
+function formatSnapshotSqft(n: number | null): string {
+  if (n == null) return "—";
+  return Math.round(n).toLocaleString();
+}
+
 function buildTownSnapshot(
   townListings: DisplayListing[],
   town: string,
   monthlySales: Record<string, number>,
   zip?: string | null,
-  benchmarks: SnapshotBenchmarks = { medianPrice: null, avgPpsf: null },
+  benchmarks: SnapshotBenchmarks = { medianPrice: null, avgPpsf: null, medianSqft: null },
+  closedThisWeekCount = 0,
+  tx: TxFilter = "sale",
 ): TownSnapshot {
   const prices = townListings.map((l) => l.price).filter((p): p is number => p > 0);
   const doms = townListings.map((l) => l.dom).filter((d): d is number => d != null && d >= 0);
@@ -396,6 +514,9 @@ function buildTownSnapshot(
     .filter((l) => !l.isRental)
     .map((l) => l.pricePerSqft)
     .filter((p): p is number => p != null && p > 0);
+  const sqfts = townListings
+    .filter((l) => !l.isCommercial && l.sqft != null && l.sqft > 0)
+    .map((l) => l.sqft as number);
   const bedCounts = townListings
     .filter((l) => !l.isCommercial && l.beds != null && l.beds > 0)
     .map((l) => l.beds as number);
@@ -404,6 +525,7 @@ function buildTownSnapshot(
 
   const medPrice = median(prices);
   const medDom = median(doms);
+  const medSqft = median(sqfts);
   const avgPpsf = average(ppsfs);
   const avgBeds = average(bedCounts);
 
@@ -440,12 +562,32 @@ function buildTownSnapshot(
       action: reduced > 0 ? "reduced" : undefined,
     },
     {
+      label: closedThisWeekLabel(tx),
+      value: String(closedThisWeekCount),
+      trend: closedThisWeekCount > 0 ? "Past 7 days" : "None this week",
+      tone: closedThisWeekCount > 0 ? "up" : "flat",
+      action: closedThisWeekCount > 0 ? "closed" : undefined,
+    },
+    {
       label: "Median price",
       value: formatSnapshotPrice(medPrice),
       trend: medPrice ? `${formatSnapshotPrice(medPrice)} median` : "—",
       tone: "flat",
       valueSignal: priceSignal,
       linkMedian: medPrice != null && townListings.length > 0,
+    },
+    {
+      label: "Median sqft",
+      value: formatSnapshotSqft(medSqft),
+      trend:
+        medSqft != null && benchmarks.medianSqft != null
+          ? medSqft >= benchmarks.medianSqft
+            ? "Above market median"
+            : "Below market median"
+          : medSqft != null
+            ? `${formatSnapshotSqft(medSqft)} sqft`
+            : "No sqft data",
+      tone: "flat",
     },
     {
       label: "Median DOM",
@@ -476,18 +618,85 @@ function buildTownSnapshot(
     },
   ];
 
-  return { town, zip: zip ?? null, metrics };
+  return {
+    town,
+    zip: zip ?? null,
+    metrics,
+    stats: {
+      town,
+      listingCount: townListings.length,
+      medianPrice: medPrice,
+      medianDom: medDom,
+      monthsSupply,
+      newThisWeek: newListings,
+      reduced,
+      closedThisWeek: closedThisWeekCount,
+      medianSqft: medSqft,
+    },
+  };
 }
 
 function snapshotHeading(snapshot: TownSnapshot): string {
   return formatTownZipPlace(snapshot.town, snapshot.zip);
 }
 
+function snapshotPanelKey(snapshot: TownSnapshot): string {
+  return `${snapshot.town}|${snapshot.zip ?? "all"}`;
+}
+
+function toVintageListingRows(listings: DisplayListing[]): VintageListingRow[] {
+  return listings.map((listing) => ({
+    price: listing.price,
+    dom: listing.dom,
+    pricePerSqft: listing.pricePerSqft,
+    sqft: listing.sqft,
+    beds: listing.beds ?? null,
+    status: listing.status,
+    isRental: listing.isRental,
+    isCommercial: listing.isCommercial,
+    yearBuilt: listing.yearBuilt,
+  }));
+}
+
+function readExpandedSnapshotKeys(): Set<string> {
+  const raw = readClientPref(STATS_EXPANDED_PREF);
+  if (!raw) return new Set();
+  return new Set(
+    raw
+      .split(",")
+      .map((key) => key.trim())
+      .filter(Boolean),
+  );
+}
+
+function writeExpandedSnapshotKeys(keys: Set<string>): void {
+  writeClientPref(STATS_EXPANDED_PREF, [...keys].join(","));
+}
+
 function snapshotCardTitle(snapshot: TownSnapshot, tx: TxFilter): string {
   const place = snapshotHeading(snapshot);
-  if (tx === "rental") return `${place} Rental Snapshot`;
-  if (tx === "sale") return `${place} Sale Snapshot`;
-  return `${place} Snapshot`;
+  if (tx === "rental") return `${place} Rental`;
+  if (tx === "sale") return `${place} Sales`;
+  return place;
+}
+
+function snapshotSummaryParts(snapshot: TownSnapshot): {
+  listings: string;
+  medianPrice: string;
+  monthsSupply: string;
+  medianDom: string;
+  monthsSupplyClass: string;
+} {
+  const { stats } = snapshot;
+  return {
+    listings: String(stats.listingCount),
+    medianPrice: formatSnapshotPrice(stats.medianPrice),
+    monthsSupply:
+      stats.monthsSupply != null ? `${stats.monthsSupply.toFixed(1)} mo` : "—",
+    medianDom:
+      stats.medianDom != null ? `${Math.round(stats.medianDom)}d DOM` : "— DOM",
+    monthsSupplyClass: monthsSupplyColorClass(stats.monthsSupply),
+  };
 }
 
 type CitySnapshot = {
@@ -646,6 +855,7 @@ type ApiListing = {
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
+  lotAcres?: number | null;
   calculated: {
     pricePerSqft: number | null;
     daysOnMarket: number | null;
@@ -653,6 +863,7 @@ type ApiListing = {
     goldilocksScore: number | null;
     goldilocksBreakdown: ScoreBreakdown | null;
   };
+  photoCount?: number | null;
 };
 
 type ApiResponse = {
@@ -736,6 +947,35 @@ function streetCue(address: string): string | null {
 function formatCompactSqft(sqft: number): string {
   if (sqft >= 1000) return `${(sqft / 1000).toFixed(1).replace(/\.0$/, "")}K sqft`;
   return `${sqft.toLocaleString()} sqft`;
+}
+
+function formatSqliteRefreshTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const now = new Date();
+  const time = d.toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (d.toDateString() === now.toDateString()) {
+    return `today at ${time}`;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) {
+    return `yesterday at ${time}`;
+  }
+
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function generateInsightCandidates(input: InsightInput): InsightCandidate[] {
@@ -1134,8 +1374,8 @@ function insightInputFromListing(l: DisplayListing): InsightInput {
   return {
     address: l.address,
     propertyType,
-    beds: bedMatch ? Number(bedMatch[1]) : null,
-    baths: bathMatch ? Number(bathMatch[1]) : null,
+    beds: bedMatch ? Number(bedMatch[1]) : l.beds ?? null,
+    baths: bathMatch ? Number(bathMatch[1]) : l.baths ?? null,
     sqft: l.sqft,
     yearBuilt: l.yearBuilt ?? null,
     dom: l.dom,
@@ -1181,12 +1421,11 @@ function mapListings(api: ApiListing[], townName?: TmreTown): DisplayListing[] {
         scoreBreakdown: l.calculated.goldilocksBreakdown ?? null,
         address: l.address.street || l.address.full,
         city: townName ?? (l.address.city?.trim() || null),
-        type: [shortType(l.propertyType), l.beds && l.baths ? `${l.beds}bd/${l.baths}ba` : null]
-          .filter(Boolean)
-          .join(" · "),
+        type: shortType(l.propertyType),
         price: l.price!,
         pricePerSqft: rental ? null : l.calculated.pricePerSqft,
         sqft: l.sqft,
+        lotAcres: l.lotAcres ?? null,
         dom: l.calculated.daysOnMarket,
         status,
         isRental: rental,
@@ -1194,8 +1433,10 @@ function mapListings(api: ApiListing[], townName?: TmreTown): DisplayListing[] {
         propertyType: l.propertyType,
         yearBuilt: l.yearBuilt,
         beds: l.beds,
+        baths: l.baths,
         headline: "",
         zip: l.address.postalCode ?? null,
+        photoCount: l.photoCount ?? null,
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -1205,9 +1446,7 @@ function mapListings(api: ApiListing[], townName?: TmreTown): DisplayListing[] {
 }
 
 async function fetchCity(city: TmreTown): Promise<DisplayListing[]> {
-  const res = await fetch(`/api/listings?city=${city}&status=Active&limit=250`, {
-    cache: "no-store",
-  });
+  const res = await fetch(`/api/listings?city=${city}&status=Active&limit=250`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = (await res.json()) as ApiResponse;
   return mapListings(body.listings, city);
@@ -1216,6 +1455,13 @@ async function fetchCity(city: TmreTown): Promise<DisplayListing[]> {
 type LoadState = "loading" | "ready" | "fallback";
 
 export default function IntelligenceClient() {
+  const searchParams = useSearchParams();
+  const urlSearch = useMemo(
+    () => parseIntelligenceSearchParams(searchParams),
+    [searchParams],
+  );
+  const urlSearchAppliedRef = useRef(false);
+
   const [active, setActive] = usePersistedFilter<IntelCity>(
     "tmre_intel_city",
     "All",
@@ -1237,7 +1483,46 @@ export default function IntelligenceClient() {
     "0",
     MIN_BED_VALUES,
   );
+  const [minBathsFilter, setMinBathsFilter] = usePersistedFilter<MinBathFilter>(
+    "tmre_intel_min_baths",
+    "0",
+    MIN_BATH_VALUES,
+  );
+  const [maxBedsFilter, setMaxBedsFilter] = usePersistedFilter<MinBedFilter>(
+    "tmre_intel_max_beds",
+    "6",
+    MIN_BED_VALUES,
+  );
+  const [maxBathsFilter, setMaxBathsFilter] = usePersistedFilter<MinBathFilter>(
+    "tmre_intel_max_baths",
+    "6",
+    MIN_BATH_VALUES,
+  );
+  const [minVintageFilter, setMinVintageFilter] = usePersistedFilter<VintageIndexFilter>(
+    "tmre_intel_min_vintage",
+    "0",
+    VINTAGE_INDEX_VALUES,
+  );
+  const [maxVintageFilter, setMaxVintageFilter] = usePersistedFilter<VintageIndexFilter>(
+    "tmre_intel_max_vintage",
+    "6",
+    VINTAGE_INDEX_VALUES,
+  );
   const minBedrooms = Number(minBedsFilter);
+  const maxBedrooms = Number(maxBedsFilter);
+  const minBathrooms = Number(minBathsFilter);
+  const maxBathrooms = Number(maxBathsFilter);
+  const minVintage = Number(minVintageFilter);
+  const maxVintage = Number(maxVintageFilter);
+  const showPriceFilter = cls !== "commercial" && tx !== "rental";
+  const [minPriceIndex, setMinPriceIndex] = useState(0);
+  const [maxPriceIndex, setMaxPriceIndex] = useState(INTEL_PRICE_MAX_INDEX);
+  const [priceSliderActive, setPriceSliderActive] = useState(false);
+  const [bedSliderActive, setBedSliderActive] = useState(false);
+  const [bathSliderActive, setBathSliderActive] = useState(false);
+  const [vintageSliderActive, setVintageSliderActive] = useState(false);
+  const priceRangeCustomizedRef = useRef(false);
+  const priceFilterContextRef = useRef("");
   const [newConstructionFilter, setNewConstructionFilter] =
     usePersistedFilter<NewConstructionFilter>(
       "tmre_intel_new_construction",
@@ -1254,15 +1539,163 @@ export default function IntelligenceClient() {
   const townHoverClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
   const [scoreBreakdownListing, setScoreBreakdownListing] = useState<DisplayListing | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("score");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [historyModalListing, setHistoryModalListing] = useState<DisplayListing | null>(null);
+  const [sortKey, setSortKey] = usePersistedFilter<SortKey>(
+    "tmre_intel_sort_key",
+    "score",
+    SORT_KEY_VALUES,
+  );
+  const [sortDir, setSortDir] = usePersistedFilter<SortDir>(
+    "tmre_intel_sort_dir",
+    "desc",
+    SORT_DIR_VALUES,
+  );
+  const [boardView, setBoardView] = usePersistedFilter<DealBoardView>(
+    DEAL_BOARD_VIEW_PREF_KEY,
+    DEAL_BOARD_VIEW_DEFAULT,
+    DEAL_BOARD_VIEW_VALUES,
+  );
   const [middleTierExpanded, setMiddleTierExpanded] = useState(false);
+  const [boardPage, setBoardPage] = useState(1);
+  const [expandedSnapshotKeys, setExpandedSnapshotKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [expandedSnapshotsHydrated, setExpandedSnapshotsHydrated] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
+  const [heroIntroDismissed, setHeroIntroDismissed] = useState(false);
+  const [sqliteRefresh, setSqliteRefresh] = useState<{
+    refreshing: boolean;
+    lastFinishedAt: string | null;
+  }>({ refreshing: false, lastFinishedAt: null });
+  const sqliteWasRefreshingRef = useRef(false);
+  const listingsSoftReloadRef = useRef(false);
+  const listingsSoftReloadTimerRef = useRef<number | null>(null);
   // Monthly sales counts per city for months-of-supply calculation
   const [monthlySales, setMonthlySales] = useState<Record<string, number>>({});
+  const [closedThisWeekByTown, setClosedThisWeekByTown] = useState<Record<string, number>>({});
+  const [closedThisWeekByTownZip, setClosedThisWeekByTownZip] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const [monthlySalesLoaded, setMonthlySalesLoaded] = useState(false);
 
   const orderedCities = usePersonalizedTowns(TMRE_TOWNS);
+
+  useEffect(() => {
+    setExpandedSnapshotKeys(readExpandedSnapshotKeys());
+    setExpandedSnapshotsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHeroIntroDismissed(true), 30_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const pollRefreshStatus = async () => {
+      try {
+        const res = await fetch("/api/intelligence/refresh-status", {
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          refreshing: boolean;
+          lastFinishedAt: string | null;
+        };
+        setSqliteRefresh(data);
+        if (sqliteWasRefreshingRef.current && !data.refreshing) {
+          if (listingsSoftReloadTimerRef.current != null) {
+            window.clearTimeout(listingsSoftReloadTimerRef.current);
+          }
+          listingsSoftReloadTimerRef.current = window.setTimeout(() => {
+            listingsSoftReloadTimerRef.current = null;
+            if (listingsSoftReloadRef.current) return;
+            listingsSoftReloadRef.current = true;
+            void (async () => {
+              try {
+                for (const city of TMRE_TOWNS) {
+                  try {
+                    const listings = await fetchCity(city);
+                    setByCity((prev) => ({ ...prev, [city]: listings }));
+                  } catch (err) {
+                    console.warn(`[intelligence] ${city} soft reload failed`, err);
+                  }
+                  await new Promise((resolve) => window.setTimeout(resolve, 200));
+                }
+                bumpIntelligenceSnapshotGeneration();
+              } finally {
+                listingsSoftReloadRef.current = false;
+              }
+            })();
+          }, 1_500);
+        }
+        sqliteWasRefreshingRef.current = data.refreshing;
+      } catch {
+        /* ignore polling errors */
+      }
+    };
+
+    pollRefreshStatus();
+    const id = window.setInterval(pollRefreshStatus, sqliteRefresh.refreshing ? 5_000 : 3_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      if (listingsSoftReloadTimerRef.current != null) {
+        window.clearTimeout(listingsSoftReloadTimerRef.current);
+      }
+    };
+  }, [sqliteRefresh.refreshing]);
+
+  useEffect(() => {
+    if (!expandedSnapshotsHydrated) return;
+    writeExpandedSnapshotKeys(expandedSnapshotKeys);
+  }, [expandedSnapshotKeys, expandedSnapshotsHydrated]);
+
+  const toggleSnapshotExpanded = (key: string) => {
+    setExpandedSnapshotKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!urlSearch || urlSearchAppliedRef.current) return;
+    urlSearchAppliedRef.current = true;
+
+    setActive(urlSearch.city);
+    setZip(urlSearch.zip);
+    if (urlSearch.beds) {
+      setMinBedsFilter(urlSearch.beds as MinBedFilter);
+      if (urlSearch.exactBeds) {
+        setMaxBedsFilter(urlSearch.beds as MinBedFilter);
+      }
+    }
+    if (urlSearch.baths) setMinBathsFilter(urlSearch.baths as MinBathFilter);
+    if (urlSearch.tx) setTx(urlSearch.tx as TxFilter);
+    if (urlSearch.cls) setCls(urlSearch.cls as ClsFilter);
+    if (urlSearch.property) {
+      setSaleProperty(urlSearch.property as SalePropertyFilter);
+    } else if (urlSearch.tx === "rental" || urlSearch.cls === "commercial") {
+      setSaleProperty("all");
+    }
+    setNewConstructionFilter(urlSearch.newConstruction ? "new" : "all");
+
+    window.history.replaceState(null, "", "/intelligence");
+  }, [
+    urlSearch,
+    setActive,
+    setZip,
+    setMinBedsFilter,
+    setMaxBedsFilter,
+    setMinBathsFilter,
+    setTx,
+    setCls,
+    setSaleProperty,
+    setNewConstructionFilter,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1270,37 +1703,73 @@ export default function IntelligenceClient() {
     };
   }, []);
 
-  // Fetch monthly sales for all cities to compute months-of-supply
+  // Fetch monthly sales + closed-this-week counts for all cities
   useEffect(() => {
     const cities = [...TMRE_TOWNS];
+    const kinds = salesByMonthKinds(tx);
+    setMonthlySalesLoaded(false);
+
     Promise.all(
-      cities.map((city) =>
-        fetch(`/api/sales-by-month?city=${city}`, { cache: "no-store" })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
+      cities.flatMap((city) =>
+        kinds.map((kind) =>
+          fetch(
+            `/api/sales-by-month?city=${encodeURIComponent(city)}&kind=${kind}`,
+            { cache: "no-store" },
+          )
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null)
+            .then((d) => ({ city, d })),
+        ),
       ),
     ).then((results) => {
       const now = new Date();
       const sales: Record<string, number> = {};
-      results.forEach((d, i) => {
+      const closed: Record<string, number> = {};
+      const closedByZip: Record<string, Record<string, number>> = {};
+
+      for (const city of cities) {
+        sales[city] = 0;
+        closed[city] = 0;
+        closedByZip[city] = {};
+      }
+
+      results.forEach(({ city, d }) => {
         if (!d?.data) return;
-        // Average monthly closings over the last 3 completed months
         const recentMonths: number[] = [];
         for (let offset = 1; offset <= 3; offset++) {
           const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
           const yr = date.getFullYear();
           const mo = date.getMonth() + 1;
-          const entry = d.data.find((e: { year: number; month: number; count: number }) => e.year === yr && e.month === mo);
+          const entry = d.data.find(
+            (e: { year: number; month: number; count: number }) =>
+              e.year === yr && e.month === mo,
+          );
           if (entry) recentMonths.push(entry.count);
         }
         if (recentMonths.length) {
-          sales[cities[i]] = recentMonths.reduce((a: number, b: number) => a + b, 0) / recentMonths.length;
+          sales[city] =
+            (sales[city] ?? 0) +
+            recentMonths.reduce((a: number, b: number) => a + b, 0) /
+              recentMonths.length;
+        }
+        if (typeof d.closedThisWeek === "number") {
+          closed[city] = (closed[city] ?? 0) + d.closedThisWeek;
+        }
+        if (d.closedThisWeekByZip && typeof d.closedThisWeekByZip === "object") {
+          for (const [zipCode, count] of Object.entries(
+            d.closedThisWeekByZip as Record<string, number>,
+          )) {
+            closedByZip[city][zipCode] = (closedByZip[city][zipCode] ?? 0) + count;
+          }
         }
       });
+
       setMonthlySales(sales);
+      setClosedThisWeekByTown(closed);
+      setClosedThisWeekByTownZip(closedByZip);
       setMonthlySalesLoaded(true);
     });
-  }, []);
+  }, [tx]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1321,6 +1790,7 @@ export default function IntelligenceClient() {
             return [town, mock?.listings ?? []];
           }),
         ) as Record<TmreTown, DisplayListing[]>;
+        bumpIntelligenceSnapshotGeneration();
         setByCity(next);
         setState(anyLive ? "ready" : "fallback");
       });
@@ -1388,12 +1858,142 @@ export default function IntelligenceClient() {
   }, [tx, saleProperty, setSaleProperty]);
 
   useEffect(() => {
-    if (cls === "commercial" && minBedsFilter !== "0") setMinBedsFilter("0");
-  }, [cls, minBedsFilter, setMinBedsFilter]);
+    if (cls === "commercial") {
+      if (minBedsFilter !== "0") setMinBedsFilter("0");
+      if (maxBedsFilter !== "6") setMaxBedsFilter("6");
+      if (minBathsFilter !== "0") setMinBathsFilter("0");
+      if (maxBathsFilter !== "6") setMaxBathsFilter("6");
+      if (minVintageFilter !== "0") setMinVintageFilter("0");
+      if (maxVintageFilter !== "6") {
+        setMaxVintageFilter("6");
+      }
+    }
+  }, [cls, minBedsFilter, maxBedsFilter, minBathsFilter, maxBathsFilter, minVintageFilter, maxVintageFilter, setMinBedsFilter, setMaxBedsFilter, setMinBathsFilter, setMaxBathsFilter, setMinVintageFilter, setMaxVintageFilter]);
+
+  useEffect(() => {
+    if (minBedrooms > maxBedrooms) {
+      setMaxBedsFilter(String(minBedrooms) as MinBedFilter);
+    }
+  }, [minBedrooms, maxBedrooms, setMaxBedsFilter]);
+
+  useEffect(() => {
+    if (minBathrooms > maxBathrooms) {
+      setMaxBathsFilter(String(minBathrooms) as MinBathFilter);
+    }
+  }, [minBathrooms, maxBathrooms, setMaxBathsFilter]);
+
+  useEffect(() => {
+    if (minVintage > maxVintage) {
+      setMaxVintageFilter(String(minVintage) as VintageIndexFilter);
+    }
+  }, [minVintage, maxVintage, setMaxVintageFilter]);
+
+  const listingsBeforePrice = useMemo(
+    () =>
+      filterBoardListings(
+        allListings,
+        tx,
+        cls,
+        zip,
+        boardStatusFilter,
+        saleProperty,
+        minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
+        newConstructionOnly,
+        false,
+        0,
+        null,
+        minVintage,
+        maxVintage,
+      ),
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minVintage, maxVintage],
+  );
+
+  const boardPriceSteps = useMemo(
+    () => intelPriceStepsForBoard(listingsBeforePrice),
+    [listingsBeforePrice],
+  );
+  const boardPriceMaxIdx = boardPriceMaxIndex(boardPriceSteps);
+
+  const defaultPriceIndices = useMemo(
+    () => defaultPriceIndicesFromBoard(listingsBeforePrice),
+    [listingsBeforePrice],
+  );
+
+  const priceFilterContextKey = useMemo(
+    () =>
+      [
+        active,
+        tx,
+        cls,
+        saleProperty,
+        zip ?? "",
+        boardStatusFilter,
+        minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
+        newConstructionOnly ? "1" : "0",
+      ].join("|"),
+    [
+      active,
+      tx,
+      cls,
+      saleProperty,
+      zip,
+      boardStatusFilter,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      newConstructionOnly,
+    ],
+  );
+
+  useEffect(() => {
+    if (priceFilterContextRef.current !== priceFilterContextKey) {
+      priceFilterContextRef.current = priceFilterContextKey;
+      priceRangeCustomizedRef.current = false;
+    }
+  }, [priceFilterContextKey]);
+
+  useEffect(() => {
+    if (!showPriceFilter) {
+      setMinPriceIndex(0);
+      setMaxPriceIndex(INTEL_PRICE_MAX_INDEX);
+      priceRangeCustomizedRef.current = false;
+      return;
+    }
+    if (priceRangeCustomizedRef.current) {
+      setMinPriceIndex((i) => Math.min(i, boardPriceMaxIdx));
+      setMaxPriceIndex((i) => Math.min(i, boardPriceMaxIdx));
+      return;
+    }
+    setMinPriceIndex(0);
+    setMaxPriceIndex(boardPriceMaxIdx);
+  }, [
+    showPriceFilter,
+    priceFilterContextKey,
+    boardPriceMaxIdx,
+    defaultPriceIndices.minIndex,
+    defaultPriceIndices.maxIndex,
+  ]);
+
+  const { minPrice, maxPrice } = resolveIntelPriceRangeFromSteps(
+    boardPriceSteps,
+    minPriceIndex,
+    maxPriceIndex,
+  );
+  const priceFilterActive =
+    showPriceFilter &&
+    intelPriceFilterActiveOnBoard(minPriceIndex, maxPriceIndex, boardPriceSteps);
 
   useEffect(() => {
     setMiddleTierExpanded(false);
-  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, newConstructionOnly]);
+    setBoardPage(1);
+  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, minPriceIndex, maxPriceIndex, sortKey, sortDir]);
 
   const listings = useMemo(
     () =>
@@ -1405,25 +2005,69 @@ export default function IntelligenceClient() {
         boardStatusFilter,
         saleProperty,
         minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
         newConstructionOnly,
+        false,
+        minPrice,
+        maxPrice,
+        minVintage,
+        maxVintage,
       ),
-    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, newConstructionOnly],
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage],
   );
 
+  const rankedListings = useMemo(() => rankListingsByScore(listings), [listings]);
+  const boardSortedListings = useMemo(() => {
+    if (sortKey === "score") return rankedListings;
+    return sortListings(listings, sortKey, sortDir);
+  }, [listings, rankedListings, sortKey, sortDir]);
+  const boardListings = useMemo(() => {
+    const start = (boardPage - 1) * BOARD_LISTING_LIMIT;
+    return boardSortedListings.slice(start, start + BOARD_LISTING_LIMIT);
+  }, [boardSortedListings, boardPage]);
+
+  const boardPrefetchIds = useMemo(() => {
+    const start = (boardPage - 1) * BOARD_LISTING_LIMIT;
+    return rankedListings.slice(start, start + BOARD_LISTING_LIMIT).map((l) => l.key);
+  }, [rankedListings, boardPage]);
+
+  useEffect(() => {
+    if (state !== "ready" || boardPrefetchIds.length === 0) return;
+    // Grid/large cards load their own photos — skip stack prefetch to avoid RETS storms.
+    if (boardView === "grid" || boardView === "large") return;
+    return prefetchMlsPhotoThumbsOrdered(boardPrefetchIds, {
+      stackPhotosForTop: PHOTO_PRIORITY_RANK_COUNT,
+      stackPhotoCount: 1,
+    });
+  }, [boardPrefetchIds, state, boardView]);
+
   const boardTiers = useMemo(() => {
-    const deduped = dedupeListingHeadlines(listings);
+    const deduped = dedupeListingHeadlines(boardListings);
+    if (sortKey !== "score") {
+      return { top: deduped, middle: [], bottom: [], canTier: false };
+    }
     const tiers = splitBoardByScoreTier(deduped);
-    const allTowns = active === "All";
     return {
       ...tiers,
-      top: sortListings(tiers.top, sortKey, sortDir, allTowns),
-      middle: sortListings(tiers.middle, sortKey, sortDir, allTowns),
-      bottom: sortListings(tiers.bottom, sortKey, sortDir, allTowns),
+      top: sortListings(tiers.top, sortKey, sortDir),
+      middle: sortListings(tiers.middle, sortKey, sortDir),
+      bottom: sortListings(tiers.bottom, sortKey, sortDir),
     };
-  }, [listings, sortKey, sortDir, active]);
+  }, [boardListings, sortKey, sortDir]);
 
-  const boardColSpan = active === "All" ? 10 : 9;
-  const resultCount = listings.length;
+  const filteredCount = listings.length;
+  const resultCount = boardListings.length;
+  const totalBoardPages = Math.max(1, Math.ceil(filteredCount / BOARD_LISTING_LIMIT));
+  const boardPageStart =
+    filteredCount === 0 ? 0 : (boardPage - 1) * BOARD_LISTING_LIMIT + 1;
+  const boardPageEnd = Math.min(boardPage * BOARD_LISTING_LIMIT, filteredCount);
+  const showBoardPagination = filteredCount > BOARD_LISTING_LIMIT;
+
+  useEffect(() => {
+    if (boardPage > totalBoardPages) setBoardPage(totalBoardPages);
+  }, [boardPage, totalBoardPages]);
   const middleHidden =
     boardTiers.canTier && boardTiers.middle.length > 0 && !middleTierExpanded;
   const visibleCount = middleHidden
@@ -1447,13 +2091,21 @@ export default function IntelligenceClient() {
         boardStatusFilter,
         saleProperty,
         minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
         newConstructionOnly,
+        false,
+        minPrice,
+        maxPrice,
+        minVintage,
+        maxVintage,
       ).length;
       counts[town] = n;
       all += n;
     }
     return { ...counts, All: all };
-  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, newConstructionOnly]);
+  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage]);
 
   const { zipCounts, zipAllCount } = useMemo(() => {
     if (active === "All") {
@@ -1468,7 +2120,15 @@ export default function IntelligenceClient() {
       boardStatusFilter,
       saleProperty,
       minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
       newConstructionOnly,
+      false,
+      minPrice,
+      maxPrice,
+      minVintage,
+      maxVintage,
     );
     const zipCounts = new Map<string, number>();
     filtered.forEach((l) => {
@@ -1476,48 +2136,53 @@ export default function IntelligenceClient() {
       zipCounts.set(l.zip, (zipCounts.get(l.zip) ?? 0) + 1);
     });
     return { zipCounts, zipAllCount: filtered.length };
-  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, newConstructionOnly]);
+  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage]);
 
-  const scoreRankByKey = useMemo(() => buildScoreRankMap(listings), [listings]);
+  const scoreRankByKey = useMemo(() => buildScoreRankMap(rankedListings), [rankedListings]);
   const filtersActive =
     tx !== "all" ||
     cls !== "all" ||
     saleProperty !== "all" ||
     minBedrooms > 0 ||
+    maxBedrooms < BED_BATH_MAX ||
+    minBathrooms > 0 ||
+    maxBathrooms < BED_BATH_MAX ||
+    vintageFilterActive(minVintage, maxVintage) ||
     newConstructionOnly ||
     zip != null ||
-    boardStatusFilter !== "all";
+    boardStatusFilter !== "all" ||
+    priceFilterActive;
   const showZipFilters = active !== "All" && availableZips.length > 1;
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
       return;
     }
     setSortKey(key);
-    setSortDir(key === "address" || key === "status" || key === "town" ? "asc" : "desc");
+    setSortDir(
+      key === "status" || key === "town" || key === "price"
+        ? "asc"
+        : "desc",
+    );
   }
 
-  function renderBoardRows(rows: DisplayListing[]) {
-    const isLive = state === "ready";
-    return rows.map((l) => (
-      <BoardListingRow
-        key={l.key}
-        listing={l}
-        scoreRank={scoreRankByKey.get(l.key) ?? 0}
-        rankTotal={resultCount}
-        isLive={isLive}
-        showTown={active === "All"}
-        allTowns={active === "All"}
-        onScoreClick={(listing) => {
-          if (listing.scoreBreakdown) {
-            setScoreBreakdownListing(listing);
-            return;
-          }
-          setScoreInfoOpen(true);
-        }}
-      />
-    ));
+  const slidersCustomized =
+    bedBathFilterActive(minBedrooms, maxBedrooms) ||
+    bedBathFilterActive(minBathrooms, maxBathrooms) ||
+    vintageFilterActive(minVintage, maxVintage) ||
+    priceFilterActive;
+
+  function resetSliders() {
+    setMinBedsFilter("0");
+    setMaxBedsFilter("6");
+    setMinBathsFilter("0");
+    setMaxBathsFilter("6");
+    setMinVintageFilter("0");
+    setMaxVintageFilter("6");
+    priceRangeCustomizedRef.current = false;
+    setMinPriceIndex(0);
+    setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
   }
 
   const activeTownMonthsSupply = useMemo(() => {
@@ -1530,12 +2195,46 @@ export default function IntelligenceClient() {
       boardStatusFilter,
       saleProperty,
       minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
       newConstructionOnly,
+      false,
+      minPrice,
+      maxPrice,
+      minVintage,
+      maxVintage,
     ).length;
     return computeMonthsSupply(count, monthlySales[active]);
-  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, newConstructionOnly, monthlySales]);
+  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, monthlySales]);
+
+  const showVintageStats = listings.length > 0;
+  const vintageStatsTitle =
+    active === "All" ? "All towns" : formatTownZipPlace(active, zip);
+  const vintageListingRows = useMemo(
+    () => toVintageListingRows(listings),
+    [listings],
+  );
 
   const liveSnapshots = useMemo((): TownSnapshot[] => {
+    const snapshotFilters: IntelligenceSnapshotFilters = {
+      tx,
+      cls,
+      saleProperty,
+      zip,
+      boardStatusFilter,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      minVintage,
+      maxVintage,
+      exactBeds: false,
+      newConstructionOnly,
+      minPrice,
+      maxPrice,
+    };
+
     const filterTown = (city: TmreTown) =>
       filterBoardListings(
         byCity[city] ?? [],
@@ -1545,26 +2244,176 @@ export default function IntelligenceClient() {
         boardStatusFilter,
         saleProperty,
         minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
         newConstructionOnly,
+        false,
+        minPrice,
+        maxPrice,
+        minVintage,
+        maxVintage,
       );
-    const benchmarks = snapshotBenchmarks(
-      orderedCities.flatMap((city) => filterTown(city)),
+
+    const benchmarks = getOrSetIntelligenceSnapshotCache(
+      intelligenceSnapshotBenchmarksKey(snapshotFilters),
+      () =>
+        snapshotBenchmarks(orderedCities.flatMap((city) => filterTown(city))),
     );
 
     if (active === "All") {
       return orderedCities.map((city) =>
-        buildTownSnapshot(filterTown(city), city, monthlySales, zip, benchmarks),
+        getOrSetIntelligenceSnapshotCache(
+          intelligenceSnapshotTownKey(city, snapshotFilters),
+          () =>
+            buildTownSnapshot(
+              filterTown(city),
+              city,
+              monthlySales,
+              zip,
+              benchmarks,
+              closedThisWeekForTown(
+                city,
+                zip,
+                closedThisWeekByTown,
+                closedThisWeekByTownZip,
+              ),
+              tx,
+            ),
+        ),
       );
     }
 
     if (!listings.length) return [];
-    return [buildTownSnapshot(listings, active, monthlySales, zip, benchmarks)];
-  }, [listings, active, monthlySales, orderedCities, byCity, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, newConstructionOnly]);
+    return [
+      getOrSetIntelligenceSnapshotCache(
+        intelligenceSnapshotTownKey(active, snapshotFilters),
+        () =>
+          buildTownSnapshot(
+            listings,
+            active,
+            monthlySales,
+            zip,
+            benchmarks,
+            closedThisWeekForTown(
+              active,
+              zip,
+              closedThisWeekByTown,
+              closedThisWeekByTownZip,
+            ),
+            tx,
+          ),
+      ),
+    ];
+  }, [
+    listings,
+    active,
+    monthlySales,
+    closedThisWeekByTown,
+    closedThisWeekByTownZip,
+    orderedCities,
+    byCity,
+    tx,
+    cls,
+    saleProperty,
+    zip,
+    boardStatusFilter,
+    minBedrooms,
+    maxBedrooms,
+    minBathrooms,
+    maxBathrooms,
+    minVintage,
+    maxVintage,
+    newConstructionOnly,
+    minPrice,
+    maxPrice,
+  ]);
+
+  const allTownsDescriptorStats = useMemo(
+    () => liveSnapshots.map((snap) => snap.stats),
+    [liveSnapshots],
+  );
+
+  const anySnapshotExpanded = useMemo(
+    () =>
+      active !== "All" ||
+      liveSnapshots.some((snap) => expandedSnapshotKeys.has(snapshotPanelKey(snap))) ||
+      [...expandedSnapshotKeys].some((key) => key.startsWith("vintage:")),
+    [active, liveSnapshots, expandedSnapshotKeys],
+  );
+
+  useLayoutEffect(() => {
+    if (active === "All") return;
+    setExpandedSnapshotKeys((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const snap of liveSnapshots) {
+        const key = snapshotPanelKey(snap);
+        if (!next.has(key)) {
+          next.add(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [active, zip, liveSnapshots]);
+
+  const aggregateAllTownsMonthsSupply = useMemo(() => {
+    if (active !== "All" || !monthlySalesLoaded) return null;
+    const totalMonthlySales = TMRE_TOWNS.reduce(
+      (sum, town) => sum + (monthlySales[town] ?? 0),
+      0,
+    );
+    if (totalMonthlySales <= 0) return null;
+    return computeMonthsSupply(listings.length, totalMonthlySales);
+  }, [active, listings.length, monthlySales, monthlySalesLoaded]);
+
+  const allTownsFilterContext = useMemo(
+    () => ({
+      tx,
+      cls,
+      saleProperty,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      minVintage,
+      maxVintage,
+      exactBeds: false,
+      newConstructionOnly,
+      minPrice,
+      maxPrice,
+    }),
+    [
+      tx,
+      cls,
+      saleProperty,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      minVintage,
+      maxVintage,
+      newConstructionOnly,
+      minPrice,
+      maxPrice,
+    ],
+  );
 
   const scrollToBoard = () => {
     requestAnimationFrame(() => {
       boardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  };
+
+  const selectVintageListings = (bucketId: VintageBucketId) => {
+    const index = vintageBucketFilterIndex(bucketId);
+    if (index == null) return;
+    setBoardStatusFilter("all");
+    setMinVintageFilter(String(index) as VintageIndexFilter);
+    setMaxVintageFilter(String(index) as VintageIndexFilter);
+    setBoardPage(1);
+    scrollToBoard();
   };
 
   const selectTownListings = (
@@ -1590,29 +2439,46 @@ export default function IntelligenceClient() {
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <div className="flex flex-col lg:flex-row lg:items-start lg:gap-x-5 gap-y-2">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-col gap-y-1.5 animate-fade-up">
-                <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                  Market Intelligence
-                </p>
-                <h1 className="font-serif text-lg sm:text-xl lg:text-2xl xl:text-3xl text-white leading-[1.08] max-w-4xl">
-                  More than just Real Estate — delivering{" "}
-                  <span className="italic gold-shimmer">Market Intelligence</span>
-                </h1>
-                <p className="text-sm lg:text-base text-white/70 leading-tight animate-fade-up-delay-1 lg:whitespace-nowrap">
-                  Active listings scored against our{" "}
-                  <Link
-                    href="/deal-model"
-                    className="text-gold hover:text-gold-light underline underline-offset-[3px] decoration-gold/50 transition-colors"
-                  >
-                    deal model
-                  </Link>
-                  {" — sourced live across the towns you've selected."}
-                </p>
+              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
+                Market Intelligence
+              </p>
+              <div
+                className={`grid transition-[grid-template-rows] duration-700 ease-in-out ${
+                  heroIntroDismissed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
+                }`}
+                aria-hidden={heroIntroDismissed}
+              >
+                <div
+                  className={`overflow-hidden min-h-0 transition-opacity duration-700 ease-out ${
+                    heroIntroDismissed ? "opacity-0" : "opacity-100"
+                  }`}
+                >
+                  <div className="flex flex-col gap-y-1.5 pt-1.5 animate-fade-up">
+                    <h1 className="font-serif text-lg sm:text-xl lg:text-2xl xl:text-3xl text-white leading-[1.08] max-w-4xl">
+                      More than just Real Estate — delivering{" "}
+                      <span className="italic gold-shimmer">Market Intelligence</span>
+                    </h1>
+                    <p className="text-sm lg:text-base text-white/70 leading-tight animate-fade-up-delay-1 lg:whitespace-nowrap">
+                      Active listings scored against our{" "}
+                      <Link
+                        href="/deal-model"
+                        className="text-gold hover:text-gold-light underline underline-offset-[3px] decoration-gold/50 transition-colors"
+                      >
+                        deal model
+                      </Link>
+                      {" — sourced live across the towns you've selected."}
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-1 flex flex-col gap-1.5 items-start min-w-0 w-full animate-fade-up-delay-2">
+              <div
+                className={`flex flex-col gap-1.5 items-start min-w-0 w-full animate-fade-up-delay-2 transition-[margin-top] duration-700 ease-in-out ${
+                  heroIntroDismissed ? "mt-0" : "mt-1"
+                }`}
+              >
                 <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
-                  <div className="flex flex-wrap items-end gap-2 self-start min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 self-start min-w-0">
                 <FilterGroup
                   label=""
                   value={cls}
@@ -1624,13 +2490,42 @@ export default function IntelligenceClient() {
                   ]}
                 />
                 {cls !== "commercial" && (
-                  <>
-                    <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
-                    <BedroomSlider
-                      value={minBedrooms}
-                      onChange={(n) => setMinBedsFilter(String(n) as MinBedFilter)}
-                    />
-                  </>
+                  <BedBathFilterRow
+                    showPriceFilter={showPriceFilter}
+                    priceSteps={boardPriceSteps}
+                    minPriceIndex={minPriceIndex}
+                    maxPriceIndex={maxPriceIndex}
+                    onMinPriceIndexChange={(index) => {
+                      priceRangeCustomizedRef.current = true;
+                      setMinPriceIndex(index);
+                    }}
+                    onMaxPriceIndexChange={(index) => {
+                      priceRangeCustomizedRef.current = true;
+                      setMaxPriceIndex(index);
+                    }}
+                    onPriceSliderActiveChange={setPriceSliderActive}
+                    onBedSliderActiveChange={setBedSliderActive}
+                    onBathSliderActiveChange={setBathSliderActive}
+                    minBedrooms={minBedrooms}
+                    maxBedrooms={maxBedrooms}
+                    onMinBedroomsChange={(n) => setMinBedsFilter(String(n) as MinBedFilter)}
+                    onMaxBedroomsChange={(n) => setMaxBedsFilter(String(n) as MinBedFilter)}
+                    minBathrooms={minBathrooms}
+                    maxBathrooms={maxBathrooms}
+                    onMinBathroomsChange={(n) => setMinBathsFilter(String(n) as MinBathFilter)}
+                    onMaxBathroomsChange={(n) => setMaxBathsFilter(String(n) as MinBathFilter)}
+                    minVintage={minVintage}
+                    maxVintage={maxVintage}
+                    onMinVintageChange={(n) =>
+                      setMinVintageFilter(String(n) as VintageIndexFilter)
+                    }
+                    onMaxVintageChange={(n) =>
+                      setMaxVintageFilter(String(n) as VintageIndexFilter)
+                    }
+                    onVintageSliderActiveChange={setVintageSliderActive}
+                    onResetSliders={resetSliders}
+                    slidersCustomized={slidersCustomized}
+                  />
                 )}
               </div>
 
@@ -1641,6 +2536,9 @@ export default function IntelligenceClient() {
                   setActive(city);
                   setZip(null);
                   setBoardStatusFilter("all");
+                  if (city === "All") {
+                    setExpandedSnapshotKeys(new Set());
+                  }
                 }}
                 onTownMouseEnter={(town, el) => {
                   if (townHoverClearTimer.current) {
@@ -1797,7 +2695,51 @@ export default function IntelligenceClient() {
                   </div>
                 </div>
               </div>
-              {active !== "All" && (
+              {active === "All" ? (
+                <AllTownsDescriptor
+                  towns={allTownsDescriptorStats}
+                  aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
+                  monthlySalesLoaded={monthlySalesLoaded}
+                  filterContext={allTownsFilterContext}
+                  priceLabel={
+                    showPriceFilter ? (
+                      <PriceRangeLabel
+                        steps={boardPriceSteps}
+                        minIndex={minPriceIndex}
+                        maxIndex={maxPriceIndex}
+                        active={priceSliderActive}
+                      />
+                    ) : null
+                  }
+                  bedLabel={
+                    cls !== "commercial" ? (
+                      <BedroomLabel
+                        min={minBedrooms}
+                        max={maxBedrooms}
+                        active={bedSliderActive}
+                      />
+                    ) : null
+                  }
+                  bathLabel={
+                    cls !== "commercial" ? (
+                      <BathroomLabel
+                        min={minBathrooms}
+                        max={maxBathrooms}
+                        active={bathSliderActive}
+                      />
+                    ) : null
+                  }
+                  vintageLabel={
+                    cls !== "commercial" ? (
+                      <VintageLabel
+                        min={minVintage}
+                        max={maxVintage}
+                        active={vintageSliderActive}
+                      />
+                    ) : null
+                  }
+                />
+              ) : (
                 <p className="mt-3 flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide">
                   <span className="text-white/45">{formatTownTagline(active, zip)}</span>
                   <span className="text-white/25" aria-hidden>
@@ -1822,6 +2764,55 @@ export default function IntelligenceClient() {
                           : "—"}
                     </span>
                   </span>
+                  {showPriceFilter && (
+                    <>
+                      <span className="text-white/25" aria-hidden>
+                        ·
+                      </span>
+                      <PriceRangeLabel
+                        steps={boardPriceSteps}
+                        minIndex={minPriceIndex}
+                        maxIndex={maxPriceIndex}
+                        active={priceSliderActive}
+                      />
+                    </>
+                  )}
+                  {cls !== "commercial" && (
+                    <>
+                      <span className="text-white/25" aria-hidden>
+                        ·
+                      </span>
+                      <BedroomLabel
+                        min={minBedrooms}
+                        max={maxBedrooms}
+                        active={bedSliderActive}
+                      />
+                    </>
+                  )}
+                  {cls !== "commercial" && (
+                    <>
+                      <span className="text-white/25" aria-hidden>
+                        ·
+                      </span>
+                      <BathroomLabel
+                        min={minBathrooms}
+                        max={maxBathrooms}
+                        active={bathSliderActive}
+                      />
+                    </>
+                  )}
+                  {cls !== "commercial" && (
+                    <>
+                      <span className="text-white/25" aria-hidden>
+                        ·
+                      </span>
+                      <VintageLabel
+                        min={minVintage}
+                        max={maxVintage}
+                        active={vintageSliderActive}
+                      />
+                    </>
+                  )}
                 </p>
               )}
             </div>
@@ -1839,20 +2830,22 @@ export default function IntelligenceClient() {
       <section className="bg-cream pt-4 pb-10 lg:pt-5 lg:pb-14">
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="mb-4 lg:mb-5 flex items-end justify-between gap-4">
-            <div>
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-1.5">
-                Intelligent Deals
-              </p>
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5 min-w-0">
               <h2 className="font-serif text-2xl sm:text-3xl lg:text-[2rem] text-navy leading-tight">
-                Your {resultCount}{" "}
-                {resultCount === 1 ? "listing" : "listings"},{" "}
+                Your {filteredCount.toLocaleString()}{" "}
+                {filteredCount === 1 ? "listing" : "listings"},{" "}
                 <span className="italic">scored.</span>
               </h2>
+              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
+                Intelligent Deals
+              </p>
             </div>
             <div className="flex items-center gap-2 font-mono text-xs shrink-0">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  state === "ready"
+                  state === "ready" && sqliteRefresh.refreshing
+                    ? "bg-gold animate-pulse-dot"
+                    : state === "ready"
                     ? "bg-sage animate-pulse-dot"
                     : state === "fallback"
                     ? "bg-coral"
@@ -1861,7 +2854,14 @@ export default function IntelligenceClient() {
               />
               <span className="text-slate">
                 {state === "ready"
-                  ? "Live"
+                  ? sqliteRefresh.refreshing
+                    ? "Live Refreshing"
+                    : (() => {
+                        const syncedAt = formatSqliteRefreshTime(
+                          sqliteRefresh.lastFinishedAt,
+                        );
+                        return syncedAt ? `Live · synced ${syncedAt}` : "Live";
+                      })()
                   : state === "fallback"
                   ? "Cached · feed offline"
                   : "Loading…"}
@@ -1869,265 +2869,200 @@ export default function IntelligenceClient() {
             </div>
           </div>
 
-          <div className={`lg:grid lg:gap-5 lg:items-start ${active === "All" ? "lg:grid-cols-[minmax(0,1fr)_268px]" : "lg:grid-cols-[minmax(0,1fr)_248px]"}`}>
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
 
             {/* Deal board */}
             <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-24">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-charcoal/[0.08] bg-white px-4 py-2.5">
-            <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
-              {state === "loading" && liveListings === null ? (
-                "Loading results…"
-              ) : resultCount === 0 ? (
-                "No results match your filters"
-              ) : (
-                <>
-                  Showing{" "}
-                  <span className="text-navy font-medium tabular-nums">
-                    {visibleCount.toLocaleString()}
-                  </span>
-                  {middleHidden ? (
-                    <>
-                      {" "}
-                      of{" "}
-                      <span className="text-navy font-medium tabular-nums">
-                        {resultCount.toLocaleString()}
-                      </span>
-                    </>
-                  ) : null}{" "}
-                  {visibleCount === 1 ? "listing" : "listings"}
-                  {middleHidden ? (
-                    <span className="text-slate/55 normal-case tracking-normal">
-                      {" "}
-                      · middle tier collapsed (
-                      {boardTiers.middle.length.toLocaleString()} hidden)
+          <DealBoardList
+            topRows={boardTiers.top}
+            middleRows={boardTiers.middle}
+            bottomRows={boardTiers.bottom}
+            canTier={boardTiers.canTier}
+            middleTierExpanded={middleTierExpanded}
+            onMiddleTierToggle={() => setMiddleTierExpanded((v) => !v)}
+            resultCount={resultCount}
+            scoreRankByKey={scoreRankByKey}
+            rankTotal={filteredCount}
+            isLive={state === "ready"}
+            showTown={active === "All"}
+            loading={state === "loading" && liveListings === null}
+            loadingLabel={`Loading ${active}…`}
+            emptyLabel={`No ${active === "All" ? "" : `${active} `}${
+              boardStatusFilter === "new"
+                ? "new "
+                : boardStatusFilter === "reduced"
+                  ? "reduced "
+                  : ""
+            }listings match your current filters.`}
+            onResetFilters={() => {
+              setTx("all");
+              setCls("all");
+              setSaleProperty("all");
+              setZip(null);
+              setBoardStatusFilter("all");
+              setMinVintageFilter("0");
+              setMaxVintageFilter("6");
+            }}
+            onScoreClick={(listing) => {
+              if (listing.scoreBreakdown) {
+                setScoreBreakdownListing(listing as DisplayListing);
+                return;
+              }
+              setScoreInfoOpen(true);
+            }}
+            onStatusClick={(listing) => {
+              if (state === "ready") setHistoryModalListing(listing as DisplayListing);
+            }}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={handleSort}
+            boardView={boardView}
+            onBoardViewChange={setBoardView}
+            scoreInfoButton={
+              <ScoreInfoButton onInfoClick={() => setScoreInfoOpen(true)} />
+            }
+            resultsSummary={
+              <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                {state === "loading" && liveListings === null ? (
+                  "Loading results…"
+                ) : resultCount === 0 ? (
+                  "No results match your filters"
+                ) : (
+                  <>
+                    Showing{" "}
+                    <span className="text-navy font-medium tabular-nums">
+                      {visibleCount.toLocaleString()}
                     </span>
-                  ) : filtersActive && poolCount > resultCount ? (
-                    <>
-                      {" "}
+                    {middleHidden ? (
+                      <>
+                        {" "}
+                        of{" "}
+                        <span className="text-navy font-medium tabular-nums">
+                          {resultCount.toLocaleString()}
+                        </span>
+                      </>
+                    ) : null}{" "}
+                    {visibleCount === 1 ? "listing" : "listings"}
+                    {middleHidden ? (
                       <span className="text-slate/55 normal-case tracking-normal">
+                        {" "}
+                        · middle tier collapsed (
+                        {boardTiers.middle.length.toLocaleString()} hidden)
+                      </span>
+                    ) : filtersActive && poolCount > filteredCount ? (
+                      <span className="text-slate/55 normal-case tracking-normal">
+                        {" "}
                         (of {poolCount.toLocaleString()} in{" "}
                         {active === "All" ? "selected towns" : active})
                       </span>
-                    </>
-                  ) : null}
-                </>
-              )}
-            </p>
-            {resultCount > 0 && (
-              <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate/55">
-                Sorted by {sortKey === "ppsf" ? "$ / sqft" : sortKey === "dom" ? "DOM" : sortKey}
-                {sortDir === "asc" ? " ↑" : " ↓"}
-              </p>
-            )}
-          </div>
-          <div className="overflow-x-auto rounded-2xl border border-charcoal/[0.08] bg-white">
-            <table className="w-full text-left min-w-[780px]">
-              <thead>
-                <tr className="border-b border-charcoal/[0.12] bg-cream">
-                  <th className="px-3 py-3 font-mono text-[9px] tracking-[0.16em] uppercase text-slate text-right w-10">
-                    #
-                  </th>
-                  <th className="px-5 py-3 text-left">
-                    <span className="inline-flex items-center gap-0.5">
-                      <SortHeaderControl
-                        sortKey="score"
-                        label="Score"
-                        activeKey={sortKey}
-                        direction={sortDir}
-                        onSort={handleSort}
-                      />
-                      <ScoreInfoButton onInfoClick={() => setScoreInfoOpen(true)} />
-                      <Link
-                        href="/score"
-                        className="font-mono text-[8px] text-slate/45 hover:text-gold normal-case tracking-normal"
-                      >
-                        →
-                      </Link>
-                    </span>
-                  </th>
-                  <Th>Photos</Th>
-                  <SortableTh
-                    label="Address"
-                    sortKey="address"
-                    activeKey={sortKey}
-                    direction={sortDir}
-                    onSort={handleSort}
-                  />
-                  {active === "All" && (
-                    <SortableTh
-                      label="Town"
-                      sortKey="town"
-                      activeKey={sortKey}
-                      direction={sortDir}
-                      onSort={handleSort}
-                    />
-                  )}
-                  <SortableTh
-                    label="Price"
-                    sortKey="price"
-                    activeKey={sortKey}
-                    direction={sortDir}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableTh
-                    label="$ / sqft"
-                    sortKey="ppsf"
-                    activeKey={sortKey}
-                    direction={sortDir}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableTh
-                    label="Sqft"
-                    sortKey="sqft"
-                    activeKey={sortKey}
-                    direction={sortDir}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableTh
-                    label="DOM"
-                    sortKey="dom"
-                    activeKey={sortKey}
-                    direction={sortDir}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableTh
-                    label="Status / Insight"
-                    sortKey="status"
-                    activeKey={sortKey}
-                    direction={sortDir}
-                    onSort={handleSort}
-                  />
-                </tr>
-              </thead>
-              <tbody>
-                {state === "loading" && liveListings === null && (
-                  <tr>
-                    <td colSpan={boardColSpan} className="px-5 py-16 text-center text-slate">
-                      <span className="inline-flex items-center gap-2 font-mono text-xs">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse-dot" />
-                        Loading {active}…
+                    ) : showBoardPagination ? (
+                      <span className="text-slate/55 normal-case tracking-normal">
+                        {" "}
+                        · page {boardPage} of {totalBoardPages} (
+                        {boardPageStart.toLocaleString()}–
+                        {boardPageEnd.toLocaleString()} of{" "}
+                        {filteredCount.toLocaleString()})
                       </span>
-                    </td>
-                  </tr>
+                    ) : null}
+                  </>
                 )}
-                {(state !== "loading" || liveListings !== null) &&
-                  listings.length === 0 && (
-                    <tr>
-                      <td colSpan={boardColSpan} className="px-5 py-16 text-center">
-                        <p className="text-slate text-sm">
-                          No {active === "All" ? "" : `${active} `}
-                          {boardStatusFilter === "new"
-                            ? "new "
-                            : boardStatusFilter === "reduced"
-                              ? "reduced "
-                              : ""}
-                          listings match your current filters.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTx("all");
-                            setCls("all");
-                            setSaleProperty("all");
-                            setZip(null);
-                            setBoardStatusFilter("all");
-                          }}
-                          className="mt-3 font-mono text-[11px] tracking-[0.15em] uppercase text-gold hover:text-navy transition-colors"
-                        >
-                          Reset filters →
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                {(state !== "loading" || liveListings !== null) &&
-                  resultCount > 0 && (
-                    <>
-                      {renderBoardRows(boardTiers.top)}
-                      {boardTiers.canTier && boardTiers.middle.length > 0 && (
-                        <tr className="border-b border-charcoal/[0.10] bg-cream/50">
-                          <td colSpan={boardColSpan} className="px-5 py-3">
-                            <button
-                              type="button"
-                              onClick={() => setMiddleTierExpanded((v) => !v)}
-                              className="w-full flex items-center justify-center gap-2 font-mono text-[10px] tracking-[0.14em] uppercase text-gold hover:text-navy transition-colors py-1"
-                              aria-expanded={middleTierExpanded}
-                            >
-                              {middleTierExpanded ? (
-                                <>Hide middle tier · {boardTiers.middle.length} listings ↑</>
-                              ) : (
-                                <>
-                                  Show middle tier · {boardTiers.middle.length} listings (
-                                  {Math.round((boardTiers.middle.length / resultCount) * 100)}%)
-                                  ↓
-                                </>
-                              )}
-                            </button>
-                          </td>
-                        </tr>
-                      )}
-                      {middleTierExpanded && renderBoardRows(boardTiers.middle)}
-                      {renderBoardRows(boardTiers.bottom)}
-                    </>
-                  )}
-              </tbody>
-              {resultCount > 0 && (
-                <tfoot>
-                  <tr className="border-t border-charcoal/[0.12] bg-cream/60">
-                    <td
-                      colSpan={boardColSpan}
-                      className="px-5 py-3 font-mono text-[10px] tracking-[0.12em] uppercase text-slate"
-                    >
-                      {visibleCount.toLocaleString()} of {resultCount.toLocaleString()}{" "}
-                      {resultCount === 1 ? "listing" : "listings"} in this view
-                      {middleHidden
-                        ? ` · ${boardTiers.middle.length} in middle tier hidden`
-                        : ""}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+              </p>
+            }
+            footer={
+              <div className="border-t border-charcoal/[0.12] bg-cream/60 px-5 py-3 font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                {visibleCount.toLocaleString()} of {resultCount.toLocaleString()}{" "}
+                {resultCount === 1 ? "listing" : "listings"} in this view
+                {middleHidden
+                  ? ` · ${boardTiers.middle.length} in middle tier hidden`
+                  : ""}
+                {showBoardPagination
+                  ? ` · page ${boardPage}/${totalBoardPages} · ${boardPageStart.toLocaleString()}–${boardPageEnd.toLocaleString()} of ${filteredCount.toLocaleString()}`
+                  : ""}
+              </div>
+            }
+          />
+          {showBoardPagination && (
+            <DealBoardPagination
+              page={boardPage}
+              totalPages={totalBoardPages}
+              pageStart={boardPageStart}
+              pageEnd={boardPageEnd}
+              totalCount={filteredCount}
+              onPageChange={(page) => {
+                setBoardPage(page);
+                scrollToBoard();
+              }}
+            />
+          )}
             </div>{/* end deal board */}
 
-            <aside className={`mt-8 lg:mt-0 lg:sticky lg:top-20 lg:shrink-0 space-y-4 ${active === "All" ? "max-h-[calc(100vh-6rem)] overflow-y-auto pr-1" : ""}`}>
-              {liveSnapshots.map((snap) => (
-                <SnapshotCard
-                  key={`${snap.town}-${snap.zip ?? "all"}`}
-                  snapshot={snap}
-                  tx={tx}
-                  onListingsClick={(town, zipFilter) =>
-                    selectTownListings(town, "all", zipFilter)
-                  }
-                  onSnapshotAction={(town, action, zipFilter) =>
-                    intelligenceListingsHref({
-                      city: town,
-                      status: action,
-                      zip: zipFilter,
-                      tx,
-                      cls,
-                      saleProperty,
-                    })
-                  }
-                  onMedianHref={(snap) =>
-                    snap.metrics.some((m) => m.label === "Median price" && m.linkMedian)
-                      ? statsMedianListingsHref({
-                          city: snap.town,
-                          kind: tx === "rental" ? "rental" : "sale",
-                          pool: "active",
-                          zip: snap.zip,
+            <aside
+              className={`mt-8 lg:mt-0 lg:shrink-0 ${
+                anySnapshotExpanded ? "space-y-4" : "space-y-2"
+              }`}
+            >
+              {liveSnapshots.length > 0 && (
+                <div className="pb-1 shrink-0">
+                  <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+                    Stats
+                  </p>
+                </div>
+              )}
+              <div id="intel-stats-panel" className={anySnapshotExpanded ? "space-y-4" : "space-y-2"}>
+                {liveSnapshots.map((snap) => {
+                  const panelKey = snapshotPanelKey(snap);
+                  const collapsible = active === "All";
+                  const expanded =
+                    !collapsible || expandedSnapshotKeys.has(panelKey);
+                  return (
+                    <TownSnapshotPanel
+                      key={panelKey}
+                      snapshot={snap}
+                      tx={tx}
+                      expanded={expanded}
+                      collapsible={collapsible}
+                      onToggleExpanded={() => toggleSnapshotExpanded(panelKey)}
+                      onListingsClick={(town, zipFilter) =>
+                        selectTownListings(town, "all", zipFilter)
+                      }
+                      onSnapshotAction={(town, action, zipFilter) =>
+                        intelligenceListingsHref({
+                          city: town,
+                          status: action,
+                          zip: zipFilter,
                           tx,
                           cls,
                           saleProperty,
                         })
-                      : null
-                  }
-                />
-              ))}
+                      }
+                      onMedianHref={(snap) =>
+                        snap.metrics.some((m) => m.label === "Median price" && m.linkMedian)
+                          ? statsMedianListingsHref({
+                              city: snap.town,
+                              kind: tx === "rental" ? "rental" : "sale",
+                              pool: "active",
+                              zip: snap.zip,
+                              tx,
+                              cls,
+                              saleProperty,
+                            })
+                          : null
+                      }
+                    />
+                  );
+                })}
+                {showVintageStats ? (
+                  <IntelligenceVintageStats
+                    title={vintageStatsTitle}
+                    listings={vintageListingRows}
+                    tx={tx}
+                    collapsible
+                    expandedKeys={expandedSnapshotKeys}
+                    onToggleExpanded={toggleSnapshotExpanded}
+                    onVintageListingsClick={selectVintageListings}
+                  />
+                ) : null}
+              </div>
             </aside>
           </div>{/* end grid */}
         </div>
@@ -2150,6 +3085,33 @@ export default function IntelligenceClient() {
                     full: scoreBreakdownListing.address,
                   },
                   city: scoreBreakdownListing.city,
+                })
+              : null
+          }
+        />
+      ) : null}
+      {historyModalListing ? (
+        <ListingHistoryModal
+          open
+          onClose={() => setHistoryModalListing(null)}
+          mlsId={historyModalListing.key}
+          title={historyModalListing.address}
+          subtitle={historyModalListing.city}
+          townHint={
+            active !== "All"
+              ? active
+              : listingTown(historyModalListing)
+          }
+          listingHref={
+            state === "ready"
+              ? listingDetailHrefForListing({
+                  mlsId: historyModalListing.key,
+                  listingKey: historyModalListing.listingKey,
+                  address: {
+                    street: historyModalListing.address,
+                    full: historyModalListing.address,
+                  },
+                  city: historyModalListing.city,
                 })
               : null
           }
@@ -2188,12 +3150,12 @@ export default function IntelligenceClient() {
             </p>
             <ul className="space-y-3 mb-6">
               {[
-                { label: "Age (10%)", detail: "Year built — newer construction scores higher on its own" },
-                { label: "Condition (20%)", detail: "Renovation and move-in readiness language in listing remarks" },
-                { label: "Finishes (25%)", detail: "Material quality, photo depth, and virtual tour availability" },
-                { label: "PPSF fit (25%)", detail: "Price-per-sqft vs city median — the Goldilocks value band" },
-                { label: "Layout (10%)", detail: "Bed/bath fit, sqft per bedroom, and floor-plan keywords" },
-                { label: "Schools (10%)", detail: "School ratings for the listing, with town baselines as fallback" },
+                { label: "Age", detail: "Year built — newer construction scores higher on its own" },
+                { label: "Condition", detail: "Renovation and move-in readiness language in listing remarks" },
+                { label: "Finishes", detail: "Material quality, photo depth, and virtual tour availability" },
+                { label: "PPSF fit", detail: "Price-per-sqft vs city median — the Goldilocks value band" },
+                { label: "Layout", detail: "Bed/bath fit, sqft per bedroom, and floor-plan keywords" },
+                { label: "Schools", detail: "School ratings for the listing, with town baselines as fallback" },
               ].map((row) => (
                 <li key={row.label} className="flex gap-3">
                   <span className="w-1.5 h-1.5 rounded-full bg-gold mt-1.5 shrink-0" />
@@ -2271,41 +3233,381 @@ function ScoreInfoButton({ onInfoClick }: { onInfoClick: () => void }) {
   );
 }
 
-function BedroomSlider({
-  value,
-  onChange,
+function BedBathFilterRow({
+  showPriceFilter,
+  priceSteps,
+  minPriceIndex,
+  maxPriceIndex,
+  onMinPriceIndexChange,
+  onMaxPriceIndexChange,
+  onPriceSliderActiveChange,
+  onBedSliderActiveChange,
+  onBathSliderActiveChange,
+  onVintageSliderActiveChange,
+  minBedrooms,
+  maxBedrooms,
+  onMinBedroomsChange,
+  onMaxBedroomsChange,
+  minBathrooms,
+  maxBathrooms,
+  onMinBathroomsChange,
+  onMaxBathroomsChange,
+  minVintage,
+  maxVintage,
+  onMinVintageChange,
+  onMaxVintageChange,
+  onResetSliders,
+  slidersCustomized,
 }: {
-  value: number;
-  onChange: (value: number) => void;
+  showPriceFilter: boolean;
+  priceSteps: readonly number[];
+  minPriceIndex: number;
+  maxPriceIndex: number;
+  onMinPriceIndexChange: (value: number) => void;
+  onMaxPriceIndexChange: (value: number) => void;
+  onPriceSliderActiveChange: (active: boolean) => void;
+  onBedSliderActiveChange: (active: boolean) => void;
+  onBathSliderActiveChange: (active: boolean) => void;
+  onVintageSliderActiveChange: (active: boolean) => void;
+  minBedrooms: number;
+  maxBedrooms: number;
+  onMinBedroomsChange: (value: number) => void;
+  onMaxBedroomsChange: (value: number) => void;
+  minBathrooms: number;
+  maxBathrooms: number;
+  onMinBathroomsChange: (value: number) => void;
+  onMaxBathroomsChange: (value: number) => void;
+  minVintage: number;
+  maxVintage: number;
+  onMinVintageChange: (value: number) => void;
+  onMaxVintageChange: (value: number) => void;
+  onResetSliders: () => void;
+  slidersCustomized: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 shrink-0">
-      <div className="flex flex-col gap-0.5 shrink-0">
-        <span className="font-mono text-[8px] tracking-[0.12em] uppercase text-white/45 leading-none">
-          Bedrooms
-        </span>
-        <span className="font-mono text-[7px] tabular-nums text-gold leading-none">
-          {value === 0 ? "Any" : `${value}+`}
-        </span>
-      </div>
-      <div className="w-[3.5rem] shrink-0">
+    <div className="flex items-center gap-2 shrink-0">
+      {showPriceFilter ? (
+        <>
+          <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
+          <PriceRangeSlider
+            steps={priceSteps}
+            minIndex={minPriceIndex}
+            maxIndex={maxPriceIndex}
+            onMinIndexChange={onMinPriceIndexChange}
+            onMaxIndexChange={onMaxPriceIndexChange}
+            onActiveChange={onPriceSliderActiveChange}
+          />
+        </>
+      ) : null}
+      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
+      <IntelDualSlider
+        maxIndex={BED_BATH_MAX}
+        minValue={minBedrooms}
+        maxValue={maxBedrooms}
+        onMinChange={onMinBedroomsChange}
+        onMaxChange={onMaxBedroomsChange}
+        onActiveChange={onBedSliderActiveChange}
+        minAriaLabel="Minimum bedrooms"
+        maxAriaLabel="Maximum bedrooms"
+      />
+      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
+      <IntelDualSlider
+        maxIndex={BED_BATH_MAX}
+        minValue={minBathrooms}
+        maxValue={maxBathrooms}
+        onMinChange={onMinBathroomsChange}
+        onMaxChange={onMaxBathroomsChange}
+        onActiveChange={onBathSliderActiveChange}
+        minAriaLabel="Minimum bathrooms"
+        maxAriaLabel="Maximum bathrooms"
+      />
+      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
+      <IntelDualSlider
+        maxIndex={VINTAGE_FILTER_MAX}
+        minValue={minVintage}
+        maxValue={maxVintage}
+        onMinChange={onMinVintageChange}
+        onMaxChange={onMaxVintageChange}
+        onActiveChange={onVintageSliderActiveChange}
+        minAriaLabel="Minimum vintage era"
+        maxAriaLabel="Maximum vintage era"
+      />
+      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
+      <button
+        type="button"
+        onClick={onResetSliders}
+        disabled={!slidersCustomized}
+        className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap disabled:opacity-35 disabled:pointer-events-none disabled:no-underline"
+      >
+        Reset sliders
+      </button>
+    </div>
+  );
+}
+
+function PriceRangeLabel({
+  steps,
+  minIndex,
+  maxIndex,
+  active,
+}: {
+  steps: readonly number[];
+  minIndex: number;
+  maxIndex: number;
+  active: boolean;
+}) {
+  const lo = Math.min(minIndex, maxIndex);
+  const hi = Math.max(minIndex, maxIndex);
+
+  return (
+    <span
+      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
+        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
+      }`}
+    >
+      {formatIntelPriceRangeLabelFromSteps(steps, lo, hi)}
+    </span>
+  );
+}
+
+function BedroomLabel({
+  min,
+  max,
+  active,
+}: {
+  min: number;
+  max: number;
+  active: boolean;
+}) {
+  return (
+    <span
+      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
+        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
+      }`}
+    >
+      {formatBedBathRangeLabel(min, max, "Bed")}
+    </span>
+  );
+}
+
+function BathroomLabel({
+  min,
+  max,
+  active,
+}: {
+  min: number;
+  max: number;
+  active: boolean;
+}) {
+  return (
+    <span
+      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
+        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
+      }`}
+    >
+      {formatBedBathRangeLabel(min, max, "Bath")}
+    </span>
+  );
+}
+
+function VintageLabel({
+  min,
+  max,
+  active,
+}: {
+  min: number;
+  max: number;
+  active: boolean;
+}) {
+  return (
+    <span
+      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
+        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
+      }`}
+    >
+      {formatVintageRangeLabel(min, max)}
+    </span>
+  );
+}
+
+function IntelDualSlider({
+  maxIndex,
+  minValue,
+  maxValue,
+  onMinChange,
+  onMaxChange,
+  onActiveChange,
+  minAriaLabel,
+  maxAriaLabel,
+  widthClass = INTEL_SLIDER_WIDTH_CLASS,
+}: {
+  maxIndex: number;
+  minValue: number;
+  maxValue: number;
+  onMinChange: (value: number) => void;
+  onMaxChange: (value: number) => void;
+  onActiveChange: (active: boolean) => void;
+  minAriaLabel: string;
+  maxAriaLabel: string;
+  widthClass?: string;
+}) {
+  const [active, setActive] = useState(false);
+  const lo = Math.min(minValue, maxValue);
+  const hi = Math.max(minValue, maxValue);
+  const disabled = maxIndex <= 0;
+
+  const setSliderActive = (next: boolean) => {
+    setActive(next);
+    onActiveChange(next);
+  };
+
+  useEffect(() => {
+    if (!active) return;
+    const stop = () => setSliderActive(false);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("keyup", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("keyup", stop);
+    };
+  }, [active]);
+
+  return (
+    <div className="flex items-center shrink-0">
+      <div className={`relative h-4 ${widthClass} shrink-0`}>
         <input
           type="range"
           min={0}
-          max={6}
+          max={maxIndex}
           step={1}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-[#C8A951]"
-          aria-label="Filter by bedrooms"
+          value={lo}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            const clamped = Math.min(next, hi);
+            if (clamped !== lo) setSliderActive(true);
+            onMinChange(clamped);
+          }}
+          className="intel-price-range absolute inset-0 z-20 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          aria-label={minAriaLabel}
           aria-valuemin={0}
-          aria-valuemax={6}
-          aria-valuenow={value}
+          aria-valuemax={maxIndex}
+          aria-valuenow={lo}
         />
-        <div className="mt-0.5 flex justify-between font-mono text-[6px] tabular-nums text-white/30">
-          <span>Any</span>
-          <span>6+</span>
-        </div>
+        <input
+          type="range"
+          min={0}
+          max={maxIndex}
+          step={1}
+          value={hi}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            const clamped = Math.max(next, lo);
+            if (clamped !== hi) setSliderActive(true);
+            onMaxChange(clamped);
+          }}
+          className="intel-price-range absolute inset-0 z-30 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          aria-label={maxAriaLabel}
+          aria-valuemin={0}
+          aria-valuemax={maxIndex}
+          aria-valuenow={hi}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/15"
+        />
+      </div>
+    </div>
+  );
+}
+
+function PriceRangeSlider({
+  steps,
+  minIndex,
+  maxIndex,
+  onMinIndexChange,
+  onMaxIndexChange,
+  onActiveChange,
+}: {
+  steps: readonly number[];
+  minIndex: number;
+  maxIndex: number;
+  onMinIndexChange: (value: number) => void;
+  onMaxIndexChange: (value: number) => void;
+  onActiveChange: (active: boolean) => void;
+}) {
+  const [active, setActive] = useState(false);
+  const maxStepIndex = boardPriceMaxIndex(steps);
+  const lo = Math.min(minIndex, maxIndex);
+  const hi = Math.max(minIndex, maxIndex);
+  const disabled = maxStepIndex <= 0;
+
+  const setSliderActive = (next: boolean) => {
+    setActive(next);
+    onActiveChange(next);
+  };
+
+  useEffect(() => {
+    if (!active) return;
+    const stop = () => setSliderActive(false);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("keyup", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("keyup", stop);
+    };
+  }, [active]);
+
+  return (
+    <div className="flex items-center shrink-0">
+      <div className={`relative h-4 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
+        <input
+          type="range"
+          min={0}
+          max={maxStepIndex}
+          step={1}
+          value={lo}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            const clamped = Math.min(next, hi);
+            if (clamped !== lo) setSliderActive(true);
+            onMinIndexChange(clamped);
+          }}
+          className="intel-price-range absolute inset-0 z-20 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          aria-label="Minimum price"
+          aria-valuemin={0}
+          aria-valuemax={maxStepIndex}
+          aria-valuenow={lo}
+        />
+        <input
+          type="range"
+          min={0}
+          max={maxStepIndex}
+          step={1}
+          value={hi}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            const clamped = Math.max(next, lo);
+            if (clamped !== hi) setSliderActive(true);
+            onMaxIndexChange(clamped);
+          }}
+          className="intel-price-range absolute inset-0 z-30 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          aria-label="Maximum price"
+          aria-valuemin={0}
+          aria-valuemax={maxStepIndex}
+          aria-valuenow={hi}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/15"
+        />
       </div>
     </div>
   );
@@ -2346,74 +3648,132 @@ function FilterGroup<T extends string>({
   );
 }
 
-function SortHeaderControl({
-  label,
-  sortKey,
-  activeKey,
-  direction,
-  onSort,
-  align = "left",
+function TownSnapshotPanel({
+  snapshot,
+  tx,
+  expanded,
+  collapsible,
+  onToggleExpanded,
+  onListingsClick,
+  onSnapshotAction,
+  onMedianHref,
 }: {
-  label: string;
-  sortKey: SortKey;
-  activeKey: SortKey;
-  direction: SortDir;
-  onSort: (key: SortKey) => void;
-  align?: "left" | "right";
+  snapshot: TownSnapshot;
+  tx: TxFilter;
+  expanded: boolean;
+  collapsible: boolean;
+  onToggleExpanded: () => void;
+  onListingsClick?: (town: string, zip?: string | null) => void;
+  onSnapshotAction?: (
+    town: string,
+    action: "new" | "reduced" | "closed",
+    zip?: string | null,
+  ) => string;
+  onMedianHref?: (snapshot: TownSnapshot) => string | null;
 }) {
-  const active = activeKey === sortKey;
+  const title = snapshotCardTitle(snapshot, tx);
+  const showExpanded = collapsible ? expanded : true;
+
   return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
-      className={`inline-flex items-center gap-1 font-mono text-[9px] tracking-[0.16em] uppercase transition-colors ${
-        active ? "text-navy" : "text-slate hover:text-navy"
-      } ${align === "right" ? "ml-auto" : ""}`}
+    <div
+      className={`bg-white border border-charcoal/[0.06] overflow-hidden ${
+        showExpanded ? "rounded-2xl" : "rounded-xl"
+      }`}
     >
-      {label}
-      <span
-        className={`text-[8px] tabular-nums ${active ? "text-gold" : "text-slate/35"}`}
-        aria-hidden
+      <div
+        className={`navy-gradient border-b border-white/10 flex items-center gap-2 ${
+          showExpanded ? "px-5 py-4" : "px-3 py-2"
+        }`}
       >
-        {active ? (direction === "asc" ? "↑" : "↓") : "↕"}
-      </span>
-    </button>
+        <p
+          className={`flex-1 min-w-0 font-mono uppercase text-gold font-bold truncate ${
+            showExpanded
+              ? "text-[10px] tracking-[0.2em] text-center"
+              : "text-[9px] tracking-[0.18em]"
+          }`}
+        >
+          {title}
+        </p>
+        {collapsible ? (
+          <SnapshotCollapseToggle
+            expanded={expanded}
+            onToggle={onToggleExpanded}
+            label={title}
+          />
+        ) : null}
+      </div>
+      {showExpanded ? (
+        <SnapshotCardBody
+          snapshot={snapshot}
+          tx={tx}
+          onListingsClick={onListingsClick}
+          onSnapshotAction={onSnapshotAction}
+          onMedianHref={onMedianHref}
+        />
+      ) : (
+        <SnapshotSummaryBody
+          snapshot={snapshot}
+          tx={tx}
+          onListingsClick={onListingsClick}
+        />
+      )}
+    </div>
   );
 }
 
-function SortableTh({
-  label,
-  sortKey,
-  activeKey,
-  direction,
-  onSort,
-  align = "left",
+function SnapshotSummaryBody({
+  snapshot,
+  tx,
+  onListingsClick,
 }: {
-  label: string;
-  sortKey: SortKey;
-  activeKey: SortKey;
-  direction: SortDir;
-  onSort: (key: SortKey) => void;
-  align?: "left" | "right";
+  snapshot: TownSnapshot;
+  tx: TxFilter;
+  onListingsClick?: (town: string, zip?: string | null) => void;
 }) {
+  const title = snapshotCardTitle(snapshot, tx);
+  const summary = snapshotSummaryParts(snapshot);
+  const { stats } = snapshot;
+
   return (
-    <th
-      className={`px-5 py-3 ${align === "right" ? "text-right" : "text-left"}`}
-    >
-      <SortHeaderControl
-        label={label}
-        sortKey={sortKey}
-        activeKey={activeKey}
-        direction={direction}
-        onSort={onSort}
-        align={align}
-      />
-    </th>
+    <div className="px-3 py-2 font-mono text-[10px] leading-snug tabular-nums">
+      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-slate">
+        {onListingsClick ? (
+          <button
+            type="button"
+            onClick={() => onListingsClick(snapshot.town, snapshot.zip)}
+            className="text-navy font-medium hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2"
+            aria-label={`View ${title} listings on deal board`}
+          >
+            {summary.listings} listings
+          </button>
+        ) : (
+          <span className="text-navy font-medium">{summary.listings} listings</span>
+        )}
+        <span className="text-slate/35" aria-hidden>
+          ·
+        </span>
+        <span className="text-navy">{summary.medianPrice}</span>
+        <span className="text-slate/35" aria-hidden>
+          ·
+        </span>
+        <span className={summary.monthsSupplyClass}>{summary.monthsSupply}</span>
+        <span className="text-slate/35" aria-hidden>
+          ·
+        </span>
+        <span>{summary.medianDom}</span>
+      </div>
+      {(stats.newThisWeek > 0 || stats.reduced > 0) && (
+        <p className="mt-1 text-[9px] tracking-wide text-slate/70">
+          {stats.newThisWeek > 0 ? `${stats.newThisWeek} new` : null}
+          {stats.newThisWeek > 0 && stats.reduced > 0 ? " · " : null}
+          {stats.reduced > 0 ? `${stats.reduced} reduced` : null}
+        </p>
+      )}
+    </div>
   );
 }
 
-function SnapshotCard({
+function SnapshotCardBody({
   snapshot,
   tx,
   onListingsClick,
@@ -2425,7 +3785,7 @@ function SnapshotCard({
   onListingsClick?: (town: string, zip?: string | null) => void;
   onSnapshotAction?: (
     town: string,
-    action: "new" | "reduced",
+    action: "new" | "reduced" | "closed",
     zip?: string | null,
   ) => string;
   onMedianHref?: (snapshot: TownSnapshot) => string | null;
@@ -2434,16 +3794,10 @@ function SnapshotCard({
   const title = snapshotCardTitle(snapshot, tx);
   const place = snapshotHeading(snapshot);
   return (
-    <div className="rounded-2xl bg-white border border-charcoal/[0.06] overflow-hidden">
-      <div className="px-5 py-4 border-b border-charcoal/[0.06] text-center">
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-slate font-bold">
-          {title}
-        </p>
-      </div>
-      <div className="grid grid-cols-2">
-        {snapshot.metrics.map((m) => {
-          const valueColor = snapshotValueColorClass(m.valueSignal);
-          return (
+    <div className="grid grid-cols-2">
+      {snapshot.metrics.map((m) => {
+        const valueColor = snapshotValueColorClass(m.valueSignal);
+        return (
           <div
             key={m.label}
             className="flex flex-col items-center text-center px-3 py-3 border-b border-r border-charcoal/[0.04] odd:last:col-span-2"
@@ -2480,7 +3834,9 @@ function SnapshotCard({
                 aria-label={
                   m.action === "new"
                     ? `View new ${place} listings this week`
-                    : `View reduced ${place} listings`
+                    : m.action === "reduced"
+                      ? `View reduced ${place} listings`
+                      : `View ${tx === "rental" ? "leased" : "closed"} ${place} listings this week`
                 }
               >
                 {m.trend}
@@ -2492,255 +3848,61 @@ function SnapshotCard({
             )}
           </div>
         );
-        })}
-      </div>
+      })}
     </div>
   );
 }
 
-function BoardListingRow({
-  listing: l,
-  scoreRank,
-  rankTotal,
-  isLive,
-  showTown,
-  allTowns,
-  onScoreClick,
+function DealBoardPagination({
+  page,
+  totalPages,
+  pageStart,
+  pageEnd,
+  totalCount,
+  onPageChange,
 }: {
-  listing: DisplayListing;
-  scoreRank: number;
-  rankTotal: number;
-  isLive: boolean;
-  showTown: boolean;
-  allTowns: boolean;
-  onScoreClick: (listing: DisplayListing) => void;
-}) {
-  const rankColor = boardRankColor(scoreRank, rankTotal);
-  const addressLabel = formatBoardAddress(l, allTowns);
-  const addressClass = `font-medium text-navy leading-snug ${
-    allTowns ? "text-xs" : "text-sm"
-  }`;
-  const detailHref = listingDetailHrefForListing({
-    mlsId: l.key,
-    listingKey: l.listingKey,
-    address: { street: l.address, full: l.address },
-    city: l.city,
-  });
-
-  return (
-    <tr className="group border-b border-charcoal/[0.10] last:border-0 hover:bg-gold/5 transition-colors">
-      <td
-        className="px-3 py-4 font-mono text-xs tabular-nums text-right w-10 font-semibold"
-        style={{ color: rankColor }}
-      >
-        {scoreRank + 1}
-      </td>
-      <td className="px-5 py-4">
-        <ScoreBadge value={l.score} onClick={() => onScoreClick(l)} />
-      </td>
-      <td className="px-3 py-4">
-        <PhotoStack mlsId={l.key} isLive={isLive} href={detailHref} />
-      </td>
-      <td className="px-5 py-4">
-        {isLive ? (
-          <Link
-            href={detailHref}
-            className={`${addressClass} hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold`}
-          >
-            {addressLabel}
-          </Link>
-        ) : (
-          <span className={addressClass}>{addressLabel}</span>
-        )}
-        <p className="text-xs text-slate mt-0.5">{l.type}</p>
-      </td>
-      {showTown && (
-        <td className="px-5 py-4 font-medium text-navy">
-          {listingTown(l) ?? "—"}
-        </td>
-      )}
-      <td className="px-5 py-4 text-right font-mono text-navy tabular-nums">
-        ${l.price.toLocaleString()}
-      </td>
-      <td className="px-5 py-4 text-right font-mono text-slate tabular-nums">
-        {l.isRental ? "—" : l.pricePerSqft ? `$${Math.round(l.pricePerSqft)}` : "—"}
-      </td>
-      <td className="px-5 py-4 text-right font-mono text-slate tabular-nums">
-        {l.sqft ? l.sqft.toLocaleString() : "—"}
-      </td>
-      <td className="px-5 py-4 text-right font-mono text-slate tabular-nums">
-        {l.dom != null ? `${l.dom}d` : "—"}
-      </td>
-      <td className="px-5 py-4">
-        <StatusBadge status={l.status} />
-        <p className="text-[11px] text-charcoal/60 mt-2 leading-snug max-w-[160px]">
-          {insightHeadline(l.headline)}
-        </p>
-      </td>
-    </tr>
-  );
-}
-
-function Th({
-  children,
-  align = "left",
-}: {
-  children: React.ReactNode;
-  align?: "left" | "right";
+  page: number;
+  totalPages: number;
+  pageStart: number;
+  pageEnd: number;
+  totalCount: number;
+  onPageChange: (page: number) => void;
 }) {
   return (
-    <th
-      className={`px-5 py-3 font-mono text-[9px] tracking-[0.16em] uppercase text-slate ${
-        align === "right" ? "text-right" : "text-left"
-      }`}
-    >
-      {children}
-    </th>
-  );
-}
-
-function ScoreBadge({ value, onClick }: { value: number; onClick?: () => void }) {
-  const color =
-    value >= 85
-      ? "text-sage"
-      : value >= 70
-      ? "text-gold"
-      : "text-charcoal/50";
-  const className = `font-mono font-semibold tabular-nums text-base ${color} ${
-    onClick
-      ? "underline underline-offset-2 decoration-charcoal/20 hover:decoration-gold transition-colors cursor-pointer"
-      : ""
-  }`;
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={className}
-        aria-label={`Score ${value.toFixed(1)} — view breakdown`}
-      >
-        {value.toFixed(1)}
-      </button>
-    );
-  }
-  return <span className={className}>{value.toFixed(1)}</span>;
-}
-
-function PhotoStack({
-  mlsId,
-  isLive,
-  href,
-}: {
-  mlsId: string;
-  isLive: boolean;
-  href: string;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const [photos, setPhotos] = useState<string[]>([]);
-  const allFetchedRef = useRef(false);
-
-  // Eagerly fetch the hero photo so the front card is never blank
-  useEffect(() => {
-    if (!isLive) return;
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}/photo`, {
-      cache: "default",
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { url?: string | null } | null) => {
-        if (d?.url) setPhotos((prev) => (prev.length ? prev : [d.url!]));
-      })
-      .catch(() => {});
-  }, [mlsId, isLive]);
-
-  function onEnter() {
-    setHovered(true);
-    if (isLive && !allFetchedRef.current) {
-      allFetchedRef.current = true;
-      fetch(`/api/listings/${encodeURIComponent(mlsId)}`, { cache: "default" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d: { photos?: string[] } | null) => {
-          if (d?.photos?.length) setPhotos(d.photos.slice(0, 5));
-        })
-        .catch(() => {});
-    }
-  }
-
-  const CARD_W = 44;
-  const CARD_H = 32;
-
-  const stackedTransforms = [
-    "rotate(-5deg) translate(-4px, 4px)",
-    "rotate(-2.5deg) translate(-2px, 2px)",
-    "rotate(0deg) translate(0px, 0px)",
-    "rotate(2.5deg) translate(2px, -2px)",
-    "rotate(5deg) translate(4px, -4px)",
-  ];
-  const fannedTransforms = [
-    "rotate(-16deg) translateX(-38px) translateY(4px)",
-    "rotate(-8deg) translateX(-19px) translateY(-3px)",
-    "rotate(0deg) translateX(0px) translateY(-6px)",
-    "rotate(8deg) translateX(19px) translateY(-3px)",
-    "rotate(16deg) translateX(38px) translateY(4px)",
-  ];
-  const placeholderBg = ["#e8e0d4", "#ddd4c4", "#d2c9b6", "#c8bea8", "#bdb39a"];
-
-  return (
-    <Link
-      href={href}
-      aria-label="View listing photos"
-      onMouseEnter={onEnter}
-      onMouseLeave={() => setHovered(false)}
-      className="block"
-      style={{ width: 96, height: 52 }}
-    >
-      <div className="relative w-full h-full">
-        {[0, 1, 2, 3, 4].map((i) => {
-          const photo = photos[i] ?? null;
-          return (
-            <span
-              key={i}
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                width: CARD_W,
-                height: CARD_H,
-                marginTop: -(CARD_H / 2),
-                marginLeft: -(CARD_W / 2),
-                borderRadius: 5,
-                border: "1px solid rgba(0,0,0,0.12)",
-                overflow: "hidden",
-                transition: "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)",
-                transform: hovered ? fannedTransforms[i] : stackedTransforms[i],
-                zIndex: hovered ? i : 4 - i,
-                backgroundColor: photo ? undefined : placeholderBg[i],
-                backgroundImage: photo ? `url(${photo})` : undefined,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-              }}
-            />
-          );
-        })}
-      </div>
-    </Link>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    New: "bg-sage/10 text-sage border-sage/30",
-    Active: "bg-sky/10 text-sky border-sky/30",
-    Reduced: "bg-coral/10 text-coral border-coral/30",
-    Pending: "bg-charcoal/10 text-slate border-charcoal/20",
-  };
-  return (
-    <span
-      className={`inline-flex items-center font-mono text-[10px] tracking-[0.15em] uppercase border rounded-full px-2.5 py-1 ${
-        map[status] ?? "bg-charcoal/10 text-slate border-charcoal/20"
-      }`}
-    >
-      {status}
-    </span>
+    <div className="mt-3 flex flex-col gap-3 rounded-xl border border-charcoal/[0.08] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+        Showing{" "}
+        <span className="text-navy tabular-nums">
+          {pageStart.toLocaleString()}–{pageEnd.toLocaleString()}
+        </span>{" "}
+        of{" "}
+        <span className="text-navy tabular-nums">{totalCount.toLocaleString()}</span>{" "}
+        {totalCount === 1 ? "listing" : "listings"}
+      </p>
+      <nav aria-label="Pagination">
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-charcoal/[0.08] bg-white p-0.5">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+            const isActive = pageNum === page;
+            return (
+              <button
+                key={pageNum}
+                type="button"
+                onClick={() => onPageChange(pageNum)}
+                disabled={isActive}
+                aria-current={isActive ? "page" : undefined}
+                aria-label={`Page ${pageNum}`}
+                className={`inline-flex min-w-8 items-center justify-center rounded-full px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] tabular-nums transition-colors ${
+                  isActive
+                    ? "bg-navy text-white"
+                    : "text-slate hover:text-navy hover:bg-charcoal/[0.04]"
+                }`}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
   );
 }

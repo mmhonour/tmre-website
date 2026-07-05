@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
-import { fetchListingByMlsId, listingCacheHeaders } from '@/lib/listings-store'
-import { fetchAllPhotoUrls } from '@/lib/rets'
+import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
+import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
+import { fetchListingByMlsId, listingCacheHeaders, persistListingRecord } from '@/lib/listings-store'
+import { getListingByMlsId } from '@/lib/rets'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ mlsId: string }> },
 ) {
   const { mlsId } = await ctx.params
@@ -15,18 +17,38 @@ export async function GET(
     return NextResponse.json({ error: 'mlsId required' }, { status: 400 })
   }
 
+  const direct = new URL(req.url).searchParams.get('direct') === '1'
+  const includePhotos = new URL(req.url).searchParams.get('photos') !== '0'
+
   try {
-    const { listing, source } = await fetchListingByMlsId(id)
+    const { listing, source } = direct
+      ? { listing: await getListingByMlsId(id), source: 'rets' as const }
+      : await fetchListingByMlsId(id)
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
-    // Prefer listingKey for photo retrieval; fall back to mlsId
-    const photoKey = listing.listingKey || id
-    // Use the URL id for proxy paths so photo routes resolve the same listing
-    const photos = await fetchAllPhotoUrls(photoKey, id, listing.photoCount)
+    persistListingRecord(listing)
+    const [photos, goldilocksBreakdown] = await Promise.all([
+      includePhotos
+        ? resolveListingPhotoUrls(
+            id,
+            listing.listingKey || id,
+            listing.photoCount,
+            { forceRefresh: direct },
+          ).then((r) => r.photos)
+        : Promise.resolve([] as string[]),
+      scoreListingForDetailPage(listing),
+    ])
+    const servedSource = direct ? 'rets' : source
     return NextResponse.json(
-      { listing, photos, source },
-      { headers: listingCacheHeaders(source) },
+      {
+        listing,
+        photos,
+        goldilocksScore: goldilocksBreakdown?.composite ?? null,
+        goldilocksBreakdown,
+        source: servedSource,
+      },
+      { headers: listingCacheHeaders(direct ? 'rets' : source) },
     )
   } catch (err) {
     console.error('[/api/listings/[mlsId]] error', err)
