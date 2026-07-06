@@ -1,5 +1,10 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs'
 import { syncAllTownListings } from '../lib/listings-sync'
+
+if (existsSync('.env.local')) {
+  process.loadEnvFile('.env.local')
+}
 
 async function main() {
   console.info('[sync-listings] starting full town sync…')

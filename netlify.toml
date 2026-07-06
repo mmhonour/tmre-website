@@ -1,5 +1,7 @@
 [build]
-  command = "LISTINGS_DB_PATH=data/listings.bundle.db npm run sync:listings && npm run build"
+  # Sync runs on the Netlify schedule (sync-listings function), not at build time —
+  # build-time sync needs RETS env vars and breaks when .env.local is absent.
+  command = "npm run build"
 
 [build.environment]
   NODE_VERSION = "20"
