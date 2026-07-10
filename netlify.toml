@@ -7,6 +7,8 @@
   NODE_VERSION = "22"
   SKIP_LISTINGS_SYNC = "true"
   LISTINGS_DB_PATH = "/tmp/listings.db"
+  # Force native addons to compile for Node 22 on CI (avoid stale Node 20 prebuilds).
+  NPM_CONFIG_BUILD_FROM_SOURCE = "true"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

@@ -41,6 +41,15 @@ export function classifyRetsError(err: unknown): {
     }
   }
 
+  if (/NODE_MODULE_VERSION|was compiled against a different Node\.js version|ABI/i.test(detail)) {
+    return {
+      status: 'unavailable',
+      message:
+        'RETS native client ABI mismatch — redeploy after native modules rebuild for Node 22',
+      detail,
+    }
+  }
+
   if (/rets client unavailable|node-expat|better-sqlite3/i.test(detail)) {
     return {
       status: 'unavailable',
