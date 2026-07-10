@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { fetchPreferredPhotoUrl, type Listing } from './rets'
+import type { Listing } from './rets'
 import { isMarketListing } from './listings-store'
 import { parseLotAcres } from './fixer-listings'
 import {
@@ -12,6 +12,8 @@ import { scoreListingsWithBoardPeers } from './board-scoring'
 import { filterListingsToTmreTowns } from './tmre-towns'
 import { isNewConstructionListing } from './new-construction-server'
 import { deriveDealSuperlatives } from './deal-superlatives'
+import { listingPhotoProxyUrl } from './listing-url'
+import { firstStoredListingPhotoIndex } from './listings-db'
 
 export type DealPickPayload = {
   generatedAt: string
@@ -33,6 +35,19 @@ export type DealPickPayload = {
   photoUrl: string | null
   listing: Listing
   runnerUps: { mlsId: string; address: string; composite: number; kind: 'sale' | 'rental' }[]
+}
+
+/** Local photo proxy — avoids a RETS round-trip before the homepage hero can paint. */
+export function dealListingPhotoUrl(listing: {
+  mlsId: string
+  listingKey?: string | null
+  photoCount?: number | null
+}): string | null {
+  const id = listing.listingKey?.trim() || listing.mlsId.trim()
+  if (!id) return null
+  if (listing.photoCount != null && listing.photoCount <= 0) return null
+  const index = firstStoredListingPhotoIndex(id) ?? 0
+  return listingPhotoProxyUrl(id, index)
 }
 
 const RENDERING_KEYWORDS = [
@@ -168,10 +183,7 @@ async function finalizePayload(
     cityMedianPrice: medians.get(cityKey(winner.listing)) ?? null,
     valueDiscountPct: valueDiscountPct(winner.listing, medians),
     lotAcres: parseLotAcres(winner.listing),
-    photoUrl: await fetchPreferredPhotoUrl(
-      winner.listing.listingKey || winner.listing.mlsId,
-      winner.listing.mlsId,
-    ),
+    photoUrl: dealListingPhotoUrl(winner.listing),
     listing: winner.listing,
     runnerUps: sorted.slice(1, 4).map((s) => ({
       mlsId: s.listing.mlsId,

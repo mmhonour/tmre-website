@@ -12,6 +12,7 @@ export type ComparableListing = {
   beds: number | null
   baths: number | null
   lotAcres: number | null
+  sqft: number | null
   vintageBucket: VintageBucketId
   vintageLabel: string
   yearBuilt: number | null
@@ -24,6 +25,8 @@ export type ComparableListing = {
   locationPremiumMultiplier: number
   /** Goldilocks composite (0–100), same model as Intelligence. */
   goldilocksScore?: number | null
+  /** Weekly metadata edge score (0–100), comparable across listings. */
+  edgeScore?: number | null
 }
 
 export type ComparablesCriteria = {
@@ -51,6 +54,11 @@ export function fmtAcres(acres: number | null | undefined): string {
   if (acres < 0.01) return '<0.01 ac'
   if (acres < 10) return `${acres.toFixed(2)} ac`
   return `${acres.toFixed(1)} ac`
+}
+
+export function fmtSqft(sqft: number | null | undefined): string {
+  if (sqft == null || sqft <= 0) return '—'
+  return `${sqft.toLocaleString('en-US')} sqft`
 }
 
 export function fmtYearBuilt(yearBuilt: number | null | undefined): string | null {

@@ -2,16 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
 import { listingCacheHeaders } from '@/lib/listings-store'
 import { resolveSpotlightListing } from '@/lib/spotlight-cache'
+import {
+  getSpotlightListingConfig,
+  parseSpotlightPropertyTab,
+} from '@/lib/spotlight-listing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  const includePhotos = new URL(req.url).searchParams.get('photos') === '1'
+  const { searchParams } = new URL(req.url)
+  const includePhotos = searchParams.get('photos') === '1'
+  const propertyTab = parseSpotlightPropertyTab(searchParams.get('property'))
+  const config = getSpotlightListingConfig(propertyTab)
 
   try {
     const { listing, photos, source, cacheHit } = await resolveSpotlightListing({
       includePhotos,
+      config,
+      propertyTab,
     })
 
     const goldilocksBreakdown = listing

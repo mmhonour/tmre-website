@@ -14,7 +14,7 @@ export default function SpotlightComparablesClient({
 }: {
   comparablesKind?: "sale" | "rental";
 }) {
-  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown } =
+  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, propertyTab } =
     useSpotlightListing();
 
   if (loadState === "error") {
@@ -50,6 +50,11 @@ export default function SpotlightComparablesClient({
   const activeTab =
     comparablesKind === "rental" ? "comparable-rentals" : "comparables";
 
+  const comparablesParams = new URLSearchParams();
+  if (comparablesKind === "rental") comparablesParams.set("kind", "rental");
+  if (propertyTab === 2) comparablesParams.set("property", "2");
+  const comparablesQs = comparablesParams.toString();
+
   return (
     <SpotlightPageChrome
       active={activeTab}
@@ -62,9 +67,11 @@ export default function SpotlightComparablesClient({
           mlsId={display.mlsId}
           townHint={display.config.address.city}
           kind={comparablesKind}
-          fetchUrl={`/api/spotlight/comparables${
-            comparablesKind === "rental" ? "?kind=rental" : ""
-          }`}
+          fetchUrl={
+            comparablesQs
+              ? `/api/spotlight/comparables?${comparablesQs}`
+              : "/api/spotlight/comparables"
+          }
         />
       }
       sidebar={<ListingSidebar details={details} />}

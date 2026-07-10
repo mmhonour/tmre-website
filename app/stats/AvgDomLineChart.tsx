@@ -13,16 +13,8 @@ import {
 } from "recharts";
 import type { StatsKind, Town } from "./stats-towns";
 import { statsActiveLabel } from "./stats-labels";
-
-const TOWN_COLOR: Record<Town, string> = {
-  Norwalk: "#38bdf8",
-  Westport: "#D4AF37",
-  Wilton: "#f97316",
-  Fairfield: "#5ba08a",
-  Weston: "#818cf8",
-  "New Canaan": "#fbbf24",
-  Ridgefield: "#fb7185",
-};
+import { STATS_TOWN_COLOR } from "./stats-town-colors";
+import { useStatsChartReady } from "./stats-chart-frame-context";
 
 export type DomPoint = {
   town: Town;
@@ -73,19 +65,23 @@ export default function AvgDomLineChart({
     .map((d) => ({
       ...d,
       pace: d.pace || paceLabel(d.avgDom),
-      color: TOWN_COLOR[d.town],
+      color: STATS_TOWN_COLOR[d.town],
     }));
 
   const stroke = "#5ba08a";
+  const chartReady = !loading && chartData.length > 0;
+  useStatsChartReady(chartReady);
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+    <div className="stats-chart-card rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+      {chartReady ? (
       <div className="bg-[#0f1628] px-6 pt-6 pb-2">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-white/40 mb-1">
           Avg days on market
         </p>
         <p className="font-serif text-xl text-white">Lower is faster · by town</p>
       </div>
+      ) : null}
 
       <div className="bg-[#0f1628] px-2 pb-4">
         {loading ? (
@@ -185,6 +181,7 @@ export default function AvgDomLineChart({
         )}
       </div>
 
+      {chartReady ? (
       <div className="bg-[#0a1020] px-6 py-3 flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[9px] tracking-wide text-white/20">
           Sorted fastest → slowest · {statsActiveLabel(kind)}
@@ -203,6 +200,7 @@ export default function AvgDomLineChart({
           ))}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

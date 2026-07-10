@@ -2,6 +2,8 @@ import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 
 export type DealBoardRowStatus = "Active" | "Pending" | "New" | "Reduced";
 
+export type DealBoardStatusFilter = "all" | "new" | "reduced" | "active";
+
 export type DealBoardListing = {
   key: string;
   listingKey?: string | null;
@@ -22,6 +24,8 @@ export type DealBoardListing = {
   yearBuilt?: number | null;
   headline: string;
   photoCount?: number | null;
+  /** First RETS photo index that actually downloaded (skips empty MLS slots). */
+  primaryPhotoIndex?: number | null;
 };
 
 export type DealBoardRowProps = {

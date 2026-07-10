@@ -10,8 +10,7 @@ import {
   computeTownBundleFromListings,
   getStatsCacheAgeMs,
   readStatsCache,
-  rebuildStatsCache,
-  rebuildStatsCacheIfStale,
+  scheduleStatsCacheRebuildIfStale,
   STATS_CACHE_TTL_MS,
 } from '@/lib/stats-cache'
 import type { StatsListingRow } from '@/lib/stats-listing-rows'
@@ -72,21 +71,11 @@ export async function GET(req: NextRequest) {
   const kind = parseListingKindParam(new URL(req.url).searchParams.get('kind'))
 
   try {
-    rebuildStatsCacheIfStale()
+    scheduleStatsCacheRebuildIfStale()
 
-    let towns = Object.fromEntries(
+    const towns = Object.fromEntries(
       TMRE_TOWNS.map((town) => [town, readTownBundle(town, kind)]),
     ) as Record<TmreTown, StatsPageTownPayload>
-
-    const hasMedianData = TMRE_TOWNS.some(
-      (town) => towns[town].marketStats?.medianPrice != null,
-    )
-    if (!hasMedianData) {
-      rebuildStatsCache()
-      towns = Object.fromEntries(
-        TMRE_TOWNS.map((town) => [town, readTownBundle(town, kind)]),
-      ) as Record<TmreTown, StatsPageTownPayload>
-    }
 
     const stillEmpty = !TMRE_TOWNS.some(
       (town) => towns[town].marketStats?.medianPrice != null,
@@ -95,7 +84,7 @@ export async function GET(req: NextRequest) {
       const live = await Promise.all(
         TMRE_TOWNS.map(async (town) => [town, await fetchTownBundleLive(town, kind)] as const),
       )
-      towns = Object.fromEntries(live) as Record<TmreTown, StatsPageTownPayload>
+      Object.assign(towns, Object.fromEntries(live))
     }
 
     const servedFromCache = TMRE_TOWNS.some((town) => {

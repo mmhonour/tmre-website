@@ -1,20 +1,22 @@
 import Link from "next/link";
 import Image from "next/image";
+import FooterMarketsColumn from "@/components/FooterMarketsColumn";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getLastFullSync } from "@/lib/listings-store";
+function formatLastBuilt(iso: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "America/New_York",
+  }).format(date);
+}
 
 const columns = [
   {
-    title: "Markets",
-    links: [
-      { href: "/intelligence?city=norwalk", label: "Norwalk" },
-      { href: "/intelligence?city=westport", label: "Westport" },
-      { href: "/intelligence", label: "Live Deal Board" },
-      { href: "/intelligence", label: "Market Pulse" },
-    ],
-  },
-  {
-    title: "Resources",
-    links: [
+    title: "Resources",    links: [
       { href: "/stats", label: "Market Intelligence" },
       { href: "/new-construction", label: "Active Projects" },
       { href: "/investors", label: "For Investors" },
@@ -32,7 +34,8 @@ const columns = [
   },
 ];
 
-export default function Footer() {
+export default async function Footer() {
+  const lastBuilt = formatLastBuilt(getLastFullSync());
   return (
     <footer className="navy-gradient text-white mt-auto">
       <div className="mx-auto max-w-7xl px-6 lg:px-10 py-20">
@@ -69,6 +72,8 @@ export default function Footer() {
             </div>
           </div>
 
+          <FooterMarketsColumn />
+
           {columns.map((col) => (
             <div key={col.title}>
               <h4 className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-5">
@@ -98,6 +103,11 @@ export default function Footer() {
             Confidence through clarity.
           </p>
         </div>
+        <p className="mt-4 text-left text-[11px] text-white/[0.16] font-mono tracking-wide">
+          {lastBuilt
+            ? `Refreshed: ${lastBuilt} ET`
+            : "Refresh pending"}
+        </p>
       </div>
     </footer>
   );

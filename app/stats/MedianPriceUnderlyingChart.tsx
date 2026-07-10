@@ -138,7 +138,7 @@ export default function MedianPriceUnderlyingChart({
   const poolLabel = isActivePool ? statsActiveLabel(kind) : statsClosedLabel(kind);
 
   return (
-    <div className="mb-8 rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+    <div className="stats-chart-card mb-8 rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
       <div className="bg-[#0f1628] px-6 pt-6 pb-2">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-white/40 mb-1">
           {isRental ? "Median closed rent distribution" : "Median closed price distribution"}

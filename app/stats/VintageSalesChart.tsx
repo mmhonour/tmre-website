@@ -18,6 +18,7 @@ import {
   statsClosedLabel,
   statsVolumeNoun,
 } from "./stats-labels";
+import { useStatsChartReady } from "./stats-chart-frame-context";
 
 type BucketRow = {
   id: string;
@@ -110,9 +111,12 @@ export default function VintageSalesChart({
 
   const isFallback = payload?.fallback ?? false;
   const volumeNoun = statsVolumeNoun(kind);
+  const chartReady = !loading && !!payload && chartData.length > 0;
+  useStatsChartReady(chartReady);
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+    <div className="stats-chart-card rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+      {chartReady ? (
       <div className="bg-[#0f1628] px-6 pt-6 pb-2">
         <div className="flex items-start justify-between mb-5 gap-4 flex-wrap">
           <div>
@@ -158,6 +162,7 @@ export default function VintageSalesChart({
           </div>
         </div>
       </div>
+      ) : null}
 
       <div className="bg-[#0f1628] px-2 pb-4">
         {loading && !payload ? (
@@ -303,6 +308,7 @@ export default function VintageSalesChart({
         )}
       </div>
 
+      {chartReady ? (
       <div className="bg-[#0a1020] px-6 py-3 flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[9px] tracking-wide text-white/20">
           Year built at close · {payload?.totalSales?.toLocaleString() ?? "—"}{" "}
@@ -317,6 +323,7 @@ export default function VintageSalesChart({
           </p>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

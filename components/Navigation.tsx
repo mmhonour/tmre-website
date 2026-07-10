@@ -1,12 +1,13 @@
 "use client";
 
 import ContactButton from "./ContactButton";
+import { useSiteUnlockActions, useSiteUnlocked } from "./SiteUnlockProvider";
 import VisitorLocationBadge from "./VisitorLocationBadge";
 import { PhoneIcon, navIconClass } from "./icons";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 const iconCtaButtonClass =
   "inline-flex items-center justify-center rounded-full bg-gold min-w-[2.75rem] min-h-[2.75rem] p-3 text-navy transition-all hover:bg-gold-light hover:shadow-lg hover:shadow-gold/30";
@@ -57,6 +58,26 @@ function LightningBolt({ className }: { className?: string }) {
   );
 }
 
+function MagnifyingGlassIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      width={14}
+      height={14}
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
 const primaryLinks: NavItem[] = [
   { href: "/deal-of-the-day", label: "Deal of the Day", bold: true },
   { href: "/intelligence", label: "Intelligence", bolt: true },
@@ -64,11 +85,25 @@ const primaryLinks: NavItem[] = [
 ];
 
 const lookeyLink: NavItem = { href: "/lookey", label: "Looked at..." };
+const listWithMeLink: NavItem = { href: "/list-with-me", label: "List With Me" };
 
-const exploreGroups = [
+type ExploreLink = {
+  href: string;
+  label: string;
+  requiresUnlock?: boolean;
+};
+
+type ExploreGroup = {
+  title: string;
+  links: ExploreLink[];
+};
+
+const exploreGroupsBase: ExploreGroup[] = [
   {
     title: "Properties",
     links: [
+      { href: "/latest", label: "Latest" },
+      { href: "/open-houses", label: "Open Houses" },
       { href: "/new-construction", label: "New Construction" },
       { href: "/new-construction/expired-listings", label: "Expired Listings" },
       { href: "/fixer-uppers", label: "Fixer Uppers" },
@@ -83,9 +118,23 @@ const exploreGroups = [
       { href: "/owner-history", label: "Owner History" },
     ],
   },
-] as const;
+  {
+    title: "System",
+    links: [
+      { href: "/admin", label: "Admin" },
+      { href: "/visitors", label: "Visitors", requiresUnlock: true },
+    ],
+  },
+];
 
-const exploreHrefs = exploreGroups.flatMap((g) => g.links.map((l) => l.href));
+function getExploreGroups(siteUnlocked: boolean): ExploreGroup[] {
+  return exploreGroupsBase
+    .map((group) => ({
+      title: group.title,
+      links: group.links.filter((link) => !link.requiresUnlock || siteUnlocked),
+    }))
+    .filter((group) => group.links.length > 0);
+}
 
 const navItemClass =
   "inline-flex flex-col items-start text-left text-sm tracking-wide whitespace-nowrap leading-none shrink-0 transition-colors";
@@ -105,12 +154,14 @@ function NavLink({
   active,
   bold = false,
   bolt = false,
+  magnifier = false,
 }: {
   href: string;
   label: string;
   active: boolean;
   bold?: boolean;
   bolt?: boolean;
+  magnifier?: boolean;
 }) {
   return (
     <Link
@@ -123,6 +174,9 @@ function NavLink({
         {bolt ? (
           <LightningBolt className="w-3.5 h-3.5 shrink-0 text-gold drop-shadow-sm" />
         ) : null}
+        {magnifier ? (
+          <MagnifyingGlassIcon className="w-3.5 h-3.5 shrink-0 text-gold drop-shadow-sm" />
+        ) : null}
         {label}
       </span>
       <span className={navUnderline(active)} aria-hidden />
@@ -134,14 +188,19 @@ function ExploreMenu({
   pathname,
   onNavigate,
   variant = "desktop",
+  siteUnlocked = false,
 }: {
   pathname: string;
   onNavigate?: () => void;
   variant?: "desktop" | "mobile";
+  siteUnlocked?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const exploreActive = exploreHrefs.some((href) => pathname === href);
+  const exploreGroups = getExploreGroups(siteUnlocked);
+  const exploreActive = exploreGroups.some((group) =>
+    group.links.some((link) => pathname === link.href),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -250,7 +309,13 @@ function ExploreMenu({
   );
 }
 
-function DesktopNav({ pathname }: { pathname: string }) {
+function DesktopNav({
+  pathname,
+  siteUnlocked,
+}: {
+  pathname: string;
+  siteUnlocked: boolean;
+}) {
   return (
     <nav
       aria-label="Main"
@@ -270,13 +335,95 @@ function DesktopNav({ pathname }: { pathname: string }) {
         href={lookeyLink.href}
         label={lookeyLink.label}
         active={pathname === lookeyLink.href}
+        magnifier
       />
-      <ExploreMenu pathname={pathname} />
+      <NavLink
+        href={listWithMeLink.href}
+        label={listWithMeLink.label}
+        active={pathname === listWithMeLink.href}
+      />
+      <ExploreMenu pathname={pathname} siteUnlocked={siteUnlocked} />
     </nav>
   );
 }
 
-export default function Navigation() {
+function SiteLoginButton() {
+  return (
+    <Link
+      href="/admin"
+      className="font-mono text-[9px] tracking-[0.14em] uppercase text-white/55 hover:text-gold transition-colors"
+    >
+      Log in
+    </Link>
+  );
+}
+
+function SiteLogoutButton() {
+  const router = useRouter();
+  const { setUnlocked } = useSiteUnlockActions();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const onLogout = () => {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/site-password", { method: "DELETE" });
+        if (!res.ok) throw new Error("Logout failed");
+        setUnlocked(false);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Logout failed");
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onLogout}
+        disabled={pending}
+        className="font-mono text-[9px] tracking-[0.14em] uppercase text-white/55 hover:text-gold transition-colors disabled:opacity-50"
+        aria-label="Log out of Admin"
+      >
+        {pending ? "…" : "Log out"}
+      </button>
+      {error ? (
+        <span className="font-mono text-[8px] text-coral/90" role="alert">
+          Failed
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function PhoneCallWithLogout({
+  align = "center",
+}: {
+  align?: "center" | "start";
+}) {
+  const siteUnlocked = useSiteUnlocked();
+
+  return (
+    <div
+      className={`flex flex-col gap-1 ${
+        align === "start" ? "items-start" : "items-center"
+      }`}
+    >
+      <a href="tel:6175040741" className={iconCtaButtonClass} aria-label="Call me">
+        <PhoneIcon className={navIconClass} />
+      </a>
+      {siteUnlocked ? <SiteLogoutButton /> : <SiteLoginButton />}
+    </div>
+  );
+}
+
+export default function Navigation({
+  siteUnlocked = false,
+}: {
+  siteUnlocked?: boolean;
+}) {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -333,15 +480,13 @@ export default function Navigation() {
               </Link>
             </div>
 
-            <DesktopNav pathname={pathname} />
+            <DesktopNav pathname={pathname} siteUnlocked={siteUnlocked} />
           </div>
 
-          <div className="hidden md:flex items-center gap-2 shrink-0">
+          <div className="hidden md:flex items-start gap-2 shrink-0">
             <VisitorLocationBadge />
             <ContactButton className={iconCtaButtonClass} />
-            <a href="tel:6175040741" className={iconCtaButtonClass} aria-label="Call me">
-              <PhoneIcon className={navIconClass} />
-            </a>
+            <PhoneCallWithLogout />
             {SHOW_BHHS_LOGO ? <BhhsAgentProfileLink /> : null}
           </div>
 
@@ -401,18 +546,28 @@ export default function Navigation() {
                   : "text-white/85 hover:text-white hover:bg-white/5"
               }`}
             >
+              <MagnifyingGlassIcon className="w-3.5 h-3.5 shrink-0 text-gold drop-shadow-sm" />
               {lookeyLink.label}
+            </Link>
+            <Link
+              href={listWithMeLink.href}
+              className={`inline-flex items-center gap-1.5 px-2 py-3 text-sm rounded-md transition-colors ${
+                pathname === listWithMeLink.href
+                  ? "text-gold bg-white/5"
+                  : "text-white/85 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              {listWithMeLink.label}
             </Link>
             <ExploreMenu
               pathname={pathname}
               variant="mobile"
+              siteUnlocked={siteUnlocked}
               onNavigate={() => setMobileOpen(false)}
             />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-start gap-2">
               <ContactButton className={iconCtaButtonClass} />
-              <a href="tel:6175040741" className={iconCtaButtonClass} aria-label="Call me">
-                <PhoneIcon className={navIconClass} />
-              </a>
+              <PhoneCallWithLogout align="start" />
               {SHOW_BHHS_LOGO ? <BhhsAgentProfileLink /> : null}
             </div>
           </nav>

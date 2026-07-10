@@ -6,6 +6,7 @@ export type ContactNotifyPayload = {
   email: string
   source: string
   listingInfo?: string | null
+  address?: string | null
 }
 
 export async function notifyContactByEmail(payload: ContactNotifyPayload): Promise<void> {
@@ -20,7 +21,9 @@ export async function notifyContactByEmail(payload: ContactNotifyPayload): Promi
     process.env.CONTACT_FROM_EMAIL?.trim() || 'TMRE Website <notifications@tmre-website.com>'
   const subject = payload.listingInfo
     ? `Listing inquiry — ${payload.listingInfo}`
-    : `Contact from ${payload.name}`
+    : payload.source === 'list-with-me'
+      ? `List With Me — ${payload.name}`
+      : `Contact from ${payload.name}`
 
   const lines = [
     `Name: ${payload.name}`,
@@ -28,6 +31,7 @@ export async function notifyContactByEmail(payload: ContactNotifyPayload): Promi
     payload.phone ? `Phone: ${payload.phone}` : null,
     `Source: ${payload.source}`,
     payload.listingInfo ? `Listing: ${payload.listingInfo}` : null,
+    payload.address ? `Property / notes:\n${payload.address}` : null,
     '',
     '— Sent from tmre-website contact form',
   ].filter(Boolean)

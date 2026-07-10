@@ -28,6 +28,8 @@ type ListingHeroPanelsProps = {
     routeBase?: "listing" | "spotlight";
   };
   variant?: "default" | "spotlight";
+  /** Spotlight property tabs (1 / 2) rendered above the Property Details label. */
+  propertyTabs?: ReactNode;
   belowTabs?: ReactNode;
   /** Full-width content below the hero grid (e.g. comparables columns). */
   belowHero?: ReactNode;
@@ -41,6 +43,7 @@ export default function ListingHeroPanels({
   location,
   subnav,
   variant = "default",
+  propertyTabs = null,
   belowTabs,
   belowHero,
   sidebar,
@@ -54,6 +57,7 @@ export default function ListingHeroPanels({
   const propertyPanel = (
     <div className={frameClass}>
       {!isSpotlight ? <ListingBackLink className="mb-4" /> : null}
+      {propertyTabs}
       <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
         Property Details
       </p>

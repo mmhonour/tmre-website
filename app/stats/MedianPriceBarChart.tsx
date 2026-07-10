@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { useStatsChartReady } from "./stats-chart-frame-context";
 import {
   Bar,
   CartesianGrid,
@@ -122,9 +123,12 @@ export default function MedianPriceBarChart({
 
   const chartData = propChartData.length > 0 ? propChartData : fetchedData;
   const loading = loadingProp || (propChartData.length === 0 && fetching);
+  const chartReady = !loading && chartData.length > 0;
+  useStatsChartReady(chartReady);
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+    <div className="stats-chart-card rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+      {chartReady ? (
       <div className="bg-[#0f1628] px-6 pt-6 pb-2">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-white/40 mb-1">
           {kind === "rental" ? "Median rent by town" : "Median closed price by town"}
@@ -134,6 +138,7 @@ export default function MedianPriceBarChart({
           {kind === "rental" ? "closed rent" : "closed price"}
         </p>
       </div>
+      ) : null}
 
       <div className="bg-[#0f1628] px-2 pb-4">
         {loading ? (
@@ -231,6 +236,7 @@ export default function MedianPriceBarChart({
         )}
       </div>
 
+      {chartReady ? (
       <div className="bg-[#0a1020] px-6 py-3 flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[9px] tracking-wide text-white/20">
           Sorted lowest → highest · closed {kind === "rental" ? "leases" : "sales"}
@@ -260,6 +266,7 @@ export default function MedianPriceBarChart({
           ))}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

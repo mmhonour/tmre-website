@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   buildAllTownsDescriptorRequest,
   normalizeAllTownsDescriptor,
@@ -23,19 +23,19 @@ export default function AllTownsDescriptor({
   aggregateMonthsSupply,
   monthlySalesLoaded,
   filterContext,
-  bedLabel,
-  bathLabel,
-  vintageLabel,
-  priceLabel,
+  contextParts = [],
+  trailing = null,
+  hideMonthsSupply = false,
+  className,
 }: {
   towns: TownDescriptorStats[];
   aggregateMonthsSupply: number | null;
   monthlySalesLoaded: boolean;
   filterContext: FilterContext;
-  bedLabel?: React.ReactNode;
-  bathLabel?: React.ReactNode;
-  vintageLabel?: React.ReactNode;
-  priceLabel?: React.ReactNode;
+  contextParts?: string[];
+  trailing?: ReactNode;
+  hideMonthsSupply?: boolean;
+  className?: string;
 }) {
   const payload = useMemo(
     () =>
@@ -99,7 +99,17 @@ export default function AllTownsDescriptor({
   }, [payload, fallback]);
 
   return (
-    <p className="mt-3 flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide">
+    <p
+      className={`${className ?? "mt-3"} flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide`}
+    >
+      {contextParts.map((part, index) => (
+        <span key={`${part}-${index}`} className="contents">
+          <span className="text-white/45">{part}</span>
+          <span className="text-white/25" aria-hidden>
+            ·
+          </span>
+        </span>
+      ))}
       <span
         className={`text-white/45 ${loading ? "animate-pulse" : ""}`}
       >
@@ -115,60 +125,33 @@ export default function AllTownsDescriptor({
           </span>
         </>
       ) : null}
-      <span className="text-white/25" aria-hidden>
-        ·
-      </span>
-      <span
-        className={monthsSupplyColorClass(aggregateMonthsSupply)}
-        aria-label={
-          !monthlySalesLoaded
-            ? "Months supply loading"
-            : aggregateMonthsSupply != null
-              ? `${aggregateMonthsSupply.toFixed(1)} months supply blended`
-              : "Months supply unavailable"
-        }
-      >
-        Months supply{" "}
-        <span className="tabular-nums font-medium">
-          {!monthlySalesLoaded
-            ? "…"
-            : aggregateMonthsSupply != null
-              ? aggregateMonthsSupply.toFixed(1)
-              : "—"}
-        </span>
-      </span>
-      {priceLabel ? (
+      {!hideMonthsSupply ? (
         <>
           <span className="text-white/25" aria-hidden>
             ·
           </span>
-          {priceLabel}
-        </>
-      ) : null}
-      {bedLabel ? (
-        <>
-          <span className="text-white/25" aria-hidden>
-            ·
+          <span
+            className={monthsSupplyColorClass(aggregateMonthsSupply)}
+            aria-label={
+              !monthlySalesLoaded
+                ? "Months supply loading"
+                : aggregateMonthsSupply != null
+                  ? `${aggregateMonthsSupply.toFixed(1)} months supply blended`
+                  : "Months supply unavailable"
+            }
+          >
+            Months supply{" "}
+            <span className="tabular-nums font-medium">
+              {!monthlySalesLoaded
+                ? "…"
+                : aggregateMonthsSupply != null
+                  ? aggregateMonthsSupply.toFixed(1)
+                  : "—"}
+            </span>
           </span>
-          {bedLabel}
         </>
       ) : null}
-      {bathLabel ? (
-        <>
-          <span className="text-white/25" aria-hidden>
-            ·
-          </span>
-          {bathLabel}
-        </>
-      ) : null}
-      {vintageLabel ? (
-        <>
-          <span className="text-white/25" aria-hidden>
-            ·
-          </span>
-          {vintageLabel}
-        </>
-      ) : null}
+      {trailing}
     </p>
   );
 }

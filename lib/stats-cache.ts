@@ -13,21 +13,103 @@ import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-statu
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import { filterListingsByKind, LISTING_KINDS, type ListingKind } from '@/lib/listing-kind'
 import {
+  computeActiveByMonth,
   computeMarketStats,
   computeSalesByMonth,
   computeSalesByPrice,
   computeSalesByVintage,
   statsCacheKey,
+  type ActiveByMonthByTownPayload,
+  type SalesByMonthByTownPayload,
   type StatsCacheScope,
 } from '@/lib/stats-compute'
 import { listingToStatsRow, type StatsListingRow } from '@/lib/stats-listing-rows'
+import { STATS_MONTH_CHART_START_YEAR, statsMonthChartYears } from '@/lib/stats-month-years'
 import type { Listing } from '@/lib/rets'
-import { TMRE_TOWNS } from '@/lib/tmre-towns'
+import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+import { rebuildIntelligenceTownSnapshots } from '@/lib/intelligence-town-snapshot'
+import {
+  SqliteWriteStatsCollector,
+  type TableWriteStats,
+} from '@/lib/sqlite-sync-stats'
 
 /** Stats payloads are refreshed on this interval (1 hour). */
 export const STATS_CACHE_TTL_MS = 60 * 60 * 1000
 
 let emptyCacheRebuildAttempted = false
+let backgroundRebuildScheduled = false
+
+type MonthlyCount = { year: number; month: number; count: number }
+
+function aggregateMonthCounts(
+  rows: MonthlyCount[][],
+  years: readonly number[],
+): MonthlyCount[] {
+  const totals = new Map<string, number>()
+  for (const data of rows) {
+    for (const { year, month, count } of data) {
+      const key = `${year}-${month}`
+      totals.set(key, (totals.get(key) ?? 0) + count)
+    }
+  }
+  const combined: MonthlyCount[] = []
+  for (const year of years) {
+    for (let month = 1; month <= 12; month++) {
+      combined.push({ year, month, count: totals.get(`${year}-${month}`) ?? 0 })
+    }
+  }
+  return combined
+}
+
+export function readAggregatedSalesByMonth(
+  kind: ListingKind,
+): (ReturnType<typeof computeSalesByMonth> & { generatedAt?: string }) | null {
+  const rows: MonthlyCount[][] = []
+  let generatedAt: string | undefined
+  for (const town of TMRE_TOWNS) {
+    const cached = readStatsCache<ReturnType<typeof computeSalesByMonth> & { generatedAt?: string }>(
+      'sales-by-month',
+      town,
+      kind,
+    )
+    if (!cached?.data?.length) continue
+    rows.push(cached.data)
+    generatedAt = cached.generatedAt ?? generatedAt
+  }
+  if (!rows.length) return null
+  return {
+    city: 'All',
+    kind,
+    data: aggregateMonthCounts(rows, statsMonthChartYears()),
+    closedThisWeek: 0,
+    closedThisWeekByZip: {},
+    generatedAt,
+  }
+}
+
+export function readAggregatedActiveByMonth(
+  kind: ListingKind,
+): (ReturnType<typeof computeActiveByMonth> & { generatedAt?: string }) | null {
+  const rows: MonthlyCount[][] = []
+  let generatedAt: string | undefined
+  for (const town of TMRE_TOWNS) {
+    const cached = readStatsCache<ReturnType<typeof computeActiveByMonth> & { generatedAt?: string }>(
+      'active-by-month',
+      town,
+      kind,
+    )
+    if (!cached?.data?.length) continue
+    rows.push(cached.data)
+    generatedAt = cached.generatedAt ?? generatedAt
+  }
+  if (!rows.length) return null
+  return {
+    city: 'All',
+    kind,
+    data: aggregateMonthCounts(rows, statsMonthChartYears()),
+    generatedAt,
+  }
+}
 
 export function getStatsCacheAgeMs(): number | null {
   const ts = getSyncMeta('last_stats_cache')
@@ -41,6 +123,20 @@ export function isStatsCacheStale(): boolean {
   const age = getStatsCacheAgeMs()
   if (age == null) return true
   return age >= STATS_CACHE_TTL_MS
+}
+
+/** Month comparison charts — both persisted per town × kind in stats_cache. */
+const MONTH_CHART_CACHE_SCOPES = ['sales-by-month', 'active-by-month'] as const satisfies readonly StatsCacheScope[]
+
+function monthChartPayloadCurrent(payload: string): boolean {
+  try {
+    const parsed = JSON.parse(payload) as { data?: { year: number }[] }
+    if (!Array.isArray(parsed.data) || parsed.data.length === 0) return false
+    const years = new Set(parsed.data.map((d) => d.year))
+    return years.has(STATS_MONTH_CHART_START_YEAR)
+  } catch {
+    return false
+  }
 }
 
 function statsCacheMissingMedians(): boolean {
@@ -59,16 +155,29 @@ function statsCacheMissingMedians(): boolean {
   return false
 }
 
+function statsCacheMissingMonthCharts(): boolean {
+  for (const town of TMRE_TOWNS) {
+    for (const kind of LISTING_KINDS) {
+      for (const scope of MONTH_CHART_CACHE_SCOPES) {
+        const row = readStatsCacheRow(statsCacheKey(scope, town, kind))
+        if (!row) return true
+        if (!monthChartPayloadCurrent(row.payload)) return true
+      }
+    }
+  }
+  return false
+}
+
+function statsCacheMissingRequiredEntries(): boolean {
+  return statsCacheMissingMedians() || statsCacheMissingMonthCharts()
+}
+
 function ensureStatsCachePopulated(): void {
   if (emptyCacheRebuildAttempted || !hasLocalListingsCache()) return
-  emptyCacheRebuildAttempted = true
   const { total, statsCacheEntries } = getListingsDbStats()
-  if (total > 0 && (statsCacheEntries === 0 || statsCacheMissingMedians())) {
-    try {
-      rebuildStatsCache()
-    } catch (err) {
-      console.error('[stats-cache] lazy rebuild failed', err)
-    }
+  if (total > 0 && (statsCacheEntries === 0 || statsCacheMissingRequiredEntries())) {
+    emptyCacheRebuildAttempted = true
+    scheduleStatsCacheRebuildIfStale(true)
   }
 }
 
@@ -91,6 +200,32 @@ export function writeStatsCache(
   payload: unknown,
 ): void {
   writeStatsCacheRow(statsCacheKey(scope, city, kind), payload)
+}
+
+export function readSalesByMonthByTown(
+  kind: ListingKind,
+): (SalesByMonthByTownPayload & { generatedAt?: string }) | null {
+  return readStatsCache('sales-by-month-by-town', 'All', kind)
+}
+
+export function readActiveByMonthByTown(
+  kind: ListingKind,
+): (ActiveByMonthByTownPayload & { generatedAt?: string }) | null {
+  return readStatsCache('active-by-month-by-town', 'All', kind)
+}
+
+export function readSalesByMonth(
+  city: string,
+  kind: ListingKind,
+): (ReturnType<typeof computeSalesByMonth> & { generatedAt?: string }) | null {
+  return readStatsCache('sales-by-month', city, kind)
+}
+
+export function readActiveByMonth(
+  city: string,
+  kind: ListingKind,
+): (ReturnType<typeof computeActiveByMonth> & { generatedAt?: string }) | null {
+  return readStatsCache('active-by-month', city, kind)
 }
 
 export type TownStatsBundle = {
@@ -135,7 +270,9 @@ export function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): {
   durationMs: number
 } {
   const trackRefresh = options.trackRefresh !== false
-  if (trackRefresh) beginSqliteRefresh()
+  if (trackRefresh) beginSqliteRefresh('stats-cache')
+  const startedAt = new Date().toISOString()
+  setSyncMeta('last_stats_cache_started', startedAt)
   const t0 = Date.now()
   try {
   clearStatsCache()
@@ -148,6 +285,20 @@ export function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): {
 
   let written = 0
   const generatedAt = new Date().toISOString()
+  const salesByMonthByTown: Record<
+    (typeof LISTING_KINDS)[number],
+    Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>
+  > = {
+    sale: {} as Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>,
+    rental: {} as Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>,
+  }
+  const activeByMonthByTown: Record<
+    (typeof LISTING_KINDS)[number],
+    Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>
+  > = {
+    sale: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
+    rental: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
+  }
 
   for (const town of TMRE_TOWNS) {
     const active = readListingsFromDb(town, 'Active', 500)
@@ -170,12 +321,14 @@ export function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): {
       )
       written += 1
 
-      writeStatsCache(
-        'sales-by-month',
-        town,
-        kind,
-        { ...computeSalesByMonth(closed, town, kind), generatedAt },
-      )
+      const monthPayload = computeSalesByMonth(closed, town, kind)
+      writeStatsCache('sales-by-month', town, kind, { ...monthPayload, generatedAt })
+      salesByMonthByTown[kind][town] = monthPayload.data
+      written += 1
+
+      const activeMonthPayload = computeActiveByMonth(active, closed, town, kind)
+      writeStatsCache('active-by-month', town, kind, { ...activeMonthPayload, generatedAt })
+      activeByMonthByTown[kind][town] = activeMonthPayload.data
       written += 1
 
       writeStatsCache(
@@ -194,6 +347,20 @@ export function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): {
       )
       written += 1
     }
+  }
+
+  for (const kind of LISTING_KINDS) {
+    writeStatsCache('sales-by-month-by-town', 'All', kind, {
+      kind,
+      towns: salesByMonthByTown[kind],
+      generatedAt,
+    })
+    writeStatsCache('active-by-month-by-town', 'All', kind, {
+      kind,
+      towns: activeByMonthByTown[kind],
+      generatedAt,
+    })
+    written += 2
   }
 
   const allClosed = readAllListingsFromDb(TMRE_TOWNS, 'Closed')
@@ -216,6 +383,13 @@ export function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): {
   setSyncMeta('last_stats_cache', generatedAt)
   console.info(`[stats-cache] rebuilt ${written} entries in ${Date.now() - t0}ms`)
 
+  try {
+    const snap = rebuildIntelligenceTownSnapshots()
+    written += snap.written
+  } catch (err) {
+    console.error('[stats-cache] town snapshot rebuild failed', err)
+  }
+
   return { written, durationMs: Date.now() - t0 }
   } finally {
     if (trackRefresh) endSqliteRefresh(new Date().toISOString())
@@ -231,11 +405,30 @@ export function rebuildStatsCacheIfStale(force = false): {
   if (!hasLocalListingsCache()) {
     return { written: 0, durationMs: 0, skipped: true }
   }
-  if (!force && !isStatsCacheStale()) {
+  if (!force && !isStatsCacheStale() && !statsCacheMissingRequiredEntries()) {
     const { statsCacheEntries } = getListingsDbStats()
     if (statsCacheEntries > 0) {
       return { written: 0, durationMs: 0, skipped: true }
     }
   }
   return rebuildStatsCache()
+}
+
+/** Queue a stats cache rebuild without blocking the current request. */
+export function scheduleStatsCacheRebuildIfStale(force = false): void {
+  if (!hasLocalListingsCache()) return
+  if (!force && !isStatsCacheStale() && !statsCacheMissingRequiredEntries()) {
+    const { statsCacheEntries } = getListingsDbStats()
+    if (statsCacheEntries > 0) return
+  }
+  if (backgroundRebuildScheduled) return
+  backgroundRebuildScheduled = true
+  setImmediate(() => {
+    backgroundRebuildScheduled = false
+    try {
+      rebuildStatsCacheIfStale(force)
+    } catch (err) {
+      console.error('[stats-cache] background rebuild failed', err)
+    }
+  })
 }

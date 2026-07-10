@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   buildSpotlightDisplay,
   type SpotlightMlsListing,
 } from "@/lib/spotlight-display";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
-import { SPOTLIGHT_LISTING } from "@/lib/spotlight-listing";
+import {
+  getSpotlightListingConfig,
+  parseSpotlightPropertyTab,
+  type SpotlightPropertyTabId,
+} from "@/lib/spotlight-listing";
 
 type LoadState = "ready" | "error";
 
@@ -15,8 +20,32 @@ type UseSpotlightListingOptions = {
   photos?: boolean;
 };
 
+type SpotlightFetchPayload = {
+  listing?: SpotlightMlsListing;
+  photos?: string[];
+  goldilocksScore?: number | null;
+  goldilocksBreakdown?: ListingScoreApiFields["goldilocksBreakdown"];
+};
+
+const spotlightFetchCache = new Map<string, SpotlightFetchPayload>();
+
+function spotlightFetchKey(
+  propertyTab: SpotlightPropertyTabId,
+  includePhotos: boolean,
+): string {
+  return `${propertyTab}:${includePhotos ? "photos" : "overview"}`;
+}
+
 export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   const includePhotos = options.photos === true;
+  const searchParams = useSearchParams();
+  const propertyTab: SpotlightPropertyTabId = parseSpotlightPropertyTab(
+    searchParams.get("property"),
+  );
+  const config = useMemo(
+    () => getSpotlightListingConfig(propertyTab),
+    [propertyTab],
+  );
   const [mlsListing, setMlsListing] = useState<SpotlightMlsListing | null>(null);
   const [goldilocksScore, setGoldilocksScore] = useState<number | null>(null);
   const [goldilocksBreakdown, setGoldilocksBreakdown] =
@@ -26,44 +55,46 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   const [photosState, setPhotosState] = useState<
     "idle" | "loading" | "ready" | "error"
   >(includePhotos ? "loading" : "idle");
+  const lastPropertyTabRef = useRef<SpotlightPropertyTabId | null>(null);
 
   useEffect(() => {
-    const mlsId = SPOTLIGHT_LISTING.mlsId?.trim();
-    if (!mlsId) {
+    let cancelled = false;
+    const cacheKey = spotlightFetchKey(propertyTab, includePhotos);
+    const cached = spotlightFetchCache.get(cacheKey);
+
+    if (lastPropertyTabRef.current !== propertyTab) {
       setMlsListing(null);
       setGoldilocksScore(null);
       setGoldilocksBreakdown(null);
       setPhotos([]);
-      setLoadState("ready");
-      setPhotosState("ready");
-      return;
+      lastPropertyTabRef.current = propertyTab;
+    } else if (cached?.listing) {
+      setMlsListing(cached.listing);
+      setGoldilocksScore(cached.goldilocksScore ?? null);
+      setGoldilocksBreakdown(cached.goldilocksBreakdown ?? null);
+      if (includePhotos && cached.photos) {
+        setPhotos(cached.photos);
+        setPhotosState("ready");
+      }
     }
 
-    let cancelled = false;
     setLoadState("ready");
-    if (includePhotos) setPhotosState("loading");
+    if (includePhotos && !cached?.photos) setPhotosState("loading");
 
-    fetch(`/api/spotlight?photos=${includePhotos ? "1" : "0"}`)
+    const propertyQs = propertyTab === 2 ? "&property=2" : "";
+    fetch(`/api/spotlight?photos=${includePhotos ? "1" : "0"}${propertyQs}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then(
-        (
-          d: {
-            listing?: SpotlightMlsListing;
-            photos?: string[];
-            goldilocksScore?: number | null;
-            goldilocksBreakdown?: ListingScoreApiFields["goldilocksBreakdown"];
-          } | null,
-        ) => {
-          if (cancelled) return;
-          setMlsListing(d?.listing ?? null);
-          setGoldilocksScore(d?.goldilocksScore ?? null);
-          setGoldilocksBreakdown(d?.goldilocksBreakdown ?? null);
-          if (includePhotos) {
-            setPhotos(d?.photos ?? []);
-            setPhotosState("ready");
-          }
-        },
-      )
+      .then((d: SpotlightFetchPayload | null) => {
+        if (cancelled) return;
+        if (d) spotlightFetchCache.set(cacheKey, d);
+        setMlsListing(d?.listing ?? null);
+        setGoldilocksScore(d?.goldilocksScore ?? null);
+        setGoldilocksBreakdown(d?.goldilocksBreakdown ?? null);
+        if (includePhotos) {
+          setPhotos(d?.photos ?? []);
+          setPhotosState("ready");
+        }
+      })
       .catch(() => {
         if (cancelled) return;
         if (includePhotos) {
@@ -75,15 +106,17 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     return () => {
       cancelled = true;
     };
-  }, [includePhotos]);
+  }, [includePhotos, propertyTab]);
 
   const display = useMemo(
-    () => buildSpotlightDisplay(SPOTLIGHT_LISTING, mlsListing),
-    [mlsListing],
+    () => buildSpotlightDisplay(config, mlsListing),
+    [config, mlsListing],
   );
 
   return {
     display,
+    config,
+    propertyTab,
     loadState,
     mlsListing,
     goldilocksScore,

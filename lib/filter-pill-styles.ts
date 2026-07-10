@@ -27,11 +27,81 @@ export function filterPillButtonClass(
     theme === "light"
       ? "text-navy/65 hover:text-navy"
       : "text-white/70 hover:text-white";
-  return `${button} rounded-full font-medium whitespace-nowrap transition-all ${
+  return `${button} rounded-full font-medium whitespace-nowrap transition-all cursor-pointer ${
     active
       ? "bg-gold text-navy shadow-lg shadow-gold/20"
       : inactive
   }`;
+}
+
+/** Per-pill border (Intelligence town/zip filters, Latest status pills). */
+export function filterPillIndependentButtonClass(
+  active: boolean,
+  size: FilterPillSize = "default",
+  theme: FilterPillTheme = "dark",
+): string {
+  const base = filterPillButtonClass(active, size, theme);
+  const border =
+    theme === "light"
+      ? active
+        ? "border border-gold shadow-md shadow-gold/20"
+        : "border border-charcoal/15 hover:border-charcoal/30"
+      : active
+        ? "border border-gold shadow-md shadow-gold/20"
+        : "border border-white/20 hover:border-white/50";
+  return `${base} ${border}`;
+}
+
+export function filterPillIndependentContainerClass(
+  size: FilterPillSize = "default",
+): string {
+  const gap = size === "compact" ? "gap-1" : "gap-1.5";
+  return `flex flex-wrap items-center ${gap} w-full min-w-0`;
+}
+
+/** Intelligence zip/town hero pills — separate bordered buttons matching zip filter row. */
+export function filterPillZipButtonClass(
+  active: boolean,
+  isAllPill: boolean,
+): string {
+  const base =
+    "font-mono text-[10px] tracking-[0.15em] uppercase px-3 py-1.5 rounded-full border transition-all cursor-pointer";
+  if (active) {
+    return isAllPill
+      ? `${base} bg-white text-navy border-white shadow-md`
+      : `${base} bg-gold text-navy border-gold shadow-md shadow-gold/20`;
+  }
+  return `${base} border-white/20 text-white/55 hover:border-white/50 hover:text-white`;
+}
+
+export function filterPillZipContainerClass(): string {
+  return "flex flex-wrap gap-1 self-start w-full min-w-0";
+}
+
+/** Intelligence town filter hyperlinks (promoted layout — unselected towns / All). */
+export function filterPillZipLinkClass(active: boolean): string {
+  const base =
+    "font-mono text-[10px] tracking-[0.15em] uppercase transition-colors shrink-0 cursor-pointer";
+  return active
+    ? `${base} text-gold hover:text-gold-light`
+    : `${base} text-white/55 hover:text-gold`;
+}
+
+/** Underline decoration for link label text only (not property counts). */
+export function filterPillZipLinkUnderlineClass(active: boolean): string {
+  return active
+    ? "underline underline-offset-[3px] decoration-gold/50"
+    : "underline underline-offset-[3px] decoration-white/20 hover:decoration-gold/50";
+}
+
+export function filterPillPromotedContainerClass(inline = false): string {
+  return inline
+    ? "flex flex-wrap items-center gap-x-3 gap-y-1 self-start min-w-0"
+    : "flex flex-wrap items-center gap-x-3 gap-y-1 self-start w-full min-w-0";
+}
+
+export function filterPillPromotedLinksClass(): string {
+  return "flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0";
 }
 
 export function filterPillContainerClass(

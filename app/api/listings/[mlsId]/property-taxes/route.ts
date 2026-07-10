@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server'
-import {
-  buildPropertyTaxHistorySlots,
-  parcelNumberFromRaw,
-  parseTaxYearEnd,
-  propertyTaxFromRaw,
-} from '@/lib/listing-property-tax'
-import { listingRowId, readListingTaxHistoryFromDb } from '@/lib/listings-db'
-import { fetchListingByMlsId } from '@/lib/listings-store'
+import { resolveListingPropertyTaxHistory } from '@/lib/listing-property-tax-cache'
+import { listingCacheHeaders } from '@/lib/listings-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,25 +16,14 @@ export async function GET(
   }
 
   try {
-    const { listing } = await fetchListingByMlsId(id)
-    if (!listing) {
+    const result = await resolveListingPropertyTaxHistory(id)
+    if (!result) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
 
-    const listingId = listingRowId(listing)
-    const parcelNumber = parcelNumberFromRaw(listing.raw)
-    const taxFromRaw = propertyTaxFromRaw(listing.raw)
-    const anchorYearEnd =
-      parseTaxYearEnd(listing.propertyTaxYear ?? taxFromRaw.yearLabel) ??
-      parseTaxYearEnd(taxFromRaw.yearLabel)
-
-    const cached = readListingTaxHistoryFromDb(parcelNumber, listingId, 10)
-    const years = buildPropertyTaxHistorySlots(anchorYearEnd, cached, 5)
-
-    return NextResponse.json({
-      mlsId: listing.mlsId,
-      parcelNumber,
-      years,
+    const { source, ...payload } = result
+    return NextResponse.json(payload, {
+      headers: listingCacheHeaders(source),
     })
   } catch (err) {
     console.error('[/api/listings/[mlsId]/property-taxes] error', err)

@@ -32,7 +32,7 @@ export default function PropertyTaxHistoryModal({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!mlsId) return;
 
     let cancelled = false;
     setLoading(true);
@@ -55,9 +55,10 @@ export default function PropertyTaxHistoryModal({
     return () => {
       cancelled = true;
     };
-  }, [open, mlsId]);
+  }, [mlsId]);
 
   const years = data?.years ?? [];
+  const showLoading = open && loading && !data;
 
   return (
     <ModalPortal open={open} onClose={onClose} ariaLabel="Property tax history">
@@ -83,7 +84,7 @@ export default function PropertyTaxHistoryModal({
           </button>
         </div>
 
-        {loading ? (
+        {showLoading ? (
           <p className="font-mono text-xs text-slate/70">Loading tax history…</p>
         ) : years.length === 0 ? (
           <p className="font-mono text-xs text-slate/70">

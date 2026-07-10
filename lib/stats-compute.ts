@@ -1,4 +1,4 @@
-import { closeFieldsFromListing } from '@/lib/listing-history'
+import { closeFieldsFromListing, formatMlsStatus } from '@/lib/listing-history'
 import { filterListingsByKind, type ListingKind } from '@/lib/listing-kind'
 import {
   classifySalePrice,
@@ -21,6 +21,7 @@ import {
   inStatsClosedPeriod,
   STATS_CLOSED_PERIOD_START,
 } from '@/lib/stats-listing-rows'
+import { statsMonthChartYears } from '@/lib/stats-month-years'
 import type { Listing } from '@/lib/rets'
 
 function closedKindPrice(l: Listing, kind: ListingKind): number | null {
@@ -31,7 +32,7 @@ function closedKindPrice(l: Listing, kind: ListingKind): number | null {
 }
 
 const CURRENT_YEAR = new Date().getFullYear()
-const SALES_BY_MONTH_YEARS = [2024, 2025, 2026]
+const SALES_BY_MONTH_YEARS = statsMonthChartYears()
 
 function median(nums: number[]): number | null {
   if (!nums.length) return null
@@ -68,6 +69,22 @@ export type SalesByMonthPayload = {
   data: { year: number; month: number; count: number }[]
   closedThisWeek: number
   closedThisWeekByZip: Record<string, number>
+}
+
+export type ActiveByMonthPayload = {
+  city: string
+  kind: ListingKind
+  data: { year: number; month: number; count: number }[]
+}
+
+export type SalesByMonthByTownPayload = {
+  kind: ListingKind
+  towns: Record<string, SalesByMonthPayload['data']>
+}
+
+export type ActiveByMonthByTownPayload = {
+  kind: ListingKind
+  towns: Record<string, ActiveByMonthPayload['data']>
 }
 
 export type StatsBucketRow = {
@@ -204,6 +221,86 @@ export function computeSalesByMonth(
   return { city, kind, data, ...computeClosedThisWeekCounts(listings, kind) }
 }
 
+function parseTimestampMs(ts: string | null | undefined): number | null {
+  if (!ts) return null
+  const ms = Date.parse(ts)
+  return Number.isNaN(ms) ? null : ms
+}
+
+function monthEndMs(year: number, month: number): number {
+  return Date.UTC(year, month, 0, 23, 59, 59, 999)
+}
+
+function listingListMs(l: Listing): number | null {
+  return parseTimestampMs(l.listDate) ?? parseTimestampMs(l.statusChangeTimestamp)
+}
+
+/** When a listing left Active/Coming Soon inventory (pending, closed, expired, etc.). */
+function listingLeftMarketMs(l: Listing): number | null {
+  const status = formatMlsStatus(l.status)
+  if (status === 'Closed') {
+    const { closeDate } = closeFieldsFromListing(l)
+    return parseTimestampMs(closeDate) ?? parseTimestampMs(l.statusChangeTimestamp)
+  }
+  if (
+    status === 'Pending' ||
+    status === 'Expired' ||
+    status === 'Withdrawn' ||
+    status === 'Hold' ||
+    status === 'Temp off market'
+  ) {
+    return parseTimestampMs(l.statusChangeTimestamp)
+  }
+  return null
+}
+
+/** True when the listing was on market (Active/Coming Soon) at month-end. */
+function wasActiveAtMonthEnd(l: Listing, year: number, month: number): boolean {
+  const listMs = listingListMs(l)
+  if (listMs == null) return false
+  const endMs = monthEndMs(year, month)
+  if (listMs > endMs) return false
+  const leftMs = listingLeftMarketMs(l)
+  if (leftMs != null && leftMs <= endMs) return false
+  return true
+}
+
+/** End-of-month active inventory counts (2019 → current). */
+export function computeActiveByMonth(
+  activeListings: Listing[],
+  closedListings: Listing[],
+  city: string,
+  kind: ListingKind,
+): ActiveByMonthPayload {
+  const inventory = filterListingsByKind([...activeListings, ...closedListings], kind)
+  const counts = new Map<string, number>()
+
+  for (const year of SALES_BY_MONTH_YEARS) {
+    const maxMonth = year < CURRENT_YEAR ? 12 : new Date().getMonth() + 1
+    for (let month = 1; month <= maxMonth; month++) {
+      let count = 0
+      for (const l of inventory) {
+        if (wasActiveAtMonthEnd(l, year, month)) count += 1
+      }
+      counts.set(`${year}-${month}`, count)
+    }
+  }
+
+  const data: ActiveByMonthPayload['data'] = []
+  for (const year of SALES_BY_MONTH_YEARS) {
+    const maxMonth = year < CURRENT_YEAR ? 12 : new Date().getMonth() + 1
+    for (let month = 1; month <= 12; month++) {
+      data.push({
+        year,
+        month,
+        count: month <= maxMonth ? (counts.get(`${year}-${month}`) ?? 0) : 0,
+      })
+    }
+  }
+
+  return { city, kind, data }
+}
+
 export function computeSalesByVintage(
   listings: Listing[],
   city: string,
@@ -311,6 +408,9 @@ export type StatsCacheScope =
   | 'market-stats'
   | 'market-stats-listings'
   | 'sales-by-month'
+  | 'active-by-month'
+  | 'active-by-month-by-town'
+  | 'sales-by-month-by-town'
   | 'sales-by-vintage'
   | 'sales-by-price'
 

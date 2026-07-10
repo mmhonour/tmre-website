@@ -20,6 +20,7 @@ import {
   statsPriceBandLabel,
   statsVolumeNoun,
 } from "./stats-labels";
+import { useStatsChartReady } from "./stats-chart-frame-context";
 
 type BucketRow = {
   id: string;
@@ -123,9 +124,12 @@ export default function PriceSalesChart({
   const isRental = kind === "rental";
   const volumeNoun = statsVolumeNoun(kind);
   const volumeNounCap = volumeNoun.charAt(0).toUpperCase() + volumeNoun.slice(1);
+  const chartReady = !loading && !!payload && chartData.length > 0;
+  useStatsChartReady(chartReady);
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+    <div className="stats-chart-card rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-navy/30">
+      {chartReady ? (
       <div className="bg-[#0f1628] px-6 pt-6 pb-2">
         <div className="flex items-start justify-between mb-5 gap-4 flex-wrap">
           <div>
@@ -175,6 +179,7 @@ export default function PriceSalesChart({
           </div>
         </div>
       </div>
+      ) : null}
 
       <div className="bg-[#0f1628] px-2 pb-4">
         {loading && !payload ? (
@@ -334,6 +339,8 @@ export default function PriceSalesChart({
         )}
       </div>
 
+      {chartReady ? (
+      <>
       {chartData.length > 0 && (
         <div className="bg-[#0f1628] px-4 sm:px-6 pb-5 border-t border-white/[0.06]">
           <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 mb-3 pt-4">
@@ -434,6 +441,8 @@ export default function PriceSalesChart({
           </p>
         )}
       </div>
+      </>
+      ) : null}
     </div>
   );
 }

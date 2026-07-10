@@ -1,55 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { searchListings } from '@/lib/rets'
+import { fetchClosedListingsForCity } from '@/lib/listings-store'
+import { isNewConstructionListing } from '@/lib/new-construction-server'
 import { TMRE_TOWNS, isTmreTown } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const ALL_CITIES = [...TMRE_TOWNS]
-const MIN_YEAR = new Date().getFullYear() - 4
 
-function isoDate(y: number, m: number, d: number) {
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
-/** Closed-sales analytics for new-construction supply (Stats-adjacent metric). */
+/** Closed-sales analytics for new-construction supply — SQLite only. */
 async function avgMonthlyClosings(city: string | null): Promise<number | null> {
   const now = new Date()
-  // Go back 4 months to ensure 3 full completed months
   const start = new Date(now.getFullYear(), now.getMonth() - 4, 1)
-  const end   = new Date(now.getFullYear(), now.getMonth(), 0) // last day of prev month
-
-  const params = {
-    status: 'closed',
-    closedAfter:  isoDate(start.getFullYear(), start.getMonth() + 1, 1),
-    closedBefore: isoDate(end.getFullYear(), end.getMonth() + 1, end.getDate()),
-    limit: 500,
-    ...(city ? { city } : {}),
-  }
+  const end = new Date(now.getFullYear(), now.getMonth(), 0)
+  const startMs = start.getTime()
+  const endMs = end.getTime()
 
   const cities = city ? [city] : ALL_CITIES
   const results = await Promise.all(
-    city
-      ? [searchListings(params)]
-      : cities.map((c) => searchListings({ ...params, city: c }).catch(() => [])),
+    cities.map((c) => fetchClosedListingsForCity(c, 2500).catch(() => ({ listings: [] }))),
   )
-  const listings = results.flat()
+  const listings = results.flatMap((r) => r.listings)
 
-  // Keep only new construction (yearBuilt within last 4 years)
-  const newConstr = listings.filter((l) => l.yearBuilt != null && l.yearBuilt >= MIN_YEAR)
+  const newConstr = listings.filter(
+    (l) =>
+      isNewConstructionListing(l) ||
+      (l.yearBuilt != null && l.yearBuilt >= now.getFullYear() - 4),
+  )
 
-  // Group by year-month
   const counts = new Map<string, number>()
   for (const l of newConstr) {
     const ts = l.statusChangeTimestamp ?? l.modificationTimestamp
     if (!ts) continue
     const d = new Date(ts)
-    if (isNaN(d.getTime())) continue
+    if (Number.isNaN(d.getTime())) continue
+    const ms = d.getTime()
+    if (ms < startMs || ms > endMs) continue
     const key = `${d.getFullYear()}-${d.getMonth() + 1}`
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
 
-  // Average the last 3 full months
   const months: number[] = []
   for (let offset = 1; offset <= 3; offset++) {
     const d = new Date(now.getFullYear(), now.getMonth() - offset, 1)

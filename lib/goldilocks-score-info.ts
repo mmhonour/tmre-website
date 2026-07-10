@@ -70,15 +70,24 @@ export function factorContribution(factorScore: number, weight: number): number 
 export function buildFactorExplain(
   key: GoldilocksFactorKey,
   factorScore: number,
-  _weight: number,
+  weight: number,
+  options?: { showWeight?: boolean },
 ): { title: string; lines: string[] } {
   const label = FACTOR_LABELS[key];
+  const lines = [
+    `This listing scores ${Math.round(factorScore)}/100 on ${label.toLowerCase()}.`,
+    FACTOR_DESCRIPTIONS[key],
+  ];
+  if (options?.showWeight && weight > 0) {
+    const pct = Math.round(weight * 100);
+    const contribution = factorContribution(factorScore, weight);
+    lines.push(
+      `Admin: this factor is weighted ${pct}% of the composite (≈ ${contribution.toFixed(1)} points toward the total).`,
+    );
+  }
   return {
     title: label,
-    lines: [
-      `This listing scores ${Math.round(factorScore)}/100 on ${label.toLowerCase()}.`,
-      FACTOR_DESCRIPTIONS[key],
-    ],
+    lines,
   };
 }
 
@@ -133,6 +142,7 @@ export function resolveExplainContent(
     ppsfDiscount?: number;
     reductionPct?: number;
     isRental?: boolean;
+    showWeights?: boolean;
   },
 ): { title: string; lines: string[] } {
   if (topic === "composite" && ctx.composite != null) {
@@ -151,7 +161,9 @@ export function resolveExplainContent(
     ctx.factorScore != null &&
     ctx.weight != null
   ) {
-    return buildFactorExplain(topic, ctx.factorScore, ctx.weight);
+    return buildFactorExplain(topic, ctx.factorScore, ctx.weight, {
+      showWeight: ctx.showWeights === true,
+    });
   }
   return { title: "Score detail", lines: ["No detail available for this statistic."] };
 }

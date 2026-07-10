@@ -3,15 +3,22 @@ import { resolveComparablesForSubject } from '@/lib/listing-comparables-resolve'
 import { parseListingKindParam } from '@/lib/listing-kind'
 import { listingCacheHeaders } from '@/lib/listings-store'
 import { resolveSpotlightSubjectListing } from '@/lib/spotlight-subject'
+import {
+  getSpotlightListingConfig,
+  parseSpotlightPropertyTab,
+} from '@/lib/spotlight-listing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
-  const kind = parseListingKindParam(new URL(req.url).searchParams.get('kind'))
+  const { searchParams } = new URL(req.url)
+  const kind = parseListingKindParam(searchParams.get('kind'))
+  const propertyTab = parseSpotlightPropertyTab(searchParams.get('property'))
+  const config = getSpotlightListingConfig(propertyTab)
 
   try {
-    const subject = await resolveSpotlightSubjectListing()
+    const subject = await resolveSpotlightSubjectListing(config)
     const payload = await resolveComparablesForSubject(subject, kind)
 
     return NextResponse.json(payload, {

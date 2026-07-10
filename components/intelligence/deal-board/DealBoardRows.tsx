@@ -4,7 +4,10 @@ import Link from "next/link";
 import {
   bedBathLabel,
   boardRankColor,
+  dealBoardAcresLabel,
   dealBoardDomWithType,
+  dealBoardSqftLabel,
+  dealBoardYearBuiltLabel,
   DealBoardPrimaryPhoto,
   DealBoardScoreBadge,
   DealBoardStatusBadge,
@@ -90,16 +93,16 @@ export function DealBoardPhotoLedLineRow({
   onStatusClick,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
-  const { ppsf, domType } = dealBoardPriceMeta(l);
+  const { ppsf } = dealBoardPriceMeta(l);
   const town = showTown ? listingTown(l) : null;
   const detailHref = listingDetailHref(l);
   const addressClassName =
-    "font-medium text-navy hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold truncate";
+    "font-medium text-navy hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold";
 
   return (
     <div
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="flex items-center gap-2 px-3 sm:px-4 py-1 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
+      className="flex items-start gap-2 px-3 sm:px-4 py-1 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
     >
       <span
         className="font-mono text-[10px] tabular-nums w-5 shrink-0 text-right font-semibold"
@@ -115,7 +118,7 @@ export function DealBoardPhotoLedLineRow({
         priority={scoreRank < 8}
         className="rounded-md"
       />
-      <div className="min-w-0 flex-1 flex items-center gap-x-1.5 overflow-hidden whitespace-nowrap text-[11px] leading-none">
+      <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-snug">
         {(() => {
           const scoreColor =
             l.score >= 85
@@ -140,52 +143,50 @@ export function DealBoardPhotoLedLineRow({
             onClick={() => onStatusClick(l)}
             className="shrink-0 font-mono text-[9px] tracking-[0.12em] uppercase text-slate hover:text-gold transition-colors"
           >
-            {l.status}
+            {l.status === "Reduced" ? "Reduced!" : l.status}
           </button>
         ) : (
           <span className="shrink-0 font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
-            {l.status}
+            {l.status === "Reduced" ? "Reduced!" : l.status}
           </span>
         )}
         <span className="text-charcoal/25 shrink-0" aria-hidden>
           ·
         </span>
         {isLive ? (
-          <Link href={detailHref} className={`min-w-0 truncate ${addressClassName}`}>
+          <Link href={detailHref} className={`min-w-0 break-words ${addressClassName}`}>
             {l.address}
           </Link>
         ) : (
-          <span className="min-w-0 truncate font-medium text-navy">
+          <span className="min-w-0 break-words font-medium text-navy">
             {l.address}
           </span>
         )}
-        {l.headline ? (
-          <>
-            <span className="text-charcoal/25 shrink-0" aria-hidden>
-              ·
-            </span>
-            <span className="truncate text-[10px] text-charcoal/60 italic">
-              {l.headline}
-            </span>
-          </>
-        ) : null}
         <span className="text-charcoal/25 shrink-0" aria-hidden>
           ·
         </span>
         <DealBoardAdaptiveMetaLine
           as="span"
           parts={[
-            bedBathLabel(l.beds, l.baths),
             `$${l.price.toLocaleString()}`,
+            dealBoardSqftLabel(l.sqft),
             ppsf,
-            domType,
+            l.beds != null ? `${l.beds}bd` : "—bd",
+            l.baths != null ? `${l.baths}ba` : "—ba",
+            l.dom != null ? `${l.dom}d DOM` : null,
+            l.type || null,
             town,
           ]}
-          sqft={l.sqft}
+          sqft={null}
           yearBuilt={l.yearBuilt}
           lotAcres={l.lotAcres}
-          className="min-w-0 truncate font-mono text-slate tabular-nums"
+          className="min-w-0 font-mono text-slate tabular-nums"
         />
+        {l.headline ? (
+          <span className="min-w-0 basis-full text-[10px] text-charcoal/60 italic sm:basis-auto sm:max-w-[38%] sm:ml-auto sm:text-right">
+            {l.headline}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -201,7 +202,7 @@ export function DealBoardPhotoLedGridCard({
   onStatusClick,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
-  const { ppsf, domType } = dealBoardPriceMeta(l);
+  const { ppsf } = dealBoardPriceMeta(l);
   const town = showTown ? listingTown(l) : null;
 
   return (
@@ -216,19 +217,31 @@ export function DealBoardPhotoLedGridCard({
         >
           {scoreRank + 1}
         </span>
-        <div className="absolute right-2 top-2 z-10 max-w-[62%] rounded-md bg-white px-2 py-1 shadow-sm">
-          {isLive ? (
-            <Link
-              href={listingDetailHref(l)}
-              className="block text-right font-medium text-navy text-xs leading-snug hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold line-clamp-2"
-            >
-              {l.address}
-            </Link>
-          ) : (
-            <span className="block text-right font-medium text-navy text-xs leading-snug line-clamp-2">
-              {l.address}
-            </span>
-          )}
+        <div className="absolute right-2 top-2 z-10 flex max-w-[62%] min-w-0 flex-col items-end gap-1.5">
+          <div className="w-full min-w-0 rounded-md bg-white px-2 py-1 shadow-sm">
+            {isLive ? (
+              <Link
+                href={listingDetailHref(l)}
+                className="block text-right font-medium text-navy text-[10px] leading-snug hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold truncate"
+                title={l.address}
+              >
+                {l.address}
+              </Link>
+            ) : (
+              <span
+                className="block text-right font-medium text-navy text-[10px] leading-snug truncate"
+                title={l.address}
+              >
+                {l.address}
+              </span>
+            )}
+          </div>
+          <DealBoardScoreBadge
+            value={l.score}
+            variant="pill"
+            opaque
+            onClick={() => onScoreClick(l)}
+          />
         </div>
         <DealBoardPrimaryPhoto
           listing={l}
@@ -238,36 +251,42 @@ export function DealBoardPhotoLedGridCard({
           fluid
           className="rounded-none"
           priority={scoreRank < 4}
+          overlay={
+            <div
+              className="absolute bottom-1.5 left-1.5 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <DealBoardStatusBadge
+                status={l.status}
+                size="sm"
+                surface="photo"
+                onClick={
+                  isLive && onStatusClick ? () => onStatusClick(l) : undefined
+                }
+              />
+            </div>
+          }
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <DealBoardStatusBadge
-            status={l.status}
-            onClick={
-              isLive && onStatusClick ? () => onStatusClick(l) : undefined
-            }
-          />
-          <DealBoardScoreBadge
-            value={l.score}
-            variant="pill"
-            onClick={() => onScoreClick(l)}
-          />
-        </div>
         <p className="font-mono text-[10px] text-slate tabular-nums">
           {bedBathLabel(l.beds, l.baths)}
           {" · "}
           <span className="text-navy">${l.price.toLocaleString()}</span>
         </p>
-        {(ppsf || domType || town) && (
-          <p className="font-mono text-[10px] text-slate/80 tabular-nums truncate">
-            {[ppsf, domType, town].filter(Boolean).join(" · ")}
-          </p>
-        )}
         <DealBoardAdaptiveMetaLine
-          sqft={l.sqft}
-          yearBuilt={l.yearBuilt}
-          lotAcres={l.lotAcres}
+          parts={[
+            dealBoardSqftLabel(l.sqft),
+            ppsf,
+            dealBoardAcresLabel(l.lotAcres),
+            l.dom != null ? `${l.dom}d DOM` : null,
+            l.type || null,
+            dealBoardYearBuiltLabel(l.yearBuilt),
+            town,
+          ]}
+          sqft={null}
+          yearBuilt={null}
+          lotAcres={null}
           className="font-mono text-[10px] text-slate/80 tabular-nums truncate"
         />
         {l.headline ? (

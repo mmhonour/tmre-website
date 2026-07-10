@@ -7,6 +7,10 @@ import GoldilocksScoreExplainModal, {
 } from "@/components/GoldilocksScoreExplainModal";
 import ModalPortal from "@/components/ModalPortal";
 import {
+  formatScoreWeightPct,
+  useSiteUnlocked,
+} from "@/components/SiteUnlockProvider";
+import {
   useDealOfTheDayCarousel,
   type DealCarouselPayload,
   type DealCarouselScore,
@@ -14,6 +18,7 @@ import {
 } from "@/hooks/useDealOfTheDayCarousel";
 import type { FinishQualityAssessment } from "@/lib/finish-quality-types";
 import { dealOfTheDayHref, listingDetailHrefForListing } from "@/lib/listing-url";
+import { formatDealOfTheDayHeaderSubtitle } from "@/lib/deal-of-the-day-header";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 
@@ -385,6 +390,7 @@ export default function DealOfTheDayFrame({
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [breakdownDeal, setBreakdownDeal] = useState<DealCarouselPayload | null>(null);
   const [explainTopic, setExplainTopic] = useState<ScoreExplainTopic | null>(null);
+  const showWeights = useSiteUnlocked();
 
   const deal = currentDeal;
   const l = deal?.listing;
@@ -442,17 +448,15 @@ export default function DealOfTheDayFrame({
               isHero ? "hover:text-gold-light" : "hover:text-navy"
             }`}
           >
-            Deal of the Day
-            {headerTown ? (
-              <span
-                className={`normal-case tracking-normal ${
-                  isHero ? "text-white/45" : "text-slate"
-                }`}
-              >
-                {" "}
-                · {headerTown}
-              </span>
-            ) : null}
+            <span className="uppercase">Deal of the Day</span>
+            <span
+              className={`normal-case tracking-normal ${
+                isHero ? "text-white/45" : "text-slate"
+              }`}
+            >
+              {" "}
+              {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}
+            </span>
           </Link>
           {loading ? (
             <span className={`font-mono text-[9px] ${isHero ? "text-white/40" : "text-slate/50"}`}>
@@ -580,6 +584,7 @@ export default function DealOfTheDayFrame({
 
             <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-slate mb-4">
               Score breakdown
+              {showWeights ? " · weights" : ""}
             </p>
             <div className="space-y-4 mb-6">
               {FACTORS.map(({ key, label, scoreKey, explainKey }) => {
@@ -587,7 +592,14 @@ export default function DealOfTheDayFrame({
                 return (
                   <div key={key}>
                     <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/70 mb-1.5">
-                      <span>{label}</span>
+                      <span>
+                        {label}
+                        {showWeights ? (
+                          <span className="ml-1.5 text-slate/55 normal-case tracking-normal">
+                            ({formatScoreWeightPct(modalScore.weights[key])})
+                          </span>
+                        ) : null}
+                      </span>
                       <span>
                         {Math.round(value)}
                         <button
@@ -636,6 +648,7 @@ export default function DealOfTheDayFrame({
           topic={explainTopic}
           context={{
             composite: modalScore.composite,
+            showWeights,
             factorScore:
               explainTopic === "age"
                 ? modalScore.age

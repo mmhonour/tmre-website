@@ -6,8 +6,11 @@ import {
   buildDealOfTheDayResponse,
   readDealOfTheDayCache,
   writeDealOfTheDayCache,
+  type DealOfTheDayKind,
   type DealOfTheDayScope,
+  type DealOfTheDayResponse,
 } from '@/lib/deal-of-the-day-cache'
+import { ensureDealPickPhotos } from '@/lib/deal-hero-photo-warm'
 import {
   filterListingsToTmreTowns,
   isTmreTown,
@@ -34,6 +37,10 @@ function resolveKindParam(raw: string | null): 'sale' | 'rental' | undefined {
   return undefined
 }
 
+function cacheKind(kind: 'sale' | 'rental' | undefined): DealOfTheDayKind {
+  return kind ?? 'all'
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const cityParam = searchParams.get('city')
@@ -49,9 +56,13 @@ export async function GET(req: NextRequest) {
 
   const scope: DealOfTheDayScope = town ?? 'All'
 
-  if (!kind && !listingId) {
-    const cached = readDealOfTheDayCache(scope)
+  // Pinned listing is a one-off view — not cached. Everything else is SQLite-first.
+  if (!listingId) {
+    const cached = readDealOfTheDayCache(scope, cacheKind(kind))
     if (cached) {
+      void ensureDealPickPhotos(cached).catch((err) => {
+        console.warn('[/api/deal-of-the-day] background photo warm failed', err)
+      })
       return NextResponse.json(
         { ...cached, source: 'db', dealCache: true },
         { headers: { ...listingCacheHeaders('db'), 'X-Deal-Cache': 'hit' } },
@@ -114,9 +125,13 @@ export async function GET(req: NextRequest) {
       source,
     }
 
-    if (source === 'db' && !kind && !listingId) {
-      writeDealOfTheDayCache(scope, response)
+    if (source === 'db' && !listingId) {
+      writeDealOfTheDayCache(scope, response as DealOfTheDayResponse, cacheKind(kind))
     }
+
+    void ensureDealPickPhotos(response).catch((err) => {
+      console.warn('[/api/deal-of-the-day] background photo warm failed', err)
+    })
 
     return NextResponse.json(response, { headers: listingCacheHeaders(source) })
   } catch (err) {

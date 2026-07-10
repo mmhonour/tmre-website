@@ -6,7 +6,7 @@ import {
   resolveListingIfPayload,
 } from '@/lib/listing-if-compute'
 import type { ListingIfPayload } from '@/lib/listing-if-estimates'
-import { fetchListingByMlsId } from '@/lib/listings-store'
+import { readListingFromDbByMlsId } from '@/lib/listings-store'
 
 export {
   rebuildListingIfEstimates,
@@ -17,7 +17,7 @@ export {
 export async function fetchListingIfPayload(
   mlsId: string,
 ): Promise<ListingIfPayload | null> {
-  const { listing } = await fetchListingByMlsId(mlsId)
+  const { listing } = readListingFromDbByMlsId(mlsId)
   if (!listing) return null
   return resolveListingIfPayload(listing)
 }

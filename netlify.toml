@@ -1,7 +1,9 @@
 [build]
-  # Sync runs on the Netlify schedule (sync-listings function), not at build time —
-  # build-time sync needs RETS env vars and breaks when .env.local is absent.
-  command = "npm run build"
+  # Full MLS → SQLite rebuild (+ Goldilocks scores) on every Netlify deploy into
+  # the bundled DB artifact; requires RETS_* env vars in Netlify.
+  # Runtime: incremental every 30 min (sync-listings) + full reload daily at 5am ET
+  # (sync-listings-full). Local next:dev also full-rebuilds on process start via instrumentation.
+  command = "LISTINGS_DB_PATH=data/listings.bundle.db npm run sync:listings && npm run build"
 
 [build.environment]
   NODE_VERSION = "20"

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
+import { readListingByIdFromDb } from '@/lib/listings-db'
 import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
-import { fetchListingByMlsId } from '@/lib/listings-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,10 +8,11 @@ export const dynamic = 'force-dynamic'
 const PHOTO_CACHE_CONTROL = 'public, max-age=1800, stale-while-revalidate=3600'
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ mlsId: string; photoIndex: string }> },
 ) {
   const { mlsId, photoIndex } = await ctx.params
+  const allowFetch = new URL(req.url).searchParams.get('fetch') === '1'
   const id = (mlsId ?? '').trim()
   const index = parseInt(photoIndex ?? '0', 10)
 
@@ -21,13 +22,14 @@ export async function GET(
   }
 
   try {
-    const { listing } = await fetchListingByMlsId(id)
-    const photoKey = listing?.listingKey || id
+    const listing = readListingByIdFromDb(id)
+    const photoKey = listing?.listingKey?.trim() || id
     const resolved = await resolveListingPhotoBuffer({
       mlsId: id,
       listingKey: photoKey,
       photoIndex: index,
       photoCountHint: listing?.photoCount,
+      sqliteOnly: !allowFetch,
     })
 
     if (!resolved) {

@@ -19,4 +19,6 @@ export function listingHeaderScoreProps(input: {
 export type ListingScoreApiFields = {
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ScoreBreakdown | null;
+  edgeScore?: number | null;
+  edgeScoreBreakdown?: Record<string, unknown> | null;
 };

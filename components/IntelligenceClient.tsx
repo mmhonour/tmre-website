@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import ZipBoundaryPopover, { prefetchTownBoundaries, prefetchZipBoundaries } from "./ZipBoundaryPopover";
+import ZipBoundaryPopover, {
+  prefetchAllTownBoundaries,
+  prefetchTownBoundaries,
+  prefetchZipBoundaries,
+} from "./ZipBoundaryPopover";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import AllTownsDescriptor from "@/components/AllTownsDescriptor";
 import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
@@ -13,6 +17,7 @@ import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
 import type { VintageBucketId } from "@/lib/vintage-buckets";
 import DealOfTheDayFrame from "./DealOfTheDayFrame";
 import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
+import type { DealBoardStatusFilter } from "@/components/intelligence/deal-board/deal-board-types";
 import {
   DEAL_BOARD_VIEW_DEFAULT,
   DEAL_BOARD_VIEW_PREF_KEY,
@@ -23,12 +28,13 @@ import type { TownDescriptorStats } from "@/lib/intelligence-all-towns-descripto
 import ListingScoreBreakdownModal from "./ListingScoreBreakdownModal";
 import ListingHistoryModal from "./ListingHistoryModal";
 import TownFilterPills from "./TownFilterPills";
+import ZipFilterPills from "./ZipFilterPills";
 import {
   filterPillButtonClass,
   filterPillContainerClass,
   filterPillSeparatorClass,
 } from "@/lib/filter-pill-styles";
-import { formatTownZipPlace, formatTownZipTagline, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
+import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
@@ -50,13 +56,18 @@ import {
   usePersistedNullableFilter,
 } from "@/hooks/usePersistedFilter";
 import {
+  adjustIntelPriceByWheel,
   INTEL_PRICE_MAX_INDEX,
   boardPriceMaxIndex,
   defaultPriceIndicesFromBoard,
   formatIntelPriceRangeLabelFromSteps,
+  formatIntelPriceStep,
   intelPriceFilterActiveOnBoard,
   intelPriceStepsForBoard,
   listingMatchesIntelPriceRange,
+  maxPriceToStepIndex,
+  minPriceToStepIndex,
+  parseIntelPriceInput,
   resolveIntelPriceRangeFromSteps,
 } from "@/lib/intel-price-filter";
 import {
@@ -73,7 +84,9 @@ import { readClientPref, writeClientPref } from "@/lib/client-prefs";
 type TxFilter = "all" | "sale" | "rental";
 type ClsFilter = "all" | "residential" | "commercial";
 type SalePropertyFilter = "all" | "homes" | "multi" | "condos";
-type BoardStatusFilter = "all" | "new" | "reduced";
+type BoardStatusFilter = DealBoardStatusFilter;
+
+const BOARD_STATUS_VALUES = ["all", "new", "reduced", "active"] as const satisfies readonly BoardStatusFilter[];
 
 const TX_VALUES = ["all", "sale", "rental"] as const;
 const CLS_VALUES = ["all", "residential", "commercial"] as const;
@@ -82,6 +95,8 @@ const MIN_BATH_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
 const SALE_PROPERTY_VALUES = ["all", "homes", "multi", "condos"] as const;
 const NEW_CONSTRUCTION_VALUES = ["all", "new"] as const;
 const STATS_EXPANDED_PREF = "tmre_intel_stats_expanded_towns";
+const FILTERS_EXPANDED_VALUES = ["true", "false"] as const;
+type FiltersExpandedPref = (typeof FILTERS_EXPANDED_VALUES)[number];
 type MinBedFilter = (typeof MIN_BED_VALUES)[number];
 type MinBathFilter = (typeof MIN_BATH_VALUES)[number];
 type NewConstructionFilter = (typeof NEW_CONSTRUCTION_VALUES)[number];
@@ -91,8 +106,66 @@ type IntelCity = (typeof INTEL_CITIES)[number];
 /** Market positioning copy — separate from offline mock data. */
 const TOWN_TAGLINES = TOWN_MARKET_TAGLINES;
 
-function formatTownTagline(town: TmreTown, zip?: string | null): string {
-  return formatTownZipTagline(town, zip, TOWN_TAGLINES[town]);
+function intelFilterDescriptorParts({
+  active,
+  zip,
+  tx,
+  cls,
+  saleProperty,
+  newConstructionOnly,
+  boardStatusFilter,
+}: {
+  active: IntelCity;
+  zip: string | null;
+  tx: TxFilter;
+  cls: ClsFilter;
+  saleProperty: SalePropertyFilter;
+  newConstructionOnly: boolean;
+  boardStatusFilter: BoardStatusFilter;
+}): string[] {
+  const parts: string[] = [];
+
+  parts.push(active === "All" ? "All towns" : active);
+
+  if (zip && active !== "All") {
+    const area = zipAreaNickname(zip);
+    parts.push(area ? `${zip} · ${area}` : zip);
+  }
+
+  if (tx === "sale") parts.push("For Sale");
+  else if (tx === "rental") parts.push("Rentals");
+
+  if (cls === "residential") parts.push("Residential");
+  else if (cls === "commercial") parts.push("Commercial");
+
+  if (tx !== "rental" && cls !== "commercial") {
+    if (saleProperty === "homes") parts.push("Homes");
+    else if (saleProperty === "multi") parts.push("Multi-family");
+    else if (saleProperty === "condos") parts.push("Condos");
+  }
+
+  if (newConstructionOnly) parts.push("New construction");
+
+  if (boardStatusFilter === "new") parts.push("New listings");
+  else if (boardStatusFilter === "reduced") parts.push("Price reduced");
+  else if (boardStatusFilter === "active") parts.push("Active only");
+
+  return parts;
+}
+
+function IntelDescriptorContext({ parts }: { parts: string[] }) {
+  return (
+    <>
+      {parts.map((part, index) => (
+        <span key={`${part}-${index}`} className="contents">
+          <span className="text-white/45">{part}</span>
+          <span className="text-white/25" aria-hidden>
+            ·
+          </span>
+        </span>
+      ))}
+    </>
+  );
 }
 
 function computeMonthsSupply(
@@ -109,6 +182,38 @@ function monthsSupplyColorClass(monthsSupply: number | null): string {
   if (monthsSupply <= 2) return "text-coral";
   if (monthsSupply <= 4) return "text-gold";
   return "text-sage";
+}
+
+function IntelMonthsSupplyInline({
+  monthsSupply,
+  monthlySalesLoaded,
+  label = "Months supply",
+}: {
+  monthsSupply: number | null;
+  monthlySalesLoaded: boolean;
+  label?: string;
+}) {
+  return (
+    <span
+      className={monthsSupplyColorClass(monthsSupply)}
+      aria-label={
+        !monthlySalesLoaded
+          ? "Months supply loading"
+          : monthsSupply != null
+            ? `${monthsSupply.toFixed(1)} ${label.toLowerCase()}`
+            : "Months supply unavailable"
+      }
+    >
+      {label}{" "}
+      <span className="tabular-nums font-medium">
+        {!monthlySalesLoaded
+          ? "…"
+          : monthsSupply != null
+            ? monthsSupply.toFixed(1)
+            : "—"}
+      </span>
+    </span>
+  );
 }
 
 type RowStatus = "Active" | "Pending" | "New" | "Reduced";
@@ -142,6 +247,17 @@ const BOARD_LISTING_LIMIT = 100;
 const PHOTO_PRIORITY_RANK_COUNT = 12;
 const BED_BATH_MAX = 6;
 const INTEL_SLIDER_WIDTH_CLASS = "w-[7.5rem]";
+type IntelSliderKind = "price" | "bed" | "bath" | "vintage";
+
+function descriptorLabelClass(active: boolean, interactive: boolean): string {
+  return `font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
+    active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
+  }${
+    interactive
+      ? " cursor-pointer hover:text-gold-light underline-offset-2 hover:underline decoration-gold/30"
+      : ""
+  }`;
+}
 
 function formatBedBathRangeLabel(min: number, max: number, unit: "Bed" | "Bath"): string {
   const lo = Math.min(min, max);
@@ -291,11 +407,7 @@ type DisplayListing = {
   headline: string;
   zip: string | null;
   photoCount?: number | null;
-};
-
-type InsightCandidate = {
-  phrase: string;
-  family: string;
+  primaryPhotoIndex?: number | null;
 };
 
 type MetricTone = "up" | "down" | "flat";
@@ -490,6 +602,7 @@ function filterBoardListings(
     if (zip && l.zip !== zip) return false;
     if (statusFilter === "new" && !isNewThisWeek(l)) return false;
     if (statusFilter === "reduced" && l.status !== "Reduced") return false;
+    if (statusFilter === "active" && l.status !== "Active") return false;
     return true;
   });
 }
@@ -554,7 +667,7 @@ function buildTownSnapshot(
       action: newListings > 0 ? "new" : undefined,
     },
     {
-      label: "Reduced",
+      label: "Reduced!",
       value: String(reduced),
       trend: reduced > 0 ? "Price cut active" : "No reductions",
       tone: reduced > 0 ? "down" : "flat",
@@ -917,38 +1030,6 @@ function deriveStatus(l: ApiListing): RowStatus {
   return "Active";
 }
 
-type InsightInput = {
-  address: string;
-  propertyType: string;
-  beds: number | null;
-  baths: number | null;
-  sqft: number | null;
-  yearBuilt: number | null;
-  dom: number | null;
-  status: RowStatus;
-  isRental: boolean;
-  isCommercial: boolean;
-  zip: string | null;
-  price: number;
-  score: number;
-};
-
-function streetCue(address: string): string | null {
-  const cleaned = address.replace(/^\d+\s*/, "").trim();
-  if (!cleaned) return null;
-  const withoutSuffix = cleaned.replace(
-    /\s+(Dr|Rd|St|Ave|Ln|Ct|Pl|Tpke|Hwy|Hill|Ridge|Beach|Way|Cir|Ter|Blvd)\.?$/i,
-    "",
-  );
-  const words = withoutSuffix.split(/\s+/).slice(0, 2);
-  return words.length ? words.join(" ") : cleaned.split(/\s+/)[0] ?? null;
-}
-
-function formatCompactSqft(sqft: number): string {
-  if (sqft >= 1000) return `${(sqft / 1000).toFixed(1).replace(/\.0$/, "")}K sqft`;
-  return `${sqft.toLocaleString()} sqft`;
-}
-
 function formatSqliteRefreshTime(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -976,435 +1057,6 @@ function formatSqliteRefreshTime(iso: string | null | undefined): string | null 
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function generateInsightCandidates(input: InsightInput): InsightCandidate[] {
-  const {
-    address,
-    propertyType,
-    beds,
-    baths,
-    sqft,
-    yearBuilt,
-    dom,
-    status,
-    isRental,
-    isCommercial,
-    zip,
-    price,
-    score,
-  } = input;
-  const street = streetCue(address);
-  const isMulti = /multi/i.test(propertyType);
-  const isCondo = /condo|co-op/i.test(propertyType);
-  const isNewBuild = yearBuilt != null && yearBuilt >= 2020;
-  const isRecentBuild = yearBuilt != null && yearBuilt >= 2015;
-  const isVintage = yearBuilt != null && yearBuilt <= 1940;
-  const layout =
-    beds != null && baths != null ? `${beds}bd/${baths}ba` : beds != null ? `${beds}-bed` : null;
-  const candidates: InsightCandidate[] = [];
-  const seenPhrases = new Set<string>();
-
-  // Each call passes alternating (family, phrase) pairs.
-  const push = (...entries: (string | null | undefined)[]) => {
-    for (let i = 0; i + 1 < entries.length; i += 2) {
-      const family = entries[i];
-      const phrase = entries[i + 1];
-      if (family && phrase && !seenPhrases.has(phrase)) {
-        seenPhrases.add(phrase);
-        candidates.push({ phrase, family });
-      }
-    }
-  };
-
-  if (status === "Reduced") {
-    push(
-      "price-reduced-reset",
-      street ? `Price reset on ${street} — seller re-engaging` : "Price reset — motivated seller signal",
-      "price-reduced-ask",
-      street ? `Reduced ask on ${street}` : "Fresh price cut — worth a second look",
-      "price-reduced-traction",
-      layout && street ? `${layout} on ${street} · newly priced` : "Re-priced for faster traction",
-      "price-reduced-signal",
-      layout && zip ? `${layout} · price just adjusted in ${zip}` : "Seller signal — fresh price adjustment",
-    );
-  }
-
-  if (dom != null && dom <= 3) {
-    push(
-      "fresh-listed-timing",
-      dom === 0 ? "Listed today — earliest look" : `Listed ${dom} day${dom === 1 ? "" : "s"} ago — still fresh`,
-      "fresh-listed-street",
-      street ? `New to market on ${street}` : "Just hit the market — fresh listing",
-      "fresh-listed-zip",
-      zip ? `Fresh ${zip} listing` : null,
-      "fresh-listed-window",
-      dom != null && dom <= 1 ? "First-look window — still early" : "Early days on market",
-    );
-  }
-
-  if (isNewBuild && !isRental) {
-    push(
-      "new-build-year",
-      yearBuilt && street ? `${yearBuilt} build on ${street}` : yearBuilt ? `${yearBuilt} new construction` : null,
-      "new-build-layout",
-      layout && yearBuilt ? `${layout} · ${yearBuilt} build` : null,
-      "new-build-ready",
-      street ? `Move-in ready new build on ${street}` : "New construction with modern finishes",
-      "new-build-sqft",
-      sqft ? `New build · ${formatCompactSqft(sqft)}` : null,
-      "new-build-zip",
-      yearBuilt && zip ? `${yearBuilt} delivery in ${zip}` : null,
-      "new-build-modern",
-      sqft && zip ? `Modern ${formatCompactSqft(sqft)} in ${zip}` : "Current-era build — minimal deferred maintenance",
-    );
-  }
-
-  if (isNewBuild && isRental) {
-    push(
-      "rental-new-build",
-      yearBuilt && street ? `${yearBuilt} rental on ${street}` : "Modern build · turn-key rental",
-      "rental-designer",
-      layout && street ? `${layout} lease on ${street}` : "Designer finishes · rental ready",
-    );
-  }
-
-  if (isMulti && !isRental) {
-    push(
-      "multi-income",
-      street ? `Income-producing units on ${street}` : "Multi-family with income-producing units",
-      "multi-house-hack",
-      layout && street ? `${layout} multi on ${street}` : "House-hack or investor-friendly layout",
-      "multi-cashflow",
-      zip ? `Multi-unit cash-flow play in ${zip}` : "Multi-unit with rental upside",
-    );
-  }
-
-  if (sqft != null && sqft >= 4500) {
-    push(
-      "estate-scale",
-      street ? `Estate-scale living on ${street}` : "Grand scale with exceptional living space",
-      "estate-footprint",
-      `${formatCompactSqft(sqft)}${layout ? ` · ${layout}` : ""}`,
-      "estate-volume",
-      street ? `${formatCompactSqft(sqft)} footprint on ${street}` : null,
-      "estate-compound",
-      "Private-compound proportions — room to spread out",
-      "estate-rare-scale",
-      zip ? `Rare ${formatCompactSqft(sqft)} for ${zip}` : "Rare scale for the neighborhood",
-      "estate-expansive",
-      layout ? `Expansive ${layout} · ${formatCompactSqft(sqft)}` : `Expansive ${formatCompactSqft(sqft)} layout`,
-      "estate-wing",
-      "Room for guest wing, office, or gym",
-    );
-  } else if (sqft != null && sqft >= 3500) {
-    push(
-      "oversized-layout",
-      street ? `Oversized ${formatCompactSqft(sqft)} on ${street}` : "Oversized layout, rare for the street",
-      "oversized-generous",
-      layout && street ? `${layout} · generous ${formatCompactSqft(sqft)}` : null,
-      "oversized-spread",
-      zip ? `${formatCompactSqft(sqft)} with space to spread out · ${zip}` : "Above-average footprint for the area",
-      "oversized-family",
-      layout ? `Family-scale ${layout} · ${formatCompactSqft(sqft)}` : `Generous ${formatCompactSqft(sqft)} floor plan`,
-    );
-  } else if (sqft != null && sqft >= 2500) {
-    push(
-      "generous-layout",
-      street ? `Room to spread out on ${street}` : "Generously proportioned throughout",
-      "generous-sqft",
-      `${formatCompactSqft(sqft)}${zip ? ` in ${zip}` : ""}`,
-      "generous-flow",
-      layout && street ? `${layout} with easy flow on ${street}` : "Open flow — more space than typical",
-      "generous-comfort",
-      zip ? `Comfortably sized for ${zip}` : "Comfortably sized for everyday living",
-    );
-  }
-
-  if (isRecentBuild && !isNewBuild) {
-    push(
-      "recent-contemporary",
-      yearBuilt && street ? `${yearBuilt} contemporary on ${street}` : "Contemporary design, recently updated",
-      "recent-updates",
-      yearBuilt && layout ? `${yearBuilt} ${layout} with modern updates` : null,
-      "recent-turnkey",
-      yearBuilt && zip ? `${yearBuilt} turn-key in ${zip}` : "Recent vintage with modern systems",
-    );
-  }
-
-  if (beds != null && beds >= 5) {
-    push(
-      "five-bed-rare",
-      street ? `Rare five-bed layout on ${street}` : "Rare five-bedroom layout",
-      "five-bed-uncommon",
-      layout && zip ? `${layout} · uncommon for ${zip}` : null,
-      "five-bed-scale",
-      sqft ? `Five-bedroom scale · ${formatCompactSqft(sqft)}` : "Five-bedroom scale — hard to find",
-    );
-  } else if (beds != null && beds >= 4) {
-    push(
-      "four-bed-family",
-      street ? `Family-sized ${layout} on ${street}` : "Four-bedroom layout, ideal for families",
-      "four-bed-sqft",
-      layout && sqft ? `${layout} · ${formatCompactSqft(sqft)}` : null,
-      "four-bed-flex",
-      zip ? `${layout ?? "Four-bed"} with flex space · ${zip}` : "Four-bed with flex space",
-    );
-  }
-
-  if (isCondo) {
-    push(
-      "condo-low-maint",
-      street ? `Low-maintenance condo on ${street}` : "Low-maintenance living in prime location",
-      "condo-lock-leave",
-      zip ? `Lock-and-leave living in ${zip}` : null,
-      "condo-amenity",
-      layout ? `${layout} condo — minimal upkeep` : "Condo ease — minimal upkeep",
-    );
-  }
-
-  if (isVintage) {
-    push(
-      "vintage-character",
-      yearBuilt && street ? `${yearBuilt} character home on ${street}` : "Classic character with thoughtful updates",
-      "vintage-detail",
-      yearBuilt && layout ? `${yearBuilt} ${layout} with original detail` : null,
-      "vintage-charm",
-      yearBuilt && zip ? `${yearBuilt} charm in ${zip}` : "Period detail with livable updates",
-    );
-  }
-
-  if (isRental && sqft != null && sqft >= 2200) {
-    push(
-      "rental-spacious",
-      street ? `Spacious rental on ${street}` : "Exceptionally spacious for the neighborhood",
-      "rental-lease-zip",
-      layout && zip ? `${layout} lease · ${zip}` : null,
-    );
-  }
-
-  if (isRental) {
-    push(
-      "rental-turnkey",
-      street ? `Turn-key rental on ${street}` : "Turn-key rental in high-demand corridor",
-      "rental-lease",
-      zip ? `Lease opportunity in ${zip}` : null,
-      "rental-demand",
-      layout && zip ? `${layout} rental demand · ${zip}` : "Strong rental demand corridor",
-    );
-  }
-
-  if (isCommercial) {
-    push(
-      "commercial-opportunity",
-      street ? `Commercial opportunity on ${street}` : "Commercial footprint with operator upside",
-      "commercial-ready",
-      zip ? `Business-ready space in ${zip}` : null,
-    );
-  }
-
-  if (dom != null && dom <= 14) {
-    push(
-      "demand-block",
-      street ? `High-demand block — ${street}` : "High-demand street — rarely available",
-      "demand-scarce",
-      zip ? `Scarce inventory in ${zip}` : null,
-      "demand-velocity",
-      dom <= 7 ? "Fast-moving segment — limited supply" : "Active buyer interest in this pocket",
-    );
-  }
-
-  if (score >= 85) {
-    push(
-      "top-scored",
-      street ? `Top-scored pick on ${street}` : "Top-scored against the deal model",
-      "top-scored-layout",
-      layout && street ? `Strong ${layout} fit on ${street}` : null,
-      "top-scored-signal",
-      zip ? `Top-tier score signal · ${zip}` : "Top-tier score against peers",
-    );
-  }
-
-  if (price >= 2_000_000) {
-    push(
-      "trophy-price",
-      street ? `Trophy-tier ask on ${street}` : "Trophy-tier price point",
-      "trophy-segment",
-      zip ? `Trophy segment listing · ${zip}` : "Upper-tier market positioning",
-    );
-  } else if (price >= 1_000_000) {
-    push(
-      "premium-price",
-      street ? `Premium ${zip ?? "town"} positioning on ${street}` : "Premium market positioning",
-      "premium-band",
-      layout && zip ? `${layout} in the premium ${zip} band` : "Premium price band for the area",
-    );
-  }
-
-  push(
-    "standout-inventory",
-    street ? `Standout inventory on ${street}` : null,
-    "standout-layout",
-    layout && street ? `${layout} opportunity on ${street}` : null,
-    "standout-zip-signal",
-    zip && street ? `${street} · ${zip} value signal` : null,
-    "standout-layout-zip",
-    layout && zip ? `${layout} in ${zip}` : null,
-    "standout-street",
-    street ? `${street} — worth a closer look` : null,
-    "standout-zip",
-    zip ? `Notable ${zip} listing` : null,
-    "standout-class",
-    "Standout pick in its class",
-  );
-
-  return candidates;
-}
-
-function generateSecondaryInsightCandidates(input: InsightInput): InsightCandidate[] {
-  const street = streetCue(input.address);
-  const layout =
-    input.beds != null && input.baths != null
-      ? `${input.beds}bd/${input.baths}ba`
-      : input.beds != null
-        ? `${input.beds}-bed`
-        : null;
-  const sqftLabel = input.sqft != null ? formatCompactSqft(input.sqft) : null;
-
-  const push = (family: string, phrase: string | null | undefined): InsightCandidate | null => {
-    if (!phrase) return null;
-    return { phrase, family: `secondary-${family}` };
-  };
-
-  return [
-    push("address-zip", input.zip ? `${input.address} · ${input.zip}` : null),
-    push("layout-price", layout && input.price ? `${layout} · $${input.price.toLocaleString()}` : null),
-    push("sqft-dom", sqftLabel && input.dom != null ? `${sqftLabel} · ${input.dom}d on market` : null),
-    push("score-street", street ? `Score ${input.score.toFixed(0)} pick · ${street}` : null),
-    push("street-sqft", street && sqftLabel ? `${street} · ${sqftLabel}` : null),
-    push("zip-score", input.zip ? `${input.zip} · score ${input.score.toFixed(0)}` : null),
-    push("dom-street", street && input.dom != null ? `${input.dom}d on market · ${street}` : null),
-    push(
-      "price-sqft",
-      sqftLabel && input.sqft
-        ? `$${Math.round(input.price / input.sqft).toLocaleString()}/sqft effective · ${sqftLabel}`
-        : null,
-    ),
-  ].filter((c): c is InsightCandidate => c != null);
-}
-
-function insightHeadline(value: string | InsightCandidate): string {
-  return typeof value === "string" ? value : value.phrase;
-}
-
-function pickUniqueInsight(
-  input: InsightInput,
-  usedPhrases: Set<string> = new Set(),
-  usedFamilies: Set<string> = new Set(),
-): string {
-  const street = streetCue(input.address);
-  const candidates = generateInsightCandidates(input);
-
-  const claim = (phrase: string, family: string): string => {
-    usedPhrases.add(phrase);
-    usedFamilies.add(family);
-    return phrase;
-  };
-
-  for (const { phrase, family } of candidates) {
-    if (!usedPhrases.has(phrase) && !usedFamilies.has(family)) {
-      return claim(phrase, family);
-    }
-  }
-
-  for (const { phrase, family } of candidates) {
-    if (!usedPhrases.has(phrase)) {
-      return claim(phrase, family);
-    }
-  }
-
-  const augmentations = [
-    street,
-    input.zip,
-    input.beds != null ? `${input.beds}-bed` : null,
-    input.sqft != null ? formatCompactSqft(input.sqft) : null,
-    input.yearBuilt != null ? `built ${input.yearBuilt}` : null,
-    input.dom != null ? `${input.dom}d DOM` : null,
-    `$${input.price.toLocaleString()}`,
-  ].filter(Boolean) as string[];
-
-  for (const { phrase, family } of candidates) {
-    for (const tag of augmentations) {
-      const variant = `${phrase} · ${tag}`;
-      if (!usedPhrases.has(variant)) {
-        return claim(variant, `${family}-tagged`);
-      }
-    }
-  }
-
-  for (const { phrase, family } of generateSecondaryInsightCandidates(input)) {
-    if (!usedPhrases.has(phrase) && !usedFamilies.has(family)) {
-      return claim(phrase, family);
-    }
-  }
-
-  for (const { phrase, family } of generateSecondaryInsightCandidates(input)) {
-    if (!usedPhrases.has(phrase)) {
-      return claim(phrase, family);
-    }
-  }
-
-  let fallback = street
-    ? `${street} — ${input.address}`
-    : input.zip
-      ? `${input.address} · ${input.zip}`
-      : input.address;
-  let suffix = 2;
-  while (usedPhrases.has(fallback)) {
-    fallback = `${input.address} · insight ${suffix}`;
-    suffix += 1;
-  }
-  return claim(fallback, "fallback-address");
-}
-
-function insightInputFromListing(l: DisplayListing): InsightInput {
-  const bedMatch = l.type.match(/(\d+)bd/);
-  const bathMatch = l.type.match(/(\d+)ba/);
-  const propertyType = l.propertyType ?? l.type.split(" · ")[0] ?? l.type;
-  return {
-    address: l.address,
-    propertyType,
-    beds: bedMatch ? Number(bedMatch[1]) : l.beds ?? null,
-    baths: bathMatch ? Number(bathMatch[1]) : l.baths ?? null,
-    sqft: l.sqft,
-    yearBuilt: l.yearBuilt ?? null,
-    dom: l.dom,
-    status: l.status,
-    isRental: l.isRental,
-    isCommercial: l.isCommercial,
-    zip: l.zip,
-    price: l.price,
-    score: l.score,
-  };
-}
-
-function dedupeListingHeadlines(listings: DisplayListing[]): DisplayListing[] {
-  const usedPhrases = new Set<string>();
-  const usedFamilies = new Set<string>();
-  const ordered = [...listings].sort((a, b) => b.score - a.score);
-  const headlines = new Map<string, string>();
-  for (const listing of ordered) {
-    headlines.set(
-      listing.key,
-      insightHeadline(
-        pickUniqueInsight(insightInputFromListing(listing), usedPhrases, usedFamilies),
-      ),
-    );
-  }
-  return listings.map((listing) => ({
-    ...listing,
-    headline: insightHeadline(headlines.get(listing.key) ?? listing.headline),
-  }));
 }
 
 function mapListings(api: ApiListing[], townName?: TmreTown): DisplayListing[] {
@@ -1445,11 +1097,136 @@ function mapListings(api: ApiListing[], townName?: TmreTown): DisplayListing[] {
   return mapped.filter((l) => listingZipMatchesTown(l.zip, townName));
 }
 
+function applyDealBoardSalesMeta(
+  board: {
+    monthlySales: Record<string, number>;
+    closedThisWeekByTown: Record<string, number>;
+    closedThisWeekByTownZip: Record<string, Record<string, number>>;
+  },
+  setters: {
+    setMonthlySales: (v: Record<string, number>) => void;
+    setClosedThisWeekByTown: (v: Record<string, number>) => void;
+    setClosedThisWeekByTownZip: (v: Record<string, Record<string, number>>) => void;
+  },
+) {
+  setters.setMonthlySales(board.monthlySales);
+  setters.setClosedThisWeekByTown(board.closedThisWeekByTown);
+  setters.setClosedThisWeekByTownZip(board.closedThisWeekByTownZip);
+}
+
 async function fetchCity(city: TmreTown): Promise<DisplayListing[]> {
-  const res = await fetch(`/api/listings?city=${city}&status=Active&limit=250`);
+  const res = await fetch(`/api/listings?city=${city}&status=Active&limit=2000`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = (await res.json()) as ApiResponse;
   return mapListings(body.listings, city);
+}
+
+type DealBoardApiTownMeta = {
+  avgMonthlySalesSale?: number;
+  avgMonthlySalesRental?: number;
+  closedThisWeekSale?: number;
+  closedThisWeekRental?: number;
+  closedThisWeekByZipSale?: Record<string, number>;
+  closedThisWeekByZipRental?: Record<string, number>;
+};
+
+type DealBoardApiListing = {
+  key: string;
+  listingKey?: string | null;
+  score: number;
+  scoreBreakdown?: ScoreBreakdown | null;
+  address: string;
+  city?: string | null;
+  type: string;
+  propertyType?: string;
+  price: number;
+  pricePerSqft: number | null;
+  sqft: number | null;
+  lotAcres?: number | null;
+  dom: number | null;
+  status: RowStatus;
+  isRental: boolean;
+  isCommercial: boolean;
+  yearBuilt?: number | null;
+  beds?: number | null;
+  baths?: number | null;
+  zip: string | null;
+  headline?: string;
+  photoCount?: number | null;
+  primaryPhotoIndex?: number | null;
+};
+
+type DealBoardApiResponse = {
+  towns: Partial<Record<TmreTown, DealBoardApiListing[]>>;
+  meta?: Partial<Record<TmreTown, DealBoardApiTownMeta>>;
+};
+
+function mapBoardCacheListing(row: DealBoardApiListing, town: TmreTown): DisplayListing {
+  return {
+    key: row.key,
+    listingKey: row.listingKey ?? null,
+    score: row.score ?? 0,
+    scoreBreakdown: row.scoreBreakdown ?? null,
+    address: row.address,
+    city: town,
+    type: row.type,
+    propertyType: row.propertyType,
+    price: row.price,
+    pricePerSqft: row.pricePerSqft,
+    sqft: row.sqft,
+    lotAcres: row.lotAcres ?? null,
+    dom: row.dom,
+    status: row.status,
+    isRental: row.isRental,
+    isCommercial: row.isCommercial,
+    yearBuilt: row.yearBuilt ?? null,
+    beds: row.beds ?? null,
+    baths: row.baths ?? null,
+    headline: row.headline ?? "",
+    zip: row.zip,
+    photoCount: row.photoCount ?? null,
+    primaryPhotoIndex: row.primaryPhotoIndex ?? null,
+  };
+}
+
+async function fetchIntelligenceDealBoard(
+  transaction: TxFilter = "sale",
+): Promise<{
+  byCity: Record<TmreTown, DisplayListing[]>;
+  monthlySales: Record<string, number>;
+  closedThisWeekByTown: Record<string, number>;
+  closedThisWeekByTownZip: Record<string, Record<string, number>>;
+} | null> {
+  const res = await fetch("/api/intelligence/deal-board", { cache: "no-store" });
+  if (!res.ok) return null;
+  const body = (await res.json()) as DealBoardApiResponse;
+  if (!body?.towns) return null;
+
+  const byCity = Object.fromEntries(
+    TMRE_TOWNS.map((town) => [
+      town,
+      (body.towns[town] ?? []).map((row) => mapBoardCacheListing(row, town)),
+    ]),
+  ) as Record<TmreTown, DisplayListing[]>;
+
+  const rental = transaction === "rental";
+  const monthlySales: Record<string, number> = {};
+  const closedThisWeekByTown: Record<string, number> = {};
+  const closedThisWeekByTownZip: Record<string, Record<string, number>> = {};
+  for (const town of TMRE_TOWNS) {
+    const meta = body.meta?.[town];
+    monthlySales[town] = rental
+      ? (meta?.avgMonthlySalesRental ?? 0)
+      : (meta?.avgMonthlySalesSale ?? 0);
+    closedThisWeekByTown[town] = rental
+      ? (meta?.closedThisWeekRental ?? 0)
+      : (meta?.closedThisWeekSale ?? 0);
+    closedThisWeekByTownZip[town] = rental
+      ? (meta?.closedThisWeekByZipRental ?? {})
+      : (meta?.closedThisWeekByZipSale ?? {});
+  }
+
+  return { byCity, monthlySales, closedThisWeekByTown, closedThisWeekByTownZip };
 }
 
 type LoadState = "loading" | "ready" | "fallback";
@@ -1521,6 +1298,7 @@ export default function IntelligenceClient() {
   const [bedSliderActive, setBedSliderActive] = useState(false);
   const [bathSliderActive, setBathSliderActive] = useState(false);
   const [vintageSliderActive, setVintageSliderActive] = useState(false);
+  const [collapsedSlidersOpen, setCollapsedSlidersOpen] = useState(false);
   const priceRangeCustomizedRef = useRef(false);
   const priceFilterContextRef = useRef("");
   const [newConstructionFilter, setNewConstructionFilter] =
@@ -1531,12 +1309,51 @@ export default function IntelligenceClient() {
     );
   const newConstructionOnly = newConstructionFilter === "new";
   const [zip, setZip] = usePersistedNullableFilter("tmre_intel_zip");
-  const [boardStatusFilter, setBoardStatusFilter] = useState<BoardStatusFilter>("all");
+  const [boardStatusFilter, setBoardStatusFilter] = usePersistedFilter<BoardStatusFilter>(
+    "tmre_intel_board_status",
+    "all",
+    BOARD_STATUS_VALUES,
+  );
+  const [filtersExpandedPref, setFiltersExpandedPref] = usePersistedFilter<FiltersExpandedPref>(
+    "tmre_intel_filters_expanded",
+    "true",
+    FILTERS_EXPANDED_VALUES,
+  );
+  const filtersExpanded = filtersExpandedPref === "true";
+  const [townLinksExpanded, setTownLinksExpanded] = useState(false);
+  const [zipLinksExpanded, setZipLinksExpanded] = useState(false);
+  const setFiltersExpanded = (expanded: boolean) =>
+    setFiltersExpandedPref(expanded ? "true" : "false");
   const [hoveredZip, setHoveredZip] = useState<string | null>(null);
   const [hoveredZipEl, setHoveredZipEl] = useState<HTMLElement | null>(null);
-  const [hoveredTown, setHoveredTown] = useState<TmreTown | null>(null);
+  const [hoveredTown, setHoveredTown] = useState<TmreTown | "All" | null>(null);
   const [hoveredTownEl, setHoveredTownEl] = useState<HTMLElement | null>(null);
   const townHoverClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TOWN_MAP_FLASH_MS = 1_000;
+  const [flashedTown, setFlashedTown] = useState<TmreTown | null>(null);
+  const townFilterAnchorRef = useRef<HTMLDivElement>(null);
+  const townMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTownMapFlashTimer = () => {
+    if (townMapFlashTimerRef.current) {
+      clearTimeout(townMapFlashTimerRef.current);
+      townMapFlashTimerRef.current = null;
+    }
+  };
+
+  const flashTownMapOnSelect = (city: TmreTown | "All") => {
+    clearTownMapFlashTimer();
+    if (city === "All") {
+      setFlashedTown(null);
+      return;
+    }
+    prefetchTownBoundaries(city);
+    setFlashedTown(city);
+    townMapFlashTimerRef.current = setTimeout(() => {
+      setFlashedTown(null);
+      townMapFlashTimerRef.current = null;
+    }, TOWN_MAP_FLASH_MS);
+  };
   const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
   const [scoreBreakdownListing, setScoreBreakdownListing] = useState<DisplayListing | null>(null);
   const [historyModalListing, setHistoryModalListing] = useState<DisplayListing | null>(null);
@@ -1591,6 +1408,13 @@ export default function IntelligenceClient() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      clearTownMapFlashTimer();
+      if (townHoverClearTimer.current) clearTimeout(townHoverClearTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const pollRefreshStatus = async () => {
@@ -1614,15 +1438,28 @@ export default function IntelligenceClient() {
             listingsSoftReloadRef.current = true;
             void (async () => {
               try {
-                for (const city of TMRE_TOWNS) {
-                  try {
-                    const listings = await fetchCity(city);
-                    setByCity((prev) => ({ ...prev, [city]: listings }));
-                  } catch (err) {
-                    console.warn(`[intelligence] ${city} soft reload failed`, err);
-                  }
-                  await new Promise((resolve) => window.setTimeout(resolve, 200));
+                const board = await fetchIntelligenceDealBoard(tx);
+                if (board) {
+                  bumpIntelligenceSnapshotGeneration();
+                  setByCity(board.byCity);
+                  applyDealBoardSalesMeta(board, {
+                    setMonthlySales,
+                    setClosedThisWeekByTown,
+                    setClosedThisWeekByTownZip,
+                  });
+                  setMonthlySalesLoaded(true);
+                  return;
                 }
+                await Promise.all(
+                  TMRE_TOWNS.map(async (city) => {
+                    try {
+                      const listings = await fetchCity(city);
+                      setByCity((prev) => ({ ...prev, [city]: listings }));
+                    } catch (err) {
+                      console.warn(`[intelligence] ${city} soft reload failed`, err);
+                    }
+                  }),
+                );
                 bumpIntelligenceSnapshotGeneration();
               } finally {
                 listingsSoftReloadRef.current = false;
@@ -1645,7 +1482,7 @@ export default function IntelligenceClient() {
         window.clearTimeout(listingsSoftReloadTimerRef.current);
       }
     };
-  }, [sqliteRefresh.refreshing]);
+  }, [sqliteRefresh.refreshing, tx]);
 
   useEffect(() => {
     if (!expandedSnapshotsHydrated) return;
@@ -1697,44 +1534,74 @@ export default function IntelligenceClient() {
     setNewConstructionFilter,
   ]);
 
+  // Board listings + sales metadata come from one SQLite-backed cache when warm.
   useEffect(() => {
-    return () => {
-      if (townHoverClearTimer.current) clearTimeout(townHoverClearTimer.current);
-    };
-  }, []);
-
-  // Fetch monthly sales + closed-this-week counts for all cities
-  useEffect(() => {
-    const cities = [...TMRE_TOWNS];
-    const kinds = salesByMonthKinds(tx);
+    let cancelled = false;
+    setState("loading");
     setMonthlySalesLoaded(false);
 
-    Promise.all(
-      cities.flatMap((city) =>
-        kinds.map((kind) =>
-          fetch(
-            `/api/sales-by-month?city=${encodeURIComponent(city)}&kind=${kind}`,
-            { cache: "no-store" },
-          )
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null)
-            .then((d) => ({ city, d })),
+    void (async () => {
+      const board = await fetchIntelligenceDealBoard(tx).catch(() => null);
+      if (cancelled) return;
+
+      if (board) {
+        bumpIntelligenceSnapshotGeneration();
+        setByCity(board.byCity);
+        applyDealBoardSalesMeta(board, {
+          setMonthlySales,
+          setClosedThisWeekByTown,
+          setClosedThisWeekByTownZip,
+        });
+        setMonthlySalesLoaded(true);
+        setState("ready");
+        return;
+      }
+
+      // Cold fallback: parallel town listing fetches + sales-by-month.
+      const kinds = salesByMonthKinds(tx);
+      const [listingResults, salesResults] = await Promise.all([
+        Promise.allSettled(TMRE_TOWNS.map((city) => fetchCity(city))),
+        Promise.all(
+          TMRE_TOWNS.flatMap((city) =>
+            kinds.map((kind) =>
+              fetch(
+                `/api/sales-by-month?city=${encodeURIComponent(city)}&kind=${kind}`,
+                { cache: "no-store" },
+              )
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => null)
+                .then((d) => ({ city, d })),
+            ),
+          ),
         ),
-      ),
-    ).then((results) => {
+      ]);
+      if (cancelled) return;
+
+      let anyLive = false;
+      const next = Object.fromEntries(
+        TMRE_TOWNS.map((town, i) => {
+          const result = listingResults[i];
+          if (result.status === "fulfilled") {
+            anyLive = true;
+            return [town, result.value];
+          }
+          console.warn(`[intelligence] ${town} fetch failed`, result.reason);
+          const mock = MOCK_FALLBACK.find((d) => d.city === town);
+          return [town, mock?.listings ?? []];
+        }),
+      ) as Record<TmreTown, DisplayListing[]>;
+
       const now = new Date();
       const sales: Record<string, number> = {};
       const closed: Record<string, number> = {};
       const closedByZip: Record<string, Record<string, number>> = {};
-
-      for (const city of cities) {
+      for (const city of TMRE_TOWNS) {
         sales[city] = 0;
         closed[city] = 0;
         closedByZip[city] = {};
       }
-
-      results.forEach(({ city, d }) => {
-        if (!d?.data) return;
+      for (const { city, d } of salesResults) {
+        if (!d?.data) continue;
         const recentMonths: number[] = [];
         for (let offset = 1; offset <= 3; offset++) {
           const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
@@ -1762,42 +1629,21 @@ export default function IntelligenceClient() {
             closedByZip[city][zipCode] = (closedByZip[city][zipCode] ?? 0) + count;
           }
         }
-      });
+      }
 
+      bumpIntelligenceSnapshotGeneration();
+      setByCity(next);
       setMonthlySales(sales);
       setClosedThisWeekByTown(closed);
       setClosedThisWeekByTownZip(closedByZip);
       setMonthlySalesLoaded(true);
-    });
-  }, [tx]);
+      setState(anyLive ? "ready" : "fallback");
+    })();
 
-  useEffect(() => {
-    let cancelled = false;
-    setState("loading");
-    Promise.allSettled(TMRE_TOWNS.map((city) => fetchCity(city)))
-      .then((results) => {
-        if (cancelled) return;
-        let anyLive = false;
-        const next = Object.fromEntries(
-          TMRE_TOWNS.map((town, i) => {
-            const result = results[i];
-            if (result.status === "fulfilled") {
-              anyLive = true;
-              return [town, result.value];
-            }
-            console.warn(`[intelligence] ${town} fetch failed`, result.reason);
-            const mock = MOCK_FALLBACK.find((d) => d.city === town);
-            return [town, mock?.listings ?? []];
-          }),
-        ) as Record<TmreTown, DisplayListing[]>;
-        bumpIntelligenceSnapshotGeneration();
-        setByCity(next);
-        setState(anyLive ? "ready" : "fallback");
-      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tx]);
 
   const snapshot = MOCK_FALLBACK.find((d) => d.city === active) ?? null;
   const liveListings: DisplayListing[] = active === "All"
@@ -1816,7 +1662,7 @@ export default function IntelligenceClient() {
     setSortDir("desc");
   }, [active]);
 
-  const { availableZips, zipMedianPrice } = useMemo(() => {
+  const availableZips = useMemo(() => {
     const byZip = new Map<string, number[]>();
     const allowedZips =
       active !== "All" ? new Set<string>(zipsForTown(active)) : null;
@@ -1836,16 +1682,43 @@ export default function IntelligenceClient() {
     const zipMedianPrice = new Map<string, number>();
     byZip.forEach((prices, z) => zipMedianPrice.set(z, medianOf(prices)));
 
-    const availableZips = Array.from(byZip.keys()).sort(
+    return Array.from(byZip.keys()).sort(
       (a, b) => (zipMedianPrice.get(b) ?? 0) - (zipMedianPrice.get(a) ?? 0),
     );
-
-    return { availableZips, zipMedianPrice };
   }, [allListings, active]);
+
+  useEffect(() => {
+    if (!filtersExpanded) setTownLinksExpanded(false);
+  }, [filtersExpanded]);
+
+  useEffect(() => {
+    if (filtersExpanded) setCollapsedSlidersOpen(false);
+  }, [filtersExpanded]);
+
+  useEffect(() => {
+    if (!collapsedSlidersOpen || filtersExpanded) return;
+    const dismissCollapsedSliders = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-intel-slider-panel]")) return;
+      if (target.closest("[data-intel-collapsed-slider-label]")) return;
+      setCollapsedSlidersOpen(false);
+      setPriceSliderActive(false);
+      setBedSliderActive(false);
+      setBathSliderActive(false);
+      setVintageSliderActive(false);
+    };
+    window.addEventListener("pointerdown", dismissCollapsedSliders);
+    return () => window.removeEventListener("pointerdown", dismissCollapsedSliders);
+  }, [collapsedSlidersOpen, filtersExpanded]);
 
   useEffect(() => {
     if (active !== "All" && availableZips.length <= 1) setZip(null);
   }, [active, availableZips.length, setZip]);
+
+  useEffect(() => {
+    setZipLinksExpanded(false);
+  }, [active]);
 
   useEffect(() => {
     if (active !== "All" && availableZips.length > 1) {
@@ -2044,18 +1917,19 @@ export default function IntelligenceClient() {
   }, [boardPrefetchIds, state, boardView]);
 
   const boardTiers = useMemo(() => {
-    const deduped = dedupeListingHeadlines(boardListings);
-    if (sortKey !== "score") {
-      return { top: deduped, middle: [], bottom: [], canTier: false };
+    const rows = boardListings;
+    // Vintage snapshot drilling is a focused slice — show every match, no middle-tier collapse.
+    if (sortKey !== "score" || vintageFilterActive(minVintage, maxVintage)) {
+      return { top: rows, middle: [], bottom: [], canTier: false };
     }
-    const tiers = splitBoardByScoreTier(deduped);
+    const tiers = splitBoardByScoreTier(rows);
     return {
       ...tiers,
       top: sortListings(tiers.top, sortKey, sortDir),
       middle: sortListings(tiers.middle, sortKey, sortDir),
       bottom: sortListings(tiers.bottom, sortKey, sortDir),
     };
-  }, [boardListings, sortKey, sortDir]);
+  }, [boardListings, sortKey, sortDir, minVintage, maxVintage]);
 
   const filteredCount = listings.length;
   const resultCount = boardListings.length;
@@ -2065,11 +1939,18 @@ export default function IntelligenceClient() {
   const boardPageEnd = Math.min(boardPage * BOARD_LISTING_LIMIT, filteredCount);
   const showBoardPagination = filteredCount > BOARD_LISTING_LIMIT;
 
+  const gridAutoExpandMiddleTier =
+    boardView === "grid" && filteredCount > 0 && filteredCount < 10;
+  const effectiveMiddleTierExpanded =
+    middleTierExpanded || gridAutoExpandMiddleTier;
+
   useEffect(() => {
     if (boardPage > totalBoardPages) setBoardPage(totalBoardPages);
   }, [boardPage, totalBoardPages]);
   const middleHidden =
-    boardTiers.canTier && boardTiers.middle.length > 0 && !middleTierExpanded;
+    boardTiers.canTier &&
+    boardTiers.middle.length > 0 &&
+    !effectiveMiddleTierExpanded;
   const visibleCount = middleHidden
     ? boardTiers.top.length + boardTiers.bottom.length
     : resultCount;
@@ -2153,6 +2034,8 @@ export default function IntelligenceClient() {
     boardStatusFilter !== "all" ||
     priceFilterActive;
   const showZipFilters = active !== "All" && availableZips.length > 1;
+  const inlineTownZip =
+    showZipFilters && !townLinksExpanded && !zipLinksExpanded;
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -2184,6 +2067,42 @@ export default function IntelligenceClient() {
     setMinPriceIndex(0);
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
   }
+
+  function setDescriptorSliderActive(kind: IntelSliderKind, active: boolean) {
+    switch (kind) {
+      case "price":
+        setPriceSliderActive(active);
+        break;
+      case "bed":
+        setBedSliderActive(active);
+        break;
+      case "bath":
+        setBathSliderActive(active);
+        break;
+      case "vintage":
+        setVintageSliderActive(active);
+        break;
+    }
+  }
+
+  function handleDescriptorSliderClick(kind: IntelSliderKind) {
+    if (!filtersExpanded) {
+      setCollapsedSlidersOpen(true);
+      setDescriptorSliderActive(kind, true);
+      return;
+    }
+    setDescriptorSliderActive(kind, true);
+  }
+
+  function hideCollapsedSliders() {
+    setCollapsedSlidersOpen(false);
+    setPriceSliderActive(false);
+    setBedSliderActive(false);
+    setBathSliderActive(false);
+    setVintageSliderActive(false);
+  }
+
+  const showSliderFooter = filtersExpanded || collapsedSlidersOpen;
 
   const activeTownMonthsSupply = useMemo(() => {
     if (active === "All") return null;
@@ -2400,6 +2319,28 @@ export default function IntelligenceClient() {
     ],
   );
 
+  const filterDescriptorParts = useMemo(
+    () =>
+      intelFilterDescriptorParts({
+        active,
+        zip,
+        tx,
+        cls,
+        saleProperty,
+        newConstructionOnly,
+        boardStatusFilter,
+      }),
+    [
+      active,
+      zip,
+      tx,
+      cls,
+      saleProperty,
+      newConstructionOnly,
+      boardStatusFilter,
+    ],
+  );
+
   const scrollToBoard = () => {
     requestAnimationFrame(() => {
       boardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2432,16 +2373,76 @@ export default function IntelligenceClient() {
     scrollToBoard();
   };
 
+  const collapsedSliderDescriptors = !filtersExpanded && !collapsedSlidersOpen ? (
+    <span className="contents" data-intel-collapsed-slider-label>
+      <IntelSliderDescriptorLabels
+      showPriceFilter={showPriceFilter}
+      cls={cls}
+      onDescriptorClick={handleDescriptorSliderClick}
+      boardPriceSteps={boardPriceSteps}
+      minPriceIndex={minPriceIndex}
+      maxPriceIndex={maxPriceIndex}
+      priceSliderActive={priceSliderActive}
+      minBedrooms={minBedrooms}
+      maxBedrooms={maxBedrooms}
+      minBathrooms={minBathrooms}
+      maxBathrooms={maxBathrooms}
+      minVintage={minVintage}
+      maxVintage={maxVintage}
+      bedSliderActive={bedSliderActive}
+      bathSliderActive={bathSliderActive}
+      vintageSliderActive={vintageSliderActive}
+    />
+    </span>
+  ) : null;
+
+  const sliderDescriptorFooterLabels = showSliderFooter ? (
+    <IntelSliderDescriptorLabels
+      showPriceFilter={showPriceFilter}
+      cls={cls}
+      onDescriptorClick={handleDescriptorSliderClick}
+      boardPriceSteps={boardPriceSteps}
+      minPriceIndex={minPriceIndex}
+      maxPriceIndex={maxPriceIndex}
+      priceSliderActive={priceSliderActive}
+      minBedrooms={minBedrooms}
+      maxBedrooms={maxBedrooms}
+      minBathrooms={minBathrooms}
+      maxBathrooms={maxBathrooms}
+      minVintage={minVintage}
+      maxVintage={maxVintage}
+      bedSliderActive={bedSliderActive}
+      bathSliderActive={bathSliderActive}
+      vintageSliderActive={vintageSliderActive}
+      withLeadingSeparator
+    />
+  ) : null;
+
   return (
     <>
-      <section className="navy-gradient text-white pt-20 pb-1 lg:pt-24 lg:pb-1 relative overflow-hidden">
+      <section
+        className={`navy-gradient text-white pt-20 lg:pt-24 relative overflow-hidden transition-[padding] duration-300 ease-out ${
+          filtersExpanded ? "pb-1 lg:pb-1" : "pb-1"
+        }`}
+      >
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:gap-x-5 gap-y-2">
+          <div
+            className={`flex flex-col lg:flex-row lg:items-start transition-[gap] duration-300 ease-out ${
+              filtersExpanded ? "lg:gap-x-5 gap-y-2" : "gap-y-0"
+            }`}
+          >
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
-                Market Intelligence
-              </p>
+              <div className="flex items-center justify-between gap-3 min-w-0">
+                <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
+                  Market Intelligence
+                </p>
+                <IntelFiltersToggle
+                  expanded={filtersExpanded}
+                  filtersActive={filtersActive}
+                  onToggle={() => setFiltersExpanded(!filtersExpanded)}
+                />
+              </div>
               <div
                 className={`grid transition-[grid-template-rows] duration-700 ease-in-out ${
                   heroIntroDismissed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
@@ -2477,183 +2478,154 @@ export default function IntelligenceClient() {
                   heroIntroDismissed ? "mt-0" : "mt-1"
                 }`}
               >
+                <div className="flex flex-wrap items-center gap-2 min-w-0 w-full self-start">
+                    {filtersExpanded ? (
+                      <>
+                      <FilterGroup
+                        label=""
+                        value={cls}
+                        onChange={setCls}
+                        options={[
+                          { value: "all", label: "All" },
+                          { value: "residential", label: "Residential" },
+                          { value: "commercial", label: "Commercial" },
+                        ]}
+                      />
+                      </>
+                    ) : null}
+                </div>
+                {filtersExpanded ? (
                 <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
-                  <div className="flex flex-wrap items-center gap-2 self-start min-w-0">
-                <FilterGroup
-                  label=""
-                  value={cls}
-                  onChange={setCls}
-                  options={[
-                    { value: "all", label: "All" },
-                    { value: "residential", label: "Residential" },
-                    { value: "commercial", label: "Commercial" },
-                  ]}
-                />
-                {cls !== "commercial" && (
-                  <BedBathFilterRow
-                    showPriceFilter={showPriceFilter}
-                    priceSteps={boardPriceSteps}
-                    minPriceIndex={minPriceIndex}
-                    maxPriceIndex={maxPriceIndex}
-                    onMinPriceIndexChange={(index) => {
-                      priceRangeCustomizedRef.current = true;
-                      setMinPriceIndex(index);
-                    }}
-                    onMaxPriceIndexChange={(index) => {
-                      priceRangeCustomizedRef.current = true;
-                      setMaxPriceIndex(index);
-                    }}
-                    onPriceSliderActiveChange={setPriceSliderActive}
-                    onBedSliderActiveChange={setBedSliderActive}
-                    onBathSliderActiveChange={setBathSliderActive}
-                    minBedrooms={minBedrooms}
-                    maxBedrooms={maxBedrooms}
-                    onMinBedroomsChange={(n) => setMinBedsFilter(String(n) as MinBedFilter)}
-                    onMaxBedroomsChange={(n) => setMaxBedsFilter(String(n) as MinBedFilter)}
-                    minBathrooms={minBathrooms}
-                    maxBathrooms={maxBathrooms}
-                    onMinBathroomsChange={(n) => setMinBathsFilter(String(n) as MinBathFilter)}
-                    onMaxBathroomsChange={(n) => setMaxBathsFilter(String(n) as MinBathFilter)}
-                    minVintage={minVintage}
-                    maxVintage={maxVintage}
-                    onMinVintageChange={(n) =>
-                      setMinVintageFilter(String(n) as VintageIndexFilter)
-                    }
-                    onMaxVintageChange={(n) =>
-                      setMaxVintageFilter(String(n) as VintageIndexFilter)
-                    }
-                    onVintageSliderActiveChange={setVintageSliderActive}
-                    onResetSliders={resetSliders}
-                    slidersCustomized={slidersCustomized}
-                  />
-                )}
-              </div>
-
-              <TownFilterPills
-                towns={orderedCities}
-                selected={active}
-                onSelect={(city) => {
-                  setActive(city);
-                  setZip(null);
-                  setBoardStatusFilter("all");
-                  if (city === "All") {
-                    setExpandedSnapshotKeys(new Set());
-                  }
-                }}
-                onTownMouseEnter={(town, el) => {
-                  if (townHoverClearTimer.current) {
-                    clearTimeout(townHoverClearTimer.current);
-                    townHoverClearTimer.current = null;
-                  }
-                  prefetchTownBoundaries(town);
-                  setHoveredZip(null);
-                  setHoveredZipEl(null);
-                  setHoveredTown(town);
-                  setHoveredTownEl(el);
-                }}
-                onTownMouseLeave={() => {
-                  if (townHoverClearTimer.current) clearTimeout(townHoverClearTimer.current);
-                  townHoverClearTimer.current = setTimeout(() => {
-                    setHoveredTown(null);
-                    setHoveredTownEl(null);
-                    townHoverClearTimer.current = null;
-                  }, 120);
-                }}
-                counts={townCounts}
-                allLabel="All"
-                showSeparatorAfterAll
-                size="compact"
-                scrollable
-                className="w-full min-w-0"
-              />
-
-              {showZipFilters && (() => {
-                const prices = availableZips.map((z) => zipMedianPrice.get(z) ?? 0);
-                const maxP = Math.max(...prices);
-                const minP = Math.min(...prices);
-                const range = maxP - minP || 1;
-                return (
-                  <div className="flex flex-wrap gap-1 self-start w-full min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => setZip(null)}
-                      aria-pressed={zip === null}
-                      className={`font-mono text-[10px] tracking-[0.15em] uppercase px-3 py-1.5 rounded-full border transition-all ${
-                        zip === null
-                          ? "bg-white text-navy border-white shadow-md"
-                          : "border-white/20 text-white/55 hover:border-white/50 hover:text-white"
-                      }`}
+                    <div
+                      className={
+                        inlineTownZip
+                          ? "flex flex-wrap items-center gap-x-3 gap-y-1 w-full min-w-0"
+                          : "w-full min-w-0"
+                      }
                     >
-                      All
-                      <span
-                        className={`ml-1 tabular-nums text-[9px] ${
-                          zip === null ? "text-navy/55" : "text-white/40"
-                        }`}
-                        aria-label={`${zipAllCount.toLocaleString()} listings`}
+                      <div
+                        ref={townFilterAnchorRef}
+                        className={
+                          inlineTownZip
+                            ? "min-w-0 shrink-0"
+                            : "flex flex-wrap gap-1 self-start w-full min-w-0"
+                        }
                       >
-                        {zipAllCount.toLocaleString()}
-                      </span>
-                    </button>
-                    {availableZips.map((z) => {
-                      const price = zipMedianPrice.get(z) ?? minP;
-                      const count = zipCounts.get(z) ?? 0;
-                      const areaName = zipAreaNickname(z);
-                      const t = (price - minP) / range;
-                      const isActive = zip === z;
-                      const r = Math.round(186 - t * 149);
-                      const g = Math.round(230 - t * 131);
-                      const b = Math.round(253 - t * 18);
-                      const alpha = 0.22 + t * 0.60;
-                      const borderAlpha = 0.35 + t * 0.50;
-                      const inactiveStyle = {
-                        backgroundColor: `rgba(${r},${g},${b},${alpha.toFixed(2)})`,
-                        borderColor: `rgba(${r},${g},${b},${borderAlpha.toFixed(2)})`,
-                        color: "rgba(255,255,255,0.92)",
-                      };
-                      return (
-                        <button
-                          key={z}
-                          type="button"
-                          onClick={() => setZip(zip === z ? null : z)}
-                          onMouseEnter={(e) => {
+                        <TownFilterPills
+                          towns={orderedCities}
+                          selected={active}
+                          onSelect={(city) => {
+                            setActive(city);
+                            setZip(null);
+                            setBoardStatusFilter("all");
+                            setTownLinksExpanded(false);
+                            setZipLinksExpanded(false);
+                            if (city === "All") {
+                              setExpandedSnapshotKeys(new Set());
+                            }
+                            flashTownMapOnSelect(city);
+                          }}
+                          onTownMouseEnter={(town, el) => {
+                            if (townHoverClearTimer.current) {
+                              clearTimeout(townHoverClearTimer.current);
+                              townHoverClearTimer.current = null;
+                            }
+                            prefetchTownBoundaries(town);
+                            setHoveredZip(null);
+                            setHoveredZipEl(null);
+                            setHoveredTown(town);
+                            setHoveredTownEl(el);
+                          }}
+                          onAllMouseEnter={(el) => {
+                            if (townHoverClearTimer.current) {
+                              clearTimeout(townHoverClearTimer.current);
+                              townHoverClearTimer.current = null;
+                            }
+                            prefetchAllTownBoundaries();
+                            setHoveredZip(null);
+                            setHoveredZipEl(null);
+                            setHoveredTown("All");
+                            setHoveredTownEl(el);
+                          }}
+                          onTownMouseLeave={() => {
+                            if (townHoverClearTimer.current) {
+                              clearTimeout(townHoverClearTimer.current);
+                            }
+                            townHoverClearTimer.current = setTimeout(() => {
+                              setHoveredTown(null);
+                              setHoveredTownEl(null);
+                              townHoverClearTimer.current = null;
+                            }, 120);
+                          }}
+                          counts={townCounts}
+                          allLabel="All"
+                          appearance="zip"
+                          layout="promoted"
+                          townLinksExpanded={townLinksExpanded}
+                          onTownLinksExpandedChange={setTownLinksExpanded}
+                          size="compact"
+                          className={inlineTownZip ? "min-w-0" : "w-full min-w-0"}
+                          promotedInline={inlineTownZip}
+                        />
+                      </div>
+
+                      {inlineTownZip ? (
+                        <ZipFilterPills
+                          zips={availableZips}
+                          selected={zip}
+                          onSelect={(next) => {
+                            setZip(next);
+                            setZipLinksExpanded(false);
+                          }}
+                          counts={zipCounts}
+                          allCount={zipAllCount}
+                          allLabel={`Search all zips for ${active}`}
+                          townName={active}
+                          zipLinksExpanded={zipLinksExpanded}
+                          onZipLinksExpandedChange={setZipLinksExpanded}
+                          onZipMouseEnter={(z, el) => {
                             setHoveredTown(null);
                             setHoveredTownEl(null);
                             setHoveredZip(z);
-                            setHoveredZipEl(e.currentTarget);
+                            setHoveredZipEl(el);
                           }}
-                          onMouseLeave={() => { setHoveredZip(null); setHoveredZipEl(null); }}
-                          aria-pressed={isActive}
-                          style={isActive ? undefined : inactiveStyle}
-                          className={`font-mono text-[10px] tracking-[0.15em] uppercase px-3 py-1.5 rounded-full border transition-all ${
-                            isActive
-                              ? "bg-gold text-navy border-gold shadow-md shadow-gold/20"
-                              : "hover:brightness-110"
-                          }`}
-                        >
-                          {z}
-                          {areaName ? (
-                            <span
-                              className={`ml-1 normal-case tracking-normal ${
-                                isActive ? "text-navy/70" : "text-white/75"
-                              }`}
-                            >
-                              · {areaName}
-                            </span>
-                          ) : null}
-                          <span
-                            className={`ml-1 tabular-nums text-[9px] ${
-                              isActive ? "text-navy/55" : "text-white/40"
-                            }`}
-                            aria-label={`${count.toLocaleString()} listings`}
-                          >
-                            {count.toLocaleString()}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+                          onZipMouseLeave={() => {
+                            setHoveredZip(null);
+                            setHoveredZipEl(null);
+                          }}
+                          className="min-w-0 shrink-0"
+                          promotedInline
+                        />
+                      ) : null}
+                    </div>
+
+                    {showZipFilters && !inlineTownZip ? (
+                      <ZipFilterPills
+                        zips={availableZips}
+                        selected={zip}
+                        onSelect={(next) => {
+                          setZip(next);
+                          setZipLinksExpanded(false);
+                        }}
+                        counts={zipCounts}
+                        allCount={zipAllCount}
+                        allLabel={`Search all zips for ${active}`}
+                        townName={active}
+                        zipLinksExpanded={zipLinksExpanded}
+                        onZipLinksExpandedChange={setZipLinksExpanded}
+                        onZipMouseEnter={(z, el) => {
+                          setHoveredTown(null);
+                          setHoveredTownEl(null);
+                          setHoveredZip(z);
+                          setHoveredZipEl(el);
+                        }}
+                        onZipMouseLeave={() => {
+                          setHoveredZip(null);
+                          setHoveredZipEl(null);
+                        }}
+                        className="self-start w-full min-w-0"
+                      />
+                    ) : null}
 
                   <div className="flex flex-wrap items-center gap-2 min-w-0 self-start">
                     <FilterGroup
@@ -2694,140 +2666,146 @@ export default function IntelligenceClient() {
                     />
                   </div>
                 </div>
+                ) : null}
               </div>
               {active === "All" ? (
                 <AllTownsDescriptor
+                  className={filtersExpanded ? "mt-3" : "mt-1"}
                   towns={allTownsDescriptorStats}
                   aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
                   monthlySalesLoaded={monthlySalesLoaded}
                   filterContext={allTownsFilterContext}
-                  priceLabel={
-                    showPriceFilter ? (
-                      <PriceRangeLabel
-                        steps={boardPriceSteps}
-                        minIndex={minPriceIndex}
-                        maxIndex={maxPriceIndex}
-                        active={priceSliderActive}
-                      />
-                    ) : null
-                  }
-                  bedLabel={
-                    cls !== "commercial" ? (
-                      <BedroomLabel
-                        min={minBedrooms}
-                        max={maxBedrooms}
-                        active={bedSliderActive}
-                      />
-                    ) : null
-                  }
-                  bathLabel={
-                    cls !== "commercial" ? (
-                      <BathroomLabel
-                        min={minBathrooms}
-                        max={maxBathrooms}
-                        active={bathSliderActive}
-                      />
-                    ) : null
-                  }
-                  vintageLabel={
-                    cls !== "commercial" ? (
-                      <VintageLabel
-                        min={minVintage}
-                        max={maxVintage}
-                        active={vintageSliderActive}
-                      />
-                    ) : null
-                  }
+                  contextParts={filterDescriptorParts}
+                  trailing={collapsedSliderDescriptors}
+                  hideMonthsSupply={showSliderFooter}
                 />
               ) : (
-                <p className="mt-3 flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide">
-                  <span className="text-white/45">{formatTownTagline(active, zip)}</span>
-                  <span className="text-white/25" aria-hidden>
-                    ·
-                  </span>
-                  <span
-                    className={monthsSupplyColorClass(activeTownMonthsSupply)}
-                    aria-label={
-                      !monthlySalesLoaded
-                        ? "Months supply loading"
-                        : activeTownMonthsSupply != null
-                          ? `${activeTownMonthsSupply.toFixed(1)} months supply`
-                          : "Months supply unavailable"
-                    }
-                  >
-                    Months supply{" "}
-                    <span className="tabular-nums font-medium">
-                      {!monthlySalesLoaded
-                        ? "…"
-                        : activeTownMonthsSupply != null
-                          ? activeTownMonthsSupply.toFixed(1)
-                          : "—"}
-                    </span>
-                  </span>
-                  {showPriceFilter && (
+                <p
+                  className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide transition-[margin] duration-300 ease-out ${
+                    filtersExpanded ? "mt-3" : "mt-1"
+                  }`}
+                >
+                  <IntelDescriptorContext parts={filterDescriptorParts} />
+                  <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
+                  {!showSliderFooter ? (
                     <>
                       <span className="text-white/25" aria-hidden>
                         ·
                       </span>
-                      <PriceRangeLabel
-                        steps={boardPriceSteps}
-                        minIndex={minPriceIndex}
-                        maxIndex={maxPriceIndex}
-                        active={priceSliderActive}
+                      <IntelMonthsSupplyInline
+                        monthsSupply={activeTownMonthsSupply}
+                        monthlySalesLoaded={monthlySalesLoaded}
                       />
+                      {collapsedSliderDescriptors}
                     </>
-                  )}
-                  {cls !== "commercial" && (
-                    <>
-                      <span className="text-white/25" aria-hidden>
-                        ·
-                      </span>
-                      <BedroomLabel
-                        min={minBedrooms}
-                        max={maxBedrooms}
-                        active={bedSliderActive}
-                      />
-                    </>
-                  )}
-                  {cls !== "commercial" && (
-                    <>
-                      <span className="text-white/25" aria-hidden>
-                        ·
-                      </span>
-                      <BathroomLabel
-                        min={minBathrooms}
-                        max={maxBathrooms}
-                        active={bathSliderActive}
-                      />
-                    </>
-                  )}
-                  {cls !== "commercial" && (
-                    <>
-                      <span className="text-white/25" aria-hidden>
-                        ·
-                      </span>
-                      <VintageLabel
-                        min={minVintage}
-                        max={maxVintage}
-                        active={vintageSliderActive}
-                      />
-                    </>
-                  )}
+                  ) : null}
                 </p>
               )}
+              <IntelFilterControlsRow
+                filtersExpanded={filtersExpanded}
+                showPriceFilter={showPriceFilter}
+                cls={cls}
+                collapsedSlidersOpen={collapsedSlidersOpen}
+                boardPriceSteps={boardPriceSteps}
+                minPriceIndex={minPriceIndex}
+                maxPriceIndex={maxPriceIndex}
+                onMinPriceIndexChange={(index) => {
+                  priceRangeCustomizedRef.current = true;
+                  setMinPriceIndex(index);
+                }}
+                onMaxPriceIndexChange={(index) => {
+                  priceRangeCustomizedRef.current = true;
+                  setMaxPriceIndex(index);
+                }}
+                onPriceSliderActiveChange={setPriceSliderActive}
+                priceSliderActive={priceSliderActive}
+                minBedrooms={minBedrooms}
+                maxBedrooms={maxBedrooms}
+                onMinBedroomsChange={(n) => setMinBedsFilter(String(n) as MinBedFilter)}
+                onMaxBedroomsChange={(n) => setMaxBedsFilter(String(n) as MinBedFilter)}
+                minBathrooms={minBathrooms}
+                maxBathrooms={maxBathrooms}
+                onMinBathroomsChange={(n) => setMinBathsFilter(String(n) as MinBathFilter)}
+                onMaxBathroomsChange={(n) => setMaxBathsFilter(String(n) as MinBathFilter)}
+                minVintage={minVintage}
+                maxVintage={maxVintage}
+                onMinVintageChange={(n) =>
+                  setMinVintageFilter(String(n) as VintageIndexFilter)
+                }
+                onMaxVintageChange={(n) =>
+                  setMaxVintageFilter(String(n) as VintageIndexFilter)
+                }
+                onBedSliderActiveChange={setBedSliderActive}
+                onBathSliderActiveChange={setBathSliderActive}
+                onVintageSliderActiveChange={setVintageSliderActive}
+                bedSliderActive={bedSliderActive}
+                bathSliderActive={bathSliderActive}
+                vintageSliderActive={vintageSliderActive}
+                onResetSliders={resetSliders}
+                slidersCustomized={slidersCustomized}
+              />
+              {showSliderFooter &&
+              (sliderDescriptorFooterLabels ||
+                active === "All" ||
+                activeTownMonthsSupply != null ||
+                !monthlySalesLoaded ||
+                collapsedSlidersOpen) ? (
+                <div
+                  className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 w-full min-w-0 font-mono text-xs tracking-wide ${
+                    filtersExpanded ? "mt-1.5" : "mt-1"
+                  }`}
+                  data-intel-slider-footer
+                >
+                  <IntelMonthsSupplyInline
+                    monthsSupply={
+                      active === "All"
+                        ? aggregateAllTownsMonthsSupply
+                        : activeTownMonthsSupply
+                    }
+                    monthlySalesLoaded={monthlySalesLoaded}
+                    label={active === "All" ? "Months supply blended" : "Months supply"}
+                  />
+                  {sliderDescriptorFooterLabels}
+                  {collapsedSlidersOpen && !filtersExpanded ? (
+                    <>
+                      <IntelFilterDescriptorDot />
+                      <button
+                        type="button"
+                        onClick={hideCollapsedSliders}
+                        className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
+                      >
+                        Hide sliders
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            <DealOfTheDayFrame
-              city={active}
-              theme="hero"
-              rotateTowns={active === "All"}
-              transactionFilter={tx}
-              className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
-            />
+            <div
+              className={
+                filtersExpanded
+                  ? "w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
+                  : "hidden"
+              }
+              aria-hidden={!filtersExpanded}
+            >
+              <DealOfTheDayFrame
+                city={active}
+                theme="hero"
+                rotateTowns={active === "All"}
+                transactionFilter={tx}
+                className="w-full"
+              />
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-cream pt-4 pb-10 lg:pt-5 lg:pb-14">
+      <section
+        className={`bg-cream pb-10 lg:pb-14 transition-[padding] duration-300 ease-out ${
+          filtersExpanded ? "pt-4 lg:pt-5" : "pt-2 lg:pt-3"
+        }`}
+      >
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="mb-4 lg:mb-5 flex items-end justify-between gap-4">
             <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5 min-w-0">
@@ -2872,13 +2850,14 @@ export default function IntelligenceClient() {
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
 
             {/* Deal board */}
-            <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-24">
+            <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
           <DealBoardList
             topRows={boardTiers.top}
             middleRows={boardTiers.middle}
             bottomRows={boardTiers.bottom}
             canTier={boardTiers.canTier}
-            middleTierExpanded={middleTierExpanded}
+            middleTierExpanded={effectiveMiddleTierExpanded}
+            hideMiddleTierToggle={gridAutoExpandMiddleTier}
             onMiddleTierToggle={() => setMiddleTierExpanded((v) => !v)}
             resultCount={resultCount}
             scoreRankByKey={scoreRankByKey}
@@ -2892,7 +2871,9 @@ export default function IntelligenceClient() {
                 ? "new "
                 : boardStatusFilter === "reduced"
                   ? "reduced "
-                  : ""
+                  : boardStatusFilter === "active"
+                    ? "active "
+                    : ""
             }listings match your current filters.`}
             onResetFilters={() => {
               setTx("all");
@@ -2918,6 +2899,12 @@ export default function IntelligenceClient() {
             onSort={handleSort}
             boardView={boardView}
             onBoardViewChange={setBoardView}
+            boardStatusFilter={boardStatusFilter}
+            onBoardStatusFilterChange={(value) => {
+              setBoardStatusFilter(value);
+              setBoardPage(1);
+            }}
+            filtersExpanded={filtersExpanded}
             scoreInfoButton={
               <ScoreInfoButton onInfoClick={() => setScoreInfoOpen(true)} />
             }
@@ -3172,12 +3159,24 @@ export default function IntelligenceClient() {
           </div>
         </div>
       )}
-      {hoveredTown && (
+      {hoveredTown && hoveredTownEl ? (
+        hoveredTown === "All" ? (
+          <ZipBoundaryPopover
+            highlightAllTowns
+            anchorEl={hoveredTownEl}
+          />
+        ) : (
+          <ZipBoundaryPopover
+            highlightTown={hoveredTown}
+            anchorEl={hoveredTownEl}
+          />
+        )
+      ) : flashedTown && townFilterAnchorRef.current ? (
         <ZipBoundaryPopover
-          highlightTown={hoveredTown}
-          anchorEl={hoveredTownEl}
+          highlightTown={flashedTown}
+          anchorEl={townFilterAnchorRef.current}
         />
-      )}
+      ) : null}
       {hoveredZip && (
         <ZipBoundaryPopover
           highlightZip={hoveredZip}
@@ -3234,13 +3233,6 @@ function ScoreInfoButton({ onInfoClick }: { onInfoClick: () => void }) {
 }
 
 function BedBathFilterRow({
-  showPriceFilter,
-  priceSteps,
-  minPriceIndex,
-  maxPriceIndex,
-  onMinPriceIndexChange,
-  onMaxPriceIndexChange,
-  onPriceSliderActiveChange,
   onBedSliderActiveChange,
   onBathSliderActiveChange,
   onVintageSliderActiveChange,
@@ -3259,13 +3251,6 @@ function BedBathFilterRow({
   onResetSliders,
   slidersCustomized,
 }: {
-  showPriceFilter: boolean;
-  priceSteps: readonly number[];
-  minPriceIndex: number;
-  maxPriceIndex: number;
-  onMinPriceIndexChange: (value: number) => void;
-  onMaxPriceIndexChange: (value: number) => void;
-  onPriceSliderActiveChange: (active: boolean) => void;
   onBedSliderActiveChange: (active: boolean) => void;
   onBathSliderActiveChange: (active: boolean) => void;
   onVintageSliderActiveChange: (active: boolean) => void;
@@ -3286,19 +3271,6 @@ function BedBathFilterRow({
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0">
-      {showPriceFilter ? (
-        <>
-          <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
-          <PriceRangeSlider
-            steps={priceSteps}
-            minIndex={minPriceIndex}
-            maxIndex={maxPriceIndex}
-            onMinIndexChange={onMinPriceIndexChange}
-            onMaxIndexChange={onMaxPriceIndexChange}
-            onActiveChange={onPriceSliderActiveChange}
-          />
-        </>
-      ) : null}
       <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
       <IntelDualSlider
         maxIndex={BED_BATH_MAX}
@@ -3350,21 +3322,29 @@ function PriceRangeLabel({
   minIndex,
   maxIndex,
   active,
+  onClick,
 }: {
   steps: readonly number[];
   minIndex: number;
   maxIndex: number;
   active: boolean;
+  onClick?: () => void;
 }) {
   const lo = Math.min(minIndex, maxIndex);
   const hi = Math.max(minIndex, maxIndex);
+  const interactive = onClick != null;
+  const className = descriptorLabelClass(active, interactive);
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {formatIntelPriceRangeLabelFromSteps(steps, lo, hi)}
+      </button>
+    );
+  }
 
   return (
-    <span
-      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
-        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
-      }`}
-    >
+    <span className={className}>
       {formatIntelPriceRangeLabelFromSteps(steps, lo, hi)}
     </span>
   );
@@ -3374,59 +3354,299 @@ function BedroomLabel({
   min,
   max,
   active,
+  onClick,
 }: {
   min: number;
   max: number;
   active: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <span
-      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
-        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
-      }`}
-    >
-      {formatBedBathRangeLabel(min, max, "Bed")}
-    </span>
-  );
+  const interactive = onClick != null;
+  const className = descriptorLabelClass(active, interactive);
+  const label = formatBedBathRangeLabel(min, max, "Bed");
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {label}
+      </button>
+    );
+  }
+
+  return <span className={className}>{label}</span>;
 }
 
 function BathroomLabel({
   min,
   max,
   active,
+  onClick,
 }: {
   min: number;
   max: number;
   active: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <span
-      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
-        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
-      }`}
-    >
-      {formatBedBathRangeLabel(min, max, "Bath")}
-    </span>
-  );
+  const interactive = onClick != null;
+  const className = descriptorLabelClass(active, interactive);
+  const label = formatBedBathRangeLabel(min, max, "Bath");
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {label}
+      </button>
+    );
+  }
+
+  return <span className={className}>{label}</span>;
 }
 
 function VintageLabel({
   min,
   max,
   active,
+  onClick,
 }: {
   min: number;
   max: number;
   active: boolean;
+  onClick?: () => void;
 }) {
+  const interactive = onClick != null;
+  const className = descriptorLabelClass(active, interactive);
+  const label = formatVintageRangeLabel(min, max);
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {label}
+      </button>
+    );
+  }
+
+  return <span className={className}>{label}</span>;
+}
+
+function IntelFilterDescriptorDot() {
   return (
-    <span
-      className={`font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
-        active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
-      }`}
-    >
-      {formatVintageRangeLabel(min, max)}
+    <span className="text-white/25" aria-hidden>
+      ·
     </span>
+  );
+}
+
+type IntelSliderDescriptorLabelsProps = {
+  showPriceFilter: boolean;
+  cls: ClsFilter;
+  onDescriptorClick: (kind: IntelSliderKind) => void;
+  boardPriceSteps: readonly number[];
+  minPriceIndex: number;
+  maxPriceIndex: number;
+  priceSliderActive: boolean;
+  minBedrooms: number;
+  maxBedrooms: number;
+  minBathrooms: number;
+  maxBathrooms: number;
+  minVintage: number;
+  maxVintage: number;
+  bedSliderActive: boolean;
+  bathSliderActive: boolean;
+  vintageSliderActive: boolean;
+  withLeadingSeparator?: boolean;
+};
+
+function IntelSliderDescriptorLabels({
+  showPriceFilter,
+  cls,
+  onDescriptorClick,
+  boardPriceSteps,
+  minPriceIndex,
+  maxPriceIndex,
+  priceSliderActive,
+  minBedrooms,
+  maxBedrooms,
+  minBathrooms,
+  maxBathrooms,
+  minVintage,
+  maxVintage,
+  bedSliderActive,
+  bathSliderActive,
+  vintageSliderActive,
+  withLeadingSeparator = false,
+}: IntelSliderDescriptorLabelsProps) {
+  if (!showPriceFilter && cls === "commercial") return null;
+
+  const leadingDot = withLeadingSeparator || showPriceFilter;
+
+  return (
+    <>
+      {leadingDot ? <IntelFilterDescriptorDot /> : null}
+      {showPriceFilter ? (
+        <PriceRangeLabel
+            steps={boardPriceSteps}
+            minIndex={minPriceIndex}
+            maxIndex={maxPriceIndex}
+            active={priceSliderActive}
+            onClick={() => onDescriptorClick("price")}
+          />
+      ) : null}
+      {cls !== "commercial" ? (
+        <>
+          {showPriceFilter ? <IntelFilterDescriptorDot /> : null}
+          <BedroomLabel
+            min={minBedrooms}
+            max={maxBedrooms}
+            active={bedSliderActive}
+            onClick={() => onDescriptorClick("bed")}
+          />
+          <IntelFilterDescriptorDot />
+          <BathroomLabel
+            min={minBathrooms}
+            max={maxBathrooms}
+            active={bathSliderActive}
+            onClick={() => onDescriptorClick("bath")}
+          />
+          <IntelFilterDescriptorDot />
+          <VintageLabel
+            min={minVintage}
+            max={maxVintage}
+            active={vintageSliderActive}
+            onClick={() => onDescriptorClick("vintage")}
+          />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function IntelFilterControlsRow({
+  filtersExpanded,
+  showPriceFilter,
+  cls,
+  collapsedSlidersOpen,
+  boardPriceSteps,
+  minPriceIndex,
+  maxPriceIndex,
+  onMinPriceIndexChange,
+  onMaxPriceIndexChange,
+  onPriceSliderActiveChange,
+  priceSliderActive,
+  minBedrooms,
+  maxBedrooms,
+  onMinBedroomsChange,
+  onMaxBedroomsChange,
+  minBathrooms,
+  maxBathrooms,
+  onMinBathroomsChange,
+  onMaxBathroomsChange,
+  minVintage,
+  maxVintage,
+  onMinVintageChange,
+  onMaxVintageChange,
+  onBedSliderActiveChange,
+  onBathSliderActiveChange,
+  onVintageSliderActiveChange,
+  bedSliderActive,
+  bathSliderActive,
+  vintageSliderActive,
+  onResetSliders,
+  slidersCustomized,
+}: {
+  filtersExpanded: boolean;
+  showPriceFilter: boolean;
+  cls: ClsFilter;
+  collapsedSlidersOpen: boolean;
+  boardPriceSteps: readonly number[];
+  minPriceIndex: number;
+  maxPriceIndex: number;
+  onMinPriceIndexChange: (index: number) => void;
+  onMaxPriceIndexChange: (index: number) => void;
+  onPriceSliderActiveChange: (active: boolean) => void;
+  priceSliderActive: boolean;
+  minBedrooms: number;
+  maxBedrooms: number;
+  onMinBedroomsChange: (value: number) => void;
+  onMaxBedroomsChange: (value: number) => void;
+  minBathrooms: number;
+  maxBathrooms: number;
+  onMinBathroomsChange: (value: number) => void;
+  onMaxBathroomsChange: (value: number) => void;
+  minVintage: number;
+  maxVintage: number;
+  onMinVintageChange: (value: number) => void;
+  onMaxVintageChange: (value: number) => void;
+  onBedSliderActiveChange: (active: boolean) => void;
+  onBathSliderActiveChange: (active: boolean) => void;
+  onVintageSliderActiveChange: (active: boolean) => void;
+  bedSliderActive: boolean;
+  bathSliderActive: boolean;
+  vintageSliderActive: boolean;
+  onResetSliders: () => void;
+  slidersCustomized: boolean;
+}) {
+  if (!showPriceFilter && cls === "commercial") return null;
+
+  const rowClass = `flex flex-wrap items-start gap-2 w-full min-w-0 self-start font-mono text-xs tracking-wide ${
+    filtersExpanded ? "mt-1.5" : "mt-1"
+  }`;
+
+  const sliderPanel = (
+    <>
+      {showPriceFilter ? (
+        <div className="flex flex-col gap-1 shrink-0">
+          <PriceRangeSlider
+            steps={boardPriceSteps}
+            minIndex={minPriceIndex}
+            maxIndex={maxPriceIndex}
+            onMinIndexChange={onMinPriceIndexChange}
+            onMaxIndexChange={onMaxPriceIndexChange}
+            onActiveChange={onPriceSliderActiveChange}
+          />
+          <PriceRangeInputs
+            steps={boardPriceSteps}
+            minIndex={minPriceIndex}
+            maxIndex={maxPriceIndex}
+            onMinIndexChange={onMinPriceIndexChange}
+            onMaxIndexChange={onMaxPriceIndexChange}
+            onActiveChange={onPriceSliderActiveChange}
+          />
+        </div>
+      ) : null}
+      {cls !== "commercial" ? (
+        <BedBathFilterRow
+          onBedSliderActiveChange={onBedSliderActiveChange}
+          onBathSliderActiveChange={onBathSliderActiveChange}
+          onVintageSliderActiveChange={onVintageSliderActiveChange}
+          minBedrooms={minBedrooms}
+          maxBedrooms={maxBedrooms}
+          onMinBedroomsChange={onMinBedroomsChange}
+          onMaxBedroomsChange={onMaxBedroomsChange}
+          minBathrooms={minBathrooms}
+          maxBathrooms={maxBathrooms}
+          onMinBathroomsChange={onMinBathroomsChange}
+          onMaxBathroomsChange={onMaxBathroomsChange}
+          minVintage={minVintage}
+          maxVintage={maxVintage}
+          onMinVintageChange={onMinVintageChange}
+          onMaxVintageChange={onMaxVintageChange}
+          onResetSliders={onResetSliders}
+          slidersCustomized={slidersCustomized}
+        />
+      ) : null}
+    </>
+  );
+
+  if (filtersExpanded) {
+    return <div className={rowClass}>{sliderPanel}</div>;
+  }
+
+  if (!collapsedSlidersOpen) return null;
+
+  return (
+    <div className={rowClass} data-intel-slider-panel>
+      {sliderPanel}
+    </div>
   );
 }
 
@@ -3564,7 +3784,7 @@ function PriceRangeSlider({
   }, [active]);
 
   return (
-    <div className="flex items-center shrink-0">
+    <div className="flex flex-col items-stretch shrink-0">
       <div className={`relative h-4 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
         <input
           type="range"
@@ -3613,6 +3833,141 @@ function PriceRangeSlider({
   );
 }
 
+function PriceRangeInputs({
+  steps,
+  minIndex,
+  maxIndex,
+  onMinIndexChange,
+  onMaxIndexChange,
+  onActiveChange,
+}: {
+  steps: readonly number[];
+  minIndex: number;
+  maxIndex: number;
+  onMinIndexChange: (value: number) => void;
+  onMaxIndexChange: (value: number) => void;
+  onActiveChange: (active: boolean) => void;
+}) {
+  const [minDraft, setMinDraft] = useState<string | null>(null);
+  const [maxDraft, setMaxDraft] = useState<string | null>(null);
+  const maxStepIndex = boardPriceMaxIndex(steps);
+  const lo = Math.min(minIndex, maxIndex);
+  const hi = Math.max(minIndex, maxIndex);
+  const disabled = maxStepIndex <= 0;
+  const minPrice = steps[lo] ?? 0;
+  const maxPrice = steps[hi] ?? steps[maxStepIndex] ?? 0;
+  const priceFloor = steps[0] ?? 0;
+  const priceCeiling = steps[maxStepIndex] ?? 0;
+
+  const setSliderActive = (next: boolean) => {
+    onActiveChange(next);
+  };
+
+  const commitMinPrice = (raw: string) => {
+    setMinDraft(null);
+    const parsed = parseIntelPriceInput(raw);
+    if (parsed == null) return;
+    const clamped = Math.max(priceFloor, Math.min(parsed, steps[hi] ?? parsed));
+    const index = minPriceToStepIndex(clamped, steps);
+    const finalIndex = Math.min(index, hi);
+    if (finalIndex !== lo) setSliderActive(true);
+    onMinIndexChange(finalIndex);
+  };
+
+  const commitMaxPrice = (raw: string) => {
+    setMaxDraft(null);
+    const parsed = parseIntelPriceInput(raw);
+    if (parsed == null) return;
+    const clamped = Math.min(priceCeiling, Math.max(parsed, steps[lo] ?? parsed));
+    const index = maxPriceToStepIndex(clamped, steps);
+    const finalIndex = Math.max(index, lo);
+    if (finalIndex !== hi) setSliderActive(true);
+    onMaxIndexChange(finalIndex);
+  };
+
+  const applyMinWheel = (deltaY: number) => {
+    if (disabled) return;
+    const current =
+      minDraft != null ? (parseIntelPriceInput(minDraft) ?? minPrice) : minPrice;
+    const ceiling = steps[hi] ?? priceCeiling;
+    const next = adjustIntelPriceByWheel(current, deltaY, priceFloor, ceiling);
+    if (next === current) return;
+    setMinDraft(null);
+    const index = minPriceToStepIndex(next, steps);
+    const finalIndex = Math.min(index, hi);
+    if (finalIndex !== lo) setSliderActive(true);
+    onMinIndexChange(finalIndex);
+  };
+
+  const applyMaxWheel = (deltaY: number) => {
+    if (disabled) return;
+    const current =
+      maxDraft != null ? (parseIntelPriceInput(maxDraft) ?? maxPrice) : maxPrice;
+    const floor = steps[lo] ?? priceFloor;
+    const next = adjustIntelPriceByWheel(current, deltaY, floor, priceCeiling);
+    if (next === current) return;
+    setMaxDraft(null);
+    const index = maxPriceToStepIndex(next, steps);
+    const finalIndex = Math.max(index, lo);
+    if (finalIndex !== hi) setSliderActive(true);
+    onMaxIndexChange(finalIndex);
+  };
+
+  const priceInputClass =
+    "w-0 min-w-0 flex-1 rounded border border-white/20 bg-white/5 px-1 py-0.5 font-mono text-[9px] tabular-nums text-gold placeholder:text-white/30 focus:border-gold/50 focus:outline-none disabled:opacity-40 overflow-y-auto";
+
+  return (
+    <div className={`flex gap-1 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
+      <input
+        type="text"
+        inputMode="numeric"
+        disabled={disabled}
+        value={minDraft ?? formatIntelPriceStep(minPrice)}
+        onChange={(e) => setMinDraft(e.target.value)}
+        onFocus={() => setMinDraft(formatIntelPriceStep(minPrice))}
+        onBlur={(e) => commitMinPrice(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitMinPrice((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+          applyMinWheel(e.deltaY);
+        }}
+        title="Scroll to adjust in $500K steps (above $4M: $1M)"
+        aria-label="Minimum price amount"
+        className={priceInputClass}
+      />
+      <input
+        type="text"
+        inputMode="numeric"
+        disabled={disabled}
+        value={maxDraft ?? formatIntelPriceStep(maxPrice)}
+        onChange={(e) => setMaxDraft(e.target.value)}
+        onFocus={() => setMaxDraft(formatIntelPriceStep(maxPrice))}
+        onBlur={(e) => commitMaxPrice(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitMaxPrice((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+          applyMaxWheel(e.deltaY);
+        }}
+        title="Scroll to adjust in $500K steps (above $4M: $1M)"
+        aria-label="Maximum price amount"
+        className={priceInputClass}
+      />
+    </div>
+  );
+}
+
 function FilterGroup<T extends string>({
   label,
   value,
@@ -3638,7 +3993,11 @@ function FilterGroup<T extends string>({
             type="button"
             onClick={() => onChange(opt.value)}
             aria-pressed={value === opt.value}
-            className={filterPillButtonClass(value === opt.value, "compact")}
+            className={filterPillButtonClass(
+              value === opt.value,
+              "compact",
+              "dark",
+            )}
           >
             {opt.label}
           </button>
@@ -3904,5 +4263,68 @@ function DealBoardPagination({
         </div>
       </nav>
     </div>
+  );
+}
+
+function IntelFiltersToggle({
+  expanded,
+  filtersActive,
+  onToggle,
+}: {
+  expanded: boolean;
+  filtersActive: boolean;
+  onToggle: () => void;
+}) {
+  const label = expanded ? "Hide Filters" : "Show Filters";
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-label={label}
+      className={`relative inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-white/45 px-3 text-white transition-colors hover:border-white hover:bg-white/10 ${
+        expanded ? "bg-white/10" : ""
+      }`}
+    >
+      {expanded ? (
+        <svg
+          className="h-4 w-4 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          aria-hidden
+        >
+          <path
+            d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path d="m15 15 6 6M21 15l-6 6" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <svg
+          className="h-4 w-4 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          aria-hidden
+        >
+          <path
+            d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+      <span className="font-mono text-[10px] tracking-[0.12em] uppercase whitespace-nowrap">
+        {label}
+      </span>
+      {!expanded && filtersActive ? (
+        <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
+      ) : null}
+    </button>
   );
 }

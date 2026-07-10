@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { resolveComparablesForSubject } from '@/lib/listing-comparables-resolve'
-import { fetchListingByMlsId } from '@/lib/listings-store'
+import { readListingFromDbByMlsId } from '@/lib/listings-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,7 +17,7 @@ export async function GET(
   }
 
   try {
-    const { listing: subject } = await fetchListingByMlsId(id)
+    const { listing: subject } = readListingFromDbByMlsId(id)
     if (!subject) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }

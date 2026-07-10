@@ -1,0 +1,398 @@
+"use client";
+
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import type {
+  SqliteDatabaseDiagram,
+  SqliteRelationship,
+  SqliteTableInfo,
+} from "@/lib/sqlite-schema-diagram-types";
+import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
+
+type AnchorPoint = { x: number; y: number };
+type ConnectorPath = {
+  key: string;
+  d: string;
+  label: string;
+};
+
+function formatColumnLine(col: SqliteTableInfo["columns"][number]): string {
+  const flags = [
+    col.primaryKey ? "PK" : null,
+    col.notNull ? "NOT NULL" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return flags ? `${col.name}  ${col.type}  ${flags}` : `${col.name}  ${col.type}`;
+}
+
+function relationshipLabel(rel: SqliteRelationship): string {
+  return `${rel.from.table}.${rel.from.column} → ${rel.to.table}.${rel.to.column}`;
+}
+
+function bezierPath(from: AnchorPoint, to: AnchorPoint): string {
+  const dx = Math.abs(to.x - from.x);
+  const bend = Math.max(28, dx * 0.45);
+  const c1x = from.x + (to.x >= from.x ? bend : -bend);
+  const c2x = to.x + (to.x >= from.x ? -bend : bend);
+  return `M ${from.x} ${from.y} C ${c1x} ${from.y}, ${c2x} ${to.y}, ${to.x} ${to.y}`;
+}
+
+function columnAnchor(
+  container: HTMLElement,
+  table: string,
+  column: string,
+  side: "left" | "right",
+): AnchorPoint | null {
+  const row = container.querySelector<HTMLElement>(
+    `[data-schema-table="${table}"][data-schema-column="${column}"]`,
+  );
+  if (!row) return null;
+  const containerRect = container.getBoundingClientRect();
+  const rect = row.getBoundingClientRect();
+  return {
+    x:
+      side === "right"
+        ? rect.right - containerRect.left
+        : rect.left - containerRect.left,
+    y: rect.top + rect.height / 2 - containerRect.top,
+  };
+}
+
+function TableCard({
+  table,
+  foreignKeyColumns,
+}: {
+  table: SqliteTableInfo;
+  foreignKeyColumns: Set<string>;
+}) {
+  return (
+    <div
+      data-schema-table={table.name}
+      className="min-w-[14rem] max-w-[18rem] rounded-xl border border-charcoal/[0.12] bg-cream/30 overflow-hidden shadow-sm shadow-charcoal/[0.03]"
+    >
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-charcoal/[0.1] bg-navy text-white">
+        <p className="font-mono text-[11px] tracking-[0.12em] uppercase truncate">
+          {table.name}
+        </p>
+        <p className="font-mono text-[10px] tabular-nums text-white/60 shrink-0">
+          {table.name === "listing_photos" ? "≈" : ""}
+          {table.rowCount.toLocaleString()} rows
+        </p>
+      </div>
+      <ul className="divide-y divide-charcoal/[0.06]">
+        {table.columns.map((col) => {
+          const isFk = foreignKeyColumns.has(col.name);
+          return (
+            <li
+              key={col.name}
+              data-schema-table={table.name}
+              data-schema-column={col.name}
+              className={`relative px-3 py-1.5 font-mono text-[11px] leading-snug ${
+                col.primaryKey
+                  ? "text-navy font-semibold bg-gold/10"
+                  : isFk
+                    ? "text-navy bg-navy/[0.03]"
+                    : "text-charcoal/75"
+              }`}
+            >
+              {col.primaryKey ? (
+                <span
+                  className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-gold"
+                  aria-hidden
+                />
+              ) : null}
+              {isFk ? (
+                <span
+                  className="absolute right-0 top-1 bottom-1 w-0.5 rounded-full bg-navy/35"
+                  aria-hidden
+                />
+              ) : null}
+              <span className="block truncate" title={formatColumnLine(col)}>
+                <span className={col.primaryKey || isFk ? "text-navy" : "text-charcoal"}>
+                  {col.name}
+                </span>
+                <span className="text-charcoal/40"> · </span>
+                <span className="text-slate">{col.type || "ANY"}</span>
+                {col.primaryKey ? (
+                  <span className="ml-1 text-[9px] tracking-wide uppercase text-gold">
+                    pk
+                  </span>
+                ) : null}
+                {isFk ? (
+                  <span className="ml-1 text-[9px] tracking-wide uppercase text-navy/55">
+                    fk
+                  </span>
+                ) : null}
+                {col.notNull && !col.primaryKey ? (
+                  <span className="ml-1 text-[9px] tracking-wide uppercase text-charcoal/35">
+                    nn
+                  </span>
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function SchemaRelationshipCanvas({
+  tables,
+  relationships,
+  markerId,
+}: {
+  tables: SqliteTableInfo[];
+  relationships: SqliteRelationship[];
+  markerId: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [paths, setPaths] = useState<ConnectorPath[]>([]);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  const foreignKeyColumnsByTable = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const rel of relationships) {
+      const set = map.get(rel.to.table) ?? new Set<string>();
+      set.add(rel.to.column);
+      map.set(rel.to.table, set);
+    }
+    return map;
+  }, [relationships]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || relationships.length === 0) {
+      setPaths([]);
+      return;
+    }
+
+    const measure = () => {
+      const { width, height } = container.getBoundingClientRect();
+      setSize({ width, height });
+
+      const next: ConnectorPath[] = [];
+      for (const rel of relationships) {
+        const from = columnAnchor(container, rel.from.table, rel.from.column, "right");
+        const to = columnAnchor(container, rel.to.table, rel.to.column, "left");
+        if (!from || !to) continue;
+
+        const start =
+          from.x <= to.x
+            ? from
+            : columnAnchor(container, rel.from.table, rel.from.column, "left") ?? from;
+        const end =
+          from.x <= to.x
+            ? to
+            : columnAnchor(container, rel.to.table, rel.to.column, "right") ?? to;
+
+        next.push({
+          key: `${rel.from.table}.${rel.from.column}->${rel.to.table}.${rel.to.column}`,
+          d: bezierPath(start, end),
+          label: relationshipLabel(rel),
+        });
+      }
+      setPaths(next);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [relationships, tables]);
+
+  if (tables.length === 0) {
+    return <p className="text-sm text-slate">No tables to display.</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {relationships.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-charcoal/[0.08] bg-cream/25 px-3 py-2.5">
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45 shrink-0">
+            Relationships
+          </p>
+          <ul className="flex flex-wrap gap-x-3 gap-y-1">
+            {relationships.map((rel) => (
+              <li
+                key={relationshipLabel(rel)}
+                className="font-mono text-[10px] text-slate"
+                title={rel.source === "pragma" ? "SQLite FOREIGN KEY" : "Documented join"}
+              >
+                <span className="text-navy">{rel.from.table}</span>
+                <span className="text-charcoal/35">.</span>
+                <span className="text-gold">{rel.from.column}</span>
+                <span className="text-charcoal/35"> → </span>
+                <span className="text-navy">{rel.to.table}</span>
+                <span className="text-charcoal/35">.</span>
+                <span className="text-navy/70">{rel.to.column}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div ref={containerRef} className="relative min-h-[12rem]">
+        {paths.length > 0 && size.width > 0 && size.height > 0 ? (
+          <svg
+            className="pointer-events-none absolute inset-0 z-0"
+            width={size.width}
+            height={size.height}
+            aria-hidden
+          >
+            <defs>
+              <marker
+                id={markerId}
+                markerWidth="7"
+                markerHeight="7"
+                refX="6"
+                refY="3.5"
+                orient="auto"
+              >
+                <path d="M0,0 L7,3.5 L0,7 Z" className="fill-navy/45" />
+              </marker>
+            </defs>
+            {paths.map((path) => (
+              <path
+                key={path.key}
+                d={path.d}
+                fill="none"
+                className="stroke-navy/30"
+                strokeWidth={1.5}
+                markerEnd={`url(#${markerId})`}
+              >
+                <title>{path.label}</title>
+              </path>
+            ))}
+          </svg>
+        ) : null}
+
+        <div className="relative z-10 flex flex-wrap gap-4 min-w-0">
+          {tables.map((table) => (
+            <TableCard
+              key={table.name}
+              table={table}
+              foreignKeyColumns={foreignKeyColumnsByTable.get(table.name) ?? new Set()}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DatabaseDiagramCard({ db }: { db: SqliteDatabaseDiagram }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
+      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
+          <div className="min-w-0">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+              {db.label}
+            </p>
+            <p className="mt-1 text-sm text-slate">{db.role}</p>
+          </div>
+          <div className="shrink-0 font-mono text-[11px] text-charcoal/55 sm:text-right space-y-1">
+            <p>
+              <span
+                className={`inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle ${
+                  db.available ? "bg-sage" : "bg-coral/80"
+                }`}
+              />
+              {db.available ? "Connected" : "Unavailable"}
+            </p>
+            <p className="tabular-nums">{formatBytes(db.sizeBytes)}</p>
+            <p>
+              {db.tables.length} table{db.tables.length === 1 ? "" : "s"}
+              {db.relationships.length > 0
+                ? ` · ${db.relationships.length} relationship${db.relationships.length === 1 ? "" : "s"}`
+                : ""}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-charcoal/[0.08] bg-white/70 px-3 sm:px-4 py-3">
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/40 mb-2">
+            Storage location
+          </p>
+          <dl className="space-y-2">
+            <div>
+              <dt className="font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/35">
+                Relative
+              </dt>
+              <dd className="mt-0.5 font-mono text-[11px] sm:text-xs text-navy break-all">
+                {db.relativePath}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/35">
+                Absolute
+              </dt>
+              <dd
+                className="mt-0.5 font-mono text-[11px] sm:text-xs text-slate break-all"
+                title={db.absolutePath}
+              >
+                {db.absolutePath}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/35">
+                File
+              </dt>
+              <dd className="mt-0.5 font-mono text-[11px] sm:text-xs text-charcoal/70">
+                {db.fileName}
+                {db.exists ? "" : " · missing on disk"}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        {db.error ? (
+          <p className="mt-3 text-sm text-coral">{db.error}</p>
+        ) : null}
+      </div>
+
+      {db.tables.length > 0 ? (
+        <div className="px-5 sm:px-6 py-5 overflow-x-auto">
+          <SchemaRelationshipCanvas
+            tables={db.tables}
+            relationships={db.relationships}
+            markerId={`schema-fk-arrow-${db.id}`}
+          />
+        </div>
+      ) : (
+        <div className="px-5 sm:px-6 py-8">
+          <p className="text-sm text-slate">No tables to display.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AdminSqliteDiagrams({
+  databases,
+}: {
+  databases: SqliteDatabaseDiagram[];
+}) {
+  return (
+    <div className="mt-6 space-y-6">
+      <div>
+        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2">
+          SQLite databases
+        </p>
+        <p className="text-sm text-slate max-w-3xl">
+          Live schema for every SQLite file this process uses — storage paths, tables,
+          columns, approximate row counts, and PK→FK relationship lines where tables join
+          on <span className="font-mono text-navy/80">listings.id</span>.
+        </p>
+      </div>
+      {databases.map((db) => (
+        <DatabaseDiagramCard key={db.id} db={db} />
+      ))}
+    </div>
+  );
+}

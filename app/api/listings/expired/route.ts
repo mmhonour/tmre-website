@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { firstStoredListingPhotoIndex } from '@/lib/listings-db'
 import {
   expiredListingAgeDays,
   fetchExpiredListingsForCity,
@@ -22,8 +23,10 @@ const PER_TOWN_LIMIT = 500
 function enrich(l: Listing) {
   const city = resolveListingTown(l.address.city) ?? l.address.city
   const expiredDays = expiredListingAgeDays(l)
+  const photoId = l.listingKey?.trim() || l.mlsId
   return {
     mlsId: l.mlsId,
+    listingKey: l.listingKey ?? null,
     propertyType: l.propertyType,
     style: l.style,
     address: { ...l.address, city },
@@ -34,6 +37,7 @@ function enrich(l: Listing) {
     yearBuilt: l.yearBuilt,
     dom: l.dom,
     photoCount: l.photoCount,
+    primaryPhotoIndex: firstStoredListingPhotoIndex(photoId),
     status: l.status,
     ownerName: l.ownerName,
     expiredDays,

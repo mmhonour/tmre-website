@@ -67,6 +67,9 @@ type LoadState = "loading" | "ready" | "error" | "not-found";
 
 const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
 
+/** Survives dev Fast Refresh / remounts so the page does not flash back to loading. */
+const listingDetailCache = new Map<string, ApiResponse>();
+
 export default function ListingDetailClient({
   mlsId,
   addressHint,
@@ -76,13 +79,25 @@ export default function ListingDetailClient({
   addressHint?: string | null;
   townHint?: string | null;
 }) {
-  const [data, setData] = useState<ApiResponse | null>(null);
-  const [state, setState] = useState<LoadState>("loading");
+  const [data, setData] = useState<ApiResponse | null>(
+    () => listingDetailCache.get(mlsId) ?? null,
+  );
+  const [state, setState] = useState<LoadState>(() =>
+    listingDetailCache.has(mlsId) ? "ready" : "loading",
+  );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setState("loading");
+    const cached = listingDetailCache.get(mlsId);
+    if (cached) {
+      setData(cached);
+      setState("ready");
+    } else {
+      setData(null);
+      setState("loading");
+    }
+
     fetch(`/api/listings/${encodeURIComponent(mlsId)}?photos=0`)
       .then(async (r) => {
         if (r.status === 404) {
@@ -94,6 +109,7 @@ export default function ListingDetailClient({
       })
       .then((d) => {
         if (!d || cancelled) return;
+        listingDetailCache.set(mlsId, d);
         setData(d);
         setState("ready");
       })

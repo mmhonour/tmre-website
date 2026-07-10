@@ -20,7 +20,7 @@ import {
   filterPillSeparatorClass,
   type FilterPillTheme,
 } from "@/lib/filter-pill-styles";
-import { listingDetailHref } from "@/lib/listing-url";
+import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { isRentalListing } from "@/lib/listing-kind";
@@ -36,6 +36,7 @@ type ViewMode = (typeof EL_VIEW_VALUES)[number];
 
 type ExpiredListing = {
   mlsId: string;
+  listingKey?: string | null;
   propertyType: string;
   style: string;
   address: {
@@ -53,6 +54,7 @@ type ExpiredListing = {
   yearBuilt: number | null;
   dom: number | null;
   photoCount: number | null;
+  primaryPhotoIndex?: number | null;
   status: string;
   ownerName: string | null;
   expiredDays: number | null;
@@ -552,29 +554,21 @@ function listingMeta(l: ExpiredListing) {
   };
 }
 
-function useFirstPhoto(mlsId: string | null): string | null {
-  const [photo, setPhoto] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!mlsId || mlsId === "—") {
-      setPhoto(null);
-      return;
-    }
-    let cancelled = false;
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}/photo`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { url?: string | null } | null) => {
-        if (!cancelled && d?.url) setPhoto(d.url);
-      })
-      .catch(() => {
-        if (!cancelled) setPhoto(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [mlsId]);
-
-  return photo;
+function useFirstPhoto(listing: {
+  mlsId: string;
+  listingKey?: string | null;
+  photoCount?: number | null;
+  primaryPhotoIndex?: number | null;
+}): string | null {
+  const id = listing.listingKey?.trim() || listing.mlsId;
+  if (!id || id === "—" || (listing.photoCount != null && listing.photoCount <= 0)) {
+    return null;
+  }
+  const index =
+    listing.primaryPhotoIndex != null && listing.primaryPhotoIndex >= 0
+      ? listing.primaryPhotoIndex
+      : 0;
+  return listingPhotoProxyUrl(id, index);
 }
 
 function ListingPhoto({
@@ -738,7 +732,7 @@ function LineViewIcon() {
 function ListingCard({ listing: l, view }: { listing: ExpiredListing; view: ViewMode }) {
   const ownerDisplay = useOwnerLookup(l.address.city, l.address.street, l.ownerName);
   const meta = listingMeta(l);
-  const photo = useFirstPhoto(l.mlsId !== "—" ? l.mlsId : null);
+  const photo = useFirstPhoto(l);
 
   if (view === "line") {
     return (

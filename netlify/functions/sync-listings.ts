@@ -1,9 +1,10 @@
 import type { Config } from '@netlify/functions'
-import { syncAllTownListings, getSyncStatus } from '../../lib/listings-sync'
+import { getSyncStatus, syncListingsSmart } from '../../lib/listings-sync'
+import { LATEST_DB_REFRESH_MS } from '../../lib/latest-refresh'
 
 export default async function handler() {
   try {
-    const result = await syncAllTownListings()
+    const result = await syncListingsSmart()
     return new Response(
       JSON.stringify({
         ok: result.towns.every((row) => row.ok),
@@ -27,5 +28,7 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  schedule: '*/30 * * * *',
+  // Incremental RETS → SQLite sync every 30 minutes (full sync when last_full_sync
+  // is older than 24h — prefer the dedicated daily 5am sync-listings-full function).
+  schedule: `*/${Math.max(1, Math.round(LATEST_DB_REFRESH_MS / 60_000))} * * * *`,
 }

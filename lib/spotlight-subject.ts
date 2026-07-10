@@ -89,7 +89,31 @@ export async function resolveSpotlightSubjectListing(
 ): Promise<Listing> {
   const mlsId = config.mlsId?.trim()
   if (!mlsId) {
-    return buildSpotlightSubjectListing(null, config)
+    const { resolveSpotlightMlsId } = await import('@/lib/spotlight-cache')
+    const resolved = await resolveSpotlightMlsId(config)
+    if (!resolved) {
+      return buildSpotlightSubjectListing(null, config)
+    }
+    const cached = readListingByIdFromDb(resolved)
+    if (cached) {
+      return buildSpotlightSubjectListing(cached, {
+        ...config,
+        mlsId: resolved,
+      })
+    }
+    try {
+      const { listing } = await fetchListingByMlsId(resolved)
+      return buildSpotlightSubjectListing(listing, {
+        ...config,
+        mlsId: resolved,
+      })
+    } catch (err) {
+      console.warn('[spotlight-subject] MLS lookup failed — using config fallback', err)
+      return buildSpotlightSubjectListing(null, {
+        ...config,
+        mlsId: resolved,
+      })
+    }
   }
 
   const cached = readListingByIdFromDb(mlsId)

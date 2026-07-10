@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchActiveListingsAcrossTowns, listingCacheHeaders } from '@/lib/listings-store'
-import { TMRE_MARKET_TOWNS, type Listing } from '@/lib/rets'
+import { listingCacheHeaders } from '@/lib/listings-store'
+import { searchListingsInDbByQuery } from '@/lib/listings-db'
 import { filterListingsToTmreTowns, isTmreTown } from '@/lib/tmre-towns'
+import { searchListings, type Listing } from '@/lib/rets'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -11,22 +12,6 @@ function daysBetween(iso: string | null): number | null {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return null
   return Math.max(0, Math.floor((Date.now() - t) / 86_400_000))
-}
-
-function matchesQuery(l: Listing, q: string): boolean {
-  const hay = [
-    l.mlsId,
-    l.address.full,
-    l.address.street,
-    l.address.city,
-    l.address.postalCode,
-    l.propertyType,
-    l.style,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-  return hay.includes(q)
 }
 
 function enrich(l: Listing) {
@@ -48,10 +33,39 @@ function enrich(l: Listing) {
   }
 }
 
+function dedupeListings(listings: Listing[]): Listing[] {
+  const seen = new Set<string>()
+  const out: Listing[] = []
+  for (const l of listings) {
+    const key = l.listingKey || l.mlsId
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(l)
+  }
+  return out
+}
+
+async function supplementFromRets(query: string, limit: number, existing: Listing[]): Promise<Listing[]> {
+  if (existing.length >= limit) return existing
+  try {
+    const retsHits = await searchListings({
+      county: 'fairfield',
+      status: 'Active',
+      addressContains: query,
+      limit: Math.max(limit * 2, 20),
+    })
+    return dedupeListings([...existing, ...filterListingsToTmreTowns(retsHits)]).slice(0, limit)
+  } catch (err) {
+    console.warn('[/api/listings/find] RETS address supplement failed', err)
+    return existing
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const q = (searchParams.get('q') ?? '').trim().toLowerCase()
+  const q = (searchParams.get('q') ?? '').trim()
   const city = (searchParams.get('city') ?? '').trim()
+  const scope = (searchParams.get('scope') ?? 'active').trim().toLowerCase()
   const limitRaw = Number(searchParams.get('limit') ?? '100')
   const resultLimit = Number.isFinite(limitRaw)
     ? Math.min(Math.max(Math.floor(limitRaw), 1), 100)
@@ -69,24 +83,38 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const towns = city ? [city] : [...TMRE_MARKET_TOWNS]
-    const { listings, source } = await fetchActiveListingsAcrossTowns(towns, {
-      limit: 500,
-    })
-    const results = filterListingsToTmreTowns(listings)
-      .filter((l) => matchesQuery(l, q))
-      .map(enrich)
+    const statusBuckets =
+      scope === 'all' ? ['Active', 'Closed', 'Expired'] : ['Active']
+
+    let listings = searchListingsInDbByQuery(q, { limit: resultLimit, statusBuckets })
+    let source: 'db' | 'rets' | 'db+rets' = listings.length > 0 ? 'db' : 'db'
+
+    if (city) {
+      const cityLower = city.toLowerCase()
+      listings = listings.filter(
+        (l) => l.address.city?.trim().toLowerCase() === cityLower,
+      )
+    }
+
+    if (listings.length < resultLimit) {
+      const before = listings.length
+      listings = await supplementFromRets(q, resultLimit, listings)
+      if (listings.length > before) source = listings.length > 0 && before > 0 ? 'db+rets' : 'rets'
+    }
+
+    const results = listings.slice(0, resultLimit).map(enrich)
 
     return NextResponse.json(
       {
-        query: q,
+        query: q.toLowerCase(),
         city: city || null,
+        scope,
         count: results.length,
-        listings: results.slice(0, resultLimit),
+        listings: results,
         generatedAt: new Date().toISOString(),
         source,
       },
-      { headers: listingCacheHeaders(source) },
+      { headers: listingCacheHeaders(source === 'rets' ? 'rets' : 'db') },
     )
   } catch (err) {
     console.error('[/api/listings/find] error', err)

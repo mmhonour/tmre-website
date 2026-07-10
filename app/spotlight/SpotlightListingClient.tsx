@@ -12,9 +12,21 @@ import { ListingShell } from "@/components/listing/ListingShell";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { spotlightObfuscatesPhoto } from "@/lib/spotlight-display";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
+import type { SpotlightPropertyTabId } from "@/lib/spotlight-listing";
+
+function spotlightPhotosHref(
+  propertyTab: SpotlightPropertyTabId,
+  photoIndex?: number,
+): string {
+  const params = new URLSearchParams();
+  if (propertyTab === 2) params.set("property", "2");
+  if (photoIndex != null) params.set("photo", String(photoIndex));
+  const qs = params.toString();
+  return qs ? `${spotlightSectionHref("photos")}?${qs}` : spotlightSectionHref("photos");
+}
 
 export default function SpotlightListingClient() {
-  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown } =
+  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, propertyTab } =
     useSpotlightListing();
 
   if (loadState === "error") {
@@ -54,11 +66,15 @@ export default function SpotlightListingClient() {
       ? {
           url: listingPhotoProxyUrl(display.mlsId, 0),
           alt: display.config.displayTitle,
-          href: spotlightSectionHref("photos"),
+          href: spotlightPhotosHref(propertyTab),
           photoCount: display.photoCount,
           obfuscate: obfuscatePhoto(0),
         }
       : null;
+
+  const publicAddressLabel = display.config.hideAddress
+    ? display.config.displayLocation
+    : display.config.displayTitle;
 
   return (
     <SpotlightPageChrome
@@ -73,11 +89,9 @@ export default function SpotlightListingClient() {
             remarks={display.remarks}
             mlsId={display.mlsId}
             photoCount={display.photoCount > 0 ? display.photoCount : null}
-            address={display.config.displayTitle}
-            city={display.config.address.city}
-            photoHref={(photoIndex) =>
-              `${spotlightSectionHref("photos")}?photo=${photoIndex}`
-            }
+            address={publicAddressLabel}
+            city={display.config.hideAddress ? null : display.config.address.city}
+            photoHref={(photoIndex) => spotlightPhotosHref(propertyTab, photoIndex)}
             obfuscatePhotoIndex={obfuscatePhoto}
           />
           {heroPhoto && !isComingSoon ? (

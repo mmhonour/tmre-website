@@ -6,6 +6,10 @@ import GoldilocksScoreExplainModal, {
   type ExplainContext,
 } from "@/components/GoldilocksScoreExplainModal";
 import ModalPortal from "@/components/ModalPortal";
+import {
+  formatScoreWeightPct,
+  useSiteUnlocked,
+} from "@/components/SiteUnlockProvider";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 import type { ScoreExplainTopic } from "@/lib/goldilocks-score-info";
 
@@ -45,6 +49,7 @@ export default function ListingScoreBreakdownModal({
   reductionPct?: number | null;
 }) {
   const [explainTopic, setExplainTopic] = useState<ScoreExplainTopic | null>(null);
+  const showWeights = useSiteUnlocked();
 
   const compositeColor =
     score.composite >= 85
@@ -58,6 +63,7 @@ export default function ListingScoreBreakdownModal({
     isRental,
     ppsfDiscount: ppsfDiscount ?? undefined,
     reductionPct: reductionPct ?? undefined,
+    showWeights,
     factorScore:
       explainTopic === "age"
         ? score.age
@@ -135,14 +141,23 @@ export default function ListingScoreBreakdownModal({
 
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-slate mb-4">
             Score breakdown
+            {showWeights ? " · weights" : ""}
           </p>
           <div className="space-y-4 mb-6">
             {FACTORS.map(({ key, label, scoreKey, explainKey }) => {
               const value = score[scoreKey] as number;
+              const weightPct = formatScoreWeightPct(score.weights[key]);
               return (
                 <div key={key}>
                   <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/70 mb-1.5">
-                    <span>{label}</span>
+                    <span>
+                      {label}
+                      {showWeights ? (
+                        <span className="ml-1.5 text-slate/55 normal-case tracking-normal">
+                          ({weightPct})
+                        </span>
+                      ) : null}
+                    </span>
                     <span>
                       {Math.round(value)}
                       <button

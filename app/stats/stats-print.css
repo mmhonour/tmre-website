@@ -1,0 +1,178 @@
+.stats-print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  body.is-stats-printing nav,
+  body.is-stats-printing footer,
+  body.is-stats-printing header {
+    display: none !important;
+  }
+
+  body.is-stats-printing .stats-print-screen-only,
+  body.is-stats-printing .stats-chart-interactive {
+    display: none !important;
+  }
+
+  body.is-stats-printing .stats-print-only {
+    display: flex !important;
+  }
+
+  body.is-stats-printing .stats-print-header {
+    display: none !important;
+  }
+
+  body.is-stats-printing .stats-page-print-scope,
+  body.is-stats-printing .stats-charts-section {
+    background: white !important;
+    padding: 0 !important;
+  }
+
+  body.is-stats-printing .stats-chart-print-frame {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body.is-stats-printing .stats-chart-card {
+    background: white !important;
+    border-color: rgba(44, 44, 42, 0.15) !important;
+    box-shadow: none !important;
+  }
+
+  body.is-stats-printing .stats-chart-card [class*="bg-[#0f1628]"],
+  body.is-stats-printing .stats-chart-card [class*="bg-[#0a1020]"] {
+    background: white !important;
+  }
+
+  body.is-stats-printing .stats-chart-card .text-white,
+  body.is-stats-printing .stats-chart-card [class*="text-white"] {
+    color: #1b2a4a !important;
+  }
+
+  body.is-stats-printing .stats-chart-card .text-white\/40,
+  body.is-stats-printing .stats-chart-card .text-white\/35,
+  body.is-stats-printing .stats-chart-card .text-white\/45,
+  body.is-stats-printing .stats-chart-card .text-white\/20,
+  body.is-stats-printing .stats-chart-card .text-white\/30 {
+    color: rgba(44, 44, 42, 0.55) !important;
+  }
+
+  body.is-stats-printing .stats-print-selection-pill {
+    font-family: var(--font-jetbrains), ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #1b2a4a;
+    border: 1px solid rgba(44, 44, 42, 0.2);
+    border-radius: 9999px;
+    padding: 0.2rem 0.65rem;
+    background: #f7f4ef;
+  }
+
+  body.is-stats-printing .stats-chart-card .recharts-cartesian-grid-horizontal line,
+  body.is-stats-printing .stats-chart-card .recharts-cartesian-grid-vertical line {
+    stroke: rgba(44, 44, 42, 0.1) !important;
+  }
+
+  body.is-stats-printing .stats-chart-card .recharts-cartesian-axis-tick-value {
+    fill: #2c2c2a !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+  }
+
+  body.is-stats-printing .stats-chart-card .recharts-cartesian-axis-line,
+  body.is-stats-printing .stats-chart-card .recharts-cartesian-axis-tick-line {
+    stroke: rgba(44, 44, 42, 0.35) !important;
+  }
+
+  body.is-stats-printing .stats-chart-card .recharts-area-area {
+    fill: none !important;
+  }
+
+  body.is-stats-printing .stats-chart-card .recharts-line-curve,
+  body.is-stats-printing .stats-chart-card .recharts-area-curve {
+    filter: none !important;
+  }
+
+  body.is-stats-printing {
+    background: white !important;
+  }
+
+  body.is-stats-printing.stats-print-target-all .stats-chart-print-frame {
+    break-after: page;
+    page-break-after: always;
+    margin-bottom: 8mm;
+  }
+
+  body.is-stats-printing.stats-print-target-all .stats-chart-print-frame:last-of-type {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Single-chart print: hide every chart block except the target. */
+  body.is-stats-printing:not(.stats-print-target-all) .stats-chart-print-frame {
+    display: none !important;
+  }
+
+  body.is-stats-printing.stats-print-target-active-by-month
+    .stats-chart-print-frame[data-stats-chart-id="active-by-month"],
+  body.is-stats-printing.stats-print-target-active-by-town
+    .stats-chart-print-frame[data-stats-chart-id="active-by-town"],
+  body.is-stats-printing.stats-print-target-sales-trend
+    .stats-chart-print-frame[data-stats-chart-id="sales-trend"],
+  body.is-stats-printing.stats-print-target-sales-by-town
+    .stats-chart-print-frame[data-stats-chart-id="sales-by-town"],
+  body.is-stats-printing.stats-print-target-sales-by-vintage
+    .stats-chart-print-frame[data-stats-chart-id="sales-by-vintage"],
+  body.is-stats-printing.stats-print-target-sales-by-price
+    .stats-chart-print-frame[data-stats-chart-id="sales-by-price"],
+  body.is-stats-printing.stats-print-target-median-by-town
+    .stats-chart-print-frame[data-stats-chart-id="median-by-town"],
+  body.is-stats-printing.stats-print-target-avg-dom
+    .stats-chart-print-frame[data-stats-chart-id="avg-dom"],
+  body.is-stats-printing.stats-print-target-median-underlying
+    .stats-chart-print-frame[data-stats-chart-id="median-underlying"] {
+    display: block !important;
+  }
+
+  body.is-stats-printing .stats-chart-print-frame .recharts-responsive-container {
+    width: 100% !important;
+    height: 260px !important;
+  }
+
+  body.is-stats-printing .stats-chart-print-frame svg {
+    overflow: visible;
+  }
+
+  body.is-stats-printing .stats-chart-data-panel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 6mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body.is-stats-printing.stats-print-mode-data [data-stats-print-data],
+  body.is-stats-printing.stats-print-mode-both [data-stats-print-data] {
+    display: block !important;
+  }
+
+  body.is-stats-printing.stats-print-mode-chart [data-stats-print-data] {
+    display: none !important;
+  }
+
+  body.is-stats-printing.stats-print-mode-data [data-stats-print-chart] {
+    display: none !important;
+  }
+
+  body.is-stats-printing.stats-print-mode-both [data-stats-print-data] {
+    margin-top: 6mm;
+  }
+}

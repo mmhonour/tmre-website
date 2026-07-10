@@ -44,6 +44,57 @@ export function maxPriceToIndex(price: number): number {
   return INTEL_PRICE_MAX_INDEX;
 }
 
+/** Largest board step that does not exceed this price (for min bound). */
+export function minPriceToStepIndex(price: number, steps: readonly number[]): number {
+  let index = 0;
+  for (let i = 0; i < steps.length; i++) {
+    if (steps[i] <= price) index = i;
+    else break;
+  }
+  return index;
+}
+
+/** Smallest board step that covers this price (for max bound). */
+export function maxPriceToStepIndex(price: number, steps: readonly number[]): number {
+  for (let i = 0; i < steps.length; i++) {
+    if (steps[i] >= price) return i;
+  }
+  return boardPriceMaxIndex(steps);
+}
+
+/** Parse typed currency into a whole-dollar amount. */
+export function parseIntelPriceInput(raw: string): number | null {
+  const s = raw.trim().replace(/[$,\s]/g, "");
+  if (!s) return null;
+  const mMatch = s.match(/^(\d+(?:\.\d+)?)m$/i);
+  if (mMatch) return Math.round(parseFloat(mMatch[1]) * 1_000_000);
+  const kMatch = s.match(/^(\d+(?:\.\d+)?)k$/i);
+  if (kMatch) return Math.round(parseFloat(kMatch[1]) * 1_000);
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+const INTEL_PRICE_SCROLL_SPLIT = 4_000_000;
+
+/** $500K steps at or below $4M; $1M steps above $4M (wheel on price bound inputs). */
+export function intelPriceScrollIncrement(price: number): number {
+  return price > INTEL_PRICE_SCROLL_SPLIT ? 1_000_000 : 500_000;
+}
+
+/** Adjust a bound price via mouse wheel; clamps to listing min/max for the current board. */
+export function adjustIntelPriceByWheel(
+  price: number,
+  deltaY: number,
+  floor: number,
+  ceiling: number,
+): number {
+  if (deltaY === 0) return price;
+  const increase = deltaY < 0;
+  const step = intelPriceScrollIncrement(price);
+  const next = increase ? price + step : price - step;
+  return Math.max(floor, Math.min(ceiling, next));
+}
+
 export function boardListingPrices(
   listings: { price: number | null | undefined; isRental?: boolean }[],
 ): number[] {

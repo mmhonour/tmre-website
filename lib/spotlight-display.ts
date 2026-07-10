@@ -24,6 +24,11 @@ export function spotlightObfuscatesPhoto(
   config: SpotlightListingConfig,
   photoIndex: number,
 ): boolean {
+  if (config.obfuscateFirstTwoPhotos) {
+    return (
+      SPOTLIGHT_COMING_SOON_OBFUSCATED_PHOTO_INDICES as readonly number[]
+    ).includes(photoIndex);
+  }
   if (!spotlightIsComingSoon(config)) return false;
   return (
     SPOTLIGHT_COMING_SOON_OBFUSCATED_PHOTO_INDICES as readonly number[]
@@ -138,7 +143,7 @@ export function buildSpotlightDisplay(
     headerAddress: {
       street: config.displayTitle,
       full: config.displayTitle,
-      city: config.displayLocation,
+      city: config.hideAddress ? "" : config.displayLocation,
       state: "",
       postalCode: "",
     },

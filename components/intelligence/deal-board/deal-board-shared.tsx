@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ListingThumbImage from "@/components/ListingThumbImage";
+import { formatLotAcresLabel } from "@/lib/listing-lot-acres";
 import { listingDetailHrefForListing, listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import type { DealBoardListing, DealBoardRowStatus } from "@/components/intelligence/deal-board/deal-board-types";
@@ -153,13 +154,11 @@ export function DealBoardAdaptiveMetaLine({
   );
 }
 
+/** Format lot acres without padded zeros (1.50 → 1.5, 02.00 → 2). */
 export function dealBoardAcresLabel(
   lotAcres: number | null | undefined,
 ): string | null {
-  if (lotAcres == null || lotAcres <= 0) return null;
-  if (lotAcres < 0.01) return "<0.01 ac";
-  if (lotAcres < 10) return `${lotAcres.toFixed(2)} ac`;
-  return `${lotAcres.toFixed(1)} ac`;
+  return formatLotAcresLabel(lotAcres);
 }
 
 /** DOM followed by property type, e.g. "12d DOM · SFR". */
@@ -241,17 +240,32 @@ function dealBoardScorePillClasses(value: number): string {
   return `${dealBoardScoreTextColor(value)} border-charcoal/20 bg-gradient-to-br from-charcoal/18 via-charcoal/12 to-charcoal/5`;
 }
 
+function dealBoardScorePillOpaqueClasses(value: number): string {
+  if (value >= 85) {
+    return "text-white border-sage/50 bg-sage shadow-sm";
+  }
+  if (value >= 70) {
+    return "text-white border-gold/40 bg-[#A88932] shadow-sm";
+  }
+  return "text-white/90 border-charcoal/50 bg-charcoal shadow-sm";
+}
+
 export function DealBoardScoreBadge({
   value,
   onClick,
   variant = "text",
+  opaque = false,
 }: {
   value: number;
   onClick?: () => void;
   variant?: "text" | "pill";
+  opaque?: boolean;
 }) {
   if (variant === "pill") {
-    const className = `inline-flex m-0 h-auto min-h-0 shrink-0 items-center justify-center rounded-full border px-2.5 py-px font-mono text-xs font-semibold leading-none tabular-nums ${dealBoardScorePillClasses(value)} ${
+    const pillClasses = opaque
+      ? dealBoardScorePillOpaqueClasses(value)
+      : dealBoardScorePillClasses(value);
+    const className = `inline-flex m-0 h-auto min-h-0 shrink-0 items-center justify-center rounded-full border px-2.5 py-px font-mono text-xs font-semibold leading-none tabular-nums ${pillClasses} ${
       onClick
         ? "cursor-pointer hover:brightness-95 active:brightness-90 transition-all"
         : ""
@@ -292,31 +306,52 @@ export function DealBoardScoreBadge({
   return <span className={className}>{value.toFixed(1)}</span>;
 }
 
+export function formatStatusBadgeLabel(status: DealBoardRowStatus | string): string {
+  return status === "Reduced" ? "Reduced!" : status;
+}
+
 export function DealBoardStatusBadge({
   status,
   onClick,
+  size = "default",
+  surface = "default",
 }: {
   status: DealBoardRowStatus | string;
   onClick?: () => void;
+  size?: "default" | "sm";
+  /** Opaque pill for photo overlays (grid view). */
+  surface?: "default" | "photo";
 }) {
-  const map: Record<string, string> = {
+  const defaultMap: Record<string, string> = {
     New: "bg-sage/10 text-sage border-sage/30",
     Active: "bg-sky/10 text-sky border-sky/30",
     Reduced: "bg-coral/10 text-coral border-coral/30",
     Pending: "bg-charcoal/10 text-slate border-charcoal/20",
   };
-  const className = `inline-flex w-fit self-start items-center font-mono text-[10px] tracking-[0.15em] uppercase border rounded-full px-2.5 py-1 ${
-    map[status] ?? "bg-charcoal/10 text-slate border-charcoal/20"
+  const photoMap: Record<string, string> = {
+    New: "bg-sage text-white border-sage/50 shadow-sm",
+    Active: "bg-sky text-white border-sky/50 shadow-sm",
+    Reduced: "bg-coral text-white border-coral/50 shadow-sm",
+    Pending: "bg-charcoal text-white/90 border-charcoal/50 shadow-sm",
+  };
+  const map = surface === "photo" ? photoMap : defaultMap;
+  const label = formatStatusBadgeLabel(status);
+  const sizeClass =
+    size === "sm"
+      ? "text-[8px] tracking-[0.1em] px-1.5 py-px"
+      : "text-[10px] tracking-[0.15em] px-2.5 py-1";
+  const className = `inline-flex w-fit self-start items-center font-mono uppercase border rounded-full ${sizeClass} ${
+    map[status] ?? (surface === "photo" ? photoMap.Pending : defaultMap.Pending)
   } ${onClick ? "cursor-pointer hover:brightness-110 transition-all" : ""}`;
 
   if (onClick) {
     return (
       <button type="button" onClick={onClick} className={className}>
-        {status}
+        {label}
       </button>
     );
   }
-  return <span className={className}>{status}</span>;
+  return <span className={className}>{label}</span>;
 }
 
 export function DealBoardPrimaryPhoto({
@@ -326,8 +361,11 @@ export function DealBoardPrimaryPhoto({
   height,
   priority = false,
   className = "rounded-lg",
-  photoIndex = 0,
+  photoIndex,
   fluid = false,
+  showPhotoCountBadge = true,
+  surface = "dark",
+  overlay,
 }: {
   listing: DealBoardListing;
   isLive: boolean;
@@ -338,11 +376,21 @@ export function DealBoardPrimaryPhoto({
   photoIndex?: number;
   /** Fill container width; width/height set aspect ratio. */
   fluid?: boolean;
+  showPhotoCountBadge?: boolean;
+  /** Light = cream placeholder on white feeds (e.g. Latest). */
+  surface?: "dark" | "light";
+  /** Absolutely positioned content inside the photo shell (e.g. grid status pill). */
+  overlay?: ReactNode;
 }) {
+  const resolvedIndex =
+    photoIndex ??
+    (listing.primaryPhotoIndex != null && listing.primaryPhotoIndex >= 0
+      ? listing.primaryPhotoIndex
+      : 0);
   const href = isLive
-    ? listingPhotosHref(listing.key, listing.address, listing.city, photoIndex)
+    ? listingPhotosHref(listing.key, listing.address, listing.city, resolvedIndex)
     : null;
-  const src = isLive ? listingPhotoProxyUrl(listing.key, photoIndex) : null;
+  const src = isLive ? listingPhotoProxyUrl(listing.key, resolvedIndex) : null;
 
   const image = src ? (
     <ListingThumbImage
@@ -350,13 +398,26 @@ export function DealBoardPrimaryPhoto({
       priority={priority}
       className="absolute inset-0 block h-full w-full"
       imgClassName="absolute inset-0 h-full w-full object-cover"
+      placeholderClassName={
+        surface === "light"
+          ? "absolute inset-0 bg-charcoal/[0.06] animate-pulse"
+          : undefined
+      }
     />
   ) : (
-    <div className="absolute inset-0 bg-gradient-to-br from-charcoal/10 to-cream" />
+    <div
+      className={`absolute inset-0 ${
+        surface === "light"
+          ? "bg-charcoal/[0.04]"
+          : "bg-gradient-to-br from-charcoal/10 to-cream"
+      }`}
+    />
   );
 
   const badge =
-    listing.photoCount != null && listing.photoCount > 1 ? (
+    showPhotoCountBadge &&
+    listing.photoCount != null &&
+    listing.photoCount > 1 ? (
       <span className="absolute bottom-1.5 right-1.5 font-mono text-[8px] tracking-wide text-white bg-black/60 rounded px-1 py-px">
         +{listing.photoCount - 1}
       </span>
@@ -364,9 +425,9 @@ export function DealBoardPrimaryPhoto({
 
   const shell = (
     <div
-      className={`relative overflow-hidden bg-charcoal/10 shadow-md ${
-        fluid ? "w-full" : "shrink-0"
-      } ${className}`}
+      className={`relative overflow-hidden shadow-md ${
+        surface === "light" ? "bg-cream" : "bg-charcoal/10"
+      } ${fluid ? "w-full" : "shrink-0"} ${className}`}
       style={
         fluid
           ? { aspectRatio: `${width} / ${height}` }
@@ -375,6 +436,7 @@ export function DealBoardPrimaryPhoto({
     >
       {image}
       {badge}
+      {overlay}
     </div>
   );
 

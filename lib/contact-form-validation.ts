@@ -34,12 +34,16 @@ export type ContactFieldErrors = {
   name?: string
   phone?: string
   email?: string
+  address?: string
 }
 
 export function validateContactFields(input: {
   name: string
   phone: string
   email: string
+  /** When true, require a non-empty freeform address. */
+  requireAddress?: boolean
+  address?: string
 }): ContactFieldErrors {
   const errors: ContactFieldErrors = {}
   if (!isValidFullName(input.name)) {
@@ -50,6 +54,14 @@ export function validateContactFields(input: {
   }
   if (!isValidUsPhone(input.phone)) {
     errors.phone = 'Enter phone as ###-###-####.'
+  }
+  if (input.requireAddress) {
+    const address = (input.address ?? '').trim()
+    if (!address) {
+      errors.address = 'Tell us about the property (address or description).'
+    } else if (address.length > 2000) {
+      errors.address = 'Keep the address/notes under 2000 characters.'
+    }
   }
   return errors
 }

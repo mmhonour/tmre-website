@@ -50,7 +50,8 @@ export default function ListingSubnav({
 
   const sectionHref = (section: ListingTab) => {
     if (routeBase === "spotlight") {
-      return spotlightSectionHref(section);
+      const base = spotlightSectionHref(section);
+      return extraQs ? `${base}?${extraQs}` : base;
     }
     return listingSectionHref(
       mlsId,

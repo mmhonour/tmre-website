@@ -28,6 +28,7 @@ export default function SpotlightPhotosClient() {
     goldilocksBreakdown,
     photos,
     photosState,
+    propertyTab,
   } = useSpotlightListing({
     photos: true,
   });
@@ -55,6 +56,9 @@ export default function SpotlightPhotosClient() {
   const isClosed = formatMlsStatus(display.status) === "Closed";
   const obfuscatePhoto = (index: number) =>
     spotlightObfuscatesPhoto(display.config, index);
+  const publicAddressLabel = display.config.hideAddress
+    ? display.config.displayLocation
+    : display.config.displayTitle;
   const details = buildListingDetailsPanelProps(
     {
       mlsId: display.mlsId,
@@ -90,7 +94,7 @@ export default function SpotlightPhotosClient() {
         photos={photos}
         active={activePhoto}
         setActive={setActivePhoto}
-        address={display.config.displayTitle}
+        address={publicAddressLabel}
         obfuscatePhotoIndex={obfuscatePhoto}
       />
     ) : (

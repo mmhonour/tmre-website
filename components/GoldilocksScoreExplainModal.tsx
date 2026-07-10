@@ -14,6 +14,7 @@ type ExplainContext = {
   ppsfDiscount?: number;
   reductionPct?: number;
   isRental?: boolean;
+  showWeights?: boolean;
 };
 
 export default function GoldilocksScoreExplainModal({

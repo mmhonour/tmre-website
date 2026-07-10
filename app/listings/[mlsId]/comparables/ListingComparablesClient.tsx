@@ -65,6 +65,7 @@ export default function ListingComparablesClient({
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [goldilocksScore, setGoldilocksScore] = useState<number | null>(null);
+  const [edgeScore, setEdgeScore] = useState<number | null>(null);
   const [goldilocksBreakdown, setGoldilocksBreakdown] =
     useState<ListingScoreApiFields["goldilocksBreakdown"]>(null);
   const [state, setState] = useState<LoadState>("loading");
@@ -87,6 +88,7 @@ export default function ListingComparablesClient({
         if (!d || cancelled) return;
         setListing(d.listing);
         setGoldilocksScore(d.goldilocksScore ?? null);
+        setEdgeScore(d.edgeScore ?? null);
         setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
         setState("ready");
       })
@@ -177,7 +179,7 @@ export default function ListingComparablesClient({
           yearBuilt: listing.yearBuilt,
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
           ...listingHeaderScoreProps({
-            goldilocksScore,
+            goldilocksScore: edgeScore ?? goldilocksScore,
             goldilocksBreakdown,
             title: street,
             subtitle: resolvedTown,

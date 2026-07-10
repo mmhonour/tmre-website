@@ -11,6 +11,15 @@ import {
 } from '@/lib/listing-property-tax'
 import { streetsMatch } from '@/lib/listing-history'
 import type { Listing } from '@/lib/rets'
+import type { SqliteWriteStatsCollector } from '@/lib/sqlite-sync-stats'
+
+function withRefreshLockStats(
+  stats?: SqliteWriteStatsCollector,
+): SqliteWriteStatsCollector | undefined {
+  // Lazy require avoids a static import cycle (sqlite-sync-stats → listings-db).
+  const { mergeWithRefreshLockStats } = require('@/lib/sqlite-sync-stats') as typeof import('@/lib/sqlite-sync-stats')
+  return mergeWithRefreshLockStats(stats)
+}
 
 type SqliteDatabase = import('better-sqlite3').Database
 
@@ -92,11 +101,27 @@ export function publishListingsReadSnapshot(): void {
   const tmpPath = `${readPath}.tmp`
 
   try {
+    // Close any open read handle first — Windows returns EBUSY while the
+    // snapshot file is still mapped by better-sqlite3.
+    resetReadDbConnection()
     mkdirSync(path.dirname(readPath), { recursive: true })
     database.pragma('wal_checkpoint(TRUNCATE)')
     copyFileSync(writePath, tmpPath)
-    if (existsSync(readPath)) unlinkSync(readPath)
-    renameSync(tmpPath, readPath)
+    try {
+      if (existsSync(readPath)) unlinkSync(readPath)
+      renameSync(tmpPath, readPath)
+    } catch (replaceErr) {
+      // Fallback when unlink is still locked: overwrite in place.
+      copyFileSync(tmpPath, readPath)
+      try {
+        unlinkSync(tmpPath)
+      } catch {
+        /* ignore */
+      }
+      if (!(replaceErr instanceof Error && 'code' in replaceErr && replaceErr.code === 'EBUSY')) {
+        console.warn('[listings-db] read snapshot replace used copy fallback:', replaceErr)
+      }
+    }
     resetReadDbConnection()
     console.info('[listings-db] published read snapshot:', readPath)
   } catch (err) {
@@ -107,6 +132,16 @@ export function publishListingsReadSnapshot(): void {
     }
     console.error('[listings-db] read snapshot publish failed', err)
   }
+}
+
+function listingsTableHasGoldilocksColumns(database: SqliteDatabase): boolean {
+  const cols = database.prepare('PRAGMA table_info(listings)').all() as { name: string }[]
+  const names = new Set(cols.map((c) => c.name))
+  return (
+    names.has('goldilocks_score') &&
+    names.has('goldilocks_breakdown') &&
+    names.has('goldilocks_scored_at')
+  )
 }
 
 /** False on Netlify/Lambda when the native better-sqlite3 module cannot load. */
@@ -144,7 +179,7 @@ function openSqliteDb(dbPath: string, readonly = false): SqliteDatabase {
   return database
 }
 
-function tryGetWriteDb(): SqliteDatabase | null {
+export function tryGetWriteDb(): SqliteDatabase | null {
   if (dbDisabled) return null
   if (writeDb) return writeDb
 
@@ -161,6 +196,16 @@ function tryGetWriteDb(): SqliteDatabase | null {
     const readPath = listingsReadDbPath()
     if (!existsSync(readPath) && existsSync(dbPath)) {
       publishListingsReadSnapshot()
+    } else if (existsSync(readPath)) {
+      // Refresh snapshots that predate schema migrations (e.g. goldilocks_*).
+      try {
+        const probe = openSqliteDb(readPath, true)
+        const stale = !listingsTableHasGoldilocksColumns(probe)
+        probe.close()
+        if (stale) publishListingsReadSnapshot()
+      } catch {
+        publishListingsReadSnapshot()
+      }
     }
 
     return writeDb
@@ -175,7 +220,7 @@ function tryGetWriteDb(): SqliteDatabase | null {
   }
 }
 
-function tryGetReadDb(): SqliteDatabase | null {
+export function tryGetReadDb(): SqliteDatabase | null {
   if (dbDisabled) return null
 
   const readPath = listingsReadDbPath()
@@ -183,10 +228,45 @@ function tryGetReadDb(): SqliteDatabase | null {
     return tryGetWriteDb()
   }
 
-  if (readDb && readDb !== writeDb) return readDb
+  const isUsableReadDb = (database: SqliteDatabase): boolean => {
+    try {
+      if (!listingsTableHasGoldilocksColumns(database)) return false
+      // Cheap probe — catches "database disk image is malformed" held by a stale handle.
+      database.prepare('SELECT 1 FROM listings LIMIT 1').get()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  if (readDb && readDb !== writeDb) {
+    if (isUsableReadDb(readDb)) return readDb
+    console.warn(
+      '[listings-db] read snapshot unusable — falling back to write db and republishing',
+    )
+    resetReadDbConnection()
+    try {
+      publishListingsReadSnapshot()
+    } catch {
+      /* ignore */
+    }
+    return tryGetWriteDb()
+  }
 
   try {
     readDb = openSqliteDb(readPath, true)
+    if (!isUsableReadDb(readDb)) {
+      console.warn(
+        '[listings-db] read snapshot unusable — falling back to write db and republishing',
+      )
+      resetReadDbConnection()
+      try {
+        publishListingsReadSnapshot()
+      } catch {
+        /* ignore */
+      }
+      return tryGetWriteDb()
+    }
     return readDb
   } catch (err) {
     console.warn('[listings-db] read snapshot open failed — using write db:', err)
@@ -231,6 +311,9 @@ function initSchema(database: SqliteDatabase): void {
 
     CREATE INDEX IF NOT EXISTS idx_listings_listing_key
       ON listings (listing_key);
+
+    CREATE INDEX IF NOT EXISTS idx_listings_modification
+      ON listings (modification_timestamp);
 
     CREATE TABLE IF NOT EXISTS sync_meta (
       key TEXT PRIMARY KEY,
@@ -277,6 +360,65 @@ function initSchema(database: SqliteDatabase): void {
       rent_active_count INTEGER NOT NULL DEFAULT 0,
       computed_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS listing_relations (
+      subject_id TEXT NOT NULL,
+      related_id TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      rank INTEGER NOT NULL,
+      score REAL,
+      payload TEXT NOT NULL,
+      computed_at TEXT NOT NULL,
+      PRIMARY KEY (subject_id, relation, related_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_listing_relations_subject
+      ON listing_relations (subject_id, relation, rank);
+
+    CREATE TABLE IF NOT EXISTS listing_edge_scores (
+      mls_id TEXT PRIMARY KEY,
+      listing_id TEXT NOT NULL,
+      edge_score REAL NOT NULL,
+      breakdown_json TEXT NOT NULL,
+      metadata_snapshot TEXT NOT NULL,
+      computed_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_listing_edge_scores_listing_id
+      ON listing_edge_scores (listing_id);
+
+    CREATE TABLE IF NOT EXISTS town_property_addresses (
+      property_key TEXT PRIMARY KEY,
+      parcel_number TEXT,
+      town TEXT NOT NULL,
+      street TEXT NOT NULL,
+      unit TEXT,
+      zip TEXT,
+      address_full TEXT NOT NULL,
+      address_norm TEXT NOT NULL,
+      listing_id TEXT,
+      mls_id TEXT,
+      source TEXT NOT NULL,
+      verified_at TEXT NOT NULL,
+      synced_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tpa_town_norm
+      ON town_property_addresses (town, address_norm);
+
+    CREATE INDEX IF NOT EXISTS idx_tpa_address_norm
+      ON town_property_addresses (address_norm);
+
+    CREATE INDEX IF NOT EXISTS idx_tpa_parcel
+      ON town_property_addresses (parcel_number)
+      WHERE parcel_number IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_tpa_listing_id
+      ON town_property_addresses (listing_id)
+      WHERE listing_id IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_tpa_search
+      ON town_property_addresses (address_full COLLATE NOCASE);
   `)
 
   ensureListingsColumns(database)
@@ -313,6 +455,15 @@ function ensureListingsColumns(database: SqliteDatabase): void {
   if (!names.has('property_tax_year')) {
     database.exec('ALTER TABLE listings ADD COLUMN property_tax_year TEXT')
   }
+  if (!names.has('goldilocks_score')) {
+    database.exec('ALTER TABLE listings ADD COLUMN goldilocks_score REAL')
+  }
+  if (!names.has('goldilocks_breakdown')) {
+    database.exec('ALTER TABLE listings ADD COLUMN goldilocks_breakdown TEXT')
+  }
+  if (!names.has('goldilocks_scored_at')) {
+    database.exec('ALTER TABLE listings ADD COLUMN goldilocks_scored_at TEXT')
+  }
 }
 
 type ListingDbRow = {
@@ -344,6 +495,7 @@ function upsertListingTaxHistory(
   listing: Listing,
   listingId: string,
   syncedAt: string,
+  stats?: SqliteWriteStatsCollector,
 ): void {
   const { annualAmount, yearLabel } = propertyTaxFromRaw(listing.raw)
   if (annualAmount == null || !yearLabel) return
@@ -352,6 +504,12 @@ function upsertListingTaxHistory(
   if (taxYearEnd == null) return
 
   const parcelNumber = parcelNumberFromRaw(listing.raw) ?? listingId
+
+  const existing = database
+    .prepare(
+      'SELECT 1 FROM listing_tax_history WHERE parcel_number = ? AND tax_year_end = ? LIMIT 1',
+    )
+    .get(parcelNumber, taxYearEnd)
 
   database
     .prepare(
@@ -365,6 +523,9 @@ function upsertListingTaxHistory(
         synced_at = excluded.synced_at`,
     )
     .run(listingId, parcelNumber, yearLabel, taxYearEnd, annualAmount, syncedAt)
+
+  if (existing) stats?.addUpdated('listing_tax_history', 1)
+  else stats?.addInserted('listing_tax_history', 1)
 }
 
 function listingDbBindValues(
@@ -428,12 +589,25 @@ export function upsertListing(
   listing: Listing,
   town: string,
   statusBucket: string,
-): boolean {
+  stats?: SqliteWriteStatsCollector,
+): { upserted: boolean; priceChanged: boolean } {
+  stats = withRefreshLockStats(stats)
   const database = tryGetWriteDb()
-  if (!database) return false
+  if (!database) return { upserted: false, priceChanged: false }
 
   const id = listingRowId(listing)
-  if (!id) return false
+  if (!id) return { upserted: false, priceChanged: false }
+
+  const existing = database
+    .prepare('SELECT price FROM listings WHERE id = ?')
+    .get(id) as { price: number | null } | undefined
+  const previousPrice = existing?.price ?? null
+  const nextPrice = listing.price ?? null
+  const priceChanged =
+    existing != null &&
+    previousPrice != null &&
+    nextPrice != null &&
+    previousPrice !== nextPrice
 
   const syncedAt = new Date().toISOString()
   database
@@ -461,9 +635,12 @@ export function upsertListing(
     )
     .run(listingDbBindValues(listing, town, statusBucket, syncedAt))
 
-  upsertListingTaxHistory(database, listing, id, syncedAt)
+  if (existing) stats?.addUpdated('listings', 1)
+  else stats?.addInserted('listings', 1)
 
-  return true
+  upsertListingTaxHistory(database, listing, id, syncedAt, stats)
+
+  return { upserted: true, priceChanged }
 }
 
 function listingMatchesStatusBucket(listing: Listing, statusBucket: string): boolean {
@@ -484,7 +661,9 @@ export function upsertTownListings(
   town: string,
   statusBucket: string,
   listings: Listing[],
+  stats?: SqliteWriteStatsCollector,
 ): number {
+  stats = withRefreshLockStats(stats)
   const database = tryGetWriteDb()
   if (!database) return 0
 
@@ -501,8 +680,17 @@ export function upsertTownListings(
     return 0
   }
 
+  stats?.addQueried('listings', rows.length)
+
   const syncedAt = new Date().toISOString()
   const seen = new Set<string>()
+  const existingIds = new Set(
+    (
+      database
+        .prepare('SELECT id FROM listings WHERE town = ? AND status_bucket = ?')
+        .all(town, statusBucket) as { id: string }[]
+    ).map((row) => row.id),
+  )
 
   const upsert = database.prepare(`
     INSERT INTO listings (
@@ -532,25 +720,373 @@ export function upsertTownListings(
       const id = listingRowId(listing)
       if (!id) continue
       seen.add(id)
+      if (existingIds.has(id)) stats?.addUpdated('listings', 1)
+      else stats?.addInserted('listings', 1)
       upsert.run(listingDbBindValues(listing, town, statusBucket, syncedAt))
-      upsertListingTaxHistory(database, listing, id, syncedAt)
+      upsertListingTaxHistory(database, listing, id, syncedAt, stats)
     }
 
-    const existing = database
-      .prepare('SELECT id FROM listings WHERE town = ? AND status_bucket = ?')
-      .all(town, statusBucket) as { id: string }[]
-
     const remove = database.prepare('DELETE FROM listings WHERE id = ?')
-    for (const row of existing) {
-      if (!seen.has(row.id)) {
-        remove.run(row.id)
-        removeListingPhotosFromStore(row.id)
+    for (const id of existingIds) {
+      if (!seen.has(id)) {
+        remove.run(id)
+        stats?.addDeleted('listings', 1)
+        removeListingPhotosFromStore(id)
       }
     }
   })
 
   tx(rows)
   return seen.size
+}
+
+/** Upsert listings without removing rows missing from the batch (incremental sync). */
+export function upsertListingsIncremental(
+  town: string,
+  statusBucket: string,
+  listings: Listing[],
+  stats?: SqliteWriteStatsCollector,
+): { count: number; priceChangedIds: string[] } {
+  stats = withRefreshLockStats(stats)
+  const database = tryGetWriteDb()
+  if (!database || listings.length === 0) return { count: 0, priceChangedIds: [] }
+
+  const rows = listings.filter((l) => listingMatchesStatusBucket(l, statusBucket))
+  if (rows.length === 0) return { count: 0, priceChangedIds: [] }
+
+  stats?.addQueried('listings', rows.length)
+
+  let count = 0
+  const priceChangedIds: string[] = []
+  for (const listing of rows) {
+    const result = upsertListing(listing, town, statusBucket, stats)
+    if (!result.upserted) continue
+    count += 1
+    if (result.priceChanged) {
+      const id = listingRowId(listing)
+      if (id) priceChangedIds.push(id)
+    }
+  }
+  return { count, priceChangedIds }
+}
+
+export type ListingScoreRow = {
+  score: number
+  breakdownJson: string | null
+  scoredAt: string | null
+}
+
+export type ListingEdgeScoreRow = {
+  mlsId: string
+  listingId: string
+  edgeScore: number
+  breakdownJson: string
+  metadataSnapshot: string
+  computedAt: string
+}
+
+export type RecentlyUpdatedRow = {
+  listing: Listing
+  town: string
+  modificationTimestamp: string | null
+  syncedAt: string
+  goldilocksScore: number | null
+  goldilocksBreakdown: string | null
+  goldilocksScoredAt: string | null
+}
+
+/** Persist Goldilocks scores computed during a full reload. */
+export function upsertListingScores(
+  rows: { id: string; score: number; breakdownJson: string; scoredAt: string }[],
+  stats?: SqliteWriteStatsCollector,
+): number {
+  stats = withRefreshLockStats(stats)
+  const database = tryGetWriteDb()
+  if (!database || rows.length === 0) return 0
+
+  stats?.addQueried('listings', rows.length)
+
+  const stmt = database.prepare(
+    `UPDATE listings
+     SET goldilocks_score = ?,
+         goldilocks_breakdown = ?,
+         goldilocks_scored_at = ?
+     WHERE id = ?`,
+  )
+  let updated = 0
+  const tx = database.transaction(() => {
+    for (const row of rows) {
+      const result = stmt.run(row.score, row.breakdownJson, row.scoredAt, row.id)
+      updated += result.changes
+    }
+  })
+  tx()
+  if (updated > 0) stats?.addUpdated('listings', updated)
+  return updated
+}
+
+/** Read persisted Goldilocks scores by listing id (mls/listing key). */
+export function readListingScoresByIds(
+  ids: readonly string[],
+): Map<string, ListingScoreRow> {
+  const out = new Map<string, ListingScoreRow>()
+  const database = tryGetReadDb()
+  if (!database || ids.length === 0) return out
+
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  const chunkSize = 200
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize)
+    const placeholders = chunk.map(() => '?').join(', ')
+    const rows = database
+      .prepare(
+        `SELECT id, goldilocks_score, goldilocks_breakdown, goldilocks_scored_at
+         FROM listings
+         WHERE id IN (${placeholders})
+           AND goldilocks_score IS NOT NULL`,
+      )
+      .all(...chunk) as {
+      id: string
+      goldilocks_score: number
+      goldilocks_breakdown: string | null
+      goldilocks_scored_at: string | null
+    }[]
+    for (const row of rows) {
+      out.set(row.id, {
+        score: row.goldilocks_score,
+        breakdownJson: row.goldilocks_breakdown,
+        scoredAt: row.goldilocks_scored_at,
+      })
+    }
+  }
+  return out
+}
+
+/** Persist weekly metadata edge scores keyed by MLS id. */
+export function upsertListingEdgeScores(
+  rows: {
+    mlsId: string
+    listingId: string
+    edgeScore: number
+    breakdownJson: string
+    metadataSnapshot: string
+    computedAt: string
+  }[],
+  stats?: SqliteWriteStatsCollector,
+): number {
+  stats = withRefreshLockStats(stats)
+  const database = tryGetWriteDb()
+  if (!database || rows.length === 0) return 0
+
+  stats?.addQueried('listing_edge_scores', rows.length)
+
+  const stmt = database.prepare(
+    `INSERT INTO listing_edge_scores (
+       mls_id, listing_id, edge_score, breakdown_json, metadata_snapshot, computed_at
+     ) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(mls_id) DO UPDATE SET
+       listing_id = excluded.listing_id,
+       edge_score = excluded.edge_score,
+       breakdown_json = excluded.breakdown_json,
+       metadata_snapshot = excluded.metadata_snapshot,
+       computed_at = excluded.computed_at`,
+  )
+  let updated = 0
+  const tx = database.transaction(() => {
+    for (const row of rows) {
+      stmt.run(
+        row.mlsId,
+        row.listingId,
+        row.edgeScore,
+        row.breakdownJson,
+        row.metadataSnapshot,
+        row.computedAt,
+      )
+      updated += 1
+    }
+  })
+  tx()
+  if (updated > 0) stats?.addUpdated('listing_edge_scores', updated)
+  return updated
+}
+
+/** Read persisted edge scores by MLS id. */
+export function readListingEdgeScoresByMlsIds(
+  mlsIds: readonly string[],
+): Map<string, ListingEdgeScoreRow> {
+  const out = new Map<string, ListingEdgeScoreRow>()
+  const database = tryGetReadDb()
+  if (!database || mlsIds.length === 0) return out
+
+  const unique = [...new Set(mlsIds.map((id) => id.trim()).filter(Boolean))]
+  const chunkSize = 200
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize)
+    const placeholders = chunk.map(() => '?').join(', ')
+    const rows = database
+      .prepare(
+        `SELECT mls_id, listing_id, edge_score, breakdown_json, metadata_snapshot, computed_at
+         FROM listing_edge_scores
+         WHERE mls_id IN (${placeholders})`,
+      )
+      .all(...chunk) as {
+      mls_id: string
+      listing_id: string
+      edge_score: number
+      breakdown_json: string
+      metadata_snapshot: string
+      computed_at: string
+    }[]
+    for (const row of rows) {
+      out.set(row.mls_id, {
+        mlsId: row.mls_id,
+        listingId: row.listing_id,
+        edgeScore: row.edge_score,
+        breakdownJson: row.breakdown_json,
+        metadataSnapshot: row.metadata_snapshot,
+        computedAt: row.computed_at,
+      })
+    }
+  }
+  return out
+}
+
+export function readListingEdgeScoreByMlsId(
+  mlsId: string,
+): ListingEdgeScoreRow | null {
+  const id = mlsId.trim()
+  if (!id) return null
+  return readListingEdgeScoresByMlsIds([id]).get(id) ?? null
+}
+
+/** Listings ordered by MLS modification time (newest first). */
+export function readRecentlyUpdatedListings(options: {
+  since?: string | null
+  limit?: number
+  statusBucket?: string
+  town?: string | null
+}): RecentlyUpdatedRow[] {
+  const database = tryGetReadDb()
+  if (!database) return []
+
+  const limit = Math.min(Math.max(options.limit ?? 100, 1), 500)
+  const statusBucket = options.statusBucket ?? 'Active'
+  const since = options.since?.trim() || null
+  const town = options.town?.trim() || null
+
+  const conditions = ['status_bucket = ?', 'modification_timestamp IS NOT NULL']
+  const bindings: (string | number)[] = [statusBucket]
+  if (since) {
+    conditions.push('modification_timestamp > ?')
+    bindings.push(since)
+  }
+  if (town) {
+    conditions.push('town = ?')
+    bindings.push(town)
+  }
+  bindings.push(limit)
+
+  const sql = `SELECT data, town, modification_timestamp, synced_at,
+       goldilocks_score, goldilocks_breakdown, goldilocks_scored_at
+       FROM listings
+       WHERE ${conditions.join('\n         AND ')}
+       ORDER BY modification_timestamp DESC
+       LIMIT ?`
+
+  const rows = database.prepare(sql).all(...bindings) as {
+    data: string
+    town: string
+    modification_timestamp: string | null
+    synced_at: string
+    goldilocks_score: number | null
+    goldilocks_breakdown: string | null
+    goldilocks_scored_at: string | null
+  }[]
+
+  return rows.map((row) => ({
+    listing: JSON.parse(row.data) as Listing,
+    town: row.town,
+    modificationTimestamp: row.modification_timestamp,
+    syncedAt: row.synced_at,
+    goldilocksScore: row.goldilocks_score,
+    goldilocksBreakdown: row.goldilocks_breakdown,
+    goldilocksScoredAt: row.goldilocks_scored_at,
+  }))
+}
+
+export type TownUpdateStat = {
+  town: string
+  updateCount: number
+  latestUpdate: string | null
+  latestListingId: string | null
+  latestListingAddress: string | null
+}
+
+/** Towns ranked by count of listings modified since `since` (default last 24h). */
+export function readTownUpdateStats(options: {
+  since?: string | null
+  statusBucket?: string
+} = {}): TownUpdateStat[] {
+  const database = tryGetReadDb()
+  if (!database) return []
+
+  const statusBucket = options.statusBucket ?? 'Active'
+  const since =
+    options.since?.trim() ||
+    new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+  const rows = database
+    .prepare(
+      `SELECT
+         l.town,
+         COUNT(*) AS update_count,
+         MAX(l.modification_timestamp) AS latest_update,
+         (
+           SELECT COALESCE(NULLIF(l2.listing_key, ''), l2.mls_id)
+           FROM listings l2
+           WHERE l2.town = l.town
+             AND l2.status_bucket = ?
+             AND l2.modification_timestamp IS NOT NULL
+             AND l2.modification_timestamp > ?
+           ORDER BY l2.modification_timestamp DESC, l2.id DESC
+           LIMIT 1
+         ) AS latest_listing_id,
+         (
+           SELECT COALESCE(
+             NULLIF(json_extract(l2.data, '$.address.street'), ''),
+             NULLIF(json_extract(l2.data, '$.address.full'), '')
+           )
+           FROM listings l2
+           WHERE l2.town = l.town
+             AND l2.status_bucket = ?
+             AND l2.modification_timestamp IS NOT NULL
+             AND l2.modification_timestamp > ?
+             AND json_valid(l2.data) = 1
+           ORDER BY l2.modification_timestamp DESC, l2.id DESC
+           LIMIT 1
+         ) AS latest_listing_address
+       FROM listings l
+       WHERE l.status_bucket = ?
+         AND l.modification_timestamp IS NOT NULL
+         AND l.modification_timestamp > ?
+       GROUP BY l.town
+       ORDER BY update_count DESC, latest_update DESC`,
+    )
+    .all(statusBucket, since, statusBucket, since, statusBucket, since) as {
+      town: string
+      update_count: number
+      latest_update: string | null
+      latest_listing_id: string | null
+      latest_listing_address: string | null
+    }[]
+
+  return rows.map((row) => ({
+    town: row.town,
+    updateCount: row.update_count,
+    latestUpdate: row.latest_update,
+    latestListingId: row.latest_listing_id?.trim() || null,
+    latestListingAddress: row.latest_listing_address?.trim() || null,
+  }))
 }
 
 export function readListingsFromDb(
@@ -594,6 +1130,85 @@ export function readAllListingsFromDb(
   return rows.map((row) => JSON.parse(row.data) as Listing)
 }
 
+const LISTING_SEARCH_STATUS_ORDER: Record<string, number> = {
+  Active: 0,
+  Closed: 1,
+  Expired: 2,
+}
+
+/** Text search across cached listings (address, MLS id, town, zip). */
+export function searchListingsInDbByQuery(
+  query: string,
+  options: { limit?: number; statusBuckets?: string[] } = {},
+): Listing[] {
+  const database = tryGetReadDb()
+  if (!database) return []
+
+  const q = query.trim().toLowerCase()
+  if (q.length < 2) return []
+
+  const limit = Math.min(Math.max(options.limit ?? 8, 1), 50)
+  const buckets = options.statusBuckets ?? ['Active', 'Closed', 'Expired']
+  if (buckets.length === 0) return []
+
+  const pattern = `%${q.replace(/[%_]/g, '')}%`
+  const placeholders = buckets.map(() => '?').join(', ')
+  const sql = `SELECT data, status_bucket FROM listings
+    WHERE status_bucket IN (${placeholders})
+      AND (
+        lower(mls_id) LIKE ?
+        OR lower(json_extract(data, '$.address.full')) LIKE ?
+        OR lower(json_extract(data, '$.address.street')) LIKE ?
+        OR lower(json_extract(data, '$.address.city')) LIKE ?
+        OR lower(json_extract(data, '$.address.postalCode')) LIKE ?
+        OR lower(json_extract(data, '$.propertyType')) LIKE ?
+      )
+    ORDER BY modification_timestamp DESC
+    LIMIT ?`
+
+  const rows = database
+    .prepare(sql)
+    .all(...buckets, pattern, pattern, pattern, pattern, pattern, pattern, limit * 3) as {
+    data: string
+    status_bucket: string
+  }[]
+
+  const scored: { listing: Listing; score: number }[] = []
+  for (const row of rows) {
+    const listing = JSON.parse(row.data) as Listing
+    const hay = [
+      listing.mlsId,
+      listing.address.full,
+      listing.address.street,
+      listing.address.city,
+      listing.address.postalCode,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    if (!hay.includes(q)) continue
+    let score = LISTING_SEARCH_STATUS_ORDER[row.status_bucket] ?? 9
+    const street = listing.address.street?.toLowerCase() ?? ''
+    const full = listing.address.full?.toLowerCase() ?? ''
+    if (listing.mlsId.toLowerCase() === q) score -= 30
+    else if (street.startsWith(q) || full.startsWith(q)) score -= 20
+    else if (street.includes(q) || full.includes(q)) score -= 10
+    scored.push({ listing, score })
+  }
+
+  scored.sort((a, b) => a.score - b.score)
+  const seen = new Set<string>()
+  const out: Listing[] = []
+  for (const row of scored) {
+    const key = row.listing.listingKey || row.listing.mlsId
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(row.listing)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
 export function readListingByIdFromDb(id: string): Listing | null {
   const database = tryGetReadDb()
   if (!database) return null
@@ -632,15 +1247,18 @@ export function readAddressListingsFromDb(
     })
 }
 
-export function recordSyncRun(input: {
-  startedAt: string
-  finishedAt: string
-  town: string
-  statusBucket: string
-  listingsCount: number
-  ok: boolean
-  error?: string | null
-}): void {
+export function recordSyncRun(
+  input: {
+    startedAt: string
+    finishedAt: string
+    town: string
+    statusBucket: string
+    listingsCount: number
+    ok: boolean
+    error?: string | null
+  },
+  stats?: SqliteWriteStatsCollector,
+): void {
   const database = tryGetWriteDb()
   if (!database) return
 
@@ -659,25 +1277,42 @@ export function recordSyncRun(input: {
       input.ok ? 1 : 0,
       input.error ?? null,
     )
+  stats?.addInserted('sync_runs', 1)
 }
 
 export function getListingsDbStats(): {
   total: number
   byTown: Record<string, number>
   lastFullSync: string | null
+  lastFullSyncStarted: string | null
+  lastIncrementalSync: string | null
+  lastIncrementalSyncStarted: string | null
+  lastListingScores: string | null
+  lastListingScoresStarted: string | null
+  lastListingEdgeScores: string | null
   statsCacheEntries: number
   lastStatsCache: string | null
+  lastStatsCacheStarted: string | null
   dealOfTheDayCacheEntries: number
   lastDealOfTheDayCache: string | null
+  lastDealOfTheDayCacheStarted: string | null
 } {
   const empty = {
     total: 0,
     byTown: {} as Record<string, number>,
     lastFullSync: null as string | null,
+    lastFullSyncStarted: null as string | null,
+    lastIncrementalSync: null as string | null,
+    lastIncrementalSyncStarted: null as string | null,
+    lastListingScores: null as string | null,
+    lastListingScoresStarted: null as string | null,
+    lastListingEdgeScores: null as string | null,
     statsCacheEntries: 0,
     lastStatsCache: null as string | null,
+    lastStatsCacheStarted: null as string | null,
     dealOfTheDayCacheEntries: 0,
     lastDealOfTheDayCache: null as string | null,
+    lastDealOfTheDayCacheStarted: null as string | null,
   }
 
   const listingsDatabase = tryGetReadDb()
@@ -703,19 +1338,42 @@ export function getListingsDbStats(): {
     total: totalRow.count,
     byTown,
     lastFullSync: getSyncMeta('last_full_sync'),
+    lastFullSyncStarted: getSyncMeta('last_full_sync_started'),
+    lastIncrementalSync: getSyncMeta('last_incremental_sync'),
+    lastIncrementalSyncStarted: getSyncMeta('last_incremental_sync_started'),
+    lastListingScores: getSyncMeta('last_listing_scores'),
+    lastListingScoresStarted: getSyncMeta('last_listing_scores_started'),
+    lastListingEdgeScores: getSyncMeta('last_listing_edge_scores'),
     statsCacheEntries: (
       writeDatabase.prepare('SELECT COUNT(*) AS count FROM stats_cache').get() as {
         count: number
       }
     ).count,
     lastStatsCache: getSyncMeta('last_stats_cache'),
+    lastStatsCacheStarted: getSyncMeta('last_stats_cache_started'),
     dealOfTheDayCacheEntries: (
       writeDatabase
         .prepare(`SELECT COUNT(*) AS count FROM stats_cache WHERE cache_key LIKE 'deal-of-the-day:%'`)
         .get() as { count: number }
     ).count,
     lastDealOfTheDayCache: getSyncMeta('last_deal_of_the_day_cache'),
+    lastDealOfTheDayCacheStarted: getSyncMeta('last_deal_of_the_day_cache_started'),
   }
+}
+
+/** Newest MLS modification timestamp across Active listings (naive UTC strings). */
+export function readLatestListingModificationTimestamp(): string | null {
+  const database = tryGetReadDb()
+  if (!database) return null
+  const row = database
+    .prepare(
+      `SELECT MAX(modification_timestamp) AS latest
+       FROM listings
+       WHERE status_bucket = 'Active'
+         AND modification_timestamp IS NOT NULL`,
+    )
+    .get() as { latest: string | null } | undefined
+  return row?.latest ?? null
 }
 
 export function readStatsCacheRow(key: string): { payload: string; computedAt: string } | null {
@@ -728,9 +1386,18 @@ export function readStatsCacheRow(key: string): { payload: string; computedAt: s
   return row ?? null
 }
 
-export function writeStatsCacheRow(key: string, payload: unknown): void {
+export function writeStatsCacheRow(
+  key: string,
+  payload: unknown,
+  stats?: SqliteWriteStatsCollector,
+): void {
+  stats = withRefreshLockStats(stats)
   const database = tryGetWriteDb()
   if (!database) return
+
+  const existing = database
+    .prepare('SELECT 1 FROM stats_cache WHERE cache_key = ? LIMIT 1')
+    .get(key)
 
   database
     .prepare(
@@ -741,22 +1408,72 @@ export function writeStatsCacheRow(key: string, payload: unknown): void {
          computed_at = excluded.computed_at`,
     )
     .run(key, JSON.stringify(payload), new Date().toISOString())
+
+  if (existing) stats?.addUpdated('stats_cache', 1)
+  else stats?.addInserted('stats_cache', 1)
 }
 
-export function clearStatsCache(): void {
+export function clearStatsCache(stats?: SqliteWriteStatsCollector): number {
+  stats = withRefreshLockStats(stats)
   const database = tryGetWriteDb()
-  if (!database) return
+  if (!database) return 0
 
-  database
-    .prepare(`DELETE FROM stats_cache WHERE cache_key NOT LIKE 'deal-of-the-day:%'`)
+  // Keep Last-good Latest + Deal of Day caches across hourly stats rebuilds.
+  // Full sync (~5am) refreshes feeds via warmLatestTownFeedsDeferred after this.
+  const result = database
+    .prepare(
+      `DELETE FROM stats_cache
+       WHERE cache_key NOT LIKE 'deal-of-the-day:%'
+         AND cache_key NOT LIKE 'latest-town-feed:%'
+         AND cache_key NOT LIKE 'latest-feed:%'`,
+    )
     .run()
+  if (result.changes > 0) stats?.addDeleted('stats_cache', result.changes)
+  return result.changes
 }
 
-export function clearCacheByPrefix(prefix: string): void {
+export function clearCacheByPrefix(prefix: string, stats?: SqliteWriteStatsCollector): number {
+  stats = withRefreshLockStats(stats)
   const database = tryGetWriteDb()
-  if (!database) return
+  if (!database) return 0
 
-  database.prepare('DELETE FROM stats_cache WHERE cache_key LIKE ?').run(`${prefix}%`)
+  const result = database
+    .prepare('DELETE FROM stats_cache WHERE cache_key LIKE ?')
+    .run(`${prefix}%`)
+  if (result.changes > 0) stats?.addDeleted('stats_cache', result.changes)
+  return result.changes
+}
+
+export type ListingTaxMetaRow = {
+  listingId: string
+  mlsId: string
+  parcelNumber: string | null
+  propertyTaxYear: string | null
+}
+
+/** Lightweight tax fields for property-tax history without parsing full listing JSON. */
+export function readListingTaxMetaFromDb(id: string): ListingTaxMetaRow | null {
+  const database = tryGetReadDb()
+  if (!database) return null
+
+  const row = database
+    .prepare(
+      `SELECT
+         id AS listingId,
+         mls_id AS mlsId,
+         NULLIF(TRIM(json_extract(data, '$.raw.ParcelNumber')), '') AS parcelNumber,
+         COALESCE(
+           NULLIF(TRIM(property_tax_year), ''),
+           NULLIF(TRIM(json_extract(data, '$.raw.TaxYear')), ''),
+           NULLIF(TRIM(json_extract(data, '$.propertyTaxYear')), '')
+         ) AS propertyTaxYear
+       FROM listings
+       WHERE id = ? OR mls_id = ? OR listing_key = ?
+       LIMIT 1`,
+    )
+    .get(id, id, id) as ListingTaxMetaRow | undefined
+
+  return row ?? null
 }
 
 export function readListingTaxHistoryFromDb(
@@ -839,6 +1556,95 @@ export function upsertListingIfEstimate(row: ListingIfEstimateRow): void {
     )
 }
 
+export type ListingRelationKind =
+  | 'comp_sold'
+  | 'comp_active'
+  | 'rental_sold'
+  | 'rental_active'
+
+export type ListingRelationRow = {
+  subjectId: string
+  relatedId: string
+  relation: ListingRelationKind
+  rank: number
+  score: number | null
+  payload: string
+  computedAt: string
+}
+
+export function replaceListingRelationsForSubject(
+  subjectId: string,
+  relations: ListingRelationKind[],
+  rows: ListingRelationRow[],
+): void {
+  const database = tryGetWriteDb()
+  const id = subjectId.trim()
+  if (!database || !id || relations.length === 0) return
+
+  const del = database.prepare(
+    `DELETE FROM listing_relations WHERE subject_id = ? AND relation = ?`,
+  )
+  const ins = database.prepare(
+    `INSERT INTO listing_relations (
+       subject_id, related_id, relation, rank, score, payload, computed_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+
+  const tx = database.transaction(() => {
+    for (const relation of relations) {
+      del.run(id, relation)
+    }
+    for (const row of rows) {
+      ins.run(
+        row.subjectId,
+        row.relatedId,
+        row.relation,
+        row.rank,
+        row.score,
+        row.payload,
+        row.computedAt,
+      )
+    }
+  })
+  tx()
+}
+
+export function readListingRelations(
+  subjectId: string,
+  relations: readonly ListingRelationKind[],
+): ListingRelationRow[] {
+  const database = tryGetReadDb()
+  const id = subjectId.trim()
+  if (!database || !id || relations.length === 0) return []
+
+  const placeholders = relations.map(() => '?').join(', ')
+  const rows = database
+    .prepare(
+      `SELECT
+         subject_id AS subjectId,
+         related_id AS relatedId,
+         relation,
+         rank,
+         score,
+         payload,
+         computed_at AS computedAt
+       FROM listing_relations
+       WHERE subject_id = ?
+         AND relation IN (${placeholders})
+       ORDER BY relation ASC, rank ASC`,
+    )
+    .all(id, ...relations) as ListingRelationRow[]
+
+  return rows
+}
+
+export function deleteListingRelations(subjectId: string): void {
+  const database = tryGetWriteDb()
+  const id = subjectId.trim()
+  if (!database || !id) return
+  database.prepare('DELETE FROM listing_relations WHERE subject_id = ?').run(id)
+}
+
 export function readListingIfEstimate(
   listingId: string,
 ): ListingIfEstimateRow | null {
@@ -873,6 +1679,8 @@ export type { ListingPhotoBlobRow } from '@/lib/listing-photos-db'
 export {
   countFreshListingPhotos,
   countListingPhotos,
+  firstStoredListingPhotoIndex,
+  listStoredListingPhotoIndices,
   listingPhotoStorageSpan,
   readListingPhotoBlob,
   upsertListingPhotoBlob,

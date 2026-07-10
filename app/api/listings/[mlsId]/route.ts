@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
-import { fetchListingByMlsId, listingCacheHeaders, persistListingRecord } from '@/lib/listings-store'
-import { getListingByMlsId } from '@/lib/rets'
+import { listingCacheHeaders, readListingFromDbByMlsId } from '@/lib/listings-store'
+import { readListingEdgeScoreByMlsId } from '@/lib/listings-db'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,38 +17,38 @@ export async function GET(
     return NextResponse.json({ error: 'mlsId required' }, { status: 400 })
   }
 
-  const direct = new URL(req.url).searchParams.get('direct') === '1'
   const includePhotos = new URL(req.url).searchParams.get('photos') !== '0'
 
   try {
-    const { listing, source } = direct
-      ? { listing: await getListingByMlsId(id), source: 'rets' as const }
-      : await fetchListingByMlsId(id)
+    const { listing } = readListingFromDbByMlsId(id)
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
-    persistListingRecord(listing)
-    const [photos, goldilocksBreakdown] = await Promise.all([
+    const [photos, goldilocksBreakdown, edgeScoreRow] = await Promise.all([
       includePhotos
         ? resolveListingPhotoUrls(
             id,
             listing.listingKey || id,
             listing.photoCount,
-            { forceRefresh: direct },
+            { sqliteOnly: true },
           ).then((r) => r.photos)
         : Promise.resolve([] as string[]),
       scoreListingForDetailPage(listing),
+      Promise.resolve(readListingEdgeScoreByMlsId(id)),
     ])
-    const servedSource = direct ? 'rets' : source
     return NextResponse.json(
       {
         listing,
         photos,
         goldilocksScore: goldilocksBreakdown?.composite ?? null,
         goldilocksBreakdown,
-        source: servedSource,
+        edgeScore: edgeScoreRow?.edgeScore ?? null,
+        edgeScoreBreakdown: edgeScoreRow?.breakdownJson
+          ? (JSON.parse(edgeScoreRow.breakdownJson) as Record<string, unknown>)
+          : null,
+        source: 'db',
       },
-      { headers: listingCacheHeaders(direct ? 'rets' : source) },
+      { headers: listingCacheHeaders('db') },
     )
   } catch (err) {
     console.error('[/api/listings/[mlsId]] error', err)

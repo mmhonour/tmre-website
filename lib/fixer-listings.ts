@@ -151,7 +151,7 @@ function buildHeadline(
 }
 
 export function parseLotAcres(l: Listing): number | null {
-  return parseLotAcresFromRaw(l.raw)
+  return parseLotAcresFromRaw(l.raw) ?? (l.lotAcres != null && l.lotAcres > 0 ? l.lotAcres : null)
 }
 
 function num(v: string | undefined): number | null {

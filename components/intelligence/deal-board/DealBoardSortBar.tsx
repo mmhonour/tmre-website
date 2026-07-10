@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import DealBoardStatusFilterPills from "@/components/intelligence/deal-board/DealBoardStatusFilterPills";
 import {
   DEAL_BOARD_SORT_COLUMNS,
   type DealBoardSortDir,
   type DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
+import type { DealBoardStatusFilter } from "@/components/intelligence/deal-board/deal-board-types";
 
 function SortControl({
   label,
@@ -50,60 +52,78 @@ export default function DealBoardSortBar({
   onSort,
   showTown,
   scoreInfoButton,
+  showStatusFilters = false,
+  statusFilter = "all",
+  onStatusFilterChange,
 }: {
   sortKey: DealBoardSortKey;
   sortDir: DealBoardSortDir;
   onSort: (key: DealBoardSortKey) => void;
   showTown: boolean;
   scoreInfoButton: ReactNode;
+  showStatusFilters?: boolean;
+  statusFilter?: DealBoardStatusFilter;
+  onStatusFilterChange?: (value: DealBoardStatusFilter) => void;
 }) {
   const columns = DEAL_BOARD_SORT_COLUMNS.filter(
     (col) => !col.townOnly || showTown,
   );
 
   return (
-    <div className="border-b border-charcoal/[0.12] bg-cream overflow-x-auto">
-      <div
-        className="flex min-w-max items-center gap-x-6 px-4 py-3"
-        role="row"
-        aria-label="Sort listings"
-      >
-        {columns.map((col) => (
+    <div className="border-b border-charcoal/[0.12] bg-cream">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1 overflow-x-auto">
           <div
-            key={col.key}
-            className={`shrink-0 ${col.align === "right" ? "text-right" : "text-left"}`}
-            role="columnheader"
+            className="flex min-w-max items-center gap-x-6"
+            role="row"
+            aria-label="Sort listings"
           >
-            {col.key === "score" ? (
-              <span className="inline-flex items-center gap-1">
-                <SortControl
-                  label={col.label}
-                  sortKey={col.key}
-                  activeKey={sortKey}
-                  direction={sortDir}
-                  onSort={onSort}
-                  align={col.align}
-                />
-                {scoreInfoButton}
-                <Link
-                  href="/score"
-                  className="font-mono text-[8px] text-slate/45 hover:text-gold normal-case tracking-normal"
-                >
-                  →
-                </Link>
-              </span>
-            ) : (
-              <SortControl
-                label={col.label}
-                sortKey={col.key}
-                activeKey={sortKey}
-                direction={sortDir}
-                onSort={onSort}
-                align={col.align}
-              />
-            )}
+            {columns.map((col) => (
+              <div
+                key={col.key}
+                className={`shrink-0 ${col.align === "right" ? "text-right" : "text-left"}`}
+                role="columnheader"
+              >
+                {col.key === "score" ? (
+                  <span className="inline-flex items-center gap-1">
+                    <SortControl
+                      label={col.label}
+                      sortKey={col.key}
+                      activeKey={sortKey}
+                      direction={sortDir}
+                      onSort={onSort}
+                      align={col.align}
+                    />
+                    {scoreInfoButton}
+                    <Link
+                      href="/score"
+                      className="font-mono text-[8px] text-slate/45 hover:text-gold normal-case tracking-normal"
+                    >
+                      →
+                    </Link>
+                  </span>
+                ) : (
+                  <SortControl
+                    label={col.label}
+                    sortKey={col.key}
+                    activeKey={sortKey}
+                    direction={sortDir}
+                    onSort={onSort}
+                    align={col.align}
+                  />
+                )}
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+        {showStatusFilters && onStatusFilterChange ? (
+          <div className="shrink-0 ml-auto">
+            <DealBoardStatusFilterPills
+              value={statusFilter}
+              onChange={onStatusFilterChange}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -44,11 +44,12 @@ export function PreviewStatusBadge({ status }: { status: BoardPreviewStatus }) {
     Reduced: "bg-coral/10 text-coral border-coral/30",
     Pending: "bg-charcoal/10 text-slate border-charcoal/20",
   };
+  const label = status === "Reduced" ? "Reduced!" : status;
   return (
     <span
       className={`inline-flex items-center font-mono text-[10px] tracking-[0.15em] uppercase border rounded-full px-2.5 py-1 ${map[status]}`}
     >
-      {status}
+      {label}
     </span>
   );
 }

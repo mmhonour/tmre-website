@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listingDetailHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import type { StatsKind, Town } from "./stats-towns";
+import StatsChartPrintFrame from "./StatsChartPrintFrame";
 
 const MedianPriceUnderlyingChart = dynamic(
   () => import("./MedianPriceUnderlyingChart"),
@@ -241,7 +242,7 @@ export default function MedianPriceListingsTable({
 
   return (
     <div id={sectionId} className="scroll-mt-28">
-      <div className="mb-4">
+      <div className="mb-4 stats-print-screen-only">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-1">
           {isPriceBand
             ? isRental
@@ -363,17 +364,19 @@ export default function MedianPriceListingsTable({
       </div>
 
       {!isPriceBand ? (
-        <MedianPriceUnderlyingChart
-          rows={rows}
-          townFilter={townFilter}
-          loading={loading}
-          medianPrice={displayMedian}
-          kind={kind}
-          listingPool={listingPool}
-        />
+        <StatsChartPrintFrame chartId="median-underlying">
+          <MedianPriceUnderlyingChart
+            rows={rows}
+            townFilter={townFilter}
+            loading={loading}
+            medianPrice={displayMedian}
+            kind={kind}
+            listingPool={listingPool}
+          />
+        </StatsChartPrintFrame>
       ) : null}
 
-      <div className="rounded-2xl bg-white border border-charcoal/[0.08] overflow-hidden">
+      <div className="rounded-2xl bg-white border border-charcoal/[0.08] overflow-hidden stats-print-screen-only">
         {loading ? (
           <div className="px-5 py-16 text-center font-mono text-[10px] tracking-[0.2em] uppercase text-slate animate-pulse">
             Loading listings…

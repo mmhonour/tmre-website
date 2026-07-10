@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchClosedListingsForCity, listingCacheHeaders } from '@/lib/listings-store'
 import { parseListingKindParam, type ListingKind } from '@/lib/listing-kind'
 import { computeSalesByMonth } from '@/lib/stats-compute'
-import { readStatsCache, writeStatsCache } from '@/lib/stats-cache'
+import { statsMonthChartYears } from '@/lib/stats-month-years'
+import { readAggregatedSalesByMonth, readStatsCache, writeStatsCache } from '@/lib/stats-cache'
+import { fetchClosedListingsAcrossTowns } from '@/lib/listings-store'
 
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const SUPPORTED_CITIES = [...TMRE_TOWNS] as string[]
-const YEARS = [2024, 2025, 2026]
+const SUPPORTED_CITIES = [...TMRE_TOWNS, 'All'] as string[]
+const YEARS = statsMonthChartYears()
 
 type MonthlyCount = { year: number; month: number; count: number }
 
@@ -25,6 +27,38 @@ export async function GET(req: NextRequest) {
   const kind = parseListingKindParam(searchParams.get('kind'))
 
   try {
+    if (city === 'All') {
+      const cached = readAggregatedSalesByMonth(kind)
+      if (cached) {
+        return NextResponse.json(
+          {
+            ...cached,
+            closedThisWeek: cached.closedThisWeek ?? 0,
+            closedThisWeekByZip: cached.closedThisWeekByZip ?? {},
+            source: 'db',
+            statsCache: true,
+            generatedAt: cached.generatedAt ?? new Date().toISOString(),
+          },
+          { headers: { ...listingCacheHeaders('db'), 'X-Stats-Cache': 'hit' } },
+        )
+      }
+
+      const { listings: raw, source } = await fetchClosedListingsAcrossTowns(TMRE_TOWNS, {
+        limit: 2500,
+      })
+      const payload = computeSalesByMonth(raw, 'All', kind)
+      const generatedAt = new Date().toISOString()
+
+      if (source === 'db') {
+        writeStatsCache('sales-by-month', 'All', kind, { ...payload, generatedAt })
+      }
+
+      return NextResponse.json(
+        { ...payload, generatedAt, source, statsCache: false },
+        { headers: listingCacheHeaders(source) },
+      )
+    }
+
     const cached = readStatsCache<ReturnType<typeof computeSalesByMonth> & { generatedAt?: string }>(
       'sales-by-month',
       city,
@@ -79,7 +113,8 @@ function generateFallback(city: string, kind: ListingKind = 'sale'): MonthlyCoun
   const currentYear = new Date().getFullYear()
 
   for (const year of YEARS) {
-    const yFactor = year === 2024 ? 1.0 : year === 2025 ? 1.05 : 0.90
+    const yearsFromStart = year - YEARS[0]
+    const yFactor = 1 + yearsFromStart * 0.04
     const maxMonth = year < currentYear ? 12 : currentMonth
     for (let month = 1; month <= 12; month++) {
       const count = month <= maxMonth

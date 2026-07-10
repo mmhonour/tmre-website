@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import GoldilocksScoreExplainModal, {
   type ScoreExplainTopic,
@@ -10,12 +10,17 @@ import { TMRE_TOWNS, TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
 import { dealOfTheDayHref, listingDetailHref, listingPhotosHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import DealPhotoThumbnailDeck from "@/components/DealPhotoThumbnailDeck";
+import ListingThumbImage from "@/components/ListingThumbImage";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import {
   useDealOfTheDayCarousel,
   type DealCarouselPayload,
 } from "@/hooks/useDealOfTheDayCarousel";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
+import {
+  formatScoreWeightPct,
+  useSiteUnlocked,
+} from "@/components/SiteUnlockProvider";
 import {
   filterPillButtonClass,
   filterPillContainerClass,
@@ -25,6 +30,7 @@ import {
   type DealSuperlativeInput,
 } from "@/lib/deal-superlatives";
 import { splitSentences } from "@/lib/split-sentences";
+import { formatDealOfTheDayHeaderSubtitle } from "@/lib/deal-of-the-day-header";
 
 type ListingKind = "sale" | "rental";
 
@@ -175,12 +181,27 @@ function shortType(t: string): string {
 const townCarouselBtnClass =
   "inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-white/70 hover:text-white hover:border-gold/40 hover:bg-white/5 transition-colors disabled:opacity-30 disabled:pointer-events-none";
 
-function DealDayTownList({ activeTown }: { activeTown: string | null }) {
+const DEAL_TOWN_TRANSITION_MS = 520;
+
+const townLinkClass = (active: boolean) =>
+  `transition-colors duration-300 underline-offset-2 hover:underline ${
+    active
+      ? "text-gold font-bold hover:text-gold-light"
+      : "text-white/45 font-normal hover:text-white/70"
+  }`;
+
+function DealDayTownListTagline() {
+  return (
+    <p className="text-white/45 mt-1">BELOW THE TOWN MEDIAN · established homes</p>
+  );
+}
+
+function DealDayTownListDesktop({ activeTown }: { activeTown: string | null }) {
   const towns = usePersonalizedTowns(TMRE_TOWNS);
   const activeKey = activeTown?.trim().toLowerCase() ?? null;
 
   return (
-    <div className="font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
+    <div className="hidden md:block font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
       <p>
         {towns.map((town, i) => {
           const isActive = activeKey === town.toLowerCase();
@@ -194,11 +215,7 @@ function DealDayTownList({ activeTown }: { activeTown: string | null }) {
               <Link
                 href={dealOfTheDayHref(town)}
                 aria-current={isActive ? "page" : undefined}
-                className={`transition-colors duration-300 underline-offset-2 hover:underline ${
-                  isActive
-                    ? "text-gold font-bold hover:text-gold-light"
-                    : "text-white/45 font-normal hover:text-white/70"
-                }`}
+                className={townLinkClass(isActive)}
               >
                 {town}
               </Link>
@@ -206,8 +223,96 @@ function DealDayTownList({ activeTown }: { activeTown: string | null }) {
           );
         })}
       </p>
-      <p className="text-white/45 mt-1">BELOW THE TOWN MEDIAN · established homes</p>
+      <DealDayTownListTagline />
     </div>
+  );
+}
+
+function DealDayTownListMobile({
+  activeTown,
+  slideDir = "next",
+}: {
+  activeTown: string | null;
+  slideDir?: "next" | "prev";
+}) {
+  const prevTownRef = useRef<string | null>(activeTown);
+  const [exitingTown, setExitingTown] = useState<string | null>(null);
+
+  useEffect(() => {
+    const prev = prevTownRef.current;
+    const next = activeTown?.trim() || null;
+
+    if (!next) {
+      prevTownRef.current = null;
+      setExitingTown(null);
+      return;
+    }
+
+    if (!prev || prev.toLowerCase() === next.toLowerCase()) {
+      prevTownRef.current = next;
+      setExitingTown(null);
+      return;
+    }
+
+    setExitingTown(prev);
+    prevTownRef.current = next;
+
+    const id = window.setTimeout(() => {
+      setExitingTown(null);
+    }, DEAL_TOWN_TRANSITION_MS);
+
+    return () => window.clearTimeout(id);
+  }, [activeTown]);
+
+  const town = activeTown?.trim() || null;
+  const exitAnimClass =
+    slideDir === "prev" ? "animate-deal-town-exit-prev" : "animate-deal-town-exit-next";
+
+  return (
+    <div className="md:hidden font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
+      <p className="flex flex-wrap items-baseline gap-x-0 overflow-hidden min-h-[1.25rem]">
+        {town ? (
+          <>
+            {exitingTown ? (
+              <span
+                key={`exit-${exitingTown}`}
+                className={`inline-flex items-baseline shrink-0 ${exitAnimClass}`}
+                aria-hidden
+              >
+                <span className="text-white/45 font-normal">{exitingTown}</span>
+                <span className="text-white/45">, </span>
+              </span>
+            ) : null}
+            <Link
+              key={town}
+              href={dealOfTheDayHref(town)}
+              aria-current="page"
+              className={`${townLinkClass(true)} ${
+                exitingTown ? "animate-deal-town-enter" : ""
+              }`}
+            >
+              {town}
+            </Link>
+          </>
+        ) : null}
+      </p>
+      <DealDayTownListTagline />
+    </div>
+  );
+}
+
+function DealDayTownList({
+  activeTown,
+  slideDir,
+}: {
+  activeTown: string | null;
+  slideDir?: "next" | "prev";
+}) {
+  return (
+    <>
+      <DealDayTownListDesktop activeTown={activeTown} />
+      <DealDayTownListMobile activeTown={activeTown} slideDir={slideDir} />
+    </>
   );
 }
 
@@ -376,6 +481,12 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
         if (cancelled) return;
         setData(d);
         setLoading(false);
+        // Warm the hero image as soon as the API returns a local proxy URL.
+        if (d.photoUrl && typeof window !== "undefined") {
+          const img = new Image();
+          img.decoding = "async";
+          img.src = d.photoUrl;
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -408,6 +519,8 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
     month: "long",
     day: "numeric",
   });
+  const dayHeaderTown = city?.trim() || carousel.currentTown;
+  const dayHeaderSubtitle = formatDealOfTheDayHeaderSubtitle(new Date(), dayHeaderTown);
   const l = showing?.listing ?? FALLBACK.listing;
   const typeLine = [
     shortType(l.propertyType || "Home"),
@@ -485,18 +598,26 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
                       : "bg-sage animate-pulse-dot"
                 }`}
               />
-              <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold/90">
-                Deal of the {periodLabel} · {today}
-                {isDay && carousel.currentTown ? (
-                  <span className="text-white/50 normal-case tracking-normal">
-                    {" "}
-                    · {carousel.currentTown}
+              <span className="font-mono text-[11px] tracking-[0.2em] text-gold/90">
+                {isDay ? (
+                  <>
+                    <span className="uppercase">Deal of the Day </span>
+                    <span className="normal-case tracking-normal text-white/75">
+                      {dayHeaderSubtitle}
+                    </span>
+                  </>
+                ) : (
+                  <span className="uppercase">
+                    Deal of the {periodLabel} · {today}
                   </span>
-                ) : null}
+                )}
               </span>
             </div>
             {mode === "day" && (
-              <DealDayTownList activeTown={city ?? carousel.currentTown} />
+              <DealDayTownList
+                activeTown={city ?? carousel.currentTown}
+                slideDir={carousel.slideDir}
+              />
             )}
             <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
               {mode === "day" ? (
@@ -519,6 +640,56 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
                 </>
               )}
             </h1>
+            {isDay ? (
+              <div
+                key={`photo-${slideKey}`}
+                className={`max-w-xl relative rounded-2xl overflow-hidden border border-white/10 shadow-xl shadow-black/30 ${
+                  dayEmpty ? "" : "animate-deal-copy-refresh"
+                }`}
+              >
+                {dayEmpty ? (
+                  <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark flex items-center justify-center px-6">
+                    <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
+                      {dayTxFilter === "rental"
+                        ? city
+                          ? `No below-median rental pick in ${city} right now.`
+                          : "No below-median rental picks available right now."
+                        : city
+                          ? `No below-median for-sale pick in ${city} right now.`
+                          : "No below-median for-sale picks available right now."}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <PhotoBanner
+                      src={showing?.photoUrl ?? null}
+                      alt={l.address.street || l.address.full}
+                      loading={loadingState}
+                      reveal={false}
+                      priority
+                      photoDeck={
+                        photosHref && l.mlsId && l.mlsId !== "—"
+                          ? {
+                              mlsId: l.mlsId,
+                              photoCount: l.photoCount,
+                              photosHref,
+                              address: l.address.street || l.address.full,
+                              priority: true,
+                            }
+                          : null
+                      }
+                    />
+                    {detailHref ? (
+                      <Link
+                        href={detailHref}
+                        className="absolute inset-0 z-[15] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+                        aria-label={`View listing: ${l.address.street || l.address.full}`}
+                      />
+                    ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
             {isDay ? (
               <div key={`insight-${slideKey}`} className="max-w-xl space-y-4">
                 <DealInsightCopy
@@ -609,6 +780,7 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
                     }
                   : null
               }
+              hidePhoto={isDay}
             />
           </div>
         </div>
@@ -680,6 +852,7 @@ function DealCard({
   transactionFilter,
   onTransactionFilterChange,
   empty = false,
+  hidePhoto = false,
 }: {
   detailHref?: string | null;
   photosHref?: string | null;
@@ -720,8 +893,10 @@ function DealCard({
   transactionFilter?: "sale" | "rental";
   onTransactionFilterChange?: (value: "sale" | "rental") => void;
   empty?: boolean;
+  hidePhoto?: boolean;
 }) {
   const [explainTopic, setExplainTopic] = useState<ScoreExplainTopic | null>(null);
+  const showWeights = useSiteUnlocked();
   const isRental = kind === "rental";
   const cityShort = city ? city.split(",")[0] : "";
   const priceLabel = isRental ? "Monthly rent" : "List price";
@@ -815,43 +990,45 @@ function DealCard({
             ) : null}
           </div>
         ) : null}
-        <div className="relative">
-          {empty ? (
-            <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark flex items-center justify-center px-6">
-              <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
-                {transactionFilter === "rental"
-                  ? townLabel
-                    ? `No below-median rental pick in ${townLabel} right now.`
-                    : "No below-median rental picks available right now."
-                  : townLabel
-                    ? `No below-median for-sale pick in ${townLabel} right now.`
-                    : "No below-median for-sale picks available right now."}
-              </p>
-            </div>
-          ) : (
-            <>
-          <PhotoBanner
-            src={photoUrl}
-            alt={address}
-            loading={loading}
-            reveal={false}
-            priority
-            photoDeck={
-              photosHref && mlsId
-                ? { mlsId, photoCount, photosHref, address, priority: true }
-                : null
-            }
-          />
-          {detailHref ? (
-            <Link
-              href={detailHref}
-              className="absolute inset-0 z-[15] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
-              aria-label={`View listing: ${address}`}
-            />
-          ) : null}
-            </>
-          )}
-        </div>
+        {!hidePhoto ? (
+          <div className="relative">
+            {empty ? (
+              <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark flex items-center justify-center px-6">
+                <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
+                  {transactionFilter === "rental"
+                    ? townLabel
+                      ? `No below-median rental pick in ${townLabel} right now.`
+                      : "No below-median rental picks available right now."
+                    : townLabel
+                      ? `No below-median for-sale pick in ${townLabel} right now.`
+                      : "No below-median for-sale picks available right now."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <PhotoBanner
+                  src={photoUrl}
+                  alt={address}
+                  loading={loading}
+                  reveal={false}
+                  priority
+                  photoDeck={
+                    photosHref && mlsId
+                      ? { mlsId, photoCount, photosHref, address, priority: true }
+                      : null
+                  }
+                />
+                {detailHref ? (
+                  <Link
+                    href={detailHref}
+                    className="absolute inset-0 z-[15] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+                    aria-label={`View listing: ${address}`}
+                  />
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
       {!empty ? (
       <div className="relative p-7 lg:p-8 pt-6 lg:pt-7 space-y-4">
@@ -1028,12 +1205,12 @@ function DealCard({
             />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3">
-            <Factor label="Age" value={score.age} factorKey="age" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Condition" value={score.condition} factorKey="condition" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Finishes" value={score.finishesQuality} factorKey="finishes" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="PPSF fit" value={score.pricePerSqftFit} factorKey="ppsf" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Layout" value={score.layoutQuality} factorKey="layout" onExplain={scoreExplains ? setExplainTopic : undefined} />
-            <Factor label="Schools" value={score.schoolRating} factorKey="schools" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Age" value={score.age} weight={score.weights.age} showWeight={showWeights} factorKey="age" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Condition" value={score.condition} weight={score.weights.condition} showWeight={showWeights} factorKey="condition" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Finishes" value={score.finishesQuality} weight={score.weights.finishes} showWeight={showWeights} factorKey="finishes" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="PPSF fit" value={score.pricePerSqftFit} weight={score.weights.ppsf} showWeight={showWeights} factorKey="ppsf" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Layout" value={score.layoutQuality} weight={score.weights.layout} showWeight={showWeights} factorKey="layout" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            <Factor label="Schools" value={score.schoolRating} weight={score.weights.schools} showWeight={showWeights} factorKey="schools" onExplain={scoreExplains ? setExplainTopic : undefined} />
           </div>
         </div>
 
@@ -1061,6 +1238,7 @@ function DealCard({
         topic={explainTopic}
         context={{
           composite: score.composite,
+          showWeights,
           factorScore:
             explainTopic === "age" ? score.age
             : explainTopic === "condition" ? score.condition
@@ -1112,17 +1290,16 @@ function PhotoBanner({
   const mainPhoto = (
     <div className="relative min-w-0 flex-1 aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden">
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={src}
+        <ListingThumbImage
           src={src}
           alt={alt}
-          className={`absolute inset-0 w-full h-full object-cover ${
+          priority={priority}
+          hideLoadingPlaceholder={loading}
+          placeholderClassName="absolute inset-0 bg-navy-light/80 animate-pulse"
+          className="absolute inset-0 block w-full h-full"
+          imgClassName={`absolute inset-0 w-full h-full object-cover ${
             reveal ? "animate-deal-photo-reveal" : ""
           }`}
-          loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "auto"}
-          decoding="async"
         />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -1157,17 +1334,16 @@ function PhotoBanner({
   return (
     <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden">
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={src}
+        <ListingThumbImage
           src={src}
           alt={alt}
-          className={`absolute inset-0 w-full h-full object-cover ${
+          priority={priority}
+          hideLoadingPlaceholder={loading}
+          placeholderClassName="absolute inset-0 bg-navy-light/80 animate-pulse"
+          className="absolute inset-0 block w-full h-full"
+          imgClassName={`absolute inset-0 w-full h-full object-cover ${
             reveal ? "animate-deal-photo-reveal" : ""
           }`}
-          loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "auto"}
-          decoding="async"
         />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -1312,18 +1488,29 @@ function Stat({
 function Factor({
   label,
   value,
+  weight,
+  showWeight = false,
   factorKey,
   onExplain,
 }: {
   label: string;
   value: number;
+  weight?: number;
+  showWeight?: boolean;
   factorKey: ScoreExplainTopic;
   onExplain?: (topic: ScoreExplainTopic) => void;
 }) {
   return (
     <div>
       <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-white/55 mb-1">
-        <span>{label}</span>
+        <span>
+          {label}
+          {showWeight && weight != null ? (
+            <span className="ml-1.5 text-white/35 normal-case tracking-normal">
+              ({formatScoreWeightPct(weight)})
+            </span>
+          ) : null}
+        </span>
         <span>
           {Math.round(value)}
           {onExplain ? (

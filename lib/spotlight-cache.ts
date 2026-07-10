@@ -1,20 +1,27 @@
 import 'server-only'
 
-import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/listings-db'
+import { readStatsCacheRow, searchListingsInDbByQuery, writeStatsCacheRow } from '@/lib/listings-db'
+import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import {
   fetchListingByMlsId,
   persistListingRecord,
   type ListingsSource,
 } from '@/lib/listings-store'
-import { fetchAllPhotoUrls, type Listing } from '@/lib/rets'
-import { SPOTLIGHT_LISTING } from '@/lib/spotlight-listing'
+import type { Listing } from '@/lib/rets'
+import { searchListings } from '@/lib/rets'
+import {
+  getSpotlightListingConfig,
+  type SpotlightListingConfig,
+  type SpotlightPropertyTabId,
+} from '@/lib/spotlight-listing'
 
-export const SPOTLIGHT_CACHE_PREFIX = 'spotlight:v1'
+export const SPOTLIGHT_CACHE_PREFIX = 'spotlight:v2'
 export const SPOTLIGHT_LISTING_TTL_MS = 30 * 60 * 1000
 export const SPOTLIGHT_PHOTOS_TTL_MS = 12 * 60 * 60 * 1000
 
 export type SpotlightCachePayload = {
   listing: Listing | null
+  /** Local photo-proxy paths only (`/api/listings/.../photos/N`). */
   photos?: string[]
   source: ListingsSource
   cachedAt: string
@@ -25,9 +32,67 @@ function spotlightCacheKey(mlsId: string): string {
   return `${SPOTLIGHT_CACHE_PREFIX}:${mlsId}`
 }
 
+function normalizeStreet(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function listingMatchesSpotlightAddress(
+  listing: Listing,
+  config: SpotlightListingConfig,
+): boolean {
+  const targetStreet = normalizeStreet(config.address.street)
+  const targetCity = normalizeStreet(config.address.city)
+  const listingStreet = normalizeStreet(
+    listing.address.street || listing.address.full,
+  )
+  const listingCity = normalizeStreet(listing.address.city)
+  if (!targetStreet || !listingStreet.includes(targetStreet)) return false
+  if (targetCity && listingCity && listingCity !== targetCity) return false
+  return true
+}
+
+/** DB-first, then RETS — for spotlight configs without a fixed MLS id. */
+export async function resolveSpotlightMlsId(
+  config: SpotlightListingConfig,
+): Promise<string | null> {
+  const fixed = config.mlsId?.trim()
+  if (fixed) return fixed
+
+  const query = config.address.street.trim()
+  if (query.length < 2) return null
+
+  const dbHits = searchListingsInDbByQuery(query, { limit: 20 })
+  const dbMatch = dbHits.find((listing) =>
+    listingMatchesSpotlightAddress(listing, config),
+  )
+  if (dbMatch?.mlsId?.trim()) return dbMatch.mlsId.trim()
+
+  try {
+    const retsHits = await searchListings({
+      county: 'fairfield',
+      addressContains: query,
+      city: config.address.city,
+      limit: 20,
+    })
+    const retsMatch = retsHits.find((listing) =>
+      listingMatchesSpotlightAddress(listing, config),
+    )
+    return retsMatch?.mlsId?.trim() ?? null
+  } catch (err) {
+    console.warn('[spotlight-cache] RETS address lookup failed', err)
+    return null
+  }
+}
+
 function isFresh(iso: string | undefined, ttlMs: number): boolean {
   if (!iso) return false
   return Date.now() - new Date(iso).getTime() < ttlMs
+}
+
+/** Reject legacy CDN photo caches so we resync from SQLite proxy paths. */
+function photosAreLocalProxy(photos: string[] | undefined): boolean {
+  if (!photos || photos.length === 0) return false
+  return photos.every((url) => url.startsWith('/api/listings/'))
 }
 
 export function readSpotlightCache(mlsId: string): SpotlightCachePayload | null {
@@ -50,13 +115,18 @@ export function writeSpotlightCache(
 export async function resolveSpotlightListing(options: {
   includePhotos: boolean
   forceRefresh?: boolean
+  config?: SpotlightListingConfig
+  propertyTab?: SpotlightPropertyTabId
 }): Promise<{
   listing: Listing | null
   photos: string[]
   source: ListingsSource
   cacheHit: boolean
 }> {
-  const mlsId = SPOTLIGHT_LISTING.mlsId?.trim()
+  const config =
+    options.config ??
+    getSpotlightListingConfig(options.propertyTab ?? 1)
+  const mlsId = await resolveSpotlightMlsId(config)
   if (!mlsId) {
     return { listing: null, photos: [], source: 'db', cacheHit: false }
   }
@@ -66,9 +136,8 @@ export async function resolveSpotlightListing(options: {
     cached?.listing != null &&
     isFresh(cached.cachedAt, SPOTLIGHT_LISTING_TTL_MS)
   const photosFresh =
-    cached?.photos != null &&
-    cached.photos.length > 0 &&
-    isFresh(cached.photosCachedAt, SPOTLIGHT_PHOTOS_TTL_MS)
+    photosAreLocalProxy(cached?.photos) &&
+    isFresh(cached?.photosCachedAt, SPOTLIGHT_PHOTOS_TTL_MS)
 
   if (listingFresh && cached) {
     if (!options.includePhotos || photosFresh) {
@@ -95,11 +164,12 @@ export async function resolveSpotlightListing(options: {
   let photosCachedAt = photosFresh ? cached!.photosCachedAt : undefined
 
   if (options.includePhotos && listing && !photosFresh) {
-    photos = await fetchAllPhotoUrls(
-      listing.listingKey || mlsId,
+    const resolved = await resolveListingPhotoUrls(
       mlsId,
+      listing.listingKey || mlsId,
       listing.photoCount,
     )
+    photos = resolved.photos
     photosCachedAt = new Date().toISOString()
   }
 
@@ -119,11 +189,19 @@ export async function resolveSpotlightListing(options: {
   }
 }
 
-export async function rebuildSpotlightCache(): Promise<boolean> {
-  const mlsId = SPOTLIGHT_LISTING.mlsId?.trim()
+export async function rebuildSpotlightCache(
+  propertyTab: SpotlightPropertyTabId = 1,
+): Promise<boolean> {
+  const config = getSpotlightListingConfig(propertyTab)
+  const mlsId = await resolveSpotlightMlsId(config)
   if (!mlsId) return false
   try {
-    await resolveSpotlightListing({ includePhotos: true, forceRefresh: true })
+    await resolveSpotlightListing({
+      includePhotos: true,
+      forceRefresh: true,
+      config,
+      propertyTab,
+    })
     console.info('[spotlight-cache] rebuilt for', mlsId)
     return true
   } catch (err) {

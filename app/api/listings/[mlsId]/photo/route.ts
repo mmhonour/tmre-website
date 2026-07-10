@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { fetchListingByMlsId } from '@/lib/listings-store'
-import { fetchPreferredPhotoUrl } from '@/lib/rets'
+import { readListingByIdFromDb } from '@/lib/listings-db'
+import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,11 +14,20 @@ export async function GET(
   if (!id) return NextResponse.json({ url: null })
 
   try {
-    // Resolve listing to get listingKey, which RETS needs for photo retrieval
-    const { listing } = await fetchListingByMlsId(id)
-    const photoKey = listing?.listingKey || id
-    const url = await fetchPreferredPhotoUrl(photoKey, id)
-    return NextResponse.json({ url })
+    const listing = readListingByIdFromDb(id)
+    if (!listing) return NextResponse.json({ url: null }, { status: 404 })
+    const photoKey = listing.listingKey?.trim() || id
+    const resolved = await resolveListingPhotoBuffer({
+      mlsId: id,
+      listingKey: photoKey,
+      photoIndex: 0,
+      photoCountHint: listing.photoCount,
+      sqliteOnly: true,
+    })
+    if (!resolved) return NextResponse.json({ url: null })
+    return NextResponse.json({
+      url: `/api/listings/${encodeURIComponent(id)}/photos/0`,
+    })
   } catch {
     return NextResponse.json({ url: null })
   }

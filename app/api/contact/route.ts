@@ -18,6 +18,7 @@ type Contact = {
   email: string
   source: string
   listingInfo: string | null
+  address: string | null
   createdAt: string
 }
 
@@ -46,10 +47,24 @@ export async function POST(req: NextRequest) {
   const source = typeof body.source === 'string' ? body.source.trim() : 'nav-contact'
   const listingInfo =
     typeof body.listingInfo === 'string' ? body.listingInfo.trim() || null : null
+  const address =
+    typeof body.address === 'string' ? body.address.trim().slice(0, 2000) || null : null
 
-  const fieldErrors = validateContactFields({ name, phone, email })
+  const requireAddress = source === 'list-with-me'
+  const fieldErrors = validateContactFields({
+    name,
+    phone,
+    email,
+    requireAddress,
+    address: address ?? '',
+  })
   if (Object.keys(fieldErrors).length > 0) {
-    const message = fieldErrors.name ?? fieldErrors.phone ?? fieldErrors.email ?? 'Invalid input'
+    const message =
+      fieldErrors.name ??
+      fieldErrors.phone ??
+      fieldErrors.email ??
+      fieldErrors.address ??
+      'Invalid input'
     return NextResponse.json({ error: message, fieldErrors }, { status: 400 })
   }
 
@@ -60,6 +75,7 @@ export async function POST(req: NextRequest) {
     email,
     source,
     listingInfo,
+    address,
     createdAt: new Date().toISOString(),
   }
 
@@ -75,6 +91,7 @@ export async function POST(req: NextRequest) {
       email: contact.email,
       source: contact.source,
       listingInfo: contact.listingInfo,
+      address: contact.address,
     })
   } catch (err) {
     console.error('[/api/contact] email notify failed', err)

@@ -3,8 +3,10 @@ import 'server-only'
 import {
   countFreshListingPhotos,
   listingPhotoStorageSpan,
+  listStoredListingPhotoIndices,
   readListingPhotoBlob,
   upsertListingPhotoBlob,
+  type ListingPhotoBlobRow,
 } from '@/lib/listings-db'
 import {
   isListingPhotoFresh,
@@ -23,6 +25,16 @@ function bufferFromRetsItem(item: unknown): Buffer | null {
   const row = item as { dataBuffer?: Buffer; data?: Buffer }
   const buf = row.dataBuffer ?? row.data ?? (Buffer.isBuffer(item) ? item : null)
   return buf instanceof Buffer && buf.length > 100 ? buf : null
+}
+
+function retsObjectItems(all: unknown): unknown[] {
+  const items: unknown[] = Array.isArray(all)
+    ? all
+    : Array.isArray((all as { objects?: unknown[] })?.objects)
+      ? (all as { objects: unknown[] }).objects
+      : []
+  // SmartMLS sometimes returns a null/empty slot at [0]; index into valid buffers only.
+  return items.filter((item) => bufferFromRetsItem(item) != null)
 }
 
 /** Fetch one photo index from SmartMLS RETS object resources. */
@@ -45,13 +57,7 @@ export async function fetchListingPhotoBufferFromRets(
           key,
           { Location: 0, alwaysGroupObjects: true },
         )
-        const items: unknown[] = Array.isArray(all)
-          ? all
-          : Array.isArray((all as { objects?: unknown[] })?.objects)
-            ? (all as { objects: unknown[] }).objects
-            : []
-        const item = items[photoIndex]
-        return bufferFromRetsItem(item)
+        return bufferFromRetsItem(retsObjectItems(all)[photoIndex])
       })
       if (result) {
         return { data: result, contentType: 'image/jpeg' }
@@ -130,6 +136,19 @@ export type ResolveListingPhotoOptions = {
   photoIndex: number
   photoCountHint?: number | null
   forceRefresh?: boolean
+  /** When true, only return blobs already in listing-photos.db (no RETS/media fetch). */
+  sqliteOnly?: boolean
+}
+
+function asPhotoResult(
+  row: ListingPhotoBlobRow,
+  cacheHit: boolean,
+): { data: Buffer; contentType: string; cacheHit: boolean } {
+  return {
+    data: row.data,
+    contentType: row.contentType,
+    cacheHit,
+  }
 }
 
 /** SQLite blob first — refresh from media/RETS only when missing or older than 30 minutes. */
@@ -148,11 +167,12 @@ export async function resolveListingPhotoBuffer(
     !options.forceRefresh
 
   if (cacheFresh && cached) {
-    return {
-      data: cached.data,
-      contentType: cached.contentType,
-      cacheHit: true,
-    }
+    return asPhotoResult(cached, true)
+  }
+
+  if (options.sqliteOnly) {
+    if (cached) return asPhotoResult(cached, true)
+    return null
   }
 
   const fetched = await fetchPhotoFromSources(id, listingKey, photoIndex)
@@ -160,12 +180,10 @@ export async function resolveListingPhotoBuffer(
     return fetchAndPersistPhotoBuffer(id, photoIndex, fetched)
   }
 
+  // Empty RETS/media slots stay missing — galleries omit them instead of
+  // fabricating a duplicate from a neighboring index.
   if (cached) {
-    return {
-      data: cached.data,
-      contentType: cached.contentType,
-      cacheHit: true,
-    }
+    return asPhotoResult(cached, true)
   }
 
   return null
@@ -178,19 +196,44 @@ export function listingPhotoCacheId(listing: {
   return listing.listingKey?.trim() || listing.mlsId.trim()
 }
 
-/** True when every expected index is stored and synced within the TTL window. */
+function listingPhotoIndicesAreContiguous(indices: readonly number[]): boolean {
+  if (indices.length === 0) return false
+  for (let i = 1; i < indices.length; i++) {
+    if (indices[i] !== indices[i - 1]! + 1) return false
+  }
+  return true
+}
+
+/**
+ * True when stored photos are fresh. Empty RETS object slots (leading/trailing
+ * holes that never download) do not keep this false forever — only interior gaps do.
+ */
 export function listingPhotosFullyCached(
   cacheId: string,
   photoCountHint?: number | null,
   ttlMs = LISTING_PHOTO_TTL_MS,
 ): boolean {
   const id = cacheId.trim()
+  if (!id) return false
+  const indices = listStoredListingPhotoIndices(id)
+  const stored = indices.length
+  if (stored <= 0) return false
+  const span = listingPhotoStorageSpan(id)
+  const fresh = countFreshListingPhotos(id, span, listingPhotoSyncedAfter(ttlMs))
+  if (fresh < stored) return false
+  if (!listingPhotoIndicesAreContiguous(indices)) return false
+
+  const min = indices[0]!
+  const max = indices[indices.length - 1]!
   const expected = photoCountHint ?? 0
-  if (!id || expected <= 0) return false
-  return (
-    countFreshListingPhotos(id, expected, listingPhotoSyncedAfter(ttlMs)) >=
-    expected
-  )
+  if (expected <= 0) return true
+  // Full contiguous 0..expected-1
+  if (min === 0 && stored >= expected) return true
+  // Contiguous run ending at the MLS last slot — missing leading RETS empties only
+  if (max === expected - 1 && stored === max - min + 1) return true
+  // Contiguous run covering every MLS slot from 0 without interior holes
+  if (min === 0 && max === stored - 1 && stored >= expected) return true
+  return false
 }
 
 /** True when any stored photo for this listing is past the refresh interval. */
@@ -213,11 +256,10 @@ export function readCachedListingPhotoBuffers(
 ): Buffer[] {
   const id = mlsId.trim()
   if (!id || maxPhotos <= 0) return []
-  const span = listingPhotoStorageSpan(id)
-  const limit = Math.min(maxPhotos, span)
+  const indices = listStoredListingPhotoIndices(id).slice(0, maxPhotos)
   const buffers: Buffer[] = []
-  for (let i = 0; i < limit; i++) {
-    const row = readListingPhotoBlob(id, i)
+  for (const index of indices) {
+    const row = readListingPhotoBlob(id, index)
     if (row && isListingPhotoFresh(row.syncedAt, ttlMs)) {
       buffers.push(row.data)
     }

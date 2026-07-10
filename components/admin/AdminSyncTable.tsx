@@ -1,0 +1,472 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import type { AdminSyncActionId } from "@/lib/admin-sync-types";
+import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
+import { formatAdminNextSyncAt } from "@/lib/admin-sync-schedule-format";
+import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
+import Link from "next/link";
+
+export type AdminSyncRow = {
+  id: string;
+  label: string;
+  value: string;
+  detail?: string;
+  actionId?: AdminSyncActionId;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  nextRunAt?: string | null;
+};
+
+type SyncStats = {
+  lastFullSync: string | null;
+  lastFullSyncStarted: string | null;
+  lastIncrementalSync: string | null;
+  lastIncrementalSyncStarted: string | null;
+  lastListingScores: string | null;
+  lastListingScoresStarted: string | null;
+  lastStatsCache: string | null;
+  lastStatsCacheStarted: string | null;
+  lastDealOfTheDayCache: string | null;
+  lastDealOfTheDayCacheStarted: string | null;
+};
+
+type SyncTiming = {
+  started: string | null;
+  finished: string | null;
+};
+
+type PanelStatus = {
+  refreshing: boolean;
+  lastRefreshFinished: string | null;
+  lastRefreshStarted: string | null;
+  latestListingUpdate: string | null;
+  propertyAddressesSyncedAt?: string | null;
+  stats: SyncStats;
+  nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
+};
+
+function formatTimestamp(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming {
+  if (row.startedAt != null || row.finishedAt != null) {
+    return { started: row.startedAt ?? null, finished: row.finishedAt ?? null };
+  }
+
+  if (!status) {
+    return { started: null, finished: null };
+  }
+
+  switch (row.id) {
+    case "full-resync":
+      return {
+        started: status.stats.lastFullSyncStarted,
+        finished: status.stats.lastFullSync,
+      };
+    case "incremental":
+      return {
+        started: status.stats.lastIncrementalSyncStarted,
+        finished: status.stats.lastIncrementalSync,
+      };
+    case "latest-mls":
+      return { started: null, finished: status.latestListingUpdate };
+    case "listing-scores":
+      return {
+        started: status.stats.lastListingScoresStarted,
+        finished: status.stats.lastListingScores,
+      };
+    case "refresh-finished":
+      return {
+        started: status.lastRefreshStarted,
+        finished: status.lastRefreshFinished,
+      };
+    case "stats-cache":
+      return {
+        started: status.stats.lastStatsCacheStarted,
+        finished: status.stats.lastStatsCache,
+      };
+    case "deal-of-the-day":
+      return {
+        started: status.stats.lastDealOfTheDayCacheStarted,
+        finished: status.stats.lastDealOfTheDayCache,
+      };
+    case "property-addresses":
+      return { started: null, finished: status.propertyAddressesSyncedAt ?? null };
+    default:
+      return { started: null, finished: null };
+  }
+}
+
+function SyncTimestamp({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="font-mono text-[10px] tracking-wide text-charcoal/45 uppercase">{label}</p>
+      <p className="font-mono text-xs tabular-nums text-navy font-semibold whitespace-nowrap">
+        {formatTimestamp(value)}
+      </p>
+    </div>
+  );
+}
+
+function nextRunForRow(
+  row: AdminSyncRow,
+  status: PanelStatus | null,
+): string | null {
+  if (status?.nextRuns && row.id in status.nextRuns) {
+    return status.nextRuns[row.id as AdminSyncPanelRowId] ?? null;
+  }
+  return row.nextRunAt ?? null;
+}
+
+const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
+  "full-resync": "full-resync",
+  incremental: "incremental",
+  "listing-scores": "listing-scores",
+  "publish-snapshot": "refresh-finished",
+  "stats-cache": "stats-cache",
+  "deal-of-the-day": "deal-of-the-day",
+  "property-addresses": "property-addresses",
+};
+
+function SyncImpactedPages({ rowId }: { rowId: string }) {
+  const pages = adminSyncImpactedPages(rowId);
+  if (pages.length === 0) {
+    return <span className="font-mono text-[10px] text-charcoal/30">—</span>;
+  }
+
+  return (
+    <ul className="flex flex-wrap gap-1.5 min-w-0 list-none p-0 m-0">
+      {pages.map((page) => (
+        <li key={page.href}>
+          <Link
+            href={page.href}
+            className="inline-block font-mono text-[10px] tracking-[0.08em] uppercase text-navy/70 hover:text-gold border border-charcoal/10 hover:border-gold/40 rounded-full px-2 py-0.5 bg-white transition-colors whitespace-nowrap"
+          >
+            {page.label}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const TH =
+  "px-4 py-2.5 text-left font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40 border-r border-b border-transparent bg-cream/30 whitespace-nowrap";
+const TD =
+  "px-4 py-3 align-top text-left border-r border-b border-transparent last:border-r-0";
+
+export default function AdminSyncTable({
+  rows,
+  initialRefreshing,
+}: {
+  rows: AdminSyncRow[];
+  initialRefreshing: boolean;
+}) {
+  const [status, setStatus] = useState<PanelStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(initialRefreshing);
+  const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
+    null,
+  );
+  const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
+  const [runTimings, setRunTimings] = useState<Partial<Record<string, SyncTiming>>>({});
+  const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    const res = await fetch("/api/admin/sync", { cache: "no-store" });
+    if (!res.ok) return;
+    const body = (await res.json()) as PanelStatus;
+    setStatus(body);
+    setRefreshing(body.refreshing);
+  }, []);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
+
+  const runSync = useCallback(
+    async (row: AdminSyncRow) => {
+      if (!row.actionId || runningId) return;
+      const startedAt = new Date().toISOString();
+      setRunningId(row.actionId);
+      setMessages((prev) => ({ ...prev, [row.id]: undefined }));
+      setRunTimings((prev) => ({
+        ...prev,
+        [row.id]: { started: startedAt, finished: null },
+      }));
+
+      try {
+        const res = await fetch("/api/admin/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: row.actionId }),
+        });
+        const body = (await res.json()) as PanelStatus & {
+          ok?: boolean;
+          message?: string;
+          detail?: string;
+          error?: string;
+          startedAt?: string;
+          finishedAt?: string;
+        };
+
+        if (!res.ok) {
+          setMessages((prev) => ({
+            ...prev,
+            [row.id]: body.detail ?? body.error ?? "Sync failed",
+          }));
+          setRunTimings((prev) => ({
+            ...prev,
+            [row.id]: {
+              started: body.startedAt ?? startedAt,
+              finished: body.finishedAt ?? new Date().toISOString(),
+            },
+          }));
+          return;
+        }
+
+        setStatus(body);
+        setRefreshing(body.refreshing);
+        setRunTimings((prev) => ({
+          ...prev,
+          [row.id]: {
+            started: body.startedAt ?? startedAt,
+            finished: body.finishedAt ?? new Date().toISOString(),
+          },
+        }));
+        setMessages((prev) => ({
+          ...prev,
+          [row.id]: body.message ?? "Complete",
+        }));
+      } catch (err) {
+        setMessages((prev) => ({
+          ...prev,
+          [row.id]: err instanceof Error ? err.message : "Sync failed",
+        }));
+        setRunTimings((prev) => ({
+          ...prev,
+          [row.id]: { started: startedAt, finished: new Date().toISOString() },
+        }));
+      } finally {
+        setRunningId(null);
+        void refreshStatus();
+      }
+    },
+    [runningId, refreshStatus],
+  );
+
+  const runSyncAll = useCallback(async () => {
+    if (runningId) return;
+    setRunningId("sync-all-caches");
+    setSyncAllSummary(null);
+    setMessages({});
+    setRunTimings({});
+
+    try {
+      const res = await fetch("/api/admin/sync", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "sync-all-caches" }),
+      });
+      const body = (await res.json()) as PanelStatus & {
+        ok?: boolean;
+        message?: string;
+        detail?: string;
+        error?: string;
+        steps?: {
+          ok: boolean;
+          action: AdminSyncActionId;
+          message: string;
+          stepLabel?: string;
+          startedAt?: string;
+          finishedAt?: string;
+        }[];
+      };
+
+      if (!res.ok) {
+        setSyncAllSummary(body.detail ?? body.error ?? "Sync all failed");
+        return;
+      }
+
+      setStatus(body);
+      setRefreshing(body.refreshing);
+
+      if (body.steps?.length) {
+        const nextMessages: Partial<Record<string, string>> = {};
+        const nextTimings: Partial<Record<string, SyncTiming>> = {};
+        for (const step of body.steps) {
+          const rowId = ACTION_ROW_ID[step.action];
+          if (rowId && !step.stepLabel) {
+            nextMessages[rowId] = step.message;
+            if (step.startedAt || step.finishedAt) {
+              nextTimings[rowId] = {
+                started: step.startedAt ?? null,
+                finished: step.finishedAt ?? null,
+              };
+            }
+          }
+        }
+        setMessages(nextMessages);
+        setRunTimings(nextTimings);
+      }
+
+      setSyncAllSummary(body.message ?? "Sync all complete");
+    } catch (err) {
+      setSyncAllSummary(err instanceof Error ? err.message : "Sync all failed");
+    } finally {
+      setRunningId(null);
+      void refreshStatus();
+    }
+  }, [runningId, refreshStatus]);
+
+  const globalBusy = refreshing || runningId != null;
+  const syncAllRunning = runningId === "sync-all-caches";
+
+  return (
+    <>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
+        <p className="text-xs text-slate leading-relaxed max-w-2xl">
+          Sync all runs incremental MLS update, scores, stats, Deal of the Day, intelligence
+          board, Latest feeds, property addresses, Deal of the Week, then publishes the read
+          snapshot — serially.
+        </p>
+        <button
+          type="button"
+          onClick={() => void runSyncAll()}
+          disabled={globalBusy}
+          className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-gold/40 text-navy bg-gold/15 hover:bg-gold/25 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0 self-start sm:self-auto"
+        >
+          {syncAllRunning ? "Syncing all…" : "Sync all"}
+        </button>
+      </div>
+      {syncAllSummary ? (
+        <div className="px-5 sm:px-6 py-2 border-b border-charcoal/[0.08] bg-white">
+          <p
+            className={`font-mono text-[10px] tracking-wide ${
+              syncAllSummary.toLowerCase().includes("fail") ||
+              syncAllSummary.toLowerCase().includes("stopped")
+                ? "text-coral"
+                : "text-sage"
+            }`}
+          >
+            {syncAllSummary}
+          </p>
+        </div>
+      ) : null}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1080px] border-collapse table-fixed">
+          <colgroup>
+            <col className="w-[7.5rem]" />
+            <col className="w-[9.5rem]" />
+            <col />
+            <col className="w-[11rem]" />
+            <col className="w-[10.5rem]" />
+            <col className="w-[10.5rem]" />
+            <col className="w-[11rem]" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th className={TH}>Action</th>
+              <th className={TH}>Sync</th>
+              <th className={TH}>Description</th>
+              <th className={TH}>Pages</th>
+              <th className={TH}>Start</th>
+              <th className={TH}>End</th>
+              <th className={`${TH} border-r-0`}>Next scheduled</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const isRunning = row.actionId != null && runningId === row.actionId;
+              const message = messages[row.id];
+              const disabled = !row.actionId || globalBusy;
+              const timing = runTimings[row.id] ?? timingForRow(row, status);
+              const showSingleTimestamp =
+                row.id === "latest-mls" || row.id === "property-addresses";
+              const nextRunAt = nextRunForRow(row, status);
+
+              return (
+                <tr key={row.id} className="bg-white even:bg-cream/[0.18]">
+                  <td className={TD}>
+                    {row.actionId ? (
+                      <button
+                        type="button"
+                        onClick={() => void runSync(row)}
+                        disabled={disabled}
+                        className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
+                      >
+                        {isRunning ? "Syncing…" : "Sync now"}
+                      </button>
+                    ) : (
+                      <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
+                    )}
+                  </td>
+                  <td className={TD}>
+                    <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/60 leading-snug">
+                      {row.label}
+                    </p>
+                  </td>
+                  <td className={TD}>
+                    <p className="text-sm text-slate leading-snug">{row.detail ?? ""}</p>
+                    {message ? (
+                      <p
+                        className={`mt-1 font-mono text-[10px] tracking-wide ${
+                          message.toLowerCase().includes("fail") ? "text-coral" : "text-sage"
+                        }`}
+                      >
+                        {message}
+                      </p>
+                    ) : isRunning ? (
+                      <p className="mt-1 font-mono text-[10px] tracking-wide text-gold">Running…</p>
+                    ) : null}
+                  </td>
+                  <td className={TD}>
+                    <SyncImpactedPages rowId={row.id} />
+                  </td>
+                  {showSingleTimestamp ? (
+                    <td className={TD} colSpan={2}>
+                      <SyncTimestamp label="Updated" value={timing.finished} />
+                    </td>
+                  ) : (
+                    <>
+                      <td className={TD}>
+                        <SyncTimestamp label="Start" value={timing.started} />
+                      </td>
+                      <td className={TD}>
+                        <SyncTimestamp label="End" value={timing.finished} />
+                      </td>
+                    </>
+                  )}
+                  <td className={`${TD} border-r-0`}>
+                    <p className="font-mono text-xs tabular-nums text-navy font-semibold whitespace-nowrap">
+                      {formatAdminNextSyncAt(nextRunAt, now)}
+                    </p>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}

@@ -147,7 +147,7 @@ function buildVintageMetrics(
       valueSignal: "normal",
     },
     {
-      label: "Reduced",
+      label: "Reduced!",
       value: String(reduced),
       trend: reduced > 0 ? "Price cut active" : "No reductions",
       valueSignal: reduced > 0 ? "good" : "normal",

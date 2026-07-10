@@ -136,6 +136,7 @@ export function buildComparableListing(l: Listing): ComparableListing {
     beds: l.beds,
     baths: l.baths,
     lotAcres,
+    sqft: l.sqft != null && l.sqft > 0 ? l.sqft : null,
     vintageBucket,
     vintageLabel: vintageLabel(vintageBucket),
     yearBuilt: l.yearBuilt,
@@ -255,11 +256,17 @@ function comparableFitDistance(
   return score
 }
 
+export type RankedComparable = {
+  listing: ComparableListing
+  fitDistance: number
+  rank: number
+}
+
 function rankSoldComps(
   matches: Listing[],
   subject: Listing,
   criteria: ComparablesCriteria,
-): ComparableListing[] {
+): RankedComparable[] {
   const refPrice = subjectReferencePrice(subject)
 
   return matches
@@ -267,12 +274,11 @@ function rankSoldComps(
     .map((l) => ({
       listing: l,
       closeTs: closedListingTimestamp(l),
+      fitDistance: comparableFitDistance(l, subject, criteria),
     }))
     .filter(({ closeTs }) => inStatsClosedPeriod(closeTs))
     .sort((a, b) => {
-      const fitA = comparableFitDistance(a.listing, subject, criteria)
-      const fitB = comparableFitDistance(b.listing, subject, criteria)
-      if (fitA !== fitB) return fitA - fitB
+      if (a.fitDistance !== b.fitDistance) return a.fitDistance - b.fitDistance
 
       const dateA = Date.parse(a.closeTs ?? '')
       const dateB = Date.parse(b.closeTs ?? '')
@@ -283,41 +289,58 @@ function rankSoldComps(
       return priceDistance(refPrice, priceA) - priceDistance(refPrice, priceB)
     })
     .slice(0, COMPARABLES_MATCH_LIMIT)
-    .map(({ listing }) => buildComparableListing(listing))
+    .map(({ listing, fitDistance }, index) => ({
+      listing: buildComparableListing(listing),
+      fitDistance,
+      rank: index + 1,
+    }))
 }
 
 function rankActiveComps(
   matches: Listing[],
   subject: Listing,
   criteria: ComparablesCriteria,
-): ComparableListing[] {
+): RankedComparable[] {
   const refPrice = subjectReferencePrice(subject)
 
   return matches
     .filter((l) => isMarketListing(l))
+    .map((l) => ({
+      listing: l,
+      fitDistance: comparableFitDistance(l, subject, criteria),
+    }))
     .sort((a, b) => {
-      const fitA = comparableFitDistance(a, subject, criteria)
-      const fitB = comparableFitDistance(b, subject, criteria)
-      if (fitA !== fitB) return fitA - fitB
+      if (a.fitDistance !== b.fitDistance) return a.fitDistance - b.fitDistance
 
-      const distA = priceDistance(refPrice, a.price)
-      const distB = priceDistance(refPrice, b.price)
+      const distA = priceDistance(refPrice, a.listing.price)
+      const distB = priceDistance(refPrice, b.listing.price)
       if (distA !== distB) return distA - distB
 
-      const domA = a.dom ?? Number.POSITIVE_INFINITY
-      const domB = b.dom ?? Number.POSITIVE_INFINITY
+      const domA = a.listing.dom ?? Number.POSITIVE_INFINITY
+      const domB = b.listing.dom ?? Number.POSITIVE_INFINITY
       return domA - domB
     })
     .slice(0, COMPARABLES_MATCH_LIMIT)
-    .map((l) => buildComparableListing(l))
+    .map(({ listing, fitDistance }, index) => ({
+      listing: buildComparableListing(listing),
+      fitDistance,
+      rank: index + 1,
+    }))
 }
 
-export function findComparables(
+export type RankedComparablesResult = {
+  sold: RankedComparable[]
+  active: RankedComparable[]
+  criteria: ComparablesCriteria | null
+  missingCriteria: string[]
+}
+
+export function findComparablesRanked(
   subject: Listing,
   soldPool: Listing[],
   activePool: Listing[],
   mode: ComparablesMatchMode = 'sale',
-): ComparablesResult {
+): RankedComparablesResult {
   const { criteria, missingCriteria } = subjectComparablesCriteria(subject)
 
   if (!criteria) {
@@ -341,6 +364,21 @@ export function findComparables(
     active: rankActiveComps(matches, subject, criteria),
     criteria,
     missingCriteria: [],
+  }
+}
+
+export function findComparables(
+  subject: Listing,
+  soldPool: Listing[],
+  activePool: Listing[],
+  mode: ComparablesMatchMode = 'sale',
+): ComparablesResult {
+  const ranked = findComparablesRanked(subject, soldPool, activePool, mode)
+  return {
+    sold: ranked.sold.map((row) => row.listing),
+    active: ranked.active.map((row) => row.listing),
+    criteria: ranked.criteria,
+    missingCriteria: ranked.missingCriteria,
   }
 }
 

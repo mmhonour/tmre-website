@@ -89,6 +89,10 @@ export type SearchParams = {
   limit?: number
   closedAfter?: string   // ISO date e.g. "2024-01-01"
   closedBefore?: string  // ISO date e.g. "2024-12-31"
+  /** ISO datetime — only rows modified at or after this instant (RETS ModificationTimestamp). */
+  modifiedAfter?: string
+  /** Space-separated tokens matched with wildcards on UnparsedAddress (live RETS). */
+  addressContains?: string
 }
 
 export type MarketStats = {
@@ -323,6 +327,19 @@ function buildDmql(params: SearchParams): string {
     const lo = params.closedAfter ?? '2000-01-01'
     const hi = params.closedBefore ?? new Date().toISOString().slice(0, 10)
     clauses.push(`(StatusChangeTimestamp=${lo}-${hi})`)
+  }
+  if (params.modifiedAfter) {
+    clauses.push(`(ModificationTimestamp=${params.modifiedAfter}+)`)
+  }
+  if (params.addressContains) {
+    const tokens = params.addressContains
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(escapeDmqlValue)
+    if (tokens.length > 0) {
+      clauses.push(`(UnparsedAddress=*${tokens.join('*')}*)`)
+    }
   }
   if (clauses.length === 0) clauses.push('(ModificationTimestamp=1900-01-01+)')
   return clauses.join(',')

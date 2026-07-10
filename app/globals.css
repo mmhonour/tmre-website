@@ -49,6 +49,53 @@ body {
   to { opacity: 1; }
 }
 
+/* Latest continuous ticker — seamless upward scroll (duplicated list). */
+.latest-smooth-scroll {
+  height: calc(var(--latest-row-height, 48px) * var(--latest-visible-rows, 7));
+}
+
+.latest-smooth-scroll-track {
+  will-change: transform;
+  animation: latestSmoothScroll var(--latest-scroll-duration, 90s) linear infinite;
+  animation-play-state: paused;
+}
+
+.latest-smooth-scroll.is-visible .latest-smooth-scroll-track {
+  animation-play-state: running;
+}
+
+.latest-smooth-scroll:hover .latest-smooth-scroll-track {
+  animation-play-state: paused;
+}
+
+.latest-ticker-row-slot {
+  height: var(--latest-row-height, 48px);
+  min-height: var(--latest-row-height, 48px);
+  max-height: var(--latest-row-height, 48px);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+@keyframes latestSmoothScroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .latest-smooth-scroll-track {
+    animation: none;
+  }
+}
+
+/* One Latest line row — fixed slot height when inside smooth scroll. */
+.latest-feed-row {
+  min-height: 3rem;
+}
+
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -199,6 +246,59 @@ body {
   animation: dealCopyRefresh 0.32s ease-out both;
 }
 
+@keyframes dealTownExitNext {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+    max-width: 12rem;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-10px);
+    max-width: 0;
+  }
+}
+
+@keyframes dealTownExitPrev {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+    max-width: 12rem;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(10px);
+    max-width: 0;
+  }
+}
+
+@keyframes dealTownEnter {
+  from {
+    opacity: 0.35;
+    transform: translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-deal-town-exit-next {
+  animation: dealTownExitNext 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.animate-deal-town-exit-prev {
+  animation: dealTownExitPrev 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.animate-deal-town-enter {
+  animation: dealTownEnter 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @keyframes dealShowcaseNext {
   0% {
     opacity: 0;
@@ -282,7 +382,10 @@ body {
   .animate-deal-book-flip-next,
   .animate-deal-book-flip-prev,
   .animate-deal-photo-reveal,
-  .animate-deal-copy-refresh {
+  .animate-deal-copy-refresh,
+  .animate-deal-town-exit-next,
+  .animate-deal-town-exit-prev,
+  .animate-deal-town-enter {
     animation: fadeIn 0.35s ease-out both;
   }
 }

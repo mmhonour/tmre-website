@@ -6,6 +6,7 @@ import ListingThumbImage from "@/components/ListingThumbImage";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtAcres,
+  fmtSqft,
   fmtPricePerSqft,
   fmtYearBuilt,
   type ComparableListing,
@@ -44,6 +45,10 @@ const COMP_MAX_VISIBLE = 12;
 function defaultSortDir(key: SoldSortKey | ActiveSortKey): SortDir {
   if (key === "default" || key === "price") return "asc";
   return "desc";
+}
+
+function compDisplayScore(comp: ComparableListing): number {
+  return comp.edgeScore ?? comp.goldilocksScore ?? -1;
 }
 
 function parseCloseDateMs(closeDate: string | null | undefined): number {
@@ -89,8 +94,8 @@ function sortSoldComparables(
   const sign = dir === "asc" ? 1 : -1;
   if (sortKey === "score") {
     return copy.sort((a, b) => {
-      const sa = a.goldilocksScore ?? -1;
-      const sb = b.goldilocksScore ?? -1;
+      const sa = compDisplayScore(a);
+      const sb = compDisplayScore(b);
       return sign * (sa - sb);
     });
   }
@@ -117,8 +122,8 @@ function sortActiveComparables(
   }
   const sign = dir === "asc" ? 1 : -1;
   return copy.sort((a, b) => {
-    const sa = a.goldilocksScore ?? -1;
-    const sb = b.goldilocksScore ?? -1;
+    const sa = compDisplayScore(a);
+    const sb = compDisplayScore(b);
     return sign * (sa - sb);
   });
 }
@@ -128,8 +133,8 @@ function buildRelativeScoreColorMap(
   comps: ComparableListing[],
 ): Map<string, string> {
   const scored = comps
-    .filter((c) => c.goldilocksScore != null && c.goldilocksScore > 0)
-    .sort((a, b) => b.goldilocksScore! - a.goldilocksScore!);
+    .filter((c) => compDisplayScore(c) > 0)
+    .sort((a, b) => compDisplayScore(b) - compDisplayScore(a));
 
   const map = new Map<string, string>();
   const n = scored.length;
@@ -240,7 +245,7 @@ function CompScoreBadge({
   return (
     <span
       className={`font-mono text-sm tabular-nums font-semibold px-2.5 py-1 rounded-full ${tierClass}`}
-      aria-label={`Goldilocks score ${score.toFixed(1)}`}
+      aria-label={`Edge score ${score.toFixed(1)}`}
     >
       {score.toFixed(1)}
     </span>
@@ -276,6 +281,7 @@ function CompRow({
 
   const metaParts = [
     bedBathLabel(comp.beds, comp.baths),
+    fmtSqft(comp.sqft),
     fmtAcres(comp.lotAcres),
     fmtYearBuilt(comp.yearBuilt),
     isRental ? null : fmtCompPricePerSqft(comp.pricePerSqft),
@@ -346,7 +352,7 @@ function CompRow({
             )}
           </div>
           <CompScoreBadge
-            score={comp.goldilocksScore}
+            score={comp.edgeScore ?? comp.goldilocksScore}
             variant={variant}
             colorClass={scoreColorClass}
           />
@@ -743,7 +749,7 @@ export default function ListingComparablesPanel({
             {sold.length > 0 ? (
               <CompSortLinks
                 options={[
-                  { key: "score", label: "Score" },
+                  { key: "score", label: "Edge" },
                   { key: "closeDate", label: "CLOSED" },
                   { key: "price", label: "Price" },
                 ]}
@@ -807,7 +813,7 @@ export default function ListingComparablesPanel({
               <CompSortLinks
                 options={[
                   { key: "default", label: "Match" },
-                  { key: "score", label: "Score" },
+                  { key: "score", label: "Edge" },
                   { key: "price", label: "Price" },
                 ]}
                 activeKey={activeSort.key}

@@ -568,3 +568,51 @@ export function fmtIfEstimateRange(
   if (midpoint != null) return fmt(midpoint)
   return "—"
 }
+
+/** Sale estimates on the If page — nearest $1,000, shown as $869K. */
+export function roundIfSaleAmount(amount: number): number {
+  return Math.round(amount / 1_000) * 1_000
+}
+
+export function fmtIfSaleMoney(amount: number | null): string {
+  if (amount == null) return '—'
+  const thousands = roundIfSaleAmount(amount) / 1_000
+  return `$${thousands.toLocaleString('en-US')}K`
+}
+
+/** Rent low/high on the If page — floor/ceil to nearest $100. */
+export function roundIfRentLow(amount: number): number {
+  return Math.floor(amount / 100) * 100
+}
+
+export function roundIfRentHigh(amount: number): number {
+  return Math.ceil(amount / 100) * 100
+}
+
+export function roundIfRentMidpoint(amount: number): number {
+  return Math.round(amount / 100) * 100
+}
+
+export function fmtIfRentMoney(amount: number | null): string {
+  if (amount == null) return '—'
+  return `$${amount.toLocaleString('en-US')}`
+}
+
+export function fmtIfRentEstimateRange(
+  low: number | null,
+  high: number | null,
+  midpoint?: number | null,
+): string {
+  const roundedLow = low != null ? roundIfRentLow(low) : null
+  const roundedHigh = high != null ? roundIfRentHigh(high) : null
+  const roundedMid =
+    midpoint != null ? roundIfRentMidpoint(midpoint) : null
+  const range = fmtIfEstimateRange(
+    roundedLow,
+    roundedHigh,
+    fmtIfRentMoney,
+    roundedMid,
+  )
+  if (range === '—') return range
+  return `${range}/mo`
+}

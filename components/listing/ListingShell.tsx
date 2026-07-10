@@ -8,7 +8,10 @@ export function ListingBackLink({ className = "mb-10" }: { className?: string })
   const [label, setLabel] = useState("Deal board");
   useEffect(() => {
     const ref = document.referrer;
-    if (ref.includes("/new-construction/expired-listings")) {
+    if (ref.includes("/open-houses")) {
+      setHref("/open-houses");
+      setLabel("Open Houses");
+    } else if (ref.includes("/new-construction/expired-listings")) {
       setHref("/new-construction/expired-listings");
       setLabel("Expired Listings");
     } else if (ref.includes("/new-construction") || ref.includes("/properties")) {

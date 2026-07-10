@@ -4,7 +4,7 @@ import {
   summarizePriorListing,
 } from '@/lib/listing-history'
 import { readAddressListingsFromDb } from '@/lib/listings-db'
-import { fetchListingByMlsId } from '@/lib/listings-store'
+import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { resolveListingTown } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
@@ -24,7 +24,7 @@ export async function GET(
   const townHint = searchParams.get('town')?.trim() || null
 
   try {
-    const { listing } = await fetchListingByMlsId(id)
+    const { listing } = readListingFromDbByMlsId(id)
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }

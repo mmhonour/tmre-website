@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Playfair_Display, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import VisitorBeacon from "@/components/VisitorBeacon";
-import ListingThumbPriority from "@/components/ListingThumbPriority";
+import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { SiteUnlockProvider } from "@/components/SiteUnlockProvider";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -32,29 +34,26 @@ export const metadata: Metadata = {
     `TMRE. Market intelligence and investment for ${TMRE_CORE_TOWNS_LABEL}, CT. Where smart real estate decisions begin.`,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const jar = await cookies();
+  const siteUnlocked = jar.get(SITE_PASSWORD_COOKIE)?.value === "1";
+
   return (
     <html
       lang="en"
       className={`${playfair.variable} ${dmSans.variable} ${jetbrains.variable} h-full antialiased`}
     >
-      <head>
-        <link
-          rel="preconnect"
-          href="https://smartmls-assets.cdn-connectmls.com"
-          crossOrigin="anonymous"
-        />
-      </head>
       <body className="min-h-full flex flex-col bg-cream text-charcoal">
-        <VisitorBeacon />
-        <ListingThumbPriority />
-        <Navigation />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <SiteUnlockProvider unlocked={siteUnlocked}>
+          <VisitorBeacon />
+          <Navigation siteUnlocked={siteUnlocked} />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </SiteUnlockProvider>
       </body>
     </html>
   );

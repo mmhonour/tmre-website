@@ -10,6 +10,7 @@ import {
 } from "@/lib/listing-header-score-props";
 import type { SpotlightDisplay } from "@/lib/spotlight-display";
 import { spotlightAllowsInterest } from "@/lib/spotlight-display";
+import { SpotlightPropertyTabs } from "@/components/spotlight/SpotlightPropertyTabs";
 import type { ReactNode } from "react";
 
 export function SpotlightPageChrome({
@@ -70,15 +71,20 @@ export function SpotlightPageChrome({
         subnav={{
           mlsId: display.mlsId,
           active,
-          addressHint: display.config.displayTitle,
+          addressHint: display.config.hideAddress
+            ? null
+            : display.config.displayTitle,
           townHint: display.config.address.city,
           routeBase: "spotlight",
         }}
+        propertyTabs={<SpotlightPropertyTabs />}
         interest={
           spotlightAllowsInterest(display.config)
             ? {
                 mlsId: display.config.id,
-                address: display.config.displayTitle,
+                address: display.config.hideAddress
+                  ? display.config.displayLocation
+                  : display.config.displayTitle,
                 city: display.config.address.city,
               }
             : null

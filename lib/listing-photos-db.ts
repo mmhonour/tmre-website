@@ -201,6 +201,27 @@ export function countListingPhotos(mlsId: string): number {
   return row?.count ?? 0
 }
 
+/** Stored photo indices with a real payload (empty RETS slots are never written). */
+export function listStoredListingPhotoIndices(mlsId: string): number[] {
+  const database = tryGetListingPhotosDb()
+  const id = mlsId.trim()
+  if (!database || !id) return []
+  const rows = database
+    .prepare(
+      `SELECT photo_index AS photoIndex
+       FROM listing_photos
+       WHERE mls_id = ? AND byte_length >= 100
+       ORDER BY photo_index ASC`,
+    )
+    .all(id) as { photoIndex: number }[]
+  return rows.map((row) => row.photoIndex)
+}
+
+export function firstStoredListingPhotoIndex(mlsId: string): number | null {
+  const indices = listStoredListingPhotoIndices(mlsId)
+  return indices.length > 0 ? indices[0]! : null
+}
+
 export function listingPhotoStorageSpan(mlsId: string): number {
   const database = tryGetListingPhotosDb()
   const id = mlsId.trim()

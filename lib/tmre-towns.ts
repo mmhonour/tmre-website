@@ -106,6 +106,18 @@ export function zipsForTown(town: TmreTown): readonly string[] {
   return TOWN_ZIPS[town]
 }
 
+/** All zips across TMRE coverage (Intelligence “All Towns” map). */
+export function zipsForAllTowns(): readonly string[] {
+  return [...ALL_TMRE_ZIPS]
+}
+
+/** True when a TMRE town spans more than one zip (e.g. Norwalk, Fairfield). */
+export function townHasMultipleZips(town: string | null | undefined): boolean {
+  const name = normalizeTownName(town)
+  if (!name || !isTmreTown(name)) return false
+  return TOWN_ZIPS[name as TmreTown].length > 1
+}
+
 /** True when postal is missing or matches the town's known zips. */
 export function listingZipMatchesTown(
   postal: string | null | undefined,
@@ -133,7 +145,7 @@ export function normalizeTownName(city: string | null | undefined): string | nul
   return city.split(',')[0].trim() || null
 }
 
-export function isTmreTown(city: string | null | undefined): boolean {
+export function isTmreTown(city: string | null | undefined): city is TmreTown {
   const name = normalizeTownName(city)
   return name != null && TMRE_TOWN_SET.has(name.toLowerCase())
 }

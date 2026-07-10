@@ -8,7 +8,10 @@ import {
   DealBoardPhotoLedLineRow,
 } from "@/components/intelligence/deal-board/DealBoardRows";
 import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
-import type { DealBoardListing } from "@/components/intelligence/deal-board/deal-board-types";
+import type {
+  DealBoardListing,
+  DealBoardStatusFilter,
+} from "@/components/intelligence/deal-board/deal-board-types";
 import type {
   DealBoardSortDir,
   DealBoardSortKey,
@@ -22,6 +25,7 @@ export type DealBoardListProps = {
   bottomRows: DealBoardListing[];
   canTier: boolean;
   middleTierExpanded: boolean;
+  hideMiddleTierToggle?: boolean;
   onMiddleTierToggle: () => void;
   resultCount: number;
   scoreRankByKey: Map<string, number>;
@@ -39,6 +43,9 @@ export type DealBoardListProps = {
   onSort: (key: DealBoardSortKey) => void;
   boardView: DealBoardView;
   onBoardViewChange: (view: DealBoardView) => void;
+  boardStatusFilter?: DealBoardStatusFilter;
+  onBoardStatusFilterChange?: (value: DealBoardStatusFilter) => void;
+  filtersExpanded?: boolean;
   scoreInfoButton: ReactNode;
   footer: ReactNode;
   resultsSummary: ReactNode;
@@ -50,6 +57,7 @@ export default function DealBoardList({
   bottomRows,
   canTier,
   middleTierExpanded,
+  hideMiddleTierToggle = false,
   onMiddleTierToggle,
   resultCount,
   scoreRankByKey,
@@ -67,6 +75,9 @@ export default function DealBoardList({
   onSort,
   boardView,
   onBoardViewChange,
+  boardStatusFilter = "all",
+  onBoardStatusFilterChange,
+  filtersExpanded = true,
   scoreInfoButton,
   footer,
   resultsSummary,
@@ -134,7 +145,7 @@ export default function DealBoardList({
   );
 
   const tierBlock =
-    canTier && middleRows.length > 0 ? (
+    canTier && middleRows.length > 0 && !hideMiddleTierToggle ? (
       <DealBoardMiddleTierToggle
         expanded={middleTierExpanded}
         middleCount={middleRows.length}
@@ -145,27 +156,41 @@ export default function DealBoardList({
 
   const hasResults = resultCount > 0;
 
+  const resultsToolbar = (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
+      {resultsSummary}
+      <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
+    </div>
+  );
+
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-charcoal/[0.08] bg-white px-4 py-2.5">
-        {resultsSummary}
-        <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white">
+      <div className="rounded-2xl border border-charcoal/[0.08] bg-white">
         {loading ? (
-          loadingBlock
+          <>
+            {resultsToolbar}
+            {loadingBlock}
+          </>
         ) : !hasResults ? (
-          emptyBlock
+          <>
+            {resultsToolbar}
+            {emptyBlock}
+          </>
         ) : (
           <>
-            <DealBoardSortBar
-              sortKey={sortKey}
-              sortDir={sortDir}
-              onSort={onSort}
-              showTown={showTown}
-              scoreInfoButton={scoreInfoButton}
-            />
+            <div className="sticky top-20 z-30 rounded-t-2xl bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)]">
+              {resultsToolbar}
+              <DealBoardSortBar
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                showTown={showTown}
+                scoreInfoButton={scoreInfoButton}
+                showStatusFilters={boardView === "grid" && filtersExpanded}
+                statusFilter={boardStatusFilter}
+                onStatusFilterChange={onBoardStatusFilterChange}
+              />
+            </div>
             <div>
               {renderRows(topRows)}
               {tierBlock}

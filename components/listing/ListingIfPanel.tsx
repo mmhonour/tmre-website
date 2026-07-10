@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { fmtMoney } from "@/lib/listing-history";
 import {
+  fmtIfRentEstimateRange,
+  fmtIfRentMoney,
+  fmtIfSaleMoney,
   fmtIfEstimateRange,
   ifCompBasisText,
+  roundIfRentMidpoint,
   type ListingIfPayload,
 } from "@/lib/listing-if-estimates";
 import {
@@ -13,21 +16,6 @@ import {
   listingComparableRentalsHref,
 } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
-
-function fmtRentValue(amount: number | null): string {
-  if (amount == null) return "—";
-  return fmtMoney(amount);
-}
-
-function fmtRentRange(
-  low: number | null,
-  high: number | null,
-  midpoint?: number | null,
-): string {
-  const range = fmtIfEstimateRange(low, high, fmtRentValue, midpoint);
-  if (range === "—") return range;
-  return `${range}/mo`;
-}
 
 function ScenarioCard({
   title,
@@ -230,11 +218,13 @@ export default function ListingIfPanel({
           range={fmtIfEstimateRange(
             saleEstimate.amountLow,
             saleEstimate.amountHigh,
-            fmtMoney,
+            fmtIfSaleMoney,
             saleEstimate.amount,
           )}
           midpoint={
-            saleEstimate.amount != null ? fmtMoney(saleEstimate.amount) : null
+            saleEstimate.amount != null
+              ? fmtIfSaleMoney(saleEstimate.amount)
+              : null
           }
           amountLabel="Estimated Value Range"
           midpointLabel="Midpoint"
@@ -249,14 +239,14 @@ export default function ListingIfPanel({
         <ScenarioCard
           title="If you rent"
           headline="If you were to rent this home, this is the range you would likely be able to rent it for."
-          range={fmtRentRange(
+          range={fmtIfRentEstimateRange(
             rentEstimate.amountLow,
             rentEstimate.amountHigh,
             rentEstimate.amount,
           )}
           midpoint={
             rentEstimate.amount != null
-              ? `${fmtMoney(rentEstimate.amount)}/mo`
+              ? `${fmtIfRentMoney(roundIfRentMidpoint(rentEstimate.amount))}/mo`
               : null
           }
           amountLabel="Estimated monthly rent range"

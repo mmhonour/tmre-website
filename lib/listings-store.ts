@@ -40,7 +40,7 @@ export const ACTIVE_MLS_STATUS = 'Active'
 export const COMING_SOON_MLS_STATUS = 'Coming Soon'
 
 /** Closed sales pulled from RETS for stats/charts since this date. */
-export const CLOSED_LISTINGS_SINCE = '2024-01-01'
+export const CLOSED_LISTINGS_SINCE = '2019-01-01'
 
 /** Max listings pulled per town during sync and broad fetches. */
 export const ACTIVE_LISTINGS_FETCH_LIMIT = 2000
@@ -156,18 +156,29 @@ export async function searchMarketListingsForTown(
   town: TmreTown,
   status: string,
   limit: number,
+  options: { modifiedAfter?: string } = {},
 ): Promise<Listing[]> {
-  const byCity = await searchListings({ city: town, status, limit })
+  const searchOpts = { city: town, status, limit, modifiedAfter: options.modifiedAfter }
+  const byCity = await searchListings(searchOpts)
   let listings = applyActiveBucketFilters(byCity, town)
-  if (listings.length > 0) return listings.slice(0, limit)
 
-  const perZip = Math.max(50, Math.ceil(limit / zipsForTown(town).length))
+  // Incremental sync: city-only is enough when the MLS returns matches; empty city
+  // + modifiedAfter means nothing changed for that town filter.
+  if (options.modifiedAfter) {
+    return listings.slice(0, limit)
+  }
+
+  // Full pulls: always union city + zip searches. City DMQL alone often undercounts
+  // multi-zip towns (city name / area mismatches), and returning early on any
+  // non-empty city hit permanently underfills SQLite after upsertTownListings.
+  const zips = zipsForTown(town)
+  const perZip = Math.max(50, Math.ceil(limit / Math.max(zips.length, 1)))
   const batches = await Promise.all(
-    zipsForTown(town).map((zip) =>
+    zips.map((zip) =>
       searchListings({ zip, status, limit: perZip }).catch(() => [] as Listing[]),
     ),
   )
-  listings = applyActiveBucketFilters(batches.flat(), town)
+  listings = mergeListings(listings, applyActiveBucketFilters(batches.flat(), town))
   return listings.slice(0, limit)
 }
 
@@ -483,6 +494,22 @@ export async function fetchListingByMlsId(
   return { listing, source: 'rets' as const }
 }
 
+/** SQLite-only — used by listing detail tabs; never calls RETS. */
+export function readListingFromDbByMlsId(
+  id: string,
+): { listing: Listing | null; source: 'db' } {
+  const trimmed = id.trim()
+  if (!trimmed || !isListingsDbAvailable()) {
+    return { listing: null, source: 'db' }
+  }
+  const cached = readListingByIdFromDb(trimmed)
+  if (!cached) return { listing: null, source: 'db' }
+  return {
+    listing: refreshListingPropertyTax(refreshListingSchools(cached)),
+    source: 'db',
+  }
+}
+
 function townForListingRecord(listing: Listing): string {
   return (
     resolveListingTown(listing.address.city) ||
@@ -497,15 +524,15 @@ export function persistListingRecord(listing: Listing): boolean {
   if (!isListingsDbAvailable()) return false
   const town = townForListingRecord(listing)
   const statusBucket = normalizeStatusBucket(listing.status ?? ACTIVE_MLS_STATUS)
-  const cached = upsertListing(listing, town, statusBucket)
-  if (cached && isMarketListing(listing)) {
+  const { upserted } = upsertListing(listing, town, statusBucket)
+  if (upserted && isMarketListing(listing)) {
     try {
       refreshListingIfEstimate(listing)
     } catch (err) {
       console.warn('[listings-store] If estimate refresh skipped:', err)
     }
   }
-  return cached
+  return upserted
 }
 
 /** Fetch live from MLS and upsert into SQLite when available. */
