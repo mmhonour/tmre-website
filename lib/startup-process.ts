@@ -57,8 +57,13 @@ export function describeStartupProcess(): {
     60_000,
     Number(process.env.LATEST_SYNC_INTERVAL_MS ?? String(LATEST_DB_REFRESH_MS)),
   );
+  const overdueCatchupEnabled = envFlagEnabled('ENABLE_OVERDUE_SYNC_CATCHUP')
+  const overdueCatchupDelayMs = Math.max(
+    60_000,
+    Number(process.env.OVERDUE_SYNC_CATCHUP_DELAY_MS ?? '120000'),
+  )
   const startupFullEnabled =
-    envFlagEnabled("ENABLE_STARTUP_FULL_SYNC") && retsConfigured && !netlify;
+    envFlagEnabled('ENABLE_STARTUP_FULL_SYNC') && retsConfigured && !netlify && !overdueCatchupEnabled
   const latestSyncEnabled =
     envFlagEnabled("ENABLE_LATEST_SYNC") && (allowListingsSync || retsConfigured);
   const fullReloadEnabled =
@@ -75,6 +80,31 @@ export function describeStartupProcess(): {
   const netlifyWarmEnabled = allowListingsSync && netlify && !smartIntervalEnabled;
 
   const lanes: StartupFlowLane[] = [
+    {
+      id: "overdue-catchup",
+      title: "Missed sync catch-up",
+      subtitle: "Serial overdue jobs after host wakeup (local / Netlify process start)",
+      steps: [
+        {
+          id: "overdue-schedule",
+          title: "Detect overdue admin sync windows",
+          timing: `+${Math.round(overdueCatchupDelayMs / 1000)}s`,
+          detail:
+            "buildOverdueSyncPlan(): full resync, incremental, scores, stats, DOTD, snapshot, addresses, edge scores — one run each, not every missed interval.",
+          status: overdueCatchupEnabled ? "scheduled" : "skipped",
+          statusLabel: overdueCatchupEnabled ? "Scheduled" : "Disabled",
+        },
+        {
+          id: "overdue-run",
+          title: "Serial catch-up execution",
+          timing: "after delay",
+          detail:
+            "runOverdueSyncCatchup() uses sync_meta timestamps; skips when nothing is due. Netlify scheduled functions also invoke catch-up at cron start.",
+          status: overdueCatchupEnabled ? "scheduled" : "skipped",
+          statusLabel: overdueCatchupEnabled ? "Chained" : "—",
+        },
+      ],
+    },
     {
       id: "boot",
       title: "Process boot",
@@ -114,9 +144,11 @@ export function describeStartupProcess(): {
           status: startupFullEnabled ? "scheduled" : "skipped",
           statusLabel: startupFullEnabled
             ? "Scheduled"
-            : netlify
-              ? "Netlify uses build sync"
-              : "Disabled",
+            : overdueCatchupEnabled
+              ? "Uses overdue catch-up"
+              : netlify
+                ? "Netlify uses build sync"
+                : "Disabled",
         },
         {
           id: "startup-full-scores",
@@ -329,7 +361,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full daily ~5am ET + sync-property-addresses weekly Mon ~1am ET.`,
+          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full daily ~5am ET + sync-property-addresses weekly Mon ~1am ET. Each cron runs overdue catch-up first.`,
           status: "info",
           statusLabel: "Cron",
         },

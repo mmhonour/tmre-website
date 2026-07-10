@@ -1,5 +1,6 @@
 import type { Config } from '@netlify/functions'
 import { syncPropertyAddresses } from '../../lib/property-address-sync'
+import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 
 /**
  * Weekly property-address directory verify + enrich.
@@ -7,11 +8,25 @@ import { syncPropertyAddresses } from '../../lib/property-address-sync'
  */
 export default async function handler() {
   try {
-    const result = await syncPropertyAddresses()
-    return new Response(JSON.stringify(result), {
-      status: result.ok ? 200 : 502,
-      headers: { 'content-type': 'application/json' },
-    })
+    const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-property-addresses' })
+    const ranAddresses =
+      !catchup.skipped && catchup.steps.some((step) => step.job === 'property-addresses')
+    const result = ranAddresses ? null : await syncPropertyAddresses()
+    return new Response(
+      JSON.stringify(
+        result ?? {
+          ok: true,
+          skippedScheduled: true,
+          overdueCatchup: catchup.skipped
+            ? { skipped: true, reason: catchup.reason }
+            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
+        },
+      ),
+      {
+        status: result?.ok === false ? 502 : 200,
+        headers: { 'content-type': 'application/json' },
+      },
+    )
   } catch (err) {
     console.error('[netlify/sync-property-addresses]', err)
     return new Response(

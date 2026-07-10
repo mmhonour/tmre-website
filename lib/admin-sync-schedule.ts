@@ -2,6 +2,7 @@ import 'server-only'
 
 import { LATEST_DB_REFRESH_MS } from '@/lib/latest-refresh'
 import { nextMonday1amEt } from '@/lib/property-address-schedule'
+import { nextMonday2amEt } from '@/lib/listing-edge-schedule'
 import { STATS_CACHE_TTL_MS } from '@/lib/stats-cache'
 import type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 
@@ -69,10 +70,78 @@ export function nextDailyTimeEt(
   return new Date(from.getTime() + msUntilNextDailyTimeEt(hour, minute, from))
 }
 
-function parseIsoMs(iso: string | null | undefined): number | null {
+export function parseIsoMs(iso: string | null | undefined): number | null {
   if (!iso) return null
   const ms = Date.parse(iso)
   return Number.isNaN(ms) ? null : ms
+}
+
+/** Most recent daily wall time in America/New_York that is on or before `before`. */
+export function lastPastDailySlotEt(
+  hour: number,
+  minute: number,
+  before = new Date(),
+): Date {
+  const dayBefore = new Date(before.getTime() - 24 * 60 * 60 * 1000)
+  let candidate = nextDailyTimeEt(hour, minute, dayBefore)
+  if (candidate.getTime() > before.getTime()) {
+    candidate = new Date(candidate.getTime() - 24 * 60 * 60 * 1000)
+  }
+  return candidate
+}
+
+/** Most recent Monday wall time in America/New_York that is on or before `before`. */
+export function lastPastMondaySlotEt(
+  hour: number,
+  minute: number,
+  before = new Date(),
+): Date {
+  const weekAgo = new Date(before.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const nextSlot =
+    hour === 1 && minute === 0
+      ? nextMonday1amEt(weekAgo)
+      : hour === 2 && minute === 0
+        ? nextMonday2amEt(weekAgo)
+        : nextMonday1amEt(weekAgo)
+  if (nextSlot.getTime() > before.getTime()) {
+    return new Date(nextSlot.getTime() - 7 * 24 * 60 * 60 * 1000)
+  }
+  return nextSlot
+}
+
+export function isIntervalSyncOverdue(
+  lastFinishedIso: string | null | undefined,
+  intervalMs: number,
+  now = new Date(),
+  graceMs = 60_000,
+): boolean {
+  const lastMs = parseIsoMs(lastFinishedIso)
+  if (lastMs == null) return false
+  return now.getTime() - lastMs >= Math.max(60_000, intervalMs) + graceMs
+}
+
+export function isDailySyncOverdue(
+  lastFinishedIso: string | null | undefined,
+  hour: number,
+  minute: number,
+  now = new Date(),
+): boolean {
+  const lastMs = parseIsoMs(lastFinishedIso)
+  if (lastMs == null) return false
+  const dueSlot = lastPastDailySlotEt(hour, minute, now)
+  return lastMs < dueSlot.getTime()
+}
+
+export function isWeeklyMondaySyncOverdue(
+  lastFinishedIso: string | null | undefined,
+  hour: number,
+  minute: number,
+  now = new Date(),
+): boolean {
+  const lastMs = parseIsoMs(lastFinishedIso)
+  if (lastMs == null) return false
+  const dueSlot = lastPastMondaySlotEt(hour, minute, now)
+  return lastMs < dueSlot.getTime()
 }
 
 function latestIntervalMs(): number {
@@ -88,6 +157,8 @@ function statsRefreshIntervalMs(): number {
     Number(process.env.STATS_CACHE_REFRESH_MS ?? String(STATS_CACHE_TTL_MS)),
   )
 }
+
+export { latestIntervalMs, statsRefreshIntervalMs }
 
 /** Next wall-clock slot aligned to N-minute cadence (e.g. :00 and :30). */
 function nextMinuteCadenceSlot(intervalMinutes: number, from = new Date()): Date {

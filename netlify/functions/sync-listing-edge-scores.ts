@@ -1,6 +1,7 @@
 import type { Config } from '@netlify/functions'
 import { rebuildAllListingEdgeScores } from '../../lib/listing-edge-score'
 import { getListingsDbStats } from '../../lib/listings-db'
+import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 
 /**
  * Weekly metadata edge score rebuild for comparables ranking.
@@ -8,13 +9,20 @@ import { getListingsDbStats } from '../../lib/listings-db'
  */
 export default async function handler() {
   try {
-    const result = rebuildAllListingEdgeScores()
+    const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listing-edge-scores' })
+    const ranEdge =
+      !catchup.skipped && catchup.steps.some((step) => step.job === 'edge-scores')
+    const result = ranEdge ? null : rebuildAllListingEdgeScores()
     return new Response(
       JSON.stringify({
         ok: true,
         mode: 'edge-scores',
-        ...result,
+        skippedScheduled: result == null,
+        ...(result ?? { scored: 0, durationMs: 0 }),
         stats: getListingsDbStats(),
+        overdueCatchup: catchup.skipped
+          ? { skipped: true, reason: catchup.reason }
+          : { skipped: false, plan: catchup.plan, steps: catchup.steps },
       }),
       {
         status: 200,

@@ -56,3 +56,7 @@ export function msUntilNextMonday2amEt(from = new Date()): number {
 
   return Math.max(60_000, targetAsUtc - etAsUtc)
 }
+
+export function nextMonday2amEt(from = new Date()): Date {
+  return new Date(from.getTime() + msUntilNextMonday2amEt(from))
+}

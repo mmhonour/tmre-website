@@ -1,4 +1,5 @@
 import { isNextProductionBuild } from './lib/build-sync-gate'
+import { isServerlessRuntime } from './lib/runtime-host'
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
@@ -15,23 +16,46 @@ export async function register() {
     const { LATEST_DB_REFRESH_MS } = await import('./lib/latest-refresh')
     const { hasLocalListingsCache } = await import('./lib/listings-store')
     const { getSyncMeta } = await import('./lib/listings-db')
+    const { isRetsConfigured } = await import('./lib/rets')
 
-    const retsConfigured = Boolean(
-      process.env.RETS_SERVER_URL &&
-        process.env.RETS_USERNAME &&
-        process.env.RETS_PASSWORD,
-    )
+    const retsConfigured = isRetsConfigured()
+    const overdueCatchupEnabled = process.env.ENABLE_OVERDUE_SYNC_CATCHUP !== '0'
 
     const allowListingsSync =
       process.env.ENABLE_BACKGROUND_SQLITE_REFRESH === '1' ||
       process.env.NETLIFY === 'true' ||
       process.env.NODE_ENV === 'production'
 
-    // Full MLS → SQLite rebuild (+ Goldilocks scores) whenever the Node process
-    // starts — covers local `npm run dev` and `next start` process restarts.
-    // Netlify deploy builds skip sync (see netlify.toml); use scheduled functions for runtime refresh.
+    // After host wakeup, serially run any sync windows missed while offline (~2 min delay).
+    if (overdueCatchupEnabled) {
+      const { runOverdueSyncCatchup } = await import('./lib/sync-overdue')
+      const catchupDelayMs = Math.max(
+        60_000,
+        Number(process.env.OVERDUE_SYNC_CATCHUP_DELAY_MS ?? '120000'),
+      )
+      const scheduleCatchup = (reason: string) => {
+        setTimeout(() => {
+          runOverdueSyncCatchup({ reason }).catch((err) => {
+            console.error('[sync-overdue/startup]', err)
+          })
+        }, catchupDelayMs)
+        console.info(
+          `[sync-overdue] missed-sync catch-up scheduled in ${Math.round(catchupDelayMs / 1000)}s (${reason})`,
+        )
+      }
+
+      if (!isServerlessRuntime()) {
+        scheduleCatchup('node-startup')
+      } else {
+        // Serverless timers may not fire; scheduled Netlify functions also invoke catch-up.
+        scheduleCatchup('netlify-process')
+      }
+    }
+
+    // Full MLS → SQLite rebuild on process start when overdue catch-up is disabled.
     const startupFullEnabled =
       process.env.ENABLE_STARTUP_FULL_SYNC !== '0' &&
+      !overdueCatchupEnabled &&
       retsConfigured &&
       process.env.NETLIFY !== 'true'
     if (startupFullEnabled) {

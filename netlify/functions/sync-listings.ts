@@ -1,15 +1,20 @@
 import type { Config } from '@netlify/functions'
 import { getSyncStatus, syncListingsSmart } from '../../lib/listings-sync'
+import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 import { LATEST_DB_REFRESH_MS } from '../../lib/latest-refresh'
 
 export default async function handler() {
   try {
+    const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings' })
     const result = await syncListingsSmart()
     return new Response(
       JSON.stringify({
         ok: result.towns.every((row) => row.ok),
         ...result,
         stats: getSyncStatus(),
+        overdueCatchup: catchup.skipped
+          ? { skipped: true, reason: catchup.reason }
+          : { skipped: false, plan: catchup.plan, steps: catchup.steps },
       }),
       {
         status: result.towns.every((row) => row.ok) ? 200 : 502,
