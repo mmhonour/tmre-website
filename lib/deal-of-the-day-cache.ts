@@ -11,6 +11,7 @@ import {
   dealListingPhotoUrl,
   pickDealOfTheDayFromBoardScored,
   scoreActiveListingsForBoard,
+  type DealPickPayload,
 } from '@/lib/deal-pick'
 import { ensureDealPickPhotos, dealPickPhotosReady } from '@/lib/deal-hero-photo-warm'
 import { kindOf, SCORE_PEER_LIMIT } from '@/lib/goldilocks'
