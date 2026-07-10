@@ -25,6 +25,7 @@ import {
   type DealBoardView,
 } from "@/lib/deal-board-view";
 import type { TownDescriptorStats } from "@/lib/intelligence-all-towns-descriptor";
+import { monthsSupplyColorStyle } from "@/lib/months-supply-color";
 import ListingScoreBreakdownModal from "./ListingScoreBreakdownModal";
 import ListingHistoryModal from "./ListingHistoryModal";
 import TownFilterPills from "./TownFilterPills";
@@ -176,12 +177,11 @@ function computeMonthsSupply(
   return listingCount / avgMonthlySales;
 }
 
-/** ≤2 seller's (coral), ≤4 balanced (gold), >4 buyer's (sage) — matches stats & new construction. */
-function monthsSupplyColorClass(monthsSupply: number | null): string {
-  if (monthsSupply == null) return "text-white/40";
-  if (monthsSupply <= 2) return "text-coral";
-  if (monthsSupply <= 4) return "text-gold";
-  return "text-sage";
+/** Red (low) → green (high) gradient — see `lib/months-supply-color.ts`. */
+function monthsSupplyMetricStyle(
+  monthsSupply: number | null,
+): { color: string } | undefined {
+  return monthsSupplyColorStyle(monthsSupply);
 }
 
 function IntelMonthsSupplyInline({
@@ -195,7 +195,8 @@ function IntelMonthsSupplyInline({
 }) {
   return (
     <span
-      className={monthsSupplyColorClass(monthsSupply)}
+      className={monthsSupply == null ? "text-white/40" : undefined}
+      style={monthsSupplyMetricStyle(monthsSupply)}
       aria-label={
         !monthlySalesLoaded
           ? "Months supply loading"
@@ -798,7 +799,7 @@ function snapshotSummaryParts(snapshot: TownSnapshot): {
   medianPrice: string;
   monthsSupply: string;
   medianDom: string;
-  monthsSupplyClass: string;
+  monthsSupplyStyle: { color: string } | undefined;
 } {
   const { stats } = snapshot;
   return {
@@ -808,7 +809,7 @@ function snapshotSummaryParts(snapshot: TownSnapshot): {
       stats.monthsSupply != null ? `${stats.monthsSupply.toFixed(1)} mo` : "—",
     medianDom:
       stats.medianDom != null ? `${Math.round(stats.medianDom)}d DOM` : "— DOM",
-    monthsSupplyClass: monthsSupplyColorClass(stats.monthsSupply),
+    monthsSupplyStyle: monthsSupplyMetricStyle(stats.monthsSupply),
   };
 }
 
@@ -4115,7 +4116,7 @@ function SnapshotSummaryBody({
         <span className="text-slate/35" aria-hidden>
           ·
         </span>
-        <span className={summary.monthsSupplyClass}>{summary.monthsSupply}</span>
+        <span style={summary.monthsSupplyStyle}>{summary.monthsSupply}</span>
         <span className="text-slate/35" aria-hidden>
           ·
         </span>
@@ -4155,7 +4156,13 @@ function SnapshotCardBody({
   return (
     <div className="grid grid-cols-2">
       {snapshot.metrics.map((m) => {
-        const valueColor = snapshotValueColorClass(m.valueSignal);
+        const isMonthsSupply = m.label === "Months supply";
+        const monthsSupplyStyle = isMonthsSupply
+          ? monthsSupplyMetricStyle(snapshot.stats.monthsSupply)
+          : undefined;
+        const valueColor = isMonthsSupply
+          ? ""
+          : snapshotValueColorClass(m.valueSignal);
         return (
           <div
             key={m.label}
@@ -4182,7 +4189,10 @@ function SnapshotCardBody({
                 {m.value}
               </Link>
             ) : (
-              <p className={`font-mono text-sm tabular-nums leading-tight ${valueColor}`}>
+              <p
+                className={`font-mono text-sm tabular-nums leading-tight ${valueColor}`}
+                style={monthsSupplyStyle}
+              >
                 {m.value}
               </p>
             )}
@@ -4190,6 +4200,7 @@ function SnapshotCardBody({
               <Link
                 href={onSnapshotAction(snapshot.town, m.action!, snapshot.zip)}
                 className={`font-mono text-[9px] leading-tight mt-0.5 underline underline-offset-2 transition-colors hover:opacity-80 ${valueColor}`}
+                style={monthsSupplyStyle}
                 aria-label={
                   m.action === "new"
                     ? `View new ${place} listings this week`
@@ -4201,7 +4212,10 @@ function SnapshotCardBody({
                 {m.trend}
               </Link>
             ) : (
-              <p className={`font-mono text-[9px] leading-tight mt-0.5 ${valueColor}`}>
+              <p
+                className={`font-mono text-[9px] leading-tight mt-0.5 ${valueColor}`}
+                style={monthsSupplyStyle}
+              >
                 {m.trend}
               </p>
             )}

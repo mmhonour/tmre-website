@@ -183,7 +183,6 @@ export default function ListingPhotosClient({
         header={{
           mlsId: listing.mlsId,
           status: listing.status,
-          dom: listing.dom,
           address: listing.address,
           propertyType: listing.propertyType,
           style: listing.style,
@@ -195,6 +194,7 @@ export default function ListingPhotosClient({
           ...listingHeaderScoreProps({
             goldilocksScore: data.goldilocksScore,
             goldilocksBreakdown: data.goldilocksBreakdown,
+            insight: data.insight,
             title: street,
             subtitle: townHint || listing.address.city,
             propertyType: listing.propertyType,

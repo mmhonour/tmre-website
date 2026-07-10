@@ -387,6 +387,16 @@ function initSchema(database: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_listing_edge_scores_listing_id
       ON listing_edge_scores (listing_id);
 
+    CREATE TABLE IF NOT EXISTS listing_superlatives (
+      listing_id TEXT PRIMARY KEY,
+      mls_id TEXT NOT NULL,
+      superlatives_json TEXT NOT NULL,
+      computed_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_listing_superlatives_mls_id
+      ON listing_superlatives (mls_id);
+
     CREATE TABLE IF NOT EXISTS town_property_addresses (
       property_key TEXT PRIMARY KEY,
       parcel_number TEXT,
@@ -959,6 +969,109 @@ export function readListingEdgeScoreByMlsId(
   return readListingEdgeScoresByMlsIds([id]).get(id) ?? null
 }
 
+/** Persist peer-relative listing superlatives keyed by listing id. */
+export function upsertListingSuperlatives(
+  rows: {
+    listingId: string
+    mlsId: string
+    superlativesJson: string
+    computedAt: string
+  }[],
+  stats?: SqliteWriteStatsCollector,
+): number {
+  stats = withRefreshLockStats(stats)
+  const database = tryGetWriteDb()
+  if (!database || rows.length === 0) return 0
+
+  stats?.addQueried('listing_superlatives', rows.length)
+
+  const stmt = database.prepare(
+    `INSERT INTO listing_superlatives (
+       listing_id, mls_id, superlatives_json, computed_at
+     ) VALUES (?, ?, ?, ?)
+     ON CONFLICT(listing_id) DO UPDATE SET
+       mls_id = excluded.mls_id,
+       superlatives_json = excluded.superlatives_json,
+       computed_at = excluded.computed_at`,
+  )
+  let updated = 0
+  const tx = database.transaction(() => {
+    for (const row of rows) {
+      stmt.run(row.listingId, row.mlsId, row.superlativesJson, row.computedAt)
+      updated += 1
+    }
+  })
+  tx()
+  if (updated > 0) stats?.addUpdated('listing_superlatives', updated)
+  return updated
+}
+
+function parseSuperlativesJson(json: string): string[] {
+  try {
+    const parsed = JSON.parse(json) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((word): word is string => typeof word === 'string' && word.length > 0)
+  } catch {
+    return []
+  }
+}
+
+/** Read cached superlatives by MLS id. */
+export function readListingSuperlativesByMlsIds(
+  mlsIds: readonly string[],
+): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  const database = tryGetReadDb()
+  if (!database || mlsIds.length === 0) return out
+
+  const unique = [...new Set(mlsIds.map((id) => id.trim()).filter(Boolean))]
+  const chunkSize = 200
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize)
+    const placeholders = chunk.map(() => '?').join(', ')
+    const rows = database
+      .prepare(
+        `SELECT mls_id, superlatives_json
+         FROM listing_superlatives
+         WHERE mls_id IN (${placeholders})`,
+      )
+      .all(...chunk) as { mls_id: string; superlatives_json: string }[]
+    for (const row of rows) {
+      const words = parseSuperlativesJson(row.superlatives_json)
+      if (words.length > 0) out.set(row.mls_id, words)
+    }
+  }
+  return out
+}
+
+/** Read cached superlatives by listing id. */
+export function readListingSuperlativesByListingIds(
+  ids: readonly string[],
+): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  const database = tryGetReadDb()
+  if (!database || ids.length === 0) return out
+
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  const chunkSize = 200
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize)
+    const placeholders = chunk.map(() => '?').join(', ')
+    const rows = database
+      .prepare(
+        `SELECT listing_id, superlatives_json
+         FROM listing_superlatives
+         WHERE listing_id IN (${placeholders})`,
+      )
+      .all(...chunk) as { listing_id: string; superlatives_json: string }[]
+    for (const row of rows) {
+      const words = parseSuperlativesJson(row.superlatives_json)
+      if (words.length > 0) out.set(row.listing_id, words)
+    }
+  }
+  return out
+}
+
 /** Listings ordered by MLS modification time (newest first). */
 export function readRecentlyUpdatedListings(options: {
   since?: string | null
@@ -1289,6 +1402,8 @@ export function getListingsDbStats(): {
   lastIncrementalSyncStarted: string | null
   lastListingScores: string | null
   lastListingScoresStarted: string | null
+  lastListingSuperlatives: string | null
+  lastListingSuperlativesStarted: string | null
   lastListingEdgeScores: string | null
   statsCacheEntries: number
   lastStatsCache: string | null
@@ -1306,6 +1421,8 @@ export function getListingsDbStats(): {
     lastIncrementalSyncStarted: null as string | null,
     lastListingScores: null as string | null,
     lastListingScoresStarted: null as string | null,
+    lastListingSuperlatives: null as string | null,
+    lastListingSuperlativesStarted: null as string | null,
     lastListingEdgeScores: null as string | null,
     statsCacheEntries: 0,
     lastStatsCache: null as string | null,
@@ -1343,6 +1460,8 @@ export function getListingsDbStats(): {
     lastIncrementalSyncStarted: getSyncMeta('last_incremental_sync_started'),
     lastListingScores: getSyncMeta('last_listing_scores'),
     lastListingScoresStarted: getSyncMeta('last_listing_scores_started'),
+    lastListingSuperlatives: getSyncMeta('last_listing_superlatives'),
+    lastListingSuperlativesStarted: getSyncMeta('last_listing_superlatives_started'),
     lastListingEdgeScores: getSyncMeta('last_listing_edge_scores'),
     statsCacheEntries: (
       writeDatabase.prepare('SELECT COUNT(*) AS count FROM stats_cache').get() as {

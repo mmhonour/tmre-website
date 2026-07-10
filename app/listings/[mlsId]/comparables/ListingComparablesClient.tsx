@@ -68,6 +68,7 @@ export default function ListingComparablesClient({
   const [edgeScore, setEdgeScore] = useState<number | null>(null);
   const [goldilocksBreakdown, setGoldilocksBreakdown] =
     useState<ListingScoreApiFields["goldilocksBreakdown"]>(null);
+  const [insight, setInsight] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const activeTab =
     comparablesKind === "rental" ? "comparable-rentals" : "comparables";
@@ -90,6 +91,7 @@ export default function ListingComparablesClient({
         setGoldilocksScore(d.goldilocksScore ?? null);
         setEdgeScore(d.edgeScore ?? null);
         setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
+        setInsight(d.insight ?? null);
         setState("ready");
       })
       .catch(() => {
@@ -169,7 +171,6 @@ export default function ListingComparablesClient({
         header={{
           mlsId: listing.mlsId,
           status: listing.status,
-          dom: listing.dom,
           address: listing.address,
           propertyType: listing.propertyType,
           style: listing.style,
@@ -181,6 +182,7 @@ export default function ListingComparablesClient({
           ...listingHeaderScoreProps({
             goldilocksScore: edgeScore ?? goldilocksScore,
             goldilocksBreakdown,
+            insight,
             title: street,
             subtitle: resolvedTown,
             propertyType: listing.propertyType,

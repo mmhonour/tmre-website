@@ -439,8 +439,8 @@
   "23b1f8f8-0afd-441b-a749-5bb410d45995": {
     "vid": "23b1f8f8-0afd-441b-a749-5bb410d45995",
     "firstSeen": "2026-07-07T19:33:59.128Z",
-    "lastSeen": "2026-07-10T02:34:41.311Z",
-    "pageviews": 261,
+    "lastSeen": "2026-07-10T03:52:27.097Z",
+    "pageviews": 317,
     "ip": "::1",
     "geo": {
       "city": null,
@@ -451,204 +451,204 @@
     },
     "pages": [
       {
-        "path": "/intelligence",
-        "at": "2026-07-09T20:39:51.174Z"
+        "path": "/listings/5036D877B76C3A28E063E201100A6B1D/comparable-rentals",
+        "at": "2026-07-10T02:46:24.340Z"
       },
       {
-        "path": "/stats",
-        "at": "2026-07-09T21:13:20.736Z"
+        "path": "/listings/5036D877B76C3A28E063E201100A6B1D/history",
+        "at": "2026-07-10T02:46:56.797Z"
+      },
+      {
+        "path": "/listings/5036D877B76C3A28E063E201100A6B1D/if",
+        "at": "2026-07-10T02:47:19.170Z"
+      },
+      {
+        "path": "/listings/24169922/comparables",
+        "at": "2026-07-10T02:47:40.484Z"
       },
       {
         "path": "/admin",
-        "at": "2026-07-09T21:24:50.239Z"
+        "at": "2026-07-10T02:48:06.099Z"
+      },
+      {
+        "path": "/admin",
+        "at": "2026-07-10T02:54:40.878Z"
+      },
+      {
+        "path": "/admin",
+        "at": "2026-07-10T02:54:47.174Z"
       },
       {
         "path": "/spotlight",
-        "at": "2026-07-09T21:28:01.951Z"
-      },
-      {
-        "path": "/spotlight/photos",
-        "at": "2026-07-09T21:28:54.275Z"
-      },
-      {
-        "path": "/spotlight/comparable-rentals",
-        "at": "2026-07-09T21:31:19.090Z"
+        "at": "2026-07-10T02:55:25.102Z"
       },
       {
         "path": "/spotlight/comparables",
-        "at": "2026-07-09T21:32:13.342Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T21:33:47.241Z"
-      },
-      {
-        "path": "/listings/55E1531D772B2C85E063E201100A6295/photos",
-        "at": "2026-07-09T21:36:26.148Z"
-      },
-      {
-        "path": "/listings/55E1531D772B2C85E063E201100A6295/comparable-rentals",
-        "at": "2026-07-09T21:39:27.892Z"
-      },
-      {
-        "path": "/listings/55E1531D772B2C85E063E201100A6295/comparables",
-        "at": "2026-07-09T21:43:53.395Z"
-      },
-      {
-        "path": "/listings/55E1531D772B2C85E063E201100A6295/comparables",
-        "at": "2026-07-09T21:48:28.491Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T21:53:54.547Z"
-      },
-      {
-        "path": "/listings/509E344116798ED1E063E201100A2310/photos",
-        "at": "2026-07-09T21:59:50.893Z"
-      },
-      {
-        "path": "/listings/509E344116798ED1E063E201100A2310/photos",
-        "at": "2026-07-09T22:02:20.049Z"
-      },
-      {
-        "path": "/listings/509E344116798ED1E063E201100A2310",
-        "at": "2026-07-09T22:07:06.640Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T22:16:08.516Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T22:19:52.674Z"
-      },
-      {
-        "path": "/admin",
-        "at": "2026-07-09T22:31:10.380Z"
-      },
-      {
-        "path": "/list-with-me",
-        "at": "2026-07-09T22:32:22.221Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-09T22:32:52.255Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-09T22:34:43.432Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-09T22:34:58.063Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-09T22:36:06.749Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-09T23:03:21.879Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-09T23:12:46.275Z"
-      },
-      {
-        "path": "/",
-        "at": "2026-07-09T23:18:06.621Z"
-      },
-      {
-        "path": "/admin",
-        "at": "2026-07-09T23:20:38.987Z"
-      },
-      {
-        "path": "/admin",
-        "at": "2026-07-09T23:30:06.258Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:31:16.162Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:35:10.857Z"
-      },
-      {
-        "path": "/open-houses",
-        "at": "2026-07-09T23:44:11.840Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:45:57.423Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:47:30.807Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:47:47.441Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:48:36.916Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:49:58.885Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T23:50:08.612Z"
-      },
-      {
-        "path": "/new-construction",
-        "at": "2026-07-10T00:01:29.045Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-10T00:03:33.586Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-10T00:04:36.375Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-10T00:05:04.287Z"
-      },
-      {
-        "path": "/stats",
-        "at": "2026-07-10T00:07:55.036Z"
-      },
-      {
-        "path": "/spotlight",
-        "at": "2026-07-10T00:12:16.859Z"
-      },
-      {
-        "path": "/spotlight/photos",
-        "at": "2026-07-10T00:12:43.675Z"
-      },
-      {
-        "path": "/spotlight/comparables",
-        "at": "2026-07-10T00:12:49.948Z"
+        "at": "2026-07-10T02:55:29.380Z"
       },
       {
         "path": "/spotlight/if",
-        "at": "2026-07-10T00:13:44.789Z"
+        "at": "2026-07-10T02:55:54.997Z"
       },
       {
-        "path": "/spotlight/comparables",
-        "at": "2026-07-10T00:21:29.524Z"
+        "path": "/spotlight",
+        "at": "2026-07-10T02:56:18.416Z"
       },
       {
-        "path": "/spotlight/comparables",
-        "at": "2026-07-10T00:24:41.565Z"
+        "path": "/spotlight/photos",
+        "at": "2026-07-10T02:56:27.905Z"
+      },
+      {
+        "path": "/spotlight/history",
+        "at": "2026-07-10T02:57:07.618Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-10T02:57:40.113Z"
+      },
+      {
+        "path": "/spotlight/photos",
+        "at": "2026-07-10T02:57:48.183Z"
+      },
+      {
+        "path": "/spotlight/if",
+        "at": "2026-07-10T02:58:23.935Z"
+      },
+      {
+        "path": "/deal-of-the-day",
+        "at": "2026-07-10T02:59:26.869Z"
       },
       {
         "path": "/",
-        "at": "2026-07-10T02:34:41.311Z"
+        "at": "2026-07-10T02:59:50.126Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-10T03:01:42.358Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-10T03:02:02.423Z"
+      },
+      {
+        "path": "/listings/4CC2C288C9FBD7D6E063E201100AE6CA/photos",
+        "at": "2026-07-10T03:02:17.562Z"
+      },
+      {
+        "path": "/listings/4CC2C288C9FBD7D6E063E201100AE6CA",
+        "at": "2026-07-10T03:02:35.169Z"
+      },
+      {
+        "path": "/listings/4CC2C288C9FBD7D6E063E201100AE6CA/if",
+        "at": "2026-07-10T03:07:17.533Z"
+      },
+      {
+        "path": "/listings/4CC2C288C9FBD7D6E063E201100AE6CA/comparables",
+        "at": "2026-07-10T03:08:04.400Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-10T03:13:47.393Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-10T03:15:40.012Z"
+      },
+      {
+        "path": "/",
+        "at": "2026-07-10T03:18:37.890Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-10T03:18:41.304Z"
+      },
+      {
+        "path": "/",
+        "at": "2026-07-10T03:18:51.002Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-10T03:23:33.646Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-10T03:24:00.327Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-10T03:24:04.668Z"
+      },
+      {
+        "path": "/",
+        "at": "2026-07-10T03:25:41.054Z"
+      },
+      {
+        "path": "/deal-of-the-day",
+        "at": "2026-07-10T03:26:07.552Z"
+      },
+      {
+        "path": "/",
+        "at": "2026-07-10T03:26:28.517Z"
+      },
+      {
+        "path": "/listings/24172635",
+        "at": "2026-07-10T03:29:38.084Z"
+      },
+      {
+        "path": "/listings/24172635/photos",
+        "at": "2026-07-10T03:29:47.328Z"
+      },
+      {
+        "path": "/deal-of-the-day",
+        "at": "2026-07-10T03:31:01.868Z"
+      },
+      {
+        "path": "/",
+        "at": "2026-07-10T03:31:06.123Z"
+      },
+      {
+        "path": "/listings/24172635",
+        "at": "2026-07-10T03:32:51.431Z"
+      },
+      {
+        "path": "/listings/24172635",
+        "at": "2026-07-10T03:35:24.055Z"
+      },
+      {
+        "path": "/listings/24172635",
+        "at": "2026-07-10T03:39:32.829Z"
+      },
+      {
+        "path": "/spotlight",
+        "at": "2026-07-10T03:39:46.160Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-10T03:41:54.097Z"
+      },
+      {
+        "path": "/listings/530A0ECC375AA726E063E201100AF9D0/photos",
+        "at": "2026-07-10T03:44:32.288Z"
+      },
+      {
+        "path": "/listings/530A0ECC375AA726E063E201100AF9D0",
+        "at": "2026-07-10T03:46:28.216Z"
+      },
+      {
+        "path": "/listings/24179641/photos",
+        "at": "2026-07-10T03:46:50.039Z"
+      },
+      {
+        "path": "/listings/24179641",
+        "at": "2026-07-10T03:46:58.902Z"
+      },
+      {
+        "path": "/listings/24179641",
+        "at": "2026-07-10T03:49:36.134Z"
+      },
+      {
+        "path": "/listings/24179641",
+        "at": "2026-07-10T03:52:27.097Z"
       }
     ],
     "email": null,
@@ -729,8 +729,8 @@
   "494f842d-f25c-4c7b-bff4-cda94adc275d": {
     "vid": "494f842d-f25c-4c7b-bff4-cda94adc275d",
     "firstSeen": "2026-07-07T20:06:15.439Z",
-    "lastSeen": "2026-07-10T00:30:03.884Z",
-    "pageviews": 94,
+    "lastSeen": "2026-07-10T03:56:08.966Z",
+    "pageviews": 104,
     "ip": "::1",
     "geo": {
       "city": null,
@@ -740,46 +740,6 @@
       "org": null
     },
     "pages": [
-      {
-        "path": "/about",
-        "at": "2026-07-09T15:14:38.616Z"
-      },
-      {
-        "path": "/about",
-        "at": "2026-07-09T16:04:31.746Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T16:04:35.796Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T16:28:10.048Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T16:28:26.083Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T16:31:11.751Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T16:57:20.434Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T16:57:29.835Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T17:12:01.073Z"
-      },
-      {
-        "path": "/intelligence",
-        "at": "2026-07-09T17:13:17.443Z"
-      },
       {
         "path": "/intelligence",
         "at": "2026-07-09T17:33:13.875Z"
@@ -939,6 +899,46 @@
       {
         "path": "/stats",
         "at": "2026-07-10T00:30:03.884Z"
+      },
+      {
+        "path": "/listings/55F4EEEE084554D9E063E201100AF247",
+        "at": "2026-07-10T03:41:22.715Z"
+      },
+      {
+        "path": "/listings/24152517",
+        "at": "2026-07-10T03:46:07.041Z"
+      },
+      {
+        "path": "/listings/24152517",
+        "at": "2026-07-10T03:48:00.894Z"
+      },
+      {
+        "path": "/listings/24152517",
+        "at": "2026-07-10T03:48:02.209Z"
+      },
+      {
+        "path": "/intelligence",
+        "at": "2026-07-10T03:49:48.620Z"
+      },
+      {
+        "path": "/listings/24152517",
+        "at": "2026-07-10T03:50:06.687Z"
+      },
+      {
+        "path": "/listings/556A1A719BAD5532E0631A01100A2B99/photos",
+        "at": "2026-07-10T03:52:39.150Z"
+      },
+      {
+        "path": "/listings/55F4EEEE084554D9E063E201100AF247",
+        "at": "2026-07-10T03:52:41.228Z"
+      },
+      {
+        "path": "/listings/24152517",
+        "at": "2026-07-10T03:52:57.562Z"
+      },
+      {
+        "path": "/listings/24152517",
+        "at": "2026-07-10T03:56:08.966Z"
       }
     ],
     "email": null,
@@ -946,5 +946,7 @@
     "name": null,
     "audienceType": null,
     "leadId": null
+  }
+}    "leadId": null
   }
 }

@@ -142,6 +142,103 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "property-addresses": "property-addresses",
 };
 
+/** Started-but-not-finished older than this → hung (pink). */
+const HANG_THRESHOLD_MS = 45 * 60 * 1000;
+
+type SyncRowVisualStatus = "running" | "ok" | "alert" | "idle";
+
+function parseIsoMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function isTimingInProgress(timing: SyncTiming, nowMs: number): boolean {
+  const startedMs = parseIsoMs(timing.started);
+  if (startedMs == null) return false;
+  const finishedMs = parseIsoMs(timing.finished);
+  if (finishedMs != null && finishedMs >= startedMs) return false;
+  return nowMs - startedMs < HANG_THRESHOLD_MS;
+}
+
+function isTimingHung(timing: SyncTiming, nowMs: number): boolean {
+  const startedMs = parseIsoMs(timing.started);
+  if (startedMs == null) return false;
+  const finishedMs = parseIsoMs(timing.finished);
+  if (finishedMs != null && finishedMs >= startedMs) return false;
+  return nowMs - startedMs >= HANG_THRESHOLD_MS;
+}
+
+function isScheduleBreached(
+  nextRunAt: string | null,
+  finishedAt: string | null,
+  nowMs: number,
+): boolean {
+  const dueMs = parseIsoMs(nextRunAt);
+  if (dueMs == null || nowMs <= dueMs) return false;
+  const finishedMs = parseIsoMs(finishedAt);
+  if (finishedMs == null) return true;
+  return finishedMs < dueMs;
+}
+
+function resolveSyncRowVisualStatus(options: {
+  row: AdminSyncRow;
+  timing: SyncTiming;
+  nextRunAt: string | null;
+  status: PanelStatus | null;
+  isRunning: boolean;
+  syncAllRunning: boolean;
+  message?: string;
+  nowMs: number;
+}): SyncRowVisualStatus {
+  const { row, timing, nextRunAt, status, isRunning, syncAllRunning, message, nowMs } =
+    options;
+
+  const refreshRowRunning =
+    row.id === "refresh-finished" && Boolean(status?.refreshing);
+  const refreshRowHung =
+    row.id === "refresh-finished" &&
+    Boolean(status?.refreshing) &&
+    (() => {
+      const startedMs = parseIsoMs(status?.lastRefreshStarted);
+      return startedMs != null && nowMs - startedMs >= HANG_THRESHOLD_MS;
+    })();
+
+  const inProgress =
+    isRunning ||
+    (syncAllRunning && row.actionId != null) ||
+    refreshRowRunning ||
+    isTimingInProgress(timing, nowMs);
+
+  if (inProgress && !refreshRowHung) return "running";
+
+  const failed = Boolean(message?.toLowerCase().includes("fail"));
+  const hung = refreshRowHung || isTimingHung(timing, nowMs);
+  const breached =
+    row.nextRunAt != null || nextRunAt != null
+      ? isScheduleBreached(nextRunAt, timing.finished, nowMs)
+      : false;
+
+  if (failed || hung || breached) return "alert";
+
+  if (timing.finished) return "ok";
+
+  return "idle";
+}
+
+function syncRowClassName(visual: SyncRowVisualStatus, stripe: boolean): string {
+  switch (visual) {
+    case "running":
+      return "bg-gold/30 animate-pulse";
+    case "ok":
+      return "bg-sage/15";
+    case "alert":
+      return "bg-rose-100/90";
+    default:
+      return stripe ? "bg-cream/[0.18]" : "bg-white";
+  }
+}
+
 function SyncImpactedPages({ rowId }: { rowId: string }) {
   const pages = adminSyncImpactedPages(rowId);
   if (pages.length === 0) {
@@ -187,9 +284,10 @@ export default function AdminSyncTable({
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    const tickMs = refreshing || runningId != null ? 5_000 : 60_000;
+    const id = window.setInterval(() => setNow(new Date()), tickMs);
     return () => window.clearInterval(id);
-  }, []);
+  }, [refreshing, runningId]);
 
   const refreshStatus = useCallback(async () => {
     const res = await fetch("/api/admin/sync", { cache: "no-store" });
@@ -201,7 +299,10 @@ export default function AdminSyncTable({
 
   useEffect(() => {
     void refreshStatus();
-  }, [refreshStatus]);
+    const pollMs = refreshing || runningId != null ? 5_000 : 60_000;
+    const id = window.setInterval(() => void refreshStatus(), pollMs);
+    return () => window.clearInterval(id);
+  }, [refreshStatus, refreshing, runningId]);
 
   const runSync = useCallback(
     async (row: AdminSyncRow) => {
@@ -345,7 +446,7 @@ export default function AdminSyncTable({
     <>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
         <p className="text-xs text-slate leading-relaxed max-w-2xl">
-          Sync all runs incremental MLS update, scores, stats, Deal of the Day, intelligence
+          Sync all runs a full MLS resync, scores, stats, Deal of the Day, intelligence
           board, Latest feeds, property addresses, Deal of the Week, then publishes the read
           snapshot — serially.
         </p>
@@ -395,7 +496,7 @@ export default function AdminSyncTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {rows.map((row, index) => {
               const isRunning = row.actionId != null && runningId === row.actionId;
               const message = messages[row.id];
               const disabled = !row.actionId || globalBusy;
@@ -403,9 +504,35 @@ export default function AdminSyncTable({
               const showSingleTimestamp =
                 row.id === "latest-mls" || row.id === "property-addresses";
               const nextRunAt = nextRunForRow(row, status);
+              const nowMs = now.getTime();
+              const visual = resolveSyncRowVisualStatus({
+                row,
+                timing,
+                nextRunAt,
+                status,
+                isRunning,
+                syncAllRunning,
+                message,
+                nowMs,
+              });
+              const rowHung =
+                isTimingHung(timing, nowMs) ||
+                (row.id === "refresh-finished" &&
+                  Boolean(status?.refreshing) &&
+                  (() => {
+                    const startedMs = parseIsoMs(status?.lastRefreshStarted);
+                    return startedMs != null && nowMs - startedMs >= HANG_THRESHOLD_MS;
+                  })());
+              const rowOverdue =
+                visual === "alert" &&
+                !rowHung &&
+                isScheduleBreached(nextRunAt, timing.finished, nowMs);
 
               return (
-                <tr key={row.id} className="bg-white even:bg-cream/[0.18]">
+                <tr
+                  key={row.id}
+                  className={`transition-colors duration-500 ${syncRowClassName(visual, index % 2 === 1)}`}
+                >
                   <td className={TD}>
                     {row.actionId ? (
                       <button
@@ -457,9 +584,27 @@ export default function AdminSyncTable({
                     </>
                   )}
                   <td className={`${TD} border-r-0`}>
-                    <p className="font-mono text-xs tabular-nums text-navy font-semibold whitespace-nowrap">
+                    <p
+                      className={`font-mono text-xs tabular-nums font-semibold whitespace-nowrap ${
+                        visual === "alert" && nextRunAt && nowMs > (parseIsoMs(nextRunAt) ?? 0)
+                          ? "text-rose-700"
+                          : "text-navy"
+                      }`}
+                    >
                       {formatAdminNextSyncAt(nextRunAt, now)}
                     </p>
+                    {visual === "alert" ? (
+                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-rose-600/80 uppercase">
+                        {isTimingHung(timing, nowMs) ||
+                        (row.id === "refresh-finished" && status?.refreshing)
+                          ? "Hung"
+                          : "Overdue"}
+                      </p>
+                    ) : visual === "ok" ? (
+                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-sage/80 uppercase">
+                        On schedule
+                      </p>
+                    ) : null}
                   </td>
                 </tr>
               );

@@ -569,14 +569,30 @@ export function fmtIfEstimateRange(
   return "—"
 }
 
-/** Sale estimates on the If page — nearest $1,000, shown as $869K. */
+/** Sale estimates on the If page — nearest $1,000; $869K below $1M, $1.2M at/above $1M. */
 export function roundIfSaleAmount(amount: number): number {
   return Math.round(amount / 1_000) * 1_000
 }
 
+function formatIfSaleMillions(millions: number): string {
+  const rounded =
+    millions >= 10
+      ? Math.round(millions)
+      : Math.round(millions * 10) / 10
+  const label =
+    rounded % 1 === 0
+      ? rounded.toLocaleString('en-US', { maximumFractionDigits: 0 })
+      : rounded.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return `$${label}M`
+}
+
 export function fmtIfSaleMoney(amount: number | null): string {
   if (amount == null) return '—'
-  const thousands = roundIfSaleAmount(amount) / 1_000
+  const rounded = roundIfSaleAmount(amount)
+  if (rounded >= 1_000_000) {
+    return formatIfSaleMillions(rounded / 1_000_000)
+  }
+  const thousands = rounded / 1_000
   return `$${thousands.toLocaleString('en-US')}K`
 }
 

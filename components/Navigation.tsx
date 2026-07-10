@@ -114,6 +114,7 @@ const exploreGroupsBase: ExploreGroup[] = [
     title: "Research",
     links: [
       { href: "/stats", label: "Stats" },
+      { href: "/town-budget", label: "Town Budget" },
       { href: "/score", label: "Score" },
       { href: "/owner-history", label: "Owner History" },
     ],

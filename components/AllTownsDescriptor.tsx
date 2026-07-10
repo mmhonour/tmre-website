@@ -8,15 +8,9 @@ import {
   type AllTownsDescriptorRequest,
   type TownDescriptorStats,
 } from "@/lib/intelligence-all-towns-descriptor";
+import { monthsSupplyColorStyle } from "@/lib/months-supply-color";
 
 type FilterContext = AllTownsDescriptorRequest["filterContext"];
-
-function monthsSupplyColorClass(monthsSupply: number | null): string {
-  if (monthsSupply == null) return "text-white/40";
-  if (monthsSupply <= 2) return "text-coral";
-  if (monthsSupply <= 4) return "text-gold";
-  return "text-sage";
-}
 
 export default function AllTownsDescriptor({
   towns,
@@ -131,7 +125,8 @@ export default function AllTownsDescriptor({
             ·
           </span>
           <span
-            className={monthsSupplyColorClass(aggregateMonthsSupply)}
+            className={aggregateMonthsSupply == null ? "text-white/40" : undefined}
+            style={monthsSupplyColorStyle(aggregateMonthsSupply)}
             aria-label={
               !monthlySalesLoaded
                 ? "Months supply loading"

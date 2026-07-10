@@ -11,9 +11,18 @@ import {
 import { scoreListingsWithBoardPeers } from './board-scoring'
 import { filterListingsToTmreTowns } from './tmre-towns'
 import { isNewConstructionListing } from './new-construction-server'
-import { deriveDealSuperlatives } from './deal-superlatives'
+import {
+  computeListingPeerStats,
+  deriveDealSuperlatives,
+  normalizeStyleKey,
+} from './deal-superlatives'
 import { listingPhotoProxyUrl } from './listing-url'
-import { firstStoredListingPhotoIndex } from './listings-db'
+import {
+  firstStoredListingPhotoIndex,
+  listingRowId,
+  readListingSuperlativesByMlsIds,
+} from './listings-db'
+import { normalizeZip } from './tmre-towns'
 
 export type DealPickPayload = {
   generatedAt: string
@@ -131,6 +140,88 @@ function valueDealRank(s: ScoredListing, medians: Map<string, number>): number {
   return s.score.composite * 0.65 + Math.min(discount, 30) * 0.35 + ppsfBonus
 }
 
+function selectPeerBucketForListing(
+  listing: Listing,
+  pool: readonly Listing[],
+): Listing[] {
+  const selfId = listingRowId(listing)
+  const zip = normalizeZip(listing.address.postalCode)
+  let peers: Listing[] = []
+
+  if (zip) {
+    peers = pool.filter((row) => {
+      const id = listingRowId(row)
+      if (!id || id === selfId) return false
+      return normalizeZip(row.address.postalCode) === zip
+    })
+  }
+
+  if (peers.length < 5) {
+    peers = pool.filter((row) => {
+      const id = listingRowId(row)
+      return Boolean(id && id !== selfId)
+    })
+  }
+
+  return peers
+}
+
+function resolveWinnerSuperlatives(
+  winner: ScoredListing,
+  listings: Listing[],
+  medians: Map<string, number>,
+  pickMode: DealPickPayload['pickMode'],
+  lotAcres: number | null,
+  valueDiscount: number | null,
+): string[] {
+  const cached = readListingSuperlativesByMlsIds([winner.listing.mlsId]).get(
+    winner.listing.mlsId,
+  )
+  if (cached?.length) return cached
+
+  const activePeers = listings.filter(isMarketListing)
+  const peers = selectPeerBucketForListing(winner.listing, activePeers)
+  const peerRows = peers.map((peer) => ({
+    sqft: peer.sqft,
+    lotAcres: parseLotAcres(peer),
+    yearBuilt: peer.yearBuilt,
+    dom: peer.dom,
+    price: peer.price,
+    styleKey: normalizeStyleKey(peer.style),
+    score: null,
+  }))
+  const peerStats = computeListingPeerStats(
+    {
+      sqft: winner.listing.sqft,
+      lotAcres,
+      yearBuilt: winner.listing.yearBuilt,
+      dom: winner.listing.dom,
+      price: winner.listing.price,
+      styleKey: normalizeStyleKey(winner.listing.style),
+      score: {
+        condition: winner.score.condition,
+        layoutQuality: winner.score.layoutQuality,
+        age: winner.score.age,
+        finishesQuality: winner.score.finishesQuality,
+        composite: winner.score.composite,
+      },
+    },
+    peerRows,
+  )
+
+  return deriveDealSuperlatives({
+    score: winner.score,
+    listing: winner.listing,
+    valueDiscountPct: valueDiscount,
+    pickMode,
+    lotAcres,
+    peerStats,
+    styleKey: normalizeStyleKey(winner.listing.style),
+    yearBuilt: winner.listing.yearBuilt,
+    sqft: winner.listing.sqft,
+  })
+}
+
 function buildValueDealInsight(s: ScoredListing, medians: Map<string, number>): string {
   const discount = valueDiscountPct(s.listing, medians)
   const city = s.listing.address.city || 'the area'
@@ -195,18 +286,19 @@ async function finalizePayload(
 
   return {
     ...payloadBase,
-    superlatives: deriveDealSuperlatives({
-      score: payloadBase.score,
-      listing: payloadBase.listing,
-      valueDiscountPct: payloadBase.valueDiscountPct,
-      pickMode: payloadBase.pickMode,
-      lotAcres: payloadBase.lotAcres,
-    }),
+    superlatives: resolveWinnerSuperlatives(
+      winner,
+      listings,
+      medians,
+      pickMode,
+      payloadBase.lotAcres,
+      payloadBase.valueDiscountPct,
+    ),
   }
 }
 
 /** Same 0–100 composite path as Intelligence `/api/listings` (Deal Table). */
-async function scoreActiveListingsForBoard(
+export async function scoreActiveListingsForBoard(
   active: Listing[],
   peerListings: Listing[],
 ): Promise<ScoredListing[]> {
@@ -236,10 +328,6 @@ export async function computeTopDeal(
   )
 }
 
-/**
- * Deal of the Day — below town median when available; otherwise the top
- * Goldilocks score from the Deal Table (same 0–100 composite as Intelligence).
- */
 function matchesListingId(l: Listing, listingId: string): boolean {
   const needle = listingId.trim().toLowerCase()
   if (!needle) return false
@@ -248,25 +336,27 @@ function matchesListingId(l: Listing, listingId: string): boolean {
   return false
 }
 
-export async function computeDealOfTheDay(
-  listings: Listing[],
-  opts?: { kind?: 'sale' | 'rental'; peerListings?: Listing[]; listingId?: string },
+/**
+ * Pick Deal of the Day from pre-scored board results (no RETS/scoring pass).
+ * Used by the 5am cache rebuild to derive sale/rental/all from one score per town.
+ */
+export async function pickDealOfTheDayFromBoardScored(
+  scoped: Listing[],
+  boardScored: ScoredListing[],
+  opts?: { listingId?: string },
 ): Promise<DealPickPayload | null> {
-  let scoped = filterListingsToTmreTowns(listings)
-  if (opts?.kind) {
-    scoped = scoped.filter((l) => kindOf(l) === opts.kind)
-  }
   if (!scoped.length) return null
 
   const medians = cityMedianListPrices(scoped)
   const active = scoped.filter(isMarketListing)
   if (!active.length) return null
 
-  const peers = opts?.peerListings ?? active
-  const boardScored = await scoreActiveListingsForBoard(active, peers)
+  const activeIds = new Set(active.map((l) => l.mlsId))
+  const scored = boardScored.filter((s) => activeIds.has(s.listing.mlsId))
+  if (!scored.length) return null
 
   if (opts?.listingId?.trim()) {
-    const pinned = boardScored.find((s) => matchesListingId(s.listing, opts.listingId!))
+    const pinned = scored.find((s) => matchesListingId(s.listing, opts.listingId!))
     if (!pinned) return null
 
     const belowMedian =
@@ -277,7 +367,7 @@ export async function computeDealOfTheDay(
     if (belowMedian) {
       return finalizePayload(
         scoped,
-        boardScored.filter((s) =>
+        scored.filter((s) =>
           active.some(
             (l) =>
               l.mlsId === s.listing.mlsId &&
@@ -296,7 +386,7 @@ export async function computeDealOfTheDay(
 
     return finalizePayload(
       scoped,
-      boardScored,
+      scored,
       0,
       medians,
       pinned,
@@ -314,7 +404,7 @@ export async function computeDealOfTheDay(
 
   if (valuePool.length) {
     const valueIds = new Set(valuePool.map((l) => l.mlsId))
-    const candidates = boardScored.filter((s) => valueIds.has(s.listing.mlsId))
+    const candidates = scored.filter((s) => valueIds.has(s.listing.mlsId))
     if (candidates.length) {
       const sorted = [...candidates].sort(
         (a, b) => valueDealRank(b, medians) - valueDealRank(a, medians),
@@ -333,15 +423,38 @@ export async function computeDealOfTheDay(
     }
   }
 
-  if (!boardScored.length) return null
-
   return finalizePayload(
     scoped,
-    boardScored,
+    scored,
     0,
     medians,
-    boardScored[0],
-    buildInsight(boardScored[0]),
+    scored[0],
+    buildInsight(scored[0]),
     'board-top',
   )
+}
+
+/**
+ * Deal of the Day — below town median when available; otherwise the top
+ * Goldilocks score from the Deal Table (same 0–100 composite as Intelligence).
+ */
+export async function computeDealOfTheDay(
+  listings: Listing[],
+  opts?: { kind?: 'sale' | 'rental'; peerListings?: Listing[]; listingId?: string },
+): Promise<DealPickPayload | null> {
+  let scoped = filterListingsToTmreTowns(listings)
+  if (opts?.kind) {
+    scoped = scoped.filter((l) => kindOf(l) === opts.kind)
+  }
+  if (!scoped.length) return null
+
+  const active = scoped.filter(isMarketListing)
+  if (!active.length) return null
+
+  const peers = opts?.peerListings ?? active
+  const boardScored = await scoreActiveListingsForBoard(active, peers)
+
+  return pickDealOfTheDayFromBoardScored(scoped, boardScored, {
+    ...(opts?.listingId ? { listingId: opts.listingId } : {}),
+  })
 }

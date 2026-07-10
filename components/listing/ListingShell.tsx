@@ -1,31 +1,53 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  DEFAULT_RETURN_NAV,
+  LISTING_RETURN_STORAGE_KEY,
+  type ReturnNav,
+  parseReturnFromSearchParams,
+  persistReturnNav,
+  resolveReturnNav,
+} from "@/lib/listing-return-nav";
 
-export function ListingBackLink({ className = "mb-10" }: { className?: string }) {
-  const [href, setHref] = useState("/intelligence");
-  const [label, setLabel] = useState("Deal board");
+function ListingBackLinkInner({ className = "mb-10" }: { className?: string }) {
+  const searchParams = useSearchParams();
+  const [nav, setNav] = useState<ReturnNav>(DEFAULT_RETURN_NAV);
+
   useEffect(() => {
-    const ref = document.referrer;
-    if (ref.includes("/open-houses")) {
-      setHref("/open-houses");
-      setLabel("Open Houses");
-    } else if (ref.includes("/new-construction/expired-listings")) {
-      setHref("/new-construction/expired-listings");
-      setLabel("Expired Listings");
-    } else if (ref.includes("/new-construction") || ref.includes("/properties")) {
-      setHref("/new-construction");
-      setLabel("New Construction");
+    const fromParam = searchParams.get("from");
+    const storedJson = sessionStorage.getItem(LISTING_RETURN_STORAGE_KEY);
+    const resolved = resolveReturnNav({
+      fromParam,
+      storedJson,
+      referrer: document.referrer || null,
+      origin: window.location.origin,
+    });
+    setNav(resolved);
+
+    if (fromParam) {
+      const fromNav = parseReturnFromSearchParams(searchParams);
+      if (fromNav) persistReturnNav(fromNav);
     }
-  }, []);
+  }, [searchParams]);
+
   return (
     <Link
-      href={href}
+      href={nav.href}
       className={`inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.15em] uppercase text-white/60 hover:text-gold transition-colors ${className}`}
     >
-      <span aria-hidden>←</span> Back to {label}
+      <span aria-hidden>←</span> Back to {nav.label}
     </Link>
+  );
+}
+
+export function ListingBackLink({ className = "mb-10" }: { className?: string }) {
+  return (
+    <Suspense fallback={null}>
+      <ListingBackLinkInner className={className} />
+    </Suspense>
   );
 }
 

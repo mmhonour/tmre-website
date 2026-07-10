@@ -8,11 +8,13 @@ import {
   publishListingsReadSnapshot,
   readListingsFromDb,
   readListingScoresByIds,
+  readListingSuperlativesByMlsIds,
   readStatsCacheRow,
   setSyncMeta,
   upsertListingScores,
   writeStatsCacheRow,
 } from '@/lib/listings-db'
+import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { statsCacheKey } from '@/lib/stats-compute'
@@ -287,6 +289,9 @@ async function buildTownBoard(
   }
 
   const rows: IntelligenceBoardListing[] = []
+  const superlativesByMls = readListingSuperlativesByMlsIds(
+    listings.map((listing) => listing.mlsId).filter(Boolean),
+  )
   for (const listing of listings) {
     const id = listingRowId(listing)
     const mapped = toBoardListing(
@@ -295,7 +300,13 @@ async function buildTownBoard(
       compositeById.get(id) ?? null,
       town,
     )
-    if (mapped) rows.push(mapped)
+    if (mapped) {
+      const words = superlativesByMls.get(listing.mlsId)
+      if (words?.length) {
+        mapped.headline = formatSuperlativesHeadline(words)
+      }
+      rows.push(mapped)
+    }
   }
   rows.sort((a, b) => b.score - a.score)
   return attachIntelligenceBoardInsights(rows)

@@ -454,6 +454,14 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
       console.error('[listings-sync] listing scores rebuild failed', err)
     }
     try {
+      const { rebuildAllListingSuperlatives } = await import(
+        '@/lib/listing-superlatives-rebuild'
+      )
+      await rebuildAllListingSuperlatives()
+    } catch (err) {
+      console.error('[listings-sync] listing superlatives rebuild failed', err)
+    }
+    try {
       const { rebuildStatsCache } = await import('@/lib/stats-cache')
       rebuildStatsCache({ trackRefresh: false })
     } catch (err) {
@@ -473,7 +481,10 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
     }
     try {
       const { rebuildSpotlightCache } = await import('@/lib/spotlight-cache')
-      await rebuildSpotlightCache()
+      const { SPOTLIGHT_PROPERTY_TABS } = await import('@/lib/spotlight-listing')
+      for (const tab of SPOTLIGHT_PROPERTY_TABS) {
+        await rebuildSpotlightCache(tab)
+      }
     } catch (err) {
       console.error('[listings-sync] spotlight cache rebuild failed', err)
     }

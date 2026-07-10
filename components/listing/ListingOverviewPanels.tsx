@@ -35,6 +35,8 @@ export function ListingRemarksWithThumbnails({
   address,
   city,
   photoHref,
+  onPhotoSelect,
+  activePhotoIndex,
   obfuscatePhotoIndex,
 }: {
   remarks: string | null;
@@ -43,6 +45,8 @@ export function ListingRemarksWithThumbnails({
   address: string;
   city?: string | null;
   photoHref?: (photoIndex: number) => string;
+  onPhotoSelect?: (photoIndex: number) => void;
+  activePhotoIndex?: number;
   obfuscatePhotoIndex?: (photoIndex: number) => boolean;
 }) {
   const hasExtraPhotos = photoCount == null || photoCount > 1;
@@ -59,6 +63,8 @@ export function ListingRemarksWithThumbnails({
           address={address}
           city={city}
           photoHref={photoHref}
+          onPhotoSelect={onPhotoSelect}
+          activePhotoIndex={activePhotoIndex}
           obfuscatePhotoIndex={obfuscatePhotoIndex}
         />
       ) : null}

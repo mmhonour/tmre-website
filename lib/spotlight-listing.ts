@@ -1,8 +1,10 @@
 /**
- * TMRE Spotlight — featured listings on /spotlight (property tabs 1 and 2).
+ * TMRE Spotlight — featured listings on /spotlight (property tabs 1–3).
  * Edit this file to swap spotlight properties; tab 1 keeps the Coming Soon panel.
  */
-export type SpotlightPropertyTabId = 1 | 2;
+export type SpotlightPropertyTabId = 1 | 2 | 3;
+
+export const SPOTLIGHT_PROPERTY_TABS: SpotlightPropertyTabId[] = [1, 2, 3];
 
 export type SpotlightListingConfig = {
   /** Internal reference only (contact form, analytics). */
@@ -83,6 +85,8 @@ export const SPOTLIGHT_LISTING: SpotlightListingConfig = {
   },
   remarks: "",
   photos: [],
+  hideAddress: true,
+  obfuscateFirstTwoPhotos: true,
 };
 
 /** Tab 2 — 11 Treadwell Avenue (address hidden on page; first two photos blurred). */
@@ -124,16 +128,65 @@ export const SPOTLIGHT_LISTING_TAB_2: SpotlightListingConfig = {
   obfuscateFirstTwoPhotos: true,
 };
 
+/** Tab 3 — 87 Kings Highway South, Westport (privacy defaults until Admin override). */
+export const SPOTLIGHT_LISTING_TAB_3: SpotlightListingConfig = {
+  id: "spotlight-87-kings-highway-s",
+  displayTitle: "Westport, CT",
+  displayLocation: "Westport, CT",
+  address: {
+    street: "87 Kings Highway South",
+    city: "Westport",
+    state: "Connecticut",
+    postalCode: "06880",
+  },
+  /** Resolved at runtime via address search when absent from SQLite. */
+  mlsId: null,
+  listingKey: null,
+  status: "Active",
+  propertyType: "Single Family For Sale",
+  style: "",
+  price: null,
+  originalListPrice: null,
+  beds: null,
+  baths: null,
+  sqft: null,
+  yearBuilt: null,
+  dom: null,
+  latitude: null,
+  longitude: null,
+  photoCount: null,
+  schools: {
+    elementary: null,
+    middle: null,
+    high: null,
+    district: null,
+  },
+  remarks: "",
+  photos: [],
+  hideAddress: true,
+  obfuscateFirstTwoPhotos: true,
+};
+
 const SPOTLIGHT_LISTINGS_BY_TAB: Record<SpotlightPropertyTabId, SpotlightListingConfig> =
   {
     1: SPOTLIGHT_LISTING,
     2: SPOTLIGHT_LISTING_TAB_2,
+    3: SPOTLIGHT_LISTING_TAB_3,
   };
+
+/** `?property=` value for tab 2+; tab 1 omits the param. */
+export function spotlightPropertySearchParam(
+  tab: SpotlightPropertyTabId,
+): string | null {
+  return tab === 1 ? null : String(tab);
+}
 
 export function parseSpotlightPropertyTab(
   value: string | null | undefined,
 ): SpotlightPropertyTabId {
-  return value === "2" ? 2 : 1;
+  if (value === "2") return 2;
+  if (value === "3") return 3;
+  return 1;
 }
 
 export function getSpotlightListingConfig(

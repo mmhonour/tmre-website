@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { Suspense } from "react";
 import { Playfair_Display, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import VisitorBeacon from "@/components/VisitorBeacon";
+import ListingReturnNavTracker from "@/components/listing/ListingReturnNavTracker";
 import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 import { SiteUnlockProvider } from "@/components/SiteUnlockProvider";
@@ -49,6 +51,9 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-cream text-charcoal">
         <SiteUnlockProvider unlocked={siteUnlocked}>
+          <Suspense fallback={null}>
+            <ListingReturnNavTracker />
+          </Suspense>
           <VisitorBeacon />
           <Navigation siteUnlocked={siteUnlocked} />
           <main className="flex-1">{children}</main>

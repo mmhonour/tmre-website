@@ -24,7 +24,7 @@ export async function GET(
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
-    const [photos, goldilocksBreakdown, edgeScoreRow] = await Promise.all([
+    const [photos, detailScore, edgeScoreRow] = await Promise.all([
       includePhotos
         ? resolveListingPhotoUrls(
             id,
@@ -40,8 +40,9 @@ export async function GET(
       {
         listing,
         photos,
-        goldilocksScore: goldilocksBreakdown?.composite ?? null,
-        goldilocksBreakdown,
+        goldilocksScore: detailScore?.breakdown.composite ?? null,
+        goldilocksBreakdown: detailScore?.breakdown ?? null,
+        insight: detailScore?.insight ?? null,
         edgeScore: edgeScoreRow?.edgeScore ?? null,
         edgeScoreBreakdown: edgeScoreRow?.breakdownJson
           ? (JSON.parse(edgeScoreRow.breakdownJson) as Record<string, unknown>)

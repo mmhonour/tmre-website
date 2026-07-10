@@ -10,8 +10,8 @@ import {
 
 const MAX_REFRESH_MS = 2 * 60 * 60 * 1000
 const REFRESH_LOCK_HISTORY_KEY = 'refresh_lock_history'
-const REFRESH_LOCK_HISTORY_WINDOW_MS = 2 * 60 * 60 * 1000
-const MAX_REFRESH_LOCK_HISTORY_ENTRIES = 100
+const REFRESH_LOCK_HISTORY_WINDOW_MS = 48 * 60 * 60 * 1000
+const MAX_REFRESH_LOCK_HISTORY_ENTRIES = 200
 
 export type SqliteRefreshLockStatus = {
   inProgress: boolean

@@ -7,14 +7,15 @@ import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome"
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
-import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { spotlightPropertySearchParam } from "@/lib/spotlight-listing";
 
 export default function SpotlightComparablesClient({
   comparablesKind = "sale",
 }: {
   comparablesKind?: "sale" | "rental";
 }) {
-  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, propertyTab } =
+  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, insight, propertyTab } =
     useSpotlightListing();
 
   if (loadState === "error") {
@@ -29,39 +30,27 @@ export default function SpotlightComparablesClient({
   }
 
   const isClosed = formatMlsStatus(display.status) === "Closed";
-  const details = buildListingDetailsPanelProps(
-    {
-      mlsId: display.mlsId,
-      propertyTitle: display.config.displayTitle,
-      townHint: display.headerAddress.city,
-      status: display.status,
-      propertyType: display.propertyType,
-      price: display.price,
-      originalListPrice: display.originalListPrice,
-      sqft: display.sqft,
-      photoCount: display.photoCount,
-      schools: display.schools,
-      raw: mlsListing?.raw,
-    },
-    fmtMoney,
-    { routeBase: "spotlight" },
-  );
+  const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
 
   const activeTab =
     comparablesKind === "rental" ? "comparable-rentals" : "comparables";
 
   const comparablesParams = new URLSearchParams();
   if (comparablesKind === "rental") comparablesParams.set("kind", "rental");
-  if (propertyTab === 2) comparablesParams.set("property", "2");
+  const propertyParam = spotlightPropertySearchParam(propertyTab);
+  if (propertyParam) comparablesParams.set("property", propertyParam);
   const comparablesQs = comparablesParams.toString();
 
   return (
     <SpotlightPageChrome
       active={activeTab}
       display={display}
+      propertyTab={propertyTab}
+      mlsListing={mlsListing}
       isClosed={isClosed}
       goldilocksScore={goldilocksScore}
       goldilocksBreakdown={goldilocksBreakdown}
+      insight={insight}
       belowTabs={
         <ListingComparablesPageContent
           mlsId={display.mlsId}

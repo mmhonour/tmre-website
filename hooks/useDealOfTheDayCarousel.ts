@@ -143,27 +143,82 @@ export function useDealOfTheDayCarousel(options?: {
     }
 
     // Progressive: paint as soon as the first town returns; fill the rest in background.
-    for (const town of townsToFetch) {
+    const useBundle =
+      rotate &&
+      townsToFetch.length > 1 &&
+      !pinnedListingId &&
+      !pinnedTownForFetch;
+
+    if (useBundle) {
       void (async () => {
-        let deal: DealCarouselPayload | null = null;
         try {
-          const qs = new URLSearchParams({ city: town });
+          const qs = new URLSearchParams({ bundle: "1" });
           if (kindParam) qs.set("kind", kindParam);
-          if (pinnedListingId) qs.set("listing", pinnedListingId);
           const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
           if (r.ok) {
-            const body = (await r.json()) as DealCarouselPayload;
-            deal = hasListing(body) ? body : null;
-            if (deal) prefetchListingImages(deal);
+            const body = (await r.json()) as {
+              deals?: Partial<Record<TmreTown, DealCarouselPayload>>;
+            };
+            const next: Partial<Record<TmreTown, DealCarouselPayload | null>> = {};
+            for (const town of townsToFetch) {
+              const deal = body.deals?.[town];
+              next[town] = deal && hasListing(deal) ? deal : null;
+              if (next[town]) prefetchListingImages(next[town]!);
+            }
+            if (!cancelled) {
+              setDealsByTown(next);
+              setLoading(false);
+            }
+            return;
           }
         } catch {
-          deal = null;
+          // fall through to per-town fetch
         }
         if (cancelled) return;
-        setDealsByTown((prev) => ({ ...prev, [town]: deal }));
-        // Stop the hero spinner as soon as any town can paint.
-        setLoading(false);
+        for (const town of townsToFetch) {
+          void (async () => {
+            let deal: DealCarouselPayload | null = null;
+            try {
+              const qs = new URLSearchParams({ city: town });
+              if (kindParam) qs.set("kind", kindParam);
+              const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
+              if (r.ok) {
+                const body = (await r.json()) as DealCarouselPayload;
+                deal = hasListing(body) ? body : null;
+                if (deal) prefetchListingImages(deal);
+              }
+            } catch {
+              deal = null;
+            }
+            if (cancelled) return;
+            setDealsByTown((prev) => ({ ...prev, [town]: deal }));
+            setLoading(false);
+          })();
+        }
       })();
+    } else {
+      for (const town of townsToFetch) {
+        void (async () => {
+          let deal: DealCarouselPayload | null = null;
+          try {
+            const qs = new URLSearchParams({ city: town });
+            if (kindParam) qs.set("kind", kindParam);
+            if (pinnedListingId) qs.set("listing", pinnedListingId);
+            const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
+            if (r.ok) {
+              const body = (await r.json()) as DealCarouselPayload;
+              deal = hasListing(body) ? body : null;
+              if (deal) prefetchListingImages(deal);
+            }
+          } catch {
+            deal = null;
+          }
+          if (cancelled) return;
+          setDealsByTown((prev) => ({ ...prev, [town]: deal }));
+          // Stop the hero spinner as soon as any town can paint.
+          setLoading(false);
+        })();
+      }
     }
 
     return () => {

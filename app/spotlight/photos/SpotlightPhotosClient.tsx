@@ -7,8 +7,11 @@ import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome"
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
-import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
-import { spotlightObfuscatesPhoto } from "@/lib/spotlight-display";
+import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import {
+  spotlightObfuscatesPhotoWithPrivacy,
+  spotlightEffectiveHeaderAddress,
+} from "@/lib/spotlight-privacy-shared";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -26,9 +29,11 @@ export default function SpotlightPhotosClient() {
     mlsListing,
     goldilocksScore,
     goldilocksBreakdown,
+    insight,
     photos,
     photosState,
     propertyTab,
+    privacy,
   } = useSpotlightListing({
     photos: true,
   });
@@ -55,27 +60,14 @@ export default function SpotlightPhotosClient() {
 
   const isClosed = formatMlsStatus(display.status) === "Closed";
   const obfuscatePhoto = (index: number) =>
-    spotlightObfuscatesPhoto(display.config, index);
-  const publicAddressLabel = display.config.hideAddress
-    ? display.config.displayLocation
-    : display.config.displayTitle;
-  const details = buildListingDetailsPanelProps(
-    {
-      mlsId: display.mlsId,
-      propertyTitle: display.config.displayTitle,
-      townHint: display.headerAddress.city,
-      status: display.status,
-      propertyType: display.propertyType,
-      price: display.price,
-      originalListPrice: display.originalListPrice,
-      sqft: display.sqft,
-      photoCount: display.photoCount,
-      schools: display.schools,
-      raw: mlsListing?.raw,
-    },
-    fmtMoney,
-    { routeBase: "spotlight" },
+    spotlightObfuscatesPhotoWithPrivacy(display.config, index, privacy);
+  const headerAddress = spotlightEffectiveHeaderAddress(
+    display.config,
+    mlsListing,
+    privacy,
   );
+  const publicAddressLabel = headerAddress.street;
+  const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
 
   const belowTabs =
     photosState === "loading" ? (
@@ -115,9 +107,12 @@ export default function SpotlightPhotosClient() {
     <SpotlightPageChrome
       active="photos"
       display={display}
+      propertyTab={propertyTab}
+      mlsListing={mlsListing}
       isClosed={isClosed}
       goldilocksScore={goldilocksScore}
       goldilocksBreakdown={goldilocksBreakdown}
+      insight={insight}
       belowTabs={belowTabs}
       sidebar={<ListingSidebar details={details} />}
     />

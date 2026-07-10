@@ -64,6 +64,7 @@ export default function ListingHistoryClient({
   const [goldilocksScore, setGoldilocksScore] = useState<number | null>(null);
   const [goldilocksBreakdown, setGoldilocksBreakdown] =
     useState<ListingScoreApiFields["goldilocksBreakdown"]>(null);
+  const [insight, setInsight] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>("loading");
 
   useEffect(() => {
@@ -83,6 +84,7 @@ export default function ListingHistoryClient({
         setListing(d.listing);
         setGoldilocksScore(d.goldilocksScore ?? null);
         setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
+        setInsight(d.insight ?? null);
         setState("ready");
       })
       .catch(() => {
@@ -152,7 +154,6 @@ export default function ListingHistoryClient({
         header={{
           mlsId: listing.mlsId,
           status: listing.status,
-          dom: listing.dom,
           address: listing.address,
           propertyType: listing.propertyType,
           style: listing.style,
@@ -164,6 +165,7 @@ export default function ListingHistoryClient({
           ...listingHeaderScoreProps({
             goldilocksScore,
             goldilocksBreakdown,
+            insight,
             title: street,
             subtitle: townHint || listing.address.city,
             propertyType: listing.propertyType,

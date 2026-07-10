@@ -7,9 +7,11 @@ import {
   type SpotlightMlsListing,
 } from "@/lib/spotlight-display";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
+import { useSpotlightPrivacy } from "@/hooks/useSpotlightPrivacy";
 import {
   getSpotlightListingConfig,
   parseSpotlightPropertyTab,
+  spotlightPropertySearchParam,
   type SpotlightPropertyTabId,
 } from "@/lib/spotlight-listing";
 
@@ -25,6 +27,7 @@ type SpotlightFetchPayload = {
   photos?: string[];
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ListingScoreApiFields["goldilocksBreakdown"];
+  insight?: string | null;
 };
 
 const spotlightFetchCache = new Map<string, SpotlightFetchPayload>();
@@ -46,10 +49,12 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     () => getSpotlightListingConfig(propertyTab),
     [propertyTab],
   );
+  const privacy = useSpotlightPrivacy(propertyTab);
   const [mlsListing, setMlsListing] = useState<SpotlightMlsListing | null>(null);
   const [goldilocksScore, setGoldilocksScore] = useState<number | null>(null);
   const [goldilocksBreakdown, setGoldilocksBreakdown] =
     useState<ListingScoreApiFields["goldilocksBreakdown"]>(null);
+  const [insight, setInsight] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("ready");
   const [photosState, setPhotosState] = useState<
@@ -66,12 +71,14 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setMlsListing(null);
       setGoldilocksScore(null);
       setGoldilocksBreakdown(null);
+      setInsight(null);
       setPhotos([]);
       lastPropertyTabRef.current = propertyTab;
     } else if (cached?.listing) {
       setMlsListing(cached.listing);
       setGoldilocksScore(cached.goldilocksScore ?? null);
       setGoldilocksBreakdown(cached.goldilocksBreakdown ?? null);
+      setInsight(cached.insight ?? null);
       if (includePhotos && cached.photos) {
         setPhotos(cached.photos);
         setPhotosState("ready");
@@ -81,7 +88,8 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     setLoadState("ready");
     if (includePhotos && !cached?.photos) setPhotosState("loading");
 
-    const propertyQs = propertyTab === 2 ? "&property=2" : "";
+    const propertyParam = spotlightPropertySearchParam(propertyTab);
+    const propertyQs = propertyParam ? `&property=${propertyParam}` : "";
     fetch(`/api/spotlight?photos=${includePhotos ? "1" : "0"}${propertyQs}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: SpotlightFetchPayload | null) => {
@@ -90,6 +98,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
         setMlsListing(d?.listing ?? null);
         setGoldilocksScore(d?.goldilocksScore ?? null);
         setGoldilocksBreakdown(d?.goldilocksBreakdown ?? null);
+        setInsight(d?.insight ?? null);
         if (includePhotos) {
           setPhotos(d?.photos ?? []);
           setPhotosState("ready");
@@ -121,8 +130,10 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     mlsListing,
     goldilocksScore,
     goldilocksBreakdown,
+    insight,
     photos,
     photosState,
+    privacy,
     /** Static config is always available; MLS fields may still be enriching. */
     isEnriched: mlsListing != null,
   };

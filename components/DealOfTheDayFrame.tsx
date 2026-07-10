@@ -338,7 +338,7 @@ function DealContent({
           <button
             type="button"
             onClick={onOpenBreakdown}
-            className={`font-mono text-[9px] tracking-[0.1em] uppercase transition-colors ${
+            className={`font-mono text-[9px] tracking-[0.1em] uppercase transition-colors cursor-pointer ${
               isHero ? "text-white/45 hover:text-gold" : "text-slate hover:text-gold"
             }`}
           >
@@ -444,7 +444,7 @@ export default function DealOfTheDayFrame({
         >
           <Link
             href={fullDealOfTheDayHref(currentTown ?? city, deal, transactionFilter)}
-            className={`font-mono text-[10px] tracking-[0.2em] uppercase text-gold transition-colors ${
+            className={`font-mono text-[10px] tracking-[0.2em] uppercase text-gold transition-colors cursor-pointer ${
               isHero ? "hover:text-gold-light" : "hover:text-navy"
             }`}
           >
@@ -466,7 +466,7 @@ export default function DealOfTheDayFrame({
             <button
               type="button"
               onClick={openBreakdown}
-              className={`font-mono text-sm tabular-nums font-medium underline underline-offset-2 transition-colors ${scoreColor} ${
+              className={`font-mono text-sm tabular-nums font-medium underline underline-offset-2 transition-colors cursor-pointer ${scoreColor} ${
                 isHero
                   ? "decoration-white/30 hover:decoration-gold"
                   : "decoration-charcoal/20 hover:decoration-gold"
@@ -560,7 +560,7 @@ export default function DealOfTheDayFrame({
               <button
                 type="button"
                 onClick={() => setExplainTopic("composite")}
-                className={`font-mono text-4xl tabular-nums font-medium hover:opacity-80 transition-opacity underline underline-offset-4 decoration-charcoal/20 ${
+                className={`font-mono text-4xl tabular-nums font-medium hover:opacity-80 transition-opacity underline underline-offset-4 decoration-charcoal/20 cursor-pointer ${
                   modalScore.composite >= 85
                     ? "text-sage"
                     : modalScore.composite >= 70
@@ -575,7 +575,7 @@ export default function DealOfTheDayFrame({
                 <button
                   type="button"
                   onClick={() => setExplainTopic("composite")}
-                  className="font-mono text-[10px] tracking-[0.15em] uppercase text-gold hover:underline mt-1 inline-block"
+                  className="font-mono text-[10px] tracking-[0.15em] uppercase text-gold hover:underline mt-1 inline-block cursor-pointer"
                 >
                   What this means →
                 </button>
@@ -605,7 +605,7 @@ export default function DealOfTheDayFrame({
                         <button
                           type="button"
                           onClick={() => setExplainTopic(explainKey)}
-                          className="text-slate/50 hover:text-gold transition-colors underline underline-offset-2 decoration-charcoal/15"
+                          className="text-slate/50 hover:text-gold transition-colors underline underline-offset-2 decoration-charcoal/15 cursor-pointer"
                           aria-label={`Explain ${label}`}
                         >
                           {" →"}

@@ -6,11 +6,16 @@ import {
   setSyncMeta,
   writeStatsCacheRow,
 } from '@/lib/listings-db'
-import { fetchActiveListingsForCity, hasLocalListingsCache } from '@/lib/listings-store'
-import { computeDealOfTheDay, type DealPickPayload } from '@/lib/deal-pick'
-import { SCORE_PEER_LIMIT } from '@/lib/goldilocks'
+import { fetchActiveListingsForCity, hasLocalListingsCache, isMarketListing } from '@/lib/listings-store'
+import {
+  dealListingPhotoUrl,
+  pickDealOfTheDayFromBoardScored,
+  scoreActiveListingsForBoard,
+} from '@/lib/deal-pick'
+import { ensureDealPickPhotos, dealPickPhotosReady } from '@/lib/deal-hero-photo-warm'
+import { kindOf, SCORE_PEER_LIMIT } from '@/lib/goldilocks'
 import type { Listing } from '@/lib/rets'
-import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+import { filterListingsToTmreTowns, TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 /** v5: per-town sale + rental caches (page loads with ?kind=sale by default). */
 export const DEAL_OF_THE_DAY_CACHE_PREFIX = 'deal-of-the-day:v5'
@@ -30,6 +35,14 @@ export type DealOfTheDayResponse = DealPickPayload & {
   }
   source?: 'db' | 'rets'
   dealCache?: boolean
+}
+
+export type DealOfTheDayBundleResponse = {
+  generatedAt: string
+  kind: DealOfTheDayKind
+  deals: Partial<Record<TmreTown, DealOfTheDayResponse>>
+  source: 'db'
+  dealCache: true
 }
 
 export function dealOfTheDayCacheKey(
@@ -72,6 +85,32 @@ export function readDealOfTheDayCache(
   }
 }
 
+export function readDealOfTheDayBundle(
+  kind: DealOfTheDayKind = 'all',
+): DealOfTheDayBundleResponse | null {
+  if (!hasLocalListingsCache()) return null
+
+  const deals: Partial<Record<TmreTown, DealOfTheDayResponse>> = {}
+  let generatedAt: string | null = null
+
+  for (const town of TMRE_TOWNS) {
+    const cached = readDealOfTheDayCache(town, kind)
+    if (!cached) return null
+    deals[town] = cached
+    if (!generatedAt || cached.generatedAt > generatedAt) {
+      generatedAt = cached.generatedAt
+    }
+  }
+
+  return {
+    generatedAt: generatedAt ?? new Date().toISOString(),
+    kind,
+    deals,
+    source: 'db',
+    dealCache: true,
+  }
+}
+
 export function writeDealOfTheDayCache(
   scope: DealOfTheDayScope,
   payload: DealOfTheDayResponse,
@@ -80,28 +119,64 @@ export function writeDealOfTheDayCache(
   writeStatsCacheRow(dealOfTheDayCacheKey(scope, kind), payload)
 }
 
-async function computeAndCacheScope(
+const CACHE_KINDS: DealOfTheDayKind[] = ['sale', 'rental', 'all']
+
+async function cacheScopedKinds(
   scope: DealOfTheDayScope,
-  listings: Listing[],
-  peerListings: Listing[],
+  allListings: Listing[],
+  boardScored: Awaited<ReturnType<typeof scoreActiveListingsForBoard>>,
   town: TmreTown | null,
-  kind: DealOfTheDayKind,
-): Promise<boolean> {
-  const kindFilter = kind === 'all' ? undefined : kind
-  const payload = await computeDealOfTheDay(listings, {
-    peerListings,
-    ...(kindFilter ? { kind: kindFilter } : {}),
-  })
-  if (!payload) return false
-  writeDealOfTheDayCache(
-    scope,
-    buildDealOfTheDayResponse(payload, town, kindFilter),
-    kind,
-  )
-  return true
+): Promise<number> {
+  let written = 0
+
+  for (const kind of CACHE_KINDS) {
+    const kindFilter = kind === 'all' ? undefined : kind
+    let scoped = allListings
+    if (kindFilter) {
+      scoped = scoped.filter((l) => kindOf(l) === kindFilter)
+    }
+    if (!scoped.length) continue
+
+    const payload = await pickDealOfTheDayFromBoardScored(scoped, boardScored)
+    if (!payload) continue
+
+    const response: DealOfTheDayResponse = {
+      ...buildDealOfTheDayResponse(payload, town, kindFilter),
+      photoUrl: payload.photoUrl || dealListingPhotoUrl(payload.listing),
+      source: 'db',
+      dealCache: true,
+    }
+    const warmed = await ensureDealPickPhotos(response)
+    writeDealOfTheDayCache(scope, { ...response, ...warmed }, kind)
+    written += 1
+  }
+
+  return written
 }
 
-const CACHE_KINDS: DealOfTheDayKind[] = ['sale', 'rental', 'all']
+/** Re-warm hero + deck photos for any cached DOTD entries still missing blobs. */
+export async function warmAllDealOfTheDayPhotos(): Promise<number> {
+  if (!hasLocalListingsCache()) return 0
+
+  let warmed = 0
+  const scopes: DealOfTheDayScope[] = [...TMRE_TOWNS, 'All']
+
+  for (const scope of scopes) {
+    for (const kind of CACHE_KINDS) {
+      const cached = readDealOfTheDayCache(scope, kind)
+      if (!cached || dealPickPhotosReady(cached)) continue
+      const updated = await ensureDealPickPhotos(cached)
+      writeDealOfTheDayCache(
+        scope,
+        { ...cached, ...updated, source: 'db', dealCache: true },
+        kind,
+      )
+      warmed += 1
+    }
+  }
+
+  return warmed
+}
 
 /** Recompute Deal of the Day for every town × kind (and All) from SQLite. */
 export async function rebuildDealOfTheDayCache(): Promise<{
@@ -126,11 +201,12 @@ export async function rebuildDealOfTheDayCache(): Promise<{
       town,
       SCORE_PEER_LIMIT,
     )
-    for (const kind of CACHE_KINDS) {
-      if (await computeAndCacheScope(town, peerPool, peerPool, town, kind)) {
-        written += 1
-      }
-    }
+    const allListings = filterListingsToTmreTowns(peerPool)
+    const activeAll = allListings.filter(isMarketListing)
+    if (!activeAll.length) continue
+
+    const boardScored = await scoreActiveListingsForBoard(activeAll, peerPool)
+    written += await cacheScopedKinds(town, allListings, boardScored, town)
   }
 
   const allPeerBatches = await Promise.all(
@@ -146,22 +222,28 @@ export async function rebuildDealOfTheDayCache(): Promise<{
       allPeerPool.push(l)
     }
   }
-  for (const kind of CACHE_KINDS) {
-    if (await computeAndCacheScope('All', allPeerPool, allPeerPool, null, kind)) {
-      written += 1
-    }
+  const allListings = filterListingsToTmreTowns(allPeerPool)
+  const activeAll = allListings.filter(isMarketListing)
+  if (activeAll.length) {
+    const boardScored = await scoreActiveListingsForBoard(activeAll, allPeerPool)
+    written += await cacheScopedKinds('All', allListings, boardScored, null)
   }
+
+  const photosWarmed = await warmAllDealOfTheDayPhotos()
 
   const generatedAt = new Date().toISOString()
   setSyncMeta('last_deal_of_the_day_cache', generatedAt)
   console.info(
-    `[deal-of-the-day-cache] rebuilt ${written} entries in ${Date.now() - t0}ms`,
+    `[deal-of-the-day-cache] rebuilt ${written} entries, ${photosWarmed} photo gaps filled, in ${Date.now() - t0}ms`,
   )
 
   return { written, durationMs: Date.now() - t0 }
 }
 
-/** Warm deal picks when SQLite has listings but no cached entries yet (e.g. dev). */
+/**
+ * Warm deal picks when SQLite has listings but no cached entries yet (e.g. dev).
+ * Skips while `refresh_in_progress` so it does not race the 5am full sync rebuild.
+ */
 export async function rebuildDealOfTheDayCacheIfMissing(): Promise<{
   written: number
   durationMs: number

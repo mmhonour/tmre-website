@@ -18,6 +18,8 @@ type ListingHeroPanelsProps = {
     latitude: number | null;
     longitude: number | null;
     addressQuery: string;
+    hidePin?: boolean;
+    defaultZoom?: number;
   };
   subnav: {
     mlsId: string;
@@ -28,7 +30,7 @@ type ListingHeroPanelsProps = {
     routeBase?: "listing" | "spotlight";
   };
   variant?: "default" | "spotlight";
-  /** Spotlight property tabs (1 / 2) rendered above the Property Details label. */
+  /** Spotlight property tabs (1 / 2 / 3) rendered above the Property Details label. */
   propertyTabs?: ReactNode;
   belowTabs?: ReactNode;
   /** Full-width content below the hero grid (e.g. comparables columns). */
@@ -63,7 +65,7 @@ export default function ListingHeroPanels({
       </p>
       <ListingHeader
         {...header}
-        privacyMode={header.privacyMode ?? isSpotlight}
+        privacyMode={header.privacyMode ?? false}
         hideMarketMeta={header.hideMarketMeta ?? isSpotlight}
         className="mb-0"
         compact
@@ -77,8 +79,12 @@ export default function ListingHeroPanels({
     </div>
   );
 
+  const locationMapHeight = "h-[12rem] sm:h-[14rem] lg:h-[16rem]";
+
   const locationPanel = (
-    <div className={`${frameClass} flex flex-col`}>
+    <div
+      className={`${frameClass} flex flex-col min-h-[16rem] sm:min-h-[18rem] lg:min-h-[20rem]`}
+    >
       <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
         Location
       </p>
@@ -87,9 +93,10 @@ export default function ListingHeroPanels({
         longitude={location.longitude}
         addressQuery={location.addressQuery}
         variant="hero"
-        className="h-[9rem] lg:h-[10rem]"
+        className={locationMapHeight}
         hideLabel
-        hidePin={isSpotlight}
+        hidePin={location.hidePin}
+        defaultZoom={location.defaultZoom}
       />
     </div>
   );
@@ -103,10 +110,10 @@ export default function ListingHeroPanels({
   ) : null;
 
   const rightColumn = (
-    <div className="min-w-0 flex flex-col gap-4 lg:sticky lg:top-20">
+    <div className="min-w-0 flex flex-col gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain">
       {interestButton}
       {locationPanel}
-      {sidebar}
+      {sidebar ? <div className="shrink-0">{sidebar}</div> : null}
     </div>
   );
 

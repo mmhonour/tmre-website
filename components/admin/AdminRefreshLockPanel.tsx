@@ -59,9 +59,76 @@ function formatSource(source: string | null): string {
   return source.replace(/-/g, " ");
 }
 
+function formatCompactTimestamp(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatCompactEntry(entry: HistoryEntry): string {
+  const when = formatCompactTimestamp(entry.startedAt);
+  const source = formatSource(entry.source);
+  const duration =
+    entry.finishedAt == null && entry.durationMs == null
+      ? formatDuration(Date.now() - Date.parse(entry.startedAt))
+      : formatDuration(entry.durationMs);
+  const tables = entry.tables.length > 0 ? entry.tables.join(", ") : null;
+  const flags = [
+    entry.finishedAt == null ? "active" : null,
+    entry.clearedManually ? "cleared" : null,
+  ].filter(Boolean);
+  const tail = [duration, tables, ...flags].filter(Boolean).join(" · ");
+  return `${when} · ${source} · ${tail}`;
+}
+
 function formatTables(tables: string[]): string {
   if (tables.length === 0) return "—";
   return tables.join(", ");
+}
+
+function RefreshLogCompact({
+  entries,
+  windowHours,
+}: {
+  entries: HistoryEntry[];
+  windowHours: number;
+}) {
+  return (
+    <div className="px-5 sm:px-6 py-3 border-t border-charcoal/[0.08] bg-white">
+      <p className="font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 mb-2">
+        Refresh log · last {windowHours}h
+      </p>
+      {entries.length > 0 ? (
+        <ul className="max-h-52 overflow-y-auto space-y-1 font-mono text-[10px] leading-relaxed text-charcoal/75">
+          {entries.map((entry) => (
+            <li
+              key={entry.id}
+              className={`tabular-nums truncate ${
+                entry.finishedAt == null
+                  ? "text-gold"
+                  : entry.clearedManually
+                    ? "text-coral/80"
+                    : ""
+              }`}
+              title={formatCompactEntry(entry)}
+            >
+              {formatCompactEntry(entry)}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="font-mono text-[10px] text-charcoal/50">
+          No refreshes in the last {windowHours} hours.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function AdminRefreshLockPanel({
@@ -204,64 +271,7 @@ export default function AdminRefreshLockPanel({
         </div>
       ) : null}
 
-      {history.entries.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[36rem] text-left">
-            <thead>
-              <tr className="border-b border-charcoal/[0.08] bg-cream/20">
-                <th className="px-5 sm:px-6 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Started
-                </th>
-                <th className="px-3 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Source
-                </th>
-                <th className="px-3 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Duration
-                </th>
-                <th className="px-5 sm:px-6 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Tables
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-charcoal/[0.06]">
-              {history.entries.map((entry) => (
-                <tr key={entry.id} className="hover:bg-cream/30">
-                  <td className="px-5 sm:px-6 py-2.5 font-mono text-[11px] tabular-nums text-charcoal/75 whitespace-nowrap">
-                    {formatTimestamp(entry.startedAt)}
-                    {entry.finishedAt == null ? (
-                      <span className="ml-2 text-gold uppercase tracking-wide text-[9px]">
-                        active
-                      </span>
-                    ) : null}
-                    {entry.clearedManually ? (
-                      <span className="ml-2 text-coral uppercase tracking-wide text-[9px]">
-                        cleared
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-charcoal/70 capitalize whitespace-nowrap">
-                    {formatSource(entry.source)}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] tabular-nums text-charcoal/75 whitespace-nowrap">
-                    {entry.finishedAt == null && entry.durationMs == null
-                      ? formatDuration(Date.now() - Date.parse(entry.startedAt))
-                      : formatDuration(entry.durationMs)}
-                  </td>
-                  <td className="px-5 sm:px-6 py-2.5 font-mono text-[11px] text-charcoal/70">
-                    {formatTables(entry.tables)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="px-5 sm:px-6 py-4">
-          <p className="font-mono text-[11px] text-charcoal/50">
-            No refresh locks recorded in the last {windowHours} hours.
-          </p>
-        </div>
-      )}
+      <RefreshLogCompact entries={history.entries} windowHours={windowHours} />
 
       {lockHeld && !lock.stuck && lock.inProgress ? (
         <div className="px-5 sm:px-6 py-2 border-t border-gold/20 bg-white/50">

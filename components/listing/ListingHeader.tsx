@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
 import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge";
+import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 
 type ListingHeaderProps = {
   mlsId: string;
   status: string;
-  dom: number | null;
   address: {
     street: string;
     full: string;
@@ -29,6 +29,7 @@ type ListingHeaderProps = {
   privacyMode?: boolean;
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ScoreBreakdown | null;
+  insight?: string | null;
   scoreTitle?: string | null;
   scoreSubtitle?: string | null;
   isRental?: boolean;
@@ -51,7 +52,6 @@ function joinMetaSegments(segments: ReactNode[]): ReactNode {
 export default function ListingHeader({
   mlsId,
   status,
-  dom,
   address,
   propertyType,
   style,
@@ -64,6 +64,7 @@ export default function ListingHeader({
   privacyMode = false,
   goldilocksScore = null,
   goldilocksBreakdown = null,
+  insight = null,
   scoreTitle,
   scoreSubtitle = null,
   isRental = false,
@@ -121,16 +122,9 @@ export default function ListingHeader({
             </span>
           ) : null}
           {!hideMeta ? (
-            <>
-              {dom != null && (
-                <span className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/55 whitespace-nowrap shrink-0">
-                  {dom}d on market
-                </span>
-              )}
-              <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap shrink-0">
-                #{mlsId} · {status}
-              </span>
-            </>
+            <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap shrink-0">
+              #{mlsId}
+            </span>
           ) : null}
         </div>
       </div>
@@ -147,6 +141,12 @@ export default function ListingHeader({
           yearBuilt ? `Built ${yearBuilt}` : null,
         ])}
       </p>
+
+      {insight ? (
+        <div className={compact ? "mt-2" : "mt-3"}>
+          <ListingInsightCopy text={insight} />
+        </div>
+      ) : null}
 
       {goldilocksBreakdown && scoreOpen ? (
         <ListingScoreBreakdownModal

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import PropertyTaxHistoryModal from "@/components/PropertyTaxHistoryModal";
+import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import { listingFrameClass, listingPanelClass } from "@/components/listing/listing-frame";
 import { fmtAcres } from "@/lib/listing-comparables-shared";
 
@@ -17,6 +18,7 @@ export type ListingDetailsSchoolsPanelProps = {
   mlsId: string;
   propertyTitle: string;
   townHint?: string | null;
+  statusLabel?: string | null;
   isClosed: boolean;
   isRental: boolean;
   soldPrice: number | null;
@@ -24,6 +26,7 @@ export type ListingDetailsSchoolsPanelProps = {
   price: number | null;
   originalListPrice: number | null;
   reductionPct: number | null;
+  dom: number | null;
   ppsf: number | null;
   lotAcres: number | null;
   annualPropertyTax: number | null;
@@ -39,6 +42,7 @@ export default function ListingDetailsSchoolsPanel({
   mlsId,
   propertyTitle,
   townHint = null,
+  statusLabel = null,
   isClosed,
   isRental,
   soldPrice,
@@ -46,6 +50,7 @@ export default function ListingDetailsSchoolsPanel({
   price,
   originalListPrice,
   reductionPct,
+  dom,
   ppsf,
   lotAcres,
   annualPropertyTax,
@@ -69,9 +74,14 @@ export default function ListingDetailsSchoolsPanel({
   return (
     <div className={`${panelClass} space-y-6`}>
       <div>
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-4">
-          Details
-        </p>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+            Details
+          </p>
+          {statusLabel ? (
+            <DealBoardStatusBadge status={statusLabel} size="sm" />
+          ) : null}
+        </div>
         <div className="space-y-4">
           {isClosed ? (
             <>
@@ -107,6 +117,9 @@ export default function ListingDetailsSchoolsPanel({
               )}
             </>
           )}
+          {!isClosed && dom != null ? (
+            <Stat label="Days on market" value={`${dom}d`} />
+          ) : null}
           {!isRental && (
             <Stat label="$ / sqft" value={ppsf ? `$${ppsf}` : "—"} />
           )}

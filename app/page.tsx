@@ -1,6 +1,7 @@
 import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
 import LeadForm from "@/components/LeadForm";
-import { TMRE_CORE_TOWNS_LABEL, TMRE_PROPERTIES_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { TMRE_CORE_TOWNS_LABEL, TMRE_PROPERTIES_TOWNS_LABEL, TMRE_TOWNS } from "@/lib/tmre-towns";
+import Image from "next/image";
 import { Suspense } from "react";
 
 const norwalkStats = [
@@ -188,18 +189,33 @@ function ToolsSection() {
   return (
     <section className="bg-cream py-14 lg:py-28">
       <div className="mx-auto max-w-7xl px-6 lg:px-10">
-        <div className="max-w-2xl mb-10 lg:mb-16">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
-            Intelligence Tools
-          </p>
-          <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl text-navy leading-[1.1]">
-            Four lenses on the same{" "}
-            <span className="italic">two markets.</span>
-          </h2>
-          <p className="mt-4 text-slate text-base lg:text-lg leading-relaxed">
-            Every tool runs on the same proprietary deal model. The difference
-            is the question you're asking.
-          </p>
+        <div className="mb-10 lg:mb-16 flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6">
+          <div className="max-w-2xl min-w-0 flex-1">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
+              Intelligence Tools
+            </p>
+            <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl text-navy leading-[1.1]">
+              Four lenses on the same{" "}
+              <span className="italic">
+                {TMRE_TOWNS.length} markets.
+              </span>
+            </h2>
+            <p className="mt-4 text-slate text-base lg:text-lg leading-relaxed">
+              Every tool runs on the same proprietary deal model. The difference
+              is the question you're asking.
+            </p>
+          </div>
+          <figure className="shrink-0 self-center sm:self-center">
+            <div className="relative w-36 sm:w-40 lg:w-44 aspect-[4/3] bg-cream">
+              <Image
+                src="/images/four-lens-camera.png"
+                alt="Vintage four-lens movie camera"
+                fill
+                className="object-contain object-center grayscale contrast-125 mix-blend-multiply"
+                sizes="(max-width: 640px) 144px, 176px"
+              />
+            </div>
+          </figure>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
           {tools.map((tool) => (

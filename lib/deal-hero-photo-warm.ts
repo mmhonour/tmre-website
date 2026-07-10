@@ -4,6 +4,7 @@ import {
   dealListingPhotoUrl,
   type DealPickPayload,
 } from '@/lib/deal-pick'
+import { readListingPhotoBlob } from '@/lib/listings-db'
 import {
   listingPhotoCacheId,
   resolveListingPhotoBuffer,
@@ -48,4 +49,22 @@ export async function ensureDealPickPhotos(
 ): Promise<DealPickPayload> {
   const photoUrl = await warmDealListingPhotos(payload)
   return photoUrl ? { ...payload, photoUrl } : payload
+}
+
+/** True when hero + thumbnail-deck indices are already in SQLite. */
+export function dealPickPhotosReady(
+  payload: DealPickPayload,
+  maxPhotoIndex = 5,
+): boolean {
+  const listing = payload.listing
+  const cacheId = listingPhotoCacheId(listing)
+  const photoCount = listing.photoCount ?? 0
+  if (!cacheId || photoCount <= 0) return true
+
+  const lastIndex = Math.min(Math.max(photoCount - 1, 0), maxPhotoIndex)
+  for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex += 1) {
+    const blob = readListingPhotoBlob(cacheId, photoIndex)
+    if (!blob || blob.data.length < 100) return false
+  }
+  return true
 }

@@ -3,19 +3,27 @@
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { type ListingTab } from "@/components/listing/ListingSubnav";
+import { useSpotlightPrivacy } from "@/hooks/useSpotlightPrivacy";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
-import type { SpotlightDisplay } from "@/lib/spotlight-display";
+import type { SpotlightDisplay, SpotlightMlsListing } from "@/lib/spotlight-display";
 import { spotlightAllowsInterest } from "@/lib/spotlight-display";
+import type { SpotlightPropertyTabId } from "@/lib/spotlight-listing";
+import {
+  spotlightEffectiveHeaderAddress,
+  spotlightEffectiveMapLocation,
+} from "@/lib/spotlight-privacy-shared";
 import { SpotlightPropertyTabs } from "@/components/spotlight/SpotlightPropertyTabs";
 import type { ReactNode } from "react";
 
 export function SpotlightPageChrome({
   active,
   display,
+  propertyTab,
+  mlsListing = null,
   isClosed,
   belowTabs,
   belowHero,
@@ -23,9 +31,12 @@ export function SpotlightPageChrome({
   footer,
   goldilocksScore = null,
   goldilocksBreakdown = null,
+  insight = null,
 }: {
   active: ListingTab;
   display: SpotlightDisplay;
+  propertyTab: SpotlightPropertyTabId;
+  mlsListing?: SpotlightMlsListing | null;
   isClosed: boolean;
   belowTabs?: ReactNode;
   /** Full-width content below the hero grid (e.g. comparables columns). */
@@ -34,7 +45,24 @@ export function SpotlightPageChrome({
   footer?: ReactNode;
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ListingScoreApiFields["goldilocksBreakdown"];
+  insight?: string | null;
 }) {
+  const privacy = useSpotlightPrivacy(propertyTab);
+  const headerAddress = spotlightEffectiveHeaderAddress(
+    display.config,
+    mlsListing,
+    privacy,
+  );
+  const mapLocation = spotlightEffectiveMapLocation(
+    display.config,
+    mlsListing,
+    privacy,
+  );
+  const streetAddress =
+    mlsListing?.address?.street?.trim() ||
+    display.config.address.street.trim() ||
+    display.config.displayTitle;
+
   const bedBathSearchHref = intelligenceSearchHrefFromListing(
     display.intelligenceListing,
   );
@@ -46,8 +74,7 @@ export function SpotlightPageChrome({
         header={{
           mlsId: display.mlsId,
           status: display.status,
-          dom: display.dom,
-          address: display.headerAddress,
+          address: headerAddress,
           propertyType: display.propertyType,
           style: display.style,
           beds: display.beds,
@@ -58,22 +85,24 @@ export function SpotlightPageChrome({
           ...listingHeaderScoreProps({
             goldilocksScore,
             goldilocksBreakdown,
+            insight,
             title: display.config.displayTitle,
             subtitle: display.config.displayLocation,
             propertyType: display.propertyType,
           }),
+          privacyMode: !privacy.showAddress,
         }}
         location={{
-          latitude: display.latitude,
-          longitude: display.longitude,
-          addressQuery: display.mapsQuery,
+          latitude: mapLocation.latitude,
+          longitude: mapLocation.longitude,
+          addressQuery: mapLocation.addressQuery,
+          hidePin: mapLocation.hidePin,
+          defaultZoom: mapLocation.defaultZoom,
         }}
         subnav={{
           mlsId: display.mlsId,
           active,
-          addressHint: display.config.hideAddress
-            ? null
-            : display.config.displayTitle,
+          addressHint: privacy.showAddress ? streetAddress : null,
           townHint: display.config.address.city,
           routeBase: "spotlight",
         }}
@@ -82,9 +111,9 @@ export function SpotlightPageChrome({
           spotlightAllowsInterest(display.config)
             ? {
                 mlsId: display.config.id,
-                address: display.config.hideAddress
-                  ? display.config.displayLocation
-                  : display.config.displayTitle,
+                address: privacy.showAddress
+                  ? streetAddress
+                  : display.config.displayLocation,
                 city: display.config.address.city,
               }
             : null

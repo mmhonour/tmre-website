@@ -35,9 +35,9 @@ export function isAdminSyncActionId(value: string): value is AdminSyncActionId {
   return value in ADMIN_SYNC_ACTIONS
 }
 
-/** Serial order for Admin “Sync all” (MLS delta → derived caches → read snapshot). */
+/** Serial order for Admin “Sync all” (MLS full reload → derived caches → read snapshot). */
 export const ADMIN_SYNC_ALL_SEQUENCE = [
-  'incremental',
+  'full-resync',
   'listing-scores',
   'stats-cache',
   'deal-of-the-day',

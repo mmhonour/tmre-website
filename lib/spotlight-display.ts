@@ -58,6 +58,9 @@ export type SpotlightMlsListing = {
   latitude?: number | null;
   longitude?: number | null;
   photoCount?: number | null;
+  propertyTax?: number | null;
+  propertyTaxYear?: string | null;
+  lotAcres?: number | null;
   remarks?: string | null;
   schools?: SpotlightListingConfig["schools"];
   address?: {

@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchActiveListingsForCity, listingCacheHeaders, type ListingsSource } from '@/lib/listings-store'
-import { computeDealOfTheDay } from '@/lib/deal-pick'
+import { computeDealOfTheDay, type DealPickPayload } from '@/lib/deal-pick'
 import { SCORE_PEER_LIMIT } from '@/lib/goldilocks'
 import {
   buildDealOfTheDayResponse,
+  readDealOfTheDayBundle,
   readDealOfTheDayCache,
   writeDealOfTheDayCache,
   type DealOfTheDayKind,
   type DealOfTheDayScope,
   type DealOfTheDayResponse,
 } from '@/lib/deal-of-the-day-cache'
-import { ensureDealPickPhotos } from '@/lib/deal-hero-photo-warm'
+import { dealPickPhotosReady, ensureDealPickPhotos } from '@/lib/deal-hero-photo-warm'
 import {
   filterListingsToTmreTowns,
   isTmreTown,
@@ -41,11 +42,27 @@ function cacheKind(kind: 'sale' | 'rental' | undefined): DealOfTheDayKind {
   return kind ?? 'all'
 }
 
+function cacheHitHeaders(): HeadersInit {
+  return {
+    ...listingCacheHeaders('db'),
+    'X-Deal-Cache': 'hit',
+    'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+  }
+}
+
+function maybeWarmPhotosInBackground(payload: DealPickPayload | DealOfTheDayResponse): void {
+  if (dealPickPhotosReady(payload)) return
+  void ensureDealPickPhotos(payload).catch((err) => {
+    console.warn('[/api/deal-of-the-day] background photo warm failed', err)
+  })
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const cityParam = searchParams.get('city')
   const kind = resolveKindParam(searchParams.get('kind'))
   const listingId = searchParams.get('listing')?.trim() || null
+  const bundle = searchParams.get('bundle') === '1'
   const town = resolveTown(cityParam)
   if (cityParam?.trim() && cityParam.trim().toLowerCase() !== 'all' && !town) {
     return NextResponse.json(
@@ -55,17 +72,26 @@ export async function GET(req: NextRequest) {
   }
 
   const scope: DealOfTheDayScope = town ?? 'All'
+  const kindKey = cacheKind(kind)
 
   // Pinned listing is a one-off view — not cached. Everything else is SQLite-first.
   if (!listingId) {
-    const cached = readDealOfTheDayCache(scope, cacheKind(kind))
+    if (bundle && !town) {
+      const bundled = readDealOfTheDayBundle(kindKey)
+      if (bundled) {
+        for (const deal of Object.values(bundled.deals)) {
+          if (deal) maybeWarmPhotosInBackground(deal)
+        }
+        return NextResponse.json(bundled, { headers: cacheHitHeaders() })
+      }
+    }
+
+    const cached = readDealOfTheDayCache(scope, kindKey)
     if (cached) {
-      void ensureDealPickPhotos(cached).catch((err) => {
-        console.warn('[/api/deal-of-the-day] background photo warm failed', err)
-      })
+      maybeWarmPhotosInBackground(cached)
       return NextResponse.json(
         { ...cached, source: 'db', dealCache: true },
-        { headers: { ...listingCacheHeaders('db'), 'X-Deal-Cache': 'hit' } },
+        { headers: cacheHitHeaders() },
       )
     }
   }
@@ -126,12 +152,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (source === 'db' && !listingId) {
-      writeDealOfTheDayCache(scope, response as DealOfTheDayResponse, cacheKind(kind))
+      writeDealOfTheDayCache(scope, response as DealOfTheDayResponse, kindKey)
     }
 
-    void ensureDealPickPhotos(response).catch((err) => {
-      console.warn('[/api/deal-of-the-day] background photo warm failed', err)
-    })
+    maybeWarmPhotosInBackground(response)
 
     return NextResponse.json(response, { headers: listingCacheHeaders(source) })
   } catch (err) {

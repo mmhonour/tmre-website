@@ -127,9 +127,18 @@ export function describeStartupProcess(): {
           statusLabel: startupFullEnabled ? "Chained" : "—",
         },
         {
+          id: "startup-full-superlatives",
+          title: "Listing superlatives rebuild",
+          timing: "after scores",
+          detail:
+            "Peer-relative tags per Active listing (zip/town peers); writes listing_superlatives + last_listing_superlatives.",
+          status: startupFullEnabled ? "scheduled" : "skipped",
+          statusLabel: startupFullEnabled ? "Chained" : "—",
+        },
+        {
           id: "startup-full-caches",
           title: "Stats + Deal of the Day caches",
-          timing: "after scores",
+          timing: "after superlatives",
           detail:
             "rebuildStatsCache (market stats, sales-by-month, active-by-month, vintage, price) + Deal of the Day/Week caches + If estimates + comps edges + edge scores, then publish read snapshot.",
           status: startupFullEnabled ? "scheduled" : "skipped",
@@ -188,7 +197,7 @@ export function describeStartupProcess(): {
           id: "daily-5am",
           title: "Full reload @ 5:00 AM America/New_York",
           timing: "daily",
-          detail: "syncAllTownListings() → scores → stats/DOTD caches → read snapshot.",
+          detail: "syncAllTownListings() → scores → superlatives → stats/DOTD caches → read snapshot.",
           status: fullReloadEnabled ? "scheduled" : "skipped",
           statusLabel: fullReloadEnabled ? "Armed" : "Disabled",
         },
@@ -245,6 +254,15 @@ export function describeStartupProcess(): {
           title: "First stale-check",
           timing: "+20s",
           detail: "Skipped while a listings refresh is in progress.",
+          status: "scheduled",
+          statusLabel: "Scheduled",
+        },
+        {
+          id: "stats-superlatives-warm",
+          title: "Listing superlatives warm",
+          timing: "+22s",
+          detail:
+            "rebuildAllListingSuperlativesIfMissing() when last_listing_superlatives is absent.",
           status: "scheduled",
           statusLabel: "Scheduled",
         },

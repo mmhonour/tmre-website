@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ArrowLeftRightIcon } from "@/components/icons";
 import {
-  fmtIfRentEstimateRange,
   fmtIfRentMoney,
   fmtIfSaleMoney,
-  fmtIfEstimateRange,
   ifCompBasisText,
+  roundIfRentHigh,
+  roundIfRentLow,
   roundIfRentMidpoint,
   type ListingIfPayload,
 } from "@/lib/listing-if-estimates";
@@ -16,6 +17,66 @@ import {
   listingComparableRentalsHref,
 } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
+
+function IfEstimateRangeDisplay({
+  low,
+  high,
+  midpoint = null,
+  formatAmount,
+  suffix = "",
+}: {
+  low: number | null;
+  high: number | null;
+  midpoint?: number | null;
+  formatAmount: (value: number) => string;
+  suffix?: string;
+}) {
+  const resolvedLow = low ?? (high == null ? midpoint : null);
+  const resolvedHigh = high ?? (low == null ? midpoint : null);
+
+  if (
+    resolvedLow != null &&
+    resolvedHigh != null &&
+    resolvedLow !== resolvedHigh
+  ) {
+    const lowLabel = `${formatAmount(resolvedLow)}${suffix}`;
+    const highLabel = `${formatAmount(resolvedHigh)}${suffix}`;
+    return (
+      <div
+        className="flex flex-col gap-1.5"
+        aria-label={`Between ${lowLabel} and ${highLabel}`}
+      >
+        <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/50">
+          Between
+        </span>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 sm:gap-x-3">
+          <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+            {lowLabel}
+          </span>
+          <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+          <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+            {highLabel}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const single =
+    resolvedLow != null && resolvedHigh != null
+      ? `${formatAmount(resolvedLow)}${suffix}`
+      : resolvedLow != null
+        ? `${formatAmount(resolvedLow)}${suffix}`
+        : resolvedHigh != null
+          ? `${formatAmount(resolvedHigh)}${suffix}`
+          : "—";
+
+  return (
+    <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+      {single}
+    </p>
+  );
+}
 
 function ScenarioCard({
   title,
@@ -31,7 +92,7 @@ function ScenarioCard({
 }: {
   title: string;
   headline: string;
-  range: string;
+  range: ReactNode;
   midpoint: string | null;
   amountLabel: string;
   midpointLabel: string;
@@ -47,9 +108,7 @@ function ScenarioCard({
       </p>
       <p className="text-white/70 text-sm leading-relaxed">{headline}</p>
       <div>
-        <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
-          {range}
-        </p>
+        {range}
         <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/35">
           {amountLabel}
         </p>
@@ -215,12 +274,14 @@ export default function ListingIfPanel({
         <ScenarioCard
           title="If you sell"
           headline="If you were to sell this home, this is the range you would likely sell it for."
-          range={fmtIfEstimateRange(
-            saleEstimate.amountLow,
-            saleEstimate.amountHigh,
-            fmtIfSaleMoney,
-            saleEstimate.amount,
-          )}
+          range={
+            <IfEstimateRangeDisplay
+              low={saleEstimate.amountLow}
+              high={saleEstimate.amountHigh}
+              midpoint={saleEstimate.amount}
+              formatAmount={fmtIfSaleMoney}
+            />
+          }
           midpoint={
             saleEstimate.amount != null
               ? fmtIfSaleMoney(saleEstimate.amount)
@@ -239,11 +300,27 @@ export default function ListingIfPanel({
         <ScenarioCard
           title="If you rent"
           headline="If you were to rent this home, this is the range you would likely be able to rent it for."
-          range={fmtIfRentEstimateRange(
-            rentEstimate.amountLow,
-            rentEstimate.amountHigh,
-            rentEstimate.amount,
-          )}
+          range={
+            <IfEstimateRangeDisplay
+              low={
+                rentEstimate.amountLow != null
+                  ? roundIfRentLow(rentEstimate.amountLow)
+                  : null
+              }
+              high={
+                rentEstimate.amountHigh != null
+                  ? roundIfRentHigh(rentEstimate.amountHigh)
+                  : null
+              }
+              midpoint={
+                rentEstimate.amount != null
+                  ? roundIfRentMidpoint(rentEstimate.amount)
+                  : null
+              }
+              formatAmount={fmtIfRentMoney}
+              suffix="/mo"
+            />
+          }
           midpoint={
             rentEstimate.amount != null
               ? `${fmtIfRentMoney(roundIfRentMidpoint(rentEstimate.amount))}/mo`

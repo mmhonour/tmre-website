@@ -23,16 +23,15 @@ export async function GET(req: NextRequest) {
       propertyTab,
     })
 
-    const goldilocksBreakdown = listing
-      ? await scoreListingForDetailPage(listing)
-      : null
+    const detailScore = listing ? await scoreListingForDetailPage(listing) : null
 
     return NextResponse.json(
       {
         listing,
         photos: includePhotos ? photos : undefined,
-        goldilocksScore: goldilocksBreakdown?.composite ?? null,
-        goldilocksBreakdown,
+        goldilocksScore: detailScore?.breakdown.composite ?? null,
+        goldilocksBreakdown: detailScore?.breakdown ?? null,
+        insight: detailScore?.insight ?? null,
         source,
         spotlightCache: cacheHit,
       },

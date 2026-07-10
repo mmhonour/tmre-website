@@ -1,32 +1,35 @@
 "use client";
 
 import { fmtMoney, formatMlsStatus } from "@/lib/listing-history";
-import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
-import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
-import { ListingRemarksWithThumbnails } from "@/components/listing/ListingOverviewPanels";
+import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome";
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
-import { listingPhotoProxyUrl } from "@/lib/listing-url";
-import { spotlightObfuscatesPhoto } from "@/lib/spotlight-display";
+import {
+  spotlightObfuscatesPhotoWithPrivacy,
+  spotlightEffectiveHeaderAddress,
+} from "@/lib/spotlight-privacy-shared";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
 import type { SpotlightPropertyTabId } from "@/lib/spotlight-listing";
+import { spotlightPropertySearchParam } from "@/lib/spotlight-listing";
 
 function spotlightPhotosHref(
   propertyTab: SpotlightPropertyTabId,
   photoIndex?: number,
 ): string {
   const params = new URLSearchParams();
-  if (propertyTab === 2) params.set("property", "2");
+  const propertyParam = spotlightPropertySearchParam(propertyTab);
+  if (propertyParam) params.set("property", propertyParam);
   if (photoIndex != null) params.set("photo", String(photoIndex));
   const qs = params.toString();
   return qs ? `${spotlightSectionHref("photos")}?${qs}` : spotlightSectionHref("photos");
 }
 
 export default function SpotlightListingClient() {
-  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, propertyTab } =
+  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, insight, propertyTab, privacy } =
     useSpotlightListing();
 
   if (loadState === "error") {
@@ -40,66 +43,41 @@ export default function SpotlightListingClient() {
     );
   }
 
-  const details = buildListingDetailsPanelProps(
-    {
-      mlsId: display.mlsId,
-      propertyTitle: display.config.displayTitle,
-      townHint: display.headerAddress.city,
-      status: display.status,
-      propertyType: display.propertyType,
-      price: display.price,
-      originalListPrice: display.originalListPrice,
-      sqft: display.sqft,
-      photoCount: display.photoCount,
-      schools: display.schools,
-      raw: mlsListing?.raw,
-    },
-    fmtMoney,
-    { routeBase: "spotlight" },
-  );
+  const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
   const isClosed = details.isClosed;
   const isComingSoon = formatMlsStatus(display.status) === "Coming Soon";
   const obfuscatePhoto = (index: number) =>
-    spotlightObfuscatesPhoto(display.config, index);
-  const heroPhoto =
-    display.photoCount > 0
-      ? {
-          url: listingPhotoProxyUrl(display.mlsId, 0),
-          alt: display.config.displayTitle,
-          href: spotlightPhotosHref(propertyTab),
-          photoCount: display.photoCount,
-          obfuscate: obfuscatePhoto(0),
-        }
-      : null;
+    spotlightObfuscatesPhotoWithPrivacy(display.config, index, privacy);
 
-  const publicAddressLabel = display.config.hideAddress
-    ? display.config.displayLocation
-    : display.config.displayTitle;
+  const headerAddress = spotlightEffectiveHeaderAddress(
+    display.config,
+    mlsListing,
+    privacy,
+  );
+  const publicAddressLabel = headerAddress.street;
 
   return (
     <SpotlightPageChrome
       active="overview"
       display={display}
+      propertyTab={propertyTab}
+      mlsListing={mlsListing}
       isClosed={isClosed}
       goldilocksScore={goldilocksScore}
       goldilocksBreakdown={goldilocksBreakdown}
+      insight={insight}
       belowTabs={
-        <>
-          <ListingRemarksWithThumbnails
-            remarks={display.remarks}
-            mlsId={display.mlsId}
-            photoCount={display.photoCount > 0 ? display.photoCount : null}
-            address={publicAddressLabel}
-            city={display.config.hideAddress ? null : display.config.address.city}
-            photoHref={(photoIndex) => spotlightPhotosHref(propertyTab, photoIndex)}
-            obfuscatePhotoIndex={obfuscatePhoto}
-          />
-          {heroPhoto && !isComingSoon ? (
-            <div className="mt-4 pt-4 border-t border-white/10">
-              <ListingHeroPhoto {...heroPhoto} bare />
-            </div>
-          ) : null}
-        </>
+        <ListingOverviewPhotoDeck
+          remarks={display.remarks}
+          mlsId={display.mlsId}
+          photoCount={display.photoCount > 0 ? display.photoCount : null}
+          address={publicAddressLabel}
+          city={privacy.showAddress ? display.config.address.city : null}
+          heroAlt={display.config.displayTitle}
+          galleryHref={spotlightPhotosHref(propertyTab)}
+          hideHero={isComingSoon}
+          obfuscatePhotoIndex={obfuscatePhoto}
+        />
       }
       sidebar={<ListingSidebar details={details} />}
     />

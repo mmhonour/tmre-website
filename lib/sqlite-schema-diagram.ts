@@ -96,6 +96,11 @@ const DOCUMENTED_LISTINGS_RELATIONSHIPS: SqliteRelationship[] = [
     to: { table: PROPERTY_ADDRESS_TABLE, column: 'listing_id' },
     source: 'documented',
   },
+  {
+    from: { table: 'listings', column: 'id' },
+    to: { table: 'listing_superlatives', column: 'listing_id' },
+    source: 'documented',
+  },
 ]
 
 const DOCUMENTED_PROPERTY_ADDRESS_RELATIONSHIPS: SqliteRelationship[] = [

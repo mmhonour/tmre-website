@@ -24,6 +24,9 @@ type ListingPhotoThumbGridProps = {
   priority?: boolean;
   /** Override link target per photo index (e.g. spotlight `/spotlight/photos`). */
   photoHref?: (photoIndex: number) => string;
+  /** When set, thumbnails select in-place instead of navigating. */
+  onPhotoSelect?: (photoIndex: number) => void;
+  activePhotoIndex?: number;
   /** Blur specific photos (e.g. coming-soon exterior shots). */
   obfuscatePhotoIndex?: (photoIndex: number) => boolean;
 };
@@ -35,6 +38,8 @@ export default function ListingPhotoThumbGrid({
   city,
   priority = true,
   photoHref,
+  onPhotoSelect,
+  activePhotoIndex,
   obfuscatePhotoIndex,
 }: ListingPhotoThumbGridProps) {
   const photos = listingPhotoThumbUrls(
@@ -53,17 +58,13 @@ export default function ListingPhotoThumbGrid({
       {photos.map((src, slot) => {
         const photoIndex = STRIP_START_INDEX + slot;
         const obfuscate = obfuscatePhotoIndex?.(photoIndex) ?? false;
-        return (
-          <Link
-            key={photoIndex}
-            href={
-              photoHref?.(photoIndex) ??
-              listingPhotosHref(mlsId, address, city, photoIndex)
-            }
-            aria-label={`View photo ${photoIndex + 1} for ${address}`}
-            className="relative block shrink-0 overflow-hidden rounded-md shadow-sm transition-opacity hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
-            style={{ width: THUMB_W, height: THUMB_H }}
-          >
+        const isActive = activePhotoIndex === photoIndex;
+        const thumbClassName = `relative block shrink-0 overflow-hidden rounded-md shadow-sm transition-opacity hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
+          isActive ? "ring-2 ring-gold" : ""
+        }`;
+
+        const thumbImage = (
+          <>
             <ListingThumbImage
               src={src}
               priority={priority && slot === 0}
@@ -75,6 +76,37 @@ export default function ListingPhotoThumbGrid({
               )}
             />
             {obfuscate ? <ListingPhotoObfuscationOverlay /> : null}
+          </>
+        );
+
+        if (onPhotoSelect) {
+          return (
+            <button
+              key={photoIndex}
+              type="button"
+              onClick={() => onPhotoSelect(photoIndex)}
+              aria-label={`Show photo ${photoIndex + 1} for ${address}`}
+              aria-pressed={isActive}
+              className={thumbClassName}
+              style={{ width: THUMB_W, height: THUMB_H }}
+            >
+              {thumbImage}
+            </button>
+          );
+        }
+
+        return (
+          <Link
+            key={photoIndex}
+            href={
+              photoHref?.(photoIndex) ??
+              listingPhotosHref(mlsId, address, city, photoIndex)
+            }
+            aria-label={`View photo ${photoIndex + 1} for ${address}`}
+            className={thumbClassName}
+            style={{ width: THUMB_W, height: THUMB_H }}
+          >
+            {thumbImage}
           </Link>
         );
       })}

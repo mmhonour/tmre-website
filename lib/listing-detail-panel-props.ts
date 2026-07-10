@@ -3,6 +3,7 @@ import {
   formatMlsStatus,
   fmtDate,
 } from "@/lib/listing-history";
+import { isRentalListing } from "@/lib/listing-kind";
 import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
 import {
   formatPropertyTaxLabel,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/listing-property-tax";
 import { listingPhotosHref } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
+import type { SpotlightDisplay, SpotlightMlsListing } from "@/lib/spotlight-display";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import type { ListingOverviewSchools } from "@/components/listing/ListingDetailsSchoolsPanel";
 
@@ -26,6 +28,7 @@ type ListingForDetailsPanel = {
   propertyType?: string | null;
   price: number | null;
   originalListPrice?: number | null;
+  dom?: number | null;
   sqft?: number | null;
   lotAcres?: number | null;
   photoCount?: number | null;
@@ -51,6 +54,43 @@ export type BuildListingDetailsPanelOpts = {
   townHint?: string | null;
 };
 
+type SpotlightMlsEnrichment = {
+  mlsId?: string;
+  raw?: Record<string, string>;
+  propertyTax?: number | null;
+  propertyTaxYear?: string | null;
+  lotAcres?: number | null;
+} | null;
+
+/** Spotlight sidebar details — includes MLS tax fields when the listing is loaded. */
+export function buildSpotlightDetailsPanelProps(
+  display: SpotlightDisplay,
+  mlsListing: SpotlightMlsListing | SpotlightMlsEnrichment,
+  fmtMoney: (n: number | null) => string,
+): ListingDetailsSchoolsPanelProps {
+  return buildListingDetailsPanelProps(
+    {
+      mlsId: mlsListing?.mlsId?.trim() || display.mlsId,
+      propertyTitle: display.config.displayTitle,
+      townHint: display.headerAddress.city,
+      status: display.status,
+      propertyType: display.propertyType,
+      price: display.price,
+      originalListPrice: display.originalListPrice,
+      dom: display.dom,
+      sqft: display.sqft,
+      lotAcres: mlsListing?.lotAcres ?? null,
+      photoCount: display.photoCount,
+      propertyTax: mlsListing?.propertyTax ?? null,
+      propertyTaxYear: mlsListing?.propertyTaxYear ?? null,
+      schools: display.schools,
+      raw: mlsListing?.raw,
+    },
+    fmtMoney,
+    { routeBase: "spotlight" },
+  );
+}
+
 export function buildListingDetailsPanelProps(
   listing: ListingForDetailsPanel,
   fmtMoney: (n: number | null) => string,
@@ -58,7 +98,10 @@ export function buildListingDetailsPanelProps(
 ): ListingDetailsSchoolsPanelProps {
   const statusLabel = formatMlsStatus(listing.status);
   const isClosed = statusLabel === "Closed";
-  const isRental = /rental|for lease/i.test(listing.propertyType || "");
+  const isRental = isRentalListing({
+    propertyType: listing.propertyType ?? "",
+    raw: listing.raw,
+  });
   const { closePrice, closeDate } = closeFieldsFromListing({
     status: listing.status,
     price: listing.price,
@@ -103,6 +146,7 @@ export function buildListingDetailsPanelProps(
     mlsId: listing.mlsId,
     propertyTitle: propertyTitleFromListing(listing),
     townHint: listing.townHint ?? listing.address?.city ?? null,
+    statusLabel,
     isClosed,
     isRental,
     soldPrice,
@@ -110,6 +154,7 @@ export function buildListingDetailsPanelProps(
     price: listing.price,
     originalListPrice: listing.originalListPrice ?? null,
     reductionPct,
+    dom: listing.dom ?? null,
     ppsf,
     lotAcres,
     annualPropertyTax,

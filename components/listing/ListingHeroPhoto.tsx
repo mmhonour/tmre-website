@@ -11,6 +11,8 @@ export type ListingHeroPhotoProps = {
   alt: string;
   href?: string | null;
   photoCount: number;
+  /** 0-based index for the "N / total" badge. */
+  photoIndex?: number;
   unframed?: boolean;
   bare?: boolean;
   obfuscate?: boolean;
@@ -21,6 +23,7 @@ export default function ListingHeroPhoto({
   alt,
   href = null,
   photoCount,
+  photoIndex = 0,
   unframed = false,
   bare = false,
   obfuscate = false,
@@ -46,7 +49,7 @@ export default function ListingHeroPhoto({
       {obfuscate ? <ListingPhotoObfuscationOverlay /> : null}
       {photoCount > 1 ? (
         <span className="absolute bottom-3 right-3 font-mono text-[10px] tracking-[0.15em] uppercase text-white/80 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
-          1 / {photoCount}
+          {photoIndex + 1} / {photoCount}
         </span>
       ) : null}
     </Link>

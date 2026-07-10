@@ -118,7 +118,7 @@ const FALLBACK: ApiResponse = {
   kind: "sale",
   insight:
     `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, and school ratings. This week's pick is loading — refresh in a moment to see it.`,
-  superlatives: ["Value", "Turnkey", "Schools", "Fresh"],
+  superlatives: ["Value", "Turnkey", "Fresh", "Layout"],
   score: {
     age: 88,
     condition: 92,
@@ -682,7 +682,7 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
                     {detailHref ? (
                       <Link
                         href={detailHref}
-                        className="absolute inset-0 z-[15] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+                        className="absolute inset-0 z-[15] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
                         aria-label={`View listing: ${l.address.street || l.address.full}`}
                       />
                     ) : null}
@@ -761,7 +761,7 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
               score={showing?.score ?? FALLBACK.score}
               loading={loadingState}
               empty={dayEmpty}
-              scoreExplains={mode === "day" && !dayEmpty}
+              scoreExplains={!loadingState && !(isDay && dayEmpty)}
               valueDealMode={mode === "day"}
               townLabel={isDay ? carousel.currentTown : null}
               transactionFilter={isDay ? dayTxFilter : undefined}
@@ -1021,7 +1021,7 @@ function DealCard({
                 {detailHref ? (
                   <Link
                     href={detailHref}
-                    className="absolute inset-0 z-[15] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+                    className="absolute inset-0 z-[15] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
                     aria-label={`View listing: ${address}`}
                   />
                 ) : null}
@@ -1048,7 +1048,7 @@ function DealCard({
             <button
               type="button"
               onClick={() => setExplainTopic("composite")}
-              className="relative z-20 flex-shrink-0 w-20 h-20 rounded-2xl bg-sage text-white flex flex-col items-center justify-center shadow-lg shadow-sage/30 hover:brightness-110 transition-all underline-offset-2"
+              className="relative z-20 flex-shrink-0 w-20 h-20 rounded-2xl bg-sage text-white flex flex-col items-center justify-center shadow-lg shadow-sage/30 hover:brightness-110 transition-all underline-offset-2 cursor-pointer"
               aria-label="Explain composite score"
             >
               <span className="font-mono text-2xl font-medium tabular-nums leading-none">
@@ -1188,7 +1188,7 @@ function DealCard({
               <button
                 type="button"
                 onClick={() => setExplainTopic("composite")}
-                className="relative z-20 font-mono text-sage text-lg tabular-nums hover:text-gold transition-colors underline underline-offset-2 decoration-white/20"
+                className="relative z-20 font-mono text-sage text-lg tabular-nums hover:text-gold transition-colors underline underline-offset-2 decoration-white/20 cursor-pointer"
               >
                 {score.composite.toFixed(1)}/100
               </button>
@@ -1395,7 +1395,7 @@ function SchoolsBlock({
           <button
             type="button"
             onClick={onExplainRating}
-            className={`relative z-20 font-mono text-[11px] tabular-nums underline underline-offset-2 decoration-white/25 hover:decoration-gold transition-colors ${tone}`}
+            className={`relative z-20 font-mono text-[11px] tabular-nums underline underline-offset-2 decoration-white/25 hover:decoration-gold transition-colors cursor-pointer ${tone}`}
           >
             {rating.toFixed(0)}/100
           </button>
@@ -1471,7 +1471,7 @@ function Stat({
           <button
             type="button"
             onClick={subExplain}
-            className={`relative z-20 font-mono text-[11px] mt-0.5 tabular-nums underline underline-offset-2 decoration-white/25 hover:decoration-gold transition-colors ${subColor}`}
+            className={`relative z-20 font-mono text-[11px] mt-0.5 tabular-nums underline underline-offset-2 decoration-white/25 hover:decoration-gold transition-colors cursor-pointer ${subColor}`}
           >
             {sub}
           </button>
@@ -1517,7 +1517,7 @@ function Factor({
             <button
               type="button"
               onClick={() => onExplain(factorKey)}
-              className="relative z-20 text-white/35 hover:text-gold transition-colors underline underline-offset-2 decoration-white/20"
+              className="relative z-20 text-white/35 hover:text-gold transition-colors underline underline-offset-2 decoration-white/20 cursor-pointer"
               aria-label={`Explain ${label}`}
             >
               {" →"}

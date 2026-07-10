@@ -1,8 +1,13 @@
 import { cookies } from "next/headers";
+import AdminHeroNav from "@/components/admin/AdminHeroNav";
+import AdminProductDocsPanel from "@/components/admin/AdminProductDocsPanel";
 import AdminRefreshLockPanel from "@/components/admin/AdminRefreshLockPanel";
+import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPanel";
+import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow } from "@/components/admin/AdminSyncTable";
+import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
 import {
   getListingsDbStats,
@@ -172,6 +177,72 @@ export default async function AdminPage() {
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
+  const dbPanel = (
+    <>
+      <div
+        id="admin-sync"
+        className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+      >
+        <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            Database sync
+          </p>
+        </div>
+        <AdminSyncTable rows={rows} initialRefreshing={refresh.refreshing} />
+      </div>
+
+      <div id="admin-refresh-lock" className="scroll-mt-24">
+        <AdminRefreshLockPanel initialLock={refreshLock} initialHistory={refreshLockHistory} />
+      </div>
+
+      {Object.keys(stats.byTown).length > 0 ? (
+        <div
+          id="admin-town-counts"
+          className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+        >
+          <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+              Active listings by town
+            </p>
+          </div>
+          <ul className="divide-y divide-charcoal/[0.08]">
+            {Object.entries(stats.byTown)
+              .sort((a, b) => b[1] - a[1])
+              .map(([town, count]) => (
+                <li
+                  key={town}
+                  className="flex items-baseline justify-between gap-4 px-5 sm:px-6 py-3"
+                >
+                  <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/55">
+                    {town}
+                  </span>
+                  <span className="font-mono tabular-nums text-navy font-semibold">
+                    {count.toLocaleString()}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div id="admin-sqlite-schemas" className="scroll-mt-24">
+        <AdminSqliteDiagrams databases={sqliteDiagrams} />
+      </div>
+    </>
+  );
+
+  const serverPanel = (
+    <>
+      <div id="admin-startup" className="scroll-mt-24">
+        <AdminStartupDiagram
+          lanes={startupProcess.lanes}
+          context={startupProcess.context}
+        />
+      </div>
+      <AdminServerFunctionsPanel />
+    </>
+  );
+
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
@@ -185,8 +256,8 @@ export default async function AdminPage() {
             <span className="italic gold-shimmer">status.</span>
           </h1>
           <p className="mt-4 text-sm lg:text-base text-white/70 max-w-2xl leading-relaxed animate-fade-up-delay-1">
-            Sync and refresh timestamps for the local SQLite listings database — last full
-            resync, incremental updates, and the newest MLS listing modification.
+            SQLite sync, web server schedules, product pages, and spotlight controls — use
+            the tabs below or jump links to navigate.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs animate-fade-up-delay-2">
             <span className="flex items-center gap-2">
@@ -202,56 +273,16 @@ export default async function AdminPage() {
               </span>
             </span>
           </div>
+          <AdminHeroNav />
         </div>
       </section>
 
-      <section className="bg-cream py-10 lg:py-14">
-        <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-            <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                Database sync
-              </p>
-            </div>
-            <AdminSyncTable rows={rows} initialRefreshing={refresh.refreshing} />          </div>
-
-          <AdminRefreshLockPanel initialLock={refreshLock} initialHistory={refreshLockHistory} />
-
-          {Object.keys(stats.byTown).length > 0 ? (
-            <div className="mt-6 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-              <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
-                <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                  Active listings by town
-                </p>
-              </div>
-              <ul className="divide-y divide-charcoal/[0.08]">
-                {Object.entries(stats.byTown)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([town, count]) => (
-                    <li
-                      key={town}
-                      className="flex items-baseline justify-between gap-4 px-5 sm:px-6 py-3"
-                    >
-                      <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/55">
-                        {town}
-                      </span>
-                      <span className="font-mono tabular-nums text-navy font-semibold">
-                        {count.toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <AdminStartupDiagram
-            lanes={startupProcess.lanes}
-            context={startupProcess.context}
-          />
-
-          <AdminSqliteDiagrams databases={sqliteDiagrams} />
-        </div>
-      </section>
+      <AdminTabbedLayout
+        db={dbPanel}
+        server={serverPanel}
+        docs={<AdminProductDocsPanel />}
+        site={<AdminSpotlightSitePanel />}
+      />
     </>
   );
 }

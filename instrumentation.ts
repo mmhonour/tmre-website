@@ -167,8 +167,26 @@ export async function register() {
       )
     }
 
+    const warmListingSuperlatives = () => {
+      if (!hasLocalListingsCache()) return
+      if (getSyncMeta('refresh_in_progress') === '1') return
+      void import('./lib/listing-superlatives-rebuild')
+        .then(({ rebuildAllListingSuperlativesIfMissing }) =>
+          rebuildAllListingSuperlativesIfMissing(),
+        )
+        .then((result) => {
+          if (result.skipped) return
+          console.info(
+            `[listing-superlatives] warmed ${result.totalComputed} entries in ${result.durationMs}ms`,
+          )
+        })
+        .catch((err) => console.error('[listing-superlatives/instrumentation]', err))
+    }
+    setTimeout(warmListingSuperlatives, 22_000)
+
     const warmDealOfTheDayCache = () => {
       if (!hasLocalListingsCache()) return
+      // 5am full sync rebuilds DOTD after listings + scores; skip if cache exists or sync running.
       if (getSyncMeta('refresh_in_progress') === '1') return
       void import('./lib/deal-of-the-day-cache')
         .then(({ rebuildDealOfTheDayCacheIfMissing }) => rebuildDealOfTheDayCacheIfMissing())

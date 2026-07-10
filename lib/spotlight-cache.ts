@@ -1,19 +1,23 @@
 import 'server-only'
 
-import { readStatsCacheRow, searchListingsInDbByQuery, writeStatsCacheRow } from '@/lib/listings-db'
+import { refreshListingPropertyTax } from '@/lib/listing-property-tax'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/listings-db'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import {
   fetchListingByMlsId,
   persistListingRecord,
+  readListingFromDbByMlsId,
   type ListingsSource,
 } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
-import { searchListings } from '@/lib/rets'
 import {
   getSpotlightListingConfig,
   type SpotlightListingConfig,
   type SpotlightPropertyTabId,
 } from '@/lib/spotlight-listing'
+import { resolveSpotlightMlsId } from '@/lib/spotlight-mls-cache'
+
+export { resolveSpotlightMlsId } from '@/lib/spotlight-mls-cache'
 
 export const SPOTLIGHT_CACHE_PREFIX = 'spotlight:v2'
 export const SPOTLIGHT_LISTING_TTL_MS = 30 * 60 * 1000
@@ -32,56 +36,29 @@ function spotlightCacheKey(mlsId: string): string {
   return `${SPOTLIGHT_CACHE_PREFIX}:${mlsId}`
 }
 
-function normalizeStreet(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase()
+function withFreshTax(listing: Listing | null): Listing | null {
+  return listing ? refreshListingPropertyTax(listing) : null
 }
 
-function listingMatchesSpotlightAddress(
-  listing: Listing,
-  config: SpotlightListingConfig,
-): boolean {
-  const targetStreet = normalizeStreet(config.address.street)
-  const targetCity = normalizeStreet(config.address.city)
-  const listingStreet = normalizeStreet(
-    listing.address.street || listing.address.full,
-  )
-  const listingCity = normalizeStreet(listing.address.city)
-  if (!targetStreet || !listingStreet.includes(targetStreet)) return false
-  if (targetCity && listingCity && listingCity !== targetCity) return false
-  return true
-}
-
-/** DB-first, then RETS — for spotlight configs without a fixed MLS id. */
-export async function resolveSpotlightMlsId(
-  config: SpotlightListingConfig,
-): Promise<string | null> {
-  const fixed = config.mlsId?.trim()
-  if (fixed) return fixed
-
-  const query = config.address.street.trim()
-  if (query.length < 2) return null
-
-  const dbHits = searchListingsInDbByQuery(query, { limit: 20 })
-  const dbMatch = dbHits.find((listing) =>
-    listingMatchesSpotlightAddress(listing, config),
-  )
-  if (dbMatch?.mlsId?.trim()) return dbMatch.mlsId.trim()
-
-  try {
-    const retsHits = await searchListings({
-      county: 'fairfield',
-      addressContains: query,
-      city: config.address.city,
-      limit: 20,
-    })
-    const retsMatch = retsHits.find((listing) =>
-      listingMatchesSpotlightAddress(listing, config),
-    )
-    return retsMatch?.mlsId?.trim() ?? null
-  } catch (err) {
-    console.warn('[spotlight-cache] RETS address lookup failed', err)
-    return null
+/** SQLite row first (property_tax columns), then spotlight cache, then RETS. */
+async function loadSpotlightListingRecord(
+  mlsId: string,
+  cached: SpotlightCachePayload | null,
+  listingFresh: boolean,
+): Promise<{ listing: Listing | null; source: ListingsSource }> {
+  const { listing: dbListing } = readListingFromDbByMlsId(mlsId)
+  if (dbListing) {
+    return { listing: dbListing, source: 'db' }
   }
+  if (listingFresh && cached?.listing) {
+    return {
+      listing: withFreshTax(cached.listing),
+      source: cached.source ?? 'db',
+    }
+  }
+  const fetched = await fetchListingByMlsId(mlsId)
+  if (fetched.listing) persistListingRecord(fetched.listing)
+  return { listing: withFreshTax(fetched.listing), source: fetched.source }
 }
 
 function isFresh(iso: string | undefined, ttlMs: number): boolean {
@@ -141,24 +118,25 @@ export async function resolveSpotlightListing(options: {
 
   if (listingFresh && cached) {
     if (!options.includePhotos || photosFresh) {
+      const { listing, source } = await loadSpotlightListingRecord(
+        mlsId,
+        cached,
+        true,
+      )
       return {
-        listing: cached.listing,
+        listing,
         photos: options.includePhotos ? (cached.photos ?? []) : [],
-        source: 'db',
+        source,
         cacheHit: true,
       }
     }
   }
 
-  let listing = listingFresh ? cached!.listing : null
-  let source: ListingsSource = cached?.source ?? 'db'
-
-  if (!listing) {
-    const fetched = await fetchListingByMlsId(mlsId)
-    listing = fetched.listing
-    source = fetched.source
-    if (listing) persistListingRecord(listing)
-  }
+  const { listing, source } = await loadSpotlightListingRecord(
+    mlsId,
+    cached,
+    listingFresh,
+  )
 
   let photos = photosFresh ? (cached!.photos ?? []) : []
   let photosCachedAt = photosFresh ? cached!.photosCachedAt : undefined

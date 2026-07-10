@@ -6,6 +6,7 @@ import {
   SPOTLIGHT_LISTING,
   type SpotlightListingConfig,
 } from '@/lib/spotlight-listing'
+import { resolveSpotlightMlsId, spotlightConfigMlsId } from '@/lib/spotlight-mls-cache'
 import type { Listing } from '@/lib/rets'
 
 function listingFromConfig(config: SpotlightListingConfig): Listing {
@@ -87,9 +88,8 @@ export function buildSpotlightSubjectListing(
 export async function resolveSpotlightSubjectListing(
   config: SpotlightListingConfig = SPOTLIGHT_LISTING,
 ): Promise<Listing> {
-  const mlsId = config.mlsId?.trim()
+  const mlsId = spotlightConfigMlsId(config)
   if (!mlsId) {
-    const { resolveSpotlightMlsId } = await import('@/lib/spotlight-cache')
     const resolved = await resolveSpotlightMlsId(config)
     if (!resolved) {
       return buildSpotlightSubjectListing(null, config)

@@ -5,16 +5,15 @@ import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
 import { fmtDate, fmtMoney, formatMlsStatus } from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
-import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
-import { ListingRemarksWithThumbnails } from "@/components/listing/ListingOverviewPanels";
+import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
-import { listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
+import { listingPhotosHref } from "@/lib/listing-url";
 import { ListingShell } from "@/components/listing/ListingShell";
 
 type Schools = {
@@ -187,19 +186,6 @@ export default function ListingDetailClient({
   );
   const isClosed = details.isClosed;
   const isComingSoon = formatMlsStatus(l.status) === "Coming Soon";
-  const heroPhoto =
-    photoCount > 0
-      ? {
-          url: listingPhotoProxyUrl(l.mlsId, 0),
-          alt: street || "Listing photo",
-          href: listingPhotosHref(
-            mlsId,
-            street || addressHint,
-            townHint || l.address.city,
-          ),
-          photoCount,
-        }
-      : null;
 
   return (
     <ListingShell>
@@ -207,7 +193,6 @@ export default function ListingDetailClient({
         header={{
           mlsId: l.mlsId,
           status: l.status,
-          dom: l.dom,
           address: l.address,
           propertyType: l.propertyType,
           style: l.style,
@@ -219,6 +204,7 @@ export default function ListingDetailClient({
           ...listingHeaderScoreProps({
             goldilocksScore: data.goldilocksScore,
             goldilocksBreakdown: data.goldilocksBreakdown,
+            insight: data.insight,
             title: street,
             subtitle: townHint || l.address.city,
             propertyType: l.propertyType,
@@ -245,20 +231,20 @@ export default function ListingDetailClient({
             : null
         }
         belowTabs={
-          <>
-            <ListingRemarksWithThumbnails
-              remarks={remarks || null}
-              mlsId={l.mlsId}
-              photoCount={photoCount > 0 ? photoCount : null}
-              address={street || addressHint || l.mlsId}
-              city={townHint || l.address.city}
-            />
-            {heroPhoto && !isComingSoon ? (
-              <div className="mt-4 pt-4 border-t border-white/10">
-                <ListingHeroPhoto {...heroPhoto} bare />
-              </div>
-            ) : null}
-          </>
+          <ListingOverviewPhotoDeck
+            remarks={remarks || null}
+            mlsId={l.mlsId}
+            photoCount={photoCount > 0 ? photoCount : null}
+            address={street || addressHint || l.mlsId}
+            city={townHint || l.address.city}
+            heroAlt={street || "Listing photo"}
+            galleryHref={listingPhotosHref(
+              mlsId,
+              street || addressHint,
+              townHint || l.address.city,
+            )}
+            hideHero={isComingSoon}
+          />
         }
         sidebar={<ListingSidebar details={details} />}
       />
