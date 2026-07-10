@@ -8,6 +8,7 @@ import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
 import { rebuildStatsCache } from '@/lib/stats-cache'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
+import { isServerlessRuntime } from '@/lib/runtime-host'
 import type { AdminSyncActionId, AdminSyncAllActionId } from '@/lib/admin-sync-types'
 import { ADMIN_SYNC_ACTIONS, ADMIN_SYNC_ALL_SEQUENCE } from '@/lib/admin-sync-types'
 
@@ -27,6 +28,8 @@ export type AdminSyncActionResult = {
   durationMs: number
   message: string
   detail?: string
+  /** True when full resync was handed off to a Netlify background function. */
+  backgroundQueued?: boolean
   /** Human label when this step is not a primary panel action (sync-all extras). */
   stepLabel?: string
 }
@@ -47,6 +50,25 @@ function formatSyncFailures(failed: TownSyncResult[]): string | undefined {
     .join(' · ')
 }
 
+async function queueNetlifyBackgroundFullSync(): Promise<boolean> {
+  const base =
+    process.env.URL?.trim() ||
+    process.env.DEPLOY_PRIME_URL?.trim() ||
+    process.env.DEPLOY_URL?.trim()
+  if (!base) return false
+
+  try {
+    const res = await fetch(`${base.replace(/\/$/, '')}/.netlify/functions/sync-listings-full`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    })
+    return res.status === 202 || res.ok
+  } catch (err) {
+    console.warn('[admin-sync] Netlify background full sync trigger failed', err)
+    return false
+  }
+}
+
 export async function runAdminSyncAction(action: AdminSyncActionId): Promise<AdminSyncActionResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
@@ -63,6 +85,22 @@ export async function runAdminSyncAction(action: AdminSyncActionId): Promise<Adm
           durationMs: Date.now() - t0,
           message: 'Full resync skipped — RETS not configured on this host',
           detail: retsSyncBlockedMessage(),
+        }
+      }
+      if (isServerlessRuntime()) {
+        const queued = await queueNetlifyBackgroundFullSync()
+        const finishedAt = new Date().toISOString()
+        if (queued) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              'Full resync queued on Netlify (background). Scores, stats, and Deal of the Day run when it finishes — refresh admin in ~10–20 minutes.',
+          }
         }
       }
       const result = await syncAllTownListings()

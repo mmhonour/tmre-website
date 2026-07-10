@@ -43,6 +43,20 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'deal-of-the-day',
 ] as const satisfies readonly AdminSyncActionId[]
 
+/** Client-side Sync all — one POST per step to stay under serverless timeouts. */
+export const ADMIN_SYNC_ALL_CLIENT_STEPS = [
+  ...ADMIN_SYNC_ALL_SEQUENCE,
+  'publish-snapshot',
+] as const satisfies readonly AdminSyncActionId[]
+
+/** Skipped when full resync is queued on a Netlify background function (already chained). */
+export const ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL = new Set<AdminSyncActionId>([
+  'listing-scores',
+  'stats-cache',
+  'deal-of-the-day',
+  'publish-snapshot',
+])
+
 export type AdminSyncAllActionId = 'sync-all-caches'
 
 export function isAdminSyncAllActionId(value: string): value is AdminSyncAllActionId {

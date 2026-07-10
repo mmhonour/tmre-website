@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { AdminSyncActionId } from "@/lib/admin-sync-types";
+import {
+  ADMIN_SYNC_ACTIONS,
+  ADMIN_SYNC_ALL_CLIENT_STEPS,
+  ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL,
+} from "@/lib/admin-sync-types";
 import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
 import { formatAdminNextSyncAt } from "@/lib/admin-sync-schedule-format";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
@@ -69,6 +74,38 @@ function formatTimestamp(iso: string | null | undefined): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+type AdminSyncPostBody = PanelStatus & {
+  ok?: boolean;
+  message?: string;
+  detail?: string;
+  error?: string;
+  backgroundQueued?: boolean;
+  startedAt?: string;
+  finishedAt?: string;
+  steps?: {
+    ok: boolean;
+    action: AdminSyncActionId;
+    message: string;
+    stepLabel?: string;
+    startedAt?: string;
+    finishedAt?: string;
+  }[];
+};
+
+async function readAdminSyncPostResponse(res: Response): Promise<AdminSyncPostBody> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    if (text.trimStart().startsWith("<")) {
+      throw new Error(
+        "Server returned an HTML error page (usually a gateway timeout). On production, Sync all runs one step at a time — retry or use individual row buttons.",
+      );
+    }
+    throw new Error(text.slice(0, 240) || `Unexpected response (${res.status})`);
+  }
+  return (await res.json()) as AdminSyncPostBody;
 }
 
 function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming {
@@ -336,14 +373,7 @@ export default function AdminSyncTable({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ action: row.actionId }),
         });
-        const body = (await res.json()) as PanelStatus & {
-          ok?: boolean;
-          message?: string;
-          detail?: string;
-          error?: string;
-          startedAt?: string;
-          finishedAt?: string;
-        };
+        const body = await readAdminSyncPostResponse(res);
 
         if (!res.ok) {
           setMessages((prev) => ({
@@ -397,55 +427,80 @@ export default function AdminSyncTable({
     setMessages({});
     setRunTimings({});
 
+    let skipChainedAfterFull = false;
+    let completed = 0;
+    const totalSteps = ADMIN_SYNC_ALL_CLIENT_STEPS.length;
+
     try {
-      const res = await fetch("/api/admin/sync", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "sync-all-caches" }),
-      });
-      const body = (await res.json()) as PanelStatus & {
-        ok?: boolean;
-        message?: string;
-        detail?: string;
-        error?: string;
-        steps?: {
-          ok: boolean;
-          action: AdminSyncActionId;
-          message: string;
-          stepLabel?: string;
-          startedAt?: string;
-          finishedAt?: string;
-        }[];
-      };
-
-      if (!res.ok) {
-        setSyncAllSummary(body.detail ?? body.error ?? "Sync all failed");
-        return;
-      }
-
-      setStatus(body);
-      setRefreshing(body.refreshing);
-
-      if (body.steps?.length) {
-        const nextMessages: Partial<Record<string, string>> = {};
-        const nextTimings: Partial<Record<string, SyncTiming>> = {};
-        for (const step of body.steps) {
-          const rowId = ACTION_ROW_ID[step.action];
-          if (rowId && !step.stepLabel) {
-            nextMessages[rowId] = step.message;
-            if (step.startedAt || step.finishedAt) {
-              nextTimings[rowId] = {
-                started: step.startedAt ?? null,
-                finished: step.finishedAt ?? null,
-              };
-            }
-          }
+      for (const actionId of ADMIN_SYNC_ALL_CLIENT_STEPS) {
+        if (skipChainedAfterFull && ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL.has(actionId)) {
+          continue;
         }
-        setMessages(nextMessages);
-        setRunTimings(nextTimings);
+
+        completed += 1;
+        const rowId = ACTION_ROW_ID[actionId];
+        const label = ADMIN_SYNC_ACTIONS[actionId]?.label ?? actionId;
+        setSyncAllSummary(`Step ${completed}/${totalSteps}: ${label}…`);
+
+        const startedAt = new Date().toISOString();
+        if (rowId) {
+          setRunTimings((prev) => ({
+            ...prev,
+            [rowId]: { started: startedAt, finished: null },
+          }));
+        }
+
+        const res = await fetch("/api/admin/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: actionId }),
+        });
+        const body = await readAdminSyncPostResponse(res);
+
+        if (!res.ok || body.ok === false) {
+          if (rowId) {
+            setMessages((prev) => ({
+              ...prev,
+              [rowId]: body.detail ?? body.error ?? body.message ?? "Sync failed",
+            }));
+            setRunTimings((prev) => ({
+              ...prev,
+              [rowId]: {
+                started: body.startedAt ?? startedAt,
+                finished: body.finishedAt ?? new Date().toISOString(),
+              },
+            }));
+          }
+          setSyncAllSummary(
+            `Sync all stopped at ${label}: ${body.detail ?? body.error ?? body.message ?? "failed"}`,
+          );
+          return;
+        }
+
+        setStatus(body);
+        setRefreshing(body.refreshing);
+
+        if (rowId) {
+          setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
+          setRunTimings((prev) => ({
+            ...prev,
+            [rowId]: {
+              started: body.startedAt ?? startedAt,
+              finished: body.finishedAt ?? new Date().toISOString(),
+            },
+          }));
+        }
+
+        if (body.backgroundQueued) {
+          skipChainedAfterFull = true;
+        }
       }
 
-      setSyncAllSummary(body.message ?? "Sync all complete");
+      setSyncAllSummary(
+        skipChainedAfterFull
+          ? "Full resync queued in background — remaining cache steps run when it finishes. Refresh admin in ~10–20 minutes."
+          : "Sync all complete",
+      );
     } catch (err) {
       setSyncAllSummary(err instanceof Error ? err.message : "Sync all failed");
     } finally {
