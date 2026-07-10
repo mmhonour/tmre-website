@@ -1,5 +1,12 @@
+import { isNextProductionBuild } from './lib/build-sync-gate'
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
+
+  if (isNextProductionBuild()) {
+    console.info('[instrumentation] skipping sync/warming during next build')
+    return
+  }
 
   try {
     const { syncListingsSmart, syncIncrementalListings, syncAllTownListings } =
@@ -21,9 +28,8 @@ export async function register() {
       process.env.NODE_ENV === 'production'
 
     // Full MLS → SQLite rebuild (+ Goldilocks scores) whenever the Node process
-    // starts — covers local `npm run:dev` and `next start` process restarts.
-    // Netlify deploys already full-sync during `netlify.toml` build into the
-    // bundled DB; skip per-cold-start full syncs there (use the daily cron).
+    // starts — covers local `npm run dev` and `next start` process restarts.
+    // Netlify deploy builds skip sync (see netlify.toml); use scheduled functions for runtime refresh.
     const startupFullEnabled =
       process.env.ENABLE_STARTUP_FULL_SYNC !== '0' &&
       retsConfigured &&

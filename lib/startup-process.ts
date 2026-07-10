@@ -318,10 +318,10 @@ export function describeStartupProcess(): {
       steps: [
         {
           id: "deploy-sync",
-          title: "Build-time sync:listings",
+          title: "Build-time sync (skipped)",
           timing: "netlify build",
           detail:
-            "LISTINGS_DB_PATH=data/listings.bundle.db npm run sync:listings — full MLS + scores into the bundled DB.",
+            "npm run build only — SKIP_LISTINGS_SYNC=true; bundled data/listings.bundle.db ships via included_files. Run npm run sync:listings locally to refresh the bundle.",
           status: "info",
           statusLabel: "Build",
         },
