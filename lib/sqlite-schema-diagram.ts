@@ -303,6 +303,16 @@ function openReadonlyIfExists(filePath: string): { database: SqliteDatabase | nu
   }
 }
 
+function canLoadSqliteModule(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('better-sqlite3')
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
   const writePath = listingsDbPath()
   const readPath = listingsReadDbPath()
@@ -311,11 +321,16 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
 
   let writeDb: SqliteDatabase | null = null
   let writeError: string | undefined
-  try {
-    writeDb = isListingsDbAvailable() ? getListingsDb() : null
-    if (!writeDb) writeError = 'Listings DB unavailable in this runtime'
-  } catch (err) {
-    writeError = err instanceof Error ? err.message : String(err)
+  if (!canLoadSqliteModule()) {
+    writeError =
+      'better-sqlite3 native module unavailable in this runtime (check Netlify Node version and included_files)'
+  } else {
+    try {
+      writeDb = isListingsDbAvailable() ? getListingsDb() : null
+      if (!writeDb) writeError = 'Listings DB unavailable in this runtime'
+    } catch (err) {
+      writeError = err instanceof Error ? err.message : String(err)
+    }
   }
 
   const writeDiagram = inspectHandle(

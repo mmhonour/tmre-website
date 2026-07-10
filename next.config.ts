@@ -1,5 +1,19 @@
 import type { NextConfig } from "next";
 
+const sqliteNativeIncludes = [
+  "./node_modules/better-sqlite3/**/*",
+  "./node_modules/bindings/**/*",
+  "./node_modules/file-uri-to-path/**/*",
+  "./node_modules/node-addon-api/**/*",
+  "./data/listings.bundle.db",
+];
+
+const retsNativeIncludes = [
+  "./node_modules/rets-client/**/*",
+  "./node_modules/node-expat/**/*",
+  ...sqliteNativeIncludes,
+];
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
@@ -13,28 +27,13 @@ const nextConfig: NextConfig = {
   // Native addons must stay external so Netlify ships the Linux .node binaries.
   serverExternalPackages: ["rets-client", "node-expat", "better-sqlite3", "bindings"],
   outputFileTracingIncludes: {
-    "/api/listings/route": [
-      "./node_modules/rets-client/**/*",
-      "./node_modules/node-expat/**/*",
-      "./node_modules/better-sqlite3/**/*",
-      "./node_modules/bindings/**/*",
-    ],
-    "/api/listings/[mlsId]/route": [
-      "./node_modules/rets-client/**/*",
-      "./node_modules/node-expat/**/*",
-      "./node_modules/better-sqlite3/**/*",
-      "./node_modules/bindings/**/*",
-    ],
-    "/api/listings/[mlsId]/photo/route": [
-      "./node_modules/rets-client/**/*",
-      "./node_modules/node-expat/**/*",
-      "./node_modules/bindings/**/*",
-    ],
-    "/api/listings/[mlsId]/photos/[photoIndex]/route": [
-      "./node_modules/rets-client/**/*",
-      "./node_modules/node-expat/**/*",
-      "./node_modules/bindings/**/*",
-    ],
+    "/**": sqliteNativeIncludes,
+    "/admin": sqliteNativeIncludes,
+    "/api/**/*": retsNativeIncludes,
+    "/api/listings/route": retsNativeIncludes,
+    "/api/listings/[mlsId]/route": retsNativeIncludes,
+    "/api/listings/[mlsId]/photo/route": retsNativeIncludes,
+    "/api/listings/[mlsId]/photos/[photoIndex]/route": retsNativeIncludes,
   },
   async redirects() {
     return [

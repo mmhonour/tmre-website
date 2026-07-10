@@ -1,8 +1,7 @@
 [build]
-  # Do not run MLS sync during deploy builds — bundled listings.bundle.db is shipped
-  # via included_files; runtime refresh uses Netlify scheduled functions.
-  # Set SKIP_LISTINGS_SYNC=0 in Netlify UI to force build-time sync (local dev: npm run sync:listings).
-  command = "npm run build"
+  # Prepare bundled SQLite artifact, rebuild native bindings for Lambda, then build.
+  # Runtime sync uses Netlify scheduled functions; bundle seeds /tmp on cold starts.
+  command = "npm run build:netlify"
 
 [build.environment]
   NODE_VERSION = "22"

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { isServerlessRuntime } from '@/lib/runtime-host'
 
 type SqliteDatabase = import('better-sqlite3').Database
 
@@ -24,7 +25,7 @@ function listingsDbPathForMigration(): string {
   if (process.env.LISTINGS_DB_PATH?.trim()) {
     return process.env.LISTINGS_DB_PATH.trim()
   }
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY) {
+  if (isServerlessRuntime()) {
     return '/tmp/listings.db'
   }
   return path.join(process.cwd(), 'data', 'listings.db')
@@ -34,7 +35,7 @@ export function listingPhotosDbPath(): string {
   if (process.env.LISTING_PHOTOS_DB_PATH?.trim()) {
     return process.env.LISTING_PHOTOS_DB_PATH.trim()
   }
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY) {
+  if (isServerlessRuntime()) {
     return '/tmp/listing-photos.db'
   }
   return path.join(process.cwd(), 'data', 'listing-photos.db')

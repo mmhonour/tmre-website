@@ -321,7 +321,7 @@ export function describeStartupProcess(): {
           title: "Build-time sync (skipped)",
           timing: "netlify build",
           detail:
-            "npm run build only — SKIP_LISTINGS_SYNC=true; bundled data/listings.bundle.db ships via included_files. Run npm run sync:listings locally to refresh the bundle.",
+            "npm run build:netlify prepares data/listings.bundle.db (schema or local copy), rebuilds better-sqlite3, then next build. Bundle seeds /tmp on cold starts.",
           status: "info",
           statusLabel: "Build",
         },

@@ -12,6 +12,7 @@ import {
 import { streetsMatch } from '@/lib/listing-history'
 import type { Listing } from '@/lib/rets'
 import type { SqliteWriteStatsCollector } from '@/lib/sqlite-sync-stats'
+import { isServerlessRuntime } from '@/lib/runtime-host'
 
 function withRefreshLockStats(
   stats?: SqliteWriteStatsCollector,
@@ -62,7 +63,7 @@ function serverlessDbPath(): string {
   if (process.env.LISTINGS_DB_PATH?.trim()) {
     return process.env.LISTINGS_DB_PATH.trim()
   }
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY) {
+  if (isServerlessRuntime()) {
     return '/tmp/listings.db'
   }
   return DEFAULT_DB_PATH
