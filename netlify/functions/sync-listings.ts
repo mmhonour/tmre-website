@@ -31,4 +31,5 @@ export const config: Config = {
   // Incremental RETS → SQLite sync every 30 minutes (full sync when last_full_sync
   // is older than 24h — prefer the dedicated daily 5am sync-listings-full function).
   schedule: `*/${Math.max(1, Math.round(LATEST_DB_REFRESH_MS / 60_000))} * * * *`,
+  background: true,
 }

@@ -35,4 +35,5 @@ export default async function handler() {
 export const config: Config = {
   // 5:00 AM Eastern Standard Time (UTC-5). During EDT this fires at 6:00 AM local.
   schedule: '0 9 * * *',
+  background: true,
 }

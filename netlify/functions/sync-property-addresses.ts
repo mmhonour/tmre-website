@@ -25,4 +25,5 @@ export default async function handler() {
 
 export const config: Config = {
   schedule: '0 6 * * 1',
+  background: true,
 }
