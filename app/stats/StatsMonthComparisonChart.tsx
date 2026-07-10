@@ -164,14 +164,32 @@ export default function StatsMonthComparisonChart({
 
   useEffect(() => {
     if (headerActiveCount != null) {
-      setStatsCache((prev) => ({
-        ...prev,
-        [statsKey]: { activeCount: headerActiveCount, medianPrice: null },
-      }));
+      setStatsCache((prev) => {
+        const existing = prev[statsKey];
+        if (
+          existing?.activeCount === headerActiveCount &&
+          existing?.medianPrice === null
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [statsKey]: { activeCount: headerActiveCount, medianPrice: null },
+        };
+      });
       return;
     }
-    if (statsCache[statsKey] !== undefined) return;
+
+    let cancelled = false;
     const kindParam = `&kind=${kind}`;
+
+    const storeStats = (value: MarketStats | null) => {
+      if (cancelled) return;
+      setStatsCache((prev) =>
+        prev[statsKey] !== undefined ? prev : { ...prev, [statsKey]: value },
+      );
+    };
+
     if (city === "All") {
       Promise.all(
         TOWN_LIST.map((t) =>
@@ -183,20 +201,21 @@ export default function StatsMonthComparisonChart({
         ),
       ).then((results) => {
         const total = results.reduce((sum, r) => sum + (r?.activeCount ?? 0), 0);
-        setStatsCache((prev) => ({
-          ...prev,
-          [statsKey]: { activeCount: total, medianPrice: null },
-        }));
+        storeStats({ activeCount: total, medianPrice: null });
       });
     } else {
       fetch(`/api/market-stats?city=${encodeURIComponent(city)}${kindParam}`, {
         cache: "no-store",
       })
         .then((r) => (r.ok ? (r.json() as Promise<MarketStats>) : null))
-        .then((d) => setStatsCache((prev) => ({ ...prev, [statsKey]: d })))
-        .catch(() => setStatsCache((prev) => ({ ...prev, [statsKey]: null })));
+        .then((d) => storeStats(d))
+        .catch(() => storeStats(null));
     }
-  }, [city, kind, statsKey, statsCache, headerActiveCount]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [city, kind, statsKey, headerActiveCount]);
 
   const data = cache[key] ?? [];
   const isFallback = fallbacks[key] ?? false;
