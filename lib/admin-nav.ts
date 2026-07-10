@@ -44,6 +44,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
 ];
 
 export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
+  { id: "admin-rets-credentials", label: "RETS credentials", tab: "db" },
   { id: "admin-sync", label: "Sync status", tab: "db" },
   { id: "admin-refresh-lock", label: "Refresh lock", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
@@ -179,6 +180,8 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
   {
     title: "Admin & sync",
     routes: [
+      { label: "GET /api/admin/rets-credentials", detail: "RETS credentials + optional probe", href: "/api/admin/rets-credentials" },
+      { label: "POST /api/admin/rets-credentials", detail: "Save RETS credentials and probe login" },
       { label: "GET /api/admin/sync", detail: "Trigger sync actions", href: "/api/admin/sync" },
       { label: "GET /api/admin/spotlight-privacy", detail: "Spotlight privacy overrides", href: "/api/admin/spotlight-privacy" },
       { label: "POST /api/sync/listings/incremental", detail: "Manual incremental sync hook", href: "/api/sync/listings/incremental" },

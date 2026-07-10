@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import AdminHeroNav from "@/components/admin/AdminHeroNav";
 import AdminProductDocsPanel from "@/components/admin/AdminProductDocsPanel";
 import AdminRefreshLockPanel from "@/components/admin/AdminRefreshLockPanel";
+import AdminRetsCredentialsPanel from "@/components/admin/AdminRetsCredentialsPanel";
 import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPanel";
 import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
@@ -179,6 +180,10 @@ export default async function AdminPage() {
 
   const dbPanel = (
     <>
+      <div id="admin-rets-credentials" className="scroll-mt-24">
+        <AdminRetsCredentialsPanel />
+      </div>
+
       <div
         id="admin-sync"
         className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"

@@ -44,6 +44,21 @@ type PanelStatus = {
   propertyAddressesSyncedAt?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
+  rets?: {
+    configured: boolean;
+    status: string;
+    ok: boolean;
+    message: string;
+    checkedAt: string | null;
+    detail?: string;
+  };
+  syncFailures?: {
+    town: string;
+    statusBucket: string;
+    error: string;
+    finishedAt: string;
+    startedAt: string;
+  }[];
 };
 
 function formatTimestamp(iso: string | null | undefined): string {
@@ -441,9 +456,62 @@ export default function AdminSyncTable({
 
   const globalBusy = refreshing || runningId != null;
   const syncAllRunning = runningId === "sync-all-caches";
+  const rets = status?.rets;
+  const syncFailures = status?.syncFailures ?? [];
+  const showRetsAlert = rets && !rets.ok;
 
   return (
     <>
+      {rets ? (
+        <div
+          className={`px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] ${
+            rets.ok ? "bg-sage/10" : "bg-rose-50/90"
+          }`}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-1">
+                MLS / RETS connection
+              </p>
+              <p
+                className={`text-sm font-medium leading-snug ${
+                  rets.ok ? "text-sage" : "text-rose-800"
+                }`}
+              >
+                {rets.message}
+              </p>
+              {rets.detail && !rets.ok ? (
+                <p className="mt-1 font-mono text-[10px] text-rose-700/80 break-words">
+                  {rets.detail}
+                </p>
+              ) : null}
+            </div>
+            <p className="font-mono text-[10px] text-charcoal/45 shrink-0">
+              {rets.checkedAt ? `Checked ${formatTimestamp(rets.checkedAt)}` : "Not checked yet"}
+            </p>
+          </div>
+        </div>
+      ) : null}
+      {showRetsAlert && syncFailures.length > 0 ? (
+        <div className="px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-white">
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-2">
+            Recent sync failures
+          </p>
+          <ul className="space-y-1.5">
+            {syncFailures.slice(0, 4).map((row, i) => (
+              <li
+                key={`${row.town}-${row.statusBucket}-${row.finishedAt}-${i}`}
+                className="font-mono text-[10px] text-coral leading-snug"
+              >
+                <span className="text-navy/70">
+                  {formatTimestamp(row.finishedAt)} · {row.town} {row.statusBucket}:
+                </span>{" "}
+                {row.error}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
         <p className="text-xs text-slate leading-relaxed max-w-2xl">
           Sync all runs a full MLS resync, scores, stats, Deal of the Day, intelligence

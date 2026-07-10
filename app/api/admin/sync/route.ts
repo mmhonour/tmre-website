@@ -14,6 +14,8 @@ import {
   readLatestListingModificationTimestamp,
 } from '@/lib/listings-db'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
+import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'
+import { readRecentSyncFailures } from '@/lib/listings-db'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,6 +30,13 @@ export async function GET(req: NextRequest) {
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
 
+  let rets = readStoredRetsHealth()
+  try {
+    rets = await probeRetsConnection()
+  } catch (err) {
+    console.warn('[/api/admin/sync] RETS probe failed', err)
+  }
+
   return NextResponse.json({
     refreshing: refresh.refreshing,
     lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
@@ -36,6 +45,8 @@ export async function GET(req: NextRequest) {
     propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
     stats,
     nextRuns,
+    rets,
+    syncFailures: readRecentSyncFailures(8),
   })
 }
 
@@ -93,6 +104,8 @@ export async function POST(req: NextRequest) {
       refreshing: readSqliteRefreshStatus().refreshing,
       lastRefreshFinished: getSyncMeta('last_refresh_finished_at'),
       lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
+      rets: await probeRetsConnection(true),
+      syncFailures: readRecentSyncFailures(8),
     })
   } catch (err) {
     console.error('[/api/admin/sync]', action, err)

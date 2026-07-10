@@ -591,6 +591,12 @@ export function setSyncMeta(key: string, value: string): void {
     .run(key, value)
 }
 
+export function deleteSyncMeta(key: string): void {
+  const database = tryGetWriteDb()
+  if (!database) return
+  database.prepare('DELETE FROM sync_meta WHERE key = ?').run(key)
+}
+
 export function listingRowId(listing: Listing): string {
   return listing.listingKey?.trim() || listing.mlsId?.trim() || ''
 }
@@ -1392,6 +1398,31 @@ export function recordSyncRun(
       input.error ?? null,
     )
   stats?.addInserted('sync_runs', 1)
+}
+
+export type SyncRunFailure = {
+  town: string
+  statusBucket: string
+  error: string
+  finishedAt: string
+  startedAt: string
+}
+
+export function readRecentSyncFailures(limit = 5): SyncRunFailure[] {
+  const database = tryGetReadDb() ?? tryGetWriteDb()
+  if (!database) return []
+
+  const rows = database
+    .prepare(
+      `SELECT town, status_bucket AS statusBucket, error, finished_at AS finishedAt, started_at AS startedAt
+       FROM sync_runs
+       WHERE ok = 0 AND error IS NOT NULL AND TRIM(error) != ''
+       ORDER BY finished_at DESC
+       LIMIT ?`,
+    )
+    .all(Math.max(1, limit)) as SyncRunFailure[]
+
+  return rows.filter((row) => row.town && row.error)
 }
 
 export function getListingsDbStats(): {

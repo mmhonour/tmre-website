@@ -2,6 +2,7 @@ import 'server-only'
 
 import { parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
 import { propertyTaxFromRaw } from '@/lib/listing-property-tax'
+import { getRetsCredentials } from '@/lib/rets-credentials'
 
 type RetsClientModule = typeof import('rets-client')
 
@@ -127,32 +128,29 @@ function setCached<T>(key: string, value: T, ttlMs: number): void {
 }
 
 function requireEnv() {
-  const { RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD } = process.env
-  if (!RETS_SERVER_URL || !RETS_USERNAME || !RETS_PASSWORD) {
+  const { serverUrl, username, password } = getRetsCredentials()
+  if (!serverUrl || !username || !password) {
     throw new Error(retsSyncBlockedMessage())
   }
   return {
-    loginUrl: RETS_SERVER_URL,
-    username: RETS_USERNAME,
-    password: RETS_PASSWORD,
+    loginUrl: serverUrl,
+    username,
+    password,
     version: 'RETS/1.7.2',
     userAgent: 'tmre-website/0.1',
   }
 }
 
-/** True when SmartMLS RETS credentials are present in the environment. */
+/** True when SmartMLS RETS credentials are present (sync_meta or env). */
 export function isRetsConfigured(): boolean {
-  return Boolean(
-    process.env.RETS_SERVER_URL?.trim() &&
-      process.env.RETS_USERNAME?.trim() &&
-      process.env.RETS_PASSWORD?.trim(),
-  )
+  const { serverUrl, username, password } = getRetsCredentials()
+  return Boolean(serverUrl && username && password)
 }
 
 export function retsSyncBlockedMessage(): string {
   return process.env.NETLIFY === 'true'
-    ? 'RETS credentials missing — set RETS_SERVER_URL, RETS_USERNAME, and RETS_PASSWORD in Netlify → Environment variables. Until then the site serves from bundled listings.bundle.db only.'
-    : 'RETS env vars missing — set RETS_SERVER_URL, RETS_USERNAME, and RETS_PASSWORD in .env.local'
+    ? 'RETS credentials missing — save them in Admin → Database → RETS credentials, or set RETS_SERVER_URL, RETS_USERNAME, and RETS_PASSWORD in Netlify → Environment variables (fallback for cold starts). Until configured, the site serves from bundled listings.bundle.db only.'
+    : 'RETS credentials missing — save them in Admin → Database → RETS credentials, or set RETS_SERVER_URL, RETS_USERNAME, and RETS_PASSWORD in .env.local'
 }
 
 export function assertRetsConfigured(): void {

@@ -134,6 +134,9 @@ export async function syncTownListingsIncremental(
       error: message,
     })
     console.error(`[listings-sync/incremental] ${town} failed`, err)
+    void import('@/lib/rets-health').then(({ recordRetsFailureFromSyncError }) =>
+      recordRetsFailureFromSyncError(err),
+    )
     return {
       town,
       statusBucket: 'Active/incremental',
@@ -420,6 +423,9 @@ export async function syncTownListings(
       error: message,
     })
     console.error(`[listings-sync] ${town} ${statusBucket} failed`, err)
+    void import('@/lib/rets-health').then(({ recordRetsFailureFromSyncError }) =>
+      recordRetsFailureFromSyncError(err),
+    )
     return {
       town,
       statusBucket,
