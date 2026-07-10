@@ -16,10 +16,28 @@ function isUsableDb(filePath: string): boolean {
 
 async function createSchemaOnlyBundle(targetPath: string): Promise<void> {
   mkdirSync(path.dirname(targetPath), { recursive: true })
+  // Override Netlify build env (/tmp/listings.db) — write the bundle artifact in-repo.
   process.env.LISTINGS_DB_PATH = targetPath
-  const { getListingsDb } = await import('../lib/listings-db')
-  const db = getListingsDb()
-  db.close()
+
+  let Database: typeof import('better-sqlite3')
+  try {
+    Database = (await import('better-sqlite3')).default
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    throw new Error(
+      `better-sqlite3 unavailable during Netlify bundle prep (run npm rebuild better-sqlite3 first): ${detail}`,
+    )
+  }
+
+  const { initListingsDbSchema } = await import('../lib/listings-db')
+  const db = new Database(targetPath)
+  try {
+    db.pragma('journal_mode = WAL')
+    db.pragma('busy_timeout = 5000')
+    initListingsDbSchema(db)
+  } finally {
+    db.close()
+  }
   console.info('[prepare-netlify-bundle] created schema-only bundle:', targetPath)
 }
 

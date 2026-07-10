@@ -436,6 +436,11 @@ function initSchema(database: SqliteDatabase): void {
   ensureIfEstimateColumns(database)
 }
 
+/** Bootstrap schema on a fresh SQLite file (Netlify bundle prep, local scripts). */
+export function initListingsDbSchema(database: SqliteDatabase): void {
+  initSchema(database)
+}
+
 function ensureIfEstimateColumns(database: SqliteDatabase): void {
   const cols = database
     .prepare('PRAGMA table_info(listing_if_estimates)')
