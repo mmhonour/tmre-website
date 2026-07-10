@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
- * Recompile native addons for the current Node ABI (Netlify build + Lambda runtime).
- * Prebuilt binaries (e.g. node-expat for Node 20) fail at runtime on Node 22.
+ * Refresh native addon prebuilds for the current Node ABI on Netlify CI.
+ *
+ * Do NOT use --build-from-source here: compiling on Netlify Noble (glibc 2.38)
+ * produces .node files that fail on AWS Lambda (older glibc). prebuild-install
+ * ships manylinux binaries compatible with both build and Lambda runtime.
  */
 const { execSync } = require('node:child_process')
 
@@ -13,12 +16,13 @@ function main() {
   )
 
   for (const name of MODULES) {
-    console.info(`[rebuild-native] rebuilding ${name} from source…`)
-    execSync(`npm rebuild ${name} --build-from-source`, {
+    console.info(`[rebuild-native] refreshing ${name} prebuild for this Node ABI…`)
+    execSync(`npm rebuild ${name}`, {
       stdio: 'inherit',
       env: {
         ...process.env,
-        npm_config_build_from_source: 'true',
+        // Ensure we never compile against Noble glibc during deploy builds.
+        npm_config_build_from_source: 'false',
       },
     })
   }

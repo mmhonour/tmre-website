@@ -303,14 +303,18 @@ function openReadonlyIfExists(filePath: string): { database: SqliteDatabase | nu
   }
 }
 
-function canLoadSqliteModule(): boolean {
+function sqliteModuleLoadError(): string | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require('better-sqlite3')
-    return true
-  } catch {
-    return false
+    return null
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
   }
+}
+
+function canLoadSqliteModule(): boolean {
+  return sqliteModuleLoadError() == null
 }
 
 export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
@@ -323,6 +327,7 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
   let writeError: string | undefined
   if (!canLoadSqliteModule()) {
     writeError =
+      sqliteModuleLoadError() ??
       'better-sqlite3 native module unavailable in this runtime (check Netlify Node version and included_files)'
   } else {
     try {

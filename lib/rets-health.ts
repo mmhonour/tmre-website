@@ -41,6 +41,12 @@ export function classifyRetsError(err: unknown): {
     }
   }
 
+      message:
+        'Native module GLIBC mismatch — redeploy after build uses prebuild binaries (not compile-on-Noble)',
+      detail,
+    }
+  }
+
   if (/NODE_MODULE_VERSION|was compiled against a different Node\.js version|ABI/i.test(detail)) {
     return {
       status: 'unavailable',
