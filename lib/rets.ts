@@ -129,9 +129,7 @@ function setCached<T>(key: string, value: T, ttlMs: number): void {
 function requireEnv() {
   const { RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD } = process.env
   if (!RETS_SERVER_URL || !RETS_USERNAME || !RETS_PASSWORD) {
-    throw new Error(
-      'RETS env vars missing - set RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD in .env.local',
-    )
+    throw new Error(retsSyncBlockedMessage())
   }
   return {
     loginUrl: RETS_SERVER_URL,
@@ -139,6 +137,27 @@ function requireEnv() {
     password: RETS_PASSWORD,
     version: 'RETS/1.7.2',
     userAgent: 'tmre-website/0.1',
+  }
+}
+
+/** True when SmartMLS RETS credentials are present in the environment. */
+export function isRetsConfigured(): boolean {
+  return Boolean(
+    process.env.RETS_SERVER_URL?.trim() &&
+      process.env.RETS_USERNAME?.trim() &&
+      process.env.RETS_PASSWORD?.trim(),
+  )
+}
+
+export function retsSyncBlockedMessage(): string {
+  return process.env.NETLIFY === 'true'
+    ? 'RETS credentials missing — set RETS_SERVER_URL, RETS_USERNAME, and RETS_PASSWORD in Netlify → Environment variables. Until then the site serves from bundled listings.bundle.db only.'
+    : 'RETS env vars missing — set RETS_SERVER_URL, RETS_USERNAME, and RETS_PASSWORD in .env.local'
+}
+
+export function assertRetsConfigured(): void {
+  if (!isRetsConfigured()) {
+    throw new Error(retsSyncBlockedMessage())
   }
 }
 

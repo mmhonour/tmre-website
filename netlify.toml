@@ -14,6 +14,7 @@
 
 [functions]
   node_bundler = "esbuild"
+  timeout = 900
   external_node_modules = ["rets-client", "node-expat", "better-sqlite3", "bindings"]
   included_files = [
     "node_modules/rets-client/**",

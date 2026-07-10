@@ -3,7 +3,8 @@ import 'server-only'
 import { rebuildDealOfTheDayCache } from '@/lib/deal-of-the-day-cache'
 import { rebuildAllListingScores } from '@/lib/listing-scores-rebuild'
 import { getListingsDbStats, getSyncMeta, publishListingsReadSnapshot, setSyncMeta } from '@/lib/listings-db'
-import { syncAllTownListings, syncIncrementalListings } from '@/lib/listings-sync'
+import { syncAllTownListings, syncIncrementalListings, type TownSyncResult } from '@/lib/listings-sync'
+import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
 import { rebuildStatsCache } from '@/lib/stats-cache'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
@@ -30,14 +31,42 @@ export type AdminSyncActionResult = {
   stepLabel?: string
 }
 
+function formatSyncFailures(failed: TownSyncResult[]): string | undefined {
+  if (!failed.length) return undefined
+  const byError = new Map<string, string[]>()
+  for (const row of failed) {
+    const err = row.error?.trim() || 'failed'
+    const label = `${row.town} ${row.statusBucket}`
+    if (!byError.has(err)) byError.set(err, [])
+    byError.get(err)!.push(label)
+  }
+  return [...byError.entries()]
+    .map(([err, labels]) =>
+      labels.length > 3 ? `${err} (${labels.slice(0, 3).join(', ')}, +${labels.length - 3} more)` : `${err} (${labels.join(', ')})`,
+    )
+    .join(' · ')
+}
+
 export async function runAdminSyncAction(action: AdminSyncActionId): Promise<AdminSyncActionResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
 
   switch (action) {
     case 'full-resync': {
+      if (!isRetsConfigured()) {
+        const finishedAt = new Date().toISOString()
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: 'Full resync skipped — RETS not configured on this host',
+          detail: retsSyncBlockedMessage(),
+        }
+      }
       const result = await syncAllTownListings()
-      const ok = result.towns.length === 0 || result.towns.every((row) => row.ok)
+      const ok = result.towns.length > 0 && result.towns.every((row) => row.ok)
       const failed = result.towns.filter((row) => !row.ok)
       const finishedAt = result.finishedAt ?? new Date().toISOString()
       return {
@@ -48,13 +77,25 @@ export async function runAdminSyncAction(action: AdminSyncActionId): Promise<Adm
         durationMs: result.durationMs || Date.now() - t0,
         message: ok
           ? `Full resync complete — ${result.totalUpserted.toLocaleString()} listings`
-          : `Full resync finished with ${failed.length} town failure(s)`,
-        detail: failed.length
-          ? failed.map((row) => `${row.town} ${row.statusBucket}: ${row.error ?? 'failed'}`).join('; ')
-          : undefined,
+          : failed.length
+            ? `Full resync finished with ${failed.length} town failure(s)`
+            : 'Full resync returned no town results',
+        detail: formatSyncFailures(failed),
       }
     }
     case 'incremental': {
+      if (!isRetsConfigured()) {
+        const finishedAt = new Date().toISOString()
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: 'Incremental sync skipped — RETS not configured on this host',
+          detail: retsSyncBlockedMessage(),
+        }
+      }
       const result = await syncIncrementalListings()
       const ok = result.towns.every((row) => row.ok)
       const failed = result.towns.filter((row) => !row.ok)
@@ -68,9 +109,7 @@ export async function runAdminSyncAction(action: AdminSyncActionId): Promise<Adm
         message: ok
           ? `Incremental sync complete — ${result.totalUpserted.toLocaleString()} upserts`
           : `Incremental sync finished with ${failed.length} failure(s)`,
-        detail: failed.length
-          ? failed.map((row) => `${row.town}: ${row.error ?? 'failed'}`).join('; ')
-          : undefined,
+        detail: formatSyncFailures(failed),
       }
     }
     case 'listing-scores': {

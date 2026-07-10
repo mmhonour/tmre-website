@@ -22,6 +22,7 @@ import {
   setSyncedActiveCount,
 } from '@/lib/listings-store'
 import { searchListings, type Listing, type SearchParams } from '@/lib/rets'
+import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
 import { STATS_CLOSED_PERIOD_START } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
@@ -146,6 +147,20 @@ export async function syncTownListingsIncremental(
 
 /** Incremental sync across all towns — no bucket deletions (use full sync for reconcile). */
 export async function syncIncrementalListings(): Promise<IncrementalSyncResult> {
+  if (!isRetsConfigured()) {
+    const now = new Date().toISOString()
+    console.info('[listings-sync/incremental] skipped — RETS not configured')
+    return {
+      mode: 'incremental',
+      modifiedAfter: incrementalWatermark(),
+      startedAt: now,
+      finishedAt: now,
+      durationMs: 0,
+      towns: [],
+      totalUpserted: 0,
+    }
+  }
+
   if (getSyncMeta('refresh_in_progress') === '1') {
     console.info('[listings-sync/incremental] skipped — refresh already in progress')
     const now = new Date().toISOString()
@@ -218,6 +233,19 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
 
 /** Full sync when stale; otherwise incremental. */
 export async function syncListingsSmart(): Promise<FullSyncResult | IncrementalSyncResult> {
+  if (!isRetsConfigured()) {
+    console.info('[listings-sync] skipped — RETS not configured')
+    const now = new Date().toISOString()
+    return {
+      mode: 'incremental',
+      modifiedAfter: incrementalWatermark(),
+      startedAt: now,
+      finishedAt: now,
+      durationMs: 0,
+      towns: [],
+      totalUpserted: 0,
+    }
+  }
   if (shouldRunFullSync()) {
     console.info('[listings-sync] running scheduled full sync')
     return syncAllTownListings()
@@ -405,6 +433,18 @@ export async function syncTownListings(
 
 /** Iteratively sync every TMRE town — Active first, then Closed sales since 2019. */
 export async function syncAllTownListings(): Promise<FullSyncResult> {
+  if (!isRetsConfigured()) {
+    const now = new Date().toISOString()
+    console.info('[listings-sync] skipped full sync — RETS not configured')
+    return {
+      startedAt: now,
+      finishedAt: now,
+      durationMs: 0,
+      towns: [],
+      totalUpserted: 0,
+    }
+  }
+
   if (getSyncMeta('refresh_in_progress') === '1') {
     console.info('[listings-sync] skipped — refresh already in progress')
     const now = new Date().toISOString()
