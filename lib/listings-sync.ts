@@ -573,12 +573,17 @@ async function triggerFullResyncDeferredWarms(): Promise<void> {
 
 /** Final bookkeeping — mirrors what `finalizeChunkedFullResync()`'s finally used to run. */
 async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings: number }> {
-  // Always re-publish the read snapshot before the final blob checkpoint.
-  // In the chunked finalize flow each step runs on a potentially different
-  // Lambda with a fresh /tmp, so the read DB written by the 'scores' step
-  // does not exist on this Lambda.  Without this call persistListingsDbCheckpoint
-  // would skip it (existsSync guard) and leave a stale / schema-only blob.
-  publishListingsReadSnapshot()
+  // Attempt to republish the read snapshot, but treat it as non-fatal.
+  // On Netlify the write DB can be 300 MB+; copying it doubles /tmp usage
+  // (write DB + temp copy) and can exceed the 512 MB /tmp limit (ENOSPC).
+  // If the copy fails we still must checkpoint the write DB and close the
+  // refresh lock — the read snapshot will be auto-republished next time an
+  // admin request runs ensureAdminSqliteDatabasesReady and detects the size mismatch.
+  try {
+    publishListingsReadSnapshot()
+  } catch (err) {
+    console.warn('[listings-sync] finalizeStepPersist: read snapshot publish failed (non-fatal):', err)
+  }
 
   await triggerFullResyncDeferredWarms()
   const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
@@ -587,10 +592,8 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
   const totalListings = countWriteDbListings() || getListingsDbStats().total
   // Close the refresh lock BEFORE the blob checkpoint so the finalized history
   // entry lands in sync_meta while it is still in WAL. The wal_checkpoint inside
-  // persistWriteDbAfterChunk then flushes it into the main DB file and it is
-  // included in the blob upload. Calling endSqliteRefresh AFTER the checkpoint
-  // (the old order) wrote the entry to WAL after the blob was already saved —
-  // it was stripped on every Lambda restore, making refresh history appear empty.
+  // persistWriteDbAfterChunk flushes it into the main DB file and includes it
+  // in the blob upload.
   endSqliteRefresh(finishedAt)
   await persistWriteDbAfterChunk()
   const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')

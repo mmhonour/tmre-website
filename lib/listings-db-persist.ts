@@ -16,7 +16,9 @@ const BLOB_DB_KEY = 'listings-write.db'
 const BLOB_READ_DB_KEY = 'listings-read.db'
 const BLOB_PHOTOS_DB_KEY = 'listing-photos.db'
 const BLOB_PROGRESS_KEY = 'chunked-full-resync-progress'
-const MIN_BYTES = 50_000
+// A schema-only listings.db seed is ~144 KB; require at least 500 KB to reject
+// it as a restore candidate and avoid treating an empty seed as a good snapshot.
+const MIN_BYTES = 500_000
 const MIN_PHOTOS_BYTES = 4_096
 /** sync_meta key tracking the last listing count we safely checkpointed to blobs. */
 const LISTINGS_LAST_GOOD_COUNT_META_KEY = 'listings_last_good_count'
@@ -430,6 +432,21 @@ export async function ensureAdminSqliteDatabasesReady(
     resetListingPhotosDbConnection()
   }
   await recordBlobRestore(restored)
+
+  // Post-restore sanity check: if the write DB still has 0 listings after a
+  // restore on a serverless host, the blob download may have silently returned
+  // a schema-only file (< MIN_BYTES was previously 50 KB, now 500 KB) or the
+  // download failed.  Try one additional direct restore before giving up so
+  // transient network errors during cold start don't leave the Lambda empty.
+  if (shouldUseBlobPersist() && countWriteDbListings() === 0) {
+    const didRetry = await restorePersistedListingsDb(listingsDbPath())
+    if (didRetry) {
+      resetConnections()
+      console.info('[listings-db] post-restore count was 0 — retry succeeded, connections reset')
+    } else {
+      console.warn('[listings-db] post-restore count is still 0 after retry — blob may be schema-only or missing')
+    }
+  }
 
   const writeDb = tryGetWriteDb()
   if (writeDb && countWriteDbListings() > 0) {
