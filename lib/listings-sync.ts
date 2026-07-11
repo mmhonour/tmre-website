@@ -440,6 +440,129 @@ export async function syncTownListings(
   }
 }
 
+/** Post–town-loop cache rebuilds and read snapshot (full sync only). */
+async function applyFullSyncPostamble(finishedAt: string): Promise<void> {
+  publishListingsReadSnapshot()
+  setSyncMeta('last_full_sync', finishedAt)
+  try {
+    const { rebuildAllListingScores } = await import('@/lib/listing-scores-rebuild')
+    await rebuildAllListingScores()
+  } catch (err) {
+    console.error('[listings-sync] listing scores rebuild failed', err)
+  }
+  try {
+    const { rebuildAllListingSuperlatives } = await import('@/lib/listing-superlatives-rebuild')
+    await rebuildAllListingSuperlatives()
+  } catch (err) {
+    console.error('[listings-sync] listing superlatives rebuild failed', err)
+  }
+  try {
+    const { rebuildStatsCache } = await import('@/lib/stats-cache')
+    rebuildStatsCache({ trackRefresh: false })
+  } catch (err) {
+    console.error('[listings-sync] stats cache rebuild failed', err)
+  }
+  try {
+    const { rebuildDealOfTheDayCache } = await import('@/lib/deal-of-the-day-cache')
+    await rebuildDealOfTheDayCache()
+  } catch (err) {
+    console.error('[listings-sync] deal of the day cache rebuild failed', err)
+  }
+  try {
+    const { rebuildDealOfTheWeekCache } = await import('@/lib/deal-of-the-week-cache')
+    await rebuildDealOfTheWeekCache()
+  } catch (err) {
+    console.error('[listings-sync] deal of the week cache rebuild failed', err)
+  }
+  try {
+    const { rebuildSpotlightCache } = await import('@/lib/spotlight-cache')
+    const { SPOTLIGHT_PROPERTY_TABS } = await import('@/lib/spotlight-listing')
+    for (const tab of SPOTLIGHT_PROPERTY_TABS) {
+      await rebuildSpotlightCache(tab)
+    }
+  } catch (err) {
+    console.error('[listings-sync] spotlight cache rebuild failed', err)
+  }
+  try {
+    const { rebuildListingIfEstimates } = await import('@/lib/listing-if-compute')
+    rebuildListingIfEstimates()
+  } catch (err) {
+    console.error('[listings-sync] If estimates cache rebuild failed', err)
+  }
+  try {
+    const { warmComparableEdgesDeferred } = await import('@/lib/listing-comparables-cache')
+    warmComparableEdgesDeferred()
+  } catch (err) {
+    console.error('[listings-sync] comps edges warm schedule failed', err)
+  }
+  try {
+    const { rebuildAllListingEdgeScores } = await import('@/lib/listing-edge-score')
+    rebuildAllListingEdgeScores()
+  } catch (err) {
+    console.error('[listings-sync] edge scores rebuild failed', err)
+  }
+  try {
+    const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')
+    warmLatestTownFeedsDeferred()
+  } catch (err) {
+    console.error('[listings-sync] Latest town feed warm schedule failed', err)
+  }
+  try {
+    const { warmIntelligenceDealBoardDeferred } = await import('@/lib/intelligence-deal-board-cache')
+    warmIntelligenceDealBoardDeferred()
+  } catch (err) {
+    console.error('[listings-sync] Intelligence deal board warm schedule failed', err)
+  }
+}
+
+/** Active + Closed + Expired for a single town (no refresh lock). */
+async function syncFullResyncTownBuckets(town: TmreTown): Promise<TownSyncResult[]> {
+  const results: TownSyncResult[] = []
+  results.push(await syncTownListings(town, 'Active', { syncPhotos: false }))
+  await yieldToEventLoop()
+  results.push(await syncTownListings(town, 'Closed', { syncPhotos: false }))
+  await yieldToEventLoop()
+  results.push(await syncTownListings(town, 'Expired', { syncPhotos: false }))
+  return results
+}
+
+/** One town step of a chunked full resync (opens refresh lock on first town). */
+export async function syncFullResyncTown(town: TmreTown): Promise<TownSyncResult[]> {
+  if (!isRetsConfigured()) {
+    throw new Error(retsSyncBlockedMessage())
+  }
+  if (getSyncMeta('refresh_in_progress') !== '1') {
+    beginSqliteRefresh('full-sync-chunked')
+    setSyncMeta('last_full_sync_started', new Date().toISOString())
+  }
+  return syncFullResyncTownBuckets(town)
+}
+
+/** Finalize caches after client-driven town-by-town full resync. */
+export async function finalizeChunkedFullResync(): Promise<FullSyncResult> {
+  const startedAt = getSyncMeta('last_full_sync_started') ?? new Date().toISOString()
+  const t0 = Date.parse(startedAt)
+  const finishedAt = new Date().toISOString()
+
+  try {
+    await applyFullSyncPostamble(finishedAt)
+    const total = getListingsDbStats().total
+    console.info(
+      `[listings-sync] chunked full resync complete in ${Date.now() - t0}ms — ${total} listings`,
+    )
+    return {
+      startedAt,
+      finishedAt,
+      durationMs: Number.isNaN(t0) ? 0 : Date.now() - t0,
+      towns: [],
+      totalUpserted: total,
+    }
+  } finally {
+    endSqliteRefresh(finishedAt)
+    void warmActiveListingPhotosDeferred()
+  }
+}
+
 /** Iteratively sync every TMRE town — Active first, then Closed sales since 2019. */
 export async function syncAllTownListings(): Promise<FullSyncResult> {
   if (!isRetsConfigured()) {
@@ -475,17 +598,7 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
 
   try {
   for (const town of TMRE_TOWNS) {
-    towns.push(await syncTownListings(town, 'Active', { syncPhotos: false }))
-    await yieldToEventLoop()
-  }
-
-  for (const town of TMRE_TOWNS) {
-    towns.push(await syncTownListings(town, 'Closed', { syncPhotos: false }))
-    await yieldToEventLoop()
-  }
-
-  for (const town of TMRE_TOWNS) {
-    towns.push(await syncTownListings(town, 'Expired', { syncPhotos: false }))
+    towns.push(...(await syncFullResyncTownBuckets(town)))
     await yieldToEventLoop()
   }
 
@@ -494,83 +607,7 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
   const allOk = towns.every((row) => row.ok)
 
   if (allOk) {
-    publishListingsReadSnapshot()
-    setSyncMeta('last_full_sync', finishedAt)
-    try {
-      const { rebuildAllListingScores } = await import('@/lib/listing-scores-rebuild')
-      await rebuildAllListingScores()
-    } catch (err) {
-      console.error('[listings-sync] listing scores rebuild failed', err)
-    }
-    try {
-      const { rebuildAllListingSuperlatives } = await import(
-        '@/lib/listing-superlatives-rebuild'
-      )
-      await rebuildAllListingSuperlatives()
-    } catch (err) {
-      console.error('[listings-sync] listing superlatives rebuild failed', err)
-    }
-    try {
-      const { rebuildStatsCache } = await import('@/lib/stats-cache')
-      rebuildStatsCache({ trackRefresh: false })
-    } catch (err) {
-      console.error('[listings-sync] stats cache rebuild failed', err)
-    }
-    try {
-      const { rebuildDealOfTheDayCache } = await import('@/lib/deal-of-the-day-cache')
-      await rebuildDealOfTheDayCache()
-    } catch (err) {
-      console.error('[listings-sync] deal of the day cache rebuild failed', err)
-    }
-    try {
-      const { rebuildDealOfTheWeekCache } = await import('@/lib/deal-of-the-week-cache')
-      await rebuildDealOfTheWeekCache()
-    } catch (err) {
-      console.error('[listings-sync] deal of the week cache rebuild failed', err)
-    }
-    try {
-      const { rebuildSpotlightCache } = await import('@/lib/spotlight-cache')
-      const { SPOTLIGHT_PROPERTY_TABS } = await import('@/lib/spotlight-listing')
-      for (const tab of SPOTLIGHT_PROPERTY_TABS) {
-        await rebuildSpotlightCache(tab)
-      }
-    } catch (err) {
-      console.error('[listings-sync] spotlight cache rebuild failed', err)
-    }
-    try {
-      const { rebuildListingIfEstimates } = await import('@/lib/listing-if-compute')
-      rebuildListingIfEstimates()
-    } catch (err) {
-      console.error('[listings-sync] If estimates cache rebuild failed', err)
-    }
-    try {
-      const { warmComparableEdgesDeferred } = await import(
-        '@/lib/listing-comparables-cache'
-      )
-      warmComparableEdgesDeferred()
-    } catch (err) {
-      console.error('[listings-sync] comps edges warm schedule failed', err)
-    }
-    try {
-      const { rebuildAllListingEdgeScores } = await import('@/lib/listing-edge-score')
-      rebuildAllListingEdgeScores()
-    } catch (err) {
-      console.error('[listings-sync] edge scores rebuild failed', err)
-    }
-    try {
-      const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')
-      warmLatestTownFeedsDeferred()
-    } catch (err) {
-      console.error('[listings-sync] Latest town feed warm schedule failed', err)
-    }
-    try {
-      const { warmIntelligenceDealBoardDeferred } = await import(
-        '@/lib/intelligence-deal-board-cache'
-      )
-      warmIntelligenceDealBoardDeferred()
-    } catch (err) {
-      console.error('[listings-sync] Intelligence deal board warm schedule failed', err)
-    }
+    await applyFullSyncPostamble(finishedAt)
   }
 
   console.info(

@@ -58,9 +58,13 @@ export async function POST(req: NextRequest) {
   }
 
   let action = ''
+  let town: string | undefined
+  let finalize = false
   try {
-    const body = (await req.json()) as { action?: string }
+    const body = (await req.json()) as { action?: string; town?: string; finalize?: boolean }
     action = body.action?.trim() ?? ''
+    town = body.town?.trim()
+    finalize = body.finalize === true
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
@@ -70,7 +74,14 @@ export async function POST(req: NextRequest) {
   }
 
   const refresh = readSqliteRefreshStatus()
-  if (refresh.refreshing && action !== 'publish-snapshot' && action !== 'sync-all-caches') {
+  const chunkedFullResync =
+    action === 'full-resync' && (Boolean(town) || finalize)
+  if (
+    refresh.refreshing &&
+    action !== 'publish-snapshot' &&
+    action !== 'sync-all-caches' &&
+    !chunkedFullResync
+  ) {
     return NextResponse.json(
       { error: 'A database refresh is already in progress' },
       { status: 409 },
@@ -81,7 +92,7 @@ export async function POST(req: NextRequest) {
     const result =
       action === 'sync-all-caches'
         ? await runAdminSyncAllCaches()
-        : await runAdminSyncAction(action)
+        : await runAdminSyncAction(action, { town, finalize })
     const stats = getListingsDbStats()
     const nextRuns = buildAdminSyncNextRuns({
       lastFullSyncStarted: stats.lastFullSyncStarted,

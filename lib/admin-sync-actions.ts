@@ -3,13 +3,14 @@ import 'server-only'
 import { rebuildDealOfTheDayCache } from '@/lib/deal-of-the-day-cache'
 import { rebuildAllListingScores } from '@/lib/listing-scores-rebuild'
 import { getListingsDbStats, getSyncMeta, publishListingsReadSnapshot, setSyncMeta } from '@/lib/listings-db'
-import { syncAllTownListings, syncIncrementalListings, type TownSyncResult } from '@/lib/listings-sync'
+import { syncAllTownListings, syncIncrementalListings, syncFullResyncTown, finalizeChunkedFullResync, type TownSyncResult } from '@/lib/listings-sync'
 import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
+import { isTmreTown } from '@/lib/tmre-towns'
 import { rebuildStatsCache } from '@/lib/stats-cache'
 import { readSqliteRefreshStatus, healStaleRefreshLock } from '@/lib/sqlite-refresh-status'
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
 import { isServerlessRuntime } from '@/lib/runtime-host'
-import { queueNetlifyFullSync, queueNetlifyIncrementalSync } from '@/lib/netlify-sync-trigger'
+import { queueNetlifyIncrementalSync } from '@/lib/netlify-sync-trigger'
 import type { AdminSyncActionId, AdminSyncAllActionId } from '@/lib/admin-sync-types'
 import { ADMIN_SYNC_ACTIONS, ADMIN_SYNC_ALL_SEQUENCE } from '@/lib/admin-sync-types'
 
@@ -51,11 +52,17 @@ function formatSyncFailures(failed: TownSyncResult[]): string | undefined {
     .join(' · ')
 }
 
-async function queueNetlifyBackgroundFullSync(): Promise<boolean> {
-  return queueNetlifyFullSync()
+export type AdminSyncActionOptions = {
+  /** One town step of a chunked full resync. */
+  town?: string
+  /** Run cache rebuilds after all town steps. */
+  finalize?: boolean
 }
 
-export async function runAdminSyncAction(action: AdminSyncActionId): Promise<AdminSyncActionResult> {
+export async function runAdminSyncAction(
+  action: AdminSyncActionId,
+  options: AdminSyncActionOptions = {},
+): Promise<AdminSyncActionResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
   healStaleRefreshLock()
@@ -74,20 +81,56 @@ export async function runAdminSyncAction(action: AdminSyncActionId): Promise<Adm
           detail: retsSyncBlockedMessage(),
         }
       }
-      if (isServerlessRuntime()) {
-        const queued = await queueNetlifyBackgroundFullSync()
-        const finishedAt = new Date().toISOString()
-        if (queued) {
+      if (options.finalize) {
+        const result = await finalizeChunkedFullResync()
+        const finishedAt = result.finishedAt ?? new Date().toISOString()
+        return {
+          ok: true,
+          action,
+          startedAt: result.startedAt ?? startedAt,
+          finishedAt,
+          durationMs: result.durationMs || Date.now() - t0,
+          message: `Full resync complete — ${result.totalUpserted.toLocaleString()} listings`,
+        }
+      }
+      if (options.town) {
+        if (!isTmreTown(options.town)) {
+          const finishedAt = new Date().toISOString()
           return {
-            ok: true,
+            ok: false,
             action,
             startedAt,
             finishedAt,
             durationMs: Date.now() - t0,
-            backgroundQueued: true,
-            message:
-              'Full resync queued on Netlify (background). Scores, stats, and Deal of the Day run when it finishes — refresh admin in ~10–20 minutes.',
+            message: `Unknown town: ${options.town}`,
           }
+        }
+        const townResults = await syncFullResyncTown(options.town)
+        const ok = townResults.every((row) => row.ok)
+        const failed = townResults.filter((row) => !row.ok)
+        const upserts = townResults.reduce((sum, row) => sum + row.count, 0)
+        const finishedAt = new Date().toISOString()
+        return {
+          ok,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: ok
+            ? `${options.town} synced — ${upserts.toLocaleString()} listings`
+            : `${options.town} finished with ${failed.length} failure(s)`,
+          detail: formatSyncFailures(failed),
+        }
+      }
+      if (isServerlessRuntime()) {
+        const finishedAt = new Date().toISOString()
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: 'Full resync must run town-by-town on serverless — use Sync now (client chunks automatically)',
         }
       }
       const result = await syncAllTownListings()
