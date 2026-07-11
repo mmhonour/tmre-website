@@ -25,18 +25,22 @@ const LISTINGS_LAST_GOOD_COUNT_META_KEY = 'listings_last_good_count'
 
 /**
  * Absolute floor for the write-DB listing count before we allow a blob checkpoint.
- * This is the single most important safety guard: without it, a Lambda that failed
- * to hydrate from blobs would restore a schema-only DB, run incremental sync (adding
- * only recent-changes, say 98 rows), then overwrite the good 948-row blob with that
- * degraded DB — and lock in 98 as the new "last good" count, making every future check
- * compare against 49 (50% of 98) instead of 800+.
+ * Must be BELOW the minimum expected listing count for a valid partial sync so that
+ * a good checkpoint can establish `lastGood`.  The relative floor (75% of lastGood)
+ * then takes over as the real production guard.
  *
- * Set MIN_LISTING_COUNT env var in Netlify to override if your market grows/shrinks
- * significantly. Current TMRE production baseline is ~948.
+ * TMRE 7-town baseline is ~943 listings, so 800 gives a ~15% safety margin below
+ * that without blocking valid checkpoints.  The WAL-ordering fix ensures lastGood
+ * survives Lambda cold-starts, so once a good 943-listing checkpoint is saved the
+ * effective threshold becomes max(800, 943*0.75=707) = 800 — the absolute floor.
+ * After a 26K full-MLS sync lastGood=26K and the threshold rises to 19.5K, which
+ * prevents a degraded 943-listing Lambda from overwriting the large blob.
+ *
+ * Set MIN_LISTING_COUNT env var to override per environment.
  */
 const ABSOLUTE_MIN_LISTING_COUNT = Math.max(
   1,
-  Number(process.env.MIN_LISTING_COUNT ?? '2000'),
+  Number(process.env.MIN_LISTING_COUNT ?? '800'),
 )
 
 /** How many times to retry a blob fetch before giving up (with 1s/2s backoff). */

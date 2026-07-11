@@ -142,13 +142,23 @@ export default async function AdminPage() {
   const listingsDbEmpty =
     listingsDbRuntime.nativeModuleAvailable && stats.total === 0;
   const showListingsDbRuntime = listingsDbBroken || listingsDbEmpty;
+  // Use the same threshold logic as persistListingsDbCheckpoint:
+  // effective floor = max(absoluteMin, lastGood * 0.75).
+  // This means once a good checkpoint is established the warning reflects
+  // a real divergence from the prior known-good count, not a false alarm
+  // caused by the absolute floor being higher than the valid listing count.
+  const lastGoodForDisplay = blobRuntime.lastGoodListingCount ?? 0;
+  const effectiveMinListingCount = Math.max(
+    blobRuntime.absoluteMinListingCount,
+    lastGoodForDisplay > 0 ? Math.round(lastGoodForDisplay * 0.75) : 0,
+  );
   const listingsBelowMin =
     listingsDbRuntime.nativeModuleAvailable &&
     stats.total > 0 &&
-    stats.total < blobRuntime.absoluteMinListingCount;
+    stats.total < effectiveMinListingCount;
   const listingsHealthy =
     listingsDbRuntime.nativeModuleAvailable &&
-    stats.total >= blobRuntime.absoluteMinListingCount;
+    stats.total >= effectiveMinListingCount;
   const startupProcess = describeStartupProcess();
 
   const rows: StatusRow[] = [
@@ -481,7 +491,7 @@ export default async function AdminPage() {
                   : listingsDbEmpty
                     ? "⚠ 0 listings — DB empty or restore failed"
                     : listingsBelowMin
-                      ? `⚠ ${stats.total.toLocaleString()} listings — below minimum (${blobRuntime.absoluteMinListingCount.toLocaleString()})`
+                      ? `⚠ ${stats.total.toLocaleString()} listings — below threshold (${effectiveMinListingCount.toLocaleString()})`
                       : `${stats.total.toLocaleString()} listings in SQLite`}
               </span>
             </span>
@@ -501,7 +511,7 @@ export default async function AdminPage() {
                     ? "SQLite native module unavailable"
                     : listingsDbEmpty
                       ? "Listing database is empty on this Lambda"
-                      : `Only ${stats.total.toLocaleString()} listings — below the ${blobRuntime.absoluteMinListingCount.toLocaleString()} minimum`}
+                      : `Only ${stats.total.toLocaleString()} listings — below threshold (${effectiveMinListingCount.toLocaleString()})`}
                 </p>
                 <p className="text-sm text-charcoal/70 leading-snug max-w-3xl">
                   {listingsDbBroken ? (
