@@ -79,6 +79,7 @@ async function runFullResyncChunked(
     setRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
     refreshStatus: () => Promise<void>;
     runningId: AdminSyncActionId | "sync-all-caches" | null;
+    persistFinalStatus: (rowId: string, text: string) => void;
   },
 ): Promise<boolean> {
   if (hooks.runningId) return false;
@@ -234,33 +235,30 @@ async function runFullResyncChunked(
       },
     }));
     if (ok) {
+      const finalText =
+        formatSyncDescription(finish!.message, finish!.detail) ??
+        finish!.message ??
+        "Full resync complete";
       hooks.setErrors((prev) => ({ ...prev, [row.id]: undefined }));
       hooks.setMessages((prev) => ({ ...prev, [row.id]: finish!.message ?? "Complete" }));
-      hooks.setDescriptions((prev) => ({
-        ...prev,
-        [row.id]:
-          formatSyncDescription(finish!.message, finish!.detail) ??
-          finish!.message ??
-          "Full resync complete",
-      }));
+      hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+      hooks.persistFinalStatus(row.id, finalText);
     } else {
+      const finalText = "Full resync finalize failed";
       hooks.setErrors((prev) => ({
         ...prev,
         [row.id]: formatSyncError(finishRes!, finish!, "Finalize full resync"),
       }));
-      hooks.setDescriptions((prev) => ({
-        ...prev,
-        [row.id]: "Full resync finalize failed",
-      }));
+      hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+      hooks.persistFinalStatus(row.id, finalText);
     }
     return ok;
   } catch (err) {
     const errText = err instanceof Error ? err.message : "Sync failed";
+    const finalText = "Full resync interrupted";
     hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
-    hooks.setDescriptions((prev) => ({
-      ...prev,
-      [row.id]: "Full resync interrupted",
-    }));
+    hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+    hooks.persistFinalStatus(row.id, finalText);
     hooks.setRunTimings((prev) => ({
       ...prev,
       [row.id]: { started: startedAt, finished: new Date().toISOString() },
@@ -626,6 +624,23 @@ export default function AdminSyncTable({
   const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [descriptions, setDescriptions] = useState<Partial<Record<string, string>>>({});
+  // Persisted final status per row — survives page reloads via localStorage.
+  const [finalStatuses, setFinalStatuses] = useState<Partial<Record<string, string>>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem("admin-sync-final-statuses");
+      return raw ? (JSON.parse(raw) as Partial<Record<string, string>>) : {};
+    } catch {
+      return {};
+    }
+  });
+  const persistFinalStatus = useCallback((rowId: string, text: string) => {
+    setFinalStatuses((prev) => {
+      const next = { ...prev, [rowId]: text };
+      try { localStorage.setItem("admin-sync-final-statuses", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
   const [runTimings, setRunTimings] = useState<Partial<Record<string, SyncTiming>>>({});
   const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -667,6 +682,7 @@ export default function AdminSyncTable({
           setRefreshing,
           refreshStatus,
           runningId,
+          persistFinalStatus,
         });
         return;
       }
@@ -721,14 +737,13 @@ export default function AdminSyncTable({
           ...prev,
           [row.id]: body.message ?? "Complete",
         }));
-        setDescriptions((prev) => ({
-          ...prev,
-          [row.id]:
-            formatSyncDescription(body.message, body.detail) ??
-            body.message ??
-            row.detail ??
-            "",
-        }));
+        const finalText =
+          formatSyncDescription(body.message, body.detail) ??
+          body.message ??
+          row.detail ??
+          "";
+        setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+        if (finalText) persistFinalStatus(row.id, finalText);
       } catch (err) {
         setErrors((prev) => ({
           ...prev,
@@ -743,7 +758,7 @@ export default function AdminSyncTable({
         void refreshStatus();
       }
     },
-    [runningId, refreshStatus],
+    [runningId, refreshStatus, persistFinalStatus],
   );
 
   const runSyncAll = useCallback(async () => {
@@ -773,6 +788,7 @@ export default function AdminSyncTable({
           const ok = await runFullResyncChunked(row, {
             setRunningId,
             setDescriptions,
+            persistFinalStatus,
             setMessages,
             setErrors,
             setRunTimings,
@@ -830,14 +846,13 @@ export default function AdminSyncTable({
         if (rowId) {
           setErrors((prev) => ({ ...prev, [rowId]: undefined }));
           setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
-          setDescriptions((prev) => ({
-            ...prev,
-            [rowId]:
-              formatSyncDescription(body.message, body.detail) ??
-              body.message ??
-              rows.find((r) => r.id === rowId)?.detail ??
-              "",
-          }));
+          const syncAllFinalText =
+            formatSyncDescription(body.message, body.detail) ??
+            body.message ??
+            rows.find((r) => r.id === rowId)?.detail ??
+            "";
+          setDescriptions((prev) => ({ ...prev, [rowId]: syncAllFinalText }));
+          if (syncAllFinalText) persistFinalStatus(rowId, syncAllFinalText);
           const queued = Boolean(body.backgroundQueued);
           setRunTimings((prev) => ({
             ...prev,
@@ -1124,17 +1139,19 @@ export default function AdminSyncTable({
                   <td className={TD}>
                     {(() => {
                       const liveDescription = descriptions[row.id];
-                      if (liveDescription) {
+                      if (isRunning || syncAllRunning) {
+                        // Live in-progress text takes priority
                         return (
-                          <p className="text-sm leading-snug text-navy font-medium">
-                            {liveDescription}
+                          <p className="font-mono text-[10px] text-gold uppercase tracking-wide">
+                            {liveDescription ?? "Running…"}
                           </p>
                         );
                       }
-                      if (isRunning || syncAllRunning) {
+                      const finalText = liveDescription ?? finalStatuses[row.id];
+                      if (finalText) {
                         return (
-                          <p className="font-mono text-[10px] text-gold uppercase tracking-wide">
-                            Running…
+                          <p className="text-[10px] leading-snug text-slate/80">
+                            {finalText}
                           </p>
                         );
                       }
