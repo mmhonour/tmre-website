@@ -156,6 +156,19 @@ function resetReadDbConnection(): void {
   readDb = null
 }
 
+/** Close cached handles after restoring listings.db from external storage. */
+export function resetListingsDbConnections(): void {
+  resetReadDbConnection()
+  if (writeDb) {
+    try {
+      writeDb.close()
+    } catch {
+      /* ignore */
+    }
+    writeDb = null
+  }
+}
+
 /** Publish a read-only snapshot for API reads (called after sync / cache rebuild). */
 export function publishListingsReadSnapshot(): void {
   const database = tryGetWriteDb()
@@ -1590,6 +1603,30 @@ export function getListingsDbStats(): {
     lastDealOfTheDayCache: getSyncMeta('last_deal_of_the_day_cache'),
     lastDealOfTheDayCacheStarted: getSyncMeta('last_deal_of_the_day_cache_started'),
   }
+}
+
+/** Row count on the write DB — accurate during chunked sync before read snapshot publish. */
+export function countWriteDbListings(): number {
+  const database = tryGetWriteDb()
+  if (!database) return 0
+  const row = database.prepare('SELECT COUNT(*) AS count FROM listings').get() as { count: number }
+  return row.count
+}
+
+/** Active / Closed / Expired counts on the write DB. */
+export function countWriteDbListingsByBucket(): Record<string, number> {
+  const database = tryGetWriteDb()
+  if (!database) return {}
+  const rows = database
+    .prepare(
+      `SELECT status_bucket AS bucket, COUNT(*) AS count
+       FROM listings
+       GROUP BY status_bucket`,
+    )
+    .all() as { bucket: string; count: number }[]
+  const out: Record<string, number> = {}
+  for (const row of rows) out[row.bucket] = row.count
+  return out
 }
 
 /** Newest MLS modification timestamp across Active listings (naive UTC strings). */

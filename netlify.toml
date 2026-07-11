@@ -15,7 +15,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["rets-client", "node-expat", "better-sqlite3", "bindings"]
+  external_node_modules = ["rets-client", "node-expat", "better-sqlite3", "bindings", "@netlify/blobs"]
   included_files = [
     "node_modules/rets-client/**",
     "node_modules/node-expat/**",

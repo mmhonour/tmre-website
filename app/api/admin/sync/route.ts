@@ -6,14 +6,17 @@ import {
   runAdminSyncAction,
   runAdminSyncAllCaches,
 } from '@/lib/admin-sync-actions'
-import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
+import { buildAdminSyncNextRuns, buildAdminSyncScheduleHints } from '@/lib/admin-sync-schedule'
+import { ensurePostDeployFullResyncScheduled } from '@/lib/deploy-full-resync-schedule'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   describeListingsDbRuntime,
   getListingsDbStats,
   getSyncMeta,
   readLatestListingModificationTimestamp,
+  resetListingsDbConnections,
 } from '@/lib/listings-db'
+import { ensureListingsDbHydrated } from '@/lib/listings-db-persist'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'
 import { readRecentSyncFailures } from '@/lib/listings-db'
@@ -27,7 +30,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { stats, refresh, nextRuns } = readAdminSyncPanelStatus()
+  await ensureListingsDbHydrated(resetListingsDbConnections)
+  await ensurePostDeployFullResyncScheduled()
+
+  const { stats, refresh, nextRuns, scheduleHints } = readAdminSyncPanelStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
 
@@ -46,6 +52,7 @@ export async function GET(req: NextRequest) {
     propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
     stats,
     nextRuns,
+    scheduleHints,
     rets,
     syncFailures: readRecentSyncFailures(8),
     listingsDbRuntime: describeListingsDbRuntime(),
@@ -72,6 +79,9 @@ export async function POST(req: NextRequest) {
   if (!isAdminSyncActionId(action) && !isAdminSyncAllActionId(action)) {
     return NextResponse.json({ error: 'Unknown sync action' }, { status: 400 })
   }
+
+  await ensureListingsDbHydrated(resetListingsDbConnections)
+  await ensurePostDeployFullResyncScheduled()
 
   const refresh = readSqliteRefreshStatus()
   const chunkedFullResync =
@@ -108,10 +118,12 @@ export async function POST(req: NextRequest) {
       lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
       lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
     })
+    const scheduleHints = buildAdminSyncScheduleHints()
     return NextResponse.json({
       ...result,
       stats,
       nextRuns,
+      scheduleHints,
       latestListingUpdate: readLatestListingModificationTimestamp(),
       propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
       refreshing: readSqliteRefreshStatus().refreshing,

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
+import { resetListingsDbConnections } from '@/lib/listings-db'
+import { ensureListingsDbHydrated } from '@/lib/listings-db-persist'
 import {
   forceClearSqliteRefreshLock,
   readRefreshLockHistorySummary,
@@ -14,6 +16,8 @@ export async function GET(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  await ensureListingsDbHydrated(resetListingsDbConnections)
 
   const lock = readSqliteRefreshLockStatus()
   const refresh = readSqliteRefreshStatus()
@@ -30,6 +34,8 @@ export async function POST(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  await ensureListingsDbHydrated(resetListingsDbConnections)
 
   const before = readSqliteRefreshLockStatus()
   if (!before.inProgress && before.depth <= 0) {

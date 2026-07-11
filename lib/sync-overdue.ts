@@ -10,8 +10,10 @@ import {
   parseIsoMs,
   statsRefreshIntervalMs,
 } from '@/lib/admin-sync-schedule'
-import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/listings-db'
+import { deleteSyncMeta, getSyncMeta, resetListingsDbConnections, setSyncMeta } from '@/lib/listings-db'
+import { ensureListingsDbHydrated } from '@/lib/listings-db-persist'
 import { isRetsConfigured } from '@/lib/rets'
+import { isServerlessRuntime } from '@/lib/runtime-host'
 
 export type OverdueSyncJob = AdminSyncActionId | 'edge-scores'
 
@@ -131,6 +133,10 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     if (overdue.has('full-resync')) overdue.delete(chained)
   }
 
+  if (isServerlessRuntime()) {
+    overdue.delete('full-resync')
+  }
+
   return EXECUTION_ORDER.filter((job) => overdue.has(job))
 }
 
@@ -179,6 +185,8 @@ export async function runOverdueSyncCatchup(options?: {
   if (!overdueCatchupEnabled()) {
     return { skipped: true, reason: 'disabled', plan: [], steps: [] }
   }
+
+  await ensureListingsDbHydrated(resetListingsDbConnections)
 
   if (getSyncMeta('refresh_in_progress') === '1') {
     return { skipped: true, reason: 'refresh in progress', plan: [], steps: [] }

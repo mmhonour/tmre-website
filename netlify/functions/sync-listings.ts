@@ -1,12 +1,18 @@
 import type { Config } from '@netlify/functions'
-import { getSyncStatus, syncListingsSmart } from '../../lib/listings-sync'
+import { getSyncStatus, syncIncrementalListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 import { LATEST_DB_REFRESH_MS } from '../../lib/latest-refresh'
 
 export default async function handler() {
+  process.env.NETLIFY_SYNC_HANDLER = '1'
+
+  const { ensureListingsDbHydrated } = await import('../../lib/listings-db-persist')
+  const { resetListingsDbConnections } = await import('../../lib/listings-db')
+  await ensureListingsDbHydrated(resetListingsDbConnections)
+
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings' })
-    const result = await syncListingsSmart()
+    const result = await syncIncrementalListings()
     return new Response(
       JSON.stringify({
         ok: result.towns.every((row) => row.ok),

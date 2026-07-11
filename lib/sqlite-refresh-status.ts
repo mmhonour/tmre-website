@@ -103,10 +103,14 @@ function finalizeActiveHistoryEntry(
   finishedAt: string,
   options: { clearedManually?: boolean } = {},
 ): void {
-  if (!activeHistoryEntryId) return
-
   const entries = pruneRefreshLockHistory(readRefreshLockHistoryRaw())
-  const idx = entries.findIndex((entry) => entry.id === activeHistoryEntryId)
+  const entryId =
+    activeHistoryEntryId ??
+    [...entries].reverse().find((entry) => entry.finishedAt == null)?.id ??
+    null
+  if (!entryId) return
+
+  const idx = entries.findIndex((entry) => entry.id === entryId)
   if (idx < 0) return
 
   const startedMs = parseIsoMs(entries[idx].startedAt)
@@ -128,6 +132,7 @@ function finalizeActiveHistoryEntry(
     ...(options.clearedManually ? { clearedManually: true } : {}),
   }
   writeRefreshLockHistory(entries)
+  if (activeHistoryEntryId === entryId) activeHistoryEntryId = null
 }
 
 function startRefreshLockHistoryEntry(source: string | null): void {
@@ -244,6 +249,9 @@ export function forceClearSqliteRefreshLock(): SqliteRefreshLockStatus {
   activeHistoryEntryId = null
   setSyncMeta('refresh_depth', '0')
   setSyncMeta('refresh_in_progress', '0')
+  void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
+    scheduleListingsDbBlobPersist('refresh-lock-force-clear'),
+  )
   return before
 }
 
@@ -255,6 +263,9 @@ export function beginSqliteRefresh(source: string | null = null): void {
     startRefreshLockHistoryEntry(source)
     setSyncMeta('refresh_in_progress', '1')
     setSyncMeta('last_refresh_started_at', new Date().toISOString())
+    void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
+      scheduleListingsDbBlobPersist('refresh-lock-begin'),
+    )
   }
 }
 
@@ -269,6 +280,9 @@ export function endSqliteRefresh(finishedAt?: string): void {
     activeHistoryEntryId = null
     setSyncMeta('refresh_in_progress', '0')
     if (finishedAt) setSyncMeta('last_refresh_finished_at', finishedAt)
+    void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
+      scheduleListingsDbBlobPersist('refresh-lock-end'),
+    )
   }
 }
 

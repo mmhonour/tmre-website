@@ -12,8 +12,10 @@ export async function register() {
   // Eager seed + warm SQLite on serverless cold starts before first request.
   if (isServerlessRuntime()) {
     try {
-      const { ensureListingsDbSeeded, tryGetWriteDb, describeListingsDbRuntime } =
+      const { ensureListingsDbSeeded, tryGetWriteDb, describeListingsDbRuntime, resetListingsDbConnections } =
         await import('./lib/listings-db')
+      const { ensureListingsDbHydrated } = await import('./lib/listings-db-persist')
+      await ensureListingsDbHydrated(resetListingsDbConnections)
       ensureListingsDbSeeded()
       tryGetWriteDb()
       console.info('[listings-db] serverless startup:', describeListingsDbRuntime())
@@ -174,19 +176,15 @@ export async function register() {
       }
 
       const listingsIntervalMs = Number(process.env.LISTINGS_SYNC_INTERVAL_MS ?? '0')
-      if (isServerlessRuntime()) {
-        if (!hasLocalListingsCache()) {
-          const { queueNetlifyFullSync } = await import('./lib/netlify-sync-trigger')
-          setTimeout(() => {
-            void queueNetlifyFullSync().then((queued) => {
-              console.info(
-                queued
-                  ? '[listings-sync] queued Netlify background full warm (empty SQLite)'
-                  : '[listings-sync] Netlify background warm trigger failed — use admin step 1',
-              )
-            })
-          }, 8_000)
-        }
+      if (isServerlessRuntime() && process.env.NETLIFY === 'true') {
+        const { ensurePostDeployFullResyncScheduled } = await import(
+          './lib/deploy-full-resync-schedule'
+        )
+        setTimeout(() => {
+          void ensurePostDeployFullResyncScheduled().catch((err) => {
+            console.error('[deploy-full-resync/startup]', err)
+          })
+        }, 8_000)
       } else if (Number.isFinite(listingsIntervalMs) && listingsIntervalMs >= 60_000) {
         setTimeout(runListingsSync, 10_000)
         setInterval(runListingsSync, listingsIntervalMs)

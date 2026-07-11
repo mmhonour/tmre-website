@@ -1,4 +1,5 @@
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
+import { postDeployDelayLabel } from "@/lib/deploy-full-resync-schedule";
 
 export type StartupStepStatus = "active" | "scheduled" | "skipped" | "info";
 
@@ -332,9 +333,10 @@ export function describeStartupProcess(): {
         : [
             {
               id: "smart-warm",
-              title: "Warm empty SQLite on Netlify cold start",
+              title: "Schedule post-deploy full warm",
               timing: "+8s",
-              detail: "Runs once when /tmp has no local listings cache.",
+              detail:
+                "When SQLite is empty after a deploy, schedules background full reload (~2 min). Countdown appears on admin Full resync row.",
               status: netlifyWarmEnabled ? "scheduled" : "skipped",
               statusLabel: netlifyWarmEnabled ? "Scheduled" : "—",
             },
@@ -359,9 +361,18 @@ export function describeStartupProcess(): {
         },
         {
           id: "deploy-cron",
+          title: "Post-deploy full warm",
+          timing: `~${postDeployDelayLabel()} after first request`,
+          detail:
+            "After each Netlify deploy, the first serverless request schedules a background full MLS reload when SQLite is empty. Admin Full resync row shows a live countdown until then.",
+          status: "info",
+          statusLabel: "Warm",
+        },
+        {
+          id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full daily ~5am ET + sync-property-addresses weekly Mon ~1am ET. Each cron runs overdue catch-up first.`,
+          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full daily ~5am ET + sync-property-addresses weekly Mon ~1am ET.`,
           status: "info",
           statusLabel: "Cron",
         },

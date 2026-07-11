@@ -8,6 +8,12 @@ import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
  * Eastern Standard / 6:00am Daylight; Netlify cron is UTC-only.
  */
 export default async function handler() {
+  process.env.NETLIFY_SYNC_HANDLER = '1'
+
+  const { ensureListingsDbHydrated } = await import('../../lib/listings-db-persist')
+  const { resetListingsDbConnections } = await import('../../lib/listings-db')
+  await ensureListingsDbHydrated(resetListingsDbConnections)
+
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings-full' })
     const ranFull =

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { LATEST_DB_REFRESH_MS } from '@/lib/latest-refresh'
+import { readPostDeployFullResyncStatus } from '@/lib/deploy-full-resync-schedule'
 import { nextMonday1amEt } from '@/lib/property-address-schedule'
 import { nextMonday2amEt } from '@/lib/listing-edge-schedule'
 import { STATS_CACHE_TTL_MS } from '@/lib/stats-cache'
@@ -10,6 +11,12 @@ export type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 export { formatAdminNextSyncAt } from '@/lib/admin-sync-schedule-format'
 
 export type AdminSyncNextRuns = Record<AdminSyncPanelRowId, string | null>
+
+export type AdminSyncScheduleHints = {
+  fullResyncSource: 'post-deploy' | 'daily' | null
+  postDeployScheduledAt: string | null
+  postDeployDeployId: string | null
+}
 
 type BuildNextRunsInput = {
   lastFullSyncStarted: string | null
@@ -207,7 +214,12 @@ export function buildAdminSyncNextRuns(input: BuildNextRunsInput, now = new Date
   const incrementalIntervalMs = latestIntervalMs()
   const statsIntervalMs = statsRefreshIntervalMs()
 
-  const nextFullResync = nextDailyTimeEt(5, 0, now)
+  const postDeploy = readPostDeployFullResyncStatus(now)
+  const nextFullResyncDaily = nextDailyTimeEt(5, 0, now)
+  const nextFullResync =
+    postDeploy.nextAt && postDeploy.source === 'post-deploy'
+      ? new Date(postDeploy.nextAt)
+      : nextFullResyncDaily
   const nextIncremental = nextIntervalStart(input.lastIncrementalSync, incrementalIntervalMs, now)
   const nextStatsCache = nextIntervalStart(input.lastStatsCache, statsIntervalMs, now)
   const nextRefresh = earliestDate(nextIncremental, nextFullResync)
@@ -222,5 +234,14 @@ export function buildAdminSyncNextRuns(input: BuildNextRunsInput, now = new Date
     'stats-cache': nextStatsCache.toISOString(),
     'deal-of-the-day': nextFullResync.toISOString(),
     'property-addresses': nextPropertyAddresses.toISOString(),
+  }
+}
+
+export function buildAdminSyncScheduleHints(now = new Date()): AdminSyncScheduleHints {
+  const postDeploy = readPostDeployFullResyncStatus(now)
+  return {
+    fullResyncSource: postDeploy.source,
+    postDeployScheduledAt: postDeploy.scheduledAt,
+    postDeployDeployId: postDeploy.deployId,
   }
 }

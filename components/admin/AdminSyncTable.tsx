@@ -9,7 +9,8 @@ import {
   ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL,
 } from "@/lib/admin-sync-types";
 import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
-import { formatAdminNextSyncAt } from "@/lib/admin-sync-schedule-format";
+import { formatAdminNextSyncAt, formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
+import type { AdminSyncScheduleHints } from "@/lib/admin-sync-schedule";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
@@ -231,6 +232,7 @@ type PanelStatus = {
   propertyAddressesSyncedAt?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
+  scheduleHints?: AdminSyncScheduleHints;
   rets?: {
     configured: boolean;
     status: string;
@@ -983,9 +985,17 @@ export default function AdminSyncTable({
                           : "text-navy"
                       }`}
                     >
-                      {formatAdminNextSyncAt(nextRunAt, now)}
+                      {row.id === "full-resync" &&
+                      status?.scheduleHints?.fullResyncSource === "post-deploy"
+                        ? formatAdminNextSyncCountdown(nextRunAt, now)
+                        : formatAdminNextSyncAt(nextRunAt, now)}
                     </p>
-                    {visual === "alert" ? (
+                    {row.id === "full-resync" &&
+                    status?.scheduleHints?.fullResyncSource === "post-deploy" ? (
+                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-gold uppercase">
+                        Post-deploy warm
+                      </p>
+                    ) : visual === "alert" ? (
                       <p className="mt-0.5 font-mono text-[9px] tracking-wide text-rose-600/80 uppercase">
                         {isTimingHung(timing, nowMs) ||
                         (row.id === "refresh-finished" && status?.refreshing)

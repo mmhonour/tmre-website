@@ -1,4 +1,5 @@
 import type { TownSyncResult } from '@/lib/listings-sync'
+import type { TableWriteStats } from '@/lib/sqlite-sync-stats'
 
 /** One-line bucket counts, e.g. "Active 234 · Closed 1,892 · Expired 12 (2,138 fetched)". */
 export function formatTownSyncBreakdown(results: TownSyncResult[]): string {
@@ -36,6 +37,74 @@ export function formatFullResyncTownPending(options: {
       ? ` · ${sqliteTotal.toLocaleString()} listings loaded so far`
       : ''
   return `Fetching ${town} from MLS (Active, Closed, Expired)… step ${townIndex}/${townCount}${sqlite}`
+}
+
+/** Compact per-table row counts for admin Description column. */
+export function formatTableStatsSummary(tables: TableWriteStats[]): string {
+  if (tables.length === 0) return 'SQLite tables empty'
+  return tables.map((row) => `${row.table} ${row.queried.toLocaleString()}`).join(' · ')
+}
+
+function formatBucketSummary(byBucket: Record<string, number>): string {
+  const order = ['Active', 'Closed', 'Expired']
+  const parts = order
+    .filter((bucket) => (byBucket[bucket] ?? 0) > 0)
+    .map((bucket) => `${bucket} ${byBucket[bucket]!.toLocaleString()}`)
+  for (const [bucket, count] of Object.entries(byBucket)) {
+    if (order.includes(bucket) || count <= 0) continue
+    parts.push(`${bucket} ${count.toLocaleString()}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : '0 rows'
+}
+
+/** Final full-resync detail with per-table SQLite counts. */
+export function formatFullResyncCompleteDetail(options: {
+  listingTotal: number
+  byBucket?: Record<string, number>
+  fetchedTotal?: number
+  tables: TableWriteStats[]
+}): string {
+  const { listingTotal, byBucket, fetchedTotal, tables } = options
+  const lines: string[] = []
+
+  const bucketLine =
+    byBucket && Object.keys(byBucket).length > 0
+      ? formatBucketSummary(byBucket)
+      : null
+  const fetchedSuffix =
+    fetchedTotal != null && fetchedTotal > 0 && fetchedTotal !== listingTotal
+      ? ` (${fetchedTotal.toLocaleString()} fetched from MLS this run)`
+      : ''
+
+  lines.push(
+    bucketLine
+      ? `listings ${listingTotal.toLocaleString()} — ${bucketLine}${fetchedSuffix}`
+      : `listings ${listingTotal.toLocaleString()}${fetchedSuffix}`,
+  )
+
+  const otherTables = tables.filter((row) => row.table !== 'listings')
+  if (otherTables.length > 0) {
+    lines.push(formatTableStatsSummary(otherTables))
+  }
+
+  lines.push(
+    'Rebuilt scores, stats, Deal of the Day, intelligence board caches, and published read snapshot',
+  )
+  return lines.join(' — ')
+}
+
+/** Town-step detail with per-table counts on the write DB. */
+export function formatFullResyncTownProgressWithTables(options: {
+  town: string
+  townIndex: number
+  townCount: number
+  townResults: TownSyncResult[]
+  sqliteTotal: number | null
+  tables: TableWriteStats[]
+}): string {
+  const base = formatFullResyncTownProgress(options)
+  const tableSummary = formatTableStatsSummary(options.tables)
+  return tableSummary === 'SQLite tables empty' ? base : `${base} — ${tableSummary}`
 }
 
 /** Incremental / multi-town summary. */

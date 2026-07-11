@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { AdminSyncActionId, AdminSyncTableStatsReport } from '@/lib/admin-sync-types'
-import { getListingsDb, setSyncMeta, tryGetReadDb } from '@/lib/listings-db'
+import { getListingsDb, setSyncMeta, tryGetReadDb, tryGetWriteDb } from '@/lib/listings-db'
 
 export type TableWriteStats = {
   table: string
@@ -145,6 +145,16 @@ function quoteIdent(name: string): string {
 /** Row counts per user table — used for read-snapshot publish reporting. */
 export function collectListingsDatabaseTableStats(): TableWriteStats[] {
   const database = tryGetReadDb() ?? getListingsDb()
+  return collectDatabaseTableStats(database)
+}
+
+/** Row counts on the write DB — accurate before read snapshot publish. */
+export function collectWriteDatabaseTableStats(): TableWriteStats[] {
+  const database = tryGetWriteDb() ?? getListingsDb()
+  return collectDatabaseTableStats(database)
+}
+
+function collectDatabaseTableStats(database: import('better-sqlite3').Database): TableWriteStats[] {
   const tables = database
     .prepare(
       `SELECT name FROM sqlite_master

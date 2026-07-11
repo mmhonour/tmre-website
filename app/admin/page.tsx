@@ -15,7 +15,11 @@ import {
   getListingsDbStats,
   getSyncMeta,
   readLatestListingModificationTimestamp,
+  resetListingsDbConnections,
 } from "@/lib/listings-db";
+import { ensureListingsDbHydrated } from "@/lib/listings-db-persist";
+import { ensurePostDeployFullResyncScheduled } from "@/lib/deploy-full-resync-schedule";
+import { formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
 import { mlsTimestampDate } from "@/lib/mls-time";
 import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
@@ -77,8 +81,11 @@ export default async function AdminPage() {
     );
   }
 
+  await ensureListingsDbHydrated(resetListingsDbConnections);
+  await ensurePostDeployFullResyncScheduled();
+
   const stats = getListingsDbStats();
-  const { refresh, nextRuns } = readAdminSyncPanelStatus();
+  const { refresh, nextRuns, scheduleHints } = readAdminSyncPanelStatus();
   const refreshLock = readSqliteRefreshLockStatus();
   const refreshLockHistory = readRefreshLockHistorySummary();
   const latestListingUpdate = readLatestListingModificationTimestamp();
@@ -256,7 +263,19 @@ export default async function AdminPage() {
               <p className="text-sm text-slate leading-snug mb-3">
                 SQLite is connected but empty — the deploy bundle is schema-only (
                 {listingsDbRuntime.deployBundleBytes?.toLocaleString() ?? "?"} bytes). Run{" "}
-                <strong>step 1 Full resync</strong> or wait for the startup / scheduled sync to
+                <strong>step 1 Full resync</strong>
+                {scheduleHints.fullResyncSource === "post-deploy" &&
+                nextRuns["full-resync"] ? (
+                  <>
+                    {" "}
+                    or wait for the post-deploy warm in{" "}
+                    <strong>
+                      {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
+                    </strong>
+                  </>
+                ) : (
+                  <> or wait for the startup / scheduled sync to</>
+                )}{" "}
                 pull MLS data into <code className="font-mono text-xs">/tmp</code>.
               </p>
             ) : null}

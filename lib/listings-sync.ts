@@ -27,6 +27,7 @@ import { searchListings, type Listing, type SearchParams } from '@/lib/rets'
 import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
 import { STATS_CLOSED_PERIOD_START } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+import { isServerlessRuntime } from '@/lib/runtime-host'
 
 export type TownSyncResult = {
   town: TmreTown
@@ -234,6 +235,7 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
     }
   } finally {
     endSqliteRefresh(new Date().toISOString())
+    await persistWriteDbAfterChunk()
   }
 }
 
@@ -253,6 +255,12 @@ export async function syncListingsSmart(): Promise<FullSyncResult | IncrementalS
     }
   }
   if (shouldRunFullSync()) {
+    if (isServerlessRuntime()) {
+      console.info(
+        '[listings-sync] serverless — skipping monolithic full sync (use admin chunked resync)',
+      )
+      return syncIncrementalListings()
+    }
     console.info('[listings-sync] running scheduled full sync')
     return syncAllTownListings()
   }
@@ -534,8 +542,17 @@ export async function syncFullResyncTown(town: TmreTown): Promise<TownSyncResult
   if (getSyncMeta('refresh_in_progress') !== '1') {
     beginSqliteRefresh('full-sync-chunked')
     setSyncMeta('last_full_sync_started', new Date().toISOString())
+    const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
+    await clearChunkedFullResyncProgress()
   }
-  return syncFullResyncTownBuckets(town)
+  const results = await syncFullResyncTownBuckets(town)
+  await persistWriteDbAfterChunk()
+  return results
+}
+
+async function persistWriteDbAfterChunk(): Promise<void> {
+  const { persistListingsDbCheckpoint } = await import('@/lib/listings-db-persist')
+  await persistListingsDbCheckpoint()
 }
 
 /** Finalize caches after client-driven town-by-town full resync. */
@@ -546,7 +563,13 @@ export async function finalizeChunkedFullResync(): Promise<FullSyncResult> {
 
   try {
     await applyFullSyncPostamble(finishedAt)
-    const total = getListingsDbStats().total
+    const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
+    markPostDeployFullResyncComplete()
+    const { countWriteDbListings } = await import('@/lib/listings-db')
+    const total = countWriteDbListings() || getListingsDbStats().total
+    await persistWriteDbAfterChunk()
+    const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
+    await clearChunkedFullResyncProgress()
     console.info(
       `[listings-sync] chunked full resync complete in ${Date.now() - t0}ms — ${total} listings`,
     )
@@ -608,6 +631,8 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
 
   if (allOk) {
     await applyFullSyncPostamble(finishedAt)
+    const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
+    markPostDeployFullResyncComplete()
   }
 
   console.info(
