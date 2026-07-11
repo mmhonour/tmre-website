@@ -101,10 +101,11 @@ export default function AdminTabbedLayout({
           </ul>
         </nav>
 
+        {/* Single-row tab bar — inactive tabs show label only; active tab expands with subtitle */}
         <div
           role="tablist"
           aria-label="Admin areas"
-          className="mb-8 flex flex-col gap-2 sm:flex-row sm:flex-wrap"
+          className="mb-8 flex flex-row items-start gap-2 overflow-x-auto pb-0.5"
         >
           {ADMIN_TABS.map((item) => {
             const active = tab === item.id;
@@ -115,22 +116,20 @@ export default function AdminTabbedLayout({
                 role="tab"
                 aria-selected={active}
                 onClick={() => selectTab(item.id)}
-                className={`min-w-0 flex-1 rounded-2xl border px-4 py-3 text-left transition-colors sm:min-w-[12rem] sm:flex-none ${
+                className={`shrink-0 rounded-2xl border px-4 text-left transition-all duration-150 ${
                   active
-                    ? "border-navy bg-navy text-white shadow-sm"
-                    : "border-charcoal/[0.08] bg-white text-charcoal hover:border-gold/35"
+                    ? "py-3 border-navy bg-navy text-white shadow-sm"
+                    : "py-2.5 border-charcoal/[0.08] bg-white text-charcoal hover:border-gold/35"
                 }`}
               >
-                <span className="block font-mono text-[11px] tracking-[0.16em] uppercase">
+                <span className="block font-mono text-[11px] tracking-[0.16em] uppercase whitespace-nowrap">
                   {item.label}
                 </span>
-                <span
-                  className={`mt-1 block text-xs leading-snug ${
-                    active ? "text-white/70" : "text-charcoal/55"
-                  }`}
-                >
-                  {item.subtitle}
-                </span>
+                {active && (
+                  <span className="mt-1 block text-xs leading-snug text-white/70 max-w-[18rem]">
+                    {item.subtitle}
+                  </span>
+                )}
               </button>
             );
           })}

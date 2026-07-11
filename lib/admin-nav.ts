@@ -27,6 +27,11 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "SQLite sync, schemas, and refresh locks",
   },
   {
+    id: "rets",
+    label: "RETS",
+    subtitle: "SmartMLS credentials and connection health",
+  },
+  {
     id: "server",
     label: "Web server",
     subtitle: "Startup schedule, Netlify functions, and API routes",
@@ -40,11 +45,6 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "site",
     label: "Site controls",
     subtitle: "Spotlight properties and privacy overrides",
-  },
-  {
-    id: "rets",
-    label: "RETS",
-    subtitle: "SmartMLS credentials and connection health",
   },
 ];
 
