@@ -21,6 +21,25 @@ const MIN_PHOTOS_BYTES = 4_096
 /** sync_meta key tracking the last listing count we safely checkpointed to blobs. */
 const LISTINGS_LAST_GOOD_COUNT_META_KEY = 'listings_last_good_count'
 
+/**
+ * Absolute floor for the write-DB listing count before we allow a blob checkpoint.
+ * This is the single most important safety guard: without it, a Lambda that failed
+ * to hydrate from blobs would restore a schema-only DB, run incremental sync (adding
+ * only recent-changes, say 98 rows), then overwrite the good 948-row blob with that
+ * degraded DB — and lock in 98 as the new "last good" count, making every future check
+ * compare against 49 (50% of 98) instead of 800+.
+ *
+ * Set MIN_LISTING_COUNT env var in Netlify to override if your market grows/shrinks
+ * significantly. Current TMRE production baseline is ~948.
+ */
+const ABSOLUTE_MIN_LISTING_COUNT = Math.max(
+  1,
+  Number(process.env.MIN_LISTING_COUNT ?? '800'),
+)
+
+/** How many times to retry a blob fetch before giving up (with 1s/2s backoff). */
+const BLOB_RESTORE_MAX_ATTEMPTS = 3
+
 export type ChunkedFullResyncProgress = {
   fetchedTotal: number
   townsCompleted: string[]
@@ -60,6 +79,10 @@ export async function restorePersistedListingsDb(dbPath: string): Promise<boolea
   return restorePersistedDbFile(dbPath, BLOB_DB_KEY, MIN_BYTES)
 }
 
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function restorePersistedDbFile(
   dbPath: string,
   blobKey: string,
@@ -67,32 +90,52 @@ async function restorePersistedDbFile(
 ): Promise<boolean> {
   if (!shouldUseBlobPersist()) return false
 
-  try {
-    const store = await getBlobStore()
-    const result = await store.getWithMetadata(blobKey, { type: 'arrayBuffer' })
-    const data = result?.data
-    if (!data || data.byteLength < minBytes) return false
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= BLOB_RESTORE_MAX_ATTEMPTS; attempt++) {
+    try {
+      const store = await getBlobStore()
+      const result = await store.getWithMetadata(blobKey, { type: 'arrayBuffer' })
+      const data = result?.data
+      if (!data || data.byteLength < minBytes) return false
 
-    const blobSavedAt = parseIsoMs(
-      typeof result.metadata?.savedAt === 'string' ? result.metadata.savedAt : null,
-    )
-    const localExists = existsSync(dbPath)
-    const localSize = localExists ? statSync(dbPath).size : 0
-    const localMtime = localExists ? statSync(dbPath).mtimeMs : 0
-    const blobIsLarger = data.byteLength > localSize
-    const blobIsNewer = blobSavedAt != null && blobSavedAt > localMtime
+      const blobSavedAt = parseIsoMs(
+        typeof result.metadata?.savedAt === 'string' ? result.metadata.savedAt : null,
+      )
+      const localExists = existsSync(dbPath)
+      const localSize = localExists ? statSync(dbPath).size : 0
+      const localMtime = localExists ? statSync(dbPath).mtimeMs : 0
+      const blobIsLarger = data.byteLength > localSize
+      const blobIsNewer = blobSavedAt != null && blobSavedAt > localMtime
 
-    if (localExists && !blobIsLarger && !blobIsNewer) return false
+      if (localExists && !blobIsLarger && !blobIsNewer) return false
 
-    mkdirSync(path.dirname(dbPath), { recursive: true })
-    writeFileSync(dbPath, Buffer.from(data))
-    removeWalSidecars(dbPath)
-    console.info(`[listings-db] restored ${blobKey} from Netlify Blobs:`, data.byteLength, 'bytes')
-    return true
-  } catch (err) {
-    console.warn(`[listings-db] Netlify Blobs restore skipped (${blobKey}):`, err)
-    return false
+      mkdirSync(path.dirname(dbPath), { recursive: true })
+      writeFileSync(dbPath, Buffer.from(data))
+      removeWalSidecars(dbPath)
+      console.info(
+        `[listings-db] restored ${blobKey} from Netlify Blobs:`,
+        data.byteLength,
+        'bytes',
+        attempt > 1 ? `(attempt ${attempt})` : '',
+      )
+      return true
+    } catch (err) {
+      lastErr = err
+      if (attempt < BLOB_RESTORE_MAX_ATTEMPTS) {
+        console.warn(
+          `[listings-db] Netlify Blobs restore attempt ${attempt}/${BLOB_RESTORE_MAX_ATTEMPTS} failed (${blobKey}), retrying in ${attempt}s…`,
+          err,
+        )
+        await sleep(attempt * 1_000)
+      }
+    }
   }
+
+  console.warn(
+    `[listings-db] Netlify Blobs restore gave up after ${BLOB_RESTORE_MAX_ATTEMPTS} attempts (${blobKey}):`,
+    lastErr,
+  )
+  return false
 }
 
 async function persistDbFileToBlob(
@@ -146,25 +189,44 @@ export async function persistListingPhotosDbToBlob(
 }
 
 /**
- * True when the write DB's listing count implies a failed/partial hydration
- * (e.g. this Lambda's blob restore silently failed and it seeded a schema-only
- * DB before an incremental sync added a small recent-changes batch). Comparing
- * against the last known-good count catches this even though the local DB is
- * internally consistent — it's just missing almost everything.
+ * Return whether the write DB listing count looks like a failed/partial hydration,
+ * and the threshold used to decide.
+ *
+ * Two independent checks apply:
+ *  1. **Absolute floor** (`ABSOLUTE_MIN_LISTING_COUNT`, default 800): always enforced
+ *     regardless of prior checkpoints. This prevents a brand-new or blob-restore-failed
+ *     Lambda from bootstrapping a low "lastGood" baseline from which future checks
+ *     would never catch degradation (e.g. lastGood=98 → threshold=49 → almost anything passes).
+ *  2. **Relative floor** (75% of lastGood): catches a genuine data-loss event even if
+ *     the absolute minimum has already been raised by prior good checkpoints.
  */
 async function looksLikeDegradedWriteDb(currentCount: number): Promise<{
   degraded: boolean
   lastGood: number
+  threshold: number
 }> {
   const { getSyncMeta } = await import('@/lib/listings-db')
   const lastGoodRaw = getSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY)
   const lastGood = lastGoodRaw ? Number(lastGoodRaw) : 0
-  if (!Number.isFinite(lastGood) || lastGood <= 0) {
-    return { degraded: false, lastGood: 0 }
-  }
-  // Allow normal churn (closings/expirations move buckets); only block a drastic,
-  // likely-corrupted drop.
-  return { degraded: currentCount < Math.max(50, lastGood * 0.5), lastGood }
+  const validLastGood = Number.isFinite(lastGood) && lastGood > 0 ? lastGood : 0
+  // Use 75% of last good (tighter than the old 50%) so normal listing churn still passes
+  // but a mid-resync partial state does not.
+  const relativeFloor = validLastGood > 0 ? Math.round(validLastGood * 0.75) : 0
+  const threshold = Math.max(ABSOLUTE_MIN_LISTING_COUNT, relativeFloor)
+  return { degraded: currentCount < threshold, lastGood: validLastGood, threshold }
+}
+
+/** Public version of the degraded-DB check, used by syncIncrementalListings to abort early. */
+export async function checkWriteDbDegraded(): Promise<{
+  isDegraded: boolean
+  currentCount: number
+  lastGood: number
+  threshold: number
+}> {
+  const { countWriteDbListings } = await import('@/lib/listings-db')
+  const currentCount = countWriteDbListings()
+  const { degraded, lastGood, threshold } = await looksLikeDegradedWriteDb(currentCount)
+  return { isDegraded: degraded, currentCount, lastGood, threshold }
 }
 
 /** Checkpoint WAL and persist write + read snapshot + photos DB on serverless. */
@@ -175,14 +237,18 @@ export async function persistListingsDbCheckpoint(): Promise<boolean> {
 
   const active = shouldUseBlobPersist()
   const currentCount = countWriteDbListings()
-  const { degraded, lastGood } = await looksLikeDegradedWriteDb(currentCount)
+  const { degraded, lastGood, threshold } = await looksLikeDegradedWriteDb(currentCount)
   if (degraded) {
     console.warn(
-      `[listings-db] refused blob checkpoint — write DB has only ${currentCount} listings, far below last known good ${lastGood}. This Lambda likely failed to hydrate from blobs; leaving the existing good snapshot in place instead of overwriting it.`,
+      `[listings-db] refused blob checkpoint — write DB has only ${currentCount} listings` +
+        ` (threshold: ${threshold}, last good: ${lastGood || 'none'}).` +
+        ` Lambda likely failed to hydrate; leaving the existing good snapshot untouched.`,
     )
     if (active) {
       setSyncMeta('blob_persist_last_at', new Date().toISOString())
       setSyncMeta('blob_persist_last_result', 'skipped_degraded')
+      setSyncMeta('blob_persist_last_degraded_count', String(currentCount))
+      setSyncMeta('blob_persist_last_threshold', String(threshold))
     }
     return false
   }
@@ -221,9 +287,15 @@ export type BlobPersistRuntimeDiagnostics = {
   active: boolean
   mode: 'netlify-blobs' | 'local-file'
   reason: string
+  /** Hardcoded absolute minimum; checkpoint is refused if the write DB has fewer listings. */
+  absoluteMinListingCount: number
   lastGoodListingCount: number | null
   lastPersistAt: string | null
   lastPersistResult: 'ok' | 'skipped_degraded' | null
+  /** Listing count at the time a skipped_degraded checkpoint was refused. */
+  lastDegradedCount: number | null
+  /** Threshold that triggered the last skipped_degraded refusal. */
+  lastDegradedThreshold: number | null
   lastRestoreAt: string | null
 }
 
@@ -234,6 +306,8 @@ export async function describeBlobPersistRuntime(): Promise<BlobPersistRuntimeDi
   const lastGoodRaw = getSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY)
   const lastGood = lastGoodRaw ? Number(lastGoodRaw) : null
   const lastPersistResult = getSyncMeta('blob_persist_last_result')
+  const lastDegradedCountRaw = getSyncMeta('blob_persist_last_degraded_count')
+  const lastDegradedThresholdRaw = getSyncMeta('blob_persist_last_threshold')
 
   return {
     active,
@@ -241,9 +315,12 @@ export async function describeBlobPersistRuntime(): Promise<BlobPersistRuntimeDi
     reason: active
       ? 'Netlify serverless — /tmp is ephemeral, so listings.db round-trips through Netlify Blobs on every cold start and checkpoint.'
       : 'Local/dev host — the SQLite file on disk is durable; no blob round-trip is used.',
+    absoluteMinListingCount: ABSOLUTE_MIN_LISTING_COUNT,
     lastGoodListingCount: lastGood != null && Number.isFinite(lastGood) ? lastGood : null,
     lastPersistAt: getSyncMeta('blob_persist_last_at'),
     lastPersistResult: lastPersistResult === 'ok' || lastPersistResult === 'skipped_degraded' ? lastPersistResult : null,
+    lastDegradedCount: lastDegradedCountRaw ? Number(lastDegradedCountRaw) : null,
+    lastDegradedThreshold: lastDegradedThresholdRaw ? Number(lastDegradedThresholdRaw) : null,
     lastRestoreAt: getSyncMeta('blob_restore_last_at'),
   }
 }

@@ -189,28 +189,27 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
   // write DB would be schema-only (or nearly so), and running incremental sync
   // against it would only insert a small recently-modified batch — then the
   // finally-block checkpoint would persist that degraded DB over the real
-  // dataset in Netlify Blobs. Compare against the last known-good count instead
-  // of proceeding blind.
-  const currentWriteCount = countWriteDbListings()
-  const lastGoodRaw = getSyncMeta('listings_last_good_count')
-  const lastGoodCount = lastGoodRaw ? Number(lastGoodRaw) : 0
-  if (
-    Number.isFinite(lastGoodCount) &&
-    lastGoodCount > 0 &&
-    currentWriteCount < Math.max(50, lastGoodCount * 0.5)
-  ) {
-    console.warn(
-      `[listings-sync/incremental] aborted — write DB has only ${currentWriteCount} listings vs last known good ${lastGoodCount}; this Lambda likely failed to hydrate from blobs. Skipping to avoid corrupting the checkpoint.`,
-    )
-    const now = new Date().toISOString()
-    return {
-      mode: 'incremental',
-      modifiedAfter: incrementalWatermark(),
-      startedAt: now,
-      finishedAt: now,
-      durationMs: 0,
-      towns: [],
-      totalUpserted: 0,
+  // dataset in Netlify Blobs. Delegate the check to the same logic used by the
+  // checkpoint guard so thresholds stay in sync.
+  {
+    const { checkWriteDbDegraded } = await import('@/lib/listings-db-persist')
+    const degraded = await checkWriteDbDegraded()
+    if (degraded.isDegraded) {
+      console.warn(
+        `[listings-sync/incremental] aborted — write DB has only ${degraded.currentCount} listings` +
+          ` (threshold: ${degraded.threshold}, last good: ${degraded.lastGood || 'none'}).` +
+          ` This Lambda likely failed to hydrate from blobs. Skipping to avoid corrupting the checkpoint.`,
+      )
+      const now = new Date().toISOString()
+      return {
+        mode: 'incremental',
+        modifiedAfter: incrementalWatermark(),
+        startedAt: now,
+        finishedAt: now,
+        durationMs: 0,
+        towns: [],
+        totalUpserted: 0,
+      }
     }
   }
 

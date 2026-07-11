@@ -992,7 +992,7 @@ export default function AdminSyncTable({
             <col className="w-[7.5rem]" />
             <col className="w-[9.5rem]" />
             <col />
-            <col className="w-[11rem]" />
+            <col className="w-[7rem]" />
             <col className="w-[10.5rem]" />
             <col className="w-[10.5rem]" />
             <col className="w-[11rem]" />

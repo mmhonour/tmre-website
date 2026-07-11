@@ -19,9 +19,12 @@ export type BlobPersistRuntimeInfo = {
   active: boolean;
   mode: "netlify-blobs" | "local-file";
   reason: string;
+  absoluteMinListingCount: number;
   lastGoodListingCount: number | null;
   lastPersistAt: string | null;
   lastPersistResult: "ok" | "skipped_degraded" | null;
+  lastDegradedCount: number | null;
+  lastDegradedThreshold: number | null;
   lastRestoreAt: string | null;
 };
 
@@ -61,13 +64,21 @@ function BlobPersistRuntimeBanner({ runtime }: { runtime: BlobPersistRuntimeInfo
       <p className="text-sm text-slate leading-snug max-w-3xl">{runtime.reason}</p>
       {skippedDegraded ? (
         <p className="mt-2 text-sm text-coral leading-snug max-w-3xl">
-          Last checkpoint was refused — the write DB looked far smaller than the last
-          known-good count ({runtime.lastGoodListingCount?.toLocaleString() ?? "?"}
-          listings), so the good blob snapshot was left untouched instead of being
-          overwritten.
+          Last checkpoint was <strong>refused</strong> — write DB had only{" "}
+          {runtime.lastDegradedCount?.toLocaleString() ?? "?"} listings, below the
+          threshold of {runtime.lastDegradedThreshold?.toLocaleString() ?? "?"}. The good
+          blob snapshot was left untouched. Run a <strong>Full resync</strong> to
+          repopulate the DB above the minimum ({runtime.absoluteMinListingCount.toLocaleString()}).
         </p>
       ) : null}
       <dl className="mt-3 font-mono text-[11px] text-charcoal/70 space-y-1">
+        <div>
+          <dt className="inline text-charcoal/45">min listing count: </dt>
+          <dd className="inline break-all">
+            {runtime.absoluteMinListingCount.toLocaleString()}
+            <span className="text-charcoal/35"> (checkpoint refused below this)</span>
+          </dd>
+        </div>
         <div>
           <dt className="inline text-charcoal/45">last known-good count: </dt>
           <dd className="inline break-all">
@@ -78,7 +89,7 @@ function BlobPersistRuntimeBanner({ runtime }: { runtime: BlobPersistRuntimeInfo
         </div>
         <div>
           <dt className="inline text-charcoal/45">last checkpoint: </dt>
-          <dd className="inline break-all">
+          <dd className={`inline break-all ${skippedDegraded ? "text-coral" : ""}`}>
             {formatBlobTimestamp(runtime.lastPersistAt)}
             {runtime.lastPersistResult
               ? ` (${runtime.lastPersistResult === "ok" ? "ok" : "skipped — degraded"})`
