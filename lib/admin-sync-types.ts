@@ -67,6 +67,43 @@ export const ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL = new Set<AdminSyncActionId>
   'publish-snapshot',
 ])
 
+/**
+ * Ordered finalize steps for a chunked full resync — mirrors the per-town chunking pattern
+ * so each step comfortably completes within a single serverless invocation. The "persist" step
+ * also runs the final bookkeeping (deploy-complete marker, blob persist, progress clear, refresh
+ * lock release, deferred photo warm) that used to run in `finalizeChunkedFullResync()`'s finally.
+ */
+export const FULL_RESYNC_FINALIZE_STEPS = [
+  'scores',
+  'superlatives',
+  'stats-cache',
+  'deal-of-day',
+  'deal-of-week',
+  'spotlight',
+  'if-estimates',
+  'edge-scores',
+  'persist',
+] as const satisfies readonly string[]
+
+export type FullResyncFinalizeStepId = (typeof FULL_RESYNC_FINALIZE_STEPS)[number]
+
+export function isFullResyncFinalizeStepId(value: string): value is FullResyncFinalizeStepId {
+  return (FULL_RESYNC_FINALIZE_STEPS as readonly string[]).includes(value)
+}
+
+/** Human labels for admin progress messaging while a finalize step is running/complete. */
+export const FULL_RESYNC_FINALIZE_STEP_LABELS: Record<FullResyncFinalizeStepId, string> = {
+  scores: 'Goldilocks scores',
+  superlatives: 'listing superlatives',
+  'stats-cache': 'stats cache',
+  'deal-of-day': 'Deal of the Day cache',
+  'deal-of-week': 'Deal of the Week cache',
+  spotlight: 'spotlight caches',
+  'if-estimates': 'IF value estimates',
+  'edge-scores': 'edge scores',
+  persist: 'read snapshot + persisting to storage',
+}
+
 export type AdminSyncAllActionId = 'sync-all-caches'
 
 export function isAdminSyncAllActionId(value: string): value is AdminSyncAllActionId {

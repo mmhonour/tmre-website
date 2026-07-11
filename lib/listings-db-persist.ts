@@ -18,10 +18,14 @@ const BLOB_PHOTOS_DB_KEY = 'listing-photos.db'
 const BLOB_PROGRESS_KEY = 'chunked-full-resync-progress'
 const MIN_BYTES = 50_000
 const MIN_PHOTOS_BYTES = 4_096
+/** sync_meta key tracking the last listing count we safely checkpointed to blobs. */
+const LISTINGS_LAST_GOOD_COUNT_META_KEY = 'listings_last_good_count'
 
 export type ChunkedFullResyncProgress = {
   fetchedTotal: number
   townsCompleted: string[]
+  /** Finalize step IDs (see `FULL_RESYNC_FINALIZE_STEPS`) already completed this run. */
+  finalizeStepsCompleted?: string[]
   updatedAt: string
 }
 
@@ -141,10 +145,47 @@ export async function persistListingPhotosDbToBlob(
   return persistDbFileToBlob(photosPath, BLOB_PHOTOS_DB_KEY, MIN_PHOTOS_BYTES, checkpoint)
 }
 
+/**
+ * True when the write DB's listing count implies a failed/partial hydration
+ * (e.g. this Lambda's blob restore silently failed and it seeded a schema-only
+ * DB before an incremental sync added a small recent-changes batch). Comparing
+ * against the last known-good count catches this even though the local DB is
+ * internally consistent — it's just missing almost everything.
+ */
+async function looksLikeDegradedWriteDb(currentCount: number): Promise<{
+  degraded: boolean
+  lastGood: number
+}> {
+  const { getSyncMeta } = await import('@/lib/listings-db')
+  const lastGoodRaw = getSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY)
+  const lastGood = lastGoodRaw ? Number(lastGoodRaw) : 0
+  if (!Number.isFinite(lastGood) || lastGood <= 0) {
+    return { degraded: false, lastGood: 0 }
+  }
+  // Allow normal churn (closings/expirations move buckets); only block a drastic,
+  // likely-corrupted drop.
+  return { degraded: currentCount < Math.max(50, lastGood * 0.5), lastGood }
+}
+
 /** Checkpoint WAL and persist write + read snapshot + photos DB on serverless. */
 export async function persistListingsDbCheckpoint(): Promise<boolean> {
-  const { listingsDbPath, listingsReadDbPath, tryGetWriteDb } = await import('@/lib/listings-db')
+  const { listingsDbPath, listingsReadDbPath, tryGetWriteDb, countWriteDbListings, setSyncMeta } =
+    await import('@/lib/listings-db')
   const { listingPhotosDbPath, tryGetListingPhotosDb } = await import('@/lib/listing-photos-db')
+
+  const active = shouldUseBlobPersist()
+  const currentCount = countWriteDbListings()
+  const { degraded, lastGood } = await looksLikeDegradedWriteDb(currentCount)
+  if (degraded) {
+    console.warn(
+      `[listings-db] refused blob checkpoint — write DB has only ${currentCount} listings, far below last known good ${lastGood}. This Lambda likely failed to hydrate from blobs; leaving the existing good snapshot in place instead of overwriting it.`,
+    )
+    if (active) {
+      setSyncMeta('blob_persist_last_at', new Date().toISOString())
+      setSyncMeta('blob_persist_last_result', 'skipped_degraded')
+    }
+    return false
+  }
 
   const writeOk = await persistListingsDbToBlob(listingsDbPath(), () => {
     tryGetWriteDb()?.pragma('wal_checkpoint(TRUNCATE)')
@@ -164,7 +205,47 @@ export async function persistListingsDbCheckpoint(): Promise<boolean> {
     })
   }
 
+  if (writeOk && currentCount > 0) {
+    setSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY, String(currentCount))
+  }
+  if (active && (writeOk || readOk || photosOk)) {
+    setSyncMeta('blob_persist_last_at', new Date().toISOString())
+    setSyncMeta('blob_persist_last_result', 'ok')
+  }
+
   return writeOk || readOk || photosOk
+}
+
+export type BlobPersistRuntimeDiagnostics = {
+  /** True on Netlify — /tmp is ephemeral and listings.db round-trips through blobs. */
+  active: boolean
+  mode: 'netlify-blobs' | 'local-file'
+  reason: string
+  lastGoodListingCount: number | null
+  lastPersistAt: string | null
+  lastPersistResult: 'ok' | 'skipped_degraded' | null
+  lastRestoreAt: string | null
+}
+
+/** Describe whether this request is using the Netlify Blobs round-trip or a plain local file. */
+export async function describeBlobPersistRuntime(): Promise<BlobPersistRuntimeDiagnostics> {
+  const { getSyncMeta } = await import('@/lib/listings-db')
+  const active = shouldUseBlobPersist()
+  const lastGoodRaw = getSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY)
+  const lastGood = lastGoodRaw ? Number(lastGoodRaw) : null
+  const lastPersistResult = getSyncMeta('blob_persist_last_result')
+
+  return {
+    active,
+    mode: active ? 'netlify-blobs' : 'local-file',
+    reason: active
+      ? 'Netlify serverless — /tmp is ephemeral, so listings.db round-trips through Netlify Blobs on every cold start and checkpoint.'
+      : 'Local/dev host — the SQLite file on disk is durable; no blob round-trip is used.',
+    lastGoodListingCount: lastGood != null && Number.isFinite(lastGood) ? lastGood : null,
+    lastPersistAt: getSyncMeta('blob_persist_last_at'),
+    lastPersistResult: lastPersistResult === 'ok' || lastPersistResult === 'skipped_degraded' ? lastPersistResult : null,
+    lastRestoreAt: getSyncMeta('blob_restore_last_at'),
+  }
 }
 
 export async function readChunkedFullResyncProgress(): Promise<ChunkedFullResyncProgress | null> {
@@ -177,6 +258,9 @@ export async function readChunkedFullResyncProgress(): Promise<ChunkedFullResync
     const parsed = JSON.parse(raw) as ChunkedFullResyncProgress
     if (typeof parsed.fetchedTotal !== 'number' || !Array.isArray(parsed.townsCompleted)) {
       return null
+    }
+    if (!Array.isArray(parsed.finalizeStepsCompleted)) {
+      parsed.finalizeStepsCompleted = []
     }
     return parsed
   } catch {
@@ -210,11 +294,18 @@ export async function clearChunkedFullResyncProgress(): Promise<void> {
   }
 }
 
+async function recordBlobRestore(restored: boolean): Promise<void> {
+  if (!restored || !shouldUseBlobPersist()) return
+  const { setSyncMeta } = await import('@/lib/listings-db')
+  setSyncMeta('blob_restore_last_at', new Date().toISOString())
+}
+
 /** Restore blob DB (if any) before opening SQLite — returns true when local file was replaced. */
 export async function ensureListingsDbHydrated(resetConnections: () => void): Promise<boolean> {
   const { listingsDbPath } = await import('@/lib/listings-db')
   const restored = await restorePersistedListingsDb(listingsDbPath())
   if (restored) resetConnections()
+  await recordBlobRestore(restored)
   return restored
 }
 
@@ -241,6 +332,7 @@ export async function ensureAdminSqliteDatabasesReady(
     resetConnections()
     resetListingPhotosDbConnection()
   }
+  await recordBlobRestore(restored)
 
   const writeDb = tryGetWriteDb()
   if (writeDb && countWriteDbListings() > 0) {

@@ -15,6 +15,85 @@ type ConnectorPath = {
   label: string;
 };
 
+export type BlobPersistRuntimeInfo = {
+  active: boolean;
+  mode: "netlify-blobs" | "local-file";
+  reason: string;
+  lastGoodListingCount: number | null;
+  lastPersistAt: string | null;
+  lastPersistResult: "ok" | "skipped_degraded" | null;
+  lastRestoreAt: string | null;
+};
+
+function formatBlobTimestamp(iso: string | null): string {
+  if (!iso) return "never";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "never";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function BlobPersistRuntimeBanner({ runtime }: { runtime: BlobPersistRuntimeInfo }) {
+  const skippedDegraded = runtime.lastPersistResult === "skipped_degraded";
+  return (
+    <div
+      className={`rounded-2xl border px-5 sm:px-6 py-4 ${
+        skippedDegraded
+          ? "border-coral/25 bg-coral/[0.06]"
+          : "border-charcoal/[0.08] bg-white"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <span
+          className={`inline-block w-1.5 h-1.5 rounded-full ${
+            runtime.active ? "bg-sage" : "bg-charcoal/30"
+          }`}
+        />
+        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+          Blob persistence runtime
+        </p>
+        <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/50 border border-charcoal/15 rounded-full px-2 py-0.5">
+          {runtime.active ? "Netlify Blobs active" : "Local file — no blobs"}
+        </span>
+      </div>
+      <p className="text-sm text-slate leading-snug max-w-3xl">{runtime.reason}</p>
+      {skippedDegraded ? (
+        <p className="mt-2 text-sm text-coral leading-snug max-w-3xl">
+          Last checkpoint was refused — the write DB looked far smaller than the last
+          known-good count ({runtime.lastGoodListingCount?.toLocaleString() ?? "?"}
+          listings), so the good blob snapshot was left untouched instead of being
+          overwritten.
+        </p>
+      ) : null}
+      <dl className="mt-3 font-mono text-[11px] text-charcoal/70 space-y-1">
+        <div>
+          <dt className="inline text-charcoal/45">last known-good count: </dt>
+          <dd className="inline break-all">
+            {runtime.lastGoodListingCount != null
+              ? runtime.lastGoodListingCount.toLocaleString()
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="inline text-charcoal/45">last checkpoint: </dt>
+          <dd className="inline break-all">
+            {formatBlobTimestamp(runtime.lastPersistAt)}
+            {runtime.lastPersistResult
+              ? ` (${runtime.lastPersistResult === "ok" ? "ok" : "skipped — degraded"})`
+              : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="inline text-charcoal/45">last restore: </dt>
+          <dd className="inline break-all">{formatBlobTimestamp(runtime.lastRestoreAt)}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 function formatColumnLine(col: SqliteTableInfo["columns"][number]): string {
   const flags = [
     col.primaryKey ? "PK" : null,
@@ -375,8 +454,10 @@ function DatabaseDiagramCard({ db }: { db: SqliteDatabaseDiagram }) {
 
 export default function AdminSqliteDiagrams({
   databases,
+  blobRuntime,
 }: {
   databases: SqliteDatabaseDiagram[];
+  blobRuntime?: BlobPersistRuntimeInfo;
 }) {
   return (
     <div className="mt-6 space-y-6">
@@ -390,6 +471,7 @@ export default function AdminSqliteDiagrams({
           on <span className="font-mono text-navy/80">listings.id</span>.
         </p>
       </div>
+      {blobRuntime ? <BlobPersistRuntimeBanner runtime={blobRuntime} /> : null}
       {databases.map((db) => (
         <DatabaseDiagramCard key={db.id} db={db} />
       ))}

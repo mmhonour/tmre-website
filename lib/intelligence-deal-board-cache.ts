@@ -10,6 +10,7 @@ import {
   readListingScoresByIds,
   readListingSuperlativesByMlsIds,
   readStatsCacheRow,
+  getSyncMeta,
   setSyncMeta,
   upsertListingScores,
   writeStatsCacheRow,
@@ -328,7 +329,7 @@ export function readIntelligenceDealBoardCache(): IntelligenceDealBoardPayload |
 /** Rebuild slim Intelligence board + sales meta for every TMRE town. */
 export async function rebuildIntelligenceDealBoardCache(
   options: { limit?: number } = {},
-): Promise<{ towns: number; listings: number; durationMs: number }> {
+): Promise<{ towns: number; listings: number; durationMs: number; skipped?: boolean }> {
   const limit = options.limit ?? INTELLIGENCE_DEAL_BOARD_LIMIT
   const t0 = Date.now()
   const towns = {} as Record<TmreTown, IntelligenceBoardListing[]>
@@ -341,6 +342,28 @@ export async function rebuildIntelligenceDealBoardCache(
     towns[town] = rows
     meta[town] = readTownSalesMeta(town)
     listingCount += rows.length
+  }
+
+  // A full resync wipes+refetches one town at a time, so a rebuild that lands
+  // mid-resync (or during a cold-start blob-restore race) can see a
+  // town-by-town-partial or fully empty DB. Never let that clobber a healthy
+  // cache — the public API caches this response for minutes, so an empty
+  // write here would blank the site for every visitor.
+  const previous = readIntelligenceDealBoardCache()
+  const previousCount = previous
+    ? TMRE_TOWNS.reduce((sum, town) => sum + (previous.towns[town]?.length ?? 0), 0)
+    : 0
+  const looksDegraded = listingCount === 0 && previousCount > 0
+  if (looksDegraded) {
+    console.warn(
+      `[intelligence-deal-board] skipped cache write — rebuild found 0 listings while previous cache had ${previousCount} (refresh in progress: ${getSyncMeta('refresh_in_progress') === '1'})`,
+    )
+    return {
+      towns: TMRE_TOWNS.length,
+      listings: previousCount,
+      durationMs: Date.now() - t0,
+      skipped: true,
+    }
   }
 
   const generatedAt = new Date().toISOString()

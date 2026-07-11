@@ -1,0 +1,30 @@
+---
+description: Keep Admin SQLite schema + startup diagrams in sync with real DB/startup code
+globs: instrumentation.ts,lib/listings-db.ts,lib/listing-photos-db.ts,lib/sqlite-schema-diagram.ts,lib/startup-process.ts,netlify.toml,netlify/functions/sync-listings*.ts,app/admin/**
+alwaysApply: false
+---
+
+# Admin diagrams stay current
+
+The Admin page (`/admin`) shows two operational diagrams. When you change databases or process boot, update those sources — do not leave Admin stale.
+
+## SQLite schema diagram (mostly live)
+
+- **Live tables/columns/row counts** come from `describeRunningSqliteDatabases()` in `lib/sqlite-schema-diagram.ts` (PRAGMA / sqlite_master). Additive column migrations on an already-registered DB usually show up automatically after migrate.
+- You **must** update Admin wiring when you:
+  - Add a **new** `.db` file or SQLite module → register it in `describeRunningSqliteDatabases()` (path, label, role, open handle).
+  - Remove/rename a DB → drop or rename that diagram entry.
+  - Change how write vs read snapshot vs photos DBs are opened → keep open/inspect paths accurate.
+  - Add schema-version probes (e.g. “missing goldilocks columns”) → keep those checks aligned with real columns in `lib/listings-db.ts` / photos DB.
+
+## Startup process diagram (hand-maintained)
+
+- Admin startup UI is driven by `describeStartupProcess()` in `lib/startup-process.ts`, rendered by `components/admin/AdminStartupDiagram.tsx`.
+- **Any** change to schedules, gates, delays, or sync order in `instrumentation.ts`, Netlify build sync (`netlify.toml`), or scheduled functions (`netlify/functions/sync-listings*.ts`) **must** update `lib/startup-process.ts` in the same change (lanes, timings, skip conditions, status labels).
+- Prefer mirroring env flags and defaults exactly (`ENABLE_STARTUP_FULL_SYNC`, `STARTUP_FULL_SYNC_DELAY_MS`, incremental first-delay, daily 5am ET, stats refresh, etc.).
+
+## Checklist before finishing related work
+
+1. Schema or new DB? → `lib/sqlite-schema-diagram.ts` registers/opens correctly.
+2. Startup/cron/build sync changed? → `lib/startup-process.ts` matches behavior.
+3. Spot-check `/admin` (after password unlock) shows the expected DBs and boot lanes.

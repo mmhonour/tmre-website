@@ -19,12 +19,20 @@ import {
   readChunkedFullResyncProgress,
   saveChunkedFullResyncProgress,
 } from '@/lib/listings-db-persist'
-import { syncAllTownListings, syncIncrementalListings, syncFullResyncTown, finalizeChunkedFullResync, type TownSyncResult } from '@/lib/listings-sync'
+import {
+  syncAllTownListings,
+  syncIncrementalListings,
+  syncFullResyncTown,
+  finalizeChunkedFullResync,
+  runFullResyncFinalizeStep,
+  type TownSyncResult,
+} from '@/lib/listings-sync'
 import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
 import { isTmreTown, TMRE_TOWNS } from '@/lib/tmre-towns'
 import {
   formatFullResyncCompleteDetail,
   formatFullResyncTownProgressWithTables,
+  formatFullResyncFinalizeStepDetail,
   formatTownSyncSummary,
 } from '@/lib/admin-sync-progress'
 import { rebuildStatsCache } from '@/lib/stats-cache'
@@ -36,7 +44,12 @@ import {
   saveAdminSyncTableStats,
 } from '@/lib/sqlite-sync-stats'
 import type { AdminSyncActionId, AdminSyncAllActionId } from '@/lib/admin-sync-types'
-import { ADMIN_SYNC_ACTIONS, ADMIN_SYNC_ALL_SEQUENCE } from '@/lib/admin-sync-types'
+import {
+  ADMIN_SYNC_ACTIONS,
+  ADMIN_SYNC_ALL_SEQUENCE,
+  FULL_RESYNC_FINALIZE_STEPS,
+  isFullResyncFinalizeStepId,
+} from '@/lib/admin-sync-types'
 
 export type { AdminSyncActionId } from '@/lib/admin-sync-types'
 export {
@@ -62,6 +75,8 @@ export type AdminSyncActionResult = {
   backgroundQueued?: boolean
   /** Human label when this step is not a primary panel action (sync-all extras). */
   stepLabel?: string
+  /** Finalize step IDs completed so far this chunked full-resync run (see `finalizeStep`). */
+  finalizeStepsCompleted?: string[]
 }
 
 function formatSyncFailures(failed: TownSyncResult[]): string | undefined {
@@ -83,8 +98,10 @@ function formatSyncFailures(failed: TownSyncResult[]): string | undefined {
 export type AdminSyncActionOptions = {
   /** One town step of a chunked full resync. */
   town?: string
-  /** Run cache rebuilds after all town steps. */
+  /** Run ALL finalize cache rebuilds in one shot (non-serverless / local-dev only). */
   finalize?: boolean
+  /** One finalize step of a chunked full resync (see `FULL_RESYNC_FINALIZE_STEPS`). */
+  finalizeStep?: string
 }
 
 export async function runAdminSyncAction(
@@ -140,6 +157,96 @@ export async function runAdminSyncAction(
           }),
         }
       }
+      if (options.finalizeStep) {
+        const stepId = options.finalizeStep
+        if (!isFullResyncFinalizeStepId(stepId)) {
+          const finishedAt = new Date().toISOString()
+          return {
+            ok: false,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: Date.now() - t0,
+            message: `Unknown finalize step: ${stepId}`,
+          }
+        }
+        await prepareListingsDbForChunkedSync(listingsDbPath(), resetListingsDbConnections)
+        const stepResult = await runFullResyncFinalizeStep(stepId)
+        const finishedAt = new Date().toISOString()
+        const priorProgress = (await readChunkedFullResyncProgress()) ?? {
+          fetchedTotal: 0,
+          townsCompleted: [],
+          finalizeStepsCompleted: [],
+          updatedAt: startedAt,
+        }
+        const finalizeStepsCompleted = stepResult.ok
+          ? [...new Set([...(priorProgress.finalizeStepsCompleted ?? []), stepId])]
+          : (priorProgress.finalizeStepsCompleted ?? [])
+        await saveChunkedFullResyncProgress({
+          ...priorProgress,
+          finalizeStepsCompleted,
+          updatedAt: finishedAt,
+        })
+
+        const stepIndex = FULL_RESYNC_FINALIZE_STEPS.indexOf(stepId) + 1
+        const stepCount = FULL_RESYNC_FINALIZE_STEPS.length
+
+        if (!stepResult.ok) {
+          return {
+            ok: false,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: stepResult.durationMs || Date.now() - t0,
+            finalizeStepsCompleted,
+            message: `Finalize step ${stepIndex}/${stepCount} (${stepId}) failed`,
+            detail: stepResult.error,
+          }
+        }
+
+        const isLastStep = stepId === FULL_RESYNC_FINALIZE_STEPS[FULL_RESYNC_FINALIZE_STEPS.length - 1]
+        if (!isLastStep) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: stepResult.durationMs || Date.now() - t0,
+            finalizeStepsCompleted,
+            message: `Finalizing step ${stepIndex}/${stepCount} (${stepId}) complete`,
+            detail: formatFullResyncFinalizeStepDetail({ stepId, stepIndex, stepCount }),
+          }
+        }
+
+        // Last step done — the full resync is truly complete now.
+        if (!getSyncMeta('last_full_sync')) {
+          setSyncMeta('last_full_sync', finishedAt)
+        }
+        const tableStats = collectWriteDatabaseTableStats()
+        const byBucket = countWriteDbListingsByBucket()
+        const listingTotal =
+          countWriteDbListings() ||
+          tableStats.find((row) => row.table === 'listings')?.queried ||
+          stepResult.totalListings ||
+          0
+        saveAdminSyncTableStats('full-resync', tableStats)
+        return {
+          ok: true,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: stepResult.durationMs || Date.now() - t0,
+          recordsFetched: listingTotal,
+          finalizeStepsCompleted,
+          message: `Full resync complete — ${listingTotal.toLocaleString()} listings`,
+          detail: formatFullResyncCompleteDetail({
+            listingTotal,
+            byBucket,
+            fetchedTotal: priorProgress.fetchedTotal,
+            tables: tableStats,
+          }),
+        }
+      }
       if (options.town) {
         if (!isTmreTown(options.town)) {
           const finishedAt = new Date().toISOString()
@@ -163,11 +270,15 @@ export async function runAdminSyncAction(
         const priorProgress = (await readChunkedFullResyncProgress()) ?? {
           fetchedTotal: 0,
           townsCompleted: [],
+          finalizeStepsCompleted: [],
           updatedAt: startedAt,
         }
+        // Preserve finalizeStepsCompleted — a re-run of the town loop after a finalize-step
+        // failure should resume finalize from where it left off, not redo completed steps.
         await saveChunkedFullResyncProgress({
           fetchedTotal: priorProgress.fetchedTotal + upserts,
           townsCompleted: [...new Set([...priorProgress.townsCompleted, options.town])],
+          finalizeStepsCompleted: priorProgress.finalizeStepsCompleted ?? [],
           updatedAt: new Date().toISOString(),
         })
         const finishedAt = new Date().toISOString()
@@ -179,6 +290,7 @@ export async function runAdminSyncAction(
           durationMs: Date.now() - t0,
           recordsFetched: upserts,
           townResults,
+          finalizeStepsCompleted: priorProgress.finalizeStepsCompleted ?? [],
           message: ok
             ? `${options.town} synced — ${upserts.toLocaleString()} records fetched`
             : `${options.town} finished with ${failed.length} failure(s)`,

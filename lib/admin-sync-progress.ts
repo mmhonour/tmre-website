@@ -1,5 +1,6 @@
 import type { TownSyncResult } from '@/lib/listings-sync'
 import type { TableWriteStats } from '@/lib/sqlite-sync-stats'
+import { FULL_RESYNC_FINALIZE_STEP_LABELS, type FullResyncFinalizeStepId } from '@/lib/admin-sync-types'
 
 /** One-line bucket counts, e.g. "Active 234 · Closed 1,892 · Expired 12 (2,138 fetched)". */
 export function formatTownSyncBreakdown(results: TownSyncResult[]): string {
@@ -37,6 +38,28 @@ export function formatFullResyncTownPending(options: {
       ? ` · ${sqliteTotal.toLocaleString()} listings loaded so far`
       : ''
   return `Fetching ${town} from MLS (Active, Closed, Expired)… step ${townIndex}/${townCount}${sqlite}`
+}
+
+/** While a chunked full-resync finalize step is in flight. */
+export function formatFullResyncFinalizeStepPending(options: {
+  stepId: FullResyncFinalizeStepId
+  stepIndex: number
+  stepCount: number
+}): string {
+  const { stepId, stepIndex, stepCount } = options
+  const label = FULL_RESYNC_FINALIZE_STEP_LABELS[stepId] ?? stepId
+  return `Finalizing full resync — ${label}… step ${stepIndex}/${stepCount}`
+}
+
+/** After a chunked full-resync finalize step completes (not yet the last one). */
+export function formatFullResyncFinalizeStepDetail(options: {
+  stepId: FullResyncFinalizeStepId
+  stepIndex: number
+  stepCount: number
+}): string {
+  const { stepId, stepIndex, stepCount } = options
+  const label = FULL_RESYNC_FINALIZE_STEP_LABELS[stepId] ?? stepId
+  return `Finalize step ${stepIndex}/${stepCount} complete — ${label} rebuilt`
 }
 
 /** Compact per-table row counts for admin Description column. */

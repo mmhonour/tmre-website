@@ -69,11 +69,18 @@ export async function POST(req: NextRequest) {
   let action = ''
   let town: string | undefined
   let finalize = false
+  let finalizeStep: string | undefined
   try {
-    const body = (await req.json()) as { action?: string; town?: string; finalize?: boolean }
+    const body = (await req.json()) as {
+      action?: string
+      town?: string
+      finalize?: boolean
+      finalizeStep?: string
+    }
     action = body.action?.trim() ?? ''
     town = body.town?.trim()
     finalize = body.finalize === true
+    finalizeStep = body.finalizeStep?.trim()
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
@@ -87,7 +94,7 @@ export async function POST(req: NextRequest) {
 
   const refresh = readSqliteRefreshStatus()
   const chunkedFullResync =
-    action === 'full-resync' && (Boolean(town) || finalize)
+    action === 'full-resync' && (Boolean(town) || finalize || Boolean(finalizeStep))
   if (
     refresh.refreshing &&
     action !== 'publish-snapshot' &&
@@ -104,7 +111,7 @@ export async function POST(req: NextRequest) {
     const result =
       action === 'sync-all-caches'
         ? await runAdminSyncAllCaches()
-        : await runAdminSyncAction(action, { town, finalize })
+        : await runAdminSyncAction(action, { town, finalize, finalizeStep })
     const stats = getListingsDbStats()
     const nextRuns = buildAdminSyncNextRuns({
       lastFullSyncStarted: stats.lastFullSyncStarted,

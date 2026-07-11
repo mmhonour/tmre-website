@@ -1,4 +1,5 @@
 import {
+  countWriteDbListings,
   deleteSyncMeta,
   getListingsDbStats,
   getSyncMeta,
@@ -29,6 +30,7 @@ import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
 import { STATS_CLOSED_PERIOD_START } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { isServerlessRuntime } from '@/lib/runtime-host'
+import type { FullResyncFinalizeStepId } from '@/lib/admin-sync-types'
 
 export type TownSyncResult = {
   town: TmreTown
@@ -171,6 +173,35 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
 
   if (getSyncMeta('refresh_in_progress') === '1') {
     console.info('[listings-sync/incremental] skipped — refresh already in progress')
+    const now = new Date().toISOString()
+    return {
+      mode: 'incremental',
+      modifiedAfter: incrementalWatermark(),
+      startedAt: now,
+      finishedAt: now,
+      durationMs: 0,
+      towns: [],
+      totalUpserted: 0,
+    }
+  }
+
+  // Guard against a Lambda whose blob restore silently failed on cold start: its
+  // write DB would be schema-only (or nearly so), and running incremental sync
+  // against it would only insert a small recently-modified batch — then the
+  // finally-block checkpoint would persist that degraded DB over the real
+  // dataset in Netlify Blobs. Compare against the last known-good count instead
+  // of proceeding blind.
+  const currentWriteCount = countWriteDbListings()
+  const lastGoodRaw = getSyncMeta('listings_last_good_count')
+  const lastGoodCount = lastGoodRaw ? Number(lastGoodRaw) : 0
+  if (
+    Number.isFinite(lastGoodCount) &&
+    lastGoodCount > 0 &&
+    currentWriteCount < Math.max(50, lastGoodCount * 0.5)
+  ) {
+    console.warn(
+      `[listings-sync/incremental] aborted — write DB has only ${currentWriteCount} listings vs last known good ${lastGoodCount}; this Lambda likely failed to hydrate from blobs. Skipping to avoid corrupting the checkpoint.`,
+    )
     const now = new Date().toISOString()
     return {
       mode: 'incremental',
@@ -450,66 +481,65 @@ export async function syncTownListings(
   }
 }
 
-/** Post–town-loop cache rebuilds and read snapshot (full sync only). */
-async function applyFullSyncPostamble(finishedAt: string): Promise<void> {
+/**
+ * Individual finalize sub-tasks — each one maps 1:1 to a `FullResyncFinalizeStepId` so the
+ * chunked path (`runFullResyncFinalizeStep`) can run exactly one per HTTP request, while the
+ * monolithic path (`applyFullSyncPostamble`) still runs all of them in one call for non-serverless
+ * hosts. Unlike the monolithic wrapper, these throw on failure — the chunked dispatcher surfaces
+ * the error to the admin panel instead of swallowing it.
+ */
+async function finalizeStepScores(finishedAt: string): Promise<void> {
   publishListingsReadSnapshot()
   setSyncMeta('last_full_sync', finishedAt)
-  try {
-    const { rebuildAllListingScores } = await import('@/lib/listing-scores-rebuild')
-    await rebuildAllListingScores()
-  } catch (err) {
-    console.error('[listings-sync] listing scores rebuild failed', err)
+  const { rebuildAllListingScores } = await import('@/lib/listing-scores-rebuild')
+  await rebuildAllListingScores()
+}
+
+async function finalizeStepSuperlatives(): Promise<void> {
+  const { rebuildAllListingSuperlatives } = await import('@/lib/listing-superlatives-rebuild')
+  await rebuildAllListingSuperlatives()
+}
+
+async function finalizeStepStatsCache(): Promise<void> {
+  const { rebuildStatsCache } = await import('@/lib/stats-cache')
+  rebuildStatsCache({ trackRefresh: false })
+}
+
+async function finalizeStepDealOfDay(): Promise<void> {
+  const { rebuildDealOfTheDayCache } = await import('@/lib/deal-of-the-day-cache')
+  await rebuildDealOfTheDayCache()
+}
+
+async function finalizeStepDealOfWeek(): Promise<void> {
+  const { rebuildDealOfTheWeekCache } = await import('@/lib/deal-of-the-week-cache')
+  await rebuildDealOfTheWeekCache()
+}
+
+async function finalizeStepSpotlight(): Promise<void> {
+  const { rebuildSpotlightCache } = await import('@/lib/spotlight-cache')
+  const { SPOTLIGHT_PROPERTY_TABS } = await import('@/lib/spotlight-listing')
+  for (const tab of SPOTLIGHT_PROPERTY_TABS) {
+    await rebuildSpotlightCache(tab)
   }
-  try {
-    const { rebuildAllListingSuperlatives } = await import('@/lib/listing-superlatives-rebuild')
-    await rebuildAllListingSuperlatives()
-  } catch (err) {
-    console.error('[listings-sync] listing superlatives rebuild failed', err)
-  }
-  try {
-    const { rebuildStatsCache } = await import('@/lib/stats-cache')
-    rebuildStatsCache({ trackRefresh: false })
-  } catch (err) {
-    console.error('[listings-sync] stats cache rebuild failed', err)
-  }
-  try {
-    const { rebuildDealOfTheDayCache } = await import('@/lib/deal-of-the-day-cache')
-    await rebuildDealOfTheDayCache()
-  } catch (err) {
-    console.error('[listings-sync] deal of the day cache rebuild failed', err)
-  }
-  try {
-    const { rebuildDealOfTheWeekCache } = await import('@/lib/deal-of-the-week-cache')
-    await rebuildDealOfTheWeekCache()
-  } catch (err) {
-    console.error('[listings-sync] deal of the week cache rebuild failed', err)
-  }
-  try {
-    const { rebuildSpotlightCache } = await import('@/lib/spotlight-cache')
-    const { SPOTLIGHT_PROPERTY_TABS } = await import('@/lib/spotlight-listing')
-    for (const tab of SPOTLIGHT_PROPERTY_TABS) {
-      await rebuildSpotlightCache(tab)
-    }
-  } catch (err) {
-    console.error('[listings-sync] spotlight cache rebuild failed', err)
-  }
-  try {
-    const { rebuildListingIfEstimates } = await import('@/lib/listing-if-compute')
-    rebuildListingIfEstimates()
-  } catch (err) {
-    console.error('[listings-sync] If estimates cache rebuild failed', err)
-  }
+}
+
+async function finalizeStepIfEstimates(): Promise<void> {
+  const { rebuildListingIfEstimates } = await import('@/lib/listing-if-compute')
+  rebuildListingIfEstimates()
+}
+
+async function finalizeStepEdgeScores(): Promise<void> {
+  const { rebuildAllListingEdgeScores } = await import('@/lib/listing-edge-score')
+  rebuildAllListingEdgeScores()
+}
+
+/** Already-deferred/fire-and-forget warms — kept fire-and-forget, just triggered from the last step. */
+async function triggerFullResyncDeferredWarms(): Promise<void> {
   try {
     const { warmComparableEdgesDeferred } = await import('@/lib/listing-comparables-cache')
     warmComparableEdgesDeferred()
   } catch (err) {
     console.error('[listings-sync] comps edges warm schedule failed', err)
-  }
-  try {
-    const { rebuildAllListingEdgeScores } = await import('@/lib/listing-edge-score')
-    rebuildAllListingEdgeScores()
-  } catch (err) {
-    console.error('[listings-sync] edge scores rebuild failed', err)
   }
   try {
     const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')
@@ -518,10 +548,136 @@ async function applyFullSyncPostamble(finishedAt: string): Promise<void> {
     console.error('[listings-sync] Latest town feed warm schedule failed', err)
   }
   try {
-    const { warmIntelligenceDealBoardDeferred } = await import('@/lib/intelligence-deal-board-cache')
+    const { warmIntelligenceDealBoardDeferred } = await import(
+      '@/lib/intelligence-deal-board-cache'
+    )
     warmIntelligenceDealBoardDeferred()
   } catch (err) {
     console.error('[listings-sync] Intelligence deal board warm schedule failed', err)
+  }
+}
+
+/** Final bookkeeping — mirrors what `finalizeChunkedFullResync()`'s finally used to run. */
+async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings: number }> {
+  await triggerFullResyncDeferredWarms()
+  const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
+  markPostDeployFullResyncComplete()
+  const { countWriteDbListings } = await import('@/lib/listings-db')
+  const totalListings = countWriteDbListings() || getListingsDbStats().total
+  await persistWriteDbAfterChunk()
+  const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
+  await clearChunkedFullResyncProgress()
+  endSqliteRefresh(finishedAt)
+  void warmActiveListingPhotosDeferred()
+  return { totalListings }
+}
+
+/** Post–town-loop cache rebuilds and read snapshot (monolithic full sync only). */
+async function applyFullSyncPostamble(finishedAt: string): Promise<void> {
+  try {
+    await finalizeStepScores(finishedAt)
+  } catch (err) {
+    console.error('[listings-sync] listing scores rebuild failed', err)
+  }
+  try {
+    await finalizeStepSuperlatives()
+  } catch (err) {
+    console.error('[listings-sync] listing superlatives rebuild failed', err)
+  }
+  try {
+    await finalizeStepStatsCache()
+  } catch (err) {
+    console.error('[listings-sync] stats cache rebuild failed', err)
+  }
+  try {
+    await finalizeStepDealOfDay()
+  } catch (err) {
+    console.error('[listings-sync] deal of the day cache rebuild failed', err)
+  }
+  try {
+    await finalizeStepDealOfWeek()
+  } catch (err) {
+    console.error('[listings-sync] deal of the week cache rebuild failed', err)
+  }
+  try {
+    await finalizeStepSpotlight()
+  } catch (err) {
+    console.error('[listings-sync] spotlight cache rebuild failed', err)
+  }
+  try {
+    await finalizeStepIfEstimates()
+  } catch (err) {
+    console.error('[listings-sync] If estimates cache rebuild failed', err)
+  }
+  try {
+    await finalizeStepEdgeScores()
+  } catch (err) {
+    console.error('[listings-sync] edge scores rebuild failed', err)
+  }
+  await triggerFullResyncDeferredWarms()
+}
+
+export type FinalizeStepResult = {
+  step: FullResyncFinalizeStepId
+  ok: boolean
+  error?: string
+  durationMs: number
+  /** Only set once the last ('persist') step completes. */
+  totalListings?: number
+}
+
+/**
+ * One finalize step of a chunked full resync (mirrors `syncFullResyncTown` for the town phase).
+ * Each step should comfortably complete within a single serverless invocation. Errors are caught
+ * here (rather than swallowed like `applyFullSyncPostamble` does) so the admin panel can surface
+ * exactly which step failed and let the client retry from there.
+ */
+export async function runFullResyncFinalizeStep(
+  step: FullResyncFinalizeStepId,
+): Promise<FinalizeStepResult> {
+  const t0 = Date.now()
+  const finishedAt = new Date().toISOString()
+  try {
+    switch (step) {
+      case 'scores':
+        await finalizeStepScores(finishedAt)
+        break
+      case 'superlatives':
+        await finalizeStepSuperlatives()
+        break
+      case 'stats-cache':
+        await finalizeStepStatsCache()
+        break
+      case 'deal-of-day':
+        await finalizeStepDealOfDay()
+        break
+      case 'deal-of-week':
+        await finalizeStepDealOfWeek()
+        break
+      case 'spotlight':
+        await finalizeStepSpotlight()
+        break
+      case 'if-estimates':
+        await finalizeStepIfEstimates()
+        break
+      case 'edge-scores':
+        await finalizeStepEdgeScores()
+        break
+      case 'persist': {
+        const { totalListings } = await finalizeStepPersist(finishedAt)
+        return { step, ok: true, durationMs: Date.now() - t0, totalListings }
+      }
+      default: {
+        const _exhaustive: never = step
+        return _exhaustive
+      }
+    }
+    await persistWriteDbAfterChunk()
+    return { step, ok: true, durationMs: Date.now() - t0 }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[listings-sync] finalize step "${step}" failed`, err)
+    return { step, ok: false, error: message, durationMs: Date.now() - t0 }
   }
 }
 

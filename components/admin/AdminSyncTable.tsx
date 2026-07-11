@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AdminSyncActionId, AdminDatabaseSyncStats } from "@/lib/admin-sync-types";
+import type { AdminSyncActionId, AdminDatabaseSyncStats, FullResyncFinalizeStepId } from "@/lib/admin-sync-types";
 import {
   ADMIN_SYNC_ACTIONS,
   ADMIN_SYNC_ALL_CLIENT_STEPS,
   ADMIN_MANUAL_SYNC_ORDER_BY_ROW,
   ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL,
+  FULL_RESYNC_FINALIZE_STEPS,
 } from "@/lib/admin-sync-types";
 import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
 import { formatAdminNextSyncAt, formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
@@ -15,7 +16,10 @@ import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
 import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
-import { formatFullResyncTownPending } from "@/lib/admin-sync-progress";
+import {
+  formatFullResyncTownPending,
+  formatFullResyncFinalizeStepPending,
+} from "@/lib/admin-sync-progress";
 
 function formatSyncDescription(message?: string, detail?: string): string | undefined {
   if (!message && !detail) return undefined;
@@ -148,49 +152,101 @@ async function runFullResyncChunked(
       }));
     }
 
-    hooks.setDescriptions((prev) => ({
-      ...prev,
-      [row.id]:
-        "Finalizing Goldilocks scores, stats cache, Deal of the Day, intelligence board, and read snapshot…",
-    }));
-    const { res: finishRes, body: finish } = await postAdminSync({
-      action: "full-resync",
-      finalize: true,
-    });
-    if (finish.stats) {
-      hooks.setStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              stats: finish.stats!,
-              refreshing: Boolean(finish.refreshing),
-            }
-          : null,
-      );
+    // Finalize runs as one POST per step (mirrors the per-town chunking above) so each request
+    // stays well under serverless Lambda timeouts. Steps already marked complete (from a prior
+    // partial failure) are skipped so a retry resumes rather than restarts from scratch.
+    const stepCount = FULL_RESYNC_FINALIZE_STEPS.length;
+    let finalizeStepsCompleted: string[] = [];
+    let finish: AdminSyncPostBody | null = null;
+    let finishRes: Response | null = null;
+
+    for (let i = 0; i < FULL_RESYNC_FINALIZE_STEPS.length; i++) {
+      const stepId: FullResyncFinalizeStepId = FULL_RESYNC_FINALIZE_STEPS[i];
+      const stepIndex = i + 1;
+      if (finalizeStepsCompleted.includes(stepId)) continue;
+
+      hooks.setDescriptions((prev) => ({
+        ...prev,
+        [row.id]: formatFullResyncFinalizeStepPending({ stepId, stepIndex, stepCount }),
+      }));
+      const { res, body } = await postAdminSync({
+        action: "full-resync",
+        finalizeStep: stepId,
+      });
+      finishRes = res;
+      finish = body;
+      finalizeStepsCompleted = body.finalizeStepsCompleted ?? finalizeStepsCompleted;
+
+      if (!res.ok || body.ok === false) {
+        const errText = formatSyncError(
+          res,
+          body,
+          `Finalize step ${stepIndex}/${stepCount} (${stepId})`,
+        );
+        hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
+        hooks.setDescriptions((prev) => ({
+          ...prev,
+          [row.id]: `Full resync finalize failed at step ${stepIndex}/${stepCount} (${stepId})`,
+        }));
+        hooks.setRunTimings((prev) => ({
+          ...prev,
+          [row.id]: {
+            started: body.startedAt ?? startedAt,
+            finished: body.finishedAt ?? new Date().toISOString(),
+          },
+        }));
+        return false;
+      }
+
+      if (body.stats) {
+        hooks.setStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                stats: body.stats!,
+                refreshing: Boolean(body.refreshing ?? prev.refreshing),
+              }
+            : null,
+        );
+      }
+      if (stepIndex < stepCount) {
+        hooks.setDescriptions((prev) => ({
+          ...prev,
+          [row.id]:
+            formatSyncDescription(body.message, undefined) ??
+            `Finalize step ${stepIndex}/${stepCount} complete`,
+        }));
+      }
     }
+
+    if (!finish || !finishRes) {
+      // All finalize steps were already marked complete (e.g. a stale resume) — nothing to run.
+      return true;
+    }
+
     hooks.setRefreshing(Boolean(finish.refreshing));
     const ok = finishRes.ok && finish.ok !== false;
     hooks.setRunTimings((prev) => ({
       ...prev,
       [row.id]: {
-        started: finish.startedAt ?? startedAt,
-        finished: ok ? (finish.finishedAt ?? new Date().toISOString()) : new Date().toISOString(),
+        started: finish!.startedAt ?? startedAt,
+        finished: ok ? (finish!.finishedAt ?? new Date().toISOString()) : new Date().toISOString(),
       },
     }));
     if (ok) {
       hooks.setErrors((prev) => ({ ...prev, [row.id]: undefined }));
-      hooks.setMessages((prev) => ({ ...prev, [row.id]: finish.message ?? "Complete" }));
+      hooks.setMessages((prev) => ({ ...prev, [row.id]: finish!.message ?? "Complete" }));
       hooks.setDescriptions((prev) => ({
         ...prev,
         [row.id]:
-          formatSyncDescription(finish.message, finish.detail) ??
-          finish.message ??
+          formatSyncDescription(finish!.message, finish!.detail) ??
+          finish!.message ??
           "Full resync complete",
       }));
     } else {
       hooks.setErrors((prev) => ({
         ...prev,
-        [row.id]: formatSyncError(finishRes, finish, "Finalize full resync"),
+        [row.id]: formatSyncError(finishRes!, finish!, "Finalize full resync"),
       }));
       hooks.setDescriptions((prev) => ({
         ...prev,
@@ -292,6 +348,7 @@ type AdminSyncPostBody = PanelStatus & {
   backgroundQueued?: boolean;
   startedAt?: string;
   finishedAt?: string;
+  finalizeStepsCompleted?: string[];
   steps?: {
     ok: boolean;
     action: AdminSyncActionId;
@@ -506,18 +563,19 @@ function SyncImpactedPages({ rowId }: { rowId: string }) {
   }
 
   return (
-    <ul className="flex flex-wrap gap-1.5 min-w-0 list-none p-0 m-0">
-      {pages.map((page) => (
-        <li key={page.href}>
+    <p className="min-w-0 font-mono text-[10px] tracking-[0.08em] uppercase leading-snug">
+      {pages.map((page, index) => (
+        <span key={page.href}>
           <Link
             href={page.href}
-            className="inline-block font-mono text-[10px] tracking-[0.08em] uppercase text-navy/70 hover:text-gold border border-charcoal/10 hover:border-gold/40 rounded-full px-2 py-0.5 bg-white transition-colors whitespace-nowrap"
+            className="text-navy/70 hover:text-gold transition-colors"
           >
             {page.label}
           </Link>
-        </li>
+          {index < pages.length - 1 ? <span className="text-charcoal/40">, </span> : null}
+        </span>
       ))}
-    </ul>
+    </p>
   );
 }
 
@@ -934,11 +992,11 @@ export default function AdminSyncTable({
             <col className="w-[7.5rem]" />
             <col className="w-[9.5rem]" />
             <col />
+            <col className="w-[11rem]" />
+            <col className="w-[10.5rem]" />
+            <col className="w-[10.5rem]" />
+            <col className="w-[11rem]" />
             <col className="w-[14rem]" />
-            <col className="w-[11rem]" />
-            <col className="w-[10.5rem]" />
-            <col className="w-[10.5rem]" />
-            <col className="w-[11rem]" />
           </colgroup>
           <thead>
             <tr>
@@ -946,15 +1004,25 @@ export default function AdminSyncTable({
               <th className={TH}>Action</th>
               <th className={TH}>Sync</th>
               <th className={TH}>Description</th>
-              <th className={TH}>Errors</th>
               <th className={TH}>Pages</th>
               <th className={TH}>Start</th>
               <th className={TH}>End</th>
-              <th className={`${TH} border-r-0`}>Next scheduled</th>
+              <th className={TH}>Next scheduled</th>
+              <th className={`${TH} border-r-0`}>Errors</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => {
+            {[...rows]
+              .sort((a, b) => {
+                const aFinished = parseIsoMs(
+                  (runTimings[a.id] ?? timingForRow(a, status)).finished,
+                );
+                const bFinished = parseIsoMs(
+                  (runTimings[b.id] ?? timingForRow(b, status)).finished,
+                );
+                return (bFinished ?? -Infinity) - (aFinished ?? -Infinity);
+              })
+              .map((row, index) => {
               const isRunning = row.actionId != null && runningId === row.actionId;
               const rowError = errors[row.id];
               const disabled = !row.actionId || globalBusy;
@@ -1042,15 +1110,6 @@ export default function AdminSyncTable({
                     })()}
                   </td>
                   <td className={TD}>
-                    {rowError ? (
-                      <p className="font-mono text-[10px] leading-snug text-coral break-words">
-                        {rowError}
-                      </p>
-                    ) : (
-                      <span className="font-mono text-[10px] text-charcoal/30">—</span>
-                    )}
-                  </td>
-                  <td className={TD}>
                     <SyncImpactedPages rowId={row.id} />
                   </td>
                   {showSingleTimestamp ? (
@@ -1067,7 +1126,7 @@ export default function AdminSyncTable({
                       </td>
                     </>
                   )}
-                  <td className={`${TD} border-r-0`}>
+                  <td className={TD}>
                     <p
                       className={`font-mono text-xs tabular-nums font-semibold whitespace-nowrap ${
                         visual === "alert" && nextRunAt && nowMs > (parseIsoMs(nextRunAt) ?? 0)
@@ -1097,6 +1156,15 @@ export default function AdminSyncTable({
                         On schedule
                       </p>
                     ) : null}
+                  </td>
+                  <td className={`${TD} border-r-0`}>
+                    {rowError ? (
+                      <p className="font-mono text-[10px] leading-snug text-coral break-words">
+                        {rowError}
+                      </p>
+                    ) : (
+                      <span className="font-mono text-[10px] text-charcoal/30">—</span>
+                    )}
                   </td>
                 </tr>
               );

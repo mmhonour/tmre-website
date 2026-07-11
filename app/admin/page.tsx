@@ -17,7 +17,10 @@ import {
   readLatestListingModificationTimestamp,
   resetListingsDbConnections,
 } from "@/lib/listings-db";
-import { ensureAdminSqliteDatabasesReady } from "@/lib/listings-db-persist";
+import {
+  describeBlobPersistRuntime,
+  ensureAdminSqliteDatabasesReady,
+} from "@/lib/listings-db-persist";
 import { ensurePostDeployFullResyncScheduled } from "@/lib/deploy-full-resync-schedule";
 import { formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
@@ -108,6 +111,7 @@ export default async function AdminPage() {
   const refreshFinishedAt = lastRefreshFinished ?? refresh.lastFinishedAt;
   const sqliteDiagrams = describeRunningSqliteDatabases();
   const databaseStats = collectAdminDatabaseSyncStats();
+  const blobRuntime = await describeBlobPersistRuntime();
   const listingsDbRuntime = describeListingsDbRuntime();
   const listingsDbBroken = !listingsDbRuntime.nativeModuleAvailable;
   const listingsDbEmpty =
@@ -354,7 +358,7 @@ export default async function AdminPage() {
             </dl>
           </div>
         ) : null}
-        <AdminSqliteDiagrams databases={sqliteDiagrams} />
+        <AdminSqliteDiagrams databases={sqliteDiagrams} blobRuntime={blobRuntime} />
       </div>
     </>
   );
