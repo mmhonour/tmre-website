@@ -406,10 +406,43 @@ export default async function AdminPage() {
     </>
   );
 
+  const deployId = process.env.DEPLOY_ID ?? null
+  const deployBuildTime: Date | null = (() => {
+    if (!deployId || deployId.length < 8) return null
+    const ts = parseInt(deployId.substring(0, 8), 16)
+    if (!Number.isFinite(ts) || ts <= 0) return null
+    return new Date(ts * 1000)
+  })()
+  const deployBuildTimeStr = deployBuildTime
+    ? new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      }).format(deployBuildTime)
+    : null
+
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
+        {deployId && (
+          <div className="absolute top-5 right-6 lg:top-8 lg:right-10 text-right pointer-events-none select-none">
+            <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
+              Deploy
+            </p>
+            <p className="font-mono text-[10px] text-white/55 leading-none">
+              {deployId.substring(0, 12)}&hellip;
+            </p>
+            {deployBuildTimeStr && (
+              <p className="font-mono text-[9px] text-white/35 leading-none mt-0.5">
+                {deployBuildTimeStr}
+              </p>
+            )}
+          </div>
+        )}
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Explore
