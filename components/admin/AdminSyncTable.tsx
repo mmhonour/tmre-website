@@ -986,17 +986,15 @@ export default function AdminSyncTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1280px] border-collapse table-fixed">
+        <table className="w-full min-w-[960px] border-collapse table-fixed">
           <colgroup>
             <col className="w-[3rem]" />
             <col className="w-[7.5rem]" />
             <col className="w-[9.5rem]" />
             <col />
             <col className="w-[7rem]" />
-            <col className="w-[10.5rem]" />
-            <col className="w-[10.5rem]" />
-            <col className="w-[11rem]" />
-            <col className="w-[14rem]" />
+            <col className="w-[13rem]" />
+            <col className="w-[13rem]" />
           </colgroup>
           <thead>
             <tr>
@@ -1005,10 +1003,8 @@ export default function AdminSyncTable({
               <th className={TH}>Sync</th>
               <th className={TH}>Description</th>
               <th className={TH}>Pages</th>
-              <th className={TH}>Start</th>
-              <th className={TH}>End</th>
-              <th className={TH}>Next scheduled</th>
-              <th className={`${TH} border-r-0`}>Errors</th>
+              <th className={TH}>Start / End</th>
+              <th className={`${TH} border-r-0`}>Next scheduled / Errors</th>
             </tr>
           </thead>
           <tbody>
@@ -1159,11 +1155,11 @@ export default function AdminSyncTable({
                   </td>
                   <td className={`${TD} border-r-0`}>
                     {rowError ? (
-                      <p className="font-mono text-[10px] leading-snug text-coral break-words">
+                      <p className="font-mono text-[9px] leading-snug text-coral break-words">
                         {rowError}
                       </p>
                     ) : (
-                      <span className="font-mono text-[10px] text-charcoal/30">—</span>
+                      <span className="font-mono text-[9px] text-charcoal/30">—</span>
                     )}
                   </td>
                 </tr>
