@@ -12,6 +12,7 @@ import {
   readStatsCacheRow,
   getSyncMeta,
   setSyncMeta,
+  tryGetWriteDb,
   upsertListingScores,
   writeStatsCacheRow,
 } from '@/lib/listings-db'
@@ -314,7 +315,13 @@ async function buildTownBoard(
 }
 
 export function readIntelligenceDealBoardCache(): IntelligenceDealBoardPayload | null {
-  if (!hasLocalListingsCache()) return null
+  // Gate on the write DB — that is where stats_cache (and therefore the deal
+  // board cache row) lives.  hasLocalListingsCache() previously gated on the
+  // READ DB (tryGetReadDb), which instrumentation.ts does NOT restore on cold
+  // starts (only the write DB is restored via ensureListingsDbHydrated).
+  // This caused the intelligence page to return 404 on every Lambda cold-start
+  // even though the cache was safely stored in the write DB blob.
+  if (!tryGetWriteDb()) return null
   const row = readStatsCacheRow(INTELLIGENCE_DEAL_BOARD_CACHE_KEY)
   if (!row?.payload) return null
   try {

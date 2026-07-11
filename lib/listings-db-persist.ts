@@ -403,10 +403,18 @@ async function recordBlobRestore(restored: boolean): Promise<void> {
   setSyncMeta('blob_restore_last_at', new Date().toISOString())
 }
 
-/** Restore blob DB (if any) before opening SQLite — returns true when local file was replaced. */
+/** Restore blob DB (if any) before opening SQLite — returns true when local file was replaced.
+ *  Also restores the read snapshot so that any public API that falls back to a live rebuild
+ *  (e.g. intelligence deal board) has listing rows available in tryGetReadDb(). */
 export async function ensureListingsDbHydrated(resetConnections: () => void): Promise<boolean> {
-  const { listingsDbPath } = await import('@/lib/listings-db')
-  const restored = await restorePersistedListingsDb(listingsDbPath())
+  const { listingsDbPath, listingsReadDbPath } = await import('@/lib/listings-db')
+  let restored = await restorePersistedListingsDb(listingsDbPath())
+  // Also restore the read snapshot — public API routes that query listings
+  // (e.g. intelligence board rebuild) use tryGetReadDb(), not the write DB.
+  // Without this they see an empty read DB and serve 0-listing responses.
+  if (await restorePersistedDbFile(listingsReadDbPath(), BLOB_READ_DB_KEY, MIN_BYTES)) {
+    restored = true
+  }
   if (restored) resetConnections()
   await recordBlobRestore(restored)
   return restored
