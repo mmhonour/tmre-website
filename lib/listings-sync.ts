@@ -9,6 +9,7 @@ import {
   readListingsFromDb,
   recordSyncRun,
   setSyncMeta,
+  tryGetWriteDb,
   upsertListingsIncremental,
   upsertTownListings,
 } from '@/lib/listings-db'
@@ -637,6 +638,12 @@ export async function runFullResyncFinalizeStep(
   const t0 = Date.now()
   const finishedAt = new Date().toISOString()
   try {
+    // Compact the WAL before each step so prior writes (from town syncs and
+    // earlier finalize steps) don't occupy extra /tmp space during this step.
+    // On a 512MB Lambda /tmp this is critical: without it, the WAL from score
+    // writes + the read-snapshot copy + this step's WAL can exhaust disk.
+    tryGetWriteDb()?.pragma('wal_checkpoint(TRUNCATE)')
+
     switch (step) {
       case 'scores':
         await finalizeStepScores(finishedAt)
@@ -671,13 +678,25 @@ export async function runFullResyncFinalizeStep(
         return _exhaustive
       }
     }
-    await persistWriteDbAfterChunk()
+    // Between finalize steps, only persist the write DB — not the read snapshot
+    // or photos DB.  Those secondary files roughly double /tmp disk usage and are
+    // only needed for serving pages, not for resuming the next finalize step.
+    // They are persisted properly in the final `persist` step.
+    await persistWriteDbOnlyAfterFinalizeStep()
     return { step, ok: true, durationMs: Date.now() - t0 }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[listings-sync] finalize step "${step}" failed`, err)
     return { step, ok: false, error: message, durationMs: Date.now() - t0 }
   }
+}
+
+async function persistWriteDbOnlyAfterFinalizeStep(): Promise<void> {
+  const { listingsDbPath, tryGetWriteDb: getWriteDb } = await import('@/lib/listings-db')
+  const { persistListingsDbToBlob } = await import('@/lib/listings-db-persist')
+  // Checkpoint WAL into the main file first so the uploaded blob is compact.
+  getWriteDb()?.pragma('wal_checkpoint(TRUNCATE)')
+  await persistListingsDbToBlob(listingsDbPath(), undefined)
 }
 
 /** Active + Closed + Expired for a single town (no refresh lock). */
