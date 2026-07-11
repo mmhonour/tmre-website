@@ -25,7 +25,7 @@ type ListingHeaderProps = {
   yearBuilt: number | null;
   bedBathSearchHref?: string | null;
   hideMarketMeta?: boolean;
-  /** Spotlight: hide street/city address line and MLS status (title-only header). */
+  /** Spotlight: hide street/city address line (title-only header). MLS status renders on the panel label row. */
   privacyMode?: boolean;
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ScoreBreakdown | null;
