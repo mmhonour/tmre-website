@@ -4,6 +4,7 @@ import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { listingPhotosDbPath, tryGetListingPhotosDb } from '@/lib/listing-photos-db'
 import {
+  describeListingsDbRuntime,
   getListingsDb,
   getSyncMeta,
   isListingsDbAvailable,
@@ -303,19 +304,6 @@ function openReadonlyIfExists(filePath: string): { database: SqliteDatabase | nu
   }
 }
 
-function sqliteModuleLoadError(): string | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('better-sqlite3')
-    return null
-  } catch (err) {
-    return err instanceof Error ? err.message : String(err)
-  }
-}
-
-function canLoadSqliteModule(): boolean {
-  return sqliteModuleLoadError() == null
-}
 
 export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
   const writePath = listingsDbPath()
@@ -325,14 +313,28 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
 
   let writeDb: SqliteDatabase | null = null
   let writeError: string | undefined
-  if (!canLoadSqliteModule()) {
+  const runtime = describeListingsDbRuntime()
+  if (!runtime.nativeModuleAvailable) {
     writeError =
-      sqliteModuleLoadError() ??
+      runtime.nativeModuleError ??
       'better-sqlite3 native module unavailable in this runtime (check Netlify Node version and included_files)'
   } else {
     try {
       writeDb = isListingsDbAvailable() ? getListingsDb() : null
-      if (!writeDb) writeError = 'Listings DB unavailable in this runtime'
+      if (!writeDb) {
+        const hints: string[] = []
+        if (runtime.lastOpenError) hints.push(`open: ${runtime.lastOpenError}`)
+        const missingBundle = runtime.bundleSources.every((src) => !src.exists)
+        if (missingBundle) {
+          hints.push('bundle missing at runtime (data/listings.bundle.db not in function package)')
+        } else if (!runtime.writeDbExists || (runtime.writeDbBytes ?? 0) < 50_000) {
+          hints.push('write DB not seeded to /tmp yet')
+        }
+        writeError =
+          hints.length > 0
+            ? `Listings DB unavailable — ${hints.join('; ')}`
+            : 'Listings DB unavailable in this runtime'
+      }
     } catch (err) {
       writeError = err instanceof Error ? err.message : String(err)
     }
@@ -398,25 +400,30 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
 
   const diagrams = [writeDiagram, readDiagram, photosDiagram, propertyAddressDiagram]
 
-  if (existsSync(bundlePath)) {
-    const bundleOpen = openReadonlyIfExists(bundlePath)
-    diagrams.push(
-      inspectHandle(
-        bundleOpen.database,
-        baseMeta(
-          'listings-bundle',
-          'Listings bundle (deploy artifact)',
-          'Copied into Netlify /tmp on cold start — not live traffic',
-          bundlePath,
-        ),
-        { error: bundleOpen.error, documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS },
+  const bundleOpen = openReadonlyIfExists(bundlePath)
+  diagrams.push(
+    inspectHandle(
+      bundleOpen.database,
+      baseMeta(
+        'listings-bundle',
+        'Listings bundle (deploy artifact)',
+        'Copied into Netlify /tmp on cold start — not live traffic',
+        bundlePath,
       ),
-    )
-    try {
-      bundleOpen.database?.close()
-    } catch {
-      /* ignore */
-    }
+      {
+        error:
+          bundleOpen.error ??
+          (existsSync(bundlePath)
+            ? undefined
+            : 'Bundle missing at runtime — check outputFileTracingIncludes and netlify.toml included_files'),
+        documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS,
+      },
+    ),
+  )
+  try {
+    bundleOpen.database?.close()
+  } catch {
+    /* ignore */
   }
 
   return diagrams

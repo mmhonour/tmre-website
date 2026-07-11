@@ -9,6 +9,19 @@ export async function register() {
     return
   }
 
+  // Eager seed + warm SQLite on serverless cold starts before first request.
+  if (isServerlessRuntime()) {
+    try {
+      const { ensureListingsDbSeeded, tryGetWriteDb, describeListingsDbRuntime } =
+        await import('./lib/listings-db')
+      ensureListingsDbSeeded()
+      tryGetWriteDb()
+      console.info('[listings-db] serverless startup:', describeListingsDbRuntime())
+    } catch (err) {
+      console.warn('[listings-db] serverless eager seed failed:', err)
+    }
+  }
+
   try {
     const { syncListingsSmart, syncIncrementalListings, syncAllTownListings } =
       await import('./lib/listings-sync')

@@ -41,6 +41,9 @@ export function classifyRetsError(err: unknown): {
     }
   }
 
+  if (/GLIBC|ERR_DLOPEN_FAILED/i.test(detail)) {
+    return {
+      status: 'unavailable',
       message:
         'Native module GLIBC mismatch — redeploy after build uses prebuild binaries (not compile-on-Noble)',
       detail,

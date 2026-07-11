@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0 --port 3000",
     "build": "next build",
-    "build:netlify": "node scripts/rebuild-native-modules.cjs && tsx --require ./scripts/stub-server-only.cjs scripts/prepare-netlify-bundle.ts && next build",
+    "build:netlify": "node scripts/rebuild-native-modules.cjs && node scripts/verify-native-prebuilds.cjs && tsx --require ./scripts/stub-server-only.cjs scripts/prepare-netlify-bundle.ts && next build && node scripts/verify-netlify-tracing.mjs",
     "start": "next start",
     "lint": "eslint",
     "discover:rets": "node --env-file=.env.local node_modules/.bin/tsx scripts/discover-rets.ts",

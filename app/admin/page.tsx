@@ -11,6 +11,7 @@ import AdminSyncTable, { type AdminSyncRow } from "@/components/admin/AdminSyncT
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
 import {
+  describeListingsDbRuntime,
   getListingsDbStats,
   getSyncMeta,
   readLatestListingModificationTimestamp,
@@ -86,6 +87,7 @@ export default async function AdminPage() {
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
   const refreshFinishedAt = lastRefreshFinished ?? refresh.lastFinishedAt;
   const sqliteDiagrams = describeRunningSqliteDatabases();
+  const listingsDbRuntime = describeListingsDbRuntime();
   const startupProcess = describeStartupProcess();
 
   const rows: StatusRow[] = [
@@ -231,6 +233,44 @@ export default async function AdminPage() {
       ) : null}
 
       <div id="admin-sqlite-schemas" className="scroll-mt-24">
+        {!listingsDbRuntime.nativeModuleAvailable || stats.total === 0 ? (
+          <div className="mb-4 rounded-2xl border border-coral/25 bg-coral/[0.06] px-5 sm:px-6 py-4">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-coral mb-2">
+              Listings DB runtime
+            </p>
+            <dl className="font-mono text-[11px] text-charcoal/70 space-y-1">
+              <div>
+                <dt className="inline text-charcoal/45">cwd: </dt>
+                <dd className="inline break-all">{listingsDbRuntime.cwd}</dd>
+              </div>
+              <div>
+                <dt className="inline text-charcoal/45">write: </dt>
+                <dd className="inline break-all">{listingsDbRuntime.writePath}</dd>
+              </div>
+              {listingsDbRuntime.nativeModuleError ? (
+                <div>
+                  <dt className="inline text-charcoal/45">native: </dt>
+                  <dd className="inline break-all">{listingsDbRuntime.nativeModuleError}</dd>
+                </div>
+              ) : null}
+              {listingsDbRuntime.lastOpenError ? (
+                <div>
+                  <dt className="inline text-charcoal/45">open: </dt>
+                  <dd className="inline break-all">{listingsDbRuntime.lastOpenError}</dd>
+                </div>
+              ) : null}
+              {listingsDbRuntime.bundleSources.map((src) => (
+                <div key={src.path}>
+                  <dt className="inline text-charcoal/45">bundle: </dt>
+                  <dd className="inline break-all">
+                    {src.path}
+                    {src.exists ? ` (${src.bytes?.toLocaleString() ?? "?"} bytes)` : " (missing)"}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : null}
         <AdminSqliteDiagrams databases={sqliteDiagrams} />
       </div>
     </>

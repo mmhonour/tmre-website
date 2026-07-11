@@ -2,10 +2,14 @@ import type { NextConfig } from "next";
 
 const sqliteNativeIncludes = [
   "./node_modules/better-sqlite3/**/*",
+  "./node_modules/better-sqlite3/build/Release/*.node",
+  "./node_modules/better-sqlite3/prebuilds/**/*",
   "./node_modules/bindings/**/*",
   "./node_modules/file-uri-to-path/**/*",
   "./node_modules/node-addon-api/**/*",
+  "./node_modules/prebuild-install/**/*",
   "./data/listings.bundle.db",
+  "./data/**/*",
 ];
 
 const retsNativeIncludes = [
@@ -29,7 +33,9 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": sqliteNativeIncludes,
     "/admin": sqliteNativeIncludes,
+    "/admin/**": sqliteNativeIncludes,
     "/api/**/*": retsNativeIncludes,
+    "/api/admin/**/*": sqliteNativeIncludes,
     "/api/listings/route": retsNativeIncludes,
     "/api/listings/[mlsId]/route": retsNativeIncludes,
     "/api/listings/[mlsId]/photo/route": retsNativeIncludes,

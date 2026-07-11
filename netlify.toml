@@ -7,6 +7,8 @@
   NODE_VERSION = "22"
   SKIP_LISTINGS_SYNC = "true"
   LISTINGS_DB_PATH = "/tmp/listings.db"
+  # Prevent npm install / rebuild from compiling native addons on Noble (glibc 2.38).
+  NPM_CONFIG_BUILD_FROM_SOURCE = "false"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -18,6 +20,12 @@
     "node_modules/rets-client/**",
     "node_modules/node-expat/**",
     "node_modules/better-sqlite3/**",
+    "node_modules/better-sqlite3/build/Release/*.node",
+    "node_modules/better-sqlite3/prebuilds/**",
     "node_modules/bindings/**",
+    "node_modules/file-uri-to-path/**",
+    "node_modules/node-addon-api/**",
+    "node_modules/prebuild-install/**",
     "data/listings.bundle.db",
+    "data/**",
   ]

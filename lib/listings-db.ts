@@ -26,7 +26,11 @@ type SqliteDatabase = import('better-sqlite3').Database
 
 let writeDb: SqliteDatabase | null = null
 let readDb: SqliteDatabase | null = null
-let dbDisabled = false
+/** Permanent — native better-sqlite3 bindings cannot load in this process. */
+let nativeModuleUnavailable = false
+let nativeModuleLoadError: string | null = null
+/** Transient — last open/seed failure; does not block retries. */
+let lastOpenError: string | null = null
 
 const DEFAULT_DB_PATH = path.join(process.cwd(), 'data', 'listings.db')
 const BUNDLED_DB_MIN_BYTES = 50_000
@@ -36,6 +40,29 @@ function bundledListingsDbSources(): string[] {
     path.join(process.cwd(), 'data', 'listings.bundle.db'),
     path.join(process.cwd(), 'data', 'listings.db'),
   ]
+}
+
+export type ListingsDbRuntimeDiagnostics = {
+  cwd: string
+  isServerless: boolean
+  writePath: string
+  readPath: string
+  bundleSources: { path: string; exists: boolean; bytes: number | null }[]
+  writeDbExists: boolean
+  writeDbBytes: number | null
+  nativeModuleAvailable: boolean
+  nativeModuleError: string | null
+  lastOpenError: string | null
+  connected: boolean
+}
+
+function fileStatBytes(filePath: string): number | null {
+  try {
+    if (!existsSync(filePath)) return null
+    return statSync(filePath).size
+  } catch {
+    return null
+  }
 }
 
 /** Copy a shipped SQLite bundle into /tmp on cold serverless starts. */
@@ -71,6 +98,35 @@ function serverlessDbPath(): string {
 
 export function listingsDbPath(): string {
   return serverlessDbPath()
+}
+
+/** Eager serverless seed — call from instrumentation before first request. */
+export function ensureListingsDbSeeded(): void {
+  seedListingsDbIfNeeded(listingsDbPath())
+}
+
+export function describeListingsDbRuntime(): ListingsDbRuntimeDiagnostics {
+  const writePath = listingsDbPath()
+  const readPath = listingsReadDbPath()
+  const bundleSources = bundledListingsDbSources().map((src) => ({
+    path: src,
+    exists: existsSync(src),
+    bytes: fileStatBytes(src),
+  }))
+
+  return {
+    cwd: process.cwd(),
+    isServerless: isServerlessRuntime(),
+    writePath,
+    readPath,
+    bundleSources,
+    writeDbExists: existsSync(writePath),
+    writeDbBytes: fileStatBytes(writePath),
+    nativeModuleAvailable: !nativeModuleUnavailable,
+    nativeModuleError: nativeModuleLoadError,
+    lastOpenError,
+    connected: writeDb != null,
+  }
 }
 
 export function listingsReadDbPath(): string {
@@ -155,17 +211,24 @@ type SqliteConstructor = new (
   options?: { readonly?: boolean },
 ) => SqliteDatabase
 
+let sqliteConstructor: SqliteConstructor | null | undefined
+
 function loadSqliteDatabase(): SqliteConstructor | null {
+  if (nativeModuleUnavailable) return null
+  if (sqliteConstructor !== undefined) return sqliteConstructor
+
   try {
     // Dynamic require avoids crashing the whole server when native bindings are missing.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('better-sqlite3') as SqliteConstructor
+    sqliteConstructor = require('better-sqlite3') as SqliteConstructor
+    nativeModuleLoadError = null
+    return sqliteConstructor
   } catch (err) {
-    if (!dbDisabled) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.warn('[listings-db] SQLite unavailable — falling back to live RETS:', message)
-    }
-    dbDisabled = true
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn('[listings-db] SQLite native module unavailable — falling back to live RETS:', message)
+    nativeModuleUnavailable = true
+    nativeModuleLoadError = message
+    sqliteConstructor = null
     return null
   }
 }
@@ -181,7 +244,7 @@ function openSqliteDb(dbPath: string, readonly = false): SqliteDatabase {
 }
 
 export function tryGetWriteDb(): SqliteDatabase | null {
-  if (dbDisabled) return null
+  if (nativeModuleUnavailable) return null
   if (writeDb) return writeDb
 
   const Database = loadSqliteDatabase()
@@ -193,6 +256,7 @@ export function tryGetWriteDb(): SqliteDatabase | null {
     mkdirSync(path.dirname(dbPath), { recursive: true })
     writeDb = openSqliteDb(dbPath)
     initSchema(writeDb)
+    lastOpenError = null
 
     const readPath = listingsReadDbPath()
     if (!existsSync(readPath) && existsSync(dbPath)) {
@@ -211,18 +275,16 @@ export function tryGetWriteDb(): SqliteDatabase | null {
 
     return writeDb
   } catch (err) {
-    if (!dbDisabled) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.warn('[listings-db] SQLite open failed — falling back to live RETS:', message)
-    }
-    dbDisabled = true
+    const message = err instanceof Error ? err.message : String(err)
+    lastOpenError = message
+    console.warn('[listings-db] SQLite open failed (will retry) — falling back to live RETS:', message)
     writeDb = null
     return null
   }
 }
 
 export function tryGetReadDb(): SqliteDatabase | null {
-  if (dbDisabled) return null
+  if (nativeModuleUnavailable) return null
 
   const readPath = listingsReadDbPath()
   if (!existsSync(readPath)) {
@@ -283,7 +345,12 @@ function tryGetListingsDb(): SqliteDatabase | null {
 export function getListingsDb(): SqliteDatabase {
   const database = tryGetWriteDb()
   if (!database) {
-    throw new Error('Listings DB unavailable in this runtime')
+    const runtime = describeListingsDbRuntime()
+    const hints: string[] = []
+    if (runtime.nativeModuleError) hints.push(runtime.nativeModuleError)
+    if (runtime.lastOpenError) hints.push(runtime.lastOpenError)
+    const suffix = hints.length > 0 ? ` (${hints.join('; ')})` : ''
+    throw new Error(`Listings DB unavailable in this runtime${suffix}`)
   }
   return database
 }

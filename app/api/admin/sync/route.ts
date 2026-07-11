@@ -9,6 +9,7 @@ import {
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
+  describeListingsDbRuntime,
   getListingsDbStats,
   getSyncMeta,
   readLatestListingModificationTimestamp,
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
     nextRuns,
     rets,
     syncFailures: readRecentSyncFailures(8),
+    listingsDbRuntime: describeListingsDbRuntime(),
   })
 }
 
