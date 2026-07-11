@@ -585,10 +585,16 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
   markPostDeployFullResyncComplete()
   const { countWriteDbListings } = await import('@/lib/listings-db')
   const totalListings = countWriteDbListings() || getListingsDbStats().total
+  // Close the refresh lock BEFORE the blob checkpoint so the finalized history
+  // entry lands in sync_meta while it is still in WAL. The wal_checkpoint inside
+  // persistWriteDbAfterChunk then flushes it into the main DB file and it is
+  // included in the blob upload. Calling endSqliteRefresh AFTER the checkpoint
+  // (the old order) wrote the entry to WAL after the blob was already saved —
+  // it was stripped on every Lambda restore, making refresh history appear empty.
+  endSqliteRefresh(finishedAt)
   await persistWriteDbAfterChunk()
   const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
   await clearChunkedFullResyncProgress()
-  endSqliteRefresh(finishedAt)
   void warmActiveListingPhotosDeferred()
   return { totalListings }
 }
