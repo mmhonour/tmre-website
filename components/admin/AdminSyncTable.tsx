@@ -339,6 +339,28 @@ function formatTimestamp(iso: string | null | undefined): string {
   }).format(date);
 }
 
+/** Local-timezone calendar date string used only for equality comparisons. */
+function isoCalendarDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatTimeOnly(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(d);
+}
+
+function formatDateShort(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(d);
+}
+
 type AdminSyncPostBody = PanelStatus & {
   ok?: boolean;
   message?: string;
@@ -426,15 +448,17 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
 function SyncTimestamp({
   label,
   value,
+  timeOnly = false,
 }: {
   label: string;
   value: string | null;
+  timeOnly?: boolean;
 }) {
   return (
     <div className="min-w-0">
       <p className="font-mono text-[10px] tracking-wide text-charcoal/45 uppercase">{label}</p>
       <p className="font-mono text-xs tabular-nums text-navy font-semibold whitespace-nowrap">
-        {formatTimestamp(value)}
+        {timeOnly ? formatTimeOnly(value) : formatTimestamp(value)}
       </p>
     </div>
   );
@@ -1123,49 +1147,78 @@ export default function AdminSyncTable({
                     <SyncImpactedPages rowId={row.id} />
                   </td>
                   <td className={TD}>
-                    <div className="flex flex-col gap-1">
-                      {showSingleTimestamp ? (
-                        <SyncTimestamp label="Updated" value={timing.finished} />
-                      ) : (
-                        <>
-                          <SyncTimestamp label="Start" value={timing.started} />
-                          <SyncTimestamp label="End" value={timing.finished} />
-                        </>
-                      )}
-                      {nextRunAt != null ? (
-                        <div>
-                          <p
-                            className={`font-mono text-[10px] tabular-nums font-semibold whitespace-nowrap ${
-                              visual === "alert" && nowMs > (parseIsoMs(nextRunAt) ?? 0)
-                                ? "text-rose-700"
-                                : "text-navy"
-                            }`}
-                          >
-                            {row.id === "full-resync" &&
-                            status?.scheduleHints?.fullResyncSource === "post-deploy"
-                              ? formatAdminNextSyncCountdown(nextRunAt, now)
-                              : formatAdminNextSyncAt(nextRunAt, now)}
-                          </p>
-                          {row.id === "full-resync" &&
-                          status?.scheduleHints?.fullResyncSource === "post-deploy" ? (
-                            <p className="font-mono text-[9px] tracking-wide text-gold uppercase">
-                              Post-deploy warm
+                    {(() => {
+                      // Collect all non-null timestamps to check for a shared calendar date.
+                      const candidates = showSingleTimestamp
+                        ? [timing.finished]
+                        : [timing.started, timing.finished, nextRunAt];
+                      const calDates = candidates
+                        .map(isoCalendarDate)
+                        .filter((d): d is string => d !== null);
+                      const allSameDate =
+                        calDates.length > 0 && new Set(calDates).size === 1;
+                      const sharedDate = allSameDate
+                        ? formatDateShort(calDates[0])
+                        : null;
+
+                      return (
+                        <div className="flex flex-col gap-1">
+                          {sharedDate && (
+                            <p className="font-mono text-[9px] tracking-wide text-charcoal/40 uppercase mb-0.5">
+                              {sharedDate}
                             </p>
-                          ) : visual === "alert" ? (
-                            <p className="font-mono text-[9px] tracking-wide text-rose-600/80 uppercase">
-                              {isTimingHung(timing, nowMs) ||
-                              (row.id === "refresh-finished" && status?.refreshing)
-                                ? "Hung"
-                                : "Overdue"}
-                            </p>
-                          ) : visual === "ok" ? (
-                            <p className="font-mono text-[9px] tracking-wide text-sage/80 uppercase">
-                              On schedule
-                            </p>
+                          )}
+                          {showSingleTimestamp ? (
+                            <SyncTimestamp label="Updated" value={timing.finished} timeOnly={allSameDate} />
+                          ) : (
+                            <>
+                              <SyncTimestamp label="Start" value={timing.started} timeOnly={allSameDate} />
+                              <SyncTimestamp label="End" value={timing.finished} timeOnly={allSameDate} />
+                            </>
+                          )}
+                          {nextRunAt != null ? (
+                            <div>
+                              <p
+                                className={`font-mono text-[10px] tabular-nums font-semibold whitespace-nowrap ${
+                                  visual === "alert" && nowMs > (parseIsoMs(nextRunAt) ?? 0)
+                                    ? "text-rose-700"
+                                    : "text-navy"
+                                }`}
+                              >
+                                {/* formatAdminNextSyncAt already returns time-only within 24h;
+                                    for the shared-date case outside 24h we strip the date prefix */}
+                                {row.id === "full-resync" &&
+                                status?.scheduleHints?.fullResyncSource === "post-deploy"
+                                  ? formatAdminNextSyncCountdown(nextRunAt, now)
+                                  : allSameDate
+                                  ? formatTimeOnly(nextRunAt)
+                                  : formatAdminNextSyncAt(nextRunAt, now)}
+                              </p>
+                              <p className="font-mono text-[9px] tracking-wide text-charcoal/40 uppercase">
+                                Next
+                              </p>
+                              {row.id === "full-resync" &&
+                              status?.scheduleHints?.fullResyncSource === "post-deploy" ? (
+                                <p className="font-mono text-[9px] tracking-wide text-gold uppercase">
+                                  Post-deploy warm
+                                </p>
+                              ) : visual === "alert" ? (
+                                <p className="font-mono text-[9px] tracking-wide text-rose-600/80 uppercase">
+                                  {isTimingHung(timing, nowMs) ||
+                                  (row.id === "refresh-finished" && status?.refreshing)
+                                    ? "Hung"
+                                    : "Overdue"}
+                                </p>
+                              ) : visual === "ok" ? (
+                                <p className="font-mono text-[9px] tracking-wide text-sage/80 uppercase">
+                                  On schedule
+                                </p>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
-                      ) : null}
-                    </div>
+                      );
+                    })()}
                   </td>
                   <td className={`${TD} border-r-0`}>
                     {rowError ? (
