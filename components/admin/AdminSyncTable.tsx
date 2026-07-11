@@ -13,6 +13,7 @@ import { formatAdminNextSyncAt } from "@/lib/admin-sync-schedule-format";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
+import { formatFullResyncTownPending } from "@/lib/admin-sync-progress";
 
 function syncMessageClassName(message: string | undefined): string {
   if (!message) return "text-sage";
@@ -43,10 +44,17 @@ async function postAdminSync(
   return { res, body: parsed };
 }
 
+function formatSyncDescription(message?: string, detail?: string): string | undefined {
+  if (!message && !detail) return undefined;
+  if (message && detail && message !== detail) return `${message} — ${detail}`;
+  return message ?? detail;
+}
+
 async function runFullResyncChunked(
   row: AdminSyncRow,
   hooks: {
     setRunningId: (id: AdminSyncActionId | "sync-all-caches" | null) => void;
+    setDescriptions: React.Dispatch<React.SetStateAction<Partial<Record<string, string>>>>;
     setMessages: React.Dispatch<React.SetStateAction<Partial<Record<string, string>>>>;
     setRunTimings: React.Dispatch<React.SetStateAction<Partial<Record<string, SyncTiming>>>>;
     setStatus: React.Dispatch<React.SetStateAction<PanelStatus | null>>;
@@ -59,24 +67,31 @@ async function runFullResyncChunked(
   const startedAt = new Date().toISOString();
   hooks.setRunningId("full-resync");
   hooks.setMessages((prev) => ({ ...prev, [row.id]: undefined }));
+  hooks.setDescriptions((prev) => ({ ...prev, [row.id]: undefined }));
   hooks.setRunTimings((prev) => ({
     ...prev,
     [row.id]: { started: startedAt, finished: null },
   }));
 
+  let sqliteTotal: number | null = null;
+
   try {
     for (let i = 0; i < TMRE_TOWNS.length; i++) {
       const town = TMRE_TOWNS[i];
-      hooks.setMessages((prev) => ({
+      hooks.setDescriptions((prev) => ({
         ...prev,
-        [row.id]: `Full resync: ${town} (${i + 1}/${TMRE_TOWNS.length})…`,
+        [row.id]: formatFullResyncTownPending({
+          town,
+          townIndex: i + 1,
+          townCount: TMRE_TOWNS.length,
+          sqliteTotal,
+        }),
       }));
       const { res, body } = await postAdminSync({ action: "full-resync", town });
       if (!res.ok || body.ok === false) {
-        hooks.setMessages((prev) => ({
-          ...prev,
-          [row.id]: body.detail ?? body.error ?? body.message ?? "Sync failed",
-        }));
+        const errText = body.detail ?? body.error ?? body.message ?? "Sync failed";
+        hooks.setDescriptions((prev) => ({ ...prev, [row.id]: errText }));
+        hooks.setMessages((prev) => ({ ...prev, [row.id]: errText }));
         hooks.setRunTimings((prev) => ({
           ...prev,
           [row.id]: {
@@ -101,11 +116,20 @@ async function runFullResyncChunked(
             }
           : prev,
       );
+      sqliteTotal = body.stats?.total ?? sqliteTotal;
+      hooks.setDescriptions((prev) => ({
+        ...prev,
+        [row.id]:
+          body.detail ??
+          formatSyncDescription(body.message, undefined) ??
+          `${town} synced`,
+      }));
     }
 
-    hooks.setMessages((prev) => ({
+    hooks.setDescriptions((prev) => ({
       ...prev,
-      [row.id]: "Finalizing scores, stats, and caches…",
+      [row.id]:
+        "Finalizing Goldilocks scores, stats cache, Deal of the Day, intelligence board, and read snapshot…",
     }));
     const { res: finishRes, body: finish } = await postAdminSync({
       action: "full-resync",
@@ -140,12 +164,24 @@ async function runFullResyncChunked(
           ? (finish.message ?? "Complete")
           : (finish.detail ?? finish.error ?? finish.message ?? "Sync failed"),
     }));
-    return finishRes.ok && finish.ok !== false;
-  } catch (err) {
-    hooks.setMessages((prev) => ({
+    hooks.setDescriptions((prev) => ({
       ...prev,
-      [row.id]: err instanceof Error ? err.message : "Sync failed",
+      [row.id]:
+        formatSyncDescription(finish.message, finish.detail) ??
+        finish.message ??
+        "Full resync complete",
     }));
+    return finishRes.ok && finish.ok !== false;
+      } catch (err) {
+        const errText = err instanceof Error ? err.message : "Sync failed";
+        hooks.setMessages((prev) => ({
+          ...prev,
+          [row.id]: errText,
+        }));
+        hooks.setDescriptions((prev) => ({
+          ...prev,
+          [row.id]: errText,
+        }));
     hooks.setRunTimings((prev) => ({
       ...prev,
       [row.id]: { started: startedAt, finished: new Date().toISOString() },
@@ -156,7 +192,6 @@ async function runFullResyncChunked(
     void hooks.refreshStatus();
   }
 }
-import { TMRE_TOWNS } from "@/lib/tmre-towns";
 
 export type AdminSyncRow = {
   id: string;
@@ -226,6 +261,7 @@ type AdminSyncPostBody = PanelStatus & {
   ok?: boolean;
   message?: string;
   detail?: string;
+  recordsFetched?: number;
   error?: string;
   backgroundQueued?: boolean;
   startedAt?: string;
@@ -477,6 +513,7 @@ export default function AdminSyncTable({
     null,
   );
   const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
+  const [descriptions, setDescriptions] = useState<Partial<Record<string, string>>>({});
   const [runTimings, setRunTimings] = useState<Partial<Record<string, SyncTiming>>>({});
   const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -508,6 +545,7 @@ export default function AdminSyncTable({
       if (row.actionId === "full-resync") {
         await runFullResyncChunked(row, {
           setRunningId,
+          setDescriptions,
           setMessages,
           setRunTimings,
           setStatus,
@@ -521,6 +559,10 @@ export default function AdminSyncTable({
       const startedAt = new Date().toISOString();
       setRunningId(row.actionId);
       setMessages((prev) => ({ ...prev, [row.id]: undefined }));
+      setDescriptions((prev) => ({
+        ...prev,
+        [row.id]: `${ADMIN_SYNC_ACTIONS[row.actionId]?.description ?? row.label}…`,
+      }));
       setRunTimings((prev) => ({
         ...prev,
         [row.id]: { started: startedAt, finished: null },
@@ -535,9 +577,14 @@ export default function AdminSyncTable({
         const body = await readAdminSyncPostResponse(res);
 
         if (!res.ok) {
+          const errText = body.detail ?? body.error ?? "Sync failed";
           setMessages((prev) => ({
             ...prev,
-            [row.id]: body.detail ?? body.error ?? "Sync failed",
+            [row.id]: errText,
+          }));
+          setDescriptions((prev) => ({
+            ...prev,
+            [row.id]: errText,
           }));
           setRunTimings((prev) => ({
             ...prev,
@@ -562,6 +609,14 @@ export default function AdminSyncTable({
         setMessages((prev) => ({
           ...prev,
           [row.id]: body.message ?? "Complete",
+        }));
+        setDescriptions((prev) => ({
+          ...prev,
+          [row.id]:
+            formatSyncDescription(body.message, body.detail) ??
+            body.message ??
+            row.detail ??
+            "",
         }));
       } catch (err) {
         setMessages((prev) => ({
@@ -604,6 +659,7 @@ export default function AdminSyncTable({
           setSyncAllSummary(`Step ${completed}/${totalSteps}: Full resync (town-by-town)…`);
           const ok = await runFullResyncChunked(row, {
             setRunningId,
+            setDescriptions,
             setMessages,
             setRunTimings,
             setStatus,
@@ -663,6 +719,14 @@ export default function AdminSyncTable({
 
         if (rowId) {
           setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
+          setDescriptions((prev) => ({
+            ...prev,
+            [rowId]:
+              formatSyncDescription(body.message, body.detail) ??
+              body.message ??
+              rows.find((r) => r.id === rowId)?.detail ??
+              "",
+          }));
           const queued = Boolean(body.backgroundQueued);
           setRunTimings((prev) => ({
             ...prev,
@@ -868,16 +932,29 @@ export default function AdminSyncTable({
                     </p>
                   </td>
                   <td className={TD}>
-                    <p className="text-sm text-slate leading-snug">{row.detail ?? ""}</p>
-                    {message ? (
-                      <p
-                        className={`mt-1 font-mono text-[10px] tracking-wide ${syncMessageClassName(message)}`}
-                      >
-                        {message}
-                      </p>
-                    ) : isRunning ? (
-                      <p className="mt-1 font-mono text-[10px] tracking-wide text-gold">Running…</p>
-                    ) : null}
+                    {(() => {
+                      const liveDescription = descriptions[row.id];
+                      const descText = liveDescription ?? row.detail ?? "";
+                      const descBusy = Boolean(liveDescription) || isRunning || syncAllRunning;
+                      return (
+                        <>
+                          <p
+                            className={`text-sm leading-snug ${
+                              descBusy ? "text-navy font-medium" : "text-slate"
+                            }`}
+                          >
+                            {descText}
+                          </p>
+                          {message && !liveDescription ? (
+                            <p
+                              className={`mt-1 font-mono text-[10px] tracking-wide ${syncMessageClassName(message)}`}
+                            >
+                              {message}
+                            </p>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className={TD}>
                     <SyncImpactedPages rowId={row.id} />

@@ -5,7 +5,11 @@ import { rebuildAllListingScores } from '@/lib/listing-scores-rebuild'
 import { getListingsDbStats, getSyncMeta, publishListingsReadSnapshot, setSyncMeta } from '@/lib/listings-db'
 import { syncAllTownListings, syncIncrementalListings, syncFullResyncTown, finalizeChunkedFullResync, type TownSyncResult } from '@/lib/listings-sync'
 import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
-import { isTmreTown } from '@/lib/tmre-towns'
+import { isTmreTown, TMRE_TOWNS } from '@/lib/tmre-towns'
+import {
+  formatFullResyncTownProgress,
+  formatTownSyncSummary,
+} from '@/lib/admin-sync-progress'
 import { rebuildStatsCache } from '@/lib/stats-cache'
 import { readSqliteRefreshStatus, healStaleRefreshLock } from '@/lib/sqlite-refresh-status'
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
@@ -30,6 +34,10 @@ export type AdminSyncActionResult = {
   durationMs: number
   message: string
   detail?: string
+  /** Records/objects written during this step. */
+  recordsFetched?: number
+  /** Per-town RETS → SQLite results when applicable. */
+  townResults?: TownSyncResult[]
   /** True when full resync was handed off to a Netlify background function. */
   backgroundQueued?: boolean
   /** Human label when this step is not a primary panel action (sync-all extras). */
@@ -84,13 +92,16 @@ export async function runAdminSyncAction(
       if (options.finalize) {
         const result = await finalizeChunkedFullResync()
         const finishedAt = result.finishedAt ?? new Date().toISOString()
+        const total = result.totalUpserted
         return {
           ok: true,
           action,
           startedAt: result.startedAt ?? startedAt,
           finishedAt,
           durationMs: result.durationMs || Date.now() - t0,
-          message: `Full resync complete — ${result.totalUpserted.toLocaleString()} listings`,
+          recordsFetched: total,
+          message: `Full resync complete — ${total.toLocaleString()} listings`,
+          detail: `Rebuilt scores, stats, Deal of the Day, intelligence board caches, and published read snapshot for ${total.toLocaleString()} listings`,
         }
       }
       if (options.town) {
@@ -109,6 +120,8 @@ export async function runAdminSyncAction(
         const ok = townResults.every((row) => row.ok)
         const failed = townResults.filter((row) => !row.ok)
         const upserts = townResults.reduce((sum, row) => sum + row.count, 0)
+        const townIndex = TMRE_TOWNS.indexOf(options.town) + 1
+        const sqliteTotal = getListingsDbStats().total
         const finishedAt = new Date().toISOString()
         return {
           ok,
@@ -116,10 +129,18 @@ export async function runAdminSyncAction(
           startedAt,
           finishedAt,
           durationMs: Date.now() - t0,
+          recordsFetched: upserts,
+          townResults,
           message: ok
-            ? `${options.town} synced — ${upserts.toLocaleString()} listings`
+            ? `${options.town} synced — ${upserts.toLocaleString()} records fetched`
             : `${options.town} finished with ${failed.length} failure(s)`,
-          detail: formatSyncFailures(failed),
+          detail: formatFullResyncTownProgress({
+            town: options.town,
+            townIndex,
+            townCount: TMRE_TOWNS.length,
+            townResults,
+            sqliteTotal,
+          }),
         }
       }
       if (isServerlessRuntime()) {
@@ -143,12 +164,16 @@ export async function runAdminSyncAction(
         startedAt: result.startedAt ?? startedAt,
         finishedAt,
         durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.totalUpserted,
+        townResults: result.towns,
         message: ok
           ? `Full resync complete — ${result.totalUpserted.toLocaleString()} listings`
           : failed.length
             ? `Full resync finished with ${failed.length} town failure(s)`
             : 'Full resync returned no town results',
-        detail: formatSyncFailures(failed),
+        detail: ok
+          ? formatTownSyncSummary(result.towns, 'records fetched')
+          : formatSyncFailures(failed),
       }
     }
     case 'incremental': {
@@ -205,6 +230,8 @@ export async function runAdminSyncAction(
         startedAt: result.startedAt ?? startedAt,
         finishedAt,
         durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.totalUpserted,
+        townResults: result.towns,
         message: ok
           ? `Incremental sync complete — ${result.totalUpserted.toLocaleString()} upserts`
           : skipped
@@ -212,7 +239,9 @@ export async function runAdminSyncAction(
             : `Incremental sync finished with ${failed.length} failure(s)`,
         detail: skipped
           ? 'Clear refresh lock on admin or wait ~8 minutes for serverless auto-heal.'
-          : formatSyncFailures(failed),
+          : ok
+            ? formatTownSyncSummary(result.towns, 'modified listings upserted')
+            : formatSyncFailures(failed),
       }
     }
     case 'listing-scores': {
@@ -225,11 +254,9 @@ export async function runAdminSyncAction(
         startedAt: result.startedAt ?? startedAt,
         finishedAt,
         durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.totalScored,
         message: `Scored ${result.totalScored.toLocaleString()} Active listings`,
-        detail: result.towns
-          .filter((row) => !row.ok)
-          .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
-          .join('; ') || undefined,
+        detail: `Goldilocks scores rebuilt for ${result.totalScored.toLocaleString()} Active listings across ${result.towns.length} towns`,
       }
     }
     case 'publish-snapshot': {
@@ -244,6 +271,7 @@ export async function runAdminSyncAction(
         finishedAt,
         durationMs: Date.now() - t0,
         message: 'Read snapshot published',
+        detail: `Copied write DB → listings.read.db (${getListingsDbStats().total.toLocaleString()} listings visible to read APIs)`,
       }
     }
     case 'stats-cache': {
@@ -255,7 +283,9 @@ export async function runAdminSyncAction(
         startedAt,
         finishedAt,
         durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.written,
         message: `Stats cache rebuilt — ${result.written.toLocaleString()} entries`,
+        detail: `Recomputed ${result.written.toLocaleString()} stats_cache objects (sales, vintage, price, active-by-month)`,
       }
     }
     case 'deal-of-the-day': {
@@ -267,7 +297,9 @@ export async function runAdminSyncAction(
         startedAt,
         finishedAt,
         durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.written,
         message: `Deal of the Day cache rebuilt — ${result.written.toLocaleString()} entries`,
+        detail: `Wrote ${result.written.toLocaleString()} Deal of the Day picks (all towns × kinds)`,
       }
     }
     case 'property-addresses': {
@@ -279,7 +311,9 @@ export async function runAdminSyncAction(
         startedAt,
         finishedAt: result.syncedAt,
         durationMs: result.durationMs || Date.now() - t0,
-        message: `${result.totalRows.toLocaleString()} addresses (${result.mlsRows.toLocaleString()} MLS, ${result.assessorRows.toLocaleString()} assessor)`,
+        recordsFetched: result.totalRows,
+        message: `${result.totalRows.toLocaleString()} addresses synced`,
+        detail: `${result.mlsRows.toLocaleString()} MLS rows · ${result.assessorRows.toLocaleString()} assessor rows verified`,
       }
     }
     default: {
