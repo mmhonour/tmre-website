@@ -20,12 +20,18 @@
     "node_modules/rets-client/**",
     "node_modules/node-expat/**",
     "node_modules/better-sqlite3/**",
-    "node_modules/better-sqlite3/build/Release/*.node",
-    "node_modules/better-sqlite3/prebuilds/**",
     "node_modules/bindings/**",
-    "node_modules/file-uri-to-path/**",
-    "node_modules/node-addon-api/**",
-    "node_modules/prebuild-install/**",
-    "data/listings.bundle.db",
-    "data/**",
   ]
+
+# Bundle only on scheduled sync handlers — not global (avoids duplicate copy in Next server handler).
+[functions."sync-listings"]
+  included_files = ["data/listings.bundle.db"]
+
+[functions."sync-listings-full"]
+  included_files = ["data/listings.bundle.db"]
+
+[functions."sync-property-addresses"]
+  included_files = ["data/listings.bundle.db"]
+
+[functions."sync-listing-edge-scores"]
+  included_files = ["data/listings.bundle.db"]

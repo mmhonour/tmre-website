@@ -49,6 +49,16 @@ export const ADMIN_SYNC_ALL_CLIENT_STEPS = [
   'publish-snapshot',
 ] as const satisfies readonly AdminSyncActionId[]
 
+/** Step numbers shown in the admin sync table for manual “Sync all” (by panel row id). */
+export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
+  'full-resync': 1,
+  'listing-scores': 2,
+  'stats-cache': 3,
+  'deal-of-the-day': 4,
+  'refresh-finished': 5,
+  'property-addresses': 6,
+}
+
 /** Skipped when full resync is queued on a Netlify background function (already chained). */
 export const ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL = new Set<AdminSyncActionId>([
   'listing-scores',

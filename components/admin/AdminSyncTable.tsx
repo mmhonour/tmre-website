@@ -5,6 +5,7 @@ import type { AdminSyncActionId } from "@/lib/admin-sync-types";
 import {
   ADMIN_SYNC_ACTIONS,
   ADMIN_SYNC_ALL_CLIENT_STEPS,
+  ADMIN_MANUAL_SYNC_ORDER_BY_ROW,
   ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL,
 } from "@/lib/admin-sync-types";
 import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
@@ -569,9 +570,8 @@ export default function AdminSyncTable({
       ) : null}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
         <p className="text-xs text-slate leading-relaxed max-w-2xl">
-          Sync all runs a full MLS resync, scores, stats, Deal of the Day, intelligence
-          board, Latest feeds, property addresses, Deal of the Week, then publishes the read
-          snapshot — serially.
+          Sync all runs steps 1→5 automatically. For manual runs, use the Order column and
+          sync each row in sequence (step 6 is weekly property addresses).
         </p>
         <button
           type="button"
@@ -597,8 +597,9 @@ export default function AdminSyncTable({
         </div>
       ) : null}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px] border-collapse table-fixed">
+        <table className="w-full min-w-[1120px] border-collapse table-fixed">
           <colgroup>
+            <col className="w-[3rem]" />
             <col className="w-[7.5rem]" />
             <col className="w-[9.5rem]" />
             <col />
@@ -609,6 +610,7 @@ export default function AdminSyncTable({
           </colgroup>
           <thead>
             <tr>
+              <th className={TH}>Order</th>
               <th className={TH}>Action</th>
               <th className={TH}>Sync</th>
               <th className={TH}>Description</th>
@@ -650,12 +652,25 @@ export default function AdminSyncTable({
                 visual === "alert" &&
                 !rowHung &&
                 isScheduleBreached(nextRunAt, timing.finished, nowMs);
+              const manualOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
 
               return (
                 <tr
                   key={row.id}
                   className={`transition-colors duration-500 ${syncRowClassName(visual, index % 2 === 1)}`}
                 >
+                  <td className={TD}>
+                    {manualOrder != null ? (
+                      <span
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
+                        title={`Manual sync step ${manualOrder}`}
+                      >
+                        {manualOrder}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
+                    )}
+                  </td>
                   <td className={TD}>
                     {row.actionId ? (
                       <button
