@@ -47,6 +47,10 @@ export type ListingsDbRuntimeDiagnostics = {
   isServerless: boolean
   writePath: string
   readPath: string
+  /** Shipped deploy artifact (Netlify cold-start seed). */
+  deployBundlePath: string
+  deployBundleExists: boolean
+  deployBundleBytes: number | null
   bundleSources: { path: string; exists: boolean; bytes: number | null }[]
   writeDbExists: boolean
   writeDbBytes: number | null
@@ -108,6 +112,7 @@ export function ensureListingsDbSeeded(): void {
 export function describeListingsDbRuntime(): ListingsDbRuntimeDiagnostics {
   const writePath = listingsDbPath()
   const readPath = listingsReadDbPath()
+  const deployBundlePath = path.join(process.cwd(), 'data', 'listings.bundle.db')
   const bundleSources = bundledListingsDbSources().map((src) => ({
     path: src,
     exists: existsSync(src),
@@ -119,6 +124,9 @@ export function describeListingsDbRuntime(): ListingsDbRuntimeDiagnostics {
     isServerless: isServerlessRuntime(),
     writePath,
     readPath,
+    deployBundlePath,
+    deployBundleExists: existsSync(deployBundlePath),
+    deployBundleBytes: fileStatBytes(deployBundlePath),
     bundleSources,
     writeDbExists: existsSync(writePath),
     writeDbBytes: fileStatBytes(writePath),

@@ -88,6 +88,10 @@ export default async function AdminPage() {
   const refreshFinishedAt = lastRefreshFinished ?? refresh.lastFinishedAt;
   const sqliteDiagrams = describeRunningSqliteDatabases();
   const listingsDbRuntime = describeListingsDbRuntime();
+  const listingsDbBroken = !listingsDbRuntime.nativeModuleAvailable;
+  const listingsDbEmpty =
+    listingsDbRuntime.nativeModuleAvailable && stats.total === 0;
+  const showListingsDbRuntime = listingsDbBroken || listingsDbEmpty;
   const startupProcess = describeStartupProcess();
 
   const rows: StatusRow[] = [
@@ -233,41 +237,80 @@ export default async function AdminPage() {
       ) : null}
 
       <div id="admin-sqlite-schemas" className="scroll-mt-24">
-        {!listingsDbRuntime.nativeModuleAvailable || stats.total === 0 ? (
-          <div className="mb-4 rounded-2xl border border-coral/25 bg-coral/[0.06] px-5 sm:px-6 py-4">
-            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-coral mb-2">
+        {showListingsDbRuntime ? (
+          <div
+            className={`mb-4 rounded-2xl border px-5 sm:px-6 py-4 ${
+              listingsDbBroken
+                ? "border-coral/25 bg-coral/[0.06]"
+                : "border-gold/25 bg-gold/[0.06]"
+            }`}
+          >
+            <p
+              className={`font-mono text-[11px] tracking-[0.2em] uppercase mb-2 ${
+                listingsDbBroken ? "text-coral" : "text-gold"
+              }`}
+            >
               Listings DB runtime
             </p>
+            {listingsDbEmpty && !listingsDbBroken ? (
+              <p className="text-sm text-slate leading-snug mb-3">
+                SQLite is connected but empty — the deploy bundle is schema-only (
+                {listingsDbRuntime.deployBundleBytes?.toLocaleString() ?? "?"} bytes). Run{" "}
+                <strong>step 1 Full resync</strong> or wait for the startup / scheduled sync to
+                pull MLS data into <code className="font-mono text-xs">/tmp</code>.
+              </p>
+            ) : null}
             <dl className="font-mono text-[11px] text-charcoal/70 space-y-1">
               <div>
-                <dt className="inline text-charcoal/45">cwd: </dt>
-                <dd className="inline break-all">{listingsDbRuntime.cwd}</dd>
+                <dt className="inline text-charcoal/45">native: </dt>
+                <dd className="inline break-all">
+                  {listingsDbRuntime.nativeModuleAvailable ? "OK" : "unavailable"}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline text-charcoal/45">connected: </dt>
+                <dd className="inline break-all">
+                  {listingsDbRuntime.connected ? "yes" : "no"}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline text-charcoal/45">listings: </dt>
+                <dd className="inline break-all">{stats.total.toLocaleString()}</dd>
               </div>
               <div>
                 <dt className="inline text-charcoal/45">write: </dt>
-                <dd className="inline break-all">{listingsDbRuntime.writePath}</dd>
+                <dd className="inline break-all">
+                  {listingsDbRuntime.writePath}
+                  {listingsDbRuntime.writeDbExists
+                    ? ` (${listingsDbRuntime.writeDbBytes?.toLocaleString() ?? "?"} bytes)`
+                    : " (not seeded yet)"}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline text-charcoal/45">deploy bundle: </dt>
+                <dd className="inline break-all">
+                  {listingsDbRuntime.deployBundlePath}
+                  {listingsDbRuntime.deployBundleExists
+                    ? ` (${listingsDbRuntime.deployBundleBytes?.toLocaleString() ?? "?"} bytes)`
+                    : " (missing — rebuild will fail)"}
+                </dd>
               </div>
               {listingsDbRuntime.nativeModuleError ? (
                 <div>
-                  <dt className="inline text-charcoal/45">native: </dt>
+                  <dt className="inline text-charcoal/45">native error: </dt>
                   <dd className="inline break-all">{listingsDbRuntime.nativeModuleError}</dd>
                 </div>
               ) : null}
               {listingsDbRuntime.lastOpenError ? (
                 <div>
-                  <dt className="inline text-charcoal/45">open: </dt>
+                  <dt className="inline text-charcoal/45">open error: </dt>
                   <dd className="inline break-all">{listingsDbRuntime.lastOpenError}</dd>
                 </div>
               ) : null}
-              {listingsDbRuntime.bundleSources.map((src) => (
-                <div key={src.path}>
-                  <dt className="inline text-charcoal/45">bundle: </dt>
-                  <dd className="inline break-all">
-                    {src.path}
-                    {src.exists ? ` (${src.bytes?.toLocaleString() ?? "?"} bytes)` : " (missing)"}
-                  </dd>
-                </div>
-              ))}
+              <div>
+                <dt className="inline text-charcoal/45">cwd: </dt>
+                <dd className="inline break-all">{listingsDbRuntime.cwd}</dd>
+              </div>
             </dl>
           </div>
         ) : null}
