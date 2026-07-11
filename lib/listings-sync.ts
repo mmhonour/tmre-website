@@ -1,6 +1,8 @@
 import {
   getListingsDbStats,
   getSyncMeta,
+  isListingsDbAvailable,
+  listingsDbHasRows,
   publishListingsReadSnapshot,
   readListingsFromDb,
   recordSyncRun,
@@ -52,6 +54,7 @@ const INCREMENTAL_OVERLAP_MS = 2 * 60 * 1000
 const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 export function shouldRunFullSync(): boolean {
+  if (isListingsDbAvailable() && !listingsDbHasRows()) return true
   const last = getSyncMeta('last_full_sync')
   if (!last) return true
   const t = Date.parse(last)

@@ -93,10 +93,10 @@ export function setSyncedActiveCount(city: string, count: number): void {
   setSyncMeta(`active_count:${city}`, String(count))
 }
 
-/** True if SQLite has synced or warmed listing rows. */
+/** True if SQLite has synced listing rows (not just schema or sync metadata). */
 export function hasLocalListingsCache(): boolean {
   if (!isListingsDbAvailable()) return false
-  return getLastFullSync() != null || listingsDbHasRows()
+  return listingsDbHasRows()
 }
 
 /** HTTP headers for fast edge/browser caching when serving from SQLite. */

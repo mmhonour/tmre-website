@@ -8,7 +8,15 @@ import {
   type TableWriteStats,
 } from '@/lib/sqlite-sync-stats'
 
-const MAX_REFRESH_MS = 2 * 60 * 60 * 1000
+import { isServerlessRuntime } from '@/lib/runtime-host'
+
+const MAX_REFRESH_MS_LONG_LIVED = 2 * 60 * 60 * 1000
+/** Next/Lambda serverless cannot hold a refresh for hours — heal leaked locks sooner. */
+const MAX_REFRESH_MS_SERVERLESS = 8 * 60 * 1000
+
+function maxRefreshMs(): number {
+  return isServerlessRuntime() ? MAX_REFRESH_MS_SERVERLESS : MAX_REFRESH_MS_LONG_LIVED
+}
 const REFRESH_LOCK_HISTORY_KEY = 'refresh_lock_history'
 const REFRESH_LOCK_HISTORY_WINDOW_MS = 48 * 60 * 60 * 1000
 const MAX_REFRESH_LOCK_HISTORY_ENTRIES = 200
@@ -204,8 +212,9 @@ export function readSqliteRefreshLockStatus(now = Date.now()): SqliteRefreshLock
 
   if (!stuckReason && inProgress && startedAt) {
     const startedMs = parseIsoMs(startedAt)
-    if (startedMs != null && now - startedMs > MAX_REFRESH_MS) {
-      stuckReason = `Refresh started more than ${MAX_REFRESH_MS / (60 * 60 * 1000)} hours ago`
+    const maxMs = maxRefreshMs()
+    if (startedMs != null && now - startedMs > maxMs) {
+      stuckReason = `Refresh started more than ${Math.round(maxMs / 60_000)} minutes ago`
     }
   }
 
@@ -281,8 +290,8 @@ export function healStaleRefreshLock(now = Date.now()): boolean {
   const started = getSyncMeta('last_refresh_started_at')
   if (started) {
     const startedMs = Date.parse(started)
-    const maxRefreshMs = 2 * 60 * 60 * 1000
-    if (!Number.isNaN(startedMs) && now - startedMs > maxRefreshMs) {
+    const limitMs = maxRefreshMs()
+    if (!Number.isNaN(startedMs) && now - startedMs > limitMs) {
       finalizeActiveHistoryEntry(new Date(now).toISOString(), { clearedManually: true })
       setActiveRefreshLockStats(null)
       activeHistoryEntryId = null

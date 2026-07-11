@@ -92,7 +92,7 @@ export async function register() {
     // page is always served from the database, never a per-request RETS pull.
     const latestSyncEnabled =
       process.env.ENABLE_LATEST_SYNC !== '0' && (allowListingsSync || retsConfigured)
-    if (latestSyncEnabled) {
+    if (latestSyncEnabled && !isServerlessRuntime()) {
       const latestIntervalMs = Math.max(
         60_000,
         Number(process.env.LATEST_SYNC_INTERVAL_MS ?? String(LATEST_DB_REFRESH_MS)),
@@ -113,6 +113,10 @@ export async function register() {
       setInterval(runLatestSync, latestIntervalMs)
       console.info(
         `[latest-sync] incremental sync scheduled every ${Math.round(latestIntervalMs / 60_000)} minutes`,
+      )
+    } else if (latestSyncEnabled && isServerlessRuntime()) {
+      console.info(
+        '[latest-sync] skipped inline on serverless — netlify/functions/sync-listings cron handles incremental',
       )
     }
 
@@ -170,14 +174,26 @@ export async function register() {
       }
 
       const listingsIntervalMs = Number(process.env.LISTINGS_SYNC_INTERVAL_MS ?? '0')
-      if (Number.isFinite(listingsIntervalMs) && listingsIntervalMs >= 60_000) {
+      if (isServerlessRuntime()) {
+        if (!hasLocalListingsCache()) {
+          const { queueNetlifyFullSync } = await import('./lib/netlify-sync-trigger')
+          setTimeout(() => {
+            void queueNetlifyFullSync().then((queued) => {
+              console.info(
+                queued
+                  ? '[listings-sync] queued Netlify background full warm (empty SQLite)'
+                  : '[listings-sync] Netlify background warm trigger failed — use admin step 1',
+              )
+            })
+          }, 8_000)
+        }
+      } else if (Number.isFinite(listingsIntervalMs) && listingsIntervalMs >= 60_000) {
         setTimeout(runListingsSync, 10_000)
         setInterval(runListingsSync, listingsIntervalMs)
         console.info(
           `[listings-sync] scheduled every ${Math.round(listingsIntervalMs / 60_000)} minutes`,
         )
-      } else if (process.env.NETLIFY && !hasLocalListingsCache()) {
-        // Cold serverless start with empty /tmp — warm SQLite from MLS once.
+      } else if (!hasLocalListingsCache()) {
         setTimeout(runListingsSync, 8_000)
         console.info('[listings-sync] warming empty SQLite cache on startup')
       }

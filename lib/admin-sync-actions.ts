@@ -6,9 +6,10 @@ import { getListingsDbStats, getSyncMeta, publishListingsReadSnapshot, setSyncMe
 import { syncAllTownListings, syncIncrementalListings, type TownSyncResult } from '@/lib/listings-sync'
 import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
 import { rebuildStatsCache } from '@/lib/stats-cache'
-import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
+import { readSqliteRefreshStatus, healStaleRefreshLock } from '@/lib/sqlite-refresh-status'
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
 import { isServerlessRuntime } from '@/lib/runtime-host'
+import { queueNetlifyFullSync, queueNetlifyIncrementalSync } from '@/lib/netlify-sync-trigger'
 import type { AdminSyncActionId, AdminSyncAllActionId } from '@/lib/admin-sync-types'
 import { ADMIN_SYNC_ACTIONS, ADMIN_SYNC_ALL_SEQUENCE } from '@/lib/admin-sync-types'
 
@@ -51,27 +52,13 @@ function formatSyncFailures(failed: TownSyncResult[]): string | undefined {
 }
 
 async function queueNetlifyBackgroundFullSync(): Promise<boolean> {
-  const base =
-    process.env.URL?.trim() ||
-    process.env.DEPLOY_PRIME_URL?.trim() ||
-    process.env.DEPLOY_URL?.trim()
-  if (!base) return false
-
-  try {
-    const res = await fetch(`${base.replace(/\/$/, '')}/.netlify/functions/sync-listings-full`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-    })
-    return res.status === 202 || res.ok
-  } catch (err) {
-    console.warn('[admin-sync] Netlify background full sync trigger failed', err)
-    return false
-  }
+  return queueNetlifyFullSync()
 }
 
 export async function runAdminSyncAction(action: AdminSyncActionId): Promise<AdminSyncActionResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
+  healStaleRefreshLock()
 
   switch (action) {
     case 'full-resync': {
@@ -134,8 +121,39 @@ export async function runAdminSyncAction(action: AdminSyncActionId): Promise<Adm
           detail: retsSyncBlockedMessage(),
         }
       }
+      if (isServerlessRuntime()) {
+        const queued = await queueNetlifyIncrementalSync()
+        const finishedAt = new Date().toISOString()
+        if (queued) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              'Incremental sync queued on Netlify (background). Refresh admin in a few minutes.',
+          }
+        }
+      }
+      if (getSyncMeta('refresh_in_progress') === '1') {
+        const finishedAt = new Date().toISOString()
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: 'Incremental blocked — another refresh is in progress',
+          detail:
+            'Clear the refresh lock on admin (Refresh lock panel) or wait ~8 minutes for auto-heal on serverless.',
+        }
+      }
       const result = await syncIncrementalListings()
-      const ok = result.towns.every((row) => row.ok)
+      const skipped =
+        result.durationMs === 0 && result.towns.length === 0 && result.totalUpserted === 0
+      const ok = !skipped && result.towns.every((row) => row.ok)
       const failed = result.towns.filter((row) => !row.ok)
       const finishedAt = result.finishedAt ?? new Date().toISOString()
       return {
@@ -146,8 +164,12 @@ export async function runAdminSyncAction(action: AdminSyncActionId): Promise<Adm
         durationMs: result.durationMs || Date.now() - t0,
         message: ok
           ? `Incremental sync complete — ${result.totalUpserted.toLocaleString()} upserts`
-          : `Incremental sync finished with ${failed.length} failure(s)`,
-        detail: formatSyncFailures(failed),
+          : skipped
+            ? 'Incremental skipped — refresh lock held or RETS unavailable'
+            : `Incremental sync finished with ${failed.length} failure(s)`,
+        detail: skipped
+          ? 'Clear refresh lock on admin or wait ~8 minutes for serverless auto-heal.'
+          : formatSyncFailures(failed),
       }
     }
     case 'listing-scores': {
