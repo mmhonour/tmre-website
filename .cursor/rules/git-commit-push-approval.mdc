@@ -1,0 +1,39 @@
+---
+description: Always ask the user before committing and pushing to GitHub/Netlify
+alwaysApply: true
+---
+
+# Git Commit & Push Approval Required
+
+Before running any `git commit` or `git push` (or any command that commits/pushes, including via subagents), you MUST stop and ask the user first.
+
+## Required behaviour
+
+1. Complete all code changes requested.
+2. Summarise what files changed and why (one sentence per file is enough).
+3. Ask the user: **"Ready to commit and push — or do you have more changes to queue first?"**
+4. **End your turn immediately after asking** — do NOT block or wait for a response.
+   The user will answer when ready. If they have queued requests, process those first.
+5. Only proceed with commit + push after the user explicitly says yes.
+
+## Non-blocking ask
+
+After posing the commit/push question, **always end your turn**.
+- Do not use `AwaitShell` or any polling while waiting for approval.
+- If the user's next message is a new request (not a yes/no), handle that request first, then re-surface the pending commit question at the end if still relevant.
+
+## What to ask
+
+Use `AskQuestion` with at least these two options:
+- "Commit and push now"
+- "I have more changes first"
+
+## Never auto-commit
+
+Do NOT commit or push automatically, even when:
+- The user says "fix X" and you finish the fix
+- A previous message implied pushing was expected
+- The task feels complete
+- A subagent is being used for git operations
+
+The only exception is when the user's message itself is an explicit instruction to commit/push (e.g. "commit and push", "push to Netlify").

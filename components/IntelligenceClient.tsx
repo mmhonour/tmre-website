@@ -1441,8 +1441,28 @@ export default function IntelligenceClient() {
               try {
                 const board = await fetchIntelligenceDealBoard(tx);
                 if (board) {
+                  // Guard: don't replace a good byCity with a degraded one.
+                  // If the new board has fewer total listings than what's already
+                  // displayed, the cold Lambda that rebuilt it likely had a partial
+                  // or failed restore — keep the current data instead.
+                  const newTotal = Object.values(board.byCity).reduce(
+                    (sum, listings) => sum + (listings?.length ?? 0),
+                    0,
+                  );
+                  setByCity((prev) => {
+                    const currentTotal = Object.values(prev).reduce(
+                      (sum, listings) => sum + (listings?.length ?? 0),
+                      0,
+                    );
+                    if (newTotal < currentTotal && currentTotal > 0) {
+                      console.warn(
+                        `[intelligence] soft reload returned ${newTotal} listings vs current ${currentTotal} — ignoring downgrade`,
+                      );
+                      return prev;
+                    }
+                    return board.byCity;
+                  });
                   bumpIntelligenceSnapshotGeneration();
-                  setByCity(board.byCity);
                   applyDealBoardSalesMeta(board, {
                     setMonthlySales,
                     setClosedThisWeekByTown,

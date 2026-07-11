@@ -257,13 +257,18 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
       } catch (err) {
         console.warn('[listings-sync/incremental] town feed warm schedule failed', err)
       }
+      // Rebuild the intelligence board synchronously so the result lands in
+      // stats_cache before persistWriteDbAfterChunk uploads the blob.
+      // Previously this used warmIntelligenceDealBoardDeferred (fire-and-forget
+      // with a 2-s delay), which guaranteed the board was NEVER in the blob —
+      // forcing every cold Lambda to rebuild on-demand and risking empty towns.
       try {
-        const { warmIntelligenceDealBoardDeferred } = await import(
+        const { rebuildIntelligenceDealBoardCache } = await import(
           '@/lib/intelligence-deal-board-cache'
         )
-        warmIntelligenceDealBoardDeferred()
+        await rebuildIntelligenceDealBoardCache()
       } catch (err) {
-        console.warn('[listings-sync/incremental] intelligence board warm schedule failed', err)
+        console.warn('[listings-sync/incremental] intelligence board rebuild failed (non-fatal):', err)
       }
     }
 
@@ -503,7 +508,6 @@ export async function syncTownListings(
  * the error to the admin panel instead of swallowing it.
  */
 async function finalizeStepScores(finishedAt: string): Promise<void> {
-  publishListingsReadSnapshot()
   setSyncMeta('last_full_sync', finishedAt)
   const { rebuildAllListingScores } = await import('@/lib/listing-scores-rebuild')
   await rebuildAllListingScores()
@@ -561,14 +565,9 @@ async function triggerFullResyncDeferredWarms(): Promise<void> {
   } catch (err) {
     console.error('[listings-sync] Latest town feed warm schedule failed', err)
   }
-  try {
-    const { warmIntelligenceDealBoardDeferred } = await import(
-      '@/lib/intelligence-deal-board-cache'
-    )
-    warmIntelligenceDealBoardDeferred()
-  } catch (err) {
-    console.error('[listings-sync] Intelligence deal board warm schedule failed', err)
-  }
+  // NOTE: intelligence board is NOT warmed here — finalizeStepPersist and
+  // syncIncrementalListings call rebuildIntelligenceDealBoardCache() directly
+  // (awaited) so the result lands in stats_cache before the blob is persisted.
 }
 
 /** Final bookkeeping — mirrors what `finalizeChunkedFullResync()`'s finally used to run. */
@@ -585,6 +584,19 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
     console.warn('[listings-sync] finalizeStepPersist: read snapshot publish failed (non-fatal):', err)
   }
 
+  // Rebuild the intelligence board synchronously so it lands in stats_cache
+  // BEFORE persistWriteDbAfterChunk uploads the blob.  Using the deferred warm
+  // (fire-and-forget with a 2-s delay) meant the board was never in the blob,
+  // forcing every cold-start Lambda to rebuild on-demand — and those on-demand
+  // rebuilds were the source of the "towns go to zero" bug.
+  try {
+    const { rebuildIntelligenceDealBoardCache } = await import(
+      '@/lib/intelligence-deal-board-cache'
+    )
+    await rebuildIntelligenceDealBoardCache()
+  } catch (err) {
+    console.warn('[listings-sync] finalizeStepPersist: intelligence board rebuild failed (non-fatal):', err)
+  }
   await triggerFullResyncDeferredWarms()
   const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
   markPostDeployFullResyncComplete()
@@ -647,6 +659,12 @@ async function applyFullSyncPostamble(finishedAt: string): Promise<void> {
     await finalizeStepEdgeScores()
   } catch (err) {
     console.error('[listings-sync] edge scores rebuild failed', err)
+  }
+  try {
+    const { rebuildIntelligenceDealBoardCache } = await import('@/lib/intelligence-deal-board-cache')
+    await rebuildIntelligenceDealBoardCache()
+  } catch (err) {
+    console.error('[listings-sync] intelligence board rebuild failed (non-fatal):', err)
   }
   await triggerFullResyncDeferredWarms()
 }
