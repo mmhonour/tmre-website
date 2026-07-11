@@ -6,9 +6,9 @@ import { LATEST_DB_REFRESH_MS } from '../../lib/latest-refresh'
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
 
-  const { ensureListingsDbHydrated } = await import('../../lib/listings-db-persist')
+  const { ensureAdminSqliteDatabasesReady } = await import('../../lib/listings-db-persist')
   const { resetListingsDbConnections } = await import('../../lib/listings-db')
-  await ensureListingsDbHydrated(resetListingsDbConnections)
+  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
 
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings' })

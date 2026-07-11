@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AdminSyncActionId } from "@/lib/admin-sync-types";
+import type { AdminSyncActionId, AdminDatabaseSyncStats } from "@/lib/admin-sync-types";
 import {
   ADMIN_SYNC_ACTIONS,
   ADMIN_SYNC_ALL_CLIENT_STEPS,
@@ -12,25 +12,43 @@ import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
 import { formatAdminNextSyncAt, formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import type { AdminSyncScheduleHints } from "@/lib/admin-sync-schedule";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
+import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import { formatFullResyncTownPending } from "@/lib/admin-sync-progress";
 
-function syncMessageClassName(message: string | undefined): string {
-  if (!message) return "text-sage";
-  const lower = message.toLowerCase();
-  if (lower.includes("fail") || lower.includes("blocked") || lower.includes("stopped")) {
-    return "text-coral";
-  }
-  if (
-    lower.includes("queued") ||
-    lower.includes("syncing") ||
-    lower.includes("finalizing") ||
-    message.includes("…")
-  ) {
-    return "text-gold";
-  }
-  return "text-sage";
+function formatSyncDescription(message?: string, detail?: string): string | undefined {
+  if (!message && !detail) return undefined;
+  if (message && detail && message !== detail) return `${message} — ${detail}`;
+  return message ?? detail;
+}
+
+function formatSyncError(
+  res: Response,
+  body: Pick<AdminSyncPostBody, "detail" | "error" | "message">,
+  context?: string,
+): string {
+  const parts: string[] = [];
+  if (context) parts.push(context);
+  if (res.status) parts.push(`HTTP ${res.status}`);
+  const detail = body.detail?.trim() || body.error?.trim() || body.message?.trim();
+  if (detail) parts.push(detail);
+  else if (!res.ok) parts.push(res.statusText || "Request failed");
+  return parts.join(" · ");
+}
+
+function isSyncErrorText(text: string | undefined): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("fail") ||
+    lower.includes("blocked") ||
+    lower.includes("stopped") ||
+    lower.includes("timeout") ||
+    lower.includes("http 5") ||
+    lower.includes("gateway") ||
+    lower.includes("html error")
+  );
 }
 
 async function postAdminSync(
@@ -45,18 +63,13 @@ async function postAdminSync(
   return { res, body: parsed };
 }
 
-function formatSyncDescription(message?: string, detail?: string): string | undefined {
-  if (!message && !detail) return undefined;
-  if (message && detail && message !== detail) return `${message} — ${detail}`;
-  return message ?? detail;
-}
-
 async function runFullResyncChunked(
   row: AdminSyncRow,
   hooks: {
     setRunningId: (id: AdminSyncActionId | "sync-all-caches" | null) => void;
     setDescriptions: React.Dispatch<React.SetStateAction<Partial<Record<string, string>>>>;
     setMessages: React.Dispatch<React.SetStateAction<Partial<Record<string, string>>>>;
+    setErrors: React.Dispatch<React.SetStateAction<Partial<Record<string, string>>>>;
     setRunTimings: React.Dispatch<React.SetStateAction<Partial<Record<string, SyncTiming>>>>;
     setStatus: React.Dispatch<React.SetStateAction<PanelStatus | null>>;
     setRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
@@ -68,6 +81,7 @@ async function runFullResyncChunked(
   const startedAt = new Date().toISOString();
   hooks.setRunningId("full-resync");
   hooks.setMessages((prev) => ({ ...prev, [row.id]: undefined }));
+  hooks.setErrors((prev) => ({ ...prev, [row.id]: undefined }));
   hooks.setDescriptions((prev) => ({ ...prev, [row.id]: undefined }));
   hooks.setRunTimings((prev) => ({
     ...prev,
@@ -90,9 +104,16 @@ async function runFullResyncChunked(
       }));
       const { res, body } = await postAdminSync({ action: "full-resync", town });
       if (!res.ok || body.ok === false) {
-        const errText = body.detail ?? body.error ?? body.message ?? "Sync failed";
-        hooks.setDescriptions((prev) => ({ ...prev, [row.id]: errText }));
-        hooks.setMessages((prev) => ({ ...prev, [row.id]: errText }));
+        const errText = formatSyncError(
+          res,
+          body,
+          `${town} (town ${i + 1}/${TMRE_TOWNS.length})`,
+        );
+        hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
+        hooks.setDescriptions((prev) => ({
+          ...prev,
+          [row.id]: `Failed while syncing ${town}`,
+        }));
         hooks.setRunTimings((prev) => ({
           ...prev,
           [row.id]: {
@@ -148,41 +169,42 @@ async function runFullResyncChunked(
       );
     }
     hooks.setRefreshing(Boolean(finish.refreshing));
+    const ok = finishRes.ok && finish.ok !== false;
     hooks.setRunTimings((prev) => ({
       ...prev,
       [row.id]: {
         started: finish.startedAt ?? startedAt,
-        finished:
-          finishRes.ok && finish.ok !== false
-            ? (finish.finishedAt ?? new Date().toISOString())
-            : new Date().toISOString(),
+        finished: ok ? (finish.finishedAt ?? new Date().toISOString()) : new Date().toISOString(),
       },
     }));
-    hooks.setMessages((prev) => ({
-      ...prev,
-      [row.id]:
-        finishRes.ok && finish.ok !== false
-          ? (finish.message ?? "Complete")
-          : (finish.detail ?? finish.error ?? finish.message ?? "Sync failed"),
-    }));
+    if (ok) {
+      hooks.setErrors((prev) => ({ ...prev, [row.id]: undefined }));
+      hooks.setMessages((prev) => ({ ...prev, [row.id]: finish.message ?? "Complete" }));
+      hooks.setDescriptions((prev) => ({
+        ...prev,
+        [row.id]:
+          formatSyncDescription(finish.message, finish.detail) ??
+          finish.message ??
+          "Full resync complete",
+      }));
+    } else {
+      hooks.setErrors((prev) => ({
+        ...prev,
+        [row.id]: formatSyncError(finishRes, finish, "Finalize full resync"),
+      }));
+      hooks.setDescriptions((prev) => ({
+        ...prev,
+        [row.id]: "Full resync finalize failed",
+      }));
+    }
+    return ok;
+  } catch (err) {
+    const errText = err instanceof Error ? err.message : "Sync failed";
+    hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
     hooks.setDescriptions((prev) => ({
       ...prev,
-      [row.id]:
-        formatSyncDescription(finish.message, finish.detail) ??
-        finish.message ??
-        "Full resync complete",
+      [row.id]: "Full resync interrupted",
     }));
-    return finishRes.ok && finish.ok !== false;
-      } catch (err) {
-        const errText = err instanceof Error ? err.message : "Sync failed";
-        hooks.setMessages((prev) => ({
-          ...prev,
-          [row.id]: errText,
-        }));
-        hooks.setDescriptions((prev) => ({
-          ...prev,
-          [row.id]: errText,
-        }));
     hooks.setRunTimings((prev) => ({
       ...prev,
       [row.id]: { started: startedAt, finished: new Date().toISOString() },
@@ -248,6 +270,7 @@ type PanelStatus = {
     finishedAt: string;
     startedAt: string;
   }[];
+  databaseStats?: AdminDatabaseSyncStats[];
 };
 
 function formatTimestamp(iso: string | null | undefined): string {
@@ -283,14 +306,15 @@ async function readAdminSyncPostResponse(res: Response): Promise<AdminSyncPostBo
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     const text = await res.text();
-    if (text.trimStart().startsWith("<")) {
-      throw new Error(
-        "Server returned an HTML error page (usually a gateway timeout). On production, Sync all runs one step at a time — retry or use individual row buttons.",
-      );
-    }
-    throw new Error(text.slice(0, 240) || `Unexpected response (${res.status})`);
+    const html = text.trimStart().startsWith("<");
+    const error = html
+      ? "Gateway timeout or server error (HTML response — sync step likely exceeded the Lambda time limit). Retry this row or run towns individually."
+      : text.slice(0, 240) || `Unexpected response (${res.status})`;
+    return { ok: false, error, message: error } as AdminSyncPostBody;
   }
-  return (await res.json()) as AdminSyncPostBody;
+  const body = (await res.json()) as AdminSyncPostBody;
+  if (!res.ok && body.ok !== false) body.ok = false;
+  return body;
 }
 
 function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming {
@@ -425,11 +449,10 @@ function resolveSyncRowVisualStatus(options: {
   status: PanelStatus | null;
   isRunning: boolean;
   syncAllRunning: boolean;
-  message?: string;
+  error?: string;
   nowMs: number;
 }): SyncRowVisualStatus {
-  const { row, timing, nextRunAt, status, isRunning, syncAllRunning, message, nowMs } =
-    options;
+  const { row, timing, nextRunAt, status, isRunning, syncAllRunning, error, nowMs } = options;
 
   const refreshRowRunning =
     row.id === "refresh-finished" && Boolean(status?.refreshing);
@@ -449,7 +472,7 @@ function resolveSyncRowVisualStatus(options: {
 
   if (inProgress && !refreshRowHung) return "running";
 
-  const failed = Boolean(message?.toLowerCase().includes("fail"));
+  const failed = isSyncErrorText(error);
   const hung = refreshRowHung || isTimingHung(timing, nowMs);
   const breached =
     row.nextRunAt != null || nextRunAt != null
@@ -506,16 +529,20 @@ const TD =
 export default function AdminSyncTable({
   rows,
   initialRefreshing,
+  initialDatabaseStats,
 }: {
   rows: AdminSyncRow[];
   initialRefreshing: boolean;
+  initialDatabaseStats: AdminDatabaseSyncStats[];
 }) {
   const [status, setStatus] = useState<PanelStatus | null>(null);
+  const [databaseStats, setDatabaseStats] = useState(initialDatabaseStats);
   const [refreshing, setRefreshing] = useState(initialRefreshing);
   const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
     null,
   );
   const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [descriptions, setDescriptions] = useState<Partial<Record<string, string>>>({});
   const [runTimings, setRunTimings] = useState<Partial<Record<string, SyncTiming>>>({});
   const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
@@ -533,6 +560,7 @@ export default function AdminSyncTable({
     const body = (await res.json()) as PanelStatus;
     setStatus(body);
     setRefreshing(body.refreshing);
+    if (body.databaseStats) setDatabaseStats(body.databaseStats);
   }, []);
 
   useEffect(() => {
@@ -551,6 +579,7 @@ export default function AdminSyncTable({
           setRunningId,
           setDescriptions,
           setMessages,
+          setErrors,
           setRunTimings,
           setStatus,
           setRefreshing,
@@ -563,6 +592,7 @@ export default function AdminSyncTable({
       const startedAt = new Date().toISOString();
       setRunningId(actionId);
       setMessages((prev) => ({ ...prev, [row.id]: undefined }));
+      setErrors((prev) => ({ ...prev, [row.id]: undefined }));
       setDescriptions((prev) => ({
         ...prev,
         [row.id]: `${ADMIN_SYNC_ACTIONS[actionId]?.description ?? row.label}…`,
@@ -580,16 +610,9 @@ export default function AdminSyncTable({
         });
         const body = await readAdminSyncPostResponse(res);
 
-        if (!res.ok) {
-          const errText = body.detail ?? body.error ?? "Sync failed";
-          setMessages((prev) => ({
-            ...prev,
-            [row.id]: errText,
-          }));
-          setDescriptions((prev) => ({
-            ...prev,
-            [row.id]: errText,
-          }));
+        if (!res.ok || body.ok === false) {
+          const errText = formatSyncError(res, body, row.label);
+          setErrors((prev) => ({ ...prev, [row.id]: errText }));
           setRunTimings((prev) => ({
             ...prev,
             [row.id]: {
@@ -600,8 +623,10 @@ export default function AdminSyncTable({
           return;
         }
 
+        setErrors((prev) => ({ ...prev, [row.id]: undefined }));
         setStatus(body);
         setRefreshing(body.refreshing);
+        if (body.databaseStats) setDatabaseStats(body.databaseStats);
         const queued = Boolean(body.backgroundQueued);
         setRunTimings((prev) => ({
           ...prev,
@@ -623,7 +648,7 @@ export default function AdminSyncTable({
             "",
         }));
       } catch (err) {
-        setMessages((prev) => ({
+        setErrors((prev) => ({
           ...prev,
           [row.id]: err instanceof Error ? err.message : "Sync failed",
         }));
@@ -644,11 +669,13 @@ export default function AdminSyncTable({
     setRunningId("sync-all-caches");
     setSyncAllSummary(null);
     setMessages({});
+    setErrors({});
     setRunTimings({});
 
     let skipChainedAfterFull = false;
     let completed = 0;
     const totalSteps = ADMIN_SYNC_ALL_CLIENT_STEPS.length;
+    let currentRowId: string | null = null;
 
     try {
       for (const actionId of ADMIN_SYNC_ALL_CLIENT_STEPS) {
@@ -665,6 +692,7 @@ export default function AdminSyncTable({
             setRunningId,
             setDescriptions,
             setMessages,
+            setErrors,
             setRunTimings,
             setStatus,
             setRefreshing,
@@ -680,6 +708,7 @@ export default function AdminSyncTable({
 
         completed += 1;
         const rowId = ACTION_ROW_ID[actionId];
+        currentRowId = rowId ?? null;
         const label = ADMIN_SYNC_ACTIONS[actionId]?.label ?? actionId;
         setSyncAllSummary(`Step ${completed}/${totalSteps}: ${label}…`);
 
@@ -700,9 +729,9 @@ export default function AdminSyncTable({
 
         if (!res.ok || body.ok === false) {
           if (rowId) {
-            setMessages((prev) => ({
+            setErrors((prev) => ({
               ...prev,
-              [rowId]: body.detail ?? body.error ?? body.message ?? "Sync failed",
+              [rowId]: formatSyncError(res, body, label),
             }));
             setRunTimings((prev) => ({
               ...prev,
@@ -712,16 +741,12 @@ export default function AdminSyncTable({
               },
             }));
           }
-          setSyncAllSummary(
-            `Sync all stopped at ${label}: ${body.detail ?? body.error ?? body.message ?? "failed"}`,
-          );
+          setSyncAllSummary(`Sync all stopped at ${label}: ${formatSyncError(res, body)}`);
           return;
         }
 
-        setStatus(body);
-        setRefreshing(body.refreshing);
-
         if (rowId) {
+          setErrors((prev) => ({ ...prev, [rowId]: undefined }));
           setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
           setDescriptions((prev) => ({
             ...prev,
@@ -741,6 +766,10 @@ export default function AdminSyncTable({
           }));
         }
 
+        setStatus(body);
+        setRefreshing(body.refreshing);
+        if (body.databaseStats) setDatabaseStats(body.databaseStats);
+
         if (body.backgroundQueued) {
           skipChainedAfterFull = true;
         }
@@ -748,7 +777,11 @@ export default function AdminSyncTable({
 
       setSyncAllSummary("Sync all complete");
     } catch (err) {
-      setSyncAllSummary(err instanceof Error ? err.message : "Sync all failed");
+      const errText = err instanceof Error ? err.message : "Sync all failed";
+      setSyncAllSummary(errText);
+      if (currentRowId) {
+        setErrors((prev) => ({ ...prev, [currentRowId!]: errText }));
+      }
     } finally {
       setRunningId(null);
       void refreshStatus();
@@ -841,13 +874,67 @@ export default function AdminSyncTable({
           </p>
         </div>
       ) : null}
+      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-white">
+        <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-3">
+          SQLite inventory
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse">
+            <thead>
+              <tr>
+                <th className={`${TH} border-charcoal/[0.08]`}>Database</th>
+                <th className={`${TH} border-charcoal/[0.08]`}>File</th>
+                <th className={`${TH} border-charcoal/[0.08] border-r-0`}>Rows</th>
+              </tr>
+            </thead>
+            <tbody>
+              {databaseStats.map((db, index) => (
+                <tr
+                  key={db.id}
+                  className={index % 2 === 1 ? "bg-cream/[0.18]" : "bg-white"}
+                >
+                  <td className={`${TD} border-charcoal/[0.06]`}>
+                    <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
+                      {db.label}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] text-charcoal/45">
+                      {db.available ? "Connected" : "Unavailable"}
+                    </p>
+                  </td>
+                  <td className={`${TD} border-charcoal/[0.06]`}>
+                    <p
+                      className="font-mono text-[11px] text-slate break-all"
+                      title={db.path}
+                    >
+                      {db.path}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] tabular-nums text-charcoal/45">
+                      {formatBytes(db.sizeBytes)}
+                      {db.exists ? "" : " · missing"}
+                    </p>
+                    {db.error ? (
+                      <p className="mt-1 font-mono text-[10px] text-coral leading-snug">
+                        {db.error}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className={`${TD} border-charcoal/[0.06] border-r-0`}>
+                    <p className="text-sm text-slate leading-snug">{db.summary}</p>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px] border-collapse table-fixed">
+        <table className="w-full min-w-[1280px] border-collapse table-fixed">
           <colgroup>
             <col className="w-[3rem]" />
             <col className="w-[7.5rem]" />
             <col className="w-[9.5rem]" />
             <col />
+            <col className="w-[14rem]" />
             <col className="w-[11rem]" />
             <col className="w-[10.5rem]" />
             <col className="w-[10.5rem]" />
@@ -859,6 +946,7 @@ export default function AdminSyncTable({
               <th className={TH}>Action</th>
               <th className={TH}>Sync</th>
               <th className={TH}>Description</th>
+              <th className={TH}>Errors</th>
               <th className={TH}>Pages</th>
               <th className={TH}>Start</th>
               <th className={TH}>End</th>
@@ -868,7 +956,7 @@ export default function AdminSyncTable({
           <tbody>
             {rows.map((row, index) => {
               const isRunning = row.actionId != null && runningId === row.actionId;
-              const message = messages[row.id];
+              const rowError = errors[row.id];
               const disabled = !row.actionId || globalBusy;
               const timing = runTimings[row.id] ?? timingForRow(row, status);
               const showSingleTimestamp =
@@ -882,7 +970,7 @@ export default function AdminSyncTable({
                 status,
                 isRunning,
                 syncAllRunning,
-                message,
+                error: rowError,
                 nowMs,
               });
               const rowHung =
@@ -949,16 +1037,18 @@ export default function AdminSyncTable({
                           >
                             {descText}
                           </p>
-                          {message && !liveDescription ? (
-                            <p
-                              className={`mt-1 font-mono text-[10px] tracking-wide ${syncMessageClassName(message)}`}
-                            >
-                              {message}
-                            </p>
-                          ) : null}
                         </>
                       );
                     })()}
+                  </td>
+                  <td className={TD}>
+                    {rowError ? (
+                      <p className="font-mono text-[10px] leading-snug text-coral break-words">
+                        {rowError}
+                      </p>
+                    ) : (
+                      <span className="font-mono text-[10px] text-charcoal/30">—</span>
+                    )}
                   </td>
                   <td className={TD}>
                     <SyncImpactedPages rowId={row.id} />

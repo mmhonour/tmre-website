@@ -10,6 +10,7 @@ import {
   isListingsDbAvailable,
   listingsDbPath,
   listingsReadDbPath,
+  publishListingsReadSnapshot,
 } from '@/lib/listings-db'
 import type {
   SqliteColumnRef,
@@ -346,16 +347,24 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
     { error: writeError, documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS },
   )
 
+  if (writeDb && !existsSync(readPath)) {
+    publishListingsReadSnapshot()
+  }
+
   const readOpen = openReadonlyIfExists(readPath)
+  const readDbForInspect = readOpen.database ?? writeDb
   const readDiagram = inspectHandle(
-    readOpen.database,
+    readDbForInspect,
     baseMeta(
       'listings-read',
       'Listings (read snapshot)',
       'API read replica published after successful syncs',
       readPath,
     ),
-    { error: readOpen.error, documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS },
+    {
+      error: readDbForInspect ? undefined : readOpen.error,
+      documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS,
+    },
   )
 
   const propertyAddressDb = writeDb ?? readOpen.database
@@ -386,7 +395,9 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
     /* ignore */
   }
 
-  const photosDb = tryGetListingPhotosDb()
+  const photosCached = tryGetListingPhotosDb()
+  const photosOpen = openReadonlyIfExists(photosPath)
+  const photosDb = photosCached ?? photosOpen.database
   const photosDiagram = inspectHandle(
     photosDb,
     baseMeta(
@@ -395,8 +406,18 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
       'Binary photo BLOB store keyed by MLS ID',
       photosPath,
     ),
-    { error: photosDb ? undefined : 'Photos DB unavailable in this runtime' },
+    {
+      error:
+        photosDb ? undefined : photosOpen.error ?? 'Photos DB unavailable in this runtime',
+    },
   )
+  if (photosOpen.database && photosOpen.database !== photosCached) {
+    try {
+      photosOpen.database.close()
+    } catch {
+      /* ignore */
+    }
+  }
 
   const diagrams = [writeDiagram, readDiagram, photosDiagram, propertyAddressDiagram]
 

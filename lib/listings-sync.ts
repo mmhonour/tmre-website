@@ -1,4 +1,5 @@
 import {
+  deleteSyncMeta,
   getListingsDbStats,
   getSyncMeta,
   isListingsDbAvailable,
@@ -185,6 +186,7 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
   const modifiedAfter = incrementalWatermark()
   const startedAt = new Date().toISOString()
   setSyncMeta('last_incremental_sync_started', startedAt)
+  deleteSyncMeta('last_incremental_sync')
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
 
@@ -200,9 +202,9 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
     const totalUpserted = towns.reduce((sum, row) => sum + row.count, 0)
     const allOk = towns.every((row) => row.ok)
 
+    publishListingsReadSnapshot()
+    setSyncMeta('last_incremental_sync', finishedAt)
     if (allOk) {
-      publishListingsReadSnapshot()
-      setSyncMeta('last_incremental_sync', finishedAt)
       // Town feeds for /latest — bounded hero thumbnails warm chained inside rebuild.
       try {
         const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')
@@ -542,6 +544,7 @@ export async function syncFullResyncTown(town: TmreTown): Promise<TownSyncResult
   if (getSyncMeta('refresh_in_progress') !== '1') {
     beginSqliteRefresh('full-sync-chunked')
     setSyncMeta('last_full_sync_started', new Date().toISOString())
+    deleteSyncMeta('last_full_sync')
     const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
     await clearChunkedFullResyncProgress()
   }
@@ -614,6 +617,7 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
 
   const startedAt = new Date().toISOString()
   setSyncMeta('last_full_sync_started', startedAt)
+  deleteSyncMeta('last_full_sync')
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
 

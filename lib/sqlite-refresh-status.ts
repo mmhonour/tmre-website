@@ -84,6 +84,30 @@ function readRefreshLockHistoryRaw(): RefreshLockHistoryEntry[] {
 
 function writeRefreshLockHistory(entries: RefreshLockHistoryEntry[]): void {
   setSyncMeta(REFRESH_LOCK_HISTORY_KEY, JSON.stringify(entries))
+  void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
+    scheduleListingsDbBlobPersist('refresh-lock-history'),
+  )
+}
+
+/** Close history rows left open after a crashed or cross-Lambda refresh lock. */
+function healStaleRefreshLockHistoryEntries(now = Date.now()): void {
+  const maxMs = maxRefreshMs()
+  const entries = readRefreshLockHistoryRaw()
+  let changed = false
+  const healed = entries.map((entry) => {
+    if (entry.finishedAt != null) return entry
+    const startedMs = parseIsoMs(entry.startedAt)
+    if (startedMs == null || now - startedMs <= maxMs) return entry
+    const finishedAt = new Date(startedMs + maxMs).toISOString()
+    changed = true
+    return {
+      ...entry,
+      finishedAt,
+      durationMs: maxMs,
+      clearedManually: true,
+    }
+  })
+  if (changed) writeRefreshLockHistory(pruneRefreshLockHistory(healed, now))
 }
 
 function pruneRefreshLockHistory(
@@ -156,6 +180,7 @@ export function getRefreshLockStatsCollector(): SqliteWriteStatsCollector | null
 }
 
 export function readRefreshLockHistorySummary(now = Date.now()): RefreshLockHistorySummary {
+  healStaleRefreshLockHistoryEntries(now)
   const entries = pruneRefreshLockHistory(readRefreshLockHistoryRaw(), now)
   let totalHeldMs = 0
   let activeCount = 0
@@ -279,7 +304,7 @@ export function endSqliteRefresh(finishedAt?: string): void {
     setActiveRefreshLockStats(null)
     activeHistoryEntryId = null
     setSyncMeta('refresh_in_progress', '0')
-    if (finishedAt) setSyncMeta('last_refresh_finished_at', finishedAt)
+    setSyncMeta('last_refresh_finished_at', finished)
     void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
       scheduleListingsDbBlobPersist('refresh-lock-end'),
     )

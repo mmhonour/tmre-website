@@ -14,7 +14,7 @@ import {
 } from '@/lib/listings-db'
 import {
   clearChunkedFullResyncProgress,
-  ensureListingsDbHydrated,
+  ensureAdminSqliteDatabasesReady,
   prepareListingsDbForChunkedSync,
   readChunkedFullResyncProgress,
   saveChunkedFullResyncProgress,
@@ -113,6 +113,9 @@ export async function runAdminSyncAction(
         await prepareListingsDbForChunkedSync(listingsDbPath(), resetListingsDbConnections)
         const result = await finalizeChunkedFullResync()
         const finishedAt = result.finishedAt ?? new Date().toISOString()
+        if (!getSyncMeta('last_full_sync')) {
+          setSyncMeta('last_full_sync', finishedAt)
+        }
         const tableStats = collectWriteDatabaseTableStats()
         const byBucket = countWriteDbListingsByBucket()
         const listingTotal =
@@ -235,7 +238,7 @@ export async function runAdminSyncAction(
           detail: retsSyncBlockedMessage(),
         }
       }
-      await ensureListingsDbHydrated(resetListingsDbConnections)
+      await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
       if (getSyncMeta('refresh_in_progress') === '1') {
         const finishedAt = new Date().toISOString()
         return {

@@ -202,6 +202,11 @@ export function publishListingsReadSnapshot(): void {
     }
     resetReadDbConnection()
     console.info('[listings-db] published read snapshot:', readPath)
+    if (isServerlessRuntime() && process.env.NETLIFY === 'true') {
+      void import('@/lib/listings-db-persist').then(({ persistListingsReadDbToBlob }) =>
+        persistListingsReadDbToBlob(readPath).catch(() => {}),
+      )
+    }
   } catch (err) {
     try {
       if (existsSync(tmpPath)) unlinkSync(tmpPath)

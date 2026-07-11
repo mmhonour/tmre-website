@@ -13,8 +13,11 @@ import { isServerlessRuntime } from '@/lib/runtime-host'
 
 const BLOB_STORE = 'tmre-listings-db'
 const BLOB_DB_KEY = 'listings-write.db'
+const BLOB_READ_DB_KEY = 'listings-read.db'
+const BLOB_PHOTOS_DB_KEY = 'listing-photos.db'
 const BLOB_PROGRESS_KEY = 'chunked-full-resync-progress'
 const MIN_BYTES = 50_000
+const MIN_PHOTOS_BYTES = 4_096
 
 export type ChunkedFullResyncProgress = {
   fetchedTotal: number
@@ -50,13 +53,21 @@ function removeWalSidecars(dbPath: string): void {
 
 /** Restore the write DB from Netlify Blobs when blob is newer or larger than local /tmp. */
 export async function restorePersistedListingsDb(dbPath: string): Promise<boolean> {
+  return restorePersistedDbFile(dbPath, BLOB_DB_KEY, MIN_BYTES)
+}
+
+async function restorePersistedDbFile(
+  dbPath: string,
+  blobKey: string,
+  minBytes: number,
+): Promise<boolean> {
   if (!shouldUseBlobPersist()) return false
 
   try {
     const store = await getBlobStore()
-    const result = await store.getWithMetadata(BLOB_DB_KEY, { type: 'arrayBuffer' })
+    const result = await store.getWithMetadata(blobKey, { type: 'arrayBuffer' })
     const data = result?.data
-    if (!data || data.byteLength < MIN_BYTES) return false
+    if (!data || data.byteLength < minBytes) return false
 
     const blobSavedAt = parseIsoMs(
       typeof result.metadata?.savedAt === 'string' ? result.metadata.savedAt : null,
@@ -72,10 +83,39 @@ export async function restorePersistedListingsDb(dbPath: string): Promise<boolea
     mkdirSync(path.dirname(dbPath), { recursive: true })
     writeFileSync(dbPath, Buffer.from(data))
     removeWalSidecars(dbPath)
-    console.info('[listings-db] restored write DB from Netlify Blobs:', data.byteLength, 'bytes')
+    console.info(`[listings-db] restored ${blobKey} from Netlify Blobs:`, data.byteLength, 'bytes')
     return true
   } catch (err) {
-    console.warn('[listings-db] Netlify Blobs restore skipped:', err)
+    console.warn(`[listings-db] Netlify Blobs restore skipped (${blobKey}):`, err)
+    return false
+  }
+}
+
+async function persistDbFileToBlob(
+  dbPath: string,
+  blobKey: string,
+  minBytes: number,
+  checkpoint?: () => void,
+): Promise<boolean> {
+  if (!shouldUseBlobPersist()) return false
+
+  try {
+    checkpoint?.()
+    if (!existsSync(dbPath) || statSync(dbPath).size < minBytes) return false
+
+    const bytes = readFileSync(dbPath)
+    const store = await getBlobStore()
+    const payload = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    await store.set(blobKey, payload, {
+      metadata: {
+        bytes: String(bytes.length),
+        savedAt: new Date().toISOString(),
+      },
+    })
+    console.info(`[listings-db] persisted ${blobKey} to Netlify Blobs:`, bytes.length, 'bytes')
+    return true
+  } catch (err) {
+    console.warn(`[listings-db] Netlify Blobs persist failed (${blobKey}):`, err)
     return false
   }
 }
@@ -85,35 +125,46 @@ export async function persistListingsDbToBlob(
   dbPath: string,
   checkpoint?: () => void,
 ): Promise<boolean> {
-  if (!shouldUseBlobPersist()) return false
-
-  try {
-    checkpoint?.()
-    if (!existsSync(dbPath) || statSync(dbPath).size < MIN_BYTES) return false
-
-    const bytes = readFileSync(dbPath)
-    const store = await getBlobStore()
-    const payload = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-    await store.set(BLOB_DB_KEY, payload, {
-      metadata: {
-        bytes: String(bytes.length),
-        savedAt: new Date().toISOString(),
-      },
-    })
-    console.info('[listings-db] persisted write DB to Netlify Blobs:', bytes.length, 'bytes')
-    return true
-  } catch (err) {
-    console.warn('[listings-db] Netlify Blobs persist failed:', err)
-    return false
-  }
+  return persistDbFileToBlob(dbPath, BLOB_DB_KEY, MIN_BYTES, checkpoint)
 }
 
-/** Checkpoint WAL and persist write DB — used after sync steps and lock changes. */
+export async function persistListingsReadDbToBlob(
+  readPath: string,
+): Promise<boolean> {
+  return persistDbFileToBlob(readPath, BLOB_READ_DB_KEY, MIN_BYTES)
+}
+
+export async function persistListingPhotosDbToBlob(
+  photosPath: string,
+  checkpoint?: () => void,
+): Promise<boolean> {
+  return persistDbFileToBlob(photosPath, BLOB_PHOTOS_DB_KEY, MIN_PHOTOS_BYTES, checkpoint)
+}
+
+/** Checkpoint WAL and persist write + read snapshot + photos DB on serverless. */
 export async function persistListingsDbCheckpoint(): Promise<boolean> {
-  const { listingsDbPath, tryGetWriteDb } = await import('@/lib/listings-db')
-  return persistListingsDbToBlob(listingsDbPath(), () => {
+  const { listingsDbPath, listingsReadDbPath, tryGetWriteDb } = await import('@/lib/listings-db')
+  const { listingPhotosDbPath, tryGetListingPhotosDb } = await import('@/lib/listing-photos-db')
+
+  const writeOk = await persistListingsDbToBlob(listingsDbPath(), () => {
     tryGetWriteDb()?.pragma('wal_checkpoint(TRUNCATE)')
   })
+
+  const readPath = listingsReadDbPath()
+  let readOk = false
+  if (existsSync(readPath)) {
+    readOk = await persistListingsReadDbToBlob(readPath)
+  }
+
+  const photosPath = listingPhotosDbPath()
+  let photosOk = false
+  if (existsSync(photosPath)) {
+    photosOk = await persistListingPhotosDbToBlob(photosPath, () => {
+      tryGetListingPhotosDb()?.pragma('wal_checkpoint(TRUNCATE)')
+    })
+  }
+
+  return writeOk || readOk || photosOk
 }
 
 export async function readChunkedFullResyncProgress(): Promise<ChunkedFullResyncProgress | null> {
@@ -167,12 +218,54 @@ export async function ensureListingsDbHydrated(resetConnections: () => void): Pr
   return restored
 }
 
-/** Restore blob DB before chunked admin sync (alias for ensureListingsDbHydrated). */
+/** Hydrate write, read snapshot, and listing-photos DBs for admin / read APIs on serverless. */
+export async function ensureAdminSqliteDatabasesReady(
+  resetConnections: () => void,
+): Promise<boolean> {
+  const { listingsDbPath, listingsReadDbPath, publishListingsReadSnapshot, tryGetWriteDb, countWriteDbListings } =
+    await import('@/lib/listings-db')
+  const { listingPhotosDbPath, resetListingPhotosDbConnection } = await import(
+    '@/lib/listing-photos-db'
+  )
+
+  let restored = false
+  if (await restorePersistedListingsDb(listingsDbPath())) restored = true
+  if (await restorePersistedDbFile(listingsReadDbPath(), BLOB_READ_DB_KEY, MIN_BYTES)) {
+    restored = true
+  }
+  if (await restorePersistedDbFile(listingPhotosDbPath(), BLOB_PHOTOS_DB_KEY, MIN_PHOTOS_BYTES)) {
+    restored = true
+  }
+
+  if (restored) {
+    resetConnections()
+    resetListingPhotosDbConnection()
+  }
+
+  const writeDb = tryGetWriteDb()
+  if (writeDb && countWriteDbListings() > 0) {
+    const readPath = listingsReadDbPath()
+    const writePath = listingsDbPath()
+    const readMissing = !existsSync(readPath)
+    const readTooSmall =
+      existsSync(readPath) &&
+      existsSync(writePath) &&
+      statSync(readPath).size < Math.min(statSync(writePath).size, MIN_BYTES)
+    if (readMissing || readTooSmall) {
+      publishListingsReadSnapshot()
+      void persistListingsReadDbToBlob(readPath).catch(() => {})
+    }
+  }
+
+  return restored
+}
+
+/** Restore blob DB before chunked admin sync. */
 export async function prepareListingsDbForChunkedSync(
   _dbPath: string,
   resetConnections: () => void,
 ): Promise<void> {
-  await ensureListingsDbHydrated(resetConnections)
+  await ensureAdminSqliteDatabasesReady(resetConnections)
 }
 
 export function scheduleListingsDbBlobPersist(reason: string): void {

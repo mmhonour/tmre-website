@@ -45,6 +45,25 @@ export function formatTableStatsSummary(tables: TableWriteStats[]): string {
   return tables.map((row) => `${row.table} ${row.queried.toLocaleString()}`).join(' · ')
 }
 
+/** One-line inventory for listings / listings.read / listing-photos rows. */
+export function formatAdminDatabaseTableSummary(
+  tables: { table: string; rowCount: number; approximate?: boolean }[],
+  options?: { schemaOnly?: boolean },
+): string {
+  if (tables.length === 0) {
+    return options?.schemaOnly
+      ? 'Schema only (0 rows) — run Full resync'
+      : 'No tables with data'
+  }
+  const line = tables
+    .map((row) => {
+      const prefix = row.approximate ? '≈' : ''
+      return `${row.table} ${prefix}${row.rowCount.toLocaleString()}`
+    })
+    .join(' · ')
+  return options?.schemaOnly ? `${line} — deploy bundle is schema-only` : line
+}
+
 function formatBucketSummary(byBucket: Record<string, number>): string {
   const order = ['Active', 'Closed', 'Expired']
   const parts = order

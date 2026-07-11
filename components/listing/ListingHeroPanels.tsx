@@ -7,9 +7,11 @@ import ListingSubnav, {
   type ListingInterestProps,
   type ListingTab,
 } from "@/components/listing/ListingSubnav";
+import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import { ListingBackLink } from "@/components/listing/ListingShell";
+import { formatMlsStatus } from "@/lib/listing-history";
 import type { ComponentProps, ReactNode } from "react";
 
 type ListingHeroPanelsProps = {
@@ -56,13 +58,26 @@ export default function ListingHeroPanels({
   const frameClass = listingPanelCompactClass;
   const compactHero = Boolean(belowTabs || belowHero || sidebar || footer || interest);
 
+  const statusLabel = formatMlsStatus(header.status);
+
   const propertyPanel = (
     <div className={frameClass}>
       {!isSpotlight ? <ListingBackLink className="mb-4" /> : null}
       {propertyTabs}
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
-        Property Details
-      </p>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          Property Details
+        </p>
+        {statusLabel ? (
+          <span className="shrink-0">
+            <DealBoardStatusBadge
+              status={statusLabel}
+              size="sm"
+              surface="listing"
+            />
+          </span>
+        ) : null}
+      </div>
       <ListingHeader
         {...header}
         privacyMode={header.privacyMode ?? false}

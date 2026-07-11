@@ -17,7 +17,7 @@ import {
   readLatestListingModificationTimestamp,
   resetListingsDbConnections,
 } from "@/lib/listings-db";
-import { ensureListingsDbHydrated } from "@/lib/listings-db-persist";
+import { ensureAdminSqliteDatabasesReady } from "@/lib/listings-db-persist";
 import { ensurePostDeployFullResyncScheduled } from "@/lib/deploy-full-resync-schedule";
 import { formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
@@ -26,6 +26,7 @@ import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
 import { describeRunningSqliteDatabases } from "@/lib/sqlite-schema-diagram";
 import { describeStartupProcess } from "@/lib/startup-process";
 import { readAdminSyncPanelStatus } from "@/lib/admin-sync-actions";
+import { collectAdminDatabaseSyncStats } from "@/lib/sqlite-sync-stats";
 import { readSqliteRefreshLockStatus, readRefreshLockHistorySummary } from "@/lib/sqlite-refresh-status";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,18 @@ function mlsTimestampSortMs(iso: string | null | undefined): number {
   return mlsTimestampDate(iso)?.getTime() ?? 0;
 }
 
+function pairSyncFinished(
+  started: string | null | undefined,
+  finished: string | null | undefined,
+): string | null {
+  if (!finished) return null;
+  if (!started) return finished;
+  const startedMs = Date.parse(started);
+  const finishedMs = Date.parse(finished);
+  if (Number.isNaN(startedMs) || Number.isNaN(finishedMs)) return finished;
+  return finishedMs >= startedMs ? finished : null;
+}
+
 export default async function AdminPage() {
   const jar = await cookies();
   const unlocked = jar.get(SITE_PASSWORD_COOKIE)?.value === "1";
@@ -81,7 +94,7 @@ export default async function AdminPage() {
     );
   }
 
-  await ensureListingsDbHydrated(resetListingsDbConnections);
+  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections);
   await ensurePostDeployFullResyncScheduled();
 
   const stats = getListingsDbStats();
@@ -94,6 +107,7 @@ export default async function AdminPage() {
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
   const refreshFinishedAt = lastRefreshFinished ?? refresh.lastFinishedAt;
   const sqliteDiagrams = describeRunningSqliteDatabases();
+  const databaseStats = collectAdminDatabaseSyncStats();
   const listingsDbRuntime = describeListingsDbRuntime();
   const listingsDbBroken = !listingsDbRuntime.nativeModuleAvailable;
   const listingsDbEmpty =
@@ -107,7 +121,7 @@ export default async function AdminPage() {
       label: "Full resync",
       value: formatTimestamp(stats.lastFullSync),
       startedAt: stats.lastFullSyncStarted,
-      finishedAt: stats.lastFullSync,
+      finishedAt: pairSyncFinished(stats.lastFullSyncStarted, stats.lastFullSync),
       sortMs: timestampSortMs(stats.lastFullSync),
       detail: "Complete MLS → SQLite reload (scheduled daily at 5am ET)",
       actionId: "full-resync",
@@ -118,7 +132,10 @@ export default async function AdminPage() {
       label: "Incremental update",
       value: formatTimestamp(stats.lastIncrementalSync),
       startedAt: stats.lastIncrementalSyncStarted,
-      finishedAt: stats.lastIncrementalSync,
+      finishedAt: pairSyncFinished(
+        stats.lastIncrementalSyncStarted,
+        stats.lastIncrementalSync,
+      ),
       sortMs: timestampSortMs(stats.lastIncrementalSync),
       detail: `Modified-since RETS pull (every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} minutes)`,
       actionId: "incremental",
@@ -206,7 +223,11 @@ export default async function AdminPage() {
             Database sync
           </p>
         </div>
-        <AdminSyncTable rows={rows} initialRefreshing={refresh.refreshing} />
+        <AdminSyncTable
+          rows={rows}
+          initialRefreshing={refresh.refreshing}
+          initialDatabaseStats={databaseStats}
+        />
       </div>
 
       <div id="admin-refresh-lock" className="scroll-mt-24">

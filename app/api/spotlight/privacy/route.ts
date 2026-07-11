@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resetListingsDbConnections } from '@/lib/listings-db'
+import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
 import { parseSpotlightPropertyTab } from '@/lib/spotlight-listing'
 import {
   readSpotlightPrivacyOverrides,
@@ -9,6 +11,8 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
+  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
+
   const tab = parseSpotlightPropertyTab(
     new URL(req.url).searchParams.get('property'),
   )

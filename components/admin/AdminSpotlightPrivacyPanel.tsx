@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   SpotlightEffectivePrivacy,
   SpotlightPrivacyOverrides,
@@ -18,6 +18,8 @@ type TabRow = {
   effective: SpotlightEffectivePrivacy;
 };
 
+type TabSaveStatus = "idle" | "saving" | "saved" | "error";
+
 const DEFAULT_PRIVACY: SpotlightEffectivePrivacy = {
   showAddress: false,
   showClearPhotos: false,
@@ -28,9 +30,14 @@ export default function AdminSpotlightPrivacyPanel() {
   const [tabs, setTabs] = useState<TabRow[]>([]);
   const [overrides, setOverrides] = useState<SpotlightPrivacyOverrides>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [tabStatus, setTabStatus] = useState<
+    Partial<Record<SpotlightPropertyTabId, TabSaveStatus>>
+  >({});
   const [error, setError] = useState<string | null>(null);
+  const saveSeqRef = useRef(0);
+  const savedTimersRef = useRef<
+    Partial<Record<SpotlightPropertyTabId, ReturnType<typeof setTimeout>>>
+  >({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -51,43 +58,69 @@ export default function AdminSpotlightPrivacyPanel() {
     load();
   }, [load]);
 
-  function toggle(
-    tab: SpotlightPropertyTabId,
-    key: keyof SpotlightEffectivePrivacy,
-    checked: boolean,
-  ) {
-    setOverrides((prev) => ({
-      ...prev,
-      [tab]: {
-        ...prev[tab],
-        [key]: checked,
-      },
-    }));
-  }
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(savedTimersRef.current)) {
+        if (timer) clearTimeout(timer);
+      }
+    };
+  }, []);
 
-  async function save() {
-    setSaving(true);
-    setMessage(null);
+  async function persistOverrides(
+    nextOverrides: SpotlightPrivacyOverrides,
+    tab: SpotlightPropertyTabId,
+  ) {
+    const seq = ++saveSeqRef.current;
+    setTabStatus((prev) => ({ ...prev, [tab]: "saving" }));
     setError(null);
+
     try {
       const res = await fetch("/api/admin/spotlight-privacy", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ overrides }),
+        body: JSON.stringify({ overrides: nextOverrides }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as {
         overrides: SpotlightPrivacyOverrides;
         tabs: TabRow[];
       };
+      if (seq !== saveSeqRef.current) return;
       setOverrides(data.overrides ?? {});
       setTabs(data.tabs ?? []);
-      setMessage("Spotlight privacy settings saved.");
+      setTabStatus((prev) => ({ ...prev, [tab]: "saved" }));
+
+      const existingTimer = savedTimersRef.current[tab];
+      if (existingTimer) clearTimeout(existingTimer);
+      savedTimersRef.current[tab] = setTimeout(() => {
+        setTabStatus((prev) =>
+          prev[tab] === "saved" ? { ...prev, [tab]: "idle" } : prev,
+        );
+        delete savedTimersRef.current[tab];
+      }, 2000);
     } catch (err) {
+      if (seq !== saveSeqRef.current) return;
+      setTabStatus((prev) => ({ ...prev, [tab]: "error" }));
       setError(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
+  }
+
+  function toggle(
+    tab: SpotlightPropertyTabId,
+    key: keyof SpotlightEffectivePrivacy,
+    checked: boolean,
+  ) {
+    setOverrides((prev) => {
+      const next = {
+        ...prev,
+        [tab]: {
+          ...prev[tab],
+          [key]: checked,
+        },
+      };
+      void persistOverrides(next, tab);
+      return next;
+    });
   }
 
   const tabRows =
@@ -101,27 +134,25 @@ export default function AdminSpotlightPrivacyPanel() {
           effective: DEFAULT_PRIVACY,
         }));
 
+  function statusLabel(tab: SpotlightPropertyTabId): string | null {
+    const status = tabStatus[tab] ?? "idle";
+    if (status === "saving") return "Saving…";
+    if (status === "saved") return "Saved";
+    if (status === "error") return "Save failed";
+    return null;
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Spotlight privacy
-          </p>
-          <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
-            Tabs 1–3 default to town-only maps (no pin), blurred photos 1 &amp; 2,
-            and hidden street addresses. Enable overrides per property when ready to
-            go public.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || loading}
-          className="shrink-0 rounded-full bg-navy px-5 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase text-white transition-colors hover:bg-navy/90 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save changes"}
-        </button>
+      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
+        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+          Spotlight privacy
+        </p>
+        <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
+          Tabs 1–3 default to town-only maps (no pin), blurred photos 1 &amp; 2,
+          and hidden street addresses. Enable overrides per property when ready to
+          go public. Changes save automatically.
+        </p>
       </div>
 
       {loading ? (
@@ -132,16 +163,32 @@ export default function AdminSpotlightPrivacyPanel() {
         <div className="divide-y divide-charcoal/[0.08]">
           {tabRows.map((row) => {
             const tabOverrides = overrides[row.tab] ?? {};
+            const status = statusLabel(row.tab);
             return (
               <div key={row.tab} className="px-5 sm:px-6 py-5">
-                <div className="mb-4">
-                  <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-navy">
-                    Spotlight {row.tab}
-                  </p>
-                  <p className="mt-1 text-sm text-charcoal/70">
-                    {row.street || row.label}
-                    {row.town ? ` · ${row.town}` : ""}
-                  </p>
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-navy">
+                      Spotlight {row.tab}
+                    </p>
+                    <p className="mt-1 text-sm text-charcoal/70">
+                      {row.street || row.label}
+                      {row.town ? ` · ${row.town}` : ""}
+                    </p>
+                  </div>
+                  {status ? (
+                    <p
+                      className={`font-mono text-[10px] tracking-[0.12em] uppercase ${
+                        tabStatus[row.tab] === "error"
+                          ? "text-coral"
+                          : tabStatus[row.tab] === "saved"
+                            ? "text-sage"
+                            : "text-charcoal/45"
+                      }`}
+                    >
+                      {status}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
@@ -205,11 +252,6 @@ export default function AdminSpotlightPrivacyPanel() {
         </div>
       )}
 
-      {message ? (
-        <p className="px-5 sm:px-6 py-3 border-t border-charcoal/[0.08] font-mono text-xs text-sage">
-          {message}
-        </p>
-      ) : null}
       {error ? (
         <p className="px-5 sm:px-6 py-3 border-t border-charcoal/[0.08] font-mono text-xs text-coral">
           {error}

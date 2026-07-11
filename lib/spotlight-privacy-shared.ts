@@ -92,10 +92,13 @@ export function spotlightEffectiveHeaderAddress(
     }
   }
 
-  const street =
+  const actualStreet =
     mls?.address?.street?.trim() ||
     config.address.street.trim() ||
     config.displayTitle
+  const street = actualStreet
+    ? `${config.displayTitle} — ${actualStreet}`
+    : config.displayTitle
   const city =
     mls?.address?.city?.trim() || config.address.city.trim() || config.displayLocation
   const state = config.address.state.trim() || 'CT'

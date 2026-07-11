@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
+import { resetListingsDbConnections } from '@/lib/listings-db'
+import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
 import {
   getSpotlightListingConfig,
   SPOTLIGHT_PROPERTY_TABS,
@@ -30,6 +32,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
+
   const overrides = readSpotlightPrivacyOverrides()
   return NextResponse.json({
     overrides,
@@ -51,6 +55,8 @@ export async function PATCH(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
+
+  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
 
   const overrides = normalizeSpotlightPrivacyOverrides(
     (body as { overrides?: unknown })?.overrides ?? body,

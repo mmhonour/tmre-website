@@ -12,6 +12,18 @@ export const INTEL_PRICE_STEPS = (() => {
 
 export const INTEL_PRICE_MAX_INDEX = INTEL_PRICE_STEPS.length - 1;
 
+/** Discrete monthly-rent steps for the intelligence board rental slider. */
+export const INTEL_RENT_PRICE_STEPS = (() => {
+  const steps: number[] = [0];
+  for (let price = 1_000; price <= 10_000; price += 1_000) {
+    steps.push(price);
+  }
+  for (let price = 12_000; price <= 30_000; price += 2_000) {
+    steps.push(price);
+  }
+  return steps;
+})();
+
 export const INTEL_PRICE_INDEX_VALUES = INTEL_PRICE_STEPS.map((_, index) =>
   String(index),
 ) as readonly string[];
@@ -76,8 +88,13 @@ export function parseIntelPriceInput(raw: string): number | null {
 
 const INTEL_PRICE_SCROLL_SPLIT = 4_000_000;
 
-/** $500K steps at or below $4M; $1M steps above $4M (wheel on price bound inputs). */
+/** Wheel step for price bound inputs (monthly rent vs sale list price). */
 export function intelPriceScrollIncrement(price: number): number {
+  if (price <= 30_000) {
+    if (price <= 2_000) return 250;
+    if (price <= 8_000) return 500;
+    return 1_000;
+  }
   return price > INTEL_PRICE_SCROLL_SPLIT ? 1_000_000 : 500_000;
 }
 
@@ -98,8 +115,11 @@ export function adjustIntelPriceByWheel(
 export function boardListingPrices(
   listings: { price: number | null | undefined; isRental?: boolean }[],
 ): number[] {
+  const hasSales = listings.some((l) => !l.isRental);
+  const hasRentals = listings.some((l) => l.isRental);
+  const useRentals = hasRentals && !hasSales;
   return listings
-    .filter((l) => !l.isRental)
+    .filter((l) => (useRentals ? l.isRental : !l.isRental))
     .map((l) => l.price)
     .filter((p): p is number => p != null && Number.isFinite(p) && p > 0);
 }
@@ -108,21 +128,31 @@ export function boardListingPrices(
 export function intelPriceStepsForBoard(
   listings: { price: number | null | undefined; isRental?: boolean }[],
 ): readonly number[] {
+  const hasSales = listings.some((l) => !l.isRental);
+  const hasRentals = listings.some((l) => l.isRental);
+  const rentalOnly = hasRentals && !hasSales;
+  const baseSteps = rentalOnly ? INTEL_RENT_PRICE_STEPS : INTEL_PRICE_STEPS;
   const prices = boardListingPrices(listings);
-  if (prices.length === 0) return INTEL_PRICE_STEPS;
+  if (prices.length === 0) return baseSteps;
 
   const rawMin = Math.min(...prices);
   const rawMax = Math.max(...prices);
   if (rawMin >= rawMax) return [rawMin];
 
   const steps = new Set<number>([rawMin, rawMax]);
-  for (const step of INTEL_PRICE_STEPS) {
+  for (const step of baseSteps) {
     if (step > rawMin && step < rawMax) steps.add(step);
   }
 
-  // Finer steps when the board span is narrow and $500K ticks are too coarse.
+  // Finer steps when the board span is narrow and default ticks are too coarse.
   const span = rawMax - rawMin;
-  if (span <= 1_500_000) {
+  if (rentalOnly && span <= 20_000) {
+    const increment = span <= 2_000 ? 250 : span <= 6_000 ? 500 : 1_000;
+    const start = Math.ceil(rawMin / increment) * increment;
+    for (let price = start; price < rawMax; price += increment) {
+      if (price > rawMin) steps.add(price);
+    }
+  } else if (!rentalOnly && span <= 1_500_000) {
     const increment = span <= 400_000 ? 25_000 : 50_000;
     const start = Math.ceil(rawMin / increment) * increment;
     for (let price = start; price < rawMax; price += increment) {

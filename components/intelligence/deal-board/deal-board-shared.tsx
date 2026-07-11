@@ -320,7 +320,7 @@ export function DealBoardStatusBadge({
   onClick?: () => void;
   size?: "default" | "sm";
   /** Opaque pill for photo overlays (grid view). */
-  surface?: "default" | "photo";
+  surface?: "default" | "photo" | "listing";
 }) {
   const defaultMap: Record<string, string> = {
     New: "bg-sage/10 text-sage border-sage/30",
@@ -334,14 +334,36 @@ export function DealBoardStatusBadge({
     Reduced: "bg-coral text-white border-coral/50 shadow-sm",
     Pending: "bg-charcoal text-white/90 border-charcoal/50 shadow-sm",
   };
-  const map = surface === "photo" ? photoMap : defaultMap;
+  const listingMap: Record<string, string> = {
+    New: "bg-sage/20 text-sage border-sage/40",
+    Active: "bg-sky/20 text-sky border-sky/40",
+    Reduced: "bg-coral/20 text-coral border-coral/40",
+    Pending: "bg-white/10 text-white/75 border-white/25",
+    "Coming Soon": "bg-gold/15 text-gold border-gold/35",
+    Closed: "bg-white/10 text-white/60 border-white/20",
+    Expired: "bg-coral/15 text-coral border-coral/30",
+    Withdrawn: "bg-white/10 text-white/50 border-white/20",
+    Hold: "bg-white/10 text-white/55 border-white/20",
+    "Temp off market": "bg-white/10 text-white/55 border-white/20",
+  };
+  const map =
+    surface === "photo"
+      ? photoMap
+      : surface === "listing"
+        ? listingMap
+        : defaultMap;
   const label = formatStatusBadgeLabel(status);
   const sizeClass =
     size === "sm"
       ? "text-[8px] tracking-[0.1em] px-1.5 py-px"
       : "text-[10px] tracking-[0.15em] px-2.5 py-1";
   const className = `inline-flex w-fit self-start items-center font-mono uppercase border rounded-full ${sizeClass} ${
-    map[status] ?? (surface === "photo" ? photoMap.Pending : defaultMap.Pending)
+    map[status] ??
+    (surface === "photo"
+      ? photoMap.Pending
+      : surface === "listing"
+        ? listingMap.Pending
+        : defaultMap.Pending)
   } ${onClick ? "cursor-pointer hover:brightness-110 transition-all" : ""}`;
 
   if (onClick) {

@@ -1292,7 +1292,7 @@ export default function IntelligenceClient() {
   const maxBathrooms = Number(maxBathsFilter);
   const minVintage = Number(minVintageFilter);
   const maxVintage = Number(maxVintageFilter);
-  const showPriceFilter = cls !== "commercial" && tx !== "rental";
+  const showPriceFilter = cls !== "commercial";
   const [minPriceIndex, setMinPriceIndex] = useState(0);
   const [maxPriceIndex, setMaxPriceIndex] = useState(INTEL_PRICE_MAX_INDEX);
   const [priceSliderActive, setPriceSliderActive] = useState(false);

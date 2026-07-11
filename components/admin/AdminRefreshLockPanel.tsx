@@ -55,76 +55,111 @@ function formatDuration(ms: number | null | undefined): string {
 }
 
 function formatSource(source: string | null): string {
-  if (!source) return "unknown";
-  return source.replace(/-/g, " ");
+  if (!source) return "Unknown";
+  switch (source) {
+    case "full-sync":
+    case "full-sync-chunked":
+      return "Full resync";
+    case "incremental":
+      return "Incremental update";
+    case "stats-cache":
+      return "Stats cache rebuild";
+    case "publish-snapshot":
+      return "Publish read snapshot";
+    default:
+      return source
+        .split("-")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+  }
 }
 
-function formatCompactTimestamp(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+function entryDurationMs(entry: HistoryEntry, nowMs: number): number | null {
+  if (entry.durationMs != null) return entry.durationMs;
+  const startedMs = Date.parse(entry.startedAt);
+  if (Number.isNaN(startedMs)) return null;
+  if (entry.finishedAt) {
+    const finishedMs = Date.parse(entry.finishedAt);
+    if (!Number.isNaN(finishedMs)) return Math.max(0, finishedMs - startedMs);
+  }
+  return Math.max(0, nowMs - startedMs);
 }
 
-function formatCompactEntry(entry: HistoryEntry): string {
-  const when = formatCompactTimestamp(entry.startedAt);
-  const source = formatSource(entry.source);
-  const duration =
-    entry.finishedAt == null && entry.durationMs == null
-      ? formatDuration(Date.now() - Date.parse(entry.startedAt))
-      : formatDuration(entry.durationMs);
-  const tables = entry.tables.length > 0 ? entry.tables.join(", ") : null;
-  const flags = [
-    entry.finishedAt == null ? "active" : null,
-    entry.clearedManually ? "cleared" : null,
-  ].filter(Boolean);
-  const tail = [duration, tables, ...flags].filter(Boolean).join(" · ");
-  return `${when} · ${source} · ${tail}`;
-}
-
-function formatTables(tables: string[]): string {
-  if (tables.length === 0) return "—";
-  return tables.join(", ");
-}
-
-function RefreshLogCompact({
+function RefreshLogTable({
   entries,
   windowHours,
 }: {
   entries: HistoryEntry[];
   windowHours: number;
 }) {
+  const nowMs = Date.now();
+
   return (
-    <div className="px-5 sm:px-6 py-3 border-t border-charcoal/[0.08] bg-white">
-      <p className="font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 mb-2">
-        Refresh log · last {windowHours}h
+    <div className="px-5 sm:px-6 py-4 border-t border-charcoal/[0.08] bg-white">
+      <p className="font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 mb-3">
+        Refresh history · last {windowHours}h
       </p>
       {entries.length > 0 ? (
-        <ul className="max-h-52 overflow-y-auto space-y-1 font-mono text-[10px] leading-relaxed text-charcoal/75">
-          {entries.map((entry) => (
-            <li
-              key={entry.id}
-              className={`tabular-nums truncate ${
-                entry.finishedAt == null
-                  ? "text-gold"
-                  : entry.clearedManually
-                    ? "text-coral/80"
-                    : ""
-              }`}
-              title={formatCompactEntry(entry)}
-            >
-              {formatCompactEntry(entry)}
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full min-w-[640px] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-charcoal/[0.08]">
+                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
+                  Sync type
+                </th>
+                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
+                  Started
+                </th>
+                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
+                  Ended
+                </th>
+                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
+                  Duration
+                </th>
+                <th className="py-2 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => {
+                const active = entry.finishedAt == null;
+                const duration = entryDurationMs(entry, nowMs);
+                return (
+                  <tr
+                    key={entry.id}
+                    className="border-b border-charcoal/[0.06] last:border-b-0"
+                  >
+                    <td className="py-2 pr-3 font-mono text-[10px] text-navy align-top">
+                      {formatSource(entry.source)}
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-[10px] tabular-nums text-charcoal/75 align-top whitespace-nowrap">
+                      {formatTimestamp(entry.startedAt)}
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-[10px] tabular-nums text-charcoal/75 align-top whitespace-nowrap">
+                      {active ? "—" : formatTimestamp(entry.finishedAt)}
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-[10px] tabular-nums text-charcoal/75 align-top whitespace-nowrap">
+                      {formatDuration(duration)}
+                    </td>
+                    <td className="py-2 font-mono text-[10px] align-top">
+                      {active ? (
+                        <span className="text-gold">Active</span>
+                      ) : entry.clearedManually ? (
+                        <span className="text-coral/80">Cleared</span>
+                      ) : (
+                        <span className="text-sage">Complete</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <p className="font-mono text-[10px] text-charcoal/50">
-          No refreshes in the last {windowHours} hours.
+          No refresh locks in the last {windowHours} hours.
         </p>
       )}
     </div>
@@ -199,22 +234,21 @@ export default function AdminRefreshLockPanel({
             {history.lockCount}
           </span>{" "}
           lock{history.lockCount === 1 ? "" : "s"}
-          {history.lockCount > 0 ? (
+          {history.activeCount > 0 ? (
+            <>
+              {" "}
+              ·{" "}
+              <span className="font-mono tabular-nums text-gold font-semibold">
+                {history.activeCount} active
+              </span>
+            </>
+          ) : null}
+          {history.completedCount > 0 ? (
             <>
               {" "}
               ·{" "}
               <span className="font-mono tabular-nums text-navy font-semibold">
-                {formatDuration(history.totalHeldMs)}
-              </span>{" "}
-              total held
-            </>
-          ) : null}
-          {history.allTables.length > 0 ? (
-            <>
-              {" "}
-              · tables:{" "}
-              <span className="font-mono text-[11px] text-charcoal/75">
-                {formatTables(history.allTables)}
+                {history.completedCount} completed
               </span>
             </>
           ) : null}
@@ -271,7 +305,7 @@ export default function AdminRefreshLockPanel({
         </div>
       ) : null}
 
-      <RefreshLogCompact entries={history.entries} windowHours={windowHours} />
+      <RefreshLogTable entries={history.entries} windowHours={windowHours} />
 
       {lockHeld && !lock.stuck && lock.inProgress ? (
         <div className="px-5 sm:px-6 py-2 border-t border-gold/20 bg-white/50">

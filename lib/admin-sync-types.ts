@@ -85,3 +85,24 @@ export type AdminSyncTableStatsReport = {
   finishedAt: string
   tables: AdminTableWriteStats[]
 }
+
+export type AdminDatabaseSyncId = 'listings' | 'listings.read' | 'listing-photos'
+
+export type AdminDatabaseTableStat = {
+  table: string
+  rowCount: number
+  /** True when COUNT(*) was skipped (e.g. listing_photos uses MAX(rowid)). */
+  approximate?: boolean
+}
+
+export type AdminDatabaseSyncStats = {
+  id: AdminDatabaseSyncId
+  label: string
+  path: string
+  exists: boolean
+  sizeBytes: number | null
+  available: boolean
+  error?: string
+  tables: AdminDatabaseTableStat[]
+  summary: string
+}

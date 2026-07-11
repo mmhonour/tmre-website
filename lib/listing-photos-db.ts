@@ -10,6 +10,20 @@ let photosDb: SqliteDatabase | null = null
 let photosDbDisabled = false
 let migrationAttempted = false
 
+/** Close cached handle after restoring listing-photos.db from external storage. */
+export function resetListingPhotosDbConnection(): void {
+  if (photosDb) {
+    try {
+      photosDb.close()
+    } catch {
+      /* ignore */
+    }
+    photosDb = null
+  }
+  photosDbDisabled = false
+  migrationAttempted = false
+}
+
 type SqliteConstructor = new (filename: string, options?: { readonly?: boolean; fileMustExist?: boolean }) => SqliteDatabase
 
 function loadSqliteDatabaseConstructor(): SqliteConstructor | null {

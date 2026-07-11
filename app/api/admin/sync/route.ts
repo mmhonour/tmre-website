@@ -16,10 +16,11 @@ import {
   readLatestListingModificationTimestamp,
   resetListingsDbConnections,
 } from '@/lib/listings-db'
-import { ensureListingsDbHydrated } from '@/lib/listings-db-persist'
+import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'
 import { readRecentSyncFailures } from '@/lib/listings-db'
+import { collectAdminDatabaseSyncStats } from '@/lib/sqlite-sync-stats'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  await ensureListingsDbHydrated(resetListingsDbConnections)
+  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
   await ensurePostDeployFullResyncScheduled()
 
   const { stats, refresh, nextRuns, scheduleHints } = readAdminSyncPanelStatus()
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
     rets,
     syncFailures: readRecentSyncFailures(8),
     listingsDbRuntime: describeListingsDbRuntime(),
+    databaseStats: collectAdminDatabaseSyncStats(),
   })
 }
 
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unknown sync action' }, { status: 400 })
   }
 
-  await ensureListingsDbHydrated(resetListingsDbConnections)
+  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
   await ensurePostDeployFullResyncScheduled()
 
   const refresh = readSqliteRefreshStatus()
@@ -131,6 +133,7 @@ export async function POST(req: NextRequest) {
       lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
       rets: await probeRetsConnection(true),
       syncFailures: readRecentSyncFailures(8),
+      databaseStats: collectAdminDatabaseSyncStats(),
     })
   } catch (err) {
     console.error('[/api/admin/sync]', action, err)
