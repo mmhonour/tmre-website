@@ -1610,6 +1610,64 @@ export function getListingsDbStats(): {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Inventory snapshot — saved after each full resync to sync_meta so the
+// admin page can compare current live counts against a known-good baseline.
+// ---------------------------------------------------------------------------
+
+const INVENTORY_SNAPSHOT_META_KEY = 'db_inventory_snapshot'
+
+export type InventorySnapshot = {
+  capturedAt: string
+  counts: Record<string, number>
+}
+
+/** Query every table on the write DB and persist counts into sync_meta. */
+export function captureWriteDbInventorySnapshot(): void {
+  const database = tryGetWriteDb()
+  if (!database) return
+  try {
+    const tableRows = database
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
+      .all() as { name: string }[]
+    const counts: Record<string, number> = {}
+    for (const { name } of tableRows) {
+      try {
+        const row = database.prepare(`SELECT COUNT(*) AS c FROM ${JSON.stringify(name)}`).get() as {
+          c: number
+        }
+        counts[name] = row.c
+      } catch {
+        counts[name] = -1
+      }
+    }
+    const snapshot: InventorySnapshot = { capturedAt: new Date().toISOString(), counts }
+    setSyncMeta(INVENTORY_SNAPSHOT_META_KEY, JSON.stringify(snapshot))
+  } catch (err) {
+    console.warn('[listings-db] captureWriteDbInventorySnapshot failed:', err)
+  }
+}
+
+/** Read the last-captured inventory snapshot from sync_meta. */
+export function readInventorySnapshot(): InventorySnapshot | null {
+  try {
+    const raw = getSyncMeta(INVENTORY_SNAPSHOT_META_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof (parsed as InventorySnapshot).capturedAt === 'string' &&
+      typeof (parsed as InventorySnapshot).counts === 'object'
+    ) {
+      return parsed as InventorySnapshot
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 /** Row count on the write DB — accurate during chunked sync before read snapshot publish. */
 export function countWriteDbListings(): number {
   const database = tryGetWriteDb()

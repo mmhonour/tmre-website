@@ -588,8 +588,12 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
   await triggerFullResyncDeferredWarms()
   const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
   markPostDeployFullResyncComplete()
-  const { countWriteDbListings } = await import('@/lib/listings-db')
+  const { countWriteDbListings, captureWriteDbInventorySnapshot } = await import('@/lib/listings-db')
   const totalListings = countWriteDbListings() || getListingsDbStats().total
+  // Snapshot all table counts into sync_meta so the admin page can compare
+  // production vs localhost. Must happen before endSqliteRefresh so the entry
+  // lands in WAL and is included in the blob checkpoint below.
+  captureWriteDbInventorySnapshot()
   // Close the refresh lock BEFORE the blob checkpoint so the finalized history
   // entry lands in sync_meta while it is still in WAL. The wal_checkpoint inside
   // persistWriteDbAfterChunk flushes it into the main DB file and includes it

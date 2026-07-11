@@ -14,8 +14,10 @@ import {
   describeListingsDbRuntime,
   getListingsDbStats,
   getSyncMeta,
+  readInventorySnapshot,
   readLatestListingModificationTimestamp,
   resetListingsDbConnections,
+  type InventorySnapshot,
 } from "@/lib/listings-db";
 import {
   describeBlobPersistRuntime,
@@ -134,6 +136,7 @@ export default async function AdminPage() {
   const sqliteDiagrams = describeRunningSqliteDatabases();
   const databaseStats = collectAdminDatabaseSyncStats();
   const blobRuntime = await describeBlobPersistRuntime();
+  const inventorySnapshot = readInventorySnapshot();
   const listingsDbRuntime = describeListingsDbRuntime();
   const listingsDbBroken = !listingsDbRuntime.nativeModuleAvailable;
   const listingsDbEmpty =
@@ -389,7 +392,7 @@ export default async function AdminPage() {
             </dl>
           </div>
         ) : null}
-        <AdminSqliteDiagrams databases={sqliteDiagrams} blobRuntime={blobRuntime} />
+        <AdminSqliteDiagrams databases={sqliteDiagrams} blobRuntime={blobRuntime} inventorySnapshot={inventorySnapshot} />
       </div>
     </>
   );
