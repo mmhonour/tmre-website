@@ -34,7 +34,7 @@ const LISTINGS_LAST_GOOD_COUNT_META_KEY = 'listings_last_good_count'
  */
 const ABSOLUTE_MIN_LISTING_COUNT = Math.max(
   1,
-  Number(process.env.MIN_LISTING_COUNT ?? '800'),
+  Number(process.env.MIN_LISTING_COUNT ?? '2000'),
 )
 
 /** How many times to retry a blob fetch before giving up (with 1s/2s backoff). */
@@ -253,9 +253,32 @@ export async function persistListingsDbCheckpoint(): Promise<boolean> {
     return false
   }
 
+  // Write lastGood into sync_meta BEFORE the blob so it is included in the
+  // wal_checkpoint(TRUNCATE) that persistListingsDbToBlob runs internally.
+  // Without this, setSyncMeta writes to the WAL *after* the checkpoint has
+  // already flushed and the DB file has been uploaded — the WAL entry is
+  // stripped on restore, so the next Lambda sees lastGood = 0 (or stale),
+  // lowering the threshold to 800 and allowing a 2.5K partial DB to overwrite
+  // the good 26K blob.
+  if (active && currentCount > 0) {
+    setSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY, String(currentCount))
+  }
+
   const writeOk = await persistListingsDbToBlob(listingsDbPath(), () => {
     tryGetWriteDb()?.pragma('wal_checkpoint(TRUNCATE)')
   })
+
+  // If the blob write failed, revert lastGood so a stale/inflated value does
+  // not let a future degraded DB slip past the checkpoint guard.
+  if (active && !writeOk) {
+    if (lastGood > 0) {
+      setSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY, String(lastGood))
+    }
+  }
+  // In non-blob environments (local dev) the write is a no-op, so set it now.
+  if (!active && currentCount > 0) {
+    setSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY, String(currentCount))
+  }
 
   const readPath = listingsReadDbPath()
   let readOk = false
@@ -271,9 +294,6 @@ export async function persistListingsDbCheckpoint(): Promise<boolean> {
     })
   }
 
-  if (writeOk && currentCount > 0) {
-    setSyncMeta(LISTINGS_LAST_GOOD_COUNT_META_KEY, String(currentCount))
-  }
   if (active && (writeOk || readOk || photosOk)) {
     setSyncMeta('blob_persist_last_at', new Date().toISOString())
     setSyncMeta('blob_persist_last_result', 'ok')
