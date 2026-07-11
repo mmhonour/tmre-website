@@ -205,6 +205,7 @@ export type AdminSyncRow = {
 };
 
 type SyncStats = {
+  total: number;
   lastFullSync: string | null;
   lastFullSyncStarted: string | null;
   lastIncrementalSync: string | null;
@@ -541,8 +542,9 @@ export default function AdminSyncTable({
 
   const runSync = useCallback(
     async (row: AdminSyncRow) => {
-      if (!row.actionId || runningId) return;
-      if (row.actionId === "full-resync") {
+      const actionId = row.actionId;
+      if (!actionId || runningId) return;
+      if (actionId === "full-resync") {
         await runFullResyncChunked(row, {
           setRunningId,
           setDescriptions,
@@ -557,11 +559,11 @@ export default function AdminSyncTable({
       }
 
       const startedAt = new Date().toISOString();
-      setRunningId(row.actionId);
+      setRunningId(actionId);
       setMessages((prev) => ({ ...prev, [row.id]: undefined }));
       setDescriptions((prev) => ({
         ...prev,
-        [row.id]: `${ADMIN_SYNC_ACTIONS[row.actionId]?.description ?? row.label}…`,
+        [row.id]: `${ADMIN_SYNC_ACTIONS[actionId]?.description ?? row.label}…`,
       }));
       setRunTimings((prev) => ({
         ...prev,
@@ -572,7 +574,7 @@ export default function AdminSyncTable({
         const res = await fetch("/api/admin/sync", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: row.actionId }),
+          body: JSON.stringify({ action: actionId }),
         });
         const body = await readAdminSyncPostResponse(res);
 
