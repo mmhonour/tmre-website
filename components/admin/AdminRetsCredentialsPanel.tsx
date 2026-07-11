@@ -180,52 +180,43 @@ export default function AdminRetsCredentialsPanel() {
         ) : null}
       </div>
 
-      <div className="px-5 sm:px-6 py-5 space-y-4">
+      <div className="px-5 sm:px-6 py-5 space-y-3">
         {loading ? (
           <p className="font-mono text-xs text-charcoal/50">Loading credentials…</p>
         ) : (
           <>
-            <label className="block space-y-1.5">
-              <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/55">
-                Server URL
-              </span>
-              <input
-                type="text"
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-                className="w-full rounded-lg border border-charcoal/[0.12] bg-white px-3 py-2 font-mono text-sm text-navy focus:outline-none focus:ring-2 focus:ring-gold/30"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+            <input
+              type="text"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              placeholder="Server URL"
+              aria-label="Server URL"
+              className="w-full rounded-lg border border-charcoal/[0.12] bg-white px-3 py-2 font-mono text-sm text-navy placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-gold/30"
+              autoComplete="off"
+              spellCheck={false}
+            />
 
-            <label className="block space-y-1.5">
-              <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/55">
-                Username
-              </span>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full rounded-lg border border-charcoal/[0.12] bg-white px-3 py-2 font-mono text-sm text-navy focus:outline-none focus:ring-2 focus:ring-gold/30"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              aria-label="Username"
+              className="w-full rounded-lg border border-charcoal/[0.12] bg-white px-3 py-2 font-mono text-sm text-navy placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-gold/30"
+              autoComplete="off"
+              spellCheck={false}
+            />
 
-            <label className="block space-y-1.5">
-              <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/55">
-                Password
-              </span>
-              <input
-                type="text"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-charcoal/[0.12] bg-white px-3 py-2 font-mono text-sm text-navy focus:outline-none focus:ring-2 focus:ring-gold/30"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              aria-label="Password"
+              className="w-full rounded-lg border border-charcoal/[0.12] bg-white px-3 py-2 font-mono text-sm text-navy placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-gold/30"
+              autoComplete="off"
+              spellCheck={false}
+            />
           </>
         )}
 

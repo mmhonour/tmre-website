@@ -20,6 +20,7 @@ import {
 import {
   describeBlobPersistRuntime,
   ensureAdminSqliteDatabasesReady,
+  readRefreshLockHistoryFromBlob,
 } from "@/lib/listings-db-persist";
 import { ensurePostDeployFullResyncScheduled } from "@/lib/deploy-full-resync-schedule";
 import { formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
@@ -30,7 +31,12 @@ import { describeRunningSqliteDatabases } from "@/lib/sqlite-schema-diagram";
 import { describeStartupProcess } from "@/lib/startup-process";
 import { readAdminSyncPanelStatus } from "@/lib/admin-sync-actions";
 import { collectAdminDatabaseSyncStats } from "@/lib/sqlite-sync-stats";
-import { readSqliteRefreshLockStatus, readRefreshLockHistorySummary } from "@/lib/sqlite-refresh-status";
+import {
+  buildRefreshLockHistorySummary,
+  readSqliteRefreshLockStatus,
+  readRefreshLockHistorySummary,
+  type RefreshLockHistoryEntry,
+} from "@/lib/sqlite-refresh-status";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +109,23 @@ export default async function AdminPage() {
   const stats = getListingsDbStats();
   const { refresh, nextRuns, scheduleHints } = readAdminSyncPanelStatus();
   const refreshLock = readSqliteRefreshLockStatus();
-  const refreshLockHistory = readRefreshLockHistorySummary();
+  const _primaryHistory = readRefreshLockHistorySummary();
+  const refreshLockHistory = await (async () => {
+    if (_primaryHistory.entries.length > 0) return _primaryHistory;
+    const blobRaw = await readRefreshLockHistoryFromBlob();
+    if (!blobRaw || blobRaw.length === 0) return _primaryHistory;
+    const blobEntries = blobRaw.filter(
+      (v): v is RefreshLockHistoryEntry =>
+        v != null &&
+        typeof v === "object" &&
+        typeof (v as RefreshLockHistoryEntry).id === "string" &&
+        typeof (v as RefreshLockHistoryEntry).startedAt === "string" &&
+        Array.isArray((v as RefreshLockHistoryEntry).tables),
+    );
+    return blobEntries.length > 0
+      ? buildRefreshLockHistorySummary(blobEntries)
+      : _primaryHistory;
+  })();
   const latestListingUpdate = readLatestListingModificationTimestamp();
   const lastRefreshFinished = getSyncMeta("last_refresh_finished_at");
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
@@ -117,6 +139,13 @@ export default async function AdminPage() {
   const listingsDbEmpty =
     listingsDbRuntime.nativeModuleAvailable && stats.total === 0;
   const showListingsDbRuntime = listingsDbBroken || listingsDbEmpty;
+  const listingsBelowMin =
+    listingsDbRuntime.nativeModuleAvailable &&
+    stats.total > 0 &&
+    stats.total < blobRuntime.absoluteMinListingCount;
+  const listingsHealthy =
+    listingsDbRuntime.nativeModuleAvailable &&
+    stats.total >= blobRuntime.absoluteMinListingCount;
   const startupProcess = describeStartupProcess();
 
   const rows: StatusRow[] = [
@@ -212,12 +241,14 @@ export default async function AdminPage() {
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
+  const retsPanel = (
+    <div id="admin-rets-credentials" className="scroll-mt-24">
+      <AdminRetsCredentialsPanel />
+    </div>
+  );
+
   const dbPanel = (
     <>
-      <div id="admin-rets-credentials" className="scroll-mt-24">
-        <AdminRetsCredentialsPanel />
-      </div>
-
       <div
         id="admin-sync"
         className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
@@ -395,13 +426,27 @@ export default async function AdminPage() {
             <span className="flex items-center gap-2">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  refresh.refreshing ? "bg-gold animate-pulse-dot" : "bg-sage"
+                  refresh.refreshing
+                    ? "bg-gold animate-pulse-dot"
+                    : listingsDbEmpty || listingsBelowMin
+                      ? "bg-coral animate-pulse-dot"
+                      : "bg-sage"
                 }`}
               />
-              <span className="text-white/50">
+              <span
+                className={
+                  listingsDbEmpty || listingsBelowMin
+                    ? "text-coral font-semibold"
+                    : "text-white/50"
+                }
+              >
                 {refresh.refreshing
                   ? "Refresh in progress"
-                  : `${stats.total.toLocaleString()} listings in SQLite`}
+                  : listingsDbEmpty
+                    ? "⚠ 0 listings — DB empty or restore failed"
+                    : listingsBelowMin
+                      ? `⚠ ${stats.total.toLocaleString()} listings — below minimum (${blobRuntime.absoluteMinListingCount.toLocaleString()})`
+                      : `${stats.total.toLocaleString()} listings in SQLite`}
               </span>
             </span>
           </div>
@@ -409,11 +454,70 @@ export default async function AdminPage() {
         </div>
       </section>
 
+      {(listingsDbEmpty || listingsBelowMin || listingsDbBroken) && (
+        <div className="border-b border-coral/20 bg-coral/[0.07] px-6 py-4">
+          <div className="mx-auto max-w-7xl lg:px-4">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 text-coral text-lg leading-none" aria-hidden>⚠</span>
+              <div>
+                <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-coral font-semibold mb-1">
+                  {listingsDbBroken
+                    ? "SQLite native module unavailable"
+                    : listingsDbEmpty
+                      ? "Listing database is empty on this Lambda"
+                      : `Only ${stats.total.toLocaleString()} listings — below the ${blobRuntime.absoluteMinListingCount.toLocaleString()} minimum`}
+                </p>
+                <p className="text-sm text-charcoal/70 leading-snug max-w-3xl">
+                  {listingsDbBroken ? (
+                    "The native better-sqlite3 module failed to load. Check the build logs for a GLIBC or binary compatibility error."
+                  ) : listingsDbEmpty ? (
+                    <>
+                      This Lambda instance has 0 listings — the blob restore likely failed or
+                      a schema-only seed was used. The Netlify Blobs snapshot may still be
+                      intact.{" "}
+                      <strong>Refresh this page</strong> to try a new Lambda, or{" "}
+                      <strong>run a Full Resync</strong> (step 1 in the Database sync panel)
+                      if refreshing does not help.{" "}
+                      {blobRuntime.lastGoodListingCount != null && (
+                        <>
+                          Last known-good count:{" "}
+                          <strong>{blobRuntime.lastGoodListingCount.toLocaleString()}</strong>.
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      The listing count is suspiciously low — this Lambda may have only
+                      partially hydrated from blobs. Public pages may be serving degraded
+                      results.{" "}
+                      <strong>Refresh this page</strong> to try a new Lambda, or{" "}
+                      <strong>run a Full Resync</strong> if the count does not recover.{" "}
+                      {blobRuntime.lastGoodListingCount != null && (
+                        <>
+                          Last known-good count:{" "}
+                          <strong>{blobRuntime.lastGoodListingCount.toLocaleString()}</strong>.
+                        </>
+                      )}
+                    </>
+                  )}
+                </p>
+                {blobRuntime.lastRestoreAt && (
+                  <p className="mt-2 font-mono text-[10px] text-charcoal/45">
+                    Last blob restore attempt: {blobRuntime.lastRestoreAt}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AdminTabbedLayout
         db={dbPanel}
         server={serverPanel}
         docs={<AdminProductDocsPanel />}
         site={<AdminSpotlightSitePanel />}
+        rets={retsPanel}
       />
     </>
   );

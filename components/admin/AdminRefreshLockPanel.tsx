@@ -31,6 +31,15 @@ type HistorySummary = {
   allTables: string[];
 };
 
+type SyncGroup = {
+  key: string;
+  label: string;
+  entries: HistoryEntry[];
+  /** The most recent startedAt in this group — used for group ordering. */
+  latestStartedAt: string;
+  hasActive: boolean;
+};
+
 function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return "—";
   const date = new Date(iso);
@@ -54,7 +63,11 @@ function formatDuration(ms: number | null | undefined): string {
   return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
 }
 
-function formatSource(source: string | null): string {
+function sourceKey(source: string | null): string {
+  return source ?? "unknown";
+}
+
+function sourceLabel(source: string | null): string {
   if (!source) return "Unknown";
   switch (source) {
     case "full-sync":
@@ -66,6 +79,8 @@ function formatSource(source: string | null): string {
       return "Stats cache rebuild";
     case "publish-snapshot":
       return "Publish read snapshot";
+    case "degraded-abort":
+      return "Degraded abort";
     default:
       return source
         .split("-")
@@ -85,6 +100,140 @@ function entryDurationMs(entry: HistoryEntry, nowMs: number): number | null {
   return Math.max(0, nowMs - startedMs);
 }
 
+/** Group entries by source (sync type), sort each group descending, order groups by most-recent entry. */
+function buildGroups(entries: HistoryEntry[]): SyncGroup[] {
+  const map = new Map<string, SyncGroup>();
+  for (const entry of entries) {
+    const key = sourceKey(entry.source);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label: sourceLabel(entry.source),
+        entries: [],
+        latestStartedAt: entry.startedAt,
+        hasActive: false,
+      });
+    }
+    const group = map.get(key)!;
+    group.entries.push(entry);
+    if (entry.startedAt > group.latestStartedAt) {
+      group.latestStartedAt = entry.startedAt;
+    }
+    if (entry.finishedAt == null) group.hasActive = true;
+  }
+  // Sort each group's entries by startedAt descending (newest first).
+  for (const group of map.values()) {
+    group.entries.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  }
+  // Sort groups so the one with the most recent entry is first.
+  return [...map.values()].sort((a, b) =>
+    b.latestStartedAt.localeCompare(a.latestStartedAt),
+  );
+}
+
+function EntryStatusBadge({ entry }: { entry: HistoryEntry }) {
+  const active = entry.finishedAt == null;
+  if (active)
+    return <span className="font-mono text-[9px] text-gold uppercase tracking-wide">Active</span>;
+  if (entry.clearedManually)
+    return <span className="font-mono text-[9px] text-coral/80 uppercase tracking-wide">Cleared</span>;
+  return <span className="font-mono text-[9px] text-sage uppercase tracking-wide">Done</span>;
+}
+
+function SyncGroupSection({
+  group,
+  nowMs,
+  defaultOpen,
+}: {
+  group: SyncGroup;
+  nowMs: number;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="border-t border-charcoal/[0.06] first:border-t-0">
+      {/* Group header row */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-5 sm:px-6 py-2.5 hover:bg-cream/50 transition-colors text-left"
+      >
+        <span
+          className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded border border-charcoal/20 font-mono text-[9px] font-bold text-charcoal/55 bg-white"
+          aria-hidden
+        >
+          {open ? "−" : "+"}
+        </span>
+        <span className="flex-1 min-w-0 font-mono text-[10px] tracking-[0.1em] uppercase text-navy font-semibold">
+          {group.label}
+        </span>
+        <span className="flex-shrink-0 flex items-center gap-2">
+          {group.hasActive && (
+            <span className="font-mono text-[9px] text-gold uppercase tracking-wide">
+              Active
+            </span>
+          )}
+          <span className="font-mono text-[9px] text-charcoal/40 tabular-nums">
+            {group.entries.length} run{group.entries.length === 1 ? "" : "s"}
+          </span>
+          <span className="font-mono text-[9px] text-charcoal/30 tabular-nums whitespace-nowrap">
+            latest {formatTimestamp(group.latestStartedAt)}
+          </span>
+        </span>
+      </button>
+
+      {/* Expanded entries */}
+      {open && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[580px] border-collapse text-left">
+            <thead>
+              <tr className="bg-cream/30">
+                <th className="pl-14 pr-3 py-1.5 font-mono text-[8px] tracking-[0.14em] uppercase text-charcoal/40">
+                  Started
+                </th>
+                <th className="pr-3 py-1.5 font-mono text-[8px] tracking-[0.14em] uppercase text-charcoal/40">
+                  Ended
+                </th>
+                <th className="pr-3 py-1.5 font-mono text-[8px] tracking-[0.14em] uppercase text-charcoal/40">
+                  Duration
+                </th>
+                <th className="pr-5 sm:pr-6 py-1.5 font-mono text-[8px] tracking-[0.14em] uppercase text-charcoal/40">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.entries.map((entry) => {
+                const duration = entryDurationMs(entry, nowMs);
+                return (
+                  <tr
+                    key={entry.id}
+                    className="border-t border-charcoal/[0.04] hover:bg-cream/20 transition-colors"
+                  >
+                    <td className="pl-14 pr-3 py-1.5 font-mono text-[9px] tabular-nums text-charcoal/70 align-top whitespace-nowrap">
+                      {formatTimestamp(entry.startedAt)}
+                    </td>
+                    <td className="pr-3 py-1.5 font-mono text-[9px] tabular-nums text-charcoal/70 align-top whitespace-nowrap">
+                      {entry.finishedAt ? formatTimestamp(entry.finishedAt) : "—"}
+                    </td>
+                    <td className="pr-3 py-1.5 font-mono text-[9px] tabular-nums text-charcoal/70 align-top whitespace-nowrap">
+                      {formatDuration(duration)}
+                    </td>
+                    <td className="pr-5 sm:pr-6 py-1.5 align-top">
+                      <EntryStatusBadge entry={entry} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RefreshLogTable({
   entries,
   windowHours,
@@ -93,72 +242,28 @@ function RefreshLogTable({
   windowHours: number;
 }) {
   const nowMs = Date.now();
+  const groups = buildGroups(entries);
 
   return (
-    <div className="px-5 sm:px-6 py-4 border-t border-charcoal/[0.08] bg-white">
-      <p className="font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 mb-3">
-        Refresh history · last {windowHours}h
-      </p>
-      {entries.length > 0 ? (
-        <div className="overflow-x-auto -mx-1">
-          <table className="w-full min-w-[640px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-charcoal/[0.08]">
-                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Sync type
-                </th>
-                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Started
-                </th>
-                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Ended
-                </th>
-                <th className="py-2 pr-3 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Duration
-                </th>
-                <th className="py-2 font-mono text-[9px] tracking-[0.14em] uppercase text-charcoal/45">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => {
-                const active = entry.finishedAt == null;
-                const duration = entryDurationMs(entry, nowMs);
-                return (
-                  <tr
-                    key={entry.id}
-                    className="border-b border-charcoal/[0.06] last:border-b-0"
-                  >
-                    <td className="py-2 pr-3 font-mono text-[10px] text-navy align-top">
-                      {formatSource(entry.source)}
-                    </td>
-                    <td className="py-2 pr-3 font-mono text-[10px] tabular-nums text-charcoal/75 align-top whitespace-nowrap">
-                      {formatTimestamp(entry.startedAt)}
-                    </td>
-                    <td className="py-2 pr-3 font-mono text-[10px] tabular-nums text-charcoal/75 align-top whitespace-nowrap">
-                      {active ? "—" : formatTimestamp(entry.finishedAt)}
-                    </td>
-                    <td className="py-2 pr-3 font-mono text-[10px] tabular-nums text-charcoal/75 align-top whitespace-nowrap">
-                      {formatDuration(duration)}
-                    </td>
-                    <td className="py-2 font-mono text-[10px] align-top">
-                      {active ? (
-                        <span className="text-gold">Active</span>
-                      ) : entry.clearedManually ? (
-                        <span className="text-coral/80">Cleared</span>
-                      ) : (
-                        <span className="text-sage">Complete</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+    <div className="border-t border-charcoal/[0.08] bg-white">
+      <div className="px-5 sm:px-6 py-3 border-b border-charcoal/[0.06]">
+        <p className="font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40">
+          Refresh history · last {windowHours}h
+        </p>
+      </div>
+      {groups.length > 0 ? (
+        <div className="divide-y divide-charcoal/[0.06]">
+          {groups.map((group, i) => (
+            <SyncGroupSection
+              key={group.key}
+              group={group}
+              nowMs={nowMs}
+              defaultOpen={i === 0}
+            />
+          ))}
         </div>
       ) : (
-        <p className="font-mono text-[10px] text-charcoal/50">
+        <p className="px-5 sm:px-6 py-4 font-mono text-[10px] text-charcoal/50">
           No refresh locks in the last {windowHours} hours.
         </p>
       )}

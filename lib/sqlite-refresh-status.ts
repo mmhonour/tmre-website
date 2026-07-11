@@ -84,8 +84,12 @@ function readRefreshLockHistoryRaw(): RefreshLockHistoryEntry[] {
 
 function writeRefreshLockHistory(entries: RefreshLockHistoryEntry[]): void {
   setSyncMeta(REFRESH_LOCK_HISTORY_KEY, JSON.stringify(entries))
-  void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
-    scheduleListingsDbBlobPersist('refresh-lock-history'),
+  void import('@/lib/listings-db-persist').then(
+    ({ scheduleListingsDbBlobPersist, persistRefreshLockHistoryToBlob }) => {
+      scheduleListingsDbBlobPersist('refresh-lock-history')
+      // Also persist to a dedicated blob key so history survives DB blob corruption.
+      void persistRefreshLockHistoryToBlob(entries).catch(() => {})
+    },
   )
 }
 
@@ -179,15 +183,17 @@ export function getRefreshLockStatsCollector(): SqliteWriteStatsCollector | null
   return getActiveRefreshLockStats()
 }
 
-export function readRefreshLockHistorySummary(now = Date.now()): RefreshLockHistorySummary {
-  healStaleRefreshLockHistoryEntries(now)
-  const entries = pruneRefreshLockHistory(readRefreshLockHistoryRaw(), now)
+export function buildRefreshLockHistorySummary(
+  entries: RefreshLockHistoryEntry[],
+  now = Date.now(),
+): RefreshLockHistorySummary {
+  const pruned = pruneRefreshLockHistory(entries, now)
   let totalHeldMs = 0
   let activeCount = 0
   let completedCount = 0
   const allTables = new Set<string>()
 
-  for (const entry of entries) {
+  for (const entry of pruned) {
     for (const table of entry.tables) allTables.add(table)
     if (entry.finishedAt == null) {
       activeCount += 1
@@ -208,13 +214,18 @@ export function readRefreshLockHistorySummary(now = Date.now()): RefreshLockHist
 
   return {
     windowMs: REFRESH_LOCK_HISTORY_WINDOW_MS,
-    lockCount: entries.length,
+    lockCount: pruned.length,
     activeCount,
     completedCount,
     totalHeldMs,
-    entries: entries.sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+    entries: pruned.sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
     allTables: [...allTables].sort((a, b) => a.localeCompare(b)),
   }
+}
+
+export function readRefreshLockHistorySummary(now = Date.now()): RefreshLockHistorySummary {
+  healStaleRefreshLockHistoryEntries(now)
+  return buildRefreshLockHistorySummary(readRefreshLockHistoryRaw(), now)
 }
 
 /** Read refresh lock metadata without auto-healing. */

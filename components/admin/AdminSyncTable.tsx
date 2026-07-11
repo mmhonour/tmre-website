@@ -862,9 +862,12 @@ export default function AdminSyncTable({
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-1">
+              <Link
+                href="/admin?tab=rets"
+                className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 hover:text-navy hover:underline underline-offset-2 mb-1 inline-block"
+              >
                 MLS / RETS connection
-              </p>
+              </Link>
               <p
                 className={`text-sm font-medium leading-snug ${
                   rets.ok ? "text-sage" : "text-rose-800"
@@ -986,15 +989,16 @@ export default function AdminSyncTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[960px] border-collapse table-fixed">
+        <table className="w-full min-w-[1080px] border-collapse table-fixed">
           <colgroup>
             <col className="w-[3rem]" />
             <col className="w-[7.5rem]" />
             <col className="w-[9.5rem]" />
             <col />
+            <col className="w-[9rem]" />
             <col className="w-[7rem]" />
             <col className="w-[13rem]" />
-            <col className="w-[13rem]" />
+            <col className="w-[11rem]" />
           </colgroup>
           <thead>
             <tr>
@@ -1002,9 +1006,10 @@ export default function AdminSyncTable({
               <th className={TH}>Action</th>
               <th className={TH}>Sync</th>
               <th className={TH}>Description</th>
+              <th className={TH}>Status</th>
               <th className={TH}>Pages</th>
-              <th className={TH}>Start / End</th>
-              <th className={`${TH} border-r-0`}>Next scheduled / Errors</th>
+              <th className={TH}>Start / End / Next</th>
+              <th className={`${TH} border-r-0`}>Errors</th>
             </tr>
           </thead>
           <tbody>
@@ -1088,70 +1093,79 @@ export default function AdminSyncTable({
                     </p>
                   </td>
                   <td className={TD}>
+                    <p className="text-sm leading-snug text-slate">
+                      {row.detail ?? ""}
+                    </p>
+                  </td>
+                  <td className={TD}>
                     {(() => {
                       const liveDescription = descriptions[row.id];
-                      const descText = liveDescription ?? row.detail ?? "";
-                      const descBusy = Boolean(liveDescription) || isRunning || syncAllRunning;
-                      return (
-                        <>
-                          <p
-                            className={`text-sm leading-snug ${
-                              descBusy ? "text-navy font-medium" : "text-slate"
-                            }`}
-                          >
-                            {descText}
+                      if (liveDescription) {
+                        return (
+                          <p className="text-sm leading-snug text-navy font-medium">
+                            {liveDescription}
                           </p>
-                        </>
+                        );
+                      }
+                      if (isRunning || syncAllRunning) {
+                        return (
+                          <p className="font-mono text-[10px] text-gold uppercase tracking-wide">
+                            Running…
+                          </p>
+                        );
+                      }
+                      return (
+                        <span className="font-mono text-[10px] text-charcoal/30">—</span>
                       );
                     })()}
                   </td>
                   <td className={TD}>
                     <SyncImpactedPages rowId={row.id} />
                   </td>
-                  {showSingleTimestamp ? (
-                    <td className={TD} colSpan={2}>
-                      <SyncTimestamp label="Updated" value={timing.finished} />
-                    </td>
-                  ) : (
-                    <>
-                      <td className={TD}>
-                        <SyncTimestamp label="Start" value={timing.started} />
-                      </td>
-                      <td className={TD}>
-                        <SyncTimestamp label="End" value={timing.finished} />
-                      </td>
-                    </>
-                  )}
                   <td className={TD}>
-                    <p
-                      className={`font-mono text-xs tabular-nums font-semibold whitespace-nowrap ${
-                        visual === "alert" && nextRunAt && nowMs > (parseIsoMs(nextRunAt) ?? 0)
-                          ? "text-rose-700"
-                          : "text-navy"
-                      }`}
-                    >
-                      {row.id === "full-resync" &&
-                      status?.scheduleHints?.fullResyncSource === "post-deploy"
-                        ? formatAdminNextSyncCountdown(nextRunAt, now)
-                        : formatAdminNextSyncAt(nextRunAt, now)}
-                    </p>
-                    {row.id === "full-resync" &&
-                    status?.scheduleHints?.fullResyncSource === "post-deploy" ? (
-                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-gold uppercase">
-                        Post-deploy warm
-                      </p>
-                    ) : visual === "alert" ? (
-                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-rose-600/80 uppercase">
-                        {isTimingHung(timing, nowMs) ||
-                        (row.id === "refresh-finished" && status?.refreshing)
-                          ? "Hung"
-                          : "Overdue"}
-                      </p>
-                    ) : visual === "ok" ? (
-                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-sage/80 uppercase">
-                        On schedule
-                      </p>
-                    ) : null}
+                    <div className="flex flex-col gap-1">
+                      {showSingleTimestamp ? (
+                        <SyncTimestamp label="Updated" value={timing.finished} />
+                      ) : (
+                        <>
+                          <SyncTimestamp label="Start" value={timing.started} />
+                          <SyncTimestamp label="End" value={timing.finished} />
+                        </>
+                      )}
+                      {nextRunAt != null ? (
+                        <div>
+                          <p
+                            className={`font-mono text-[10px] tabular-nums font-semibold whitespace-nowrap ${
+                              visual === "alert" && nowMs > (parseIsoMs(nextRunAt) ?? 0)
+                                ? "text-rose-700"
+                                : "text-navy"
+                            }`}
+                          >
+                            {row.id === "full-resync" &&
+                            status?.scheduleHints?.fullResyncSource === "post-deploy"
+                              ? formatAdminNextSyncCountdown(nextRunAt, now)
+                              : formatAdminNextSyncAt(nextRunAt, now)}
+                          </p>
+                          {row.id === "full-resync" &&
+                          status?.scheduleHints?.fullResyncSource === "post-deploy" ? (
+                            <p className="font-mono text-[9px] tracking-wide text-gold uppercase">
+                              Post-deploy warm
+                            </p>
+                          ) : visual === "alert" ? (
+                            <p className="font-mono text-[9px] tracking-wide text-rose-600/80 uppercase">
+                              {isTimingHung(timing, nowMs) ||
+                              (row.id === "refresh-finished" && status?.refreshing)
+                                ? "Hung"
+                                : "Overdue"}
+                            </p>
+                          ) : visual === "ok" ? (
+                            <p className="font-mono text-[9px] tracking-wide text-sage/80 uppercase">
+                              On schedule
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   </td>
                   <td className={`${TD} border-r-0`}>
                     {rowError ? (

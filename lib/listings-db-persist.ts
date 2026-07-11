@@ -416,11 +416,20 @@ export async function ensureAdminSqliteDatabasesReady(
     const readPath = listingsReadDbPath()
     const writePath = listingsDbPath()
     const readMissing = !existsSync(readPath)
+    const readSize = readMissing ? 0 : statSync(readPath).size
+    const writeSize = existsSync(writePath) ? statSync(writePath).size : 0
+    // Republish if the read DB is absolutely tiny (< MIN_BYTES) OR if it is
+    // disproportionately small relative to the write DB (< 25%). The second
+    // check catches the schema-only seed case: e.g. a 144 KB read DB against
+    // a 300 MB write DB would previously pass the old Math.min threshold.
     const readTooSmall =
-      existsSync(readPath) &&
-      existsSync(writePath) &&
-      statSync(readPath).size < Math.min(statSync(writePath).size, MIN_BYTES)
+      !readMissing &&
+      writeSize > 0 &&
+      (readSize < MIN_BYTES || readSize < writeSize * 0.25)
     if (readMissing || readTooSmall) {
+      console.info(
+        `[listings-db] republishing read snapshot — read DB size: ${readSize}, write DB size: ${writeSize}`,
+      )
       publishListingsReadSnapshot()
       void persistListingsReadDbToBlob(readPath).catch(() => {})
     }
@@ -442,4 +451,35 @@ export function scheduleListingsDbBlobPersist(reason: string): void {
   void persistListingsDbCheckpoint().catch((err) => {
     console.warn(`[listings-db] blob persist (${reason}) failed:`, err)
   })
+}
+
+/** Dedicated blob key for the refresh lock history — stored independently of the
+ *  listings DB blob so it survives DB blob corruption or failed restores. */
+const BLOB_REFRESH_HISTORY_KEY = 'refresh-lock-history'
+
+/** Write the refresh lock history to its own blob key (fire-and-forget). */
+export async function persistRefreshLockHistoryToBlob(
+  entries: object[],
+): Promise<void> {
+  if (!shouldUseBlobPersist()) return
+  try {
+    const store = await getBlobStore()
+    await store.setJSON(BLOB_REFRESH_HISTORY_KEY, entries)
+  } catch (err) {
+    console.warn('[listings-db] failed to persist refresh lock history to blob:', err)
+  }
+}
+
+/** Read the refresh lock history from its own blob key. Returns null when blobs
+ *  are not active or the key does not exist. */
+export async function readRefreshLockHistoryFromBlob(): Promise<object[] | null> {
+  if (!shouldUseBlobPersist()) return null
+  try {
+    const store = await getBlobStore()
+    const result = await store.get(BLOB_REFRESH_HISTORY_KEY, { type: 'json' })
+    if (!Array.isArray(result)) return null
+    return result as object[]
+  } catch {
+    return null
+  }
 }

@@ -9,15 +9,15 @@ import {
   type AdminTabId,
 } from "@/lib/admin-nav";
 
+const VALID_TABS = new Set<string>(["db", "server", "site", "docs", "rets"]);
+
 function tabFromLocation(): AdminTabId {
   if (typeof window === "undefined") return "db";
   const params = new URLSearchParams(window.location.search);
   const queryTab = params.get("tab");
-  if (queryTab === "server" || queryTab === "site" || queryTab === "db" || queryTab === "docs") {
-    return queryTab;
-  }
+  if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
-  if (hash === "server" || hash === "site" || hash === "db" || hash === "docs") return hash;
+  if (VALID_TABS.has(hash)) return hash as AdminTabId;
   const sectionTab = adminTabForSection(hash);
   if (sectionTab) return sectionTab;
   return "db";
@@ -34,11 +34,13 @@ export default function AdminTabbedLayout({
   server,
   docs,
   site,
+  rets,
 }: {
   db: ReactNode;
   server: ReactNode;
   docs: ReactNode;
   site: ReactNode;
+  rets: ReactNode;
 }) {
   const [tab, setTab] = useState<AdminTabId>("db");
 
@@ -72,7 +74,7 @@ export default function AdminTabbedLayout({
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminTabId, ReactNode> = { db, server, docs, site };
+  const panels: Record<AdminTabId, ReactNode> = { db, server, docs, site, rets };
 
   return (
     <section className="bg-cream py-10 lg:py-14">

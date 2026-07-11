@@ -1,4 +1,4 @@
-export type AdminTabId = "db" | "server" | "docs" | "site";
+export type AdminTabId = "db" | "server" | "docs" | "site" | "rets";
 
 export type AdminSectionLink = {
   id: string;
@@ -41,10 +41,15 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     label: "Site controls",
     subtitle: "Spotlight properties and privacy overrides",
   },
+  {
+    id: "rets",
+    label: "RETS",
+    subtitle: "SmartMLS credentials and connection health",
+  },
 ];
 
 export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
-  { id: "admin-rets-credentials", label: "RETS credentials", tab: "db" },
+  { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
   { id: "admin-sync", label: "Sync status", tab: "db" },
   { id: "admin-refresh-lock", label: "Refresh lock", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },

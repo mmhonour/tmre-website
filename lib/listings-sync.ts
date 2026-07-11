@@ -196,12 +196,26 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
     const { checkWriteDbDegraded } = await import('@/lib/listings-db-persist')
     const degraded = await checkWriteDbDegraded()
     if (degraded.isDegraded) {
-      console.warn(
-        `[listings-sync/incremental] aborted — write DB has only ${degraded.currentCount} listings` +
-          ` (threshold: ${degraded.threshold}, last good: ${degraded.lastGood || 'none'}).` +
-          ` This Lambda likely failed to hydrate from blobs. Skipping to avoid corrupting the checkpoint.`,
-      )
       const now = new Date().toISOString()
+      const errMsg =
+        `Degraded DB abort: only ${degraded.currentCount} listings` +
+        ` (min threshold: ${degraded.threshold}, last good: ${degraded.lastGood ?? 'none'}).` +
+        ` Blob restore likely failed on this Lambda cold start. Skipping incremental to avoid overwriting the blob snapshot.`
+      console.warn(`[listings-sync/incremental] aborted — ${errMsg}`)
+      try {
+        const { recordSyncRun } = await import('@/lib/listings-db')
+        recordSyncRun({
+          startedAt: now,
+          finishedAt: now,
+          town: 'ALL',
+          statusBucket: 'degraded-abort',
+          listingsCount: degraded.currentCount,
+          ok: false,
+          error: errMsg,
+        })
+      } catch {
+        // best-effort — write DB might not be available
+      }
       return {
         mode: 'incremental',
         modifiedAfter: incrementalWatermark(),
@@ -559,6 +573,13 @@ async function triggerFullResyncDeferredWarms(): Promise<void> {
 
 /** Final bookkeeping — mirrors what `finalizeChunkedFullResync()`'s finally used to run. */
 async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings: number }> {
+  // Always re-publish the read snapshot before the final blob checkpoint.
+  // In the chunked finalize flow each step runs on a potentially different
+  // Lambda with a fresh /tmp, so the read DB written by the 'scores' step
+  // does not exist on this Lambda.  Without this call persistListingsDbCheckpoint
+  // would skip it (existsSync guard) and leave a stale / schema-only blob.
+  publishListingsReadSnapshot()
+
   await triggerFullResyncDeferredWarms()
   const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
   markPostDeployFullResyncComplete()
