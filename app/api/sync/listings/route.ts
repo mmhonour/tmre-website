@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (!authorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return NextResponse.json(getSyncStatus())
+  return NextResponse.json(await getSyncStatus())
 }
 
 export async function POST(req: NextRequest) {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: result.towns.every((row) => row.ok),
       ...result,
-      stats: getSyncStatus(),
+      stats: await getSyncStatus(),
     })
   } catch (err) {
     console.error('[/api/sync/listings] error', err)

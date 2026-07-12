@@ -10,6 +10,7 @@ import {
 import type { Listing, RawRetsRecord } from '@/lib/rets'
 import { query, queryOne, withTransaction } from '@/lib/db/postgres'
 import { getAllSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta'
+import { getSyncMeta as getCachedSyncMeta } from '@/lib/db/sync-meta-store'
 import type { PoolClient } from 'pg'
 
 // ---------------------------------------------------------------------------
@@ -457,6 +458,85 @@ export async function readInventorySnapshot(): Promise<InventorySnapshot | null>
 
 /** All sync_meta as a plain object (re-exported for sync orchestration convenience). */
 export { getAllSyncMeta }
+
+// ---------------------------------------------------------------------------
+// Inventory stats (Phase 4 Tier C3b). Async replacement for the synchronous
+// getListingsDbStats() in lib/listings-db.ts — counts come from Postgres,
+// timestamps from the startup-hydrated sync_meta store.
+// ---------------------------------------------------------------------------
+
+export type ListingsDbStats = {
+  total: number
+  byTown: Record<string, number>
+  lastFullSync: string | null
+  lastFullSyncStarted: string | null
+  lastIncrementalSync: string | null
+  lastIncrementalSyncStarted: string | null
+  lastListingScores: string | null
+  lastListingScoresStarted: string | null
+  lastListingSuperlatives: string | null
+  lastListingSuperlativesStarted: string | null
+  lastListingEdgeScores: string | null
+  statsCacheEntries: number
+  lastStatsCache: string | null
+  lastStatsCacheStarted: string | null
+  dealOfTheDayCacheEntries: number
+  lastDealOfTheDayCache: string | null
+  lastDealOfTheDayCacheStarted: string | null
+}
+
+/** Live inventory + cache timestamps for admin/sync status panels. */
+export async function readListingsDbStats(): Promise<ListingsDbStats> {
+  const empty: ListingsDbStats = {
+    total: 0,
+    byTown: {},
+    lastFullSync: getCachedSyncMeta('last_full_sync'),
+    lastFullSyncStarted: getCachedSyncMeta('last_full_sync_started'),
+    lastIncrementalSync: getCachedSyncMeta('last_incremental_sync'),
+    lastIncrementalSyncStarted: getCachedSyncMeta('last_incremental_sync_started'),
+    lastListingScores: getCachedSyncMeta('last_listing_scores'),
+    lastListingScoresStarted: getCachedSyncMeta('last_listing_scores_started'),
+    lastListingSuperlatives: getCachedSyncMeta('last_listing_superlatives'),
+    lastListingSuperlativesStarted: getCachedSyncMeta('last_listing_superlatives_started'),
+    lastListingEdgeScores: getCachedSyncMeta('last_listing_edge_scores'),
+    statsCacheEntries: 0,
+    lastStatsCache: getCachedSyncMeta('last_stats_cache'),
+    lastStatsCacheStarted: getCachedSyncMeta('last_stats_cache_started'),
+    dealOfTheDayCacheEntries: 0,
+    lastDealOfTheDayCache: getCachedSyncMeta('last_deal_of_the_day_cache'),
+    lastDealOfTheDayCacheStarted: getCachedSyncMeta('last_deal_of_the_day_cache_started'),
+  }
+
+  try {
+    const [totalRow, townRows, statsCacheRow, dealOfDayRow] = await Promise.all([
+      queryOne<{ count: number }>('SELECT count(*)::int AS count FROM listings'),
+      query<{ town: string; count: number }>(
+        `SELECT town, count(*)::int AS count
+           FROM listings
+          WHERE status_bucket = 'Active'
+          GROUP BY town`,
+      ),
+      queryOne<{ count: number }>('SELECT count(*)::int AS count FROM stats_cache'),
+      queryOne<{ count: number }>(
+        `SELECT count(*)::int AS count FROM stats_cache WHERE cache_key LIKE 'deal-of-the-day:%'`,
+      ),
+    ])
+
+    const byTown: Record<string, number> = {}
+    for (const row of townRows) byTown[row.town] = row.count
+
+    return {
+      ...empty,
+      total: totalRow?.count ?? 0,
+      byTown,
+      statsCacheEntries: statsCacheRow?.count ?? 0,
+      dealOfTheDayCacheEntries: dealOfDayRow?.count ?? 0,
+    }
+  } catch (err) {
+    console.warn('[listings-repo] readListingsDbStats failed:', err)
+    return empty
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Listing reads (Phase 4). Every Listing field is hydrated from `data` (the

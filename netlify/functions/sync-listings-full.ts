@@ -10,10 +10,6 @@ import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
 
-  const { ensureAdminSqliteDatabasesReady } = await import('../../lib/listings-db-persist')
-  const { resetListingsDbConnections } = await import('../../lib/listings-db')
-  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
-
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings-full' })
     const ranFull =
@@ -25,7 +21,7 @@ export default async function handler() {
         mode: 'full',
         skippedScheduledFull: result == null,
         ...(result ?? { towns: [], totalUpserted: 0, durationMs: 0 }),
-        stats: getSyncStatus(),
+        stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped
           ? { skipped: true, reason: catchup.reason }
           : { skipped: false, plan: catchup.plan, steps: catchup.steps },

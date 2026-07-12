@@ -1,15 +1,12 @@
 import {
-  countWriteDbListings,
-  getListingsDbStats,
-  isListingsDbAvailable,
-  listingsDbHasRows,
-  publishListingsReadSnapshot,
+  captureInventorySnapshot,
+  countListings,
+  readListingsDbStats,
+  readListingsFromDb,
   recordSyncRun,
-  tryGetWriteDb,
   upsertListingsIncremental,
   upsertTownListings,
-} from '@/lib/listings-db'
-import { readListingsFromDb } from '@/lib/db/listings-repo'
+} from '@/lib/db/listings-repo'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-status'
 import {
@@ -57,7 +54,6 @@ const INCREMENTAL_OVERLAP_MS = 2 * 60 * 1000
 const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 export function shouldRunFullSync(): boolean {
-  if (isListingsDbAvailable() && !listingsDbHasRows()) return true
   const last = getSyncMeta('last_full_sync')
   if (!last) return true
   const t = Date.parse(last)
@@ -96,7 +92,7 @@ export async function syncTownListingsIncremental(
       }).catch(() => [] as Listing[]),
     ])
     const listings = mergeSyncListings(active, comingSoon)
-    const { count, priceChangedIds } = upsertListingsIncremental(
+    const { count, priceChangedIds } = await upsertListingsIncremental(
       town,
       'Active',
       listings,
@@ -112,7 +108,7 @@ export async function syncTownListingsIncremental(
     }
 
     const finishedAt = new Date().toISOString()
-    recordSyncRun({
+    await recordSyncRun({
       startedAt,
       finishedAt,
       town,
@@ -130,7 +126,7 @@ export async function syncTownListingsIncremental(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     const finishedAt = new Date().toISOString()
-    recordSyncRun({
+    await recordSyncRun({
       startedAt,
       finishedAt,
       town,
@@ -184,48 +180,6 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
     }
   }
 
-  // Guard against a Lambda whose blob restore silently failed on cold start: its
-  // write DB would be schema-only (or nearly so), and running incremental sync
-  // against it would only insert a small recently-modified batch — then the
-  // finally-block checkpoint would persist that degraded DB over the real
-  // dataset in Netlify Blobs. Delegate the check to the same logic used by the
-  // checkpoint guard so thresholds stay in sync.
-  {
-    const { checkWriteDbDegraded } = await import('@/lib/listings-db-persist')
-    const degraded = await checkWriteDbDegraded()
-    if (degraded.isDegraded) {
-      const now = new Date().toISOString()
-      const errMsg =
-        `Degraded DB abort: only ${degraded.currentCount} listings` +
-        ` (min threshold: ${degraded.threshold}, last good: ${degraded.lastGood ?? 'none'}).` +
-        ` Blob restore likely failed on this Lambda cold start. Skipping incremental to avoid overwriting the blob snapshot.`
-      console.warn(`[listings-sync/incremental] aborted — ${errMsg}`)
-      try {
-        const { recordSyncRun } = await import('@/lib/listings-db')
-        recordSyncRun({
-          startedAt: now,
-          finishedAt: now,
-          town: 'ALL',
-          statusBucket: 'degraded-abort',
-          listingsCount: degraded.currentCount,
-          ok: false,
-          error: errMsg,
-        })
-      } catch {
-        // best-effort — write DB might not be available
-      }
-      return {
-        mode: 'incremental',
-        modifiedAfter: incrementalWatermark(),
-        startedAt: now,
-        finishedAt: now,
-        durationMs: 0,
-        towns: [],
-        totalUpserted: 0,
-      }
-    }
-  }
-
   const modifiedAfter = incrementalWatermark()
   const startedAt = new Date().toISOString()
   setSyncMeta('last_incremental_sync_started', startedAt)
@@ -245,7 +199,6 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
     const totalUpserted = towns.reduce((sum, row) => sum + row.count, 0)
     const allOk = towns.every((row) => row.ok)
 
-    publishListingsReadSnapshot()
     setSyncMeta('last_incremental_sync', finishedAt)
     if (allOk) {
       // Town feeds for /latest — bounded hero thumbnails warm chained inside rebuild.
@@ -255,11 +208,7 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
       } catch (err) {
         console.warn('[listings-sync/incremental] town feed warm schedule failed', err)
       }
-      // Rebuild the intelligence board synchronously so the result lands in
-      // stats_cache before persistWriteDbAfterChunk uploads the blob.
-      // Previously this used warmIntelligenceDealBoardDeferred (fire-and-forget
-      // with a 2-s delay), which guaranteed the board was NEVER in the blob —
-      // forcing every cold Lambda to rebuild on-demand and risking empty towns.
+      // Rebuild the intelligence board synchronously so the result lands in stats_cache.
       try {
         const { rebuildIntelligenceDealBoardCache } = await import(
           '@/lib/intelligence-deal-board-cache'
@@ -285,7 +234,6 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
     }
   } finally {
     endSqliteRefresh(new Date().toISOString())
-    await persistWriteDbAfterChunk()
   }
 }
 
@@ -395,7 +343,7 @@ async function fetchClosedListingsForTown(
   )
 }
 
-/** Pull one town/status bucket from RETS and upsert into SQLite. */
+/** Pull one town/status bucket from RETS and upsert into Postgres. */
 export async function syncTownListings(
   town: TmreTown,
   statusBucket: 'Active' | 'Closed' | 'Expired',
@@ -438,7 +386,8 @@ export async function syncTownListings(
         params.limit ?? CLOSED_LISTINGS_FETCH_LIMIT,
       )
     }
-    const count = upsertTownListings(town, statusBucket, listings)
+    const result = await upsertTownListings(town, statusBucket, listings)
+    const count = result.seen
     if (statusBucket === 'Active' && count > 0) {
       setSyncedActiveCount(town, count)
       if (options.syncPhotos !== false) {
@@ -456,7 +405,7 @@ export async function syncTownListings(
       }
     }
     const finishedAt = new Date().toISOString()
-    recordSyncRun({
+    await recordSyncRun({
       startedAt,
       finishedAt,
       town,
@@ -474,7 +423,7 @@ export async function syncTownListings(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     const finishedAt = new Date().toISOString()
-    recordSyncRun({
+    await recordSyncRun({
       startedAt,
       finishedAt,
       town,
@@ -563,30 +512,12 @@ async function triggerFullResyncDeferredWarms(): Promise<void> {
   } catch (err) {
     console.error('[listings-sync] Latest town feed warm schedule failed', err)
   }
-  // NOTE: intelligence board is NOT warmed here — finalizeStepPersist and
-  // syncIncrementalListings call rebuildIntelligenceDealBoardCache() directly
-  // (awaited) so the result lands in stats_cache before the blob is persisted.
+  // Intelligence board is rebuilt synchronously in finalizeStepPersist and
+  // syncIncrementalListings so the result lands in stats_cache.
 }
 
 /** Final bookkeeping — mirrors what `finalizeChunkedFullResync()`'s finally used to run. */
 async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings: number }> {
-  // Attempt to republish the read snapshot, but treat it as non-fatal.
-  // On Netlify the write DB can be 300 MB+; copying it doubles /tmp usage
-  // (write DB + temp copy) and can exceed the 512 MB /tmp limit (ENOSPC).
-  // If the copy fails we still must checkpoint the write DB and close the
-  // refresh lock — the read snapshot will be auto-republished next time an
-  // admin request runs ensureAdminSqliteDatabasesReady and detects the size mismatch.
-  try {
-    publishListingsReadSnapshot()
-  } catch (err) {
-    console.warn('[listings-sync] finalizeStepPersist: read snapshot publish failed (non-fatal):', err)
-  }
-
-  // Rebuild the intelligence board synchronously so it lands in stats_cache
-  // BEFORE persistWriteDbAfterChunk uploads the blob.  Using the deferred warm
-  // (fire-and-forget with a 2-s delay) meant the board was never in the blob,
-  // forcing every cold-start Lambda to rebuild on-demand — and those on-demand
-  // rebuilds were the source of the "towns go to zero" bug.
   try {
     const { rebuildIntelligenceDealBoardCache } = await import(
       '@/lib/intelligence-deal-board-cache'
@@ -598,18 +529,9 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
   await triggerFullResyncDeferredWarms()
   const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
   markPostDeployFullResyncComplete()
-  const { countWriteDbListings, captureWriteDbInventorySnapshot } = await import('@/lib/listings-db')
-  const totalListings = countWriteDbListings() || getListingsDbStats().total
-  // Snapshot all table counts into sync_meta so the admin page can compare
-  // production vs localhost. Must happen before endSqliteRefresh so the entry
-  // lands in WAL and is included in the blob checkpoint below.
-  captureWriteDbInventorySnapshot()
-  // Close the refresh lock BEFORE the blob checkpoint so the finalized history
-  // entry lands in sync_meta while it is still in WAL. The wal_checkpoint inside
-  // persistWriteDbAfterChunk flushes it into the main DB file and includes it
-  // in the blob upload.
+  const totalListings = await countListings()
+  await captureInventorySnapshot()
   endSqliteRefresh(finishedAt)
-  await persistWriteDbAfterChunk()
   const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
   await clearChunkedFullResyncProgress()
   void warmActiveListingPhotosDeferred()
@@ -688,12 +610,6 @@ export async function runFullResyncFinalizeStep(
   const t0 = Date.now()
   const finishedAt = new Date().toISOString()
   try {
-    // Compact the WAL before each step so prior writes (from town syncs and
-    // earlier finalize steps) don't occupy extra /tmp space during this step.
-    // On a 512MB Lambda /tmp this is critical: without it, the WAL from score
-    // writes + the read-snapshot copy + this step's WAL can exhaust disk.
-    tryGetWriteDb()?.pragma('wal_checkpoint(TRUNCATE)')
-
     switch (step) {
       case 'scores':
         await finalizeStepScores(finishedAt)
@@ -728,25 +644,12 @@ export async function runFullResyncFinalizeStep(
         return _exhaustive
       }
     }
-    // Between finalize steps, only persist the write DB — not the read snapshot
-    // or photos DB.  Those secondary files roughly double /tmp disk usage and are
-    // only needed for serving pages, not for resuming the next finalize step.
-    // They are persisted properly in the final `persist` step.
-    await persistWriteDbOnlyAfterFinalizeStep()
     return { step, ok: true, durationMs: Date.now() - t0 }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[listings-sync] finalize step "${step}" failed`, err)
     return { step, ok: false, error: message, durationMs: Date.now() - t0 }
   }
-}
-
-async function persistWriteDbOnlyAfterFinalizeStep(): Promise<void> {
-  const { listingsDbPath, tryGetWriteDb: getWriteDb } = await import('@/lib/listings-db')
-  const { persistListingsDbToBlob } = await import('@/lib/listings-db-persist')
-  // Checkpoint WAL into the main file first so the uploaded blob is compact.
-  getWriteDb()?.pragma('wal_checkpoint(TRUNCATE)')
-  await persistListingsDbToBlob(listingsDbPath(), undefined)
 }
 
 /** Active + Closed + Expired for a single town (no refresh lock). */
@@ -773,13 +676,7 @@ export async function syncFullResyncTown(town: TmreTown): Promise<TownSyncResult
     await clearChunkedFullResyncProgress()
   }
   const results = await syncFullResyncTownBuckets(town)
-  await persistWriteDbAfterChunk()
   return results
-}
-
-async function persistWriteDbAfterChunk(): Promise<void> {
-  const { persistListingsDbCheckpoint } = await import('@/lib/listings-db-persist')
-  await persistListingsDbCheckpoint()
 }
 
 /** Finalize caches after client-driven town-by-town full resync. */
@@ -792,9 +689,8 @@ export async function finalizeChunkedFullResync(): Promise<FullSyncResult> {
     await applyFullSyncPostamble(finishedAt)
     const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
     markPostDeployFullResyncComplete()
-    const { countWriteDbListings } = await import('@/lib/listings-db')
-    const total = countWriteDbListings() || getListingsDbStats().total
-    await persistWriteDbAfterChunk()
+    const total = await countListings()
+    await captureInventorySnapshot()
     const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
     await clearChunkedFullResyncProgress()
     console.info(
@@ -880,6 +776,6 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
   }
 }
 
-export function getSyncStatus() {
-  return getListingsDbStats()
+export async function getSyncStatus() {
+  return readListingsDbStats()
 }

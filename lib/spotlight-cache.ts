@@ -57,7 +57,11 @@ async function loadSpotlightListingRecord(
     }
   }
   const fetched = await fetchListingByMlsId(mlsId)
-  if (fetched.listing) persistListingRecord(fetched.listing)
+  if (fetched.listing) {
+    void persistListingRecord(fetched.listing).catch((err) => {
+      console.warn('[spotlight-cache] listing persist skipped:', err)
+    })
+  }
   return { listing: withFreshTax(fetched.listing), source: fetched.source }
 }
 

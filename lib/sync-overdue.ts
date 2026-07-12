@@ -10,9 +10,7 @@ import {
   parseIsoMs,
   statsRefreshIntervalMs,
 } from '@/lib/admin-sync-schedule'
-import { resetListingsDbConnections } from '@/lib/listings-db'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
-import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 
@@ -186,8 +184,6 @@ export async function runOverdueSyncCatchup(options?: {
   if (!overdueCatchupEnabled()) {
     return { skipped: true, reason: 'disabled', plan: [], steps: [] }
   }
-
-  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
 
   if (getSyncMeta('refresh_in_progress') === '1') {
     return { skipped: true, reason: 'refresh in progress', plan: [], steps: [] }

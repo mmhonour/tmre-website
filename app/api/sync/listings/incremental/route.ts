@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: result.towns.every((row) => row.ok),
       ...result,
-      stats: getSyncStatus(),
+      stats: await getSyncStatus(),
     })
   } catch (err) {
     console.error('[/api/sync/listings/incremental] error', err)

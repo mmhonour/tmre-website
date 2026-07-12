@@ -6,10 +6,6 @@ import { LATEST_DB_REFRESH_MS } from '../../lib/latest-refresh'
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
 
-  const { ensureAdminSqliteDatabasesReady } = await import('../../lib/listings-db-persist')
-  const { resetListingsDbConnections } = await import('../../lib/listings-db')
-  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
-
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings' })
     const result = await syncIncrementalListings()
@@ -17,7 +13,7 @@ export default async function handler() {
       JSON.stringify({
         ok: result.towns.every((row) => row.ok),
         ...result,
-        stats: getSyncStatus(),
+        stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped
           ? { skipped: true, reason: catchup.reason }
           : { skipped: false, plan: catchup.plan, steps: catchup.steps },

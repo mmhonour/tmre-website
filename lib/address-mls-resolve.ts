@@ -136,8 +136,8 @@ function resultFromListing(
   }
 }
 
-function persistAddressResolution(listing: Listing, input: AddressLookupInput): void {
-  persistListingRecord(listing)
+async function persistAddressResolution(listing: Listing, input: AddressLookupInput): Promise<void> {
+  await persistListingRecord(listing)
   const town = resolveListingTown(listing.address.city) ?? input.city
   if (!isTmreTown(town)) return
 
@@ -218,7 +218,7 @@ export async function resolveMlsIdByAddress(
   })
   const dbMatch = pickBestListingMatch(dbHits, normalized)
   if (dbMatch?.mlsId?.trim()) {
-    if (persist) persistAddressResolution(dbMatch, normalized)
+    if (persist) await persistAddressResolution(dbMatch, normalized)
     return resultFromListing(dbMatch, normalized, 'db')
   }
 
@@ -241,7 +241,7 @@ export async function resolveMlsIdByAddress(
     })
     const retsMatch = pickBestListingMatch(retsHits, normalized)
     if (retsMatch?.mlsId?.trim()) {
-      if (persist) persistAddressResolution(retsMatch, normalized)
+      if (persist) await persistAddressResolution(retsMatch, normalized)
       return resultFromListing(retsMatch, normalized, 'rets')
     }
   } catch (err) {

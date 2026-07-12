@@ -5,10 +5,9 @@ import {
 } from '@/lib/listing-property-tax'
 import { refreshListingIfEstimate } from '@/lib/listing-if-compute'
 import {
-  isListingsDbAvailable,
   upsertListing,
   upsertTownListings,
-} from '@/lib/listings-db'
+} from '@/lib/db/listings-repo'
 import {
   hasListingsData,
   readAllListingsFromDb,
@@ -198,10 +197,10 @@ function dbActiveListingsUsable(
   return !isTmreTown(city)
 }
 
-function persistListingsBatch(listings: Listing[]): void {
-  if (!isListingsDbAvailable() || listings.length === 0) return
+async function persistListingsBatch(listings: Listing[]): Promise<void> {
+  if (listings.length === 0) return
   for (const listing of listings) {
-    persistListingRecord(listing)
+    await persistListingRecord(listing)
   }
 }
 
@@ -255,7 +254,7 @@ export async function fetchListingsForCity(
       listings = applyActiveBucketFilters(listings, city)
     }
   }
-  persistListingsBatch(listings)
+  await persistListingsBatch(listings)
   return { listings, source: 'rets' }
 }
 
@@ -386,7 +385,7 @@ export async function fetchExpiredListingsForCity(
   }
 
   if (isTmreTown(city) && listings.length > 0) {
-    upsertTownListings(city, bucket, listings)
+    await upsertTownListings(city, bucket, listings)
   }
 
   return { listings, source: 'rets' }
@@ -445,7 +444,7 @@ export async function fetchListingsAcrossTowns(
       status: params.status ?? ACTIVE_MLS_STATUS,
     })
   }
-  persistListingsBatch(listings)
+  await persistListingsBatch(listings)
   return { listings, source: 'rets' }
 }
 
@@ -488,7 +487,11 @@ export async function fetchListingByMlsId(
   }
 
   const listing = await getListingByMlsId(id)
-  if (listing) persistListingRecord(listing)
+  if (listing) {
+    void persistListingRecord(listing).catch((err) => {
+      console.warn('[listings-store] RETS fetch persist skipped:', err)
+    })
+  }
   return { listing, source: 'rets' as const }
 }
 
@@ -517,18 +520,22 @@ function townForListingRecord(listing: Listing): string {
   )
 }
 
-/** Upsert an already-loaded listing into SQLite. */
-export function persistListingRecord(listing: Listing): boolean {
-  if (!isListingsDbAvailable()) return false
+/** Upsert an already-loaded listing into Postgres. */
+export async function persistListingRecord(listing: Listing): Promise<boolean> {
   const town = townForListingRecord(listing)
   const statusBucket = normalizeStatusBucket(listing.status ?? ACTIVE_MLS_STATUS)
-  const { upserted } = upsertListing(listing, town, statusBucket)
-  if (upserted && isMarketListing(listing)) {
-    void refreshListingIfEstimate(listing).catch((err) => {
-      console.warn('[listings-store] If estimate refresh skipped:', err)
-    })
+  try {
+    const { upserted } = await upsertListing(listing, town, statusBucket)
+    if (upserted && isMarketListing(listing)) {
+      void refreshListingIfEstimate(listing).catch((err) => {
+        console.warn('[listings-store] If estimate refresh skipped:', err)
+      })
+    }
+    return upserted
+  } catch (err) {
+    console.warn('[listings-store] persist skipped:', err)
+    return false
   }
-  return upserted
 }
 
 /** Fetch live from MLS and upsert into SQLite when available. */
@@ -541,6 +548,6 @@ export async function persistListingByMlsId(
   const listing = await getListingByMlsId(trimmed)
   if (!listing) return { cached: false, found: false, source: 'rets' }
 
-  const cached = persistListingRecord(listing)
+  const cached = await persistListingRecord(listing)
   return { cached, found: true, source: 'rets' }
 }
