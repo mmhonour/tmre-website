@@ -9,17 +9,19 @@ import type { ComparablesResult } from '@/lib/listing-comparables-shared'
 import {
   publishListingsReadSnapshot,
   readAllListingsFromDb,
-  readListingEdgeScoresByMlsIds,
 } from '@/lib/listings-db'
+import { readListingEdgeScoresByMlsIds } from '@/lib/db/listings-repo'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip } from '@/lib/tmre-towns'
 
-function attachStoredEdgeScores(result: ComparablesResult): ComparablesResult {
+async function attachStoredEdgeScores(
+  result: ComparablesResult,
+): Promise<ComparablesResult> {
   const mlsIds = [...result.sold, ...result.active]
     .map((c) => c.mlsId.trim())
     .filter(Boolean)
   if (mlsIds.length === 0) return result
-  const stored = readListingEdgeScoresByMlsIds(mlsIds)
+  const stored = await readListingEdgeScoresByMlsIds(mlsIds)
   if (stored.size === 0) return result
 
   const attach = (comps: typeof result.sold) =>
@@ -45,7 +47,7 @@ export async function resolveComparablesForSubject(
 ): Promise<ComparablesResult & { mlsId: string; kind: ComparablesMatchMode }> {
   const cached = readCachedComparables(subject, kind)
   if (cached) {
-    const withScores = attachStoredEdgeScores(cached)
+    const withScores = await attachStoredEdgeScores(cached)
     return {
       mlsId: subject.mlsId,
       kind,
@@ -68,7 +70,7 @@ export async function resolveComparablesForSubject(
   // Cold miss wrote edges to the write DB; expose them on the read snapshot.
   publishListingsReadSnapshot()
 
-  const withScores = attachStoredEdgeScores(result)
+  const withScores = await attachStoredEdgeScores(result)
 
   return {
     mlsId: subject.mlsId,

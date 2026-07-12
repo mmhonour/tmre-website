@@ -8,7 +8,6 @@ import {
   publishListingsReadSnapshot,
   readListingsFromDb,
   readListingScoresByIds,
-  readListingSuperlativesByMlsIds,
   readStatsCacheRow,
   getSyncMeta,
   setSyncMeta,
@@ -16,6 +15,7 @@ import {
   upsertListingScores,
   writeStatsCacheRow,
 } from '@/lib/listings-db'
+import { readListingSuperlativesByMlsIds } from '@/lib/db/listings-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
@@ -291,7 +291,7 @@ async function buildTownBoard(
   }
 
   const rows: IntelligenceBoardListing[] = []
-  const superlativesByMls = readListingSuperlativesByMlsIds(
+  const superlativesByMls = await readListingSuperlativesByMlsIds(
     listings.map((listing) => listing.mlsId).filter(Boolean),
   )
   for (const listing of listings) {

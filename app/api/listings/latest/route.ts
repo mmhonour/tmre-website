@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const listings = await fetchLatestUpdatedListings({ since, limit, town })
     // Town-expand requests only need listings; townStats runs a heavy aggregate
     // and has caused 502s that blocked the whole response.
-    const townStats = town ? [] : fetchTownUpdateStats()
+    const townStats = town ? [] : await fetchTownUpdateStats()
     return NextResponse.json(
       {
         listings,

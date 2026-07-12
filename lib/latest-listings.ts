@@ -4,11 +4,10 @@ import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import {
   firstStoredListingPhotoIndex,
   listingRowId,
-  readTownUpdateStats,
   upsertListingScores,
   type TownUpdateStat,
 } from '@/lib/listings-db'
-import { readRecentlyUpdatedListings } from '@/lib/db/listings-repo'
+import { readRecentlyUpdatedListings, readTownUpdateStats } from '@/lib/db/listings-repo'
 import { fetchActiveListingsForCity } from '@/lib/listings-store'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import type { Listing } from '@/lib/rets'
@@ -343,11 +342,11 @@ export async function fetchLatestUpdatedListings(options: {
 
 export type { TownUpdateStat }
 
-export function fetchTownUpdateStats(options: {
+export async function fetchTownUpdateStats(options: {
   since?: string | null
-} = {}): TownUpdateStat[] {
+} = {}): Promise<TownUpdateStat[]> {
   try {
-    return readTownUpdateStats(options)
+    return await readTownUpdateStats(options)
   } catch (err) {
     console.warn(
       '[latest-listings] fetchTownUpdateStats failed',

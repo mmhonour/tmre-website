@@ -643,3 +643,166 @@ export async function readAddressListingsFromDb(
       return streetsMatch(street, addr)
     })
 }
+
+export type TownUpdateStat = {
+  town: string
+  updateCount: number
+  latestUpdate: string | null
+  latestListingId: string | null
+  latestListingAddress: string | null
+}
+
+/** Towns ranked by count of listings modified since `since` (default last 24h). */
+export async function readTownUpdateStats(
+  options: { since?: string | null; statusBucket?: string } = {},
+): Promise<TownUpdateStat[]> {
+  const statusBucket = options.statusBucket ?? 'Active'
+  const sinceIso =
+    options.since?.trim() || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const since = new Date(sinceIso)
+
+  const rows = await query<{
+    town: string
+    update_count: number
+    latest_update: Date | null
+    latest_listing_id: string | null
+    latest_listing_address: string | null
+  }>(
+    `SELECT
+       l.town,
+       COUNT(*)::int AS update_count,
+       MAX(l.modification_timestamp) AS latest_update,
+       (
+         SELECT COALESCE(NULLIF(l2.listing_key, ''), l2.mls_id)
+         FROM listings l2
+         WHERE l2.town = l.town
+           AND l2.status_bucket = $1
+           AND l2.modification_timestamp IS NOT NULL
+           AND l2.modification_timestamp > $2
+         ORDER BY l2.modification_timestamp DESC, l2.id DESC
+         LIMIT 1
+       ) AS latest_listing_id,
+       (
+         SELECT COALESCE(
+           NULLIF(l2.data->'address'->>'street', ''),
+           NULLIF(l2.data->'address'->>'full', '')
+         )
+         FROM listings l2
+         WHERE l2.town = l.town
+           AND l2.status_bucket = $1
+           AND l2.modification_timestamp IS NOT NULL
+           AND l2.modification_timestamp > $2
+         ORDER BY l2.modification_timestamp DESC, l2.id DESC
+         LIMIT 1
+       ) AS latest_listing_address
+     FROM listings l
+     WHERE l.status_bucket = $1
+       AND l.modification_timestamp IS NOT NULL
+       AND l.modification_timestamp > $2
+     GROUP BY l.town
+     ORDER BY update_count DESC, latest_update DESC`,
+    [statusBucket, since],
+  )
+
+  return rows.map((row) => ({
+    town: row.town,
+    updateCount: row.update_count,
+    latestUpdate: tsToIso(row.latest_update),
+    latestListingId: row.latest_listing_id?.trim() || null,
+    latestListingAddress: row.latest_listing_address?.trim() || null,
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// Edge scores — read side (Phase 4). Writes still land via the SQLite path
+// until the scores write pass is ported; jsonb columns are stringified back to
+// the `string` contract the SQLite version returned so consumers (which JSON
+// .parse them) are unaffected.
+// ---------------------------------------------------------------------------
+
+export type ListingEdgeScoreRow = {
+  mlsId: string
+  listingId: string
+  edgeScore: number
+  breakdownJson: string
+  metadataSnapshot: string
+  computedAt: string
+}
+
+/** Edge score rows for a set of MLS ids, keyed by mls_id. */
+export async function readListingEdgeScoresByMlsIds(
+  mlsIds: readonly string[],
+): Promise<Map<string, ListingEdgeScoreRow>> {
+  const out = new Map<string, ListingEdgeScoreRow>()
+  const unique = [...new Set(mlsIds.map((id) => id.trim()).filter(Boolean))]
+  if (unique.length === 0) return out
+
+  const rows = await query<{
+    mls_id: string
+    listing_id: string
+    edge_score: number
+    breakdown_json: unknown
+    metadata_snapshot: unknown
+    computed_at: Date | null
+  }>(
+    `SELECT mls_id, listing_id, edge_score, breakdown_json, metadata_snapshot, computed_at
+       FROM listing_edge_scores
+      WHERE mls_id = ANY($1::text[])`,
+    [unique],
+  )
+  for (const row of rows) {
+    out.set(row.mls_id, {
+      mlsId: row.mls_id,
+      listingId: row.listing_id,
+      edgeScore: row.edge_score,
+      breakdownJson: jsonbToString(row.breakdown_json) ?? '',
+      metadataSnapshot: jsonbToString(row.metadata_snapshot) ?? '',
+      computedAt: tsToIso(row.computed_at) ?? '',
+    })
+  }
+  return out
+}
+
+/** Single edge score row by MLS id. */
+export async function readListingEdgeScoreByMlsId(
+  mlsId: string,
+): Promise<ListingEdgeScoreRow | null> {
+  const id = mlsId.trim()
+  if (!id) return null
+  return (await readListingEdgeScoresByMlsIds([id])).get(id) ?? null
+}
+
+/** jsonb array (parsed by pg) or a serialized string → validated badge words. */
+function parseSuperlativeWords(value: unknown): string[] {
+  let arr: unknown = value
+  if (typeof value === 'string') {
+    try {
+      arr = JSON.parse(value)
+    } catch {
+      return []
+    }
+  }
+  if (!Array.isArray(arr)) return []
+  return arr.filter((w): w is string => typeof w === 'string' && w.length > 0)
+}
+
+/** Superlative badge words per MLS id (ids with zero badges are omitted). */
+export async function readListingSuperlativesByMlsIds(
+  mlsIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>()
+  const unique = [...new Set(mlsIds.map((id) => id.trim()).filter(Boolean))]
+  if (unique.length === 0) return out
+
+  const rows = await query<{ mls_id: string; superlatives_json: unknown }>(
+    `SELECT mls_id, superlatives_json
+       FROM listing_superlatives
+      WHERE mls_id = ANY($1::text[])`,
+    [unique],
+  )
+  for (const row of rows) {
+    const words = parseSuperlativeWords(row.superlatives_json)
+    if (words.length > 0) out.set(row.mls_id, words)
+  }
+  return out
+}

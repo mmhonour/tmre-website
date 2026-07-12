@@ -17,11 +17,8 @@ import {
   normalizeStyleKey,
 } from './deal-superlatives'
 import { listingPhotoProxyUrl } from './listing-url'
-import {
-  firstStoredListingPhotoIndex,
-  listingRowId,
-  readListingSuperlativesByMlsIds,
-} from './listings-db'
+import { firstStoredListingPhotoIndex, listingRowId } from './listings-db'
+import { readListingSuperlativesByMlsIds } from './db/listings-repo'
 import { normalizeZip } from './tmre-towns'
 
 export type DealPickPayload = {
@@ -166,15 +163,15 @@ function selectPeerBucketForListing(
   return peers
 }
 
-function resolveWinnerSuperlatives(
+async function resolveWinnerSuperlatives(
   winner: ScoredListing,
   listings: Listing[],
   medians: Map<string, number>,
   pickMode: DealPickPayload['pickMode'],
   lotAcres: number | null,
   valueDiscount: number | null,
-): string[] {
-  const cached = readListingSuperlativesByMlsIds([winner.listing.mlsId]).get(
+): Promise<string[]> {
+  const cached = (await readListingSuperlativesByMlsIds([winner.listing.mlsId])).get(
     winner.listing.mlsId,
   )
   if (cached?.length) return cached
@@ -284,16 +281,18 @@ async function finalizePayload(
     })),
   }
 
+  const superlatives = await resolveWinnerSuperlatives(
+    winner,
+    listings,
+    medians,
+    pickMode,
+    payloadBase.lotAcres,
+    payloadBase.valueDiscountPct,
+  )
+
   return {
     ...payloadBase,
-    superlatives: resolveWinnerSuperlatives(
-      winner,
-      listings,
-      medians,
-      pickMode,
-      payloadBase.lotAcres,
-      payloadBase.valueDiscountPct,
-    ),
+    superlatives,
   }
 }
 

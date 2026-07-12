@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
 import { listingCacheHeaders, readListingFromDbByMlsId } from '@/lib/listings-store'
-import { readListingEdgeScoreByMlsId } from '@/lib/listings-db'
+import { readListingEdgeScoreByMlsId } from '@/lib/db/listings-repo'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -34,7 +34,7 @@ export async function GET(
           ).then((r) => r.photos)
         : Promise.resolve([] as string[]),
       scoreListingForDetailPage(listing),
-      Promise.resolve(readListingEdgeScoreByMlsId(id)),
+      readListingEdgeScoreByMlsId(id),
     ])
     return NextResponse.json(
       {
