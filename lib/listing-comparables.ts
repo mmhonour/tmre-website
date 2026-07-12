@@ -17,6 +17,17 @@ import {
   closedSalePrice,
   inStatsClosedPeriod,
 } from '@/lib/stats-listing-rows'
+
+/** Rolling lookback window for rental comparable sold listings. */
+const RENTAL_COMP_MONTHS = 8
+
+function inRentalClosedPeriod(iso: string | null): boolean {
+  if (!iso) return false
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return false
+  const cutoff = Date.now() - RENTAL_COMP_MONTHS * 30.44 * 24 * 60 * 60 * 1000
+  return t >= cutoff
+}
 import { normalizeZip } from '@/lib/tmre-towns'
 import {
   classifyYearBuilt,
@@ -266,8 +277,12 @@ function rankSoldComps(
   matches: Listing[],
   subject: Listing,
   criteria: ComparablesCriteria,
+  mode: ComparablesMatchMode,
 ): RankedComparable[] {
   const refPrice = subjectReferencePrice(subject)
+  // Rental comps use a tighter rolling window; sale comps use the broader
+  // calendar-year stats period.
+  const inPeriod = mode === 'rental' ? inRentalClosedPeriod : inStatsClosedPeriod
 
   return matches
     .filter((l) => isClosedListing(l))
@@ -276,7 +291,7 @@ function rankSoldComps(
       closeTs: closedListingTimestamp(l),
       fitDistance: comparableFitDistance(l, subject, criteria),
     }))
-    .filter(({ closeTs }) => inStatsClosedPeriod(closeTs))
+    .filter(({ closeTs }) => inPeriod(closeTs))
     .sort((a, b) => {
       if (a.fitDistance !== b.fitDistance) return a.fitDistance - b.fitDistance
 
@@ -360,7 +375,7 @@ export function findComparablesRanked(
   )
 
   return {
-    sold: rankSoldComps(matches, subject, criteria),
+    sold: rankSoldComps(matches, subject, criteria, mode),
     active: rankActiveComps(matches, subject, criteria),
     criteria,
     missingCriteria: [],
