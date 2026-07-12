@@ -9,6 +9,16 @@ export async function register() {
     return
   }
 
+  // Hydrate the Postgres-backed sync_meta cache before any handler reads it.
+  // Kept non-fatal so local dev without DATABASE_URL still boots.
+  try {
+    const { hydrateSyncMetaStore } = await import('./lib/db/sync-meta-store')
+    await hydrateSyncMetaStore()
+    console.info('[sync-meta] cache hydrated from Postgres')
+  } catch (err) {
+    console.warn('[sync-meta] hydrate failed (continuing):', err)
+  }
+
   // Eager seed + warm SQLite on serverless cold starts before first request.
   if (isServerlessRuntime()) {
     try {
@@ -30,7 +40,7 @@ export async function register() {
     const { rebuildStatsCacheIfStale, STATS_CACHE_TTL_MS } = await import('./lib/stats-cache')
     const { LATEST_DB_REFRESH_MS } = await import('./lib/latest-refresh')
     const { hasLocalListingsCache } = await import('./lib/listings-store')
-    const { getSyncMeta } = await import('./lib/listings-db')
+    const { getSyncMeta } = await import('./lib/db/sync-meta-store')
     const { isRetsConfigured } = await import('./lib/rets')
 
     const retsConfigured = isRetsConfigured()

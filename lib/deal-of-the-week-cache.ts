@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { setSyncMeta } from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import {
   computeTopDeal,

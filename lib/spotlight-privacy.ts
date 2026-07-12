@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { getSyncMeta, setSyncMeta } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 
 export * from '@/lib/spotlight-privacy-shared'
 

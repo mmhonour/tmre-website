@@ -6,12 +6,11 @@ import {
   countWriteDbListings,
   countWriteDbListingsByBucket,
   getListingsDbStats,
-  getSyncMeta,
   listingsDbPath,
   publishListingsReadSnapshot,
   resetListingsDbConnections,
-  setSyncMeta,
 } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   clearChunkedFullResyncProgress,
   ensureAdminSqliteDatabasesReady,

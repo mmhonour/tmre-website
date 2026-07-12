@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSyncMeta } from '@/lib/listings-db'
+import { getSyncMeta } from '@/lib/db/sync-meta-store'
 import { fetchLatestUpdatedListings, fetchTownUpdateStats } from '@/lib/latest-listings'
 import { syncListingsSmart } from '@/lib/listings-sync'
 

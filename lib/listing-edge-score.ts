@@ -8,9 +8,9 @@ import {
   listingRowId,
   publishListingsReadSnapshot,
   readAllListingsFromDb,
-  setSyncMeta,
   upsertListingEdgeScores,
 } from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'

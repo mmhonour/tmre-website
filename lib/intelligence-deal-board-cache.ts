@@ -8,11 +8,10 @@ import {
   publishListingsReadSnapshot,
   readListingsFromDb,
   readListingScoresByIds,
-  getSyncMeta,
-  setSyncMeta,
   tryGetWriteDb,
   upsertListingScores,
 } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readListingSuperlativesByMlsIds } from '@/lib/db/listings-repo'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'

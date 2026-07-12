@@ -10,15 +10,14 @@ import { parseLotAcres } from '@/lib/fixer-listings'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import { kindOf } from '@/lib/goldilocks'
 import {
-  getSyncMeta,
   listingRowId,
   publishListingsReadSnapshot,
   readListingsFromDb,
   readListingScoresByIds,
-  setSyncMeta,
   tryGetReadDb,
   upsertListingSuperlatives,
 } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import type { Listing } from '@/lib/rets'
 import { normalizeZip, TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 

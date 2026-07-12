@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/listings-db'
+import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 
 export const RETS_SERVER_URL_KEY = 'rets_server_url'
 export const RETS_USERNAME_KEY = 'rets_username'

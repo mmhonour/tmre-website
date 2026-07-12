@@ -12,9 +12,9 @@ import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   describeListingsDbRuntime,
   getListingsDbStats,
-  getSyncMeta,
   resetListingsDbConnections,
 } from '@/lib/listings-db'
+import { getSyncMeta } from '@/lib/db/sync-meta-store'
 import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'

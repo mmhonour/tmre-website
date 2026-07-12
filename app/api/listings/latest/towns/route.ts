@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getSyncMeta } from '@/lib/listings-db'
+import { getSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   LATEST_TOWN_FEED_LIMIT,
   readAllLatestTownFeedCaches,

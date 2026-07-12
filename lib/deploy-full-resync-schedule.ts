@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/listings-db'
+import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { scheduleListingsDbBlobPersist } from '@/lib/listings-db-persist'
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import { isServerlessRuntime } from '@/lib/runtime-host'

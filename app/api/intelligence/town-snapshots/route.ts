@@ -3,7 +3,7 @@ import {
   readAllCachedIntelligenceTownSnapshots,
   rebuildIntelligenceTownSnapshots,
 } from '@/lib/intelligence-town-snapshot'
-import { getSyncMeta } from '@/lib/listings-db'
+import { getSyncMeta } from '@/lib/db/sync-meta-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

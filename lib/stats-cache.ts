@@ -1,11 +1,10 @@
 import {
   getListingsDbStats,
-  getSyncMeta,
   publishListingsReadSnapshot,
   readAllListingsFromDb,
   readListingsFromDb,
-  setSyncMeta,
 } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   clearStatsCache,
   readStatsCacheRow,

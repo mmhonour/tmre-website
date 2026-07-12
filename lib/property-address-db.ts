@@ -4,7 +4,8 @@ import {
   type PropertyAddressRow,
   type PropertyAddressSource,
 } from '@/lib/property-address'
-import { getListingsDb, isListingsDbAvailable, setSyncMeta, tryGetReadDb } from '@/lib/listings-db'
+import { getListingsDb, isListingsDbAvailable, tryGetReadDb } from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/db/sync-meta-store'
 
 function readDb(): import('better-sqlite3').Database | null {
   return tryGetReadDb() ?? (isListingsDbAvailable() ? getListingsDb() : null)

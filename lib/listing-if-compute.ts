@@ -18,11 +18,10 @@ import {
   listingRowId,
   readAllListingsFromDb,
   readListingIfEstimate,
-  getSyncMeta,
-  setSyncMeta,
   upsertListingIfEstimate,
   type ListingIfEstimateRow,
 } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'

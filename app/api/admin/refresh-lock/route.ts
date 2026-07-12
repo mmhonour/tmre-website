@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
-import { resetListingsDbConnections, setSyncMeta } from '@/lib/listings-db'
+import { resetListingsDbConnections } from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   ensureAdminSqliteDatabasesReady,
   readRefreshLockHistoryFromBlob,

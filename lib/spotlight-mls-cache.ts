@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { resolveMlsIdByAddress } from '@/lib/address-mls-resolve'
-import { getSyncMeta, setSyncMeta } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import type { SpotlightListingConfig } from '@/lib/spotlight-listing'
 
 export const SPOTLIGHT_RESOLVED_MLS_SYNC_KEY = 'spotlight_resolved_mls_ids'

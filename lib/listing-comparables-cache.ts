@@ -11,17 +11,16 @@ import type {
   ComparablesResult,
 } from '@/lib/listing-comparables-shared'
 import {
-  getSyncMeta,
   listingRowId,
   publishListingsReadSnapshot,
   readAllListingsFromDb,
   readListingRelations,
   readListingsFromDb,
   replaceListingRelationsForSubject,
-  setSyncMeta,
   type ListingRelationKind,
   type ListingRelationRow,
 } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip, type TmreTown } from '@/lib/tmre-towns'
 

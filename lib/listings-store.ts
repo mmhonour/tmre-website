@@ -5,16 +5,15 @@ import {
 } from '@/lib/listing-property-tax'
 import { refreshListingIfEstimate } from '@/lib/listing-if-compute'
 import {
-  getSyncMeta,
   isListingsDbAvailable,
   listingsDbHasRows,
   readAllListingsFromDb,
   readListingByIdFromDb,
   readListingsFromDb,
-  setSyncMeta,
   upsertListing,
   upsertTownListings,
 } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   getListingByMlsId,
   refreshListingSchools,

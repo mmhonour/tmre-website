@@ -10,7 +10,8 @@ import {
   parseIsoMs,
   statsRefreshIntervalMs,
 } from '@/lib/admin-sync-schedule'
-import { deleteSyncMeta, getSyncMeta, resetListingsDbConnections, setSyncMeta } from '@/lib/listings-db'
+import { resetListingsDbConnections } from '@/lib/listings-db'
+import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'

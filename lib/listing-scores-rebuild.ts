@@ -5,9 +5,9 @@ import {
   listingRowId,
   publishListingsReadSnapshot,
   readListingsFromDb,
-  setSyncMeta,
   upsertListingScores,
 } from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 export type TownScoreRebuildResult = {

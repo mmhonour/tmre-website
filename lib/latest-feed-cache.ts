@@ -4,7 +4,8 @@ import {
   fetchLatestUpdatedListings,
   type LatestListingRow,
 } from '@/lib/latest-listings'
-import { publishListingsReadSnapshot, setSyncMeta } from '@/lib/listings-db'
+import { publishListingsReadSnapshot } from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */

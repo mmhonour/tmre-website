@@ -1,7 +1,8 @@
 import 'server-only'
 
 import { fetchActiveListingsForCity, fetchClosedListingsForCity } from '@/lib/listings-store'
-import { readListingsFromDb, setSyncMeta } from '@/lib/listings-db'
+import { readListingsFromDb } from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import type {
   IntelligenceTownSnapshot,

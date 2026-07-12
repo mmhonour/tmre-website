@@ -1,18 +1,16 @@
 import {
   countWriteDbListings,
-  deleteSyncMeta,
   getListingsDbStats,
-  getSyncMeta,
   isListingsDbAvailable,
   listingsDbHasRows,
   publishListingsReadSnapshot,
   readListingsFromDb,
   recordSyncRun,
-  setSyncMeta,
   tryGetWriteDb,
   upsertListingsIncremental,
   upsertTownListings,
 } from '@/lib/listings-db'
+import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-status'
 import {
   ACTIVE_LISTINGS_FETCH_LIMIT,

@@ -3,7 +3,7 @@ import {
   readIntelligenceDealBoardCache,
   rebuildIntelligenceDealBoardCache,
 } from '@/lib/intelligence-deal-board-cache'
-import { getSyncMeta } from '@/lib/listings-db'
+import { getSyncMeta } from '@/lib/db/sync-meta-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
