@@ -421,7 +421,7 @@ export async function runAdminSyncAction(
       }
     }
     case 'stats-cache': {
-      const result = rebuildStatsCache({ trackRefresh: true })
+      const result = await rebuildStatsCache({ trackRefresh: true })
       const finishedAt = new Date().toISOString()
       return {
         ok: true,

@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const kind: ListingKind = parseListingKindParam(searchParams.get('kind'))
 
   try {
-    const cached = readStatsCache<ReturnType<typeof computeMarketStats> & { generatedAt?: string }>(
+    const cached = await readStatsCache<ReturnType<typeof computeMarketStats> & { generatedAt?: string }>(
       'market-stats',
       city,
       kind,
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     )
 
     if (source === 'db') {
-      writeStatsCache('market-stats', city, kind, {
+      await writeStatsCache('market-stats', city, kind, {
         ...payload,
         generatedAt: new Date().toISOString(),
       })

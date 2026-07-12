@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { fetchListingByMlsId } from '@/lib/listings-store'
-import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/listings-db'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { fetchPhotoBuffers } from '@/lib/rets'
 import type { FinishQualityAssessment, FinishQualityTier } from '@/lib/finish-quality-types'
 
@@ -21,8 +21,8 @@ function cacheKey(mlsId: string): string {
   return `${FINISH_QUALITY_CACHE_PREFIX}:${mlsId.trim()}`
 }
 
-function readCached(mlsId: string): FinishQualityAssessment | null {
-  const row = readStatsCacheRow(cacheKey(mlsId))
+async function readCached(mlsId: string): Promise<FinishQualityAssessment | null> {
+  const row = await readStatsCacheRow(cacheKey(mlsId))
   if (!row) return null
   const age = Date.now() - Date.parse(row.computedAt)
   if (Number.isNaN(age) || age > FINISH_QUALITY_CACHE_TTL_MS) return null
@@ -34,8 +34,8 @@ function readCached(mlsId: string): FinishQualityAssessment | null {
   }
 }
 
-function writeCached(mlsId: string, assessment: FinishQualityAssessment): void {
-  writeStatsCacheRow(cacheKey(mlsId), assessment)
+async function writeCached(mlsId: string, assessment: FinishQualityAssessment): Promise<void> {
+  await writeStatsCacheRow(cacheKey(mlsId), assessment)
 }
 
 function unavailable(note = 'Photo assessment unavailable'): FinishQualityAssessment {
@@ -129,7 +129,7 @@ export async function getFinishQuality(mlsId: string): Promise<FinishQualityAsse
   const id = mlsId.trim()
   if (!id) return unavailable('Missing listing id')
 
-  const cached = readCached(id)
+  const cached = await readCached(id)
   if (cached) return { ...cached, source: 'cached' }
 
   if (!process.env.OPENAI_API_KEY?.trim()) {
@@ -150,7 +150,7 @@ export async function getFinishQuality(mlsId: string): Promise<FinishQualityAsse
 
     if (!buffers.length) {
       const result = unavailable('No listing photos to assess')
-      writeCached(id, result)
+      await writeCached(id, result)
       return result
     }
 
@@ -163,7 +163,7 @@ export async function getFinishQuality(mlsId: string): Promise<FinishQualityAsse
       ...assessed,
       photoCount: buffers.length,
     }
-    writeCached(id, result)
+    await writeCached(id, result)
     return result
   } catch (err) {
     console.error('[finish-quality] assessment failed', err)

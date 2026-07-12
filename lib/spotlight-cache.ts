@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { refreshListingPropertyTax } from '@/lib/listing-property-tax'
-import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/listings-db'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import {
   fetchListingByMlsId,
@@ -72,8 +72,10 @@ function photosAreLocalProxy(photos: string[] | undefined): boolean {
   return photos.every((url) => url.startsWith('/api/listings/'))
 }
 
-export function readSpotlightCache(mlsId: string): SpotlightCachePayload | null {
-  const row = readStatsCacheRow(spotlightCacheKey(mlsId))
+export async function readSpotlightCache(
+  mlsId: string,
+): Promise<SpotlightCachePayload | null> {
+  const row = await readStatsCacheRow(spotlightCacheKey(mlsId))
   if (!row) return null
   try {
     return JSON.parse(row.payload) as SpotlightCachePayload
@@ -82,11 +84,11 @@ export function readSpotlightCache(mlsId: string): SpotlightCachePayload | null 
   }
 }
 
-export function writeSpotlightCache(
+export async function writeSpotlightCache(
   mlsId: string,
   payload: SpotlightCachePayload,
-): void {
-  writeStatsCacheRow(spotlightCacheKey(mlsId), payload)
+): Promise<void> {
+  await writeStatsCacheRow(spotlightCacheKey(mlsId), payload)
 }
 
 export async function resolveSpotlightListing(options: {
@@ -108,7 +110,7 @@ export async function resolveSpotlightListing(options: {
     return { listing: null, photos: [], source: 'db', cacheHit: false }
   }
 
-  const cached = options.forceRefresh ? null : readSpotlightCache(mlsId)
+  const cached = options.forceRefresh ? null : await readSpotlightCache(mlsId)
   const listingFresh =
     cached?.listing != null &&
     isFresh(cached.cachedAt, SPOTLIGHT_LISTING_TTL_MS)
@@ -151,7 +153,7 @@ export async function resolveSpotlightListing(options: {
     photosCachedAt = new Date().toISOString()
   }
 
-  writeSpotlightCache(mlsId, {
+  await writeSpotlightCache(mlsId, {
     listing,
     photos: photos.length > 0 ? photos : cached?.photos,
     source,

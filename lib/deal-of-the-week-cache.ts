@@ -1,10 +1,7 @@
 import 'server-only'
 
-import {
-  readStatsCacheRow,
-  setSyncMeta,
-  writeStatsCacheRow,
-} from '@/lib/listings-db'
+import { setSyncMeta } from '@/lib/listings-db'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import {
   computeTopDeal,
   dealListingPhotoUrl,
@@ -23,9 +20,9 @@ export type DealOfTheWeekResponse = DealPickPayload & {
   dealCache?: boolean
 }
 
-export function readDealOfTheWeekCache(): DealOfTheWeekResponse | null {
+export async function readDealOfTheWeekCache(): Promise<DealOfTheWeekResponse | null> {
   if (!hasLocalListingsCache()) return null
-  const row = readStatsCacheRow(DEAL_OF_THE_WEEK_CACHE_KEY)
+  const row = await readStatsCacheRow(DEAL_OF_THE_WEEK_CACHE_KEY)
   if (!row?.payload) return null
   try {
     return JSON.parse(row.payload) as DealOfTheWeekResponse
@@ -34,8 +31,8 @@ export function readDealOfTheWeekCache(): DealOfTheWeekResponse | null {
   }
 }
 
-export function writeDealOfTheWeekCache(payload: DealOfTheWeekResponse): void {
-  writeStatsCacheRow(DEAL_OF_THE_WEEK_CACHE_KEY, payload)
+export async function writeDealOfTheWeekCache(payload: DealOfTheWeekResponse): Promise<void> {
+  await writeStatsCacheRow(DEAL_OF_THE_WEEK_CACHE_KEY, payload)
 }
 
 /** Rebuild homepage Deal of the Week from SQLite + warm its hero photo. */
@@ -59,7 +56,7 @@ export async function rebuildDealOfTheWeekCache(): Promise<boolean> {
     source,
     dealCache: true,
   }
-  writeDealOfTheWeekCache(response)
+  await writeDealOfTheWeekCache(response)
   setSyncMeta('last_deal_of_the_week_cache', new Date().toISOString())
   await ensureDealPickPhotos(response)
   console.info(

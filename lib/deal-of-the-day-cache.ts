@@ -1,11 +1,11 @@
 import 'server-only'
 
+import { setSyncMeta } from '@/lib/listings-db'
 import {
   clearCacheByPrefix,
   readStatsCacheRow,
-  setSyncMeta,
   writeStatsCacheRow,
-} from '@/lib/listings-db'
+} from '@/lib/db/stats-cache-repo'
 import { fetchActiveListingsForCity, hasLocalListingsCache, isMarketListing } from '@/lib/listings-store'
 import {
   dealListingPhotoUrl,
@@ -72,12 +72,12 @@ export function buildDealOfTheDayResponse(
   }
 }
 
-export function readDealOfTheDayCache(
+export async function readDealOfTheDayCache(
   scope: DealOfTheDayScope,
   kind: DealOfTheDayKind = 'all',
-): DealOfTheDayResponse | null {
+): Promise<DealOfTheDayResponse | null> {
   if (!hasLocalListingsCache()) return null
-  const row = readStatsCacheRow(dealOfTheDayCacheKey(scope, kind))
+  const row = await readStatsCacheRow(dealOfTheDayCacheKey(scope, kind))
   if (!row) return null
   try {
     return JSON.parse(row.payload) as DealOfTheDayResponse
@@ -86,16 +86,16 @@ export function readDealOfTheDayCache(
   }
 }
 
-export function readDealOfTheDayBundle(
+export async function readDealOfTheDayBundle(
   kind: DealOfTheDayKind = 'all',
-): DealOfTheDayBundleResponse | null {
+): Promise<DealOfTheDayBundleResponse | null> {
   if (!hasLocalListingsCache()) return null
 
   const deals: Partial<Record<TmreTown, DealOfTheDayResponse>> = {}
   let generatedAt: string | null = null
 
   for (const town of TMRE_TOWNS) {
-    const cached = readDealOfTheDayCache(town, kind)
+    const cached = await readDealOfTheDayCache(town, kind)
     if (!cached) return null
     deals[town] = cached
     if (!generatedAt || cached.generatedAt > generatedAt) {
@@ -112,12 +112,12 @@ export function readDealOfTheDayBundle(
   }
 }
 
-export function writeDealOfTheDayCache(
+export async function writeDealOfTheDayCache(
   scope: DealOfTheDayScope,
   payload: DealOfTheDayResponse,
   kind: DealOfTheDayKind = 'all',
-): void {
-  writeStatsCacheRow(dealOfTheDayCacheKey(scope, kind), payload)
+): Promise<void> {
+  await writeStatsCacheRow(dealOfTheDayCacheKey(scope, kind), payload)
 }
 
 const CACHE_KINDS: DealOfTheDayKind[] = ['sale', 'rental', 'all']
@@ -148,7 +148,7 @@ async function cacheScopedKinds(
       dealCache: true,
     }
     const warmed = await ensureDealPickPhotos(response)
-    writeDealOfTheDayCache(scope, { ...response, ...warmed }, kind)
+    await writeDealOfTheDayCache(scope, { ...response, ...warmed }, kind)
     written += 1
   }
 
@@ -164,10 +164,10 @@ export async function warmAllDealOfTheDayPhotos(): Promise<number> {
 
   for (const scope of scopes) {
     for (const kind of CACHE_KINDS) {
-      const cached = readDealOfTheDayCache(scope, kind)
+      const cached = await readDealOfTheDayCache(scope, kind)
       if (!cached || dealPickPhotosReady(cached)) continue
       const updated = await ensureDealPickPhotos(cached)
-      writeDealOfTheDayCache(
+      await writeDealOfTheDayCache(
         scope,
         { ...cached, ...updated, source: 'db', dealCache: true },
         kind,
@@ -187,9 +187,9 @@ export async function rebuildDealOfTheDayCache(): Promise<{
   const startedAt = new Date().toISOString()
   setSyncMeta('last_deal_of_the_day_cache_started', startedAt)
   const t0 = Date.now()
-  clearCacheByPrefix(`${DEAL_OF_THE_DAY_CACHE_PREFIX}:`)
+  await clearCacheByPrefix(`${DEAL_OF_THE_DAY_CACHE_PREFIX}:`)
   // Drop legacy unscoped keys from v4.
-  clearCacheByPrefix('deal-of-the-day:v4:')
+  await clearCacheByPrefix('deal-of-the-day:v4:')
 
   if (!hasLocalListingsCache()) {
     return { written: 0, durationMs: Date.now() - t0 }
@@ -253,7 +253,7 @@ export async function rebuildDealOfTheDayCacheIfMissing(): Promise<{
   if (!hasLocalListingsCache()) {
     return { written: 0, durationMs: 0, skipped: true }
   }
-  if (readDealOfTheDayCache('Westport', 'sale')) {
+  if (await readDealOfTheDayCache('Westport', 'sale')) {
     return { written: 0, durationMs: 0, skipped: true }
   }
   return rebuildDealOfTheDayCache()

@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   try {
     if (city === 'All') {
-      const cached = readAggregatedSalesByMonth(kind)
+      const cached = await readAggregatedSalesByMonth(kind)
       if (cached) {
         return NextResponse.json(
           {
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       const generatedAt = new Date().toISOString()
 
       if (source === 'db') {
-        writeStatsCache('sales-by-month', 'All', kind, { ...payload, generatedAt })
+        await writeStatsCache('sales-by-month', 'All', kind, { ...payload, generatedAt })
       }
 
       return NextResponse.json(
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const cached = readStatsCache<ReturnType<typeof computeSalesByMonth> & { generatedAt?: string }>(
+    const cached = await readStatsCache<ReturnType<typeof computeSalesByMonth> & { generatedAt?: string }>(
       'sales-by-month',
       city,
       kind,
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
     const generatedAt = new Date().toISOString()
 
     if (source === 'db') {
-      writeStatsCache('sales-by-month', city, kind, { ...payload, generatedAt })
+      await writeStatsCache('sales-by-month', city, kind, { ...payload, generatedAt })
     }
 
     return NextResponse.json(

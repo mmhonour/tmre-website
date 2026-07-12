@@ -211,11 +211,9 @@ export async function register() {
           console.info('[stats-cache] skipped — listings refresh in progress')
           return
         }
-        try {
-          rebuildStatsCacheIfStale(true)
-        } catch (err) {
+        void rebuildStatsCacheIfStale(true).catch((err) => {
           console.error('[stats-cache/instrumentation]', err)
-        }
+        })
       }
       setTimeout(refreshStats, 20_000)
       setInterval(refreshStats, statsRefreshMs)

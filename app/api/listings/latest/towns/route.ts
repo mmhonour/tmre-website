@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 /** All pre-warmed town feeds (~7 × 30 listings) in one SQLite read. */
 export async function GET() {
   try {
-    const towns = readAllLatestTownFeedCaches(LATEST_TOWN_FEED_LIMIT)
+    const towns = await readAllLatestTownFeedCaches(LATEST_TOWN_FEED_LIMIT)
     const listingCount = Object.values(towns).reduce((n, rows) => n + rows.length, 0)
     return NextResponse.json(
       {

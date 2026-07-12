@@ -1,12 +1,8 @@
 import 'server-only'
 
 import { fetchActiveListingsForCity, fetchClosedListingsForCity } from '@/lib/listings-store'
-import {
-  readListingsFromDb,
-  readStatsCacheRow,
-  setSyncMeta,
-  writeStatsCacheRow,
-} from '@/lib/listings-db'
+import { readListingsFromDb, setSyncMeta } from '@/lib/listings-db'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import type {
   IntelligenceTownSnapshot,
   SnapshotMetric,
@@ -375,9 +371,9 @@ export function townSnapshotCacheKey(town: TmreTown): string {
   return `${TOWN_SNAPSHOT_CACHE_PREFIX}:${town}`
 }
 
-function salesPayloadForTown(town: TmreTown): SalesByMonthPayload | null {
+async function salesPayloadForTown(town: TmreTown): Promise<SalesByMonthPayload | null> {
   // Read stats_cache directly — avoid importing stats-cache (circular with rebuild hook).
-  const row = readStatsCacheRow(statsCacheKey('sales-by-month', town, 'sale'))
+  const row = await readStatsCacheRow(statsCacheKey('sales-by-month', town, 'sale'))
   if (!row) return null
   try {
     const cached = JSON.parse(row.payload) as SalesByMonthPayload
@@ -404,10 +400,10 @@ async function loadTownDisplayListings(town: TmreTown): Promise<IntelligenceDisp
  * Build every TMRE town market snapshot from local SQLite + sales-by-month
  * stats_cache rows, then persist into stats_cache for instant Latest reads.
  */
-export function rebuildIntelligenceTownSnapshots(): {
+export async function rebuildIntelligenceTownSnapshots(): Promise<{
   written: number
   durationMs: number
-} {
+}> {
   const t0 = Date.now()
   const allRows: IntelligenceDisplayListing[] = []
   const monthlySales: Record<string, number> = {}
@@ -421,7 +417,7 @@ export function rebuildIntelligenceTownSnapshots(): {
     )
     allRows.push(...rows)
 
-    const fromStats = salesPayloadForTown(town)
+    const fromStats = await salesPayloadForTown(town)
     if (fromStats) {
       const avg = avgMonthlySalesFromPayload(fromStats.data)
       if (avg != null) monthlySales[town] = avg
@@ -454,7 +450,7 @@ export function rebuildIntelligenceTownSnapshots(): {
       benchmarks,
       closedThisWeekByTown[town] ?? 0,
     )
-    writeStatsCacheRow(townSnapshotCacheKey(town), {
+    await writeStatsCacheRow(townSnapshotCacheKey(town), {
       snapshot,
       generatedAt: new Date().toISOString(),
     })
@@ -472,15 +468,15 @@ export function rebuildIntelligenceTownSnapshots(): {
   return { written, durationMs: Date.now() - t0 }
 }
 
-export function readCachedIntelligenceTownSnapshot(
+export async function readCachedIntelligenceTownSnapshot(
   townInput: string,
-): IntelligenceTownSnapshot | null {
+): Promise<IntelligenceTownSnapshot | null> {
   if (!isTmreTown(townInput)) return null
 
   const mem = snapshotCache.get(townInput)
   if (mem && mem.expiresAt > Date.now()) return mem.snapshot
 
-  const row = readStatsCacheRow(townSnapshotCacheKey(townInput))
+  const row = await readStatsCacheRow(townSnapshotCacheKey(townInput))
   if (!row) return null
   try {
     const parsed = JSON.parse(row.payload) as {
@@ -497,10 +493,10 @@ export function readCachedIntelligenceTownSnapshot(
   }
 }
 
-export function readAllCachedIntelligenceTownSnapshots(): IntelligenceTownSnapshot[] {
+export async function readAllCachedIntelligenceTownSnapshots(): Promise<IntelligenceTownSnapshot[]> {
   const out: IntelligenceTownSnapshot[] = []
   for (const town of TMRE_TOWNS) {
-    const snapshot = readCachedIntelligenceTownSnapshot(town)
+    const snapshot = await readCachedIntelligenceTownSnapshot(town)
     if (snapshot) out.push(snapshot)
   }
   return out
@@ -511,12 +507,12 @@ export async function getIntelligenceTownSnapshot(
 ): Promise<IntelligenceTownSnapshot | null> {
   if (!isTmreTown(townInput)) return null
 
-  const cached = readCachedIntelligenceTownSnapshot(townInput)
+  const cached = await readCachedIntelligenceTownSnapshot(townInput)
   if (cached) return cached
 
   // Cache miss — rebuild all town snapshots once from SQLite, then re-read.
   try {
-    rebuildIntelligenceTownSnapshots()
+    await rebuildIntelligenceTownSnapshots()
   } catch (err) {
     console.error('[town-snapshots] rebuild on miss failed', err)
   }
@@ -539,7 +535,7 @@ export async function computeIntelligenceTownSnapshotLive(
       allRows.push(...rows)
 
       try {
-        const fromStats = salesPayloadForTown(town)
+        const fromStats = await salesPayloadForTown(town)
         if (fromStats) {
           const avg = avgMonthlySalesFromPayload(fromStats.data)
           if (avg != null) monthlySales[town] = avg

@@ -295,14 +295,14 @@ export async function fetchLatestUpdatedListings(options: {
   // Instant path for default /latest: last warm from the 30-minute DB refresh.
   if (!town && !options.since && !options.bypassGlobalFeedCache) {
     const { readLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
-    const cached = readLatestGlobalFeedCache(cap)
+    const cached = await readLatestGlobalFeedCache(cap)
     if (cached) return cached
   }
 
   // Instant path for Latest town clicks: prebuilt during the background warm.
   if (town && !options.since && !options.bypassTownFeedCache) {
     const { readLatestTownFeedCache } = await import('@/lib/latest-town-feed-cache')
-    const cached = readLatestTownFeedCache(town, cap)
+    const cached = await readLatestTownFeedCache(town, cap)
     if (cached) return cached
   }
 
@@ -331,7 +331,7 @@ export async function fetchLatestUpdatedListings(options: {
   ) {
     try {
       const { writeLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
-      writeLatestGlobalFeedCache(sorted)
+      await writeLatestGlobalFeedCache(sorted)
     } catch {
       /* ignore — warm will rewrite later */
     }

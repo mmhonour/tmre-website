@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   try {
     const kind: ListingKind = parseListingKindParam(searchParams.get('kind'))
 
-    const cached = readStatsCache<{ listings: MedianListingRow[]; generatedAt?: string }>(
+    const cached = await readStatsCache<{ listings: MedianListingRow[]; generatedAt?: string }>(
       'market-stats-listings',
       city,
       kind,
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
       })
 
     if (source === 'db') {
-      writeStatsCache('market-stats-listings', city, kind, {
+      await writeStatsCache('market-stats-listings', city, kind, {
         listings: rows,
         generatedAt: new Date().toISOString(),
       })

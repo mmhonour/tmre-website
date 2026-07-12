@@ -145,7 +145,7 @@ async function runOverdueJob(job: OverdueSyncJob): Promise<OverdueSyncCatchupSte
   if (job === 'edge-scores') {
     const { rebuildAllListingEdgeScores } = await import('@/lib/listing-edge-score')
     try {
-      const result = rebuildAllListingEdgeScores()
+      const result = await rebuildAllListingEdgeScores()
       return {
         job,
         ok: true,

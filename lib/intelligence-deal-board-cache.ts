@@ -8,14 +8,13 @@ import {
   publishListingsReadSnapshot,
   readListingsFromDb,
   readListingScoresByIds,
-  readStatsCacheRow,
   getSyncMeta,
   setSyncMeta,
   tryGetWriteDb,
   upsertListingScores,
-  writeStatsCacheRow,
 } from '@/lib/listings-db'
 import { readListingSuperlativesByMlsIds } from '@/lib/db/listings-repo'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
@@ -141,7 +140,7 @@ function avgMonthlySalesFromPayload(
   return recent.reduce((a, b) => a + b, 0) / recent.length
 }
 
-function readTownSalesMeta(town: TmreTown): IntelligenceDealBoardTownMeta {
+async function readTownSalesMeta(town: TmreTown): Promise<IntelligenceDealBoardTownMeta> {
   const empty: IntelligenceDealBoardTownMeta = {
     avgMonthlySalesSale: 0,
     avgMonthlySalesRental: 0,
@@ -151,7 +150,7 @@ function readTownSalesMeta(town: TmreTown): IntelligenceDealBoardTownMeta {
     closedThisWeekByZipRental: {},
   }
   for (const kind of ['sale', 'rental'] as const) {
-    const row = readStatsCacheRow(statsCacheKey('sales-by-month', town, kind))
+    const row = await readStatsCacheRow(statsCacheKey('sales-by-month', town, kind))
     if (!row?.payload) continue
     try {
       const payload = JSON.parse(row.payload) as {
@@ -314,7 +313,7 @@ async function buildTownBoard(
   return attachIntelligenceBoardInsights(rows)
 }
 
-export function readIntelligenceDealBoardCache(): IntelligenceDealBoardPayload | null {
+export async function readIntelligenceDealBoardCache(): Promise<IntelligenceDealBoardPayload | null> {
   // Gate on the write DB — that is where stats_cache (and therefore the deal
   // board cache row) lives.  hasLocalListingsCache() previously gated on the
   // READ DB (tryGetReadDb), which instrumentation.ts does NOT restore on cold
@@ -322,7 +321,7 @@ export function readIntelligenceDealBoardCache(): IntelligenceDealBoardPayload |
   // This caused the intelligence page to return 404 on every Lambda cold-start
   // even though the cache was safely stored in the write DB blob.
   if (!tryGetWriteDb()) return null
-  const row = readStatsCacheRow(INTELLIGENCE_DEAL_BOARD_CACHE_KEY)
+  const row = await readStatsCacheRow(INTELLIGENCE_DEAL_BOARD_CACHE_KEY)
   if (!row?.payload) return null
   try {
     const parsed = JSON.parse(row.payload) as IntelligenceDealBoardPayload
@@ -347,7 +346,7 @@ export async function rebuildIntelligenceDealBoardCache(
     if (!isTmreTown(town)) continue
     const rows = await buildTownBoard(town, limit)
     towns[town] = rows
-    meta[town] = readTownSalesMeta(town)
+    meta[town] = await readTownSalesMeta(town)
     listingCount += rows.length
   }
 
@@ -356,7 +355,7 @@ export async function rebuildIntelligenceDealBoardCache(
   // town-by-town-partial or fully empty DB. Never let that clobber a healthy
   // cache — the public API caches this response for minutes, so an empty
   // write here would blank the site for every visitor.
-  const previous = readIntelligenceDealBoardCache()
+  const previous = await readIntelligenceDealBoardCache()
   const previousCount = previous
     ? TMRE_TOWNS.reduce((sum, town) => sum + (previous.towns[town]?.length ?? 0), 0)
     : 0
@@ -380,7 +379,7 @@ export async function rebuildIntelligenceDealBoardCache(
     towns,
     meta,
   }
-  writeStatsCacheRow(INTELLIGENCE_DEAL_BOARD_CACHE_KEY, payload)
+  await writeStatsCacheRow(INTELLIGENCE_DEAL_BOARD_CACHE_KEY, payload)
   setSyncMeta('last_intelligence_deal_board', generatedAt)
   publishListingsReadSnapshot()
 

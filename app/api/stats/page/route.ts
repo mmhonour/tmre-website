@@ -39,10 +39,10 @@ export type StatsPageResponse = {
   towns: Record<TmreTown, StatsPageTownPayload>
 }
 
-function readTownBundle(town: TmreTown, kind: ListingKind): StatsPageTownPayload {
-  const marketStats = readStatsCache<MarketStatsPayload>('market-stats', town, kind)
-  const vintage = readStatsCache<VintagePayload>('sales-by-vintage', town, kind)
-  const listingsPayload = readStatsCache<ListingsPayload>('market-stats-listings', town, kind)
+async function readTownBundle(town: TmreTown, kind: ListingKind): Promise<StatsPageTownPayload> {
+  const marketStats = await readStatsCache<MarketStatsPayload>('market-stats', town, kind)
+  const vintage = await readStatsCache<VintagePayload>('sales-by-vintage', town, kind)
+  const listingsPayload = await readStatsCache<ListingsPayload>('market-stats-listings', town, kind)
   return {
     marketStats,
     vintage,
@@ -74,7 +74,9 @@ export async function GET(req: NextRequest) {
     scheduleStatsCacheRebuildIfStale()
 
     const towns = Object.fromEntries(
-      TMRE_TOWNS.map((town) => [town, readTownBundle(town, kind)]),
+      await Promise.all(
+        TMRE_TOWNS.map(async (town) => [town, await readTownBundle(town, kind)] as const),
+      ),
     ) as Record<TmreTown, StatsPageTownPayload>
 
     const stillEmpty = !TMRE_TOWNS.some(
@@ -87,10 +89,10 @@ export async function GET(req: NextRequest) {
       Object.assign(towns, Object.fromEntries(live))
     }
 
-    const servedFromCache = TMRE_TOWNS.some((town) => {
-      const cached = readStatsCache<MarketStatsPayload>('market-stats', town, kind)
-      return cached?.medianPrice != null
-    })
+    const marketByTown = await Promise.all(
+      TMRE_TOWNS.map((town) => readStatsCache<MarketStatsPayload>('market-stats', town, kind)),
+    )
+    const servedFromCache = marketByTown.some((cached) => cached?.medianPrice != null)
 
     const generatedAt =
       towns[TMRE_TOWNS[0]]?.marketStats?.generatedAt ??

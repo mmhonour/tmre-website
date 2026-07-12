@@ -25,8 +25,8 @@ function heroPhotoPreloadUrls(rows: LatestListingRow[], limit = 12): string[] {
 }
 
 export default async function LatestPage() {
-  const initialListings = readLatestGlobalFeedCache(30) ?? [];
-  const initialTownFeeds = readAllLatestTownFeedCaches();
+  const initialListings = (await readLatestGlobalFeedCache(30)) ?? [];
+  const initialTownFeeds = await readAllLatestTownFeedCaches();
   const initialTownStats = await fetchTownUpdateStats();
   const photoPreloads = heroPhotoPreloadUrls(initialListings);
   for (const href of photoPreloads) {

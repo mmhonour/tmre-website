@@ -8,10 +8,10 @@ import {
   listingRowId,
   publishListingsReadSnapshot,
   readAllListingsFromDb,
-  readStatsCacheRow,
   setSyncMeta,
   upsertListingEdgeScores,
 } from '@/lib/listings-db'
+import { readStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'
@@ -199,8 +199,8 @@ export function buildZipAggregates(listings: readonly Listing[]): Map<string, Zi
   return out
 }
 
-function readCachedFinishQualityTier(mlsId: string): FinishQualityTier | null {
-  const row = readStatsCacheRow(`${FINISH_QUALITY_CACHE_PREFIX}:${mlsId.trim()}`)
+async function readCachedFinishQualityTier(mlsId: string): Promise<FinishQualityTier | null> {
+  const row = await readStatsCacheRow(`${FINISH_QUALITY_CACHE_PREFIX}:${mlsId.trim()}`)
   if (!row) return null
   try {
     const parsed = JSON.parse(row.payload) as { tier?: string }
@@ -382,10 +382,12 @@ export function computeEdgeScoreForListing(
   }
 }
 
-function buildEdgeScoreContext(listings: readonly Listing[]): EdgeScoreContext {
+async function buildEdgeScoreContext(
+  listings: readonly Listing[],
+): Promise<EdgeScoreContext> {
   const finishQualityByMlsId = new Map<string, FinishQualityTier | null>()
   for (const listing of listings) {
-    finishQualityByMlsId.set(listing.mlsId, readCachedFinishQualityTier(listing.mlsId))
+    finishQualityByMlsId.set(listing.mlsId, await readCachedFinishQualityTier(listing.mlsId))
   }
   return {
     zipAggregates: buildZipAggregates(listings),
@@ -404,7 +406,7 @@ export type ListingEdgeScoresRebuildResult = {
  * Score every Active + Closed listing from SQLite using metadata, zip benchmarks,
  * remarks, and cached finish-quality assessments (no per-request RETS or vision).
  */
-export function rebuildAllListingEdgeScores(): ListingEdgeScoresRebuildResult {
+export async function rebuildAllListingEdgeScores(): Promise<ListingEdgeScoresRebuildResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
 
@@ -412,7 +414,7 @@ export function rebuildAllListingEdgeScores(): ListingEdgeScoresRebuildResult {
     ...readAllListingsFromDb(TMRE_TOWNS, 'Active'),
     ...readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
   ]
-  const context = buildEdgeScoreContext(pool)
+  const context = await buildEdgeScoreContext(pool)
   const computedAt = new Date().toISOString()
 
   const rows = pool
@@ -464,7 +466,7 @@ export function warmListingEdgeScoresDeferred(): void {
   void (async () => {
     try {
       await new Promise((r) => setTimeout(r, 5_000))
-      rebuildAllListingEdgeScores()
+      await rebuildAllListingEdgeScores()
     } catch (err) {
       console.error('[listing-edge-scores] deferred rebuild failed', err)
     } finally {

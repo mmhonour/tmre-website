@@ -11,10 +11,10 @@ export const dynamic = 'force-dynamic'
 /** Slim scored deal-board payload for /intelligence — served from stats_cache. */
 export async function GET() {
   try {
-    let board = readIntelligenceDealBoardCache()
+    let board = await readIntelligenceDealBoardCache()
     if (!board) {
       await rebuildIntelligenceDealBoardCache()
-      board = readIntelligenceDealBoardCache()
+      board = await readIntelligenceDealBoardCache()
     }
     if (!board) {
       return NextResponse.json({ error: 'Deal board cache unavailable' }, { status: 404 })

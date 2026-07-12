@@ -4,12 +4,8 @@ import {
   fetchLatestUpdatedListings,
   type LatestListingRow,
 } from '@/lib/latest-listings'
-import {
-  publishListingsReadSnapshot,
-  readStatsCacheRow,
-  setSyncMeta,
-  writeStatsCacheRow,
-} from '@/lib/listings-db'
+import { publishListingsReadSnapshot, setSyncMeta } from '@/lib/listings-db'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { readLatestGlobalFeedCache } from '@/lib/latest-feed-cache'
 import { warmLatestHeroPhotosDeferred } from '@/lib/latest-hero-photo-warm'
@@ -41,11 +37,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Read every warmed town feed in one pass (bundle first, then per-town keys). */
-export function readAllLatestTownFeedCaches(
+export async function readAllLatestTownFeedCaches(
   limit = LATEST_TOWN_FEED_LIMIT,
-): Record<string, LatestListingRow[]> {
+): Promise<Record<string, LatestListingRow[]>> {
   const cap = Math.min(Math.max(limit, 1), 250)
-  const bundleRow = readStatsCacheRow(LATEST_TOWN_FEEDS_BUNDLE_KEY)
+  const bundleRow = await readStatsCacheRow(LATEST_TOWN_FEEDS_BUNDLE_KEY)
   if (bundleRow?.payload) {
     try {
       const parsed = JSON.parse(bundleRow.payload) as LatestTownFeedsBundlePayload
@@ -65,31 +61,31 @@ export function readAllLatestTownFeedCaches(
 
   const out: Record<string, LatestListingRow[]> = {}
   for (const town of TMRE_TOWNS) {
-    const rows = readLatestTownFeedCache(town, cap)
+    const rows = await readLatestTownFeedCache(town, cap)
     if (rows?.length) out[town] = rows
   }
   return out
 }
 
-function writeLatestTownFeedsBundleCache(
+async function writeLatestTownFeedsBundleCache(
   towns: Record<string, LatestListingRow[]>,
-): void {
+): Promise<void> {
   const payload: LatestTownFeedsBundlePayload = {
     version: 1,
     towns,
     generatedAt: new Date().toISOString(),
   }
-  writeStatsCacheRow(LATEST_TOWN_FEEDS_BUNDLE_KEY, payload)
+  await writeStatsCacheRow(LATEST_TOWN_FEEDS_BUNDLE_KEY, payload)
 }
 
 /** Read a prebuilt Latest town feed from stats_cache (instant path). */
-export function readLatestTownFeedCache(
+export async function readLatestTownFeedCache(
   town: string,
   limit = LATEST_TOWN_FEED_LIMIT,
-): LatestListingRow[] | null {
+): Promise<LatestListingRow[] | null> {
   const key = town.trim()
   if (!key) return null
-  const row = readStatsCacheRow(townFeedCacheKey(key))
+  const row = await readStatsCacheRow(townFeedCacheKey(key))
   if (!row?.payload) return null
 
   try {
@@ -113,7 +109,7 @@ async function rebuildSingleTownFeedCache(
     allowLiveScore: false,
   })
   if (listings.length === 0) {
-    const existing = readLatestTownFeedCache(town, limit)
+    const existing = await readLatestTownFeedCache(town, limit)
     if (existing && existing.length > 0) {
       console.warn(
         `[latest-town-feed] ${town}: skipped empty overwrite — keeping last good cache`,
@@ -129,7 +125,7 @@ async function rebuildSingleTownFeedCache(
     listings,
     generatedAt,
   }
-  writeStatsCacheRow(townFeedCacheKey(town), payload)
+  await writeStatsCacheRow(townFeedCacheKey(town), payload)
   return { town, listings }
 }
 
@@ -174,7 +170,7 @@ export async function rebuildLatestTownFeedCaches(options: {
           `[latest-town-feed] ${town} rebuild failed`,
           err instanceof Error ? err.message : err,
         )
-        const existing = readLatestTownFeedCache(town, limit)
+        const existing = await readLatestTownFeedCache(town, limit)
         return existing?.length ? { town, listings: existing } : null
       }
     }),
@@ -188,7 +184,7 @@ export async function rebuildLatestTownFeedCaches(options: {
   }
 
   if (townsDone > 0) {
-    writeLatestTownFeedsBundleCache(bundleTowns)
+    await writeLatestTownFeedsBundleCache(bundleTowns)
     const finishedAt = new Date().toISOString()
     setSyncMeta('last_latest_town_feeds', finishedAt)
     publishListingsReadSnapshot()
@@ -202,7 +198,7 @@ export async function rebuildLatestTownFeedCaches(options: {
   if (townsDone > 0) {
     warmLatestHeroPhotosDeferred({
       townFeeds: bundleTowns,
-      globalListings: readLatestGlobalFeedCache(limit) ?? [],
+      globalListings: (await readLatestGlobalFeedCache(limit)) ?? [],
     })
   }
 

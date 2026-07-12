@@ -11,10 +11,10 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    let cached = readDealOfTheWeekCache()
+    let cached = await readDealOfTheWeekCache()
     if (!cached) {
       await rebuildDealOfTheWeekCache()
-      cached = readDealOfTheWeekCache()
+      cached = await readDealOfTheWeekCache()
     }
     if (!cached) {
       return NextResponse.json(

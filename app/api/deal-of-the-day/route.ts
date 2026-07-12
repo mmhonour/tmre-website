@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
   // Pinned listing is a one-off view — not cached. Everything else is SQLite-first.
   if (!listingId) {
     if (bundle && !town) {
-      const bundled = readDealOfTheDayBundle(kindKey)
+      const bundled = await readDealOfTheDayBundle(kindKey)
       if (bundled) {
         for (const deal of Object.values(bundled.deals)) {
           if (deal) maybeWarmPhotosInBackground(deal)
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const cached = readDealOfTheDayCache(scope, kindKey)
+    const cached = await readDealOfTheDayCache(scope, kindKey)
     if (cached) {
       maybeWarmPhotosInBackground(cached)
       return NextResponse.json(
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (source === 'db' && !listingId) {
-      writeDealOfTheDayCache(scope, response as DealOfTheDayResponse, kindKey)
+      await writeDealOfTheDayCache(scope, response as DealOfTheDayResponse, kindKey)
     }
 
     maybeWarmPhotosInBackground(response)

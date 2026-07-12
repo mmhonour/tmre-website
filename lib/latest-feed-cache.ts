@@ -4,12 +4,8 @@ import {
   fetchLatestUpdatedListings,
   type LatestListingRow,
 } from '@/lib/latest-listings'
-import {
-  publishListingsReadSnapshot,
-  readStatsCacheRow,
-  setSyncMeta,
-  writeStatsCacheRow,
-} from '@/lib/listings-db'
+import { publishListingsReadSnapshot, setSyncMeta } from '@/lib/listings-db'
+import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */
 export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v1:global'
@@ -22,10 +18,10 @@ export type LatestGlobalFeedCachePayload = {
 }
 
 /** Instant path for the default /latest view. */
-export function readLatestGlobalFeedCache(
+export async function readLatestGlobalFeedCache(
   limit = LATEST_GLOBAL_FEED_LIMIT,
-): LatestListingRow[] | null {
-  const row = readStatsCacheRow(LATEST_GLOBAL_FEED_CACHE_KEY)
+): Promise<LatestListingRow[] | null> {
+  const row = await readStatsCacheRow(LATEST_GLOBAL_FEED_CACHE_KEY)
   if (!row?.payload) return null
 
   try {
@@ -39,9 +35,11 @@ export function readLatestGlobalFeedCache(
 }
 
 /** Persist only non-empty feeds so a bad warm cannot wipe the last good ticker. */
-export function writeLatestGlobalFeedCache(listings: LatestListingRow[]): boolean {
+export async function writeLatestGlobalFeedCache(
+  listings: LatestListingRow[],
+): Promise<boolean> {
   if (listings.length === 0) {
-    const existing = readLatestGlobalFeedCache(LATEST_GLOBAL_FEED_LIMIT)
+    const existing = await readLatestGlobalFeedCache(LATEST_GLOBAL_FEED_LIMIT)
     if (existing && existing.length > 0) {
       console.warn(
         '[latest-feed] skipped empty global overwrite — keeping last good cache',
@@ -55,7 +53,7 @@ export function writeLatestGlobalFeedCache(listings: LatestListingRow[]): boolea
     listings,
     generatedAt: new Date().toISOString(),
   }
-  writeStatsCacheRow(LATEST_GLOBAL_FEED_CACHE_KEY, payload)
+  await writeStatsCacheRow(LATEST_GLOBAL_FEED_CACHE_KEY, payload)
   setSyncMeta('last_latest_global_feed', payload.generatedAt)
   return true
 }
@@ -71,7 +69,7 @@ export async function rebuildLatestGlobalFeedCache(
     bypassGlobalFeedCache: true,
     bypassTownFeedCache: true,
   })
-  writeLatestGlobalFeedCache(listings)
+  await writeLatestGlobalFeedCache(listings)
   publishListingsReadSnapshot()
   const durationMs = Date.now() - t0
   console.info(

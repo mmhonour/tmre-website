@@ -11,10 +11,10 @@ export const dynamic = 'force-dynamic'
 /** Bulk town market snapshots for Latest sidebar — served from stats_cache. */
 export async function GET() {
   try {
-    let snapshots = readAllCachedIntelligenceTownSnapshots()
+    let snapshots = await readAllCachedIntelligenceTownSnapshots()
     if (snapshots.length === 0) {
-      rebuildIntelligenceTownSnapshots()
-      snapshots = readAllCachedIntelligenceTownSnapshots()
+      await rebuildIntelligenceTownSnapshots()
+      snapshots = await readAllCachedIntelligenceTownSnapshots()
     }
     return NextResponse.json(
       {

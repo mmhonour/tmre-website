@@ -17,11 +17,11 @@ import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function bundleFromTownCaches(kind: ListingKind): ActiveByMonthByTownPayload | null {
+async function bundleFromTownCaches(kind: ListingKind): Promise<ActiveByMonthByTownPayload | null> {
   const towns = {} as Record<TmreTown, ActiveByMonthByTownPayload['towns'][string]>
   let found = false
   for (const town of TMRE_TOWNS) {
-    const row = readStatsCache<ReturnType<typeof computeActiveByMonth>>('active-by-month', town, kind)
+    const row = await readStatsCache<ReturnType<typeof computeActiveByMonth>>('active-by-month', town, kind)
     if (row?.data) {
       towns[town] = row.data
       found = true
@@ -53,18 +53,18 @@ export async function GET(req: NextRequest) {
   try {
     scheduleStatsCacheRebuildIfStale()
 
-    let payload = readActiveByMonthByTown(kind)
+    let payload = await readActiveByMonthByTown(kind)
     let servedFromCache = Boolean(payload)
 
     if (!payload) {
-      payload = bundleFromTownCaches(kind)
+      payload = await bundleFromTownCaches(kind)
       servedFromCache = Boolean(payload)
     }
 
     if (!payload) {
       const live = await bundleLive(kind)
       const generatedAt = new Date().toISOString()
-      writeStatsCache('active-by-month-by-town', 'All', kind, { ...live, generatedAt })
+      await writeStatsCache('active-by-month-by-town', 'All', kind, { ...live, generatedAt })
       return NextResponse.json(
         { ...live, generatedAt, source: 'rets', statsCache: false },
         { headers: { ...listingCacheHeaders('rets'), 'X-Stats-Cache': 'miss' } },

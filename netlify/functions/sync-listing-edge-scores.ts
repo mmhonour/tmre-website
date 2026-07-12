@@ -12,7 +12,7 @@ export default async function handler() {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listing-edge-scores' })
     const ranEdge =
       !catchup.skipped && catchup.steps.some((step) => step.job === 'edge-scores')
-    const result = ranEdge ? null : rebuildAllListingEdgeScores()
+    const result = ranEdge ? null : await rebuildAllListingEdgeScores()
     return new Response(
       JSON.stringify({
         ok: true,

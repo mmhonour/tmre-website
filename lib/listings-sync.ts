@@ -520,7 +520,7 @@ async function finalizeStepSuperlatives(): Promise<void> {
 
 async function finalizeStepStatsCache(): Promise<void> {
   const { rebuildStatsCache } = await import('@/lib/stats-cache')
-  rebuildStatsCache({ trackRefresh: false })
+  await rebuildStatsCache({ trackRefresh: false })
 }
 
 async function finalizeStepDealOfDay(): Promise<void> {
@@ -548,7 +548,7 @@ async function finalizeStepIfEstimates(): Promise<void> {
 
 async function finalizeStepEdgeScores(): Promise<void> {
   const { rebuildAllListingEdgeScores } = await import('@/lib/listing-edge-score')
-  rebuildAllListingEdgeScores()
+  await rebuildAllListingEdgeScores()
 }
 
 /** Already-deferred/fire-and-forget warms — kept fire-and-forget, just triggered from the last step. */
