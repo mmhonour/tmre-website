@@ -4,17 +4,14 @@ import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import { attachIntelligenceBoardInsights } from '@/lib/intelligence-board-insights'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import {
+  hasListingsData,
   listingRowId,
-  publishListingsReadSnapshot,
-  tryGetWriteDb,
-} from '@/lib/listings-db'
-import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
-import {
   readListingScoresByIds,
   readListingsFromDb,
   readListingSuperlativesByMlsIds,
   upsertListingScores,
 } from '@/lib/db/listings-repo'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
 import type { Listing } from '@/lib/rets'
@@ -314,13 +311,7 @@ async function buildTownBoard(
 }
 
 export async function readIntelligenceDealBoardCache(): Promise<IntelligenceDealBoardPayload | null> {
-  // Gate on the write DB — that is where stats_cache (and therefore the deal
-  // board cache row) lives.  hasLocalListingsCache() previously gated on the
-  // READ DB (tryGetReadDb), which instrumentation.ts does NOT restore on cold
-  // starts (only the write DB is restored via ensureListingsDbHydrated).
-  // This caused the intelligence page to return 404 on every Lambda cold-start
-  // even though the cache was safely stored in the write DB blob.
-  if (!tryGetWriteDb()) return null
+  if (!(await hasListingsData())) return null
   const row = await readStatsCacheRow(INTELLIGENCE_DEAL_BOARD_CACHE_KEY)
   if (!row?.payload) return null
   try {
@@ -381,7 +372,6 @@ export async function rebuildIntelligenceDealBoardCache(
   }
   await writeStatsCacheRow(INTELLIGENCE_DEAL_BOARD_CACHE_KEY, payload)
   setSyncMeta('last_intelligence_deal_board', generatedAt)
-  publishListingsReadSnapshot()
 
   const durationMs = Date.now() - t0
   console.info(

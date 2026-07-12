@@ -4,10 +4,7 @@ import { FINISH_QUALITY_CACHE_PREFIX } from '@/lib/finish-quality'
 import type { FinishQualityTier } from '@/lib/finish-quality-types'
 import { kindOf } from '@/lib/goldilocks'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
-import {
-  listingRowId,
-  publishListingsReadSnapshot,
-} from '@/lib/listings-db'
+import { listingRowId } from '@/lib/db/listings-repo'
 import {
   readAllListingsFromDb,
   upsertListingEdgeScores,
@@ -443,10 +440,6 @@ export async function rebuildAllListingEdgeScores(): Promise<ListingEdgeScoresRe
   const scored = await upsertListingEdgeScores(rows)
   setSyncMeta('edge_score_algo_version', String(EDGE_SCORE_ALGO_VERSION))
   setSyncMeta('last_listing_edge_scores', computedAt)
-  if (scored > 0) {
-    publishListingsReadSnapshot()
-  }
-
   const durationMs = Date.now() - t0
   console.info(
     `[listing-edge-scores] rebuilt ${scored} scores in ${durationMs}ms`,

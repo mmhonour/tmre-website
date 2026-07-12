@@ -10,10 +10,7 @@ import type {
   ComparableListing,
   ComparablesResult,
 } from '@/lib/listing-comparables-shared'
-import {
-  listingRowId,
-  publishListingsReadSnapshot,
-} from '@/lib/listings-db'
+import { listingRowId } from '@/lib/db/listings-repo'
 import {
   readAllListingsFromDb,
   readListingRelations,
@@ -308,8 +305,6 @@ export async function rebuildComparableEdges(options: {
   const finishedAt = new Date().toISOString()
   setSyncMeta('comps_edges_algo_version', String(COMPS_EDGES_ALGO_VERSION))
   setSyncMeta('last_comps_edges', finishedAt)
-  // API reads use the snapshot — publish once after the full edge rebuild.
-  publishListingsReadSnapshot()
   const durationMs = Date.now() - t0
   console.info(
     `[comps-edges] rebuilt ${subjects} subjects / ${edges} edges in ${durationMs}ms`,

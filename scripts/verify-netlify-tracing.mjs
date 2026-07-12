@@ -2,12 +2,11 @@
 /**
  * Post-build check: ensure Netlify-critical files appear in Next.js trace manifests.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 const ROOT = process.cwd()
 const SERVER_APP = path.join(ROOT, '.next', 'server', 'app')
-const BUNDLE_PATH = path.join(ROOT, 'data', 'listings.bundle.db')
 const SQLITE_GLOBS = [
   'node_modules/better-sqlite3',
   'node_modules/bindings',
@@ -33,12 +32,6 @@ function tracedPaths(nftPath) {
 function main() {
   const issues = []
 
-  if (!existsSync(BUNDLE_PATH)) {
-    issues.push('data/listings.bundle.db missing — run prepare-netlify-bundle first')
-  } else if (statSync(BUNDLE_PATH).size < 50_000) {
-    issues.push(`data/listings.bundle.db too small (${statSync(BUNDLE_PATH).size} bytes)`)
-  }
-
   const nftFiles = collectNftFiles(SERVER_APP)
   if (nftFiles.length === 0) {
     issues.push('.next/server/app trace manifests not found — was next build run?')
@@ -47,9 +40,6 @@ function main() {
     const sample = adminNft ?? nftFiles[0]
     const traced = new Set(tracedPaths(sample))
 
-    if (![...traced].some((p) => p.includes('data/listings.bundle.db'))) {
-      issues.push(`bundle not traced in ${path.relative(ROOT, sample)}`)
-    }
     for (const needle of SQLITE_GLOBS) {
       if (![...traced].some((p) => p.includes(needle))) {
         issues.push(`${needle} not traced in ${path.relative(ROOT, sample)}`)
@@ -63,7 +53,7 @@ function main() {
     process.exit(1)
   }
 
-  console.info('[verify-netlify-tracing] OK — bundle and better-sqlite3 traced for serverless')
+  console.info('[verify-netlify-tracing] OK — better-sqlite3 traced for listing-photos SQLite')
 }
 
 main()

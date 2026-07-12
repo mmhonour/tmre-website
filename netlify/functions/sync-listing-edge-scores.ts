@@ -1,6 +1,6 @@
 import type { Config } from '@netlify/functions'
 import { rebuildAllListingEdgeScores } from '../../lib/listing-edge-score'
-import { getListingsDbStats } from '../../lib/listings-db'
+import { readListingsDbStats } from '../../lib/db/listings-repo'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 
 /**
@@ -19,7 +19,7 @@ export default async function handler() {
         mode: 'edge-scores',
         skippedScheduled: result == null,
         ...(result ?? { scored: 0, durationMs: 0 }),
-        stats: getListingsDbStats(),
+        stats: await readListingsDbStats(),
         overdueCatchup: catchup.skipped
           ? { skipped: true, reason: catchup.reason }
           : { skipped: false, plan: catchup.plan, steps: catchup.steps },

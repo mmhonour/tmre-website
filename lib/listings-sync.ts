@@ -532,7 +532,7 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
   const totalListings = await countListings()
   await captureInventorySnapshot()
   endSqliteRefresh(finishedAt)
-  const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
+  const { clearChunkedFullResyncProgress } = await import('@/lib/db/chunked-resync-progress')
   await clearChunkedFullResyncProgress()
   void warmActiveListingPhotosDeferred()
   return { totalListings }
@@ -672,7 +672,7 @@ export async function syncFullResyncTown(town: TmreTown): Promise<TownSyncResult
     beginSqliteRefresh('full-sync-chunked')
     setSyncMeta('last_full_sync_started', new Date().toISOString())
     deleteSyncMeta('last_full_sync')
-    const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
+    const { clearChunkedFullResyncProgress } = await import('@/lib/db/chunked-resync-progress')
     await clearChunkedFullResyncProgress()
   }
   const results = await syncFullResyncTownBuckets(town)
@@ -691,7 +691,7 @@ export async function finalizeChunkedFullResync(): Promise<FullSyncResult> {
     markPostDeployFullResyncComplete()
     const total = await countListings()
     await captureInventorySnapshot()
-    const { clearChunkedFullResyncProgress } = await import('@/lib/listings-db-persist')
+    const { clearChunkedFullResyncProgress } = await import('@/lib/db/chunked-resync-progress')
     await clearChunkedFullResyncProgress()
     console.info(
       `[listings-sync] chunked full resync complete in ${Date.now() - t0}ms — ${total} listings`,

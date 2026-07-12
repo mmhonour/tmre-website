@@ -22,7 +22,4 @@ export function writeSpotlightPrivacyOverrides(
   overrides: import('@/lib/spotlight-privacy-shared').SpotlightPrivacyOverrides,
 ): void {
   setSyncMeta(SPOTLIGHT_PRIVACY_SYNC_KEY, JSON.stringify(overrides))
-  void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
-    scheduleListingsDbBlobPersist('spotlight-privacy-overrides'),
-  )
 }

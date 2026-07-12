@@ -1,6 +1,6 @@
 [build]
-  # Prepare bundled SQLite artifact, rebuild native bindings for Lambda, then build.
-  # Runtime sync uses Netlify scheduled functions; bundle seeds /tmp on cold starts.
+  # Rebuild native bindings for listing-photos SQLite, then build.
+  # MLS inventory persists in Neon Postgres across deploys.
   command = "npm run build:netlify"
 
 [build.environment]
@@ -23,15 +23,15 @@
     "node_modules/bindings/**",
   ]
 
-# Bundle only on scheduled sync handlers — not global (avoids duplicate copy in Next server handler).
+# Scheduled sync handlers — no listings.bundle.db (Postgres holds inventory).
 [functions."sync-listings"]
-  included_files = ["data/listings.bundle.db"]
+  included_files = []
 
 [functions."sync-listings-full"]
-  included_files = ["data/listings.bundle.db"]
+  included_files = []
 
 [functions."sync-property-addresses"]
-  included_files = ["data/listings.bundle.db"]
+  included_files = []
 
 [functions."sync-listing-edge-scores"]
-  included_files = ["data/listings.bundle.db"]
+  included_files = []

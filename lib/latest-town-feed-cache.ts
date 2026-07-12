@@ -4,7 +4,6 @@ import {
   fetchLatestUpdatedListings,
   type LatestListingRow,
 } from '@/lib/latest-listings'
-import { publishListingsReadSnapshot } from '@/lib/listings-db'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
@@ -188,7 +187,6 @@ export async function rebuildLatestTownFeedCaches(options: {
     await writeLatestTownFeedsBundleCache(bundleTowns)
     const finishedAt = new Date().toISOString()
     setSyncMeta('last_latest_town_feeds', finishedAt)
-    publishListingsReadSnapshot()
   }
 
   const durationMs = Date.now() - t0

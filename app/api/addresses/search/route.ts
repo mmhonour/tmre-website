@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const directoryHits = searchPropertyAddressesInDb(q, {
+    const directoryHits = await searchPropertyAddressesInDb(q, {
       limit: resultLimit,
       town: city || undefined,
     })

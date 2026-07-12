@@ -19,21 +19,6 @@ export async function register() {
     console.warn('[sync-meta] hydrate failed (continuing):', err)
   }
 
-  // Eager seed + warm SQLite on serverless cold starts before first request.
-  if (isServerlessRuntime()) {
-    try {
-      const { ensureListingsDbSeeded, tryGetWriteDb, describeListingsDbRuntime, resetListingsDbConnections } =
-        await import('./lib/listings-db')
-      const { ensureListingsDbHydrated } = await import('./lib/listings-db-persist')
-      await ensureListingsDbHydrated(resetListingsDbConnections)
-      ensureListingsDbSeeded()
-      tryGetWriteDb()
-      console.info('[listings-db] serverless startup:', describeListingsDbRuntime())
-    } catch (err) {
-      console.warn('[listings-db] serverless eager seed failed:', err)
-    }
-  }
-
   try {
     const { syncListingsSmart, syncIncrementalListings, syncAllTownListings } =
       await import('./lib/listings-sync')
@@ -77,7 +62,7 @@ export async function register() {
       }
     }
 
-    // Full MLS → SQLite rebuild on process start when overdue catch-up is disabled.
+    // Full MLS → Postgres rebuild on process start when overdue catch-up is disabled.
     const startupFullEnabled =
       process.env.ENABLE_STARTUP_FULL_SYNC !== '0' &&
       !overdueCatchupEnabled &&
@@ -99,7 +84,7 @@ export async function register() {
       )
     }
 
-    // Latest updates: incremental RETS → SQLite sync on a 30-minute cadence.
+    // Latest updates: incremental RETS → Postgres sync on a 30-minute cadence.
     // Runs wherever RETS credentials exist (including local:dev) so the /latest
     // page is always served from the database, never a per-request RETS pull.
     const latestSyncEnabled =
@@ -203,7 +188,7 @@ export async function register() {
         )
       } else if (!(await hasLocalListingsCache())) {
         setTimeout(runListingsSync, 8_000)
-        console.info('[listings-sync] warming empty SQLite cache on startup')
+        console.info('[listings-sync] warming empty Postgres inventory on startup')
       }
     } else if (!startupFullEnabled) {
       console.info(

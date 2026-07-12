@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { firstStoredListingPhotoIndex } from '@/lib/listings-db'
+import { firstStoredListingPhotoIndex } from '@/lib/listing-photos-db'
 import {
   expiredListingAgeDays,
   fetchExpiredListingsForCity,

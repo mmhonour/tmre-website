@@ -6,11 +6,10 @@ import {
 } from '@/lib/property-address'
 import {
   countPropertyAddresses,
-  ensurePropertyAddressSchema,
+  loadMlsListingsForPropertySync,
   touchPropertyAddressSyncMeta,
   upsertPropertyAddress,
 } from '@/lib/property-address-db'
-import { getListingsDb, publishListingsReadSnapshot } from '@/lib/listings-db'
 import { fetchTownRecentSales } from '@/lib/vision-appraisal'
 
 export type PropertyAddressSyncResult = {
@@ -36,32 +35,8 @@ function pickLatestListingPerProperty(
   return [...byKey.values()].map(({ listing, town, listingId }) => ({ listing, town, listingId }))
 }
 
-function loadMlsPropertyRows(): { listing: Listing; town: string; listingId: string }[] {
-  const database = getListingsDb()
-  const rows = database
-    .prepare(
-      `SELECT id, town, data, modification_timestamp
-       FROM listings
-       WHERE town IN (${TMRE_TOWNS.map(() => '?').join(', ')})`,
-    )
-    .all(...TMRE_TOWNS) as {
-    id: string
-    town: string
-    data: string
-    modification_timestamp: string | null
-  }[]
-
-  const parsed = rows
-    .map((row) => {
-      const listing = JSON.parse(row.data) as Listing
-      const modMs = Date.parse(row.modification_timestamp ?? '') || 0
-      return { listing, town: row.town, listingId: row.id, modMs }
-    })
-    .filter((row) => {
-      const street = row.listing.address.street?.trim() || row.listing.address.full?.trim()
-      return Boolean(street)
-    })
-
+async function loadMlsPropertyRows(): Promise<{ listing: Listing; town: string; listingId: string }[]> {
+  const parsed = await loadMlsListingsForPropertySync(TMRE_TOWNS)
   return pickLatestListingPerProperty(parsed)
 }
 
@@ -96,24 +71,20 @@ async function loadAssessorPropertyRows(): Promise<
 export async function syncPropertyAddresses(): Promise<PropertyAddressSyncResult> {
   const started = Date.now()
   const syncedAt = new Date().toISOString()
-  const database = getListingsDb()
-  ensurePropertyAddressSchema(database)
 
-  const mlsRows = loadMlsPropertyRows()
+  const mlsRows = await loadMlsPropertyRows()
   for (const row of mlsRows) {
     const draft = listingToPropertyAddressDraft(row.listing, row.town, row.listingId)
-    upsertPropertyAddress(draft, syncedAt)
+    await upsertPropertyAddress(draft, syncedAt)
   }
 
   const assessorRows = await loadAssessorPropertyRows()
   for (const draft of assessorRows) {
     if (!draft) continue
-    upsertPropertyAddress(draft, syncedAt)
+    await upsertPropertyAddress(draft, syncedAt)
   }
 
-  publishListingsReadSnapshot()
-
-  const totalRows = countPropertyAddresses()
+  const totalRows = await countPropertyAddresses()
   const result: PropertyAddressSyncResult = {
     ok: true,
     mlsRows: mlsRows.length,

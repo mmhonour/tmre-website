@@ -9,7 +9,8 @@ import type {
   AdminSyncTableStatsReport,
 } from '@/lib/admin-sync-types'
 import { listingPhotosDbPath, tryGetListingPhotosDb } from '@/lib/listing-photos-db'
-import { getListingsDb, listingsDbPath, listingsReadDbPath, setSyncMeta, tryGetReadDb, tryGetWriteDb } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
+import { collectPostgresTableStats } from '@/lib/db/postgres-table-stats'
 
 export type TableWriteStats = {
   table: string
@@ -150,41 +151,14 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`
 }
 
-/** Row counts per user table — used for read-snapshot publish reporting. */
-export function collectListingsDatabaseTableStats(): TableWriteStats[] {
-  const database = tryGetReadDb() ?? getListingsDb()
-  return collectDatabaseTableStats(database)
+/** Row counts per Postgres table — used for admin sync reporting. */
+export async function collectWriteDatabaseTableStats(): Promise<TableWriteStats[]> {
+  return collectPostgresTableStats()
 }
 
-/** Row counts on the write DB — accurate before read snapshot publish. */
-export function collectWriteDatabaseTableStats(): TableWriteStats[] {
-  const database = tryGetWriteDb() ?? getListingsDb()
-  return collectDatabaseTableStats(database)
-}
-
-function collectDatabaseTableStats(database: import('better-sqlite3').Database): TableWriteStats[] {
-  const tables = database
-    .prepare(
-      `SELECT name FROM sqlite_master
-       WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-       ORDER BY name`,
-    )
-    .all() as { name: string }[]
-
-  const out: TableWriteStats[] = []
-  for (const { name } of tables) {
-    const row = database
-      .prepare(`SELECT COUNT(*) AS count FROM ${quoteIdent(name)}`)
-      .get() as { count: number }
-    if (row.count <= 0) continue
-    out.push({
-      table: name,
-      queried: row.count,
-      inserted: row.count,
-      updated: 0,
-    })
-  }
-  return out
+/** @deprecated Use collectWriteDatabaseTableStats — kept for read-snapshot publish reporting. */
+export async function collectListingsDatabaseTableStats(): Promise<TableWriteStats[]> {
+  return collectPostgresTableStats()
 }
 
 const ADMIN_SYNC_TABLE_STATS_PREFIX = 'admin_sync_table_stats:'
@@ -204,14 +178,10 @@ export function saveAdminSyncTableStats(
 export function readAdminSyncTableStats(
   action: AdminSyncActionId,
 ): AdminSyncTableStatsReport | null {
-  const database = tryGetWriteDb() ?? tryGetReadDb()
-  if (!database) return null
-  const row = database
-    .prepare('SELECT value FROM sync_meta WHERE key = ?')
-    .get(`${ADMIN_SYNC_TABLE_STATS_PREFIX}${action}`) as { value: string } | undefined
-  if (!row?.value) return null
+  const raw = getSyncMeta(`${ADMIN_SYNC_TABLE_STATS_PREFIX}${action}`)
+  if (!raw) return null
   try {
-    const parsed = JSON.parse(row.value) as AdminSyncTableStatsReport
+    const parsed = JSON.parse(raw) as AdminSyncTableStatsReport
     if (!parsed?.finishedAt || !Array.isArray(parsed.tables)) return null
     return parsed
   } catch {
@@ -241,8 +211,8 @@ export function readAllAdminSyncTableStats(): Partial<
 type SqliteDatabase = import('better-sqlite3').Database
 
 const ADMIN_DB_PRIORITY_TABLES: Record<AdminDatabaseSyncId, string[]> = {
-  listings: ['listings', 'stats_cache', 'sync_meta', 'listing_scores'],
-  'listings.read': ['listings', 'stats_cache', 'sync_meta'],
+  listings: ['listings', 'stats_cache', 'sync_meta', 'listing_edge_scores'],
+  'listings.read': [],
   'listing-photos': ['listing_photos'],
 }
 
@@ -415,21 +385,42 @@ function inspectAdminDatabaseInventory(options: {
   }
 }
 
-/** Live row counts for listings, listings.read, and listing-photos — admin sync panel inventory. */
-export function collectAdminDatabaseSyncStats(): AdminDatabaseSyncStats[] {
-  const writePath = listingsDbPath()
-  const readPath = listingsReadDbPath()
+/** Live row counts for Postgres listings + listing-photos SQLite — admin sync panel inventory. */
+export async function collectAdminDatabaseSyncStats(): Promise<AdminDatabaseSyncStats[]> {
   const photosPath = listingPhotosDbPath()
+  const postgresTables = await collectPostgresTableStats()
+  const listingsCount = postgresTables.find((row) => row.table === 'listings')?.queried ?? 0
 
-  const writeCached = tryGetWriteDb()
-  const readonlyWrite = openReadonlyDatabase(writePath)
-  const writeDb = writeCached ?? readonlyWrite
+  const postgresStats: AdminDatabaseSyncStats = {
+    id: 'listings',
+    label: 'Neon Postgres',
+    path: process.env.DATABASE_URL?.split('@')[1]?.split('/')[0] ?? 'Neon',
+    exists: true,
+    sizeBytes: null,
+    available: postgresTables.length > 0,
+    tables: postgresTables.map((row) => ({
+      table: row.table,
+      rowCount: row.queried,
+    })),
+    summary:
+      listingsCount > 0
+        ? postgresTables
+            .filter((row) => row.queried > 0)
+            .map((row) => `${row.table} ${row.queried.toLocaleString()}`)
+            .join(' · ')
+        : 'Postgres connected — run Full resync if listings count is 0',
+  }
 
-  const readonlyRead = openReadonlyDatabase(readPath)
-  const readCached = tryGetReadDb()
-  let readDb = readonlyRead
-  if (!readDb && readCached && readCached !== writeCached) readDb = readCached
-  if (!readDb) readDb = writeDb
+  const readStats: AdminDatabaseSyncStats = {
+    id: 'listings.read',
+    label: 'Read APIs',
+    path: 'Postgres (direct)',
+    exists: true,
+    sizeBytes: null,
+    available: true,
+    tables: [],
+    summary: 'Retired — public read APIs query Neon Postgres directly (no SQLite read snapshot)',
+  }
 
   const photosCached = tryGetListingPhotosDb()
   const readonlyPhotos = openReadonlyDatabase(photosPath)
@@ -437,19 +428,8 @@ export function collectAdminDatabaseSyncStats(): AdminDatabaseSyncStats[] {
 
   try {
     return [
-      inspectAdminDatabaseInventory({
-        id: 'listings',
-        label: 'listings',
-        path: writePath,
-        database: writeDb,
-      }),
-      inspectAdminDatabaseInventory({
-        id: 'listings.read',
-        label: 'listings.read',
-        path: readPath,
-        database: readDb,
-        error: readDb ? undefined : 'Read snapshot missing — publish after sync',
-      }),
+      postgresStats,
+      readStats,
       inspectAdminDatabaseInventory({
         id: 'listing-photos',
         label: 'listing-photos',
@@ -459,20 +439,6 @@ export function collectAdminDatabaseSyncStats(): AdminDatabaseSyncStats[] {
       }),
     ]
   } finally {
-    if (readonlyWrite && readonlyWrite !== writeCached) {
-      try {
-        readonlyWrite.close()
-      } catch {
-        /* ignore */
-      }
-    }
-    if (readonlyRead) {
-      try {
-        readonlyRead.close()
-      } catch {
-        /* ignore */
-      }
-    }
     if (readonlyPhotos && readonlyPhotos !== photosCached) {
       try {
         readonlyPhotos.close()

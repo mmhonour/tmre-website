@@ -9,18 +9,13 @@ import {
 import { buildAdminSyncNextRuns, buildAdminSyncScheduleHints } from '@/lib/admin-sync-schedule'
 import { ensurePostDeployFullResyncScheduled } from '@/lib/deploy-full-resync-schedule'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
-import {
-  describeListingsDbRuntime,
-  getListingsDbStats,
-  resetListingsDbConnections,
-} from '@/lib/listings-db'
 import { getSyncMeta } from '@/lib/db/sync-meta-store'
-import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
+import { ensureAdminListingPhotosReady } from '@/lib/listing-photos-db-persist'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'
-// Phase 4 (read-path cutover): these two now read from Postgres (lib/db/listings-repo).
 import {
   readLatestListingModificationTimestamp,
+  readListingsDbStats,
   readRecentSyncFailures,
 } from '@/lib/db/listings-repo'
 import { collectAdminDatabaseSyncStats } from '@/lib/sqlite-sync-stats'
@@ -34,10 +29,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
+  await ensureAdminListingPhotosReady()
   await ensurePostDeployFullResyncScheduled()
 
-  const { stats, refresh, nextRuns, scheduleHints } = readAdminSyncPanelStatus()
+  const { stats, refresh, nextRuns, scheduleHints } = await readAdminSyncPanelStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
 
@@ -59,8 +54,7 @@ export async function GET(req: NextRequest) {
     scheduleHints,
     rets,
     syncFailures: await readRecentSyncFailures(8),
-    listingsDbRuntime: describeListingsDbRuntime(),
-    databaseStats: collectAdminDatabaseSyncStats(),
+    databaseStats: await collectAdminDatabaseSyncStats(),
   })
 }
 
@@ -92,7 +86,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unknown sync action' }, { status: 400 })
   }
 
-  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
+  await ensureAdminListingPhotosReady()
   await ensurePostDeployFullResyncScheduled()
 
   const refresh = readSqliteRefreshStatus()
@@ -115,7 +109,7 @@ export async function POST(req: NextRequest) {
       action === 'sync-all-caches'
         ? await runAdminSyncAllCaches()
         : await runAdminSyncAction(action, { town, finalize, finalizeStep })
-    const stats = getListingsDbStats()
+    const stats = await readListingsDbStats()
     const nextRuns = buildAdminSyncNextRuns({
       lastFullSyncStarted: stats.lastFullSyncStarted,
       lastFullSync: stats.lastFullSync,
@@ -143,7 +137,7 @@ export async function POST(req: NextRequest) {
       lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
       rets: await probeRetsConnection(true),
       syncFailures: await readRecentSyncFailures(8),
-      databaseStats: collectAdminDatabaseSyncStats(),
+      databaseStats: await collectAdminDatabaseSyncStats(),
     })
   } catch (err) {
     console.error('[/api/admin/sync]', action, err)

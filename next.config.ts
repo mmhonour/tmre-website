@@ -19,7 +19,6 @@ const nextConfig: NextConfig = {
       "./node_modules/file-uri-to-path/**/*",
       "./node_modules/rets-client/**/*",
       "./node_modules/node-expat/**/*",
-      "./data/listings.bundle.db",
     ],
   },
   async redirects() {

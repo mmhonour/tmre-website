@@ -1,27 +1,11 @@
 #!/usr/bin/env node
 /**
- * Ensure data/listings.bundle.db exists before Netlify packages the site.
- * Copies local listings.db when present; otherwise creates a schema-only DB.
+ * Netlify build prep — listing-photos SQLite only.
+ * MLS inventory lives in Neon Postgres; listings.bundle.db is no longer shipped.
  */
-import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
-import path from 'node:path'
-
-const MIN_BYTES = 50_000
-const bundlePath = path.join(process.cwd(), 'data', 'listings.bundle.db')
-const localDbPath = path.join(process.cwd(), 'data', 'listings.db')
-
-function isUsableDb(filePath: string): boolean {
-  return existsSync(filePath) && statSync(filePath).size >= MIN_BYTES
-}
-
-async function createSchemaOnlyBundle(targetPath: string): Promise<void> {
-  mkdirSync(path.dirname(targetPath), { recursive: true })
-  // Override Netlify build env (/tmp/listings.db) — write the bundle artifact in-repo.
-  process.env.LISTINGS_DB_PATH = targetPath
-
-  let Database: typeof import('better-sqlite3')
+async function main(): Promise<void> {
   try {
-    Database = (await import('better-sqlite3')).default
+    await import('better-sqlite3')
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     throw new Error(
@@ -29,32 +13,9 @@ async function createSchemaOnlyBundle(targetPath: string): Promise<void> {
     )
   }
 
-  const { initListingsDbSchema } = await import('../lib/listings-db')
-  const db = new Database(targetPath)
-  try {
-    db.pragma('journal_mode = WAL')
-    db.pragma('busy_timeout = 5000')
-    initListingsDbSchema(db)
-  } finally {
-    db.close()
-  }
-  console.info('[prepare-netlify-bundle] created schema-only bundle:', targetPath)
-}
-
-async function main(): Promise<void> {
-  if (isUsableDb(bundlePath)) {
-    console.info('[prepare-netlify-bundle] bundle already present:', bundlePath)
-    return
-  }
-
-  if (isUsableDb(localDbPath)) {
-    mkdirSync(path.dirname(bundlePath), { recursive: true })
-    copyFileSync(localDbPath, bundlePath)
-    console.info('[prepare-netlify-bundle] copied listings.db → listings.bundle.db')
-    return
-  }
-
-  await createSchemaOnlyBundle(bundlePath)
+  console.info(
+    '[prepare-netlify-bundle] skipped listings.bundle.db — MLS inventory is in Neon Postgres; listing-photos.db hydrates from blobs at runtime',
+  )
 }
 
 main().catch((err) => {

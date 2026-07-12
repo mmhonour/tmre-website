@@ -9,12 +9,11 @@ import {
 import { parseLotAcres } from '@/lib/fixer-listings'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import { kindOf } from '@/lib/goldilocks'
+import { listingRowId } from '@/lib/db/listings-repo'
 import {
-  listingRowId,
-  publishListingsReadSnapshot,
-  tryGetReadDb,
-} from '@/lib/listings-db'
-import {
+  countActiveListings,
+  countListingSuperlatives,
+  hasListingsData,
   readListingScoresByIds,
   readListingsFromDb,
   upsertListingSuperlatives,
@@ -245,7 +244,6 @@ export async function rebuildAllListingSuperlatives(): Promise<ListingSuperlativ
   const finishedAt = new Date().toISOString()
   if (towns.some((row) => row.ok && row.computed > 0)) {
     setSyncMeta('last_listing_superlatives', finishedAt)
-    publishListingsReadSnapshot()
   }
 
   console.info(
@@ -271,21 +269,12 @@ export async function rebuildAllListingSuperlativesIfMissing(): Promise<{
     return { totalComputed: 0, durationMs: 0, skipped: true }
   }
 
-  const database = tryGetReadDb()
-  if (!database) {
+  if (!(await hasListingsData())) {
     return { totalComputed: 0, durationMs: 0, skipped: true }
   }
 
-  const activeCount = (
-    database
-      .prepare(`SELECT COUNT(*) AS count FROM listings WHERE status_bucket = 'Active'`)
-      .get() as { count: number }
-  ).count
-  const superlativeCount = (
-    database.prepare('SELECT COUNT(*) AS count FROM listing_superlatives').get() as {
-      count: number
-    }
-  ).count
+  const activeCount = await countActiveListings()
+  const superlativeCount = await countListingSuperlatives()
 
   if (activeCount === 0 || superlativeCount >= Math.max(1, Math.floor(activeCount * 0.5))) {
     return { totalComputed: 0, durationMs: 0, skipped: true }

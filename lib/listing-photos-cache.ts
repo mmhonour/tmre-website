@@ -4,7 +4,7 @@ import {
   countFreshListingPhotos,
   listStoredListingPhotoIndices,
   listingPhotoStorageSpan,
-} from '@/lib/listings-db'
+} from '@/lib/listing-photos-db'
 import {
   LISTING_PHOTO_TTL_MS,
   listingPhotoSyncedAfter,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchActiveListingsForCity, listingCacheHeaders } from '@/lib/listings-store'
 import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
-import { listingRowId } from '@/lib/listings-db'
+import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingScoresByIds, upsertListingScores } from '@/lib/db/listings-repo'
 import { type Listing } from '@/lib/rets'
 import { SCORE_PEER_LIMIT, type ScoreBreakdown } from '@/lib/goldilocks'

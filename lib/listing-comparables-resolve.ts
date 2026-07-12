@@ -6,7 +6,6 @@ import {
 } from '@/lib/listing-comparables-cache'
 import type { ComparablesMatchMode } from '@/lib/listing-comparables'
 import type { ComparablesResult } from '@/lib/listing-comparables-shared'
-import { publishListingsReadSnapshot } from '@/lib/listings-db'
 import {
   readAllListingsFromDb,
   readListingEdgeScoresByMlsIds,
@@ -69,8 +68,6 @@ export async function resolveComparablesForSubject(
     soldPool,
     activePool,
   )
-  // Cold miss wrote edges to the write DB; expose them on the read snapshot.
-  publishListingsReadSnapshot()
 
   const withScores = await attachStoredEdgeScores(result)
 

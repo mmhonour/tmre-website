@@ -3,21 +3,17 @@ import 'server-only'
 import { rebuildDealOfTheDayCache } from '@/lib/deal-of-the-day-cache'
 import { rebuildAllListingScores } from '@/lib/listing-scores-rebuild'
 import {
-  countWriteDbListings,
-  countWriteDbListingsByBucket,
-  getListingsDbStats,
-  listingsDbPath,
-  publishListingsReadSnapshot,
-  resetListingsDbConnections,
-} from '@/lib/listings-db'
+  countListings,
+  countListingsByBucket,
+  readListingsDbStats,
+} from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   clearChunkedFullResyncProgress,
-  ensureAdminSqliteDatabasesReady,
-  prepareListingsDbForChunkedSync,
   readChunkedFullResyncProgress,
   saveChunkedFullResyncProgress,
-} from '@/lib/listings-db-persist'
+} from '@/lib/db/chunked-resync-progress'
+import { ensureAdminListingPhotosReady } from '@/lib/listing-photos-db-persist'
 import {
   syncAllTownListings,
   syncIncrementalListings,
@@ -126,16 +122,16 @@ export async function runAdminSyncAction(
         }
       }
       if (options.finalize) {
-        await prepareListingsDbForChunkedSync(listingsDbPath(), resetListingsDbConnections)
+        await ensureAdminListingPhotosReady()
         const result = await finalizeChunkedFullResync()
         const finishedAt = result.finishedAt ?? new Date().toISOString()
         if (!getSyncMeta('last_full_sync')) {
           setSyncMeta('last_full_sync', finishedAt)
         }
-        const tableStats = collectWriteDatabaseTableStats()
-        const byBucket = countWriteDbListingsByBucket()
+        const tableStats = await collectWriteDatabaseTableStats()
+        const byBucket = await countListingsByBucket()
         const listingTotal =
-          countWriteDbListings() ||
+          (await countListings()) ||
           tableStats.find((row) => row.table === 'listings')?.queried ||
           result.totalUpserted
         const chunkProgress = await readChunkedFullResyncProgress()
@@ -169,7 +165,7 @@ export async function runAdminSyncAction(
             message: `Unknown finalize step: ${stepId}`,
           }
         }
-        await prepareListingsDbForChunkedSync(listingsDbPath(), resetListingsDbConnections)
+        await ensureAdminListingPhotosReady()
         const stepResult = await runFullResyncFinalizeStep(stepId)
         const finishedAt = new Date().toISOString()
         const priorProgress = (await readChunkedFullResyncProgress()) ?? {
@@ -221,10 +217,10 @@ export async function runAdminSyncAction(
         if (!getSyncMeta('last_full_sync')) {
           setSyncMeta('last_full_sync', finishedAt)
         }
-        const tableStats = collectWriteDatabaseTableStats()
-        const byBucket = countWriteDbListingsByBucket()
+        const tableStats = await collectWriteDatabaseTableStats()
+        const byBucket = await countListingsByBucket()
         const listingTotal =
-          countWriteDbListings() ||
+          (await countListings()) ||
           tableStats.find((row) => row.table === 'listings')?.queried ||
           stepResult.totalListings ||
           0
@@ -258,14 +254,14 @@ export async function runAdminSyncAction(
             message: `Unknown town: ${options.town}`,
           }
         }
-        await prepareListingsDbForChunkedSync(listingsDbPath(), resetListingsDbConnections)
+        await ensureAdminListingPhotosReady()
         const townResults = await syncFullResyncTown(options.town)
         const ok = townResults.every((row) => row.ok)
         const failed = townResults.filter((row) => !row.ok)
         const upserts = townResults.reduce((sum, row) => sum + row.count, 0)
         const townIndex = TMRE_TOWNS.indexOf(options.town) + 1
-        const sqliteTotal = countWriteDbListings()
-        const tableStats = collectWriteDatabaseTableStats()
+        const sqliteTotal = await countListings()
+        const tableStats = await collectWriteDatabaseTableStats()
         const priorProgress = (await readChunkedFullResyncProgress()) ?? {
           fetchedTotal: 0,
           townsCompleted: [],
@@ -349,7 +345,7 @@ export async function runAdminSyncAction(
           detail: retsSyncBlockedMessage(),
         }
       }
-      await ensureAdminSqliteDatabasesReady(resetListingsDbConnections)
+      await ensureAdminListingPhotosReady()
       if (getSyncMeta('refresh_in_progress') === '1') {
         const finishedAt = new Date().toISOString()
         return {
@@ -406,9 +402,9 @@ export async function runAdminSyncAction(
     }
     case 'publish-snapshot': {
       setSyncMeta('last_refresh_started_at', startedAt)
-      publishListingsReadSnapshot()
       const finishedAt = new Date().toISOString()
       setSyncMeta('last_refresh_finished_at', finishedAt)
+      const stats = await readListingsDbStats()
       return {
         ok: true,
         action,
@@ -416,7 +412,7 @@ export async function runAdminSyncAction(
         finishedAt,
         durationMs: Date.now() - t0,
         message: 'Read snapshot published',
-        detail: `Copied write DB → listings.read.db (${getListingsDbStats().total.toLocaleString()} listings visible to read APIs)`,
+        detail: `Postgres read path active — ${stats.total.toLocaleString()} listings available to read APIs (SQLite read snapshot retired)`,
       }
     }
     case 'stats-cache': {
@@ -618,8 +614,8 @@ async function runAdminSyncAllExtraCaches(): Promise<AdminSyncActionResult[]> {
   return steps
 }
 
-export function readAdminSyncPanelStatus() {
-  const stats = getListingsDbStats()
+export async function readAdminSyncPanelStatus() {
+  const stats = await readListingsDbStats()
   const refresh = readSqliteRefreshStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')

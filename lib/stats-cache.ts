@@ -1,8 +1,4 @@
-import {
-  getListingsDbStats,
-  publishListingsReadSnapshot,
-} from '@/lib/listings-db'
-import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
+import { readAllListingsFromDb, readListingsDbStats, readListingsFromDb } from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   clearStatsCache,
@@ -174,7 +170,7 @@ async function statsCacheMissingRequiredEntries(): Promise<boolean> {
 
 async function ensureStatsCachePopulated(): Promise<void> {
   if (emptyCacheRebuildAttempted || !(await hasLocalListingsCache())) return
-  const { total, statsCacheEntries } = getListingsDbStats()
+  const { total, statsCacheEntries } = await readListingsDbStats()
   if (total > 0 && (statsCacheEntries === 0 || (await statsCacheMissingRequiredEntries()))) {
     emptyCacheRebuildAttempted = true
     scheduleStatsCacheRebuildIfStale(true)
@@ -284,8 +280,6 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
   if (!(await hasLocalListingsCache())) {
     return { written: 0, durationMs: Date.now() - t0 }
   }
-
-  publishListingsReadSnapshot()
 
   let written = 0
   const generatedAt = new Date().toISOString()
@@ -412,7 +406,7 @@ export async function rebuildStatsCacheIfStale(force = false): Promise<{
     return { written: 0, durationMs: 0, skipped: true }
   }
   if (!force && !isStatsCacheStale() && !(await statsCacheMissingRequiredEntries())) {
-    const { statsCacheEntries } = getListingsDbStats()
+    const { statsCacheEntries } = await readListingsDbStats()
     if (statsCacheEntries > 0) {
       return { written: 0, durationMs: 0, skipped: true }
     }
@@ -428,7 +422,7 @@ export function scheduleStatsCacheRebuildIfStale(force = false): void {
     try {
       if (!(await hasLocalListingsCache())) return
       if (!force && !isStatsCacheStale() && !(await statsCacheMissingRequiredEntries())) {
-        const { statsCacheEntries } = getListingsDbStats()
+        const { statsCacheEntries } = await readListingsDbStats()
         if (statsCacheEntries > 0) return
       }
       await rebuildStatsCacheIfStale(force)

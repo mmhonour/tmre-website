@@ -961,6 +961,22 @@ export async function hasListingsData(): Promise<boolean> {
   return present
 }
 
+/** Total Active listings (for warm/skip heuristics). */
+export async function countActiveListings(): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    `SELECT count(*)::int AS count FROM listings WHERE status_bucket = 'Active'`,
+  )
+  return row?.count ?? 0
+}
+
+/** Total superlative rows. */
+export async function countListingSuperlatives(): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    'SELECT count(*)::int AS count FROM listing_superlatives',
+  )
+  return row?.count ?? 0
+}
+
 // ---------------------------------------------------------------------------
 // Derived-table writes + reads (Phase 4 Tier C3a). Async Postgres replacements
 // for the remaining lib/listings-db.ts derived accessors: Goldilocks scores

@@ -5,7 +5,7 @@ import {
   LATEST_HERO_WARM_CONCURRENCY,
   LATEST_HERO_WARM_MAX_FETCHES_PER_CYCLE,
 } from '@/lib/latest-refresh'
-import { readListingPhotoBlob } from '@/lib/listings-db'
+import { readListingPhotoBlob } from '@/lib/listing-photos-db'
 import {
   listingPhotoCacheId,
   resolveListingPhotoBuffer,

@@ -7,28 +7,27 @@ import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPa
 import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
-import AdminSyncTable, { type AdminSyncRow } from "@/components/admin/AdminSyncTable";
+import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
 import {
-  describeListingsDbRuntime,
-  getListingsDbStats,
-  getSyncMeta,
   readInventorySnapshot,
   readLatestListingModificationTimestamp,
-  resetListingsDbConnections,
+  readListingsDbStats,
   type InventorySnapshot,
-} from "@/lib/listings-db";
+} from "@/lib/db/listings-repo";
+import { getSyncMeta } from "@/lib/db/sync-meta-store";
 import {
-  describeBlobPersistRuntime,
-  ensureAdminSqliteDatabasesReady,
+  describePhotosBlobPersistRuntime,
+  ensureAdminListingPhotosReady,
   readRefreshLockHistoryFromBlob,
-} from "@/lib/listings-db-persist";
+} from "@/lib/listing-photos-db-persist";
 import { ensurePostDeployFullResyncScheduled } from "@/lib/deploy-full-resync-schedule";
 import { formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
 import { mlsTimestampDate } from "@/lib/mls-time";
 import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
+import { describePostgresDatabase } from "@/lib/postgres-schema-diagram";
 import { describeRunningSqliteDatabases } from "@/lib/sqlite-schema-diagram";
 import { describeStartupProcess } from "@/lib/startup-process";
 import { readAdminSyncPanelStatus } from "@/lib/admin-sync-actions";
@@ -105,11 +104,11 @@ export default async function AdminPage() {
     );
   }
 
-  await ensureAdminSqliteDatabasesReady(resetListingsDbConnections);
+  await ensureAdminListingPhotosReady();
   await ensurePostDeployFullResyncScheduled();
 
-  const stats = getListingsDbStats();
-  const { refresh, nextRuns, scheduleHints } = readAdminSyncPanelStatus();
+  const stats = await readListingsDbStats();
+  const { refresh, nextRuns, scheduleHints } = await readAdminSyncPanelStatus();
   const refreshLock = readSqliteRefreshLockStatus();
   const _primaryHistory = readRefreshLockHistorySummary();
   const refreshLockHistory = await (async () => {
@@ -128,37 +127,18 @@ export default async function AdminPage() {
       ? buildRefreshLockHistorySummary(blobEntries)
       : _primaryHistory;
   })();
-  const latestListingUpdate = readLatestListingModificationTimestamp();
+  const latestListingUpdate = await readLatestListingModificationTimestamp();
   const lastRefreshFinished = getSyncMeta("last_refresh_finished_at");
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
   const refreshFinishedAt = lastRefreshFinished ?? refresh.lastFinishedAt;
-  const sqliteDiagrams = describeRunningSqliteDatabases();
-  const databaseStats = collectAdminDatabaseSyncStats();
-  const blobRuntime = await describeBlobPersistRuntime();
-  const inventorySnapshot = readInventorySnapshot();
-  const listingsDbRuntime = describeListingsDbRuntime();
-  const listingsDbBroken = !listingsDbRuntime.nativeModuleAvailable;
-  const listingsDbEmpty =
-    listingsDbRuntime.nativeModuleAvailable && stats.total === 0;
-  const showListingsDbRuntime = listingsDbBroken || listingsDbEmpty;
-  // Use the same threshold logic as persistListingsDbCheckpoint:
-  // effective floor = max(absoluteMin, lastGood * 0.75).
-  // This means once a good checkpoint is established the warning reflects
-  // a real divergence from the prior known-good count, not a false alarm
-  // caused by the absolute floor being higher than the valid listing count.
-  const lastGoodForDisplay = blobRuntime.lastGoodListingCount ?? 0;
-  const effectiveMinListingCount = Math.max(
-    blobRuntime.absoluteMinListingCount,
-    lastGoodForDisplay > 0 ? Math.round(lastGoodForDisplay * 0.75) : 0,
-  );
-  const listingsBelowMin =
-    listingsDbRuntime.nativeModuleAvailable &&
-    stats.total > 0 &&
-    stats.total < effectiveMinListingCount;
-  const listingsHealthy =
-    listingsDbRuntime.nativeModuleAvailable &&
-    stats.total >= effectiveMinListingCount;
+  const postgresDiagram = await describePostgresDatabase();
+  const sqliteDiagrams = [postgresDiagram, ...describeRunningSqliteDatabases()];
+  const databaseStats = await collectAdminDatabaseSyncStats();
+  const blobRuntime = await describePhotosBlobPersistRuntime();
+  const inventorySnapshot = await readInventorySnapshot();
+  const listingsDbEmpty = stats.total === 0;
+  const showListingsDbRuntime = listingsDbEmpty;
   const startupProcess = describeStartupProcess();
 
   const rows: StatusRow[] = [
@@ -254,6 +234,54 @@ export default async function AdminPage() {
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
+  // Initial panel status — keeps the sync table fully populated on the first
+  // render so there is no flash-of-empty between SSR and the first client poll.
+  // rets / syncFailures are omitted here; they arrive via the first API poll.
+  const initialStatus: PanelStatus = {
+    refreshing: refresh.refreshing,
+    lastRefreshFinished: refreshFinishedAt,
+    lastRefreshStarted: lastRefreshStarted,
+    latestListingUpdate: latestListingUpdate,
+    propertyAddressesSyncedAt: propertyAddressesSyncedAt,
+    stats: {
+      total: stats.total,
+      lastFullSync: stats.lastFullSync,
+      lastFullSyncStarted: stats.lastFullSyncStarted,
+      lastIncrementalSync: stats.lastIncrementalSync,
+      lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
+      lastListingScores: stats.lastListingScores,
+      lastListingScoresStarted: stats.lastListingScoresStarted,
+      lastStatsCache: stats.lastStatsCache,
+      lastStatsCacheStarted: stats.lastStatsCacheStarted,
+      lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
+      lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
+    },
+    nextRuns,
+    scheduleHints,
+    databaseStats,
+  };
+
+  // Lambda instance metadata — available at runtime on Netlify serverless.
+  // process.uptime() = seconds since this Node.js process (Lambda) started.
+  // AWS_LAMBDA_LOG_STREAM_NAME = "2024/01/01/[$LATEST]<16-hex-chars>" — the hex
+  // suffix is a unique identifier for this Lambda container instance.
+  // Computed here (rather than closer to the hero section below) so both the
+  // hero banner AND the Database sync panel header can reference it.
+  const lambdaUptimeSec = Math.round(process.uptime())
+  const lambdaUptimeStr = (() => {
+    if (lambdaUptimeSec < 60) return `${lambdaUptimeSec}s`
+    if (lambdaUptimeSec < 3600) return `${Math.floor(lambdaUptimeSec / 60)}m ${lambdaUptimeSec % 60}s`
+    const h = Math.floor(lambdaUptimeSec / 3600)
+    const m = Math.floor((lambdaUptimeSec % 3600) / 60)
+    return `${h}h ${m}m`
+  })()
+  // Extract the instance hex suffix from the log stream name (last 12 chars of hex ID).
+  const lambdaLogStream = process.env.AWS_LAMBDA_LOG_STREAM_NAME ?? null
+  const lambdaInstanceId = lambdaLogStream
+    ? (lambdaLogStream.split(']')[1]?.slice(0, 12) ?? null)
+    : null
+  const lambdaFnName = process.env.AWS_LAMBDA_FUNCTION_NAME ?? null
+
   const retsPanel = (
     <div id="admin-rets-credentials" className="scroll-mt-24">
       <AdminRetsCredentialsPanel />
@@ -266,15 +294,26 @@ export default async function AdminPage() {
         id="admin-sync"
         className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
       >
-        <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
+        <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex items-baseline justify-between gap-4">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             Database sync
           </p>
+          {(lambdaInstanceId || lambdaFnName) && (
+            <p className="font-mono text-[10px] tracking-[0.08em] text-charcoal/40 text-right leading-tight">
+              <span className="uppercase tracking-[0.18em] text-charcoal/30 mr-1">Lambda</span>
+              {lambdaInstanceId && <span>{lambdaInstanceId}&hellip;</span>}
+              {lambdaFnName && (
+                <span className="block text-charcoal/30 truncate max-w-[16rem]">{lambdaFnName}</span>
+              )}
+              <span className="block text-charcoal/30">up {lambdaUptimeStr}</span>
+            </p>
+          )}
         </div>
         <AdminSyncTable
           rows={rows}
           initialRefreshing={refresh.refreshing}
           initialDatabaseStats={databaseStats}
+          initialStatus={initialStatus}
         />
       </div>
 
@@ -314,92 +353,26 @@ export default async function AdminPage() {
 
       <div id="admin-sqlite-schemas" className="scroll-mt-24">
         {showListingsDbRuntime ? (
-          <div
-            className={`mb-4 rounded-2xl border px-5 sm:px-6 py-4 ${
-              listingsDbBroken
-                ? "border-coral/25 bg-coral/[0.06]"
-                : "border-gold/25 bg-gold/[0.06]"
-            }`}
-          >
-            <p
-              className={`font-mono text-[11px] tracking-[0.2em] uppercase mb-2 ${
-                listingsDbBroken ? "text-coral" : "text-gold"
-              }`}
-            >
-              Listings DB runtime
+          <div className="mb-4 rounded-2xl border border-gold/25 bg-gold/[0.06] px-5 sm:px-6 py-4">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2 text-gold">
+              Postgres listings inventory
             </p>
-            {listingsDbEmpty && !listingsDbBroken ? (
-              <p className="text-sm text-slate leading-snug mb-3">
-                SQLite is connected but empty — the deploy bundle is schema-only (
-                {listingsDbRuntime.deployBundleBytes?.toLocaleString() ?? "?"} bytes). Run{" "}
-                <strong>step 1 Full resync</strong>
-                {scheduleHints.fullResyncSource === "post-deploy" &&
-                nextRuns["full-resync"] ? (
-                  <>
-                    {" "}
-                    or wait for the post-deploy warm in{" "}
-                    <strong>
-                      {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
-                    </strong>
-                  </>
-                ) : (
-                  <> or wait for the startup / scheduled sync to</>
-                )}{" "}
-                pull MLS data into <code className="font-mono text-xs">/tmp</code>.
-              </p>
-            ) : null}
-            <dl className="font-mono text-[11px] text-charcoal/70 space-y-1">
-              <div>
-                <dt className="inline text-charcoal/45">native: </dt>
-                <dd className="inline break-all">
-                  {listingsDbRuntime.nativeModuleAvailable ? "OK" : "unavailable"}
-                </dd>
-              </div>
-              <div>
-                <dt className="inline text-charcoal/45">connected: </dt>
-                <dd className="inline break-all">
-                  {listingsDbRuntime.connected ? "yes" : "no"}
-                </dd>
-              </div>
-              <div>
-                <dt className="inline text-charcoal/45">listings: </dt>
-                <dd className="inline break-all">{stats.total.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt className="inline text-charcoal/45">write: </dt>
-                <dd className="inline break-all">
-                  {listingsDbRuntime.writePath}
-                  {listingsDbRuntime.writeDbExists
-                    ? ` (${listingsDbRuntime.writeDbBytes?.toLocaleString() ?? "?"} bytes)`
-                    : " (not seeded yet)"}
-                </dd>
-              </div>
-              <div>
-                <dt className="inline text-charcoal/45">deploy bundle: </dt>
-                <dd className="inline break-all">
-                  {listingsDbRuntime.deployBundlePath}
-                  {listingsDbRuntime.deployBundleExists
-                    ? ` (${listingsDbRuntime.deployBundleBytes?.toLocaleString() ?? "?"} bytes)`
-                    : " (missing — rebuild will fail)"}
-                </dd>
-              </div>
-              {listingsDbRuntime.nativeModuleError ? (
-                <div>
-                  <dt className="inline text-charcoal/45">native error: </dt>
-                  <dd className="inline break-all">{listingsDbRuntime.nativeModuleError}</dd>
-                </div>
-              ) : null}
-              {listingsDbRuntime.lastOpenError ? (
-                <div>
-                  <dt className="inline text-charcoal/45">open error: </dt>
-                  <dd className="inline break-all">{listingsDbRuntime.lastOpenError}</dd>
-                </div>
-              ) : null}
-              <div>
-                <dt className="inline text-charcoal/45">cwd: </dt>
-                <dd className="inline break-all">{listingsDbRuntime.cwd}</dd>
-              </div>
-            </dl>
+            <p className="text-sm text-slate leading-snug mb-3">
+              Neon Postgres has <strong>{stats.total.toLocaleString()}</strong> listings. Run{" "}
+              <strong>step 1 Full resync</strong>
+              {scheduleHints.fullResyncSource === "post-deploy" && nextRuns["full-resync"] ? (
+                <>
+                  {" "}
+                  or wait for the post-deploy warm in{" "}
+                  <strong>
+                    {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
+                  </strong>
+                </>
+              ) : (
+                <> or wait for the startup / scheduled sync</>
+              )}{" "}
+              to pull MLS data.
+            </p>
           </div>
         ) : null}
         <AdminSqliteDiagrams databases={sqliteDiagrams} blobRuntime={blobRuntime} inventorySnapshot={inventorySnapshot} />
@@ -441,21 +414,41 @@ export default async function AdminPage() {
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
-        {deployId && (
-          <div className="absolute top-5 right-6 lg:top-8 lg:right-10 text-right pointer-events-none select-none">
-            <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
-              Deploy
-            </p>
-            <p className="font-mono text-[10px] text-white/55 leading-none">
-              {deployId.substring(0, 12)}&hellip;
-            </p>
-            {deployBuildTimeStr && (
-              <p className="font-mono text-[9px] text-white/35 leading-none mt-0.5">
-                {deployBuildTimeStr}
-              </p>
+        <div className="absolute top-5 right-6 lg:top-8 lg:right-10 text-right pointer-events-none select-none space-y-1">
+            {deployId && (
+              <div>
+                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
+                  Deploy
+                </p>
+                <p className="font-mono text-[10px] text-white/55 leading-none">
+                  {deployId.substring(0, 12)}&hellip;
+                </p>
+                {deployBuildTimeStr && (
+                  <p className="font-mono text-[9px] text-white/35 leading-none mt-0.5">
+                    {deployBuildTimeStr}
+                  </p>
+                )}
+              </div>
             )}
+            <div>
+              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
+                Lambda
+              </p>
+              {lambdaInstanceId && (
+                <p className="font-mono text-[10px] text-white/55 leading-none">
+                  {lambdaInstanceId}&hellip;
+                </p>
+              )}
+              {lambdaFnName && (
+                <p className="font-mono text-[9px] text-white/30 leading-none mt-0.5 truncate max-w-[14rem]">
+                  {lambdaFnName}
+                </p>
+              )}
+              <p className="font-mono text-[9px] text-white/35 leading-none mt-0.5">
+                up {lambdaUptimeStr}
+              </p>
+            </div>
           </div>
-        )}
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Explore
@@ -474,25 +467,21 @@ export default async function AdminPage() {
                 className={`w-1.5 h-1.5 rounded-full ${
                   refresh.refreshing
                     ? "bg-gold animate-pulse-dot"
-                    : listingsDbEmpty || listingsBelowMin
+                    : listingsDbEmpty
                       ? "bg-coral animate-pulse-dot"
                       : "bg-sage"
                 }`}
               />
               <span
                 className={
-                  listingsDbEmpty || listingsBelowMin
-                    ? "text-coral font-semibold"
-                    : "text-white/50"
+                  listingsDbEmpty ? "text-coral font-semibold" : "text-white/50"
                 }
               >
                 {refresh.refreshing
                   ? "Refresh in progress"
                   : listingsDbEmpty
-                    ? "⚠ 0 listings — DB empty or restore failed"
-                    : listingsBelowMin
-                      ? `⚠ ${stats.total.toLocaleString()} listings — below threshold (${effectiveMinListingCount.toLocaleString()})`
-                      : `${stats.total.toLocaleString()} listings in SQLite`}
+                    ? "⚠ 0 listings — run Full resync"
+                    : `${stats.total.toLocaleString()} listings in Postgres`}
               </span>
             </span>
           </div>
@@ -500,58 +489,46 @@ export default async function AdminPage() {
         </div>
       </section>
 
-      {(listingsDbEmpty || listingsBelowMin || listingsDbBroken) && (
+      {listingsDbEmpty && (
         <div className="border-b border-coral/20 bg-coral/[0.07] px-6 py-4">
           <div className="mx-auto max-w-7xl lg:px-4">
             <div className="flex items-start gap-3">
               <span className="mt-0.5 text-coral text-lg leading-none" aria-hidden>⚠</span>
               <div>
                 <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-coral font-semibold mb-1">
-                  {listingsDbBroken
-                    ? "SQLite native module unavailable"
-                    : listingsDbEmpty
-                      ? "Listing database is empty on this Lambda"
-                      : `Only ${stats.total.toLocaleString()} listings — below threshold (${effectiveMinListingCount.toLocaleString()})`}
+                  Listing database is empty
                 </p>
                 <p className="text-sm text-charcoal/70 leading-snug max-w-3xl">
-                  {listingsDbBroken ? (
-                    "The native better-sqlite3 module failed to load. Check the build logs for a GLIBC or binary compatibility error."
-                  ) : listingsDbEmpty ? (
-                    <>
-                      This Lambda instance has 0 listings — the blob restore likely failed or
-                      a schema-only seed was used. The Netlify Blobs snapshot may still be
-                      intact.{" "}
-                      <strong>Refresh this page</strong> to try a new Lambda, or{" "}
-                      <strong>run a Full Resync</strong> (step 1 in the Database sync panel)
-                      if refreshing does not help.{" "}
-                      {blobRuntime.lastGoodListingCount != null && (
-                        <>
-                          Last known-good count:{" "}
-                          <strong>{blobRuntime.lastGoodListingCount.toLocaleString()}</strong>.
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      The listing count is suspiciously low — this Lambda may have only
-                      partially hydrated from blobs. Public pages may be serving degraded
-                      results.{" "}
-                      <strong>Refresh this page</strong> to try a new Lambda, or{" "}
-                      <strong>run a Full Resync</strong> if the count does not recover.{" "}
-                      {blobRuntime.lastGoodListingCount != null && (
-                        <>
-                          Last known-good count:{" "}
-                          <strong>{blobRuntime.lastGoodListingCount.toLocaleString()}</strong>.
-                        </>
-                      )}
-                    </>
-                  )}
+                  Neon Postgres has 0 listings — run a <strong>Full Resync</strong> (step 1 in the
+                  Database sync panel) or wait for the scheduled sync to pull MLS data.
                 </p>
-                {blobRuntime.lastRestoreAt && (
-                  <p className="mt-2 font-mono text-[10px] text-charcoal/45">
-                    Last blob restore attempt: {blobRuntime.lastRestoreAt}
-                  </p>
-                )}
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
+                  <span className="font-mono text-[10px] text-charcoal/50">
+                    <span className="text-charcoal/30 uppercase tracking-wide mr-1">Lambda uptime</span>
+                    {lambdaUptimeStr}
+                    {lambdaInstanceId && (
+                      <span className="ml-2 text-charcoal/30">id: {lambdaInstanceId}…</span>
+                    )}
+                  </span>
+                  {lambdaFnName && (
+                    <span className="font-mono text-[10px] text-charcoal/40">
+                      <span className="text-charcoal/30 uppercase tracking-wide mr-1">fn</span>
+                      {lambdaFnName}
+                    </span>
+                  )}
+                  {blobRuntime.lastRestoreAt && (
+                    <span className="font-mono text-[10px] text-charcoal/50">
+                      <span className="text-charcoal/30 uppercase tracking-wide mr-1">Last photos blob restore</span>
+                      {blobRuntime.lastRestoreAt}
+                    </span>
+                  )}
+                  {blobRuntime.lastPersistAt && (
+                    <span className="font-mono text-[10px] text-charcoal/50">
+                      <span className="text-charcoal/30 uppercase tracking-wide mr-1">Last photos checkpoint</span>
+                      {blobRuntime.lastPersistAt}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

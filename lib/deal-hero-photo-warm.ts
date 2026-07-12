@@ -4,7 +4,7 @@ import {
   dealListingPhotoUrl,
   type DealPickPayload,
 } from '@/lib/deal-pick'
-import { readListingPhotoBlob } from '@/lib/listings-db'
+import { readListingPhotoBlob } from '@/lib/listing-photos-db'
 import {
   listingPhotoCacheId,
   resolveListingPhotoBuffer,

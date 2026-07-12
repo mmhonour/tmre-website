@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { isListingsDbAvailable } from '@/lib/listings-db'
+import { hasListingsData } from '@/lib/db/listings-repo'
 import { persistListingByMlsId } from '@/lib/listings-store'
 
 export const runtime = 'nodejs'
@@ -21,7 +21,7 @@ export async function POST(
       found: result.found,
       cached: result.cached,
       source: result.source,
-      dbAvailable: isListingsDbAvailable(),
+      dbAvailable: await hasListingsData(),
     })
   } catch (err) {
     console.error('[/api/listings/[mlsId]/cache] error', err)

@@ -14,7 +14,7 @@ import {
   VINTAGE_BUCKETS,
   type VintageBucketId,
 } from '@/lib/vintage-buckets'
-import { listingRowId } from '@/lib/listings-db'
+import { listingRowId } from '@/lib/db/listings-repo'
 import {
   readAllListingsFromDb,
   readListingIfEstimate,

@@ -3,17 +3,7 @@ import 'server-only'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { listingPhotosDbPath, tryGetListingPhotosDb } from '@/lib/listing-photos-db'
-import {
-  describeListingsDbRuntime,
-  getListingsDb,
-  getSyncMeta,
-  isListingsDbAvailable,
-  listingsDbPath,
-  listingsReadDbPath,
-  publishListingsReadSnapshot,
-} from '@/lib/listings-db'
 import type {
-  SqliteColumnRef,
   SqliteDatabaseDiagram,
   SqliteRelationship,
   SqliteTableInfo,
@@ -27,8 +17,6 @@ export type {
   SqliteTableInfo,
 } from '@/lib/sqlite-schema-diagram-types'
 export { formatBytes } from '@/lib/sqlite-schema-diagram-types'
-
-const PROPERTY_ADDRESS_TABLE = 'town_property_addresses'
 
 type SqliteDatabase = import('better-sqlite3').Database
 
@@ -53,123 +41,18 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`
 }
 
-/** Prefer cheap estimates on huge blob tables; exact COUNT can stall Admin. */
 function tableRowCount(database: SqliteDatabase, tableName: string): number {
   try {
-    if (tableName === 'listing_photos') {
-      const approx = database
-        .prepare(`SELECT MAX(rowid) AS n FROM ${quoteIdent(tableName)}`)
-        .get() as { n: number | null }
-      return approx.n ?? 0
-    }
-    const countRow = database
-      .prepare(`SELECT COUNT(*) AS count FROM ${quoteIdent(tableName)}`)
-      .get() as { count: number }
-    return countRow.count
+    const approx = database
+      .prepare(`SELECT MAX(rowid) AS n FROM ${quoteIdent(tableName)}`)
+      .get() as { n: number | null }
+    return approx.n ?? 0
   } catch {
     return 0
   }
 }
 
-/** Logical joins — SQLite schemas omit FOREIGN KEY constraints. */
-const DOCUMENTED_LISTINGS_RELATIONSHIPS: SqliteRelationship[] = [
-  {
-    from: { table: 'listings', column: 'id' },
-    to: { table: 'listing_tax_history', column: 'listing_id' },
-    source: 'documented',
-  },
-  {
-    from: { table: 'listings', column: 'id' },
-    to: { table: 'listing_if_estimates', column: 'listing_id' },
-    source: 'documented',
-  },
-  {
-    from: { table: 'listings', column: 'id' },
-    to: { table: 'listing_relations', column: 'subject_id' },
-    source: 'documented',
-  },
-  {
-    from: { table: 'listings', column: 'id' },
-    to: { table: 'listing_relations', column: 'related_id' },
-    source: 'documented',
-  },
-  {
-    from: { table: 'listings', column: 'id' },
-    to: { table: PROPERTY_ADDRESS_TABLE, column: 'listing_id' },
-    source: 'documented',
-  },
-  {
-    from: { table: 'listings', column: 'id' },
-    to: { table: 'listing_superlatives', column: 'listing_id' },
-    source: 'documented',
-  },
-]
-
-const DOCUMENTED_PROPERTY_ADDRESS_RELATIONSHIPS: SqliteRelationship[] = [
-  {
-    from: { table: 'listings', column: 'id' },
-    to: { table: PROPERTY_ADDRESS_TABLE, column: 'listing_id' },
-    source: 'documented',
-  },
-]
-
-function relationshipKey(rel: SqliteRelationship): string {
-  return `${rel.from.table}.${rel.from.column}->${rel.to.table}.${rel.to.column}`
-}
-
-function pragmaForeignKeys(database: SqliteDatabase, tableName: string): SqliteRelationship[] {
-  try {
-    const rows = database.prepare(`PRAGMA foreign_key_list(${quoteIdent(tableName)})`).all() as {
-      table: string
-      from: string
-      to: string
-    }[]
-    return rows.map((row) => ({
-      from: { table: row.table, column: row.to },
-      to: { table: tableName, column: row.from },
-      source: 'pragma' as const,
-    }))
-  } catch {
-    return []
-  }
-}
-
-function inspectRelationships(
-  database: SqliteDatabase,
-  tables: SqliteTableInfo[],
-  documented: SqliteRelationship[],
-): SqliteRelationship[] {
-  const tableNames = new Set(tables.map((t) => t.name))
-  const columnExists = (ref: SqliteColumnRef) =>
-    tables
-      .find((t) => t.name === ref.table)
-      ?.columns.some((c) => c.name === ref.column) ?? false
-
-  const merged = new Map<string, SqliteRelationship>()
-  for (const rel of documented) {
-    if (tableNames.has(rel.from.table) && tableNames.has(rel.to.table) && columnExists(rel.from) && columnExists(rel.to)) {
-      merged.set(relationshipKey(rel), rel)
-    }
-  }
-  for (const table of tables) {
-    for (const rel of pragmaForeignKeys(database, table.name)) {
-      if (tableNames.has(rel.from.table) && columnExists(rel.from) && columnExists(rel.to)) {
-        merged.set(relationshipKey(rel), rel)
-      }
-    }
-  }
-  return [...merged.values()].sort(
-    (a, b) =>
-      a.from.table.localeCompare(b.from.table) ||
-      a.to.table.localeCompare(b.to.table) ||
-      a.from.column.localeCompare(b.from.column),
-  )
-}
-
-function inspectDatabase(
-  database: SqliteDatabase,
-  tableFilter?: (name: string) => boolean,
-): SqliteTableInfo[] {
+function inspectDatabase(database: SqliteDatabase): SqliteTableInfo[] {
   const tableRows = database
     .prepare(
       `SELECT name FROM sqlite_master
@@ -179,9 +62,7 @@ function inspectDatabase(
     )
     .all() as { name: string }[]
 
-  return tableRows
-    .filter((table) => !tableFilter || tableFilter(table.name))
-    .map((table) => {
+  return tableRows.map((table) => {
     const cols = database.prepare(`PRAGMA table_info(${quoteIdent(table.name)})`).all() as {
       name: string
       type: string
@@ -222,36 +103,10 @@ function baseMeta(
   }
 }
 
-function propertyAddressRoleLine(): string {
-  const base =
-    'Verified MLS + Vision assessor addresses — stored in listings.db (town_property_addresses); weekly sync Mon 1am ET'
-  const syncedAt = getSyncMeta('property_addresses_synced_at')
-  if (!syncedAt) return `${base} · not synced yet`
-  const statsRaw = getSyncMeta('property_addresses_last_stats')
-  if (!statsRaw) return `${base} · last sync ${syncedAt}`
-  try {
-    const stats = JSON.parse(statsRaw) as {
-      totalRows?: number
-      mlsRows?: number
-      assessorRows?: number
-    }
-    const total = stats.totalRows ?? 0
-    const mls = stats.mlsRows ?? 0
-    const assessor = stats.assessorRows ?? 0
-    return `${base} · ${total.toLocaleString()} rows (${mls.toLocaleString()} MLS, ${assessor.toLocaleString()} assessor) · synced ${syncedAt}`
-  } catch {
-    return `${base} · last sync ${syncedAt}`
-  }
-}
-
 function inspectHandle(
   database: SqliteDatabase | null,
   meta: Omit<SqliteDatabaseDiagram, 'available' | 'tables' | 'relationships' | 'error'>,
-  options?: {
-    error?: string
-    documentedRelationships?: SqliteRelationship[]
-    tableFilter?: (name: string) => boolean
-  },
+  options?: { error?: string; documentedRelationships?: SqliteRelationship[] },
 ): SqliteDatabaseDiagram {
   if (!database) {
     return {
@@ -264,16 +119,11 @@ function inspectHandle(
   }
 
   try {
-    const tables = inspectDatabase(database, options?.tableFilter)
     return {
       ...meta,
       available: true,
-      tables,
-      relationships: inspectRelationships(
-        database,
-        tables,
-        options?.documentedRelationships ?? [],
-      ),
+      tables: inspectDatabase(database),
+      relationships: options?.documentedRelationships ?? [],
     }
   } catch (err) {
     return {
@@ -305,96 +155,9 @@ function openReadonlyIfExists(filePath: string): { database: SqliteDatabase | nu
   }
 }
 
-
+/** Live SQLite file diagrams — listing photos only (MLS inventory is in Neon Postgres). */
 export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
-  const writePath = listingsDbPath()
-  const readPath = listingsReadDbPath()
   const photosPath = listingPhotosDbPath()
-  const bundlePath = path.join(process.cwd(), 'data', 'listings.bundle.db')
-
-  let writeDb: SqliteDatabase | null = null
-  let writeError: string | undefined
-  const runtime = describeListingsDbRuntime()
-  if (!runtime.nativeModuleAvailable) {
-    writeError =
-      runtime.nativeModuleError ??
-      'better-sqlite3 native module unavailable in this runtime (check Netlify Node version and included_files)'
-  } else {
-    try {
-      writeDb = isListingsDbAvailable() ? getListingsDb() : null
-      if (!writeDb) {
-        const hints: string[] = []
-        if (runtime.lastOpenError) hints.push(`open: ${runtime.lastOpenError}`)
-        const missingBundle = runtime.bundleSources.every((src) => !src.exists)
-        if (missingBundle) {
-          hints.push('bundle missing at runtime (data/listings.bundle.db not in function package)')
-        } else if (!runtime.writeDbExists || (runtime.writeDbBytes ?? 0) < 50_000) {
-          hints.push('write DB not seeded to /tmp yet')
-        }
-        writeError =
-          hints.length > 0
-            ? `Listings DB unavailable — ${hints.join('; ')}`
-            : 'Listings DB unavailable in this runtime'
-      }
-    } catch (err) {
-      writeError = err instanceof Error ? err.message : String(err)
-    }
-  }
-
-  const writeDiagram = inspectHandle(
-    writeDb,
-    baseMeta('listings-write', 'Listings (write)', 'Primary MLS write DB — sync, scores, and cache writes', writePath),
-    { error: writeError, documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS },
-  )
-
-  if (writeDb && !existsSync(readPath)) {
-    publishListingsReadSnapshot()
-  }
-
-  const readOpen = openReadonlyIfExists(readPath)
-  const readDbForInspect = readOpen.database ?? writeDb
-  const readDiagram = inspectHandle(
-    readDbForInspect,
-    baseMeta(
-      'listings-read',
-      'Listings (read snapshot)',
-      'API read replica published after successful syncs',
-      readPath,
-    ),
-    {
-      error: readDbForInspect ? undefined : readOpen.error,
-      documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS,
-    },
-  )
-
-  const propertyAddressDb = writeDb ?? readOpen.database
-  const propertyAddressDiagram = inspectHandle(
-    propertyAddressDb,
-    baseMeta(
-      'property-addresses',
-      'Property address directory',
-      propertyAddressRoleLine(),
-      writePath,
-    ),
-    {
-      error: propertyAddressDb
-        ? undefined
-        : writeError ?? readOpen.error ?? 'Listings DB unavailable — address table lives in listings.db',
-      documentedRelationships: DOCUMENTED_PROPERTY_ADDRESS_RELATIONSHIPS,
-      tableFilter: (name) => name === PROPERTY_ADDRESS_TABLE,
-    },
-  )
-  if (propertyAddressDiagram.available && propertyAddressDiagram.tables.length === 0) {
-    propertyAddressDiagram.error =
-      `${PROPERTY_ADDRESS_TABLE} table not found — restart the server to migrate schema, or run property address sync`
-  }
-
-  try {
-    readOpen.database?.close()
-  } catch {
-    /* ignore */
-  }
-
   const photosCached = tryGetListingPhotosDb()
   const photosOpen = openReadonlyIfExists(photosPath)
   const photosDb = photosCached ?? photosOpen.database
@@ -403,14 +166,14 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
     baseMeta(
       'listing-photos',
       'Listing photos',
-      'Binary photo BLOB store keyed by MLS ID',
+      'Binary photo BLOB store keyed by MLS ID — round-trips through Netlify Blobs on serverless',
       photosPath,
     ),
     {
-      error:
-        photosDb ? undefined : photosOpen.error ?? 'Photos DB unavailable in this runtime',
+      error: photosDb ? undefined : (photosOpen.error ?? 'Photos DB unavailable in this runtime'),
     },
   )
+
   if (photosOpen.database && photosOpen.database !== photosCached) {
     try {
       photosOpen.database.close()
@@ -419,33 +182,5 @@ export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
     }
   }
 
-  const diagrams = [writeDiagram, readDiagram, photosDiagram, propertyAddressDiagram]
-
-  const bundleOpen = openReadonlyIfExists(bundlePath)
-  diagrams.push(
-    inspectHandle(
-      bundleOpen.database,
-      baseMeta(
-        'listings-bundle',
-        'Listings bundle (deploy artifact)',
-        'Copied into Netlify /tmp on cold start — not live traffic',
-        bundlePath,
-      ),
-      {
-        error:
-          bundleOpen.error ??
-          (existsSync(bundlePath)
-            ? undefined
-            : 'Bundle missing at runtime — check outputFileTracingIncludes and netlify.toml included_files'),
-        documentedRelationships: DOCUMENTED_LISTINGS_RELATIONSHIPS,
-      },
-    ),
-  )
-  try {
-    bundleOpen.database?.close()
-  } catch {
-    /* ignore */
-  }
-
-  return diagrams
+  return [photosDiagram]
 }

@@ -7,7 +7,7 @@ import type {
   SqliteTableInfo,
 } from "@/lib/sqlite-schema-diagram-types";
 import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
-import type { InventorySnapshot } from "@/lib/listings-db";
+import type { InventorySnapshot } from "@/lib/db/listings-repo";
 
 type AnchorPoint = { x: number; y: number };
 type ConnectorPath = {
@@ -20,12 +20,8 @@ export type BlobPersistRuntimeInfo = {
   active: boolean;
   mode: "netlify-blobs" | "local-file";
   reason: string;
-  absoluteMinListingCount: number;
-  lastGoodListingCount: number | null;
   lastPersistAt: string | null;
-  lastPersistResult: "ok" | "skipped_degraded" | null;
-  lastDegradedCount: number | null;
-  lastDegradedThreshold: number | null;
+  lastPersistResult?: "ok" | "skipped_degraded" | null;
   lastRestoreAt: string | null;
 };
 
@@ -40,15 +36,8 @@ function formatBlobTimestamp(iso: string | null): string {
 }
 
 function BlobPersistRuntimeBanner({ runtime }: { runtime: BlobPersistRuntimeInfo }) {
-  const skippedDegraded = runtime.lastPersistResult === "skipped_degraded";
   return (
-    <div
-      className={`rounded-2xl border px-5 sm:px-6 py-4 ${
-        skippedDegraded
-          ? "border-coral/25 bg-coral/[0.06]"
-          : "border-charcoal/[0.08] bg-white"
-      }`}
-    >
+    <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 sm:px-6 py-4">
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <span
           className={`inline-block w-1.5 h-1.5 rounded-full ${
@@ -56,45 +45,19 @@ function BlobPersistRuntimeBanner({ runtime }: { runtime: BlobPersistRuntimeInfo
           }`}
         />
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Blob persistence runtime
+          Listing photos blob runtime
         </p>
         <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/50 border border-charcoal/15 rounded-full px-2 py-0.5">
           {runtime.active ? "Netlify Blobs active" : "Local file — no blobs"}
         </span>
       </div>
       <p className="text-sm text-slate leading-snug max-w-3xl">{runtime.reason}</p>
-      {skippedDegraded ? (
-        <p className="mt-2 text-sm text-coral leading-snug max-w-3xl">
-          Last checkpoint was <strong>refused</strong> — write DB had only{" "}
-          {runtime.lastDegradedCount?.toLocaleString() ?? "?"} listings, below the
-          threshold of {runtime.lastDegradedThreshold?.toLocaleString() ?? "?"}. The good
-          blob snapshot was left untouched. Run a <strong>Full resync</strong> to
-          repopulate the DB above the minimum ({runtime.absoluteMinListingCount.toLocaleString()}).
-        </p>
-      ) : null}
       <dl className="mt-3 font-mono text-[11px] text-charcoal/70 space-y-1">
         <div>
-          <dt className="inline text-charcoal/45">min listing count: </dt>
-          <dd className="inline break-all">
-            {runtime.absoluteMinListingCount.toLocaleString()}
-            <span className="text-charcoal/35"> (checkpoint refused below this)</span>
-          </dd>
-        </div>
-        <div>
-          <dt className="inline text-charcoal/45">last known-good count: </dt>
-          <dd className="inline break-all">
-            {runtime.lastGoodListingCount != null
-              ? runtime.lastGoodListingCount.toLocaleString()
-              : "—"}
-          </dd>
-        </div>
-        <div>
           <dt className="inline text-charcoal/45">last checkpoint: </dt>
-          <dd className={`inline break-all ${skippedDegraded ? "text-coral" : ""}`}>
+          <dd className="inline break-all">
             {formatBlobTimestamp(runtime.lastPersistAt)}
-            {runtime.lastPersistResult
-              ? ` (${runtime.lastPersistResult === "ok" ? "ok" : "skipped — degraded"})`
-              : ""}
+            {runtime.lastPersistResult ? ` (${runtime.lastPersistResult})` : ""}
           </dd>
         </div>
         <div>

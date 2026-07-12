@@ -1,10 +1,7 @@
 import 'server-only'
 
 import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
-import {
-  listingRowId,
-  publishListingsReadSnapshot,
-} from '@/lib/listings-db'
+import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingsFromDb, upsertListingScores } from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
@@ -136,7 +133,6 @@ export async function rebuildAllListingScores(): Promise<ListingScoresRebuildRes
   const finishedAt = new Date().toISOString()
   if (towns.some((row) => row.ok && row.scored > 0)) {
     setSyncMeta('last_listing_scores', finishedAt)
-    publishListingsReadSnapshot()
   }
 
   console.info(

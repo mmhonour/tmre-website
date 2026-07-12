@@ -17,7 +17,8 @@ import {
   normalizeStyleKey,
 } from './deal-superlatives'
 import { listingPhotoProxyUrl } from './listing-url'
-import { firstStoredListingPhotoIndex, listingRowId } from './listings-db'
+import { firstStoredListingPhotoIndex } from '@/lib/listing-photos-db'
+import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingSuperlativesByMlsIds } from './db/listings-repo'
 import { normalizeZip } from './tmre-towns'
 

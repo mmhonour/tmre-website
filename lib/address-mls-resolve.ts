@@ -146,15 +146,15 @@ async function persistAddressResolution(listing: Listing, input: AddressLookupIn
     town,
     listing.listingKey?.trim() || listing.mlsId,
   )
-  upsertPropertyAddress(draft, new Date().toISOString())
+  await upsertPropertyAddress(draft, new Date().toISOString())
 }
 
-function lookupDirectoryMlsId(input: AddressLookupInput): string | null {
+async function lookupDirectoryMlsId(input: AddressLookupInput): Promise<string | null> {
   const addressNorm = normalizePropertyAddress(input.city, input.street, input.postalCode)
-  const exact = findPropertyAddressByNorm(input.city, addressNorm)
+  const exact = await findPropertyAddressByNorm(input.city, addressNorm)
   if (exact?.mlsId?.trim()) return exact.mlsId.trim()
 
-  const hits = searchPropertyAddressesInDb(input.street, {
+  const hits = await searchPropertyAddressesInDb(input.street, {
     limit: 12,
     town: input.city,
   })
@@ -196,7 +196,7 @@ export async function resolveMlsIdByAddress(
     postalCode: input.postalCode?.trim(),
   }
 
-  const directoryMlsId = lookupDirectoryMlsId(normalized)
+  const directoryMlsId = await lookupDirectoryMlsId(normalized)
   if (directoryMlsId) {
     const dbHits = await searchListingsInDbByQuery(directoryMlsId, {
       limit: 1,

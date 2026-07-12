@@ -1,15 +1,9 @@
 import 'server-only'
 
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
-import { scheduleListingsDbBlobPersist } from '@/lib/listings-db-persist'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import { nextDailyTimeEt, parseIsoMs } from '@/lib/admin-sync-schedule'
 
-// Post-deploy warm is a SQLite-blob-era concept (rehydrate the per-deploy blob
-// before first request). Under hosted Postgres, inventory persists across
-// deploys, so a full warm is only "pending" when no full sync has ever run.
-// last_full_sync is served synchronously from the startup-hydrated sync_meta
-// store, which keeps this (C3-doomed) scheduler off the async listings gate.
 function hasFullSyncCompleted(): boolean {
   return getSyncMeta('last_full_sync') != null
 }
@@ -113,7 +107,6 @@ export async function ensurePostDeployFullResyncScheduled(now = new Date()): Pro
 
   if (hasFullSyncCompleted()) {
     setSyncMeta(COMPLETED_DEPLOY_ID_KEY, deployId)
-    scheduleListingsDbBlobPersist('post-deploy-already-warm')
     return
   }
 
@@ -125,7 +118,6 @@ export async function ensurePostDeployFullResyncScheduled(now = new Date()): Pro
     setSyncMeta(DEPLOY_ID_KEY, deployId)
     setSyncMeta(SCHEDULED_AT_KEY, scheduledAt)
     deleteSyncMeta(TRIGGERED_AT_KEY)
-    scheduleListingsDbBlobPersist('post-deploy-schedule')
     console.info(
       `[deploy-full-resync] scheduled post-deploy warm at ${scheduledAt} for deploy ${deployId.slice(0, 8)}…`,
     )
@@ -139,7 +131,6 @@ export async function ensurePostDeployFullResyncScheduled(now = new Date()): Pro
   const { queueNetlifyFullSync } = await import('@/lib/netlify-sync-trigger')
   const queued = await queueNetlifyFullSync()
   setSyncMeta(TRIGGERED_AT_KEY, now.toISOString())
-  scheduleListingsDbBlobPersist('post-deploy-trigger')
   console.info(
     queued
       ? `[deploy-full-resync] queued background full warm for deploy ${deployId.slice(0, 8)}…`
@@ -152,7 +143,6 @@ export function markPostDeployFullResyncComplete(): void {
   const deployId = readNetlifyDeployId()
   if (!deployId) return
   setSyncMeta(COMPLETED_DEPLOY_ID_KEY, deployId)
-  scheduleListingsDbBlobPersist('post-deploy-complete')
 }
 
 export function postDeployDelayLabel(): string {

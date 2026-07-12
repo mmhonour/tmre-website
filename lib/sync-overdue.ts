@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { runAdminSyncAction, readAdminSyncPanelStatus } from '@/lib/admin-sync-actions'
+import { runAdminSyncAction } from '@/lib/admin-sync-actions'
 import type { AdminSyncActionId } from '@/lib/admin-sync-types'
 import {
   isDailySyncOverdue,
@@ -72,7 +72,14 @@ function incrementalBaselineIso(
 
 /** Jobs whose scheduled window passed while the host was down. Each runs at most once. */
 export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
-  const { stats } = readAdminSyncPanelStatus()
+  const stats = {
+    lastFullSync: getSyncMeta('last_full_sync'),
+    lastIncrementalSync: getSyncMeta('last_incremental_sync'),
+    lastListingScores: getSyncMeta('last_listing_scores'),
+    lastStatsCache: getSyncMeta('last_stats_cache'),
+    lastDealOfTheDayCache: getSyncMeta('last_deal_of_the_day_cache'),
+    lastListingEdgeScores: getSyncMeta('last_listing_edge_scores'),
+  }
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const propertyAddressesSyncedAt = getSyncMeta('property_addresses_synced_at')
   const incrementalIntervalMs = latestIntervalMs()

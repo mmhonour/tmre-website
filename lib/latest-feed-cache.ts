@@ -4,7 +4,6 @@ import {
   fetchLatestUpdatedListings,
   type LatestListingRow,
 } from '@/lib/latest-listings'
-import { publishListingsReadSnapshot } from '@/lib/listings-db'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
@@ -71,7 +70,6 @@ export async function rebuildLatestGlobalFeedCache(
     bypassTownFeedCache: true,
   })
   await writeLatestGlobalFeedCache(listings)
-  publishListingsReadSnapshot()
   const durationMs = Date.now() - t0
   console.info(
     `[latest-feed] warmed global feed (${listings.length} listings) in ${durationMs}ms`,

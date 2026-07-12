@@ -1,6 +1,7 @@
 import 'server-only'
 
-import { listingRowId, readListingPhotoBlob } from '@/lib/listings-db'
+import { listingRowId } from '@/lib/db/listings-repo'
+import { readListingPhotoBlob } from '@/lib/listing-photos-db'
 import {
   isListingPhotoFresh,
   listingPhotoCacheId,

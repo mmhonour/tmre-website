@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { getListingsDbStats, getSyncMeta, setSyncMeta } from '@/lib/listings-db'
+import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   SqliteWriteStatsCollector,
   getActiveRefreshLockStats,
@@ -84,10 +84,9 @@ function readRefreshLockHistoryRaw(): RefreshLockHistoryEntry[] {
 
 function writeRefreshLockHistory(entries: RefreshLockHistoryEntry[]): void {
   setSyncMeta(REFRESH_LOCK_HISTORY_KEY, JSON.stringify(entries))
-  void import('@/lib/listings-db-persist').then(
-    ({ scheduleListingsDbBlobPersist, persistRefreshLockHistoryToBlob }) => {
-      scheduleListingsDbBlobPersist('refresh-lock-history')
-      // Also persist to a dedicated blob key so history survives DB blob corruption.
+  void import('@/lib/listing-photos-db-persist').then(
+    ({ scheduleListingPhotosDbBlobPersist, persistRefreshLockHistoryToBlob }) => {
+      scheduleListingPhotosDbBlobPersist('refresh-lock-history')
       void persistRefreshLockHistoryToBlob(entries).catch(() => {})
     },
   )
@@ -285,8 +284,8 @@ export function forceClearSqliteRefreshLock(): SqliteRefreshLockStatus {
   activeHistoryEntryId = null
   setSyncMeta('refresh_depth', '0')
   setSyncMeta('refresh_in_progress', '0')
-  void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
-    scheduleListingsDbBlobPersist('refresh-lock-force-clear'),
+  void import('@/lib/listing-photos-db-persist').then(({ scheduleListingPhotosDbBlobPersist }) =>
+    scheduleListingPhotosDbBlobPersist('refresh-lock-force-clear'),
   )
   return before
 }
@@ -299,8 +298,8 @@ export function beginSqliteRefresh(source: string | null = null): void {
     startRefreshLockHistoryEntry(source)
     setSyncMeta('refresh_in_progress', '1')
     setSyncMeta('last_refresh_started_at', new Date().toISOString())
-    void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
-      scheduleListingsDbBlobPersist('refresh-lock-begin'),
+    void import('@/lib/listing-photos-db-persist').then(({ scheduleListingPhotosDbBlobPersist }) =>
+      scheduleListingPhotosDbBlobPersist('refresh-lock-begin'),
     )
   }
 }
@@ -316,8 +315,8 @@ export function endSqliteRefresh(finishedAt?: string): void {
     activeHistoryEntryId = null
     setSyncMeta('refresh_in_progress', '0')
     setSyncMeta('last_refresh_finished_at', finished)
-    void import('@/lib/listings-db-persist').then(({ scheduleListingsDbBlobPersist }) =>
-      scheduleListingsDbBlobPersist('refresh-lock-end'),
+    void import('@/lib/listing-photos-db-persist').then(({ scheduleListingPhotosDbBlobPersist }) =>
+      scheduleListingPhotosDbBlobPersist('refresh-lock-end'),
     )
   }
 }
@@ -388,13 +387,12 @@ export function readSqliteRefreshStatus(): {
   lastFinishedAt: string | null
 } {
   healStaleRefreshLock()
-  const stats = getListingsDbStats()
   return {
     refreshing: getSyncMeta('refresh_in_progress') === '1',
     lastFinishedAt: latestIsoTimestamp(
       getSyncMeta('last_refresh_finished_at'),
-      stats.lastStatsCache,
-      stats.lastFullSync,
+      getSyncMeta('last_stats_cache'),
+      getSyncMeta('last_full_sync'),
     ),
   }
 }

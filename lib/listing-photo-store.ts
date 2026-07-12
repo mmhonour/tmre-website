@@ -7,7 +7,7 @@ import {
   readListingPhotoBlob,
   upsertListingPhotoBlob,
   type ListingPhotoBlobRow,
-} from '@/lib/listings-db'
+} from '@/lib/listing-photos-db'
 import {
   isListingPhotoFresh,
   LISTING_PHOTO_TTL_MS,

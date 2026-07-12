@@ -1,11 +1,8 @@
 import 'server-only'
 
 import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
-import {
-  firstStoredListingPhotoIndex,
-  listingRowId,
-  type TownUpdateStat,
-} from '@/lib/listings-db'
+import { firstStoredListingPhotoIndex } from '@/lib/listing-photos-db'
+import { listingRowId, type TownUpdateStat } from '@/lib/db/listings-repo'
 import {
   readRecentlyUpdatedListings,
   readTownUpdateStats,

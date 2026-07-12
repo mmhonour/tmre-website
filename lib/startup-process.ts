@@ -115,7 +115,7 @@ export function describeStartupProcess(): {
           id: "boot-register",
           title: "Next.js Node register",
           timing: "t = 0",
-          detail: "Loads listings-sync, stats-cache, and SQLite helpers.",
+          detail: "Loads listings-sync, stats-cache, sync_meta hydrate, and listing-photos SQLite helpers.",
           status: "active",
           statusLabel: "Always",
         },
@@ -138,7 +138,7 @@ export function describeStartupProcess(): {
       steps: [
         {
           id: "startup-full-schedule",
-          title: "Schedule full MLS → SQLite",
+          title: "Schedule full MLS → Postgres",
           timing: `+${Math.round(startupDelayMs / 1000)}s`,
           detail:
             "syncAllTownListings(): Active → Closed → Expired for every TMRE town.",
@@ -182,7 +182,7 @@ export function describeStartupProcess(): {
     {
       id: "incremental",
       title: "Incremental Latest sync",
-      subtitle: "Keeps /latest fresh from SQLite — never per-request RETS",
+      subtitle: "Keeps /latest fresh from Postgres — never per-request RETS",
       steps: [
         {
           id: "incremental-first",
@@ -336,7 +336,7 @@ export function describeStartupProcess(): {
               title: "Schedule post-deploy full warm",
               timing: "+8s",
               detail:
-                "When SQLite is empty after a deploy, schedules background full reload (~2 min). Countdown appears on admin Full resync row.",
+                "When Postgres has no listings after a deploy, schedules background full reload (~2 min). Countdown appears on admin Full resync row.",
               status: netlifyWarmEnabled ? "scheduled" : "skipped",
               statusLabel: netlifyWarmEnabled ? "Scheduled" : "—",
             },
@@ -355,7 +355,7 @@ export function describeStartupProcess(): {
           title: "Build-time sync (skipped)",
           timing: "netlify build",
           detail:
-            "npm run build:netlify prepares data/listings.bundle.db (schema or local copy), rebuilds better-sqlite3, then next build. Bundle seeds /tmp on cold starts.",
+            "npm run build:netlify rebuilds better-sqlite3 for listing-photos SQLite, then next build. MLS inventory persists in Neon Postgres.",
           status: "info",
           statusLabel: "Build",
         },
@@ -364,7 +364,7 @@ export function describeStartupProcess(): {
           title: "Post-deploy full warm",
           timing: `~${postDeployDelayLabel()} after first request`,
           detail:
-            "After each Netlify deploy, the first serverless request schedules a background full MLS reload when SQLite is empty. Admin Full resync row shows a live countdown until then.",
+            "After each Netlify deploy, the first serverless request schedules a background full MLS reload when Postgres has no listings yet. Admin Full resync row shows a live countdown until then.",
           status: "info",
           statusLabel: "Warm",
         },
