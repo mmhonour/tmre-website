@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { readListingByIdFromDb } from '@/lib/listings-db'
+import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
 
 export const runtime = 'nodejs'
@@ -14,7 +14,7 @@ export async function GET(
   if (!id) return NextResponse.json({ url: null })
 
   try {
-    const listing = readListingByIdFromDb(id)
+    const listing = await readListingByIdFromDb(id)
     if (!listing) return NextResponse.json({ url: null }, { status: 404 })
     const photoKey = listing.listingKey?.trim() || id
     const resolved = await resolveListingPhotoBuffer({

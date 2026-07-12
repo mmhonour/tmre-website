@@ -1,9 +1,8 @@
 import {
   getListingsDbStats,
   publishListingsReadSnapshot,
-  readAllListingsFromDb,
-  readListingsFromDb,
 } from '@/lib/listings-db'
+import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   clearStatsCache,
@@ -174,7 +173,7 @@ async function statsCacheMissingRequiredEntries(): Promise<boolean> {
 }
 
 async function ensureStatsCachePopulated(): Promise<void> {
-  if (emptyCacheRebuildAttempted || !hasLocalListingsCache()) return
+  if (emptyCacheRebuildAttempted || !(await hasLocalListingsCache())) return
   const { total, statsCacheEntries } = getListingsDbStats()
   if (total > 0 && (statsCacheEntries === 0 || (await statsCacheMissingRequiredEntries()))) {
     emptyCacheRebuildAttempted = true
@@ -187,7 +186,7 @@ export async function readStatsCache<T>(
   city: string,
   kind: ListingKind,
 ): Promise<T | null> {
-  if (!hasLocalListingsCache()) return null
+  if (!(await hasLocalListingsCache())) return null
   await ensureStatsCachePopulated()
   const row = await readStatsCacheRow(statsCacheKey(scope, city, kind))
   if (!row) return null
@@ -282,7 +281,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
   try {
   await clearStatsCache()
 
-  if (!hasLocalListingsCache()) {
+  if (!(await hasLocalListingsCache())) {
     return { written: 0, durationMs: Date.now() - t0 }
   }
 
@@ -306,8 +305,10 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
   }
 
   for (const town of TMRE_TOWNS) {
-    const active = readListingsFromDb(town, 'Active', 500)
-    const closed = readListingsFromDb(town, 'Closed', 2500)
+    const [active, closed] = await Promise.all([
+      readListingsFromDb(town, 'Active', 500),
+      readListingsFromDb(town, 'Closed', 2500),
+    ])
 
     for (const kind of LISTING_KINDS) {
       await writeStatsCache(
@@ -368,7 +369,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     written += 2
   }
 
-  const allClosed = readAllListingsFromDb(TMRE_TOWNS, 'Closed')
+  const allClosed = await readAllListingsFromDb(TMRE_TOWNS, 'Closed')
   for (const kind of LISTING_KINDS) {
     await writeStatsCache(
       'sales-by-vintage',
@@ -407,7 +408,7 @@ export async function rebuildStatsCacheIfStale(force = false): Promise<{
   durationMs: number
   skipped?: boolean
 }> {
-  if (!hasLocalListingsCache()) {
+  if (!(await hasLocalListingsCache())) {
     return { written: 0, durationMs: 0, skipped: true }
   }
   if (!force && !isStatsCacheStale() && !(await statsCacheMissingRequiredEntries())) {
@@ -421,11 +422,11 @@ export async function rebuildStatsCacheIfStale(force = false): Promise<{
 
 /** Queue a stats cache rebuild without blocking the current request. */
 export function scheduleStatsCacheRebuildIfStale(force = false): void {
-  if (!hasLocalListingsCache()) return
   if (backgroundRebuildScheduled) return
   backgroundRebuildScheduled = true
   void (async () => {
     try {
+      if (!(await hasLocalListingsCache())) return
       if (!force && !isStatsCacheStale() && !(await statsCacheMissingRequiredEntries())) {
         const { statsCacheEntries } = getListingsDbStats()
         if (statsCacheEntries > 0) return

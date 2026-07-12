@@ -76,7 +76,7 @@ export async function readDealOfTheDayCache(
   scope: DealOfTheDayScope,
   kind: DealOfTheDayKind = 'all',
 ): Promise<DealOfTheDayResponse | null> {
-  if (!hasLocalListingsCache()) return null
+  if (!(await hasLocalListingsCache())) return null
   const row = await readStatsCacheRow(dealOfTheDayCacheKey(scope, kind))
   if (!row) return null
   try {
@@ -89,7 +89,7 @@ export async function readDealOfTheDayCache(
 export async function readDealOfTheDayBundle(
   kind: DealOfTheDayKind = 'all',
 ): Promise<DealOfTheDayBundleResponse | null> {
-  if (!hasLocalListingsCache()) return null
+  if (!(await hasLocalListingsCache())) return null
 
   const deals: Partial<Record<TmreTown, DealOfTheDayResponse>> = {}
   let generatedAt: string | null = null
@@ -157,7 +157,7 @@ async function cacheScopedKinds(
 
 /** Re-warm hero + deck photos for any cached DOTD entries still missing blobs. */
 export async function warmAllDealOfTheDayPhotos(): Promise<number> {
-  if (!hasLocalListingsCache()) return 0
+  if (!(await hasLocalListingsCache())) return 0
 
   let warmed = 0
   const scopes: DealOfTheDayScope[] = [...TMRE_TOWNS, 'All']
@@ -191,7 +191,7 @@ export async function rebuildDealOfTheDayCache(): Promise<{
   // Drop legacy unscoped keys from v4.
   await clearCacheByPrefix('deal-of-the-day:v4:')
 
-  if (!hasLocalListingsCache()) {
+  if (!(await hasLocalListingsCache())) {
     return { written: 0, durationMs: Date.now() - t0 }
   }
 
@@ -250,7 +250,7 @@ export async function rebuildDealOfTheDayCacheIfMissing(): Promise<{
   durationMs: number
   skipped?: boolean
 }> {
-  if (!hasLocalListingsCache()) {
+  if (!(await hasLocalListingsCache())) {
     return { written: 0, durationMs: 0, skipped: true }
   }
   if (await readDealOfTheDayCache('Westport', 'sale')) {

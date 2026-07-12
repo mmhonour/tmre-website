@@ -13,13 +13,12 @@ import type {
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  readAllListingsFromDb,
   readListingRelations,
-  readListingsFromDb,
   replaceListingRelationsForSubject,
   type ListingRelationKind,
   type ListingRelationRow,
 } from '@/lib/listings-db'
+import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip, type TmreTown } from '@/lib/tmre-towns'
@@ -253,10 +252,12 @@ function townsForSubject(subject: Listing): TmreTown[] {
 }
 
 /** Persist sale + rental comparable edges for one active listing. */
-export function persistComparableEdgesForListing(subject: Listing): void {
+export async function persistComparableEdgesForListing(subject: Listing): Promise<void> {
   const towns = townsForSubject(subject)
-  const soldPool = readAllListingsFromDb(towns, 'Closed')
-  const activePool = readAllListingsFromDb(towns, 'Active')
+  const [soldPool, activePool] = await Promise.all([
+    readAllListingsFromDb(towns, 'Closed'),
+    readAllListingsFromDb(towns, 'Active'),
+  ])
   computeAndPersistComparables(subject, 'sale', soldPool, activePool)
   computeAndPersistComparables(subject, 'rental', soldPool, activePool)
 }
@@ -265,19 +266,19 @@ export function persistComparableEdgesForListing(subject: Listing): void {
  * Rebuild ranked comparable edges for every Active listing.
  * Intended to run during the full MLS sync after If-estimate rebuild.
  */
-export function rebuildComparableEdges(options: {
+export async function rebuildComparableEdges(options: {
   limitPerTown?: number
-} = {}): { subjects: number; edges: number; durationMs: number } {
+} = {}): Promise<{ subjects: number; edges: number; durationMs: number }> {
   const t0 = Date.now()
   const limitPerTown = options.limitPerTown ?? 500
   let subjects = 0
   let edges = 0
 
   for (const town of TMRE_TOWNS) {
-    const active = readListingsFromDb(town, 'Active').slice(0, limitPerTown)
+    const active = (await readListingsFromDb(town, 'Active')).slice(0, limitPerTown)
     if (active.length === 0) continue
-    const soldPool = readAllListingsFromDb([town], 'Closed')
-    const activePool = readAllListingsFromDb([town], 'Active')
+    const soldPool = await readAllListingsFromDb([town], 'Closed')
+    const activePool = await readAllListingsFromDb([town], 'Active')
 
     for (const subject of active) {
       const sale = computeAndPersistComparables(
@@ -322,7 +323,7 @@ export function warmComparableEdgesDeferred(): void {
   void (async () => {
     try {
       await new Promise((r) => setTimeout(r, 3_000))
-      rebuildComparableEdges()
+      await rebuildComparableEdges()
     } catch (err) {
       console.error('[comps-edges] deferred rebuild failed', err)
     } finally {

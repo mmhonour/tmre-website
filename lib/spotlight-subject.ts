@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { readListingByIdFromDb } from '@/lib/listings-db'
+import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { fetchListingByMlsId } from '@/lib/listings-store'
 import {
   SPOTLIGHT_LISTING,
@@ -94,7 +94,7 @@ export async function resolveSpotlightSubjectListing(
     if (!resolved) {
       return buildSpotlightSubjectListing(null, config)
     }
-    const cached = readListingByIdFromDb(resolved)
+    const cached = await readListingByIdFromDb(resolved)
     if (cached) {
       return buildSpotlightSubjectListing(cached, {
         ...config,
@@ -116,7 +116,7 @@ export async function resolveSpotlightSubjectListing(
     }
   }
 
-  const cached = readListingByIdFromDb(mlsId)
+  const cached = await readListingByIdFromDb(mlsId)
   if (cached) {
     return buildSpotlightSubjectListing(cached, config)
   }

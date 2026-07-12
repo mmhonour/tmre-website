@@ -6,13 +6,15 @@ import {
 import { refreshListingIfEstimate } from '@/lib/listing-if-compute'
 import {
   isListingsDbAvailable,
-  listingsDbHasRows,
-  readAllListingsFromDb,
-  readListingByIdFromDb,
-  readListingsFromDb,
   upsertListing,
   upsertTownListings,
 } from '@/lib/listings-db'
+import {
+  hasListingsData,
+  readAllListingsFromDb,
+  readListingByIdFromDb,
+  readListingsFromDb,
+} from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   getListingByMlsId,
@@ -92,10 +94,9 @@ export function setSyncedActiveCount(city: string, count: number): void {
   setSyncMeta(`active_count:${city}`, String(count))
 }
 
-/** True if SQLite has synced listing rows (not just schema or sync metadata). */
-export function hasLocalListingsCache(): boolean {
-  if (!isListingsDbAvailable()) return false
-  return listingsDbHasRows()
+/** True if Postgres holds synced listing inventory (not just sync metadata). */
+export async function hasLocalListingsCache(): Promise<boolean> {
+  return hasListingsData()
 }
 
 /** HTTP headers for fast edge/browser caching when serving from SQLite. */
@@ -112,23 +113,23 @@ export function listingCacheHeaders(source: ListingsSource): HeadersInit {
   }
 }
 
-function readDbListings(
+async function readDbListings(
   city: string,
   bucket: string,
   limit?: number,
-): Listing[] | null {
-  if (!hasLocalListingsCache()) return null
-  const all = readListingsFromDb(city, bucket)
+): Promise<Listing[] | null> {
+  if (!(await hasListingsData())) return null
+  const all = await readListingsFromDb(city, bucket)
   return limit != null ? all.slice(0, limit) : all
 }
 
-function readDbListingsAcrossTowns(
+async function readDbListingsAcrossTowns(
   towns: readonly string[],
   bucket: string,
   limit?: number,
-): Listing[] | null {
-  if (!hasLocalListingsCache()) return null
-  const rows = readAllListingsFromDb(towns, bucket)
+): Promise<Listing[] | null> {
+  if (!(await hasListingsData())) return null
+  const rows = await readAllListingsFromDb(towns, bucket)
   return limit != null ? rows.slice(0, limit) : rows
 }
 
@@ -223,7 +224,7 @@ export async function fetchListingsForCity(
   limit: number,
 ): Promise<{ listings: Listing[]; source: ListingsSource }> {
   const bucket = normalizeStatusBucket(status)
-  const cached = readDbListings(city, bucket, limit)
+  const cached = await readDbListings(city, bucket, limit)
   if (cached != null && (cached.length > 0 || getLastFullSync() != null)) {
     const listings =
       bucket === 'Active' ? applyActiveBucketFilters(cached, city) : cached
@@ -366,7 +367,7 @@ export async function fetchExpiredListingsForCity(
   limit: number,
 ): Promise<{ listings: Listing[]; source: ListingsSource }> {
   const bucket = 'Expired'
-  const cached = readDbListings(city, bucket, limit)
+  const cached = await readDbListings(city, bucket, limit)
   if (cached != null && (cached.length > 0 || getLastFullSync() != null)) {
     return {
       listings: applyExpiredTownFilter(cached, city).slice(0, limit),
@@ -404,7 +405,7 @@ export async function fetchListingsAcrossTowns(
 ): Promise<{ listings: Listing[]; source: ListingsSource }> {
   const bucket = normalizeStatusBucket(params.status ?? ACTIVE_MLS_STATUS)
   const limit = params.limit
-  const cached = readDbListingsAcrossTowns(towns, bucket, limit)
+  const cached = await readDbListingsAcrossTowns(towns, bucket, limit)
   if (cached != null) {
     if (cached.length > 0 || bucket !== 'Active' || getLastFullSync() != null) {
       let listings =
@@ -478,13 +479,11 @@ export async function fetchAllActiveListings(): Promise<{
 export async function fetchListingByMlsId(
   id: string,
 ): Promise<{ listing: Listing | null; source: ListingsSource }> {
-  if (isListingsDbAvailable()) {
-    const cached = readListingByIdFromDb(id)
-    if (cached) {
-      return {
-        listing: refreshListingPropertyTax(refreshListingSchools(cached)),
-        source: 'db',
-      }
+  const cached = await readListingByIdFromDb(id)
+  if (cached) {
+    return {
+      listing: refreshListingPropertyTax(refreshListingSchools(cached)),
+      source: 'db',
     }
   }
 
@@ -493,15 +492,15 @@ export async function fetchListingByMlsId(
   return { listing, source: 'rets' as const }
 }
 
-/** SQLite-only — used by listing detail tabs; never calls RETS. */
-export function readListingFromDbByMlsId(
+/** Postgres-only — used by listing detail tabs; never calls RETS. */
+export async function readListingFromDbByMlsId(
   id: string,
-): { listing: Listing | null; source: 'db' } {
+): Promise<{ listing: Listing | null; source: 'db' }> {
   const trimmed = id.trim()
-  if (!trimmed || !isListingsDbAvailable()) {
+  if (!trimmed) {
     return { listing: null, source: 'db' }
   }
-  const cached = readListingByIdFromDb(trimmed)
+  const cached = await readListingByIdFromDb(trimmed)
   if (!cached) return { listing: null, source: 'db' }
   return {
     listing: refreshListingPropertyTax(refreshListingSchools(cached)),
@@ -525,11 +524,9 @@ export function persistListingRecord(listing: Listing): boolean {
   const statusBucket = normalizeStatusBucket(listing.status ?? ACTIVE_MLS_STATUS)
   const { upserted } = upsertListing(listing, town, statusBucket)
   if (upserted && isMarketListing(listing)) {
-    try {
-      refreshListingIfEstimate(listing)
-    } catch (err) {
+    void refreshListingIfEstimate(listing).catch((err) => {
       console.warn('[listings-store] If estimate refresh skipped:', err)
-    }
+    })
   }
   return upserted
 }

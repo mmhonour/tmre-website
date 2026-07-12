@@ -16,11 +16,11 @@ import {
 } from '@/lib/vintage-buckets'
 import {
   listingRowId,
-  readAllListingsFromDb,
   readListingIfEstimate,
   upsertListingIfEstimate,
   type ListingIfEstimateRow,
 } from '@/lib/listings-db'
+import { readAllListingsFromDb } from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
@@ -167,12 +167,14 @@ export function cacheIfEstimatesForListing(
     subjectVintageLabel,
   }
 }
-export function refreshListingIfEstimate(subject: Listing): ListingIfPayload | null {
+export async function refreshListingIfEstimate(
+  subject: Listing,
+): Promise<ListingIfPayload | null> {
   const id = listingRowId(subject)
   if (!id) return null
   const towns = townsForSubject(subject)
-  const soldPool = readAllListingsFromDb(towns, 'Closed')
-  const activePool = readAllListingsFromDb(towns, 'Active')
+  const soldPool = await readAllListingsFromDb(towns, 'Closed')
+  const activePool = await readAllListingsFromDb(towns, 'Active')
   return cacheIfEstimatesForListing(subject, soldPool, activePool)
 }
 
@@ -208,13 +210,13 @@ export function readCachedListingIfPayload(
 }
 
 /** Rebuild If estimates for all on-market listings after a RETS sync. */
-export function rebuildListingIfEstimates(): { count: number } {
+export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
   let count = 0
   const computedAt = new Date().toISOString()
 
   for (const town of TMRE_TOWNS) {
-    const soldPool = readAllListingsFromDb([town], 'Closed')
-    const activePool = readAllListingsFromDb([town], 'Active')
+    const soldPool = await readAllListingsFromDb([town], 'Closed')
+    const activePool = await readAllListingsFromDb([town], 'Active')
 
     for (const subject of activePool) {
       const id = listingRowId(subject)
@@ -244,20 +246,23 @@ export function rebuildListingIfEstimates(): { count: number } {
   return { count }
 }
 
-function compPoolsForListing(listing: Listing): {
+async function compPoolsForListing(listing: Listing): Promise<{
   soldPool: Listing[]
   activePool: Listing[]
-} {
+}> {
   const towns = townsForSubject(listing)
-  return {
-    soldPool: readAllListingsFromDb(towns, 'Closed'),
-    activePool: readAllListingsFromDb(towns, 'Active'),
-  }
+  const [soldPool, activePool] = await Promise.all([
+    readAllListingsFromDb(towns, 'Closed'),
+    readAllListingsFromDb(towns, 'Active'),
+  ])
+  return { soldPool, activePool }
 }
 
-export function resolveListingIfPayload(listing: Listing): ListingIfPayload {
+export async function resolveListingIfPayload(
+  listing: Listing,
+): Promise<ListingIfPayload> {
   const cached = readCachedListingIfPayload(listing)
   if (cached) return cached
-  const { soldPool, activePool } = compPoolsForListing(listing)
+  const { soldPool, activePool } = await compPoolsForListing(listing)
   return cacheIfEstimatesForListing(listing, soldPool, activePool)
 }

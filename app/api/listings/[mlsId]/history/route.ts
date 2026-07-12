@@ -24,7 +24,7 @@ export async function GET(
   const townHint = searchParams.get('town')?.trim() || null
 
   try {
-    const { listing } = readListingFromDbByMlsId(id)
+    const { listing } = await readListingFromDbByMlsId(id)
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }

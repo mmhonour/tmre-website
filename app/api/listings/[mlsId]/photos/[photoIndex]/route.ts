@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { readListingByIdFromDb } from '@/lib/listings-db'
+import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
 
 export const runtime = 'nodejs'
@@ -22,7 +22,7 @@ export async function GET(
   }
 
   try {
-    const listing = readListingByIdFromDb(id)
+    const listing = await readListingByIdFromDb(id)
     const photoKey = listing?.listingKey?.trim() || id
     const resolved = await resolveListingPhotoBuffer({
       mlsId: id,

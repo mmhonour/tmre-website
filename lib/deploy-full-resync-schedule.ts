@@ -2,9 +2,17 @@ import 'server-only'
 
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { scheduleListingsDbBlobPersist } from '@/lib/listings-db-persist'
-import { hasLocalListingsCache } from '@/lib/listings-store'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import { nextDailyTimeEt, parseIsoMs } from '@/lib/admin-sync-schedule'
+
+// Post-deploy warm is a SQLite-blob-era concept (rehydrate the per-deploy blob
+// before first request). Under hosted Postgres, inventory persists across
+// deploys, so a full warm is only "pending" when no full sync has ever run.
+// last_full_sync is served synchronously from the startup-hydrated sync_meta
+// store, which keeps this (C3-doomed) scheduler off the async listings gate.
+function hasFullSyncCompleted(): boolean {
+  return getSyncMeta('last_full_sync') != null
+}
 
 const SCHEDULED_AT_KEY = 'deploy_full_resync_scheduled_at'
 const DEPLOY_ID_KEY = 'deploy_full_resync_deploy_id'
@@ -55,12 +63,13 @@ export function readPostDeployFullResyncStatus(now = new Date()): PostDeployFull
   const scheduledDeployId = getSyncMeta(DEPLOY_ID_KEY)
   const triggeredAt = getSyncMeta(TRIGGERED_AT_KEY)
   const completedDeployId = getSyncMeta(COMPLETED_DEPLOY_ID_KEY)
+  const hasCache = hasFullSyncCompleted()
 
   const pending =
     shouldTrackPostDeployWarm() &&
     deployId != null &&
     completedDeployId !== deployId &&
-    !hasLocalListingsCache()
+    !hasCache
 
   const postDeployAt =
     pending && scheduledAt && scheduledDeployId === deployId ? scheduledAt : null
@@ -76,7 +85,7 @@ export function readPostDeployFullResyncStatus(now = new Date()): PostDeployFull
       nextAt = postDeployAt
       source = 'post-deploy'
     }
-  } else if (!hasLocalListingsCache() && shouldTrackPostDeployWarm()) {
+  } else if (!hasCache && shouldTrackPostDeployWarm()) {
     source = 'post-deploy'
     nextAt = new Date(now.getTime() + postDeployDelayMs()).toISOString()
   }
@@ -102,7 +111,7 @@ export async function ensurePostDeployFullResyncScheduled(now = new Date()): Pro
   const completedDeployId = getSyncMeta(COMPLETED_DEPLOY_ID_KEY)
   if (completedDeployId === deployId) return
 
-  if (hasLocalListingsCache()) {
+  if (hasFullSyncCompleted()) {
     setSyncMeta(COMPLETED_DEPLOY_ID_KEY, deployId)
     scheduleListingsDbBlobPersist('post-deploy-already-warm')
     return

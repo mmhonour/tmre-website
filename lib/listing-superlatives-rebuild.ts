@@ -12,11 +12,11 @@ import { kindOf } from '@/lib/goldilocks'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  readListingsFromDb,
   readListingScoresByIds,
   tryGetReadDb,
   upsertListingSuperlatives,
 } from '@/lib/listings-db'
+import { readListingsFromDb } from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import type { Listing } from '@/lib/rets'
 import { normalizeZip, TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
@@ -152,7 +152,7 @@ export async function rebuildAllListingSuperlatives(): Promise<ListingSuperlativ
   for (const town of TMRE_TOWNS) {
     const townT0 = Date.now()
     try {
-      const active = readListingsFromDb(town, 'Active')
+      const active = await readListingsFromDb(town, 'Active')
       if (active.length === 0) {
         towns.push({
           town,

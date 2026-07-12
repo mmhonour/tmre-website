@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listingCacheHeaders } from '@/lib/listings-store'
-import { readListingByIdFromDb } from '@/lib/listings-db'
-import { searchListingsInDbByQuery } from '@/lib/db/listings-repo'
+import { readListingByIdFromDb, searchListingsInDbByQuery } from '@/lib/db/listings-repo'
 import { searchPropertyAddressesInDb } from '@/lib/property-address-db'
 import { isTmreTown } from '@/lib/tmre-towns'
 
@@ -49,22 +48,24 @@ export async function GET(req: NextRequest) {
       town: city || undefined,
     })
 
-    const hits: AddressSearchHit[] = directoryHits.map((row) => {
-      const listing = row.listingId ? readListingByIdFromDb(row.listingId) : null
-      return {
-        propertyKey: row.propertyKey,
-        addressFull: row.addressFull,
-        town: row.town,
-        street: row.street,
-        zip: row.zip,
-        parcelNumber: row.parcelNumber,
-        mlsId: row.mlsId,
-        listingId: row.listingId,
-        price: listing?.price ?? null,
-        status: listing?.status ?? null,
-        source: row.source,
-      }
-    })
+    const hits: AddressSearchHit[] = await Promise.all(
+      directoryHits.map(async (row) => {
+        const listing = row.listingId ? await readListingByIdFromDb(row.listingId) : null
+        return {
+          propertyKey: row.propertyKey,
+          addressFull: row.addressFull,
+          town: row.town,
+          street: row.street,
+          zip: row.zip,
+          parcelNumber: row.parcelNumber,
+          mlsId: row.mlsId,
+          listingId: row.listingId,
+          price: listing?.price ?? null,
+          status: listing?.status ?? null,
+          source: row.source,
+        }
+      }),
+    )
 
     const seenMls = new Set(hits.map((h) => h.mlsId).filter(Boolean) as string[])
     const seenKeys = new Set(hits.map((h) => h.propertyKey))

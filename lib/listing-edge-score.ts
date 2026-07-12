@@ -7,9 +7,9 @@ import { computeLocationPremium } from '@/lib/listing-location-premium'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  readAllListingsFromDb,
   upsertListingEdgeScores,
 } from '@/lib/listings-db'
+import { readAllListingsFromDb } from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { isClosedListing } from '@/lib/listings-store'
@@ -410,10 +410,11 @@ export async function rebuildAllListingEdgeScores(): Promise<ListingEdgeScoresRe
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
 
-  const pool = [
-    ...readAllListingsFromDb(TMRE_TOWNS, 'Active'),
-    ...readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
-  ]
+  const [activePool, closedPool] = await Promise.all([
+    readAllListingsFromDb(TMRE_TOWNS, 'Active'),
+    readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
+  ])
+  const pool = [...activePool, ...closedPool]
   const context = await buildEdgeScoreContext(pool)
   const computedAt = new Date().toISOString()
 

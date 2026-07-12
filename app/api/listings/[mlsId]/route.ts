@@ -20,7 +20,7 @@ export async function GET(
   const includePhotos = new URL(req.url).searchParams.get('photos') !== '0'
 
   try {
-    const { listing } = readListingFromDbByMlsId(id)
+    const { listing } = await readListingFromDbByMlsId(id)
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }

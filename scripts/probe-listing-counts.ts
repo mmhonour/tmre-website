@@ -7,7 +7,7 @@ import {
   hasLocalListingsCache,
   getLastFullSync,
 } from '../lib/listings-store'
-import { readListingsFromDb } from '../lib/listings-db'
+import { readListingsFromDb } from '../lib/db/listings-repo'
 import {
   TMRE_TOWNS,
   filterListingsForTown,
@@ -27,7 +27,7 @@ function mapListingsFilter<T extends { price?: number | null; address: { postalC
 
 async function main() {
   console.log('last_full_sync:', getLastFullSync())
-  console.log('hasLocalListingsCache:', hasLocalListingsCache())
+  console.log('hasLocalListingsCache:', await hasLocalListingsCache())
   console.log('')
 
   const header = [
@@ -44,7 +44,7 @@ async function main() {
   console.log(header.join('\t'))
 
   for (const town of TMRE_TOWNS) {
-    const dbRaw = readListingsFromDb(town, 'Active') ?? []
+    const dbRaw = (await readListingsFromDb(town, 'Active')) ?? []
     const dbMarket = filterMarketListings(dbRaw)
     const dbTown = filterListingsForTown(dbMarket, town)
 

@@ -49,7 +49,7 @@ export async function resolveListingPropertyTaxHistory(
     if (meta) return resolveFromMeta(meta)
   }
 
-  const { listing } = readListingFromDbByMlsId(id)
+  const { listing } = await readListingFromDbByMlsId(id)
   if (!listing) return null
 
   const listingId = listingRowId(listing)

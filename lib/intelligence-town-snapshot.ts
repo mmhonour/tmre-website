@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { fetchActiveListingsForCity, fetchClosedListingsForCity } from '@/lib/listings-store'
-import { readListingsFromDb } from '@/lib/listings-db'
+import { readListingsFromDb } from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import type {
@@ -385,7 +385,7 @@ async function salesPayloadForTown(town: TmreTown): Promise<SalesByMonthPayload 
 }
 
 async function loadTownDisplayListings(town: TmreTown): Promise<IntelligenceDisplayListing[]> {
-  const fromDb = readListingsFromDb(town, 'Active', 500)
+  const fromDb = await readListingsFromDb(town, 'Active', 500)
   if (fromDb.length > 0) {
     return fromDb
       .map((listing) => listingToDisplayRow(listing, town))
@@ -412,7 +412,7 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
 
   for (const town of TMRE_TOWNS) {
     const rows = filterIntelligenceListings(
-      readListingsFromDb(town, 'Active', 500)
+      (await readListingsFromDb(town, 'Active', 500))
         .map((listing) => listingToDisplayRow(listing, town))
         .filter((row): row is IntelligenceDisplayListing => row != null),
     )
@@ -427,7 +427,7 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
     }
 
     try {
-      const closed = readListingsFromDb(town, 'Closed', 2500)
+      const closed = await readListingsFromDb(town, 'Closed', 2500)
       const salesPayload = computeSalesByMonth(closed, town, 'sale')
       const avg = avgMonthlySalesFromPayload(salesPayload.data)
       if (avg != null) monthlySales[town] = avg
@@ -544,7 +544,7 @@ export async function computeIntelligenceTownSnapshotLive(
           return
         }
 
-        const closedDb = readListingsFromDb(town, 'Closed', 2500)
+        const closedDb = await readListingsFromDb(town, 'Closed', 2500)
         const closed =
           closedDb.length > 0
             ? closedDb

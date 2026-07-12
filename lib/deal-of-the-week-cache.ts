@@ -21,7 +21,7 @@ export type DealOfTheWeekResponse = DealPickPayload & {
 }
 
 export async function readDealOfTheWeekCache(): Promise<DealOfTheWeekResponse | null> {
-  if (!hasLocalListingsCache()) return null
+  if (!(await hasLocalListingsCache())) return null
   const row = await readStatsCacheRow(DEAL_OF_THE_WEEK_CACHE_KEY)
   if (!row?.payload) return null
   try {

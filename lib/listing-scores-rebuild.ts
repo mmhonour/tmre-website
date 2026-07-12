@@ -4,9 +4,9 @@ import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  readListingsFromDb,
   upsertListingScores,
 } from '@/lib/listings-db'
+import { readListingsFromDb } from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
@@ -37,7 +37,7 @@ export async function rescoreListingsByIds(
   const ids = [...new Set(listingIds.map((id) => id.trim()).filter(Boolean))]
   if (ids.length === 0) return 0
 
-  const peerPool = readListingsFromDb(town, 'Active')
+  const peerPool = await readListingsFromDb(town, 'Active')
   if (peerPool.length === 0) return 0
 
   const idSet = new Set(ids)
@@ -84,7 +84,7 @@ export async function rebuildAllListingScores(): Promise<ListingScoresRebuildRes
   for (const town of TMRE_TOWNS) {
     const townT0 = Date.now()
     try {
-      const peerPool = readListingsFromDb(town, 'Active')
+      const peerPool = await readListingsFromDb(town, 'Active')
       if (peerPool.length === 0) {
         towns.push({
           town,

@@ -6,11 +6,11 @@ import {
 } from '@/lib/listing-comparables-cache'
 import type { ComparablesMatchMode } from '@/lib/listing-comparables'
 import type { ComparablesResult } from '@/lib/listing-comparables-shared'
+import { publishListingsReadSnapshot } from '@/lib/listings-db'
 import {
-  publishListingsReadSnapshot,
   readAllListingsFromDb,
-} from '@/lib/listings-db'
-import { readListingEdgeScoresByMlsIds } from '@/lib/db/listings-repo'
+  readListingEdgeScoresByMlsIds,
+} from '@/lib/db/listings-repo'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip } from '@/lib/tmre-towns'
 
@@ -58,8 +58,10 @@ export async function resolveComparablesForSubject(
   const townFromZip = townForZip(subject.address.postalCode)
   const towns = townFromZip ? [townFromZip] : [...TMRE_TOWNS]
 
-  const soldPool = readAllListingsFromDb(towns, 'Closed')
-  const activePool = readAllListingsFromDb(towns, 'Active')
+  const [soldPool, activePool] = await Promise.all([
+    readAllListingsFromDb(towns, 'Closed'),
+    readAllListingsFromDb(towns, 'Active'),
+  ])
 
   const result = computeAndPersistComparables(
     subject,

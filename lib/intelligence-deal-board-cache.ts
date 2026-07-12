@@ -6,16 +6,17 @@ import type { ScoreBreakdown } from '@/lib/goldilocks'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  readListingsFromDb,
   readListingScoresByIds,
   tryGetWriteDb,
   upsertListingScores,
 } from '@/lib/listings-db'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
-import { readListingSuperlativesByMlsIds } from '@/lib/db/listings-repo'
+import {
+  readListingsFromDb,
+  readListingSuperlativesByMlsIds,
+} from '@/lib/db/listings-repo'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
-import { hasLocalListingsCache } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { statsCacheKey } from '@/lib/stats-compute'
 import {
@@ -233,7 +234,7 @@ async function buildTownBoard(
   town: TmreTown,
   limit: number,
 ): Promise<IntelligenceBoardListing[]> {
-  const peerPool = readListingsFromDb(town, 'Active')
+  const peerPool = await readListingsFromDb(town, 'Active')
   // Prefer the full Active pool when under the cap; otherwise take first `limit`
   // (DB order is price DESC). Scoring still uses the full peerPool.
   const listings = peerPool.length <= limit ? peerPool : peerPool.slice(0, limit)

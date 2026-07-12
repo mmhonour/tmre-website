@@ -4,12 +4,12 @@ import {
   isListingsDbAvailable,
   listingsDbHasRows,
   publishListingsReadSnapshot,
-  readListingsFromDb,
   recordSyncRun,
   tryGetWriteDb,
   upsertListingsIncremental,
   upsertTownListings,
 } from '@/lib/listings-db'
+import { readListingsFromDb } from '@/lib/db/listings-repo'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-status'
 import {
@@ -337,7 +337,7 @@ async function warmActiveListingPhotosDeferred(): Promise<void> {
     await sleep(2_000)
     const { syncListingPhotosForListings } = await import('@/lib/listing-photos-sync')
     for (const town of TMRE_TOWNS) {
-      const listings = readListingsFromDb(town, 'Active', ACTIVE_LISTINGS_FETCH_LIMIT)
+      const listings = await readListingsFromDb(town, 'Active', ACTIVE_LISTINGS_FETCH_LIMIT)
       if (listings.length === 0) continue
       await syncListingPhotosForListings(listings, { concurrency: 1 })
       await sleep(100)
@@ -541,7 +541,7 @@ async function finalizeStepSpotlight(): Promise<void> {
 
 async function finalizeStepIfEstimates(): Promise<void> {
   const { rebuildListingIfEstimates } = await import('@/lib/listing-if-compute')
-  rebuildListingIfEstimates()
+  await rebuildListingIfEstimates()
 }
 
 async function finalizeStepEdgeScores(): Promise<void> {

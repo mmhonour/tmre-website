@@ -201,7 +201,7 @@ export async function register() {
         console.info(
           `[listings-sync] scheduled every ${Math.round(listingsIntervalMs / 60_000)} minutes`,
         )
-      } else if (!hasLocalListingsCache()) {
+      } else if (!(await hasLocalListingsCache())) {
         setTimeout(runListingsSync, 8_000)
         console.info('[listings-sync] warming empty SQLite cache on startup')
       }
@@ -215,8 +215,8 @@ export async function register() {
       process.env.STATS_CACHE_REFRESH_MS ?? String(STATS_CACHE_TTL_MS),
     )
     if (Number.isFinite(statsRefreshMs) && statsRefreshMs >= 60_000) {
-      const refreshStats = () => {
-        if (!hasLocalListingsCache()) return
+      const refreshStats = async () => {
+        if (!(await hasLocalListingsCache())) return
         if (getSyncMeta('refresh_in_progress') === '1') {
           console.info('[stats-cache] skipped — listings refresh in progress')
           return
@@ -232,8 +232,8 @@ export async function register() {
       )
     }
 
-    const warmListingSuperlatives = () => {
-      if (!hasLocalListingsCache()) return
+    const warmListingSuperlatives = async () => {
+      if (!(await hasLocalListingsCache())) return
       if (getSyncMeta('refresh_in_progress') === '1') return
       void import('./lib/listing-superlatives-rebuild')
         .then(({ rebuildAllListingSuperlativesIfMissing }) =>
@@ -249,8 +249,8 @@ export async function register() {
     }
     setTimeout(warmListingSuperlatives, 22_000)
 
-    const warmDealOfTheDayCache = () => {
-      if (!hasLocalListingsCache()) return
+    const warmDealOfTheDayCache = async () => {
+      if (!(await hasLocalListingsCache())) return
       // 5am full sync rebuilds DOTD after listings + scores; skip if cache exists or sync running.
       if (getSyncMeta('refresh_in_progress') === '1') return
       void import('./lib/deal-of-the-day-cache')

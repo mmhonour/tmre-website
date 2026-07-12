@@ -17,7 +17,7 @@ export async function GET(
   }
 
   try {
-    const { listing: subject } = readListingFromDbByMlsId(id)
+    const { listing: subject } = await readListingFromDbByMlsId(id)
     if (!subject) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }

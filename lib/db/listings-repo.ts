@@ -806,3 +806,77 @@ export async function readListingSuperlativesByMlsIds(
   }
   return out
 }
+
+// ---------------------------------------------------------------------------
+// Listing pool + single-listing reads (Phase 4 Tier C). Async replacements for
+// lib/listings-db.ts readListingsFromDb / readAllListingsFromDb /
+// readListingByIdFromDb. Full Listing is reconstructed from data + raw jsonb via
+// rowToListing. Price ordering mirrors SQLite: highest price first, NULLs last.
+// ---------------------------------------------------------------------------
+
+/** One town/bucket pool, priced high→low (nulls last). */
+export async function readListingsFromDb(
+  town: string,
+  statusBucket: string,
+  limit?: number,
+): Promise<Listing[]> {
+  const params: unknown[] = [town, statusBucket]
+  let sql = `SELECT data, raw FROM listings
+              WHERE town = $1 AND status_bucket = $2
+              ORDER BY price DESC NULLS LAST`
+  if (limit != null) {
+    params.push(limit)
+    sql += ` LIMIT $3`
+  }
+  const rows = await query<ListingJsonRow>(sql, params)
+  return rows.map((row) => rowToListing(row))
+}
+
+/** All listings across several towns for one bucket, priced high→low (nulls last). */
+export async function readAllListingsFromDb(
+  towns: readonly string[],
+  statusBucket: string,
+): Promise<Listing[]> {
+  if (towns.length === 0) return []
+  const rows = await query<ListingJsonRow>(
+    `SELECT data, raw FROM listings
+      WHERE status_bucket = $1 AND town = ANY($2::text[])
+      ORDER BY price DESC NULLS LAST`,
+    [statusBucket, [...towns]],
+  )
+  return rows.map((row) => rowToListing(row))
+}
+
+/** Single listing by row id, MLS id, or listing key. */
+export async function readListingByIdFromDb(id: string): Promise<Listing | null> {
+  const key = id.trim()
+  if (!key) return null
+  const row = await queryOne<ListingJsonRow>(
+    `SELECT data, raw FROM listings
+      WHERE id = $1 OR mls_id = $1 OR listing_key = $1
+      LIMIT 1`,
+    [key],
+  )
+  return row ? rowToListing(row) : null
+}
+
+// ---------------------------------------------------------------------------
+// Inventory-presence gate (Phase 4 Tier C). Async replacement for the SQLite
+// hasLocalListingsCache() / listingsDbHasRows() check. Semantics: "the listings
+// table holds inventory" (not "a DB file is loaded"). Memoized true→forever
+// once observed, since inventory presence only flips false→true (first sync)
+// and never back; while still false we re-query so a cold Postgres warms up.
+// ---------------------------------------------------------------------------
+
+let listingsPresenceObserved = false
+
+/** True once the listings table has at least one row. */
+export async function hasListingsData(): Promise<boolean> {
+  if (listingsPresenceObserved) return true
+  const row = await queryOne<{ present: boolean }>(
+    'SELECT EXISTS(SELECT 1 FROM listings LIMIT 1) AS present',
+  )
+  const present = row?.present === true
+  if (present) listingsPresenceObserved = true
+  return present
+}

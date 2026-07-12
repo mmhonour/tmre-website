@@ -17,7 +17,7 @@ export {
 export async function fetchListingIfPayload(
   mlsId: string,
 ): Promise<ListingIfPayload | null> {
-  const { listing } = readListingFromDbByMlsId(mlsId)
+  const { listing } = await readListingFromDbByMlsId(mlsId)
   if (!listing) return null
   return resolveListingIfPayload(listing)
 }

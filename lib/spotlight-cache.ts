@@ -46,7 +46,7 @@ async function loadSpotlightListingRecord(
   cached: SpotlightCachePayload | null,
   listingFresh: boolean,
 ): Promise<{ listing: Listing | null; source: ListingsSource }> {
-  const { listing: dbListing } = readListingFromDbByMlsId(mlsId)
+  const { listing: dbListing } = await readListingFromDbByMlsId(mlsId)
   if (dbListing) {
     return { listing: dbListing, source: 'db' }
   }
