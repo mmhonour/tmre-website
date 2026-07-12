@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listingCacheHeaders } from '@/lib/listings-store'
-import { readListingByIdFromDb, searchListingsInDbByQuery } from '@/lib/listings-db'
+import { readListingByIdFromDb } from '@/lib/listings-db'
+import { searchListingsInDbByQuery } from '@/lib/db/listings-repo'
 import { searchPropertyAddressesInDb } from '@/lib/property-address-db'
 import { isTmreTown } from '@/lib/tmre-towns'
 
@@ -69,7 +70,7 @@ export async function GET(req: NextRequest) {
     const seenKeys = new Set(hits.map((h) => h.propertyKey))
 
     if (hits.length < resultLimit) {
-      const listings = searchListingsInDbByQuery(q, {
+      const listings = await searchListingsInDbByQuery(q, {
         limit: resultLimit,
         statusBuckets: ['Active', 'Closed', 'Expired'],
       })

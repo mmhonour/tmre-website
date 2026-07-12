@@ -3,7 +3,7 @@ import {
   buildCurrentListingEvents,
   summarizePriorListing,
 } from '@/lib/listing-history'
-import { readAddressListingsFromDb } from '@/lib/listings-db'
+import { readAddressListingsFromDb } from '@/lib/db/listings-repo'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { resolveListingTown } from '@/lib/tmre-towns'
 
@@ -39,7 +39,7 @@ export async function GET(
 
     let priorListings: ReturnType<typeof summarizePriorListing>[] = []
     if (town && street) {
-      priorListings = readAddressListingsFromDb(town, street, listing.mlsId)
+      priorListings = (await readAddressListingsFromDb(town, street, listing.mlsId))
         .map(summarizePriorListing)
         .sort(
           (a, b) =>

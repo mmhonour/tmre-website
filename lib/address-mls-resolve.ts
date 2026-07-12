@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { streetsMatch } from '@/lib/listing-history'
-import { searchListingsInDbByQuery } from '@/lib/listings-db'
+import { searchListingsInDbByQuery } from '@/lib/db/listings-repo'
 import { persistListingRecord } from '@/lib/listings-store'
 import {
   findPropertyAddressByNorm,
@@ -198,7 +198,7 @@ export async function resolveMlsIdByAddress(
 
   const directoryMlsId = lookupDirectoryMlsId(normalized)
   if (directoryMlsId) {
-    const dbHits = searchListingsInDbByQuery(directoryMlsId, {
+    const dbHits = await searchListingsInDbByQuery(directoryMlsId, {
       limit: 1,
       statusBuckets: options.statusBuckets ?? ['Active', 'Closed', 'Expired'],
     })
@@ -212,7 +212,7 @@ export async function resolveMlsIdByAddress(
     }
   }
 
-  const dbHits = searchListingsInDbByQuery(street, {
+  const dbHits = await searchListingsInDbByQuery(street, {
     limit: 24,
     statusBuckets: options.statusBuckets ?? ['Active', 'Closed', 'Expired'],
   })

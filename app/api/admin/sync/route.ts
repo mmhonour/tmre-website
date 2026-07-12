@@ -13,13 +13,16 @@ import {
   describeListingsDbRuntime,
   getListingsDbStats,
   getSyncMeta,
-  readLatestListingModificationTimestamp,
   resetListingsDbConnections,
 } from '@/lib/listings-db'
 import { ensureAdminSqliteDatabasesReady } from '@/lib/listings-db-persist'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'
-import { readRecentSyncFailures } from '@/lib/listings-db'
+// Phase 4 (read-path cutover): these two now read from Postgres (lib/db/listings-repo).
+import {
+  readLatestListingModificationTimestamp,
+  readRecentSyncFailures,
+} from '@/lib/db/listings-repo'
 import { collectAdminDatabaseSyncStats } from '@/lib/sqlite-sync-stats'
 
 export const runtime = 'nodejs'
@@ -49,13 +52,13 @@ export async function GET(req: NextRequest) {
     refreshing: refresh.refreshing,
     lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
     lastRefreshStarted,
-    latestListingUpdate: readLatestListingModificationTimestamp(),
+    latestListingUpdate: await readLatestListingModificationTimestamp(),
     propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
     stats,
     nextRuns,
     scheduleHints,
     rets,
-    syncFailures: readRecentSyncFailures(8),
+    syncFailures: await readRecentSyncFailures(8),
     listingsDbRuntime: describeListingsDbRuntime(),
     databaseStats: collectAdminDatabaseSyncStats(),
   })
@@ -133,13 +136,13 @@ export async function POST(req: NextRequest) {
       stats,
       nextRuns,
       scheduleHints,
-      latestListingUpdate: readLatestListingModificationTimestamp(),
+      latestListingUpdate: await readLatestListingModificationTimestamp(),
       propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
       refreshing: readSqliteRefreshStatus().refreshing,
       lastRefreshFinished: getSyncMeta('last_refresh_finished_at'),
       lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
       rets: await probeRetsConnection(true),
-      syncFailures: readRecentSyncFailures(8),
+      syncFailures: await readRecentSyncFailures(8),
       databaseStats: collectAdminDatabaseSyncStats(),
     })
   } catch (err) {

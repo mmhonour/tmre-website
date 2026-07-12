@@ -1,13 +1,13 @@
 import 'server-only'
 
-import { closeFieldsFromListing } from '@/lib/listing-history'
+import { closeFieldsFromListing, streetsMatch } from '@/lib/listing-history'
 import {
   applyListingPropertyTax,
   parcelNumberFromRaw,
   parseTaxYearEnd,
   propertyTaxFromRaw,
 } from '@/lib/listing-property-tax'
-import type { Listing } from '@/lib/rets'
+import type { Listing, RawRetsRecord } from '@/lib/rets'
 import { query, queryOne, withTransaction } from '@/lib/db/postgres'
 import { getAllSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta'
 import type { PoolClient } from 'pg'
@@ -457,3 +457,189 @@ export async function readInventorySnapshot(): Promise<InventorySnapshot | null>
 
 /** All sync_meta as a plain object (re-exported for sync orchestration convenience). */
 export { getAllSyncMeta }
+
+// ---------------------------------------------------------------------------
+// Listing reads (Phase 4). Every Listing field is hydrated from `data` (the
+// original serialized Listing minus raw) merged with the `raw` jsonb column, so
+// values are byte-identical to the SQLite era. The typed columns are used ONLY
+// for SQL filtering / sorting, never for hydration — this sidesteps the
+// timestamptz-vs-original-string format difference entirely.
+// ---------------------------------------------------------------------------
+
+export type RecentlyUpdatedRow = {
+  listing: Listing
+  town: string
+  modificationTimestamp: string | null
+  syncedAt: string
+  goldilocksScore: number | null
+  goldilocksBreakdown: string | null
+  goldilocksScoredAt: string | null
+}
+
+type ListingJsonRow = { data: unknown; raw: unknown }
+
+/** Reconstruct a full Listing from the split data/raw jsonb columns. */
+function rowToListing(row: ListingJsonRow): Listing {
+  // `data` is NOT NULL in the schema, so it is always a serialized Listing object.
+  const base = row.data as Listing
+  const raw = (row.raw ?? {}) as RawRetsRecord
+  return applyListingPropertyTax({ ...base, raw })
+}
+
+/** jsonb column (parsed to object by pg) back to the string contract SQLite used. */
+function jsonbToString(value: unknown): string | null {
+  if (value == null) return null
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+/** timestamptz column (Date from pg) to an ISO string, matching SQLite storage. */
+function tsToIso(value: unknown): string | null {
+  if (value == null) return null
+  if (value instanceof Date) return value.toISOString()
+  return String(value)
+}
+
+const LISTING_SEARCH_STATUS_ORDER: Record<string, number> = {
+  Active: 0,
+  Closed: 1,
+  Expired: 2,
+}
+
+export async function readRecentlyUpdatedListings(options: {
+  since?: string | null
+  limit?: number
+  statusBucket?: string
+  town?: string | null
+}): Promise<RecentlyUpdatedRow[]> {
+  const limit = Math.min(Math.max(options.limit ?? 100, 1), 500)
+  const statusBucket = options.statusBucket ?? 'Active'
+  const since = options.since?.trim() || null
+  const town = options.town?.trim() || null
+
+  const conditions = ['status_bucket = $1', 'modification_timestamp IS NOT NULL']
+  const params: unknown[] = [statusBucket]
+  if (since) {
+    params.push(new Date(since))
+    conditions.push(`modification_timestamp > $${params.length}`)
+  }
+  if (town) {
+    params.push(town)
+    conditions.push(`town = $${params.length}`)
+  }
+  params.push(limit)
+  const limitPlaceholder = `$${params.length}`
+
+  const rows = await query<{
+    data: unknown
+    raw: unknown
+    town: string
+    synced_at: Date | null
+    goldilocks_score: number | null
+    goldilocks_breakdown: unknown
+    goldilocks_scored_at: Date | null
+  }>(
+    `SELECT data, raw, town, synced_at, goldilocks_score, goldilocks_breakdown, goldilocks_scored_at
+       FROM listings
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY modification_timestamp DESC
+      LIMIT ${limitPlaceholder}`,
+    params,
+  )
+
+  return rows.map((row) => {
+    const listing = rowToListing(row)
+    return {
+      listing,
+      town: row.town,
+      modificationTimestamp: listing.modificationTimestamp,
+      syncedAt: tsToIso(row.synced_at) ?? '',
+      goldilocksScore: row.goldilocks_score,
+      goldilocksBreakdown: jsonbToString(row.goldilocks_breakdown),
+      goldilocksScoredAt: tsToIso(row.goldilocks_scored_at),
+    }
+  })
+}
+
+export async function searchListingsInDbByQuery(
+  queryText: string,
+  options: { limit?: number; statusBuckets?: string[] } = {},
+): Promise<Listing[]> {
+  const q = queryText.trim().toLowerCase()
+  if (q.length < 2) return []
+
+  const limit = Math.min(Math.max(options.limit ?? 8, 1), 50)
+  const buckets = options.statusBuckets ?? ['Active', 'Closed', 'Expired']
+  if (buckets.length === 0) return []
+
+  const pattern = `%${q.replace(/[%_]/g, '')}%`
+  const rows = await query<{ data: unknown; raw: unknown; status_bucket: string }>(
+    `SELECT data, raw, status_bucket
+       FROM listings
+      WHERE status_bucket = ANY($1::text[])
+        AND (
+          mls_id ILIKE $2
+          OR (data->'address'->>'full') ILIKE $2
+          OR (data->'address'->>'street') ILIKE $2
+          OR (data->'address'->>'city') ILIKE $2
+          OR (data->'address'->>'postalCode') ILIKE $2
+          OR (data->>'propertyType') ILIKE $2
+        )
+      ORDER BY modification_timestamp DESC NULLS LAST
+      LIMIT $3`,
+    [buckets, pattern, limit * 3],
+  )
+
+  const scored: { listing: Listing; score: number }[] = []
+  for (const row of rows) {
+    const listing = rowToListing(row)
+    const hay = [
+      listing.mlsId,
+      listing.address.full,
+      listing.address.street,
+      listing.address.city,
+      listing.address.postalCode,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    if (!hay.includes(q)) continue
+    let score = LISTING_SEARCH_STATUS_ORDER[row.status_bucket] ?? 9
+    const street = listing.address.street?.toLowerCase() ?? ''
+    const full = listing.address.full?.toLowerCase() ?? ''
+    if (listing.mlsId.toLowerCase() === q) score -= 30
+    else if (street.startsWith(q) || full.startsWith(q)) score -= 20
+    else if (street.includes(q) || full.includes(q)) score -= 10
+    scored.push({ listing, score })
+  }
+
+  scored.sort((a, b) => a.score - b.score)
+  const seen = new Set<string>()
+  const out: Listing[] = []
+  for (const row of scored) {
+    const key = row.listing.listingKey || row.listing.mlsId
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(row.listing)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+/** Other MLS records at the same street address within a town. */
+export async function readAddressListingsFromDb(
+  town: string,
+  street: string,
+  excludeMlsId?: string,
+): Promise<Listing[]> {
+  const rows = await query<ListingJsonRow>(
+    'SELECT data, raw FROM listings WHERE town = $1',
+    [town],
+  )
+  return rows
+    .map((row) => rowToListing(row))
+    .filter((listing) => {
+      if (excludeMlsId && listing.mlsId === excludeMlsId) return false
+      const addr = listing.address.street?.trim() || listing.address.full?.trim() || ''
+      return streetsMatch(street, addr)
+    })
+}

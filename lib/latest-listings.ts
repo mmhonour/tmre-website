@@ -4,11 +4,11 @@ import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import {
   firstStoredListingPhotoIndex,
   listingRowId,
-  readRecentlyUpdatedListings,
   readTownUpdateStats,
   upsertListingScores,
   type TownUpdateStat,
 } from '@/lib/listings-db'
+import { readRecentlyUpdatedListings } from '@/lib/db/listings-repo'
 import { fetchActiveListingsForCity } from '@/lib/listings-store'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import type { Listing } from '@/lib/rets'
@@ -307,7 +307,7 @@ export async function fetchLatestUpdatedListings(options: {
     if (cached) return cached
   }
 
-  const rows = readRecentlyUpdatedListings({
+  const rows = await readRecentlyUpdatedListings({
     since: options.since,
     limit: cap,
     statusBucket: 'Active',

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listingCacheHeaders } from '@/lib/listings-store'
-import { searchListingsInDbByQuery } from '@/lib/listings-db'
+import { searchListingsInDbByQuery } from '@/lib/db/listings-repo'
 import { filterListingsToTmreTowns, isTmreTown } from '@/lib/tmre-towns'
 import { searchListings, type Listing } from '@/lib/rets'
 
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
     const statusBuckets =
       scope === 'all' ? ['Active', 'Closed', 'Expired'] : ['Active']
 
-    let listings = searchListingsInDbByQuery(q, { limit: resultLimit, statusBuckets })
+    let listings = await searchListingsInDbByQuery(q, { limit: resultLimit, statusBuckets })
     let source: 'db' | 'rets' | 'db+rets' = listings.length > 0 ? 'db' : 'db'
 
     if (city) {
