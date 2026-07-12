@@ -12,11 +12,13 @@ import { kindOf } from '@/lib/goldilocks'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  readListingScoresByIds,
   tryGetReadDb,
-  upsertListingSuperlatives,
 } from '@/lib/listings-db'
-import { readListingsFromDb } from '@/lib/db/listings-repo'
+import {
+  readListingScoresByIds,
+  readListingsFromDb,
+  upsertListingSuperlatives,
+} from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import type { Listing } from '@/lib/rets'
 import { normalizeZip, TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
@@ -165,7 +167,7 @@ export async function rebuildAllListingSuperlatives(): Promise<ListingSuperlativ
 
       const medians = townMedianPrices(active)
       const ids = active.map((listing) => listingRowId(listing)).filter(Boolean)
-      const storedScores = readListingScoresByIds(ids)
+      const storedScores = await readListingScoresByIds(ids)
       const computedAt = new Date().toISOString()
       const rows: {
         listingId: string
@@ -216,7 +218,7 @@ export async function rebuildAllListingSuperlatives(): Promise<ListingSuperlativ
         })
       }
 
-      const updated = upsertListingSuperlatives(rows)
+      const updated = await upsertListingSuperlatives(rows)
       totalComputed += updated
       towns.push({
         town,

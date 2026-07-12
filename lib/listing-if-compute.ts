@@ -14,13 +14,13 @@ import {
   VINTAGE_BUCKETS,
   type VintageBucketId,
 } from '@/lib/vintage-buckets'
+import { listingRowId } from '@/lib/listings-db'
 import {
-  listingRowId,
+  readAllListingsFromDb,
   readListingIfEstimate,
   upsertListingIfEstimate,
   type ListingIfEstimateRow,
-} from '@/lib/listings-db'
-import { readAllListingsFromDb } from '@/lib/db/listings-repo'
+} from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
@@ -132,16 +132,16 @@ function rowToPayload(
   }
 }
 
-export function cacheIfEstimatesForListing(
+export async function cacheIfEstimatesForListing(
   subject: Listing,
   soldPool: Listing[],
   activePool: Listing[],
-): ListingIfPayload {
+): Promise<ListingIfPayload> {
   const id = listingRowId(subject)
   const { sale, rent, locationLabel, locationPremiumLabels, subjectVintageLabel } =
     computeIfEstimates(subject, soldPool, activePool)
   const computedAt = new Date().toISOString()
-  upsertListingIfEstimate({
+  await upsertListingIfEstimate({
     listingId: id,
     saleAmount: sale.amount,
     saleAmountLow: sale.amountLow,
@@ -178,13 +178,13 @@ export async function refreshListingIfEstimate(
   return cacheIfEstimatesForListing(subject, soldPool, activePool)
 }
 
-export function readCachedListingIfPayload(
+export async function readCachedListingIfPayload(
   listing: Listing,
-): ListingIfPayload | null {
+): Promise<ListingIfPayload | null> {
   const cachedVersion = getSyncMeta('if_estimates_algo_version')
   if (cachedVersion !== String(IF_ESTIMATES_ALGO_VERSION)) return null
 
-  const row = readListingIfEstimate(listingRowId(listing))
+  const row = await readListingIfEstimate(listingRowId(listing))
   if (!row) return null
 
   const saleRangeMissing =
@@ -222,7 +222,7 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
       const id = listingRowId(subject)
       if (!id) continue
       const { sale, rent } = computeIfEstimates(subject, soldPool, activePool)
-      upsertListingIfEstimate({
+      await upsertListingIfEstimate({
         listingId: id,
         saleAmount: sale.amount,
         saleAmountLow: sale.amountLow,
@@ -261,7 +261,7 @@ async function compPoolsForListing(listing: Listing): Promise<{
 export async function resolveListingIfPayload(
   listing: Listing,
 ): Promise<ListingIfPayload> {
-  const cached = readCachedListingIfPayload(listing)
+  const cached = await readCachedListingIfPayload(listing)
   if (cached) return cached
   const { soldPool, activePool } = await compPoolsForListing(listing)
   return cacheIfEstimatesForListing(listing, soldPool, activePool)

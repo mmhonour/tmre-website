@@ -4,10 +4,13 @@ import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import {
   firstStoredListingPhotoIndex,
   listingRowId,
-  upsertListingScores,
   type TownUpdateStat,
 } from '@/lib/listings-db'
-import { readRecentlyUpdatedListings, readTownUpdateStats } from '@/lib/db/listings-repo'
+import {
+  readRecentlyUpdatedListings,
+  readTownUpdateStats,
+  upsertListingScores,
+} from '@/lib/db/listings-repo'
 import { fetchActiveListingsForCity } from '@/lib/listings-store'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import type { Listing } from '@/lib/rets'
@@ -238,7 +241,7 @@ async function scoreUnscoredLatestRows(
       .filter((row): row is NonNullable<typeof row> => row != null)
     if (persistRows.length > 0) {
       try {
-        upsertListingScores(persistRows)
+        await upsertListingScores(persistRows)
       } catch (err) {
         console.warn(
           `[latest-listings] score persist failed for ${town}`,

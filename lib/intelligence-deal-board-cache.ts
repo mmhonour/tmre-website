@@ -6,14 +6,14 @@ import type { ScoreBreakdown } from '@/lib/goldilocks'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  readListingScoresByIds,
   tryGetWriteDb,
-  upsertListingScores,
 } from '@/lib/listings-db'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
+  readListingScoresByIds,
   readListingsFromDb,
   readListingSuperlativesByMlsIds,
+  upsertListingScores,
 } from '@/lib/db/listings-repo'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
@@ -239,7 +239,7 @@ async function buildTownBoard(
   // (DB order is price DESC). Scoring still uses the full peerPool.
   const listings = peerPool.length <= limit ? peerPool : peerPool.slice(0, limit)
   const ids = listings.map((l) => listingRowId(l)).filter(Boolean)
-  const storedScores = readListingScoresByIds(ids)
+  const storedScores = await readListingScoresByIds(ids)
 
   const unscored: Listing[] = []
   const scoreById = new Map<string, ScoreBreakdown>()
@@ -279,7 +279,7 @@ async function buildTownBoard(
       .filter((row): row is NonNullable<typeof row> => row != null)
     if (persist.length > 0) {
       try {
-        upsertListingScores(persist)
+        await upsertListingScores(persist)
       } catch (err) {
         console.warn(
           `[intelligence-deal-board] score persist failed for ${town}`,

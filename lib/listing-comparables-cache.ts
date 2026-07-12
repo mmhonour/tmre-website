@@ -13,12 +13,15 @@ import type {
 import {
   listingRowId,
   publishListingsReadSnapshot,
+} from '@/lib/listings-db'
+import {
+  readAllListingsFromDb,
   readListingRelations,
+  readListingsFromDb,
   replaceListingRelationsForSubject,
   type ListingRelationKind,
   type ListingRelationRow,
-} from '@/lib/listings-db'
-import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
+} from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip, type TmreTown } from '@/lib/tmre-towns'
@@ -191,15 +194,15 @@ function rowsToResult(
   }
 }
 
-export function readCachedComparables(
+export async function readCachedComparables(
   subject: Listing,
   kind: ComparablesMatchMode = 'sale',
-): ComparablesResult | null {
+): Promise<ComparablesResult | null> {
   const subjectId = listingRowId(subject)
   if (!subjectId) return null
 
   const relations = relationsForKind(kind)
-  const rows = readListingRelations(subjectId, relations)
+  const rows = await readListingRelations(subjectId, relations)
   if (!edgesAreFresh(rows)) return null
   if (!hasBothRelationKinds(rows, kind)) return null
   if (soldSentinelIsStale(rows, kind)) return null
@@ -209,12 +212,12 @@ export function readCachedComparables(
 }
 
 /** Compute ranked comps, persist edges, and return the panel payload (unscores). */
-export function computeAndPersistComparables(
+export async function computeAndPersistComparables(
   subject: Listing,
   kind: ComparablesMatchMode,
   soldPool: Listing[],
   activePool: Listing[],
-): ComparablesResult {
+): Promise<ComparablesResult> {
   const subjectId = listingRowId(subject)
   const ranked = findComparablesRanked(subject, soldPool, activePool, kind)
   if (!subjectId) {
@@ -235,7 +238,7 @@ export function computeAndPersistComparables(
     ranked.active,
     computedAt,
   )
-  replaceListingRelationsForSubject(subjectId, relationKinds, rows)
+  await replaceListingRelationsForSubject(subjectId, relationKinds, rows)
   setSyncMeta('comps_edges_algo_version', String(COMPS_EDGES_ALGO_VERSION))
 
   return {
@@ -258,8 +261,8 @@ export async function persistComparableEdgesForListing(subject: Listing): Promis
     readAllListingsFromDb(towns, 'Closed'),
     readAllListingsFromDb(towns, 'Active'),
   ])
-  computeAndPersistComparables(subject, 'sale', soldPool, activePool)
-  computeAndPersistComparables(subject, 'rental', soldPool, activePool)
+  await computeAndPersistComparables(subject, 'sale', soldPool, activePool)
+  await computeAndPersistComparables(subject, 'rental', soldPool, activePool)
 }
 
 /**
@@ -281,13 +284,13 @@ export async function rebuildComparableEdges(options: {
     const activePool = await readAllListingsFromDb([town], 'Active')
 
     for (const subject of active) {
-      const sale = computeAndPersistComparables(
+      const sale = await computeAndPersistComparables(
         subject,
         'sale',
         soldPool,
         activePool,
       )
-      const rental = computeAndPersistComparables(
+      const rental = await computeAndPersistComparables(
         subject,
         'rental',
         soldPool,

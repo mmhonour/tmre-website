@@ -8,12 +8,12 @@ import {
   type PropertyTaxYearEntry,
 } from '@/lib/listing-property-tax'
 import {
-  isListingsDbAvailable,
+  hasListingsData,
   listingRowId,
   readListingTaxHistoryFromDb,
   readListingTaxMetaFromDb,
   type ListingTaxMetaRow,
-} from '@/lib/listings-db'
+} from '@/lib/db/listings-repo'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
 
 export type ListingPropertyTaxHistory = {
@@ -23,10 +23,12 @@ export type ListingPropertyTaxHistory = {
   source: 'db'
 }
 
-function resolveFromMeta(meta: ListingTaxMetaRow): ListingPropertyTaxHistory {
+async function resolveFromMeta(
+  meta: ListingTaxMetaRow,
+): Promise<ListingPropertyTaxHistory> {
   const parcelNumber = meta.parcelNumber?.trim() || null
   const anchorYearEnd = parseTaxYearEnd(meta.propertyTaxYear)
-  const cached = readListingTaxHistoryFromDb(parcelNumber, meta.listingId, 10)
+  const cached = await readListingTaxHistoryFromDb(parcelNumber, meta.listingId, 10)
   const years = buildPropertyTaxHistorySlots(anchorYearEnd, cached, 5)
 
   return {
@@ -44,8 +46,8 @@ export async function resolveListingPropertyTaxHistory(
   const id = mlsId.trim()
   if (!id) return null
 
-  if (isListingsDbAvailable()) {
-    const meta = readListingTaxMetaFromDb(id)
+  if (await hasListingsData()) {
+    const meta = await readListingTaxMetaFromDb(id)
     if (meta) return resolveFromMeta(meta)
   }
 
@@ -58,7 +60,7 @@ export async function resolveListingPropertyTaxHistory(
   const anchorYearEnd =
     parseTaxYearEnd(listing.propertyTaxYear ?? taxFromRaw.yearLabel) ??
     parseTaxYearEnd(taxFromRaw.yearLabel)
-  const cached = readListingTaxHistoryFromDb(parcelNumber, listingId, 10)
+  const cached = await readListingTaxHistoryFromDb(parcelNumber, listingId, 10)
   const years = buildPropertyTaxHistorySlots(anchorYearEnd, cached, 5)
 
   return {

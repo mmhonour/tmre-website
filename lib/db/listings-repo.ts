@@ -880,3 +880,419 @@ export async function hasListingsData(): Promise<boolean> {
   if (present) listingsPresenceObserved = true
   return present
 }
+
+// ---------------------------------------------------------------------------
+// Derived-table writes + reads (Phase 4 Tier C3a). Async Postgres replacements
+// for the remaining lib/listings-db.ts derived accessors: Goldilocks scores
+// (inline listings columns), edge-score writes, superlative writes, If
+// estimates, comparable relations, and property-tax meta/history. jsonb columns
+// take a serialized string cast to ::jsonb; numeric columns (pg returns them as
+// strings) are coerced back to number via numOrNull. Timestamps use toTs on the
+// way in and tsToIso on the way out so values match the SQLite-era ISO strings.
+// ---------------------------------------------------------------------------
+
+/** pg returns numeric/decimal columns as strings — coerce to number | null. */
+function numOrNull(value: unknown): number | null {
+  if (value == null) return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+export type ListingScoreRow = {
+  score: number
+  breakdownJson: string | null
+  scoredAt: string | null
+}
+
+/** Persist Goldilocks scores (inline listings columns) computed during a reload. */
+export async function upsertListingScores(
+  rows: { id: string; score: number; breakdownJson: string; scoredAt: string }[],
+): Promise<number> {
+  if (rows.length === 0) return 0
+  return withTransaction(async (client) => {
+    let updated = 0
+    for (const row of rows) {
+      const result = await client.query(
+        `UPDATE listings
+            SET goldilocks_score = $1,
+                goldilocks_breakdown = $2::jsonb,
+                goldilocks_scored_at = $3
+          WHERE id = $4`,
+        [row.score, row.breakdownJson, toTs(row.scoredAt), row.id],
+      )
+      updated += result.rowCount ?? 0
+    }
+    return updated
+  })
+}
+
+/** Read persisted Goldilocks scores by listing id. */
+export async function readListingScoresByIds(
+  ids: readonly string[],
+): Promise<Map<string, ListingScoreRow>> {
+  const out = new Map<string, ListingScoreRow>()
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  if (unique.length === 0) return out
+
+  const rows = await query<{
+    id: string
+    goldilocks_score: number
+    goldilocks_breakdown: unknown
+    goldilocks_scored_at: Date | null
+  }>(
+    `SELECT id, goldilocks_score, goldilocks_breakdown, goldilocks_scored_at
+       FROM listings
+      WHERE id = ANY($1::text[]) AND goldilocks_score IS NOT NULL`,
+    [unique],
+  )
+  for (const row of rows) {
+    out.set(row.id, {
+      score: row.goldilocks_score,
+      breakdownJson: jsonbToString(row.goldilocks_breakdown),
+      scoredAt: tsToIso(row.goldilocks_scored_at),
+    })
+  }
+  return out
+}
+
+/** Persist weekly metadata edge scores keyed by MLS id. */
+export async function upsertListingEdgeScores(
+  rows: {
+    mlsId: string
+    listingId: string
+    edgeScore: number
+    breakdownJson: string
+    metadataSnapshot: string
+    computedAt: string
+  }[],
+): Promise<number> {
+  if (rows.length === 0) return 0
+  return withTransaction(async (client) => {
+    let updated = 0
+    for (const row of rows) {
+      await client.query(
+        `INSERT INTO listing_edge_scores (
+           mls_id, listing_id, edge_score, breakdown_json, metadata_snapshot, computed_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
+         ON CONFLICT (mls_id) DO UPDATE SET
+           listing_id        = EXCLUDED.listing_id,
+           edge_score        = EXCLUDED.edge_score,
+           breakdown_json    = EXCLUDED.breakdown_json,
+           metadata_snapshot = EXCLUDED.metadata_snapshot,
+           computed_at       = EXCLUDED.computed_at`,
+        [
+          row.mlsId,
+          row.listingId,
+          row.edgeScore,
+          row.breakdownJson,
+          row.metadataSnapshot,
+          toTs(row.computedAt),
+        ],
+      )
+      updated += 1
+    }
+    return updated
+  })
+}
+
+/** Persist peer-relative listing superlatives keyed by listing id. */
+export async function upsertListingSuperlatives(
+  rows: {
+    listingId: string
+    mlsId: string
+    superlativesJson: string
+    computedAt: string
+  }[],
+): Promise<number> {
+  if (rows.length === 0) return 0
+  return withTransaction(async (client) => {
+    let updated = 0
+    for (const row of rows) {
+      await client.query(
+        `INSERT INTO listing_superlatives (
+           listing_id, mls_id, superlatives_json, computed_at
+         ) VALUES ($1, $2, $3::jsonb, $4)
+         ON CONFLICT (listing_id) DO UPDATE SET
+           mls_id            = EXCLUDED.mls_id,
+           superlatives_json = EXCLUDED.superlatives_json,
+           computed_at       = EXCLUDED.computed_at`,
+        [row.listingId, row.mlsId, row.superlativesJson, toTs(row.computedAt)],
+      )
+      updated += 1
+    }
+    return updated
+  })
+}
+
+/** Superlative badge words per listing id (ids with zero badges are omitted). */
+export async function readListingSuperlativesByListingIds(
+  ids: readonly string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>()
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  if (unique.length === 0) return out
+
+  const rows = await query<{ listing_id: string; superlatives_json: unknown }>(
+    `SELECT listing_id, superlatives_json
+       FROM listing_superlatives
+      WHERE listing_id = ANY($1::text[])`,
+    [unique],
+  )
+  for (const row of rows) {
+    const words = parseSuperlativeWords(row.superlatives_json)
+    if (words.length > 0) out.set(row.listing_id, words)
+  }
+  return out
+}
+
+export type ListingIfEstimateRow = {
+  listingId: string
+  saleAmount: number | null
+  saleAmountLow: number | null
+  saleAmountHigh: number | null
+  saleSoldCount: number
+  saleActiveCount: number
+  rentAmount: number | null
+  rentAmountLow: number | null
+  rentAmountHigh: number | null
+  rentSoldCount: number
+  rentActiveCount: number
+  computedAt: string
+}
+
+export async function upsertListingIfEstimate(row: ListingIfEstimateRow): Promise<void> {
+  await query(
+    `INSERT INTO listing_if_estimates (
+       listing_id, sale_amount, sale_amount_low, sale_amount_high,
+       sale_sold_count, sale_active_count,
+       rent_amount, rent_amount_low, rent_amount_high,
+       rent_sold_count, rent_active_count, computed_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (listing_id) DO UPDATE SET
+       sale_amount       = EXCLUDED.sale_amount,
+       sale_amount_low   = EXCLUDED.sale_amount_low,
+       sale_amount_high  = EXCLUDED.sale_amount_high,
+       sale_sold_count   = EXCLUDED.sale_sold_count,
+       sale_active_count = EXCLUDED.sale_active_count,
+       rent_amount       = EXCLUDED.rent_amount,
+       rent_amount_low   = EXCLUDED.rent_amount_low,
+       rent_amount_high  = EXCLUDED.rent_amount_high,
+       rent_sold_count   = EXCLUDED.rent_sold_count,
+       rent_active_count = EXCLUDED.rent_active_count,
+       computed_at       = EXCLUDED.computed_at`,
+    [
+      row.listingId,
+      row.saleAmount,
+      row.saleAmountLow,
+      row.saleAmountHigh,
+      row.saleSoldCount,
+      row.saleActiveCount,
+      row.rentAmount,
+      row.rentAmountLow,
+      row.rentAmountHigh,
+      row.rentSoldCount,
+      row.rentActiveCount,
+      toTs(row.computedAt),
+    ],
+  )
+}
+
+export async function readListingIfEstimate(
+  listingId: string,
+): Promise<ListingIfEstimateRow | null> {
+  const id = listingId.trim()
+  if (!id) return null
+  const row = await queryOne<{
+    listing_id: string
+    sale_amount: unknown
+    sale_amount_low: unknown
+    sale_amount_high: unknown
+    sale_sold_count: number
+    sale_active_count: number
+    rent_amount: unknown
+    rent_amount_low: unknown
+    rent_amount_high: unknown
+    rent_sold_count: number
+    rent_active_count: number
+    computed_at: Date | null
+  }>(
+    `SELECT listing_id, sale_amount, sale_amount_low, sale_amount_high,
+            sale_sold_count, sale_active_count,
+            rent_amount, rent_amount_low, rent_amount_high,
+            rent_sold_count, rent_active_count, computed_at
+       FROM listing_if_estimates
+      WHERE listing_id = $1
+      LIMIT 1`,
+    [id],
+  )
+  if (!row) return null
+  return {
+    listingId: row.listing_id,
+    saleAmount: numOrNull(row.sale_amount),
+    saleAmountLow: numOrNull(row.sale_amount_low),
+    saleAmountHigh: numOrNull(row.sale_amount_high),
+    saleSoldCount: row.sale_sold_count,
+    saleActiveCount: row.sale_active_count,
+    rentAmount: numOrNull(row.rent_amount),
+    rentAmountLow: numOrNull(row.rent_amount_low),
+    rentAmountHigh: numOrNull(row.rent_amount_high),
+    rentSoldCount: row.rent_sold_count,
+    rentActiveCount: row.rent_active_count,
+    computedAt: tsToIso(row.computed_at) ?? '',
+  }
+}
+
+export type ListingRelationKind =
+  | 'comp_sold'
+  | 'comp_active'
+  | 'rental_sold'
+  | 'rental_active'
+
+export type ListingRelationRow = {
+  subjectId: string
+  relatedId: string
+  relation: ListingRelationKind
+  rank: number
+  score: number | null
+  payload: string
+  computedAt: string
+}
+
+export async function replaceListingRelationsForSubject(
+  subjectId: string,
+  relations: ListingRelationKind[],
+  rows: ListingRelationRow[],
+): Promise<void> {
+  const id = subjectId.trim()
+  if (!id || relations.length === 0) return
+  await withTransaction(async (client) => {
+    for (const relation of relations) {
+      await client.query(
+        'DELETE FROM listing_relations WHERE subject_id = $1 AND relation = $2',
+        [id, relation],
+      )
+    }
+    for (const row of rows) {
+      await client.query(
+        `INSERT INTO listing_relations (
+           subject_id, related_id, relation, rank, score, payload, computed_at
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+        [
+          row.subjectId,
+          row.relatedId,
+          row.relation,
+          row.rank,
+          row.score,
+          row.payload,
+          toTs(row.computedAt),
+        ],
+      )
+    }
+  })
+}
+
+export async function readListingRelations(
+  subjectId: string,
+  relations: readonly ListingRelationKind[],
+): Promise<ListingRelationRow[]> {
+  const id = subjectId.trim()
+  if (!id || relations.length === 0) return []
+  const rows = await query<{
+    subject_id: string
+    related_id: string
+    relation: ListingRelationKind
+    rank: number
+    score: number | null
+    payload: unknown
+    computed_at: Date | null
+  }>(
+    `SELECT subject_id, related_id, relation, rank, score, payload, computed_at
+       FROM listing_relations
+      WHERE subject_id = $1 AND relation = ANY($2::text[])
+      ORDER BY relation ASC, rank ASC`,
+    [id, [...relations]],
+  )
+  return rows.map((row) => ({
+    subjectId: row.subject_id,
+    relatedId: row.related_id,
+    relation: row.relation,
+    rank: row.rank,
+    score: row.score,
+    payload: jsonbToString(row.payload) ?? '{}',
+    computedAt: tsToIso(row.computed_at) ?? '',
+  }))
+}
+
+export async function deleteListingRelations(subjectId: string): Promise<void> {
+  const id = subjectId.trim()
+  if (!id) return
+  await query('DELETE FROM listing_relations WHERE subject_id = $1', [id])
+}
+
+export type ListingTaxHistoryRow = {
+  taxYearEnd: number
+  taxYearLabel: string
+  amount: number
+}
+
+export type ListingTaxMetaRow = {
+  listingId: string
+  mlsId: string
+  parcelNumber: string | null
+  propertyTaxYear: string | null
+}
+
+/** Lightweight tax fields for property-tax history without hydrating the listing. */
+export async function readListingTaxMetaFromDb(
+  id: string,
+): Promise<ListingTaxMetaRow | null> {
+  const key = id.trim()
+  if (!key) return null
+  const row = await queryOne<{
+    listingId: string
+    mlsId: string
+    parcelNumber: string | null
+    propertyTaxYear: string | null
+  }>(
+    `SELECT
+       id     AS "listingId",
+       mls_id AS "mlsId",
+       NULLIF(btrim(raw->>'ParcelNumber'), '') AS "parcelNumber",
+       COALESCE(
+         NULLIF(btrim(property_tax_year), ''),
+         NULLIF(btrim(raw->>'TaxYear'), ''),
+         NULLIF(btrim(data->>'propertyTaxYear'), '')
+       ) AS "propertyTaxYear"
+     FROM listings
+     WHERE id = $1 OR mls_id = $1 OR listing_key = $1
+     LIMIT 1`,
+    [key],
+  )
+  return row ?? null
+}
+
+export async function readListingTaxHistoryFromDb(
+  parcelNumber: string | null,
+  listingId: string,
+  limit = 5,
+): Promise<ListingTaxHistoryRow[]> {
+  const key = parcelNumber?.trim() || listingId.trim()
+  if (!key) return []
+  const rows = await query<{
+    tax_year_end: number
+    tax_year_label: string
+    amount: unknown
+  }>(
+    `SELECT tax_year_end, tax_year_label, amount
+       FROM listing_tax_history
+      WHERE parcel_number = $1
+      ORDER BY tax_year_end DESC
+      LIMIT $2`,
+    [key, Math.max(1, limit)],
+  )
+  return rows.map((row) => ({
+    taxYearEnd: row.tax_year_end,
+    taxYearLabel: row.tax_year_label,
+    amount: numOrNull(row.amount) ?? 0,
+  }))
+}

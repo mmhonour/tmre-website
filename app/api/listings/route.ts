@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchActiveListingsForCity, listingCacheHeaders } from '@/lib/listings-store'
 import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
-import { listingRowId, readListingScoresByIds, upsertListingScores } from '@/lib/listings-db'
+import { listingRowId } from '@/lib/listings-db'
+import { readListingScoresByIds, upsertListingScores } from '@/lib/db/listings-repo'
 import { type Listing } from '@/lib/rets'
 import { SCORE_PEER_LIMIT, type ScoreBreakdown } from '@/lib/goldilocks'
 import { isTmreTown } from '@/lib/tmre-towns'
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
     )
     const listings = peerPool.slice(0, limit)
     const ids = listings.map((l) => listingRowId(l)).filter(Boolean)
-    const storedScores = readListingScoresByIds(ids)
+    const storedScores = await readListingScoresByIds(ids)
 
     const unscored: Listing[] = []
     const scoreById = new Map<string, ScoreBreakdown>()
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest) {
         .filter((row): row is NonNullable<typeof row> => row != null)
       if (persist.length > 0) {
         try {
-          upsertListingScores(persist)
+          await upsertListingScores(persist)
         } catch (err) {
           console.warn(
             '[/api/listings] score persist failed',

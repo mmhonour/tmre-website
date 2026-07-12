@@ -4,9 +4,8 @@ import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  upsertListingScores,
 } from '@/lib/listings-db'
-import { readListingsFromDb } from '@/lib/db/listings-repo'
+import { readListingsFromDb, upsertListingScores } from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
@@ -59,7 +58,7 @@ export async function rescoreListingsByIds(
     })
     .filter((row): row is NonNullable<typeof row> => row != null)
 
-  const updated = upsertListingScores(rows)
+  const updated = await upsertListingScores(rows)
   if (updated > 0) {
     setSyncMeta('last_listing_scores', scoredAt)
     console.info(
@@ -110,7 +109,7 @@ export async function rebuildAllListingScores(): Promise<ListingScoresRebuildRes
         })
         .filter((row): row is NonNullable<typeof row> => row != null)
 
-      const updated = upsertListingScores(rows)
+      const updated = await upsertListingScores(rows)
       totalScored += updated
       towns.push({
         town,

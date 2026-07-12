@@ -7,9 +7,11 @@ import { computeLocationPremium } from '@/lib/listing-location-premium'
 import {
   listingRowId,
   publishListingsReadSnapshot,
-  upsertListingEdgeScores,
 } from '@/lib/listings-db'
-import { readAllListingsFromDb } from '@/lib/db/listings-repo'
+import {
+  readAllListingsFromDb,
+  upsertListingEdgeScores,
+} from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { isClosedListing } from '@/lib/listings-store'
@@ -438,7 +440,7 @@ export async function rebuildAllListingEdgeScores(): Promise<ListingEdgeScoresRe
     })
     .filter((row): row is NonNullable<typeof row> => row != null)
 
-  const scored = upsertListingEdgeScores(rows)
+  const scored = await upsertListingEdgeScores(rows)
   setSyncMeta('edge_score_algo_version', String(EDGE_SCORE_ALGO_VERSION))
   setSyncMeta('last_listing_edge_scores', computedAt)
   if (scored > 0) {

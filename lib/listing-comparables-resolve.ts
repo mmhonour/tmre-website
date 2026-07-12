@@ -45,7 +45,7 @@ export async function resolveComparablesForSubject(
   subject: Listing,
   kind: ComparablesMatchMode = 'sale',
 ): Promise<ComparablesResult & { mlsId: string; kind: ComparablesMatchMode }> {
-  const cached = readCachedComparables(subject, kind)
+  const cached = await readCachedComparables(subject, kind)
   if (cached) {
     const withScores = await attachStoredEdgeScores(cached)
     return {
@@ -63,7 +63,7 @@ export async function resolveComparablesForSubject(
     readAllListingsFromDb(towns, 'Active'),
   ])
 
-  const result = computeAndPersistComparables(
+  const result = await computeAndPersistComparables(
     subject,
     kind,
     soldPool,
