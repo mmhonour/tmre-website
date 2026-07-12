@@ -114,11 +114,10 @@ async function runFullResyncChunked(
           body,
           `${town} (town ${i + 1}/${TMRE_TOWNS.length})`,
         );
+        const finalText = `Failed at ${town} (town ${i + 1}/${TMRE_TOWNS.length}) — use ↺ Retry`;
         hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
-        hooks.setDescriptions((prev) => ({
-          ...prev,
-          [row.id]: `Failed while syncing ${town}`,
-        }));
+        hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+        hooks.persistFinalStatus(row.id, finalText);
         hooks.setRunTimings((prev) => ({
           ...prev,
           [row.id]: {
@@ -184,11 +183,10 @@ async function runFullResyncChunked(
           body,
           `Finalize step ${stepIndex}/${stepCount} (${stepId})`,
         );
+        const finalText = `Finalize failed at step ${stepIndex}/${stepCount} (${stepId}) — use ↺ Retry`;
         hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
-        hooks.setDescriptions((prev) => ({
-          ...prev,
-          [row.id]: `Full resync finalize failed at step ${stepIndex}/${stepCount} (${stepId})`,
-        }));
+        hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+        hooks.persistFinalStatus(row.id, finalText);
         hooks.setRunTimings((prev) => ({
           ...prev,
           [row.id]: {
@@ -300,7 +298,7 @@ type SyncTiming = {
   finished: string | null;
 };
 
-type PanelStatus = {
+export type PanelStatus = {
   refreshing: boolean;
   lastRefreshFinished: string | null;
   lastRefreshStarted: string | null;
@@ -443,6 +441,63 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
   }
 }
 
+function StatusCell({
+  text,
+  isRunning,
+}: {
+  text: string | undefined;
+  isRunning: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  if (!text) {
+    return <span className="font-mono text-[9px] text-charcoal/30">—</span>;
+  }
+
+  const isLong = text.length > 72;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  return (
+    <div>
+      <p
+        className={`text-[9px] leading-snug break-words ${
+          isRunning
+            ? "font-mono text-gold uppercase tracking-wide"
+            : "text-slate/80"
+        } ${isLong && !expanded ? "line-clamp-3" : ""}`}
+      >
+        {text}
+      </p>
+      <div className="flex items-center gap-2 mt-0.5">
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="font-mono text-[8px] text-navy/40 hover:text-navy hover:underline underline-offset-1"
+          >
+            {expanded ? "less" : "more"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="font-mono text-[8px] text-charcoal/30 hover:text-navy"
+          title="Copy full status to clipboard"
+        >
+          {copied ? "✓ copied" : "copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SyncTimestamp({
   label,
   value,
@@ -484,6 +539,14 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
 
 /** Started-but-not-finished older than this → hung (pink). */
 const HANG_THRESHOLD_MS = 45 * 60 * 1000;
+
+/**
+ * Rows whose sync_meta started/finished timestamps are set by a full-resync
+ * finalize sub-step. When the full-resync row is in-progress these rows should
+ * NOT flash yellow independently — the yellow is already shown on the
+ * full-resync row itself. They'll turn green once the full resync completes.
+ */
+const FULL_RESYNC_SUBSTEP_ROWS = new Set(["listing-scores", "stats-cache", "deal-of-the-day"]);
 
 type SyncRowVisualStatus = "running" | "ok" | "alert" | "idle";
 
@@ -528,10 +591,12 @@ function resolveSyncRowVisualStatus(options: {
   status: PanelStatus | null;
   isRunning: boolean;
   syncAllRunning: boolean;
+  /** True when the full-resync row itself is in-progress (client or server). */
+  fullResyncInProgress: boolean;
   error?: string;
   nowMs: number;
 }): SyncRowVisualStatus {
-  const { row, timing, nextRunAt, status, isRunning, syncAllRunning, error, nowMs } = options;
+  const { row, timing, nextRunAt, status, isRunning, syncAllRunning, fullResyncInProgress, error, nowMs } = options;
 
   const refreshRowRunning =
     row.id === "refresh-finished" && Boolean(status?.refreshing);
@@ -543,11 +608,18 @@ function resolveSyncRowVisualStatus(options: {
       return startedMs != null && nowMs - startedMs >= HANG_THRESHOLD_MS;
     })();
 
+  // Suppress server-side isTimingInProgress for rows that are sub-steps of a
+  // full resync while the full-resync row itself is already flashing yellow.
+  // Without this, the deal-of-day / scores / stats-cache rows all flash
+  // simultaneously with the full-resync row as each finalize sub-step starts.
+  const suppressTimingProgress =
+    fullResyncInProgress && FULL_RESYNC_SUBSTEP_ROWS.has(row.id);
+
   const inProgress =
     isRunning ||
     (syncAllRunning && row.actionId != null) ||
     refreshRowRunning ||
-    isTimingInProgress(timing, nowMs);
+    (!suppressTimingProgress && isTimingInProgress(timing, nowMs));
 
   if (inProgress && !refreshRowHung) return "running";
 
@@ -559,6 +631,10 @@ function resolveSyncRowVisualStatus(options: {
       : false;
 
   if (failed || hung || breached) return "alert";
+
+  // "Latest MLS listing update" is a read-only diagnostic — it has no sync
+  // action of its own so it should never turn green regardless of its timestamp.
+  if (row.id === "latest-mls") return "idle";
 
   if (timing.finished) return "ok";
 
@@ -610,19 +686,34 @@ export default function AdminSyncTable({
   rows,
   initialRefreshing,
   initialDatabaseStats,
+  initialStatus,
 }: {
   rows: AdminSyncRow[];
   initialRefreshing: boolean;
   initialDatabaseStats: AdminDatabaseSyncStats[];
+  initialStatus?: PanelStatus;
 }) {
-  const [status, setStatus] = useState<PanelStatus | null>(null);
+  const [status, setStatus] = useState<PanelStatus | null>(initialStatus ?? null);
   const [databaseStats, setDatabaseStats] = useState(initialDatabaseStats);
   const [refreshing, setRefreshing] = useState(initialRefreshing);
   const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
     null,
   );
   const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
-  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
+  // Errors are persisted to localStorage so error text and red row backgrounds
+  // survive page refreshes. Cleared automatically when a new sync starts on that row.
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem("admin-sync-errors");
+      return raw ? (JSON.parse(raw) as Partial<Record<string, string>>) : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("admin-sync-errors", JSON.stringify(errors)); } catch { /* ignore */ }
+  }, [errors]);
   const [descriptions, setDescriptions] = useState<Partial<Record<string, string>>>({});
   // Persisted final status per row — survives page reloads via localStorage.
   const [finalStatuses, setFinalStatuses] = useState<Partial<Record<string, string>>>(() => {
@@ -947,10 +1038,18 @@ export default function AdminSyncTable({
         </div>
       ) : null}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
-        <p className="text-xs text-slate leading-relaxed max-w-2xl">
-          Sync all runs steps 1→5 automatically. For manual runs, use the Order column and
-          sync each row in sequence (step 6 is weekly property addresses).
-        </p>
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs text-slate leading-relaxed max-w-2xl">
+            Sync all runs steps 1→5 automatically. For manual runs, use the Order column and
+            sync each row in sequence (step 6 is weekly property addresses).
+          </p>
+          <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
+            Table sorted by most-recent End time — the Order badge shows the manual step number,
+            which may differ from the row&apos;s visual position. Steps 3–5 are also run
+            automatically as part of a Full resync (step 1) and may float to the top after one.
+            Step 2 (Incremental) runs on its own 30-min schedule and is not triggered by a full resync.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => void runSyncAll()}
@@ -976,14 +1075,14 @@ export default function AdminSyncTable({
       ) : null}
       <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-white">
         <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-3">
-          SQLite inventory
+          Database inventory
         </p>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse">
             <thead>
               <tr>
                 <th className={`${TH} border-charcoal/[0.08]`}>Database</th>
-                <th className={`${TH} border-charcoal/[0.08]`}>File</th>
+                <th className={`${TH} border-charcoal/[0.08]`}>Location</th>
                 <th className={`${TH} border-charcoal/[0.08] border-r-0`}>Rows</th>
               </tr>
             </thead>
@@ -1052,7 +1151,21 @@ export default function AdminSyncTable({
             </tr>
           </thead>
           <tbody>
-            {[...rows]
+            {(() => {
+              // Determine whether the full-resync row is in-progress (client
+              // OR server) so sub-step rows can suppress their independent
+              // yellow flashing while the full resync is already showing it.
+              const nowMsOuter = now.getTime();
+              const fullResyncRow = rows.find((r) => r.id === "full-resync");
+              const fullResyncTiming = fullResyncRow
+                ? (runTimings["full-resync"] ?? timingForRow(fullResyncRow, status))
+                : null;
+              const fullResyncInProgress =
+                runningId === "full-resync" ||
+                syncAllRunning ||
+                (fullResyncTiming != null && isTimingInProgress(fullResyncTiming, nowMsOuter));
+
+              return [...rows]
               .sort((a, b) => {
                 const aFinished = parseIsoMs(
                   (runTimings[a.id] ?? timingForRow(a, status)).finished,
@@ -1078,6 +1191,7 @@ export default function AdminSyncTable({
                 status,
                 isRunning,
                 syncAllRunning,
+                fullResyncInProgress,
                 error: rowError,
                 nowMs,
               });
@@ -1137,28 +1251,14 @@ export default function AdminSyncTable({
                     </p>
                   </td>
                   <td className={TD}>
-                    {(() => {
-                      const liveDescription = descriptions[row.id];
-                      if (isRunning || syncAllRunning) {
-                        // Live in-progress text takes priority
-                        return (
-                          <p className="font-mono text-[10px] text-gold uppercase tracking-wide">
-                            {liveDescription ?? "Running…"}
-                          </p>
-                        );
+                    <StatusCell
+                      text={
+                        (isRunning || syncAllRunning)
+                          ? (descriptions[row.id] ?? "Running…")
+                          : (descriptions[row.id] ?? finalStatuses[row.id])
                       }
-                      const finalText = liveDescription ?? finalStatuses[row.id];
-                      if (finalText) {
-                        return (
-                          <p className="text-[10px] leading-snug text-slate/80">
-                            {finalText}
-                          </p>
-                        );
-                      }
-                      return (
-                        <span className="font-mono text-[10px] text-charcoal/30">—</span>
-                      );
-                    })()}
+                      isRunning={isRunning || syncAllRunning}
+                    />
                   </td>
                   <td className={TD}>
                     <SyncImpactedPages rowId={row.id} />
@@ -1239,16 +1339,29 @@ export default function AdminSyncTable({
                   </td>
                   <td className={`${TD} border-r-0`}>
                     {rowError ? (
-                      <p className="font-mono text-[9px] leading-snug text-coral break-words">
-                        {rowError}
-                      </p>
+                      <div className="space-y-1.5">
+                        <p className="font-mono text-[9px] leading-snug text-coral break-words">
+                          {rowError}
+                        </p>
+                        {row.actionId && !isRunning && !syncAllRunning && (
+                          <button
+                            type="button"
+                            onClick={() => void runSync(row)}
+                            disabled={globalBusy}
+                            className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                          >
+                            ↺ Retry
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <span className="font-mono text-[9px] text-charcoal/30">—</span>
                     )}
                   </td>
                 </tr>
               );
-            })}
+            })
+          })()}
           </tbody>
         </table>
       </div>
