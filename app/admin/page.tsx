@@ -112,8 +112,37 @@ export default async function AdminPage() {
     );
   }
 
-  await ensureAdminListingPhotosReady();
-  await ensurePostDeployFullResyncScheduled();
+  // The Admin/status page fires many DB + blob reads. Historically these were
+  // awaited directly, so a SINGLE failing read (e.g. Neon rejecting reads when
+  // the data-transfer quota is exhausted) threw all the way out and 500'd the
+  // whole page — the worst outcome for the one page you need to diagnose from.
+  // Each risky read now degrades to a fallback and records its error, and the
+  // failures are surfaced in a banner so the real cause is visible on-page.
+  const loadErrors: string[] = [];
+  const safe = async <T,>(
+    label: string,
+    fn: () => Promise<T>,
+    fallback: T,
+  ): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      loadErrors.push(
+        `${label}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return fallback;
+    }
+  };
+
+  await safe("photos-ready", () => ensureAdminListingPhotosReady(), false);
+  await safe(
+    "post-deploy-schedule",
+    async () => {
+      await ensurePostDeployFullResyncScheduled();
+      return null;
+    },
+    null,
+  );
 
   const stats = await readListingsDbStats();
   const { refresh, nextRuns, scheduleHints } = await readAdminSyncPanelStatus();
@@ -121,7 +150,11 @@ export default async function AdminPage() {
   const _primaryHistory = readRefreshLockHistorySummary();
   const refreshLockHistory = await (async () => {
     if (_primaryHistory.entries.length > 0) return _primaryHistory;
-    const blobRaw = await readRefreshLockHistoryFromBlob();
+    const blobRaw = await safe(
+      "refresh-lock-history-blob",
+      () => readRefreshLockHistoryFromBlob(),
+      null as Awaited<ReturnType<typeof readRefreshLockHistoryFromBlob>> | null,
+    );
     if (!blobRaw || blobRaw.length === 0) return _primaryHistory;
     const blobEntries = blobRaw.filter(
       (v): v is RefreshLockHistoryEntry =>
@@ -135,15 +168,30 @@ export default async function AdminPage() {
       ? buildRefreshLockHistorySummary(blobEntries)
       : _primaryHistory;
   })();
-  const latestListingUpdate = await readLatestListingModificationTimestamp();
+  const latestListingUpdate = await safe(
+    "latest-mls-timestamp",
+    () => readLatestListingModificationTimestamp(),
+    null,
+  );
   const lastRefreshFinished = getSyncMeta("last_refresh_finished_at");
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
   const refreshFinishedAt = lastRefreshFinished ?? refresh.lastFinishedAt;
   const postgresDiagram = await describePostgresDatabase();
   const sqliteDiagrams = [postgresDiagram, ...describeRunningSqliteDatabases()];
-  const databaseStats = await collectAdminDatabaseSyncStats();
-  const blobRuntime = await describePhotosBlobPersistRuntime();
+  const databaseStats = await safe(
+    "database-sync-stats",
+    () => collectAdminDatabaseSyncStats(),
+    [],
+  );
+  const blobRuntime = await safe("photos-blob-runtime", () => describePhotosBlobPersistRuntime(), {
+    active: false,
+    mode: "local-file" as const,
+    reason: "unavailable — read failed",
+    lastPersistAt: null,
+    lastPersistResult: null,
+    lastRestoreAt: null,
+  });
   const inventorySnapshot = await readInventorySnapshot();
   const listingsDbEmpty = stats.total === 0;
   const showListingsDbRuntime = listingsDbEmpty;
@@ -507,6 +555,34 @@ export default async function AdminPage() {
           <AdminHeroNav />
         </div>
       </section>
+
+      {loadErrors.length > 0 && (
+        <div className="border-b border-coral/30 bg-coral/[0.09] px-6 py-4">
+          <div className="mx-auto max-w-7xl lg:px-4">
+            <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-coral font-semibold mb-2">
+              ⚠ Admin rendered in degraded mode — {loadErrors.length} read
+              {loadErrors.length === 1 ? "" : "s"} failed
+            </p>
+            <ul className="space-y-1">
+              {loadErrors.map((entry, i) => (
+                <li
+                  key={i}
+                  className="font-mono text-[11px] text-charcoal/70 break-words"
+                >
+                  {entry}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-charcoal/55 max-w-3xl leading-snug">
+              The page loaded with fallbacks so it stays diagnosable. If these
+              errors mention a Neon <strong>data-transfer quota</strong>,
+              production database reads are being rejected until the quota
+              resets (or you move off the free tier) — no code change will
+              restore data until then.
+            </p>
+          </div>
+        </div>
+      )}
 
       {listingsDbEmpty && (
         <div className="border-b border-coral/20 bg-coral/[0.07] px-6 py-4">
