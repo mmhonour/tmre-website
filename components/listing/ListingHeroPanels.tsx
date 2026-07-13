@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
+import { warmListingTabs } from "@/lib/warm-listing-cache";
 import ListingHeader from "@/components/listing/ListingHeader";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ListingSubnav, {
@@ -34,6 +35,8 @@ type ListingHeroPanelsProps = {
   variant?: "default" | "spotlight";
   /** Spotlight property tabs (1 / 2 / 3) rendered above the Property Details label. */
   propertyTabs?: ReactNode;
+  /** Suppress the MLS status badge (e.g. the Coming Soon spotlight tab). */
+  hideStatusBadge?: boolean;
   belowTabs?: ReactNode;
   /** Full-width content below the hero grid (e.g. comparables columns). */
   belowHero?: ReactNode;
@@ -48,6 +51,7 @@ export default function ListingHeroPanels({
   subnav,
   variant = "default",
   propertyTabs = null,
+  hideStatusBadge = false,
   belowTabs,
   belowHero,
   sidebar,
@@ -56,27 +60,41 @@ export default function ListingHeroPanels({
 }: ListingHeroPanelsProps) {
   const isSpotlight = variant === "spotlight";
   const frameClass = listingPanelCompactClass;
+
+  // On first open of a property (any tab), warm every tab's server data so
+  // Comparables / Comparable Rentals / If load from cache when the user bounces
+  // between tabs instead of being recomputed each visit.
+  useEffect(() => {
+    warmListingTabs(subnav.mlsId);
+  }, [subnav.mlsId]);
   const compactHero = Boolean(belowTabs || belowHero || sidebar || footer || interest);
 
   const statusLabel = formatMlsStatus(header.status);
 
+  const statusBadge =
+    statusLabel && !hideStatusBadge ? (
+      <span className="shrink-0">
+        <DealBoardStatusBadge status={statusLabel} size="sm" surface="listing" />
+      </span>
+    ) : null;
+
+  // When a property selector (Spotlight 1/2/3) is present, hoist the status
+  // badge up so it sits on that top row — top-aligned with "Spotlight
+  // Properties" rather than dropping down to the Property Details label.
   const propertyPanel = (
     <div className={frameClass}>
       {!isSpotlight ? <ListingBackLink className="mb-4" /> : null}
-      {propertyTabs}
+      {propertyTabs ? (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">{propertyTabs}</div>
+          {statusBadge}
+        </div>
+      ) : null}
       <div className="mb-2 flex items-start justify-between gap-3">
         <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
           Property Details
         </p>
-        {statusLabel ? (
-          <span className="shrink-0">
-            <DealBoardStatusBadge
-              status={statusLabel}
-              size="sm"
-              surface="listing"
-            />
-          </span>
-        ) : null}
+        {propertyTabs ? null : statusBadge}
       </div>
       <ListingHeader
         {...header}
@@ -94,8 +112,6 @@ export default function ListingHeroPanels({
     </div>
   );
 
-  const locationMapHeight = "h-[12rem] sm:h-[14rem] lg:h-[16rem]";
-
   const locationPanel = (
     <div
       className={`${frameClass} flex flex-col min-h-[16rem] sm:min-h-[18rem] lg:min-h-[20rem]`}
@@ -103,12 +119,13 @@ export default function ListingHeroPanels({
       <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
         Location
       </p>
+      {/* Grow to fill the panel frame instead of a fixed height that left a gap. */}
       <ListingLocationMap
         latitude={location.latitude}
         longitude={location.longitude}
         addressQuery={location.addressQuery}
         variant="hero"
-        className={locationMapHeight}
+        className="flex-1 min-h-0"
         hideLabel
         hidePin={location.hidePin}
         defaultZoom={location.defaultZoom}
@@ -124,8 +141,11 @@ export default function ListingHeroPanels({
     />
   ) : null;
 
+  // Sticky (map stays in view while the details column scrolls) but no inner
+  // max-height/overflow — that produced a tacky full-height scrollbar beside
+  // the map. Content flows naturally so nothing is clipped.
   const rightColumn = (
-    <div className="min-w-0 flex flex-col gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain">
+    <div className="min-w-0 flex flex-col gap-4 lg:sticky lg:top-20">
       {interestButton}
       {locationPanel}
       {sidebar ? <div className="shrink-0">{sidebar}</div> : null}

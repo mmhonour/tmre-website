@@ -35,12 +35,35 @@ function resolveConnectionString(): string {
 }
 
 /**
+ * Local Postgres (Docker / native install for `localhost` dev) speaks plain TCP
+ * with no TLS, so forcing SSL there fails with "server does not support SSL".
+ * Hosted providers (Neon) require TLS. Decide from the connection string: skip
+ * SSL for loopback hosts or an explicit `sslmode=disable`, else keep TLS on.
+ */
+function shouldUseSsl(rawConnectionString: string): boolean {
+  try {
+    const url = new URL(rawConnectionString)
+    if ((url.searchParams.get('sslmode') ?? '').toLowerCase() === 'disable') {
+      return false
+    }
+    const host = url.hostname.toLowerCase()
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+      return false
+    }
+  } catch {
+    // Unparseable string → default to TLS (safer for hosted providers).
+  }
+  return true
+}
+
+/**
  * Strip libpq-style TLS query params and configure TLS on the driver instead.
- * This keeps the connection encrypted while silencing node-postgres's `sslmode`
- * deprecation warning.
+ * This keeps hosted connections encrypted while silencing node-postgres's
+ * `sslmode` deprecation warning, and disables TLS entirely for local Postgres.
  */
 function buildPoolConfig() {
   const raw = resolveConnectionString()
+  const useSsl = shouldUseSsl(raw)
   let connectionString = raw
   try {
     const url = new URL(raw)
@@ -52,7 +75,7 @@ function buildPoolConfig() {
   }
   return {
     connectionString,
-    ssl: { rejectUnauthorized: false as const },
+    ssl: useSsl ? { rejectUnauthorized: false as const } : false,
     max: Number(process.env.PG_POOL_MAX ?? 5),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,

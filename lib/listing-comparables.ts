@@ -28,12 +28,35 @@ function inRentalClosedPeriod(iso: string | null): boolean {
   const cutoff = Date.now() - RENTAL_COMP_MONTHS * 30.44 * 24 * 60 * 60 * 1000
   return t >= cutoff
 }
+
+/** True when a close timestamp falls within a trailing N-month window. */
+function inTrailingMonths(iso: string | null, months: number): boolean {
+  if (!iso) return false
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return false
+  const cutoff = Date.now() - months * 30.44 * 24 * 60 * 60 * 1000
+  return t >= cutoff
+}
+
+/**
+ * Overrides for the sold/rented side of the ranking. Omitted → each mode keeps
+ * its historical default (sale = calendar stats period, rental = 8-month roll,
+ * limit = COMPARABLES_MATCH_LIMIT). The edge-cache path passes a wide window +
+ * larger reservoir to build the look-back superset; If-estimates pass nothing.
+ */
+export type ComparablesRankOptions = {
+  /** Trailing months for the sold/rented window. */
+  soldLookbackMonths?: number
+  /** Max sold/rented comps to keep. */
+  soldLimit?: number
+}
 import { normalizeZip } from '@/lib/tmre-towns'
 import {
   classifyYearBuilt,
   VINTAGE_BUCKETS,
   vintageBucketDistance,
-  vintageBucketsWithinTolerance,
+  vintageEdgeBuckets,
+  vintageMatchesForComparable,
   type VintageBucketId,
 } from '@/lib/vintage-buckets'
 
@@ -87,6 +110,19 @@ function acreageWithinTolerance(
   const min = subjectAcres * (1 - COMPARABLES_LOT_ACRE_TOLERANCE)
   const max = subjectAcres * (1 + COMPARABLES_LOT_ACRE_TOLERANCE)
   return compAcres >= min && compAcres <= max
+}
+
+/** Living-area tolerance when matching comparables (±30% of subject sqft). */
+export const COMPARABLES_SQFT_TOLERANCE = 0.3
+
+function sqftWithinTolerance(
+  subjectSqft: number,
+  compSqft: number | null | undefined,
+): boolean {
+  if (compSqft == null || compSqft <= 0) return false
+  const min = subjectSqft * (1 - COMPARABLES_SQFT_TOLERANCE)
+  const max = subjectSqft * (1 + COMPARABLES_SQFT_TOLERANCE)
+  return compSqft >= min && compSqft <= max
 }
 
 /** Adjacent bed counts allowed when matching comparables. */
@@ -176,6 +212,10 @@ export function subjectComparablesCriteria(
 
   const subjectAcres = parseLotAcres(subject)
   const vintageBucket = classifyYearBuilt(subject.yearBuilt)
+  const vintageEdgeLabels = vintageEdgeBuckets(
+    subject.yearBuilt,
+    vintageBucket,
+  ).map((id) => vintageLabel(id))
 
   return {
     criteria: {
@@ -183,8 +223,10 @@ export function subjectComparablesCriteria(
       beds: subject.beds!,
       baths: subject.baths!,
       lotAcres: subjectAcres != null && subjectAcres > 0 ? subjectAcres : null,
+      sqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
       vintageBucket,
       vintageLabel: vintageLabel(vintageBucket),
+      ...(vintageEdgeLabels.length > 0 ? { vintageEdgeLabels } : {}),
     },
     missingCriteria: [],
   }
@@ -214,7 +256,13 @@ function matchesComparableCriteria(
   if (!bathsWithinTolerance(criteria.baths, comp.baths)) return false
 
   const compVintage = classifyYearBuilt(comp.yearBuilt)
-  if (!vintageBucketsWithinTolerance(criteria.vintageBucket, compVintage)) {
+  if (
+    !vintageMatchesForComparable(
+      subject.yearBuilt,
+      criteria.vintageBucket,
+      compVintage,
+    )
+  ) {
     return false
   }
 
@@ -222,6 +270,10 @@ function matchesComparableCriteria(
     const compAcres = parseLotAcres(comp)
     if (compAcres == null || compAcres <= 0) return false
     if (!acreageWithinTolerance(criteria.lotAcres, compAcres)) return false
+  }
+
+  if (criteria.sqft != null && criteria.sqft > 0) {
+    if (!sqftWithinTolerance(criteria.sqft, comp.sqft)) return false
   }
 
   return true
@@ -264,6 +316,14 @@ function comparableFitDistance(
     }
   }
 
+  if (criteria.sqft != null && criteria.sqft > 0) {
+    if (comp.sqft != null && comp.sqft > 0) {
+      score += (Math.abs(comp.sqft - criteria.sqft) / criteria.sqft) * 40
+    } else {
+      score += 40
+    }
+  }
+
   return score
 }
 
@@ -278,11 +338,20 @@ function rankSoldComps(
   subject: Listing,
   criteria: ComparablesCriteria,
   mode: ComparablesMatchMode,
+  options?: ComparablesRankOptions,
 ): RankedComparable[] {
   const refPrice = subjectReferencePrice(subject)
-  // Rental comps use a tighter rolling window; sale comps use the broader
-  // calendar-year stats period.
-  const inPeriod = mode === 'rental' ? inRentalClosedPeriod : inStatsClosedPeriod
+  // Default: rental comps use a tighter rolling window; sale comps use the
+  // broader calendar-year stats period. When a look-back is supplied (the
+  // edge-cache superset path), use a plain trailing-months window instead.
+  const inPeriod =
+    options?.soldLookbackMonths != null
+      ? (iso: string | null) =>
+          inTrailingMonths(iso, options.soldLookbackMonths!)
+      : mode === 'rental'
+        ? inRentalClosedPeriod
+        : inStatsClosedPeriod
+  const limit = options?.soldLimit ?? COMPARABLES_MATCH_LIMIT
 
   return matches
     .filter((l) => isClosedListing(l))
@@ -303,7 +372,7 @@ function rankSoldComps(
       const priceB = closedSalePrice(b.listing)
       return priceDistance(refPrice, priceA) - priceDistance(refPrice, priceB)
     })
-    .slice(0, COMPARABLES_MATCH_LIMIT)
+    .slice(0, limit)
     .map(({ listing, fitDistance }, index) => ({
       listing: buildComparableListing(listing),
       fitDistance,
@@ -355,6 +424,7 @@ export function findComparablesRanked(
   soldPool: Listing[],
   activePool: Listing[],
   mode: ComparablesMatchMode = 'sale',
+  options?: ComparablesRankOptions,
 ): RankedComparablesResult {
   const { criteria, missingCriteria } = subjectComparablesCriteria(subject)
 
@@ -375,7 +445,7 @@ export function findComparablesRanked(
   )
 
   return {
-    sold: rankSoldComps(matches, subject, criteria, mode),
+    sold: rankSoldComps(matches, subject, criteria, mode, options),
     active: rankActiveComps(matches, subject, criteria),
     criteria,
     missingCriteria: [],
@@ -403,4 +473,82 @@ export function findComparableRentals(
   activePool: Listing[],
 ): ComparablesResult {
   return findComparables(subject, soldPool, activePool, 'rental')
+}
+
+// ---------------------------------------------------------------------------
+// UAG (Under Agreement) — under-contract comps.
+//
+// Unlike sale/rental comparables (which split a pool into sold vs active), UAG
+// works from a single pool of under-contract listings (SmartMLS "Under Contract"
+// + "Under Contract - Continue to Show") and splits it into rental vs sale
+// columns. Matching reuses the exact same criteria as comparables (zip, beds
+// ±1, baths ±1, vintage era + edge rule, lot ±40%, living area ±30%).
+// ---------------------------------------------------------------------------
+
+/** Rank a pool of matched under-contract listings by fit, then price, then DOM. */
+function rankUagComps(
+  matches: Listing[],
+  subject: Listing,
+  criteria: ComparablesCriteria,
+): RankedComparable[] {
+  const refPrice = subjectReferencePrice(subject)
+
+  return matches
+    .map((l) => ({
+      listing: l,
+      fitDistance: comparableFitDistance(l, subject, criteria),
+    }))
+    .sort((a, b) => {
+      if (a.fitDistance !== b.fitDistance) return a.fitDistance - b.fitDistance
+
+      const distA = priceDistance(refPrice, a.listing.price)
+      const distB = priceDistance(refPrice, b.listing.price)
+      if (distA !== distB) return distA - distB
+
+      const domA = a.listing.dom ?? Number.POSITIVE_INFINITY
+      const domB = b.listing.dom ?? Number.POSITIVE_INFINITY
+      return domA - domB
+    })
+    .slice(0, COMPARABLES_MATCH_LIMIT)
+    .map(({ listing, fitDistance }, index) => ({
+      listing: buildComparableListing(listing),
+      fitDistance,
+      rank: index + 1,
+    }))
+}
+
+export type RankedUagResult = {
+  sale: RankedComparable[]
+  rental: RankedComparable[]
+  criteria: ComparablesCriteria | null
+  missingCriteria: string[]
+}
+
+/**
+ * Split a pool of under-contract listings into rental + sale UAG comps for the
+ * subject. Caller supplies the already-fetched under-contract pool (typically
+ * an on-demand RETS query scoped to the subject's zip).
+ */
+export function findUagRanked(
+  subject: Listing,
+  underContractPool: Listing[],
+): RankedUagResult {
+  const { criteria, missingCriteria } = subjectComparablesCriteria(subject)
+
+  if (!criteria) {
+    return { sale: [], rental: [], criteria: null, missingCriteria }
+  }
+
+  const matches = underContractPool.filter((l) =>
+    matchesComparableCriteria(l, subject, criteria),
+  )
+  const rentals = matches.filter((l) => isRentalListing(l))
+  const sales = matches.filter((l) => !isRentalListing(l))
+
+  return {
+    sale: rankUagComps(sales, subject, criteria),
+    rental: rankUagComps(rentals, subject, criteria),
+    criteria,
+    missingCriteria: [],
+  }
 }

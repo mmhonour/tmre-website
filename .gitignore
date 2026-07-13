@@ -30,8 +30,11 @@ data/listings.read.db-*
 data/listing-photos.db
 data/listing-photos.db-*
 data/listings.bundle.db
+data/listings.bundle.db-*
+data/test-bundle.db
 
 # debug
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

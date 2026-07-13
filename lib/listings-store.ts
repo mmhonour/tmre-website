@@ -59,6 +59,28 @@ export function isClosedListing(l: Listing): boolean {
   return s === 'closed' || s === 'c'
 }
 
+/**
+ * True for under-agreement MLS rows. SmartMLS exposes two under-contract
+ * statuses (from the Property/Status lookup):
+ *   D  · UC     · "Under Contract"
+ *   SH · UC-CTS · "Under Contract - Continue to Show"
+ * We match the long labels (as returned in `status`), short values, and raw
+ * codes so this holds regardless of which representation a row carries.
+ */
+export function isUnderContractListing(l: Listing): boolean {
+  const s = l.status?.trim().toLowerCase()
+  if (!s) return false
+  return (
+    s === 'under contract' ||
+    s === 'under contract - continue to show' ||
+    s === 'under contract - cts' ||
+    s === 'uc' ||
+    s === 'uc-cts' ||
+    s === 'd' ||
+    s === 'sh'
+  )
+}
+
 /** @deprecated Use isMarketListing */
 export const isActiveListing = isMarketListing
 

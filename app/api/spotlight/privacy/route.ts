@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ensureAdminListingPhotosReady } from '@/lib/listing-photos-db-persist'
 import { parseSpotlightPropertyTab } from '@/lib/spotlight-listing'
 import {
-  readSpotlightPrivacyOverrides,
+  readSpotlightPrivacyOverridesFresh,
   spotlightEffectivePrivacy,
 } from '@/lib/spotlight-privacy'
 
@@ -10,12 +9,10 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  await ensureAdminListingPhotosReady()
-
   const tab = parseSpotlightPropertyTab(
     new URL(req.url).searchParams.get('property'),
   )
-  const overrides = readSpotlightPrivacyOverrides()
+  const overrides = await readSpotlightPrivacyOverridesFresh()
   return NextResponse.json({
     tab,
     privacy: spotlightEffectivePrivacy(tab, overrides),

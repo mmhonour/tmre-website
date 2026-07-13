@@ -117,46 +117,21 @@ export async function register() {
       )
     }
 
-    // Daily full MLS reload + Goldilocks score rebuild at 5:00 AM America/New_York.
+    // Weekly full MLS reload + Goldilocks score rebuild at 5:00 AM Monday America/New_York.
     // Netlify uses netlify/functions/sync-listings-full.ts for production; this covers
     // long-lived Node processes (local:dev / non-serverless hosts).
     const fullReloadEnabled =
       process.env.ENABLE_DAILY_FULL_SYNC !== '0' && (allowListingsSync || retsConfigured)
     if (fullReloadEnabled) {
-      const msUntilNext5amEt = () => {
-        const parts = new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/New_York',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        }).formatToParts(new Date())
-        const get = (type: string) =>
-          Number(parts.find((p) => p.type === type)?.value ?? '0')
-        const y = get('year')
-        const m = get('month')
-        const d = get('day')
-        const hour = get('hour') === 24 ? 0 : get('hour')
-        const minute = get('minute')
-        const second = get('second')
-        const etAsUtc = Date.UTC(y, m - 1, d, hour, minute, second)
-        let targetAsUtc = Date.UTC(y, m - 1, d, 5, 0, 0)
-        if (etAsUtc >= targetAsUtc) {
-          targetAsUtc += 24 * 60 * 60 * 1000
-        }
-        return Math.max(60_000, targetAsUtc - etAsUtc)
-      }
+      const { msUntilNextMondayTimeEt } = await import('./lib/admin-sync-schedule')
       const scheduleNextFullReload = () => {
-        const waitMs = msUntilNext5amEt()
+        const waitMs = msUntilNextMondayTimeEt(5, 0)
         console.info(
-          `[listings-sync] next daily full reload + score rebuild in ${Math.round(waitMs / 60_000)} minutes (5am ET)`,
+          `[listings-sync] next weekly full reload + score rebuild in ${Math.round(waitMs / 60_000)} minutes (Mon 5am ET)`,
         )
         setTimeout(() => {
           syncAllTownListings()
-            .catch((err) => console.error('[listings-sync/daily-full]', err))
+            .catch((err) => console.error('[listings-sync/weekly-full]', err))
             .finally(() => scheduleNextFullReload())
         }, waitMs)
       }
@@ -236,7 +211,7 @@ export async function register() {
 
     const warmDealOfTheDayCache = async () => {
       if (!(await hasLocalListingsCache())) return
-      // 5am full sync rebuilds DOTD after listings + scores; skip if cache exists or sync running.
+      // Weekly full sync rebuilds DOTD after listings + scores; skip if cache exists or sync running.
       if (getSyncMeta('refresh_in_progress') === '1') return
       void import('./lib/deal-of-the-day-cache')
         .then(({ rebuildDealOfTheDayCacheIfMissing }) => rebuildDealOfTheDayCacheIfMissing())

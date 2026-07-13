@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AdminSyncActionId, AdminDatabaseSyncStats, FullResyncFinalizeStepId } from "@/lib/admin-sync-types";
 import {
   ADMIN_SYNC_ACTIONS,
@@ -67,6 +67,37 @@ async function postAdminSync(
   return { res, body: parsed };
 }
 
+/** One captured step of a sync run — surfaced in the Sync run log panel. */
+export type SyncRunLogEntry = {
+  id: string;
+  label: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  status: string;
+  error?: string;
+};
+
+/** Payload broadcast on the window "admin-sync-run-log" event for the log panel. */
+export type AdminSyncRunLogEvent = {
+  entries: SyncRunLogEntry[];
+  running: boolean;
+};
+
+export const ADMIN_SYNC_RUN_LOG_EVENT = "admin-sync-run-log";
+export const ADMIN_SYNC_RUN_LOG_STORAGE_KEY = "admin-sync-run-log";
+
+/** Human duration, e.g. "1m 23s" / "4.2s" / "820ms". */
+export function formatRunDuration(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = Math.round(totalSeconds % 60);
+  return `${mins}m ${secs}s`;
+}
+
 async function runFullResyncChunked(
   row: AdminSyncRow,
   hooks: {
@@ -80,6 +111,7 @@ async function runFullResyncChunked(
     refreshStatus: () => Promise<void>;
     runningId: AdminSyncActionId | "sync-all-caches" | null;
     persistFinalStatus: (rowId: string, text: string) => void;
+    appendRunLog: (entry: SyncRunLogEntry) => void;
   },
 ): Promise<boolean> {
   if (hooks.runningId) return false;
@@ -94,10 +126,14 @@ async function runFullResyncChunked(
   }));
 
   let sqliteTotal: number | null = null;
+  const completedTowns: string[] = [];
 
   try {
     for (let i = 0; i < TMRE_TOWNS.length; i++) {
       const town = TMRE_TOWNS[i];
+      const townStartedAt = new Date().toISOString();
+      const townT0 = Date.now();
+      const townLabel = `Town ${i + 1}/${TMRE_TOWNS.length} · ${town}`;
       hooks.setDescriptions((prev) => ({
         ...prev,
         [row.id]: formatFullResyncTownPending({
@@ -105,6 +141,7 @@ async function runFullResyncChunked(
           townIndex: i + 1,
           townCount: TMRE_TOWNS.length,
           sqliteTotal,
+          completedTowns,
         }),
       }));
       const { res, body } = await postAdminSync({ action: "full-resync", town });
@@ -118,6 +155,15 @@ async function runFullResyncChunked(
         hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
         hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
         hooks.persistFinalStatus(row.id, finalText);
+        hooks.appendRunLog({
+          id: `${row.id}-town-${i}-${townT0}`,
+          label: townLabel,
+          startedAt: townStartedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - townT0,
+          status: finalText,
+          error: errText,
+        });
         hooks.setRunTimings((prev) => ({
           ...prev,
           [row.id]: {
@@ -143,12 +189,22 @@ async function runFullResyncChunked(
           : prev,
       );
       sqliteTotal = body.stats?.total ?? sqliteTotal;
+      completedTowns.push(town);
+      const townStatus =
+        body.detail ??
+        formatSyncDescription(body.message, undefined) ??
+        `${town} synced`;
+      hooks.appendRunLog({
+        id: `${row.id}-town-${i}-${townT0}`,
+        label: townLabel,
+        startedAt: townStartedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - townT0,
+        status: townStatus,
+      });
       hooks.setDescriptions((prev) => ({
         ...prev,
-        [row.id]:
-          body.detail ??
-          formatSyncDescription(body.message, undefined) ??
-          `${town} synced`,
+        [row.id]: townStatus,
       }));
     }
 
@@ -165,6 +221,9 @@ async function runFullResyncChunked(
       const stepIndex = i + 1;
       if (finalizeStepsCompleted.includes(stepId)) continue;
 
+      const stepStartedAt = new Date().toISOString();
+      const stepT0 = Date.now();
+      const stepLabel = `Finalize ${stepIndex}/${stepCount} · ${stepId}`;
       hooks.setDescriptions((prev) => ({
         ...prev,
         [row.id]: formatFullResyncFinalizeStepPending({ stepId, stepIndex, stepCount }),
@@ -187,6 +246,15 @@ async function runFullResyncChunked(
         hooks.setErrors((prev) => ({ ...prev, [row.id]: errText }));
         hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
         hooks.persistFinalStatus(row.id, finalText);
+        hooks.appendRunLog({
+          id: `${row.id}-finalize-${stepId}-${stepT0}`,
+          label: stepLabel,
+          startedAt: stepStartedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - stepT0,
+          status: finalText,
+          error: errText,
+        });
         hooks.setRunTimings((prev) => ({
           ...prev,
           [row.id]: {
@@ -208,6 +276,17 @@ async function runFullResyncChunked(
             : null,
         );
       }
+      hooks.appendRunLog({
+        id: `${row.id}-finalize-${stepId}-${stepT0}`,
+        label: stepLabel,
+        startedAt: stepStartedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - stepT0,
+        status:
+          formatSyncDescription(body.message, body.detail) ??
+          body.message ??
+          `Finalize step ${stepIndex}/${stepCount} complete`,
+      });
       if (stepIndex < stepCount) {
         hooks.setDescriptions((prev) => ({
           ...prev,
@@ -598,22 +677,30 @@ function resolveSyncRowVisualStatus(options: {
 }): SyncRowVisualStatus {
   const { row, timing, nextRunAt, status, isRunning, syncAllRunning, fullResyncInProgress, error, nowMs } = options;
 
+  // During a full resync the full-resync row (Step 1) is the single source of
+  // truth for the pulsing yellow. The "refresh-finished" row watches the global
+  // status.refreshing flag, which a full resync also sets — so without this it
+  // pulses in lockstep with Step 1. Keep it calm until the resync completes.
   const refreshRowRunning =
-    row.id === "refresh-finished" && Boolean(status?.refreshing);
+    row.id === "refresh-finished" &&
+    Boolean(status?.refreshing) &&
+    !fullResyncInProgress;
   const refreshRowHung =
     row.id === "refresh-finished" &&
     Boolean(status?.refreshing) &&
+    !fullResyncInProgress &&
     (() => {
       const startedMs = parseIsoMs(status?.lastRefreshStarted);
       return startedMs != null && nowMs - startedMs >= HANG_THRESHOLD_MS;
     })();
 
   // Suppress server-side isTimingInProgress for rows that are sub-steps of a
-  // full resync while the full-resync row itself is already flashing yellow.
-  // Without this, the deal-of-day / scores / stats-cache rows all flash
-  // simultaneously with the full-resync row as each finalize sub-step starts.
+  // full resync (and the refresh-finished row) while the full-resync row itself
+  // is already flashing yellow. Without this, the deal-of-day / scores /
+  // stats-cache / refresh-finished rows all flash simultaneously with Step 1.
   const suppressTimingProgress =
-    fullResyncInProgress && FULL_RESYNC_SUBSTEP_ROWS.has(row.id);
+    fullResyncInProgress &&
+    (FULL_RESYNC_SUBSTEP_ROWS.has(row.id) || row.id === "refresh-finished");
 
   const inProgress =
     isRunning ||
@@ -734,7 +821,52 @@ export default function AdminSyncTable({
   }, []);
   const [runTimings, setRunTimings] = useState<Partial<Record<string, SyncTiming>>>({});
   const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
+  // Sync run log — every step's status + timing for the most recent run, kept for
+  // review near the bottom of the page. Persisted to localStorage so it survives
+  // reloads. The live run accumulates in a ref (shown while running); on completion
+  // it replaces the persisted log, so the previous run stays visible until then.
+  const [runLog, setRunLog] = useState<SyncRunLogEntry[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as SyncRunLogEntry[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY, JSON.stringify(runLog)); } catch { /* ignore */ }
+  }, [runLog]);
+  const [liveLog, setLiveLog] = useState<SyncRunLogEntry[]>([]);
+  const liveLogRef = useRef<SyncRunLogEntry[]>([]);
+  const beginRunLog = useCallback(() => {
+    liveLogRef.current = [];
+    setLiveLog([]);
+  }, []);
+  const appendRunLog = useCallback((entry: SyncRunLogEntry) => {
+    liveLogRef.current = [...liveLogRef.current, entry];
+    setLiveLog(liveLogRef.current);
+  }, []);
+  const commitRunLog = useCallback(() => {
+    if (liveLogRef.current.length > 0) setRunLog(liveLogRef.current);
+  }, []);
   const [now, setNow] = useState(() => new Date());
+
+  // Publish the run log to the dedicated panel rendered at the bottom of the DB
+  // tab. While a run is active we surface its live entries; otherwise the last
+  // completed run (which stays until the next run finishes).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // While running, keep the previous run visible until the new run produces its
+    // first entry (avoids an empty flash and honours "keep old until finished").
+    const running = runningId != null;
+    const entries = running && liveLog.length > 0 ? liveLog : runLog;
+    window.dispatchEvent(
+      new CustomEvent<AdminSyncRunLogEvent>(ADMIN_SYNC_RUN_LOG_EVENT, {
+        detail: { entries, running },
+      }),
+    );
+  }, [liveLog, runLog, runningId]);
 
   useEffect(() => {
     const tickMs = refreshing || runningId != null ? 5_000 : 60_000;
@@ -763,22 +895,31 @@ export default function AdminSyncTable({
       const actionId = row.actionId;
       if (!actionId || runningId) return;
       if (actionId === "full-resync") {
-        await runFullResyncChunked(row, {
-          setRunningId,
-          setDescriptions,
-          setMessages,
-          setErrors,
-          setRunTimings,
-          setStatus,
-          setRefreshing,
-          refreshStatus,
-          runningId,
-          persistFinalStatus,
-        });
+        beginRunLog();
+        try {
+          await runFullResyncChunked(row, {
+            setRunningId,
+            setDescriptions,
+            setMessages,
+            setErrors,
+            setRunTimings,
+            setStatus,
+            setRefreshing,
+            refreshStatus,
+            runningId,
+            persistFinalStatus,
+            appendRunLog,
+          });
+        } finally {
+          commitRunLog();
+        }
         return;
       }
 
       const startedAt = new Date().toISOString();
+      const actionT0 = Date.now();
+      const actionLabel = ADMIN_SYNC_ACTIONS[actionId]?.label ?? row.label;
+      beginRunLog();
       setRunningId(actionId);
       setMessages((prev) => ({ ...prev, [row.id]: undefined }));
       setErrors((prev) => ({ ...prev, [row.id]: undefined }));
@@ -802,6 +943,15 @@ export default function AdminSyncTable({
         if (!res.ok || body.ok === false) {
           const errText = formatSyncError(res, body, row.label);
           setErrors((prev) => ({ ...prev, [row.id]: errText }));
+          appendRunLog({
+            id: `${row.id}-${actionT0}`,
+            label: actionLabel,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            durationMs: Date.now() - actionT0,
+            status: errText,
+            error: errText,
+          });
           setRunTimings((prev) => ({
             ...prev,
             [row.id]: {
@@ -835,25 +985,42 @@ export default function AdminSyncTable({
           "";
         setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
         if (finalText) persistFinalStatus(row.id, finalText);
+        appendRunLog({
+          id: `${row.id}-${actionT0}`,
+          label: actionLabel,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - actionT0,
+          status: finalText || (body.message ?? "Complete"),
+        });
       } catch (err) {
-        setErrors((prev) => ({
-          ...prev,
-          [row.id]: err instanceof Error ? err.message : "Sync failed",
-        }));
+        const errText = err instanceof Error ? err.message : "Sync failed";
+        setErrors((prev) => ({ ...prev, [row.id]: errText }));
+        appendRunLog({
+          id: `${row.id}-${actionT0}`,
+          label: actionLabel,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - actionT0,
+          status: errText,
+          error: errText,
+        });
         setRunTimings((prev) => ({
           ...prev,
           [row.id]: { started: startedAt, finished: new Date().toISOString() },
         }));
       } finally {
+        commitRunLog();
         setRunningId(null);
         void refreshStatus();
       }
     },
-    [runningId, refreshStatus, persistFinalStatus],
+    [runningId, refreshStatus, persistFinalStatus, beginRunLog, appendRunLog, commitRunLog],
   );
 
   const runSyncAll = useCallback(async () => {
     if (runningId) return;
+    beginRunLog();
     setRunningId("sync-all-caches");
     setSyncAllSummary(null);
     setMessages({});
@@ -887,6 +1054,7 @@ export default function AdminSyncTable({
             setRefreshing,
             refreshStatus,
             runningId: "sync-all-caches",
+            appendRunLog,
           });
           if (!ok) {
             setSyncAllSummary("Sync all stopped during full resync");
@@ -902,6 +1070,7 @@ export default function AdminSyncTable({
         setSyncAllSummary(`Step ${completed}/${totalSteps}: ${label}…`);
 
         const startedAt = new Date().toISOString();
+        const stepT0 = Date.now();
         if (rowId) {
           setRunTimings((prev) => ({
             ...prev,
@@ -917,10 +1086,11 @@ export default function AdminSyncTable({
         const body = await readAdminSyncPostResponse(res);
 
         if (!res.ok || body.ok === false) {
+          const stepErr = formatSyncError(res, body, label);
           if (rowId) {
             setErrors((prev) => ({
               ...prev,
-              [rowId]: formatSyncError(res, body, label),
+              [rowId]: stepErr,
             }));
             setRunTimings((prev) => ({
               ...prev,
@@ -930,18 +1100,35 @@ export default function AdminSyncTable({
               },
             }));
           }
+          appendRunLog({
+            id: `sync-all-${actionId}-${stepT0}`,
+            label,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            durationMs: Date.now() - stepT0,
+            status: stepErr,
+            error: stepErr,
+          });
           setSyncAllSummary(`Sync all stopped at ${label}: ${formatSyncError(res, body)}`);
           return;
         }
 
+        const syncAllFinalText =
+          formatSyncDescription(body.message, body.detail) ??
+          body.message ??
+          (rowId ? rows.find((r) => r.id === rowId)?.detail : undefined) ??
+          "";
+        appendRunLog({
+          id: `sync-all-${actionId}-${stepT0}`,
+          label,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - stepT0,
+          status: syncAllFinalText || (body.message ?? "Complete"),
+        });
         if (rowId) {
           setErrors((prev) => ({ ...prev, [rowId]: undefined }));
           setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
-          const syncAllFinalText =
-            formatSyncDescription(body.message, body.detail) ??
-            body.message ??
-            rows.find((r) => r.id === rowId)?.detail ??
-            "";
           setDescriptions((prev) => ({ ...prev, [rowId]: syncAllFinalText }));
           if (syncAllFinalText) persistFinalStatus(rowId, syncAllFinalText);
           const queued = Boolean(body.backgroundQueued);
@@ -971,10 +1158,11 @@ export default function AdminSyncTable({
         setErrors((prev) => ({ ...prev, [currentRowId!]: errText }));
       }
     } finally {
+      commitRunLog();
       setRunningId(null);
       void refreshStatus();
     }
-  }, [runningId, refreshStatus, rows]);
+  }, [runningId, refreshStatus, rows, persistFinalStatus, beginRunLog, appendRunLog, commitRunLog]);
 
   const globalBusy = refreshing || runningId != null;
   const syncAllRunning = runningId === "sync-all-caches";

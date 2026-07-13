@@ -29,6 +29,34 @@ export function warmListingCache(mlsId: string | null | undefined): void {
   inflight.set(id, request)
 }
 
+const warmedTabs = new Set<string>()
+const inflightTabs = new Map<string, Promise<void>>()
+
+/**
+ * Fire-and-forget: warm all listing-detail tab data (comparables, comparable
+ * rentals, If estimate, hero photos) so bouncing between tabs is instant.
+ * Dedupes per mlsId for the life of the page session.
+ */
+export function warmListingTabs(mlsId: string | null | undefined): void {
+  if (!isValidMlsId(mlsId)) return
+  const id = mlsId.trim()
+  if (warmedTabs.has(id) || inflightTabs.has(id)) return
+
+  const request = fetch(`/api/listings/${encodeURIComponent(id)}/warm`, {
+    method: 'POST',
+    keepalive: true,
+  })
+    .then((res) => {
+      if (res.ok) warmedTabs.add(id)
+    })
+    .catch(() => {})
+    .finally(() => {
+      inflightTabs.delete(id)
+    })
+
+  inflightTabs.set(id, request)
+}
+
 type HoverHandlerProps = {
   onMouseEnter?: MouseEventHandler<HTMLElement>
   onFocus?: FocusEventHandler<HTMLElement>

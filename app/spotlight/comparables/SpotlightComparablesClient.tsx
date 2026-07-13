@@ -2,6 +2,7 @@
 
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
 import { ListingComparablesPageContent } from "@/components/listing/ListingComparablesPanel";
+import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome";
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
@@ -12,8 +13,10 @@ import { spotlightPropertySearchParam } from "@/lib/spotlight-listing";
 
 export default function SpotlightComparablesClient({
   comparablesKind = "sale",
+  mode = "comparables",
 }: {
   comparablesKind?: "sale" | "rental";
+  mode?: "comparables" | "uag";
 }) {
   const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, insight, propertyTab } =
     useSpotlightListing();
@@ -33,13 +36,22 @@ export default function SpotlightComparablesClient({
   const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
 
   const activeTab =
-    comparablesKind === "rental" ? "comparable-rentals" : "comparables";
+    mode === "uag"
+      ? "uag"
+      : comparablesKind === "rental"
+        ? "comparable-rentals"
+        : "comparables";
+
+  const propertyParam = spotlightPropertySearchParam(propertyTab);
 
   const comparablesParams = new URLSearchParams();
   if (comparablesKind === "rental") comparablesParams.set("kind", "rental");
-  const propertyParam = spotlightPropertySearchParam(propertyTab);
   if (propertyParam) comparablesParams.set("property", propertyParam);
   const comparablesQs = comparablesParams.toString();
+
+  const uagParams = new URLSearchParams();
+  if (propertyParam) uagParams.set("property", propertyParam);
+  const uagQs = uagParams.toString();
 
   return (
     <SpotlightPageChrome
@@ -52,16 +64,26 @@ export default function SpotlightComparablesClient({
       goldilocksBreakdown={goldilocksBreakdown}
       insight={insight}
       belowTabs={
-        <ListingComparablesPageContent
-          mlsId={display.mlsId}
-          townHint={display.config.address.city}
-          kind={comparablesKind}
-          fetchUrl={
-            comparablesQs
-              ? `/api/spotlight/comparables?${comparablesQs}`
-              : "/api/spotlight/comparables"
-          }
-        />
+        mode === "uag" ? (
+          <ListingUagPageContent
+            mlsId={display.mlsId}
+            townHint={display.config.address.city}
+            fetchUrl={
+              uagQs ? `/api/spotlight/uag?${uagQs}` : "/api/spotlight/uag"
+            }
+          />
+        ) : (
+          <ListingComparablesPageContent
+            mlsId={display.mlsId}
+            townHint={display.config.address.city}
+            kind={comparablesKind}
+            fetchUrl={
+              comparablesQs
+                ? `/api/spotlight/comparables?${comparablesQs}`
+                : "/api/spotlight/comparables"
+            }
+          />
+        )
       }
       sidebar={<ListingSidebar details={details} />}
     />

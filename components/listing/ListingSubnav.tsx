@@ -12,6 +12,7 @@ export type ListingTab =
   | "history"
   | "comparables"
   | "comparable-rentals"
+  | "uag"
   | "if";
 
 export type ListingInterestProps = {
@@ -67,6 +68,7 @@ export default function ListingSubnav({
   const historyHref = sectionHref("history");
   const comparablesHref = sectionHref("comparables");
   const comparableRentalsHref = sectionHref("comparable-rentals");
+  const uagHref = sectionHref("uag");
   const ifHref = sectionHref("if");
 
   const tabs: { id: ListingTab; label: string; href: string }[] = [
@@ -78,6 +80,7 @@ export default function ListingSubnav({
       label: "Comparable Rentals",
       href: comparableRentalsHref,
     },
+    { id: "uag", label: "Under Agreement", href: uagHref },
     { id: "history", label: "History", href: historyHref },
     { id: "if", label: "If...", href: ifHref },
   ];

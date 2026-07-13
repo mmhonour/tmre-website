@@ -10,6 +10,7 @@ import {
   roundIfRentHigh,
   roundIfRentLow,
   roundIfRentMidpoint,
+  type IfEstimate,
   type ListingIfPayload,
 } from "@/lib/listing-if-estimates";
 import {
@@ -78,6 +79,77 @@ function IfEstimateRangeDisplay({
   );
 }
 
+/** Whole-dollar $/sqft, e.g. `$465/sqft` (sale). */
+function fmtPpsfWhole(value: number): string {
+  return `$${Math.round(value).toLocaleString("en-US")}/sqft`;
+}
+
+/** Two-decimal $/sqft, e.g. `$2.10/sqft` (monthly rent). */
+function fmtPpsfCents(value: number): string {
+  return `$${value.toFixed(2)}/sqft`;
+}
+
+function compCountPhrase(
+  soldCount: number,
+  activeCount: number,
+  soldWord: string,
+): string {
+  const parts: string[] = [];
+  if (soldCount > 0) parts.push(`${soldCount} ${soldWord}`);
+  if (activeCount > 0) parts.push(`${activeCount} active`);
+  if (parts.length === 0) return "the matched comps";
+  return `${parts.join(" + ")} comps`;
+}
+
+/**
+ * Reconstruct the sale range math from cached figures. `amount = $/sqft × sqft`,
+ * and low/high are the weighted 25th–75th percentiles of the comp values, so we
+ * can show the actual per-sqft numbers without recomputing anything.
+ */
+function saleMathNote(est: IfEstimate, sqft: number | null): string | null {
+  if (est.amount == null || est.amountLow == null || est.amountHigh == null) {
+    return null;
+  }
+  const comps = compCountPhrase(est.soldCount, est.activeCount, "sold");
+  const mid = fmtIfSaleMoney(est.amount);
+  const low = fmtIfSaleMoney(est.amountLow);
+  const high = fmtIfSaleMoney(est.amountHigh);
+  if (sqft && sqft > 0) {
+    return (
+      `Math: weighted ${fmtPpsfWhole(est.amount / sqft)} × ` +
+      `${sqft.toLocaleString("en-US")} sqft = ${mid} midpoint. ` +
+      `Low ${low} / high ${high} are the 25th–75th percentile of ${comps} ` +
+      `(${fmtPpsfWhole(est.amountLow / sqft)}–${fmtPpsfWhole(est.amountHigh / sqft)}).`
+    );
+  }
+  return (
+    `Math: weighted median of ${comps} = ${mid} midpoint. ` +
+    `Low ${low} / high ${high} are the 25th–75th percentile of those comp prices.`
+  );
+}
+
+/** Same reconstruction for the monthly-rent range (values rounded to $100). */
+function rentMathNote(est: IfEstimate, sqft: number | null): string | null {
+  if (est.amount == null || est.amountLow == null || est.amountHigh == null) {
+    return null;
+  }
+  const comps = compCountPhrase(est.soldCount, est.activeCount, "leased");
+  const mid = `${fmtIfRentMoney(roundIfRentMidpoint(est.amount))}/mo`;
+  const low = `${fmtIfRentMoney(roundIfRentLow(est.amountLow))}/mo`;
+  const high = `${fmtIfRentMoney(roundIfRentHigh(est.amountHigh))}/mo`;
+  if (sqft && sqft > 0) {
+    return (
+      `Math: ${fmtPpsfCents(est.amount / sqft)} × ` +
+      `${sqft.toLocaleString("en-US")} sqft = ${mid} midpoint. ` +
+      `Low ${low} / high ${high} are the 25th–75th percentile of ${comps}.`
+    );
+  }
+  return (
+    `Math: weighted median of ${comps} = ${mid} midpoint. ` +
+    `Low ${low} / high ${high} are the 25th–75th percentile of those lease prices.`
+  );
+}
+
 function ScenarioCard({
   title,
   headline,
@@ -86,6 +158,7 @@ function ScenarioCard({
   amountLabel,
   midpointLabel,
   basis,
+  mathNote,
   exploreHref,
   exploreLabel,
   hasEstimate,
@@ -97,6 +170,7 @@ function ScenarioCard({
   amountLabel: string;
   midpointLabel: string;
   basis: string | null;
+  mathNote: string | null;
   exploreHref: string;
   exploreLabel: string;
   hasEstimate: boolean;
@@ -126,6 +200,11 @@ function ScenarioCard({
           to estimate a likely price for this property.
         </p>
       )}
+      {hasEstimate && mathNote ? (
+        <p className="font-mono text-[10px] leading-relaxed tracking-[0.03em] text-white/35 tabular-nums">
+          {mathNote}
+        </p>
+      ) : null}
       <Link
         href={exploreHref}
         className="mt-auto font-mono text-[10px] tracking-[0.12em] uppercase text-white/40 underline underline-offset-2 decoration-white/20 hover:text-gold hover:decoration-gold/50 transition-colors w-fit"
@@ -290,6 +369,7 @@ export default function ListingIfPanel({
           amountLabel="Estimated Value Range"
           midpointLabel="Midpoint"
           basis={saleBasis}
+          mathNote={saleMathNote(saleEstimate, data?.subjectSqft ?? null)}
           exploreHref={comparablesHref}
           exploreLabel="View comparables"
           hasEstimate={
@@ -329,6 +409,7 @@ export default function ListingIfPanel({
           amountLabel="Estimated monthly rent range"
           midpointLabel="Midpoint"
           basis={rentBasis}
+          mathNote={rentMathNote(rentEstimate, data?.subjectSqft ?? null)}
           exploreHref={rentalsHref}
           exploreLabel="View comparable rentals"
           hasEstimate={
@@ -337,6 +418,16 @@ export default function ListingIfPanel({
           }
         />
       </div>
+
+      {data?.rangeBlurb ? (
+        <p className="font-mono text-[10px] leading-relaxed tracking-[0.04em] text-white/35">
+          {addressHint
+            ? `${addressHint}${townHint ? `, ${townHint}` : ""} — ${
+                data.rangeBlurb
+              }`
+            : data.rangeBlurb}
+        </p>
+      ) : null}
     </div>
   );
 }

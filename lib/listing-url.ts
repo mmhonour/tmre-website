@@ -52,6 +52,14 @@ export function listingIfHref(
   return listingSectionHref(id, "if", address, town);
 }
 
+export function listingUagHref(
+  id: string,
+  address?: string | null,
+  town?: string | null,
+): string {
+  return listingSectionHref(id, "uag", address, town);
+}
+
 export function listingSectionHref(
   id: string,
   section:
@@ -60,6 +68,7 @@ export function listingSectionHref(
     | "photos"
     | "comparables"
     | "comparable-rentals"
+    | "uag"
     | "if",
   address?: string | null,
   town?: string | null,
@@ -80,9 +89,11 @@ export function listingSectionHref(
           ? `/listings/${listingId}/comparables`
           : section === "comparable-rentals"
             ? `/listings/${listingId}/comparable-rentals`
-            : section === "if"
-              ? `/listings/${listingId}/if`
-              : `/listings/${listingId}`;
+            : section === "uag"
+              ? `/listings/${listingId}/uag`
+              : section === "if"
+                ? `/listings/${listingId}/if`
+                : `/listings/${listingId}`;
   return qs ? `${path}?${qs}` : path;
 }
 

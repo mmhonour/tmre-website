@@ -461,6 +461,10 @@ export type ListingIfPayload = {
   locationLabel: string | null
   locationPremiumLabels?: string[]
   subjectVintageLabel?: string | null
+  /** Subject living area — lets the panel reconstruct the $/sqft math. */
+  subjectSqft?: number | null
+  /** Short human-readable note on how the price range was derived. */
+  rangeBlurb?: string | null
 }
 
 /**

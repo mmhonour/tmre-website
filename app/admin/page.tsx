@@ -6,6 +6,14 @@ import AdminRetsCredentialsPanel from "@/components/admin/AdminRetsCredentialsPa
 import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPanel";
 import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
+import AdminSyncRunLog from "@/components/admin/AdminSyncRunLog";
+import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
+import {
+  DB_UPSERT_CHUNK_ROWS_DEFAULT,
+  DB_UPSERT_CHUNK_ROWS_MAX,
+  DB_UPSERT_CHUNK_ROWS_MIN,
+  getUpsertChunkRows,
+} from "@/lib/db/db-write-tuning";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
@@ -149,7 +157,7 @@ export default async function AdminPage() {
       startedAt: stats.lastFullSyncStarted,
       finishedAt: pairSyncFinished(stats.lastFullSyncStarted, stats.lastFullSync),
       sortMs: timestampSortMs(stats.lastFullSync),
-      detail: "Complete MLS → SQLite reload (scheduled daily at 5am ET)",
+      detail: "Complete MLS → Postgres reload (scheduled weekly Mon ~5am ET; run step 1 manually when needed)",
       actionId: "full-resync",
       nextRunAt: nextRuns["full-resync"],
     },
@@ -173,7 +181,7 @@ export default async function AdminPage() {
       value: formatMlsTimestamp(latestListingUpdate),
       finishedAt: latestListingUpdate,
       sortMs: mlsTimestampSortMs(latestListingUpdate),
-      detail: "Newest ModificationTimestamp among Active listings in SQLite",
+      detail: "Newest ModificationTimestamp among Active listings in Postgres",
       nextRunAt: nextRuns["latest-mls"],
     },
     {
@@ -183,7 +191,7 @@ export default async function AdminPage() {
       startedAt: stats.lastListingScoresStarted,
       finishedAt: stats.lastListingScores,
       sortMs: timestampSortMs(stats.lastListingScores),
-      detail: "Scores written during the daily full reload",
+      detail: "Scores written during the weekly full reload (or manual step 1)",
       actionId: "listing-scores",
       nextRunAt: nextRuns["listing-scores"],
     },
@@ -194,7 +202,7 @@ export default async function AdminPage() {
       startedAt: lastRefreshStarted,
       finishedAt: refreshFinishedAt,
       sortMs: timestampSortMs(refreshFinishedAt),
-      detail: refresh.refreshing ? "A refresh is currently in progress" : "Publish read snapshot to listings.read.db",
+      detail: refresh.refreshing ? "A refresh is currently in progress" : "Marks the most recent completed MLS refresh into Postgres",
       actionId: "publish-snapshot",
       nextRunAt: nextRuns["refresh-finished"],
     },
@@ -377,6 +385,17 @@ export default async function AdminPage() {
         ) : null}
         <AdminSqliteDiagrams databases={sqliteDiagrams} blobRuntime={blobRuntime} inventorySnapshot={inventorySnapshot} />
       </div>
+
+      <AdminDbTuningPanel
+        initial={{
+          chunkRows: getUpsertChunkRows(),
+          default: DB_UPSERT_CHUNK_ROWS_DEFAULT,
+          min: DB_UPSERT_CHUNK_ROWS_MIN,
+          max: DB_UPSERT_CHUNK_ROWS_MAX,
+        }}
+      />
+
+      <AdminSyncRunLog />
     </>
   );
 
@@ -458,7 +477,7 @@ export default async function AdminPage() {
             <span className="italic gold-shimmer">status.</span>
           </h1>
           <p className="mt-4 text-sm lg:text-base text-white/70 max-w-2xl leading-relaxed animate-fade-up-delay-1">
-            SQLite sync, web server schedules, product pages, and spotlight controls — use
+            Database sync, web server schedules, product pages, and spotlight controls — use
             the tabs below or jump links to navigate.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs animate-fade-up-delay-2">

@@ -3,7 +3,6 @@ import 'server-only'
 import { LATEST_DB_REFRESH_MS } from '@/lib/latest-refresh'
 import { readPostDeployFullResyncStatus } from '@/lib/deploy-full-resync-schedule'
 import { nextMonday1amEt } from '@/lib/property-address-schedule'
-import { nextMonday2amEt } from '@/lib/listing-edge-schedule'
 import { STATS_CACHE_TTL_MS } from '@/lib/stats-cache'
 import type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 
@@ -13,7 +12,7 @@ export { formatAdminNextSyncAt } from '@/lib/admin-sync-schedule-format'
 export type AdminSyncNextRuns = Record<AdminSyncPanelRowId, string | null>
 
 export type AdminSyncScheduleHints = {
-  fullResyncSource: 'post-deploy' | 'daily' | null
+  fullResyncSource: 'post-deploy' | 'weekly' | null
   postDeployScheduledAt: string | null
   postDeployDeployId: string | null
 }
@@ -104,16 +103,87 @@ export function lastPastMondaySlotEt(
   before = new Date(),
 ): Date {
   const weekAgo = new Date(before.getTime() - 7 * 24 * 60 * 60 * 1000)
-  const nextSlot =
-    hour === 1 && minute === 0
-      ? nextMonday1amEt(weekAgo)
-      : hour === 2 && minute === 0
-        ? nextMonday2amEt(weekAgo)
-        : nextMonday1amEt(weekAgo)
+  const nextSlot = nextMondayTimeEt(hour, minute, weekAgo)
   if (nextSlot.getTime() > before.getTime()) {
     return new Date(nextSlot.getTime() - 7 * 24 * 60 * 60 * 1000)
   }
   return nextSlot
+}
+
+/** Milliseconds until the next Monday HH:MM America/New_York (EST/EDT). */
+export function msUntilNextMondayTimeEt(
+  hour: number,
+  minute: number,
+  from = new Date(),
+): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(from)
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0'
+  const y = Number(get('year'))
+  const m = Number(get('month'))
+  const d = Number(get('day'))
+  const weekday = get('weekday')
+  const etHour = Number(get('hour') === '24' ? '0' : get('hour'))
+  const etMinute = Number(get('minute'))
+  const etSecond = Number(get('second'))
+
+  const weekdayIndex: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  }
+  const dayOfWeek = weekdayIndex[weekday] ?? 0
+  const etAsUtc = Date.UTC(y, m - 1, d, etHour, etMinute, etSecond)
+
+  let daysUntilMonday = (8 - dayOfWeek) % 7
+  if (dayOfWeek === 1) {
+    const mondaySlot = Date.UTC(y, m - 1, d, hour, minute, 0)
+    if (etAsUtc < mondaySlot) {
+      return Math.max(60_000, mondaySlot - etAsUtc)
+    }
+    daysUntilMonday = 7
+  } else if (daysUntilMonday === 0) {
+    daysUntilMonday = 7
+  }
+
+  const targetDate = new Date(Date.UTC(y, m - 1, d + daysUntilMonday, hour, minute, 0))
+  const targetAsUtc = Date.UTC(
+    targetDate.getUTCFullYear(),
+    targetDate.getUTCMonth(),
+    targetDate.getUTCDate(),
+    hour,
+    minute,
+    0,
+  )
+
+  return Math.max(60_000, targetAsUtc - etAsUtc)
+}
+
+export function nextMondayTimeEt(
+  hour: number,
+  minute: number,
+  from = new Date(),
+): Date {
+  return new Date(from.getTime() + msUntilNextMondayTimeEt(hour, minute, from))
+}
+
+/** Next Monday 5:00 AM America/New_York — weekly full MLS reload slot. */
+export function nextMonday5amEt(from = new Date()): Date {
+  return nextMondayTimeEt(5, 0, from)
 }
 
 export function isIntervalSyncOverdue(
@@ -215,11 +285,11 @@ export function buildAdminSyncNextRuns(input: BuildNextRunsInput, now = new Date
   const statsIntervalMs = statsRefreshIntervalMs()
 
   const postDeploy = readPostDeployFullResyncStatus(now)
-  const nextFullResyncDaily = nextDailyTimeEt(5, 0, now)
+  const nextFullResyncWeekly = nextMonday5amEt(now)
   const nextFullResync =
     postDeploy.nextAt && postDeploy.source === 'post-deploy'
       ? new Date(postDeploy.nextAt)
-      : nextFullResyncDaily
+      : nextFullResyncWeekly
   const nextIncremental = nextIntervalStart(input.lastIncrementalSync, incrementalIntervalMs, now)
   const nextStatsCache = nextIntervalStart(input.lastStatsCache, statsIntervalMs, now)
   const nextRefresh = earliestDate(nextIncremental, nextFullResync)

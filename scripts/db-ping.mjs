@@ -12,6 +12,17 @@ function resolve() {
     console.error('[ping] DATABASE_URL not set in .env.local')
     process.exit(1)
   }
+  // Local Postgres (localhost / sslmode=disable) speaks plain TCP; hosted
+  // providers (Neon) require TLS. Match lib/db/postgres.ts.
+  let useSsl = true
+  try {
+    const url = new URL(cs)
+    if ((url.searchParams.get('sslmode') ?? '').toLowerCase() === 'disable') useSsl = false
+    const host = url.hostname.toLowerCase()
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') useSsl = false
+  } catch {
+    /* unparseable → default to TLS */
+  }
   let connectionString = cs
   try {
     const url = new URL(cs)
@@ -21,13 +32,14 @@ function resolve() {
   } catch {
     /* use raw */
   }
-  return connectionString
+  return { connectionString, useSsl }
 }
 
 async function main() {
+  const { connectionString, useSsl } = resolve()
   const client = new pg.Client({
-    connectionString: resolve(),
-    ssl: { rejectUnauthorized: false },
+    connectionString,
+    ssl: useSsl ? { rejectUnauthorized: false } : false,
   })
   await client.connect()
   try {
@@ -41,14 +53,29 @@ async function main() {
     )
     console.log(`[ping] public tables: ${tables[0].n}`)
 
-    const { rows: listings } = await client.query('SELECT count(*)::int AS n FROM listings')
-    console.log(`[ping] listings rows: ${listings[0].n} (expected 0 until Phase 3 sync)`)
+    try {
+      const { rows: listings } = await client.query('SELECT count(*)::int AS n FROM listings')
+      console.log(`[ping] listings rows: ${listings[0].n} (expected 0 until first sync)`)
+    } catch {
+      console.log('[ping] listings table not present yet — run `npm run db:migrate`')
+    }
   } finally {
     await client.end()
   }
 }
 
 main().catch((err) => {
-  console.error('[ping] FAILED:', err.message ?? err)
+  const detail = err?.message?.trim() || err?.code || String(err)
+  console.error('[ping] FAILED:', detail)
+  if (err?.code) console.error('[ping] code   :', err.code)
+  // Node's happy-eyeballs wraps IPv4/IPv6 connect failures in an AggregateError
+  // whose top-level message is often blank — surface each underlying error.
+  if (Array.isArray(err?.errors)) {
+    for (const e of err.errors) {
+      console.error(`[ping]   - ${e?.code ?? ''} ${e?.message ?? e} ${e?.address ?? ''}:${e?.port ?? ''}`)
+    }
+  }
+  console.error('[ping] hint   : if all show ECONNREFUSED, Postgres is not listening on that host/port; ' +
+    'if "password authentication failed", the postgres password is not "postgres" — tell me and I\'ll update .env.local.')
   process.exit(1)
 })

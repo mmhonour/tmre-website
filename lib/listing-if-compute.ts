@@ -28,7 +28,7 @@ import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation logic changes so stale SQLite rows are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 5
+export const IF_ESTIMATES_ALGO_VERSION = 6
 
 function townsForSubject(subject: Listing): readonly string[] {
   const townFromZip = townForZip(subject.address.postalCode)
@@ -46,6 +46,41 @@ function subjectMarketPrice(subject: Listing): number | null {
 function vintageLabel(id: VintageBucketId): string | null {
   if (id === 'unknown') return null
   return VINTAGE_BUCKETS.find((b) => b.id === id)?.label ?? null
+}
+
+/**
+ * One-line explanation of how the IF range was reached: the comps behind each
+ * range and a short phrase about the math. Deliberately excludes the MLS # and
+ * street address — the panel prepends the address itself, and only when the
+ * viewing context (site controls) allows it to be shown.
+ */
+function ifRangeBlurb(
+  subject: Listing,
+  sale: IfEstimate,
+  rent: IfEstimate,
+): string | null {
+  const saleComps = sale.soldCount + sale.activeCount
+  const rentComps = rent.soldCount + rent.activeCount
+  if (saleComps === 0 && rentComps === 0) return null
+
+  const hasSqft = subject.sqft != null && subject.sqft > 0
+  const method = hasSqft
+    ? 'weighted $/sqft of the closest comps scaled to this home’s size'
+    : 'the weighted prices of the closest comps'
+
+  const bits: string[] = []
+  if (saleComps > 0) {
+    bits.push(`sale (${sale.soldCount} sold + ${sale.activeCount} active)`)
+  }
+  if (rentComps > 0) {
+    bits.push(`rent (${rent.soldCount} leased + ${rent.activeCount} active)`)
+  }
+
+  return (
+    `Estimated from ${bits.join(' and ')} comps, matched on zip, ` +
+    `beds/baths (±1), vintage and size, then priced off ${method} ` +
+    `(25th–75th percentile band).`
+  )
 }
 
 function computeIfEstimates(
@@ -165,6 +200,8 @@ export async function cacheIfEstimatesForListing(
     locationLabel,
     locationPremiumLabels,
     subjectVintageLabel,
+    subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
+    rangeBlurb: ifRangeBlurb(subject, sale, rent),
   }
 }
 export async function refreshListingIfEstimate(
@@ -195,7 +232,7 @@ export async function readCachedListingIfPayload(
     (row.rentAmountLow == null || row.rentAmountHigh == null)
   if (saleRangeMissing || rentRangeMissing) return null
 
-  return rowToPayload(
+  const payload = rowToPayload(
     listing.mlsId,
     row,
     ifLocationLabel(listing.address.city, normalizeZip(listing.address.postalCode)),
@@ -207,6 +244,11 @@ export async function readCachedListingIfPayload(
     ).labels,
     vintageLabel(subjectVintageFromYear(listing.yearBuilt)),
   )
+  return {
+    ...payload,
+    subjectSqft: listing.sqft != null && listing.sqft > 0 ? listing.sqft : null,
+    rangeBlurb: ifRangeBlurb(listing, payload.sale, payload.rent),
+  }
 }
 
 /** Rebuild If estimates for all on-market listings after a RETS sync. */

@@ -293,6 +293,9 @@ const STATUS_CODES: Record<string, string> = {
   closed: 'C',
   expired: 'X',
   withdrawn: 'W',
+  // SmartMLS Property/Status lookup Value codes (confirmed via scripts/probe-rets.ts):
+  'under contract': 'D',
+  'under contract - continue to show': 'SH',
 }
 
 const COUNTY_CODES: Record<string, string> = {

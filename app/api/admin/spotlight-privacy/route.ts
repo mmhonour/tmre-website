@@ -8,7 +8,7 @@ import {
 } from '@/lib/spotlight-listing'
 import {
   normalizeSpotlightPrivacyOverrides,
-  readSpotlightPrivacyOverrides,
+  readSpotlightPrivacyOverridesFresh,
   spotlightEffectivePrivacy,
   writeSpotlightPrivacyOverrides,
 } from '@/lib/spotlight-privacy'
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   await ensureAdminListingPhotosReady()
 
-  const overrides = readSpotlightPrivacyOverrides()
+  const overrides = await readSpotlightPrivacyOverridesFresh()
   return NextResponse.json({
     overrides,
     tabs: SPOTLIGHT_PROPERTY_TABS.map((tab) => ({
@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest) {
   const overrides = normalizeSpotlightPrivacyOverrides(
     (body as { overrides?: unknown })?.overrides ?? body,
   )
-  writeSpotlightPrivacyOverrides(overrides)
+  await writeSpotlightPrivacyOverrides(overrides)
 
   return NextResponse.json({
     ok: true,

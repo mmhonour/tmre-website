@@ -2,7 +2,7 @@ import 'server-only'
 
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isServerlessRuntime } from '@/lib/runtime-host'
-import { nextDailyTimeEt, parseIsoMs } from '@/lib/admin-sync-schedule'
+import { nextMonday5amEt, parseIsoMs } from '@/lib/admin-sync-schedule'
 
 function hasFullSyncCompleted(): boolean {
   return getSyncMeta('last_full_sync') != null
@@ -21,7 +21,7 @@ export type PostDeployFullResyncStatus = {
   /** Full resync still expected for the current deploy. */
   pending: boolean
   /** Why the next full resync is scheduled. */
-  source: 'post-deploy' | 'daily' | null
+  source: 'post-deploy' | 'weekly' | null
   /** Earliest ISO timestamp for the next full resync row. */
   nextAt: string | null
 }
@@ -67,15 +67,15 @@ export function readPostDeployFullResyncStatus(now = new Date()): PostDeployFull
 
   const postDeployAt =
     pending && scheduledAt && scheduledDeployId === deployId ? scheduledAt : null
-  const dailyAt = nextDailyTimeEt(5, 0, now).toISOString()
+  const weeklyAt = nextMonday5amEt(now).toISOString()
 
-  let nextAt: string | null = dailyAt
-  let source: PostDeployFullResyncStatus['source'] = 'daily'
+  let nextAt: string | null = weeklyAt
+  let source: PostDeployFullResyncStatus['source'] = 'weekly'
 
   if (postDeployAt) {
     const postMs = parseIsoMs(postDeployAt)
-    const dailyMs = parseIsoMs(dailyAt)
-    if (postMs != null && (dailyMs == null || postMs <= dailyMs)) {
+    const weeklyMs = parseIsoMs(weeklyAt)
+    if (postMs != null && (weeklyMs == null || postMs <= weeklyMs)) {
       nextAt = postDeployAt
       source = 'post-deploy'
     }

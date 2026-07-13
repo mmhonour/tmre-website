@@ -412,7 +412,7 @@ function SchemaRelationshipCanvas({
               <li
                 key={relationshipLabel(rel)}
                 className="font-mono text-[10px] text-slate"
-                title={rel.source === "pragma" ? "SQLite FOREIGN KEY" : "Documented join"}
+                title={rel.source === "pragma" ? "FOREIGN KEY constraint" : "Documented join"}
               >
                 <span className="text-navy">{rel.from.table}</span>
                 <span className="text-charcoal/35">.</span>
@@ -578,12 +578,13 @@ export default function AdminSqliteDiagrams({
     <div className="mt-6 space-y-6">
       <div>
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2">
-          SQLite databases
+          Databases
         </p>
         <p className="text-sm text-slate max-w-3xl">
-          Live schema for every SQLite file this process uses — storage paths, tables,
-          columns, approximate row counts, and PK→FK relationship lines where tables join
-          on <span className="font-mono text-navy/80">listings.id</span>.
+          Live schema for the Neon Postgres database (MLS inventory + derived tables) and
+          the local listing-photos SQLite file — storage paths, tables, columns, approximate
+          row counts, and PK→FK relationship lines where tables join on{" "}
+          <span className="font-mono text-navy/80">listings.id</span>.
         </p>
       </div>
       {blobRuntime ? <BlobPersistRuntimeBanner runtime={blobRuntime} /> : null}

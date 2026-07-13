@@ -3,9 +3,10 @@ import { getSyncStatus, syncAllTownListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 
 /**
- * Daily full MLS → SQLite reload, including Goldilocks score rebuild.
- * Cron is 09:00 UTC = 05:00 America/New_York (EST). During EDT this is 5:00am
- * Eastern Standard / 6:00am Daylight; Netlify cron is UTC-only.
+ * Weekly full MLS → Postgres reload, including Goldilocks score rebuild.
+ * Cron is 09:00 UTC Monday = 05:00 America/New_York (EST). During EDT this is
+ * 5:00am Eastern Standard / 6:00am Daylight; Netlify cron is UTC-only.
+ * Run manually from Admin step 1 whenever a mid-week full reload is needed.
  */
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
@@ -43,7 +44,7 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  // 5:00 AM Eastern Standard Time (UTC-5). During EDT this fires at 6:00 AM local.
-  schedule: '0 9 * * *',
+  // 5:00 AM Eastern Standard Time on Mondays (UTC-5). During EDT this fires at 6:00 AM local.
+  schedule: '0 9 * * 1',
   background: true,
 }

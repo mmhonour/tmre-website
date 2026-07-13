@@ -8,6 +8,7 @@ import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
 import { ListingComparablesPageContent } from "@/components/listing/ListingComparablesPanel";
+import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import {
   listingHeaderScoreProps,
@@ -57,11 +58,13 @@ export default function ListingComparablesClient({
   addressHint,
   townHint,
   comparablesKind = "sale",
+  mode = "comparables",
 }: {
   mlsId: string;
   addressHint?: string | null;
   townHint?: string | null;
   comparablesKind?: "sale" | "rental";
+  mode?: "comparables" | "uag";
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [goldilocksScore, setGoldilocksScore] = useState<number | null>(null);
@@ -71,7 +74,11 @@ export default function ListingComparablesClient({
   const [insight, setInsight] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const activeTab =
-    comparablesKind === "rental" ? "comparable-rentals" : "comparables";
+    mode === "uag"
+      ? "uag"
+      : comparablesKind === "rental"
+        ? "comparable-rentals"
+        : "comparables";
 
   useEffect(() => {
     let cancelled = false;
@@ -210,11 +217,18 @@ export default function ListingComparablesClient({
         }
         sidebar={<ListingSidebar details={details} />}
         belowTabs={
-          <ListingComparablesPageContent
-            mlsId={listing.mlsId}
-            townHint={resolvedTown}
-            kind={comparablesKind}
-          />
+          mode === "uag" ? (
+            <ListingUagPageContent
+              mlsId={listing.mlsId}
+              townHint={resolvedTown}
+            />
+          ) : (
+            <ListingComparablesPageContent
+              mlsId={listing.mlsId}
+              townHint={resolvedTown}
+              kind={comparablesKind}
+            />
+          )
         }
       />
     </ListingShell>

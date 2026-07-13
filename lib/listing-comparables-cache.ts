@@ -6,9 +6,11 @@ import {
   type ComparablesMatchMode,
   type RankedComparable,
 } from '@/lib/listing-comparables'
-import type {
-  ComparableListing,
-  ComparablesResult,
+import {
+  COMPARABLES_MAX_LOOKBACK_MONTHS,
+  COMPARABLES_SOLD_SUPERSET_LIMIT,
+  type ComparableListing,
+  type ComparablesResult,
 } from '@/lib/listing-comparables-shared'
 import { listingRowId } from '@/lib/db/listings-repo'
 import {
@@ -24,7 +26,7 @@ import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip, type TmreTown } from '@/lib/tmre-towns'
 
 /** Bump when matcher tolerances / ranking change so cached edges rebuild. */
-export const COMPS_EDGES_ALGO_VERSION = 2
+export const COMPS_EDGES_ALGO_VERSION = 4
 
 function relationsForKind(kind: ComparablesMatchMode): ListingRelationKind[] {
   return kind === 'rental'
@@ -216,7 +218,12 @@ export async function computeAndPersistComparables(
   activePool: Listing[],
 ): Promise<ComparablesResult> {
   const subjectId = listingRowId(subject)
-  const ranked = findComparablesRanked(subject, soldPool, activePool, kind)
+  // Cache the widest look-back window with a larger reservoir so every shorter
+  // window the user picks filters instantly from this one fit-ranked superset.
+  const ranked = findComparablesRanked(subject, soldPool, activePool, kind, {
+    soldLookbackMonths: COMPARABLES_MAX_LOOKBACK_MONTHS,
+    soldLimit: COMPARABLES_SOLD_SUPERSET_LIMIT,
+  })
   if (!subjectId) {
     return {
       sold: ranked.sold.map((row) => row.listing),

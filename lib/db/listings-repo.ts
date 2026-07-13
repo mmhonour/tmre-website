@@ -11,6 +11,8 @@ import type { Listing, RawRetsRecord } from '@/lib/rets'
 import { query, queryOne, withTransaction } from '@/lib/db/postgres'
 import { getAllSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta'
 import { getSyncMeta as getCachedSyncMeta } from '@/lib/db/sync-meta-store'
+import { chunkedUpsert } from '@/lib/db/chunked-upsert'
+import { getUpsertChunkRows } from '@/lib/db/db-write-tuning'
 import type { PoolClient } from 'pg'
 
 // ---------------------------------------------------------------------------
@@ -158,20 +160,44 @@ function listingToParams(
   ]
 }
 
-/** Upsert the tax-history row derived from a listing's raw RETS record. */
+/** chunkedUpsert column spec for `listings` (mirrors LISTING_COLUMNS order/params). */
+const LISTING_UPSERT_COLUMNS = LISTING_COLUMNS.map((name) => ({ name }))
+
+/** chunkedUpsert column spec for `listing_tax_history` (mirrors taxHistoryParams). */
+const TAX_HISTORY_COLUMNS = [
+  { name: 'listing_id' },
+  { name: 'parcel_number' },
+  { name: 'tax_year_label' },
+  { name: 'tax_year_end' },
+  { name: 'amount' },
+  { name: 'synced_at' },
+]
+
+/** Ordered params for a tax-history row, or null when the listing has no tax data. */
+function taxHistoryParams(
+  listing: Listing,
+  listingId: string,
+  syncedAt: Date,
+): unknown[] | null {
+  const { annualAmount, yearLabel } = propertyTaxFromRaw(listing.raw)
+  if (annualAmount == null || !yearLabel) return null
+
+  const taxYearEnd = parseTaxYearEnd(yearLabel)
+  if (taxYearEnd == null) return null
+
+  const parcelNumber = parcelNumberFromRaw(listing.raw) ?? listingId
+  return [listingId, parcelNumber, yearLabel, taxYearEnd, annualAmount, syncedAt]
+}
+
+/** Upsert a single tax-history row (single-listing / incremental path). */
 async function upsertTaxHistory(
   client: PoolClient,
   listing: Listing,
   listingId: string,
   syncedAt: Date,
 ): Promise<void> {
-  const { annualAmount, yearLabel } = propertyTaxFromRaw(listing.raw)
-  if (annualAmount == null || !yearLabel) return
-
-  const taxYearEnd = parseTaxYearEnd(yearLabel)
-  if (taxYearEnd == null) return
-
-  const parcelNumber = parcelNumberFromRaw(listing.raw) ?? listingId
+  const params = taxHistoryParams(listing, listingId, syncedAt)
+  if (!params) return
 
   await client.query(
     `INSERT INTO listing_tax_history (
@@ -182,7 +208,7 @@ async function upsertTaxHistory(
        tax_year_label = EXCLUDED.tax_year_label,
        amount         = EXCLUDED.amount,
        synced_at      = EXCLUDED.synced_at`,
-    [listingId, parcelNumber, yearLabel, taxYearEnd, annualAmount, syncedAt],
+    params,
   )
 }
 
@@ -273,18 +299,39 @@ export async function upsertTownListings(
     let inserted = 0
     let updated = 0
 
+    const listingRows: unknown[][] = []
+    const taxRows: unknown[][] = []
     for (const listing of rows) {
       const id = listingRowId(listing)
       if (!id) continue
+      if (seen.has(id)) continue
       seen.add(id)
       if (existingIds.has(id)) updated += 1
       else inserted += 1
-      await client.query({
-        name: 'upsert_listing',
-        text: UPSERT_LISTING_SQL,
-        values: listingToParams(listing, town, statusBucket, syncedAt),
+      listingRows.push(listingToParams(listing, town, statusBucket, syncedAt))
+      const tax = taxHistoryParams(listing, id, syncedAt)
+      if (tax) taxRows.push(tax)
+    }
+
+    // Batched multi-row upserts (was one round-trip per row against Neon).
+    const chunkRows = getUpsertChunkRows()
+    await chunkedUpsert({
+      table: 'listings',
+      columns: LISTING_UPSERT_COLUMNS,
+      conflictColumns: ['id'],
+      rows: listingRows,
+      chunkRows,
+      client,
+    })
+    if (taxRows.length > 0) {
+      await chunkedUpsert({
+        table: 'listing_tax_history',
+        columns: TAX_HISTORY_COLUMNS,
+        conflictColumns: ['parcel_number', 'tax_year_end'],
+        rows: taxRows,
+        chunkRows,
+        client,
       })
-      await upsertTaxHistory(client, listing, id, syncedAt)
     }
 
     const deletedIds = [...existingIds].filter((id) => !seen.has(id))
@@ -1063,31 +1110,26 @@ export async function upsertListingEdgeScores(
   }[],
 ): Promise<number> {
   if (rows.length === 0) return 0
-  return withTransaction(async (client) => {
-    let updated = 0
-    for (const row of rows) {
-      await client.query(
-        `INSERT INTO listing_edge_scores (
-           mls_id, listing_id, edge_score, breakdown_json, metadata_snapshot, computed_at
-         ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
-         ON CONFLICT (mls_id) DO UPDATE SET
-           listing_id        = EXCLUDED.listing_id,
-           edge_score        = EXCLUDED.edge_score,
-           breakdown_json    = EXCLUDED.breakdown_json,
-           metadata_snapshot = EXCLUDED.metadata_snapshot,
-           computed_at       = EXCLUDED.computed_at`,
-        [
-          row.mlsId,
-          row.listingId,
-          row.edgeScore,
-          row.breakdownJson,
-          row.metadataSnapshot,
-          toTs(row.computedAt),
-        ],
-      )
-      updated += 1
-    }
-    return updated
+  return chunkedUpsert({
+    table: 'listing_edge_scores',
+    columns: [
+      { name: 'mls_id' },
+      { name: 'listing_id' },
+      { name: 'edge_score' },
+      { name: 'breakdown_json', cast: 'jsonb' },
+      { name: 'metadata_snapshot', cast: 'jsonb' },
+      { name: 'computed_at' },
+    ],
+    conflictColumns: ['mls_id'],
+    rows: rows.map((row) => [
+      row.mlsId,
+      row.listingId,
+      row.edgeScore,
+      row.breakdownJson,
+      row.metadataSnapshot,
+      toTs(row.computedAt),
+    ]),
+    chunkRows: getUpsertChunkRows(),
   })
 }
 

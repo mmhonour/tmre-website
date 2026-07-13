@@ -3,7 +3,6 @@ import 'server-only'
 import { runAdminSyncAction } from '@/lib/admin-sync-actions'
 import type { AdminSyncActionId } from '@/lib/admin-sync-types'
 import {
-  isDailySyncOverdue,
   isIntervalSyncOverdue,
   isWeeklyMondaySyncOverdue,
   latestIntervalMs,
@@ -88,7 +87,7 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
   const overdue = new Set<OverdueSyncJob>()
 
   if (
-    isDailySyncOverdue(stats.lastFullSync, 5, 0, now) &&
+    isWeeklyMondaySyncOverdue(stats.lastFullSync, 5, 0, now) &&
     isRetsConfigured()
   ) {
     overdue.add('full-resync')
@@ -106,7 +105,7 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.add('incremental')
   }
 
-  if (!overdue.has('full-resync') && isDailySyncOverdue(stats.lastListingScores, 5, 0, now)) {
+  if (!overdue.has('full-resync') && isWeeklyMondaySyncOverdue(stats.lastListingScores, 5, 0, now)) {
     overdue.add('listing-scores')
   }
 
@@ -114,13 +113,13 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.add('stats-cache')
   }
 
-  if (!overdue.has('full-resync') && isDailySyncOverdue(stats.lastDealOfTheDayCache, 5, 0, now)) {
+  if (!overdue.has('full-resync') && isWeeklyMondaySyncOverdue(stats.lastDealOfTheDayCache, 5, 0, now)) {
     overdue.add('deal-of-the-day')
   }
 
   const refreshBaseline = incrementalBaselineIso(stats.lastIncrementalSync, stats.lastFullSync)
   const refreshDue =
-    (isDailySyncOverdue(stats.lastFullSync, 5, 0, now) ||
+    (isWeeklyMondaySyncOverdue(stats.lastFullSync, 5, 0, now) ||
       isIntervalSyncOverdue(refreshBaseline, incrementalIntervalMs, now)) &&
     isRetsConfigured()
   if (refreshDue && isIntervalSyncOverdue(lastRefreshFinished, incrementalIntervalMs, now)) {

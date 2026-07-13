@@ -134,7 +134,7 @@ export default function AdminRetsCredentialsPanel() {
       if (body.credentials) {
         applyPayload(body.credentials, body.health ?? null);
       }
-      setMessage("RETS credentials saved to runtime SQLite");
+      setMessage("RETS credentials saved to Postgres");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save RETS credentials");
     } finally {
@@ -170,8 +170,8 @@ export default function AdminRetsCredentialsPanel() {
           </span>
         </div>
         <p className="mt-2 text-sm text-slate leading-relaxed max-w-2xl">
-          SmartMLS RETS login used for MLS sync. Saved credentials persist in runtime SQLite;
-          Netlify environment variables remain the fallback on cold starts.
+          SmartMLS RETS login used for MLS sync. Saved credentials persist in Postgres
+          (sync_meta); Netlify environment variables remain the fallback on cold starts.
         </p>
         {updatedAt ? (
           <p className="mt-1 font-mono text-[10px] text-charcoal/50">

@@ -10,9 +10,11 @@
     "lint": "eslint",
     "db:migrate": "node --env-file=.env.local scripts/run-migrations.mjs",
     "db:ping": "node --env-file=.env.local scripts/db-ping.mjs",
-    "discover:rets": "node --env-file=.env.local node_modules/.bin/tsx scripts/discover-rets.ts",
+    "discover:rets": "node --env-file=.env.local --import tsx scripts/discover-rets.ts",
+    "probe:rets": "node --env-file=.env.local --import tsx scripts/probe-rets.ts",
     "sync:listings": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-listings.ts",
-    "sync:property-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-property-addresses.ts"
+    "sync:property-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-property-addresses.ts",
+    "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts"
   },
   "dependencies": {
     "@netlify/blobs": "^8.2.0",

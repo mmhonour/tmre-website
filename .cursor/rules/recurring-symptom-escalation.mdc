@@ -1,0 +1,24 @@
+---
+description: Flag recurring bug symptoms as possibly architectural instead of only patching them again
+alwaysApply: true
+---
+
+# Recurring Symptom Escalation
+
+Always do the fix the user asked for. But before or alongside it, check whether this is a **repeat symptom** — the same user-visible problem coming back after a previous fix that was believed to resolve it, even if the underlying root cause is technically different each time.
+
+## How to check
+
+When investigating a bug, briefly scan recent conversation history (and `git log`/commit messages if useful) for prior fixes targeting the same symptom — same error message, same page going blank, same data disappearing, same timeout, etc. Two or more occurrences of the same symptom, even with different root causes, is the trigger.
+
+## Required behaviour when a repeat is detected
+
+1. **Still perform the requested fix.** Never withhold or delay the fix to make this point — the user needs the immediate problem solved regardless.
+2. **In the same response**, explicitly call out the pattern: name the prior occurrences (what broke, what fix was applied) and state plainly that this is the Nth time this symptom has recurred.
+3. **Say whether the current architecture/approach may not fit the current requirements** — don't hedge this into vague language. If three different root causes produce the same symptom, say that plainly and suggest the symptom itself (not any individual bug) may be structural.
+4. Do not wait to be asked "why does this keep happening" multiple times before raising this — raise it the first time the pattern becomes visible (i.e., on the second recurrence, not the third or fourth).
+
+## What this is not
+
+- Not a license to refuse small fixes or insist on a rewrite before helping.
+- Not a one-time judgment — re-raise it if the pattern continues even after a "this is architectural" conversation already happened, since a acknowledged architectural issue can still keep recurring until it's actually addressed.

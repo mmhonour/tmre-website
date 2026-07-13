@@ -35,8 +35,8 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  // Incremental RETS → SQLite sync every 30 minutes (full sync when last_full_sync
-  // is older than 24h — prefer the dedicated daily 5am sync-listings-full function).
+  // Incremental RETS → Postgres sync every 30 minutes. Full reload is weekly
+  // (sync-listings-full Monday ~5am ET) — trigger step 1 manually when needed.
   schedule: `*/${Math.max(1, Math.round(LATEST_DB_REFRESH_MS / 60_000))} * * * *`,
   background: true,
 }

@@ -52,11 +52,25 @@ async function main() {
     process.exit(1)
   }
 
+  // Local Postgres (localhost / sslmode=disable) speaks plain TCP; hosted
+  // providers (Neon) require TLS. Match lib/db/postgres.ts: skip SSL for
+  // loopback hosts or an explicit sslmode=disable, else keep TLS on.
+  const useSsl = (() => {
+    try {
+      const url = new URL(conn.value)
+      if ((url.searchParams.get('sslmode') ?? '').toLowerCase() === 'disable') return false
+      const host = url.hostname.toLowerCase()
+      return !(host === 'localhost' || host === '127.0.0.1' || host === '::1')
+    } catch {
+      return true
+    }
+  })()
+
   const client = new pg.Client({
     connectionString: conn.value,
-    // Neon requires TLS. rejectUnauthorized:false keeps this one-off runner from
-    // failing on hosts that don't have Neon's CA chain locally.
-    ssl: { rejectUnauthorized: false },
+    // rejectUnauthorized:false keeps this one-off runner from failing on hosts
+    // that don't have Neon's CA chain locally.
+    ssl: useSsl ? { rejectUnauthorized: false } : false,
   })
 
   await client.connect()

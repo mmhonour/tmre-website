@@ -95,7 +95,7 @@ export default function AdminStartupDiagram({
         </p>
         <p className="text-sm text-slate max-w-3xl">
           What happens after this Node process boots — full reload, incremental Latest
-          sync, daily 5am rebuild, and cache refresh. Status chips reflect the current
+          sync, weekly Mon 5am rebuild, and cache refresh. Status chips reflect the current
           environment.
         </p>
         <div className="mt-3 flex flex-wrap gap-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/50">

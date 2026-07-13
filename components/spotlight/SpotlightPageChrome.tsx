@@ -71,6 +71,7 @@ export function SpotlightPageChrome({
     <ListingShell variant="spotlight">
       <ListingHeroPanels
         variant="spotlight"
+        hideStatusBadge={display.config.hideStatusBadge ?? false}
         header={{
           mlsId: display.mlsId,
           status: display.status,

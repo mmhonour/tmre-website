@@ -20,9 +20,9 @@ export function formatFullResyncTownProgress(options: {
 }): string {
   const { town, townIndex, townCount, townResults, sqliteTotal } = options
   const breakdown = formatTownSyncBreakdown(townResults)
-  const sqlite =
-    sqliteTotal != null ? ` · ${sqliteTotal.toLocaleString()} listings now in SQLite` : ''
-  return `Town ${townIndex}/${townCount} ${town}: ${breakdown}${sqlite}`
+  const runningTotal =
+    sqliteTotal != null ? ` · ${sqliteTotal.toLocaleString()} listings now in Postgres` : ''
+  return `Town ${townIndex}/${townCount} ${town}: ${breakdown}${runningTotal}`
 }
 
 /** While a town step is in flight. */
@@ -31,13 +31,18 @@ export function formatFullResyncTownPending(options: {
   townIndex: number
   townCount: number
   sqliteTotal: number | null
+  completedTowns?: readonly string[]
 }): string {
-  const { town, townIndex, townCount, sqliteTotal } = options
-  const sqlite =
-    sqliteTotal != null && sqliteTotal > 0
-      ? ` · ${sqliteTotal.toLocaleString()} listings loaded so far`
-      : ''
-  return `Fetching ${town} from MLS (Active, Closed, Expired)… step ${townIndex}/${townCount}${sqlite}`
+  const { town, townIndex, townCount, sqliteTotal, completedTowns } = options
+  const loaded = sqliteTotal ?? 0
+  const doneCount = completedTowns?.length ?? Math.max(0, townIndex - 1)
+  const runningTotal =
+    doneCount > 0
+      ? ` · ${loaded.toLocaleString()} listings loaded from ${doneCount} town${doneCount === 1 ? '' : 's'}${
+          completedTowns && completedTowns.length > 0 ? ` (${completedTowns.join(', ')})` : ''
+        }`
+      : ' · first town, nothing loaded yet'
+  return `Fetching ${town} from MLS — Active + Closed + Expired… town ${townIndex}/${townCount}${runningTotal}`
 }
 
 /** While a chunked full-resync finalize step is in flight. */
@@ -64,7 +69,7 @@ export function formatFullResyncFinalizeStepDetail(options: {
 
 /** Compact per-table row counts for admin Description column. */
 export function formatTableStatsSummary(tables: TableWriteStats[]): string {
-  if (tables.length === 0) return 'SQLite tables empty'
+  if (tables.length === 0) return 'No table rows yet'
   return tables.map((row) => `${row.table} ${row.queried.toLocaleString()}`).join(' · ')
 }
 
@@ -84,7 +89,7 @@ export function formatAdminDatabaseTableSummary(
       return `${row.table} ${prefix}${row.rowCount.toLocaleString()}`
     })
     .join(' · ')
-  return options?.schemaOnly ? `${line} — deploy bundle is schema-only` : line
+  return options?.schemaOnly ? `${line} — run Full resync to populate` : line
 }
 
 function formatBucketSummary(byBucket: Record<string, number>): string {
@@ -130,7 +135,7 @@ export function formatFullResyncCompleteDetail(options: {
   }
 
   lines.push(
-    'Rebuilt scores, stats, Deal of the Day, intelligence board caches, and published read snapshot',
+    'Rebuilt scores, stats, Deal of the Day, and intelligence board caches',
   )
   return lines.join(' — ')
 }
@@ -146,7 +151,7 @@ export function formatFullResyncTownProgressWithTables(options: {
 }): string {
   const base = formatFullResyncTownProgress(options)
   const tableSummary = formatTableStatsSummary(options.tables)
-  return tableSummary === 'SQLite tables empty' ? base : `${base} — ${tableSummary}`
+  return tableSummary === 'No table rows yet' ? base : `${base} — ${tableSummary}`
 }
 
 /** Incremental / multi-town summary. */

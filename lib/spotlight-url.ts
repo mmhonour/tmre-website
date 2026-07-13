@@ -4,6 +4,7 @@ export type SpotlightSection =
   | "history"
   | "comparables"
   | "comparable-rentals"
+  | "uag"
   | "if";
 
 export function spotlightSectionHref(section: SpotlightSection): string {
@@ -11,6 +12,7 @@ export function spotlightSectionHref(section: SpotlightSection): string {
   if (section === "history") return "/spotlight/history";
   if (section === "comparables") return "/spotlight/comparables";
   if (section === "comparable-rentals") return "/spotlight/comparable-rentals";
+  if (section === "uag") return "/spotlight/uag";
   if (section === "if") return "/spotlight/if";
   return "/spotlight";
 }

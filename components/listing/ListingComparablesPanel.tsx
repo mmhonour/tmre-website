@@ -9,8 +9,14 @@ import {
   fmtSqft,
   fmtPricePerSqft,
   fmtYearBuilt,
+  vintageCriteriaList,
+  soldWithinLookback,
+  lookbackLabel,
+  COMPARABLES_LOOKBACK_OPTIONS,
+  COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
   type ComparableListing,
   type ComparablesCriteria,
+  type ComparablesLookbackMonths,
 } from "@/lib/listing-comparables-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -41,6 +47,8 @@ type CompSortTheme = "light" | "dark";
 const COMP_INITIAL_VISIBLE = 4;
 const COMP_SHOW_MORE_STEP = 4;
 const COMP_MAX_VISIBLE = 12;
+/** Extra sold comps revealed per look-back step (4 → 6 → 8 → 10 → 12). */
+const LOOKBACK_VISIBLE_STEP = 2;
 
 function defaultSortDir(key: SoldSortKey | ActiveSortKey): SortDir {
   if (key === "default" || key === "price") return "asc";
@@ -399,13 +407,83 @@ function CompShowMoreButton({
   );
 }
 
+/**
+ * Compact up/down spinner for the sold/rented look-back window. ▼ shortens,
+ * ▲ lengthens, stepping through COMPARABLES_LOOKBACK_OPTIONS (1yr → 3yr).
+ */
+function LookbackSpinner({
+  months,
+  onChange,
+  theme,
+}: {
+  months: number;
+  onChange: (next: number) => void;
+  theme: CompSortTheme;
+}) {
+  const options = COMPARABLES_LOOKBACK_OPTIONS;
+  const idx = Math.max(
+    0,
+    options.indexOf(months as ComparablesLookbackMonths),
+  );
+  const atMin = idx <= 0;
+  const atMax = idx >= options.length - 1;
+  const dark = theme === "dark";
+
+  const btnClass = `flex h-5 w-5 items-center justify-center rounded text-[8px] leading-none transition-colors disabled:opacity-25 disabled:cursor-not-allowed ${
+    dark
+      ? "text-white/50 hover:text-gold hover:bg-white/10"
+      : "text-charcoal/50 hover:text-navy hover:bg-charcoal/[0.06]"
+  }`;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className={`font-mono text-[9px] tracking-[0.12em] uppercase ${
+          dark ? "text-white/40" : "text-slate"
+        }`}
+      >
+        Look-back
+      </span>
+      <div className="flex items-center gap-0.5">
+        <button
+          type="button"
+          className={btnClass}
+          onClick={() => !atMin && onChange(options[idx - 1]!)}
+          disabled={atMin}
+          aria-label="Shorter look-back"
+        >
+          &#9660;
+        </button>
+        <span
+          className={`min-w-[2.75rem] text-center font-mono text-[10px] tracking-[0.1em] uppercase tabular-nums ${
+            dark ? "text-white/70" : "text-charcoal/70"
+          }`}
+        >
+          {lookbackLabel(months)}
+        </span>
+        <button
+          type="button"
+          className={btnClass}
+          onClick={() => !atMax && onChange(options[idx + 1]!)}
+          disabled={atMax}
+          aria-label="Longer look-back"
+        >
+          &#9650;
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function criteriaSummary(criteria: ComparablesCriteria): string {
   const parts = [
     `Zip ${criteria.zip}`,
     `${criteria.beds} bed ±1 / ${criteria.baths} bath ±1`,
-    criteria.vintageLabel,
-    "±1 bucket",
+    vintageCriteriaList(criteria),
   ];
+  if (criteria.sqft != null) {
+    parts.push(`${fmtSqft(criteria.sqft)} ±30%`);
+  }
   if (criteria.lotAcres != null) {
     parts.push(`${fmtAcres(criteria.lotAcres)} ±40%`);
   }
@@ -462,6 +540,9 @@ export default function ListingComparablesPanel({
   }>({ key: "default", dir: "asc" });
   const [soldVisibleCount, setSoldVisibleCount] = useState(COMP_INITIAL_VISIBLE);
   const [activeVisibleCount, setActiveVisibleCount] = useState(COMP_INITIAL_VISIBLE);
+  const [lookbackMonths, setLookbackMonths] = useState<number>(
+    COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
+  );
 
   const isRental = kind === "rental";
   const panelTitle = isRental ? "Comparable Rentals" : "Comparables";
@@ -549,9 +630,15 @@ export default function ListingComparablesPanel({
     );
   };
 
+  // `sold` is the full 36-month fit-ranked superset from the cache; filter it
+  // to the selected look-back and keep the top matches by fit before sorting.
+  const soldWindowed = useMemo(
+    () => soldWithinLookback(sold, lookbackMonths, COMP_MAX_VISIBLE),
+    [sold, lookbackMonths],
+  );
   const sortedSold = useMemo(
-    () => sortSoldComparables(sold, soldSort.key, soldSort.dir),
-    [sold, soldSort],
+    () => sortSoldComparables(soldWindowed, soldSort.key, soldSort.dir),
+    [soldWindowed, soldSort],
   );
   const sortedActive = useMemo(
     () => sortActiveComparables(active, activeSort.key, activeSort.dir),
@@ -566,15 +653,30 @@ export default function ListingComparablesPanel({
     [sortedActive],
   );
 
+  // The sold baseline scales with the look-back (1yr→4, 18mo→6, 2yr→8, 30mo→10,
+  // 3yr→12), so widening reveals two more comps per step rather than collapsing
+  // back to 4. Any manual "show more" beyond the baseline is preserved (we never
+  // shrink the view).
+  const soldWindowBase =
+    COMP_INITIAL_VISIBLE +
+    LOOKBACK_VISIBLE_STEP *
+      Math.max(
+        0,
+        COMPARABLES_LOOKBACK_OPTIONS.indexOf(
+          lookbackMonths as ComparablesLookbackMonths,
+        ),
+      );
+  const effectiveSoldVisible = Math.max(soldVisibleCount, soldWindowBase);
+
   const soldCap = Math.min(sortedSold.length, COMP_MAX_VISIBLE);
   const activeCap = Math.min(sortedActive.length, COMP_MAX_VISIBLE);
-  const visibleSold = sortedSold.slice(0, Math.min(soldVisibleCount, soldCap));
+  const visibleSold = sortedSold.slice(0, Math.min(effectiveSoldVisible, soldCap));
   const visibleActive = sortedActive.slice(
     0,
     Math.min(activeVisibleCount, activeCap),
   );
   const canShowMoreSold =
-    soldVisibleCount < soldCap && sortedSold.length > soldVisibleCount;
+    effectiveSoldVisible < soldCap && sortedSold.length > effectiveSoldVisible;
   const canShowMoreActive =
     activeVisibleCount < activeCap && sortedActive.length > activeVisibleCount;
 
@@ -705,7 +807,7 @@ export default function ListingComparablesPanel({
               isModal ? "text-slate text-xs mt-2" : "text-white/40 text-xs mt-2"
             }
           >
-            We match same zip, beds within ±1, baths within ±1, similar vintage (±1 bucket), and lot size when available.
+            We match same zip, beds within ±1, baths within ±1, living area within ±30%, similar vintage (same era, plus the bordering era when the home sits near a vintage edge), and lot size when available.
           </p>
         </div>
       )}
@@ -726,7 +828,8 @@ export default function ListingComparablesPanel({
               isModal ? "text-slate text-xs mt-2" : "text-white/40 text-xs mt-2"
             }
           >
-            Matches require the same zip, beds within ±1, baths within ±1, vintage within ±1 bucket
+            Matches require the same zip, beds within ±1, baths within ±1, same vintage era (plus the bordering era near an edge)
+            {criteria?.sqft != null ? ", living area within ±30%" : ""}
             {criteria?.lotAcres != null ? ", and similar lot size" : ""}.
           </p>
         </div>
@@ -745,8 +848,15 @@ export default function ListingComparablesPanel({
           }
         >
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-3">
-            <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
-            {sold.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
+              <LookbackSpinner
+                months={lookbackMonths}
+                onChange={setLookbackMonths}
+                theme={sortTheme}
+              />
+            </div>
+            {sortedSold.length > 0 ? (
               <CompSortLinks
                 options={[
                   { key: "score", label: "Edge" },
@@ -761,7 +871,7 @@ export default function ListingComparablesPanel({
               />
             ) : null}
           </div>
-          {sold.length > 0 ? (
+          {sortedSold.length > 0 ? (
             <>
               <ul className="space-y-3">
                 {visibleSold.map((comp) => (
@@ -781,7 +891,10 @@ export default function ListingComparablesPanel({
                   theme={sortTheme}
                   onClick={() =>
                     setSoldVisibleCount((n) =>
-                      Math.min(n + COMP_SHOW_MORE_STEP, COMP_MAX_VISIBLE),
+                      Math.min(
+                        Math.max(n, soldWindowBase) + COMP_SHOW_MORE_STEP,
+                        COMP_MAX_VISIBLE,
+                      ),
                     )
                   }
                 />
@@ -789,7 +902,13 @@ export default function ListingComparablesPanel({
             </>
           ) : (
             <p className={isModal ? "text-slate text-sm" : "text-white/50 text-sm"}>
-              {recentlyClosedEmptyLabel}
+              {sold.length > 0
+                ? `No ${
+                    isRental ? "rentals" : "sales"
+                  } closed in the last ${lookbackLabel(
+                    lookbackMonths,
+                  )}. Widen the look-back above.`
+                : recentlyClosedEmptyLabel}
             </p>
           )}
         </div>

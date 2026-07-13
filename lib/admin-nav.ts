@@ -53,7 +53,9 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-sync", label: "Sync status", tab: "db" },
   { id: "admin-refresh-lock", label: "Refresh lock", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
-  { id: "admin-sqlite-schemas", label: "SQLite schemas", tab: "db" },
+  { id: "admin-sqlite-schemas", label: "Database schemas", tab: "db" },
+  { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
+  { id: "admin-sync-log", label: "Sync run log", tab: "db" },
   { id: "admin-startup", label: "Startup schedule", tab: "server" },
   { id: "admin-netlify", label: "Netlify functions", tab: "server" },
   { id: "admin-api-routes", label: "API routes", tab: "server" },
@@ -134,7 +136,7 @@ export const ADMIN_REPO_DOCS: AdminRepoDoc[] = [
   {
     label: "sqlite-schema-diagram.ts",
     path: "lib/sqlite-schema-diagram.ts",
-    description: "Live SQLite schema ownership diagram source",
+    description: "Live listing-photos SQLite schema diagram source",
   },
 ];
 
@@ -147,7 +149,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listings-full",
     detail: "Full town reload, scores, superlatives, and product caches",
-    schedule: "Daily ~5am ET",
+    schedule: "Weekly Mon ~5am ET",
   },
   {
     label: "sync-property-addresses",
