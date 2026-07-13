@@ -2,12 +2,20 @@ import type { Config } from '@netlify/functions'
 import { rebuildAllListingEdgeScores } from '../../lib/listing-edge-score'
 import { readListingsDbStats } from '../../lib/db/listings-repo'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
+import { isScheduledSyncPausedFresh } from '../../lib/scheduled-sync-toggle'
 
 /**
  * Weekly metadata edge score rebuild for comparables ranking.
  * Cron is 07:00 UTC Monday = 02:00 America/New_York (EST). During EDT this is 3:00am local.
  */
 export default async function handler() {
+  if (await isScheduledSyncPausedFresh()) {
+    return new Response(
+      JSON.stringify({ ok: true, mode: 'edge-scores', skipped: true, reason: 'scheduled sync paused by admin' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
+
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listing-edge-scores' })
     const ranEdge =

@@ -12,6 +12,7 @@ import {
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
+import { isScheduledSyncPausedFresh } from '@/lib/scheduled-sync-toggle'
 
 export type OverdueSyncJob = AdminSyncActionId | 'edge-scores'
 
@@ -189,6 +190,10 @@ export async function runOverdueSyncCatchup(options?: {
 }): Promise<OverdueSyncCatchupResult> {
   if (!overdueCatchupEnabled()) {
     return { skipped: true, reason: 'disabled', plan: [], steps: [] }
+  }
+
+  if (await isScheduledSyncPausedFresh()) {
+    return { skipped: true, reason: 'scheduled sync paused by admin', plan: [], steps: [] }
   }
 
   if (getSyncMeta('refresh_in_progress') === '1') {

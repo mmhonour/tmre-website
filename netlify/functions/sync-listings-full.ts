@@ -1,6 +1,7 @@
 import type { Config } from '@netlify/functions'
 import { getSyncStatus, syncAllTownListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
+import { isScheduledSyncPausedFresh } from '../../lib/scheduled-sync-toggle'
 
 /**
  * Weekly full MLS → Postgres reload, including Goldilocks score rebuild.
@@ -10,6 +11,13 @@ import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
  */
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
+
+  if (await isScheduledSyncPausedFresh()) {
+    return new Response(
+      JSON.stringify({ ok: true, mode: 'full', skipped: true, reason: 'scheduled sync paused by admin' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
 
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings-full' })

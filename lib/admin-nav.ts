@@ -54,6 +54,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-refresh-lock", label: "Refresh lock", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
   { id: "admin-sqlite-schemas", label: "Database schemas", tab: "db" },
+  { id: "admin-scheduled-sync", label: "Scheduled sync control", tab: "db" },
   { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
   { id: "admin-sync-log", label: "Sync run log", tab: "db" },
   { id: "admin-startup", label: "Startup schedule", tab: "server" },

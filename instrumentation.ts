@@ -26,6 +26,7 @@ export async function register() {
     const { LATEST_DB_REFRESH_MS } = await import('./lib/latest-refresh')
     const { hasLocalListingsCache } = await import('./lib/listings-store')
     const { getSyncMeta } = await import('./lib/db/sync-meta-store')
+    const { isScheduledSyncPaused } = await import('./lib/scheduled-sync-toggle')
     const { isRetsConfigured } = await import('./lib/rets')
 
     const retsConfigured = isRetsConfigured()
@@ -97,6 +98,7 @@ export async function register() {
       let latestSyncRunning = false
       const runLatestSync = () => {
         if (latestSyncRunning) return
+        if (isScheduledSyncPaused()) return
         latestSyncRunning = true
         Promise.resolve()
           .then(() => syncIncrementalListings())
@@ -130,6 +132,11 @@ export async function register() {
           `[listings-sync] next weekly full reload + score rebuild in ${Math.round(waitMs / 60_000)} minutes (Mon 5am ET)`,
         )
         setTimeout(() => {
+          if (isScheduledSyncPaused()) {
+            console.info('[listings-sync] weekly full reload skipped — scheduled sync paused by admin')
+            scheduleNextFullReload()
+            return
+          }
           syncAllTownListings()
             .catch((err) => console.error('[listings-sync/weekly-full]', err))
             .finally(() => scheduleNextFullReload())
@@ -140,6 +147,7 @@ export async function register() {
 
     if (allowListingsSync) {
       const runListingsSync = () => {
+        if (isScheduledSyncPaused()) return
         syncListingsSmart().catch((err) => {
           console.error('[listings-sync/instrumentation]', err)
         })

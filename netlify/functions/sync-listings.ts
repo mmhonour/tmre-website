@@ -1,10 +1,18 @@
 import type { Config } from '@netlify/functions'
 import { getSyncStatus, syncIncrementalListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
+import { isScheduledSyncPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { LATEST_DB_REFRESH_MS } from '../../lib/latest-refresh'
 
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
+
+  if (await isScheduledSyncPausedFresh()) {
+    return new Response(
+      JSON.stringify({ ok: true, skipped: true, reason: 'scheduled sync paused by admin' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
 
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings' })

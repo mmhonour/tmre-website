@@ -8,6 +8,8 @@ import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel"
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
 import AdminSyncRunLog from "@/components/admin/AdminSyncRunLog";
 import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
+import AdminScheduledSyncPanel from "@/components/admin/AdminScheduledSyncPanel";
+import { isScheduledSyncPausedFresh } from "@/lib/scheduled-sync-toggle";
 import {
   DB_UPSERT_CHUNK_ROWS_DEFAULT,
   DB_UPSERT_CHUNK_ROWS_MAX,
@@ -135,6 +137,11 @@ export default async function AdminPage() {
   };
 
   await safe("photos-ready", () => ensureAdminListingPhotosReady(), false);
+  const scheduledSyncPaused = await safe(
+    "scheduled-sync-flag",
+    () => isScheduledSyncPausedFresh(),
+    false,
+  );
   await safe(
     "post-deploy-schedule",
     async () => {
@@ -433,6 +440,8 @@ export default async function AdminPage() {
         ) : null}
         <AdminSqliteDiagrams databases={sqliteDiagrams} blobRuntime={blobRuntime} inventorySnapshot={inventorySnapshot} />
       </div>
+
+      <AdminScheduledSyncPanel initialPaused={scheduledSyncPaused} />
 
       <AdminDbTuningPanel
         initial={{
