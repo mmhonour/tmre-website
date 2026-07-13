@@ -745,7 +745,7 @@ export async function fetchPhotoBuffers(
     '@/lib/listing-photo-store'
   )
   const cacheId = key || id
-  const cached = readCachedListingPhotoBuffers(cacheId, maxPhotos)
+  const cached = await readCachedListingPhotoBuffers(cacheId, maxPhotos)
   if (cached.length >= maxPhotos) return cached.slice(0, maxPhotos)
 
   const buffers = [...cached]

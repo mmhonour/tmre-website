@@ -1,7 +1,6 @@
 import 'server-only'
 
 import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
-import { firstStoredListingPhotoIndex } from '@/lib/listing-photos-db'
 import { listingRowId, type TownUpdateStat } from '@/lib/db/listings-repo'
 import {
   readRecentlyUpdatedListings,
@@ -148,9 +147,7 @@ function toLatestRow(
     yearBuilt: listing.yearBuilt,
     headline: listing.remarks?.trim().slice(0, 80) ?? '',
     photoCount: listing.photoCount ?? null,
-    primaryPhotoIndex: firstStoredListingPhotoIndex(
-      listing.listingKey?.trim() || listing.mlsId,
-    ),
+    primaryPhotoIndex: null,
     modificationTimestamp,
     syncedAt,
   }

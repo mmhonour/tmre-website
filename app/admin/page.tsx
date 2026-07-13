@@ -8,6 +8,7 @@ import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel"
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
 import AdminSyncRunLog from "@/components/admin/AdminSyncRunLog";
 import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
+import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
 import AdminScheduledSyncPanel from "@/components/admin/AdminScheduledSyncPanel";
 import { isScheduledSyncPausedFresh } from "@/lib/scheduled-sync-toggle";
 import {
@@ -16,6 +17,12 @@ import {
   DB_UPSERT_CHUNK_ROWS_MIN,
   getUpsertChunkRows,
 } from "@/lib/db/db-write-tuning";
+import {
+  getListingPhotoTtlMinutes,
+  LISTING_PHOTO_TTL_MINUTES_DEFAULT,
+  LISTING_PHOTO_TTL_MINUTES_MAX,
+  LISTING_PHOTO_TTL_MINUTES_MIN,
+} from "@/lib/listing-photo-ttl-config";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
@@ -449,6 +456,15 @@ export default async function AdminPage() {
           default: DB_UPSERT_CHUNK_ROWS_DEFAULT,
           min: DB_UPSERT_CHUNK_ROWS_MIN,
           max: DB_UPSERT_CHUNK_ROWS_MAX,
+        }}
+      />
+
+      <AdminPhotoTtlPanel
+        initial={{
+          ttlMinutes: getListingPhotoTtlMinutes(),
+          default: LISTING_PHOTO_TTL_MINUTES_DEFAULT,
+          min: LISTING_PHOTO_TTL_MINUTES_MIN,
+          max: LISTING_PHOTO_TTL_MINUTES_MAX,
         }}
       />
 

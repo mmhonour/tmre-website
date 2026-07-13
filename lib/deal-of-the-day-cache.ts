@@ -165,7 +165,7 @@ export async function warmAllDealOfTheDayPhotos(): Promise<number> {
   for (const scope of scopes) {
     for (const kind of CACHE_KINDS) {
       const cached = await readDealOfTheDayCache(scope, kind)
-      if (!cached || dealPickPhotosReady(cached)) continue
+      if (!cached || (await dealPickPhotosReady(cached))) continue
       const updated = await ensureDealPickPhotos(cached)
       await writeDealOfTheDayCache(
         scope,

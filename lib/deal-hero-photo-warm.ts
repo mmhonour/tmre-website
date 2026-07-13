@@ -4,7 +4,11 @@ import {
   dealListingPhotoUrl,
   type DealPickPayload,
 } from '@/lib/deal-pick'
-import { readListingPhotoBlob } from '@/lib/listing-photos-db'
+import {
+  firstStoredListingPhotoIndexAsync,
+  readListingPhotoMeta,
+} from '@/lib/listing-photo-backend'
+import { listingPhotoProxyUrl } from '@/lib/listing-url'
 import {
   listingPhotoCacheId,
   resolveListingPhotoBuffer,
@@ -41,6 +45,21 @@ export async function warmDealListingPhotos(
     )
   }
 
+  // After warming, point the hero at the first index that actually stored a
+  // photo so a leading empty RETS slot doesn't 404 the homepage centerpiece.
+  // Best-effort only — a photo-index lookup failure must never break the deal.
+  try {
+    const heroIndex = await firstStoredListingPhotoIndexAsync(cacheId)
+    if (heroIndex != null && heroIndex > 0) {
+      return listingPhotoProxyUrl(cacheId, heroIndex)
+    }
+  } catch (err) {
+    console.warn(
+      '[deal-hero-photo-warm] hero index lookup failed',
+      err instanceof Error ? err.message : err,
+    )
+  }
+
   return payload.photoUrl ?? dealListingPhotoUrl(listing)
 }
 
@@ -51,20 +70,21 @@ export async function ensureDealPickPhotos(
   return photoUrl ? { ...payload, photoUrl } : payload
 }
 
-/** True when hero + thumbnail-deck indices are already in SQLite. */
-export function dealPickPhotosReady(
+/** True when hero + thumbnail-deck indices are already cached. */
+export async function dealPickPhotosReady(
   payload: DealPickPayload,
   maxPhotoIndex = 5,
-): boolean {
+): Promise<boolean> {
   const listing = payload.listing
   const cacheId = listingPhotoCacheId(listing)
   const photoCount = listing.photoCount ?? 0
   if (!cacheId || photoCount <= 0) return true
 
   const lastIndex = Math.min(Math.max(photoCount - 1, 0), maxPhotoIndex)
-  for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex += 1) {
-    const blob = readListingPhotoBlob(cacheId, photoIndex)
-    if (!blob || blob.data.length < 100) return false
-  }
-  return true
+  const metas = await Promise.all(
+    Array.from({ length: lastIndex + 1 }, (_, photoIndex) =>
+      readListingPhotoMeta(cacheId, photoIndex),
+    ),
+  )
+  return metas.every((meta) => meta != null && meta.byteLength >= 100)
 }

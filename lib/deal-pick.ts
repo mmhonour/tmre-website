@@ -17,7 +17,6 @@ import {
   normalizeStyleKey,
 } from './deal-superlatives'
 import { listingPhotoProxyUrl } from './listing-url'
-import { firstStoredListingPhotoIndex } from '@/lib/listing-photos-db'
 import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingSuperlativesByMlsIds } from './db/listings-repo'
 import { normalizeZip } from './tmre-towns'
@@ -44,7 +43,11 @@ export type DealPickPayload = {
   runnerUps: { mlsId: string; address: string; composite: number; kind: 'sale' | 'rental' }[]
 }
 
-/** Local photo proxy — avoids a RETS round-trip before the homepage hero can paint. */
+/**
+ * Local photo proxy — avoids a RETS round-trip before the homepage hero can paint.
+ * Defaults to index 0 (no per-render DB lookup); the deal-hero warmer overrides
+ * this with the first stored index when a leading RETS slot is empty.
+ */
 export function dealListingPhotoUrl(listing: {
   mlsId: string
   listingKey?: string | null
@@ -53,8 +56,7 @@ export function dealListingPhotoUrl(listing: {
   const id = listing.listingKey?.trim() || listing.mlsId.trim()
   if (!id) return null
   if (listing.photoCount != null && listing.photoCount <= 0) return null
-  const index = firstStoredListingPhotoIndex(id) ?? 0
-  return listingPhotoProxyUrl(id, index)
+  return listingPhotoProxyUrl(id, 0)
 }
 
 const RENDERING_KEYWORDS = [

@@ -5,7 +5,7 @@ import {
   LATEST_HERO_WARM_CONCURRENCY,
   LATEST_HERO_WARM_MAX_FETCHES_PER_CYCLE,
 } from '@/lib/latest-refresh'
-import { readListingPhotoBlob } from '@/lib/listing-photos-db'
+import { readListingPhotoMeta } from '@/lib/listing-photo-backend'
 import {
   listingPhotoCacheId,
   resolveListingPhotoBuffer,
@@ -23,14 +23,14 @@ function heroPhotoIndex(row: LatestListingRow): number {
   return 0
 }
 
-function heroAlreadyCached(row: LatestListingRow): boolean {
+async function heroAlreadyCached(row: LatestListingRow): Promise<boolean> {
   const cacheId = listingPhotoCacheId({
     mlsId: row.mlsId,
     listingKey: row.listingKey,
   })
   if (!cacheId) return true
-  const blob = readListingPhotoBlob(cacheId, heroPhotoIndex(row))
-  return blob != null && isListingPhotoFresh(blob.syncedAt)
+  const meta = await readListingPhotoMeta(cacheId, heroPhotoIndex(row))
+  return meta != null && isListingPhotoFresh(meta.syncedAt)
 }
 
 async function fetchHeroPhoto(row: LatestListingRow): Promise<boolean> {
@@ -97,15 +97,18 @@ export async function warmLatestHeroPhotosBounded(options: {
     addRows(rows)
   }
 
+  const cachedFlags = await Promise.all(
+    candidates.map((row) => heroAlreadyCached(row)),
+  )
   const needFetch: LatestListingRow[] = []
   let alreadyCached = 0
-  for (const row of candidates) {
-    if (heroAlreadyCached(row)) {
+  candidates.forEach((row, i) => {
+    if (cachedFlags[i]) {
       alreadyCached += 1
     } else {
       needFetch.push(row)
     }
-  }
+  })
 
   const batch = needFetch.slice(0, LATEST_HERO_WARM_MAX_FETCHES_PER_CYCLE)
   const deferred = Math.max(0, needFetch.length - batch.length)

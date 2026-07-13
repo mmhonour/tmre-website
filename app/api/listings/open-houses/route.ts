@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { firstStoredListingPhotoIndex } from '@/lib/listing-photos-db'
 import { fetchActiveListingsForCity, listingCacheHeaders } from '@/lib/listings-store'
 import {
   openHouseDateWindow,
@@ -33,7 +32,6 @@ function listingKeys(l: Listing): string[] {
 
 function enrichListing(l: Listing, openHouses: OpenHouseEvent[]): OpenHouseListing {
   const city = resolveListingTown(l.address.city) ?? l.address.city
-  const photoId = l.listingKey?.trim() || l.mlsId
   const sorted = [...openHouses].sort((a, b) => {
     const dateCmp = a.date.localeCompare(b.date)
     if (dateCmp !== 0) return dateCmp
@@ -53,7 +51,7 @@ function enrichListing(l: Listing, openHouses: OpenHouseEvent[]): OpenHouseListi
     yearBuilt: l.yearBuilt,
     dom: l.dom ?? daysBetween(l.listDate ?? l.modificationTimestamp),
     photoCount: l.photoCount,
-    primaryPhotoIndex: firstStoredListingPhotoIndex(photoId),
+    primaryPhotoIndex: null,
     status: l.status,
     ownerName: l.ownerName,
     openHouses: sorted,

@@ -1,18 +1,19 @@
 import 'server-only'
 
 import {
-  countFreshListingPhotos,
-  listingPhotoStorageSpan,
-  listStoredListingPhotoIndices,
-  readListingPhotoBlob,
-  upsertListingPhotoBlob,
-  type ListingPhotoBlobRow,
-} from '@/lib/listing-photos-db'
+  countFreshListingPhotosAsync,
+  listingPhotoStorageSpanAsync,
+  listStoredListingPhotoIndicesAsync,
+  readListingPhotoBytes,
+  storeListingPhoto,
+  type PhotoBytes,
+} from '@/lib/listing-photo-backend'
 import {
   isListingPhotoFresh,
   LISTING_PHOTO_TTL_MS,
   listingPhotoSyncedAfter,
 } from '@/lib/listing-photo-ttl'
+import { getListingPhotoTtlMs } from '@/lib/listing-photo-ttl-config'
 import { fetchMediaPhotoUrlForIndex, withRetsClient } from '@/lib/rets'
 
 export { LISTING_PHOTO_TTL_MS, isListingPhotoFresh }
@@ -90,7 +91,7 @@ async function fetchAndPersistPhotoBuffer(
   photoIndex: number,
   source: { data: Buffer; contentType: string },
 ): Promise<{ data: Buffer; contentType: string; cacheHit: boolean }> {
-  upsertListingPhotoBlob(mlsId, photoIndex, source.data, source.contentType)
+  await storeListingPhoto(mlsId, photoIndex, source.data, source.contentType)
   return { ...source, cacheHit: false }
 }
 
@@ -136,12 +137,12 @@ export type ResolveListingPhotoOptions = {
   photoIndex: number
   photoCountHint?: number | null
   forceRefresh?: boolean
-  /** When true, only return blobs already in listing-photos.db (no RETS/media fetch). */
+  /** When true, only return already-cached bytes (no RETS/media fetch). */
   sqliteOnly?: boolean
 }
 
 function asPhotoResult(
-  row: ListingPhotoBlobRow,
+  row: PhotoBytes,
   cacheHit: boolean,
 ): { data: Buffer; contentType: string; cacheHit: boolean } {
   return {
@@ -151,7 +152,7 @@ function asPhotoResult(
   }
 }
 
-/** SQLite blob first — refresh from media/RETS only when missing or older than 30 minutes. */
+/** Cached bytes first — refresh from media/RETS only when missing or past the configured TTL. */
 export async function resolveListingPhotoBuffer(
   options: ResolveListingPhotoOptions,
 ): Promise<{ data: Buffer; contentType: string; cacheHit: boolean } | null> {
@@ -160,10 +161,10 @@ export async function resolveListingPhotoBuffer(
   const { photoIndex } = options
   if (!id || photoIndex < 0) return null
 
-  const cached = readListingPhotoBlob(id, photoIndex)
+  const cached = await readListingPhotoBytes(id, photoIndex)
   const cacheFresh =
     cached != null &&
-    isListingPhotoFresh(cached.syncedAt) &&
+    isListingPhotoFresh(cached.syncedAt, getListingPhotoTtlMs()) &&
     !options.forceRefresh
 
   if (cacheFresh && cached) {
@@ -208,18 +209,18 @@ function listingPhotoIndicesAreContiguous(indices: readonly number[]): boolean {
  * True when stored photos are fresh. Empty RETS object slots (leading/trailing
  * holes that never download) do not keep this false forever — only interior gaps do.
  */
-export function listingPhotosFullyCached(
+export async function listingPhotosFullyCached(
   cacheId: string,
   photoCountHint?: number | null,
-  ttlMs = LISTING_PHOTO_TTL_MS,
-): boolean {
+  ttlMs = getListingPhotoTtlMs(),
+): Promise<boolean> {
   const id = cacheId.trim()
   if (!id) return false
-  const indices = listStoredListingPhotoIndices(id)
+  const indices = await listStoredListingPhotoIndicesAsync(id)
   const stored = indices.length
   if (stored <= 0) return false
-  const span = listingPhotoStorageSpan(id)
-  const fresh = countFreshListingPhotos(id, span, listingPhotoSyncedAfter(ttlMs))
+  const span = await listingPhotoStorageSpanAsync(id)
+  const fresh = await countFreshListingPhotosAsync(id, span, listingPhotoSyncedAfter(ttlMs))
   if (fresh < stored) return false
   if (!listingPhotoIndicesAreContiguous(indices)) return false
 
@@ -237,29 +238,29 @@ export function listingPhotosFullyCached(
 }
 
 /** True when any stored photo for this listing is past the refresh interval. */
-export function listingPhotosNeedRefresh(
+export async function listingPhotosNeedRefresh(
   cacheId: string,
   photoCountHint?: number | null,
-  ttlMs = LISTING_PHOTO_TTL_MS,
-): boolean {
+  ttlMs = getListingPhotoTtlMs(),
+): Promise<boolean> {
   const id = cacheId.trim()
-  const expected = photoCountHint ?? listingPhotoStorageSpan(id)
+  const expected = photoCountHint ?? (await listingPhotoStorageSpanAsync(id))
   if (!id || expected <= 0) return true
-  return !listingPhotosFullyCached(id, expected, ttlMs)
+  return !(await listingPhotosFullyCached(id, expected, ttlMs))
 }
 
-/** Read up to maxPhotos fresh blobs from SQLite (no RETS). */
-export function readCachedListingPhotoBuffers(
+/** Read up to maxPhotos fresh photo blobs from the cache (no RETS). */
+export async function readCachedListingPhotoBuffers(
   mlsId: string,
   maxPhotos: number,
   ttlMs = LISTING_PHOTO_TTL_MS,
-): Buffer[] {
+): Promise<Buffer[]> {
   const id = mlsId.trim()
   if (!id || maxPhotos <= 0) return []
-  const indices = listStoredListingPhotoIndices(id).slice(0, maxPhotos)
+  const indices = (await listStoredListingPhotoIndicesAsync(id)).slice(0, maxPhotos)
   const buffers: Buffer[] = []
   for (const index of indices) {
-    const row = readListingPhotoBlob(id, index)
+    const row = await readListingPhotoBytes(id, index)
     if (row && isListingPhotoFresh(row.syncedAt, ttlMs)) {
       buffers.push(row.data)
     }

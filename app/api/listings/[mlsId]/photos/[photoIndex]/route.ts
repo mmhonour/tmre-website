@@ -23,9 +23,14 @@ export async function GET(
 
   try {
     const listing = await readListingByIdFromDb(id)
+    // Photos are cached under listingPhotoCacheId() = listingKey || mlsId. The
+    // request id may be EITHER the MLS number (spotlight/listing detail pages) or
+    // the listingKey (deal board / intelligence). Resolve to the same cache id the
+    // sync writes under so both entry points hit the same blob — otherwise an
+    // MLS-number request misses the listingKey-keyed cache and 404s.
     const photoKey = listing?.listingKey?.trim() || id
     const resolved = await resolveListingPhotoBuffer({
-      mlsId: id,
+      mlsId: photoKey,
       listingKey: photoKey,
       photoIndex: index,
       photoCountHint: listing?.photoCount,

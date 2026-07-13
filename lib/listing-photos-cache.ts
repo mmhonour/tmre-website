@@ -1,17 +1,17 @@
 import 'server-only'
 
 import {
-  countFreshListingPhotos,
-  listStoredListingPhotoIndices,
-  listingPhotoStorageSpan,
-} from '@/lib/listing-photos-db'
+  countFreshListingPhotosAsync,
+  listStoredListingPhotoIndicesAsync,
+  listingPhotoStorageSpanAsync,
+} from '@/lib/listing-photo-backend'
 import {
   LISTING_PHOTO_TTL_MS,
   listingPhotoSyncedAfter,
 } from '@/lib/listing-photo-ttl'
 import { discoverListingPhotoCount } from '@/lib/rets'
 
-/** Local proxy paths — bytes always served from SQLite via the photo API. */
+/** Local proxy paths — bytes always served from the photo store via the photo API. */
 export function buildListingPhotoProxyUrls(mlsId: string, count: number): string[] {
   const id = mlsId.trim()
   if (!id || count <= 0) return []
@@ -45,11 +45,11 @@ export async function resolveListingPhotoUrls(
   const id = mlsId.trim()
   if (!id) return { photos: [], cacheHit: false }
 
-  const storedIndices = listStoredListingPhotoIndices(id)
-  // After RETS/media sync, only expose photos that actually landed in SQLite.
+  const storedIndices = await listStoredListingPhotoIndicesAsync(id)
+  // After RETS/media sync, only expose photos that actually landed in the store.
   if (storedIndices.length > 0 && !options.forceRefresh) {
-    const span = listingPhotoStorageSpan(id)
-    const freshRows = countFreshListingPhotos(
+    const span = await listingPhotoStorageSpanAsync(id)
+    const freshRows = await countFreshListingPhotosAsync(
       id,
       Math.max(span, storedIndices.length),
       listingPhotoSyncedAfter(LISTING_PHOTO_TTL_MS),

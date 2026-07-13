@@ -51,8 +51,10 @@ function cacheHitHeaders(): HeadersInit {
 }
 
 function maybeWarmPhotosInBackground(payload: DealPickPayload | DealOfTheDayResponse): void {
-  if (dealPickPhotosReady(payload)) return
-  void ensureDealPickPhotos(payload).catch((err) => {
+  void (async () => {
+    if (await dealPickPhotosReady(payload)) return
+    await ensureDealPickPhotos(payload)
+  })().catch((err) => {
     console.warn('[/api/deal-of-the-day] background photo warm failed', err)
   })
 }

@@ -58,7 +58,16 @@ export async function rebuildDealOfTheWeekCache(): Promise<boolean> {
   }
   await writeDealOfTheWeekCache(response)
   setSyncMeta('last_deal_of_the_week_cache', new Date().toISOString())
-  await ensureDealPickPhotos(response)
+  // Photo warm is best-effort — the cache is already written, so a warm/R2/index
+  // failure must not throw out of the rebuild and 502 the endpoint.
+  try {
+    await ensureDealPickPhotos(response)
+  } catch (err) {
+    console.warn(
+      '[deal-of-the-week-cache] hero photo warm failed',
+      err instanceof Error ? err.message : err,
+    )
+  }
   console.info(
     `[deal-of-the-week-cache] rebuilt for ${response.listing.mlsId} in ${Date.now() - t0}ms`,
   )

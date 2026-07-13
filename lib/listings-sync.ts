@@ -277,23 +277,50 @@ function yieldToEventLoop(): Promise<void> {
 
 let photoWarmRunning = false
 
-/** Warm photo blobs after listings sync — runs outside the refresh lock. */
-async function warmActiveListingPhotosDeferred(): Promise<void> {
-  if (photoWarmRunning) return
+/**
+ * Warm Active-inventory photo blobs into the photo store (R2 or SQLite backend).
+ * Awaitable + guarded so callers get deterministic completion (CLI backfill) and
+ * concurrent invocations can't race. Returns per-run totals.
+ */
+export async function warmActiveListingPhotos(options: {
+  concurrency?: number
+} = {}): Promise<{ listings: number; photos: number }> {
+  if (photoWarmRunning) return { listings: 0, photos: 0 }
   photoWarmRunning = true
+  const concurrency = options.concurrency ?? 1
+  let totalListings = 0
+  let totalPhotos = 0
   try {
-    await sleep(2_000)
     const { syncListingPhotosForListings } = await import('@/lib/listing-photos-sync')
     for (const town of TMRE_TOWNS) {
       const listings = await readListingsFromDb(town, 'Active', ACTIVE_LISTINGS_FETCH_LIMIT)
       if (listings.length === 0) continue
-      await syncListingPhotosForListings(listings, { concurrency: 1 })
+      const res = await syncListingPhotosForListings(listings, {
+        concurrency,
+        progressLabel: town,
+      })
+      totalListings += res.listings
+      totalPhotos += res.photos
+      console.info(
+        `[listings-sync] ${town} photo warm: ${res.photos} images across ${res.listings} listings`,
+      )
       await sleep(100)
     }
-  } catch (err) {
-    console.error('[listings-sync] deferred photo warm failed', err)
   } finally {
     photoWarmRunning = false
+  }
+  return { listings: totalListings, photos: totalPhotos }
+}
+
+/** Fire-and-forget photo warm for the long-lived server (runs outside the refresh lock). */
+async function warmActiveListingPhotosDeferred(): Promise<void> {
+  if (photoWarmRunning) return
+  try {
+    await sleep(2_000)
+    if (photoWarmRunning) return
+    await warmActiveListingPhotos({ concurrency: 1 })
+  } catch (err) {
+    console.error('[listings-sync] deferred photo warm failed', err)
   }
 }
 

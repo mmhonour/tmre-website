@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
 import { shouldSkipListingsSyncAtBuild } from '../lib/build-sync-gate'
-import { syncAllTownListings } from '../lib/listings-sync'
+import { syncAllTownListings, warmActiveListingPhotos } from '../lib/listings-sync'
 
 if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
@@ -25,6 +25,17 @@ async function main() {
   console.info(
     `[sync-listings] done in ${result.durationMs}ms — ${result.totalUpserted} total upserts`,
   )
+
+  // The full-resync server path only defers a fire-and-forget photo warm, which
+  // a one-shot CLI would exit before completing. Warm photos deterministically
+  // here so the backfill actually lands every Active listing's photos in the
+  // configured store (R2 in prod/local-with-R2, SQLite otherwise).
+  console.info('[sync-listings] warming Active listing photos…')
+  const photoWarm = await warmActiveListingPhotos({ concurrency: 2 })
+  console.info(
+    `[sync-listings] photo warm done — ${photoWarm.photos} images across ${photoWarm.listings} listings`,
+  )
+
   if (failed.length > 0) {
     process.exitCode = 1
   }
