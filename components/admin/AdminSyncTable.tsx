@@ -787,31 +787,20 @@ export default function AdminSyncTable({
     null,
   );
   const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
+  // localStorage-backed state is hydrated AFTER mount (see effect below) so the
+  // first client render matches the server's empty render — reading storage in a
+  // lazy initializer would diverge and trip a hydration mismatch.
+  const storageHydratedRef = useRef(false);
   // Errors are persisted to localStorage so error text and red row backgrounds
   // survive page refreshes. Cleared automatically when a new sync starts on that row.
-  const [errors, setErrors] = useState<Partial<Record<string, string>>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = localStorage.getItem("admin-sync-errors");
-      return raw ? (JSON.parse(raw) as Partial<Record<string, string>>) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   useEffect(() => {
+    if (!storageHydratedRef.current) return;
     try { localStorage.setItem("admin-sync-errors", JSON.stringify(errors)); } catch { /* ignore */ }
   }, [errors]);
   const [descriptions, setDescriptions] = useState<Partial<Record<string, string>>>({});
   // Persisted final status per row — survives page reloads via localStorage.
-  const [finalStatuses, setFinalStatuses] = useState<Partial<Record<string, string>>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = localStorage.getItem("admin-sync-final-statuses");
-      return raw ? (JSON.parse(raw) as Partial<Record<string, string>>) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [finalStatuses, setFinalStatuses] = useState<Partial<Record<string, string>>>({});
   const persistFinalStatus = useCallback((rowId: string, text: string) => {
     setFinalStatuses((prev) => {
       const next = { ...prev, [rowId]: text };
@@ -825,18 +814,29 @@ export default function AdminSyncTable({
   // review near the bottom of the page. Persisted to localStorage so it survives
   // reloads. The live run accumulates in a ref (shown while running); on completion
   // it replaces the persisted log, so the previous run stays visible until then.
-  const [runLog, setRunLog] = useState<SyncRunLogEntry[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = localStorage.getItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as SyncRunLogEntry[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [runLog, setRunLog] = useState<SyncRunLogEntry[]>([]);
   useEffect(() => {
+    if (!storageHydratedRef.current) return;
     try { localStorage.setItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY, JSON.stringify(runLog)); } catch { /* ignore */ }
   }, [runLog]);
+  // Hydrate all localStorage-backed state once, after the first client render,
+  // then allow the persistence effects above to write back on change.
+  useEffect(() => {
+    try {
+      const rawErrors = localStorage.getItem("admin-sync-errors");
+      if (rawErrors) setErrors(JSON.parse(rawErrors) as Partial<Record<string, string>>);
+    } catch { /* ignore */ }
+    try {
+      const rawFinal = localStorage.getItem("admin-sync-final-statuses");
+      if (rawFinal)
+        setFinalStatuses(JSON.parse(rawFinal) as Partial<Record<string, string>>);
+    } catch { /* ignore */ }
+    try {
+      const rawLog = localStorage.getItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY);
+      if (rawLog) setRunLog(JSON.parse(rawLog) as SyncRunLogEntry[]);
+    } catch { /* ignore */ }
+    storageHydratedRef.current = true;
+  }, []);
   const [liveLog, setLiveLog] = useState<SyncRunLogEntry[]>([]);
   const liveLogRef = useRef<SyncRunLogEntry[]>([]);
   const beginRunLog = useCallback(() => {

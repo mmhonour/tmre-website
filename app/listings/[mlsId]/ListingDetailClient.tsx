@@ -6,6 +6,7 @@ import { fmtDate, fmtMoney, formatMlsStatus } from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
+import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
@@ -13,7 +14,7 @@ import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
-import { listingPhotosHref } from "@/lib/listing-url";
+import { listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
 import { ListingShell } from "@/components/listing/ListingShell";
 
 type Schools = {
@@ -85,6 +86,11 @@ export default function ListingDetailClient({
     listingDetailCache.has(mlsId) ? "ready" : "loading",
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+
+  useEffect(() => {
+    setActivePhotoIndex(0);
+  }, [mlsId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,6 +192,22 @@ export default function ListingDetailClient({
   );
   const isClosed = details.isClosed;
   const isComingSoon = formatMlsStatus(l.status) === "Coming Soon";
+  const galleryHref = listingPhotosHref(
+    mlsId,
+    street || addressHint,
+    townHint || l.address.city,
+  );
+  const heroSlot =
+    !isComingSoon && photoCount > 0 ? (
+      <ListingHeroPhoto
+        url={listingPhotoProxyUrl(l.mlsId, activePhotoIndex)}
+        alt={street || "Listing photo"}
+        href={galleryHref}
+        photoCount={photoCount}
+        photoIndex={activePhotoIndex}
+        bare
+      />
+    ) : null;
 
   return (
     <ListingShell>
@@ -201,6 +223,7 @@ export default function ListingDetailClient({
           sqft: l.sqft,
           yearBuilt: l.yearBuilt,
           bedBathSearchHref: intelligenceSearchHrefFromListing(l),
+          heroSlot,
           ...listingHeaderScoreProps({
             goldilocksScore: data.goldilocksScore,
             goldilocksBreakdown: data.goldilocksBreakdown,
@@ -238,12 +261,19 @@ export default function ListingDetailClient({
             address={street || addressHint || l.mlsId}
             city={townHint || l.address.city}
             heroAlt={street || "Listing photo"}
-            galleryHref={listingPhotosHref(
-              mlsId,
-              street || addressHint,
-              townHint || l.address.city,
-            )}
+            galleryHref={galleryHref}
+            photoHref={(i) =>
+              listingPhotosHref(
+                l.mlsId,
+                street || addressHint,
+                townHint || l.address.city,
+                i,
+              )
+            }
             hideHero={isComingSoon}
+            activePhotoIndex={activePhotoIndex}
+            onPhotoSelect={setActivePhotoIndex}
+            showHero={false}
           />
         }
         sidebar={<ListingSidebar details={details} />}

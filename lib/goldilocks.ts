@@ -485,33 +485,38 @@ function describePhotoPresentation(s: ScoredListing): string | null {
   const photos = s.listing.photoCount ?? 0
   const hasReno = s.remarksMatched.reno.length > 0
   const hasQuality = s.remarksMatched.quality.length > 0
+  const hasLowQuality = s.remarksMatched.lowQuality.length > 0
   const highlightsUpdates = hasReno || hasQuality
 
+  // Too few frames to read the presentation — point to a showing.
   if (photos <= 2) {
     return 'Only a couple of photos are online, so a tour is the best way to get a feel for the place.'
   }
 
-  if (photos >= 3 && photos <= 8 && highlightsUpdates) {
-    return 'The photos do a nice job showing the updates.'
+  // Lackluster / dated cues — frame the upside instead of the flaw.
+  if (hasLowQuality) {
+    return photos >= 6
+      ? 'The photos feel a touch dated, but the bones are all here — this is a space ready to be re-imagined.'
+      : 'The photos are a little lackluster, but there is room here to re-imagine the space.'
   }
 
-  if (hasReno && photos >= 9) {
-    return 'The renovation shows nicely in the photos.'
+  // Strong design/renovation cues with a generous gallery — lean into the design story.
+  if (highlightsUpdates && photos >= 9) {
+    return 'A thoughtfully designed, well-laid-out home comes through clearly across the generous set of photos.'
   }
 
-  if (photos >= 6 && !hasReno) {
-    return 'There are enough photos to get a good sense of the layout.'
+  if (highlightsUpdates && photos >= 3) {
+    return 'The photos carry the updates convincingly from room to room.'
   }
 
-  if (photos >= 3 && photos < 6) {
-    if (highlightsUpdates) {
-      return 'The photos highlight the main rooms and updates.'
-    }
-    return 'The photo gallery is thin — a showing will tell you more.'
+  // Generous gallery, no strong cues either way — average, but point to the opportunity.
+  if (photos >= 6) {
+    return 'The generous set of photos indicates there are some opportunities here worth a closer look.'
   }
 
-  if (photos >= 9) {
-    return 'Browse the gallery to make sure the layout and finishes are what you want.'
+  // Thin gallery, no quality cues.
+  if (photos >= 3) {
+    return 'The gallery is on the lighter side — a showing will fill in the rest of the story.'
   }
 
   return null

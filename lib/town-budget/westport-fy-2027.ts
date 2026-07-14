@@ -159,6 +159,7 @@ export const westportFy2027: TownBudgetSnapshot = {
     taxCollectorEmail: 'taxcollector@westportct.gov',
     taxCollectorUrl: 'https://www.westportct.gov/taxcollector',
     payTaxesUrl: 'https://www.westportct.gov/paytaxes',
+    payTaxesLabel: 'westportct.gov/paytaxes',
     assessorPhone: '(203) 341-1070',
     townHallAddress: '110 Myrtle Avenue, Westport, CT 06880',
   },

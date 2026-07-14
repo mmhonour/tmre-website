@@ -78,28 +78,35 @@ export default function ListingHeroPanels({
       </span>
     ) : null;
 
-  // When a property selector (Spotlight 1/2/3) is present, hoist the status
-  // badge up so it sits on that top row — top-aligned with "Spotlight
-  // Properties" rather than dropping down to the Property Details label.
+  // Hoist the status badge to the top row of the panel so it sits top-aligned
+  // regardless of page: on Spotlight next to the "Spotlight Properties" tabs,
+  // and on a property detail page next to the back link (same location).
+  const topRow = propertyTabs ? (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">{propertyTabs}</div>
+      {statusBadge}
+    </div>
+  ) : !isSpotlight ? (
+    <div className="mb-2 flex items-start justify-between gap-3">
+      <ListingBackLink className="" />
+      {statusBadge}
+    </div>
+  ) : null;
+
   const propertyPanel = (
     <div className={frameClass}>
-      {!isSpotlight ? <ListingBackLink className="mb-4" /> : null}
-      {propertyTabs ? (
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">{propertyTabs}</div>
-          {statusBadge}
-        </div>
-      ) : null}
+      {topRow}
       <div className="mb-2 flex items-start justify-between gap-3">
         <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
           Property Details
         </p>
-        {propertyTabs ? null : statusBadge}
       </div>
       <ListingHeader
         {...header}
         privacyMode={header.privacyMode ?? false}
         hideMarketMeta={header.hideMarketMeta ?? isSpotlight}
+        insight={subnav.active === "overview" ? header.insight : null}
+        heroAside={subnav.active !== "overview"}
         className="mb-0"
         compact
       />

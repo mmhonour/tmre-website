@@ -5,8 +5,10 @@ import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
+import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
+import { listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import {
@@ -149,6 +151,23 @@ export default function ListingIfClient({
       .filter(Boolean)
       .join(", ");
   const isClosed = formatMlsStatus(listing.status) === "Closed";
+  const photoCount = listing.photoCount ?? 0;
+  const galleryHref = listingPhotosHref(
+    mlsId,
+    street || addressHint,
+    resolvedTown,
+  );
+  const heroSlot =
+    photoCount > 0 ? (
+      <ListingHeroPhoto
+        url={listingPhotoProxyUrl(listing.mlsId, 0)}
+        alt={street || "Listing photo"}
+        href={galleryHref}
+        photoCount={photoCount}
+        photoIndex={0}
+        bare
+      />
+    ) : null;
   const details = buildListingDetailsPanelProps(
     { ...listing, townHint: townHint ?? null },
     fmtMoney,
@@ -173,6 +192,7 @@ export default function ListingIfClient({
           sqft: listing.sqft,
           yearBuilt: listing.yearBuilt,
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
+          heroSlot,
           ...listingHeaderScoreProps({
             goldilocksScore,
             goldilocksBreakdown,

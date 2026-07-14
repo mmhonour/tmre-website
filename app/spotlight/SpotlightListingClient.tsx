@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { fmtMoney, formatMlsStatus } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
+import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
 import ListingSidebar from "@/components/listing/ListingSidebar";
+import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome";
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
@@ -31,6 +34,11 @@ function spotlightPhotosHref(
 export default function SpotlightListingClient() {
   const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, insight, propertyTab, privacy } =
     useSpotlightListing();
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+
+  useEffect(() => {
+    setActivePhotoIndex(0);
+  }, [display.mlsId]);
 
   if (loadState === "error") {
     return (
@@ -56,6 +64,19 @@ export default function SpotlightListingClient() {
   );
   const publicAddressLabel = headerAddress.street;
 
+  const heroSlot =
+    !isComingSoon && display.photoCount > 0 ? (
+      <ListingHeroPhoto
+        url={listingPhotoProxyUrl(display.mlsId, activePhotoIndex)}
+        alt={display.config.displayTitle}
+        href={spotlightPhotosHref(propertyTab)}
+        photoCount={display.photoCount}
+        photoIndex={activePhotoIndex}
+        obfuscate={obfuscatePhoto(activePhotoIndex)}
+        bare
+      />
+    ) : null;
+
   return (
     <SpotlightPageChrome
       active="overview"
@@ -66,6 +87,7 @@ export default function SpotlightListingClient() {
       goldilocksScore={goldilocksScore}
       goldilocksBreakdown={goldilocksBreakdown}
       insight={insight}
+      heroSlot={heroSlot}
       belowTabs={
         <ListingOverviewPhotoDeck
           remarks={display.remarks}
@@ -75,8 +97,12 @@ export default function SpotlightListingClient() {
           city={privacy.showAddress ? display.config.address.city : null}
           heroAlt={display.config.displayTitle}
           galleryHref={spotlightPhotosHref(propertyTab)}
+          photoHref={(i) => spotlightPhotosHref(propertyTab, i)}
           hideHero={isComingSoon}
           obfuscatePhotoIndex={obfuscatePhoto}
+          activePhotoIndex={activePhotoIndex}
+          onPhotoSelect={setActivePhotoIndex}
+          showHero={false}
         />
       }
       sidebar={<ListingSidebar details={details} />}

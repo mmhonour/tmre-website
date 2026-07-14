@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import { useSearchParams } from "next/navigation";
 import { listingSectionHref } from "@/lib/listing-url";
@@ -43,6 +44,29 @@ export default function ListingSubnav({
   compact?: boolean;
 }) {
   const searchParams = useSearchParams();
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef<HTMLAnchorElement>(null);
+
+  // No scrollbar: the strip is clipped and slid via transform. When the active
+  // tab changes (after tapping a tab), the strip glides so the active tab is
+  // centered — moving roughly one tab at a time as you step across the tabs.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const strip = stripRef.current;
+    const el = activeTabRef.current;
+    if (!viewport || !strip || !el) return;
+    const reposition = () => {
+      const maxOffset = Math.max(0, strip.scrollWidth - viewport.clientWidth);
+      const desired =
+        el.offsetLeft + el.clientWidth / 2 - viewport.clientWidth / 2;
+      const offset = Math.min(Math.max(0, desired), maxOffset);
+      strip.style.transform = `translateX(${-offset}px)`;
+    };
+    reposition();
+    window.addEventListener("resize", reposition);
+    return () => window.removeEventListener("resize", reposition);
+  }, [active]);
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -71,7 +95,7 @@ export default function ListingSubnav({
   const uagHref = sectionHref("uag");
   const ifHref = sectionHref("if");
 
-  const tabs: { id: ListingTab; label: string; href: string }[] = [
+  const allTabs: { id: ListingTab; label: string; href: string }[] = [
     { id: "overview", label: "Overview", href: overviewHref },
     { id: "photos", label: "Photos", href: photosHref },
     { id: "comparables", label: "Comparables", href: comparablesHref },
@@ -84,21 +108,34 @@ export default function ListingSubnav({
     { id: "history", label: "History", href: historyHref },
     { id: "if", label: "If...", href: ifHref },
   ];
+  const tabs = allTabs.filter((tab) => {
+    // Keep the tab row light (mobile-friendly) by revealing secondary tabs only
+    // in context instead of using a horizontal scrollbar.
+    // - Photos: only while it's active (revealed by clicking the hero image).
+    // - Comparable Rentals: only while Comparables is active (its reveal), or
+    //   while it's itself active (so the current tab never vanishes).
+    if (tab.id === "photos") return active === "photos";
+    if (tab.id === "comparable-rentals") {
+      return active === "comparables" || active === "comparable-rentals";
+    }
+    return true;
+  });
 
   const tabsRow = (
-    <div
-      className={`flex flex-wrap items-center gap-x-4 border-b border-white/10 -mx-1 ${
-        compact ? "gap-y-2" : "gap-y-3"
-      }`}
-    >
-      <nav className="flex gap-1" aria-label="Listing sections">
+    <div ref={viewportRef} className="overflow-hidden border-b border-white/10">
+      <nav
+        ref={stripRef}
+        className="relative flex flex-nowrap gap-1 transition-transform duration-300 ease-out"
+        aria-label="Listing sections"
+      >
         {tabs.map((tab) => {
           const isActive = active === tab.id;
           return (
             <Link
               key={tab.id}
+              ref={isActive ? activeTabRef : undefined}
               href={tab.href}
-              className={`px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
+              className={`shrink-0 whitespace-nowrap px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
                 compact ? "py-2" : "py-2.5"
               } ${
                 isActive

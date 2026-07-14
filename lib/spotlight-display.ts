@@ -118,6 +118,31 @@ function pickNumber(
   return primary ?? fallback ?? null;
 }
 
+/**
+ * Open slots (tabs 4 & 5, and any config with a blank displayLocation) get their
+ * public town label from the assigned listing's metadata. Town-level only, so it
+ * stays privacy-safe. Configured slots (1–3) keep their curated titles.
+ */
+export function spotlightEffectiveConfig(
+  config: SpotlightListingConfig,
+  mls: SpotlightMlsListing | null,
+): SpotlightListingConfig {
+  const isOpenSlot = config.displayLocation.trim() === "";
+  const city = mls?.address?.city?.trim() ?? "";
+  if (!isOpenSlot || !city) return config;
+  const townLabel = `${city}, CT`;
+  return {
+    ...config,
+    displayTitle: townLabel,
+    displayLocation: townLabel,
+    address: {
+      ...config.address,
+      city,
+      postalCode: mls?.address?.postalCode?.trim() || config.address.postalCode,
+    },
+  };
+}
+
 function remarksFromListing(
   config: SpotlightListingConfig,
   mls: SpotlightMlsListing | null,
@@ -131,9 +156,10 @@ function remarksFromListing(
 }
 
 export function buildSpotlightDisplay(
-  config: SpotlightListingConfig = SPOTLIGHT_LISTING,
+  rawConfig: SpotlightListingConfig = SPOTLIGHT_LISTING,
   mls: SpotlightMlsListing | null = null,
 ): SpotlightDisplay {
+  const config = spotlightEffectiveConfig(rawConfig, mls);
   const mlsId = mls?.mlsId?.trim() || config.mlsId?.trim() || config.id;
   const schools = mls?.schools ?? config.schools;
 

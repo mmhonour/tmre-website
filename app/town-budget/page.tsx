@@ -1,9 +1,9 @@
 import TownBudgetClient from "./TownBudgetClient";
 
 export const metadata = {
-  title: "Town Budget — Westport CT | TMRE",
+  title: "Town Budget — Westport, Norwalk & Fairfield CT | TMRE",
   description:
-    "Westport FY 2026–2027 municipal budget — mill rate, revenues, expenditures, and property tax calendar.",
+    "FY 2026–2027 municipal budgets for Westport, Norwalk, and Fairfield CT — mill rate, revenues, expenditures, and the property tax calendar.",
 };
 
 export default function TownBudgetPage() {

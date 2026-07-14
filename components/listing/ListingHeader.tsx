@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
+// heroSlot renders the primary photo between the meta line and the insight.
 import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
 import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
+import { abbreviateUsState } from "@/lib/us-states";
 
 type ListingHeaderProps = {
   mlsId: string;
@@ -33,6 +35,14 @@ type ListingHeaderProps = {
   scoreTitle?: string | null;
   scoreSubtitle?: string | null;
   isRental?: boolean;
+  /** Primary/hero photo, rendered between the meta line and the insight. */
+  heroSlot?: ReactNode;
+  /**
+   * When true, the hero photo sits right-aligned and top-aligned to the
+   * address instead of floated below the meta line (used on non-Overview
+   * tabs where there is no insight copy to wrap around it).
+   */
+  heroAside?: boolean;
 };
 
 function joinMetaSegments(segments: ReactNode[]): ReactNode {
@@ -68,6 +78,8 @@ export default function ListingHeader({
   scoreTitle,
   scoreSubtitle = null,
   isRental = false,
+  heroSlot = null,
+  heroAside = false,
   compact = false,
   className = "",
 }: ListingHeaderProps & { className?: string; compact?: boolean }) {
@@ -94,9 +106,9 @@ export default function ListingHeader({
   const title = address.street || address.full;
   const showScore = goldilocksScore != null && goldilocksScore > 0;
 
-  return (
-    <div className={className ? className : "mb-6"}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+  const titleAndMeta = (
+    <>
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         {showScore ? (
           <ListingValueScoreBadge
             score={goldilocksScore}
@@ -108,7 +120,7 @@ export default function ListingHeader({
             }
           />
         ) : null}
-        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div className="min-w-0 flex-1">
           <h1
             className={`font-serif text-white leading-tight min-w-0 ${
               compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
@@ -116,15 +128,26 @@ export default function ListingHeader({
           >
             {title}
           </h1>
-          {!privacyMode && (address.city || address.postalCode) ? (
-            <span className="font-mono text-[11px] sm:text-xs tracking-[0.12em] uppercase text-white/65 shrink-0">
-              {[address.city, address.postalCode].filter(Boolean).join(" · ")}
-            </span>
-          ) : null}
-          {!hideMeta ? (
-            <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap shrink-0">
-              #{mlsId}
-            </span>
+          {(!privacyMode && (address.city || address.postalCode)) ||
+          !hideMeta ? (
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              {!privacyMode && (address.city || address.postalCode) ? (
+                <span className="font-mono text-[11px] sm:text-xs tracking-[0.12em] uppercase text-white/65">
+                  {[
+                    address.city,
+                    abbreviateUsState(address.state),
+                    address.postalCode,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                </span>
+              ) : null}
+              {!hideMeta ? (
+                <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap">
+                  #{mlsId}
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>
@@ -135,17 +158,71 @@ export default function ListingHeader({
       >
         {joinMetaSegments([
           propertyType?.replace(/ For Sale$/i, ""),
-          style,
-          bedBathSegment,
-          sqft ? `${sqft.toLocaleString()} sqft` : null,
           yearBuilt ? `Built ${yearBuilt}` : null,
         ])}
       </p>
+    </>
+  );
 
-      {insight ? (
-        <div className={compact ? "mt-2" : "mt-3"}>
-          <ListingInsightCopy text={insight} />
+  // Secondary meta (style / beds+baths / sqft) renders full-width just above
+  // the section tabs, keeping the bed/bath search hyperlink intact.
+  const metaSecondary = joinMetaSegments([
+    style,
+    bedBathSegment,
+    sqft ? `${sqft.toLocaleString()} sqft` : null,
+  ]);
+
+  return (
+    <div className={className ? className : "mb-6"}>
+      {heroAside && heroSlot ? (
+        // Non-Overview tabs: hero sits right-aligned, top-aligned to the
+        // address, and links to the Photos tab.
+        <div className="flex items-start gap-4">
+          <div className="min-w-0 flex-1">{titleAndMeta}</div>
+          {/* Inline width avoids depending on the Tailwind `w-2/5` utility,
+              which the Turbopack dev server sometimes fails to emit (leaving
+              the hero collapsed to ~0px). */}
+          <div className="shrink-0" style={{ width: "40%", maxWidth: 220 }}>
+            {heroSlot}
+          </div>
         </div>
+      ) : (
+        <>
+          {titleAndMeta}
+          {heroSlot || insight ? (
+            <div className={compact ? "mt-2" : "mt-3"}>
+              {heroSlot ? (
+                // Float the hero (half width) so the insight starts at its
+                // top-right and wraps back to full width below the image.
+                // Inline `float` avoids depending on the Tailwind `float-left`
+                // utility (Turbopack dev sometimes fails to emit new classes).
+                <div className="mr-4 mb-3 w-1/2" style={{ float: "left" }}>
+                  {heroSlot}
+                </div>
+              ) : null}
+              {insight ? (
+                <>
+                  <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
+                    Insight
+                  </p>
+                  <ListingInsightCopy text={insight} />
+                </>
+              ) : null}
+              {/* Clear the float so the subnav below never wraps beside it. */}
+              <div style={{ clear: "both" }} aria-hidden />
+            </div>
+          ) : null}
+        </>
+      )}
+
+      {metaSecondary ? (
+        <p
+          className={`font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 ${
+            compact ? "mt-3" : "mt-4"
+          }`}
+        >
+          {metaSecondary}
+        </p>
       ) : null}
 
       {goldilocksBreakdown && scoreOpen ? (

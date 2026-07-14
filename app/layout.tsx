@@ -34,6 +34,13 @@ export const metadata: Metadata = {
   title: "TMRE — Confidence through clarity",
   description:
     `TMRE. Market intelligence and investment for ${TMRE_CORE_TOWNS_LABEL}, CT. Where smart real estate decisions begin.`,
+  // Corporate logo (for now): the four-lens camera. Served from /public so it
+  // does not need the app/ icon convention or an .ico conversion.
+  icons: {
+    icon: "/images/tmre-camera-icon.png",
+    shortcut: "/images/tmre-camera-icon.png",
+    apple: "/images/tmre-camera-icon.png",
+  },
 };
 
 export default async function RootLayout({

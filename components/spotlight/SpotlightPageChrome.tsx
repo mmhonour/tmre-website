@@ -1,6 +1,7 @@
 "use client";
 
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
+import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { type ListingTab } from "@/components/listing/ListingSubnav";
 import { useSpotlightPrivacy } from "@/hooks/useSpotlightPrivacy";
@@ -9,15 +10,28 @@ import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
+import { formatMlsStatus } from "@/lib/listing-history";
+import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import type { SpotlightDisplay, SpotlightMlsListing } from "@/lib/spotlight-display";
 import { spotlightAllowsInterest } from "@/lib/spotlight-display";
-import type { SpotlightPropertyTabId } from "@/lib/spotlight-listing";
+import {
+  spotlightPropertySearchParam,
+  type SpotlightPropertyTabId,
+} from "@/lib/spotlight-listing";
 import {
   spotlightEffectiveHeaderAddress,
   spotlightEffectiveMapLocation,
+  spotlightObfuscatesPhotoWithPrivacy,
 } from "@/lib/spotlight-privacy-shared";
+import { spotlightSectionHref } from "@/lib/spotlight-url";
 import { SpotlightPropertyTabs } from "@/components/spotlight/SpotlightPropertyTabs";
 import type { ReactNode } from "react";
+
+function spotlightPhotosHref(propertyTab: SpotlightPropertyTabId): string {
+  const propertyParam = spotlightPropertySearchParam(propertyTab);
+  const base = spotlightSectionHref("photos");
+  return propertyParam ? `${base}?property=${propertyParam}` : base;
+}
 
 export function SpotlightPageChrome({
   active,
@@ -29,6 +43,7 @@ export function SpotlightPageChrome({
   belowHero,
   sidebar,
   footer,
+  heroSlot,
   goldilocksScore = null,
   goldilocksBreakdown = null,
   insight = null,
@@ -43,6 +58,8 @@ export function SpotlightPageChrome({
   belowHero?: ReactNode;
   sidebar?: ReactNode;
   footer?: ReactNode;
+  /** Primary photo rendered between the meta line and the insight in the header. */
+  heroSlot?: ReactNode;
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ListingScoreApiFields["goldilocksBreakdown"];
   insight?: string | null;
@@ -67,6 +84,28 @@ export function SpotlightPageChrome({
     display.intelligenceListing,
   );
 
+  // On non-Overview tabs the Overview client doesn't supply a heroSlot, so
+  // build a default (index 0) hero here that links to the Photos tab. The
+  // Overview tab supplies its own thumbnail-driven hero via `heroSlot`.
+  const isComingSoon = formatMlsStatus(display.status) === "Coming Soon";
+  const effectiveHeroSlot =
+    heroSlot ??
+    (active !== "overview" && !isComingSoon && display.photoCount > 0 ? (
+      <ListingHeroPhoto
+        url={listingPhotoProxyUrl(display.mlsId, 0)}
+        alt={display.config.displayTitle}
+        href={spotlightPhotosHref(propertyTab)}
+        photoCount={display.photoCount}
+        photoIndex={0}
+        obfuscate={spotlightObfuscatesPhotoWithPrivacy(
+          display.config,
+          0,
+          privacy,
+        )}
+        bare
+      />
+    ) : null);
+
   return (
     <ListingShell variant="spotlight">
       <ListingHeroPanels
@@ -83,6 +122,7 @@ export function SpotlightPageChrome({
           sqft: display.sqft,
           yearBuilt: display.yearBuilt,
           bedBathSearchHref,
+          heroSlot: effectiveHeroSlot,
           ...listingHeaderScoreProps({
             goldilocksScore,
             goldilocksBreakdown,

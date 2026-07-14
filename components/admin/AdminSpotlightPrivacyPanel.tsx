@@ -18,7 +18,23 @@ type TabRow = {
   effective: SpotlightEffectivePrivacy;
 };
 
+type TabMls = {
+  tab: SpotlightPropertyTabId;
+  mlsId: string;
+  exists: boolean;
+  street: string;
+  town: string;
+  source: "db" | "rets" | "none";
+};
+
 type TabSaveStatus = "idle" | "saving" | "saved" | "error";
+type MlsSaveStatus =
+  | "idle"
+  | "validating"
+  | "saved"
+  | "cleared"
+  | "notfound"
+  | "error";
 
 const DEFAULT_PRIVACY: SpotlightEffectivePrivacy = {
   showAddress: false,
@@ -29,6 +45,13 @@ const DEFAULT_PRIVACY: SpotlightEffectivePrivacy = {
 export default function AdminSpotlightPrivacyPanel() {
   const [tabs, setTabs] = useState<TabRow[]>([]);
   const [overrides, setOverrides] = useState<SpotlightPrivacyOverrides>({});
+  const [mls, setMls] = useState<Partial<Record<SpotlightPropertyTabId, TabMls>>>({});
+  const [mlsInput, setMlsInput] = useState<
+    Partial<Record<SpotlightPropertyTabId, string>>
+  >({});
+  const [mlsStatus, setMlsStatus] = useState<
+    Partial<Record<SpotlightPropertyTabId, MlsSaveStatus>>
+  >({});
   const [loading, setLoading] = useState(true);
   const [tabStatus, setTabStatus] = useState<
     Partial<Record<SpotlightPropertyTabId, TabSaveStatus>>
@@ -39,20 +62,45 @@ export default function AdminSpotlightPrivacyPanel() {
     Partial<Record<SpotlightPropertyTabId, ReturnType<typeof setTimeout>>>
   >({});
 
+  const applyMlsSummaries = useCallback((rows: TabMls[]) => {
+    const byTab: Partial<Record<SpotlightPropertyTabId, TabMls>> = {};
+    for (const row of rows) byTab[row.tab] = row;
+    setMls(byTab);
+    setMlsInput((prev) => {
+      const next = { ...prev };
+      for (const row of rows) {
+        if (next[row.tab] === undefined) next[row.tab] = row.mlsId;
+      }
+      return next;
+    });
+  }, []);
+
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/admin/spotlight-privacy", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { overrides: SpotlightPrivacyOverrides; tabs: TabRow[] }) => {
-        setOverrides(data.overrides ?? {});
-        setTabs(data.tabs ?? []);
-      })
+    Promise.all([
+      fetch("/api/admin/spotlight-privacy", { cache: "no-store" }).then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
+      ),
+      fetch("/api/admin/spotlight-mls", { cache: "no-store" }).then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
+      ),
+    ])
+      .then(
+        ([privacy, mlsData]: [
+          { overrides: SpotlightPrivacyOverrides; tabs: TabRow[] },
+          { tabs: TabMls[] },
+        ]) => {
+          setOverrides(privacy.overrides ?? {});
+          setTabs(privacy.tabs ?? []);
+          applyMlsSummaries(mlsData.tabs ?? []);
+        },
+      )
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load");
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [applyMlsSummaries]);
 
   useEffect(() => {
     load();
@@ -123,6 +171,56 @@ export default function AdminSpotlightPrivacyPanel() {
     });
   }
 
+  async function saveMlsId(tab: SpotlightPropertyTabId) {
+    const value = (mlsInput[tab] ?? "").trim();
+    // No-op when unchanged from the last saved/effective value.
+    if (value === (mls[tab]?.mlsId ?? "")) return;
+
+    setMlsStatus((prev) => ({ ...prev, [tab]: "validating" }));
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/spotlight-mls", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tab, mlsId: value }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        ok: boolean;
+        saved: boolean;
+        tabs?: TabMls[];
+        tab?: TabMls;
+      };
+
+      if (!data.saved) {
+        setMlsStatus((prev) => ({ ...prev, [tab]: "notfound" }));
+        return;
+      }
+      if (data.tabs) applyMlsSummaries(data.tabs);
+      if (data.tab) {
+        setMlsInput((prev) => ({ ...prev, [tab]: data.tab!.mlsId }));
+      }
+      setMlsStatus((prev) => ({
+        ...prev,
+        [tab]: value.length === 0 ? "cleared" : "saved",
+      }));
+
+      const existingTimer = savedTimersRef.current[tab];
+      if (existingTimer) clearTimeout(existingTimer);
+      savedTimersRef.current[tab] = setTimeout(() => {
+        setMlsStatus((prev) =>
+          prev[tab] === "saved" || prev[tab] === "cleared"
+            ? { ...prev, [tab]: "idle" }
+            : prev,
+        );
+        delete savedTimersRef.current[tab];
+      }, 2500);
+    } catch (err) {
+      setMlsStatus((prev) => ({ ...prev, [tab]: "error" }));
+      setError(err instanceof Error ? err.message : "Save failed");
+    }
+  }
+
   const tabRows =
     tabs.length > 0
       ? tabs
@@ -142,16 +240,54 @@ export default function AdminSpotlightPrivacyPanel() {
     return null;
   }
 
+  function headerLabel(row: TabRow): string {
+    const summary = mls[row.tab];
+    if (summary?.exists) {
+      return [summary.street, summary.town].filter(Boolean).join(" · ");
+    }
+    if (summary && summary.mlsId && !summary.exists) {
+      return `MLS ${summary.mlsId} — not found`;
+    }
+    if (!summary?.mlsId) return "Empty slot — hidden until assigned";
+    return row.street || row.label;
+  }
+
+  function mlsHelper(tab: SpotlightPropertyTabId): {
+    text: string;
+    tone: "muted" | "ok" | "bad";
+  } {
+    const status = mlsStatus[tab] ?? "idle";
+    const summary = mls[tab];
+    if (status === "validating") return { text: "Checking Postgres, then RETS…", tone: "muted" };
+    if (status === "notfound")
+      return { text: "MLS # not found in Postgres or RETS", tone: "bad" };
+    if (status === "cleared") return { text: "Cleared — tab hidden", tone: "muted" };
+    if (status === "saved")
+      return {
+        text: summary?.town ? `Saved · ${summary.town}` : "Saved",
+        tone: "ok",
+      };
+    if (status === "error") return { text: "Save failed", tone: "bad" };
+    if (summary?.exists) {
+      const src = summary.source === "rets" ? "RETS" : "Postgres";
+      return { text: `${summary.town || "Found"} · via ${src}`, tone: "ok" };
+    }
+    if (summary?.mlsId && !summary.exists)
+      return { text: "Saved id no longer resolves", tone: "bad" };
+    return { text: "Blank = hide this tab", tone: "muted" };
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
       <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Spotlight privacy
+          Spotlight properties
         </p>
         <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
-          Tabs 1–3 default to town-only maps (no pin), blurred photos 1 &amp; 2,
-          and hidden street addresses. Enable overrides per property when ready to
-          go public. Changes save automatically.
+          Assign an MLS # to each slot (validated against Postgres, then RETS).
+          Blank slots are hidden on the public spotlight page. Privacy toggles
+          default off (address hidden, photos 1 &amp; 2 blurred, town-only map).
+          Changes save automatically.
         </p>
       </div>
 
@@ -164,6 +300,7 @@ export default function AdminSpotlightPrivacyPanel() {
           {tabRows.map((row) => {
             const tabOverrides = overrides[row.tab] ?? {};
             const status = statusLabel(row.tab);
+            const helper = mlsHelper(row.tab);
             return (
               <div key={row.tab} className="px-5 sm:px-6 py-5">
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
@@ -172,8 +309,7 @@ export default function AdminSpotlightPrivacyPanel() {
                       Spotlight {row.tab}
                     </p>
                     <p className="mt-1 text-sm text-charcoal/70">
-                      {row.street || row.label}
-                      {row.town ? ` · ${row.town}` : ""}
+                      {headerLabel(row)}
                     </p>
                   </div>
                   {status ? (
@@ -190,61 +326,103 @@ export default function AdminSpotlightPrivacyPanel() {
                     </p>
                   ) : null}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 accent-gold"
-                      checked={tabOverrides.showAddress === true}
-                      onChange={(e) =>
-                        toggle(row.tab, "showAddress", e.target.checked)
-                      }
-                    />
-                    <span>
+
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                  <div className="lg:w-64 lg:shrink-0">
+                    <label className="block rounded-xl border border-charcoal/[0.08] px-4 py-3">
                       <span className="block text-sm text-charcoal font-medium">
-                        Show address
+                        MLS #
                       </span>
-                      <span className="block text-xs text-charcoal/55 mt-0.5">
-                        Street address on the spotlight header
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="mt-1.5 w-full rounded-lg border border-charcoal/15 bg-white px-2.5 py-1.5 font-mono text-sm text-charcoal focus:border-gold focus:outline-none"
+                        placeholder="e.g. 24180824"
+                        value={mlsInput[row.tab] ?? ""}
+                        onChange={(e) =>
+                          setMlsInput((prev) => ({
+                            ...prev,
+                            [row.tab]: e.target.value,
+                          }))
+                        }
+                        onBlur={() => void saveMlsId(row.tab)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                      />
+                      <span
+                        className={`mt-1 block text-xs ${
+                          helper.tone === "bad"
+                            ? "text-coral"
+                            : helper.tone === "ok"
+                              ? "text-sage"
+                              : "text-charcoal/55"
+                        }`}
+                      >
+                        {helper.text}
                       </span>
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 accent-gold"
-                      checked={tabOverrides.showClearPhotos === true}
-                      onChange={(e) =>
-                        toggle(row.tab, "showClearPhotos", e.target.checked)
-                      }
-                    />
-                    <span>
-                      <span className="block text-sm text-charcoal font-medium">
-                        Clear photos 1 &amp; 2
+                    </label>
+                  </div>
+
+                  <div className="grid flex-1 gap-3 sm:grid-cols-3">
+                    <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-gold"
+                        checked={tabOverrides.showAddress === true}
+                        onChange={(e) =>
+                          toggle(row.tab, "showAddress", e.target.checked)
+                        }
+                      />
+                      <span>
+                        <span className="block text-sm text-charcoal font-medium">
+                          Show address
+                        </span>
+                        <span className="block text-xs text-charcoal/55 mt-0.5">
+                          Street address on the spotlight header
+                        </span>
                       </span>
-                      <span className="block text-xs text-charcoal/55 mt-0.5">
-                        Remove blur on the first two listing photos
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-gold"
+                        checked={tabOverrides.showClearPhotos === true}
+                        onChange={(e) =>
+                          toggle(row.tab, "showClearPhotos", e.target.checked)
+                        }
+                      />
+                      <span>
+                        <span className="block text-sm text-charcoal font-medium">
+                          Clear photos 1 &amp; 2
+                        </span>
+                        <span className="block text-xs text-charcoal/55 mt-0.5">
+                          Remove blur on the first two listing photos
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 accent-gold"
-                      checked={tabOverrides.showPropertyMap === true}
-                      onChange={(e) =>
-                        toggle(row.tab, "showPropertyMap", e.target.checked)
-                      }
-                    />
-                    <span>
-                      <span className="block text-sm text-charcoal font-medium">
-                        Property map &amp; pin
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-gold"
+                        checked={tabOverrides.showPropertyMap === true}
+                        onChange={(e) =>
+                          toggle(row.tab, "showPropertyMap", e.target.checked)
+                        }
+                      />
+                      <span>
+                        <span className="block text-sm text-charcoal font-medium">
+                          Property map &amp; pin
+                        </span>
+                        <span className="block text-xs text-charcoal/55 mt-0.5">
+                          Exact location with house marker (off = town map only)
+                        </span>
                       </span>
-                      <span className="block text-xs text-charcoal/55 mt-0.5">
-                        Exact location with house marker (off = town map only)
-                      </span>
-                    </span>
-                  </label>
+                    </label>
+                  </div>
                 </div>
               </div>
             );

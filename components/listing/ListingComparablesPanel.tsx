@@ -20,6 +20,7 @@ import {
 } from "@/lib/listing-comparables-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import { VINTAGE_BUCKETS } from "@/lib/vintage-buckets";
 
 type ComparablesResponse = {
   sold: ComparableListing[];
@@ -49,6 +50,41 @@ const COMP_SHOW_MORE_STEP = 4;
 const COMP_MAX_VISIBLE = 12;
 /** Extra sold comps revealed per look-back step (4 → 6 → 8 → 10 → 12). */
 const LOOKBACK_VISIBLE_STEP = 2;
+/** Auto-widen the look-back until at least this many sold/rented comps show. */
+const COMP_MIN_LOOKBACK_COMPS = 4;
+
+type SoldYearGroup = { year: number | null; comps: ComparableListing[] };
+
+/**
+ * Group sold/rented comps by close year, newest year first, preserving the
+ * incoming (already-sorted) order within each year. Undated comps sort last.
+ */
+function groupSoldByYear(comps: ComparableListing[]): SoldYearGroup[] {
+  const map = new Map<number | null, ComparableListing[]>();
+  for (const comp of comps) {
+    const ms = parseCloseDateMs(comp.closeDate);
+    const year = ms > 0 ? new Date(ms).getFullYear() : null;
+    const arr = map.get(year);
+    if (arr) arr.push(comp);
+    else map.set(year, [comp]);
+  }
+  return [...map.entries()]
+    .sort((a, b) => (b[0] ?? -Infinity) - (a[0] ?? -Infinity))
+    .map(([year, groupComps]) => ({ year, comps: groupComps }));
+}
+
+/** Smallest look-back window (months) that surfaces at least `minCount` comps. */
+function minLookbackForComps(
+  sold: ComparableListing[],
+  minCount: number,
+): number {
+  for (const months of COMPARABLES_LOOKBACK_OPTIONS) {
+    if (soldWithinLookback(sold, months, sold.length).length >= minCount) {
+      return months;
+    }
+  }
+  return COMPARABLES_LOOKBACK_OPTIONS[COMPARABLES_LOOKBACK_OPTIONS.length - 1]!;
+}
 
 function defaultSortDir(key: SoldSortKey | ActiveSortKey): SortDir {
   if (key === "default" || key === "price") return "asc";
@@ -429,10 +465,12 @@ function LookbackSpinner({
   const atMax = idx >= options.length - 1;
   const dark = theme === "dark";
 
-  const btnClass = `flex h-5 w-5 items-center justify-center rounded text-[8px] leading-none transition-colors disabled:opacity-25 disabled:cursor-not-allowed ${
+  // Raised, 3D-ish stepper buttons with an inset highlight + drop shadow that
+  // presses down on click. Triangles sit flush against the value readout.
+  const btnClass = `flex h-[18px] w-[18px] items-center justify-center rounded-md border text-[8px] leading-none transition-all active:translate-y-px disabled:opacity-25 disabled:cursor-not-allowed disabled:shadow-none disabled:active:translate-y-0 ${
     dark
-      ? "text-white/50 hover:text-gold hover:bg-white/10"
-      : "text-charcoal/50 hover:text-navy hover:bg-charcoal/[0.06]"
+      ? "border-white/15 bg-gradient-to-b from-white/20 to-white/[0.06] text-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(0,0,0,0.45)] hover:from-white/30 hover:text-gold active:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]"
+      : "border-charcoal/20 bg-gradient-to-b from-white to-cream/70 text-charcoal/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.18)] hover:text-navy active:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]"
   }`;
 
   return (
@@ -455,8 +493,10 @@ function LookbackSpinner({
           &#9660;
         </button>
         <span
-          className={`min-w-[2.75rem] text-center font-mono text-[10px] tracking-[0.1em] uppercase tabular-nums ${
-            dark ? "text-white/70" : "text-charcoal/70"
+          className={`min-w-[2.6rem] rounded-md border px-1.5 py-0.5 text-center font-mono text-[10px] tracking-[0.1em] uppercase tabular-nums ${
+            dark
+              ? "border-white/10 bg-black/20 text-white/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]"
+              : "border-charcoal/15 bg-white/70 text-charcoal/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]"
           }`}
         >
           {lookbackLabel(months)}
@@ -475,19 +515,156 @@ function LookbackSpinner({
   );
 }
 
-function criteriaSummary(criteria: ComparablesCriteria): string {
-  const parts = [
-    `Zip ${criteria.zip}`,
-    `${criteria.beds} bed ±1 / ${criteria.baths} bath ±1`,
-    vintageCriteriaList(criteria),
+/** Acres value without the unit suffix, for building ranges like "0.22–0.52 ac". */
+function acresValue(acres: number): string {
+  if (acres < 0.01) return "<0.01";
+  if (acres < 10) return acres.toFixed(2);
+  return acres.toFixed(1);
+}
+
+/**
+ * Continuous vintage span for the expanded view, derived from the bracketed
+ * label list (oldest → newest). Open-ended buckets read as "< 1900" / "present"
+ * so e.g. [Pre-1900, 1900–1940] expands to "< 1900–1940".
+ */
+function vintageExpandedSpan(vintageList: string): string {
+  const labels = vintageList.split(" | ").filter(Boolean);
+  const entries = labels
+    .map((label) => {
+      const idx = VINTAGE_BUCKETS.findIndex((b) => b.label === label);
+      return { label, idx, id: VINTAGE_BUCKETS[idx]?.id ?? null };
+    })
+    .filter((e) => e.idx >= 0)
+    .sort((a, b) => a.idx - b.idx);
+  if (entries.length === 0) return "";
+
+  const lower = entries[0]!;
+  const upper = entries[entries.length - 1]!;
+
+  if (entries.length === 1) {
+    if (lower.id === "pre-1900") return "< 1900";
+    if (lower.id === "2020-present") return "2020+";
+    return lower.label;
+  }
+
+  const lowerEdge =
+    lower.id === "pre-1900" ? "< 1900" : (lower.label.split("–")[0] ?? lower.label);
+  const upperEdge =
+    upper.id === "2020-present" ? "present" : (upper.label.split("–")[1] ?? upper.label);
+  return `${lowerEdge}–${upperEdge}`;
+}
+
+type CriteriaBound = {
+  key: string;
+  /** Text left of the bracket (empty for the vintage token). */
+  label: string;
+  /** Compact bracket contents, e.g. "±1" or "Pre-1900, 1900–1940". */
+  token: string;
+  /** Expanded bounds, e.g. "3–5 bed" or "< 1900–1940". */
+  expanded: string;
+};
+
+function criteriaBounds(criteria: ComparablesCriteria): CriteriaBound[] {
+  const bounds: CriteriaBound[] = [
+    {
+      key: "bed",
+      label: `${criteria.beds} bed`,
+      token: "±1",
+      expanded: `${Math.max(0, criteria.beds - 1)}–${criteria.beds + 1} bed`,
+    },
+    {
+      key: "bath",
+      label: `${criteria.baths} bath`,
+      token: "±1",
+      expanded: `${Math.max(0, criteria.baths - 1)}–${criteria.baths + 1} bath`,
+    },
   ];
+
+  const vintages = vintageCriteriaList(criteria);
+  if (vintages) {
+    bounds.push({
+      key: "vintage",
+      label: "",
+      token: vintages.split(" | ").join(", "),
+      expanded: vintageExpandedSpan(vintages),
+    });
+  }
+
   if (criteria.sqft != null) {
-    parts.push(`${fmtSqft(criteria.sqft)} ±30%`);
+    bounds.push({
+      key: "sqft",
+      label: fmtSqft(criteria.sqft),
+      token: "±30%",
+      expanded: `${Math.round(criteria.sqft * 0.7).toLocaleString("en-US")}–${Math.round(
+        criteria.sqft * 1.3,
+      ).toLocaleString("en-US")} sqft`,
+    });
   }
+
   if (criteria.lotAcres != null) {
-    parts.push(`${fmtAcres(criteria.lotAcres)} ±40%`);
+    bounds.push({
+      key: "lot",
+      label: fmtAcres(criteria.lotAcres),
+      token: "±40%",
+      expanded: `${acresValue(criteria.lotAcres * 0.6)}–${acresValue(
+        criteria.lotAcres * 1.4,
+      )} ac`,
+    });
   }
-  return parts.join(" · ");
+
+  return bounds;
+}
+
+/**
+ * Renders the "Matching …" criteria line. Every bracketed tolerance/vintage is a
+ * toggle: click (or hover for the tooltip) to swap the compact "[±1]" bracket
+ * for the actual bounds ("3–5 bed"); click again to collapse back.
+ */
+function CriteriaSummary({
+  criteria,
+  isModal,
+}: {
+  criteria: ComparablesCriteria;
+  isModal: boolean;
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggle = (key: string) =>
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Swapped palette: the values (zip / bed / bath / sqft / ac) are gold, while
+  // the still-clickable bracket toggles take the muted "other" color.
+  const valueClass = "text-gold";
+  const linkClass = isModal
+    ? "text-slate underline decoration-slate/40 underline-offset-2 hover:text-navy transition-colors cursor-pointer"
+    : "text-white/60 underline decoration-white/40 underline-offset-2 hover:text-white transition-colors cursor-pointer";
+
+  const bounds = criteriaBounds(criteria);
+
+  return (
+    <>
+      <span className={valueClass}>{criteria.zip}</span>
+      {bounds.map((bound) => {
+        const isOpen = expanded[bound.key];
+        return (
+          <span key={bound.key}>
+            {" · "}
+            {bound.label && !isOpen ? (
+              <span className={valueClass}>{`${bound.label} `}</span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => toggle(bound.key)}
+              className={linkClass}
+              title={isOpen ? bound.token : bound.expanded}
+              aria-expanded={isOpen}
+            >
+              {isOpen ? bound.expanded : `[${bound.token}]`}
+            </button>
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 type ListingComparablesPanelProps = {
@@ -604,6 +781,28 @@ export default function ListingComparablesPanel({
     };
   }, [mlsId, comparablesUrl]);
 
+  // When the default 1-year window holds fewer than COMP_MIN_LOOKBACK_COMPS
+  // sold/rented comps, auto-widen the look-back to the smallest window that
+  // reaches the minimum (capped at 3yr) and move the spinner to match. Runs once
+  // per data load (i.e. per listing), so manual spinner changes are preserved.
+  useEffect(() => {
+    const soldList = data?.sold ?? [];
+    if (soldList.length === 0) {
+      setLookbackMonths(COMPARABLES_DEFAULT_LOOKBACK_MONTHS);
+      return;
+    }
+    const withinDefault = soldWithinLookback(
+      soldList,
+      COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
+      soldList.length,
+    ).length;
+    setLookbackMonths(
+      withinDefault >= COMP_MIN_LOOKBACK_COMPS
+        ? COMPARABLES_DEFAULT_LOOKBACK_MONTHS
+        : minLookbackForComps(soldList, COMP_MIN_LOOKBACK_COMPS),
+    );
+  }, [data]);
+
   const sold = data?.sold ?? [];
   const active = data?.active ?? [];
   const criteria = data?.criteria ?? null;
@@ -671,6 +870,9 @@ export default function ListingComparablesPanel({
   const soldCap = Math.min(sortedSold.length, COMP_MAX_VISIBLE);
   const activeCap = Math.min(sortedActive.length, COMP_MAX_VISIBLE);
   const visibleSold = sortedSold.slice(0, Math.min(effectiveSoldVisible, soldCap));
+  // Regardless of the chosen sort, group the visible sold/rented comps by close
+  // year (newest first) so older years are clearly separated by a divider.
+  const soldGroups = useMemo(() => groupSoldByYear(visibleSold), [visibleSold]);
   const visibleActive = sortedActive.slice(
     0,
     Math.min(activeVisibleCount, activeCap),
@@ -738,6 +940,11 @@ export default function ListingComparablesPanel({
     ? "font-mono text-[10px] tracking-[0.15em] uppercase text-slate"
     : "font-mono text-[10px] tracking-[0.15em] uppercase text-white/45";
 
+  // "N found" count shown in the top-right corner of each comps panel.
+  const foundCountClass = `font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums whitespace-nowrap ${
+    isModal ? "text-slate/70" : "text-white/40"
+  }`;
+
   return (
     <div className={wrapperClass}>
       {isPage && (
@@ -773,7 +980,7 @@ export default function ListingComparablesPanel({
               : "font-mono text-[10px] tracking-[0.12em] uppercase text-white/40"
           }
         >
-          Matching {criteriaSummary(criteria)}
+          <CriteriaSummary criteria={criteria} isModal={isModal} />
         </p>
       )}
 
@@ -857,35 +1064,62 @@ export default function ListingComparablesPanel({
               />
             </div>
             {sortedSold.length > 0 ? (
-              <CompSortLinks
-                options={[
-                  { key: "score", label: "Edge" },
-                  { key: "closeDate", label: "CLOSED" },
-                  { key: "price", label: "Price" },
-                ]}
-                activeKey={soldSort.key}
-                activeDir={soldSort.dir}
-                onSort={handleSoldSort}
-                theme={sortTheme}
-                ariaLabel={`${recentlyClosedLabel} sort`}
-              />
+              <div className="flex items-center gap-x-3">
+                <CompSortLinks
+                  options={[
+                    { key: "score", label: "Edge" },
+                    { key: "closeDate", label: "CLOSED" },
+                    { key: "price", label: "Price" },
+                  ]}
+                  activeKey={soldSort.key}
+                  activeDir={soldSort.dir}
+                  onSort={handleSoldSort}
+                  theme={sortTheme}
+                  ariaLabel={`${recentlyClosedLabel} sort`}
+                />
+                <span className={foundCountClass}>
+                  {sortedSold.length} found
+                </span>
+              </div>
             ) : null}
           </div>
           {sortedSold.length > 0 ? (
             <>
-              <ul className="space-y-3">
-                {visibleSold.map((comp) => (
-                  <CompRow
-                    key={comp.mlsId}
-                    comp={comp}
-                    town={town}
-                    variant={variant}
-                    showCloseDate
-                    isRental={isRental}
-                    scoreColorClass={soldScoreColors.get(comp.mlsId) ?? null}
-                  />
+              <div className="space-y-3">
+                {soldGroups.map((group, groupIndex) => (
+                  <div
+                    key={group.year ?? "earlier"}
+                    className={
+                      groupIndex > 0
+                        ? isModal
+                          ? "border-t border-charcoal/15 pt-3"
+                          : "border-t border-white/15 pt-3"
+                        : ""
+                    }
+                  >
+                    <p
+                      className={`mb-2 font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums ${
+                        isModal ? "text-slate/70" : "text-white/40"
+                      }`}
+                    >
+                      {group.year ?? "Earlier"}
+                    </p>
+                    <ul className="space-y-3">
+                      {group.comps.map((comp) => (
+                        <CompRow
+                          key={comp.mlsId}
+                          comp={comp}
+                          town={town}
+                          variant={variant}
+                          showCloseDate
+                          isRental={isRental}
+                          scoreColorClass={soldScoreColors.get(comp.mlsId) ?? null}
+                        />
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
               {canShowMoreSold ? (
                 <CompShowMoreButton
                   theme={sortTheme}
@@ -928,19 +1162,24 @@ export default function ListingComparablesPanel({
             <p className={sectionTitleClass}>
               {isPage ? "ON MARKET" : "On market"}
             </p>
-            {active.length > 0 ? (
-              <CompSortLinks
-                options={[
-                  { key: "default", label: "Match" },
-                  { key: "score", label: "Edge" },
-                  { key: "price", label: "Price" },
-                ]}
-                activeKey={activeSort.key}
-                activeDir={activeSort.dir}
-                onSort={handleActiveSort}
-                theme={sortTheme}
-                ariaLabel="On market sort"
-              />
+            {sortedActive.length > 0 ? (
+              <div className="flex items-center gap-x-3">
+                <CompSortLinks
+                  options={[
+                    { key: "default", label: "Match" },
+                    { key: "score", label: "Edge" },
+                    { key: "price", label: "Price" },
+                  ]}
+                  activeKey={activeSort.key}
+                  activeDir={activeSort.dir}
+                  onSort={handleActiveSort}
+                  theme={sortTheme}
+                  ariaLabel="On market sort"
+                />
+                <span className={foundCountClass}>
+                  {sortedActive.length} found
+                </span>
+              </div>
             ) : null}
           </div>
           {active.length > 0 ? (

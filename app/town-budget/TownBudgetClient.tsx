@@ -166,13 +166,17 @@ export default function TownBudgetClient() {
                   <a href={`tel:${budget.contacts.taxCollectorPhone.replace(/\D/g, "")}`}>
                     {budget.contacts.taxCollectorPhone}
                   </a>
-                  {" · "}
-                  <a
-                    href={`mailto:${budget.contacts.taxCollectorEmail}`}
-                    className="underline decoration-gold/40"
-                  >
-                    {budget.contacts.taxCollectorEmail}
-                  </a>
+                  {budget.contacts.taxCollectorEmail ? (
+                    <>
+                      {" · "}
+                      <a
+                        href={`mailto:${budget.contacts.taxCollectorEmail}`}
+                        className="underline decoration-gold/40"
+                      >
+                        {budget.contacts.taxCollectorEmail}
+                      </a>
+                    </>
+                  ) : null}
                 </dd>
               </div>
               <div>
@@ -196,7 +200,8 @@ export default function TownBudgetClient() {
                     rel="noopener noreferrer"
                     className="underline decoration-gold/40"
                   >
-                    westportct.gov/paytaxes
+                    {budget.contacts.payTaxesLabel ??
+                      budget.contacts.payTaxesUrl.replace(/^https?:\/\//, "")}
                   </a>
                 </dd>
               </div>

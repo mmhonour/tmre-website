@@ -31,9 +31,12 @@ export type TownBudgetSnapshot = {
   taxCalendar: TaxCalendarEntry[]
   contacts: {
     taxCollectorPhone: string
-    taxCollectorEmail: string
+    /** Omit when no official tax-collector email could be verified. */
+    taxCollectorEmail?: string
     taxCollectorUrl: string
     payTaxesUrl: string
+    /** Human-friendly label for the pay-online link (defaults to the URL host). */
+    payTaxesLabel?: string
     assessorPhone: string
     townHallAddress: string
   }

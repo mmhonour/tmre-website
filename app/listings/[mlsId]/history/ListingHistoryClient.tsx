@@ -5,7 +5,9 @@ import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
+import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import ListingSidebar from "@/components/listing/ListingSidebar";
+import { listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import {
   listingHeaderScoreProps,
@@ -137,14 +139,32 @@ export default function ListingHistoryClient({
     ]
       .filter(Boolean)
       .join(", ");
+  const resolvedTown = townHint || listing.address.city;
   const isClosed = formatMlsStatus(listing.status) === "Closed";
+  const photoCount = listing.photoCount ?? 0;
+  const galleryHref = listingPhotosHref(
+    mlsId,
+    street || addressHint,
+    resolvedTown,
+  );
+  const heroSlot =
+    photoCount > 0 ? (
+      <ListingHeroPhoto
+        url={listingPhotoProxyUrl(listing.mlsId, 0)}
+        alt={street || "Listing photo"}
+        href={galleryHref}
+        photoCount={photoCount}
+        photoIndex={0}
+        bare
+      />
+    ) : null;
   const details = buildListingDetailsPanelProps(
     { ...listing, townHint: townHint ?? null },
     fmtMoney,
     {
       listingId: mlsId,
       addressHint: street || addressHint,
-      townHint: townHint || listing.address.city,
+      townHint: resolvedTown,
     },
   );
 
@@ -162,6 +182,7 @@ export default function ListingHistoryClient({
           sqft: listing.sqft,
           yearBuilt: listing.yearBuilt,
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
+          heroSlot,
           ...listingHeaderScoreProps({
             goldilocksScore,
             goldilocksBreakdown,

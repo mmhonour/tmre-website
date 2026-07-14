@@ -2,7 +2,14 @@ import 'server-only'
 
 import { resolveMlsIdByAddress } from '@/lib/address-mls-resolve'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
-import type { SpotlightListingConfig } from '@/lib/spotlight-listing'
+import {
+  spotlightTabForConfigId,
+  type SpotlightListingConfig,
+} from '@/lib/spotlight-listing'
+import {
+  readSpotlightMlsOverrides,
+  readSpotlightMlsOverridesFresh,
+} from '@/lib/spotlight-mls-overrides'
 
 export const SPOTLIGHT_RESOLVED_MLS_SYNC_KEY = 'spotlight_resolved_mls_ids'
 
@@ -37,6 +44,14 @@ export function writeSpotlightResolvedMlsId(configId: string, mlsId: string): vo
 export function spotlightConfigMlsId(
   config: SpotlightListingConfig,
 ): string | null {
+  // Admin override (sync cache) wins — including an explicit clear ('' → null).
+  const tab = spotlightTabForConfigId(config.id)
+  if (tab != null) {
+    const overrides = readSpotlightMlsOverrides()
+    if (overrides[tab] !== undefined) {
+      return overrides[tab]!.trim() || null
+    }
+  }
   return config.mlsId?.trim() || readSpotlightResolvedMlsId(config.id) || null
 }
 
@@ -44,7 +59,17 @@ export function spotlightConfigMlsId(
 export async function resolveSpotlightMlsId(
   config: SpotlightListingConfig,
 ): Promise<string | null> {
-  const fixed = spotlightConfigMlsId(config)
+  // Admin override (fresh from Postgres) wins so changes reflect immediately;
+  // an explicitly cleared slot ('') resolves to null → tab renders empty/hidden.
+  const tab = spotlightTabForConfigId(config.id)
+  if (tab != null) {
+    const overrides = await readSpotlightMlsOverridesFresh()
+    if (overrides[tab] !== undefined) {
+      return overrides[tab]!.trim() || null
+    }
+  }
+
+  const fixed = config.mlsId?.trim() || readSpotlightResolvedMlsId(config.id)
   if (fixed) return fixed
 
   const street = config.address.street.trim()

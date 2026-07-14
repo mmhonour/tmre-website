@@ -2,9 +2,9 @@
  * TMRE Spotlight — featured listings on /spotlight (property tabs 1–3).
  * Edit this file to swap spotlight properties; tab 1 keeps the Coming Soon panel.
  */
-export type SpotlightPropertyTabId = 1 | 2 | 3;
+export type SpotlightPropertyTabId = 1 | 2 | 3 | 4 | 5;
 
-export const SPOTLIGHT_PROPERTY_TABS: SpotlightPropertyTabId[] = [1, 2, 3];
+export const SPOTLIGHT_PROPERTY_TABS: SpotlightPropertyTabId[] = [1, 2, 3, 4, 5];
 
 export type SpotlightListingConfig = {
   /** Internal reference only (contact form, analytics). */
@@ -108,8 +108,7 @@ export const SPOTLIGHT_LISTING_TAB_2: SpotlightListingConfig = {
     state: "Connecticut",
     postalCode: "06880",
   },
-  /** Resolved at runtime via address search when absent from SQLite. */
-  mlsId: null,
+  mlsId: "24180824",
   listingKey: null,
   status: "Active",
   propertyType: "Single Family For Sale",
@@ -147,7 +146,86 @@ export const SPOTLIGHT_LISTING_TAB_3: SpotlightListingConfig = {
     state: "Connecticut",
     postalCode: "06880",
   },
-  /** Resolved at runtime via address search when absent from SQLite. */
+  mlsId: "24180781",
+  listingKey: null,
+  status: "Active",
+  propertyType: "Single Family For Sale",
+  style: "",
+  price: null,
+  originalListPrice: null,
+  beds: null,
+  baths: null,
+  sqft: null,
+  yearBuilt: null,
+  dom: null,
+  latitude: null,
+  longitude: null,
+  photoCount: null,
+  schools: {
+    elementary: null,
+    middle: null,
+    high: null,
+    district: null,
+  },
+  remarks: "",
+  photos: [],
+  hideAddress: true,
+  obfuscateFirstTwoPhotos: true,
+};
+
+/**
+ * Tabs 4 & 5 — open slots. Empty by default (no MLS id), so they stay hidden on
+ * the public page until an MLS id is assigned in the Admin spotlight panel. The
+ * town / address label is derived from the assigned listing's metadata.
+ */
+export const SPOTLIGHT_LISTING_TAB_4: SpotlightListingConfig = {
+  id: "spotlight-slot-4",
+  displayTitle: "Featured Property",
+  displayLocation: "",
+  address: {
+    street: "",
+    city: "",
+    state: "Connecticut",
+    postalCode: "",
+  },
+  mlsId: null,
+  listingKey: null,
+  status: "Active",
+  propertyType: "Single Family For Sale",
+  style: "",
+  price: null,
+  originalListPrice: null,
+  beds: null,
+  baths: null,
+  sqft: null,
+  yearBuilt: null,
+  dom: null,
+  latitude: null,
+  longitude: null,
+  photoCount: null,
+  schools: {
+    elementary: null,
+    middle: null,
+    high: null,
+    district: null,
+  },
+  remarks: "",
+  photos: [],
+  hideAddress: true,
+  obfuscateFirstTwoPhotos: true,
+};
+
+/** Tab 5 — open slot (see tab 4). */
+export const SPOTLIGHT_LISTING_TAB_5: SpotlightListingConfig = {
+  id: "spotlight-slot-5",
+  displayTitle: "Featured Property",
+  displayLocation: "",
+  address: {
+    street: "",
+    city: "",
+    state: "Connecticut",
+    postalCode: "",
+  },
   mlsId: null,
   listingKey: null,
   status: "Active",
@@ -180,6 +258,8 @@ const SPOTLIGHT_LISTINGS_BY_TAB: Record<SpotlightPropertyTabId, SpotlightListing
     1: SPOTLIGHT_LISTING,
     2: SPOTLIGHT_LISTING_TAB_2,
     3: SPOTLIGHT_LISTING_TAB_3,
+    4: SPOTLIGHT_LISTING_TAB_4,
+    5: SPOTLIGHT_LISTING_TAB_5,
   };
 
 /** `?property=` value for tab 2+; tab 1 omits the param. */
@@ -194,6 +274,8 @@ export function parseSpotlightPropertyTab(
 ): SpotlightPropertyTabId {
   if (value === "2") return 2;
   if (value === "3") return 3;
+  if (value === "4") return 4;
+  if (value === "5") return 5;
   return 1;
 }
 
@@ -201,4 +283,15 @@ export function getSpotlightListingConfig(
   tab: SpotlightPropertyTabId = 1,
 ): SpotlightListingConfig {
   return SPOTLIGHT_LISTINGS_BY_TAB[tab];
+}
+
+/** Reverse lookup: which tab a config belongs to (by its stable `id`). */
+export function spotlightTabForConfigId(
+  id: string,
+): SpotlightPropertyTabId | null {
+  const target = id.trim();
+  for (const tab of SPOTLIGHT_PROPERTY_TABS) {
+    if (SPOTLIGHT_LISTINGS_BY_TAB[tab].id === target) return tab;
+  }
+  return null;
 }

@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  ADMIN_SECTION_LINKS,
   ADMIN_TABS,
   adminTabForSection,
   type AdminTabId,
@@ -44,15 +43,6 @@ export default function AdminTabbedLayout({
 }) {
   const [tab, setTab] = useState<AdminTabId>("db");
 
-  const jumpTo = useCallback((sectionId: string, nextTab: AdminTabId) => {
-    setTab(nextTab);
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", nextTab);
-    url.hash = sectionId;
-    window.history.replaceState(null, "", url);
-    scrollToSection(sectionId);
-  }, []);
-
   useEffect(() => {
     const syncFromLocation = () => {
       const nextTab = tabFromLocation();
@@ -75,37 +65,16 @@ export default function AdminTabbedLayout({
   }
 
   const panels: Record<AdminTabId, ReactNode> = { db, server, docs, site, rets };
+  const activeItem = ADMIN_TABS.find((item) => item.id === tab);
 
   return (
     <section className="bg-cream py-10 lg:py-14">
       <div className="mx-auto max-w-7xl px-6 lg:px-10">
-        <nav
-          aria-label="Admin sections"
-          className="mb-6 overflow-x-auto rounded-2xl border border-charcoal/[0.08] bg-white px-4 py-3 shadow-sm shadow-charcoal/[0.04]"
-        >
-          <p className="mb-2 font-mono text-[10px] tracking-[0.18em] uppercase text-gold">
-            Jump to
-          </p>
-          <ul className="flex flex-wrap gap-x-4 gap-y-2">
-            {ADMIN_SECTION_LINKS.map((link) => (
-              <li key={link.id}>
-                <button
-                  type="button"
-                  onClick={() => jumpTo(link.id, link.tab)}
-                  className="font-mono text-[11px] tracking-[0.08em] text-navy/75 underline-offset-2 hover:text-navy hover:underline"
-                >
-                  {link.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        {/* Single-row tab bar — inactive tabs show label only; active tab expands with subtitle */}
+        {/* Underline tab bar — uniform height, active tab marked by a bottom border. */}
         <div
           role="tablist"
           aria-label="Admin areas"
-          className="mb-8 flex flex-row items-start gap-2 overflow-x-auto pb-0.5"
+          className="flex flex-row items-stretch gap-1 overflow-x-auto border-b border-charcoal/[0.12]"
         >
           {ADMIN_TABS.map((item) => {
             const active = tab === item.id;
@@ -116,24 +85,24 @@ export default function AdminTabbedLayout({
                 role="tab"
                 aria-selected={active}
                 onClick={() => selectTab(item.id)}
-                className={`shrink-0 rounded-2xl border px-4 text-left transition-all duration-150 ${
+                className={`shrink-0 -mb-px border-b-2 px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase whitespace-nowrap transition-colors ${
                   active
-                    ? "py-3 border-navy bg-navy text-white shadow-sm"
-                    : "py-2.5 border-charcoal/[0.08] bg-white text-charcoal hover:border-gold/35"
+                    ? "border-navy text-navy"
+                    : "border-transparent text-charcoal/55 hover:border-charcoal/20 hover:text-navy"
                 }`}
               >
-                <span className="block font-mono text-[11px] tracking-[0.16em] uppercase whitespace-nowrap">
-                  {item.label}
-                </span>
-                {active && (
-                  <span className="mt-1 block text-xs leading-snug text-white/70 max-w-[18rem]">
-                    {item.subtitle}
-                  </span>
-                )}
+                {item.label}
               </button>
             );
           })}
         </div>
+        {activeItem?.subtitle ? (
+          <p className="mb-8 mt-2 text-xs leading-snug text-charcoal/60">
+            {activeItem.subtitle}
+          </p>
+        ) : (
+          <div className="mb-8" />
+        )}
 
         {ADMIN_TABS.map((item) => (
           <div
