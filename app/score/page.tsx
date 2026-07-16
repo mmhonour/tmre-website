@@ -1,24 +1,18 @@
 import {
   FACTOR_DESCRIPTIONS,
   FACTOR_LABELS,
-  FACTOR_WEIGHTS,
 } from "@/lib/goldilocks-score-info";
 import type { GoldilocksFactorKey } from "@/lib/goldilocks-score-info";
+import { getGoldilocksConfigFresh } from "@/lib/goldilocks-config";
+import { GOLDILOCKS_FACTOR_ORDER } from "@/lib/goldilocks-config-shared";
+
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Score — TMRE",
   description:
     "How TMRE scores every active listing 0–100. The Goldilocks composite model used on Intelligence, Deal of the Day, and across TMRE tools.",
 };
-
-const FACTOR_ORDER: GoldilocksFactorKey[] = [
-  "age",
-  "condition",
-  "finishes",
-  "ppsf",
-  "layout",
-  "schools",
-];
 
 const FACTOR_ICONS: Record<GoldilocksFactorKey, string> = {
   age: "◉",
@@ -29,10 +23,12 @@ const FACTOR_ICONS: Record<GoldilocksFactorKey, string> = {
   schools: "◈",
 };
 
-export default function ScorePage() {
-  const signals = FACTOR_ORDER.map((key) => ({
+export default async function ScorePage() {
+  // Live weights from Postgres (same store Admin Goldilocks tab writes).
+  const { weights } = await getGoldilocksConfigFresh();
+  const signals = GOLDILOCKS_FACTOR_ORDER.map((key) => ({
     label: FACTOR_LABELS[key],
-    weight: FACTOR_WEIGHTS[key],
+    weight: weights[key],
     icon: FACTOR_ICONS[key],
     body: FACTOR_DESCRIPTIONS[key],
   }));
