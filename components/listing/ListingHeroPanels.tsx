@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { warmListingTabs } from "@/lib/warm-listing-cache";
+import { Suspense } from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ListingSubnav, {
@@ -60,13 +59,7 @@ export default function ListingHeroPanels({
 }: ListingHeroPanelsProps) {
   const isSpotlight = variant === "spotlight";
   const frameClass = listingPanelCompactClass;
-
-  // On first open of a property (any tab), warm every tab's server data so
-  // Comparables / Comparable Rentals / If load from cache when the user bounces
-  // between tabs instead of being recomputed each visit.
-  useEffect(() => {
-    warmListingTabs(subnav.mlsId);
-  }, [subnav.mlsId]);
+  // Tab route + API prefetch runs inside ListingSubnav (mounted below).
   const compactHero = Boolean(belowTabs || belowHero || sidebar || footer || interest);
 
   const statusLabel = formatMlsStatus(header.status);

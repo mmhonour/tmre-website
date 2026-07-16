@@ -13,9 +13,17 @@ export async function GET(req: NextRequest) {
     new URL(req.url).searchParams.get('property'),
   )
   const overrides = await readSpotlightPrivacyOverridesFresh()
-  return NextResponse.json({
-    tab,
-    privacy: spotlightEffectivePrivacy(tab, overrides),
-    overrides: overrides[tab] ?? {},
-  })
+  return NextResponse.json(
+    {
+      tab,
+      privacy: spotlightEffectivePrivacy(tab, overrides),
+      overrides: overrides[tab] ?? {},
+    },
+    {
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'Netlify-Vary': 'query=property',
+      },
+    },
+  )
 }

@@ -18,6 +18,7 @@ import {
   listingComparableRentalsHref,
 } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
+import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 
 function IfEstimateRangeDisplay({
   low,
@@ -293,13 +294,17 @@ export default function ListingIfPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const url = `/api/listings/${encodeURIComponent(mlsId)}/if`;
+    const cached = peekTabJson<ListingIfPayload>(url);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}/if`, {
-      cache: "default",
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((payload: ListingIfPayload | null) => {
+    loadTabJson<ListingIfPayload>(url)
+      .then((payload) => {
         if (!cancelled) {
           setData(payload);
           setLoading(false);

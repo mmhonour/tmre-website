@@ -20,6 +20,7 @@ import {
 } from "@/lib/listing-comparables-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 import { VINTAGE_BUCKETS } from "@/lib/vintage-buckets";
 
 type ComparablesResponse = {
@@ -747,23 +748,26 @@ export default function ListingComparablesPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
+    const cached = peekTabJson<ComparablesResponse>(comparablesUrl);
+    if (cached) {
+      setData(cached);
+      setLoadError(null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setLoadError(null);
+    }
 
-    fetch(comparablesUrl, {
-      cache: "default",
-    })
-      .then(async (r) => {
-        if (!r.ok) {
-          throw new Error(
-            r.status === 404 ? "Listing not found." : "Couldn't load comparables.",
-          );
-        }
-        return r.json() as Promise<ComparablesResponse>;
-      })
+    loadTabJson<ComparablesResponse>(comparablesUrl)
       .then((d) => {
         if (cancelled) return;
+        if (!d) {
+          setData(null);
+          setLoadError("Couldn't load comparables.");
+          return;
+        }
         setData(d);
+        setLoadError(null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;

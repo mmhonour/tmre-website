@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
+import { useListingChrome } from "@/hooks/useListingChrome";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
@@ -12,10 +12,7 @@ import { listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
 import { ListingComparablesPageContent } from "@/components/listing/ListingComparablesPanel";
 import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
-import {
-  listingHeaderScoreProps,
-  type ListingScoreApiFields,
-} from "@/lib/listing-header-score-props";
+import { listingHeaderScoreProps } from "@/lib/listing-header-score-props";
 import { ListingShell } from "@/components/listing/ListingShell";
 
 type Schools = {
@@ -53,8 +50,6 @@ type Listing = {
   raw: Record<string, string>;
 };
 
-type LoadState = "loading" | "ready" | "error" | "not-found";
-
 export default function ListingComparablesClient({
   mlsId,
   addressHint,
@@ -68,48 +63,20 @@ export default function ListingComparablesClient({
   comparablesKind?: "sale" | "rental";
   mode?: "comparables" | "uag";
 }) {
-  const [listing, setListing] = useState<Listing | null>(null);
-  const [goldilocksScore, setGoldilocksScore] = useState<number | null>(null);
-  const [edgeScore, setEdgeScore] = useState<number | null>(null);
-  const [goldilocksBreakdown, setGoldilocksBreakdown] =
-    useState<ListingScoreApiFields["goldilocksBreakdown"]>(null);
-  const [insight, setInsight] = useState<string | null>(null);
-  const [state, setState] = useState<LoadState>("loading");
+  const {
+    listing,
+    goldilocksScore,
+    edgeScore,
+    goldilocksBreakdown,
+    insight,
+    state,
+  } = useListingChrome<Listing>(mlsId);
   const activeTab =
     mode === "uag"
       ? "uag"
       : comparablesKind === "rental"
         ? "comparable-rentals"
         : "comparables";
-
-  useEffect(() => {
-    let cancelled = false;
-    setState("loading");
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}`)
-      .then(async (r) => {
-        if (r.status === 404) {
-          if (!cancelled) setState("not-found");
-          return null;
-        }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return (await r.json()) as ListingScoreApiFields & { listing: Listing };
-      })
-      .then((d) => {
-        if (!d || cancelled) return;
-        setListing(d.listing);
-        setGoldilocksScore(d.goldilocksScore ?? null);
-        setEdgeScore(d.edgeScore ?? null);
-        setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
-        setInsight(d.insight ?? null);
-        setState("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [mlsId]);
 
   useRecordLookedAtListing(state === "ready", listing, {
     addressHint,

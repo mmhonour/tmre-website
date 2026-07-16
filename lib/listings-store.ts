@@ -134,6 +134,23 @@ export function listingCacheHeaders(source: ListingsSource): HeadersInit {
   }
 }
 
+/**
+ * Cache headers for Spotlight APIs that key off query params (`property`,
+ * `photos`, `kind`).
+ *
+ * Netlify's CDN ignores query strings in the cache key unless `Netlify-Vary`
+ * says otherwise — so `public, s-maxage=…` on `/api/spotlight?property=2`
+ * would reuse the response cached for `property=1` and make every tab look
+ * like the same listing. Never CDN-cache these routes.
+ */
+export function spotlightApiCacheHeaders(): HeadersInit {
+  return {
+    'Cache-Control': 'private, no-store',
+    'Netlify-Vary': 'query=property|photos|kind',
+    'X-Listings-Source': 'db',
+  }
+}
+
 async function readDbListings(
   city: string,
   bucket: string,

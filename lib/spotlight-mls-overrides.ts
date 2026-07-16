@@ -86,6 +86,43 @@ export function spotlightTabHasListing(
   return effectiveSpotlightMlsId(tab, overrides).length > 0
 }
 
+/**
+ * Returns another spotlight tab that already uses `mlsId` (effective id —
+ * override or hardcoded default). Used to block duplicate assignments.
+ */
+export function findSpotlightMlsConflict(
+  tab: SpotlightPropertyTabId,
+  mlsId: string,
+  overrides: SpotlightMlsOverrides = {},
+): SpotlightPropertyTabId | null {
+  const id = mlsId.trim()
+  if (!id) return null
+  for (const other of SPOTLIGHT_PROPERTY_TABS) {
+    if (other === tab) continue
+    if (effectiveSpotlightMlsId(other, overrides) === id) return other
+  }
+  return null
+}
+
+/** All tabs whose effective MLS id is shared with at least one other tab. */
+export function findSpotlightMlsDuplicateTabs(
+  overrides: SpotlightMlsOverrides = {},
+): SpotlightPropertyTabId[] {
+  const byMls = new Map<string, SpotlightPropertyTabId[]>()
+  for (const tab of SPOTLIGHT_PROPERTY_TABS) {
+    const mlsId = effectiveSpotlightMlsId(tab, overrides)
+    if (!mlsId) continue
+    const list = byMls.get(mlsId) ?? []
+    list.push(tab)
+    byMls.set(mlsId, list)
+  }
+  const dupes: SpotlightPropertyTabId[] = []
+  for (const tabs of byMls.values()) {
+    if (tabs.length > 1) dupes.push(...tabs)
+  }
+  return dupes.sort((a, b) => a - b)
+}
+
 /** Coerce arbitrary admin input into a clean per-tab override map. */
 export function normalizeSpotlightMlsOverrides(
   input: unknown,

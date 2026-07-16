@@ -16,6 +16,11 @@ import {
 } from "@/lib/listing-header-score-props";
 import { listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
 import { ListingShell } from "@/components/listing/ListingShell";
+import {
+  listingChromeApiUrl,
+  loadTabJson,
+  peekTabJson,
+} from "@/lib/tab-data-prefetch";
 
 type Schools = {
   elementary: string | null;
@@ -94,8 +99,11 @@ export default function ListingDetailClient({
 
   useEffect(() => {
     let cancelled = false;
-    const cached = listingDetailCache.get(mlsId);
+    const url = listingChromeApiUrl(mlsId);
+    const cached =
+      listingDetailCache.get(mlsId) ?? peekTabJson<ApiResponse>(url);
     if (cached) {
+      listingDetailCache.set(mlsId, cached);
       setData(cached);
       setState("ready");
     } else {
@@ -103,17 +111,13 @@ export default function ListingDetailClient({
       setState("loading");
     }
 
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}?photos=0`)
-      .then(async (r) => {
-        if (r.status === 404) {
-          if (!cancelled) setState("not-found");
-          return null;
-        }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return (await r.json()) as ApiResponse;
-      })
+    void loadTabJson<ApiResponse>(url)
       .then((d) => {
-        if (!d || cancelled) return;
+        if (cancelled) return;
+        if (!d?.listing) {
+          setState("not-found");
+          return;
+        }
         listingDetailCache.set(mlsId, d);
         setData(d);
         setState("ready");

@@ -17,6 +17,7 @@ import {
   spotlightPropertySearchParam,
   type SpotlightPropertyTabId,
 } from "@/lib/spotlight-listing";
+import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 
 type LoadState = "ready" | "error";
 
@@ -93,17 +94,35 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
 
     const propertyParam = spotlightPropertySearchParam(propertyTab);
     const propertyQs = propertyParam ? `&property=${propertyParam}` : "";
-    fetch(`/api/spotlight?photos=${includePhotos ? "1" : "0"}${propertyQs}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: SpotlightFetchPayload | null) => {
+    const spotlightUrl = `/api/spotlight?photos=${includePhotos ? "1" : "0"}${propertyQs}`;
+
+    const peeked = peekTabJson<SpotlightFetchPayload>(spotlightUrl);
+    if (peeked?.listing) {
+      spotlightFetchCache.set(cacheKey, peeked);
+      setMlsListing(peeked.listing);
+      setGoldilocksScore(peeked.goldilocksScore ?? null);
+      setGoldilocksBreakdown(peeked.goldilocksBreakdown ?? null);
+      setInsight(peeked.insight ?? null);
+      if (includePhotos && peeked.photos) {
+        setPhotos(peeked.photos);
+        setPhotosState("ready");
+      }
+    }
+
+    void loadTabJson<SpotlightFetchPayload>(spotlightUrl)
+      .then((d) => {
         if (cancelled) return;
-        if (d) spotlightFetchCache.set(cacheKey, d);
-        setMlsListing(d?.listing ?? null);
-        setGoldilocksScore(d?.goldilocksScore ?? null);
-        setGoldilocksBreakdown(d?.goldilocksBreakdown ?? null);
-        setInsight(d?.insight ?? null);
+        if (!d) {
+          if (includePhotos) setPhotosState("error");
+          return;
+        }
+        spotlightFetchCache.set(cacheKey, d);
+        setMlsListing(d.listing ?? null);
+        setGoldilocksScore(d.goldilocksScore ?? null);
+        setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
+        setInsight(d.insight ?? null);
         if (includePhotos) {
-          setPhotos(d?.photos ?? []);
+          setPhotos(d.photos ?? []);
           setPhotosState("ready");
         }
       })

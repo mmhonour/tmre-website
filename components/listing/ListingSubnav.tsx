@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import { listingSectionHref } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
+import { warmListingTabs } from "@/lib/warm-listing-cache";
+import {
+  parseSpotlightPropertyTab,
+  spotlightPropertySearchParam,
+} from "@/lib/spotlight-listing";
 
 export type ListingTab =
   | "overview"
@@ -60,6 +65,7 @@ export default function ListingSubnav({
   compact?: boolean;
 }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const viewportRef = useRef<HTMLDivElement>(null);
   const measureFullRef = useRef<HTMLDivElement>(null);
   const [stackRows, setStackRows] = useState(false);
@@ -100,6 +106,26 @@ export default function ListingSubnav({
   const topTabs = tabs.filter((tab) => TOP_ROW_IDS.includes(tab.id));
   const compsTabs = tabs.filter((tab) => COMPS_ROW_IDS.includes(tab.id));
   const uagTabs = tabs.filter((tab) => UAG_ROW_IDS.includes(tab.id));
+
+  // Prefetch Next.js tab routes + API JSON as soon as any tab of this property
+  // mounts, so the next click is a cache hit (browser + Postgres warm).
+  useEffect(() => {
+    for (const tab of allTabs) {
+      if (tab.id === "photos" && active !== "photos") continue;
+      router.prefetch(tab.href);
+    }
+    const propertyTab = parseSpotlightPropertyTab(searchParams.get("property"));
+    warmListingTabs(mlsId, {
+      routeBase,
+      townHint,
+      propertyParam:
+        routeBase === "spotlight"
+          ? spotlightPropertySearchParam(propertyTab)
+          : null,
+    });
+    // allTabs hrefs are derived from mlsId / routeBase / hints / search — listed deps cover that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: warm once per property surface
+  }, [mlsId, routeBase, townHint, router, searchParams, active]);
 
   useEffect(() => {
     const measure = () => {

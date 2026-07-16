@@ -1,4 +1,8 @@
 import type { FocusEventHandler, MouseEventHandler } from 'react'
+import {
+  prefetchListingTabApis,
+  type PrefetchListingTabsOptions,
+} from '@/lib/tab-data-prefetch'
 
 const warmed = new Set<string>()
 const inflight = new Map<string, Promise<void>>()
@@ -33,13 +37,28 @@ const warmedTabs = new Set<string>()
 const inflightTabs = new Map<string, Promise<void>>()
 
 /**
- * Fire-and-forget: warm all listing-detail tab data (comparables, comparable
- * rentals, If estimate, hero photos) so bouncing between tabs is instant.
+ * Fire-and-forget: warm all listing-detail tab data.
+ *
+ * 1) Browser prefetch of every tab API JSON (instant paint on next tab)
+ * 2) Server POST `/warm` so Postgres caches are hot if the browser cache misses
+ *
  * Dedupes per mlsId for the life of the page session.
  */
-export function warmListingTabs(mlsId: string | null | undefined): void {
+export function warmListingTabs(
+  mlsId: string | null | undefined,
+  options?: Omit<PrefetchListingTabsOptions, 'mlsId'>,
+): void {
   if (!isValidMlsId(mlsId)) return
   const id = mlsId.trim()
+
+  // Always (re)kick browser prefetch — cheap if already cached.
+  prefetchListingTabApis({
+    mlsId: id,
+    routeBase: options?.routeBase,
+    propertyParam: options?.propertyParam,
+    townHint: options?.townHint,
+  })
+
   if (warmedTabs.has(id) || inflightTabs.has(id)) return
 
   const request = fetch(`/api/listings/${encodeURIComponent(id)}/warm`, {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { resolveUagForSubject } from '@/lib/listing-uag-resolve'
-import { listingCacheHeaders } from '@/lib/listings-store'
+import { spotlightApiCacheHeaders } from '@/lib/listings-store'
 import { resolveSpotlightSubjectListing } from '@/lib/spotlight-subject'
 import {
   getSpotlightListingConfig,
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     const payload = await resolveUagForSubject(subject)
 
     return NextResponse.json(payload, {
-      headers: listingCacheHeaders('db'),
+      headers: spotlightApiCacheHeaders(),
     })
   } catch (err) {
     console.error('[/api/spotlight/uag] error', err)

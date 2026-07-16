@@ -9,6 +9,8 @@ import {
 } from '@/lib/spotlight-listing'
 import {
   effectiveSpotlightMlsId,
+  findSpotlightMlsConflict,
+  findSpotlightMlsDuplicateTabs,
   readSpotlightMlsOverridesFresh,
   writeSpotlightMlsOverrides,
   type SpotlightMlsOverrides,
@@ -97,7 +99,8 @@ export async function GET(req: NextRequest) {
   }
   const overrides = await readSpotlightMlsOverridesFresh()
   const tabs = await buildTabSummaries(overrides, { allowRets: false })
-  return NextResponse.json({ overrides, tabs })
+  const duplicateTabs = findSpotlightMlsDuplicateTabs(overrides)
+  return NextResponse.json({ overrides, tabs, duplicateTabs })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -124,12 +127,30 @@ export async function PATCH(req: NextRequest) {
 
   // Empty = intentional clear (hides the tab). Non-empty must validate first.
   if (mlsId.length > 0) {
+    const nextPreview: SpotlightMlsOverrides = { ...overrides, [tab]: mlsId }
+    const conflictTab = findSpotlightMlsConflict(tab, mlsId, nextPreview)
+    if (conflictTab != null) {
+      return NextResponse.json({
+        ok: false,
+        saved: false,
+        reason: 'duplicate' as const,
+        tab,
+        mlsId,
+        conflictTab,
+        exists: true,
+        street: '',
+        town: '',
+        source: 'none' as const,
+      })
+    }
+
     const resolved = await resolveMlsAddress(mlsId, { allowRets: true })
     if (!resolved.exists) {
       // Do not persist an id that resolves to no listing.
       return NextResponse.json({
         ok: false,
         saved: false,
+        reason: 'notfound' as const,
         tab,
         mlsId,
         exists: false,
@@ -145,5 +166,12 @@ export async function PATCH(req: NextRequest) {
 
   const tabs = await buildTabSummaries(next, { allowRets: true })
   const saved = tabs.find((t) => t.tab === tab)
-  return NextResponse.json({ ok: true, saved: true, overrides: next, tabs, tab: saved })
+  return NextResponse.json({
+    ok: true,
+    saved: true,
+    overrides: next,
+    tabs,
+    tab: saved,
+    duplicateTabs: findSpotlightMlsDuplicateTabs(next),
+  })
 }

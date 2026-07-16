@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { resolveComparablesForSubject } from '@/lib/listing-comparables-resolve'
 import { parseListingKindParam } from '@/lib/listing-kind'
-import { listingCacheHeaders } from '@/lib/listings-store'
+import { spotlightApiCacheHeaders } from '@/lib/listings-store'
 import { resolveSpotlightSubjectListing } from '@/lib/spotlight-subject'
 import {
   getSpotlightListingConfig,
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     const payload = await resolveComparablesForSubject(subject, kind)
 
     return NextResponse.json(payload, {
-      headers: listingCacheHeaders('db'),
+      headers: spotlightApiCacheHeaders(),
     })
   } catch (err) {
     console.error('[/api/spotlight/comparables] error', err)

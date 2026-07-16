@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
-import { listingCacheHeaders } from '@/lib/listings-store'
+import { spotlightApiCacheHeaders } from '@/lib/listings-store'
 import { resolveSpotlightListing } from '@/lib/spotlight-cache'
 import {
   getSpotlightListingConfig,
@@ -34,11 +34,13 @@ export async function GET(req: NextRequest) {
         insight: detailScore?.insight ?? null,
         source,
         spotlightCache: cacheHit,
+        propertyTab,
       },
       {
         headers: {
-          ...listingCacheHeaders(cacheHit || source === 'db' ? 'db' : source),
+          ...spotlightApiCacheHeaders(),
           'X-Spotlight-Cache': cacheHit ? 'hit' : 'miss',
+          'X-Spotlight-Property': String(propertyTab),
         },
       },
     )

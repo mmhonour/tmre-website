@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import { listingDetailHref, listingHistoryHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 
 type HistoryEvent = {
   date: string | null;
@@ -42,18 +43,23 @@ export default function ListingHistoryPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-
     const params = new URLSearchParams();
     if (townHint?.trim()) params.set("town", townHint.trim());
     const qs = params.toString();
+    const url = `/api/listings/${encodeURIComponent(mlsId)}/history${
+      qs ? `?${qs}` : ""
+    }`;
 
-    fetch(
-      `/api/listings/${encodeURIComponent(mlsId)}/history${qs ? `?${qs}` : ""}`,
-      { cache: "default" },
-    )
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: HistoryResponse | null) => {
+    const cached = peekTabJson<HistoryResponse>(url);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    loadTabJson<HistoryResponse>(url)
+      .then((d) => {
         if (!cancelled) {
           setData(d);
           setLoading(false);

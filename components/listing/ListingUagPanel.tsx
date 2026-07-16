@@ -15,6 +15,7 @@ import {
 } from "@/lib/listing-comparables-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 
 type UagResponse = {
   sale: ComparableListing[];
@@ -211,23 +212,26 @@ export function ListingUagPageContent({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
+    const cached = peekTabJson<UagResponse>(uagUrl);
+    if (cached) {
+      setData(cached);
+      setLoadError(null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setLoadError(null);
+    }
 
-    fetch(uagUrl, { cache: "default" })
-      .then(async (r) => {
-        if (!r.ok) {
-          throw new Error(
-            r.status === 404
-              ? "Listing not found."
-              : "Couldn't load under-agreement comps.",
-          );
-        }
-        return r.json() as Promise<UagResponse>;
-      })
+    loadTabJson<UagResponse>(uagUrl)
       .then((d) => {
         if (cancelled) return;
+        if (!d) {
+          setData(null);
+          setLoadError("Couldn't load under-agreement comps.");
+          return;
+        }
         setData(d);
+        setLoadError(null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;

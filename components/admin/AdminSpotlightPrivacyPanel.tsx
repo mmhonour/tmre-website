@@ -40,6 +40,7 @@ type MlsSaveStatus =
   | "saved"
   | "cleared"
   | "notfound"
+  | "duplicate"
   | "error";
 
 const DEFAULT_PRIVACY: SpotlightEffectivePrivacy = {
@@ -63,6 +64,12 @@ export default function AdminSpotlightPrivacyPanel() {
     Partial<Record<SpotlightPropertyTabId, TabSaveStatus>>
   >({});
   const [error, setError] = useState<string | null>(null);
+  const [duplicateTabs, setDuplicateTabs] = useState<SpotlightPropertyTabId[]>(
+    [],
+  );
+  const [conflictTab, setConflictTab] = useState<
+    Partial<Record<SpotlightPropertyTabId, SpotlightPropertyTabId>>
+  >({});
   const saveSeqRef = useRef(0);
   const savedTimersRef = useRef<
     Partial<Record<SpotlightPropertyTabId, ReturnType<typeof setTimeout>>>
@@ -95,11 +102,12 @@ export default function AdminSpotlightPrivacyPanel() {
       .then(
         ([privacy, mlsData]: [
           { overrides: SpotlightPrivacyOverrides; tabs: TabRow[] },
-          { tabs: TabMls[] },
+          { tabs: TabMls[]; duplicateTabs?: SpotlightPropertyTabId[] },
         ]) => {
           setOverrides(privacy.overrides ?? {});
           setTabs(privacy.tabs ?? []);
           applyMlsSummaries(mlsData.tabs ?? []);
+          setDuplicateTabs(mlsData.duplicateTabs ?? []);
         },
       )
       .catch((err) => {
@@ -183,6 +191,11 @@ export default function AdminSpotlightPrivacyPanel() {
     if (value === (mls[tab]?.mlsId ?? "")) return;
 
     setMlsStatus((prev) => ({ ...prev, [tab]: "validating" }));
+    setConflictTab((prev) => {
+      const next = { ...prev };
+      delete next[tab];
+      return next;
+    });
     setError(null);
     try {
       const res = await fetch("/api/admin/spotlight-mls", {
@@ -194,15 +207,24 @@ export default function AdminSpotlightPrivacyPanel() {
       const data = (await res.json()) as {
         ok: boolean;
         saved: boolean;
+        reason?: "duplicate" | "notfound";
+        conflictTab?: SpotlightPropertyTabId;
         tabs?: TabMls[];
         tab?: TabMls;
+        duplicateTabs?: SpotlightPropertyTabId[];
       };
 
       if (!data.saved) {
+        if (data.reason === "duplicate" && data.conflictTab != null) {
+          setConflictTab((prev) => ({ ...prev, [tab]: data.conflictTab! }));
+          setMlsStatus((prev) => ({ ...prev, [tab]: "duplicate" }));
+          return;
+        }
         setMlsStatus((prev) => ({ ...prev, [tab]: "notfound" }));
         return;
       }
       if (data.tabs) applyMlsSummaries(data.tabs);
+      if (data.duplicateTabs) setDuplicateTabs(data.duplicateTabs);
       if (data.tab) {
         setMlsInput((prev) => ({ ...prev, [tab]: data.tab!.mlsId }));
       }
@@ -268,6 +290,16 @@ export default function AdminSpotlightPrivacyPanel() {
     const status = mlsStatus[tab] ?? "idle";
     const summary = mls[tab];
     if (status === "validating") return { text: "Checking Postgres, then RETS…", tone: "muted" };
+    if (status === "duplicate") {
+      const other = conflictTab[tab];
+      return {
+        text:
+          other != null
+            ? `Already used on Spotlight ${other} — pick a different MLS #`
+            : "Already used on another Spotlight slot",
+        tone: "bad",
+      };
+    }
     if (status === "notfound")
       return { text: "MLS # not found in Postgres or RETS", tone: "bad" };
     if (status === "cleared") return { text: "Cleared — tab hidden", tone: "muted" };
@@ -299,11 +331,22 @@ export default function AdminSpotlightPrivacyPanel() {
         </p>
         <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
           Assign an MLS # to each slot (validated against Postgres, then RETS).
-          Blank slots are hidden on the public spotlight page. Privacy toggles
-          default off (address hidden, photos 1 &amp; 2 blurred, town-only map).
-          Changes save automatically.
+          Each listing can only appear once — duplicates are rejected. Blank
+          slots are hidden on the public spotlight page. Privacy toggles default
+          off (address hidden, photos 1 &amp; 2 blurred, town-only map). Changes
+          save automatically.
         </p>
       </div>
+
+      {duplicateTabs.length > 0 ? (
+        <div className="mx-5 sm:mx-6 mt-4 rounded-xl border border-coral/30 bg-coral/5 px-4 py-3">
+          <p className="text-sm text-coral font-medium">
+            Duplicate MLS detected on Spotlight{" "}
+            {duplicateTabs.join(", ")}. Clear or reassign those slots so each
+            listing appears only once.
+          </p>
+        </div>
+      ) : null}
 
       {loading ? (
         <p className="px-5 sm:px-6 py-6 font-mono text-xs text-charcoal/50">
