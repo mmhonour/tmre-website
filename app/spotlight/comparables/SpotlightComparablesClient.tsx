@@ -18,8 +18,16 @@ export default function SpotlightComparablesClient({
   comparablesKind?: "sale" | "rental";
   mode?: "comparables" | "uag";
 }) {
-  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, insight, propertyTab } =
-    useSpotlightListing();
+  const {
+    display,
+    loadState,
+    mlsListing,
+    goldilocksScore,
+    goldilocksBreakdown,
+    insight,
+    propertyTab,
+    presentation,
+  } = useSpotlightListing();
 
   if (loadState === "error") {
     return (
@@ -33,7 +41,12 @@ export default function SpotlightComparablesClient({
   }
 
   const isClosed = formatMlsStatus(display.status) === "Closed";
-  const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
+  const details = buildSpotlightDetailsPanelProps(
+    display,
+    mlsListing,
+    fmtMoney,
+    presentation,
+  );
 
   const activeTab =
     mode === "uag"
@@ -58,7 +71,7 @@ export default function SpotlightComparablesClient({
       active={activeTab}
       display={display}
       propertyTab={propertyTab}
-      mlsListing={mlsListing}
+      presentation={presentation}
       isClosed={isClosed}
       goldilocksScore={goldilocksScore}
       goldilocksBreakdown={goldilocksBreakdown}
@@ -67,7 +80,7 @@ export default function SpotlightComparablesClient({
         mode === "uag" ? (
           <ListingUagPageContent
             mlsId={display.mlsId}
-            townHint={display.config.address.city}
+            townHint={presentation.townHint}
             fetchUrl={
               uagQs ? `/api/spotlight/uag?${uagQs}` : "/api/spotlight/uag"
             }
@@ -75,7 +88,7 @@ export default function SpotlightComparablesClient({
         ) : (
           <ListingComparablesPageContent
             mlsId={display.mlsId}
-            townHint={display.config.address.city}
+            townHint={presentation.townHint}
             kind={comparablesKind}
             fetchUrl={
               comparablesQs

@@ -25,6 +25,24 @@ export type SpotlightEffectivePrivacy = {
   showPropertyMap: boolean
 }
 
+/** Single source of truth for Spotlight address / photo / map presentation. */
+export type SpotlightPresentation = {
+  privacy: SpotlightEffectivePrivacy
+  isComingSoon: boolean
+  showHero: boolean
+  hidePhotoDeckHero: boolean
+  shouldObfuscatePhoto: (photoIndex: number) => boolean
+  headerAddress: ReturnType<typeof spotlightEffectiveHeaderAddress>
+  mapLocation: ReturnType<typeof spotlightEffectiveMapLocation>
+  privacyMode: boolean
+  addressHint: string | null
+  townHint: string | null
+  interestAddress: string
+  interestCity: string | null
+  ifAddressHint: string | null
+  photoDeckCity: string | null
+}
+
 export const SPOTLIGHT_TOWN_MAP_ZOOM = 13
 export const SPOTLIGHT_PROPERTY_MAP_ZOOM = 15
 
@@ -86,7 +104,7 @@ export function spotlightEffectiveHeaderAddress(
     return {
       street: config.displayTitle,
       full: config.displayTitle,
-      city: config.hideAddress ? '' : config.displayLocation,
+      city: '',
       state: '',
       postalCode: '',
     }
@@ -171,4 +189,42 @@ export function normalizeSpotlightPrivacyOverrides(
   }
 
   return out
+}
+
+export function spotlightEffectivePresentation(
+  config: SpotlightListingConfig,
+  mls: SpotlightMlsListing | null,
+  privacy: SpotlightEffectivePrivacy,
+  photoCount = 0,
+): SpotlightPresentation {
+  const isComingSoon = config.status === 'Coming Soon'
+  const headerAddress = spotlightEffectiveHeaderAddress(config, mls, privacy)
+  const mapLocation = spotlightEffectiveMapLocation(config, mls, privacy)
+  const shouldObfuscatePhoto = (photoIndex: number) =>
+    spotlightObfuscatesPhotoWithPrivacy(config, photoIndex, privacy)
+
+  const streetAddress =
+    mls?.address?.street?.trim() ||
+    config.address.street.trim() ||
+    config.displayTitle
+
+  const city =
+    mls?.address?.city?.trim() || config.address.city.trim() || null
+
+  return {
+    privacy,
+    isComingSoon,
+    showHero: photoCount > 0 && (privacy.showClearPhotos || !isComingSoon),
+    hidePhotoDeckHero: !privacy.showClearPhotos && isComingSoon,
+    shouldObfuscatePhoto,
+    headerAddress,
+    mapLocation,
+    privacyMode: !privacy.showAddress,
+    addressHint: privacy.showAddress ? streetAddress : null,
+    townHint: privacy.showAddress ? city : null,
+    interestAddress: privacy.showAddress ? streetAddress : config.displayLocation,
+    interestCity: privacy.showAddress ? city : null,
+    ifAddressHint: privacy.showAddress ? streetAddress : null,
+    photoDeckCity: privacy.showAddress ? city : null,
+  }
 }

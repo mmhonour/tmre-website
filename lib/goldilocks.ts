@@ -446,22 +446,8 @@ export function scoreListing(
   }
 }
 
-function fmtPrice(n: number | null): string {
-  if (n == null) return '—'
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`
-  return `$${Math.round(n)}`
-}
-
 function pct(n: number): string {
   return `${Math.round(Math.abs(n))}%`
-}
-
-function describeEra(l: Listing, hasReno: boolean): string {
-  if (l.yearBuilt && l.yearBuilt >= 2015) return `new-construction (${l.yearBuilt})`
-  if (hasReno) return 'turn-key, recently updated'
-  if (l.yearBuilt) return `${l.yearBuilt}-built`
-  return 'move-in ready'
 }
 
 function describeRemarksCondition(s: ScoredListing, opts?: { rental?: boolean }): string {
@@ -538,101 +524,84 @@ function describeListingPresentation(s: ScoredListing, opts?: { rental?: boolean
   return photoNote ? `${remarks} ${photoNote}` : remarks
 }
 
+// New construction is condition-neutral — "well cared for" is meaningless on a
+// brand-new home — so lead with finishes/layout as read from the photos.
+function describeNewBuildPresentation(s: ScoredListing): string {
+  const photos = s.listing.photoCount ?? 0
+  const hasQuality = s.remarksMatched.quality.length > 0
+  if (photos >= 9) {
+    return hasQuality
+      ? 'The finish level and floor plan come through clearly across a full set of photos.'
+      : 'The layout and finishes read clearly across a full set of photos.'
+  }
+  if (photos >= 3) {
+    return 'The photos give a good read on the finishes and floor plan.'
+  }
+  if (photos >= 1) {
+    return 'Only a few photos are online so far — a walk-through is the best way to judge the finishes.'
+  }
+  return 'No photos are online yet — a walk-through is the best way to judge the finishes.'
+}
+
 function buildSaleInsight(s: ScoredListing): string {
   const l = s.listing
   const city = l.address.city || 'Fairfield County'
-  const era = describeEra(l, s.remarksMatched.reno.length > 0)
-  const type = (l.propertyType || 'home').replace(/ For Sale$/i, '').toLowerCase()
+  const isNewConstruction = l.yearBuilt != null && l.yearBuilt >= 2015
 
-  let ppsfClause = ''
+  const sentences: string[] = []
+
+  // Value read: price-per-sqft against the local median — the site's core,
+  // defensible signal. Richer signals the user asked for — PPSF relative to a
+  // specific peer segment (e.g. new construction), and how quickly similarly
+  // priced homes have been selling — belong in the refresh-cycle cache, not in
+  // a per-request page load, so they are intentionally not computed here.
   if (s.pricePerSqft && s.cityMedianPpsf) {
     const diff = (s.pricePerSqft - s.cityMedianPpsf) / s.cityMedianPpsf
     if (diff < -0.05) {
-      ppsfClause = `priced ${pct(diff * 100)} below the ${city} median price-per-sqft`
+      sentences.push(
+        `On price-per-sqft it comes in ${pct(diff * 100)} below the ${city} median — value for its price band.`,
+      )
     } else if (diff > 0.05) {
-      ppsfClause = `priced ${pct(diff * 100)} above the ${city} median price-per-sqft`
+      sentences.push(
+        `It carries a ${pct(diff * 100)} premium to the ${city} median price-per-sqft, in line with a higher-finish tier.`,
+      )
     } else {
-      ppsfClause = `priced right at the ${city} median price-per-sqft`
+      sentences.push(`Its price-per-sqft sits right at the ${city} median.`)
     }
   }
 
-  const composite = s.score.composite.toFixed(1)
-  const presentation = describeListingPresentation(s)
+  sentences.push(
+    isNewConstruction ? describeNewBuildPresentation(s) : describeListingPresentation(s),
+  )
 
-  const sentence1 = `This ${era} ${type} at ${l.address.street || 'this address'}${
-    l.address.city ? ` in ${l.address.city}` : ''
-  } hits the Goldilocks zone: ${ppsfClause || 'in the price band buyers actively shop'}. ${presentation}`
-
-  const sentence2 = `Goldilocks composite ${composite}/100 — high enough to draw multiple offers in the first weekend if it's listed strategically.`
-
-  const targetLo =
-    s.cityMedianPpsf && l.sqft ? Math.round(s.cityMedianPpsf * 0.85 * l.sqft) : null
-  const targetHi =
-    s.cityMedianPpsf && l.sqft ? Math.round(s.cityMedianPpsf * 0.95 * l.sqft) : null
-  const sellerAdvice =
-    targetLo && targetHi
-      ? `Sellers with comparable ${city} homes (${l.beds ?? '?'}bd / ~${
-          l.sqft ? Math.round(l.sqft / 100) * 100 : '?'
-        } sqft) should anchor list price in the ${fmtPrice(targetLo)}–${fmtPrice(
-          targetHi,
-        )} band — undercutting the median PPSF by 5–15% has been driving competitive bidding in this segment.`
-      : `Sellers with comparable homes should price 5–15% below the local median PPSF to trigger competitive bidding in this segment.`
-
-  return `${sentence1} ${sentence2} ${sellerAdvice}`
-}
-
-function fmtRent(n: number | null): string {
-  if (n == null) return '—'
-  return `$${Math.round(n).toLocaleString()}/mo`
+  return sentences.filter(Boolean).join(' ')
 }
 
 function buildRentalInsight(s: ScoredListing): string {
   const l = s.listing
   const city = l.address.city || 'Fairfield County'
-  const era = describeEra(l, s.remarksMatched.reno.length > 0)
-  const type = (l.propertyType || 'rental')
-    .replace(/ For Lease$/i, '')
-    .replace(/\s*Rental\s*$/i, '')
-    .trim()
-    .toLowerCase() || 'rental'
+  const isNewConstruction = l.yearBuilt != null && l.yearBuilt >= 2015
 
-  let rentClause = ''
+  const sentences: string[] = []
+
   if (s.pricePerSqft && s.cityMedianPpsf) {
     const diff = (s.pricePerSqft - s.cityMedianPpsf) / s.cityMedianPpsf
     if (diff < -0.05) {
-      rentClause = `asking ${pct(diff * 100)} below the ${city} median rent-per-sqft`
+      sentences.push(`On rent-per-sqft it asks ${pct(diff * 100)} below the ${city} median.`)
     } else if (diff > 0.05) {
-      rentClause = `asking ${pct(diff * 100)} above the ${city} median rent-per-sqft`
+      sentences.push(`It asks ${pct(diff * 100)} above the ${city} median rent-per-sqft.`)
     } else {
-      rentClause = `asking right at the ${city} median rent-per-sqft`
+      sentences.push(`Rent-per-sqft is right at the ${city} median.`)
     }
   }
 
-  const composite = s.score.composite.toFixed(1)
-  const presentation = describeListingPresentation(s, { rental: true })
+  sentences.push(
+    isNewConstruction
+      ? describeNewBuildPresentation(s)
+      : describeListingPresentation(s, { rental: true }),
+  )
 
-  const sentence1 = `This ${era} ${type} rental at ${l.address.street || 'this address'}${
-    l.address.city ? ` in ${l.address.city}` : ''
-  } is the standout lease this week: ${
-    rentClause || 'in the rent band tenants actively shop'
-  }. ${presentation}`
-
-  const sentence2 = `Goldilocks composite ${composite}/100 against the local rental pool — at this rating, expect showings within the first week.`
-
-  const targetLo =
-    s.cityMedianPpsf && l.sqft ? Math.round(s.cityMedianPpsf * 0.95 * l.sqft) : null
-  const targetHi =
-    s.cityMedianPpsf && l.sqft ? Math.round(s.cityMedianPpsf * 1.05 * l.sqft) : null
-  const landlordAdvice =
-    targetLo && targetHi
-      ? `Landlords with comparable ${city} units (${l.beds ?? '?'}BR / ~${
-          l.sqft ? Math.round(l.sqft / 100) * 100 : '?'
-        } sqft) should anchor monthly rent in the ${fmtRent(targetLo)}–${fmtRent(
-          targetHi,
-        )} band to balance occupancy speed against yield.`
-      : `Landlords with comparable units should price within ±5% of the local median rent-per-sqft to balance occupancy speed against yield.`
-
-  return `${sentence1} ${sentence2} ${landlordAdvice}`
+  return sentences.filter(Boolean).join(' ')
 }
 
 export function buildInsight(s: ScoredListing): string {

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { fetchListingByMlsId } from '@/lib/listings-store'
+import { spotlightEffectiveStatus } from '@/lib/spotlight-display'
 import {
   SPOTLIGHT_LISTING,
   type SpotlightListingConfig,
@@ -57,7 +58,7 @@ export function buildSpotlightSubjectListing(
     ...base,
     mlsId: config.mlsId?.trim() || base.mlsId,
     listingKey: config.listingKey?.trim() || base.listingKey,
-    status: config.status,
+    status: spotlightEffectiveStatus(config, mls),
     propertyType: config.propertyType || base.propertyType,
     style: config.style || base.style,
     beds: config.beds ?? base.beds,

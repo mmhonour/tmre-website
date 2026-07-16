@@ -31,13 +31,15 @@ function SortControl({
       type="button"
       onClick={() => onSort(sortKey)}
       aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
-      className={`inline-flex items-center gap-1 font-mono text-[9px] tracking-[0.16em] uppercase transition-colors whitespace-nowrap ${
+      className={`inline-flex cursor-pointer items-center gap-1 font-mono text-[9px] tracking-[0.16em] uppercase transition-colors whitespace-nowrap ${
         active ? "text-navy" : "text-slate hover:text-navy"
       } ${align === "right" ? "ml-auto" : ""}`}
     >
       {label}
       <span
-        className={`text-[11px] leading-none tabular-nums ${active ? "text-gold" : "text-slate/35"}`}
+        className={`text-[11px] leading-none tabular-nums ${
+          active ? "font-bold text-black" : "text-slate/35"
+        }`}
         aria-hidden
       >
         {active ? (direction === "asc" ? "↑" : "↓") : "↕"}

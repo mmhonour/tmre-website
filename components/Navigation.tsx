@@ -3,7 +3,7 @@
 import ContactButton from "./ContactButton";
 import { useSiteUnlockActions, useSiteUnlocked } from "./SiteUnlockProvider";
 import VisitorLocationBadge from "./VisitorLocationBadge";
-import { PhoneIcon, navIconClass } from "./icons";
+import PhoneCta from "./PhoneCta";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -204,7 +204,7 @@ function ExploreMenu({
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || variant === "mobile") return;
     const onPointerDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -217,35 +217,58 @@ function ExploreMenu({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [open, variant]);
 
   if (variant === "mobile") {
     return (
-      <div className="mt-1 rounded-xl border border-white/10 bg-navy-dark px-2 py-3">
-        <p className="px-2 font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
-          Explore
-        </p>
-        {exploreGroups.map((group) => (
-          <div key={group.title} className="mb-3 last:mb-0">
-            <p className="px-2 font-mono text-[9px] tracking-[0.15em] uppercase text-white/55 mb-1">
-              {group.title}
-            </p>
-            {group.links.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={onNavigate}
-                className={`block px-2 py-2.5 text-sm rounded-md transition-colors ${
-                  pathname === link.href
-                    ? "text-gold bg-white/10"
-                    : "text-white hover:text-white hover:bg-white/10"
-                }`}
-              >
-                {link.label}
-              </Link>
+      <div>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={`w-full inline-flex items-center justify-between gap-1.5 px-2 py-3 text-sm rounded-md transition-colors ${
+            exploreActive || open
+              ? "text-gold bg-white/5"
+              : "text-white/85 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <span>Explore</span>
+          <svg
+            className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden
+          >
+            <path d="M2.5 4.5 6 8l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        {open && (
+          <div className="mt-1 rounded-xl border border-white/10 bg-navy-dark px-2 py-3">
+            {exploreGroups.map((group) => (
+              <div key={group.title} className="mb-3 last:mb-0">
+                <p className="px-2 font-mono text-[9px] tracking-[0.15em] uppercase text-white/55 mb-1">
+                  {group.title}
+                </p>
+                {group.links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={onNavigate}
+                    className={`block px-2 py-2.5 text-sm rounded-md transition-colors ${
+                      pathname === link.href
+                        ? "text-gold bg-white/10"
+                        : "text-white hover:text-white hover:bg-white/10"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
             ))}
           </div>
-        ))}
+        )}
       </div>
     );
   }
@@ -401,8 +424,10 @@ function SiteLogoutButton() {
 
 function PhoneCallWithLogout({
   align = "center",
+  phone,
 }: {
   align?: "center" | "start";
+  phone?: { tel: string; display: string };
 }) {
   const siteUnlocked = useSiteUnlocked();
 
@@ -412,9 +437,7 @@ function PhoneCallWithLogout({
         align === "start" ? "items-start" : "items-center"
       }`}
     >
-      <a href="tel:6175040741" className={iconCtaButtonClass} aria-label="Call me">
-        <PhoneIcon className={navIconClass} />
-      </a>
+      <PhoneCta className={iconCtaButtonClass} align={align} phone={phone} />
       {siteUnlocked ? <SiteLogoutButton /> : <SiteLoginButton />}
     </div>
   );
@@ -422,8 +445,10 @@ function PhoneCallWithLogout({
 
 export default function Navigation({
   siteUnlocked = false,
+  phone,
 }: {
   siteUnlocked?: boolean;
+  phone?: { tel: string; display: string };
 }) {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
@@ -487,7 +512,7 @@ export default function Navigation({
           <div className="hidden md:flex items-start gap-2 shrink-0">
             <VisitorLocationBadge />
             <ContactButton className={iconCtaButtonClass} />
-            <PhoneCallWithLogout />
+            <PhoneCallWithLogout phone={phone} />
             {SHOW_BHHS_LOGO ? <BhhsAgentProfileLink /> : null}
           </div>
 
@@ -520,7 +545,7 @@ export default function Navigation({
         </div>
 
         {mobileOpen && (
-          <nav className="md:hidden pb-6 flex flex-col gap-1 border-t border-white/10 pt-4 bg-navy">
+          <nav className="md:hidden flex flex-col gap-1 border-t border-white/10 pt-4 pb-6 bg-navy max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain">
             {primaryLinks.map((link) => (
               <Link
                 key={link.href}
@@ -568,7 +593,7 @@ export default function Navigation({
             />
             <div className="mt-3 flex flex-wrap items-start gap-2">
               <ContactButton className={iconCtaButtonClass} />
-              <PhoneCallWithLogout align="start" />
+              <PhoneCallWithLogout align="start" phone={phone} />
               {SHOW_BHHS_LOGO ? <BhhsAgentProfileLink /> : null}
             </div>
           </nav>

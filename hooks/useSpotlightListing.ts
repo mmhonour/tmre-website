@@ -9,6 +9,9 @@ import {
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import { useSpotlightPrivacy } from "@/hooks/useSpotlightPrivacy";
 import {
+  spotlightEffectivePresentation,
+} from "@/lib/spotlight-privacy-shared";
+import {
   getSpotlightListingConfig,
   parseSpotlightPropertyTab,
   spotlightPropertySearchParam,
@@ -122,6 +125,17 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     [config, mlsListing],
   );
 
+  const presentation = useMemo(
+    () =>
+      spotlightEffectivePresentation(
+        config,
+        mlsListing,
+        privacy,
+        display.photoCount,
+      ),
+    [config, mlsListing, privacy, display.photoCount],
+  );
+
   return {
     display,
     config,
@@ -134,6 +148,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     photos,
     photosState,
     privacy,
+    presentation,
     /** Static config is always available; MLS fields may still be enriching. */
     isEnriched: mlsListing != null,
   };

@@ -50,10 +50,10 @@ export type SpotlightListingConfig = {
   /** When true, obfuscate the first two photos regardless of MLS status. */
   obfuscateFirstTwoPhotos?: boolean;
   /**
-   * When true, the /spotlight header suppresses the MLS status badge. Used for
-   * the Coming Soon tab (e.g. 42 Treadwell): the property is projected as
-   * "Coming Soon" via the headline, and its true MLS status (Closed) should not
-   * appear on the public page. The real listing page still shows actual status.
+   * When true, the /spotlight header suppresses the MLS status badge purely as a
+   * visual choice. The status VALUE is always the real RETS/Postgres status
+   * (see `spotlightEffectiveStatus`); this only hides the pill. Currently unused
+   * — every tab shows its true status per site-wide policy.
    */
   hideStatusBadge?: boolean;
 };
@@ -94,7 +94,6 @@ export const SPOTLIGHT_LISTING: SpotlightListingConfig = {
   photos: [],
   hideAddress: true,
   obfuscateFirstTwoPhotos: true,
-  hideStatusBadge: true,
 };
 
 /** Tab 2 — 11 Treadwell Avenue (address hidden on page; first two photos blurred). */

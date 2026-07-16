@@ -96,7 +96,7 @@ export default function AdminSyncRunLog() {
                   </span>
                 </div>
                 <p
-                  className={`mt-0.5 font-mono text-[10px] leading-snug break-words ${
+                  className={`mt-0.5 font-mono text-[10px] leading-snug break-words whitespace-pre-line ${
                     entry.error ? "text-rose-700" : "text-slate"
                   }`}
                 >

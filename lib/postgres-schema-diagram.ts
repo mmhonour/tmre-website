@@ -39,6 +39,11 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
     to: { table: 'town_property_addresses', column: 'listing_id' },
     source: 'documented',
   },
+  {
+    from: { table: 'listings', column: 'id' },
+    to: { table: 'listing_price_history', column: 'listing_id' },
+    source: 'documented',
+  },
 ]
 
 const PRIORITY_TABLES = [
@@ -50,6 +55,7 @@ const PRIORITY_TABLES = [
   'listing_relations',
   'listing_edge_scores',
   'listing_superlatives',
+  'listing_price_history',
   'town_property_addresses',
   'sync_runs',
   'schema_migrations',

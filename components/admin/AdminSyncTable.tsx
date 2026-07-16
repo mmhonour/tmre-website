@@ -38,7 +38,9 @@ function formatSyncError(
   const detail = body.detail?.trim() || body.error?.trim() || body.message?.trim();
   if (detail) parts.push(detail);
   else if (!res.ok) parts.push(res.statusText || "Request failed");
-  return parts.join(" · ");
+  // Newline-separated so the admin error reads as: Town / error type / description
+  // on their own lines (rendered with whitespace-pre-line).
+  return parts.join("\n");
 }
 
 function isSyncErrorText(text: string | undefined): boolean {
@@ -436,6 +438,20 @@ function formatDateShort(iso: string | null | undefined): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(d);
 }
 
+/** Human-readable elapsed duration (e.g. `1m 12s`, `3s`, `2h 5m`). */
+function formatElapsed(ms: number | null): string {
+  if (ms == null || ms < 0) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  if (min < 60) return remSec > 0 ? `${min}m ${remSec}s` : `${min}m`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+}
+
 type AdminSyncPostBody = PanelStatus & {
   ok?: boolean;
   message?: string;
@@ -587,12 +603,12 @@ function SyncTimestamp({
   timeOnly?: boolean;
 }) {
   return (
-    <div className="min-w-0">
-      <p className="font-mono text-[10px] tracking-wide text-charcoal/45 uppercase">{label}</p>
-      <p className="font-mono text-xs tabular-nums text-navy font-semibold whitespace-nowrap">
+    <p className="font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0">
+      <span className="tracking-wide text-charcoal/45 uppercase">{label}: </span>
+      <span className="text-navy font-semibold">
         {timeOnly ? formatTimeOnly(value) : formatTimestamp(value)}
-      </p>
-    </div>
+      </span>
+    </p>
   );
 }
 
@@ -1466,8 +1482,46 @@ export default function AdminSyncTable({
                         ? formatDateShort(calDates[0])
                         : null;
 
+                      const startMs = parseIsoMs(timing.started);
+                      const endMs = parseIsoMs(timing.finished);
+                      const elapsedMs =
+                        startMs != null && endMs != null && endMs >= startMs
+                          ? endMs - startMs
+                          : null;
+
+                      const isPostDeployNext =
+                        row.id === "full-resync" &&
+                        status?.scheduleHints?.fullResyncSource === "post-deploy";
+                      let nextStatusText: string | null = null;
+                      let nextStatusClass = "text-sage/80";
+                      if (isPostDeployNext) {
+                        nextStatusText = "Post-deploy warm";
+                        nextStatusClass = "text-gold";
+                      } else if (visual === "alert") {
+                        nextStatusText =
+                          isTimingHung(timing, nowMs) ||
+                          (row.id === "refresh-finished" && status?.refreshing)
+                            ? "Hung"
+                            : "Overdue";
+                        nextStatusClass = "text-rose-600/80";
+                      } else if (visual === "ok") {
+                        nextStatusText = "On schedule";
+                        nextStatusClass = "text-sage/80";
+                      }
+                      // formatAdminNextSyncAt already returns time-only within 24h;
+                      // for the shared-date case outside 24h we strip the date prefix.
+                      const nextTimeText = isPostDeployNext
+                        ? formatAdminNextSyncCountdown(nextRunAt, now)
+                        : allSameDate
+                          ? formatTimeOnly(nextRunAt)
+                          : formatAdminNextSyncAt(nextRunAt, now);
+                      const nextTimeClass =
+                        visual === "alert" && nowMs > (parseIsoMs(nextRunAt) ?? 0)
+                          ? "text-rose-700"
+                          : "text-navy";
+
                       return (
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-0.5">
                           {sharedDate && (
                             <p className="font-mono text-[9px] tracking-wide text-charcoal/40 uppercase mb-0.5">
                               {sharedDate}
@@ -1479,47 +1533,34 @@ export default function AdminSyncTable({
                             <>
                               <SyncTimestamp label="Start" value={timing.started} timeOnly={allSameDate} />
                               <SyncTimestamp label="End" value={timing.finished} timeOnly={allSameDate} />
+                              <p className="font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0">
+                                <span className="tracking-wide text-charcoal/45 uppercase">
+                                  Elapsed Time:{" "}
+                                </span>
+                                <span className="text-navy font-semibold">
+                                  {formatElapsed(elapsedMs)}
+                                </span>
+                              </p>
                             </>
                           )}
                           {nextRunAt != null ? (
-                            <div>
-                              <p
-                                className={`font-mono text-[10px] tabular-nums font-semibold whitespace-nowrap ${
-                                  visual === "alert" && nowMs > (parseIsoMs(nextRunAt) ?? 0)
-                                    ? "text-rose-700"
-                                    : "text-navy"
-                                }`}
-                              >
-                                {/* formatAdminNextSyncAt already returns time-only within 24h;
-                                    for the shared-date case outside 24h we strip the date prefix */}
-                                {row.id === "full-resync" &&
-                                status?.scheduleHints?.fullResyncSource === "post-deploy"
-                                  ? formatAdminNextSyncCountdown(nextRunAt, now)
-                                  : allSameDate
-                                  ? formatTimeOnly(nextRunAt)
-                                  : formatAdminNextSyncAt(nextRunAt, now)}
-                              </p>
-                              <p className="font-mono text-[9px] tracking-wide text-charcoal/40 uppercase">
+                            <p className="font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0">
+                              <span className="tracking-wide text-charcoal/45 uppercase">
                                 Next
-                              </p>
-                              {row.id === "full-resync" &&
-                              status?.scheduleHints?.fullResyncSource === "post-deploy" ? (
-                                <p className="font-mono text-[9px] tracking-wide text-gold uppercase">
-                                  Post-deploy warm
-                                </p>
-                              ) : visual === "alert" ? (
-                                <p className="font-mono text-[9px] tracking-wide text-rose-600/80 uppercase">
-                                  {isTimingHung(timing, nowMs) ||
-                                  (row.id === "refresh-finished" && status?.refreshing)
-                                    ? "Hung"
-                                    : "Overdue"}
-                                </p>
-                              ) : visual === "ok" ? (
-                                <p className="font-mono text-[9px] tracking-wide text-sage/80 uppercase">
-                                  On schedule
-                                </p>
+                              </span>
+                              {nextStatusText ? (
+                                <span
+                                  className={`tracking-wide uppercase ${nextStatusClass}`}
+                                >
+                                  {" "}
+                                  {nextStatusText}
+                                </span>
                               ) : null}
-                            </div>
+                              <span className="text-charcoal/45">: </span>
+                              <span className={`font-semibold ${nextTimeClass}`}>
+                                {nextTimeText}
+                              </span>
+                            </p>
                           ) : null}
                         </div>
                       );
@@ -1528,7 +1569,7 @@ export default function AdminSyncTable({
                   <td className={`${TD} border-r-0`}>
                     {rowError ? (
                       <div className="space-y-1.5">
-                        <p className="font-mono text-[9px] leading-snug text-coral break-words">
+                        <p className="font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
                           {rowError}
                         </p>
                         {row.actionId && !isRunning && !syncAllRunning && (

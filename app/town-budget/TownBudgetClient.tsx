@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TOWN_BUDGET_TOWNS,
   formatBudgetCurrency,
   formatBudgetMillRate,
   getTownBudget,
+  getTownBudgetSnapshotsForTown,
   type TownBudgetTown,
 } from "@/lib/town-budget";
 import TownBudgetPieChart from "./TownBudgetPieChart";
+import TownMillRateCompare from "./TownMillRateCompare";
 import {
   StatsChartDataTable,
   StatsChartDataTd,
@@ -16,9 +18,30 @@ import {
   StatsChartDataRow,
 } from "@/app/stats/StatsChartDataTable";
 
+type TownBudgetView = TownBudgetTown | "compare";
+
 export default function TownBudgetClient() {
-  const [town, setTown] = useState<TownBudgetTown>("Westport");
-  const budget = useMemo(() => getTownBudget(town), [town]);
+  const [view, setView] = useState<TownBudgetView>("Westport");
+  const town: TownBudgetTown = view === "compare" ? "Westport" : view;
+  const isCompare = view === "compare";
+  const townSnapshots = useMemo(
+    () => (isCompare ? [] : getTownBudgetSnapshotsForTown(town)),
+    [isCompare, town],
+  );
+  const [fiscalYear, setFiscalYear] = useState<string>(() =>
+    getTownBudget(town).fiscalYear,
+  );
+
+  useEffect(() => {
+    if (isCompare) return;
+    const latest = getTownBudgetSnapshotsForTown(town)[0];
+    if (latest) setFiscalYear(latest.fiscalYear);
+  }, [isCompare, town]);
+
+  const budget = useMemo(
+    () => getTownBudget(town, fiscalYear),
+    [town, fiscalYear],
+  );
 
   return (
     <>
@@ -33,9 +56,9 @@ export default function TownBudgetClient() {
             <span className="italic gold-shimmer">property taxes.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-2xl leading-relaxed animate-fade-up-delay-1">
-            FY {budget.fiscalYear} budget summary for {budget.town} — mill rate,
-            revenue and expenditure mix, and the property tax calendar from the
-            official taxpayer guide.
+            {isCompare
+              ? `Mill rates compared across ${TOWN_BUDGET_TOWNS.join(", ")} — filter by fiscal year and see what they cost at $1M–$5M valuations.`
+              : `FY ${budget.fiscalYear} budget summary for ${budget.town} — mill rate, revenue and expenditure mix, and the property tax calendar from the official taxpayer guide.`}
           </p>
         </div>
       </section>
@@ -43,14 +66,14 @@ export default function TownBudgetClient() {
       <section className="bg-cream py-10 lg:py-16">
         <div className="mx-auto max-w-7xl px-6 lg:px-10 space-y-10">
           {TOWN_BUDGET_TOWNS.length > 1 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {TOWN_BUDGET_TOWNS.map((name) => (
                 <button
                   key={name}
                   type="button"
-                  onClick={() => setTown(name)}
+                  onClick={() => setView(name)}
                   className={`rounded-full px-4 py-2 font-mono text-[11px] tracking-wide uppercase transition-colors ${
-                    town === name
+                    view === name
                       ? "bg-navy text-white"
                       : "bg-white border border-charcoal/15 text-navy hover:border-gold/40"
                   }`}
@@ -58,9 +81,45 @@ export default function TownBudgetClient() {
                   {name}
                 </button>
               ))}
+              <span className="mx-1 h-5 w-px bg-charcoal/15" aria-hidden />
+              <button
+                type="button"
+                onClick={() => setView("compare")}
+                className={`rounded-full px-4 py-2 font-mono text-[11px] tracking-wide uppercase transition-colors ${
+                  isCompare
+                    ? "bg-gold text-navy"
+                    : "bg-white border border-gold/40 text-navy hover:border-gold"
+                }`}
+              >
+                Compare Cost of Living
+              </button>
             </div>
           ) : null}
 
+          {!isCompare && townSnapshots.length > 1 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
+                Fiscal year
+              </span>
+              {townSnapshots.map((snap) => (
+                <button
+                  key={snap.fiscalYear}
+                  type="button"
+                  onClick={() => setFiscalYear(snap.fiscalYear)}
+                  className={`rounded-full px-3 py-1.5 font-mono text-[10px] tracking-wide uppercase transition-colors ${
+                    fiscalYear === snap.fiscalYear
+                      ? "bg-gold text-navy"
+                      : "bg-white border border-charcoal/15 text-navy hover:border-gold/40"
+                  }`}
+                >
+                  FY {snap.fiscalYear}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {isCompare ? <TownMillRateCompare /> : (
+          <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               label="Total budget"
@@ -213,6 +272,8 @@ export default function TownBudgetClient() {
               </div>
             </dl>
           </div>
+          </>
+          )}
         </div>
       </section>
     </>

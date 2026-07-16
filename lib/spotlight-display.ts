@@ -6,10 +6,22 @@ import { formatMlsStatus } from "@/lib/listing-history";
 
 const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
 
-/** Spotlight interest CTA uses config status, not MLS (reference listing may be closed). */
-export function spotlightAllowsInterest(config: SpotlightListingConfig): boolean {
-  const status = formatMlsStatus(config.status);
+/** Interest CTA follows the effective public status (`display.status`, i.e. the real RETS status). */
+export function spotlightAllowsInterest(display: { status: string }): boolean {
+  const status = formatMlsStatus(display.status);
   return status !== "Closed" && status !== "Withdrawn" && status !== "Expired";
+}
+
+/**
+ * Public status is the real MLS/Postgres (RETS) status site-wide. Config status
+ * is only a fallback for open slots that have no assigned MLS listing yet.
+ */
+export function spotlightEffectiveStatus(
+  config: SpotlightListingConfig,
+  mls: { status?: string | null } | null | undefined,
+): string {
+  const mlsStatus = mls?.status?.trim();
+  return mlsStatus || config.status;
 }
 
 /** 0-based photo indices hidden before a Coming Soon listing goes live. */
@@ -167,7 +179,7 @@ export function buildSpotlightDisplay(
     config,
     mlsId,
     listingKey: mls?.listingKey ?? config.listingKey,
-    status: config.status,
+    status: spotlightEffectiveStatus(config, mls),
     dom: pickNumber(mls?.dom, config.dom),
     headerAddress: {
       street: config.displayTitle,

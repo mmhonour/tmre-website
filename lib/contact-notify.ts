@@ -1,4 +1,8 @@
-const DEFAULT_NOTIFY_EMAIL = 'tmarks@bhhsne.com'
+import { getContactNotifyEmailFresh } from '@/lib/contact-notify-config'
+
+// Hard cap so a slow/unreachable Resend endpoint can never hang the request
+// (and therefore the submitting form) indefinitely.
+const RESEND_TIMEOUT_MS = 10_000
 
 export type ContactNotifyPayload = {
   name: string
@@ -9,12 +13,20 @@ export type ContactNotifyPayload = {
   address?: string | null
 }
 
-export async function notifyContactByEmail(payload: ContactNotifyPayload): Promise<void> {
-  const to = process.env.CONTACT_NOTIFY_EMAIL?.trim() || DEFAULT_NOTIFY_EMAIL
+/**
+ * Best-effort agent notification via Resend. Returns `true` when an email was
+ * actually accepted by Resend, `false` when skipped (no API key). Throws only
+ * on a real delivery failure so callers can log it — callers should NOT block
+ * the user's success response on this.
+ */
+export async function notifyContactByEmail(
+  payload: ContactNotifyPayload,
+): Promise<boolean> {
+  const to = await getContactNotifyEmailFresh()
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) {
     console.warn('[contact-notify] RESEND_API_KEY not set; email not sent')
-    return
+    return false
   }
 
   const from =
@@ -36,23 +48,37 @@ export async function notifyContactByEmail(payload: ContactNotifyPayload): Promi
     '— Sent from tmre-website contact form',
   ].filter(Boolean)
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      reply_to: payload.email,
-      subject,
-      text: lines.join('\n'),
-    }),
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        reply_to: payload.email,
+        subject,
+        text: lines.join('\n'),
+      }),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') {
+      throw new Error(`Resend request timed out after ${RESEND_TIMEOUT_MS}ms`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     throw new Error(`Resend API ${res.status}${detail ? `: ${detail}` : ''}`)
   }
+  return true
 }

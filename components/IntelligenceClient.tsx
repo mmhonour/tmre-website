@@ -72,6 +72,21 @@ import {
   resolveIntelPriceRangeFromSteps,
 } from "@/lib/intel-price-filter";
 import {
+  adjustIntelSqftByWheel,
+  boardSqftMaxIndex,
+  defaultSqftIndicesFromBoard,
+  formatIntelSqftRangeLabelFromSteps,
+  formatIntelSqftStep,
+  INTEL_SQFT_MAX_INDEX,
+  intelSqftFilterActiveOnBoard,
+  intelSqftStepsForBoard,
+  listingMatchesIntelSqftRange,
+  maxSqftToStepIndex,
+  minSqftToStepIndex,
+  parseIntelSqftInput,
+  resolveIntelSqftRangeFromSteps,
+} from "@/lib/intel-sqft-filter";
+import {
   formatVintageRangeLabel,
   listingMatchesVintageFilter,
   VINTAGE_FILTER_MAX,
@@ -248,7 +263,7 @@ const BOARD_LISTING_LIMIT = 100;
 const PHOTO_PRIORITY_RANK_COUNT = 12;
 const BED_BATH_MAX = 6;
 const INTEL_SLIDER_WIDTH_CLASS = "w-[7.5rem]";
-type IntelSliderKind = "price" | "bed" | "bath" | "vintage";
+type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft";
 
 function descriptorLabelClass(active: boolean, interactive: boolean): string {
   return `font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
@@ -571,6 +586,8 @@ function filterBoardListings(
   maxPrice: number | null = null,
   minVintage = 0,
   maxVintage = VINTAGE_FILTER_MAX,
+  minSqft = 0,
+  maxSqft: number | null = null,
 ): DisplayListing[] {
   return rows.filter((l) => {
     if (tx === "sale" && l.isRental) return false;
@@ -590,6 +607,13 @@ function filterBoardListings(
     }
     if (!listingMatchesBedBathCount(l.baths, minBaths, maxBaths)) return false;
     if (!listingMatchesVintageFilter(l.yearBuilt, minVintage, maxVintage)) {
+      return false;
+    }
+    if (
+      (minSqft > 0 || maxSqft != null) &&
+      !l.isCommercial &&
+      !listingMatchesIntelSqftRange(l.sqft, minSqft, maxSqft)
+    ) {
       return false;
     }
     if (
@@ -1299,6 +1323,10 @@ export default function IntelligenceClient() {
   const [bedSliderActive, setBedSliderActive] = useState(false);
   const [bathSliderActive, setBathSliderActive] = useState(false);
   const [vintageSliderActive, setVintageSliderActive] = useState(false);
+  const [minSqftIndex, setMinSqftIndex] = useState(0);
+  const [maxSqftIndex, setMaxSqftIndex] = useState(INTEL_SQFT_MAX_INDEX);
+  const [sqftSliderActive, setSqftSliderActive] = useState(false);
+  const sqftRangeCustomizedRef = useRef(false);
   const [collapsedSlidersOpen, setCollapsedSlidersOpen] = useState(false);
   const priceRangeCustomizedRef = useRef(false);
   const priceFilterContextRef = useRef("");
@@ -1709,10 +1737,6 @@ export default function IntelligenceClient() {
   }, [allListings, active]);
 
   useEffect(() => {
-    if (!filtersExpanded) setTownLinksExpanded(false);
-  }, [filtersExpanded]);
-
-  useEffect(() => {
     if (filtersExpanded) setCollapsedSlidersOpen(false);
   }, [filtersExpanded]);
 
@@ -1728,6 +1752,7 @@ export default function IntelligenceClient() {
       setBedSliderActive(false);
       setBathSliderActive(false);
       setVintageSliderActive(false);
+      setSqftSliderActive(false);
     };
     window.addEventListener("pointerdown", dismissCollapsedSliders);
     return () => window.removeEventListener("pointerdown", dismissCollapsedSliders);
@@ -1761,6 +1786,9 @@ export default function IntelligenceClient() {
       if (maxVintageFilter !== "6") {
         setMaxVintageFilter("6");
       }
+      sqftRangeCustomizedRef.current = false;
+      setMinSqftIndex(0);
+      setMaxSqftIndex(INTEL_SQFT_MAX_INDEX);
     }
   }, [cls, minBedsFilter, maxBedsFilter, minBathsFilter, maxBathsFilter, minVintageFilter, maxVintageFilter, setMinBedsFilter, setMaxBedsFilter, setMinBathsFilter, setMaxBathsFilter, setMinVintageFilter, setMaxVintageFilter]);
 
@@ -1884,10 +1912,138 @@ export default function IntelligenceClient() {
     showPriceFilter &&
     intelPriceFilterActiveOnBoard(minPriceIndex, maxPriceIndex, boardPriceSteps);
 
+  const listingsBeforeSqft = useMemo(
+    () =>
+      filterBoardListings(
+        allListings,
+        tx,
+        cls,
+        zip,
+        boardStatusFilter,
+        saleProperty,
+        minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
+        newConstructionOnly,
+        false,
+        minPrice,
+        maxPrice,
+        minVintage,
+        maxVintage,
+      ),
+    [
+      allListings,
+      tx,
+      cls,
+      zip,
+      boardStatusFilter,
+      saleProperty,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      newConstructionOnly,
+      minPrice,
+      maxPrice,
+      minVintage,
+      maxVintage,
+    ],
+  );
+
+  const boardSqftSteps = useMemo(
+    () => intelSqftStepsForBoard(listingsBeforeSqft),
+    [listingsBeforeSqft],
+  );
+  const boardSqftMaxIdx = boardSqftMaxIndex(boardSqftSteps);
+
+  const defaultSqftIndices = useMemo(
+    () => defaultSqftIndicesFromBoard(listingsBeforeSqft),
+    [listingsBeforeSqft],
+  );
+
+  const sqftFilterContextKey = useMemo(
+    () =>
+      [
+        active,
+        tx,
+        cls,
+        saleProperty,
+        zip ?? "",
+        boardStatusFilter,
+        minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
+        newConstructionOnly ? "1" : "0",
+        minVintage,
+        maxVintage,
+        minPriceIndex,
+        maxPriceIndex,
+      ].join("|"),
+    [
+      active,
+      tx,
+      cls,
+      saleProperty,
+      zip,
+      boardStatusFilter,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      newConstructionOnly,
+      minVintage,
+      maxVintage,
+      minPriceIndex,
+      maxPriceIndex,
+    ],
+  );
+
+  const sqftFilterContextRef = useRef("");
+
+  useEffect(() => {
+    if (sqftFilterContextRef.current !== sqftFilterContextKey) {
+      sqftFilterContextRef.current = sqftFilterContextKey;
+      sqftRangeCustomizedRef.current = false;
+    }
+  }, [sqftFilterContextKey]);
+
+  useEffect(() => {
+    if (cls === "commercial") {
+      setMinSqftIndex(0);
+      setMaxSqftIndex(INTEL_SQFT_MAX_INDEX);
+      sqftRangeCustomizedRef.current = false;
+      return;
+    }
+    if (sqftRangeCustomizedRef.current) {
+      setMinSqftIndex((i) => Math.min(i, boardSqftMaxIdx));
+      setMaxSqftIndex((i) => Math.min(i, boardSqftMaxIdx));
+      return;
+    }
+    setMinSqftIndex(0);
+    setMaxSqftIndex(boardSqftMaxIdx);
+  }, [
+    cls,
+    sqftFilterContextKey,
+    boardSqftMaxIdx,
+    defaultSqftIndices.minIndex,
+    defaultSqftIndices.maxIndex,
+  ]);
+
+  const { minSqft, maxSqft } = resolveIntelSqftRangeFromSteps(
+    boardSqftSteps,
+    minSqftIndex,
+    maxSqftIndex,
+  );
+  const sqftFilterActive =
+    cls !== "commercial" &&
+    intelSqftFilterActiveOnBoard(minSqftIndex, maxSqftIndex, boardSqftSteps);
+
   useEffect(() => {
     setMiddleTierExpanded(false);
     setBoardPage(1);
-  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, minPriceIndex, maxPriceIndex, sortKey, sortDir]);
+  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex, sortKey, sortDir]);
 
   const listings = useMemo(
     () =>
@@ -1908,8 +2064,10 @@ export default function IntelligenceClient() {
         maxPrice,
         minVintage,
         maxVintage,
+        minSqft,
+        maxSqft,
       ),
-    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage],
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft],
   );
 
   const rankedListings = useMemo(() => rankListingsByScore(listings), [listings]);
@@ -2002,12 +2160,14 @@ export default function IntelligenceClient() {
         maxPrice,
         minVintage,
         maxVintage,
+        minSqft,
+        maxSqft,
       ).length;
       counts[town] = n;
       all += n;
     }
     return { ...counts, All: all };
-  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage]);
+  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
 
   const { zipCounts, zipAllCount } = useMemo(() => {
     if (active === "All") {
@@ -2031,6 +2191,8 @@ export default function IntelligenceClient() {
       maxPrice,
       minVintage,
       maxVintage,
+      minSqft,
+      maxSqft,
     );
     const zipCounts = new Map<string, number>();
     filtered.forEach((l) => {
@@ -2038,7 +2200,7 @@ export default function IntelligenceClient() {
       zipCounts.set(l.zip, (zipCounts.get(l.zip) ?? 0) + 1);
     });
     return { zipCounts, zipAllCount: filtered.length };
-  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage]);
+  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
 
   const scoreRankByKey = useMemo(() => buildScoreRankMap(rankedListings), [rankedListings]);
   const filtersActive =
@@ -2050,6 +2212,7 @@ export default function IntelligenceClient() {
     minBathrooms > 0 ||
     maxBathrooms < BED_BATH_MAX ||
     vintageFilterActive(minVintage, maxVintage) ||
+    sqftFilterActive ||
     newConstructionOnly ||
     zip != null ||
     boardStatusFilter !== "all" ||
@@ -2075,6 +2238,7 @@ export default function IntelligenceClient() {
     bedBathFilterActive(minBedrooms, maxBedrooms) ||
     bedBathFilterActive(minBathrooms, maxBathrooms) ||
     vintageFilterActive(minVintage, maxVintage) ||
+    sqftFilterActive ||
     priceFilterActive;
 
   function resetSliders() {
@@ -2084,6 +2248,9 @@ export default function IntelligenceClient() {
     setMaxBathsFilter("6");
     setMinVintageFilter("0");
     setMaxVintageFilter("6");
+    sqftRangeCustomizedRef.current = false;
+    setMinSqftIndex(0);
+    setMaxSqftIndex(cls === "commercial" ? INTEL_SQFT_MAX_INDEX : boardSqftMaxIdx);
     priceRangeCustomizedRef.current = false;
     setMinPriceIndex(0);
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
@@ -2103,6 +2270,9 @@ export default function IntelligenceClient() {
       case "vintage":
         setVintageSliderActive(active);
         break;
+      case "sqft":
+        setSqftSliderActive(active);
+        break;
     }
   }
 
@@ -2121,6 +2291,7 @@ export default function IntelligenceClient() {
     setBedSliderActive(false);
     setBathSliderActive(false);
     setVintageSliderActive(false);
+    setSqftSliderActive(false);
   }
 
   const showSliderFooter = filtersExpanded || collapsedSlidersOpen;
@@ -2144,9 +2315,11 @@ export default function IntelligenceClient() {
       maxPrice,
       minVintage,
       maxVintage,
+      minSqft,
+      maxSqft,
     ).length;
     return computeMonthsSupply(count, monthlySales[active]);
-  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, monthlySales]);
+  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, monthlySales]);
 
   const showVintageStats = listings.length > 0;
   const vintageStatsTitle =
@@ -2173,6 +2346,8 @@ export default function IntelligenceClient() {
       newConstructionOnly,
       minPrice,
       maxPrice,
+      minSqft,
+      maxSqft,
     };
 
     const filterTown = (city: TmreTown) =>
@@ -2193,6 +2368,8 @@ export default function IntelligenceClient() {
         maxPrice,
         minVintage,
         maxVintage,
+        minSqft,
+        maxSqft,
       );
 
     const benchmarks = getOrSetIntelligenceSnapshotCache(
@@ -2267,6 +2444,8 @@ export default function IntelligenceClient() {
     newConstructionOnly,
     minPrice,
     maxPrice,
+    minSqft,
+    maxSqft,
   ]);
 
   const allTownsDescriptorStats = useMemo(
@@ -2323,6 +2502,8 @@ export default function IntelligenceClient() {
       newConstructionOnly,
       minPrice,
       maxPrice,
+      minSqft,
+      maxSqft,
     }),
     [
       tx,
@@ -2337,6 +2518,8 @@ export default function IntelligenceClient() {
       newConstructionOnly,
       minPrice,
       maxPrice,
+      minSqft,
+      maxSqft,
     ],
   );
 
@@ -2395,8 +2578,7 @@ export default function IntelligenceClient() {
   };
 
   const collapsedSliderDescriptors = !filtersExpanded && !collapsedSlidersOpen ? (
-    <span className="contents" data-intel-collapsed-slider-label>
-      <IntelSliderDescriptorLabels
+    <IntelSliderDescriptorLabels
       showPriceFilter={showPriceFilter}
       cls={cls}
       onDescriptorClick={handleDescriptorSliderClick}
@@ -2410,11 +2592,14 @@ export default function IntelligenceClient() {
       maxBathrooms={maxBathrooms}
       minVintage={minVintage}
       maxVintage={maxVintage}
+      boardSqftSteps={boardSqftSteps}
+      minSqftIndex={minSqftIndex}
+      maxSqftIndex={maxSqftIndex}
       bedSliderActive={bedSliderActive}
       bathSliderActive={bathSliderActive}
       vintageSliderActive={vintageSliderActive}
+      sqftSliderActive={sqftSliderActive}
     />
-    </span>
   ) : null;
 
   const sliderDescriptorFooterLabels = showSliderFooter ? (
@@ -2432,10 +2617,13 @@ export default function IntelligenceClient() {
       maxBathrooms={maxBathrooms}
       minVintage={minVintage}
       maxVintage={maxVintage}
+      boardSqftSteps={boardSqftSteps}
+      minSqftIndex={minSqftIndex}
+      maxSqftIndex={maxSqftIndex}
       bedSliderActive={bedSliderActive}
       bathSliderActive={bathSliderActive}
       vintageSliderActive={vintageSliderActive}
-      withLeadingSeparator
+      sqftSliderActive={sqftSliderActive}
     />
   ) : null;
 
@@ -2449,20 +2637,13 @@ export default function IntelligenceClient() {
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <div
-            className={`flex flex-col lg:flex-row lg:items-start transition-[gap] duration-300 ease-out ${
-              filtersExpanded ? "lg:gap-x-5 gap-y-2" : "gap-y-0"
-            }`}
+            className="flex flex-col lg:flex-row lg:items-start lg:gap-x-5 gap-y-2 transition-[gap] duration-300 ease-out"
           >
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3 min-w-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
                   Market Intelligence
                 </p>
-                <IntelFiltersToggle
-                  expanded={filtersExpanded}
-                  filtersActive={filtersActive}
-                  onToggle={() => setFiltersExpanded(!filtersExpanded)}
-                />
               </div>
               <div
                 className={`grid transition-[grid-template-rows] duration-700 ease-in-out ${
@@ -2500,22 +2681,22 @@ export default function IntelligenceClient() {
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-2 min-w-0 w-full self-start">
-                    {filtersExpanded ? (
-                      <>
-                      <FilterGroup
-                        label=""
-                        value={cls}
-                        onChange={setCls}
-                        options={[
-                          { value: "all", label: "All" },
-                          { value: "residential", label: "Residential" },
-                          { value: "commercial", label: "Commercial" },
-                        ]}
-                      />
-                      </>
-                    ) : null}
+                  <FilterGroup
+                    label=""
+                    value={cls}
+                    onChange={setCls}
+                    options={[
+                      { value: "all", label: "All" },
+                      { value: "residential", label: "Residential" },
+                      { value: "commercial", label: "Commercial" },
+                    ]}
+                  />
+                  <IntelFiltersToggle
+                    expanded={filtersExpanded}
+                    filtersActive={slidersCustomized}
+                    onToggle={() => setFiltersExpanded(!filtersExpanded)}
+                  />
                 </div>
-                {filtersExpanded ? (
                 <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
                     <div
                       className={
@@ -2687,41 +2868,45 @@ export default function IntelligenceClient() {
                     />
                   </div>
                 </div>
-                ) : null}
               </div>
-              {active === "All" ? (
-                <AllTownsDescriptor
-                  className={filtersExpanded ? "mt-3" : "mt-1"}
-                  towns={allTownsDescriptorStats}
-                  aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
-                  monthlySalesLoaded={monthlySalesLoaded}
-                  filterContext={allTownsFilterContext}
-                  contextParts={filterDescriptorParts}
-                  trailing={collapsedSliderDescriptors}
-                  hideMonthsSupply={showSliderFooter}
-                />
-              ) : (
+              {!showSliderFooter && collapsedSliderDescriptors ? (
                 <p
-                  className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide transition-[margin] duration-300 ease-out ${
-                    filtersExpanded ? "mt-3" : "mt-1"
+                  className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide ${
+                    filtersExpanded ? "mt-1.5" : "mt-1"
                   }`}
+                  data-intel-slider-context-blurb
                 >
-                  <IntelDescriptorContext parts={filterDescriptorParts} />
-                  <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
-                  {!showSliderFooter ? (
-                    <>
-                      <span className="text-white/25" aria-hidden>
-                        ·
-                      </span>
-                      <IntelMonthsSupplyInline
-                        monthsSupply={activeTownMonthsSupply}
-                        monthlySalesLoaded={monthlySalesLoaded}
-                      />
-                      {collapsedSliderDescriptors}
-                    </>
-                  ) : null}
+                  {collapsedSliderDescriptors}
                 </p>
-              )}
+              ) : null}
+              {!showSliderFooter ? (
+                active === "All" ? (
+                  <AllTownsDescriptor
+                    className={filtersExpanded ? "mt-3" : "mt-1"}
+                    towns={allTownsDescriptorStats}
+                    aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
+                    monthlySalesLoaded={monthlySalesLoaded}
+                    filterContext={allTownsFilterContext}
+                    contextParts={filterDescriptorParts}
+                  />
+                ) : (
+                  <p
+                    className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide transition-[margin] duration-300 ease-out ${
+                      filtersExpanded ? "mt-3" : "mt-1"
+                    }`}
+                  >
+                    <IntelDescriptorContext parts={filterDescriptorParts} />
+                    <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
+                    <span className="text-white/25" aria-hidden>
+                      ·
+                    </span>
+                    <IntelMonthsSupplyInline
+                      monthsSupply={activeTownMonthsSupply}
+                      monthlySalesLoaded={monthlySalesLoaded}
+                    />
+                  </p>
+                )
+              ) : null}
               <IntelFilterControlsRow
                 filtersExpanded={filtersExpanded}
                 showPriceFilter={showPriceFilter}
@@ -2759,57 +2944,77 @@ export default function IntelligenceClient() {
                 onBedSliderActiveChange={setBedSliderActive}
                 onBathSliderActiveChange={setBathSliderActive}
                 onVintageSliderActiveChange={setVintageSliderActive}
+                onSqftSliderActiveChange={setSqftSliderActive}
+                boardSqftSteps={boardSqftSteps}
+                minSqftIndex={minSqftIndex}
+                maxSqftIndex={maxSqftIndex}
+                onMinSqftIndexChange={(index) => {
+                  sqftRangeCustomizedRef.current = true;
+                  setMinSqftIndex(index);
+                }}
+                onMaxSqftIndexChange={(index) => {
+                  sqftRangeCustomizedRef.current = true;
+                  setMaxSqftIndex(index);
+                }}
                 bedSliderActive={bedSliderActive}
                 bathSliderActive={bathSliderActive}
                 vintageSliderActive={vintageSliderActive}
+                sqftSliderActive={sqftSliderActive}
                 onResetSliders={resetSliders}
                 slidersCustomized={slidersCustomized}
               />
-              {showSliderFooter &&
-              (sliderDescriptorFooterLabels ||
-                active === "All" ||
-                activeTownMonthsSupply != null ||
-                !monthlySalesLoaded ||
-                collapsedSlidersOpen) ? (
-                <div
-                  className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 w-full min-w-0 font-mono text-xs tracking-wide ${
+              {showSliderFooter && sliderDescriptorFooterLabels ? (
+                <p
+                  className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide ${
                     filtersExpanded ? "mt-1.5" : "mt-1"
                   }`}
-                  data-intel-slider-footer
+                  data-intel-slider-context-blurb
                 >
-                  <IntelMonthsSupplyInline
-                    monthsSupply={
-                      active === "All"
-                        ? aggregateAllTownsMonthsSupply
-                        : activeTownMonthsSupply
-                    }
-                    monthlySalesLoaded={monthlySalesLoaded}
-                    label={active === "All" ? "Months supply blended" : "Months supply"}
-                  />
                   {sliderDescriptorFooterLabels}
-                  {collapsedSlidersOpen && !filtersExpanded ? (
-                    <>
-                      <IntelFilterDescriptorDot />
-                      <button
-                        type="button"
-                        onClick={hideCollapsedSliders}
-                        className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
-                      >
-                        Hide sliders
-                      </button>
-                    </>
-                  ) : null}
-                </div>
+                </p>
+              ) : null}
+              {showSliderFooter ? (
+                active === "All" ? (
+                  <AllTownsDescriptor
+                    className={filtersExpanded ? "mt-1.5" : "mt-1"}
+                    towns={allTownsDescriptorStats}
+                    aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
+                    monthlySalesLoaded={monthlySalesLoaded}
+                    filterContext={allTownsFilterContext}
+                    contextParts={filterDescriptorParts}
+                  />
+                ) : (
+                  <p
+                    className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide ${
+                      filtersExpanded ? "mt-1.5" : "mt-1"
+                    }`}
+                  >
+                    <IntelDescriptorContext parts={filterDescriptorParts} />
+                    <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
+                    <span className="text-white/25" aria-hidden>
+                      ·
+                    </span>
+                    <IntelMonthsSupplyInline
+                      monthsSupply={activeTownMonthsSupply}
+                      monthlySalesLoaded={monthlySalesLoaded}
+                    />
+                    {collapsedSlidersOpen && !filtersExpanded ? (
+                      <>
+                        <IntelFilterDescriptorDot />
+                        <button
+                          type="button"
+                          onClick={hideCollapsedSliders}
+                          className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
+                        >
+                          Hide sliders
+                        </button>
+                      </>
+                    ) : null}
+                  </p>
+                )
               ) : null}
             </div>
-            <div
-              className={
-                filtersExpanded
-                  ? "w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
-                  : "hidden"
-              }
-              aria-hidden={!filtersExpanded}
-            >
+            <div className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up">
               <DealOfTheDayFrame
                 city={active}
                 theme="hero"
@@ -3253,10 +3458,12 @@ function ScoreInfoButton({ onInfoClick }: { onInfoClick: () => void }) {
   );
 }
 
-function BedBathFilterRow({
+// Beds + Yr built in the left column; Baths + Sq feet share the right column.
+function BedBathVintageSqftRow({
   onBedSliderActiveChange,
   onBathSliderActiveChange,
   onVintageSliderActiveChange,
+  onSqftSliderActiveChange,
   minBedrooms,
   maxBedrooms,
   onMinBedroomsChange,
@@ -3269,12 +3476,16 @@ function BedBathFilterRow({
   maxVintage,
   onMinVintageChange,
   onMaxVintageChange,
-  onResetSliders,
-  slidersCustomized,
+  boardSqftSteps,
+  minSqftIndex,
+  maxSqftIndex,
+  onMinSqftIndexChange,
+  onMaxSqftIndexChange,
 }: {
   onBedSliderActiveChange: (active: boolean) => void;
   onBathSliderActiveChange: (active: boolean) => void;
   onVintageSliderActiveChange: (active: boolean) => void;
+  onSqftSliderActiveChange: (active: boolean) => void;
   minBedrooms: number;
   maxBedrooms: number;
   onMinBedroomsChange: (value: number) => void;
@@ -3287,54 +3498,61 @@ function BedBathFilterRow({
   maxVintage: number;
   onMinVintageChange: (value: number) => void;
   onMaxVintageChange: (value: number) => void;
-  onResetSliders: () => void;
-  slidersCustomized: boolean;
+  boardSqftSteps: readonly number[];
+  minSqftIndex: number;
+  maxSqftIndex: number;
+  onMinSqftIndexChange: (index: number) => void;
+  onMaxSqftIndexChange: (index: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 shrink-0">
-      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
-      <IntelDualSlider
-        maxIndex={BED_BATH_MAX}
-        minValue={minBedrooms}
-        maxValue={maxBedrooms}
-        onMinChange={onMinBedroomsChange}
-        onMaxChange={onMaxBedroomsChange}
-        onActiveChange={onBedSliderActiveChange}
-        minAriaLabel="Minimum bedrooms"
-        maxAriaLabel="Maximum bedrooms"
-      />
-      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
-      <IntelDualSlider
-        maxIndex={BED_BATH_MAX}
-        minValue={minBathrooms}
-        maxValue={maxBathrooms}
-        onMinChange={onMinBathroomsChange}
-        onMaxChange={onMaxBathroomsChange}
-        onActiveChange={onBathSliderActiveChange}
-        minAriaLabel="Minimum bathrooms"
-        maxAriaLabel="Maximum bathrooms"
-      />
-      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
-      <IntelDualSlider
-        maxIndex={VINTAGE_FILTER_MAX}
-        minValue={minVintage}
-        maxValue={maxVintage}
-        onMinChange={onMinVintageChange}
-        onMaxChange={onMaxVintageChange}
-        onActiveChange={onVintageSliderActiveChange}
-        minAriaLabel="Minimum vintage era"
-        maxAriaLabel="Maximum vintage era"
-      />
-      <div className={`hidden sm:block ${filterPillSeparatorClass("compact")}`} aria-hidden />
-      <button
-        type="button"
-        onClick={onResetSliders}
-        disabled={!slidersCustomized}
-        className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap disabled:opacity-35 disabled:pointer-events-none disabled:no-underline"
-      >
-        Reset sliders
-      </button>
-    </div>
+    <>
+      <div className="flex items-center gap-1 shrink-0 w-fit">
+        <IntelDualSlider
+          label="Beds"
+          maxIndex={BED_BATH_MAX}
+          minValue={minBedrooms}
+          maxValue={maxBedrooms}
+          onMinChange={onMinBedroomsChange}
+          onMaxChange={onMaxBedroomsChange}
+          onActiveChange={onBedSliderActiveChange}
+          minAriaLabel="Minimum bedrooms"
+          maxAriaLabel="Maximum bedrooms"
+        />
+        <IntelDualSlider
+          label="Baths"
+          maxIndex={BED_BATH_MAX}
+          minValue={minBathrooms}
+          maxValue={maxBathrooms}
+          onMinChange={onMinBathroomsChange}
+          onMaxChange={onMaxBathroomsChange}
+          onActiveChange={onBathSliderActiveChange}
+          minAriaLabel="Minimum bathrooms"
+          maxAriaLabel="Maximum bathrooms"
+        />
+      </div>
+      <div className="flex items-center gap-1 shrink-0 w-fit">
+        <IntelDualSlider
+          label="Yr built"
+          maxIndex={VINTAGE_FILTER_MAX}
+          minValue={minVintage}
+          maxValue={maxVintage}
+          onMinChange={onMinVintageChange}
+          onMaxChange={onMaxVintageChange}
+          onActiveChange={onVintageSliderActiveChange}
+          minAriaLabel="Minimum vintage era"
+          maxAriaLabel="Maximum vintage era"
+        />
+        <SqftRangeSlider
+          label="Sq feet"
+          steps={boardSqftSteps}
+          minIndex={minSqftIndex}
+          maxIndex={maxSqftIndex}
+          onMinIndexChange={onMinSqftIndexChange}
+          onMaxIndexChange={onMaxSqftIndexChange}
+          onActiveChange={onSqftSliderActiveChange}
+        />
+      </div>
+    </>
   );
 }
 
@@ -3449,6 +3667,39 @@ function VintageLabel({
   return <span className={className}>{label}</span>;
 }
 
+function SqftRangeLabel({
+  steps,
+  minIndex,
+  maxIndex,
+  active,
+  onClick,
+}: {
+  steps: readonly number[];
+  minIndex: number;
+  maxIndex: number;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  const lo = Math.min(minIndex, maxIndex);
+  const hi = Math.max(minIndex, maxIndex);
+  const interactive = onClick != null;
+  const className = descriptorLabelClass(active, interactive);
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {formatIntelSqftRangeLabelFromSteps(steps, lo, hi)}
+      </button>
+    );
+  }
+
+  return (
+    <span className={className}>
+      {formatIntelSqftRangeLabelFromSteps(steps, lo, hi)}
+    </span>
+  );
+}
+
 function IntelFilterDescriptorDot() {
   return (
     <span className="text-white/25" aria-hidden>
@@ -3471,9 +3722,13 @@ type IntelSliderDescriptorLabelsProps = {
   maxBathrooms: number;
   minVintage: number;
   maxVintage: number;
+  boardSqftSteps: readonly number[];
+  minSqftIndex: number;
+  maxSqftIndex: number;
   bedSliderActive: boolean;
   bathSliderActive: boolean;
   vintageSliderActive: boolean;
+  sqftSliderActive: boolean;
   withLeadingSeparator?: boolean;
 };
 
@@ -3491,14 +3746,18 @@ function IntelSliderDescriptorLabels({
   maxBathrooms,
   minVintage,
   maxVintage,
+  boardSqftSteps,
+  minSqftIndex,
+  maxSqftIndex,
   bedSliderActive,
   bathSliderActive,
   vintageSliderActive,
+  sqftSliderActive,
   withLeadingSeparator = false,
 }: IntelSliderDescriptorLabelsProps) {
   if (!showPriceFilter && cls === "commercial") return null;
 
-  const leadingDot = withLeadingSeparator || showPriceFilter;
+  const leadingDot = withLeadingSeparator;
 
   return (
     <>
@@ -3535,6 +3794,14 @@ function IntelSliderDescriptorLabels({
             active={vintageSliderActive}
             onClick={() => onDescriptorClick("vintage")}
           />
+          <IntelFilterDescriptorDot />
+          <SqftRangeLabel
+            steps={boardSqftSteps}
+            minIndex={minSqftIndex}
+            maxIndex={maxSqftIndex}
+            active={sqftSliderActive}
+            onClick={() => onDescriptorClick("sqft")}
+          />
         </>
       ) : null}
     </>
@@ -3568,9 +3835,16 @@ function IntelFilterControlsRow({
   onBedSliderActiveChange,
   onBathSliderActiveChange,
   onVintageSliderActiveChange,
+  onSqftSliderActiveChange,
+  boardSqftSteps,
+  minSqftIndex,
+  maxSqftIndex,
+  onMinSqftIndexChange,
+  onMaxSqftIndexChange,
   bedSliderActive,
   bathSliderActive,
   vintageSliderActive,
+  sqftSliderActive,
   onResetSliders,
   slidersCustomized,
 }: {
@@ -3600,9 +3874,16 @@ function IntelFilterControlsRow({
   onBedSliderActiveChange: (active: boolean) => void;
   onBathSliderActiveChange: (active: boolean) => void;
   onVintageSliderActiveChange: (active: boolean) => void;
+  onSqftSliderActiveChange: (active: boolean) => void;
+  boardSqftSteps: readonly number[];
+  minSqftIndex: number;
+  maxSqftIndex: number;
+  onMinSqftIndexChange: (index: number) => void;
+  onMaxSqftIndexChange: (index: number) => void;
   bedSliderActive: boolean;
   bathSliderActive: boolean;
   vintageSliderActive: boolean;
+  sqftSliderActive: boolean;
   onResetSliders: () => void;
   slidersCustomized: boolean;
 }) {
@@ -3613,32 +3894,58 @@ function IntelFilterControlsRow({
   }`;
 
   const sliderPanel = (
-    <>
-      {showPriceFilter ? (
-        <div className="flex flex-col gap-1 shrink-0">
-          <PriceRangeSlider
-            steps={boardPriceSteps}
-            minIndex={minPriceIndex}
-            maxIndex={maxPriceIndex}
-            onMinIndexChange={onMinPriceIndexChange}
-            onMaxIndexChange={onMaxPriceIndexChange}
-            onActiveChange={onPriceSliderActiveChange}
-          />
-          <PriceRangeInputs
-            steps={boardPriceSteps}
-            minIndex={minPriceIndex}
-            maxIndex={maxPriceIndex}
-            onMinIndexChange={onMinPriceIndexChange}
-            onMaxIndexChange={onMaxPriceIndexChange}
-            onActiveChange={onPriceSliderActiveChange}
-          />
-        </div>
-      ) : null}
+    <div className="flex flex-col gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {showPriceFilter ? (
+          <div className="flex items-center gap-1 shrink-0">
+            <PriceRangeSlider
+              label="Price"
+              steps={boardPriceSteps}
+              minIndex={minPriceIndex}
+              maxIndex={maxPriceIndex}
+              onMinIndexChange={onMinPriceIndexChange}
+              onMaxIndexChange={onMaxPriceIndexChange}
+              onActiveChange={onPriceSliderActiveChange}
+            />
+            <PriceRangeInputs
+              steps={boardPriceSteps}
+              minIndex={minPriceIndex}
+              maxIndex={maxPriceIndex}
+              onMinIndexChange={onMinPriceIndexChange}
+              onMaxIndexChange={onMaxPriceIndexChange}
+              onActiveChange={onPriceSliderActiveChange}
+            />
+          </div>
+        ) : null}
+        <button
+          type="button"
+          onClick={onResetSliders}
+          disabled={!slidersCustomized}
+          aria-label="Reset sliders"
+          title="Reset sliders"
+          className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full text-white/55 transition-colors hover:text-gold hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-3.5 w-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+          </svg>
+        </button>
+      </div>
       {cls !== "commercial" ? (
-        <BedBathFilterRow
+        <BedBathVintageSqftRow
           onBedSliderActiveChange={onBedSliderActiveChange}
           onBathSliderActiveChange={onBathSliderActiveChange}
           onVintageSliderActiveChange={onVintageSliderActiveChange}
+          onSqftSliderActiveChange={onSqftSliderActiveChange}
           minBedrooms={minBedrooms}
           maxBedrooms={maxBedrooms}
           onMinBedroomsChange={onMinBedroomsChange}
@@ -3651,11 +3958,14 @@ function IntelFilterControlsRow({
           maxVintage={maxVintage}
           onMinVintageChange={onMinVintageChange}
           onMaxVintageChange={onMaxVintageChange}
-          onResetSliders={onResetSliders}
-          slidersCustomized={slidersCustomized}
+          boardSqftSteps={boardSqftSteps}
+          minSqftIndex={minSqftIndex}
+          maxSqftIndex={maxSqftIndex}
+          onMinSqftIndexChange={onMinSqftIndexChange}
+          onMaxSqftIndexChange={onMaxSqftIndexChange}
         />
       ) : null}
-    </>
+    </div>
   );
 
   if (filtersExpanded) {
@@ -3672,6 +3982,7 @@ function IntelFilterControlsRow({
 }
 
 function IntelDualSlider({
+  label,
   maxIndex,
   minValue,
   maxValue,
@@ -3682,6 +3993,7 @@ function IntelDualSlider({
   maxAriaLabel,
   widthClass = INTEL_SLIDER_WIDTH_CLASS,
 }: {
+  label?: string;
   maxIndex: number;
   minValue: number;
   maxValue: number;
@@ -3715,9 +4027,24 @@ function IntelDualSlider({
     };
   }, [active]);
 
+  // Show the category label on the bar only while the range spans its full
+  // extent (i.e. untouched / just reset). Any inward drag hides it.
+  const atFullRange = lo <= 0 && hi >= maxIndex;
   return (
     <div className="flex items-center shrink-0">
-      <div className={`relative h-4 ${widthClass} shrink-0`}>
+      <div className={`relative h-6 ${widthClass} shrink-0`}>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/20"
+        />
+        {label && atFullRange ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-mono text-[10px] font-medium leading-none tracking-[0.14em] uppercase text-white/75"
+          >
+            {label}
+          </span>
+        ) : null}
         <input
           type="range"
           min={0}
@@ -3731,7 +4058,7 @@ function IntelDualSlider({
             if (clamped !== lo) setSliderActive(true);
             onMinChange(clamped);
           }}
-          className="intel-price-range absolute inset-0 z-20 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          className="intel-price-range absolute inset-0 z-20 h-6 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
           aria-label={minAriaLabel}
           aria-valuemin={0}
           aria-valuemax={maxIndex}
@@ -3750,15 +4077,11 @@ function IntelDualSlider({
             if (clamped !== hi) setSliderActive(true);
             onMaxChange(clamped);
           }}
-          className="intel-price-range absolute inset-0 z-30 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          className="intel-price-range absolute inset-0 z-30 h-6 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
           aria-label={maxAriaLabel}
           aria-valuemin={0}
           aria-valuemax={maxIndex}
           aria-valuenow={hi}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/15"
         />
       </div>
     </div>
@@ -3766,6 +4089,7 @@ function IntelDualSlider({
 }
 
 function PriceRangeSlider({
+  label,
   steps,
   minIndex,
   maxIndex,
@@ -3773,6 +4097,7 @@ function PriceRangeSlider({
   onMaxIndexChange,
   onActiveChange,
 }: {
+  label?: string;
   steps: readonly number[];
   minIndex: number;
   maxIndex: number;
@@ -3804,9 +4129,24 @@ function PriceRangeSlider({
     };
   }, [active]);
 
+  // Label shows only while the price range spans its full extent (untouched /
+  // just reset); dragging either thumb inward hides it.
+  const atFullRange = lo <= 0 && hi >= maxStepIndex;
   return (
     <div className="flex flex-col items-stretch shrink-0">
-      <div className={`relative h-4 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
+      <div className={`relative h-6 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/20"
+        />
+        {label && atFullRange ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-mono text-[10px] font-medium leading-none tracking-[0.14em] uppercase text-white/75"
+          >
+            {label}
+          </span>
+        ) : null}
         <input
           type="range"
           min={0}
@@ -3820,7 +4160,7 @@ function PriceRangeSlider({
             if (clamped !== lo) setSliderActive(true);
             onMinIndexChange(clamped);
           }}
-          className="intel-price-range absolute inset-0 z-20 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          className="intel-price-range absolute inset-0 z-20 h-6 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
           aria-label="Minimum price"
           aria-valuemin={0}
           aria-valuemax={maxStepIndex}
@@ -3839,15 +4179,111 @@ function PriceRangeSlider({
             if (clamped !== hi) setSliderActive(true);
             onMaxIndexChange(clamped);
           }}
-          className="intel-price-range absolute inset-0 z-30 h-4 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          className="intel-price-range absolute inset-0 z-30 h-6 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
           aria-label="Maximum price"
           aria-valuemin={0}
           aria-valuemax={maxStepIndex}
           aria-valuenow={hi}
         />
+      </div>
+    </div>
+  );
+}
+
+function SqftRangeSlider({
+  label,
+  steps,
+  minIndex,
+  maxIndex,
+  onMinIndexChange,
+  onMaxIndexChange,
+  onActiveChange,
+}: {
+  label?: string;
+  steps: readonly number[];
+  minIndex: number;
+  maxIndex: number;
+  onMinIndexChange: (value: number) => void;
+  onMaxIndexChange: (value: number) => void;
+  onActiveChange: (active: boolean) => void;
+}) {
+  const [active, setActive] = useState(false);
+  const maxStepIndex = boardSqftMaxIndex(steps);
+  const lo = Math.min(minIndex, maxIndex);
+  const hi = Math.max(minIndex, maxIndex);
+  const disabled = maxStepIndex <= 0;
+
+  const setSliderActive = (next: boolean) => {
+    setActive(next);
+    onActiveChange(next);
+  };
+
+  useEffect(() => {
+    if (!active) return;
+    const stop = () => setSliderActive(false);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("keyup", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("keyup", stop);
+    };
+  }, [active]);
+
+  const atFullRange = lo <= 0 && hi >= maxStepIndex;
+  return (
+    <div className="flex flex-col items-stretch shrink-0">
+      <div className={`relative h-6 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
         <div
           aria-hidden
-          className="pointer-events-none absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/15"
+          className="pointer-events-none absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/20"
+        />
+        {label && atFullRange ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-mono text-[10px] font-medium leading-none tracking-[0.14em] uppercase text-white/75"
+          >
+            {label}
+          </span>
+        ) : null}
+        <input
+          type="range"
+          min={0}
+          max={maxStepIndex}
+          step={1}
+          value={lo}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            const clamped = Math.min(next, hi);
+            if (clamped !== lo) setSliderActive(true);
+            onMinIndexChange(clamped);
+          }}
+          className="intel-price-range absolute inset-0 z-20 h-6 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          aria-label="Minimum square feet"
+          aria-valuemin={0}
+          aria-valuemax={maxStepIndex}
+          aria-valuenow={lo}
+        />
+        <input
+          type="range"
+          min={0}
+          max={maxStepIndex}
+          step={1}
+          value={hi}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            const clamped = Math.max(next, lo);
+            if (clamped !== hi) setSliderActive(true);
+            onMaxIndexChange(clamped);
+          }}
+          className="intel-price-range absolute inset-0 z-30 h-6 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          aria-label="Maximum square feet"
+          aria-valuemin={0}
+          aria-valuemax={maxStepIndex}
+          aria-valuenow={hi}
         />
       </div>
     </div>
@@ -4309,7 +4745,7 @@ function IntelFiltersToggle({
   filtersActive: boolean;
   onToggle: () => void;
 }) {
-  const label = expanded ? "Hide Filters" : "Show Filters";
+  const label = expanded ? "Hide slider filters" : "Show slider filters";
 
   return (
     <button
@@ -4317,47 +4753,31 @@ function IntelFiltersToggle({
       onClick={onToggle}
       aria-expanded={expanded}
       aria-label={label}
-      className={`relative inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-white/45 px-3 text-white transition-colors hover:border-white hover:bg-white/10 ${
-        expanded ? "bg-white/10" : ""
-      }`}
+      title={label}
+      className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center text-white transition-opacity hover:opacity-80"
     >
-      {expanded ? (
-        <svg
-          className="h-4 w-4 shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden
-        >
-          <path
-            d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path d="m15 15 6 6M21 15l-6 6" strokeLinecap="round" />
-        </svg>
-      ) : (
-        <svg
-          className="h-4 w-4 shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden
-        >
-          <path
-            d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      )}
-      <span className="font-mono text-[10px] tracking-[0.12em] uppercase whitespace-nowrap">
-        {label}
-      </span>
+      {/* Common "adjust filters" glyph: three vertical bars with an open
+          triangle slider handle on the middle bar. */}
+      <svg
+        className="h-4 w-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <line x1="6" y1="3" x2="6" y2="21" />
+        <line x1="12" y1="3" x2="12" y2="21" />
+        <line x1="18" y1="3" x2="18" y2="21" />
+        <path d="M12 9 L16 12 L12 15 Z" />
+      </svg>
       {!expanded && filtersActive ? (
-        <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
+        <span
+          className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-gold ring-2 ring-navy"
+          aria-hidden
+        />
       ) : null}
     </button>
   );

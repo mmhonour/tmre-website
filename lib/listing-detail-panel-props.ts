@@ -12,6 +12,7 @@ import {
 import { listingPhotosHref } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
 import type { SpotlightDisplay, SpotlightMlsListing } from "@/lib/spotlight-display";
+import type { SpotlightPresentation } from "@/lib/spotlight-privacy-shared";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import type { ListingOverviewSchools } from "@/components/listing/ListingDetailsSchoolsPanel";
 
@@ -67,12 +68,13 @@ export function buildSpotlightDetailsPanelProps(
   display: SpotlightDisplay,
   mlsListing: SpotlightMlsListing | SpotlightMlsEnrichment,
   fmtMoney: (n: number | null) => string,
+  presentation?: SpotlightPresentation,
 ): ListingDetailsSchoolsPanelProps {
   return buildListingDetailsPanelProps(
     {
       mlsId: mlsListing?.mlsId?.trim() || display.mlsId,
       propertyTitle: display.config.displayTitle,
-      townHint: display.headerAddress.city,
+      townHint: presentation?.townHint ?? display.headerAddress.city,
       status: display.status,
       propertyType: display.propertyType,
       price: display.price,

@@ -202,6 +202,15 @@ export function describeStartupProcess(): {
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
         {
+          id: "incremental-spotlight-status",
+          title: "Spotlight status refresh",
+          timing: "after each incremental",
+          detail:
+            "refreshSpotlightStatuses(): polls RETS for the 5 spotlight listings' current status (incl. off-market states the Active-only incremental skips) and writes it to Postgres so the public badge stays truthful.",
+          status: latestSyncEnabled ? "scheduled" : "skipped",
+          statusLabel: latestSyncEnabled ? "Chained" : "—",
+        },
+        {
           id: "incremental-town-feeds",
           title: "Latest town feed warm",
           timing: "after each incremental",

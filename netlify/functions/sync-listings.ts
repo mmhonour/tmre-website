@@ -17,6 +17,14 @@ export default async function handler() {
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings' })
     const result = await syncIncrementalListings()
+    // Refresh only the spotlight listings' status (incl. off-market states the
+    // Active-only incremental never revisits) so Postgres stays truthful.
+    try {
+      const { refreshSpotlightStatuses } = await import('../../lib/spotlight-status-sync')
+      await refreshSpotlightStatuses()
+    } catch (err) {
+      console.warn('[netlify/sync-listings] spotlight status refresh failed', err)
+    }
     return new Response(
       JSON.stringify({
         ok: result.towns.every((row) => row.ok),

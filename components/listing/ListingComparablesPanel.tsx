@@ -1054,17 +1054,17 @@ export default function ListingComparablesPanel({
                 : "min-w-0"
           }
         >
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-3">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
-              <LookbackSpinner
-                months={lookbackMonths}
-                onChange={setLookbackMonths}
-                theme={sortTheme}
-              />
-            </div>
-            {sortedSold.length > 0 ? (
-              <div className="flex items-center gap-x-3">
+          <div className="relative mb-3 pr-[4.5rem]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
+                <LookbackSpinner
+                  months={lookbackMonths}
+                  onChange={setLookbackMonths}
+                  theme={sortTheme}
+                />
+              </div>
+              {sortedSold.length > 0 ? (
                 <CompSortLinks
                   options={[
                     { key: "score", label: "Edge" },
@@ -1077,29 +1077,22 @@ export default function ListingComparablesPanel({
                   theme={sortTheme}
                   ariaLabel={`${recentlyClosedLabel} sort`}
                 />
-                <span className={foundCountClass}>
-                  {sortedSold.length} found
-                </span>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
+            <span className={`${foundCountClass} absolute top-0 right-0`}>
+              {sortedSold.length} found
+            </span>
           </div>
           {sortedSold.length > 0 ? (
             <>
               <div className="space-y-3">
-                {soldGroups.map((group, groupIndex) => (
-                  <div
-                    key={group.year ?? "earlier"}
-                    className={
-                      groupIndex > 0
-                        ? isModal
-                          ? "border-t border-charcoal/15 pt-3"
-                          : "border-t border-white/15 pt-3"
-                        : ""
-                    }
-                  >
+                {soldGroups.map((group) => (
+                  <div key={group.year ?? "earlier"}>
                     <p
-                      className={`mb-2 font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums ${
-                        isModal ? "text-slate/70" : "text-white/40"
+                      className={`mb-3 border-y py-2 text-center font-mono text-[10px] font-bold tracking-[0.16em] uppercase tabular-nums ${
+                        isModal
+                          ? "border-charcoal/15 text-charcoal"
+                          : "border-white/15 text-white"
                       }`}
                     >
                       {group.year ?? "Earlier"}
@@ -1158,12 +1151,12 @@ export default function ListingComparablesPanel({
                 : "min-w-0"
           }
         >
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-3">
-            <p className={sectionTitleClass}>
-              {isPage ? "ON MARKET" : "On market"}
-            </p>
-            {sortedActive.length > 0 ? (
-              <div className="flex items-center gap-x-3">
+          <div className="relative mb-3 pr-[4.5rem]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <p className={sectionTitleClass}>
+                {isPage ? "ON MARKET" : "On market"}
+              </p>
+              {sortedActive.length > 0 ? (
                 <CompSortLinks
                   options={[
                     { key: "default", label: "Match" },
@@ -1176,11 +1169,11 @@ export default function ListingComparablesPanel({
                   theme={sortTheme}
                   ariaLabel="On market sort"
                 />
-                <span className={foundCountClass}>
-                  {sortedActive.length} found
-                </span>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
+            <span className={`${foundCountClass} absolute top-0 right-0`}>
+              {sortedActive.length} found
+            </span>
           </div>
           {active.length > 0 ? (
             <>

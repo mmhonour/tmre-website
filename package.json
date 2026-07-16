@@ -13,8 +13,10 @@
     "db:ping": "node --env-file=.env.local scripts/db-ping.mjs",
     "backfill:photo-index": "node --env-file=.env.local scripts/backfill-photo-index.mjs",
     "discover:rets": "node --env-file=.env.local --import tsx scripts/discover-rets.ts",
+    "discover:rets:history": "node --env-file=.env.local --import tsx scripts/discover-rets-history.ts",
     "probe:rets": "node --env-file=.env.local --import tsx scripts/probe-rets.ts",
     "sync:listings": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-listings.ts",
+    "sync:spotlight-status": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-spotlight-status.ts",
     "sync:property-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-property-addresses.ts",
     "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts"
   },

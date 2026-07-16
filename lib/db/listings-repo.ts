@@ -13,6 +13,12 @@ import { getAllSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta'
 import { getSyncMeta as getCachedSyncMeta } from '@/lib/db/sync-meta-store'
 import { chunkedUpsert } from '@/lib/db/chunked-upsert'
 import { getUpsertChunkRows } from '@/lib/db/db-write-tuning'
+import {
+  classifyListingChange,
+  recordListingChanges,
+  type ListingChangeKind,
+  type ListingSnapshotEntry,
+} from '@/lib/db/listing-history-log'
 import type { PoolClient } from 'pg'
 
 // ---------------------------------------------------------------------------
@@ -224,19 +230,27 @@ export async function upsertListing(
   if (!id) return { upserted: false, priceChanged: false }
 
   const syncedAt = new Date()
-  return withTransaction(async (client) => {
-    const existing = await client.query<{ price: string | null }>(
-      'SELECT price FROM listings WHERE id = $1',
+  const nextPrice = listing.price ?? null
+  const nextStatus = listing.status ?? null
+
+  const { result, change } = await withTransaction(async (client) => {
+    const existing = await client.query<{ price: string | null; mls_status: string | null }>(
+      'SELECT price, mls_status FROM listings WHERE id = $1',
       [id],
     )
+    const hadRow = existing.rows.length > 0
     const previousPrice =
       existing.rows[0]?.price != null ? Number(existing.rows[0].price) : null
-    const nextPrice = listing.price ?? null
+    const previousStatus = existing.rows[0]?.mls_status ?? null
     const priceChanged =
-      existing.rows.length > 0 &&
-      previousPrice != null &&
-      nextPrice != null &&
-      previousPrice !== nextPrice
+      hadRow && previousPrice != null && nextPrice != null && previousPrice !== nextPrice
+
+    const changeKind = hadRow
+      ? classifyListingChange(
+          { price: previousPrice, status: previousStatus },
+          { price: nextPrice, status: nextStatus },
+        )
+      : null
 
     await client.query({
       name: 'upsert_listing',
@@ -244,8 +258,27 @@ export async function upsertListing(
       values: listingToParams(listing, town, statusBucket, syncedAt),
     })
     await upsertTaxHistory(client, listing, id, syncedAt)
-    return { upserted: true, priceChanged }
+
+    const change: (ListingSnapshotEntry & { changeKind: ListingChangeKind }) | null = changeKind
+      ? {
+          listingId: id,
+          mlsId: listing.mlsId,
+          town,
+          statusBucket,
+          status: nextStatus,
+          price: nextPrice,
+          previousStatus,
+          previousPrice,
+          changeKind,
+        }
+      : null
+
+    return { result: { upserted: true, priceChanged }, change }
   })
+
+  // Best-effort, post-commit: never let history logging affect the sync.
+  if (change) await recordListingChanges([change])
+  return result
 }
 
 export type UpsertTownResult = {
@@ -289,10 +322,20 @@ export async function upsertTownListings(
   }
 
   const syncedAt = new Date()
-  return withTransaction(async (client) => {
-    const existing = await client.query<{ id: string }>(
-      'SELECT id FROM listings WHERE town = $1 AND status_bucket = $2',
+  const { result, changes } = await withTransaction(async (client) => {
+    const existing = await client.query<{
+      id: string
+      price: string | null
+      mls_status: string | null
+    }>(
+      'SELECT id, price, mls_status FROM listings WHERE town = $1 AND status_bucket = $2',
       [town, statusBucket],
+    )
+    const existingById = new Map(
+      existing.rows.map((r) => [
+        r.id,
+        { price: r.price != null ? Number(r.price) : null, status: r.mls_status },
+      ]),
     )
     const existingIds = new Set(existing.rows.map((r) => r.id))
     const seen = new Set<string>()
@@ -301,6 +344,7 @@ export async function upsertTownListings(
 
     const listingRows: unknown[][] = []
     const taxRows: unknown[][] = []
+    const changes: Array<ListingSnapshotEntry & { changeKind: ListingChangeKind }> = []
     for (const listing of rows) {
       const id = listingRowId(listing)
       if (!id) continue
@@ -308,6 +352,25 @@ export async function upsertTownListings(
       seen.add(id)
       if (existingIds.has(id)) updated += 1
       else inserted += 1
+
+      const prev = existingById.get(id) ?? null
+      const nextPrice = listing.price ?? null
+      const nextStatus = listing.status ?? null
+      const changeKind = classifyListingChange(prev, { price: nextPrice, status: nextStatus })
+      if (changeKind) {
+        changes.push({
+          listingId: id,
+          mlsId: listing.mlsId,
+          town,
+          statusBucket,
+          status: nextStatus,
+          price: nextPrice,
+          previousStatus: prev?.status ?? null,
+          previousPrice: prev?.price ?? null,
+          changeKind,
+        })
+      }
+
       listingRows.push(listingToParams(listing, town, statusBucket, syncedAt))
       const tax = taxHistoryParams(listing, id, syncedAt)
       if (tax) taxRows.push(tax)
@@ -339,8 +402,15 @@ export async function upsertTownListings(
       await client.query('DELETE FROM listings WHERE id = ANY($1::text[])', [deletedIds])
     }
 
-    return { seen: seen.size, inserted, updated, deleted: deletedIds.length, deletedIds }
+    return {
+      result: { seen: seen.size, inserted, updated, deleted: deletedIds.length, deletedIds },
+      changes,
+    }
   })
+
+  // Best-effort, post-commit: never let history logging affect the sync.
+  if (changes.length > 0) await recordListingChanges(changes)
+  return result
 }
 
 export type IncrementalUpsertResult = { count: number; priceChangedIds: string[] }

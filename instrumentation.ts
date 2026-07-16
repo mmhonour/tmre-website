@@ -102,6 +102,12 @@ export async function register() {
         latestSyncRunning = true
         Promise.resolve()
           .then(() => syncIncrementalListings())
+          .then(async () => {
+            // Refresh only the spotlight listings' status (incl. off-market
+            // states the Active-only incremental never revisits) into Postgres.
+            const { refreshSpotlightStatuses } = await import('./lib/spotlight-status-sync')
+            await refreshSpotlightStatuses()
+          })
           .catch((err) => console.error('[latest-sync/instrumentation]', err))
           .finally(() => {
             latestSyncRunning = false

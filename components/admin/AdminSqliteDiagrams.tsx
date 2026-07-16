@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   SqliteDatabaseDiagram,
   SqliteRelationship,
@@ -101,10 +101,52 @@ function InventoryComparisonPanel({
 }) {
   const [open, setOpen] = useState(true);
 
-  // Build the union of all table names from both sources
-  const snapshotCounts = snapshot?.counts ?? {};
-  const liveCounts: Record<string, number> = {};
-  for (const t of liveDb?.tables ?? []) liveCounts[t.name] = t.rowCount;
+  // Counts live in state so the panel can refresh itself on a ~30-minute cycle
+  // (see effect below) without a full admin-page reload. Seeded from SSR props.
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>(() => {
+    const m: Record<string, number> = {};
+    for (const t of liveDb?.tables ?? []) m[t.name] = t.rowCount;
+    return m;
+  });
+  const [snapshotCounts, setSnapshotCounts] = useState<Record<string, number>>(
+    snapshot?.counts ?? {},
+  );
+  const [capturedAt, setCapturedAt] = useState<string | null>(
+    snapshot?.capturedAt ?? null,
+  );
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const REFRESH_MS = 30 * 60 * 1000;
+    async function load() {
+      try {
+        const res = await fetch("/api/admin/inventory-snapshot", {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          snapshot: InventorySnapshot | null;
+          liveCounts: Record<string, number>;
+          at: string;
+        };
+        if (cancelled) return;
+        setLiveCounts(data.liveCounts ?? {});
+        setSnapshotCounts(data.snapshot?.counts ?? {});
+        setCapturedAt(data.snapshot?.capturedAt ?? null);
+        setLastRefreshedAt(data.at);
+      } catch {
+        // Keep last-known values on failure — this is a best-effort refresh.
+      }
+    }
+    const id = window.setInterval(load, REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const hasSnapshot = capturedAt != null;
 
   const allTables = Array.from(
     new Set([...Object.keys(liveCounts), ...Object.keys(snapshotCounts)]),
@@ -115,7 +157,7 @@ function InventoryComparisonPanel({
     return s === "empty" || s === "low";
   });
 
-  const overallDot = !snapshot
+  const overallDot = !hasSnapshot
     ? <span className="w-1.5 h-1.5 rounded-full bg-charcoal/20 inline-block" />
     : hasAnyMismatch
     ? <span className="w-1.5 h-1.5 rounded-full bg-coral animate-pulse inline-block" />
@@ -133,9 +175,9 @@ function InventoryComparisonPanel({
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             Inventory comparison
           </p>
-          {snapshot ? (
+          {hasSnapshot ? (
             <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/40 border border-charcoal/15 rounded-full px-2 py-0.5 shrink-0">
-              snapshot {new Date(snapshot.capturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              snapshot {new Date(capturedAt as string).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
             </span>
           ) : (
             <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/30 border border-charcoal/10 rounded-full px-2 py-0.5 shrink-0">
@@ -198,7 +240,11 @@ function InventoryComparisonPanel({
             </tbody>
           </table>
           <p className="px-5 sm:px-6 py-3 font-mono text-[9px] text-charcoal/35 border-t border-charcoal/[0.04]">
-            Snapshot captured after last successful full resync · Current = live Lambda counts
+            Snapshot captured after last successful full resync · Current = live
+            Lambda counts · Auto-refreshes every 30 min
+            {lastRefreshedAt
+              ? ` · updated ${new Date(lastRefreshedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
+              : ""}
           </p>
         </div>
       )}
@@ -574,6 +620,7 @@ export default function AdminSqliteDiagrams({
   inventorySnapshot?: InventorySnapshot | null;
 }) {
   const writeDb = databases.find((db) => db.id === "listings");
+  const hasPhotoSqlite = databases.some((db) => db.id === "listing-photos");
   return (
     <div className="mt-6 space-y-6">
       <div>
@@ -581,9 +628,10 @@ export default function AdminSqliteDiagrams({
           Databases
         </p>
         <p className="text-sm text-slate max-w-3xl">
-          Live schema for the Neon Postgres database (MLS inventory + derived tables) and
-          the local listing-photos SQLite file — storage paths, tables, columns, approximate
-          row counts, and PK→FK relationship lines where tables join on{" "}
+          Live schema for the Neon Postgres database (MLS inventory + derived tables)
+          {hasPhotoSqlite ? " and the local listing-photos SQLite file" : ""} — storage
+          paths, tables, columns, approximate row counts, and PK→FK relationship lines
+          where tables join on{" "}
           <span className="font-mono text-navy/80">listings.id</span>.
         </p>
       </div>

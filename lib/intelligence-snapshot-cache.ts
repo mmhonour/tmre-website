@@ -10,6 +10,8 @@ export type IntelligenceSnapshotFilters = {
   maxBathrooms: number;
   minVintage: number;
   maxVintage: number;
+  minSqft: number;
+  maxSqft: number | null;
   exactBeds: boolean;
   newConstructionOnly: boolean;
   minPrice: number;
@@ -32,6 +34,8 @@ function filtersKey(filters: IntelligenceSnapshotFilters): string {
     filters.maxBathrooms,
     filters.minVintage,
     filters.maxVintage,
+    filters.minSqft,
+    filters.maxSqft ?? "",
     filters.exactBeds ? "1" : "0",
     filters.newConstructionOnly ? "1" : "0",
     filters.minPrice,

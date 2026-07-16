@@ -8,10 +8,6 @@ import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
-import {
-  spotlightObfuscatesPhotoWithPrivacy,
-  spotlightEffectiveHeaderAddress,
-} from "@/lib/spotlight-privacy-shared";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -33,7 +29,7 @@ export default function SpotlightPhotosClient() {
     photos,
     photosState,
     propertyTab,
-    privacy,
+    presentation,
   } = useSpotlightListing({
     photos: true,
   });
@@ -59,15 +55,12 @@ export default function SpotlightPhotosClient() {
   }
 
   const isClosed = formatMlsStatus(display.status) === "Closed";
-  const obfuscatePhoto = (index: number) =>
-    spotlightObfuscatesPhotoWithPrivacy(display.config, index, privacy);
-  const headerAddress = spotlightEffectiveHeaderAddress(
-    display.config,
+  const details = buildSpotlightDetailsPanelProps(
+    display,
     mlsListing,
-    privacy,
+    fmtMoney,
+    presentation,
   );
-  const publicAddressLabel = headerAddress.street;
-  const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
 
   const belowTabs =
     photosState === "loading" ? (
@@ -86,8 +79,8 @@ export default function SpotlightPhotosClient() {
         photos={photos}
         active={activePhoto}
         setActive={setActivePhoto}
-        address={publicAddressLabel}
-        obfuscatePhotoIndex={obfuscatePhoto}
+        address={presentation.headerAddress.street}
+        obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
       />
     ) : (
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] aspect-[16/10] flex flex-col items-center justify-center gap-3 px-6 text-center">
@@ -108,7 +101,7 @@ export default function SpotlightPhotosClient() {
       active="photos"
       display={display}
       propertyTab={propertyTab}
-      mlsListing={mlsListing}
+      presentation={presentation}
       isClosed={isClosed}
       goldilocksScore={goldilocksScore}
       goldilocksBreakdown={goldilocksBreakdown}

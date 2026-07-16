@@ -3,6 +3,7 @@ import Image from "next/image";
 import FooterMarketsColumn from "@/components/FooterMarketsColumn";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 import { getLastFullSync } from "@/lib/listings-store";
+import { AGENT_NAME, BROKERAGE_NAME } from "@/lib/business-info";
 function formatLastBuilt(iso: string | null): string | null {
   if (!iso) return null;
   const date = new Date(iso);
@@ -28,11 +29,33 @@ const columns = [
     links: [
       { href: "/about", label: "About TMRE" },
       { href: "/about", label: "Methodology" },
-      { href: "#", label: "Press" },
-      { href: "#", label: "Contact" },
+      { href: "/contact", label: "Contact" },
+      { href: "/list-with-me", label: "List with me" },
     ],
   },
 ];
+
+/** Equal Housing Opportunity mark — a house outline with an equals sign. */
+function EqualHousingMark({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role="img"
+      aria-label="Equal Housing Opportunity"
+    >
+      <path d="M3 10.5 12 4l9 6.5" />
+      <path d="M5 9.5V20h14V9.5" />
+      <path d="M9 13h6" />
+      <path d="M9 16h6" />
+    </svg>
+  );
+}
 
 export default async function Footer() {
   const lastBuilt = formatLastBuilt(getLastFullSync());
@@ -99,10 +122,37 @@ export default async function Footer() {
           <p className="text-xs text-white/50 font-mono tracking-wide">
             © {new Date().getFullYear()} TMRE · {TMRE_CORE_TOWNS_LABEL}, CT
           </p>
-          <p className="text-xs text-white/40 italic font-serif">
-            Confidence through clarity.
+          <nav className="flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="Legal">
+            {[
+              { href: "/privacy", label: "Privacy" },
+              { href: "/terms", label: "Terms" },
+              { href: "/contact", label: "Contact" },
+            ].map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-xs text-white/50 hover:text-gold transition-colors font-mono tracking-wide"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <p className="text-xs text-white/40 italic font-serif">
+              Confidence through clarity.
+            </p>
+          </nav>
+        </div>
+
+        {/* Brokerage attribution + fair-housing disclosure (real-estate standard). */}
+        <div className="mt-6 flex items-start gap-3">
+          <EqualHousingMark className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />
+          <p className="text-[11px] leading-relaxed text-white/40 max-w-3xl">
+            {AGENT_NAME} is a licensed real estate agent affiliated with{" "}
+            {BROKERAGE_NAME}. Equal Housing Opportunity. Property and market
+            information is sourced from MLS and public records, is deemed
+            reliable but not guaranteed, and should be independently verified.
           </p>
         </div>
+
         <p className="mt-4 text-left text-[11px] text-white/[0.16] font-mono tracking-wide">
           {lastBuilt
             ? `Refreshed: ${lastBuilt} ET`

@@ -1,4 +1,5 @@
 import ProfileContactTrigger from "@/components/ProfileContactTrigger";
+import { getContactPhone } from "@/lib/phone-config";
 
 export const metadata = {
   title: "About — TMRE",
@@ -30,6 +31,7 @@ const values = [
 ];
 
 export default function AboutPage() {
+  const phone = getContactPhone();
   return (
     <>
       {/* HERO — matches site-wide nav banner style */}
@@ -88,6 +90,7 @@ export default function AboutPage() {
                     alt="Timothy Marks, Agent and Insight Provacateur at TMRE"
                     sizes="(min-width: 1024px) 256px, (min-width: 640px) 208px, 100vw"
                     priority
+                    phone={phone}
                   />
                   <div className="mt-4">
                     <h2 className="font-serif text-2xl lg:text-3xl text-navy leading-tight">

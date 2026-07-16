@@ -38,6 +38,13 @@ type ListingHeaderProps = {
   /** Primary/hero photo, rendered between the meta line and the insight. */
   heroSlot?: ReactNode;
   /**
+   * Tab nav bar. Rendered directly under the style / beds-baths / sqft meta
+   * line so it hugs the header and reclaims dead space beside a tall hero
+   * thumbnail on non-Overview tabs. On Overview the floated hero stays put and
+   * the tabs fall below it.
+   */
+  tabsSlot?: ReactNode;
+  /**
    * When true, the hero photo sits right-aligned and top-aligned to the
    * address instead of floated below the meta line (used on non-Overview
    * tabs where there is no insight copy to wrap around it).
@@ -79,6 +86,7 @@ export default function ListingHeader({
   scoreSubtitle = null,
   isRental = false,
   heroSlot = null,
+  tabsSlot = null,
   heroAside = false,
   compact = false,
   className = "",
@@ -105,6 +113,14 @@ export default function ListingHeader({
 
   const title = address.street || address.full;
   const showScore = goldilocksScore != null && goldilocksScore > 0;
+
+  // Secondary meta (style / beds+baths / sqft) sits directly under the type /
+  // year-built line so listing + spotlight headers share the same stack.
+  const metaSecondary = joinMetaSegments([
+    style,
+    bedBathSegment,
+    sqft ? `${sqft.toLocaleString()} sqft` : null,
+  ]);
 
   const titleAndMeta = (
     <>
@@ -161,24 +177,28 @@ export default function ListingHeader({
           yearBuilt ? `Built ${yearBuilt}` : null,
         ])}
       </p>
+      {metaSecondary ? (
+        <p className="mt-1 font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
+          {metaSecondary}
+        </p>
+      ) : null}
     </>
   );
-
-  // Secondary meta (style / beds+baths / sqft) renders full-width just above
-  // the section tabs, keeping the bed/bath search hyperlink intact.
-  const metaSecondary = joinMetaSegments([
-    style,
-    bedBathSegment,
-    sqft ? `${sqft.toLocaleString()} sqft` : null,
-  ]);
 
   return (
     <div className={className ? className : "mb-6"}>
       {heroAside && heroSlot ? (
         // Non-Overview tabs: hero sits right-aligned, top-aligned to the
-        // address, and links to the Photos tab.
+        // address, and links to the Photos tab. The tab bar slots into the
+        // left column directly under the meta line so it fills the dead space
+        // beside the taller hero thumbnail instead of dropping below the row.
         <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1">{titleAndMeta}</div>
+          <div className="min-w-0 flex-1">
+            {titleAndMeta}
+            {tabsSlot ? (
+              <div className={compact ? "mt-2" : "mt-3"}>{tabsSlot}</div>
+            ) : null}
+          </div>
           {/* Inline width avoids depending on the Tailwind `w-2/5` utility,
               which the Turbopack dev server sometimes fails to emit (leaving
               the hero collapsed to ~0px). */}
@@ -212,18 +232,13 @@ export default function ListingHeader({
               <div style={{ clear: "both" }} aria-hidden />
             </div>
           ) : null}
+          {/* Overview (or no hero aside): hero can't move, so tabs fall
+              directly under the meta line / hero block. */}
+          {tabsSlot ? (
+            <div className={compact ? "mt-2" : "mt-3"}>{tabsSlot}</div>
+          ) : null}
         </>
       )}
-
-      {metaSecondary ? (
-        <p
-          className={`font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 ${
-            compact ? "mt-3" : "mt-4"
-          }`}
-        >
-          {metaSecondary}
-        </p>
-      ) : null}
 
       {goldilocksBreakdown && scoreOpen ? (
         <ListingScoreBreakdownModal

@@ -1,38 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import {
+  emptyVisitorGeo,
+  readVisitorsMap,
+  updateVisitors,
+  type VisitorGeo,
+} from '@/lib/visitors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
-const VISITORS_FILE = path.join(DATA_DIR, 'visitors.json')
 const VID_COOKIE = 'tmre_vid'
 const VID_MAX_AGE = 60 * 60 * 24 * 365
-
-type GeoInfo = {
-  city: string | null
-  region: string | null
-  postal: string | null
-  country: string | null
-  org: string | null
-}
-
-export type VisitorRecord = {
-  vid: string
-  firstSeen: string
-  lastSeen: string
-  pageviews: number
-  ip: string | null
-  geo: GeoInfo
-  pages: { path: string; at: string }[]
-  email?: string | null
-  zip?: string | null
-  name?: string | null
-  audienceType?: string | null
-  leadId?: string | null
-}
 
 function extractIp(req: NextRequest): string | null {
   const fwd = req.headers.get('x-forwarded-for')
@@ -42,8 +21,8 @@ function extractIp(req: NextRequest): string | null {
   return null
 }
 
-async function geolocate(ip: string | null): Promise<GeoInfo> {
-  const empty: GeoInfo = { city: null, region: null, postal: null, country: null, org: null }
+async function geolocate(ip: string | null): Promise<VisitorGeo> {
+  const empty: VisitorGeo = emptyVisitorGeo()
   if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
     return empty
   }
@@ -70,22 +49,6 @@ async function geolocate(ip: string | null): Promise<GeoInfo> {
   }
 }
 
-async function readVisitors(): Promise<Record<string, VisitorRecord>> {
-  try {
-    const raw = await fs.readFile(VISITORS_FILE, 'utf8')
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, VisitorRecord>) : {}
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
-    throw err
-  }
-}
-
-async function writeVisitors(visitors: Record<string, VisitorRecord>): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-  await fs.writeFile(VISITORS_FILE, JSON.stringify(visitors, null, 2), 'utf8')
-}
-
 export async function POST(req: NextRequest) {
   let body: { path?: unknown } = {}
   try {
@@ -102,32 +65,37 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
 
   try {
-    const visitors = await readVisitors()
-    const existing = visitors[vid]
-    if (existing) {
-      existing.lastSeen = now
-      existing.pageviews += 1
-      existing.pages.push({ path: pagePath, at: now })
-      if (existing.pages.length > 50) existing.pages = existing.pages.slice(-50)
-      if (ip && !existing.ip) existing.ip = ip
-    } else {
-      const geo = await geolocate(ip)
-      visitors[vid] = {
-        vid,
-        firstSeen: now,
-        lastSeen: now,
-        pageviews: 1,
-        ip,
-        geo,
-        pages: [{ path: pagePath, at: now }],
-        email: null,
-        zip: null,
-        name: null,
-        audienceType: null,
-        leadId: null,
+    // Geolocation is a slow network call — do it outside the write lock so it
+    // can't stall other pageviews. A pre-read (unsynchronized) decides whether
+    // this vid is likely new and therefore needs geo lookup.
+    const preexisting = (await readVisitorsMap())[vid]
+    const geo = preexisting ? null : await geolocate(ip)
+
+    await updateVisitors((visitors) => {
+      const existing = visitors[vid]
+      if (existing) {
+        existing.lastSeen = now
+        existing.pageviews += 1
+        existing.pages.push({ path: pagePath, at: now })
+        if (existing.pages.length > 50) existing.pages = existing.pages.slice(-50)
+        if (ip && !existing.ip) existing.ip = ip
+      } else {
+        visitors[vid] = {
+          vid,
+          firstSeen: now,
+          lastSeen: now,
+          pageviews: 1,
+          ip,
+          geo: geo ?? emptyVisitorGeo(),
+          pages: [{ path: pagePath, at: now }],
+          email: null,
+          zip: null,
+          name: null,
+          audienceType: null,
+          leadId: null,
+        }
       }
-    }
-    await writeVisitors(visitors)
+    })
   } catch (err) {
     console.error('[visitor/log] write failed', err)
   }

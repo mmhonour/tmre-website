@@ -5,15 +5,21 @@ import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome";
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
-import { useSpotlightPrivacy } from "@/hooks/useSpotlightPrivacy";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 
 export default function SpotlightIfClient() {
-  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, insight, propertyTab } =
-    useSpotlightListing();
-  const privacy = useSpotlightPrivacy(propertyTab);
+  const {
+    display,
+    loadState,
+    mlsListing,
+    goldilocksScore,
+    goldilocksBreakdown,
+    insight,
+    propertyTab,
+    presentation,
+  } = useSpotlightListing();
 
   if (loadState === "error") {
     return (
@@ -27,29 +33,25 @@ export default function SpotlightIfClient() {
   }
 
   const isClosed = formatMlsStatus(display.status) === "Closed";
-  const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
-
-  // Only expose the street address in the IF blurb when the "show address"
-  // site control is enabled for this spotlight tab; otherwise the blurb shows
-  // the math alone (no address, no MLS #).
-  const ifAddressHint = privacy.showAddress
-    ? mlsListing?.address?.street?.trim() ||
-      display.config.address.street?.trim() ||
-      null
-    : null;
+  const details = buildSpotlightDetailsPanelProps(
+    display,
+    mlsListing,
+    fmtMoney,
+    presentation,
+  );
 
   return (
     <SpotlightPageChrome
       active="if"
       display={display}
       propertyTab={propertyTab}
-      mlsListing={mlsListing}
+      presentation={presentation}
       isClosed={isClosed}
       belowTabs={
         <ListingIfPageContent
           mlsId={display.mlsId}
-          addressHint={ifAddressHint}
-          townHint={display.config.address.city}
+          addressHint={presentation.ifAddressHint}
+          townHint={presentation.townHint}
           routeBase="spotlight"
         />
       }

@@ -33,6 +33,12 @@ data/listings.bundle.db
 data/listings.bundle.db-*
 data/test-bundle.db
 
+# runtime capture files — contain visitor/lead PII (IPs, names, emails); keep local only
+data/visitors.json
+data/visitors.json.*
+data/contacts.json
+data/leads.json
+
 # debug
 *.log
 npm-debug.log*

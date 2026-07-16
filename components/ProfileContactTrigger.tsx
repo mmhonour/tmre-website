@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import ContactButton from "./ContactButton";
-import { PhoneIcon, navIconClass } from "./icons";
+import PhoneCta from "./PhoneCta";
 
 const iconCtaButtonClass =
   "inline-flex items-center justify-center rounded-full bg-gold min-w-[2.75rem] min-h-[2.75rem] p-3 text-navy transition-all hover:bg-gold-light hover:shadow-lg hover:shadow-gold/30 w-full";
@@ -15,6 +15,7 @@ type ProfileContactTriggerProps = {
   priority?: boolean;
   frameClassName?: string;
   imageClassName?: string;
+  phone?: { tel: string; display: string };
 };
 
 export default function ProfileContactTrigger({
@@ -24,6 +25,7 @@ export default function ProfileContactTrigger({
   priority = false,
   frameClassName = "",
   imageClassName = "object-cover grayscale transition-[filter] duration-500 group-hover:grayscale-0",
+  phone,
 }: ProfileContactTriggerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -71,9 +73,7 @@ export default function ProfileContactTrigger({
             Get in touch
           </p>
           <div className="flex flex-col items-stretch gap-2">
-            <a href="tel:6175040741" className={iconCtaButtonClass} role="menuitem" aria-label="Call me">
-              <PhoneIcon className={navIconClass} />
-            </a>
+            <PhoneCta className={iconCtaButtonClass} phone={phone} />
             <ContactButton className={iconCtaButtonClass} />
           </div>
         </div>

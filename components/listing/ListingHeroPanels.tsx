@@ -107,12 +107,14 @@ export default function ListingHeroPanels({
         hideMarketMeta={header.hideMarketMeta ?? isSpotlight}
         insight={subnav.active === "overview" ? header.insight : null}
         heroAside={subnav.active !== "overview"}
+        tabsSlot={
+          <Suspense fallback={null}>
+            <ListingSubnav {...subnav} embedded compact />
+          </Suspense>
+        }
         className="mb-0"
         compact
       />
-      <Suspense fallback={null}>
-        <ListingSubnav {...subnav} embedded compact />
-      </Suspense>
       {belowTabs ? (
         <div className="mt-3 pt-3 border-t border-white/10">{belowTabs}</div>
       ) : null}

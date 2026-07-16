@@ -84,8 +84,12 @@ export async function POST(req: NextRequest) {
   contacts.push(contact)
   await fs.writeFile(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8')
 
+  // Email is best-effort: the contact is already persisted, so a mail failure
+  // must never block or error the user's submission (that produced the hang /
+  // false error). Log it server-side and surface a soft `emailed` flag.
+  let emailed = false
   try {
-    await notifyContactByEmail({
+    emailed = await notifyContactByEmail({
       name: contact.name,
       phone: contact.phone,
       email: contact.email,
@@ -95,11 +99,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     console.error('[/api/contact] email notify failed', err)
-    return NextResponse.json(
-      { error: 'Message saved but email delivery failed. Please try again or call directly.' },
-      { status: 502 },
-    )
   }
 
-  return NextResponse.json({ ok: true }, { status: 201 })
+  return NextResponse.json({ ok: true, emailed }, { status: 201 })
 }

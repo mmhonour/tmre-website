@@ -3,6 +3,7 @@ import 'server-only'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { listingPhotosDbPath, tryGetListingPhotosDb } from '@/lib/listing-photos-db'
+import { isR2PhotoStoreConfigured } from '@/lib/r2-photo-store'
 import type {
   SqliteDatabaseDiagram,
   SqliteRelationship,
@@ -155,8 +156,16 @@ function openReadonlyIfExists(filePath: string): { database: SqliteDatabase | nu
   }
 }
 
-/** Live SQLite file diagrams — listing photos only (MLS inventory is in Neon Postgres). */
+/**
+ * Live SQLite file diagrams — listing photos only (MLS inventory is in Neon
+ * Postgres). When R2 is the active photo backend the SQLite listing-photos.db
+ * is a dormant legacy fallback (never read/written), so it's omitted from the
+ * admin schema view; it only surfaces when R2 is not configured and SQLite is
+ * actually serving photos.
+ */
 export function describeRunningSqliteDatabases(): SqliteDatabaseDiagram[] {
+  if (isR2PhotoStoreConfigured()) return []
+
   const photosPath = listingPhotosDbPath()
   const photosCached = tryGetListingPhotosDb()
   const photosOpen = openReadonlyIfExists(photosPath)

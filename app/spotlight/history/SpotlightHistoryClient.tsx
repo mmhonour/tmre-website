@@ -10,8 +10,16 @@ import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 
 export default function SpotlightHistoryClient() {
-  const { display, loadState, mlsListing, goldilocksScore, goldilocksBreakdown, insight, propertyTab } =
-    useSpotlightListing();
+  const {
+    display,
+    loadState,
+    mlsListing,
+    goldilocksScore,
+    goldilocksBreakdown,
+    insight,
+    propertyTab,
+    presentation,
+  } = useSpotlightListing();
 
   if (loadState === "error") {
     return (
@@ -25,14 +33,19 @@ export default function SpotlightHistoryClient() {
   }
 
   const isClosed = formatMlsStatus(display.status) === "Closed";
-  const details = buildSpotlightDetailsPanelProps(display, mlsListing, fmtMoney);
+  const details = buildSpotlightDetailsPanelProps(
+    display,
+    mlsListing,
+    fmtMoney,
+    presentation,
+  );
 
   return (
     <SpotlightPageChrome
       active="history"
       display={display}
       propertyTab={propertyTab}
-      mlsListing={mlsListing}
+      presentation={presentation}
       isClosed={isClosed}
       goldilocksScore={goldilocksScore}
       goldilocksBreakdown={goldilocksBreakdown}
@@ -40,7 +53,7 @@ export default function SpotlightHistoryClient() {
       belowTabs={
         <ListingHistoryPanel
           mlsId={display.mlsId}
-          townHint={display.config.address.city}
+          townHint={presentation.townHint}
           variant="page"
         />
       }

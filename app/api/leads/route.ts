@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { notifyContactByEmail } from '@/lib/contact-notify'
+import { updateVisitors } from '@/lib/visitors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
-const VISITORS_FILE = path.join(DATA_DIR, 'visitors.json')
 const VID_COOKIE = 'tmre_vid'
 
 const AUDIENCE_TYPES = ['seller', 'buyer', 'investor', 'contractor'] as const
@@ -55,20 +56,15 @@ async function writeLeads(leads: Lead[]): Promise<void> {
 
 async function attachLeadToVisitor(vid: string, lead: Lead): Promise<void> {
   try {
-    const raw = await fs.readFile(VISITORS_FILE, 'utf8').catch((err) => {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
-      throw err
+    await updateVisitors((visitors) => {
+      const v = visitors[vid]
+      if (!v) return
+      v.email = lead.email
+      v.zip = lead.zip
+      v.name = lead.name
+      v.audienceType = lead.audience_type
+      v.leadId = lead.id
     })
-    if (!raw) return
-    const visitors = JSON.parse(raw) as Record<string, Record<string, unknown>>
-    const v = visitors[vid]
-    if (!v) return
-    v.email = lead.email
-    v.zip = lead.zip
-    v.name = lead.name
-    v.audienceType = lead.audience_type
-    v.leadId = lead.id
-    await fs.writeFile(VISITORS_FILE, JSON.stringify(visitors, null, 2), 'utf8')
   } catch (err) {
     console.warn('[leads] attachLeadToVisitor failed', err)
   }
@@ -129,7 +125,22 @@ export async function POST(req: NextRequest) {
     await attachLeadToVisitor(vid, lead)
   }
 
-  return NextResponse.json({ ok: true, lead }, { status: 201 })
+  // Best-effort agent notification (never blocks the lead capture).
+  let emailed = false
+  try {
+    emailed = await notifyContactByEmail({
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      source: `${lead.source} · ${lead.audience_type}`,
+      listingInfo: null,
+      address: lead.town ? `ZIP ${lead.zip} (${lead.town})` : `ZIP ${lead.zip}`,
+    })
+  } catch (err) {
+    console.error('[/api/leads] email notify failed', err)
+  }
+
+  return NextResponse.json({ ok: true, lead, emailed }, { status: 201 })
 }
 
 export async function GET() {

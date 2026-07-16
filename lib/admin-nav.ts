@@ -1,4 +1,4 @@
-export type AdminTabId = "db" | "server" | "docs" | "site" | "rets";
+export type AdminTabId = "db" | "postgres" | "server" | "docs" | "site" | "rets";
 
 export type AdminSectionLink = {
   id: string;
@@ -24,7 +24,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "db",
     label: "Database",
-    subtitle: "SQLite sync, schemas, and refresh locks",
+    subtitle: "Scheduled sync control, sync status, and run log",
+  },
+  {
+    id: "postgres",
+    label: "Neon Postgres",
+    subtitle: "Live Postgres schema and inventory comparison",
   },
   {
     id: "rets",
@@ -44,25 +49,26 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "site",
     label: "Site controls",
-    subtitle: "Spotlight properties and privacy overrides",
+    subtitle: "Listing photos, contact details, and spotlight",
   },
 ];
 
 export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
-  { id: "admin-sync", label: "Sync status", tab: "db" },
-  { id: "admin-refresh-lock", label: "Refresh lock", tab: "db" },
-  { id: "admin-town-counts", label: "Listings by town", tab: "db" },
-  { id: "admin-sqlite-schemas", label: "Database schemas", tab: "db" },
   { id: "admin-scheduled-sync", label: "Scheduled sync control", tab: "db" },
+  { id: "admin-sync", label: "Sync status", tab: "db" },
+  { id: "admin-town-counts", label: "Listings by town", tab: "db" },
   { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
-  { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "db" },
   { id: "admin-sync-log", label: "Sync run log", tab: "db" },
+  { id: "admin-sqlite-schemas", label: "Postgres schema", tab: "postgres" },
   { id: "admin-startup", label: "Startup schedule", tab: "server" },
   { id: "admin-netlify", label: "Netlify functions", tab: "server" },
   { id: "admin-api-routes", label: "API routes", tab: "server" },
   { id: "admin-product-pages", label: "Product pages", tab: "docs" },
   { id: "admin-repo-docs", label: "Repository docs", tab: "docs" },
+  { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "site" },
+  { id: "admin-contact-email", label: "Contact form email", tab: "site" },
+  { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
   { id: "admin-spotlight", label: "Spotlight privacy", tab: "site" },
   { id: "admin-spotlight-pages", label: "Spotlight pages", tab: "site" },
 ];

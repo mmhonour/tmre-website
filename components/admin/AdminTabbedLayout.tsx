@@ -8,7 +8,14 @@ import {
   type AdminTabId,
 } from "@/lib/admin-nav";
 
-const VALID_TABS = new Set<string>(["db", "server", "site", "docs", "rets"]);
+const VALID_TABS = new Set<string>([
+  "db",
+  "postgres",
+  "server",
+  "site",
+  "docs",
+  "rets",
+]);
 
 function tabFromLocation(): AdminTabId {
   if (typeof window === "undefined") return "db";
@@ -30,12 +37,14 @@ function scrollToSection(sectionId: string) {
 
 export default function AdminTabbedLayout({
   db,
+  postgres,
   server,
   docs,
   site,
   rets,
 }: {
   db: ReactNode;
+  postgres: ReactNode;
   server: ReactNode;
   docs: ReactNode;
   site: ReactNode;
@@ -64,7 +73,14 @@ export default function AdminTabbedLayout({
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminTabId, ReactNode> = { db, server, docs, site, rets };
+  const panels: Record<AdminTabId, ReactNode> = {
+    db,
+    postgres,
+    server,
+    docs,
+    site,
+    rets,
+  };
   const activeItem = ADMIN_TABS.find((item) => item.id === tab);
 
   return (
@@ -74,7 +90,7 @@ export default function AdminTabbedLayout({
         <div
           role="tablist"
           aria-label="Admin areas"
-          className="flex flex-row items-stretch gap-1 overflow-x-auto border-b border-charcoal/[0.12]"
+          className="flex flex-row flex-wrap items-stretch gap-1 border-b border-charcoal/[0.12]"
         >
           {ADMIN_TABS.map((item) => {
             const active = tab === item.id;

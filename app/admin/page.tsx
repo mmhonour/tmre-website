@@ -1,7 +1,5 @@
 import { cookies } from "next/headers";
-import AdminHeroNav from "@/components/admin/AdminHeroNav";
 import AdminProductDocsPanel from "@/components/admin/AdminProductDocsPanel";
-import AdminRefreshLockPanel from "@/components/admin/AdminRefreshLockPanel";
 import AdminRetsCredentialsPanel from "@/components/admin/AdminRetsCredentialsPanel";
 import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPanel";
 import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
@@ -9,6 +7,8 @@ import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
 import AdminSyncRunLog from "@/components/admin/AdminSyncRunLog";
 import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
 import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
+import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
+import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminScheduledSyncPanel from "@/components/admin/AdminScheduledSyncPanel";
 import { isScheduledSyncPausedFresh } from "@/lib/scheduled-sync-toggle";
 import {
@@ -23,6 +23,15 @@ import {
   LISTING_PHOTO_TTL_MINUTES_MAX,
   LISTING_PHOTO_TTL_MINUTES_MIN,
 } from "@/lib/listing-photo-ttl-config";
+import {
+  getContactNotifyEmail,
+  DEFAULT_CONTACT_NOTIFY_EMAIL,
+} from "@/lib/contact-notify-config";
+import {
+  getContactPhone,
+  DEFAULT_CONTACT_PHONE_DIGITS,
+} from "@/lib/phone-config";
+import { formatPhoneDisplay } from "@/lib/business-info";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
@@ -34,10 +43,10 @@ import {
   type InventorySnapshot,
 } from "@/lib/db/listings-repo";
 import { getSyncMeta } from "@/lib/db/sync-meta-store";
+import { isR2PhotoStoreConfigured } from "@/lib/r2-photo-store";
 import {
   describePhotosBlobPersistRuntime,
   ensureAdminListingPhotosReady,
-  readRefreshLockHistoryFromBlob,
 } from "@/lib/listing-photos-db-persist";
 import { ensurePostDeployFullResyncScheduled } from "@/lib/deploy-full-resync-schedule";
 import { formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
@@ -49,12 +58,6 @@ import { describeRunningSqliteDatabases } from "@/lib/sqlite-schema-diagram";
 import { describeStartupProcess } from "@/lib/startup-process";
 import { readAdminSyncPanelStatus } from "@/lib/admin-sync-actions";
 import { collectAdminDatabaseSyncStats } from "@/lib/sqlite-sync-stats";
-import {
-  buildRefreshLockHistorySummary,
-  readSqliteRefreshLockStatus,
-  readRefreshLockHistorySummary,
-  type RefreshLockHistoryEntry,
-} from "@/lib/sqlite-refresh-status";
 
 export const dynamic = "force-dynamic";
 
@@ -160,28 +163,6 @@ export default async function AdminPage() {
 
   const stats = await readListingsDbStats();
   const { refresh, nextRuns, scheduleHints } = await readAdminSyncPanelStatus();
-  const refreshLock = readSqliteRefreshLockStatus();
-  const _primaryHistory = readRefreshLockHistorySummary();
-  const refreshLockHistory = await (async () => {
-    if (_primaryHistory.entries.length > 0) return _primaryHistory;
-    const blobRaw = await safe(
-      "refresh-lock-history-blob",
-      () => readRefreshLockHistoryFromBlob(),
-      null as Awaited<ReturnType<typeof readRefreshLockHistoryFromBlob>> | null,
-    );
-    if (!blobRaw || blobRaw.length === 0) return _primaryHistory;
-    const blobEntries = blobRaw.filter(
-      (v): v is RefreshLockHistoryEntry =>
-        v != null &&
-        typeof v === "object" &&
-        typeof (v as RefreshLockHistoryEntry).id === "string" &&
-        typeof (v as RefreshLockHistoryEntry).startedAt === "string" &&
-        Array.isArray((v as RefreshLockHistoryEntry).tables),
-    );
-    return blobEntries.length > 0
-      ? buildRefreshLockHistorySummary(blobEntries)
-      : _primaryHistory;
-  })();
   const latestListingUpdate = await safe(
     "latest-mls-timestamp",
     () => readLatestListingModificationTimestamp(),
@@ -206,6 +187,9 @@ export default async function AdminPage() {
     lastPersistResult: null,
     lastRestoreAt: null,
   });
+  // Photos live in R2 now; the SQLite-on-Netlify-Blobs runtime banner + blob
+  // restore/checkpoint lines are legacy and only meaningful without R2.
+  const photosOnR2 = isR2PhotoStoreConfigured();
   const inventorySnapshot = await readInventorySnapshot();
   const listingsDbEmpty = stats.total === 0;
   const showListingsDbRuntime = listingsDbEmpty;
@@ -360,6 +344,8 @@ export default async function AdminPage() {
 
   const dbPanel = (
     <>
+      <AdminScheduledSyncPanel initialPaused={scheduledSyncPaused} />
+
       <div
         id="admin-sync"
         className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
@@ -385,10 +371,6 @@ export default async function AdminPage() {
           initialDatabaseStats={databaseStats}
           initialStatus={initialStatus}
         />
-      </div>
-
-      <div id="admin-refresh-lock" className="scroll-mt-24">
-        <AdminRefreshLockPanel initialLock={refreshLock} initialHistory={refreshLockHistory} />
       </div>
 
       {Object.keys(stats.byTown).length > 0 ? (
@@ -421,35 +403,6 @@ export default async function AdminPage() {
         </div>
       ) : null}
 
-      <div id="admin-sqlite-schemas" className="scroll-mt-24">
-        {showListingsDbRuntime ? (
-          <div className="mb-4 rounded-2xl border border-gold/25 bg-gold/[0.06] px-5 sm:px-6 py-4">
-            <p className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2 text-gold">
-              Postgres listings inventory
-            </p>
-            <p className="text-sm text-slate leading-snug mb-3">
-              Neon Postgres has <strong>{stats.total.toLocaleString()}</strong> listings. Run{" "}
-              <strong>step 1 Full resync</strong>
-              {scheduleHints.fullResyncSource === "post-deploy" && nextRuns["full-resync"] ? (
-                <>
-                  {" "}
-                  or wait for the post-deploy warm in{" "}
-                  <strong>
-                    {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
-                  </strong>
-                </>
-              ) : (
-                <> or wait for the startup / scheduled sync</>
-              )}{" "}
-              to pull MLS data.
-            </p>
-          </div>
-        ) : null}
-        <AdminSqliteDiagrams databases={sqliteDiagrams} blobRuntime={blobRuntime} inventorySnapshot={inventorySnapshot} />
-      </div>
-
-      <AdminScheduledSyncPanel initialPaused={scheduledSyncPaused} />
-
       <AdminDbTuningPanel
         initial={{
           chunkRows: getUpsertChunkRows(),
@@ -459,6 +412,45 @@ export default async function AdminPage() {
         }}
       />
 
+      <AdminSyncRunLog />
+    </>
+  );
+
+  const postgresPanel = (
+    <div id="admin-sqlite-schemas" className="scroll-mt-24">
+      {showListingsDbRuntime ? (
+        <div className="mb-4 rounded-2xl border border-gold/25 bg-gold/[0.06] px-5 sm:px-6 py-4">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2 text-gold">
+            Postgres listings inventory
+          </p>
+          <p className="text-sm text-slate leading-snug mb-3">
+            Neon Postgres has <strong>{stats.total.toLocaleString()}</strong> listings. Run{" "}
+            <strong>step 1 Full resync</strong>
+            {scheduleHints.fullResyncSource === "post-deploy" && nextRuns["full-resync"] ? (
+              <>
+                {" "}
+                or wait for the post-deploy warm in{" "}
+                <strong>
+                  {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
+                </strong>
+              </>
+            ) : (
+              <> or wait for the startup / scheduled sync</>
+            )}{" "}
+            to pull MLS data.
+          </p>
+        </div>
+      ) : null}
+      <AdminSqliteDiagrams
+        databases={sqliteDiagrams}
+        blobRuntime={photosOnR2 ? undefined : blobRuntime}
+        inventorySnapshot={inventorySnapshot}
+      />
+    </div>
+  );
+
+  const sitePanel = (
+    <>
       <AdminPhotoTtlPanel
         initial={{
           ttlMinutes: getListingPhotoTtlMinutes(),
@@ -468,7 +460,23 @@ export default async function AdminPage() {
         }}
       />
 
-      <AdminSyncRunLog />
+      <AdminContactEmailPanel
+        initial={{
+          email: getContactNotifyEmail(),
+          default: DEFAULT_CONTACT_NOTIFY_EMAIL,
+        }}
+      />
+
+      <AdminContactPhonePanel
+        initial={{
+          phone: getContactPhone().tel,
+          display: getContactPhone().display,
+          default: DEFAULT_CONTACT_PHONE_DIGITS,
+          defaultDisplay: formatPhoneDisplay(DEFAULT_CONTACT_PHONE_DIGITS),
+        }}
+      />
+
+      <AdminSpotlightSitePanel />
     </>
   );
 
@@ -577,7 +585,6 @@ export default async function AdminPage() {
               </span>
             </span>
           </div>
-          <AdminHeroNav />
         </div>
       </section>
 
@@ -636,13 +643,13 @@ export default async function AdminPage() {
                       {lambdaFnName}
                     </span>
                   )}
-                  {blobRuntime.lastRestoreAt && (
+                  {!photosOnR2 && blobRuntime.lastRestoreAt && (
                     <span className="font-mono text-[10px] text-charcoal/50">
                       <span className="text-charcoal/30 uppercase tracking-wide mr-1">Last photos blob restore</span>
                       {blobRuntime.lastRestoreAt}
                     </span>
                   )}
-                  {blobRuntime.lastPersistAt && (
+                  {!photosOnR2 && blobRuntime.lastPersistAt && (
                     <span className="font-mono text-[10px] text-charcoal/50">
                       <span className="text-charcoal/30 uppercase tracking-wide mr-1">Last photos checkpoint</span>
                       {blobRuntime.lastPersistAt}
@@ -657,9 +664,10 @@ export default async function AdminPage() {
 
       <AdminTabbedLayout
         db={dbPanel}
+        postgres={postgresPanel}
         server={serverPanel}
         docs={<AdminProductDocsPanel />}
-        site={<AdminSpotlightSitePanel />}
+        site={sitePanel}
         rets={retsPanel}
       />
     </>
