@@ -17,7 +17,7 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type MlsResolveSource = 'db' | 'rets' | 'none'
+type MlsResolveSource = 'db' | 'rets' | 'none' | 'error'
 
 type TabMlsSummary = {
   tab: SpotlightPropertyTabId
@@ -43,25 +43,34 @@ async function resolveMlsAddress(
   const id = mlsId.trim()
   if (!id) return { exists: false, street: '', town: '', source: 'none' }
 
+  // Track whether the DB read *failed* (e.g. Postgres unreachable) vs simply
+  // returned no row. These are very different: a connection error must not be
+  // reported to the admin as "id no longer resolves".
+  let dbErrored = false
   try {
     const dbListing = await readListingByIdFromDb(id)
     if (dbListing) {
       return { exists: true, ...addressFromListing(dbListing), source: 'db' }
     }
   } catch {
-    // fall through to RETS
+    dbErrored = true
   }
 
-  if (!allowRets) return { exists: false, street: '', town: '', source: 'none' }
-
-  try {
-    const { listing } = await fetchListingByMlsId(id)
-    if (listing) {
-      return { exists: true, ...addressFromListing(listing), source: 'rets' }
+  if (allowRets) {
+    try {
+      const { listing } = await fetchListingByMlsId(id)
+      if (listing) {
+        return { exists: true, ...addressFromListing(listing), source: 'rets' }
+      }
+    } catch {
+      // treat as not found / unavailable
     }
-  } catch {
-    // treat as not found
   }
+
+  // Couldn't confirm the listing. If the DB read threw, surface an error state
+  // so the panel can say "Postgres unreachable" instead of pretending the saved
+  // id is bad.
+  if (dbErrored) return { exists: false, street: '', town: '', source: 'error' }
 
   return { exists: false, street: '', town: '', source: 'none' }
 }

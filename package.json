@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "ensure:db": "node scripts/ensure-postgres.mjs",
+    "predev": "npm run ensure:db",
     "dev": "next dev --hostname 0.0.0.0 --port 3000",
+    "predev:webpack": "npm run ensure:db",
     "dev:webpack": "next dev --webpack --hostname 0.0.0.0 --port 3000",
     "build": "next build",
     "build:netlify": "node scripts/rebuild-native-modules.cjs && node scripts/verify-native-prebuilds.cjs && tsx --require ./scripts/stub-server-only.cjs scripts/prepare-netlify-bundle.ts && next build && node scripts/verify-netlify-tracing.mjs",

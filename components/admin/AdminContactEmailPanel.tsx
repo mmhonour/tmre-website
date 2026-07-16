@@ -82,7 +82,7 @@ export default function AdminContactEmailPanel({
   return (
     <div
       id="admin-contact-email"
-      className="scroll-mt-24 rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm overflow-hidden"
+      className="h-full scroll-mt-24 rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm overflow-hidden"
     >
       <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">

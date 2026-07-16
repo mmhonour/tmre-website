@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   SpotlightEffectivePrivacy,
@@ -24,7 +25,12 @@ type TabMls = {
   exists: boolean;
   street: string;
   town: string;
-  source: "db" | "rets" | "none";
+  source: "db" | "rets" | "none" | "error";
+}
+
+/** Public spotlight URL for a given tab (tab 1 is the default route). */
+function spotlightHref(tab: SpotlightPropertyTabId): string {
+  return tab === 1 ? "/spotlight" : `/spotlight?property=${tab}`;
 };
 
 type TabSaveStatus = "idle" | "saving" | "saved" | "error";
@@ -245,6 +251,9 @@ export default function AdminSpotlightPrivacyPanel() {
     if (summary?.exists) {
       return [summary.street, summary.town].filter(Boolean).join(" · ");
     }
+    if (summary?.source === "error") {
+      return `MLS ${summary.mlsId} — database unreachable`;
+    }
     if (summary && summary.mlsId && !summary.exists) {
       return `MLS ${summary.mlsId} — not found`;
     }
@@ -272,6 +281,11 @@ export default function AdminSpotlightPrivacyPanel() {
       const src = summary.source === "rets" ? "RETS" : "Postgres";
       return { text: `${summary.town || "Found"} · via ${src}`, tone: "ok" };
     }
+    if (summary?.source === "error")
+      return {
+        text: "Postgres unreachable — is the database running?",
+        tone: "bad",
+      };
     if (summary?.mlsId && !summary.exists)
       return { text: "Saved id no longer resolves", tone: "bad" };
     return { text: "Blank = hide this tab", tone: "muted" };
@@ -368,24 +382,38 @@ export default function AdminSpotlightPrivacyPanel() {
                   </div>
 
                   <div className="grid flex-1 gap-3 sm:grid-cols-3">
-                    <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 accent-gold"
-                        checked={tabOverrides.showAddress === true}
-                        onChange={(e) =>
-                          toggle(row.tab, "showAddress", e.target.checked)
-                        }
-                      />
-                      <span>
-                        <span className="block text-sm text-charcoal font-medium">
-                          Show address
+                    <div className="flex flex-col gap-2">
+                      <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 accent-gold"
+                          checked={tabOverrides.showAddress === true}
+                          onChange={(e) =>
+                            toggle(row.tab, "showAddress", e.target.checked)
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm text-charcoal font-medium">
+                            Show address
+                          </span>
+                          <span className="block text-xs text-charcoal/55 mt-0.5">
+                            Street address on the spotlight header
+                          </span>
                         </span>
-                        <span className="block text-xs text-charcoal/55 mt-0.5">
-                          Street address on the spotlight header
+                      </label>
+                      <Link
+                        href={spotlightHref(row.tab)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-1 font-mono text-[10px] tracking-[0.12em] uppercase text-navy/70 transition-colors hover:text-gold"
+                      >
+                        Preview page
+                        <span aria-hidden>↗</span>
+                        <span className="ml-1 normal-case tracking-normal text-charcoal/40">
+                          {spotlightHref(row.tab)}
                         </span>
-                      </span>
-                    </label>
+                      </Link>
+                    </div>
                     <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
                       <input
                         type="checkbox"

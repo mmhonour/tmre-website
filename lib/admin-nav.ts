@@ -69,8 +69,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "site" },
   { id: "admin-contact-email", label: "Contact form email", tab: "site" },
   { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
-  { id: "admin-spotlight", label: "Spotlight privacy", tab: "site" },
-  { id: "admin-spotlight-pages", label: "Spotlight pages", tab: "site" },
+  { id: "admin-spotlight", label: "Spotlight properties", tab: "site" },
 ];
 
 export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [

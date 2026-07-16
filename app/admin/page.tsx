@@ -460,21 +460,23 @@ export default async function AdminPage() {
         }}
       />
 
-      <AdminContactEmailPanel
-        initial={{
-          email: getContactNotifyEmail(),
-          default: DEFAULT_CONTACT_NOTIFY_EMAIL,
-        }}
-      />
+      <div className="grid items-stretch gap-6 lg:grid-cols-2">
+        <AdminContactEmailPanel
+          initial={{
+            email: getContactNotifyEmail(),
+            default: DEFAULT_CONTACT_NOTIFY_EMAIL,
+          }}
+        />
 
-      <AdminContactPhonePanel
-        initial={{
-          phone: getContactPhone().tel,
-          display: getContactPhone().display,
-          default: DEFAULT_CONTACT_PHONE_DIGITS,
-          defaultDisplay: formatPhoneDisplay(DEFAULT_CONTACT_PHONE_DIGITS),
-        }}
-      />
+        <AdminContactPhonePanel
+          initial={{
+            phone: getContactPhone().tel,
+            display: getContactPhone().display,
+            default: DEFAULT_CONTACT_PHONE_DIGITS,
+            defaultDisplay: formatPhoneDisplay(DEFAULT_CONTACT_PHONE_DIGITS),
+          }}
+        />
+      </div>
 
       <AdminSpotlightSitePanel />
     </>
