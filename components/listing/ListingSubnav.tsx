@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import { useSearchParams } from "next/navigation";
 import { listingSectionHref } from "@/lib/listing-url";
@@ -44,6 +44,10 @@ function tabVisible(active: ListingTab, tabId: ListingTab): boolean {
   return true;
 }
 
+/** Hide the native scrollbar while keeping touch/trackpad scroll. */
+const scrollStripClass =
+  "flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden touch-pan-x";
+
 export default function ListingSubnav({
   mlsId,
   active,
@@ -67,10 +71,11 @@ export default function ListingSubnav({
 }) {
   const searchParams = useSearchParams();
   const viewportRef = useRef<HTMLDivElement>(null);
-  const stripRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLAnchorElement>(null);
   const [splitAnalysisRow, setSplitAnalysisRow] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -110,6 +115,23 @@ export default function ListingSubnav({
   const analysisTabs = tabs.filter((tab) => ANALYSIS_TAB_IDS.includes(tab.id));
   const useSplitRow = inComparablesContext && splitAnalysisRow;
 
+  const updateScrollCues = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 2) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft < max - 2);
+  }, []);
+
   // On mobile, while the Comparables cluster is open, tuck History and If onto a
   // second row only when the full strip would overflow the viewport.
   useEffect(() => {
@@ -144,26 +166,47 @@ export default function ListingSubnav({
     };
   }, [active, tabs, inComparablesContext]);
 
-  // No scrollbar: the strip is clipped and slid via transform. When the active
-  // tab changes (after tapping a tab), the strip glides so the active tab is
-  // centered — moving roughly one tab at a time as you step across the tabs.
+  // Independent horizontal scroll (no visible scrollbar). Fade/chevron cues show
+  // when more tabs exist off-screen. Active tab scrolls into view on change.
   useEffect(() => {
-    if (useSplitRow) return;
+    if (useSplitRow) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
     const viewport = viewportRef.current;
-    const strip = stripRef.current;
-    const el = activeTabRef.current;
-    if (!viewport || !strip || !el) return;
-    const reposition = () => {
-      const maxOffset = Math.max(0, strip.scrollWidth - viewport.clientWidth);
-      const desired =
-        el.offsetLeft + el.clientWidth / 2 - viewport.clientWidth / 2;
-      const offset = Math.min(Math.max(0, desired), maxOffset);
-      strip.style.transform = `translateX(${-offset}px)`;
+    if (!viewport) return;
+
+    const scrollActiveIntoView = () => {
+      const el = activeTabRef.current;
+      if (!el) return;
+      const left =
+        el.offsetLeft - (viewport.clientWidth - el.clientWidth) / 2;
+      viewport.scrollTo({
+        left: Math.max(0, left),
+        behavior: "smooth",
+      });
     };
-    reposition();
-    window.addEventListener("resize", reposition);
-    return () => window.removeEventListener("resize", reposition);
-  }, [active, useSplitRow, tabs]);
+
+    updateScrollCues();
+    // Center after layout settles (fonts / split-measure).
+    const t = window.setTimeout(() => {
+      scrollActiveIntoView();
+      updateScrollCues();
+    }, 0);
+
+    viewport.addEventListener("scroll", updateScrollCues, { passive: true });
+    const ro = new ResizeObserver(updateScrollCues);
+    ro.observe(viewport);
+    window.addEventListener("resize", updateScrollCues);
+
+    return () => {
+      window.clearTimeout(t);
+      viewport.removeEventListener("scroll", updateScrollCues);
+      ro.disconnect();
+      window.removeEventListener("resize", updateScrollCues);
+    };
+  }, [active, useSplitRow, tabs, updateScrollCues]);
 
   const tabLinkClass = (isActive: boolean) =>
     `shrink-0 whitespace-nowrap px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
@@ -202,6 +245,32 @@ export default function ListingSubnav({
     );
   };
 
+  const scrollCues = !useSplitRow ? (
+    <>
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-navy via-navy/80 to-transparent transition-opacity duration-200 ${
+          canScrollLeft ? "opacity-100" : "opacity-0"
+        }`}
+      />
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-y-0 right-0 z-10 flex w-12 items-center justify-end bg-gradient-to-l from-navy via-navy/85 to-transparent pl-4 transition-opacity duration-200 ${
+          canScrollRight ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        <span className="mr-1.5 font-mono text-[11px] tracking-widest text-gold/90">
+          ››
+        </span>
+      </div>
+      {canScrollRight || canScrollLeft ? (
+        <p className="sr-only">
+          Swipe left or right to see more listing sections.
+        </p>
+      ) : null}
+    </>
+  ) : null;
+
   const tabsRow = (
     <div className="relative border-b border-white/10">
       {/* Hidden measurer — same single-row width as the live strip. */}
@@ -233,10 +302,11 @@ export default function ListingSubnav({
           </nav>
         </div>
       ) : (
-        <div ref={viewportRef} className="overflow-hidden">
+        <div className="relative">
+          {scrollCues}
           <nav
-            ref={stripRef}
-            className="relative flex flex-nowrap gap-1 transition-transform duration-300 ease-out"
+            ref={viewportRef}
+            className={scrollStripClass}
             aria-label="Listing sections"
           >
             {inComparablesContext ? renderOverviewBackLink() : null}
