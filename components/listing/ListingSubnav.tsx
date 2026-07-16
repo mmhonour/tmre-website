@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import { listingSectionHref } from "@/lib/listing-url";
@@ -22,6 +23,15 @@ export type ListingInterestProps = {
 };
 
 type TabDef = { id: ListingTab; label: string; href: string };
+
+/** Primary row when the strip must wrap (always visible / analysis). */
+const TOP_ROW_IDS: ListingTab[] = ["overview", "history", "if", "photos"];
+/** Second row — Comparables cluster alone. */
+const BOTTOM_ROW_IDS: ListingTab[] = [
+  "comparables",
+  "comparable-rentals",
+  "uag",
+];
 
 function isComparablesContext(active: ListingTab): boolean {
   return (
@@ -63,6 +73,9 @@ export default function ListingSubnav({
   compact?: boolean;
 }) {
   const searchParams = useSearchParams();
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [stackComparables, setStackComparables] = useState(false);
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -98,6 +111,34 @@ export default function ListingSubnav({
   ];
   const tabs = allTabs.filter((tab) => tabVisible(active, tab.id));
   const inComparablesContext = isComparablesContext(active);
+  const topTabs = tabs.filter((tab) => TOP_ROW_IDS.includes(tab.id));
+  const bottomTabs = tabs.filter((tab) => BOTTOM_ROW_IDS.includes(tab.id));
+  // Only stack when Comparables would sit on the second line (needs a bottom row).
+  const canStack = bottomTabs.length > 0 && topTabs.length > 0;
+
+  useEffect(() => {
+    if (!canStack) {
+      setStackComparables(false);
+      return;
+    }
+
+    const measure = () => {
+      const viewport = viewportRef.current;
+      const measureStrip = measureRef.current;
+      if (!viewport || !measureStrip) return;
+      setStackComparables(measureStrip.scrollWidth > viewport.clientWidth + 1);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (viewportRef.current) ro.observe(viewportRef.current);
+    if (measureRef.current) ro.observe(measureRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [active, tabs, canStack, inComparablesContext]);
 
   const tabLinkClass = (isActive: boolean) =>
     `shrink-0 whitespace-nowrap px-3 sm:px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
@@ -121,11 +162,11 @@ export default function ListingSubnav({
     </Link>
   );
 
-  const renderTabLink = (tab: TabDef) => {
+  const renderTabLink = (tab: TabDef, attachKey = true) => {
     const isActive = active === tab.id;
     return (
       <Link
-        key={tab.id}
+        key={attachKey ? tab.id : `measure-${tab.id}`}
         href={tab.href}
         className={tabLinkClass(isActive)}
         aria-current={isActive ? "page" : undefined}
@@ -136,14 +177,44 @@ export default function ListingSubnav({
   };
 
   const tabsRow = (
-    <div className="relative border-b border-white/10">
-      <nav
-        className="relative flex flex-wrap gap-x-1 gap-y-0"
-        aria-label="Listing sections"
-      >
-        {inComparablesContext ? renderOverviewBackLink() : null}
-        {tabs.map((tab) => renderTabLink(tab))}
-      </nav>
+    <div ref={viewportRef} className="relative border-b border-white/10">
+      {/* Hidden single-row measurer — natural tab order width. */}
+      {canStack ? (
+        <div
+          ref={measureRef}
+          className="pointer-events-none invisible absolute flex h-0 flex-nowrap gap-x-1 overflow-hidden"
+          aria-hidden
+        >
+          {inComparablesContext ? renderOverviewBackLink() : null}
+          {tabs.map((tab) => renderTabLink(tab, false))}
+        </div>
+      ) : null}
+
+      {stackComparables ? (
+        <>
+          <nav
+            className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
+            aria-label="Listing sections"
+          >
+            {inComparablesContext ? renderOverviewBackLink() : null}
+            {topTabs.map((tab) => renderTabLink(tab))}
+          </nav>
+          <nav
+            className="relative flex flex-nowrap gap-x-1"
+            aria-label="Comparables sections"
+          >
+            {bottomTabs.map((tab) => renderTabLink(tab))}
+          </nav>
+        </>
+      ) : (
+        <nav
+          className="relative flex flex-nowrap gap-x-1"
+          aria-label="Listing sections"
+        >
+          {inComparablesContext ? renderOverviewBackLink() : null}
+          {tabs.map((tab) => renderTabLink(tab))}
+        </nav>
+      )}
     </div>
   );
 
