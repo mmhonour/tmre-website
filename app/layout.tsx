@@ -17,7 +17,7 @@ import {
   SITE_URL,
   realEstateAgentJsonLd,
 } from "@/lib/business-info";
-import { getContactPhone } from "@/lib/phone-config";
+import { getContactPhoneFresh } from "@/lib/phone-config";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -114,7 +114,7 @@ export default async function RootLayout({
 }>) {
   const jar = await cookies();
   const siteUnlocked = jar.get(SITE_PASSWORD_COOKIE)?.value === "1";
-  const phone = getContactPhone();
+  const phone = await getContactPhoneFresh();
 
   return (
     <html

@@ -1,72 +1,12 @@
 import type { Listing } from './rets'
 import type { ScoreBreakdown } from './goldilocks-score-info'
+import {
+  DEFAULT_GOLDILOCKS_SCORING_CONFIG,
+  type GoldilocksScoringConfig,
+} from './goldilocks-config-shared'
 import { isFreshFirstSaleNewConstruction } from './new-construction'
 
-const RENO_KEYWORDS = [
-  'renovated',
-  'updated',
-  'new kitchen',
-  'new bathrooms',
-  'gut renovation',
-  'fully remodeled',
-  'brand new',
-]
-
-const QUALITY_KEYWORDS = [
-  'granite',
-  'hardwood',
-  'stainless',
-  'central air',
-  'open floor plan',
-  "chef's kitchen",
-  'chefs kitchen',
-  'quartz',
-  'marble',
-  'custom',
-]
-
-const LOW_QUALITY_KEYWORDS = ['carpet throughout', 'dated', 'original']
-
-/** Pulls condition down from the fresh new-construction default of 100. */
-const CONDITION_DOWNGRADE_KEYWORDS = [
-  'as-is',
-  'as is',
-  'needs tlc',
-  'needs work',
-  'fixer',
-  'handyman',
-  'estate condition',
-  'tear down',
-  'teardown',
-  'investor special',
-  'mold',
-]
-
-const GOOD_LAYOUT_KEYWORDS = [
-  'open floor plan',
-  'en suite',
-  'master suite',
-  'family room',
-  'finished basement',
-  'great room',
-]
-
-const BAD_LAYOUT_KEYWORDS = ['galley kitchen', 'small bedrooms', 'steep stairs', 'narrow']
-
-const DISQUALIFYING_KEYWORDS = [
-  'cesspool',
-  'mold',
-  'as-is',
-  'as is',
-  'handyman',
-  'needs tlc',
-  'estate condition',
-  'tear down',
-  'teardown',
-  'investor special',
-  'needs work',
-  'fixer',
-]
+export type { GoldilocksScoringConfig } from './goldilocks-config-shared'
 
 const MIN_SQFT = 1200
 const MIN_RENTAL_SQFT = 600
@@ -241,8 +181,9 @@ function scoreCondition(
   remarks: string,
   reno: string[],
   lowQuality: string[],
+  conditionDowngradeKeywords: string[],
 ): number {
-  const downgrade = matched(remarks, CONDITION_DOWNGRADE_KEYWORDS)
+  const downgrade = matched(remarks, conditionDowngradeKeywords)
   const hasNegative = lowQuality.length > 0 || downgrade.length > 0
 
   if (isFreshFirstSaleNewConstruction(l, remarks) && !hasNegative) {
@@ -351,6 +292,8 @@ function aggregateByCity(listings: Listing[]): Map<string, CityAggregate> {
 export type DisqualifyOptions = {
   schoolOverride?: number | null
   skipSchoolGate?: boolean
+  /** Active scoring config (defaults to built-in). */
+  config?: GoldilocksScoringConfig
 }
 
 export function disqualify(
@@ -367,22 +310,16 @@ export function disqualify(
   if (!l.sqft || l.sqft < minSqft) return 'under_min_sqft'
   if (!l.price) return 'no_price'
   const remarks = collectRemarks(l)
-  if (DISQUALIFYING_KEYWORDS.some((k) => remarks.includes(k))) return 'disqualifying_keyword'
+  const disqualifying =
+    opts.config?.keywords.disqualifying ??
+    DEFAULT_GOLDILOCKS_SCORING_CONFIG.keywords.disqualifying
+  if (disqualifying.some((k) => remarks.includes(k))) return 'disqualifying_keyword'
   const cityAgg = aggregates.get(aggregateKey(l.address.city, kind))
   if (cityAgg?.topPrice15 != null && l.price >= cityAgg.topPrice15) return 'top_price_for_town'
   if (!opts.skipSchoolGate && scoreSchools(l, opts.schoolOverride) < MIN_SCHOOL_RATING) {
     return 'low_school_rating'
   }
   return null
-}
-
-const WEIGHTS = {
-  age: 0.1,
-  condition: 0.2,
-  finishes: 0.25,
-  ppsf: 0.25,
-  layout: 0.1,
-  schools: 0.1,
 }
 
 /** Active listings used to compute city medians / PPSF benchmarks when scoring. */
@@ -392,13 +329,15 @@ export function scoreListing(
   l: Listing,
   aggregates: Map<string, CityAggregate>,
   schoolOverride?: number | null,
+  config: GoldilocksScoringConfig = DEFAULT_GOLDILOCKS_SCORING_CONFIG,
 ): ScoredListing {
+  const { weights, keywords } = config
   const remarks = collectRemarks(l)
-  const reno = matched(remarks, RENO_KEYWORDS)
-  const quality = matched(remarks, QUALITY_KEYWORDS)
-  const lowQuality = matched(remarks, LOW_QUALITY_KEYWORDS)
-  const goodLayout = matched(remarks, GOOD_LAYOUT_KEYWORDS)
-  const badLayout = matched(remarks, BAD_LAYOUT_KEYWORDS)
+  const reno = matched(remarks, keywords.reno)
+  const quality = matched(remarks, keywords.quality)
+  const lowQuality = matched(remarks, keywords.lowQuality)
+  const goodLayout = matched(remarks, keywords.goodLayout)
+  const badLayout = matched(remarks, keywords.badLayout)
 
   const hasVirtualTour = Boolean(l.raw.VirtualTourYN === '1' || l.raw.VirtualTour)
 
@@ -407,7 +346,13 @@ export function scoreListing(
   const ppsf = l.price && l.sqft && l.sqft > 0 ? l.price / l.sqft : null
 
   const age = scoreAge(l.yearBuilt)
-  const condition = scoreCondition(l, remarks, reno, lowQuality)
+  const condition = scoreCondition(
+    l,
+    remarks,
+    reno,
+    lowQuality,
+    keywords.conditionDowngrade,
+  )
   const finishes = scoreFinishes(quality, l.photoCount, hasVirtualTour)
   const ppsfFit = scorePpsf(
     ppsf,
@@ -419,12 +364,12 @@ export function scoreListing(
   const schools = scoreSchools(l, schoolOverride)
 
   const composite =
-    age * WEIGHTS.age +
-    condition * WEIGHTS.condition +
-    finishes * WEIGHTS.finishes +
-    ppsfFit * WEIGHTS.ppsf +
-    layout * WEIGHTS.layout +
-    schools * WEIGHTS.schools
+    age * weights.age +
+    condition * weights.condition +
+    finishes * weights.finishes +
+    ppsfFit * weights.ppsf +
+    layout * weights.layout +
+    schools * weights.schools
 
   return {
     listing: l,
@@ -437,7 +382,7 @@ export function scoreListing(
       layoutQuality: Math.round(layout * 10) / 10,
       schoolRating: Math.round(schools * 10) / 10,
       composite: Math.round(composite * 10) / 10,
-      weights: WEIGHTS,
+      weights: { ...weights },
     },
     pricePerSqft: ppsf,
     cityMedianPpsf: cityAgg?.medianPpsf ?? null,
@@ -617,6 +562,8 @@ export type RunScoringOptions = {
   schoolRatings?: Map<string, number>
   /** Full active inventory for city medians / PPSF benchmarks (defaults to scored set). */
   peerListings?: Listing[]
+  /** Weights + remark keywords from Postgres (or defaults). */
+  config?: GoldilocksScoringConfig
 }
 
 /** Full scored rows for the Deal Table (0–100 composite, no disqualify filter). */
@@ -624,11 +571,12 @@ export function scoreListingsForBoard(
   listings: Listing[],
   opts: RunScoringOptions = {},
 ): ScoredListing[] {
+  const config = opts.config ?? DEFAULT_GOLDILOCKS_SCORING_CONFIG
   const aggregates = aggregateByCity(opts.peerListings ?? listings)
   const scored: ScoredListing[] = []
   for (const l of listings) {
     const override = opts.schoolRatings?.get(l.mlsId) ?? null
-    scored.push(scoreListing(l, aggregates, override))
+    scored.push(scoreListing(l, aggregates, override, config))
   }
   scored.sort((a, b) => b.score.composite - a.score.composite)
   return scored
@@ -651,17 +599,21 @@ export function runScoring(
   listings: Listing[],
   opts: RunScoringOptions = {},
 ): ScoringRunResult {
+  const config = opts.config ?? DEFAULT_GOLDILOCKS_SCORING_CONFIG
   const aggregates = aggregateByCity(opts.peerListings ?? listings)
   const scored: ScoredListing[] = []
   const rejected: { listing: Listing; reason: DisqualifyReason }[] = []
   for (const l of listings) {
     const override = opts.schoolRatings?.get(l.mlsId) ?? null
-    const reason = disqualify(l, aggregates, { schoolOverride: override })
+    const reason = disqualify(l, aggregates, {
+      schoolOverride: override,
+      config,
+    })
     if (reason) {
       rejected.push({ listing: l, reason })
       continue
     }
-    scored.push(scoreListing(l, aggregates, override))
+    scored.push(scoreListing(l, aggregates, override, config))
   }
   scored.sort((a, b) => b.score.composite - a.score.composite)
   return { scored, rejected }
@@ -671,9 +623,13 @@ export function runScoring(
  * Returns the listings that pass the cheap (non-school) disqualifiers.
  * Use this to build a shortlist before paying for live school lookups.
  */
-export function cheapShortlist(listings: Listing[]): Listing[] {
+export function cheapShortlist(
+  listings: Listing[],
+  config: GoldilocksScoringConfig = DEFAULT_GOLDILOCKS_SCORING_CONFIG,
+): Listing[] {
   const aggregates = aggregateByCity(listings)
   return listings.filter(
-    (l) => disqualify(l, aggregates, { skipSchoolGate: true }) === null,
+    (l) =>
+      disqualify(l, aggregates, { skipSchoolGate: true, config }) === null,
   )
 }

@@ -2,7 +2,7 @@ import 'server-only'
 
 import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingPhotoMeta } from '@/lib/listing-photo-backend'
-import { getListingPhotoTtlMs } from '@/lib/listing-photo-ttl-config'
+import { getListingPhotoTtlMsFresh } from '@/lib/listing-photo-ttl-config'
 import {
   isListingPhotoFresh,
   listingPhotoCacheId,
@@ -28,7 +28,7 @@ async function syncOneListingPhotos(listing: Listing): Promise<number> {
   const listingKey = listing.listingKey?.trim() || listing.mlsId.trim()
   let stored = 0
 
-  const ttlMs = getListingPhotoTtlMs()
+  const ttlMs = await getListingPhotoTtlMsFresh()
   for (let index = 0; index < photoCount; index++) {
     const existing = await readListingPhotoMeta(cacheId, index)
     if (existing && isListingPhotoFresh(existing.syncedAt, ttlMs)) continue

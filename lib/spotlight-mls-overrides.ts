@@ -41,12 +41,15 @@ function parseOverrides(raw: string | null): SpotlightMlsOverrides {
   }
 }
 
-/** Fast, eventually-consistent read from the in-process sync_meta cache. */
+/**
+ * @deprecated Prefer {@link readSpotlightMlsOverridesFresh}. Per-process cache
+ * can be stale across warm Lambdas — not admin/public spotlight truth.
+ */
 export function readSpotlightMlsOverrides(): SpotlightMlsOverrides {
   return parseOverrides(getSyncMeta(SPOTLIGHT_MLS_OVERRIDES_SYNC_KEY))
 }
 
-/** Authoritative read from Postgres so an admin change reflects on next load. */
+/** Authoritative read from Postgres — shared store every Lambda sees. */
 export async function readSpotlightMlsOverridesFresh(): Promise<SpotlightMlsOverrides> {
   try {
     return parseOverrides(await getSyncMetaFromDb(SPOTLIGHT_MLS_OVERRIDES_SYNC_KEY))

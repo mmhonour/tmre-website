@@ -31,14 +31,8 @@ export type ScoreExplainTopic =
   | "ppsfVsMedian"
   | "priceReduction";
 
-export const FACTOR_WEIGHTS: Record<GoldilocksFactorKey, number> = {
-  age: 0.1,
-  condition: 0.2,
-  finishes: 0.25,
-  ppsf: 0.25,
-  layout: 0.1,
-  schools: 0.1,
-};
+/** Built-in defaults — live weights live in Postgres (`goldilocks_scoring_config`). */
+export { DEFAULT_GOLDILOCKS_WEIGHTS as FACTOR_WEIGHTS } from "@/lib/goldilocks-config-shared";
 
 export const FACTOR_LABELS: Record<GoldilocksFactorKey, string> = {
   age: "Age",

@@ -9,6 +9,7 @@ import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
 import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
+import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminScheduledSyncPanel from "@/components/admin/AdminScheduledSyncPanel";
 import { isScheduledSyncPausedFresh } from "@/lib/scheduled-sync-toggle";
 import {
@@ -18,20 +19,32 @@ import {
   getUpsertChunkRows,
 } from "@/lib/db/db-write-tuning";
 import {
-  getListingPhotoTtlMinutes,
+  getListingPhotoTtlMinutesFresh,
   LISTING_PHOTO_TTL_MINUTES_DEFAULT,
   LISTING_PHOTO_TTL_MINUTES_MAX,
   LISTING_PHOTO_TTL_MINUTES_MIN,
 } from "@/lib/listing-photo-ttl-config";
 import {
-  getContactNotifyEmail,
+  getContactNotifyEmailFresh,
   DEFAULT_CONTACT_NOTIFY_EMAIL,
 } from "@/lib/contact-notify-config";
 import {
-  getContactPhone,
+  getContactPhoneFresh,
   DEFAULT_CONTACT_PHONE_DIGITS,
 } from "@/lib/phone-config";
 import { formatPhoneDisplay } from "@/lib/business-info";
+import { describePostgresTarget } from "@/lib/db/postgres-target";
+import {
+  DEFAULT_GOLDILOCKS_SCORING_CONFIG,
+  getGoldilocksConfigFresh,
+  goldilocksWeightSum,
+  GOLDILOCKS_FACTOR_ORDER,
+  GOLDILOCKS_KEYWORD_GROUP_HINTS,
+  GOLDILOCKS_KEYWORD_GROUP_LABELS,
+  GOLDILOCKS_KEYWORD_GROUP_ORDER,
+  isDefaultGoldilocksConfig,
+} from "@/lib/goldilocks-config";
+import { FACTOR_DESCRIPTIONS, FACTOR_LABELS } from "@/lib/goldilocks-score-info";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
@@ -315,12 +328,11 @@ export default async function AdminPage() {
     databaseStats,
   };
 
-  // Lambda instance metadata — available at runtime on Netlify serverless.
-  // process.uptime() = seconds since this Node.js process (Lambda) started.
-  // AWS_LAMBDA_LOG_STREAM_NAME = "2024/01/01/[$LATEST]<16-hex-chars>" — the hex
-  // suffix is a unique identifier for this Lambda container instance.
-  // Computed here (rather than closer to the hero section below) so both the
-  // hero banner AND the Database sync panel header can reference it.
+  // Which Postgres this admin process is editing (Neon vs local). Site controls
+  // always read/write this DATABASE_URL live — not a per-Lambda memory cache.
+  const postgresTarget = describePostgresTarget()
+
+  // Lambda instance metadata — secondary diagnostic only (warm container id).
   const lambdaUptimeSec = Math.round(process.uptime())
   const lambdaUptimeStr = (() => {
     if (lambdaUptimeSec < 60) return `${lambdaUptimeSec}s`
@@ -329,12 +341,53 @@ export default async function AdminPage() {
     const m = Math.floor((lambdaUptimeSec % 3600) / 60)
     return `${h}h ${m}m`
   })()
-  // Extract the instance hex suffix from the log stream name (last 12 chars of hex ID).
   const lambdaLogStream = process.env.AWS_LAMBDA_LOG_STREAM_NAME ?? null
   const lambdaInstanceId = lambdaLogStream
     ? (lambdaLogStream.split(']')[1]?.slice(0, 12) ?? null)
     : null
   const lambdaFnName = process.env.AWS_LAMBDA_FUNCTION_NAME ?? null
+
+  const contactNotifyEmail = await safe(
+    "contact-notify-email",
+    () => getContactNotifyEmailFresh(),
+    DEFAULT_CONTACT_NOTIFY_EMAIL,
+  )
+  const contactPhone = await safe(
+    "contact-phone",
+    () => getContactPhoneFresh(),
+    {
+      tel: DEFAULT_CONTACT_PHONE_DIGITS,
+      display: formatPhoneDisplay(DEFAULT_CONTACT_PHONE_DIGITS),
+    },
+  )
+  const photoTtlMinutes = await safe(
+    "photo-ttl",
+    () => getListingPhotoTtlMinutesFresh(),
+    LISTING_PHOTO_TTL_MINUTES_DEFAULT,
+  )
+  const goldilocksConfig = await safe(
+    "goldilocks-config",
+    () => getGoldilocksConfigFresh(),
+    DEFAULT_GOLDILOCKS_SCORING_CONFIG,
+  )
+  const goldilocksInitial = {
+    config: goldilocksConfig,
+    default: DEFAULT_GOLDILOCKS_SCORING_CONFIG,
+    isDefault: isDefaultGoldilocksConfig(goldilocksConfig),
+    weightSum: goldilocksWeightSum(goldilocksConfig.weights),
+    meta: {
+      factors: GOLDILOCKS_FACTOR_ORDER.map((key) => ({
+        key,
+        label: FACTOR_LABELS[key],
+        description: FACTOR_DESCRIPTIONS[key],
+      })),
+      keywordGroups: GOLDILOCKS_KEYWORD_GROUP_ORDER.map((id) => ({
+        id,
+        label: GOLDILOCKS_KEYWORD_GROUP_LABELS[id],
+        hint: GOLDILOCKS_KEYWORD_GROUP_HINTS[id],
+      })),
+    },
+  }
 
   const retsPanel = (
     <div id="admin-rets-credentials" className="scroll-mt-24">
@@ -354,16 +407,25 @@ export default async function AdminPage() {
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             Database sync
           </p>
-          {(lambdaInstanceId || lambdaFnName) && (
-            <p className="font-mono text-[10px] tracking-[0.08em] text-charcoal/40 text-right leading-tight">
-              <span className="uppercase tracking-[0.18em] text-charcoal/30 mr-1">Lambda</span>
-              {lambdaInstanceId && <span>{lambdaInstanceId}&hellip;</span>}
-              {lambdaFnName && (
-                <span className="block text-charcoal/30 truncate max-w-[16rem]">{lambdaFnName}</span>
-              )}
-              <span className="block text-charcoal/30">up {lambdaUptimeStr}</span>
-            </p>
-          )}
+          <p className="font-mono text-[10px] tracking-[0.08em] text-right leading-tight">
+            <span
+              className={
+                postgresTarget.isProductionStore
+                  ? "text-sage"
+                  : postgresTarget.kind === "local"
+                    ? "text-coral"
+                    : "text-charcoal/55"
+              }
+            >
+              {postgresTarget.shortLabel}
+            </span>
+            {(lambdaInstanceId || lambdaFnName) && (
+              <span className="block text-charcoal/30 mt-0.5">
+                Lambda up {lambdaUptimeStr}
+                {lambdaInstanceId ? ` · ${lambdaInstanceId}…` : ""}
+              </span>
+            )}
+          </p>
         </div>
         <AdminSyncTable
           rows={rows}
@@ -453,7 +515,7 @@ export default async function AdminPage() {
     <>
       <AdminPhotoTtlPanel
         initial={{
-          ttlMinutes: getListingPhotoTtlMinutes(),
+          ttlMinutes: photoTtlMinutes,
           default: LISTING_PHOTO_TTL_MINUTES_DEFAULT,
           min: LISTING_PHOTO_TTL_MINUTES_MIN,
           max: LISTING_PHOTO_TTL_MINUTES_MAX,
@@ -463,15 +525,15 @@ export default async function AdminPage() {
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <AdminContactEmailPanel
           initial={{
-            email: getContactNotifyEmail(),
+            email: contactNotifyEmail,
             default: DEFAULT_CONTACT_NOTIFY_EMAIL,
           }}
         />
 
         <AdminContactPhonePanel
           initial={{
-            phone: getContactPhone().tel,
-            display: getContactPhone().display,
+            phone: contactPhone.tel,
+            display: contactPhone.display,
             default: DEFAULT_CONTACT_PHONE_DIGITS,
             defaultDisplay: formatPhoneDisplay(DEFAULT_CONTACT_PHONE_DIGITS),
           }}
@@ -480,6 +542,10 @@ export default async function AdminPage() {
 
       <AdminSpotlightSitePanel />
     </>
+  );
+
+  const goldilocksPanel = (
+    <AdminGoldilocksPanel initial={goldilocksInitial} />
   );
 
   const serverPanel = (
@@ -516,7 +582,28 @@ export default async function AdminPage() {
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
-        <div className="absolute top-5 right-6 lg:top-8 lg:right-10 text-right pointer-events-none select-none space-y-1">
+        <div className="absolute top-5 right-6 lg:top-8 lg:right-10 text-right select-none space-y-2 max-w-[16rem]">
+            <div>
+              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold/80 leading-none mb-1">
+                Database
+              </p>
+              <p
+                className={`font-mono text-[11px] leading-snug ${
+                  postgresTarget.isProductionStore
+                    ? "text-sage"
+                    : postgresTarget.kind === "local"
+                      ? "text-coral"
+                      : "text-white/80"
+                }`}
+              >
+                {postgresTarget.editingLabel}
+              </p>
+              {postgresTarget.host ? (
+                <p className="font-mono text-[9px] text-white/40 leading-none mt-1 truncate">
+                  {postgresTarget.host}
+                </p>
+              ) : null}
+            </div>
             {deployId && (
               <div>
                 <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
@@ -532,24 +619,21 @@ export default async function AdminPage() {
                 )}
               </div>
             )}
-            <div>
-              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
-                Lambda
-              </p>
-              {lambdaInstanceId && (
-                <p className="font-mono text-[10px] text-white/55 leading-none">
-                  {lambdaInstanceId}&hellip;
+            {(lambdaInstanceId || lambdaFnName) && (
+              <div>
+                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/30 leading-none mb-0.5">
+                  Lambda
                 </p>
-              )}
-              {lambdaFnName && (
-                <p className="font-mono text-[9px] text-white/30 leading-none mt-0.5 truncate max-w-[14rem]">
-                  {lambdaFnName}
+                {lambdaInstanceId && (
+                  <p className="font-mono text-[9px] text-white/40 leading-none">
+                    {lambdaInstanceId}&hellip;
+                  </p>
+                )}
+                <p className="font-mono text-[9px] text-white/30 leading-none mt-0.5">
+                  up {lambdaUptimeStr}
                 </p>
-              )}
-              <p className="font-mono text-[9px] text-white/35 leading-none mt-0.5">
-                up {lambdaUptimeStr}
-              </p>
-            </div>
+              </div>
+            )}
           </div>
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
@@ -589,6 +673,33 @@ export default async function AdminPage() {
           </div>
         </div>
       </section>
+
+      <div
+        className={`border-b px-6 py-3 ${
+          postgresTarget.isProductionStore
+            ? "border-sage/25 bg-sage/[0.08]"
+            : postgresTarget.kind === "local"
+              ? "border-coral/25 bg-coral/[0.08]"
+              : "border-charcoal/10 bg-cream"
+        }`}
+      >
+        <div className="mx-auto max-w-7xl lg:px-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+          <p
+            className={`font-mono text-[11px] tracking-[0.16em] uppercase font-semibold ${
+              postgresTarget.isProductionStore
+                ? "text-sage"
+                : postgresTarget.kind === "local"
+                  ? "text-coral"
+                  : "text-charcoal/70"
+            }`}
+          >
+            {postgresTarget.editingLabel}
+          </p>
+          <p className="text-xs text-charcoal/60 leading-snug max-w-2xl sm:text-right">
+            {postgresTarget.detail}
+          </p>
+        </div>
+      </div>
 
       {loadErrors.length > 0 && (
         <div className="border-b border-coral/30 bg-coral/[0.09] px-6 py-4">
@@ -666,11 +777,12 @@ export default async function AdminPage() {
 
       <AdminTabbedLayout
         db={dbPanel}
+        site={sitePanel}
+        goldilocks={goldilocksPanel}
+        rets={retsPanel}
         postgres={postgresPanel}
         server={serverPanel}
         docs={<AdminProductDocsPanel />}
-        site={sitePanel}
-        rets={retsPanel}
       />
     </>
   );

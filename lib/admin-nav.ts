@@ -1,4 +1,11 @@
-export type AdminTabId = "db" | "postgres" | "server" | "docs" | "site" | "rets";
+export type AdminTabId =
+  | "db"
+  | "site"
+  | "goldilocks"
+  | "rets"
+  | "postgres"
+  | "server"
+  | "docs";
 
 export type AdminSectionLink = {
   id: string;
@@ -27,14 +34,24 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "Scheduled sync control, sync status, and run log",
   },
   {
-    id: "postgres",
-    label: "Neon Postgres",
-    subtitle: "Live Postgres schema and inventory comparison",
+    id: "site",
+    label: "Site controls",
+    subtitle: "Listing photos, contact details, and spotlight",
+  },
+  {
+    id: "goldilocks",
+    label: "Goldilocks",
+    subtitle: "Score weights, remark characteristics, and score rebuild",
   },
   {
     id: "rets",
     label: "RETS",
     subtitle: "SmartMLS credentials and connection health",
+  },
+  {
+    id: "postgres",
+    label: "Neon Postgres",
+    subtitle: "Live Postgres schema and inventory comparison",
   },
   {
     id: "server",
@@ -46,30 +63,26 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     label: "Product docs",
     subtitle: "Live pages and repository reference files",
   },
-  {
-    id: "site",
-    label: "Site controls",
-    subtitle: "Listing photos, contact details, and spotlight",
-  },
 ];
 
 export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
-  { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
   { id: "admin-scheduled-sync", label: "Scheduled sync control", tab: "db" },
   { id: "admin-sync", label: "Sync status", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
   { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
   { id: "admin-sync-log", label: "Sync run log", tab: "db" },
+  { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "site" },
+  { id: "admin-contact-email", label: "Contact form email", tab: "site" },
+  { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
+  { id: "admin-spotlight", label: "Spotlight properties", tab: "site" },
+  { id: "admin-goldilocks", label: "Goldilocks scoring", tab: "goldilocks" },
+  { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
   { id: "admin-sqlite-schemas", label: "Postgres schema", tab: "postgres" },
   { id: "admin-startup", label: "Startup schedule", tab: "server" },
   { id: "admin-netlify", label: "Netlify functions", tab: "server" },
   { id: "admin-api-routes", label: "API routes", tab: "server" },
   { id: "admin-product-pages", label: "Product pages", tab: "docs" },
   { id: "admin-repo-docs", label: "Repository docs", tab: "docs" },
-  { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "site" },
-  { id: "admin-contact-email", label: "Contact form email", tab: "site" },
-  { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
-  { id: "admin-spotlight", label: "Spotlight properties", tab: "site" },
 ];
 
 export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
@@ -198,6 +211,7 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       { label: "POST /api/admin/rets-credentials", detail: "Save RETS credentials and probe login" },
       { label: "GET /api/admin/sync", detail: "Trigger sync actions", href: "/api/admin/sync" },
       { label: "GET /api/admin/spotlight-privacy", detail: "Spotlight privacy overrides", href: "/api/admin/spotlight-privacy" },
+      { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
       { label: "POST /api/sync/listings/incremental", detail: "Manual incremental sync hook", href: "/api/sync/listings/incremental" },
     ],
   },

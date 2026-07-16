@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   DEFAULT_CONTACT_NOTIFY_EMAIL,
-  getContactNotifyEmail,
+  getContactNotifyEmailFresh,
   isValidEmail,
   setContactNotifyEmail,
 } from '@/lib/contact-notify-config'
@@ -10,9 +10,9 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function payload() {
+async function payload() {
   return {
-    email: getContactNotifyEmail(),
+    email: await getContactNotifyEmailFresh(),
     default: DEFAULT_CONTACT_NOTIFY_EMAIL,
   }
 }
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return NextResponse.json(payload())
+  return NextResponse.json(await payload())
 }
 
 export async function PATCH(req: NextRequest) {
@@ -45,5 +45,5 @@ export async function PATCH(req: NextRequest) {
   }
 
   const applied = await setContactNotifyEmail(raw)
-  return NextResponse.json({ ok: true, ...payload(), email: applied })
+  return NextResponse.json({ ok: true, ...(await payload()), email: applied })
 }

@@ -8,14 +8,7 @@ import {
   type AdminTabId,
 } from "@/lib/admin-nav";
 
-const VALID_TABS = new Set<string>([
-  "db",
-  "postgres",
-  "server",
-  "site",
-  "docs",
-  "rets",
-]);
+const VALID_TABS = new Set<string>(ADMIN_TABS.map((t) => t.id));
 
 function tabFromLocation(): AdminTabId {
   if (typeof window === "undefined") return "db";
@@ -37,18 +30,20 @@ function scrollToSection(sectionId: string) {
 
 export default function AdminTabbedLayout({
   db,
+  site,
+  goldilocks,
+  rets,
   postgres,
   server,
   docs,
-  site,
-  rets,
 }: {
   db: ReactNode;
+  site: ReactNode;
+  goldilocks: ReactNode;
+  rets: ReactNode;
   postgres: ReactNode;
   server: ReactNode;
   docs: ReactNode;
-  site: ReactNode;
-  rets: ReactNode;
 }) {
   const [tab, setTab] = useState<AdminTabId>("db");
 
@@ -75,11 +70,12 @@ export default function AdminTabbedLayout({
 
   const panels: Record<AdminTabId, ReactNode> = {
     db,
+    site,
+    goldilocks,
+    rets,
     postgres,
     server,
     docs,
-    site,
-    rets,
   };
   const activeItem = ADMIN_TABS.find((item) => item.id === tab);
 

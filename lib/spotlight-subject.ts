@@ -7,7 +7,7 @@ import {
   SPOTLIGHT_LISTING,
   type SpotlightListingConfig,
 } from '@/lib/spotlight-listing'
-import { resolveSpotlightMlsId, spotlightConfigMlsId } from '@/lib/spotlight-mls-cache'
+import { resolveSpotlightMlsId } from '@/lib/spotlight-mls-cache'
 import type { Listing } from '@/lib/rets'
 
 function listingFromConfig(config: SpotlightListingConfig): Listing {
@@ -89,44 +89,24 @@ export function buildSpotlightSubjectListing(
 export async function resolveSpotlightSubjectListing(
   config: SpotlightListingConfig = SPOTLIGHT_LISTING,
 ): Promise<Listing> {
-  const mlsId = spotlightConfigMlsId(config)
+  // Always resolve MLS id from Postgres (admin overrides), never the per-process
+  // sync_meta cache — otherwise a warm Lambda can serve a stale spotlight slot.
+  const mlsId = await resolveSpotlightMlsId(config)
   if (!mlsId) {
-    const resolved = await resolveSpotlightMlsId(config)
-    if (!resolved) {
-      return buildSpotlightSubjectListing(null, config)
-    }
-    const cached = await readListingByIdFromDb(resolved)
-    if (cached) {
-      return buildSpotlightSubjectListing(cached, {
-        ...config,
-        mlsId: resolved,
-      })
-    }
-    try {
-      const { listing } = await fetchListingByMlsId(resolved)
-      return buildSpotlightSubjectListing(listing, {
-        ...config,
-        mlsId: resolved,
-      })
-    } catch (err) {
-      console.warn('[spotlight-subject] MLS lookup failed — using config fallback', err)
-      return buildSpotlightSubjectListing(null, {
-        ...config,
-        mlsId: resolved,
-      })
-    }
+    return buildSpotlightSubjectListing(null, config)
   }
 
+  const withMls = { ...config, mlsId }
   const cached = await readListingByIdFromDb(mlsId)
   if (cached) {
-    return buildSpotlightSubjectListing(cached, config)
+    return buildSpotlightSubjectListing(cached, withMls)
   }
 
   try {
     const { listing } = await fetchListingByMlsId(mlsId)
-    return buildSpotlightSubjectListing(listing, config)
+    return buildSpotlightSubjectListing(listing, withMls)
   } catch (err) {
     console.warn('[spotlight-subject] MLS lookup failed — using config fallback', err)
-    return buildSpotlightSubjectListing(null, config)
+    return buildSpotlightSubjectListing(null, withMls)
   }
 }

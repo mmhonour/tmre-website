@@ -1,5 +1,5 @@
 import ProfileContactTrigger from "@/components/ProfileContactTrigger";
-import { getContactPhone } from "@/lib/phone-config";
+import { getContactPhoneFresh } from "@/lib/phone-config";
 
 export const metadata = {
   title: "About — TMRE",
@@ -30,8 +30,8 @@ const values = [
   },
 ];
 
-export default function AboutPage() {
-  const phone = getContactPhone();
+export default async function AboutPage() {
+  const phone = await getContactPhoneFresh();
   return (
     <>
       {/* HERO — matches site-wide nav banner style */}

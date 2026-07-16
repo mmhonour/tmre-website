@@ -8,6 +8,7 @@ import {
   type ScoredListing,
   type ScoreBreakdown,
 } from '@/lib/goldilocks'
+import { getGoldilocksConfigFresh } from '@/lib/goldilocks-config'
 import { resolveSchoolRatings } from '@/lib/greatschools'
 import type { Listing } from '@/lib/rets'
 import type { TmreTown } from '@/lib/tmre-towns'
@@ -20,15 +21,21 @@ export async function fetchBoardPeerPool(city: TmreTown): Promise<Listing[]> {
 
 /**
  * Score listings with the same peer pool + school lookup path as Intelligence
- * `/api/listings` (Deal Table).
+ * `/api/listings` (Deal Table). Loads Goldilocks weights/keywords from Postgres
+ * once per call so every Lambda uses the Admin-saved config.
  */
 export async function scoreListingsWithBoardPeers(
   listings: Listing[],
   peerListings: Listing[],
 ): Promise<ScoredListing[]> {
-  const shortlist = cheapShortlist(peerListings)
+  const config = await getGoldilocksConfigFresh()
+  const shortlist = cheapShortlist(peerListings, config)
   const schoolRatings = await resolveSchoolRatings(shortlist)
-  return scoreListingsForBoard(listings, { schoolRatings, peerListings })
+  return scoreListingsForBoard(listings, {
+    schoolRatings,
+    peerListings,
+    config,
+  })
 }
 
 export async function scoreCityBoardListings(

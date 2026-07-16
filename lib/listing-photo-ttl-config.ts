@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import { LISTING_PHOTO_TTL_MS } from '@/lib/listing-photo-ttl'
 
@@ -33,9 +34,7 @@ export function clampTtlMinutes(value: number): number {
   )
 }
 
-/** Configured warm TTL in minutes (synchronous, cached). */
-export function getListingPhotoTtlMinutes(): number {
-  const raw = getSyncMeta(LISTING_PHOTO_TTL_MINUTES_KEY)
+function parseTtlMinutes(raw: string | null): number {
   if (raw == null) return LISTING_PHOTO_TTL_MINUTES_DEFAULT
   const parsed = Number(raw)
   return Number.isFinite(parsed)
@@ -43,9 +42,32 @@ export function getListingPhotoTtlMinutes(): number {
     : LISTING_PHOTO_TTL_MINUTES_DEFAULT
 }
 
+/**
+ * Synchronous read from the in-process sync_meta cache. Fine for warm Node
+ * processes that hydrated at boot — do NOT trust this on a cold Lambda for
+ * admin truth. Prefer {@link getListingPhotoTtlMinutesFresh}.
+ */
+export function getListingPhotoTtlMinutes(): number {
+  return parseTtlMinutes(getSyncMeta(LISTING_PHOTO_TTL_MINUTES_KEY))
+}
+
+/** Authoritative TTL from Postgres — shared across every Lambda. */
+export async function getListingPhotoTtlMinutesFresh(): Promise<number> {
+  try {
+    return parseTtlMinutes(await getSyncMetaFresh(LISTING_PHOTO_TTL_MINUTES_KEY))
+  } catch {
+    return getListingPhotoTtlMinutes()
+  }
+}
+
 /** Configured warm TTL in milliseconds (synchronous, cached). */
 export function getListingPhotoTtlMs(): number {
   return getListingPhotoTtlMinutes() * 60_000
+}
+
+/** Authoritative TTL in ms from Postgres. */
+export async function getListingPhotoTtlMsFresh(): Promise<number> {
+  return (await getListingPhotoTtlMinutesFresh()) * 60_000
 }
 
 /** Persist a new TTL (durable) and return the clamped minutes applied. */

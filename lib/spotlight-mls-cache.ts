@@ -41,10 +41,14 @@ export function writeSpotlightResolvedMlsId(configId: string, mlsId: string): vo
   setSyncMeta(SPOTLIGHT_RESOLVED_MLS_SYNC_KEY, JSON.stringify(map))
 }
 
+/**
+ * @deprecated Prefer {@link resolveSpotlightMlsId}. This sync helper reads the
+ * per-process sync_meta cache and can be stale across warm Lambdas. Kept only
+ * for callers that cannot await; do not use for public spotlight truth.
+ */
 export function spotlightConfigMlsId(
   config: SpotlightListingConfig,
 ): string | null {
-  // Admin override (sync cache) wins — including an explicit clear ('' → null).
   const tab = spotlightTabForConfigId(config.id)
   if (tab != null) {
     const overrides = readSpotlightMlsOverrides()

@@ -26,9 +26,14 @@ import {
 //
 // Consistency model: the cache is per-process. A write on one instance is not
 // visible to another instance's cache until that instance re-hydrates (cold
-// start). Every consumer of these keys degrades gracefully when stale (e.g.
-// last_full_sync falling back to a RETS pull), and the values here are
-// operational metadata, not listing inventory (which is read live in C2).
+// start).
+//
+// ADMIN / SITE-CONTROL KEYS must NOT rely on this cache for truth. Contact
+// email/phone, photo TTL, spotlight MLS/privacy overrides, and scheduled-sync
+// pause all have *Fresh helpers that read Postgres (Neon in production) live
+// so every Lambda sees the same row Admin just wrote. Keep this Map for
+// operational timestamps (last_full_sync, etc.) that tolerate eventual
+// consistency.
 // ---------------------------------------------------------------------------
 
 const cache = new Map<string, string>()

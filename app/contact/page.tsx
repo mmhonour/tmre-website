@@ -9,7 +9,7 @@ import {
   SERVED_AREAS,
   OFFICE_ADDRESS,
 } from "@/lib/business-info";
-import { getContactPhone } from "@/lib/phone-config";
+import { getContactPhoneFresh } from "@/lib/phone-config";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -17,8 +17,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/contact" },
 };
 
-export default function ContactPage() {
-  const phone = getContactPhone();
+export default async function ContactPage() {
+  const phone = await getContactPhoneFresh();
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-10 lg:pt-28 lg:pb-14 relative overflow-hidden">

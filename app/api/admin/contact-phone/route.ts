@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   DEFAULT_CONTACT_PHONE_DIGITS,
-  getContactPhone,
+  getContactPhoneFresh,
   isValidPhone,
   setContactPhone,
 } from '@/lib/phone-config'
@@ -11,8 +11,8 @@ import { formatPhoneDisplay } from '@/lib/business-info'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function payload() {
-  const { tel, display } = getContactPhone()
+async function payload() {
+  const { tel, display } = await getContactPhoneFresh()
   return {
     phone: tel,
     display,
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return NextResponse.json(payload())
+  return NextResponse.json(await payload())
 }
 
 export async function PATCH(req: NextRequest) {
@@ -51,7 +51,7 @@ export async function PATCH(req: NextRequest) {
   const applied = await setContactPhone(raw)
   return NextResponse.json({
     ok: true,
-    ...payload(),
+    ...(await payload()),
     phone: applied,
     display: formatPhoneDisplay(applied),
   })
