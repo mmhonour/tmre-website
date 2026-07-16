@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import { useSearchParams } from "next/navigation";
+import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import { listingSectionHref } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
 
@@ -24,8 +23,6 @@ export type ListingInterestProps = {
 
 type TabDef = { id: ListingTab; label: string; href: string };
 
-const ANALYSIS_TAB_IDS: ListingTab[] = ["history", "if"];
-
 function isComparablesContext(active: ListingTab): boolean {
   return (
     active === "comparables" ||
@@ -43,10 +40,6 @@ function tabVisible(active: ListingTab, tabId: ListingTab): boolean {
   }
   return true;
 }
-
-/** Hide the native scrollbar while keeping touch/trackpad scroll. */
-const scrollStripClass =
-  "flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden touch-pan-x";
 
 export default function ListingSubnav({
   mlsId,
@@ -70,12 +63,6 @@ export default function ListingSubnav({
   compact?: boolean;
 }) {
   const searchParams = useSearchParams();
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLDivElement>(null);
-  const activeTabRef = useRef<HTMLAnchorElement>(null);
-  const [splitAnalysisRow, setSplitAnalysisRow] = useState(false);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -111,105 +98,9 @@ export default function ListingSubnav({
   ];
   const tabs = allTabs.filter((tab) => tabVisible(active, tab.id));
   const inComparablesContext = isComparablesContext(active);
-  const primaryTabs = tabs.filter((tab) => !ANALYSIS_TAB_IDS.includes(tab.id));
-  const analysisTabs = tabs.filter((tab) => ANALYSIS_TAB_IDS.includes(tab.id));
-  const useSplitRow = inComparablesContext && splitAnalysisRow;
-
-  const updateScrollCues = useCallback(() => {
-    const el = viewportRef.current;
-    if (!el) {
-      setCanScrollLeft(false);
-      setCanScrollRight(false);
-      return;
-    }
-    const max = el.scrollWidth - el.clientWidth;
-    if (max <= 2) {
-      setCanScrollLeft(false);
-      setCanScrollRight(false);
-      return;
-    }
-    setCanScrollLeft(el.scrollLeft > 2);
-    setCanScrollRight(el.scrollLeft < max - 2);
-  }, []);
-
-  // On mobile, while the Comparables cluster is open, tuck History and If onto a
-  // second row only when the full strip would overflow the viewport.
-  useEffect(() => {
-    if (!inComparablesContext) {
-      setSplitAnalysisRow(false);
-      return;
-    }
-
-    const mq = window.matchMedia("(max-width: 767px)");
-
-    const measure = () => {
-      if (!mq.matches) {
-        setSplitAnalysisRow(false);
-        return;
-      }
-      const viewport = viewportRef.current;
-      const measureStrip = measureRef.current;
-      if (!viewport || !measureStrip) return;
-      setSplitAnalysisRow(measureStrip.scrollWidth > viewport.clientWidth + 1);
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (viewportRef.current) ro.observe(viewportRef.current);
-    if (measureRef.current) ro.observe(measureRef.current);
-    mq.addEventListener("change", measure);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      mq.removeEventListener("change", measure);
-      window.removeEventListener("resize", measure);
-    };
-  }, [active, tabs, inComparablesContext]);
-
-  // Independent horizontal scroll (no visible scrollbar). Fade/chevron cues show
-  // when more tabs exist off-screen. Active tab scrolls into view on change.
-  useEffect(() => {
-    if (useSplitRow) {
-      setCanScrollLeft(false);
-      setCanScrollRight(false);
-      return;
-    }
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const scrollActiveIntoView = () => {
-      const el = activeTabRef.current;
-      if (!el) return;
-      const left =
-        el.offsetLeft - (viewport.clientWidth - el.clientWidth) / 2;
-      viewport.scrollTo({
-        left: Math.max(0, left),
-        behavior: "smooth",
-      });
-    };
-
-    updateScrollCues();
-    // Center after layout settles (fonts / split-measure).
-    const t = window.setTimeout(() => {
-      scrollActiveIntoView();
-      updateScrollCues();
-    }, 0);
-
-    viewport.addEventListener("scroll", updateScrollCues, { passive: true });
-    const ro = new ResizeObserver(updateScrollCues);
-    ro.observe(viewport);
-    window.addEventListener("resize", updateScrollCues);
-
-    return () => {
-      window.clearTimeout(t);
-      viewport.removeEventListener("scroll", updateScrollCues);
-      ro.disconnect();
-      window.removeEventListener("resize", updateScrollCues);
-    };
-  }, [active, useSplitRow, tabs, updateScrollCues]);
 
   const tabLinkClass = (isActive: boolean) =>
-    `shrink-0 whitespace-nowrap px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
+    `shrink-0 whitespace-nowrap px-3 sm:px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
       compact ? "py-2" : "py-2.5"
     } ${
       isActive
@@ -230,12 +121,11 @@ export default function ListingSubnav({
     </Link>
   );
 
-  const renderTabLink = (tab: TabDef, attachActiveRef = true) => {
+  const renderTabLink = (tab: TabDef) => {
     const isActive = active === tab.id;
     return (
       <Link
         key={tab.id}
-        ref={isActive && attachActiveRef ? activeTabRef : undefined}
         href={tab.href}
         className={tabLinkClass(isActive)}
         aria-current={isActive ? "page" : undefined}
@@ -245,75 +135,15 @@ export default function ListingSubnav({
     );
   };
 
-  const scrollCues = !useSplitRow ? (
-    <>
-      <div
-        aria-hidden
-        className={`pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-navy via-navy/80 to-transparent transition-opacity duration-200 ${
-          canScrollLeft ? "opacity-100" : "opacity-0"
-        }`}
-      />
-      <div
-        aria-hidden
-        className={`pointer-events-none absolute inset-y-0 right-0 z-10 flex w-12 items-center justify-end bg-gradient-to-l from-navy via-navy/85 to-transparent pl-4 transition-opacity duration-200 ${
-          canScrollRight ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        <span className="mr-1.5 font-mono text-[11px] tracking-widest text-gold/90">
-          ››
-        </span>
-      </div>
-      {canScrollRight || canScrollLeft ? (
-        <p className="sr-only">
-          Swipe left or right to see more listing sections.
-        </p>
-      ) : null}
-    </>
-  ) : null;
-
   const tabsRow = (
     <div className="relative border-b border-white/10">
-      {/* Hidden measurer — same single-row width as the live strip. */}
-      {inComparablesContext ? (
-        <div
-          ref={measureRef}
-          className="pointer-events-none invisible absolute flex h-0 flex-nowrap gap-1 overflow-hidden"
-          aria-hidden
-        >
-          {renderOverviewBackLink()}
-          {tabs.map((tab) => renderTabLink(tab, false))}
-        </div>
-      ) : null}
-
-      {useSplitRow ? (
-        <div ref={viewportRef}>
-          <nav
-            className="relative flex flex-nowrap gap-1 border-b border-white/10"
-            aria-label="Listing sections"
-          >
-            {inComparablesContext ? renderOverviewBackLink() : null}
-            {primaryTabs.map((tab) => renderTabLink(tab))}
-          </nav>
-          <nav
-            className="relative flex flex-nowrap gap-1"
-            aria-label="Listing analysis sections"
-          >
-            {analysisTabs.map((tab) => renderTabLink(tab))}
-          </nav>
-        </div>
-      ) : (
-        <div className="relative">
-          {scrollCues}
-          <nav
-            ref={viewportRef}
-            className={scrollStripClass}
-            aria-label="Listing sections"
-          >
-            {inComparablesContext ? renderOverviewBackLink() : null}
-            {tabs.map((tab) => renderTabLink(tab))}
-          </nav>
-        </div>
-      )}
+      <nav
+        className="relative flex flex-wrap gap-x-1 gap-y-0"
+        aria-label="Listing sections"
+      >
+        {inComparablesContext ? renderOverviewBackLink() : null}
+        {tabs.map((tab) => renderTabLink(tab))}
+      </nav>
     </div>
   );
 
