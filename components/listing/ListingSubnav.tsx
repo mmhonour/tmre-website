@@ -24,14 +24,12 @@ export type ListingInterestProps = {
 
 type TabDef = { id: ListingTab; label: string; href: string };
 
-/** Primary row when the strip must wrap (always visible / analysis). */
+/** Always on the first row. */
 const TOP_ROW_IDS: ListingTab[] = ["overview", "history", "if", "photos"];
-/** Second row — Comparables cluster alone. */
-const BOTTOM_ROW_IDS: ListingTab[] = [
-  "comparables",
-  "comparable-rentals",
-  "uag",
-];
+/** Second row — Sales / Rentals under the Comparables: label. */
+const COMPS_ROW_IDS: ListingTab[] = ["comparables", "comparable-rentals"];
+/** Third row when Under Agreement cannot sit with Sales/Rentals. */
+const UAG_ROW_IDS: ListingTab[] = ["uag"];
 
 function isComparablesContext(active: ListingTab): boolean {
   return (
@@ -42,11 +40,10 @@ function isComparablesContext(active: ListingTab): boolean {
 }
 
 function tabVisible(active: ListingTab, tabId: ListingTab): boolean {
-  const inCompCtx = isComparablesContext(active);
   if (tabId === "photos") return active === "photos";
-  if (inCompCtx && (tabId === "overview" || tabId === "history")) return false;
+  // Overview / History / What if stay visible in every section (including comps).
   if (tabId === "comparable-rentals" || tabId === "uag") {
-    return inCompCtx || active === tabId;
+    return isComparablesContext(active) || active === tabId;
   }
   return true;
 }
@@ -74,8 +71,10 @@ export default function ListingSubnav({
 }) {
   const searchParams = useSearchParams();
   const viewportRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLDivElement>(null);
-  const [stackComparables, setStackComparables] = useState(false);
+  const measureFullRef = useRef<HTMLDivElement>(null);
+  const measureCompsRef = useRef<HTMLDivElement>(null);
+  const [stackCompsRow, setStackCompsRow] = useState(false);
+  const [stackUagRow, setStackUagRow] = useState(false);
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -99,10 +98,10 @@ export default function ListingSubnav({
   const allTabs: TabDef[] = [
     { id: "overview", label: "Overview", href: sectionHref("overview") },
     { id: "photos", label: "Photos", href: sectionHref("photos") },
-    { id: "comparables", label: "Comparables ...", href: sectionHref("comparables") },
+    { id: "comparables", label: "Sales", href: sectionHref("comparables") },
     {
       id: "comparable-rentals",
-      label: "Comparable Rentals",
+      label: "Rentals",
       href: sectionHref("comparable-rentals"),
     },
     { id: "uag", label: "Under Agreement", href: sectionHref("uag") },
@@ -110,35 +109,47 @@ export default function ListingSubnav({
     { id: "if", label: "What if", href: sectionHref("if") },
   ];
   const tabs = allTabs.filter((tab) => tabVisible(active, tab.id));
-  const inComparablesContext = isComparablesContext(active);
   const topTabs = tabs.filter((tab) => TOP_ROW_IDS.includes(tab.id));
-  const bottomTabs = tabs.filter((tab) => BOTTOM_ROW_IDS.includes(tab.id));
-  // Only stack when Comparables would sit on the second line (needs a bottom row).
-  const canStack = bottomTabs.length > 0 && topTabs.length > 0;
+  const compsTabs = tabs.filter((tab) => COMPS_ROW_IDS.includes(tab.id));
+  const uagTabs = tabs.filter((tab) => UAG_ROW_IDS.includes(tab.id));
+  const hasCompsCluster = compsTabs.length > 0 || uagTabs.length > 0;
 
   useEffect(() => {
-    if (!canStack) {
-      setStackComparables(false);
+    if (!hasCompsCluster) {
+      setStackCompsRow(false);
+      setStackUagRow(false);
       return;
     }
 
     const measure = () => {
       const viewport = viewportRef.current;
-      const measureStrip = measureRef.current;
-      if (!viewport || !measureStrip) return;
-      setStackComparables(measureStrip.scrollWidth > viewport.clientWidth + 1);
+      const fullStrip = measureFullRef.current;
+      const compsStrip = measureCompsRef.current;
+      if (!viewport || !fullStrip) return;
+
+      const needCompsRow = fullStrip.scrollWidth > viewport.clientWidth + 1;
+      setStackCompsRow(needCompsRow);
+
+      // Under Agreement gets its own line only when the comps cluster itself
+      // overflows (Sales + Rentals + Under Agreement, with the Comparables: label).
+      if (needCompsRow && uagTabs.length > 0 && compsStrip) {
+        setStackUagRow(compsStrip.scrollWidth > viewport.clientWidth + 1);
+      } else {
+        setStackUagRow(false);
+      }
     };
 
     measure();
     const ro = new ResizeObserver(measure);
     if (viewportRef.current) ro.observe(viewportRef.current);
-    if (measureRef.current) ro.observe(measureRef.current);
+    if (measureFullRef.current) ro.observe(measureFullRef.current);
+    if (measureCompsRef.current) ro.observe(measureCompsRef.current);
     window.addEventListener("resize", measure);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [active, tabs, canStack, inComparablesContext]);
+  }, [active, tabs, hasCompsCluster, uagTabs.length]);
 
   const tabLinkClass = (isActive: boolean) =>
     `shrink-0 whitespace-nowrap px-3 sm:px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
@@ -149,24 +160,15 @@ export default function ListingSubnav({
         : "text-white/50 border-transparent hover:text-white/80"
     }`;
 
-  const renderOverviewBackLink = () => (
-    <Link
-      href={sectionHref("overview")}
-      className={tabLinkClass(false)}
-      aria-label="Back to overview"
-    >
-      <span className="inline-flex items-center gap-0.5">
-        <span aria-hidden>←</span>
-        <span>...</span>
-      </span>
-    </Link>
-  );
+  const compsLabelClass = `shrink-0 whitespace-nowrap px-3 sm:px-4 font-mono text-[10px] tracking-[0.15em] uppercase text-white/40 border-b-2 border-transparent -mb-px ${
+    compact ? "py-2" : "py-2.5"
+  }`;
 
-  const renderTabLink = (tab: TabDef, attachKey = true) => {
+  const renderTabLink = (tab: TabDef, keyPrefix = "") => {
     const isActive = active === tab.id;
     return (
       <Link
-        key={attachKey ? tab.id : `measure-${tab.id}`}
+        key={`${keyPrefix}${tab.id}`}
         href={tab.href}
         className={tabLinkClass(isActive)}
         aria-current={isActive ? "page" : undefined}
@@ -176,43 +178,81 @@ export default function ListingSubnav({
     );
   };
 
+  const renderCompsLabel = (key: string) => (
+    <span key={key} className={compsLabelClass} aria-hidden={key.startsWith("m-")}>
+      Comparables:
+    </span>
+  );
+
+  /** Sales + Rentals (+ optional Under Agreement) with the Comparables: prefix. */
+  const renderCompsCluster = (
+    includeUag: boolean,
+    keyPrefix: string,
+  ) => (
+    <>
+      {renderCompsLabel(`${keyPrefix}label`)}
+      {compsTabs.map((tab) => renderTabLink(tab, keyPrefix))}
+      {includeUag ? uagTabs.map((tab) => renderTabLink(tab, keyPrefix)) : null}
+    </>
+  );
+
   const tabsRow = (
     <div ref={viewportRef} className="relative border-b border-white/10">
-      {/* Hidden single-row measurer — natural tab order width. */}
-      {canStack ? (
+      {/* Full single-row width (all tabs) — decide whether to pull comps onto row 2. */}
+      {hasCompsCluster ? (
         <div
-          ref={measureRef}
+          ref={measureFullRef}
           className="pointer-events-none invisible absolute flex h-0 flex-nowrap gap-x-1 overflow-hidden"
           aria-hidden
         >
-          {inComparablesContext ? renderOverviewBackLink() : null}
-          {tabs.map((tab) => renderTabLink(tab, false))}
+          {topTabs.map((tab) => renderTabLink(tab, "mf-"))}
+          {renderCompsCluster(true, "mf-")}
         </div>
       ) : null}
 
-      {stackComparables ? (
+      {/* Comps cluster width alone — decide whether Under Agreement needs row 3. */}
+      {hasCompsCluster && uagTabs.length > 0 ? (
+        <div
+          ref={measureCompsRef}
+          className="pointer-events-none invisible absolute flex h-0 flex-nowrap gap-x-1 overflow-hidden"
+          aria-hidden
+        >
+          {renderCompsCluster(true, "mc-")}
+        </div>
+      ) : null}
+
+      {stackCompsRow ? (
         <>
           <nav
             className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
             aria-label="Listing sections"
           >
-            {inComparablesContext ? renderOverviewBackLink() : null}
             {topTabs.map((tab) => renderTabLink(tab))}
           </nav>
           <nav
-            className="relative flex flex-nowrap gap-x-1"
+            className={`relative flex flex-nowrap gap-x-1 ${
+              stackUagRow ? "border-b border-white/10" : ""
+            }`}
             aria-label="Comparables sections"
           >
-            {bottomTabs.map((tab) => renderTabLink(tab))}
+            {renderCompsCluster(!stackUagRow, "")}
           </nav>
+          {stackUagRow ? (
+            <nav
+              className="relative flex flex-nowrap gap-x-1"
+              aria-label="Under Agreement"
+            >
+              {uagTabs.map((tab) => renderTabLink(tab))}
+            </nav>
+          ) : null}
         </>
       ) : (
         <nav
           className="relative flex flex-nowrap gap-x-1"
           aria-label="Listing sections"
         >
-          {inComparablesContext ? renderOverviewBackLink() : null}
-          {tabs.map((tab) => renderTabLink(tab))}
+          {topTabs.map((tab) => renderTabLink(tab))}
+          {hasCompsCluster ? renderCompsCluster(true, "") : null}
         </nav>
       )}
     </div>
