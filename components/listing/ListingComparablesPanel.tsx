@@ -315,8 +315,10 @@ function CompRow({
   const isModal = variant === "modal";
   const id = comp.listingKey?.trim() || comp.mlsId;
   const href = listingDetailHref(id, comp.address, town || comp.city);
-  const hasPhoto = comp.photoCount != null && comp.photoCount > 0;
-  const thumbUrl = hasPhoto ? listingPhotoProxyUrl(comp.mlsId, 0) : null;
+  // Prefer listingKey so the proxy hits the same R2 key (and RETS SystemID)
+  // as warm/sync. Try the thumb unless RETS explicitly reported zero photos.
+  const thumbUrl =
+    id && comp.photoCount !== 0 ? listingPhotoProxyUrl(id, 0) : null;
 
   const priceLabel = showCloseDate
     ? comp.closePrice != null

@@ -46,25 +46,38 @@ function tilePixelPosition(
   };
 }
 
-/** Pan a cover-scaled tile so (px, py) sits at the container center. */
+/**
+ * Cover-scale a tile and pan so (px, py) sits at the container center when
+ * possible. Clamp so the image always fills the frame — without this, a pin
+ * near the top/left of the tile leaves an empty band on the opposite edge.
+ */
 function centeredTileLayout(
   containerWidth: number,
   containerHeight: number,
   px: number,
   py: number,
-): { width: number; height: number; left: number; top: number } {
-  if (containerWidth <= 0 || containerHeight <= 0) {
-    return { width: TILE_SIZE, height: TILE_SIZE, left: 0, top: 0 };
-  }
-  const scale = Math.max(containerWidth / TILE_SIZE, containerHeight / TILE_SIZE);
+): { width: number; height: number; left: number; top: number } | null {
+  if (containerWidth <= 0 || containerHeight <= 0) return null;
+  const scale = Math.max(
+    containerWidth / TILE_SIZE,
+    containerHeight / TILE_SIZE,
+  );
   const width = TILE_SIZE * scale;
   const height = TILE_SIZE * scale;
-  return {
-    width,
-    height,
-    left: containerWidth / 2 - px * scale,
-    top: containerHeight / 2 - py * scale,
-  };
+  let left = containerWidth / 2 - px * scale;
+  let top = containerHeight / 2 - py * scale;
+  // Keep every edge of the frame covered (cover + focal point).
+  if (width >= containerWidth) {
+    left = Math.min(0, Math.max(containerWidth - width, left));
+  } else {
+    left = (containerWidth - width) / 2;
+  }
+  if (height >= containerHeight) {
+    top = Math.min(0, Math.max(containerHeight - height, top));
+  } else {
+    top = (containerHeight - height) / 2;
+  }
+  return { width, height, left, top };
 }
 
 function MapZoomControls({
@@ -148,14 +161,15 @@ export default function ListingLocationMap({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [variant, lat, lon]);
+
   const coordsOk = hasValidCoords(lat, lon);
   const tilePixel =
     coordsOk && lat != null && lon != null
       ? tilePixelPosition(lat, lon, zoom)
       : null;
   const tileLayout =
-    tilePixel && containerSize.width > 0
+    tilePixel != null
       ? centeredTileLayout(
           containerSize.width,
           containerSize.height,
@@ -165,12 +179,18 @@ export default function ListingLocationMap({
       : null;
 
   const isHero = variant === "hero";
-  const mapHeightClass = isHero
-    ? "h-full min-h-[10rem] lg:min-h-[12rem]"
-    : "h-20 sm:h-[5.5rem]";
+  // Hero: fill the parent shell (absolute inset-0 from ListingHeroPanels).
+  // Compact: fixed strip height.
+  const mapFrameClass = isHero
+    ? "absolute inset-0 w-full h-full"
+    : "relative w-full h-20 sm:h-[5.5rem]";
 
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
+    <div
+      className={`min-h-0 ${
+        isHero ? "relative h-full w-full" : "flex flex-col gap-2"
+      } ${className}`}
+    >
       {!hideLabel ? (
         <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold">
           Location
@@ -180,7 +200,7 @@ export default function ListingLocationMap({
       {coordsOk && lat != null && lon != null ? (
         <div
           ref={mapContainerRef}
-          className={`relative block overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] ${mapHeightClass}`}
+          className={`overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] ${mapFrameClass}`}
           aria-label={`Map for ${addressQuery}`}
         >
           {tileLayout ? (
@@ -216,7 +236,11 @@ export default function ListingLocationMap({
         </div>
       ) : (
         <div
-          className={`flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-2 text-center ${mapHeightClass}`}
+          className={`flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-2 text-center ${
+            isHero
+              ? "absolute inset-0 w-full h-full"
+              : "relative w-full h-20 sm:h-[5.5rem]"
+          }`}
         >
           <span className="font-mono text-[8px] leading-snug tracking-[0.1em] uppercase text-white/50">
             Map unavailable

@@ -118,20 +118,22 @@ export default function ListingHeroPanels({
     <div
       className={`${frameClass} flex flex-col min-h-[16rem] sm:min-h-[18rem] lg:min-h-[20rem]`}
     >
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
+      <p className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
         Location
       </p>
-      {/* Grow to fill the panel frame instead of a fixed height that left a gap. */}
-      <ListingLocationMap
-        latitude={location.latitude}
-        longitude={location.longitude}
-        addressQuery={location.addressQuery}
-        variant="hero"
-        className="flex-1 min-h-0"
-        hideLabel
-        hidePin={location.hidePin}
-        defaultZoom={location.defaultZoom}
-      />
+      {/* Explicit flex-1 shell so the map always owns the remaining panel area. */}
+      <div className="relative min-h-0 flex-1">
+        <ListingLocationMap
+          latitude={location.latitude}
+          longitude={location.longitude}
+          addressQuery={location.addressQuery}
+          variant="hero"
+          className="absolute inset-0"
+          hideLabel
+          hidePin={location.hidePin}
+          defaultZoom={location.defaultZoom}
+        />
+      </div>
     </div>
   );
 

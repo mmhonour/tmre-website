@@ -65,8 +65,10 @@ function UagRow({
 }) {
   const id = comp.listingKey?.trim() || comp.mlsId;
   const href = listingDetailHref(id, comp.address, town || comp.city);
-  const hasPhoto = comp.photoCount != null && comp.photoCount > 0;
-  const thumbUrl = hasPhoto ? listingPhotoProxyUrl(comp.mlsId, 0) : null;
+  // Prefer listingKey (R2 + RETS SystemID). UAG rows often aren't in Postgres
+  // under MLS # — mlsId-only proxy URLs miss the cache and fail RETS.
+  const thumbUrl =
+    id && comp.photoCount !== 0 ? listingPhotoProxyUrl(id, 0) : null;
 
   const priceLabel = `${fmtMoney(comp.price)}${isRental ? "/mo" : ""}`;
   const metaParts = [

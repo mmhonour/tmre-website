@@ -15,6 +15,7 @@
     "db:migrate": "node --env-file=.env.local scripts/run-migrations.mjs",
     "db:ping": "node --env-file=.env.local scripts/db-ping.mjs",
     "backfill:photo-index": "node --env-file=.env.local scripts/backfill-photo-index.mjs",
+    "warm:associated-closed-photos": "tsx --require ./scripts/stub-server-only.cjs scripts/warm-associated-closed-photos.ts",
     "discover:rets": "node --env-file=.env.local --import tsx scripts/discover-rets.ts",
     "discover:rets:history": "node --env-file=.env.local --import tsx scripts/discover-rets-history.ts",
     "probe:rets": "node --env-file=.env.local --import tsx scripts/probe-rets.ts",
