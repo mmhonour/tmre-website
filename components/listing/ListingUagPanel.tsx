@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ListingThumbImage from "@/components/ListingThumbImage";
-import { fmtMoney } from "@/lib/listing-history";
+import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtAcres,
   fmtSqft,
@@ -12,16 +12,33 @@ import {
   vintageCriteriaList,
   type ComparableListing,
   type ComparablesCriteria,
+  type CompactListingHistoryEvent,
 } from "@/lib/listing-comparables-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
-import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+import {
+  loadTabJson,
+  peekTabJson,
+  prefetchTabJson,
+} from "@/lib/tab-data-prefetch";
 
 type UagResponse = {
   sale: ComparableListing[];
   rental: ComparableListing[];
   criteria: ComparablesCriteria | null;
   missingCriteria: string[];
+};
+
+type HistoryResponse = {
+  events: CompactListingHistoryEvent[];
+  priorListings: Array<{
+    mlsId: string;
+    status: string;
+    listDate: string | null;
+    closeDate: string | null;
+    closePrice: number | null;
+    price: number | null;
+  }>;
 };
 
 const UAG_INITIAL_VISIBLE = 4;
@@ -52,6 +69,116 @@ function criteriaSummary(criteria: ComparablesCriteria): string {
     parts.push(`${fmtAcres(criteria.lotAcres)} ±40%`);
   }
   return parts.join(" · ");
+}
+
+function historyUrl(mlsId: string, town: string | null): string {
+  const params = new URLSearchParams();
+  if (town?.trim()) params.set("town", town.trim());
+  const qs = params.toString();
+  return `/api/listings/${encodeURIComponent(mlsId)}/history${
+    qs ? `?${qs}` : ""
+  }`;
+}
+
+/** Shorten full history labels for the one-line UAG timeline. */
+function compactEventText(event: CompactListingHistoryEvent): string {
+  const date = fmtDate(event.date);
+  let label = event.label;
+  if (label === "Listed on MLS") label = "Listed";
+  else if (label === "Price reduced") label = "Reduced";
+  else if (label === "Price changed") label = "Changed";
+  else if (label === "Status updated") label = "Status";
+
+  const parts = [date, label, event.detail].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function UagRowHistory({
+  mlsId,
+  town,
+  embedded,
+}: {
+  mlsId: string;
+  town: string | null;
+  embedded?: CompactListingHistoryEvent[];
+}) {
+  const url = historyUrl(mlsId, town);
+  const [remote, setRemote] = useState<HistoryResponse | null>(
+    () => peekTabJson<HistoryResponse>(url) ?? null,
+  );
+  const [loading, setLoading] = useState(() => !peekTabJson(url));
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = peekTabJson<HistoryResponse>(url);
+    if (cached) {
+      setRemote(cached);
+      setLoading(false);
+    }
+
+    loadTabJson<HistoryResponse>(url)
+      .then((d) => {
+        if (cancelled) return;
+        if (d) setRemote(d);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  const events =
+    remote?.events?.length ? remote.events : (embedded ?? []);
+  const prior = remote?.priorListings?.[0] ?? null;
+
+  // Soft placeholder while we wait and nothing was embedded from the UAG payload.
+  if (!events.length && !prior) {
+    if (!loading) return null;
+    return (
+      <p className="mt-2 font-mono text-[10px] tracking-[0.08em] text-white/25 truncate">
+        History…
+      </p>
+    );
+  }
+
+  const lines = events.slice(0, 3).map(compactEventText);
+  if (prior) {
+    const priorBits = [
+      prior.closeDate
+        ? `Prior closed ${fmtDate(prior.closeDate)}`
+        : prior.listDate
+          ? `Prior listed ${fmtDate(prior.listDate)}`
+          : "Prior listing",
+      prior.closePrice != null
+        ? fmtMoney(prior.closePrice)
+        : prior.price != null
+          ? fmtMoney(prior.price)
+          : null,
+      prior.status !== "Closed" ? prior.status : null,
+    ].filter(Boolean);
+    lines.push(priorBits.join(" · "));
+  }
+
+  return (
+    <div className="mt-2 space-y-0.5 min-w-0">
+      {lines.map((line) => (
+        <p
+          key={line}
+          className="font-mono text-[10px] leading-snug tracking-[0.02em] text-white/40 truncate"
+          title={line}
+        >
+          {line}
+        </p>
+      ))}
+      {loading && !remote ? (
+        <p className="font-mono text-[10px] text-white/20">Updating…</p>
+      ) : null}
+    </div>
+  );
 }
 
 function UagRow({
@@ -131,6 +258,11 @@ function UagRow({
           </p>
         </div>
       </div>
+      <UagRowHistory
+        mlsId={id}
+        town={town || comp.city}
+        embedded={comp.historyEvents}
+      />
     </li>
   );
 }
@@ -153,6 +285,15 @@ function UagColumn({
   useEffect(() => {
     setVisibleCount(UAG_INITIAL_VISIBLE);
   }, [comps]);
+
+  // Soft-prefetch history for visible rows into the session tab cache.
+  useEffect(() => {
+    const visible = comps.slice(0, Math.min(visibleCount, UAG_MAX_VISIBLE));
+    for (const comp of visible) {
+      const historyId = comp.listingKey?.trim() || comp.mlsId;
+      prefetchTabJson(historyUrl(historyId, town || comp.city));
+    }
+  }, [comps, visibleCount, town]);
 
   const cap = Math.min(comps.length, UAG_MAX_VISIBLE);
   const visible = comps.slice(0, Math.min(visibleCount, cap));

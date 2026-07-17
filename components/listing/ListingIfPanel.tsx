@@ -1,24 +1,65 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowLeftRightIcon } from "@/components/icons";
+import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtIfRentMoney,
   fmtIfSaleMoney,
-  ifCompBasisText,
   roundIfRentHigh,
   roundIfRentLow,
   roundIfRentMidpoint,
+  type IfCompRow,
   type IfEstimate,
+  type IfMatchParams,
+  type IfScenario,
   type ListingIfPayload,
 } from "@/lib/listing-if-estimates";
-import {
-  listingComparablesHref,
-  listingComparableRentalsHref,
-} from "@/lib/listing-url";
-import { spotlightSectionHref } from "@/lib/spotlight-url";
+import MatchingCriteriaSummary from "@/components/listing/MatchingCriteriaSummary";
+import type { ComparablesCriteria } from "@/lib/listing-comparables-shared";
+import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+
+type IfCompSortKey = "price" | "closeDate";
+type SortDir = "asc" | "desc";
+
+function defaultIfCompSortDir(key: IfCompSortKey): SortDir {
+  return key === "price" ? "asc" : "desc";
+}
+
+function parseCloseDateMs(closeDate: string | null | undefined): number {
+  if (!closeDate) return 0;
+  const ms = Date.parse(closeDate);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function sortIfComps(
+  comps: IfCompRow[],
+  sortKey: IfCompSortKey,
+  dir: SortDir,
+): IfCompRow[] {
+  const copy = [...comps];
+  const sign = dir === "asc" ? 1 : -1;
+  if (sortKey === "closeDate") {
+    return copy.sort((a, b) => {
+      const aMs = parseCloseDateMs(a.closeDate);
+      const bMs = parseCloseDateMs(b.closeDate);
+      // Undated (active) comps stay after dated ones in either direction.
+      if (aMs === 0 && bMs === 0) return 0;
+      if (aMs === 0) return 1;
+      if (bMs === 0) return -1;
+      return sign * (aMs - bMs);
+    });
+  }
+  const nullSentinel =
+    dir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+  return copy.sort((a, b) => {
+    const pa = a.price != null && a.price > 0 ? a.price : nullSentinel;
+    const pb = b.price != null && b.price > 0 ? b.price : nullSentinel;
+    return sign * (pa - pb);
+  });
+}
 
 function IfEstimateRangeDisplay({
   low,
@@ -80,12 +121,72 @@ function IfEstimateRangeDisplay({
   );
 }
 
+function emptyScenario(): IfScenario {
+  return {
+    amount: null,
+    amountLow: null,
+    amountHigh: null,
+    soldCount: 0,
+    activeCount: 0,
+    params: {
+      kind: "sale",
+      zip: null,
+      beds: null,
+      baths: null,
+      lotAcres: null,
+      sqft: null,
+      bedTolerance: 1,
+      bathTolerance: 1,
+      lotTolerancePct: 40,
+      sqftTolerancePct: 30,
+      vintageLabel: null,
+      vintageEdgeLabels: [],
+      vintageEdgeFraction: 0.3,
+      lookbackMonths: 12,
+      lookbackLabel: "1 yr",
+    },
+    math: {
+      method: "none",
+      soldPpsfWeight: 0.55,
+      activePpsfWeight: 0.45,
+      blendedPpsf: null,
+      subjectSqft: null,
+      rangeLowPercentile: 0.25,
+      rangeHighPercentile: 0.75,
+      matchedSoldCount: 0,
+      matchedActiveCount: 0,
+    },
+    comps: [],
+  };
+}
+
+/** Build the Sales/Rentals-style criteria object from What if match params. */
+function criteriaFromIfParams(
+  params: IfMatchParams,
+): ComparablesCriteria | null {
+  if (params.zip == null || params.beds == null || params.baths == null) {
+    return null;
+  }
+  return {
+    zip: params.zip,
+    beds: params.beds,
+    baths: params.baths,
+    lotAcres: params.lotAcres,
+    sqft: params.sqft,
+    vintageBucket: "unknown",
+    vintageLabel: params.vintageLabel ?? "",
+    ...(params.vintageEdgeLabels.length > 0
+      ? { vintageEdgeLabels: params.vintageEdgeLabels }
+      : {}),
+  };
+}
+
 /** Whole-dollar $/sqft, e.g. `$465/sqft` (sale). */
 function fmtPpsfWhole(value: number): string {
   return `$${Math.round(value).toLocaleString("en-US")}/sqft`;
 }
 
-/** Two-decimal $/sqft, e.g. `$2.10/sqft` (monthly rent). */
+/** Cents $/sqft for rent, e.g. `$2.10/sqft`. */
 function fmtPpsfCents(value: number): string {
   return `$${value.toFixed(2)}/sqft`;
 }
@@ -98,16 +199,18 @@ function compCountPhrase(
   const parts: string[] = [];
   if (soldCount > 0) parts.push(`${soldCount} ${soldWord}`);
   if (activeCount > 0) parts.push(`${activeCount} active`);
-  if (parts.length === 0) return "the matched comps";
+  if (parts.length === 0) return "matched comps";
+  if (parts.length === 1 && soldCount > 0) return `${parts[0]} comps`;
   return `${parts.join(" + ")} comps`;
 }
 
 /**
- * Reconstruct the range math from cached figures as a compact worksheet:
- * `weighted $/sqft × sqft = midpoint`, then the low/high band. Everything is
- * derived from the cached `IfEstimate` (`amount = $/sqft × sqft`; low/high are
- * the weighted 25th–75th percentiles) so nothing is recomputed. The weighted
- * $/sqft is a toggle that reveals how it was derived plus the comp $/sqft span.
+ * Preferred multi-line worksheet:
+ *   MATH: WEIGHTED
+ *   $599/sqft          ← click to expand derivation
+ *   × 3,069 sqft
+ *   ─────────
+ *   $1.8M
  */
 function IfMathWorksheet({
   est,
@@ -143,7 +246,9 @@ function IfMathWorksheet({
 
   return (
     <div className="font-mono text-[10px] text-white/40 tabular-nums leading-relaxed">
-      <span className="uppercase tracking-[0.12em] text-white/50">Math: weighted</span>
+      <span className="uppercase tracking-[0.12em] text-white/50">
+        Math: weighted
+      </span>
 
       {hasSqft && ppsfLabel ? (
         <div className="mt-1 w-fit text-right">
@@ -171,17 +276,20 @@ function IfMathWorksheet({
       )}
 
       <p className="mt-2 normal-case tracking-normal">
-        These are the 25th–75th percentile — in other words we exclude the top
-        quarter and bottom quarter of the market, based on {comps}
-        {lowPpsf && highPpsf ? ` that range from ${lowPpsf}–${highPpsf}` : ""}.
+        These are the 25th–75th percentile — in other words we exclude the{" "}
+        <span className="text-sage">top quarter</span> and{" "}
+        <span className="text-coral">bottom quarter</span> of the market, based
+        on {comps}
+        {lowPpsf && highPpsf ? ` that range from ${lowPpsf}–${highPpsf}` : ""}
+        .
       </p>
 
       {showPpsf && ppsfLabel ? (
         <p className="mt-1 normal-case tracking-normal text-white/45">
           {ppsfLabel} is the weighted median $/sqft of the matched comps — closed{" "}
           {isRent ? "leases" : "sales"} count more than active{" "}
-          {isRent ? "rentals" : "listings"}, and same-vintage, same
-          location-tier comps are weighted higher.
+          {isRent ? "rentals" : "listings"}, and same-vintage, same location-tier
+          comps are weighted higher.
           {lowPpsf && highPpsf
             ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
             : ""}
@@ -191,37 +299,222 @@ function IfMathWorksheet({
   );
 }
 
-function ScenarioCard({
+/** Quarter band from the If range (25th–75th): top = above high, bottom = below low. */
+function compQuarterBand(
+  implied: number | null | undefined,
+  amountLow: number | null | undefined,
+  amountHigh: number | null | undefined,
+): "top" | "bottom" | null {
+  if (
+    implied == null ||
+    amountLow == null ||
+    amountHigh == null ||
+    !Number.isFinite(implied)
+  ) {
+    return null;
+  }
+  if (implied > amountHigh) return "top";
+  if (implied < amountLow) return "bottom";
+  return null;
+}
+
+function CompList({
+  comps,
+  kind,
+  townHint,
+  amountLow,
+  amountHigh,
+}: {
+  comps: IfCompRow[];
+  kind: "sale" | "rent";
+  townHint?: string | null;
+  amountLow?: number | null;
+  amountHigh?: number | null;
+}) {
+  const [sort, setSort] = useState<{ key: IfCompSortKey; dir: SortDir }>({
+    key: "price",
+    dir: "asc",
+  });
+  const sorted = useMemo(
+    () => sortIfComps(comps, sort.key, sort.dir),
+    [comps, sort.key, sort.dir],
+  );
+
+  if (comps.length === 0) return null;
+  const isRent = kind === "rent";
+
+  const handleSort = (key: IfCompSortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: defaultIfCompSortDir(key) },
+    );
+  };
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/50">
+          Properties used ({comps.length})
+        </p>
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-1"
+          role="group"
+          aria-label="Sort properties"
+        >
+          {(
+            [
+              { key: "price" as const, label: "Price" },
+              { key: "closeDate" as const, label: "Closed" },
+            ] as const
+          ).map((option) => {
+            const active = sort.key === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => handleSort(option.key)}
+                className={`inline-flex items-center gap-0.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors underline underline-offset-2 ${
+                  active
+                    ? "text-white/80 decoration-gold/50 hover:text-gold"
+                    : "text-white/35 decoration-white/20 hover:text-gold hover:decoration-gold/50"
+                }`}
+                aria-sort={
+                  active
+                    ? sort.dir === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+              >
+                {option.label}
+                {active ? (
+                  <span className="text-gold" aria-hidden>
+                    {sort.dir === "asc" ? "↑" : "↓"}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <ul className="divide-y divide-white/[0.06] border-t border-white/10">
+        {sorted.map((comp) => {
+          const id = comp.listingKey || comp.mlsId;
+          const href = listingDetailHref(
+            id,
+            comp.address,
+            townHint || comp.city,
+          );
+          const quarter = compQuarterBand(
+            comp.impliedSubjectAmount,
+            amountLow,
+            amountHigh,
+          );
+          const quarterPriceClass =
+            quarter === "top"
+              ? "text-sage"
+              : quarter === "bottom"
+                ? "text-coral"
+                : null;
+          const priceLabel =
+            comp.price != null
+              ? `${fmtMoney(comp.price)}${isRent ? "/mo" : ""}`
+              : "—";
+          const implied =
+            comp.impliedSubjectAmount != null
+              ? isRent
+                ? `${fmtIfRentMoney(comp.impliedSubjectAmount)}/mo`
+                : fmtIfSaleMoney(comp.impliedSubjectAmount)
+              : null;
+
+          return (
+            <li
+              key={`${comp.role}-${id}`}
+              className="py-2.5 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
+            >
+              <div className="min-w-0">
+                <Link
+                  href={href}
+                  className="text-sm text-white/90 hover:text-gold transition-colors font-medium truncate block"
+                >
+                  {comp.address}
+                </Link>
+                <p className="font-mono text-[10px] text-white/40 tabular-nums mt-0.5">
+                  {comp.role === "sold"
+                    ? isRent
+                      ? "Rented"
+                      : "Sold"
+                    : "Active"}
+                  {comp.closeDate ? ` · ${fmtDate(comp.closeDate)}` : ""}
+                  {" · "}
+                  <span className={quarterPriceClass ?? undefined}>
+                    {priceLabel}
+                  </span>
+                  {comp.adjustedPricePerSqft != null
+                    ? ` · $${
+                        isRent
+                          ? comp.adjustedPricePerSqft.toFixed(2)
+                          : Math.round(comp.adjustedPricePerSqft).toLocaleString(
+                              "en-US",
+                            )
+                      }/sqft`
+                    : ""}
+                  {` · wt ${comp.weight.toFixed(2)}`}
+                </p>
+              </div>
+              {implied ? (
+                <p
+                  className={`shrink-0 font-mono text-[10px] tabular-nums ${
+                    quarterPriceClass ?? "text-white/50"
+                  }`}
+                >
+                  → {implied}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function ScenarioPanel({
   title,
   headline,
+  scenario,
+  kind,
+  townHint,
   range,
   midpoint,
   amountLabel,
   midpointLabel,
-  basis,
-  mathNote,
-  exploreHref,
-  exploreLabel,
-  hasEstimate,
 }: {
   title: string;
   headline: string;
+  scenario: IfScenario;
+  kind: "sale" | "rent";
+  townHint?: string | null;
   range: ReactNode;
   midpoint: string | null;
   amountLabel: string;
   midpointLabel: string;
-  basis: string | null;
-  mathNote: ReactNode;
-  exploreHref: string;
-  exploreLabel: string;
-  hasEstimate: boolean;
 }) {
+  const hasEstimate =
+    scenario.amount != null ||
+    scenario.soldCount + scenario.activeCount > 0 ||
+    scenario.math.matchedSoldCount + scenario.math.matchedActiveCount > 0;
+
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8 flex flex-col gap-4">
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-        {title}
-      </p>
-      <p className="text-white/70 text-sm leading-relaxed">{headline}</p>
+    <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8 flex flex-col gap-6">
+      <div>
+        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          {title}
+        </p>
+        <p className="mt-2 text-white/70 text-sm leading-relaxed">{headline}</p>
+      </div>
+
       <div>
         {range}
         <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/35">
@@ -233,21 +526,28 @@ function ScenarioCard({
           </p>
         ) : null}
       </div>
-      {hasEstimate && basis ? (
-        <p className="text-white/45 text-xs leading-relaxed">{basis}</p>
-      ) : (
+
+      {!hasEstimate ? (
         <p className="text-white/45 text-xs leading-relaxed">
-          We don&apos;t have enough comparable {title.toLowerCase()} data yet
-          to estimate a likely price for this property.
+          Not enough comparable {kind === "sale" ? "sales" : "rentals"} matched
+          these parameters to estimate a range yet.
         </p>
+      ) : (
+        <>
+          <IfMathWorksheet
+            est={scenario}
+            sqft={scenario.math.subjectSqft ?? scenario.params.sqft}
+            kind={kind}
+          />
+          <CompList
+            comps={scenario.comps}
+            kind={kind}
+            townHint={townHint}
+            amountLow={scenario.amountLow}
+            amountHigh={scenario.amountHigh}
+          />
+        </>
       )}
-      {hasEstimate && mathNote ? <div>{mathNote}</div> : null}
-      <Link
-        href={exploreHref}
-        className="mt-auto font-mono text-[10px] tracking-[0.12em] uppercase text-white/40 underline underline-offset-2 decoration-white/20 hover:text-gold hover:decoration-gold/50 transition-colors w-fit"
-      >
-        {exploreLabel}
-      </Link>
     </article>
   );
 }
@@ -278,7 +578,7 @@ export default function ListingIfPanel({
   mlsId,
   addressHint,
   townHint,
-  routeBase = "listing",
+  routeBase: _routeBase = "listing",
   variant = "panel",
 }: {
   mlsId: string;
@@ -287,16 +587,16 @@ export default function ListingIfPanel({
   routeBase?: "listing" | "spotlight";
   variant?: "panel" | "page";
 }) {
+  void _routeBase;
   const [data, setData] = useState<ListingIfPayload | null>(null);
   const [loading, setLoading] = useState(true);
-
   const isPage = variant === "page";
 
   useEffect(() => {
     let cancelled = false;
     const url = `/api/listings/${encodeURIComponent(mlsId)}/if`;
     const cached = peekTabJson<ListingIfPayload>(url);
-    if (cached) {
+    if (cached?.sale?.params) {
       setData(cached);
       setLoading(false);
     } else {
@@ -319,50 +619,21 @@ export default function ListingIfPanel({
     };
   }, [mlsId]);
 
-  const saleEstimate = data?.sale ?? {
-    amount: null,
-    amountLow: null,
-    amountHigh: null,
-    soldCount: 0,
-    activeCount: 0,
-  };
-  const rentEstimate = data?.rent ?? {
-    amount: null,
-    amountLow: null,
-    amountHigh: null,
-    soldCount: 0,
-    activeCount: 0,
-  };
-
-  const saleBasis = ifCompBasisText(
-    saleEstimate.soldCount,
-    saleEstimate.activeCount,
-    "sale",
-    data?.locationLabel,
-    data?.locationPremiumLabels,
-    data?.subjectVintageLabel,
-  );
-  const rentBasis = ifCompBasisText(
-    rentEstimate.soldCount,
-    rentEstimate.activeCount,
-    "rental",
-    data?.locationLabel,
-    data?.locationPremiumLabels,
-    data?.subjectVintageLabel,
-  );
-
-  const comparablesHref =
-    routeBase === "spotlight"
-      ? spotlightSectionHref("comparables")
-      : listingComparablesHref(mlsId, addressHint, townHint);
-  const rentalsHref =
-    routeBase === "spotlight"
-      ? spotlightSectionHref("comparable-rentals")
-      : listingComparableRentalsHref(mlsId, addressHint, townHint);
+  const saleEstimate = data?.sale?.params ? data.sale : emptyScenario();
+  const rentEstimate = data?.rent?.params
+    ? data.rent
+    : { ...emptyScenario(), params: { ...emptyScenario().params, kind: "rent" as const } };
+  const matchCriteria = criteriaFromIfParams(saleEstimate.params);
 
   if (loading) {
     return (
-      <div className={isPage ? "w-full min-w-0" : "rounded-2xl border border-white/10 bg-white/[0.04] p-6"}>
+      <div
+        className={
+          isPage
+            ? "w-full min-w-0"
+            : "rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+        }
+      >
         {!isPage && (
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-3">
             If...
@@ -376,24 +647,47 @@ export default function ListingIfPanel({
   }
 
   return (
-    <div className={isPage ? "w-full min-w-0 space-y-6" : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5"}>
+    <div
+      className={
+        isPage
+          ? "w-full min-w-0 space-y-6"
+          : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5"
+      }
+    >
       {isPage && (
         <>
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
             If...
           </p>
           <p className="text-white/50 text-sm leading-relaxed">
-            What this property might command on the market today — shown as a
-            likely range from comparable sales and listings matched by vintage,
-            size, and location profile.
+            Sale and rent scenarios use the same match rules as the Sales and
+            Rentals tabs — then show the math and every property that fed the
+            estimate.
           </p>
         </>
       )}
 
-      <div className="grid gap-6 sm:grid-cols-2 items-stretch">
-        <ScenarioCard
+      {matchCriteria ? (
+        <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
+          <MatchingCriteriaSummary
+            criteria={matchCriteria}
+            tolerances={{
+              bedTolerance: saleEstimate.params.bedTolerance,
+              bathTolerance: saleEstimate.params.bathTolerance,
+              sqftTolerancePct: saleEstimate.params.sqftTolerancePct,
+              lotTolerancePct: saleEstimate.params.lotTolerancePct,
+            }}
+          />
+        </p>
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-2 items-start">
+        <ScenarioPanel
           title="If you sell"
-          headline="If you were to sell this home, this is the range you would likely sell it for."
+          headline="Likely sale range if this home went to market today."
+          scenario={saleEstimate}
+          kind="sale"
+          townHint={townHint}
           range={
             <IfEstimateRangeDisplay
               low={saleEstimate.amountLow}
@@ -409,24 +703,13 @@ export default function ListingIfPanel({
           }
           amountLabel="Estimated Value Range"
           midpointLabel="Midpoint"
-          basis={saleBasis}
-          mathNote={
-            <IfMathWorksheet
-              est={saleEstimate}
-              sqft={data?.subjectSqft ?? null}
-              kind="sale"
-            />
-          }
-          exploreHref={comparablesHref}
-          exploreLabel="View comparables"
-          hasEstimate={
-            saleEstimate.amount != null ||
-            saleEstimate.soldCount + saleEstimate.activeCount > 0
-          }
         />
-        <ScenarioCard
+        <ScenarioPanel
           title="If you rent"
-          headline="If you were to rent this home, this is the range you would likely be able to rent it for."
+          headline="Likely monthly rent range if this home were leased today."
+          scenario={rentEstimate}
+          kind="rent"
+          townHint={townHint}
           range={
             <IfEstimateRangeDisplay
               low={
@@ -455,30 +738,13 @@ export default function ListingIfPanel({
           }
           amountLabel="Estimated monthly rent range"
           midpointLabel="Midpoint"
-          basis={rentBasis}
-          mathNote={
-            <IfMathWorksheet
-              est={rentEstimate}
-              sqft={data?.subjectSqft ?? null}
-              kind="rent"
-            />
-          }
-          exploreHref={rentalsHref}
-          exploreLabel="View comparable rentals"
-          hasEstimate={
-            rentEstimate.amount != null ||
-            rentEstimate.soldCount + rentEstimate.activeCount > 0
-          }
         />
       </div>
 
-      {data?.rangeBlurb ? (
-        <p className="font-mono text-[10px] leading-relaxed tracking-[0.04em] text-white/35">
-          {addressHint
-            ? `${addressHint}${townHint ? `, ${townHint}` : ""} — ${
-                data.rangeBlurb
-              }`
-            : data.rangeBlurb}
+      {addressHint ? (
+        <p className="font-mono text-[10px] text-white/30 tracking-[0.04em]">
+          {addressHint}
+          {townHint ? `, ${townHint}` : ""}
         </p>
       ) : null}
     </div>

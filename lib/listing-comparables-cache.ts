@@ -22,8 +22,17 @@ import {
   type ListingRelationRow,
 } from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
+import {
+  getPricingMatchingConfig,
+  getPricingMatchingConfigFresh,
+  isDefaultPricingMatchingConfig,
+  pricingMatchingConfigFingerprint,
+  type PricingMatchingConfig,
+} from '@/lib/pricing-matching-config'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip, type TmreTown } from '@/lib/tmre-towns'
+
+const COMPS_EDGES_MATCH_FP_KEY = 'comps_edges_match_fp'
 
 /** Bump when matcher tolerances / ranking change so cached edges rebuild. */
 export const COMPS_EDGES_ALGO_VERSION = 4
@@ -152,10 +161,33 @@ function soldSentinelIsStale(
   return computedAt < lastFull
 }
 
-function edgesAreFresh(rows: ListingRelationRow[]): boolean {
+/**
+ * True when stored edges were built under the current Admin Pricing match
+ * rules. Edges written before Pricing existed have no fingerprint — treat
+ * those as fresh while config is still the built-in defaults so we don't
+ * force every listing to re-rank town-wide pools on first page view.
+ */
+function edgesMatchPricingConfig(match: PricingMatchingConfig): boolean {
+  const expected = pricingMatchingConfigFingerprint(match)
+  const stored = getSyncMeta(COMPS_EDGES_MATCH_FP_KEY)
+  if (stored === expected) return true
+  if (stored == null && isDefaultPricingMatchingConfig(match)) {
+    // Backfill so later reads (and other Lambdas after sync_meta hydrate) hit
+    // the fast equality path.
+    setSyncMeta(COMPS_EDGES_MATCH_FP_KEY, expected)
+    return true
+  }
+  return false
+}
+
+function edgesAreFresh(
+  rows: ListingRelationRow[],
+  match: PricingMatchingConfig,
+): boolean {
   if (getSyncMeta('comps_edges_algo_version') !== String(COMPS_EDGES_ALGO_VERSION)) {
     return false
   }
+  if (!edgesMatchPricingConfig(match)) return false
   if (rows.length === 0) return false
   const lastFull = getSyncMeta('last_full_sync')
   if (!lastFull) return true
@@ -200,14 +232,21 @@ export async function readCachedComparables(
   const subjectId = listingRowId(subject)
   if (!subjectId) return null
 
+  const match = await getPricingMatchingConfigFresh()
   const relations = relationsForKind(kind)
   const rows = await readListingRelations(subjectId, relations)
-  if (!edgesAreFresh(rows)) return null
+  if (!edgesAreFresh(rows, match)) return null
   if (!hasBothRelationKinds(rows, kind)) return null
   if (soldSentinelIsStale(rows, kind)) return null
 
-  const { criteria, missingCriteria } = subjectComparablesCriteria(subject)
-  return rowsToResult(rows, kind, { criteria, missingCriteria })
+  const { criteria, missingCriteria } = subjectComparablesCriteria(
+    subject,
+    match,
+  )
+  return {
+    ...rowsToResult(rows, kind, { criteria, missingCriteria }),
+    defaultLookbackMonths: match.defaultLookbackMonths,
+  }
 }
 
 /** Compute ranked comps, persist edges, and return the panel payload (unscores). */
@@ -218,11 +257,15 @@ export async function computeAndPersistComparables(
   activePool: Listing[],
 ): Promise<ComparablesResult> {
   const subjectId = listingRowId(subject)
+  const match =
+    (await getPricingMatchingConfigFresh().catch(() => null)) ??
+    getPricingMatchingConfig()
   // Cache the widest look-back window with a larger reservoir so every shorter
   // window the user picks filters instantly from this one fit-ranked superset.
   const ranked = findComparablesRanked(subject, soldPool, activePool, kind, {
     soldLookbackMonths: COMPARABLES_MAX_LOOKBACK_MONTHS,
     soldLimit: COMPARABLES_SOLD_SUPERSET_LIMIT,
+    match,
   })
   if (!subjectId) {
     return {
@@ -230,6 +273,7 @@ export async function computeAndPersistComparables(
       active: ranked.active.map((row) => row.listing),
       criteria: ranked.criteria,
       missingCriteria: ranked.missingCriteria,
+      defaultLookbackMonths: match.defaultLookbackMonths,
     }
   }
 
@@ -244,12 +288,14 @@ export async function computeAndPersistComparables(
   )
   await replaceListingRelationsForSubject(subjectId, relationKinds, rows)
   setSyncMeta('comps_edges_algo_version', String(COMPS_EDGES_ALGO_VERSION))
+  setSyncMeta(COMPS_EDGES_MATCH_FP_KEY, pricingMatchingConfigFingerprint(match))
 
   return {
     sold: ranked.sold.map((row) => row.listing),
     active: ranked.active.map((row) => row.listing),
     criteria: ranked.criteria,
     missingCriteria: ranked.missingCriteria,
+    defaultLookbackMonths: match.defaultLookbackMonths,
   }
 }
 

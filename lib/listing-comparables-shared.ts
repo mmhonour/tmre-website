@@ -27,6 +27,18 @@ export type ComparableListing = {
   goldilocksScore?: number | null
   /** Weekly metadata edge score (0–100), comparable across listings. */
   edgeScore?: number | null
+  /**
+   * Compact MLS timeline (UAG rows). Built from the live under-contract
+   * Listing so history shows even when the comp is not yet in Postgres.
+   */
+  historyEvents?: CompactListingHistoryEvent[]
+}
+
+/** Slim history row embedded on UAG comps / soft-loaded under each listing. */
+export type CompactListingHistoryEvent = {
+  date: string | null
+  label: string
+  detail?: string
 }
 
 export type ComparablesCriteria = {
@@ -67,14 +79,6 @@ export function vintageCriteriaList(
   return labels.join(' | ')
 }
 
-export type ComparablesResult = {
-  sold: ComparableListing[]
-  active: ComparableListing[]
-  criteria: ComparablesCriteria | null
-  /** Human-readable gaps when the subject lacks required match fields. */
-  missingCriteria: string[]
-}
-
 /** Max sold/rented and on-market comps returned per side. */
 export const COMPARABLES_MATCH_LIMIT = 12
 
@@ -92,6 +96,16 @@ export const COMPARABLES_MATCH_LIMIT = 12
 export const COMPARABLES_LOOKBACK_OPTIONS = [12, 18, 24, 30, 36] as const
 export type ComparablesLookbackMonths =
   (typeof COMPARABLES_LOOKBACK_OPTIONS)[number]
+
+export type ComparablesResult = {
+  sold: ComparableListing[]
+  active: ComparableListing[]
+  criteria: ComparablesCriteria | null
+  /** Human-readable gaps when the subject lacks required match fields. */
+  missingCriteria: string[]
+  /** Admin-configured default look-back (months) for the Sales/Rentals spinner. */
+  defaultLookbackMonths?: ComparablesLookbackMonths
+}
 
 /** Default look-back — exactly one year. */
 export const COMPARABLES_DEFAULT_LOOKBACK_MONTHS: ComparablesLookbackMonths = 12

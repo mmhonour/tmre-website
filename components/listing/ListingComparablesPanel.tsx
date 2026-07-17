@@ -9,7 +9,6 @@ import {
   fmtSqft,
   fmtPricePerSqft,
   fmtYearBuilt,
-  vintageCriteriaList,
   soldWithinLookback,
   lookbackLabel,
   COMPARABLES_LOOKBACK_OPTIONS,
@@ -18,16 +17,17 @@ import {
   type ComparablesCriteria,
   type ComparablesLookbackMonths,
 } from "@/lib/listing-comparables-shared";
+import MatchingCriteriaSummary from "@/components/listing/MatchingCriteriaSummary";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
-import { VINTAGE_BUCKETS } from "@/lib/vintage-buckets";
 
 type ComparablesResponse = {
   sold: ComparableListing[];
   active: ComparableListing[];
   criteria: ComparablesCriteria | null;
   missingCriteria: string[];
+  defaultLookbackMonths?: ComparablesLookbackMonths;
 };
 
 function fmtCompPricePerSqft(pricePerSqft: number | null | undefined): string | null {
@@ -518,158 +518,6 @@ function LookbackSpinner({
   );
 }
 
-/** Acres value without the unit suffix, for building ranges like "0.22–0.52 ac". */
-function acresValue(acres: number): string {
-  if (acres < 0.01) return "<0.01";
-  if (acres < 10) return acres.toFixed(2);
-  return acres.toFixed(1);
-}
-
-/**
- * Continuous vintage span for the expanded view, derived from the bracketed
- * label list (oldest → newest). Open-ended buckets read as "< 1900" / "present"
- * so e.g. [Pre-1900, 1900–1940] expands to "< 1900–1940".
- */
-function vintageExpandedSpan(vintageList: string): string {
-  const labels = vintageList.split(" | ").filter(Boolean);
-  const entries = labels
-    .map((label) => {
-      const idx = VINTAGE_BUCKETS.findIndex((b) => b.label === label);
-      return { label, idx, id: VINTAGE_BUCKETS[idx]?.id ?? null };
-    })
-    .filter((e) => e.idx >= 0)
-    .sort((a, b) => a.idx - b.idx);
-  if (entries.length === 0) return "";
-
-  const lower = entries[0]!;
-  const upper = entries[entries.length - 1]!;
-
-  if (entries.length === 1) {
-    if (lower.id === "pre-1900") return "< 1900";
-    if (lower.id === "2020-present") return "2020+";
-    return lower.label;
-  }
-
-  const lowerEdge =
-    lower.id === "pre-1900" ? "< 1900" : (lower.label.split("–")[0] ?? lower.label);
-  const upperEdge =
-    upper.id === "2020-present" ? "present" : (upper.label.split("–")[1] ?? upper.label);
-  return `${lowerEdge}–${upperEdge}`;
-}
-
-type CriteriaBound = {
-  key: string;
-  /** Text left of the bracket (empty for the vintage token). */
-  label: string;
-  /** Compact bracket contents, e.g. "±1" or "Pre-1900, 1900–1940". */
-  token: string;
-  /** Expanded bounds, e.g. "3–5 bed" or "< 1900–1940". */
-  expanded: string;
-};
-
-function criteriaBounds(criteria: ComparablesCriteria): CriteriaBound[] {
-  const bounds: CriteriaBound[] = [
-    {
-      key: "bed",
-      label: `${criteria.beds} bed`,
-      token: "±1",
-      expanded: `${Math.max(0, criteria.beds - 1)}–${criteria.beds + 1} bed`,
-    },
-    {
-      key: "bath",
-      label: `${criteria.baths} bath`,
-      token: "±1",
-      expanded: `${Math.max(0, criteria.baths - 1)}–${criteria.baths + 1} bath`,
-    },
-  ];
-
-  const vintages = vintageCriteriaList(criteria);
-  if (vintages) {
-    bounds.push({
-      key: "vintage",
-      label: "",
-      token: vintages.split(" | ").join(", "),
-      expanded: vintageExpandedSpan(vintages),
-    });
-  }
-
-  if (criteria.sqft != null) {
-    bounds.push({
-      key: "sqft",
-      label: fmtSqft(criteria.sqft),
-      token: "±30%",
-      expanded: `${Math.round(criteria.sqft * 0.7).toLocaleString("en-US")}–${Math.round(
-        criteria.sqft * 1.3,
-      ).toLocaleString("en-US")} sqft`,
-    });
-  }
-
-  if (criteria.lotAcres != null) {
-    bounds.push({
-      key: "lot",
-      label: fmtAcres(criteria.lotAcres),
-      token: "±40%",
-      expanded: `${acresValue(criteria.lotAcres * 0.6)}–${acresValue(
-        criteria.lotAcres * 1.4,
-      )} ac`,
-    });
-  }
-
-  return bounds;
-}
-
-/**
- * Renders the "Matching …" criteria line. Every bracketed tolerance/vintage is a
- * toggle: click (or hover for the tooltip) to swap the compact "[±1]" bracket
- * for the actual bounds ("3–5 bed"); click again to collapse back.
- */
-function CriteriaSummary({
-  criteria,
-  isModal,
-}: {
-  criteria: ComparablesCriteria;
-  isModal: boolean;
-}) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const toggle = (key: string) =>
-    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
-
-  // Swapped palette: the values (zip / bed / bath / sqft / ac) are gold, while
-  // the still-clickable bracket toggles take the muted "other" color.
-  const valueClass = "text-gold";
-  const linkClass = isModal
-    ? "text-slate underline decoration-slate/40 underline-offset-2 hover:text-navy transition-colors cursor-pointer"
-    : "text-white/60 underline decoration-white/40 underline-offset-2 hover:text-white transition-colors cursor-pointer";
-
-  const bounds = criteriaBounds(criteria);
-
-  return (
-    <>
-      <span className={valueClass}>{criteria.zip}</span>
-      {bounds.map((bound) => {
-        const isOpen = expanded[bound.key];
-        return (
-          <span key={bound.key}>
-            {" · "}
-            {bound.label && !isOpen ? (
-              <span className={valueClass}>{`${bound.label} `}</span>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => toggle(bound.key)}
-              className={linkClass}
-              title={isOpen ? bound.token : bound.expanded}
-              aria-expanded={isOpen}
-            >
-              {isOpen ? bound.expanded : `[${bound.token}]`}
-            </button>
-          </span>
-        );
-      })}
-    </>
-  );
-}
-
 type ListingComparablesPanelProps = {
   mlsId: string;
   townHint?: string | null;
@@ -787,24 +635,26 @@ export default function ListingComparablesPanel({
     };
   }, [mlsId, comparablesUrl]);
 
-  // When the default 1-year window holds fewer than COMP_MIN_LOOKBACK_COMPS
+  // When the default look-back window holds fewer than COMP_MIN_LOOKBACK_COMPS
   // sold/rented comps, auto-widen the look-back to the smallest window that
   // reaches the minimum (capped at 3yr) and move the spinner to match. Runs once
   // per data load (i.e. per listing), so manual spinner changes are preserved.
   useEffect(() => {
     const soldList = data?.sold ?? [];
+    const defaultLookback =
+      data?.defaultLookbackMonths ?? COMPARABLES_DEFAULT_LOOKBACK_MONTHS;
     if (soldList.length === 0) {
-      setLookbackMonths(COMPARABLES_DEFAULT_LOOKBACK_MONTHS);
+      setLookbackMonths(defaultLookback);
       return;
     }
     const withinDefault = soldWithinLookback(
       soldList,
-      COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
+      defaultLookback,
       soldList.length,
     ).length;
     setLookbackMonths(
       withinDefault >= COMP_MIN_LOOKBACK_COMPS
-        ? COMPARABLES_DEFAULT_LOOKBACK_MONTHS
+        ? defaultLookback
         : minLookbackForComps(soldList, COMP_MIN_LOOKBACK_COMPS),
     );
   }, [data]);
@@ -986,7 +836,7 @@ export default function ListingComparablesPanel({
               : "font-mono text-[10px] tracking-[0.12em] uppercase text-white/40"
           }
         >
-          <CriteriaSummary criteria={criteria} isModal={isModal} />
+          <MatchingCriteriaSummary criteria={criteria} isModal={isModal} />
         </p>
       )}
 

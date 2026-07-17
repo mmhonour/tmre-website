@@ -12,7 +12,11 @@ import {
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
-import { isScheduledSyncPausedFresh } from '@/lib/scheduled-sync-toggle'
+import {
+  getScheduledSyncPausedJobsFresh,
+  isScheduledSyncPausedFresh,
+  type ScheduledSyncJobId,
+} from '@/lib/scheduled-sync-toggle'
 
 export type OverdueSyncJob = AdminSyncActionId | 'edge-scores'
 
@@ -37,6 +41,24 @@ export type OverdueSyncCatchupResult = {
 const CATCHUP_LOCK_KEY = 'overdue_sync_catchup_in_progress'
 const CATCHUP_STARTED_AT_KEY = 'overdue_sync_catchup_started_at'
 const CATCHUP_FINISHED_AT_KEY = 'overdue_sync_catchup_finished_at'
+
+function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
+  switch (job) {
+    case 'full-resync':
+    case 'incremental':
+    case 'listing-scores':
+    case 'stats-cache':
+    case 'deal-of-the-day':
+    case 'property-addresses':
+      return job
+    case 'edge-scores':
+      return 'listing-scores'
+    case 'publish-snapshot':
+      return null
+    default:
+      return null
+  }
+}
 
 const EXECUTION_ORDER: OverdueSyncJob[] = [
   'full-resync',
@@ -204,7 +226,11 @@ export async function runOverdueSyncCatchup(options?: {
     return { skipped: true, reason: 'catch-up already running', plan: [], steps: [] }
   }
 
-  const plan = buildOverdueSyncPlan()
+  const pausedJobs = await getScheduledSyncPausedJobsFresh()
+  const plan = buildOverdueSyncPlan().filter((job) => {
+    const pauseKey = overdueJobPauseKey(job)
+    return pauseKey == null || !pausedJobs[pauseKey]
+  })
   if (plan.length === 0) {
     return { skipped: true, reason: 'nothing overdue', plan: [], steps: [] }
   }

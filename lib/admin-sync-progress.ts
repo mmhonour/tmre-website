@@ -73,7 +73,7 @@ export function formatTableStatsSummary(tables: TableWriteStats[]): string {
   return tables.map((row) => `${row.table} ${row.queried.toLocaleString()}`).join(' · ')
 }
 
-/** One-line inventory for listings / listings.read / listing-photos rows. */
+/** One-line inventory for admin database rows. */
 export function formatAdminDatabaseTableSummary(
   tables: { table: string; rowCount: number; approximate?: boolean }[],
   options?: { schemaOnly?: boolean },

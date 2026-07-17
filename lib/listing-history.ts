@@ -233,6 +233,20 @@ export function buildCurrentListingEvents(listing: Listing): ListingHistoryEvent
   return events.sort((a, b) => b.sortMs - a.sortMs)
 }
 
+/** Drop sortMs and keep the newest N events for compact UAG / inline timelines. */
+export function compactHistoryEvents(
+  listing: Listing,
+  limit = 4,
+): Array<Pick<ListingHistoryEvent, 'date' | 'label' | 'detail'>> {
+  return buildCurrentListingEvents(listing)
+    .slice(0, limit)
+    .map(({ date, label, detail }) =>
+      detail != null && detail !== ''
+        ? { date, label, detail }
+        : { date, label },
+    )
+}
+
 export function summarizePriorListing(listing: Listing): PriorListingSummary {
   const { closeDate, closePrice } = closeFieldsFromListing(listing)
   return {

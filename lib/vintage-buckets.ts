@@ -127,6 +127,7 @@ export const COMPARABLES_VINTAGE_EDGE_FRACTION = 0.3
 export function vintageEdgeBuckets(
   subjectYear: number | null | undefined,
   subjectBucket: VintageBucketId,
+  edgeFraction: number = COMPARABLES_VINTAGE_EDGE_FRACTION,
 ): VintageBucketId[] {
   if (subjectBucket === 'unknown') return []
   if (subjectYear == null || !Number.isFinite(subjectYear)) return []
@@ -136,7 +137,11 @@ export function vintageEdgeBuckets(
   if (!range) return []
   const span = range.hi - range.lo
   if (span <= 0) return []
-  const threshold = span * COMPARABLES_VINTAGE_EDGE_FRACTION
+  const fraction =
+    Number.isFinite(edgeFraction) && edgeFraction > 0
+      ? edgeFraction
+      : COMPARABLES_VINTAGE_EDGE_FRACTION
+  const threshold = span * fraction
 
   const out: VintageBucketId[] = []
   if (subjectYear - range.lo <= threshold) {
@@ -159,10 +164,13 @@ export function vintageMatchesForComparable(
   subjectYear: number | null | undefined,
   subjectBucket: VintageBucketId,
   compBucket: VintageBucketId,
+  edgeFraction: number = COMPARABLES_VINTAGE_EDGE_FRACTION,
 ): boolean {
   if (subjectBucket === 'unknown' || compBucket === 'unknown') {
     return subjectBucket === compBucket
   }
   if (subjectBucket === compBucket) return true
-  return vintageEdgeBuckets(subjectYear, subjectBucket).includes(compBucket)
+  return vintageEdgeBuckets(subjectYear, subjectBucket, edgeFraction).includes(
+    compBucket,
+  )
 }

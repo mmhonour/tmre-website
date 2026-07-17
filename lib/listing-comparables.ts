@@ -9,14 +9,27 @@ import {
   type ComparablesCriteria,
   type ComparablesResult,
 } from '@/lib/listing-comparables-shared'
-import { closeFieldsFromListing } from '@/lib/listing-history'
+import { closeFieldsFromListing, compactHistoryEvents } from '@/lib/listing-history'
 import { isClosedListing, isMarketListing } from '@/lib/listings-store'
+import {
+  DEFAULT_PRICING_MATCHING_CONFIG,
+  type PricingMatchingConfig,
+} from '@/lib/pricing-matching-config-shared'
 import type { Listing } from '@/lib/rets'
 import {
   closedListingTimestamp,
   closedSalePrice,
   inStatsClosedPeriod,
 } from '@/lib/stats-listing-rows'
+import { normalizeZip } from '@/lib/tmre-towns'
+import {
+  classifyYearBuilt,
+  VINTAGE_BUCKETS,
+  vintageBucketDistance,
+  vintageEdgeBuckets,
+  vintageMatchesForComparable,
+  type VintageBucketId,
+} from '@/lib/vintage-buckets'
 
 /** Rolling lookback window for rental comparable sold listings. */
 const RENTAL_COMP_MONTHS = 8
@@ -42,23 +55,17 @@ function inTrailingMonths(iso: string | null, months: number): boolean {
  * Overrides for the sold/rented side of the ranking. Omitted → each mode keeps
  * its historical default (sale = calendar stats period, rental = 8-month roll,
  * limit = COMPARABLES_MATCH_LIMIT). The edge-cache path passes a wide window +
- * larger reservoir to build the look-back superset; If-estimates pass nothing.
+ * larger reservoir to build the look-back superset; If-estimates pass look-back
+ * + admin match config.
  */
 export type ComparablesRankOptions = {
   /** Trailing months for the sold/rented window. */
   soldLookbackMonths?: number
   /** Max sold/rented comps to keep. */
   soldLimit?: number
+  /** Admin Pricing match tolerances (beds/baths/lot/sqft/vintage edge). */
+  match?: PricingMatchingConfig
 }
-import { normalizeZip } from '@/lib/tmre-towns'
-import {
-  classifyYearBuilt,
-  VINTAGE_BUCKETS,
-  vintageBucketDistance,
-  vintageEdgeBuckets,
-  vintageMatchesForComparable,
-  type VintageBucketId,
-} from '@/lib/vintage-buckets'
 
 export type {
   ComparableListing,
@@ -100,51 +107,65 @@ function priceDistance(a: number | null, b: number | null): number {
   return Math.abs(a - b)
 }
 
-/** Lot acreage tolerance when matching comparables (±40%). */
-export const COMPARABLES_LOT_ACRE_TOLERANCE = 0.4
+/** Lot acreage tolerance when matching comparables (±40% by default). */
+export const COMPARABLES_LOT_ACRE_TOLERANCE =
+  DEFAULT_PRICING_MATCHING_CONFIG.lotAcreTolerance
 
 function acreageWithinTolerance(
   subjectAcres: number,
   compAcres: number,
+  match: PricingMatchingConfig,
 ): boolean {
-  const min = subjectAcres * (1 - COMPARABLES_LOT_ACRE_TOLERANCE)
-  const max = subjectAcres * (1 + COMPARABLES_LOT_ACRE_TOLERANCE)
+  const min = subjectAcres * (1 - match.lotAcreTolerance)
+  const max = subjectAcres * (1 + match.lotAcreTolerance)
   return compAcres >= min && compAcres <= max
 }
 
-/** Living-area tolerance when matching comparables (±30% of subject sqft). */
-export const COMPARABLES_SQFT_TOLERANCE = 0.3
+/** Living-area tolerance when matching comparables (±30% by default). */
+export const COMPARABLES_SQFT_TOLERANCE =
+  DEFAULT_PRICING_MATCHING_CONFIG.sqftTolerance
 
 function sqftWithinTolerance(
   subjectSqft: number,
   compSqft: number | null | undefined,
+  match: PricingMatchingConfig,
 ): boolean {
   if (compSqft == null || compSqft <= 0) return false
-  const min = subjectSqft * (1 - COMPARABLES_SQFT_TOLERANCE)
-  const max = subjectSqft * (1 + COMPARABLES_SQFT_TOLERANCE)
+  const min = subjectSqft * (1 - match.sqftTolerance)
+  const max = subjectSqft * (1 + match.sqftTolerance)
   return compSqft >= min && compSqft <= max
 }
 
 /** Adjacent bed counts allowed when matching comparables. */
-export const COMPARABLES_BED_TOLERANCE = 1
+export const COMPARABLES_BED_TOLERANCE =
+  DEFAULT_PRICING_MATCHING_CONFIG.bedTolerance
 
 function bedsWithinTolerance(
   subjectBeds: number,
   compBeds: number | null | undefined,
+  match: PricingMatchingConfig,
 ): boolean {
   if (compBeds == null) return false
-  return Math.abs(compBeds - subjectBeds) <= COMPARABLES_BED_TOLERANCE
+  return Math.abs(compBeds - subjectBeds) <= match.bedTolerance
 }
 
 /** Adjacent bath counts allowed when matching comparables. */
-export const COMPARABLES_BATH_TOLERANCE = 1
+export const COMPARABLES_BATH_TOLERANCE =
+  DEFAULT_PRICING_MATCHING_CONFIG.bathTolerance
 
 function bathsWithinTolerance(
   subjectBaths: number,
   compBaths: number | null | undefined,
+  match: PricingMatchingConfig,
 ): boolean {
   if (compBaths == null) return false
-  return Math.abs(compBaths - subjectBaths) <= COMPARABLES_BATH_TOLERANCE
+  return Math.abs(compBaths - subjectBaths) <= match.bathTolerance
+}
+
+function resolveMatchConfig(
+  options?: ComparablesRankOptions,
+): PricingMatchingConfig {
+  return options?.match ?? DEFAULT_PRICING_MATCHING_CONFIG
 }
 
 export function buildComparableListing(l: Listing): ComparableListing {
@@ -198,6 +219,7 @@ export function buildComparableListing(l: Listing): ComparableListing {
 
 export function subjectComparablesCriteria(
   subject: Listing,
+  match: PricingMatchingConfig = DEFAULT_PRICING_MATCHING_CONFIG,
 ): { criteria: ComparablesCriteria | null; missingCriteria: string[] } {
   const zip = normalizeZip(subject.address.postalCode)
   const missingCriteria: string[] = []
@@ -215,6 +237,7 @@ export function subjectComparablesCriteria(
   const vintageEdgeLabels = vintageEdgeBuckets(
     subject.yearBuilt,
     vintageBucket,
+    match.vintageEdgeFraction,
   ).map((id) => vintageLabel(id))
 
   return {
@@ -247,13 +270,14 @@ function matchesComparableCriteria(
   comp: Listing,
   subject: Listing,
   criteria: ComparablesCriteria,
+  match: PricingMatchingConfig,
 ): boolean {
   if (isSameListing(comp, subject)) return false
 
   const compZip = normalizeZip(comp.address.postalCode)
   if (compZip !== criteria.zip) return false
-  if (!bedsWithinTolerance(criteria.beds, comp.beds)) return false
-  if (!bathsWithinTolerance(criteria.baths, comp.baths)) return false
+  if (!bedsWithinTolerance(criteria.beds, comp.beds, match)) return false
+  if (!bathsWithinTolerance(criteria.baths, comp.baths, match)) return false
 
   const compVintage = classifyYearBuilt(comp.yearBuilt)
   if (
@@ -261,6 +285,7 @@ function matchesComparableCriteria(
       subject.yearBuilt,
       criteria.vintageBucket,
       compVintage,
+      match.vintageEdgeFraction,
     )
   ) {
     return false
@@ -269,11 +294,13 @@ function matchesComparableCriteria(
   if (criteria.lotAcres != null && criteria.lotAcres > 0) {
     const compAcres = parseLotAcres(comp)
     if (compAcres == null || compAcres <= 0) return false
-    if (!acreageWithinTolerance(criteria.lotAcres, compAcres)) return false
+    if (!acreageWithinTolerance(criteria.lotAcres, compAcres, match)) {
+      return false
+    }
   }
 
   if (criteria.sqft != null && criteria.sqft > 0) {
-    if (!sqftWithinTolerance(criteria.sqft, comp.sqft)) return false
+    if (!sqftWithinTolerance(criteria.sqft, comp.sqft, match)) return false
   }
 
   return true
@@ -426,7 +453,11 @@ export function findComparablesRanked(
   mode: ComparablesMatchMode = 'sale',
   options?: ComparablesRankOptions,
 ): RankedComparablesResult {
-  const { criteria, missingCriteria } = subjectComparablesCriteria(subject)
+  const match = resolveMatchConfig(options)
+  const { criteria, missingCriteria } = subjectComparablesCriteria(
+    subject,
+    match,
+  )
 
   if (!criteria) {
     return {
@@ -441,7 +472,7 @@ export function findComparablesRanked(
   const active = filterPoolByMatchMode(activePool, mode)
   const pool = [...sold, ...active]
   const matches = pool.filter((l) =>
-    matchesComparableCriteria(l, subject, criteria),
+    matchesComparableCriteria(l, subject, criteria, match),
   )
 
   return {
@@ -457,8 +488,15 @@ export function findComparables(
   soldPool: Listing[],
   activePool: Listing[],
   mode: ComparablesMatchMode = 'sale',
+  options?: ComparablesRankOptions,
 ): ComparablesResult {
-  const ranked = findComparablesRanked(subject, soldPool, activePool, mode)
+  const ranked = findComparablesRanked(
+    subject,
+    soldPool,
+    activePool,
+    mode,
+    options,
+  )
   return {
     sold: ranked.sold.map((row) => row.listing),
     active: ranked.active.map((row) => row.listing),
@@ -471,8 +509,9 @@ export function findComparableRentals(
   subject: Listing,
   soldPool: Listing[],
   activePool: Listing[],
+  options?: ComparablesRankOptions,
 ): ComparablesResult {
-  return findComparables(subject, soldPool, activePool, 'rental')
+  return findComparables(subject, soldPool, activePool, 'rental', options)
 }
 
 // ---------------------------------------------------------------------------
@@ -510,11 +549,17 @@ function rankUagComps(
       return domA - domB
     })
     .slice(0, COMPARABLES_MATCH_LIMIT)
-    .map(({ listing, fitDistance }, index) => ({
-      listing: buildComparableListing(listing),
-      fitDistance,
-      rank: index + 1,
-    }))
+    .map(({ listing, fitDistance }, index) => {
+      const events = compactHistoryEvents(listing)
+      return {
+        listing: {
+          ...buildComparableListing(listing),
+          ...(events.length > 0 ? { historyEvents: events } : {}),
+        },
+        fitDistance,
+        rank: index + 1,
+      }
+    })
 }
 
 export type RankedUagResult = {
@@ -532,15 +577,19 @@ export type RankedUagResult = {
 export function findUagRanked(
   subject: Listing,
   underContractPool: Listing[],
+  match: PricingMatchingConfig = DEFAULT_PRICING_MATCHING_CONFIG,
 ): RankedUagResult {
-  const { criteria, missingCriteria } = subjectComparablesCriteria(subject)
+  const { criteria, missingCriteria } = subjectComparablesCriteria(
+    subject,
+    match,
+  )
 
   if (!criteria) {
     return { sale: [], rental: [], criteria: null, missingCriteria }
   }
 
   const matches = underContractPool.filter((l) =>
-    matchesComparableCriteria(l, subject, criteria),
+    matchesComparableCriteria(l, subject, criteria, match),
   )
   const rentals = matches.filter((l) => isRentalListing(l))
   const sales = matches.filter((l) => !isRentalListing(l))

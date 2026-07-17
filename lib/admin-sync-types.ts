@@ -123,7 +123,7 @@ export type AdminSyncTableStatsReport = {
   tables: AdminTableWriteStats[]
 }
 
-export type AdminDatabaseSyncId = 'listings' | 'listings.read' | 'listing-photos'
+export type AdminDatabaseSyncId = 'listings' | 'listings.read'
 
 export type AdminDatabaseTableStat = {
   table: string

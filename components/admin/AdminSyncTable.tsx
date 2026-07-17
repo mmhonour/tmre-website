@@ -13,6 +13,12 @@ import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
 import { formatAdminNextSyncAt, formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import type { AdminSyncScheduleHints } from "@/lib/admin-sync-schedule";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
+import { SCHEDULED_SYNC_JOB_BY_ROW } from "@/lib/scheduled-sync-jobs";
+import {
+  emptyScheduledSyncPausedJobs,
+  type ScheduledSyncJobId,
+  type ScheduledSyncPausedJobs,
+} from "@/lib/scheduled-sync-jobs-shared";
 import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
@@ -20,6 +26,10 @@ import {
   formatFullResyncTownPending,
   formatFullResyncFinalizeStepPending,
 } from "@/lib/admin-sync-progress";
+
+function emptyPausedJobs(): ScheduledSyncPausedJobs {
+  return emptyScheduledSyncPausedJobs();
+}
 
 function formatSyncDescription(message?: string, detail?: string): string | undefined {
   if (!message && !detail) return undefined;
@@ -53,8 +63,56 @@ function isSyncErrorText(text: string | undefined): boolean {
     lower.includes("timeout") ||
     lower.includes("http 5") ||
     lower.includes("gateway") ||
-    lower.includes("html error")
+    lower.includes("html error") ||
+    lower.includes("will retry")
   );
+}
+
+/** Initial attempt + 2 automatic retries after failure. */
+const SYNC_MAX_ATTEMPTS = 3;
+const SYNC_RETRY_DELAY_MS = 60_000;
+
+type PendingSyncRetry = {
+  baseError: string;
+  retryAtMs: number;
+  attemptsLeft: number;
+};
+
+function formatRetryClock(ms: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(ms));
+}
+
+function formatAttemptsLeftPhrase(attemptsLeft: number): string {
+  return attemptsLeft === 1 ? "1x more time" : `${attemptsLeft}x more times`;
+}
+
+/** Error text plus the auto-retry notice (live countdown when `nowMs` is passed). */
+function formatErrorWithRetry(
+  baseError: string,
+  retryAtMs: number,
+  attemptsLeft: number,
+  nowMs = Date.now(),
+): string {
+  const secs = Math.max(0, Math.ceil((retryAtMs - nowMs) / 1000));
+  const inPhrase =
+    secs <= 0
+      ? "momentarily"
+      : secs === 1
+        ? "in 1 second"
+        : `in ${secs} seconds`;
+  return (
+    `${baseError}\n\n` +
+    `Will retry ${inPhrase} at ${formatRetryClock(retryAtMs)} — ${formatAttemptsLeftPhrase(attemptsLeft)}`
+  );
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 async function postAdminSync(
@@ -115,8 +173,10 @@ async function runFullResyncChunked(
     persistFinalStatus: (rowId: string, text: string) => void;
     appendRunLog: (entry: SyncRunLogEntry) => void;
   },
-): Promise<boolean> {
-  if (hooks.runningId) return false;
+): Promise<{ ok: boolean; error?: string }> {
+  if (hooks.runningId && hooks.runningId !== "sync-all-caches" && hooks.runningId !== "full-resync") {
+    return { ok: false, error: "Another sync is already running" };
+  }
   const startedAt = new Date().toISOString();
   hooks.setRunningId("full-resync");
   hooks.setMessages((prev) => ({ ...prev, [row.id]: undefined }));
@@ -173,7 +233,7 @@ async function runFullResyncChunked(
             finished: body.finishedAt ?? new Date().toISOString(),
           },
         }));
-        return false;
+        return { ok: false, error: errText };
       }
       hooks.setStatus((prev) =>
         body.stats
@@ -264,7 +324,7 @@ async function runFullResyncChunked(
             finished: body.finishedAt ?? new Date().toISOString(),
           },
         }));
-        return false;
+        return { ok: false, error: errText };
       }
 
       if (body.stats) {
@@ -301,7 +361,7 @@ async function runFullResyncChunked(
 
     if (!finish || !finishRes) {
       // All finalize steps were already marked complete (e.g. a stale resume) — nothing to run.
-      return true;
+      return { ok: true };
     }
 
     hooks.setRefreshing(Boolean(finish.refreshing));
@@ -322,16 +382,18 @@ async function runFullResyncChunked(
       hooks.setMessages((prev) => ({ ...prev, [row.id]: finish!.message ?? "Complete" }));
       hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
       hooks.persistFinalStatus(row.id, finalText);
-    } else {
-      const finalText = "Full resync finalize failed";
-      hooks.setErrors((prev) => ({
-        ...prev,
-        [row.id]: formatSyncError(finishRes!, finish!, "Finalize full resync"),
-      }));
-      hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
-      hooks.persistFinalStatus(row.id, finalText);
+      return { ok: true };
     }
-    return ok;
+
+    const errText = formatSyncError(finishRes!, finish!, "Finalize full resync");
+    const finalText = "Full resync finalize failed";
+    hooks.setErrors((prev) => ({
+      ...prev,
+      [row.id]: errText,
+    }));
+    hooks.setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+    hooks.persistFinalStatus(row.id, finalText);
+    return { ok: false, error: errText };
   } catch (err) {
     const errText = err instanceof Error ? err.message : "Sync failed";
     const finalText = "Full resync interrupted";
@@ -342,7 +404,7 @@ async function runFullResyncChunked(
       ...prev,
       [row.id]: { started: startedAt, finished: new Date().toISOString() },
     }));
-    return false;
+    return { ok: false, error: errText };
   } finally {
     hooks.setRunningId(null);
     void hooks.refreshStatus();
@@ -757,6 +819,20 @@ function syncRowClassName(visual: SyncRowVisualStatus, stripe: boolean): string 
   }
 }
 
+/** Opaque sticky-cell backgrounds so scrolling content does not show through. */
+function stickyCellBg(visual: SyncRowVisualStatus, stripe: boolean): string {
+  switch (visual) {
+    case "running":
+      return "bg-[#f3e4a8]";
+    case "ok":
+      return "bg-[#e8f0ea]";
+    case "alert":
+      return "bg-[#fecaca]";
+    default:
+      return stripe ? "bg-[#faf7f1]" : "bg-white";
+  }
+}
+
 function SyncImpactedPages({ rowId }: { rowId: string }) {
   const pages = adminSyncImpactedPages(rowId);
   if (pages.length === 0) {
@@ -790,15 +866,31 @@ export default function AdminSyncTable({
   initialRefreshing,
   initialDatabaseStats,
   initialStatus,
+  initialPausedJobs,
 }: {
   rows: AdminSyncRow[];
   initialRefreshing: boolean;
   initialDatabaseStats: AdminDatabaseSyncStats[];
   initialStatus?: PanelStatus;
+  initialPausedJobs?: ScheduledSyncPausedJobs;
 }) {
   const [status, setStatus] = useState<PanelStatus | null>(initialStatus ?? null);
   const [databaseStats, setDatabaseStats] = useState(initialDatabaseStats);
   const [refreshing, setRefreshing] = useState(initialRefreshing);
+  const [pausedJobs, setPausedJobs] = useState<ScheduledSyncPausedJobs>(
+    () => initialPausedJobs ?? emptyPausedJobs(),
+  );
+  const [pauseSavingJob, setPauseSavingJob] = useState<ScheduledSyncJobId | null>(
+    null,
+  );
+  const [pendingRetries, setPendingRetries] = useState<
+    Partial<Record<string, PendingSyncRetry>>
+  >({});
+  const pendingRetryTimersRef = useRef<Partial<Record<string, number>>>({});
+  const syncAttemptCountRef = useRef<Partial<Record<string, number>>>({});
+  const runSyncRef = useRef<
+    (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => Promise<void>
+  >(async () => {});
   const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
     null,
   );
@@ -884,11 +976,77 @@ export default function AdminSyncTable({
     );
   }, [liveLog, runLog, runningId]);
 
+  const hasPendingRetries = Object.keys(pendingRetries).length > 0;
+
+  const clearPendingRetry = useCallback((rowId: string) => {
+    const timerId = pendingRetryTimersRef.current[rowId];
+    if (timerId != null) {
+      window.clearTimeout(timerId);
+      delete pendingRetryTimersRef.current[rowId];
+    }
+    setPendingRetries((prev) => {
+      if (!prev[rowId]) return prev;
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
-    const tickMs = refreshing || runningId != null ? 5_000 : 60_000;
+    return () => {
+      for (const timerId of Object.values(pendingRetryTimersRef.current)) {
+        if (timerId != null) window.clearTimeout(timerId);
+      }
+      pendingRetryTimersRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    const tickMs =
+      refreshing || runningId != null || hasPendingRetries ? 1_000 : 60_000;
     const id = window.setInterval(() => setNow(new Date()), tickMs);
     return () => window.clearInterval(id);
-  }, [refreshing, runningId]);
+  }, [refreshing, runningId, hasPendingRetries]);
+
+  /** After a sync failure: schedule up to 2 automatic retries (60s apart), or finalize. */
+  const handleSyncFailure = useCallback(
+    (row: AdminSyncRow, baseError: string) => {
+      const prior = syncAttemptCountRef.current[row.id] ?? 0;
+      const attemptNumber = prior + 1;
+      syncAttemptCountRef.current[row.id] = attemptNumber;
+      const attemptsLeft = SYNC_MAX_ATTEMPTS - attemptNumber;
+
+      if (attemptsLeft <= 0) {
+        clearPendingRetry(row.id);
+        setErrors((prev) => ({ ...prev, [row.id]: baseError }));
+        return;
+      }
+
+      const retryAtMs = Date.now() + SYNC_RETRY_DELAY_MS;
+      clearPendingRetry(row.id);
+      setPendingRetries((prev) => ({
+        ...prev,
+        [row.id]: { baseError, retryAtMs, attemptsLeft },
+      }));
+      setErrors((prev) => ({
+        ...prev,
+        [row.id]: formatErrorWithRetry(baseError, retryAtMs, attemptsLeft),
+      }));
+
+      const timerId = window.setTimeout(() => {
+        delete pendingRetryTimersRef.current[row.id];
+        setPendingRetries((prev) => {
+          if (!prev[row.id]) return prev;
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+        void runSyncRef.current(row, { autoRetry: true });
+      }, SYNC_RETRY_DELAY_MS);
+      pendingRetryTimersRef.current[row.id] = timerId;
+    },
+    [clearPendingRetry],
+  );
 
   const refreshStatus = useCallback(async () => {
     const res = await fetch("/api/admin/sync", { cache: "no-store" });
@@ -900,6 +1058,50 @@ export default function AdminSyncTable({
   }, []);
 
   useEffect(() => {
+    if (initialPausedJobs) return;
+    let cancelled = false;
+    fetch("/api/admin/scheduled-sync", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { jobs?: ScheduledSyncPausedJobs } | null) => {
+        if (cancelled || !body?.jobs) return;
+        setPausedJobs(body.jobs);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [initialPausedJobs]);
+
+  const togglePausedJob = useCallback(
+    async (jobId: ScheduledSyncJobId, next: boolean) => {
+      setPauseSavingJob(jobId);
+      const prev = pausedJobs;
+      setPausedJobs((cur) => ({ ...cur, [jobId]: next }));
+      try {
+        const res = await fetch("/api/admin/scheduled-sync", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jobId, paused: next }),
+        });
+        const body = (await res.json()) as {
+          jobs?: ScheduledSyncPausedJobs;
+          error?: string;
+        };
+        if (!res.ok || !body.jobs) {
+          setPausedJobs(prev);
+          return;
+        }
+        setPausedJobs(body.jobs);
+      } catch {
+        setPausedJobs(prev);
+      } finally {
+        setPauseSavingJob(null);
+      }
+    },
+    [pausedJobs],
+  );
+
+  useEffect(() => {
     void refreshStatus();
     const pollMs = refreshing || runningId != null ? 5_000 : 60_000;
     const id = window.setInterval(() => void refreshStatus(), pollMs);
@@ -907,13 +1109,19 @@ export default function AdminSyncTable({
   }, [refreshStatus, refreshing, runningId]);
 
   const runSync = useCallback(
-    async (row: AdminSyncRow) => {
+    async (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => {
       const actionId = row.actionId;
       if (!actionId || runningId) return;
+
+      if (!opts?.autoRetry) {
+        clearPendingRetry(row.id);
+        syncAttemptCountRef.current[row.id] = 0;
+      }
+
       if (actionId === "full-resync") {
         beginRunLog();
         try {
-          await runFullResyncChunked(row, {
+          const result = await runFullResyncChunked(row, {
             setRunningId,
             setDescriptions,
             setMessages,
@@ -926,6 +1134,12 @@ export default function AdminSyncTable({
             persistFinalStatus,
             appendRunLog,
           });
+          if (result.ok) {
+            clearPendingRetry(row.id);
+            syncAttemptCountRef.current[row.id] = 0;
+          } else {
+            handleSyncFailure(row, result.error ?? "Full resync failed");
+          }
         } finally {
           commitRunLog();
         }
@@ -958,7 +1172,6 @@ export default function AdminSyncTable({
 
         if (!res.ok || body.ok === false) {
           const errText = formatSyncError(res, body, row.label);
-          setErrors((prev) => ({ ...prev, [row.id]: errText }));
           appendRunLog({
             id: `${row.id}-${actionT0}`,
             label: actionLabel,
@@ -975,9 +1188,12 @@ export default function AdminSyncTable({
               finished: body.finishedAt ?? new Date().toISOString(),
             },
           }));
+          handleSyncFailure(row, errText);
           return;
         }
 
+        clearPendingRetry(row.id);
+        syncAttemptCountRef.current[row.id] = 0;
         setErrors((prev) => ({ ...prev, [row.id]: undefined }));
         setStatus(body);
         setRefreshing(body.refreshing);
@@ -1011,7 +1227,6 @@ export default function AdminSyncTable({
         });
       } catch (err) {
         const errText = err instanceof Error ? err.message : "Sync failed";
-        setErrors((prev) => ({ ...prev, [row.id]: errText }));
         appendRunLog({
           id: `${row.id}-${actionT0}`,
           label: actionLabel,
@@ -1025,14 +1240,26 @@ export default function AdminSyncTable({
           ...prev,
           [row.id]: { started: startedAt, finished: new Date().toISOString() },
         }));
+        handleSyncFailure(row, errText);
       } finally {
         commitRunLog();
         setRunningId(null);
         void refreshStatus();
       }
     },
-    [runningId, refreshStatus, persistFinalStatus, beginRunLog, appendRunLog, commitRunLog],
+    [
+      runningId,
+      refreshStatus,
+      persistFinalStatus,
+      beginRunLog,
+      appendRunLog,
+      commitRunLog,
+      clearPendingRetry,
+      handleSyncFailure,
+    ],
   );
+
+  runSyncRef.current = runSync;
 
   const runSyncAll = useCallback(async () => {
     if (runningId) return;
@@ -1042,6 +1269,11 @@ export default function AdminSyncTable({
     setMessages({});
     setErrors({});
     setRunTimings({});
+    for (const rowId of Object.keys(pendingRetryTimersRef.current)) {
+      clearPendingRetry(rowId);
+    }
+    setPendingRetries({});
+    syncAttemptCountRef.current = {};
 
     let skipChainedAfterFull = false;
     let completed = 0;
@@ -1058,21 +1290,58 @@ export default function AdminSyncTable({
           const row = rows.find((r) => r.actionId === "full-resync");
           if (!row) continue;
           completed += 1;
-          setSyncAllSummary(`Step ${completed}/${totalSteps}: Full resync (town-by-town)…`);
-          const ok = await runFullResyncChunked(row, {
-            setRunningId,
-            setDescriptions,
-            persistFinalStatus,
-            setMessages,
-            setErrors,
-            setRunTimings,
-            setStatus,
-            setRefreshing,
-            refreshStatus,
-            runningId: "sync-all-caches",
-            appendRunLog,
-          });
-          if (!ok) {
+          let fullOk = false;
+          let lastFullErr = "Full resync failed";
+          for (let attempt = 1; attempt <= SYNC_MAX_ATTEMPTS; attempt++) {
+            setRunningId("sync-all-caches");
+            setSyncAllSummary(
+              `Step ${completed}/${totalSteps}: Full resync (town-by-town)${
+                attempt > 1 ? ` · retry ${attempt}/${SYNC_MAX_ATTEMPTS}` : ""
+              }…`,
+            );
+            const result = await runFullResyncChunked(row, {
+              setRunningId,
+              setDescriptions,
+              persistFinalStatus,
+              setMessages,
+              setErrors,
+              setRunTimings,
+              setStatus,
+              setRefreshing,
+              refreshStatus,
+              runningId: "sync-all-caches",
+              appendRunLog,
+            });
+            setRunningId("sync-all-caches");
+            if (result.ok) {
+              fullOk = true;
+              clearPendingRetry(row.id);
+              break;
+            }
+            lastFullErr = result.error ?? lastFullErr;
+            const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
+            if (attemptsLeft <= 0) break;
+            const retryAtMs = Date.now() + SYNC_RETRY_DELAY_MS;
+            setPendingRetries((prev) => ({
+              ...prev,
+              [row.id]: {
+                baseError: lastFullErr,
+                retryAtMs,
+                attemptsLeft,
+              },
+            }));
+            setErrors((prev) => ({
+              ...prev,
+              [row.id]: formatErrorWithRetry(lastFullErr, retryAtMs, attemptsLeft),
+            }));
+            setSyncAllSummary(
+              `Full resync failed — retrying at ${formatRetryClock(retryAtMs)} (${formatAttemptsLeftPhrase(attemptsLeft)})`,
+            );
+            await sleepMs(SYNC_RETRY_DELAY_MS);
+            clearPendingRetry(row.id);
+          }
+          if (!fullOk) {
+            setErrors((prev) => ({ ...prev, [row.id]: lastFullErr }));
             setSyncAllSummary("Sync all stopped during full resync");
             return;
           }
@@ -1083,85 +1352,124 @@ export default function AdminSyncTable({
         const rowId = ACTION_ROW_ID[actionId];
         currentRowId = rowId ?? null;
         const label = ADMIN_SYNC_ACTIONS[actionId]?.label ?? actionId;
-        setSyncAllSummary(`Step ${completed}/${totalSteps}: ${label}…`);
 
-        const startedAt = new Date().toISOString();
-        const stepT0 = Date.now();
-        if (rowId) {
-          setRunTimings((prev) => ({
-            ...prev,
-            [rowId]: { started: startedAt, finished: null },
-          }));
-        }
+        let stepBody: AdminSyncPostBody | null = null;
+        let stepOk = false;
+        let lastStepErr = "";
 
-        const res = await fetch("/api/admin/sync", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: actionId }),
-        });
-        const body = await readAdminSyncPostResponse(res);
+        for (let attempt = 1; attempt <= SYNC_MAX_ATTEMPTS; attempt++) {
+          setSyncAllSummary(
+            `Step ${completed}/${totalSteps}: ${label}${
+              attempt > 1 ? ` · retry ${attempt}/${SYNC_MAX_ATTEMPTS}` : ""
+            }…`,
+          );
 
-        if (!res.ok || body.ok === false) {
-          const stepErr = formatSyncError(res, body, label);
+          const startedAt = new Date().toISOString();
+          const stepT0 = Date.now();
           if (rowId) {
-            setErrors((prev) => ({
-              ...prev,
-              [rowId]: stepErr,
-            }));
             setRunTimings((prev) => ({
               ...prev,
-              [rowId]: {
-                started: body.startedAt ?? startedAt,
-                finished: body.finishedAt ?? new Date().toISOString(),
-              },
+              [rowId]: { started: startedAt, finished: null },
             }));
           }
+
+          const res = await fetch("/api/admin/sync", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: actionId }),
+          });
+          const body = await readAdminSyncPostResponse(res);
+
+          if (!res.ok || body.ok === false) {
+            const stepErr = formatSyncError(res, body, label);
+            lastStepErr = stepErr;
+            if (rowId) {
+              setRunTimings((prev) => ({
+                ...prev,
+                [rowId]: {
+                  started: body.startedAt ?? startedAt,
+                  finished: body.finishedAt ?? new Date().toISOString(),
+                },
+              }));
+            }
+            appendRunLog({
+              id: `sync-all-${actionId}-${stepT0}-a${attempt}`,
+              label,
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              durationMs: Date.now() - stepT0,
+              status: stepErr,
+              error: stepErr,
+            });
+            const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
+            if (attemptsLeft <= 0) break;
+            if (rowId) {
+              const retryAtMs = Date.now() + SYNC_RETRY_DELAY_MS;
+              setPendingRetries((prev) => ({
+                ...prev,
+                [rowId]: { baseError: stepErr, retryAtMs, attemptsLeft },
+              }));
+              setErrors((prev) => ({
+                ...prev,
+                [rowId]: formatErrorWithRetry(stepErr, retryAtMs, attemptsLeft),
+              }));
+            }
+            setSyncAllSummary(
+              `${label} failed — retrying at ${formatRetryClock(Date.now() + SYNC_RETRY_DELAY_MS)} (${formatAttemptsLeftPhrase(attemptsLeft)})`,
+            );
+            await sleepMs(SYNC_RETRY_DELAY_MS);
+            if (rowId) clearPendingRetry(rowId);
+            continue;
+          }
+
+          stepBody = body;
+          stepOk = true;
+          const syncAllFinalText =
+            formatSyncDescription(body.message, body.detail) ??
+            body.message ??
+            (rowId ? rows.find((r) => r.id === rowId)?.detail : undefined) ??
+            "";
           appendRunLog({
             id: `sync-all-${actionId}-${stepT0}`,
             label,
             startedAt,
             finishedAt: new Date().toISOString(),
             durationMs: Date.now() - stepT0,
-            status: stepErr,
-            error: stepErr,
+            status: syncAllFinalText || (body.message ?? "Complete"),
           });
-          setSyncAllSummary(`Sync all stopped at ${label}: ${formatSyncError(res, body)}`);
+          if (rowId) {
+            clearPendingRetry(rowId);
+            setErrors((prev) => ({ ...prev, [rowId]: undefined }));
+            setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
+            setDescriptions((prev) => ({ ...prev, [rowId]: syncAllFinalText }));
+            if (syncAllFinalText) persistFinalStatus(rowId, syncAllFinalText);
+            const queued = Boolean(body.backgroundQueued);
+            setRunTimings((prev) => ({
+              ...prev,
+              [rowId]: {
+                started: body.startedAt ?? startedAt,
+                finished: queued ? null : (body.finishedAt ?? new Date().toISOString()),
+              },
+            }));
+          }
+          break;
+        }
+
+        if (!stepOk || !stepBody) {
+          if (rowId) {
+            setErrors((prev) => ({ ...prev, [rowId]: lastStepErr || "Sync failed" }));
+          }
+          setSyncAllSummary(
+            `Sync all stopped at ${label}: ${lastStepErr || "Sync failed"}`,
+          );
           return;
         }
 
-        const syncAllFinalText =
-          formatSyncDescription(body.message, body.detail) ??
-          body.message ??
-          (rowId ? rows.find((r) => r.id === rowId)?.detail : undefined) ??
-          "";
-        appendRunLog({
-          id: `sync-all-${actionId}-${stepT0}`,
-          label,
-          startedAt,
-          finishedAt: new Date().toISOString(),
-          durationMs: Date.now() - stepT0,
-          status: syncAllFinalText || (body.message ?? "Complete"),
-        });
-        if (rowId) {
-          setErrors((prev) => ({ ...prev, [rowId]: undefined }));
-          setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
-          setDescriptions((prev) => ({ ...prev, [rowId]: syncAllFinalText }));
-          if (syncAllFinalText) persistFinalStatus(rowId, syncAllFinalText);
-          const queued = Boolean(body.backgroundQueued);
-          setRunTimings((prev) => ({
-            ...prev,
-            [rowId]: {
-              started: body.startedAt ?? startedAt,
-              finished: queued ? null : (body.finishedAt ?? new Date().toISOString()),
-            },
-          }));
-        }
+        setStatus(stepBody);
+        setRefreshing(stepBody.refreshing);
+        if (stepBody.databaseStats) setDatabaseStats(stepBody.databaseStats);
 
-        setStatus(body);
-        setRefreshing(body.refreshing);
-        if (body.databaseStats) setDatabaseStats(body.databaseStats);
-
-        if (body.backgroundQueued) {
+        if (stepBody.backgroundQueued) {
           skipChainedAfterFull = true;
         }
       }
@@ -1178,7 +1486,16 @@ export default function AdminSyncTable({
       setRunningId(null);
       void refreshStatus();
     }
-  }, [runningId, refreshStatus, rows, persistFinalStatus, beginRunLog, appendRunLog, commitRunLog]);
+  }, [
+    runningId,
+    refreshStatus,
+    rows,
+    persistFinalStatus,
+    beginRunLog,
+    appendRunLog,
+    commitRunLog,
+    clearPendingRetry,
+  ]);
 
   const globalBusy = refreshing || runningId != null;
   const syncAllRunning = runningId === "sync-all-caches";
@@ -1245,12 +1562,13 @@ export default function AdminSyncTable({
         <div className="min-w-0 space-y-1">
           <p className="text-xs text-slate leading-relaxed max-w-2xl">
             Sync all runs steps 1→5 automatically. For manual runs, use the Order column and
-            sync each row in sequence (step 6 is weekly property addresses).
+            sync each row in sequence (step 6 is weekly property addresses). Use Pause to skip
+            that row&apos;s automated / cron schedule — manual Sync still works.
           </p>
           <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-            Table sorted by most-recent End time — the Order badge shows the manual step number,
-            which may differ from the row&apos;s visual position. Steps 3–5 are also run
-            automatically as part of a Full resync (step 1) and may float to the top after one.
+            The in-progress sync stays at the top; otherwise sorted by most-recent End time.
+            The Order badge shows the manual step number, which may differ from the row&apos;s
+            visual position. Steps 3–5 also run as part of a Full resync (step 1).
             Step 2 (Incremental) runs on its own 30-min schedule and is not triggered by a full resync.
           </p>
         </div>
@@ -1331,8 +1649,9 @@ export default function AdminSyncTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px] border-collapse table-fixed">
+        <table className="w-full min-w-[1120px] border-collapse table-fixed">
           <colgroup>
+            <col className="w-[3.25rem]" />
             <col className="w-[3rem]" />
             <col className="w-[7.5rem]" />
             <col className="w-[9.5rem]" />
@@ -1344,7 +1663,17 @@ export default function AdminSyncTable({
           </colgroup>
           <thead>
             <tr>
-              <th className={TH}>Order</th>
+              <th
+                className={`${TH} sticky left-0 z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                title="Pause automated / cron sync for this row"
+              >
+                Pause
+              </th>
+              <th
+                className={`${TH} sticky left-[3.25rem] z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+              >
+                Order
+              </th>
               <th className={TH}>Action</th>
               <th className={TH}>Sync</th>
               <th className={TH}>Description</th>
@@ -1369,8 +1698,41 @@ export default function AdminSyncTable({
                 syncAllRunning ||
                 (fullResyncTiming != null && isTimingInProgress(fullResyncTiming, nowMsOuter));
 
+              const rowIsRunningForSort = (row: AdminSyncRow): boolean => {
+                if (row.actionId != null && runningId === row.actionId) return true;
+                if (runningId === "full-resync" && row.id === "full-resync") {
+                  return true;
+                }
+                const timing = runTimings[row.id] ?? timingForRow(row, status);
+                // Sync-all: pin the step currently in flight (started, no End yet).
+                if (
+                  syncAllRunning &&
+                  isTimingInProgress(timing, nowMsOuter) &&
+                  (row.actionId != null || row.id === "full-resync")
+                ) {
+                  return true;
+                }
+                if (row.id === "full-resync" && fullResyncInProgress) return true;
+                // Sub-steps of an in-progress full resync stay below Step 1.
+                if (FULL_RESYNC_SUBSTEP_ROWS.has(row.id) && fullResyncInProgress) {
+                  return false;
+                }
+                if (isTimingInProgress(timing, nowMsOuter)) return true;
+                if (
+                  row.id === "refresh-finished" &&
+                  Boolean(status?.refreshing) &&
+                  !fullResyncInProgress
+                ) {
+                  return true;
+                }
+                return false;
+              };
+
               return [...rows]
               .sort((a, b) => {
+                const aRunning = rowIsRunningForSort(a);
+                const bRunning = rowIsRunningForSort(b);
+                if (aRunning !== bRunning) return aRunning ? -1 : 1;
                 const aFinished = parseIsoMs(
                   (runTimings[a.id] ?? timingForRow(a, status)).finished,
                 );
@@ -1381,13 +1743,21 @@ export default function AdminSyncTable({
               })
               .map((row, index) => {
               const isRunning = row.actionId != null && runningId === row.actionId;
-              const rowError = errors[row.id];
+              const nowMs = now.getTime();
+              const pendingRetry = pendingRetries[row.id];
+              const rowError = pendingRetry
+                ? formatErrorWithRetry(
+                    pendingRetry.baseError,
+                    pendingRetry.retryAtMs,
+                    pendingRetry.attemptsLeft,
+                    nowMs,
+                  )
+                : errors[row.id];
               const disabled = !row.actionId || globalBusy;
               const timing = runTimings[row.id] ?? timingForRow(row, status);
               const showSingleTimestamp =
                 row.id === "latest-mls" || row.id === "property-addresses";
               const nextRunAt = nextRunForRow(row, status);
-              const nowMs = now.getTime();
               const visual = resolveSyncRowVisualStatus({
                 row,
                 timing,
@@ -1412,13 +1782,47 @@ export default function AdminSyncTable({
                 !rowHung &&
                 isScheduleBreached(nextRunAt, timing.finished, nowMs);
               const manualOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
+              const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+              const stripe = index % 2 === 1;
+              const stickyBg = stickyCellBg(visual, stripe);
 
               return (
                 <tr
                   key={row.id}
-                  className={`transition-colors duration-500 ${syncRowClassName(visual, index % 2 === 1)}`}
+                  className={`transition-colors duration-500 ${syncRowClassName(visual, stripe)}`}
                 >
-                  <td className={TD}>
+                  <td
+                    className={`${TD} sticky left-0 z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                  >
+                    {pauseJob ? (
+                      <label
+                        className="inline-flex items-center justify-center cursor-pointer"
+                        title={
+                          pausedJobs[pauseJob]
+                            ? "Paused — automated syncs skip this job"
+                            : "Active — automated syncs run on schedule"
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pausedJobs[pauseJob]}
+                          disabled={pauseSavingJob === pauseJob}
+                          onChange={(e) =>
+                            void togglePausedJob(pauseJob, e.target.checked)
+                          }
+                          className="h-4 w-4 rounded border-charcoal/30 text-navy focus:ring-navy/40 disabled:opacity-40"
+                          aria-label={`Pause scheduled sync for ${row.label}`}
+                        />
+                      </label>
+                    ) : (
+                      <span className="font-mono text-[10px] tracking-wide text-charcoal/30">
+                        —
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    className={`${TD} sticky left-[3.25rem] z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                  >
                     {manualOrder != null ? (
                       <span
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
@@ -1579,7 +1983,7 @@ export default function AdminSyncTable({
                             disabled={globalBusy}
                             className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                           >
-                            ↺ Retry
+                            {pendingRetry ? "↺ Retry now" : "↺ Retry"}
                           </button>
                         )}
                       </div>

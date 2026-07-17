@@ -32,6 +32,7 @@ export default function AdminTabbedLayout({
   db,
   site,
   goldilocks,
+  pricing,
   rets,
   postgres,
   server,
@@ -40,6 +41,7 @@ export default function AdminTabbedLayout({
   db: ReactNode;
   site: ReactNode;
   goldilocks: ReactNode;
+  pricing: ReactNode;
   rets: ReactNode;
   postgres: ReactNode;
   server: ReactNode;
@@ -72,6 +74,7 @@ export default function AdminTabbedLayout({
     db,
     site,
     goldilocks,
+    pricing,
     rets,
     postgres,
     server,

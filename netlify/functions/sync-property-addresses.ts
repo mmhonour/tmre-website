@@ -1,22 +1,28 @@
 import type { Config } from '@netlify/functions'
 import { syncPropertyAddresses } from '../../lib/property-address-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
-import { isScheduledSyncPausedFresh } from '../../lib/scheduled-sync-toggle'
+import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 
 /**
  * Weekly property-address directory verify + enrich.
  * Cron is 06:00 UTC Monday = 01:00 America/New_York (EST). During EDT this is 2:00am local.
  */
 export default async function handler() {
-  if (await isScheduledSyncPausedFresh()) {
-    return new Response(
-      JSON.stringify({ ok: true, skipped: true, reason: 'scheduled sync paused by admin' }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    )
-  }
-
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-property-addresses' })
+    if (await isScheduledSyncJobPausedFresh('property-addresses')) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          skipped: true,
+          reason: 'property-addresses scheduled sync paused by admin',
+          overdueCatchup: catchup.skipped
+            ? { skipped: true, reason: catchup.reason }
+            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
     const ranAddresses =
       !catchup.skipped && catchup.steps.some((step) => step.job === 'property-addresses')
     const result = ranAddresses ? null : await syncPropertyAddresses()

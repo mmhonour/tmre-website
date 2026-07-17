@@ -100,7 +100,7 @@ export function describeStartupProcess(): {
           title: "Serial catch-up execution",
           timing: "after delay",
           detail:
-            "runOverdueSyncCatchup() uses sync_meta timestamps; skips when nothing is due. Netlify scheduled functions also invoke catch-up at cron start.",
+            "runOverdueSyncCatchup() uses sync_meta timestamps; skips when nothing is due or when a job is Pause-checked on /admin. Netlify scheduled functions also invoke catch-up at cron start.",
           status: overdueCatchupEnabled ? "scheduled" : "skipped",
           statusLabel: overdueCatchupEnabled ? "Chained" : "—",
         },
@@ -197,7 +197,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "syncIncrementalListings(); price changes trigger targeted rescores; then Latest town feeds + bounded hero thumbnails warm into stats_cache / listing-photos.",
+            "syncIncrementalListings(); price changes trigger targeted rescores; then Latest town feeds + bounded hero thumbnails warm into stats_cache / listing-photos. Skips when Pause is checked on the Incremental / Latest MLS admin rows.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
@@ -239,7 +239,7 @@ export function describeStartupProcess(): {
           id: "weekly-mon-5am",
           title: "Full reload @ 5:00 AM Monday America/New_York",
           timing: "weekly",
-          detail: "syncAllTownListings() → scores → superlatives → stats/DOTD caches → read snapshot. Admin step 1 for manual mid-week runs.",
+          detail: "syncAllTownListings() → scores → superlatives → stats/DOTD caches → read snapshot. Admin step 1 for manual mid-week runs. Skips when Pause is checked on Full resync.",
           status: fullReloadEnabled ? "scheduled" : "skipped",
           statusLabel: fullReloadEnabled ? "Armed" : "Disabled",
         },
@@ -255,7 +255,7 @@ export function describeStartupProcess(): {
           title: "Rebuild @ 2:00 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "rebuildAllListingEdgeScores(): zip benchmarks, layout, condition (remarks + cached finish-quality) into listing_edge_scores.",
+            "rebuildAllListingEdgeScores(): zip benchmarks, layout, condition (remarks + cached finish-quality) into listing_edge_scores. Skips when Pause is checked on Goldilocks / listing-scores.",
           status: edgeScoreRebuildEnabled ? "scheduled" : "skipped",
           statusLabel: edgeScoreRebuildEnabled ? "Armed" : "Disabled",
         },
@@ -280,7 +280,7 @@ export function describeStartupProcess(): {
           title: "Verify + enrich @ 1:00 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches.",
+            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches. Skips when Pause is checked on Property address directory.",
           status: propertyAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: propertyAddressSyncEnabled ? "Armed" : "Disabled",
         },
@@ -295,7 +295,7 @@ export function describeStartupProcess(): {
           id: "stats-first",
           title: "First stale-check",
           timing: "+20s",
-          detail: "Skipped while a listings refresh is in progress.",
+          detail: "Skipped while a listings refresh is in progress, or when Pause is checked on Stats cache.",
           status: "scheduled",
           statusLabel: "Scheduled",
         },

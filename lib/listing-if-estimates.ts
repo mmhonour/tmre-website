@@ -1,8 +1,19 @@
-import type { ComparableListing } from '@/lib/listing-comparables-shared'
+import type {
+  ComparableListing,
+  ComparablesCriteria,
+} from '@/lib/listing-comparables-shared'
+import {
+  COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
+  lookbackLabel,
+} from '@/lib/listing-comparables-shared'
 import {
   formatLocationPremiumLabels,
   type LocationPremiumFactors,
 } from '@/lib/listing-location-premium'
+import {
+  DEFAULT_PRICING_MATCHING_CONFIG,
+  type PricingMatchingConfig,
+} from '@/lib/pricing-matching-config-shared'
 import {
   classifyYearBuilt,
   vintageBucketDistance,
@@ -452,26 +463,174 @@ export type IfEstimate = {
   activeCount: number
 }
 
+/** Match rules — same tolerances as Sales / Rentals tabs. */
+export type IfMatchParams = {
+  kind: 'sale' | 'rent'
+  zip: string | null
+  beds: number | null
+  baths: number | null
+  lotAcres: number | null
+  sqft: number | null
+  bedTolerance: number
+  bathTolerance: number
+  lotTolerancePct: number
+  sqftTolerancePct: number
+  vintageLabel: string | null
+  vintageEdgeLabels: string[]
+  vintageEdgeFraction: number
+  lookbackMonths: number
+  lookbackLabel: string
+}
+
+/** One comparable that contributed to the estimate (hyperlinkable). */
+export type IfCompRow = {
+  mlsId: string
+  listingKey: string
+  address: string
+  city: string | null
+  role: 'sold' | 'active'
+  price: number | null
+  closeDate: string | null
+  sqft: number | null
+  pricePerSqft: number | null
+  adjustedPricePerSqft: number | null
+  /** Comp $/sqft (adjusted) × subject sqft, or adjusted price when no sqft. */
+  impliedSubjectAmount: number | null
+  weight: number
+}
+
+export type IfEstimateMath = {
+  method: 'ppsf' | 'price' | 'none'
+  soldPpsfWeight: number
+  activePpsfWeight: number
+  blendedPpsf: number | null
+  subjectSqft: number | null
+  rangeLowPercentile: number
+  rangeHighPercentile: number
+  /** Matcher returned this many before top-N / tier filters. */
+  matchedSoldCount: number
+  matchedActiveCount: number
+}
+
+/** Full sale or rent scenario for the What if panel. */
+export type IfScenario = IfEstimate & {
+  params: IfMatchParams
+  math: IfEstimateMath
+  comps: IfCompRow[]
+}
+
 export type ListingIfPayload = {
   mlsId: string
-  sale: IfEstimate
-  rent: IfEstimate
+  sale: IfScenario
+  rent: IfScenario
   computedAt: string | null
   cached: boolean
   locationLabel: string | null
   locationPremiumLabels?: string[]
   subjectVintageLabel?: string | null
-  /** Subject living area — lets the panel reconstruct the $/sqft math. */
   subjectSqft?: number | null
-  /** Short human-readable note on how the price range was derived. */
-  rangeBlurb?: string | null
+}
+
+export function buildIfMatchParams(
+  kind: 'sale' | 'rent',
+  criteria: ComparablesCriteria | null,
+  lookbackMonths: number = COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
+  match: PricingMatchingConfig = DEFAULT_PRICING_MATCHING_CONFIG,
+): IfMatchParams {
+  return {
+    kind,
+    zip: criteria?.zip ?? null,
+    beds: criteria?.beds ?? null,
+    baths: criteria?.baths ?? null,
+    lotAcres: criteria?.lotAcres ?? null,
+    sqft: criteria?.sqft ?? null,
+    bedTolerance: match.bedTolerance,
+    bathTolerance: match.bathTolerance,
+    lotTolerancePct: Math.round(match.lotAcreTolerance * 100),
+    sqftTolerancePct: Math.round(match.sqftTolerance * 100),
+    vintageLabel: criteria?.vintageLabel ?? null,
+    vintageEdgeLabels: criteria?.vintageEdgeLabels ?? [],
+    vintageEdgeFraction: match.vintageEdgeFraction,
+    lookbackMonths,
+    lookbackLabel: lookbackLabel(lookbackMonths),
+  }
+}
+
+function emptyScenario(
+  params: IfMatchParams,
+  matchedSoldCount: number,
+  matchedActiveCount: number,
+): IfScenario {
+  return {
+    amount: null,
+    amountLow: null,
+    amountHigh: null,
+    soldCount: 0,
+    activeCount: 0,
+    params,
+    math: {
+      method: 'none',
+      soldPpsfWeight: SOLD_PPSF_WEIGHT,
+      activePpsfWeight: ACTIVE_PPSF_WEIGHT,
+      blendedPpsf: null,
+      subjectSqft: params.sqft,
+      rangeLowPercentile: RANGE_LOW_PERCENTILE,
+      rangeHighPercentile: RANGE_HIGH_PERCENTILE,
+      matchedSoldCount,
+      matchedActiveCount,
+    },
+    comps: [],
+  }
+}
+
+function buildCompRows(
+  sold: ComparableListing[],
+  active: ComparableListing[],
+  subjectSqft: number | null,
+  context: IfEstimateContext,
+): IfCompRow[] {
+  const subjectVintage = context.subjectVintage ?? null
+  const subjectPremium = context.locationPremium ?? null
+
+  const toRow = (
+    comp: ComparableListing,
+    role: 'sold' | 'active',
+  ): IfCompRow | null => {
+    const price =
+      role === 'sold' ? soldCompPrice(comp) : activeCompPrice(comp)
+    if (price == null) return null
+    const adjPpsf = adjustedCompPpsf(comp, subjectPremium)
+    let implied: number | null = null
+    if (subjectSqft != null && subjectSqft > 0 && adjPpsf != null) {
+      implied = Math.round(adjPpsf * subjectSqft)
+    } else {
+      implied = Math.round(adjustedCompPrice(comp, price, subjectPremium))
+    }
+    return {
+      mlsId: comp.mlsId,
+      listingKey: comp.listingKey?.trim() || comp.mlsId,
+      address: comp.address,
+      city: comp.city,
+      role,
+      price,
+      closeDate: role === 'sold' ? comp.closeDate : null,
+      sqft: comp.sqft,
+      pricePerSqft: validPpsf(comp.pricePerSqft) ? comp.pricePerSqft : null,
+      adjustedPricePerSqft: adjPpsf,
+      impliedSubjectAmount: implied,
+      weight: compWeight(comp, subjectVintage, subjectPremium),
+    }
+  }
+
+  return [
+    ...sold.map((c) => toRow(c, 'sold')),
+    ...active.map((c) => toRow(c, 'active')),
+  ].filter((row): row is IfCompRow => row != null)
 }
 
 /**
  * CMA-style estimate from zip-matched comparables ranked by fit.
- * Weights same-vintage and location-similar comps, blends closed sales with
- * active listings, and applies a location premium for water, town center,
- * and golf/country club proximity.
+ * Same match tolerances as Sales / Rentals; returns comps + math for the panel.
  */
 export function estimateFromComparables(
   sold: ComparableListing[],
@@ -480,7 +639,16 @@ export function estimateFromComparables(
   subjectPrice?: number | null,
   context: IfEstimateContext = {},
   kind: 'sale' | 'rent' = 'sale',
-): IfEstimate {
+  params?: IfMatchParams,
+  matchedSoldCount?: number,
+  matchedActiveCount?: number,
+): IfScenario {
+  const resolvedParams =
+    params ??
+    buildIfMatchParams(kind, null, COMPARABLES_DEFAULT_LOOKBACK_MONTHS)
+  const matchedSold = matchedSoldCount ?? sold.length
+  const matchedActive = matchedActiveCount ?? active.length
+
   if (subjectSqft != null && subjectSqft > 0) {
     const fromPpsf = estimateFromPpsf(
       sold,
@@ -490,9 +658,24 @@ export function estimateFromComparables(
       context,
       kind,
     )
-    if (fromPpsf.amount != null) return fromPpsf
+    if (fromPpsf.amount != null) {
+      return finalizeScenario(
+        fromPpsf,
+        sold,
+        active,
+        subjectSqft,
+        subjectPrice,
+        context,
+        kind,
+        resolvedParams,
+        matchedSold,
+        matchedActive,
+        'ppsf',
+      )
+    }
   }
-  return estimateFromPrices(
+
+  const fromPrices = estimateFromPrices(
     sold,
     active,
     subjectPrice,
@@ -500,6 +683,66 @@ export function estimateFromComparables(
     context,
     kind,
   )
+  return finalizeScenario(
+    fromPrices,
+    sold,
+    active,
+    subjectSqft ?? null,
+    subjectPrice,
+    context,
+    kind,
+    resolvedParams,
+    matchedSold,
+    matchedActive,
+    fromPrices.amount != null ? 'price' : 'none',
+  )
+}
+
+function finalizeScenario(
+  estimate: IfEstimate,
+  sold: ComparableListing[],
+  active: ComparableListing[],
+  subjectSqft: number | null,
+  subjectPrice: number | null | undefined,
+  context: IfEstimateContext,
+  kind: 'sale' | 'rent',
+  params: IfMatchParams,
+  matchedSoldCount: number,
+  matchedActiveCount: number,
+  method: IfEstimateMath['method'],
+): IfScenario {
+  if (estimate.amount == null && estimate.soldCount + estimate.activeCount === 0) {
+    return emptyScenario(params, matchedSoldCount, matchedActiveCount)
+  }
+
+  const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
+  const tierSold = compsInSubjectPriceTier(sold, refPpsf)
+  const tierActive = compsInSubjectPriceTier(active, refPpsf)
+  const subjectVintage = context.subjectVintage ?? null
+  const subjectPremium = context.locationPremium ?? null
+  const soldPpsf = weightedPpsfMedian(tierSold, subjectVintage, subjectPremium)
+  const activePpsf = weightedPpsfMedian(
+    tierActive,
+    subjectVintage,
+    subjectPremium,
+  )
+
+  return {
+    ...estimate,
+    params,
+    math: {
+      method,
+      soldPpsfWeight: SOLD_PPSF_WEIGHT,
+      activePpsfWeight: ACTIVE_PPSF_WEIGHT,
+      blendedPpsf: blendedMarketPpsf(soldPpsf, activePpsf),
+      subjectSqft,
+      rangeLowPercentile: RANGE_LOW_PERCENTILE,
+      rangeHighPercentile: RANGE_HIGH_PERCENTILE,
+      matchedSoldCount,
+      matchedActiveCount,
+    },
+    comps: buildCompRows(tierSold, tierActive, subjectSqft, context),
+  }
 }
 
 export function ifLocationLabel(

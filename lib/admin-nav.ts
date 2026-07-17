@@ -2,6 +2,7 @@ export type AdminTabId =
   | "db"
   | "site"
   | "goldilocks"
+  | "pricing"
   | "rets"
   | "postgres"
   | "server"
@@ -44,6 +45,11 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "Score weights, remark characteristics, and score rebuild",
   },
   {
+    id: "pricing",
+    label: "Pricing",
+    subtitle: "Sales, Rentals, and What if match parameters",
+  },
+  {
     id: "rets",
     label: "RETS",
     subtitle: "SmartMLS credentials and connection health",
@@ -66,8 +72,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
 ];
 
 export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
-  { id: "admin-scheduled-sync", label: "Scheduled sync control", tab: "db" },
-  { id: "admin-sync", label: "Sync status", tab: "db" },
+  { id: "admin-sync", label: "Sync status / Pause", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
   { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
   { id: "admin-sync-log", label: "Sync run log", tab: "db" },
@@ -76,6 +81,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
   { id: "admin-spotlight", label: "Spotlight properties", tab: "site" },
   { id: "admin-goldilocks", label: "Goldilocks scoring", tab: "goldilocks" },
+  { id: "admin-pricing", label: "Pricing match parameters", tab: "pricing" },
   { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
   { id: "admin-sqlite-schemas", label: "Postgres schema", tab: "postgres" },
   { id: "admin-startup", label: "Startup schedule", tab: "server" },
@@ -212,6 +218,7 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       { label: "GET /api/admin/sync", detail: "Trigger sync actions", href: "/api/admin/sync" },
       { label: "GET /api/admin/spotlight-privacy", detail: "Spotlight privacy overrides", href: "/api/admin/spotlight-privacy" },
       { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
+      { label: "GET /api/admin/pricing-matching-config", detail: "Sales / Rentals / What if match parameters", href: "/api/admin/pricing-matching-config" },
       { label: "POST /api/sync/listings/incremental", detail: "Manual incremental sync hook", href: "/api/sync/listings/incremental" },
     ],
   },

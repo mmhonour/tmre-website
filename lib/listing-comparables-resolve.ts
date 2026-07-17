@@ -10,6 +10,7 @@ import {
   readAllListingsFromDb,
   readListingEdgeScoresByMlsIds,
 } from '@/lib/db/listings-repo'
+import { getPricingMatchingConfigFresh } from '@/lib/pricing-matching-config'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip } from '@/lib/tmre-towns'
 
@@ -44,6 +45,7 @@ export async function resolveComparablesForSubject(
   subject: Listing,
   kind: ComparablesMatchMode = 'sale',
 ): Promise<ComparablesResult & { mlsId: string; kind: ComparablesMatchMode }> {
+  const match = await getPricingMatchingConfigFresh()
   const cached = await readCachedComparables(subject, kind)
   if (cached) {
     const withScores = await attachStoredEdgeScores(cached)
@@ -51,6 +53,8 @@ export async function resolveComparablesForSubject(
       mlsId: subject.mlsId,
       kind,
       ...withScores,
+      defaultLookbackMonths:
+        withScores.defaultLookbackMonths ?? match.defaultLookbackMonths,
     }
   }
 

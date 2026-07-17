@@ -26,7 +26,7 @@ export async function register() {
     const { LATEST_DB_REFRESH_MS } = await import('./lib/latest-refresh')
     const { hasLocalListingsCache } = await import('./lib/listings-store')
     const { getSyncMeta } = await import('./lib/db/sync-meta-store')
-    const { isScheduledSyncPaused } = await import('./lib/scheduled-sync-toggle')
+    const { isScheduledSyncJobPaused } = await import('./lib/scheduled-sync-toggle')
     const { isRetsConfigured } = await import('./lib/rets')
 
     const retsConfigured = isRetsConfigured()
@@ -98,7 +98,7 @@ export async function register() {
       let latestSyncRunning = false
       const runLatestSync = () => {
         if (latestSyncRunning) return
-        if (isScheduledSyncPaused()) return
+        if (isScheduledSyncJobPaused('incremental')) return
         latestSyncRunning = true
         Promise.resolve()
           .then(() => syncIncrementalListings())
@@ -138,8 +138,8 @@ export async function register() {
           `[listings-sync] next weekly full reload + score rebuild in ${Math.round(waitMs / 60_000)} minutes (Mon 5am ET)`,
         )
         setTimeout(() => {
-          if (isScheduledSyncPaused()) {
-            console.info('[listings-sync] weekly full reload skipped — scheduled sync paused by admin')
+          if (isScheduledSyncJobPaused('full-resync')) {
+            console.info('[listings-sync] weekly full reload skipped — full-resync paused by admin')
             scheduleNextFullReload()
             return
           }
@@ -153,7 +153,7 @@ export async function register() {
 
     if (allowListingsSync) {
       const runListingsSync = () => {
-        if (isScheduledSyncPaused()) return
+        if (isScheduledSyncJobPaused('incremental')) return
         syncListingsSmart().catch((err) => {
           console.error('[listings-sync/instrumentation]', err)
         })
@@ -190,6 +190,7 @@ export async function register() {
     )
     if (Number.isFinite(statsRefreshMs) && statsRefreshMs >= 60_000) {
       const refreshStats = async () => {
+        if (isScheduledSyncJobPaused('stats-cache')) return
         if (!(await hasLocalListingsCache())) return
         if (getSyncMeta('refresh_in_progress') === '1') {
           console.info('[stats-cache] skipped — listings refresh in progress')
@@ -250,6 +251,13 @@ export async function register() {
           `[property-address-sync] next weekly verify in ${Math.round(waitMs / 60_000)} minutes (Mon 1am ET)`,
         )
         setTimeout(() => {
+          if (isScheduledSyncJobPaused('property-addresses')) {
+            console.info(
+              '[property-address-sync] weekly verify skipped — property-addresses paused by admin',
+            )
+            schedulePropertyAddressSync()
+            return
+          }
           if (propertyAddressSyncRunning) {
             schedulePropertyAddressSync()
             return
@@ -278,6 +286,13 @@ export async function register() {
           `[listing-edge-scores] next weekly rebuild in ${Math.round(waitMs / 60_000)} minutes (Mon 2am ET)`,
         )
         setTimeout(() => {
+          if (isScheduledSyncJobPaused('listing-scores')) {
+            console.info(
+              '[listing-edge-scores] weekly rebuild skipped — listing-scores paused by admin',
+            )
+            scheduleEdgeScoreRebuild()
+            return
+          }
           if (edgeScoreRebuildRunning) {
             scheduleEdgeScoreRebuild()
             return

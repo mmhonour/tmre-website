@@ -13,6 +13,10 @@ import {
   readStatsCacheRow,
   writeStatsCacheRow,
 } from '@/lib/db/stats-cache-repo'
+import {
+  getPricingMatchingConfigFresh,
+  pricingMatchingConfigFingerprint,
+} from '@/lib/pricing-matching-config'
 import { isRetsConfigured, searchListings, type Listing } from '@/lib/rets'
 import { normalizeZip } from '@/lib/tmre-towns'
 
@@ -29,7 +33,7 @@ import { normalizeZip } from '@/lib/tmre-towns'
 // ---------------------------------------------------------------------------
 
 /** Bump to invalidate every cached UAG result after a matching-logic change. */
-const UAG_CACHE_VERSION = 2
+const UAG_CACHE_VERSION = 4
 
 /** How long a per-subject UAG result stays fresh before we re-query RETS. */
 const UAG_RESULT_TTL_MS = 12 * 60 * 60 * 1000
@@ -46,8 +50,8 @@ export type UagResult = {
 
 export type UagPayload = UagResult & { mlsId: string }
 
-function uagCacheKey(subjectId: string): string {
-  return `uag:v${UAG_CACHE_VERSION}:${subjectId}`
+function uagCacheKey(subjectId: string, matchFp: string): string {
+  return `uag:v${UAG_CACHE_VERSION}:${subjectId}:${matchFp}`
 }
 
 function isFresh(computedAtIso: string, ttlMs: number): boolean {
@@ -124,10 +128,12 @@ export async function resolveUagForSubject(
   subject: Listing,
 ): Promise<UagPayload> {
   const subjectId = listingRowId(subject)
+  const match = await getPricingMatchingConfigFresh()
+  const matchFp = pricingMatchingConfigFingerprint(match)
 
   if (subjectId) {
     try {
-      const cached = await readStatsCacheRow(uagCacheKey(subjectId))
+      const cached = await readStatsCacheRow(uagCacheKey(subjectId, matchFp))
       if (cached && isFresh(cached.computedAt, UAG_RESULT_TTL_MS)) {
         const parsed = JSON.parse(cached.payload) as UagResult
         const withScores = await attachStoredEdgeScores(parsed)
@@ -140,7 +146,7 @@ export async function resolveUagForSubject(
 
   const zip = normalizeZip(subject.address.postalCode)
   const pool = zip ? await fetchUnderContractPoolForZip(zip) : []
-  const ranked = findUagRanked(subject, pool)
+  const ranked = findUagRanked(subject, pool, match)
 
   const result: UagResult = {
     sale: ranked.sale.map((r) => r.listing),
@@ -151,7 +157,7 @@ export async function resolveUagForSubject(
 
   if (subjectId) {
     try {
-      await writeStatsCacheRow(uagCacheKey(subjectId), result)
+      await writeStatsCacheRow(uagCacheKey(subjectId, matchFp), result)
     } catch {
       // Non-fatal: serve the freshly computed result even if the write fails.
     }

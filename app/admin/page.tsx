@@ -10,8 +10,7 @@ import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
-import AdminScheduledSyncPanel from "@/components/admin/AdminScheduledSyncPanel";
-import { isScheduledSyncPausedFresh } from "@/lib/scheduled-sync-toggle";
+import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
 import {
   DB_UPSERT_CHUNK_ROWS_DEFAULT,
   DB_UPSERT_CHUNK_ROWS_MAX,
@@ -45,8 +44,18 @@ import {
   isDefaultGoldilocksConfig,
 } from "@/lib/goldilocks-config";
 import { FACTOR_DESCRIPTIONS, FACTOR_LABELS } from "@/lib/goldilocks-score-info";
+import {
+  COMPARABLES_LOOKBACK_OPTIONS,
+} from "@/lib/listing-comparables-shared";
+import {
+  DEFAULT_PRICING_MATCHING_CONFIG,
+  getPricingMatchingConfigFresh,
+  isDefaultPricingMatchingConfig,
+  PRICING_MATCHING_FIELD_META,
+} from "@/lib/pricing-matching-config";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
+import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
 import {
@@ -160,10 +169,17 @@ export default async function AdminPage() {
   };
 
   await safe("photos-ready", () => ensureAdminListingPhotosReady(), false);
-  const scheduledSyncPaused = await safe(
+  const scheduledSyncPausedJobs = await safe(
     "scheduled-sync-flag",
-    () => isScheduledSyncPausedFresh(),
-    false,
+    () => getScheduledSyncPausedJobsFresh(),
+    {
+      "full-resync": false,
+      incremental: false,
+      "listing-scores": false,
+      "stats-cache": false,
+      "deal-of-the-day": false,
+      "property-addresses": false,
+    },
   );
   await safe(
     "post-deploy-schedule",
@@ -388,6 +404,20 @@ export default async function AdminPage() {
       })),
     },
   }
+  const pricingConfig = await safe(
+    "pricing-matching-config",
+    () => getPricingMatchingConfigFresh(),
+    DEFAULT_PRICING_MATCHING_CONFIG,
+  )
+  const pricingInitial = {
+    config: pricingConfig,
+    default: DEFAULT_PRICING_MATCHING_CONFIG,
+    isDefault: isDefaultPricingMatchingConfig(pricingConfig),
+    meta: {
+      fields: PRICING_MATCHING_FIELD_META,
+      lookbackOptions: [...COMPARABLES_LOOKBACK_OPTIONS],
+    },
+  }
 
   const retsPanel = (
     <div id="admin-rets-credentials" className="scroll-mt-24">
@@ -397,8 +427,6 @@ export default async function AdminPage() {
 
   const dbPanel = (
     <>
-      <AdminScheduledSyncPanel initialPaused={scheduledSyncPaused} />
-
       <div
         id="admin-sync"
         className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
@@ -432,6 +460,7 @@ export default async function AdminPage() {
           initialRefreshing={refresh.refreshing}
           initialDatabaseStats={databaseStats}
           initialStatus={initialStatus}
+          initialPausedJobs={scheduledSyncPausedJobs}
         />
       </div>
 
@@ -547,6 +576,8 @@ export default async function AdminPage() {
   const goldilocksPanel = (
     <AdminGoldilocksPanel initial={goldilocksInitial} />
   );
+
+  const pricingPanel = <AdminPricingPanel initial={pricingInitial} />;
 
   const serverPanel = (
     <>
@@ -779,6 +810,7 @@ export default async function AdminPage() {
         db={dbPanel}
         site={sitePanel}
         goldilocks={goldilocksPanel}
+        pricing={pricingPanel}
         rets={retsPanel}
         postgres={postgresPanel}
         server={serverPanel}

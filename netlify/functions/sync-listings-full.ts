@@ -1,7 +1,7 @@
 import type { Config } from '@netlify/functions'
 import { getSyncStatus, syncAllTownListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
-import { isScheduledSyncPausedFresh } from '../../lib/scheduled-sync-toggle'
+import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 
 /**
  * Weekly full MLS → Postgres reload, including Goldilocks score rebuild.
@@ -12,15 +12,22 @@ import { isScheduledSyncPausedFresh } from '../../lib/scheduled-sync-toggle'
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
 
-  if (await isScheduledSyncPausedFresh()) {
-    return new Response(
-      JSON.stringify({ ok: true, mode: 'full', skipped: true, reason: 'scheduled sync paused by admin' }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    )
-  }
-
   try {
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings-full' })
+    if (await isScheduledSyncJobPausedFresh('full-resync')) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: 'full',
+          skipped: true,
+          reason: 'full-resync scheduled sync paused by admin',
+          overdueCatchup: catchup.skipped
+            ? { skipped: true, reason: catchup.reason }
+            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
     const ranFull =
       !catchup.skipped && catchup.steps.some((step) => step.job === 'full-resync')
     const result = ranFull ? null : await syncAllTownListings()

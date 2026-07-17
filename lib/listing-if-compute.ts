@@ -1,34 +1,60 @@
 import 'server-only'
 
-import { findComparableRentals, findComparables } from '@/lib/listing-comparables'
 import {
+  findComparableRentals,
+  findComparables,
+} from '@/lib/listing-comparables'
+import { readCachedComparables } from '@/lib/listing-comparables-cache'
+import {
+  COMPARABLES_MATCH_LIMIT,
+  soldWithinLookback,
+  type ComparablesResult,
+} from '@/lib/listing-comparables-shared'
+import {
+  buildIfMatchParams,
   estimateFromComparables,
   ifLocationLabel,
   subjectVintageFromYear,
-  type IfEstimate,
+  type IfScenario,
   type ListingIfPayload,
 } from '@/lib/listing-if-estimates'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
 import {
-  classifyYearBuilt,
+  getPricingMatchingConfig,
+  getPricingMatchingConfigFresh,
+  pricingMatchingConfigFingerprint,
+  type PricingMatchingConfig,
+} from '@/lib/pricing-matching-config'
+import {
   VINTAGE_BUCKETS,
   type VintageBucketId,
 } from '@/lib/vintage-buckets'
 import { listingRowId } from '@/lib/db/listings-repo'
 import {
   readAllListingsFromDb,
-  readListingIfEstimate,
   upsertListingIfEstimate,
-  type ListingIfEstimateRow,
 } from '@/lib/db/listings-repo'
+import {
+  readStatsCacheRow,
+  writeStatsCacheRow,
+} from '@/lib/db/stats-cache-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
-/** Bump when valuation logic changes so stale SQLite rows are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 6
+/** Bump when valuation / payload shape changes so stale caches are ignored. */
+export const IF_ESTIMATES_ALGO_VERSION = 8
+
+const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
+
+function ifDetailCacheKey(
+  listingId: string,
+  match: PricingMatchingConfig,
+): string {
+  return `if:detail:v${IF_ESTIMATES_ALGO_VERSION}:${listingId}:${pricingMatchingConfigFingerprint(match)}`
+}
 
 function townsForSubject(subject: Listing): readonly string[] {
   const townFromZip = townForZip(subject.address.postalCode)
@@ -48,56 +74,62 @@ function vintageLabel(id: VintageBucketId): string | null {
   return VINTAGE_BUCKETS.find((b) => b.id === id)?.label ?? null
 }
 
-/**
- * One-line explanation of how the IF range was reached: the comps behind each
- * range and a short phrase about the math. Deliberately excludes the MLS # and
- * street address — the panel prepends the address itself, and only when the
- * viewing context (site controls) allows it to be shown.
- */
-function ifRangeBlurb(
+function isFresh(iso: string | null | undefined, ttlMs: number): boolean {
+  if (!iso) return false
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return false
+  return Date.now() - t < ttlMs
+}
+
+function scenarioFromComparablesResult(
+  kind: 'sale' | 'rent',
+  comps: ComparablesResult,
   subject: Listing,
-  sale: IfEstimate,
-  rent: IfEstimate,
-): string | null {
-  const saleComps = sale.soldCount + sale.activeCount
-  const rentComps = rent.soldCount + rent.activeCount
-  if (saleComps === 0 && rentComps === 0) return null
-
-  const hasSqft = subject.sqft != null && subject.sqft > 0
-  const method = hasSqft
-    ? 'weighted $/sqft of the closest comps scaled to this home’s size'
-    : 'the weighted prices of the closest comps'
-
-  const bits: string[] = []
-  if (saleComps > 0) {
-    bits.push(`sale (${sale.soldCount} sold + ${sale.activeCount} active)`)
-  }
-  if (rentComps > 0) {
-    bits.push(`rent (${rent.soldCount} leased + ${rent.activeCount} active)`)
-  }
-
-  return (
-    `Estimated from ${bits.join(' and ')} comps, matched on zip, ` +
-    `beds/baths (±1), vintage and size, then priced off ${method} ` +
-    `(25th–75th percentile band).`
+  match: PricingMatchingConfig,
+  estimateContext: {
+    subjectVintage: ReturnType<typeof subjectVintageFromYear>
+    locationPremium: ReturnType<typeof computeLocationPremium>
+  },
+): IfScenario {
+  const lookbackMonths = match.defaultLookbackMonths
+  const sold = soldWithinLookback(
+    comps.sold,
+    lookbackMonths,
+    COMPARABLES_MATCH_LIMIT,
+  )
+  const active = comps.active.slice(0, COMPARABLES_MATCH_LIMIT)
+  const params = buildIfMatchParams(
+    kind,
+    comps.criteria,
+    lookbackMonths,
+    match,
+  )
+  const sqft = subject.sqft != null && subject.sqft > 0 ? subject.sqft : null
+  return estimateFromComparables(
+    sold,
+    active,
+    sqft,
+    subjectMarketPrice(subject),
+    estimateContext,
+    kind,
+    params,
+    sold.length,
+    active.length,
   )
 }
 
-function computeIfEstimates(
+function scenariosFromComparablesResults(
   subject: Listing,
-  soldPool: Listing[],
-  activePool: Listing[],
+  saleComps: ComparablesResult,
+  rentComps: ComparablesResult,
+  match: PricingMatchingConfig,
 ): {
-  sale: IfEstimate
-  rent: IfEstimate
+  sale: IfScenario
+  rent: IfScenario
   locationLabel: string | null
   locationPremiumLabels: string[]
   subjectVintageLabel: string | null
 } {
-  const saleComps = findComparables(subject, soldPool, activePool, 'sale')
-  const rentComps = findComparableRentals(subject, soldPool, activePool)
-  const sqft = subject.sqft != null && subject.sqft > 0 ? subject.sqft : null
-  const salePrice = subjectMarketPrice(subject)
   const locationLabel = ifLocationLabel(
     subject.address.city,
     normalizeZip(subject.address.postalCode),
@@ -113,22 +145,21 @@ function computeIfEstimates(
     subjectVintage,
     locationPremium,
   }
+
   return {
-    sale: estimateFromComparables(
-      saleComps.sold,
-      saleComps.active,
-      sqft,
-      salePrice,
-      estimateContext,
+    sale: scenarioFromComparablesResult(
       'sale',
-    ),
-    rent: estimateFromComparables(
-      rentComps.sold,
-      rentComps.active,
-      sqft,
-      salePrice,
+      saleComps,
+      subject,
+      match,
       estimateContext,
+    ),
+    rent: scenarioFromComparablesResult(
       'rent',
+      rentComps,
+      subject,
+      match,
+      estimateContext,
     ),
     locationLabel,
     locationPremiumLabels: locationPremium.labels,
@@ -136,35 +167,34 @@ function computeIfEstimates(
   }
 }
 
-function rowToPayload(
-  mlsId: string,
-  row: ListingIfEstimateRow,
-  locationLabel: string | null,
-  locationPremiumLabels: string[] = [],
-  subjectVintageLabel: string | null = null,
-): ListingIfPayload {
-  return {
-    mlsId,
-    sale: {
-      amount: row.saleAmount,
-      amountLow: row.saleAmountLow,
-      amountHigh: row.saleAmountHigh,
-      soldCount: row.saleSoldCount,
-      activeCount: row.saleActiveCount,
-    },
-    rent: {
-      amount: row.rentAmount,
-      amountLow: row.rentAmountLow,
-      amountHigh: row.rentAmountHigh,
-      soldCount: row.rentSoldCount,
-      activeCount: row.rentActiveCount,
-    },
-    computedAt: row.computedAt,
-    cached: true,
-    locationLabel,
-    locationPremiumLabels,
-    subjectVintageLabel,
-  }
+function computeIfEstimates(
+  subject: Listing,
+  soldPool: Listing[],
+  activePool: Listing[],
+  match: PricingMatchingConfig,
+): {
+  sale: IfScenario
+  rent: IfScenario
+  locationLabel: string | null
+  locationPremiumLabels: string[]
+  subjectVintageLabel: string | null
+} {
+  const lookbackMonths = match.defaultLookbackMonths
+  const rankOpts = { soldLookbackMonths: lookbackMonths, match }
+  const saleComps = findComparables(
+    subject,
+    soldPool,
+    activePool,
+    'sale',
+    rankOpts,
+  )
+  const rentComps = findComparableRentals(
+    subject,
+    soldPool,
+    activePool,
+    rankOpts,
+  )
+  return scenariosFromComparablesResults(subject, saleComps, rentComps, match)
 }
 
 export async function cacheIfEstimatesForListing(
@@ -173,25 +203,29 @@ export async function cacheIfEstimatesForListing(
   activePool: Listing[],
 ): Promise<ListingIfPayload> {
   const id = listingRowId(subject)
+  const match = await getPricingMatchingConfigFresh()
   const { sale, rent, locationLabel, locationPremiumLabels, subjectVintageLabel } =
-    computeIfEstimates(subject, soldPool, activePool)
+    computeIfEstimates(subject, soldPool, activePool, match)
   const computedAt = new Date().toISOString()
-  await upsertListingIfEstimate({
-    listingId: id,
-    saleAmount: sale.amount,
-    saleAmountLow: sale.amountLow,
-    saleAmountHigh: sale.amountHigh,
-    saleSoldCount: sale.soldCount,
-    saleActiveCount: sale.activeCount,
-    rentAmount: rent.amount,
-    rentAmountLow: rent.amountLow,
-    rentAmountHigh: rent.amountHigh,
-    rentSoldCount: rent.soldCount,
-    rentActiveCount: rent.activeCount,
-    computedAt,
-  })
-  setSyncMeta('if_estimates_algo_version', String(IF_ESTIMATES_ALGO_VERSION))
-  return {
+
+  if (id) {
+    await upsertListingIfEstimate({
+      listingId: id,
+      saleAmount: sale.amount,
+      saleAmountLow: sale.amountLow,
+      saleAmountHigh: sale.amountHigh,
+      saleSoldCount: sale.soldCount,
+      saleActiveCount: sale.activeCount,
+      rentAmount: rent.amount,
+      rentAmountLow: rent.amountLow,
+      rentAmountHigh: rent.amountHigh,
+      rentSoldCount: rent.soldCount,
+      rentActiveCount: rent.activeCount,
+      computedAt,
+    })
+  }
+
+  const payload: ListingIfPayload = {
     mlsId: subject.mlsId,
     sale,
     rent,
@@ -201,9 +235,17 @@ export async function cacheIfEstimatesForListing(
     locationPremiumLabels,
     subjectVintageLabel,
     subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
-    rangeBlurb: ifRangeBlurb(subject, sale, rent),
   }
+
+  if (id) {
+    await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
+      () => undefined,
+    )
+  }
+  setSyncMeta('if_estimates_algo_version', String(IF_ESTIMATES_ALGO_VERSION))
+  return payload
 }
+
 export async function refreshListingIfEstimate(
   subject: Listing,
 ): Promise<ListingIfPayload | null> {
@@ -218,36 +260,21 @@ export async function refreshListingIfEstimate(
 export async function readCachedListingIfPayload(
   listing: Listing,
 ): Promise<ListingIfPayload | null> {
-  const cachedVersion = getSyncMeta('if_estimates_algo_version')
-  if (cachedVersion !== String(IF_ESTIMATES_ALGO_VERSION)) return null
+  const id = listingRowId(listing)
+  if (!id) return null
 
-  const row = await readListingIfEstimate(listingRowId(listing))
-  if (!row) return null
-
-  const saleRangeMissing =
-    row.saleAmount != null &&
-    (row.saleAmountLow == null || row.saleAmountHigh == null)
-  const rentRangeMissing =
-    row.rentAmount != null &&
-    (row.rentAmountLow == null || row.rentAmountHigh == null)
-  if (saleRangeMissing || rentRangeMissing) return null
-
-  const payload = rowToPayload(
-    listing.mlsId,
-    row,
-    ifLocationLabel(listing.address.city, normalizeZip(listing.address.postalCode)),
-    computeLocationPremium(
-      listing.latitude,
-      listing.longitude,
-      listing.address.postalCode,
-      listing.address.city,
-    ).labels,
-    vintageLabel(subjectVintageFromYear(listing.yearBuilt)),
-  )
-  return {
-    ...payload,
-    subjectSqft: listing.sqft != null && listing.sqft > 0 ? listing.sqft : null,
-    rangeBlurb: ifRangeBlurb(listing, payload.sale, payload.rent),
+  // Version + match rules are already in the stats_cache key — don't also
+  // require sync_meta `if_estimates_algo_version` (that gate forced full
+  // town-pool recomputes whenever the in-process Map hadn't seen the key yet).
+  const match = await getPricingMatchingConfigFresh()
+  try {
+    const row = await readStatsCacheRow(ifDetailCacheKey(id, match))
+    if (!row || !isFresh(row.computedAt, IF_DETAIL_TTL_MS)) return null
+    const parsed = JSON.parse(row.payload) as ListingIfPayload
+    if (!parsed?.sale?.params || !parsed?.rent?.params) return null
+    return { ...parsed, cached: true }
+  } catch {
+    return null
   }
 }
 
@@ -255,6 +282,9 @@ export async function readCachedListingIfPayload(
 export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
   let count = 0
   const computedAt = new Date().toISOString()
+  const match =
+    (await getPricingMatchingConfigFresh().catch(() => null)) ??
+    getPricingMatchingConfig()
 
   for (const town of TMRE_TOWNS) {
     const soldPool = await readAllListingsFromDb([town], 'Closed')
@@ -263,7 +293,12 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
     for (const subject of activePool) {
       const id = listingRowId(subject)
       if (!id) continue
-      const { sale, rent } = computeIfEstimates(subject, soldPool, activePool)
+      const { sale, rent } = computeIfEstimates(
+        subject,
+        soldPool,
+        activePool,
+        match,
+      )
       await upsertListingIfEstimate({
         listingId: id,
         saleAmount: sale.amount,
@@ -278,6 +313,28 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
         rentActiveCount: rent.activeCount,
         computedAt,
       })
+      const payload: ListingIfPayload = {
+        mlsId: subject.mlsId,
+        sale,
+        rent,
+        computedAt,
+        cached: true,
+        locationLabel: ifLocationLabel(
+          subject.address.city,
+          normalizeZip(subject.address.postalCode),
+        ),
+        locationPremiumLabels: computeLocationPremium(
+          subject.latitude,
+          subject.longitude,
+          subject.address.postalCode,
+          subject.address.city,
+        ).labels,
+        subjectVintageLabel: vintageLabel(subjectVintageFromYear(subject.yearBuilt)),
+        subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
+      }
+      await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
+        () => undefined,
+      )
       count += 1
     }
   }
@@ -300,11 +357,93 @@ async function compPoolsForListing(listing: Listing): Promise<{
   return { soldPool, activePool }
 }
 
+async function persistIfPayload(
+  listing: Listing,
+  match: PricingMatchingConfig,
+  parts: {
+    sale: IfScenario
+    rent: IfScenario
+    locationLabel: string | null
+    locationPremiumLabels: string[]
+    subjectVintageLabel: string | null
+  },
+): Promise<ListingIfPayload> {
+  const computedAt = new Date().toISOString()
+  const id = listingRowId(listing)
+  const payload: ListingIfPayload = {
+    mlsId: listing.mlsId,
+    sale: parts.sale,
+    rent: parts.rent,
+    computedAt,
+    cached: true,
+    locationLabel: parts.locationLabel,
+    locationPremiumLabels: parts.locationPremiumLabels,
+    subjectVintageLabel: parts.subjectVintageLabel,
+    subjectSqft: listing.sqft != null && listing.sqft > 0 ? listing.sqft : null,
+  }
+  if (id) {
+    await upsertListingIfEstimate({
+      listingId: id,
+      saleAmount: parts.sale.amount,
+      saleAmountLow: parts.sale.amountLow,
+      saleAmountHigh: parts.sale.amountHigh,
+      saleSoldCount: parts.sale.soldCount,
+      saleActiveCount: parts.sale.activeCount,
+      rentAmount: parts.rent.amount,
+      rentAmountLow: parts.rent.amountLow,
+      rentAmountHigh: parts.rent.amountHigh,
+      rentSoldCount: parts.rent.soldCount,
+      rentActiveCount: parts.rent.activeCount,
+      computedAt,
+    }).catch(() => undefined)
+    await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
+      () => undefined,
+    )
+  }
+  setSyncMeta('if_estimates_algo_version', String(IF_ESTIMATES_ALGO_VERSION))
+  return payload
+}
+
 export async function resolveListingIfPayload(
   listing: Listing,
 ): Promise<ListingIfPayload> {
   const cached = await readCachedListingIfPayload(listing)
   if (cached) return cached
+
+  // Prefer warm Sales/Rentals edges — avoids loading every Closed+Active row
+  // for the town when the matcher already ranked comps for this subject.
+  const match = await getPricingMatchingConfigFresh()
+  const [saleCached, rentCached] = await Promise.all([
+    readCachedComparables(listing, 'sale'),
+    readCachedComparables(listing, 'rental'),
+  ])
+
+  if (saleCached && rentCached) {
+    return persistIfPayload(
+      listing,
+      match,
+      scenariosFromComparablesResults(listing, saleCached, rentCached, match),
+    )
+  }
+
+  // Partial edge hit: only load town pools for the missing side.
+  if (saleCached || rentCached) {
+    const { soldPool, activePool } = await compPoolsForListing(listing)
+    const lookbackMonths = match.defaultLookbackMonths
+    const rankOpts = { soldLookbackMonths: lookbackMonths, match }
+    const saleComps =
+      saleCached ??
+      findComparables(listing, soldPool, activePool, 'sale', rankOpts)
+    const rentComps =
+      rentCached ??
+      findComparableRentals(listing, soldPool, activePool, rankOpts)
+    return persistIfPayload(
+      listing,
+      match,
+      scenariosFromComparablesResults(listing, saleComps, rentComps, match),
+    )
+  }
+
   const { soldPool, activePool } = await compPoolsForListing(listing)
   return cacheIfEstimatesForListing(listing, soldPool, activePool)
 }
