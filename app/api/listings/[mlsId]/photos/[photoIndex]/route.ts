@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
+import { recordPhotoProxyOutcome } from '@/lib/listing-photo-health'
 import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
 
 export const runtime = 'nodejs'
@@ -46,6 +47,8 @@ export async function GET(
     })
 
     if (!resolved) {
+      if (allowFetch) recordPhotoProxyOutcome('fetch-fail')
+      else recordPhotoProxyOutcome('cache-miss')
       // Never CDN-cache misses — the client retries with ?fetch=1.
       return new NextResponse('No photo found', {
         status: 404,
@@ -55,6 +58,10 @@ export async function GET(
         },
       })
     }
+
+    if (allowFetch && !resolved.cacheHit) recordPhotoProxyOutcome('fetch-ok')
+    else if (resolved.cacheHit) recordPhotoProxyOutcome('cache-hit')
+    else recordPhotoProxyOutcome('fetch-ok')
 
     return new NextResponse(resolved.data as unknown as BodyInit, {
       headers: {
@@ -66,6 +73,7 @@ export async function GET(
     })
   } catch (err) {
     console.error('[photo-proxy] error', err)
+    if (allowFetch) recordPhotoProxyOutcome('fetch-fail')
     return new NextResponse('Photo unavailable', {
       status: 502,
       headers: {

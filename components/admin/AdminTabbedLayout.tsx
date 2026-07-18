@@ -30,6 +30,7 @@ function scrollToSection(sectionId: string) {
 
 export default function AdminTabbedLayout({
   db,
+  stats,
   site,
   goldilocks,
   pricing,
@@ -39,6 +40,7 @@ export default function AdminTabbedLayout({
   docs,
 }: {
   db: ReactNode;
+  stats: ReactNode;
   site: ReactNode;
   goldilocks: ReactNode;
   pricing: ReactNode;
@@ -72,6 +74,7 @@ export default function AdminTabbedLayout({
 
   const panels: Record<AdminTabId, ReactNode> = {
     db,
+    stats,
     site,
     goldilocks,
     pricing,

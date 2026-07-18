@@ -11,7 +11,7 @@ export type ListingHeroPhotoProps = {
   alt: string;
   href?: string | null;
   photoCount: number;
-  /** 0-based index for the "N / total" badge. */
+  /** 0-based index for the "N / total" caption under the photo. */
   photoIndex?: number;
   unframed?: boolean;
   bare?: boolean;
@@ -30,7 +30,7 @@ export default function ListingHeroPhoto({
 }: ListingHeroPhotoProps) {
   const panelClass = unframed ? listingPanelClass : listingFrameClass;
 
-  const image = href ? (
+  const media = href ? (
     <Link
       href={href}
       className="block relative rounded-xl overflow-hidden border border-white/10 bg-navy-dark aspect-[4/3] group"
@@ -47,11 +47,6 @@ export default function ListingHeroPhoto({
         )}
       />
       {obfuscate ? <ListingPhotoObfuscationOverlay /> : null}
-      {photoCount > 1 ? (
-        <span className="absolute bottom-3 right-3 font-mono text-[10px] tracking-[0.15em] uppercase text-white/80 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
-          {photoIndex + 1} / {photoCount}
-        </span>
-      ) : null}
     </Link>
   ) : (
     <div className="relative rounded-xl overflow-hidden border border-white/10 bg-navy-dark aspect-[4/3]">
@@ -66,6 +61,20 @@ export default function ListingHeroPhoto({
         )}
       />
       {obfuscate ? <ListingPhotoObfuscationOverlay /> : null}
+    </div>
+  );
+
+  const caption =
+    photoCount > 1 ? (
+      <p className="mt-1.5 text-right font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
+        {photoIndex + 1} / {photoCount}
+      </p>
+    ) : null;
+
+  const image = (
+    <div>
+      {media}
+      {caption}
     </div>
   );
 

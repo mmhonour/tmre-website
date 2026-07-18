@@ -1,18 +1,22 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ListingSubnav, {
   type ListingInterestProps,
   type ListingTab,
 } from "@/components/listing/ListingSubnav";
+import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import { formatMlsStatus } from "@/lib/listing-history";
 import type { ComponentProps, ReactNode } from "react";
+
+/** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
+const STICKY_TOP_CLASS = "top-20 lg:top-24";
 
 type ListingHeroPanelsProps = {
   header: ComponentProps<typeof ListingHeader>;
@@ -61,6 +65,26 @@ export default function ListingHeroPanels({
   const frameClass = listingPanelCompactClass;
   // Tab route + API prefetch runs inside ListingSubnav (mounted below).
   const compactHero = Boolean(belowTabs || belowHero || sidebar || footer || interest);
+  const stickyChromeRef = useRef<HTMLDivElement>(null);
+
+  // Publish sticky chrome height so scroll-to-section targets clear the pinned tabs.
+  useEffect(() => {
+    const el = stickyChromeRef.current;
+    if (!el || typeof document === "undefined") return;
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        "--listing-sticky-offset",
+        `${el.offsetHeight + 12}px`,
+      );
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty("--listing-sticky-offset");
+    };
+  }, [subnav.active, belowTabs, propertyTabs]);
 
   const statusLabel = formatMlsStatus(header.status);
 
@@ -88,41 +112,56 @@ export default function ListingHeroPanels({
 
   const propertyPanel = (
     <div className={frameClass}>
-      {topRow}
-      <div className="mb-2 flex items-start justify-between gap-3">
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-          Property Details
-        </p>
+      {/* Pin back link / property tabs / address / meta / section tabs while
+          the tab body scrolls beneath — clears the fixed site nav. */}
+      <div
+        ref={stickyChromeRef}
+        className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-3 mb-1 border-b border-white/10 bg-[#1B2A4A]/95 backdrop-blur-md shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+      >
+        {topRow}
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+            Property Details
+          </p>
+        </div>
+        <ListingHeader
+          {...header}
+          privacyMode={header.privacyMode ?? false}
+          hideMarketMeta={header.hideMarketMeta ?? isSpotlight}
+          insight={subnav.active === "overview" ? header.insight : null}
+          heroAside={subnav.active !== "overview"}
+          tabsSlot={
+            <Suspense fallback={null}>
+              <ListingSubnav {...subnav} embedded compact />
+            </Suspense>
+          }
+          className="mb-0"
+          compact
+        />
       </div>
-      <ListingHeader
-        {...header}
-        privacyMode={header.privacyMode ?? false}
-        hideMarketMeta={header.hideMarketMeta ?? isSpotlight}
-        insight={subnav.active === "overview" ? header.insight : null}
-        heroAside={subnav.active !== "overview"}
-        tabsSlot={
-          <Suspense fallback={null}>
-            <ListingSubnav {...subnav} embedded compact />
-          </Suspense>
-        }
-        className="mb-0"
-        compact
-      />
       {belowTabs ? (
-        <div className="mt-3 pt-3 border-t border-white/10">{belowTabs}</div>
+        <div
+          id={
+            subnav.active === "overview"
+              ? LISTING_SECTION_IDS.overview
+              : undefined
+          }
+          className="mt-3 pt-3 border-t border-white/10 scroll-mt-[var(--listing-sticky-offset,6rem)]"
+        >
+          {belowTabs}
+        </div>
       ) : null}
     </div>
   );
 
   const locationPanel = (
-    <div
-      className={`${frameClass} flex flex-col min-h-[16rem] sm:min-h-[18rem] lg:min-h-[20rem]`}
-    >
+    <div className={`${frameClass} flex flex-col`}>
       <p className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
         Location
       </p>
-      {/* Explicit flex-1 shell so the map always owns the remaining panel area. */}
-      <div className="relative min-h-0 flex-1">
+      {/* Explicit height — absolute hero map needs a sized shell; flex-1 alone
+          collapsed to 0 because the map does not contribute in-flow height. */}
+      <div className="relative w-full h-64 sm:h-72 lg:h-80">
         <ListingLocationMap
           latitude={location.latitude}
           longitude={location.longitude}
@@ -149,7 +188,7 @@ export default function ListingHeroPanels({
   // max-height/overflow — that produced a tacky full-height scrollbar beside
   // the map. Content flows naturally so nothing is clipped.
   const rightColumn = (
-    <div className="min-w-0 flex flex-col gap-4 lg:sticky lg:top-20">
+    <div className={`min-w-0 flex flex-col gap-4 lg:sticky ${STICKY_TOP_CLASS}`}>
       {interestButton}
       {locationPanel}
       {sidebar ? <div className="shrink-0">{sidebar}</div> : null}

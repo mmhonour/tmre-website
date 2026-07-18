@@ -139,6 +139,15 @@ export async function rebuildAllListingScores(): Promise<ListingScoresRebuildRes
     `[listing-scores] rebuild complete in ${Date.now() - t0}ms — ${totalScored} listings scored`,
   )
 
+  if (totalScored > 0) {
+    try {
+      const { rebuildAvgScoreByVintageCache } = await import('@/lib/stats-cache')
+      await rebuildAvgScoreByVintageCache()
+    } catch (err) {
+      console.error('[listing-scores] avg-score-by-vintage cache refresh failed', err)
+    }
+  }
+
   return {
     startedAt,
     finishedAt,

@@ -1,5 +1,6 @@
 export type AdminTabId =
   | "db"
+  | "stats"
   | "site"
   | "goldilocks"
   | "pricing"
@@ -33,6 +34,11 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "db",
     label: "Database",
     subtitle: "Scheduled sync control, sync status, and run log",
+  },
+  {
+    id: "stats",
+    label: "Stats",
+    subtitle: "Where stats and caches live — Postgres, memory, files, R2",
   },
   {
     id: "site",
@@ -75,7 +81,19 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-sync", label: "Sync status / Pause", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
   { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
-  { id: "admin-sync-log", label: "Sync run log", tab: "db" },
+  { id: "admin-sync-history", label: "DB sync history", tab: "db" },
+  { id: "admin-sync-log", label: "Latest sync steps", tab: "db" },
+  { id: "admin-stats-inventory", label: "Stats storage map", tab: "stats" },
+  { id: "admin-stats-market", label: "Market & town stats", tab: "stats" },
+  { id: "admin-stats-feeds", label: "Latest feeds", tab: "stats" },
+  { id: "admin-stats-deals", label: "Deal of the Day / Week", tab: "stats" },
+  { id: "admin-stats-intelligence", label: "Intelligence caches", tab: "stats" },
+  { id: "admin-stats-listing-derived", label: "Listing-derived scores", tab: "stats" },
+  { id: "admin-stats-photos", label: "Photo storage", tab: "stats" },
+  { id: "admin-stats-sync-control", label: "Sync control & config", tab: "stats" },
+  { id: "admin-stats-site-data", label: "Site form / visitor data", tab: "stats" },
+  { id: "admin-stats-ephemeral", label: "Ephemeral caches", tab: "stats" },
+  { id: "admin-photo-health", label: "Listing photo health", tab: "site" },
   { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "site" },
   { id: "admin-contact-email", label: "Contact form email", tab: "site" },
   { id: "admin-contact-phone", label: "Contact phone", tab: "site" },

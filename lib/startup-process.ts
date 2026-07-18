@@ -173,7 +173,7 @@ export function describeStartupProcess(): {
           title: "Stats + Deal of the Day caches",
           timing: "after superlatives",
           detail:
-            "rebuildStatsCache (market stats, sales-by-month, active-by-month, vintage, price) + Deal of the Day/Week caches + If estimates + comps edges + edge scores, then publish read snapshot.",
+            "rebuildStatsCache (market stats, sales-by-month, active-by-month, vintage, price, avg-score-by-vintage) + Deal of the Day/Week caches + If estimates + comps edges + edge scores, then publish read snapshot.",
           status: startupFullEnabled ? "scheduled" : "skipped",
           statusLabel: startupFullEnabled ? "Chained" : "—",
         },
@@ -313,7 +313,7 @@ export function describeStartupProcess(): {
           title: "Periodic rebuild if stale",
           timing: "usually every 60 min",
           detail:
-            "rebuildStatsCacheIfStale(true) — includes sales-by-month + active-by-month per town and bundled by-town payloads.",
+            "rebuildStatsCacheIfStale(true) — includes sales-by-month, active-by-month, and avg-score-by-vintage per town (plus bundled by-town payloads).",
           status: "active",
           statusLabel: "Running",
         },

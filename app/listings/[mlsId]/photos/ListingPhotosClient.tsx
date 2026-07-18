@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
@@ -15,6 +15,7 @@ import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
+import { listingPhotoProxyUrlsFromCount } from "@/lib/listing-url";
 
 type Schools = {
   elementary: string | null;
@@ -95,7 +96,11 @@ export default function ListingPhotosClient({
       .then((d) => {
         if (!d || cancelled) return;
         setData(d);
-        setActivePhoto(initialPhotoIndex(photoParam, d.photos.length));
+        const count =
+          d.photos.length > 0
+            ? d.photos.length
+            : Math.min(d.listing.photoCount ?? 0, 60);
+        setActivePhoto(initialPhotoIndex(photoParam, count));
         setState("ready");
       })
       .catch((err) => {
@@ -109,10 +114,30 @@ export default function ListingPhotosClient({
     };
   }, [mlsId, photoParam]);
 
+  const galleryPhotos = useMemo(() => {
+    if (!data) return [] as string[];
+    if (data.photos.length > 0) return data.photos;
+    return listingPhotoProxyUrlsFromCount(
+      mlsId,
+      data.listing.photoCount ?? 0,
+    );
+  }, [data, mlsId]);
+
   useEffect(() => {
     if (state !== "ready" || !data) return;
-    setActivePhoto(initialPhotoIndex(photoParam, data.photos.length));
-  }, [state, data, photoParam]);
+    setActivePhoto(initialPhotoIndex(photoParam, galleryPhotos.length));
+  }, [state, data, photoParam, galleryPhotos.length]);
+
+  // Photos tab: widen on-demand warm so cold Active / associated Closed galleries
+  // pull into R2 instead of staying on "No photos available".
+  useEffect(() => {
+    if (state !== "ready") return;
+    void fetch(`/api/listings/${encodeURIComponent(mlsId)}/warm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ gallery: true }),
+    }).catch(() => undefined);
+  }, [mlsId, state]);
 
   useRecordLookedAtListing(state === "ready", data?.listing ?? null, {
     addressHint,
@@ -154,7 +179,8 @@ export default function ListingPhotosClient({
     );
   }
 
-  const { listing, photos } = data;
+  const { listing } = data;
+  const photos = galleryPhotos;
   const street = listing.address.street || listing.address.full;
   const mapsQuery =
     listing.address.full?.trim() ||

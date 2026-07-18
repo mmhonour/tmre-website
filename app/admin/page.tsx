@@ -4,8 +4,10 @@ import AdminRetsCredentialsPanel from "@/components/admin/AdminRetsCredentialsPa
 import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPanel";
 import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
+import AdminSyncHistoryPanel from "@/components/admin/AdminSyncHistoryPanel";
 import AdminSyncRunLog from "@/components/admin/AdminSyncRunLog";
 import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
+import AdminPhotoHealthPanel from "@/components/admin/AdminPhotoHealthPanel";
 import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
@@ -55,10 +57,12 @@ import {
 } from "@/lib/pricing-matching-config";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
+import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPanel";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
 import {
+  readAdminSyncRunHistory,
   readInventorySnapshot,
   readLatestListingModificationTimestamp,
   readListingsDbStats,
@@ -207,6 +211,11 @@ export default async function AdminPage() {
     "database-sync-stats",
     () => collectAdminDatabaseSyncStats(),
     [],
+  );
+  const syncRunHistory = await safe(
+    "sync-run-history",
+    () => readAdminSyncRunHistory({ limit: 50, offset: 0 }),
+    { runs: [], total: 0, limit: 50, offset: 0 },
   );
   const blobRuntime = await safe("photos-blob-runtime", () => describePhotosBlobPersistRuntime(), {
     active: false,
@@ -503,6 +512,8 @@ export default async function AdminPage() {
         }}
       />
 
+      <AdminSyncHistoryPanel initial={syncRunHistory} />
+
       <AdminSyncRunLog />
     </>
   );
@@ -542,6 +553,8 @@ export default async function AdminPage() {
 
   const sitePanel = (
     <>
+      <AdminPhotoHealthPanel />
+
       <AdminPhotoTtlPanel
         initial={{
           ttlMinutes: photoTtlMinutes,
@@ -808,6 +821,7 @@ export default async function AdminPage() {
 
       <AdminTabbedLayout
         db={dbPanel}
+        stats={<AdminStatsInventoryPanel />}
         site={sitePanel}
         goldilocks={goldilocksPanel}
         pricing={pricingPanel}

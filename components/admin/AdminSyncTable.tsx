@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { AdminSyncActionId, AdminDatabaseSyncStats, FullResyncFinalizeStepId } from "@/lib/admin-sync-types";
 import {
   ADMIN_SYNC_ACTIONS,
@@ -29,6 +35,20 @@ import {
 
 function emptyPausedJobs(): ScheduledSyncPausedJobs {
   return emptyScheduledSyncPausedJobs();
+}
+
+/** Client FIFO of Sync now / Sync all clicks while another job is in flight. */
+type SyncQueueItem =
+  | {
+      kind: "action";
+      rowId: string;
+      actionId: AdminSyncActionId;
+      label: string;
+    }
+  | { kind: "sync-all" };
+
+function formatWaitingStatus(blockerLabel: string): string {
+  return `Waiting for ${blockerLabel} to finish`;
 }
 
 function formatSyncDescription(message?: string, detail?: string): string | undefined {
@@ -138,9 +158,17 @@ export type SyncRunLogEntry = {
   error?: string;
 };
 
+/** Full latest-run snapshot (type + wall-clock bounds + per-step rows). */
+export type SyncRunLogSnapshot = {
+  syncType: string;
+  startedAt: string;
+  finishedAt: string | null;
+  entries: SyncRunLogEntry[];
+};
+
 /** Payload broadcast on the window "admin-sync-run-log" event for the log panel. */
 export type AdminSyncRunLogEvent = {
-  entries: SyncRunLogEntry[];
+  snapshot: SyncRunLogSnapshot | null;
   running: boolean;
 };
 
@@ -156,6 +184,49 @@ export function formatRunDuration(ms: number | null | undefined): string {
   const mins = Math.floor(totalSeconds / 60);
   const secs = Math.round(totalSeconds % 60);
   return `${mins}m ${secs}s`;
+}
+
+/** Compact local wall-clock for sync log timestamps. */
+export function formatRunClock(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(ms));
+}
+
+/** Migrate older localStorage arrays into a snapshot shape. */
+export function parseStoredSyncRunLog(raw: string): SyncRunLogSnapshot | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const entries = parsed as SyncRunLogEntry[];
+      if (entries.length === 0) return null;
+      return {
+        syncType: "Previous sync",
+        startedAt: entries[0]?.startedAt ?? new Date().toISOString(),
+        finishedAt: entries[entries.length - 1]?.finishedAt ?? null,
+        entries,
+      };
+    }
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as SyncRunLogSnapshot).entries) &&
+      typeof (parsed as SyncRunLogSnapshot).syncType === "string" &&
+      typeof (parsed as SyncRunLogSnapshot).startedAt === "string"
+    ) {
+      return parsed as SyncRunLogSnapshot;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 async function runFullResyncChunked(
@@ -601,9 +672,11 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
 function StatusCell({
   text,
   isRunning,
+  isWaiting = false,
 }: {
   text: string | undefined;
   isRunning: boolean;
+  isWaiting?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -613,6 +686,7 @@ function StatusCell({
   }
 
   const isLong = text.length > 72;
+  const emphasize = isRunning || isWaiting;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -625,7 +699,7 @@ function StatusCell({
     <div>
       <p
         className={`text-[9px] leading-snug break-words ${
-          isRunning
+          emphasize
             ? "font-mono text-gold uppercase tracking-wide"
             : "text-slate/80"
         } ${isLong && !expanded ? "line-clamp-3" : ""}`}
@@ -655,6 +729,30 @@ function StatusCell({
   );
 }
 
+/** One Start/End/Next row: equal columns, label right-aligned, value left-aligned. */
+function SyncTimingRow({
+  label,
+  value,
+  valueClassName = "text-navy font-semibold",
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-x-2 items-baseline w-full min-w-0">
+      <span className="text-right font-mono text-[10px] tracking-wide text-charcoal/45 uppercase whitespace-nowrap">
+        {label}
+      </span>
+      <span
+        className={`text-left font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0 ${valueClassName}`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function SyncTimestamp({
   label,
   value,
@@ -665,12 +763,10 @@ function SyncTimestamp({
   timeOnly?: boolean;
 }) {
   return (
-    <p className="font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0">
-      <span className="tracking-wide text-charcoal/45 uppercase">{label}: </span>
-      <span className="text-navy font-semibold">
-        {timeOnly ? formatTimeOnly(value) : formatTimestamp(value)}
-      </span>
-    </p>
+    <SyncTimingRow
+      label={label}
+      value={timeOnly ? formatTimeOnly(value) : formatTimestamp(value)}
+    />
   );
 }
 
@@ -693,6 +789,26 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "deal-of-the-day": "deal-of-the-day",
   "property-addresses": "property-addresses",
 };
+
+function pauseJobForSyncAllAction(
+  actionId: AdminSyncActionId,
+): ScheduledSyncJobId | null {
+  const rowId = ACTION_ROW_ID[actionId] as AdminSyncPanelRowId | undefined;
+  if (!rowId) return null;
+  return SCHEDULED_SYNC_JOB_BY_ROW[rowId] ?? null;
+}
+
+function isSyncAllActionPaused(
+  actionId: AdminSyncActionId,
+  paused: ScheduledSyncPausedJobs,
+): boolean {
+  const job = pauseJobForSyncAllAction(actionId);
+  return job != null && paused[job];
+}
+
+function syncAllActionLabel(actionId: AdminSyncActionId): string {
+  return ADMIN_SYNC_ACTIONS[actionId]?.label ?? actionId;
+}
 
 /** Started-but-not-finished older than this → hung (pink). */
 const HANG_THRESHOLD_MS = 45 * 60 * 1000;
@@ -894,6 +1010,11 @@ export default function AdminSyncTable({
   const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
     null,
   );
+  /** FIFO of Sync now / Sync all clicks while another job is running. */
+  const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
+  const syncQueueRef = useRef<SyncQueueItem[]>([]);
+  const runningLabelRef = useRef<string | null>(null);
+  const runningIdRef = useRef<AdminSyncActionId | "sync-all-caches" | null>(null);
   const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
   // localStorage-backed state is hydrated AFTER mount (see effect below) so the
   // first client render matches the server's empty render — reading storage in a
@@ -918,15 +1039,60 @@ export default function AdminSyncTable({
   }, []);
   const [runTimings, setRunTimings] = useState<Partial<Record<string, SyncTiming>>>({});
   const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
-  // Sync run log — every step's status + timing for the most recent run, kept for
-  // review near the bottom of the page. Persisted to localStorage so it survives
-  // reloads. The live run accumulates in a ref (shown while running); on completion
-  // it replaces the persisted log, so the previous run stays visible until then.
-  const [runLog, setRunLog] = useState<SyncRunLogEntry[]>([]);
+  /** Shown under Sync all while a run is active; cleared when the run ends. */
+  const [syncAllPlanNote, setSyncAllPlanNote] = useState<string | null>(null);
+
+  const replaceSyncQueue = useCallback(
+    (next: SyncQueueItem[] | ((prev: SyncQueueItem[]) => SyncQueueItem[])) => {
+      setSyncQueue((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        syncQueueRef.current = resolved;
+        return resolved;
+      });
+    },
+    [],
+  );
+
+  const setRunningJob = useCallback(
+    (id: AdminSyncActionId | "sync-all-caches" | null, label: string | null) => {
+      runningIdRef.current = id;
+      runningLabelRef.current = label;
+      setRunningId(id);
+    },
+    [],
+  );
+
+  const refreshWaitingStatuses = useCallback((blockerLabel: string) => {
+    const queued = syncQueueRef.current;
+    if (queued.length === 0) return;
+    setDescriptions((prev) => {
+      const next = { ...prev };
+      for (const item of queued) {
+        if (item.kind === "action") {
+          next[item.rowId] = formatWaitingStatus(blockerLabel);
+        }
+      }
+      return next;
+    });
+    if (queued.some((item) => item.kind === "sync-all")) {
+      setSyncAllPlanNote(formatWaitingStatus(blockerLabel));
+    }
+  }, []);
+
+  // Sync run log — type + wall-clock + every step for the most recent run.
+  // Persisted to localStorage; live run accumulates until commit replaces it.
+  const [runSnapshot, setRunSnapshot] = useState<SyncRunLogSnapshot | null>(null);
   useEffect(() => {
     if (!storageHydratedRef.current) return;
-    try { localStorage.setItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY, JSON.stringify(runLog)); } catch { /* ignore */ }
-  }, [runLog]);
+    try {
+      localStorage.setItem(
+        ADMIN_SYNC_RUN_LOG_STORAGE_KEY,
+        JSON.stringify(runSnapshot),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [runSnapshot]);
   // Hydrate all localStorage-backed state once, after the first client render,
   // then allow the persistence effects above to write back on change.
   useEffect(() => {
@@ -941,13 +1107,23 @@ export default function AdminSyncTable({
     } catch { /* ignore */ }
     try {
       const rawLog = localStorage.getItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY);
-      if (rawLog) setRunLog(JSON.parse(rawLog) as SyncRunLogEntry[]);
+      if (rawLog) setRunSnapshot(parseStoredSyncRunLog(rawLog));
     } catch { /* ignore */ }
     storageHydratedRef.current = true;
   }, []);
   const [liveLog, setLiveLog] = useState<SyncRunLogEntry[]>([]);
   const liveLogRef = useRef<SyncRunLogEntry[]>([]);
-  const beginRunLog = useCallback(() => {
+  const liveMetaRef = useRef<{ syncType: string; startedAt: string } | null>(
+    null,
+  );
+  const [liveMeta, setLiveMeta] = useState<{
+    syncType: string;
+    startedAt: string;
+  } | null>(null);
+  const beginRunLog = useCallback((syncType: string) => {
+    const meta = { syncType, startedAt: new Date().toISOString() };
+    liveMetaRef.current = meta;
+    setLiveMeta(meta);
     liveLogRef.current = [];
     setLiveLog([]);
   }, []);
@@ -956,25 +1132,42 @@ export default function AdminSyncTable({
     setLiveLog(liveLogRef.current);
   }, []);
   const commitRunLog = useCallback(() => {
-    if (liveLogRef.current.length > 0) setRunLog(liveLogRef.current);
+    const meta = liveMetaRef.current;
+    if (!meta) return;
+    setRunSnapshot({
+      syncType: meta.syncType,
+      startedAt: meta.startedAt,
+      finishedAt: new Date().toISOString(),
+      entries: liveLogRef.current,
+    });
+    liveMetaRef.current = null;
+    setLiveMeta(null);
   }, []);
   const [now, setNow] = useState(() => new Date());
 
   // Publish the run log to the dedicated panel rendered at the bottom of the DB
-  // tab. While a run is active we surface its live entries; otherwise the last
+  // tab. While a run is active we surface its live snapshot; otherwise the last
   // completed run (which stays until the next run finishes).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // While running, keep the previous run visible until the new run produces its
-    // first entry (avoids an empty flash and honours "keep old until finished").
     const running = runningId != null;
-    const entries = running && liveLog.length > 0 ? liveLog : runLog;
+    // Keep the previous completed run visible until the new run has a meta frame
+    // (avoids an empty flash).
+    const snapshot: SyncRunLogSnapshot | null =
+      running && liveMeta
+        ? {
+            syncType: liveMeta.syncType,
+            startedAt: liveMeta.startedAt,
+            finishedAt: null,
+            entries: liveLog,
+          }
+        : runSnapshot;
     window.dispatchEvent(
       new CustomEvent<AdminSyncRunLogEvent>(ADMIN_SYNC_RUN_LOG_EVENT, {
-        detail: { entries, running },
+        detail: { snapshot, running },
       }),
     );
-  }, [liveLog, runLog, runningId]);
+  }, [liveLog, liveMeta, runSnapshot, runningId]);
 
   const hasPendingRetries = Object.keys(pendingRetries).length > 0;
 
@@ -1108,21 +1301,42 @@ export default function AdminSyncTable({
     return () => window.clearInterval(id);
   }, [refreshStatus, refreshing, runningId]);
 
-  const runSync = useCallback(
+  const drainSyncQueueRef = useRef<() => void>(() => {});
+
+  const finishRunningJob = useCallback(() => {
+    setRunningJob(null, null);
+    void refreshStatus();
+    // Defer drain so runningIdRef is cleared before the next job starts.
+    queueMicrotask(() => drainSyncQueueRef.current());
+  }, [setRunningJob, refreshStatus]);
+
+  const executeSync = useCallback(
     async (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => {
       const actionId = row.actionId;
-      if (!actionId || runningId) return;
+      if (!actionId) return;
 
       if (!opts?.autoRetry) {
         clearPendingRetry(row.id);
         syncAttemptCountRef.current[row.id] = 0;
       }
 
+      const actionLabel = ADMIN_SYNC_ACTIONS[actionId]?.label ?? row.label;
+
       if (actionId === "full-resync") {
-        beginRunLog();
+        beginRunLog("Full resync");
+        setRunningJob("full-resync", actionLabel);
+        refreshWaitingStatuses(actionLabel);
         try {
           const result = await runFullResyncChunked(row, {
-            setRunningId,
+            setRunningId: (id) => {
+              // Keep label in sync when the chunked helper clears/sets the id.
+              if (id == null) {
+                runningIdRef.current = null;
+                setRunningId(null);
+              } else {
+                setRunningJob(id, actionLabel);
+              }
+            },
             setDescriptions,
             setMessages,
             setErrors,
@@ -1130,7 +1344,7 @@ export default function AdminSyncTable({
             setStatus,
             setRefreshing,
             refreshStatus,
-            runningId,
+            runningId: null,
             persistFinalStatus,
             appendRunLog,
           });
@@ -1142,15 +1356,16 @@ export default function AdminSyncTable({
           }
         } finally {
           commitRunLog();
+          finishRunningJob();
         }
         return;
       }
 
       const startedAt = new Date().toISOString();
       const actionT0 = Date.now();
-      const actionLabel = ADMIN_SYNC_ACTIONS[actionId]?.label ?? row.label;
-      beginRunLog();
-      setRunningId(actionId);
+      beginRunLog(`Sync now · ${actionLabel}`);
+      setRunningJob(actionId, actionLabel);
+      refreshWaitingStatuses(actionLabel);
       setMessages((prev) => ({ ...prev, [row.id]: undefined }));
       setErrors((prev) => ({ ...prev, [row.id]: undefined }));
       setDescriptions((prev) => ({
@@ -1243,12 +1458,10 @@ export default function AdminSyncTable({
         handleSyncFailure(row, errText);
       } finally {
         commitRunLog();
-        setRunningId(null);
-        void refreshStatus();
+        finishRunningJob();
       }
     },
     [
-      runningId,
       refreshStatus,
       persistFinalStatus,
       beginRunLog,
@@ -1256,15 +1469,77 @@ export default function AdminSyncTable({
       commitRunLog,
       clearPendingRetry,
       handleSyncFailure,
+      setRunningJob,
+      refreshWaitingStatuses,
+      finishRunningJob,
     ],
+  );
+
+  const runSync = useCallback(
+    (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => {
+      const actionId = row.actionId;
+      if (!actionId) return;
+
+      const actionLabel = ADMIN_SYNC_ACTIONS[actionId]?.label ?? row.label;
+      const alreadyRunning =
+        runningIdRef.current === actionId ||
+        (runningIdRef.current === "full-resync" && actionId === "full-resync");
+      if (alreadyRunning) return;
+
+      const alreadyQueued = syncQueueRef.current.some(
+        (item) => item.kind === "action" && item.rowId === row.id,
+      );
+      if (alreadyQueued) return;
+
+      if (runningIdRef.current != null) {
+        if (!opts?.autoRetry) {
+          clearPendingRetry(row.id);
+          syncAttemptCountRef.current[row.id] = 0;
+        }
+        const blocker = runningLabelRef.current ?? "current sync";
+        replaceSyncQueue((prev) => [
+          ...prev,
+          { kind: "action", rowId: row.id, actionId, label: actionLabel },
+        ]);
+        setDescriptions((prev) => ({
+          ...prev,
+          [row.id]: formatWaitingStatus(blocker),
+        }));
+        setErrors((prev) => ({ ...prev, [row.id]: undefined }));
+        return;
+      }
+
+      void executeSync(row, opts);
+    },
+    [executeSync, replaceSyncQueue, clearPendingRetry],
   );
 
   runSyncRef.current = runSync;
 
-  const runSyncAll = useCallback(async () => {
-    if (runningId) return;
-    beginRunLog();
-    setRunningId("sync-all-caches");
+  const executeSyncAll = useCallback(async () => {
+
+    const stepsToRun = ADMIN_SYNC_ALL_CLIENT_STEPS.filter(
+      (actionId) => !isSyncAllActionPaused(actionId, pausedJobs),
+    );
+    const skippedPaused = ADMIN_SYNC_ALL_CLIENT_STEPS.filter((actionId) =>
+      isSyncAllActionPaused(actionId, pausedJobs),
+    );
+    const runningLabels = stepsToRun.map(syncAllActionLabel);
+    const skippedLabels = skippedPaused.map(syncAllActionLabel);
+    const planParts: string[] = [];
+    if (runningLabels.length > 0) {
+      planParts.push(`About to run: ${runningLabels.join(" · ")}`);
+    } else {
+      planParts.push("All Sync all steps are paused — nothing to run.");
+    }
+    if (skippedLabels.length > 0) {
+      planParts.push(`Skipping paused: ${skippedLabels.join(" · ")}`);
+    }
+    setSyncAllPlanNote(planParts.join(" "));
+
+    beginRunLog("Sync all");
+    setRunningJob("sync-all-caches", "Sync all");
+    refreshWaitingStatuses("Sync all");
     setSyncAllSummary(null);
     setMessages({});
     setErrors({});
@@ -1275,13 +1550,33 @@ export default function AdminSyncTable({
     setPendingRetries({});
     syncAttemptCountRef.current = {};
 
+    const skippedAt = new Date().toISOString();
+    for (const actionId of skippedPaused) {
+      appendRunLog({
+        id: `sync-all-skipped-${actionId}-${Date.now()}`,
+        label: syncAllActionLabel(actionId),
+        startedAt: skippedAt,
+        finishedAt: skippedAt,
+        durationMs: 0,
+        status: "Skipped — Pause checked",
+      });
+    }
+
+    if (stepsToRun.length === 0) {
+      setSyncAllSummary("Sync all skipped — every step is paused");
+      commitRunLog();
+      setSyncAllPlanNote(null);
+      finishRunningJob();
+      return;
+    }
+
     let skipChainedAfterFull = false;
     let completed = 0;
-    const totalSteps = ADMIN_SYNC_ALL_CLIENT_STEPS.length;
+    const totalSteps = stepsToRun.length;
     let currentRowId: string | null = null;
 
     try {
-      for (const actionId of ADMIN_SYNC_ALL_CLIENT_STEPS) {
+      for (const actionId of stepsToRun) {
         if (skipChainedAfterFull && ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL.has(actionId)) {
           continue;
         }
@@ -1293,14 +1588,21 @@ export default function AdminSyncTable({
           let fullOk = false;
           let lastFullErr = "Full resync failed";
           for (let attempt = 1; attempt <= SYNC_MAX_ATTEMPTS; attempt++) {
-            setRunningId("sync-all-caches");
+            setRunningJob("sync-all-caches", "Sync all");
             setSyncAllSummary(
               `Step ${completed}/${totalSteps}: Full resync (town-by-town)${
                 attempt > 1 ? ` · retry ${attempt}/${SYNC_MAX_ATTEMPTS}` : ""
               }…`,
             );
             const result = await runFullResyncChunked(row, {
-              setRunningId,
+              setRunningId: (id) => {
+                // Chunked helper clears the id in finally — keep Sync all owning the slot.
+                if (id === "full-resync") {
+                  setRunningJob("full-resync", "Sync all · Full resync");
+                } else {
+                  setRunningJob("sync-all-caches", "Sync all");
+                }
+              },
               setDescriptions,
               persistFinalStatus,
               setMessages,
@@ -1312,7 +1614,7 @@ export default function AdminSyncTable({
               runningId: "sync-all-caches",
               appendRunLog,
             });
-            setRunningId("sync-all-caches");
+            setRunningJob("sync-all-caches", "Sync all");
             if (result.ok) {
               fullOk = true;
               clearPendingRetry(row.id);
@@ -1483,11 +1785,11 @@ export default function AdminSyncTable({
       }
     } finally {
       commitRunLog();
-      setRunningId(null);
-      void refreshStatus();
+      setSyncAllPlanNote(null);
+      finishRunningJob();
     }
   }, [
-    runningId,
+    pausedJobs,
     refreshStatus,
     rows,
     persistFinalStatus,
@@ -1495,9 +1797,46 @@ export default function AdminSyncTable({
     appendRunLog,
     commitRunLog,
     clearPendingRetry,
+    setRunningJob,
+    refreshWaitingStatuses,
+    finishRunningJob,
   ]);
 
-  const globalBusy = refreshing || runningId != null;
+  const runSyncAll = useCallback(() => {
+    if (runningIdRef.current === "sync-all-caches") return;
+    if (syncQueueRef.current.some((item) => item.kind === "sync-all")) return;
+
+    if (runningIdRef.current != null) {
+      const blocker = runningLabelRef.current ?? "current sync";
+      replaceSyncQueue((prev) => [...prev, { kind: "sync-all" }]);
+      setSyncAllPlanNote(formatWaitingStatus(blocker));
+      return;
+    }
+
+    void executeSyncAll();
+  }, [executeSyncAll, replaceSyncQueue]);
+
+  drainSyncQueueRef.current = () => {
+    if (runningIdRef.current != null) return;
+    const next = syncQueueRef.current[0];
+    if (!next) return;
+    replaceSyncQueue((prev) => prev.slice(1));
+    if (next.kind === "sync-all") {
+      void executeSyncAll();
+      return;
+    }
+    const row = rows.find((r) => r.id === next.rowId);
+    if (!row?.actionId) {
+      queueMicrotask(() => drainSyncQueueRef.current());
+      return;
+    }
+    void executeSync(row);
+  };
+
+  const syncAllQueued = syncQueue.some((item) => item.kind === "sync-all");
+  const queuedRowIds = new Set(
+    syncQueue.filter((item) => item.kind === "action").map((item) => item.rowId),
+  );
   const syncAllRunning = runningId === "sync-all-caches";
   const rets = status?.rets;
   const syncFailures = status?.syncFailures ?? [];
@@ -1558,12 +1897,13 @@ export default function AdminSyncTable({
           </ul>
         </div>
       ) : null}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
         <div className="min-w-0 space-y-1">
           <p className="text-xs text-slate leading-relaxed max-w-2xl">
-            Sync all runs steps 1→5 automatically. For manual runs, use the Order column and
-            sync each row in sequence (step 6 is weekly property addresses). Use Pause to skip
-            that row&apos;s automated / cron schedule — manual Sync still works.
+            Sync all runs steps 1→5 automatically, skipping any row with Pause checked. You can
+            press Sync now on as many rows as you want — if a sync is already running, the next
+            ones queue in click order with status Waiting for … to finish. Use Pause to skip that
+            row&apos;s Sync all step and automated / cron schedule.
           </p>
           <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
             The in-progress sync stays at the top; otherwise sorted by most-recent End time.
@@ -1572,14 +1912,25 @@ export default function AdminSyncTable({
             Step 2 (Incremental) runs on its own 30-min schedule and is not triggered by a full resync.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void runSyncAll()}
-          disabled={globalBusy}
-          className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-gold/40 text-navy bg-gold/15 hover:bg-gold/25 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0 self-start sm:self-auto"
-        >
-          {syncAllRunning ? "Syncing all…" : "Sync all"}
-        </button>
+        <div className="shrink-0 self-start flex flex-col items-start gap-1.5 max-w-sm">
+          <button
+            type="button"
+            onClick={() => runSyncAll()}
+            disabled={syncAllRunning || syncAllQueued}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-gold/40 text-navy bg-gold/15 hover:bg-gold/25 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          >
+            {syncAllRunning
+              ? "Syncing all…"
+              : syncAllQueued
+                ? "Queued…"
+                : "Sync all"}
+          </button>
+          {syncAllPlanNote ? (
+            <p className="text-left font-mono text-[10px] leading-snug text-charcoal/60 whitespace-pre-wrap">
+              {syncAllPlanNote}
+            </p>
+          ) : null}
+        </div>
       </div>
       {syncAllSummary ? (
         <div className="px-5 sm:px-6 py-2 border-b border-charcoal/[0.08] bg-white">
@@ -1699,6 +2050,7 @@ export default function AdminSyncTable({
                 (fullResyncTiming != null && isTimingInProgress(fullResyncTiming, nowMsOuter));
 
               const rowIsRunningForSort = (row: AdminSyncRow): boolean => {
+                if (queuedRowIds.has(row.id)) return true;
                 if (row.actionId != null && runningId === row.actionId) return true;
                 if (runningId === "full-resync" && row.id === "full-resync") {
                   return true;
@@ -1742,7 +2094,10 @@ export default function AdminSyncTable({
                 return (bFinished ?? -Infinity) - (aFinished ?? -Infinity);
               })
               .map((row, index) => {
-              const isRunning = row.actionId != null && runningId === row.actionId;
+              const isRunning =
+                (row.actionId != null && runningId === row.actionId) ||
+                (runningId === "full-resync" && row.id === "full-resync");
+              const isWaiting = queuedRowIds.has(row.id);
               const nowMs = now.getTime();
               const pendingRetry = pendingRetries[row.id];
               const rowError = pendingRetry
@@ -1753,7 +2108,7 @@ export default function AdminSyncTable({
                     nowMs,
                   )
                 : errors[row.id];
-              const disabled = !row.actionId || globalBusy;
+              const disabled = !row.actionId || isRunning || isWaiting;
               const timing = runTimings[row.id] ?? timingForRow(row, status);
               const showSingleTimestamp =
                 row.id === "latest-mls" || row.id === "property-addresses";
@@ -1763,7 +2118,7 @@ export default function AdminSyncTable({
                 timing,
                 nextRunAt,
                 status,
-                isRunning,
+                isRunning: isRunning || isWaiting,
                 syncAllRunning,
                 fullResyncInProgress,
                 error: rowError,
@@ -1799,8 +2154,8 @@ export default function AdminSyncTable({
                         className="inline-flex items-center justify-center cursor-pointer"
                         title={
                           pausedJobs[pauseJob]
-                            ? "Paused — automated syncs skip this job"
-                            : "Active — automated syncs run on schedule"
+                            ? "Paused — Sync all and automated syncs skip this job"
+                            : "Active — included in Sync all and automated schedules"
                         }
                       >
                         <input
@@ -1838,11 +2193,15 @@ export default function AdminSyncTable({
                     {row.actionId ? (
                       <button
                         type="button"
-                        onClick={() => void runSync(row)}
+                        onClick={() => runSync(row)}
                         disabled={disabled}
                         className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
                       >
-                        {isRunning ? "Syncing…" : "Sync now"}
+                        {isRunning
+                          ? "Syncing…"
+                          : isWaiting
+                            ? "Queued"
+                            : "Sync now"}
                       </button>
                     ) : (
                       <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
@@ -1861,11 +2220,17 @@ export default function AdminSyncTable({
                   <td className={TD}>
                     <StatusCell
                       text={
-                        (isRunning || syncAllRunning)
-                          ? (descriptions[row.id] ?? "Running…")
-                          : (descriptions[row.id] ?? finalStatuses[row.id])
+                        isWaiting
+                          ? (descriptions[row.id] ??
+                            formatWaitingStatus(
+                              runningLabelRef.current ?? "current sync",
+                            ))
+                          : isRunning || syncAllRunning
+                            ? (descriptions[row.id] ?? "Running…")
+                            : (descriptions[row.id] ?? finalStatuses[row.id])
                       }
                       isRunning={isRunning || syncAllRunning}
+                      isWaiting={isWaiting}
                     />
                   </td>
                   <td className={TD}>
@@ -1924,47 +2289,55 @@ export default function AdminSyncTable({
                           ? "text-rose-700"
                           : "text-navy";
 
+                      const nextLabel = (
+                        <>
+                          Next
+                          {nextStatusText ? (
+                            <span className={`normal-case tracking-wide ${nextStatusClass}`}>
+                              {" "}
+                              ({nextStatusText})
+                            </span>
+                          ) : null}
+                        </>
+                      );
+
                       return (
-                        <div className="flex flex-col gap-0.5">
-                          {sharedDate && (
-                            <p className="font-mono text-[9px] tracking-wide text-charcoal/40 uppercase mb-0.5">
+                        <div className="flex flex-col gap-0.5 w-full min-w-[11rem]">
+                          {sharedDate ? (
+                            <p className="font-mono text-[9px] tracking-wide text-charcoal/40 uppercase mb-0.5 text-center">
                               {sharedDate}
                             </p>
-                          )}
+                          ) : null}
                           {showSingleTimestamp ? (
-                            <SyncTimestamp label="Updated" value={timing.finished} timeOnly={allSameDate} />
+                            <SyncTimestamp
+                              label="Updated"
+                              value={timing.finished}
+                              timeOnly={allSameDate}
+                            />
                           ) : (
                             <>
-                              <SyncTimestamp label="Start" value={timing.started} timeOnly={allSameDate} />
-                              <SyncTimestamp label="End" value={timing.finished} timeOnly={allSameDate} />
-                              <p className="font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0">
-                                <span className="tracking-wide text-charcoal/45 uppercase">
-                                  Elapsed Time:{" "}
-                                </span>
-                                <span className="text-navy font-semibold">
-                                  {formatElapsed(elapsedMs)}
-                                </span>
-                              </p>
+                              <SyncTimestamp
+                                label="Start"
+                                value={timing.started}
+                                timeOnly={allSameDate}
+                              />
+                              <SyncTimestamp
+                                label="End"
+                                value={timing.finished}
+                                timeOnly={allSameDate}
+                              />
+                              <SyncTimingRow
+                                label="Elapsed"
+                                value={formatElapsed(elapsedMs)}
+                              />
                             </>
                           )}
                           {nextRunAt != null ? (
-                            <p className="font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0">
-                              <span className="tracking-wide text-charcoal/45 uppercase">
-                                Next
-                              </span>
-                              {nextStatusText ? (
-                                <span
-                                  className={`tracking-wide uppercase ${nextStatusClass}`}
-                                >
-                                  {" "}
-                                  {nextStatusText}
-                                </span>
-                              ) : null}
-                              <span className="text-charcoal/45">: </span>
-                              <span className={`font-semibold ${nextTimeClass}`}>
-                                {nextTimeText}
-                              </span>
-                            </p>
+                            <SyncTimingRow
+                              label={nextLabel}
+                              value={nextTimeText}
+                              valueClassName={`font-semibold ${nextTimeClass}`}
+                            />
                           ) : null}
                         </div>
                       );
@@ -1976,11 +2349,11 @@ export default function AdminSyncTable({
                         <p className="font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
                           {rowError}
                         </p>
-                        {row.actionId && !isRunning && !syncAllRunning && (
+                        {row.actionId && !isRunning && !isWaiting && !syncAllRunning && (
                           <button
                             type="button"
-                            onClick={() => void runSync(row)}
-                            disabled={globalBusy}
+                            onClick={() => runSync(row)}
+                            disabled={false}
                             className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                           >
                             {pendingRetry ? "↺ Retry now" : "↺ Retry"}

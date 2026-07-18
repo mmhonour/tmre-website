@@ -35,7 +35,16 @@ export function buildListingPhotoProxyUrlsForIndices(
     .map((index) => `/api/listings/${encodeURIComponent(id)}/photos/${index}`)
 }
 
-/** Listing photo manifest — local proxy URLs; empty/missing RETS slots are omitted. */
+/**
+ * Listing photo manifest — local proxy URLs.
+ *
+ * Lookup uses the sync cache id (`listingKey || mlsId`) first, then falls back
+ * to the request mlsId for legacy rows. When nothing is stored yet but MLS
+ * reports `photoCount > 0`, we still return dense placeholder proxy URLs so the
+ * Photos UI can load on demand via `?fetch=1` (ListingThumbImage). `sqliteOnly`
+ * only skips RETS *discovery* when the count hint is missing — it must not hide
+ * known photos.
+ */
 export async function resolveListingPhotoUrls(
   mlsId: string,
   listingKey: string,
@@ -45,16 +54,24 @@ export async function resolveListingPhotoUrls(
   const id = mlsId.trim()
   if (!id) return { photos: [], cacheHit: false }
 
-  const storedIndices = await listStoredListingPhotoIndicesAsync(id)
+  const cacheId = listingKey?.trim() || id
+  let indexLookupId = cacheId
+  let storedIndices = await listStoredListingPhotoIndicesAsync(cacheId)
+  if (storedIndices.length === 0 && cacheId !== id) {
+    storedIndices = await listStoredListingPhotoIndicesAsync(id)
+    if (storedIndices.length > 0) indexLookupId = id
+  }
+
   // After RETS/media sync, only expose photos that actually landed in the store.
   if (storedIndices.length > 0 && !options.forceRefresh) {
-    const span = await listingPhotoStorageSpanAsync(id)
+    const span = await listingPhotoStorageSpanAsync(indexLookupId)
     const freshRows = await countFreshListingPhotosAsync(
-      id,
+      indexLookupId,
       Math.max(span, storedIndices.length),
       listingPhotoSyncedAfter(LISTING_PHOTO_TTL_MS),
     )
     return {
+      // Client URLs keep the request mlsId; the photo proxy remaps to cache id.
       photos: buildListingPhotoProxyUrlsForIndices(id, storedIndices),
       cacheHit: freshRows >= storedIndices.length,
     }
@@ -77,13 +94,7 @@ export async function resolveListingPhotoUrls(
 
   if (count <= 0) return { photos: [], cacheHit: false }
 
-  if (options.sqliteOnly) {
-    return { photos: [], cacheHit: false }
-  }
-
-  // Cold path before any blobs exist — still return dense placeholders so the
-  // photo API can fetch on demand; empty downloads simply 404 and stay out of
-  // later manifests once stored indices populate.
+  // Cold path — dense placeholders so the photo API can fetch on demand.
   return {
     photos: buildListingPhotoProxyUrls(id, count),
     cacheHit: false,

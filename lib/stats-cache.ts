@@ -1,4 +1,10 @@
-import { readAllListingsFromDb, readListingsDbStats, readListingsFromDb } from '@/lib/db/listings-repo'
+import {
+  listingRowId,
+  readAllListingsFromDb,
+  readListingScoresByIds,
+  readListingsDbStats,
+  readListingsFromDb,
+} from '@/lib/db/listings-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   clearStatsCache,
@@ -10,12 +16,15 @@ import { hasLocalListingsCache } from '@/lib/listings-store'
 import { filterListingsByKind, LISTING_KINDS, type ListingKind } from '@/lib/listing-kind'
 import {
   computeActiveByMonth,
+  computeAvgScoreByVintage,
   computeMarketStats,
   computeSalesByMonth,
   computeSalesByPrice,
   computeSalesByVintage,
   statsCacheKey,
   type ActiveByMonthByTownPayload,
+  type AvgScoreByVintageByTownPayload,
+  type AvgScoreByVintagePayload,
   type SalesByMonthByTownPayload,
   type StatsCacheScope,
 } from '@/lib/stats-compute'
@@ -228,6 +237,102 @@ export async function readActiveByMonth(
   return readStatsCache('active-by-month', city, kind)
 }
 
+export async function readAvgScoreByVintage(
+  city: string,
+  kind: ListingKind,
+): Promise<(AvgScoreByVintagePayload & { generatedAt?: string }) | null> {
+  return readStatsCache('avg-score-by-vintage', city, kind)
+}
+
+/**
+ * Recompute Active Goldilocks averages by vintage (per town + All + by-town
+ * bundle). Safe to call after listing scores change without clearing the rest
+ * of stats_cache.
+ */
+export async function rebuildAvgScoreByVintageCache(): Promise<{
+  written: number
+  durationMs: number
+}> {
+  const t0 = Date.now()
+  if (!(await hasLocalListingsCache())) {
+    return { written: 0, durationMs: 0 }
+  }
+
+  let written = 0
+  const generatedAt = new Date().toISOString()
+  const byTown: Record<
+    (typeof LISTING_KINDS)[number],
+    Record<TmreTown, AvgScoreByVintagePayload>
+  > = {
+    sale: {} as Record<TmreTown, AvgScoreByVintagePayload>,
+    rental: {} as Record<TmreTown, AvgScoreByVintagePayload>,
+  }
+
+  for (const town of TMRE_TOWNS) {
+    const active = await readListingsFromDb(town, 'Active', 500)
+    const scoredActive = await scoredActiveRows(active)
+    for (const kind of LISTING_KINDS) {
+      const payload = computeAvgScoreByVintage(scoredActive, town, kind)
+      await writeStatsCache('avg-score-by-vintage', town, kind, {
+        ...payload,
+        generatedAt,
+      })
+      byTown[kind][town] = payload
+      written += 1
+    }
+  }
+
+  const allActive = await readAllListingsFromDb(TMRE_TOWNS, 'Active')
+  const allScored = await scoredActiveRows(allActive)
+  for (const kind of LISTING_KINDS) {
+    await writeStatsCache('avg-score-by-vintage-by-town', 'All', kind, {
+      kind,
+      towns: byTown[kind],
+      generatedAt,
+    })
+    await writeStatsCache('avg-score-by-vintage', 'All', kind, {
+      ...computeAvgScoreByVintage(allScored, 'All', kind),
+      generatedAt,
+    })
+    written += 2
+  }
+
+  console.info(
+    `[stats-cache] avg-score-by-vintage rebuilt ${written} entries in ${Date.now() - t0}ms`,
+  )
+  return { written, durationMs: Date.now() - t0 }
+}
+
+async function scoredActiveRows(active: Listing[]): Promise<
+  {
+    yearBuilt: number | null
+    goldilocksScore: number
+    propertyType: string
+    raw?: Record<string, string>
+  }[]
+> {
+  const ids = active.map((l) => listingRowId(l)).filter(Boolean)
+  const scoreMap = await readListingScoresByIds(ids)
+  const out: {
+    yearBuilt: number | null
+    goldilocksScore: number
+    propertyType: string
+    raw?: Record<string, string>
+  }[] = []
+  for (const listing of active) {
+    const id = listingRowId(listing)
+    const score = id ? scoreMap.get(id)?.score : null
+    if (score == null || !Number.isFinite(score)) continue
+    out.push({
+      yearBuilt: listing.yearBuilt,
+      goldilocksScore: score,
+      propertyType: listing.propertyType,
+      raw: listing.raw,
+    })
+  }
+  return out
+}
+
 export type TownStatsBundle = {
   marketStats: ReturnType<typeof computeMarketStats> & { generatedAt: string }
   vintage: ReturnType<typeof computeSalesByVintage> & { generatedAt: string }
@@ -297,12 +402,20 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     sale: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
     rental: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
   }
+  const avgScoreByVintageByTown: Record<
+    (typeof LISTING_KINDS)[number],
+    Record<TmreTown, AvgScoreByVintagePayload>
+  > = {
+    sale: {} as Record<TmreTown, AvgScoreByVintagePayload>,
+    rental: {} as Record<TmreTown, AvgScoreByVintagePayload>,
+  }
 
   for (const town of TMRE_TOWNS) {
     const [active, closed] = await Promise.all([
       readListingsFromDb(town, 'Active', 500),
       readListingsFromDb(town, 'Closed', 2500),
     ])
+    const scoredActive = await scoredActiveRows(active)
 
     for (const kind of LISTING_KINDS) {
       await writeStatsCache(
@@ -346,6 +459,14 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
         { ...computeSalesByPrice(closed, town, kind), generatedAt },
       )
       written += 1
+
+      const avgScorePayload = computeAvgScoreByVintage(scoredActive, town, kind)
+      await writeStatsCache('avg-score-by-vintage', town, kind, {
+        ...avgScorePayload,
+        generatedAt,
+      })
+      avgScoreByVintageByTown[kind][town] = avgScorePayload
+      written += 1
     }
   }
 
@@ -360,10 +481,22 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
       towns: activeByMonthByTown[kind],
       generatedAt,
     })
-    written += 2
+    const avgBundle: AvgScoreByVintageByTownPayload = {
+      kind,
+      towns: avgScoreByVintageByTown[kind],
+    }
+    await writeStatsCache('avg-score-by-vintage-by-town', 'All', kind, {
+      ...avgBundle,
+      generatedAt,
+    })
+    written += 3
   }
 
-  const allClosed = await readAllListingsFromDb(TMRE_TOWNS, 'Closed')
+  const [allClosed, allActive] = await Promise.all([
+    readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
+    readAllListingsFromDb(TMRE_TOWNS, 'Active'),
+  ])
+  const allScoredActive = await scoredActiveRows(allActive)
   for (const kind of LISTING_KINDS) {
     await writeStatsCache(
       'sales-by-vintage',
@@ -377,7 +510,13 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
       kind,
       { ...computeSalesByPrice(allClosed, 'All', kind), generatedAt },
     )
-    written += 2
+    await writeStatsCache(
+      'avg-score-by-vintage',
+      'All',
+      kind,
+      { ...computeAvgScoreByVintage(allScoredActive, 'All', kind), generatedAt },
+    )
+    written += 3
   }
 
   setSyncMeta('last_stats_cache', generatedAt)

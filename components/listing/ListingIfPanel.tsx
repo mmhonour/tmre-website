@@ -660,25 +660,29 @@ export default function ListingIfPanel({
             If...
           </p>
           <p className="text-white/50 text-sm leading-relaxed">
-            Sale and rent scenarios use the same match rules as the Sales and
-            Rentals tabs — then show the math and every property that fed the
-            estimate.
+            Based on the criteria below, we estimate a sale and rent range for
+            this home — and show the comps that fed each number.
           </p>
         </>
       )}
 
       {matchCriteria ? (
-        <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
-          <MatchingCriteriaSummary
-            criteria={matchCriteria}
-            tolerances={{
-              bedTolerance: saleEstimate.params.bedTolerance,
-              bathTolerance: saleEstimate.params.bathTolerance,
-              sqftTolerancePct: saleEstimate.params.sqftTolerancePct,
-              lotTolerancePct: saleEstimate.params.lotTolerancePct,
-            }}
-          />
-        </p>
+        <div className="text-center space-y-1">
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+            Criteria
+          </p>
+          <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
+            <MatchingCriteriaSummary
+              criteria={matchCriteria}
+              tolerances={{
+                bedTolerance: saleEstimate.params.bedTolerance,
+                bathTolerance: saleEstimate.params.bathTolerance,
+                sqftTolerancePct: saleEstimate.params.sqftTolerancePct,
+                lotTolerancePct: saleEstimate.params.lotTolerancePct,
+              }}
+            />
+          </p>
+        </div>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2 items-start">

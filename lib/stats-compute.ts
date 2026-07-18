@@ -14,6 +14,7 @@ import {
   classifyYearBuilt,
   emptyVintageCounts,
   VINTAGE_BUCKETS,
+  type VintageBucketId,
 } from '@/lib/vintage-buckets'
 import {
   closedListingTimestamp,
@@ -103,6 +104,37 @@ export type SalesByVintagePayload = {
   unknownYearBuilt: number
   buckets: StatsBucketRow[]
   topBucket: StatsBucketRow | null
+}
+
+/** One vintage cohort’s Active Goldilocks average (for later “best value vintage”). */
+export type AvgScoreByVintageBucket = {
+  id: Exclude<VintageBucketId, 'unknown'>
+  label: string
+  count: number
+  avgScore: number | null
+  /** Share of scored listings with a known year built. */
+  share: number
+}
+
+/**
+ * Mean Active Goldilocks score by vintage within a town (or All).
+ * Cached in stats_cache as `avg-score-by-vintage:{city}:{kind}`.
+ */
+export type AvgScoreByVintagePayload = {
+  city: string
+  kind: ListingKind
+  statusBucket: 'Active'
+  totalScored: number
+  knownYearBuilt: number
+  unknownYearBuilt: number
+  buckets: AvgScoreByVintageBucket[]
+  /** Highest avgScore among buckets with at least one scored listing. */
+  bestValueBucket: AvgScoreByVintageBucket | null
+}
+
+export type AvgScoreByVintageByTownPayload = {
+  kind: ListingKind
+  towns: Record<string, AvgScoreByVintagePayload>
 }
 
 export type SalesByPricePayload = {
@@ -338,6 +370,63 @@ export function computeSalesByVintage(
   }
 }
 
+/**
+ * Average Active Goldilocks score per vintage bucket.
+ * `scored` rows must already be filtered to the target town (or All) and have
+ * a non-null score; kind filtering is applied here.
+ */
+export function computeAvgScoreByVintage(
+  scored: readonly {
+    yearBuilt: number | null
+    goldilocksScore: number
+    propertyType: string
+    raw?: Record<string, string>
+  }[],
+  city: string,
+  kind: ListingKind,
+): AvgScoreByVintagePayload {
+  const filtered = filterListingsByKind(scored, kind)
+  const sums = emptyVintageCounts()
+  const counts = emptyVintageCounts()
+
+  for (const row of filtered) {
+    if (!Number.isFinite(row.goldilocksScore)) continue
+    const bucket = classifyYearBuilt(row.yearBuilt)
+    counts[bucket] += 1
+    sums[bucket] += row.goldilocksScore
+  }
+
+  const totalScored = Object.values(counts).reduce((a, b) => a + b, 0)
+  const knownYearBuilt = totalScored - counts.unknown
+  const buckets: AvgScoreByVintageBucket[] = VINTAGE_BUCKETS.map((b) => {
+    const count = counts[b.id]
+    const avgScore =
+      count > 0 ? Math.round((sums[b.id] / count) * 10) / 10 : null
+    return {
+      id: b.id as Exclude<VintageBucketId, 'unknown'>,
+      label: b.label,
+      count,
+      avgScore,
+      share: knownYearBuilt > 0 ? count / knownYearBuilt : 0,
+    }
+  })
+
+  const ranked = [...buckets]
+    .filter((b) => b.count > 0 && b.avgScore != null)
+    .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))
+
+  return {
+    city,
+    kind,
+    statusBucket: 'Active',
+    totalScored,
+    knownYearBuilt,
+    unknownYearBuilt: counts.unknown,
+    buckets,
+    bestValueBucket: ranked[0] ?? null,
+  }
+}
+
 export function computeSalesByPrice(
   listings: Listing[],
   city: string,
@@ -413,6 +502,8 @@ export type StatsCacheScope =
   | 'sales-by-month-by-town'
   | 'sales-by-vintage'
   | 'sales-by-price'
+  | 'avg-score-by-vintage'
+  | 'avg-score-by-vintage-by-town'
 
 export function statsCacheKey(scope: StatsCacheScope, city: string, kind: ListingKind): string {
   return `${scope}:${city}:${kind}`

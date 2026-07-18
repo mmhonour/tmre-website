@@ -5,6 +5,7 @@ import { fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
 import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
+import { ListingMobileScrollSections } from "@/components/listing/ListingMobileScrollSections";
 import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
@@ -87,21 +88,30 @@ export default function SpotlightListingClient() {
       insight={insight}
       heroSlot={heroSlot}
       belowTabs={
-        <ListingOverviewPhotoDeck
-          remarks={display.remarks}
-          mlsId={display.mlsId}
-          photoCount={display.photoCount > 0 ? display.photoCount : null}
-          address={presentation.headerAddress.street}
-          city={presentation.photoDeckCity}
-          heroAlt={display.config.displayTitle}
-          galleryHref={spotlightPhotosHref(propertyTab)}
-          photoHref={(i) => spotlightPhotosHref(propertyTab, i)}
-          hideHero={presentation.hidePhotoDeckHero}
-          obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
-          activePhotoIndex={activePhotoIndex}
-          onPhotoSelect={setActivePhotoIndex}
-          showHero={false}
-        />
+        <>
+          <ListingOverviewPhotoDeck
+            remarks={display.remarks}
+            mlsId={display.mlsId}
+            photoCount={display.photoCount > 0 ? display.photoCount : null}
+            address={presentation.headerAddress.street}
+            city={presentation.photoDeckCity}
+            heroAlt={display.config.displayTitle}
+            galleryHref={spotlightPhotosHref(propertyTab)}
+            photoHref={(i) => spotlightPhotosHref(propertyTab, i)}
+            hideHero={presentation.hidePhotoDeckHero}
+            obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
+            activePhotoIndex={activePhotoIndex}
+            onPhotoSelect={setActivePhotoIndex}
+            showHero={false}
+          />
+          <ListingMobileScrollSections
+            mlsId={display.mlsId}
+            addressHint={presentation.ifAddressHint}
+            townHint={presentation.townHint}
+            routeBase="spotlight"
+            propertyParam={spotlightPropertySearchParam(propertyTab)}
+          />
+        </>
       }
       sidebar={<ListingSidebar details={details} />}
     />

@@ -41,20 +41,24 @@ export default function PhotoGallery({
   const obfuscateActive = shouldObfuscate(active);
   return (
     <div className="space-y-3">
-      <div className="relative rounded-2xl overflow-hidden bg-navy-dark border border-white/10 aspect-[16/10]">
-        <ListingThumbImage
-          src={current}
-          alt={`${address} — photo ${active + 1} of ${photos.length}`}
-          className="absolute inset-0 block w-full h-full"
-          imgClassName={listingPhotoObfuscationImgClass(
-            obfuscateActive,
-            "absolute inset-0 w-full h-full object-cover",
-          )}
-        />
-        {obfuscateActive ? <ListingPhotoObfuscationOverlay /> : null}
-        <span className="absolute bottom-3 right-3 font-mono text-[10px] tracking-[0.15em] uppercase text-white/80 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
-          {active + 1} / {photos.length}
-        </span>
+      <div>
+        <div className="relative rounded-2xl overflow-hidden bg-navy-dark border border-white/10 aspect-[16/10]">
+          <ListingThumbImage
+            src={current}
+            alt={`${address} — photo ${active + 1} of ${photos.length}`}
+            className="absolute inset-0 block w-full h-full"
+            imgClassName={listingPhotoObfuscationImgClass(
+              obfuscateActive,
+              "absolute inset-0 w-full h-full object-cover",
+            )}
+          />
+          {obfuscateActive ? <ListingPhotoObfuscationOverlay /> : null}
+        </div>
+        {photos.length > 1 ? (
+          <p className="mt-1.5 text-right font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
+            {active + 1} / {photos.length}
+          </p>
+        ) : null}
       </div>
       {photos.length > 1 && (
         <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">

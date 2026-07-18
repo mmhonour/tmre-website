@@ -7,6 +7,7 @@ import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props"
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
 import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
+import { ListingMobileScrollSections } from "@/components/listing/ListingMobileScrollSections";
 import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
@@ -258,27 +259,34 @@ export default function ListingDetailClient({
             : null
         }
         belowTabs={
-          <ListingOverviewPhotoDeck
-            remarks={remarks || null}
-            mlsId={l.mlsId}
-            photoCount={photoCount > 0 ? photoCount : null}
-            address={street || addressHint || l.mlsId}
-            city={townHint || l.address.city}
-            heroAlt={street || "Listing photo"}
-            galleryHref={galleryHref}
-            photoHref={(i) =>
-              listingPhotosHref(
-                l.mlsId,
-                street || addressHint,
-                townHint || l.address.city,
-                i,
-              )
-            }
-            hideHero={isComingSoon}
-            activePhotoIndex={activePhotoIndex}
-            onPhotoSelect={setActivePhotoIndex}
-            showHero={false}
-          />
+          <>
+            <ListingOverviewPhotoDeck
+              remarks={remarks || null}
+              mlsId={l.mlsId}
+              photoCount={photoCount > 0 ? photoCount : null}
+              address={street || addressHint || l.mlsId}
+              city={townHint || l.address.city}
+              heroAlt={street || "Listing photo"}
+              galleryHref={galleryHref}
+              photoHref={(i) =>
+                listingPhotosHref(
+                  l.mlsId,
+                  street || addressHint,
+                  townHint || l.address.city,
+                  i,
+                )
+              }
+              hideHero={isComingSoon}
+              activePhotoIndex={activePhotoIndex}
+              onPhotoSelect={setActivePhotoIndex}
+              showHero={false}
+            />
+            <ListingMobileScrollSections
+              mlsId={l.mlsId}
+              addressHint={street || addressHint}
+              townHint={townHint || l.address.city}
+            />
+          </>
         }
         sidebar={<ListingSidebar details={details} />}
       />

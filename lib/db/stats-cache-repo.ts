@@ -68,6 +68,40 @@ export async function clearCacheByPrefix(prefix: string): Promise<number> {
   return execute('DELETE FROM stats_cache WHERE cache_key LIKE $1', [`${prefix}%`])
 }
 
+/** Total rows in stats_cache. */
+export async function countStatsCacheRows(): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    'SELECT count(*)::int AS count FROM stats_cache',
+  )
+  return row?.count ?? 0
+}
+
+/** Count stats_cache rows whose key starts with each prefix. */
+export async function countStatsCacheByPrefixes(
+  prefixes: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  const unique = [...new Set(prefixes.map((p) => p.trim()).filter(Boolean))]
+  if (unique.length === 0) return out
+
+  // One query with FILTER clauses keeps round-trips low for the Admin inventory.
+  const selects = unique
+    .map(
+      (_, i) =>
+        `count(*) FILTER (WHERE cache_key LIKE $${i + 1})::int AS c${i}`,
+    )
+    .join(', ')
+  const params = unique.map((p) => `${p}%`)
+  const row = await queryOne<Record<string, number>>(
+    `SELECT ${selects} FROM stats_cache`,
+    params,
+  )
+  unique.forEach((prefix, i) => {
+    out.set(prefix, row?.[`c${i}`] ?? 0)
+  })
+  return out
+}
+
 /** Bulk read helper — several rows by key in one round trip. */
 export async function readStatsCacheRows(
   keys: readonly string[],

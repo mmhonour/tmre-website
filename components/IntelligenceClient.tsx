@@ -12,6 +12,7 @@ import ZipBoundaryPopover, {
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import AllTownsDescriptor from "@/components/AllTownsDescriptor";
 import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
+import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
 import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
 import type { VintageBucketId } from "@/lib/vintage-buckets";
@@ -1349,6 +1350,8 @@ export default function IntelligenceClient() {
     FILTERS_EXPANDED_VALUES,
   );
   const filtersExpanded = filtersExpandedPref === "true";
+  /** Phone: left slide-over for town Stats (desktop keeps the sidebar). */
+  const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [townLinksExpanded, setTownLinksExpanded] = useState(false);
   const [zipLinksExpanded, setZipLinksExpanded] = useState(false);
   const setFiltersExpanded = (expanded: boolean) =>
@@ -2627,6 +2630,70 @@ export default function IntelligenceClient() {
     />
   ) : null;
 
+  const closeTownStats = () => setTownStatsOpen(false);
+
+  const townStatsPanels = (
+    <>
+      {liveSnapshots.map((snap) => {
+        const panelKey = snapshotPanelKey(snap);
+        const collapsible = active === "All";
+        const expanded =
+          !collapsible || expandedSnapshotKeys.has(panelKey);
+        return (
+          <TownSnapshotPanel
+            key={panelKey}
+            snapshot={snap}
+            tx={tx}
+            expanded={expanded}
+            collapsible={collapsible}
+            onToggleExpanded={() => toggleSnapshotExpanded(panelKey)}
+            onListingsClick={(town, zipFilter) => {
+              closeTownStats();
+              selectTownListings(town, "all", zipFilter);
+            }}
+            onSnapshotAction={(town, action, zipFilter) =>
+              intelligenceListingsHref({
+                city: town,
+                status: action,
+                zip: zipFilter,
+                tx,
+                cls,
+                saleProperty,
+              })
+            }
+            onMedianHref={(s) =>
+              s.metrics.some((m) => m.label === "Median price" && m.linkMedian)
+                ? statsMedianListingsHref({
+                    city: s.town,
+                    kind: tx === "rental" ? "rental" : "sale",
+                    pool: "active",
+                    zip: s.zip,
+                    tx,
+                    cls,
+                    saleProperty,
+                  })
+                : null
+            }
+          />
+        );
+      })}
+      {showVintageStats ? (
+        <IntelligenceVintageStats
+          title={vintageStatsTitle}
+          listings={vintageListingRows}
+          tx={tx}
+          collapsible
+          expandedKeys={expandedSnapshotKeys}
+          onToggleExpanded={toggleSnapshotExpanded}
+          onVintageListingsClick={(bucketId) => {
+            closeTownStats();
+            selectVintageListings(bucketId);
+          }}
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <>
       <section
@@ -2690,11 +2757,6 @@ export default function IntelligenceClient() {
                       { value: "residential", label: "Residential" },
                       { value: "commercial", label: "Commercial" },
                     ]}
-                  />
-                  <IntelFiltersToggle
-                    expanded={filtersExpanded}
-                    filtersActive={slidersCustomized}
-                    onToggle={() => setFiltersExpanded(!filtersExpanded)}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
@@ -2760,7 +2822,7 @@ export default function IntelligenceClient() {
                             }, 120);
                           }}
                           counts={townCounts}
-                          allLabel="All"
+                          allLabel="All Towns"
                           appearance="zip"
                           layout="promoted"
                           townLinksExpanded={townLinksExpanded}
@@ -2866,6 +2928,11 @@ export default function IntelligenceClient() {
                         { value: "new", label: "New construction" },
                       ]}
                     />
+                    <IntelFiltersToggle
+                      expanded={filtersExpanded}
+                      filtersActive={slidersCustomized}
+                      onToggle={() => setFiltersExpanded(!filtersExpanded)}
+                    />
                   </div>
                 </div>
               </div>
@@ -2906,6 +2973,16 @@ export default function IntelligenceClient() {
                     />
                   </p>
                 )
+              ) : null}
+              {showSliderFooter && sliderDescriptorFooterLabels ? (
+                <p
+                  className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide ${
+                    filtersExpanded ? "mt-1.5" : "mt-1"
+                  }`}
+                  data-intel-slider-context-blurb
+                >
+                  {sliderDescriptorFooterLabels}
+                </p>
               ) : null}
               <IntelFilterControlsRow
                 filtersExpanded={filtersExpanded}
@@ -2963,16 +3040,6 @@ export default function IntelligenceClient() {
                 onResetSliders={resetSliders}
                 slidersCustomized={slidersCustomized}
               />
-              {showSliderFooter && sliderDescriptorFooterLabels ? (
-                <p
-                  className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide ${
-                    filtersExpanded ? "mt-1.5" : "mt-1"
-                  }`}
-                  data-intel-slider-context-blurb
-                >
-                  {sliderDescriptorFooterLabels}
-                </p>
-              ) : null}
               {showSliderFooter ? (
                 active === "All" ? (
                   <AllTownsDescriptor
@@ -3044,32 +3111,53 @@ export default function IntelligenceClient() {
                 Intelligent Deals
               </p>
             </div>
-            <div className="flex items-center gap-2 font-mono text-xs shrink-0">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  state === "ready" && sqliteRefresh.refreshing
-                    ? "bg-gold animate-pulse-dot"
-                    : state === "ready"
-                    ? "bg-sage animate-pulse-dot"
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <div className="flex items-center gap-2 font-mono text-xs">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    state === "ready" && sqliteRefresh.refreshing
+                      ? "bg-gold animate-pulse-dot"
+                      : state === "ready"
+                      ? "bg-sage animate-pulse-dot"
+                      : state === "fallback"
+                      ? "bg-coral"
+                      : "bg-gold animate-pulse-dot"
+                  }`}
+                />
+                <span className="text-slate">
+                  {state === "ready"
+                    ? sqliteRefresh.refreshing
+                      ? "Live Refreshing"
+                      : (() => {
+                          const syncedAt = formatSqliteRefreshTime(
+                            sqliteRefresh.lastFinishedAt,
+                          );
+                          return syncedAt ? `Live · synced ${syncedAt}` : "Live";
+                        })()
                     : state === "fallback"
-                    ? "bg-coral"
-                    : "bg-gold animate-pulse-dot"
-                }`}
-              />
-              <span className="text-slate">
-                {state === "ready"
-                  ? sqliteRefresh.refreshing
-                    ? "Live Refreshing"
-                    : (() => {
-                        const syncedAt = formatSqliteRefreshTime(
-                          sqliteRefresh.lastFinishedAt,
-                        );
-                        return syncedAt ? `Live · synced ${syncedAt}` : "Live";
-                      })()
-                  : state === "fallback"
-                  ? "Cached · feed offline"
-                  : "Loading…"}
-              </span>
+                    ? "Cached · feed offline"
+                    : "Loading…"}
+                </span>
+              </div>
+              {(liveSnapshots.length > 0 || showVintageStats) ? (
+                <button
+                  type="button"
+                  className="lg:hidden inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                  onClick={() => setTownStatsOpen(true)}
+                  aria-expanded={townStatsOpen}
+                  aria-controls="intel-town-stats-drawer"
+                >
+                  <svg
+                    viewBox="0 0 12 12"
+                    className="h-2.5 w-2.5 shrink-0"
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                  </svg>
+                  Town stats
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -3210,76 +3298,33 @@ export default function IntelligenceClient() {
             </div>{/* end deal board */}
 
             <aside
-              className={`mt-8 lg:mt-0 lg:shrink-0 ${
+              className={`hidden lg:block mt-8 lg:mt-0 lg:shrink-0 ${
                 anySnapshotExpanded ? "space-y-4" : "space-y-2"
               }`}
             >
-              {liveSnapshots.length > 0 && (
+              {liveSnapshots.length > 0 ? (
                 <div className="pb-1 shrink-0">
                   <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
                     Stats
                   </p>
                 </div>
-              )}
-              <div id="intel-stats-panel" className={anySnapshotExpanded ? "space-y-4" : "space-y-2"}>
-                {liveSnapshots.map((snap) => {
-                  const panelKey = snapshotPanelKey(snap);
-                  const collapsible = active === "All";
-                  const expanded =
-                    !collapsible || expandedSnapshotKeys.has(panelKey);
-                  return (
-                    <TownSnapshotPanel
-                      key={panelKey}
-                      snapshot={snap}
-                      tx={tx}
-                      expanded={expanded}
-                      collapsible={collapsible}
-                      onToggleExpanded={() => toggleSnapshotExpanded(panelKey)}
-                      onListingsClick={(town, zipFilter) =>
-                        selectTownListings(town, "all", zipFilter)
-                      }
-                      onSnapshotAction={(town, action, zipFilter) =>
-                        intelligenceListingsHref({
-                          city: town,
-                          status: action,
-                          zip: zipFilter,
-                          tx,
-                          cls,
-                          saleProperty,
-                        })
-                      }
-                      onMedianHref={(snap) =>
-                        snap.metrics.some((m) => m.label === "Median price" && m.linkMedian)
-                          ? statsMedianListingsHref({
-                              city: snap.town,
-                              kind: tx === "rental" ? "rental" : "sale",
-                              pool: "active",
-                              zip: snap.zip,
-                              tx,
-                              cls,
-                              saleProperty,
-                            })
-                          : null
-                      }
-                    />
-                  );
-                })}
-                {showVintageStats ? (
-                  <IntelligenceVintageStats
-                    title={vintageStatsTitle}
-                    listings={vintageListingRows}
-                    tx={tx}
-                    collapsible
-                    expandedKeys={expandedSnapshotKeys}
-                    onToggleExpanded={toggleSnapshotExpanded}
-                    onVintageListingsClick={selectVintageListings}
-                  />
-                ) : null}
+              ) : null}
+              <div
+                id="intel-stats-panel"
+                className={anySnapshotExpanded ? "space-y-4" : "space-y-2"}
+              >
+                {townStatsPanels}
               </div>
             </aside>
           </div>{/* end grid */}
         </div>
       </section>
+
+      <IntelTownStatsDrawer open={townStatsOpen} onClose={closeTownStats}>
+        <div id="intel-town-stats-drawer" className="space-y-3">
+          {townStatsPanels}
+        </div>
+      </IntelTownStatsDrawer>
       {scoreBreakdownListing?.scoreBreakdown ? (
         <ListingScoreBreakdownModal
           open
@@ -3923,7 +3968,7 @@ function IntelFilterControlsRow({
           disabled={!slidersCustomized}
           aria-label="Reset sliders"
           title="Reset sliders"
-          className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full text-white/55 transition-colors hover:text-gold hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none"
+          className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full text-white transition-opacity hover:opacity-80 disabled:opacity-30 disabled:pointer-events-none"
         >
           <svg
             viewBox="0 0 24 24"

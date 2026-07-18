@@ -28,7 +28,7 @@ export function isRentalListing(listing: {
 
 export function filterListingsByKind<
   T extends { propertyType: string; raw?: Record<string, string> },
->(listings: T[], kind: ListingKind): T[] {
+>(listings: readonly T[], kind: ListingKind): T[] {
   return listings.filter((l) =>
     kind === 'rental' ? isRentalListing(l) : !isRentalListing(l),
   )

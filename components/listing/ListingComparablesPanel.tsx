@@ -749,6 +749,20 @@ export default function ListingComparablesPanel({
 
   const showSoldColumn = sold.length > 0 || showDualColumnsOnPage;
   const showActiveColumn = active.length > 0 || showDualColumnsOnPage;
+  /** Both panels present — jump links only while stacked (below sm on page, md otherwise). */
+  const showStackedPanelJumpLinks = showSoldColumn && showActiveColumn && showCompsGrid;
+  const soldPanelId = `comparables-sold-${kind}`;
+  const onMarketPanelId = `comparables-on-market-${kind}`;
+  const stackedJumpLinkClass = isModal
+    ? "font-mono text-[11px] tracking-[0.1em] uppercase text-navy underline decoration-navy/30 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors"
+    : "font-mono text-[11px] tracking-[0.1em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:text-white hover:decoration-white/50 transition-colors";
+  const stackedJumpNavClass = showDualColumnsOnPage
+    ? "flex flex-wrap items-center gap-x-4 gap-y-1 sm:hidden"
+    : "flex flex-wrap items-center gap-x-4 gap-y-1 md:hidden";
+  const closedJumpLabel = isRental ? "Rented" : "Sold";
+  const criteriaLabelClass = isModal
+    ? "text-slate"
+    : "text-white/40";
 
   const onMarketEmptyLabel = isRental
     ? "No on-market rentals found yet."
@@ -836,9 +850,24 @@ export default function ListingComparablesPanel({
               : "font-mono text-[10px] tracking-[0.12em] uppercase text-white/40"
           }
         >
+          <span className={criteriaLabelClass}>Criteria </span>
           <MatchingCriteriaSummary criteria={criteria} isModal={isModal} />
         </p>
       )}
+
+      {showStackedPanelJumpLinks ? (
+        <nav
+          className={stackedJumpNavClass}
+          aria-label="Comparables panels"
+        >
+          <a href={`#${soldPanelId}`} className={stackedJumpLinkClass}>
+            {closedJumpLabel}({sortedSold.length})
+          </a>
+          <a href={`#${onMarketPanelId}`} className={stackedJumpLinkClass}>
+            Available Now({sortedActive.length})
+          </a>
+        </nav>
+      ) : null}
 
       {loadError && (isPage || isModal) && (
         <div
@@ -902,12 +931,13 @@ export default function ListingComparablesPanel({
         <div className={compsGridClass}>
       {showSoldColumn && (
         <div
+          id={soldPanelId}
           className={
             isPage
-              ? "min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
               : isModal
-                ? "min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
-                : "min-w-0"
+                ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
+                : "scroll-mt-24 min-w-0"
           }
         >
           <div className="relative mb-3 pr-[4.5rem]">
@@ -999,12 +1029,13 @@ export default function ListingComparablesPanel({
 
       {showActiveColumn && (
         <div
+          id={onMarketPanelId}
           className={
             isPage
-              ? "min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
               : isModal
-                ? "min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
-                : "min-w-0"
+                ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
+                : "scroll-mt-24 min-w-0"
           }
         >
           <div className="relative mb-3 pr-[4.5rem]">

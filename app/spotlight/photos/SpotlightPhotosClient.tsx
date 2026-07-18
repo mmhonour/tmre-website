@@ -8,8 +8,9 @@ import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { listingPhotoProxyUrlsFromCount } from "@/lib/listing-url";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function initialPhotoIndex(param: string | null, photoCount: number): number {
   if (photoCount <= 0) return 0;
@@ -37,11 +38,28 @@ export default function SpotlightPhotosClient() {
   const searchParams = useSearchParams();
   const photoParam = searchParams.get("photo");
 
+  const galleryPhotos = useMemo(() => {
+    if (photos.length > 0) return photos;
+    return listingPhotoProxyUrlsFromCount(
+      display.mlsId,
+      display.photoCount ?? 0,
+    );
+  }, [photos, display.mlsId, display.photoCount]);
+
   useEffect(() => {
-    if (photos.length > 0) {
-      setActivePhoto(initialPhotoIndex(photoParam, photos.length));
+    if (galleryPhotos.length > 0) {
+      setActivePhoto(initialPhotoIndex(photoParam, galleryPhotos.length));
     }
-  }, [photoParam, photos.length]);
+  }, [photoParam, galleryPhotos.length]);
+
+  useEffect(() => {
+    if (loadState === "error" || !display.mlsId) return;
+    void fetch(`/api/listings/${encodeURIComponent(display.mlsId)}/warm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ gallery: true }),
+    }).catch(() => undefined);
+  }, [display.mlsId, loadState]);
 
   if (loadState === "error") {
     return (
@@ -74,9 +92,9 @@ export default function SpotlightPhotosClient() {
         title="Couldn't load photos"
         body="Try again in a moment."
       />
-    ) : photos.length > 0 ? (
+    ) : galleryPhotos.length > 0 ? (
       <PhotoGallery
-        photos={photos}
+        photos={galleryPhotos}
         active={activePhoto}
         setActive={setActivePhoto}
         address={presentation.headerAddress.street}

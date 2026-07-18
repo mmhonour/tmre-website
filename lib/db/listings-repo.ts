@@ -500,6 +500,66 @@ export async function readRecentSyncFailures(limit = 5): Promise<SyncRunFailure[
   return rows.filter((row) => row.town && row.error)
 }
 
+/** One durable MLS town/bucket sync audit row from `sync_runs`. */
+export type AdminSyncRunHistoryRow = {
+  id: number
+  startedAt: string
+  finishedAt: string | null
+  town: string | null
+  statusBucket: string | null
+  listingsCount: number
+  ok: boolean
+  error: string | null
+}
+
+export type AdminSyncRunHistoryResult = {
+  runs: AdminSyncRunHistoryRow[]
+  total: number
+  limit: number
+  offset: number
+}
+
+/**
+ * Paginated history of every MLS town/bucket sync written to `sync_runs`
+ * (full + incremental, admin and cron). Newest first.
+ */
+export async function readAdminSyncRunHistory(options?: {
+  limit?: number
+  offset?: number
+  /** When set, only successful (`true`) or failed (`false`) rows. */
+  ok?: boolean | null
+}): Promise<AdminSyncRunHistoryResult> {
+  const limit = Math.min(200, Math.max(1, options?.limit ?? 50))
+  const offset = Math.max(0, options?.offset ?? 0)
+  const okFilter = options?.ok
+
+  const where =
+    okFilter === true ? 'WHERE ok = true' : okFilter === false ? 'WHERE ok = false' : ''
+
+  const countRow = await queryOne<{ n: number }>(
+    `SELECT count(*)::int AS n FROM sync_runs ${where}`,
+  )
+  const total = countRow?.n ?? 0
+
+  const runs = await query<AdminSyncRunHistoryRow>(
+    `SELECT id,
+            started_at::text          AS "startedAt",
+            finished_at::text         AS "finishedAt",
+            town,
+            status_bucket             AS "statusBucket",
+            listings_count::int       AS "listingsCount",
+            ok,
+            error
+       FROM sync_runs
+       ${where}
+      ORDER BY started_at DESC, id DESC
+      LIMIT $1 OFFSET $2`,
+    [limit, offset],
+  )
+
+  return { runs, total, limit, offset }
+}
+
 /** Total listings row count. */
 export async function countListings(): Promise<number> {
   const row = await queryOne<{ n: number }>('SELECT count(*)::int AS n FROM listings')

@@ -20,6 +20,10 @@ import type { Listing } from '@/lib/rets'
 /** Hero + thumbnail-deck photo indices to pre-load into the photo store. */
 const HERO_DECK_MAX_INDEX = 5
 
+/** Full Photos-tab warm — enough for a gallery without saturating RETS. */
+const GALLERY_MAX_INDEX = 39
+const GALLERY_WARM_CONCURRENCY = 3
+
 /** Cap associated (comps / UAG) thumb warms per subject visit. */
 const ASSOCIATED_THUMB_CAP = 24
 const ASSOCIATED_THUMB_CONCURRENCY = 3
@@ -34,21 +38,48 @@ async function warmComparables(subject: Listing): Promise<void> {
   await persistComparableEdgesForListing(subject)
 }
 
-async function warmListingPhotos(listing: Listing): Promise<void> {
+async function warmListingPhotos(
+  listing: Listing,
+  options?: { gallery?: boolean },
+): Promise<void> {
   const cacheId = listingPhotoCacheId(listing)
   const photoCount = listing.photoCount ?? 0
   if (!cacheId || photoCount <= 0) return
   const listingKey = listing.listingKey?.trim() || listing.mlsId
-  const lastIndex = Math.min(Math.max(photoCount - 1, 0), HERO_DECK_MAX_INDEX)
-  await Promise.all(
-    Array.from({ length: lastIndex + 1 }, (_, photoIndex) =>
-      resolveListingPhotoBuffer({
+  const maxIndex = options?.gallery ? GALLERY_MAX_INDEX : HERO_DECK_MAX_INDEX
+  const lastIndex = Math.min(Math.max(photoCount - 1, 0), maxIndex)
+
+  if (!options?.gallery) {
+    await Promise.all(
+      Array.from({ length: lastIndex + 1 }, (_, photoIndex) =>
+        resolveListingPhotoBuffer({
+          mlsId: cacheId,
+          listingKey,
+          photoIndex,
+          photoCountHint: photoCount,
+        }).catch(() => null),
+      ),
+    )
+    return
+  }
+
+  // Photos tab: pull a wider set with bounded concurrency so cold galleries
+  // populate without opening dozens of RETS sockets at once.
+  let cursor = 0
+  async function worker(): Promise<void> {
+    while (cursor <= lastIndex) {
+      const photoIndex = cursor
+      cursor += 1
+      await resolveListingPhotoBuffer({
         mlsId: cacheId,
         listingKey,
         photoIndex,
         photoCountHint: photoCount,
-      }).catch(() => null),
-    ),
+      }).catch(() => null)
+    }
+  }
+  await Promise.all(
+    Array.from({ length: GALLERY_WARM_CONCURRENCY }, () => worker()),
   )
 }
 
@@ -151,6 +182,7 @@ export type WarmListingTabsResult = {
  */
 export async function warmListingTabData(
   mlsId: string,
+  options?: { gallery?: boolean },
 ): Promise<WarmListingTabsResult> {
   const result: WarmListingTabsResult = {
     found: false,
@@ -174,6 +206,7 @@ export async function warmListingTabData(
   result.found = true
 
   const subject = listing
+  const gallery = Boolean(options?.gallery)
   const [comps, ifEstimate, uag, photos] = await Promise.allSettled([
     // Sale + rental comparables → listing_relations (skips if already cached)
     warmComparables(subject),
@@ -181,8 +214,8 @@ export async function warmListingTabData(
     resolveListingIfPayload(subject),
     // Under-agreement comps → stats_cache (on-demand RETS, TTL cache-first)
     resolveUagForSubject(subject),
-    // Hero + deck photos → photo store (cache-first)
-    warmListingPhotos(subject),
+    // Hero/deck (default) or wider Photos-tab gallery → photo store
+    warmListingPhotos(subject, { gallery }),
   ])
 
   result.comparables = comps.status === 'fulfilled'
