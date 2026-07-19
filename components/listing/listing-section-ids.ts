@@ -5,6 +5,7 @@ export type ListingScrollSectionTab =
   | "if"
   | "comparables"
   | "comparable-rentals"
+  | "on-the-market"
   | "uag";
 
 /** In-page section anchors used by mobile continuous scroll on Overview. */
@@ -14,8 +15,15 @@ export const LISTING_SECTION_IDS: Record<ListingScrollSectionTab, string> = {
   if: "listing-sec-if",
   comparables: "listing-sec-sales",
   "comparable-rentals": "listing-sec-rentals",
+  "on-the-market": "listing-sec-on-the-market",
   uag: "listing-sec-uag",
 };
+
+/** Panel anchors inside Sold / Rented comps (used by On The Market mobile jumps). */
+export const LISTING_ON_MARKET_PANEL_IDS = {
+  sale: "comparables-on-market-sale",
+  rental: "comparables-on-market-rental",
+} as const;
 
 export function listingSectionIdForTab(
   tab: ListingScrollSectionTab | "photos",

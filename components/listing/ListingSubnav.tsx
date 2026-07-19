@@ -23,6 +23,7 @@ export type ListingTab =
   | "history"
   | "comparables"
   | "comparable-rentals"
+  | "on-the-market"
   | "uag"
   | "if";
 
@@ -36,8 +37,12 @@ type TabDef = { id: ListingTab; label: string; href: string };
 
 /** Always on the first row. */
 const TOP_ROW_IDS: ListingTab[] = ["overview", "history", "if", "photos"];
-/** Second row — Sales / Rentals. */
-const COMPS_ROW_IDS: ListingTab[] = ["comparables", "comparable-rentals"];
+/** Second row — Sold / Rented / On The Market. */
+const COMPS_ROW_IDS: ListingTab[] = [
+  "comparables",
+  "comparable-rentals",
+  "on-the-market",
+];
 /** Third row — Under Agreement (always its own line when stacked). */
 const UAG_ROW_IDS: ListingTab[] = ["uag"];
 
@@ -47,6 +52,7 @@ const HASH_JUMP_TABS = new Set<ListingTab>([
   "if",
   "comparables",
   "comparable-rentals",
+  "on-the-market",
   "uag",
 ]);
 
@@ -140,6 +146,11 @@ export default function ListingSubnav({
       id: "comparable-rentals",
       label: "Rented",
       href: sectionHref("comparable-rentals"),
+    },
+    {
+      id: "on-the-market",
+      label: "On The Market",
+      href: sectionHref("on-the-market"),
     },
     { id: "uag", label: "Under Agreement", href: sectionHref("uag") },
     { id: "history", label: "History", href: sectionHref("history") },
@@ -306,48 +317,36 @@ export default function ListingSubnav({
     );
   };
 
-  /** Non-link muted chrome around the Sold / Rented tabs. */
-  const compsMutedLabel = (
-    key: string,
-    text: string,
-    keyPrefix = "",
-    /** Match Overview / Under Agreement tab left inset on the stacked comps row. */
-    alignStart = false,
-  ) => (
+  /** Non-link pipe between Sold / Rented / On The Market. */
+  const compsMutedPipe = (key: string, keyPrefix = "") => (
     <span
       key={`${keyPrefix}${key}`}
-      className={`shrink-0 whitespace-nowrap font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 border-b-2 border-transparent -mb-px pointer-events-none select-none ${
-        alignStart ? "pl-2.5 sm:pl-3.5 pr-1" : "px-1"
-      } ${compact ? "py-1" : "py-2"}`}
+      className={`shrink-0 whitespace-nowrap font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 border-b-2 border-transparent -mb-px pointer-events-none select-none px-1 ${
+        compact ? "py-1" : "py-2"
+      }`}
       aria-hidden
     >
-      {text}
+      |
     </span>
   );
 
-  /**
-   * Desktop (inline) and mobile (stacked comps row) share the same chrome:
-   * [ Sold | Rented + On The Market ]
-   * Brackets, pipe, and “+ On The Market” are never links.
-   */
-  const renderCompsTabs = (
-    keyPrefix = "",
-    opts: { alignStart?: boolean } = {},
-  ) => {
-    const { alignStart = false } = opts;
-    const sold = compsTabs.find((tab) => tab.id === "comparables");
-    const rented = compsTabs.find((tab) => tab.id === "comparable-rentals");
-    if (!sold && !rented) return null;
+  /** Sold | Rented | On The Market — all three are real tabs. */
+  const renderCompsTabs = (keyPrefix = "") => {
+    const items = compsTabs.filter(
+      (tab) =>
+        tab.id === "comparables" ||
+        tab.id === "comparable-rentals" ||
+        tab.id === "on-the-market",
+    );
+    if (items.length === 0) return null;
     return (
       <>
-        {compsMutedLabel("cluster-open", "[", keyPrefix, alignStart)}
-        {sold ? renderTabLink(sold, keyPrefix) : null}
-        {sold && rented
-          ? compsMutedLabel("cluster-pipe", "|", keyPrefix)
-          : null}
-        {rented ? renderTabLink(rented, keyPrefix) : null}
-        {compsMutedLabel("cluster-on-market", "+ On The Market", keyPrefix)}
-        {compsMutedLabel("cluster-close", "]", keyPrefix)}
+        {items.map((tab, index) => (
+          <span key={`${keyPrefix}${tab.id}-wrap`} className="contents">
+            {index > 0 ? compsMutedPipe(`pipe-${index}`, keyPrefix) : null}
+            {renderTabLink(tab, keyPrefix)}
+          </span>
+        ))}
       </>
     );
   };
@@ -377,7 +376,7 @@ export default function ListingSubnav({
             className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
             aria-label="Sold and rented"
           >
-            {renderCompsTabs("", { alignStart: true })}
+            {renderCompsTabs("")}
           </nav>
           {uagTabs.length > 0 ? (
             <nav

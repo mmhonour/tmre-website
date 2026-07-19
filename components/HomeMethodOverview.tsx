@@ -3,11 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { dealOfTheDayHref } from "@/lib/listing-url";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 type ScoreSample = {
   town: TmreTown;
   score: number;
+  mlsId: string;
+  listingKey?: string | null;
 };
 
 type SurfaceMock = {
@@ -73,12 +76,6 @@ const SURFACES: SurfaceMock[] = [
   },
 ];
 
-function scoreTone(score: number): string {
-  if (score >= 85) return "text-sage";
-  if (score >= 70) return "text-gold";
-  return "text-white/85";
-}
-
 /**
  * Homepage primer: educate on the Goldilocks score, preview site surfaces,
  * and hand off to this week’s Deal of the Week — atmosphere from that listing.
@@ -107,25 +104,35 @@ export default function HomeMethodOverview() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/intelligence/deal-board", { cache: "no-store" })
+    fetch("/api/deal-of-the-day?bundle=1&kind=sale", { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as {
-          towns?: Record<string, { score?: number; isRental?: boolean }[]>;
+          deals?: Partial<
+            Record<
+              TmreTown,
+              {
+                score?: { composite?: number };
+                listing?: { mlsId?: string; listingKey?: string | null };
+              }
+            >
+          >;
         };
       })
       .then((payload) => {
         if (cancelled) return;
         const next: ScoreSample[] = [];
         for (const town of TMRE_TOWNS) {
-          const rows = payload.towns?.[town] ?? [];
-          let best = 0;
-          for (const row of rows) {
-            if (row.isRental) continue;
-            const s = row.score;
-            if (typeof s === "number" && s > best) best = s;
-          }
-          if (best > 0) next.push({ town, score: best });
+          const deal = payload.deals?.[town];
+          const score = deal?.score?.composite;
+          const mlsId = deal?.listing?.mlsId?.trim();
+          if (typeof score !== "number" || !mlsId) continue;
+          next.push({
+            town,
+            score,
+            mlsId,
+            listingKey: deal?.listing?.listingKey ?? null,
+          });
         }
         if (next.length > 0) setSamples(next);
       })
@@ -220,26 +227,45 @@ export default function HomeMethodOverview() {
             </div>
           </div>
 
-          {/* Live score — predominant */}
+          {/* Deal of the Day score — same serif as “This week's ##.” */}
           <div className="lg:col-span-6 flex flex-col items-start lg:items-end animate-fade-up-delay-1">
             <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/90 mb-2">
-              Live sample · rotating towns
+              Deal of the Day · rotating towns
             </p>
             <div className="relative w-full max-w-md lg:max-w-none lg:text-right">
-              <p
-                key={live ? `${live.town}-${live.score}` : "idle"}
-                className={`font-mono font-medium tabular-nums leading-none tracking-tight home-score-swap ${
-                  live ? scoreTone(live.score) : "text-white/40"
-                } text-[5.5rem] sm:text-[7rem] lg:text-[8.5rem]`}
-              >
-                {live ? live.score.toFixed(1) : "—.—"}
-              </p>
-              <p className="mt-2 font-serif italic text-2xl sm:text-3xl text-white/90">
-                {live ? live.town : "Scanning markets…"}
-              </p>
+              {live ? (
+                <Link
+                  href={dealOfTheDayHref(live.town, {
+                    mlsId: live.mlsId,
+                    listingKey: live.listingKey,
+                    kind: "sale",
+                  })}
+                  className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark rounded-sm"
+                  aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
+                >
+                  <p
+                    key={`${live.town}-${live.score}-${live.mlsId}`}
+                    className="font-serif italic gold-shimmer leading-[1.05] tracking-tight home-score-swap text-[5.5rem] sm:text-[7rem] lg:text-[8.5rem] transition-opacity group-hover:opacity-90"
+                  >
+                    {live.score.toFixed(1)}.
+                  </p>
+                  <p className="mt-2 font-serif italic text-2xl sm:text-3xl text-white/90 group-hover:text-gold transition-colors">
+                    {live.town}
+                  </p>
+                </Link>
+              ) : (
+                <>
+                  <p className="font-serif italic text-white/40 leading-[1.05] tracking-tight text-[5.5rem] sm:text-[7rem] lg:text-[8.5rem]">
+                    —.—
+                  </p>
+                  <p className="mt-2 font-serif italic text-2xl sm:text-3xl text-white/90">
+                    Scanning markets…
+                  </p>
+                </>
+              )}
               <p className="mt-3 text-xs text-white/45 max-w-sm lg:ml-auto leading-relaxed">
-                Top active composite in each town — refreshing as inventory
-                moves. Not a national average. Not a Zestimate.
+                Today&apos;s pick in each town — tap the score to open that deal.
+                Same yardstick as Deal of the Week.
               </p>
             </div>
           </div>

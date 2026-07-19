@@ -555,11 +555,17 @@ function LookbackSpinner({
   );
 }
 
+type ComparablesColumns = "both" | "closed" | "active";
+
 type ListingComparablesPanelProps = {
   mlsId: string;
   townHint?: string | null;
   variant?: "panel" | "page" | "modal";
   kind?: "sale" | "rental";
+  /** Which columns to render (On The Market page uses `"active"`). */
+  columns?: ComparablesColumns;
+  /** Hide page-level title/intro when embedded in a parent layout. */
+  suppressPageChrome?: boolean;
   /** Override API URL (e.g. spotlight `/api/spotlight/comparables`). */
   fetchUrl?: string;
 };
@@ -585,11 +591,58 @@ export function ListingComparablesPageContent({
   );
 }
 
+/** Desktop On The Market tab — For Sale + For Rent actives side by side. */
+export function ListingOnTheMarketPageContent({
+  mlsId,
+  townHint,
+  saleFetchUrl,
+  rentalFetchUrl,
+}: {
+  mlsId: string;
+  townHint?: string | null;
+  saleFetchUrl?: string;
+  rentalFetchUrl?: string;
+}) {
+  return (
+    <div className="w-full min-w-0 space-y-6">
+      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
+        On The Market
+      </p>
+      <p className="text-white/50 text-sm">
+        Active for-sale and for-rent comps matching this property&apos;s zip,
+        beds, baths, vintage, and lot size.
+      </p>
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 items-start">
+        <ListingComparablesPanel
+          mlsId={mlsId}
+          townHint={townHint}
+          variant="page"
+          kind="sale"
+          columns="active"
+          suppressPageChrome
+          fetchUrl={saleFetchUrl}
+        />
+        <ListingComparablesPanel
+          mlsId={mlsId}
+          townHint={townHint}
+          variant="page"
+          kind="rental"
+          columns="active"
+          suppressPageChrome
+          fetchUrl={rentalFetchUrl}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ListingComparablesPanel({
   mlsId,
   townHint,
   variant = "panel",
   kind = "sale",
+  columns = "both",
+  suppressPageChrome = false,
   fetchUrl,
 }: ListingComparablesPanelProps) {
   const [data, setData] = useState<ComparablesResponse | null>(null);
@@ -843,19 +896,33 @@ export default function ListingComparablesPanel({
   const canShowMoreActive =
     activeVisibleCount < activeCap && sortedActive.length > activeVisibleCount;
 
-  const showCompsGrid = missing.length === 0 && (sold.length > 0 || active.length > 0);
-  const showDualColumnsOnPage = isPage && showCompsGrid;
+  const wantClosed = columns === "both" || columns === "closed";
+  const wantActive = columns === "both" || columns === "active";
+  const showCompsGrid =
+    missing.length === 0 &&
+    (columns === "active" || columns === "closed"
+      ? isPage || isModal || (wantClosed && sold.length > 0) || (wantActive && active.length > 0)
+      : sold.length > 0 || active.length > 0);
+  const showDualColumnsOnPage =
+    isPage && showCompsGrid && columns === "both";
 
-  const compsGridClass = showDualColumnsOnPage
-    ? "grid gap-6 grid-cols-1 sm:grid-cols-2 items-start"
-    : sold.length > 0 && active.length > 0
-      ? "grid gap-6 md:grid-cols-2 md:items-start"
-      : "space-y-6";
+  const compsGridClass =
+    columns === "active" || columns === "closed"
+      ? "space-y-6"
+      : showDualColumnsOnPage
+        ? "grid gap-6 grid-cols-1 sm:grid-cols-2 items-start"
+        : sold.length > 0 && active.length > 0
+          ? "grid gap-6 md:grid-cols-2 md:items-start"
+          : "space-y-6";
 
-  const showSoldColumn = sold.length > 0 || showDualColumnsOnPage;
-  const showActiveColumn = active.length > 0 || showDualColumnsOnPage;
+  const showSoldColumn =
+    wantClosed && (sold.length > 0 || showDualColumnsOnPage);
+  const showActiveColumn =
+    wantActive &&
+    (active.length > 0 || showDualColumnsOnPage || (isPage && columns === "active"));
   /** Both panels present — jump links only while stacked (below sm on page, md otherwise). */
-  const showStackedPanelJumpLinks = showSoldColumn && showActiveColumn && showCompsGrid;
+  const showStackedPanelJumpLinks =
+    columns === "both" && showSoldColumn && showActiveColumn && showCompsGrid;
   const soldPanelId = `comparables-sold-${kind}`;
   const onMarketPanelId = `comparables-on-market-${kind}`;
   const stackedJumpLinkClass = isModal
@@ -920,9 +987,18 @@ export default function ListingComparablesPanel({
     isModal ? "text-slate/70" : "text-white/40"
   }`;
 
+  const activeColumnTitle =
+    columns === "active"
+      ? isRental
+        ? "For Rent"
+        : "For Sale"
+      : isPage
+        ? "ON MARKET"
+        : "On market";
+
   return (
     <div className={wrapperClass}>
-      {isPage && (
+      {isPage && !suppressPageChrome && (
         <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
           {panelTitle}
         </p>
@@ -939,7 +1015,7 @@ export default function ListingComparablesPanel({
         </div>
       )}
 
-      {isPage && (
+      {isPage && !suppressPageChrome && (
         <p className="text-white/50 text-sm">{pageIntro}</p>
       )}
 
@@ -1025,7 +1101,11 @@ export default function ListingComparablesPanel({
         </div>
       )}
 
-      {missing.length === 0 && !hasContent && !loadError && (isPage || isModal) && (
+      {missing.length === 0 &&
+        !hasContent &&
+        !loadError &&
+        (isPage || isModal) &&
+        !suppressPageChrome && (
         <div
           className={
             isModal
@@ -1161,9 +1241,7 @@ export default function ListingComparablesPanel({
         >
           <div className="relative mb-3 pr-[4.5rem]">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <p className={sectionTitleClass}>
-                {isPage ? "ON MARKET" : "On market"}
-              </p>
+              <p className={sectionTitleClass}>{activeColumnTitle}</p>
               {sortedActive.length > 0 ? (
                 <CompSortLinks
                   options={[
