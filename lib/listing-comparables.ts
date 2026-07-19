@@ -65,6 +65,11 @@ export type ComparablesRankOptions = {
   soldLimit?: number
   /** Admin Pricing match tolerances (beds/baths/lot/sqft/vintage edge). */
   match?: PricingMatchingConfig
+  /**
+   * When true, accept any predefined vintage bucket (client filters the session
+   * vintage set). Used for the interactive wide pool only.
+   */
+  relaxVintage?: boolean
 }
 
 export type {
@@ -271,6 +276,7 @@ function matchesComparableCriteria(
   subject: Listing,
   criteria: ComparablesCriteria,
   match: PricingMatchingConfig,
+  options?: Pick<ComparablesRankOptions, 'relaxVintage'>,
 ): boolean {
   if (isSameListing(comp, subject)) return false
 
@@ -280,7 +286,12 @@ function matchesComparableCriteria(
   if (!bathsWithinTolerance(criteria.baths, comp.baths, match)) return false
 
   const compVintage = classifyYearBuilt(comp.yearBuilt)
-  if (
+  if (options?.relaxVintage) {
+    if (criteria.vintageBucket === 'unknown' || compVintage === 'unknown') {
+      if (criteria.vintageBucket !== compVintage) return false
+    }
+    // else: any predefined vintage is allowed in the wide pool
+  } else if (
     !vintageMatchesForComparable(
       subject.yearBuilt,
       criteria.vintageBucket,
@@ -472,7 +483,7 @@ export function findComparablesRanked(
   const active = filterPoolByMatchMode(activePool, mode)
   const pool = [...sold, ...active]
   const matches = pool.filter((l) =>
-    matchesComparableCriteria(l, subject, criteria, match),
+    matchesComparableCriteria(l, subject, criteria, match, options),
   )
 
   return {

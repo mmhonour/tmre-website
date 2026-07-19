@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ModalPortal from "@/components/ModalPortal";
+import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import { fmtMoney } from "@/lib/listing-history";
 
 type TaxYearEntry = {
@@ -63,7 +63,7 @@ export default function PropertyTaxHistoryModal({
   return (
     <ModalPortal open={open} onClose={onClose} ariaLabel="Property tax history">
       <div
-        className="relative bg-white rounded-3xl shadow-2xl shadow-navy/20 max-w-md w-full p-8 max-h-[min(85vh,calc(100vh-6rem))] overflow-y-auto"
+        className={MODAL_PANEL_CLASS}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-6">

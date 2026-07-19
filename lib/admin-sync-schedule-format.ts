@@ -7,6 +7,7 @@ export type AdminSyncPanelRowId =
   | 'stats-cache'
   | 'deal-of-the-day'
   | 'property-addresses'
+  | 'zip-boundaries'
 
 /** Format next sync time; includes weekday + date when more than 24h away. */
 export function formatAdminNextSyncAt(iso: string | null | undefined, now = new Date()): string {

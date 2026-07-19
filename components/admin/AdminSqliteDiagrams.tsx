@@ -304,8 +304,9 @@ function TableCard({
 }) {
   return (
     <div
+      id={`schema-table-${table.name}`}
       data-schema-table={table.name}
-      className="min-w-[14rem] max-w-[18rem] rounded-xl border border-charcoal/[0.12] bg-cream/30 overflow-hidden shadow-sm shadow-charcoal/[0.03]"
+      className="scroll-mt-28 min-w-[14rem] max-w-[18rem] rounded-xl border border-charcoal/[0.12] bg-cream/30 overflow-hidden shadow-sm shadow-charcoal/[0.03] target:ring-2 target:ring-navy/40 target:border-navy/30"
     >
       <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-charcoal/[0.1] bg-navy text-white">
         <p className="font-mono text-[11px] tracking-[0.12em] uppercase truncate">
@@ -524,7 +525,10 @@ function SchemaRelationshipCanvas({
 
 function DatabaseDiagramCard({ db }: { db: SqliteDatabaseDiagram }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
+    <div
+      id={db.id}
+      className="scroll-mt-28 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+    >
       <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
           <div className="min-w-0">

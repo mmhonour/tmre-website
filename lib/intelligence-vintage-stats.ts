@@ -17,6 +17,8 @@ export type VintageBucketSnapshot = {
   id: VintageBucketId;
   label: string;
   metrics: VintageSnapshotMetric[];
+  /** Mean Active Goldilocks for this vintage (from board rows and/or stats_cache). */
+  avgScore: number | null;
 };
 
 export type VintageListingRow = {
@@ -29,6 +31,8 @@ export type VintageListingRow = {
   isRental: boolean;
   isCommercial: boolean;
   yearBuilt?: number | null;
+  /** Goldilocks composite when available on the deal-board row. */
+  score?: number | null;
 };
 
 export type VintageSnapshotBenchmarks = {
@@ -232,13 +236,36 @@ export function computeVintageSnapshotBenchmarks(
   };
 }
 
+/** Mean Goldilocks by vintage from scored board rows (zip/filter-aware). */
+export function avgScoresByVintageFromListings(
+  listings: VintageListingRow[],
+): Map<VintageBucketId, number> {
+  const sums = new Map<VintageBucketId, number>();
+  const counts = new Map<VintageBucketId, number>();
+  for (const listing of listings) {
+    const score = listing.score;
+    if (score == null || !(score > 0) || !Number.isFinite(score)) continue;
+    const id = classifyYearBuilt(listing.yearBuilt);
+    sums.set(id, (sums.get(id) ?? 0) + score);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const out = new Map<VintageBucketId, number>();
+  for (const [id, count] of counts) {
+    if (count <= 0) continue;
+    out.set(id, Math.round(((sums.get(id) ?? 0) / count) * 10) / 10);
+  }
+  return out;
+}
+
 export function buildVintageBucketSnapshots(
   listings: VintageListingRow[],
+  avgScoreById?: ReadonlyMap<VintageBucketId, number | null>,
 ): VintageBucketSnapshot[] {
   if (listings.length === 0) return [];
 
   const benchmarks = computeVintageSnapshotBenchmarks(listings);
   const grouped = new Map<VintageBucketId, VintageListingRow[]>();
+  const fromListings = avgScoresByVintageFromListings(listings);
 
   for (const listing of listings) {
     const bucketId = classifyYearBuilt(listing.yearBuilt);
@@ -260,9 +287,20 @@ export function buildVintageBucketSnapshots(
         id === "unknown"
           ? "Unknown"
           : (VINTAGE_BUCKETS.find((bucket) => bucket.id === id)?.label ?? id);
+      // Prefer scores from the visible board (zip/filter-aware); fall back to
+      // town/All stats_cache payload from /api/avg-score-by-vintage.
+      const fromBoard = fromListings.get(id);
+      const cached = avgScoreById?.get(id);
+      const avgScore =
+        fromBoard != null
+          ? fromBoard
+          : cached != null && Number.isFinite(cached)
+            ? cached
+            : null;
       return {
         id,
         label,
+        avgScore,
         metrics: buildVintageMetrics(
           bucketListings,
           listings.length,
@@ -271,4 +309,34 @@ export function buildVintageBucketSnapshots(
       };
     })
     .filter((snapshot): snapshot is VintageBucketSnapshot => snapshot != null);
+}
+
+export type VintageStatsSortKey = "vintage" | "score";
+export type VintageStatsSortDir = "asc" | "desc";
+
+/** Vintage index for sort (unknown last). Higher index = newer era. */
+function vintageSortIndex(id: VintageBucketId): number {
+  if (id === "unknown") return -1;
+  const idx = VINTAGE_BUCKETS.findIndex((b) => b.id === id);
+  return idx >= 0 ? idx : -1;
+}
+
+export function sortVintageBucketSnapshots(
+  snapshots: VintageBucketSnapshot[],
+  key: VintageStatsSortKey,
+  dir: VintageStatsSortDir,
+): VintageBucketSnapshot[] {
+  const mult = dir === "asc" ? 1 : -1;
+  return [...snapshots].sort((a, b) => {
+    if (key === "score") {
+      const aScore = a.avgScore ?? -1;
+      const bScore = b.avgScore ?? -1;
+      if (aScore !== bScore) return (aScore - bScore) * mult;
+      return (vintageSortIndex(a.id) - vintageSortIndex(b.id)) * -1;
+    }
+    const aIdx = vintageSortIndex(a.id);
+    const bIdx = vintageSortIndex(b.id);
+    if (aIdx !== bIdx) return (aIdx - bIdx) * mult;
+    return (b.avgScore ?? 0) - (a.avgScore ?? 0);
+  });
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import type { BoardPreviewListing, BoardPreviewStatus } from "@/components/intelligence/board-preview/types";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
@@ -21,19 +22,22 @@ export function bedBathLabel(beds: number | null, baths: number | null): string 
   return `${b} · ${ba}`;
 }
 
-export function scoreColor(score: number): string {
-  if (score >= 85) return "text-sage";
-  if (score >= 70) return "text-gold";
-  return "text-charcoal/50";
-}
-
-export function PreviewScoreBadge({ score }: { score: number }) {
+export function PreviewScoreBadge({
+  score,
+  title = "Listing",
+  listingHref = null,
+}: {
+  score: number;
+  title?: string;
+  listingHref?: string | null;
+}) {
   return (
-    <span
-      className={`font-mono font-semibold tabular-nums text-base ${scoreColor(score)}`}
-    >
-      {score.toFixed(1)}
-    </span>
+    <ClickableGoldilocksScore
+      score={score}
+      title={title}
+      listingHref={listingHref}
+      className="text-base"
+    />
   );
 }
 

@@ -6,6 +6,7 @@ export type AdminTabId =
   | "pricing"
   | "rets"
   | "postgres"
+  | "syncs"
   | "server"
   | "docs"
   | "glossary";
@@ -63,13 +64,18 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   },
   {
     id: "postgres",
-    label: "Neon Postgres",
+    label: "Postgres",
     subtitle: "Live Postgres schema and inventory comparison",
+  },
+  {
+    id: "syncs",
+    label: "Syncs overview",
+    subtitle: "Startup schedule, Netlify crons, and Census zip-boundary sync",
   },
   {
     id: "server",
     label: "Web server",
-    subtitle: "Startup schedule, Netlify functions, and API routes",
+    subtitle: "API routes and request handlers",
   },
   {
     id: "docs",
@@ -84,6 +90,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
 ];
 
 export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
+  { id: "admin-rets-connection", label: "RETS connection", tab: "db" },
   { id: "admin-sync", label: "Sync status / Pause", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
   { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
@@ -101,6 +108,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-stats-ephemeral", label: "Ephemeral caches", tab: "stats" },
   { id: "admin-photo-health", label: "Listing photo health", tab: "site" },
   { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "site" },
+  { id: "admin-brokerage-name", label: "Brokerage name", tab: "site" },
   { id: "admin-contact-email", label: "Contact form email", tab: "site" },
   { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
   { id: "admin-spotlight", label: "Spotlight properties", tab: "site" },
@@ -108,8 +116,9 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-pricing", label: "Pricing match parameters", tab: "pricing" },
   { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
   { id: "admin-sqlite-schemas", label: "Postgres schema", tab: "postgres" },
-  { id: "admin-startup", label: "Startup schedule", tab: "server" },
-  { id: "admin-netlify", label: "Netlify functions", tab: "server" },
+  { id: "admin-startup", label: "Startup schedule", tab: "syncs" },
+  { id: "admin-netlify", label: "Netlify functions", tab: "syncs" },
+  { id: "admin-zip-boundaries", label: "Zip boundary sync", tab: "syncs" },
   { id: "admin-api-routes", label: "API routes", tab: "server" },
   { id: "admin-product-pages", label: "Product pages", tab: "docs" },
   { id: "admin-repo-docs", label: "Repository docs", tab: "docs" },
@@ -194,7 +203,8 @@ export const ADMIN_REPO_DOCS: AdminRepoDoc[] = [
 export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listings",
-    detail: "Incremental MLS → SQLite (modified-since RETS pull)",
+    detail:
+      "Incremental MLS → Postgres (modified-since RETS pull) + saved-search email alerts",
     schedule: "Every 30 min",
   },
   {
@@ -211,6 +221,12 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     label: "sync-listing-edge-scores",
     detail: "Comparable edge-score warm pass",
     schedule: "On demand / scheduled",
+  },
+  {
+    label: "sync-zip-boundaries",
+    detail:
+      "Census TIGERweb ZCTA outer rings → Postgres zip_boundaries (Intelligence / Latest maps)",
+    schedule: "Monthly 1st ~10:00 UTC",
   },
 ];
 
@@ -233,6 +249,16 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       { label: "GET /api/spotlight", detail: "Spotlight listing + score", href: "/api/spotlight" },
       { label: "GET /api/latest/listings", detail: "Latest feed rows", href: "/api/listings/latest" },
       { label: "GET /api/stats/page", detail: "Stats page bundle", href: "/api/stats/page" },
+      {
+        label: "GET /api/zip-boundaries",
+        detail: "Cached ZCTA rings from Postgres (TIGERweb monthly sync)",
+        href: "/api/zip-boundaries?zips=06880",
+      },
+      {
+        label: "POST /api/saved-searches",
+        detail: "Create visitor listing alert from cookie search profile",
+        href: "/latest#latest-alerts",
+      },
     ],
   },
   {
@@ -255,4 +281,14 @@ export function adminTabForSection(sectionId: string): AdminTabId | null {
 
 export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
   return `/admin?tab=${tab}#${sectionId}`;
+}
+
+/** Anchor id for a table card on the Admin Postgres schema diagram. */
+export function adminPostgresSchemaTableAnchor(table: string): string {
+  return `schema-table-${table}`;
+}
+
+/** Deep-link to a table on the Admin Postgres tab. */
+export function adminPostgresTableHref(table: string): string {
+  return adminSectionHref(adminPostgresSchemaTableAnchor(table), "postgres");
 }

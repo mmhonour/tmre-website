@@ -70,8 +70,9 @@ export default function AdminSyncRunLog() {
           </p>
           <p className="mt-1 text-sm text-slate max-w-2xl">
             Sync type, wall-clock timing, and per-step status from the most recent
-            Admin sync in this browser. For the durable Postgres history of all MLS
-            syncs, see Database sync history above.
+            Admin sync in this browser. Incremental runs log one line per status
+            bucket (Active / Closed / Expired) with towns glommed. For durable
+            Postgres history, see Database sync history above.
           </p>
         </div>
         <p className="font-mono text-[10px] text-charcoal/45 shrink-0">

@@ -9,6 +9,7 @@ import {
   parseIsoMs,
   statsRefreshIntervalMs,
 } from '@/lib/admin-sync-schedule'
+import { ZIP_BOUNDARIES_TTL_MS } from '@/lib/zip-boundary-cache'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
@@ -50,6 +51,7 @@ function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
     case 'stats-cache':
     case 'deal-of-the-day':
     case 'property-addresses':
+    case 'zip-boundaries':
       return job
     case 'edge-scores':
       return 'listing-scores'
@@ -68,6 +70,7 @@ const EXECUTION_ORDER: OverdueSyncJob[] = [
   'deal-of-the-day',
   'publish-snapshot',
   'property-addresses',
+  'zip-boundaries',
   'edge-scores',
 ]
 
@@ -151,6 +154,14 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
 
   if (isWeeklyMondaySyncOverdue(propertyAddressesSyncedAt, 1, 0, now) && isRetsConfigured()) {
     overdue.add('property-addresses')
+  }
+
+  const lastZipBoundaries = getSyncMeta('last_zip_boundaries_sync')
+  if (
+    lastZipBoundaries == null ||
+    isIntervalSyncOverdue(lastZipBoundaries, ZIP_BOUNDARIES_TTL_MS, now)
+  ) {
+    overdue.add('zip-boundaries')
   }
 
   if (isWeeklyMondaySyncOverdue(stats.lastListingEdgeScores, 2, 0, now)) {

@@ -50,6 +50,13 @@ type ListingHeaderProps = {
    * tabs where there is no insight copy to wrap around it).
    */
   heroAside?: boolean;
+  /**
+   * Render only a slice of the header (for mobile sticky split in HeroPanels).
+   * - full: default complete header
+   * - meta: title through Style / Bed/Bath / Sqft
+   * - heroInsight: floated hero + Insight block only
+   */
+  parts?: "full" | "meta" | "heroInsight";
 };
 
 function joinMetaSegments(segments: ReactNode[]): ReactNode {
@@ -90,6 +97,7 @@ export default function ListingHeader({
   heroAside = false,
   compact = false,
   className = "",
+  parts = "full",
 }: ListingHeaderProps & { className?: string; compact?: boolean }) {
   const hideMeta = hideMarketMeta || privacyMode;
   const [scoreOpen, setScoreOpen] = useState(false);
@@ -185,6 +193,54 @@ export default function ListingHeader({
     </>
   );
 
+  const heroInsightBlock =
+    heroSlot || insight ? (
+      <div className={compact ? "mt-2" : "mt-3"}>
+        {heroSlot ? (
+          // Float the hero (half width) so the insight starts at its
+          // top-right and wraps back to full width below the image.
+          <div className="mr-4 mb-2 w-1/2" style={{ float: "left" }}>
+            {heroSlot}
+          </div>
+        ) : null}
+        {insight ? (
+          <>
+            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-0.5">
+              Insight
+            </p>
+            <ListingInsightCopy text={insight} />
+          </>
+        ) : null}
+        <div style={{ clear: "both" }} aria-hidden />
+      </div>
+    ) : null;
+
+  const scoreModal =
+    goldilocksBreakdown && scoreOpen ? (
+      <ListingScoreBreakdownModal
+        open={scoreOpen}
+        onClose={() => setScoreOpen(false)}
+        score={goldilocksBreakdown}
+        title={scoreTitle ?? title}
+        subtitle={scoreSubtitle}
+        isRental={isRental}
+      />
+    ) : null;
+
+  if (parts === "meta") {
+    return (
+      <div className={className ? className : undefined}>
+        {titleAndMeta}
+        {scoreModal}
+      </div>
+    );
+  }
+
+  if (parts === "heroInsight") {
+    if (!heroInsightBlock) return null;
+    return <div className={className ? className : undefined}>{heroInsightBlock}</div>;
+  }
+
   return (
     <div className={className ? className : "mb-6"}>
       {heroAside && heroSlot ? (
@@ -196,12 +252,9 @@ export default function ListingHeader({
           <div className="min-w-0 flex-1">
             {titleAndMeta}
             {tabsSlot ? (
-              <div className={compact ? "mt-2" : "mt-3"}>{tabsSlot}</div>
+              <div className={compact ? "mt-1" : "mt-3"}>{tabsSlot}</div>
             ) : null}
           </div>
-          {/* Inline width avoids depending on the Tailwind `w-2/5` utility,
-              which the Turbopack dev server sometimes fails to emit (leaving
-              the hero collapsed to ~0px). */}
           <div className="shrink-0" style={{ width: "40%", maxWidth: 220 }}>
             {heroSlot}
           </div>
@@ -209,47 +262,14 @@ export default function ListingHeader({
       ) : (
         <>
           {titleAndMeta}
-          {heroSlot || insight ? (
-            <div className={compact ? "mt-2" : "mt-3"}>
-              {heroSlot ? (
-                // Float the hero (half width) so the insight starts at its
-                // top-right and wraps back to full width below the image.
-                // Inline `float` avoids depending on the Tailwind `float-left`
-                // utility (Turbopack dev sometimes fails to emit new classes).
-                <div className="mr-4 mb-3 w-1/2" style={{ float: "left" }}>
-                  {heroSlot}
-                </div>
-              ) : null}
-              {insight ? (
-                <>
-                  <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-                    Insight
-                  </p>
-                  <ListingInsightCopy text={insight} />
-                </>
-              ) : null}
-              {/* Clear the float so the subnav below never wraps beside it. */}
-              <div style={{ clear: "both" }} aria-hidden />
-            </div>
-          ) : null}
-          {/* Overview (or no hero aside): hero can't move, so tabs fall
-              directly under the meta line / hero block. */}
+          {heroInsightBlock}
           {tabsSlot ? (
-            <div className={compact ? "mt-2" : "mt-3"}>{tabsSlot}</div>
+            <div className={compact ? "mt-1" : "mt-3"}>{tabsSlot}</div>
           ) : null}
         </>
       )}
 
-      {goldilocksBreakdown && scoreOpen ? (
-        <ListingScoreBreakdownModal
-          open={scoreOpen}
-          onClose={() => setScoreOpen(false)}
-          score={goldilocksBreakdown}
-          title={scoreTitle ?? title}
-          subtitle={scoreSubtitle}
-          isRental={isRental}
-        />
-      ) : null}
+      {scoreModal}
     </div>
   );
 }

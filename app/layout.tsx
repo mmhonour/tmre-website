@@ -17,6 +17,7 @@ import {
   SITE_URL,
   realEstateAgentJsonLd,
 } from "@/lib/business-info";
+import { getBrokerageNameFresh } from "@/lib/brokerage-config";
 import { getContactPhoneFresh } from "@/lib/phone-config";
 
 const playfair = Playfair_Display({
@@ -115,6 +116,7 @@ export default async function RootLayout({
   const jar = await cookies();
   const siteUnlocked = jar.get(SITE_PASSWORD_COOKIE)?.value === "1";
   const phone = await getContactPhoneFresh();
+  const brokerageName = await getBrokerageNameFresh();
 
   return (
     <html
@@ -127,7 +129,10 @@ export default async function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(
-              realEstateAgentJsonLd({ phoneDisplay: phone.display }),
+              realEstateAgentJsonLd({
+                phoneDisplay: phone.display,
+                brokerageName,
+              }),
             ),
           }}
         />
@@ -136,9 +141,13 @@ export default async function RootLayout({
             <ListingReturnNavTracker />
           </Suspense>
           <VisitorBeacon />
-          <Navigation siteUnlocked={siteUnlocked} phone={phone} />
+          <Navigation
+            siteUnlocked={siteUnlocked}
+            phone={phone}
+            brokerageName={brokerageName}
+          />
           <main className="flex-1">{children}</main>
-          <Footer />
+          <Footer brokerageName={brokerageName} />
         </SiteUnlockProvider>
       </body>
     </html>

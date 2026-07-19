@@ -457,6 +457,23 @@ export async function runAdminSyncAction(
         detail: `${result.mlsRows.toLocaleString()} MLS rows · ${result.assessorRows.toLocaleString()} assessor rows verified`,
       }
     }
+    case 'zip-boundaries': {
+      const { syncAllTmreZipBoundaries } = await import('@/lib/zip-boundary-cache')
+      const result = await syncAllTmreZipBoundaries()
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.written,
+        message: `${result.written.toLocaleString()} zip boundaries synced`,
+        detail:
+          result.failed.length > 0
+            ? `Wrote ${result.written}; failed: ${result.failed.join(', ')}`
+            : `All TMRE town ZCTAs from Census TIGERweb → zip_boundaries`,
+      }
+    }
     default: {
       const _exhaustive: never = action
       return _exhaustive

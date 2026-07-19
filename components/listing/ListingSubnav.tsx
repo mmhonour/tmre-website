@@ -258,8 +258,8 @@ export default function ListingSubnav({
   }, [useHashJump, active, mlsId]);
 
   const tabLinkClass = (isActive: boolean) =>
-    `shrink-0 whitespace-nowrap px-3 sm:px-4 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
-      compact ? "py-2" : "py-2.5"
+    `shrink-0 whitespace-nowrap px-2.5 sm:px-3.5 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
+      compact ? "py-1" : "py-2"
     } ${
       isActive
         ? "text-gold border-gold"
@@ -306,7 +306,7 @@ export default function ListingSubnav({
     );
   };
 
-  /** Non-link muted labels around the Sold / Rented tabs. */
+  /** Non-link muted chrome around the Sold / Rented tabs. */
   const compsMutedLabel = (
     key: string,
     text: string,
@@ -316,26 +316,56 @@ export default function ListingSubnav({
   ) => (
     <span
       key={`${keyPrefix}${key}`}
-      className={`shrink-0 whitespace-nowrap font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 border-b-2 border-transparent -mb-px ${
-        alignStart ? "pl-3 sm:pl-4 pr-1" : "px-1"
-      } ${compact ? "py-2" : "py-2.5"}`}
+      className={`shrink-0 whitespace-nowrap font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 border-b-2 border-transparent -mb-px pointer-events-none select-none ${
+        alignStart ? "pl-2.5 sm:pl-3.5 pr-1" : "px-1"
+      } ${compact ? "py-1" : "py-2"}`}
       aria-hidden
     >
       {text}
     </span>
   );
 
-  const renderCompsTabs = (keyPrefix = "", alignWhatStart = false) => (
-    <>
-      {compsTabs.some((tab) => tab.id === "comparables")
-        ? compsMutedLabel("what-label", "What", keyPrefix, alignWhatStart)
-        : null}
-      {compsTabs.map((tab) => renderTabLink(tab, keyPrefix))}
-      {compsTabs.some((tab) => tab.id === "comparable-rentals")
-        ? compsMutedLabel("on-market-label", "And on market", keyPrefix)
-        : null}
-    </>
-  );
+  /**
+   * Stacked comps row: What Sold Rented And on market
+   * Single row with other tabs: [ Sold | Rented + On The Market ]
+   * Brackets, pipe, and “+ On The Market” are never links.
+   */
+  const renderCompsTabs = (
+    keyPrefix = "",
+    opts: { alignWhatStart?: boolean; inlineCluster?: boolean } = {},
+  ) => {
+    const { alignWhatStart = false, inlineCluster = false } = opts;
+    const sold = compsTabs.find((tab) => tab.id === "comparables");
+    const rented = compsTabs.find((tab) => tab.id === "comparable-rentals");
+
+    if (inlineCluster) {
+      if (!sold && !rented) return null;
+      return (
+        <>
+          {compsMutedLabel("cluster-open", "[", keyPrefix)}
+          {sold ? renderTabLink(sold, keyPrefix) : null}
+          {sold && rented
+            ? compsMutedLabel("cluster-pipe", "|", keyPrefix)
+            : null}
+          {rented ? renderTabLink(rented, keyPrefix) : null}
+          {compsMutedLabel("cluster-on-market", "+ On The Market", keyPrefix)}
+          {compsMutedLabel("cluster-close", "]", keyPrefix)}
+        </>
+      );
+    }
+
+    return (
+      <>
+        {sold
+          ? compsMutedLabel("what-label", "What", keyPrefix, alignWhatStart)
+          : null}
+        {compsTabs.map((tab) => renderTabLink(tab, keyPrefix))}
+        {rented
+          ? compsMutedLabel("on-market-label", "And on market", keyPrefix)
+          : null}
+      </>
+    );
+  };
 
   const tabsRow = (
     <div ref={viewportRef} className="relative border-b border-white/10">
@@ -346,7 +376,7 @@ export default function ListingSubnav({
         aria-hidden
       >
         {topTabs.map((tab) => renderTabLink(tab, "mf-"))}
-        {renderCompsTabs("mf-", false)}
+        {renderCompsTabs("mf-", { inlineCluster: true })}
         {uagTabs.map((tab) => renderTabLink(tab, "mf-"))}
       </div>
 
@@ -362,7 +392,7 @@ export default function ListingSubnav({
             className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
             aria-label="Sold and rented"
           >
-            {renderCompsTabs("", true)}
+            {renderCompsTabs("", { alignWhatStart: true })}
           </nav>
           {uagTabs.length > 0 ? (
             <nav
@@ -379,7 +409,7 @@ export default function ListingSubnav({
           aria-label="Listing sections"
         >
           {topTabs.map((tab) => renderTabLink(tab))}
-          {renderCompsTabs("", false)}
+          {renderCompsTabs("", { inlineCluster: true })}
           {uagTabs.map((tab) => renderTabLink(tab))}
         </nav>
       )}
@@ -393,7 +423,8 @@ export default function ListingSubnav({
       className={
         embedded
           ? compact
-            ? "mt-3 pt-3 border-t border-white/10"
+            ? // Tight gap under the insight / Style meta → first tab row.
+              "mt-0.5 pt-1 border-t border-white/10"
             : "mt-6 pt-6 border-t border-white/10"
           : `${listingRegionOutlineClass} mb-8`
       }

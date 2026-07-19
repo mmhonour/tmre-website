@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
 import { listingCacheHeaders, readListingFromDbByMlsId } from '@/lib/listings-store'
-import { readListingEdgeScoreByMlsId } from '@/lib/db/listings-repo'
+import {
+  listingRowId,
+  readListingEdgeScoreByMlsId,
+  upsertListingScores,
+} from '@/lib/db/listings-repo'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,6 +40,28 @@ export async function GET(
       scoreListingForDetailPage(listing),
       readListingEdgeScoreByMlsId(id),
     ])
+
+    // Persist so Latest / board caches stop showing 0.0 for listings that
+    // detail already knows how to score.
+    if (detailScore) {
+      const rowId = listingRowId(listing)
+      if (rowId) {
+        void upsertListingScores([
+          {
+            id: rowId,
+            score: detailScore.breakdown.composite,
+            breakdownJson: JSON.stringify(detailScore.breakdown),
+            scoredAt: new Date().toISOString(),
+          },
+        ]).catch((err) => {
+          console.warn(
+            '[/api/listings/[mlsId]] score persist failed',
+            err instanceof Error ? err.message : err,
+          )
+        })
+      }
+    }
+
     return NextResponse.json(
       {
         listing,

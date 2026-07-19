@@ -217,6 +217,22 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
       } catch (err) {
         console.warn('[listings-sync/incremental] intelligence board rebuild failed (non-fatal):', err)
       }
+
+      // Per-town market stats for towns that received upserts (no full wipe).
+      const changedTowns = towns
+        .filter((row) => row.ok && row.count > 0)
+        .map((row) => row.town)
+      if (changedTowns.length > 0) {
+        try {
+          const { rebuildStatsCacheForTowns } = await import('@/lib/stats-cache')
+          await rebuildStatsCacheForTowns(changedTowns, { trackRefresh: false })
+        } catch (err) {
+          console.warn(
+            '[listings-sync/incremental] per-town stats cache rebuild failed (non-fatal):',
+            err,
+          )
+        }
+      }
     }
 
     console.info(

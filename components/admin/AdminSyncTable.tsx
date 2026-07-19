@@ -31,7 +31,9 @@ import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import {
   formatFullResyncTownPending,
   formatFullResyncFinalizeStepPending,
+  groupTownResultsByBucket,
 } from "@/lib/admin-sync-progress";
+import { formatTownCountsGlom } from "@/lib/admin-sync-history-glom";
 
 function emptyPausedJobs(): ScheduledSyncPausedJobs {
   return emptyScheduledSyncPausedJobs();
@@ -518,6 +520,8 @@ export type PanelStatus = {
   lastRefreshStarted: string | null;
   latestListingUpdate: string | null;
   propertyAddressesSyncedAt?: string | null;
+  zipBoundariesSyncedAt?: string | null;
+  zipBoundariesSyncStartedAt?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   scheduleHints?: AdminSyncScheduleHints;
@@ -585,6 +589,15 @@ function formatElapsed(ms: number | null): string {
   return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
 }
 
+type AdminSyncTownResult = {
+  town: string;
+  statusBucket: string;
+  count: number;
+  ok: boolean;
+  error?: string;
+  durationMs?: number;
+};
+
 type AdminSyncPostBody = PanelStatus & {
   ok?: boolean;
   message?: string;
@@ -595,6 +608,7 @@ type AdminSyncPostBody = PanelStatus & {
   startedAt?: string;
   finishedAt?: string;
   finalizeStepsCompleted?: string[];
+  townResults?: AdminSyncTownResult[];
   steps?: {
     ok: boolean;
     action: AdminSyncActionId;
@@ -604,6 +618,87 @@ type AdminSyncPostBody = PanelStatus & {
     finishedAt?: string;
   }[];
 };
+
+const ADMIN_SYNC_RUN_TIMINGS_STORAGE_KEY = "admin-sync-run-timings";
+
+/** One Latest-sync-steps line per status bucket (Active / Closed / Expired). */
+function appendTownResultsByBucket(
+  appendRunLog: (entry: SyncRunLogEntry) => void,
+  options: {
+    rowId: string;
+    townResults: AdminSyncTownResult[];
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    ok: boolean;
+  },
+): void {
+  const groups = groupTownResultsByBucket(options.townResults);
+  if (groups.length === 0) return;
+  for (const group of groups) {
+    const townsLabel = formatTownCountsGlom(group.towns);
+    const errParts = group.towns
+      .filter((t) => !t.ok && t.error)
+      .map((t) => `${t.town}: ${t.error}`);
+    appendRunLog({
+      id: `${options.rowId}-${group.bucket}-${options.startedAt}`,
+      label: group.bucket,
+      startedAt: options.startedAt,
+      finishedAt: options.finishedAt,
+      durationMs: options.durationMs,
+      status: `${townsLabel} · ${group.total.toLocaleString()} listings`,
+      error:
+        !options.ok || !group.ok
+          ? errParts.join("\n") || (!group.ok ? `${group.bucket} had failures` : undefined)
+          : undefined,
+    });
+  }
+}
+
+/** Map a panel row to the Latest sync steps snapshot syncType prefix. */
+function runLogMatchesRow(row: AdminSyncRow, snapshot: SyncRunLogSnapshot): boolean {
+  const type = snapshot.syncType.toLowerCase();
+  if (row.id === "full-resync") return type.includes("full resync");
+  if (row.id === "incremental") {
+    return type.includes("incremental") || type.includes("sync now · incremental");
+  }
+  const label = (row.label ?? "").toLowerCase();
+  if (label && type.includes(label)) return true;
+  if (row.actionId && type.includes(row.actionId.replace(/-/g, " "))) return true;
+  return false;
+}
+
+function timingWithLogFallback(
+  row: AdminSyncRow,
+  status: PanelStatus | null,
+  runTimings: Partial<Record<string, SyncTiming>>,
+  runSnapshot: SyncRunLogSnapshot | null,
+): SyncTiming {
+  const base = runTimings[row.id] ?? timingForRow(row, status);
+  if (base.finished || !runSnapshot?.finishedAt) return base;
+  if (!runLogMatchesRow(row, runSnapshot)) return base;
+  return {
+    started: base.started ?? runSnapshot.startedAt,
+    finished: runSnapshot.finishedAt,
+  };
+}
+
+/** After a rebuild, recover Status text from the Latest sync steps log. */
+function statusTextFromRunLog(
+  row: AdminSyncRow,
+  snapshot: SyncRunLogSnapshot | null,
+): string | undefined {
+  if (!snapshot?.finishedAt || snapshot.entries.length === 0) return undefined;
+  if (!runLogMatchesRow(row, snapshot)) return undefined;
+  if (row.id === "incremental" || snapshot.entries.some((e) =>
+    ["Active", "Closed", "Expired"].includes(e.label),
+  )) {
+    return snapshot.entries
+      .map((e) => `${e.label}: ${e.status}`)
+      .join(" · ");
+  }
+  return snapshot.entries[snapshot.entries.length - 1]?.status;
+}
 
 async function readAdminSyncPostResponse(res: Response): Promise<AdminSyncPostBody> {
   const contentType = res.headers.get("content-type") ?? "";
@@ -664,6 +759,11 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
       };
     case "property-addresses":
       return { started: null, finished: status.propertyAddressesSyncedAt ?? null };
+    case "zip-boundaries":
+      return {
+        started: status.zipBoundariesSyncStartedAt ?? null,
+        finished: status.zipBoundariesSyncedAt ?? null,
+      };
     default:
       return { started: null, finished: null };
   }
@@ -788,6 +888,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "stats-cache": "stats-cache",
   "deal-of-the-day": "deal-of-the-day",
   "property-addresses": "property-addresses",
+  "zip-boundaries": "zip-boundaries",
 };
 
 function pauseJobForSyncAllAction(
@@ -869,7 +970,7 @@ function resolveSyncRowVisualStatus(options: {
   error?: string;
   nowMs: number;
 }): SyncRowVisualStatus {
-  const { row, timing, nextRunAt, status, isRunning, syncAllRunning, fullResyncInProgress, error, nowMs } = options;
+  const { row, timing, status, isRunning, syncAllRunning, fullResyncInProgress, error, nowMs } = options;
 
   // During a full resync the full-resync row (Step 1) is the single source of
   // truth for the pulsing yellow. The "refresh-finished" row watches the global
@@ -906,17 +1007,15 @@ function resolveSyncRowVisualStatus(options: {
 
   const failed = isSyncErrorText(error);
   const hung = refreshRowHung || isTimingHung(timing, nowMs);
-  const breached =
-    row.nextRunAt != null || nextRunAt != null
-      ? isScheduleBreached(nextRunAt, timing.finished, nowMs)
-      : false;
 
-  if (failed || hung || breached) return "alert";
+  if (failed || hung) return "alert";
 
   // "Latest MLS listing update" is a read-only diagnostic — it has no sync
   // action of its own so it should never turn green regardless of its timestamp.
   if (row.id === "latest-mls") return "idle";
 
+  // Successful End → green row. Schedule breach is font-only in the Next
+  // label (rose "Overdue") — never paints the whole row red.
   if (timing.finished) return "ok";
 
   return "idle";
@@ -1038,6 +1137,14 @@ export default function AdminSyncTable({
     });
   }, []);
   const [runTimings, setRunTimings] = useState<Partial<Record<string, SyncTiming>>>({});
+  useEffect(() => {
+    if (!storageHydratedRef.current) return;
+    try {
+      localStorage.setItem(ADMIN_SYNC_RUN_TIMINGS_STORAGE_KEY, JSON.stringify(runTimings));
+    } catch {
+      /* ignore */
+    }
+  }, [runTimings]);
   const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
   /** Shown under Sync all while a run is active; cleared when the run ends. */
   const [syncAllPlanNote, setSyncAllPlanNote] = useState<string | null>(null);
@@ -1108,6 +1215,12 @@ export default function AdminSyncTable({
     try {
       const rawLog = localStorage.getItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY);
       if (rawLog) setRunSnapshot(parseStoredSyncRunLog(rawLog));
+    } catch { /* ignore */ }
+    try {
+      const rawTimings = localStorage.getItem(ADMIN_SYNC_RUN_TIMINGS_STORAGE_KEY);
+      if (rawTimings) {
+        setRunTimings(JSON.parse(rawTimings) as Partial<Record<string, SyncTiming>>);
+      }
     } catch { /* ignore */ }
     storageHydratedRef.current = true;
   }, []);
@@ -1432,14 +1545,27 @@ export default function AdminSyncTable({
           "";
         setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
         if (finalText) persistFinalStatus(row.id, finalText);
-        appendRunLog({
-          id: `${row.id}-${actionT0}`,
-          label: actionLabel,
-          startedAt,
-          finishedAt: new Date().toISOString(),
-          durationMs: Date.now() - actionT0,
-          status: finalText || (body.message ?? "Complete"),
-        });
+        const finishedAt = body.finishedAt ?? new Date().toISOString();
+        const durationMs = Date.now() - actionT0;
+        if (body.townResults && body.townResults.length > 0) {
+          appendTownResultsByBucket(appendRunLog, {
+            rowId: row.id,
+            townResults: body.townResults,
+            startedAt: body.startedAt ?? startedAt,
+            finishedAt,
+            durationMs,
+            ok: true,
+          });
+        } else {
+          appendRunLog({
+            id: `${row.id}-${actionT0}`,
+            label: actionLabel,
+            startedAt,
+            finishedAt,
+            durationMs,
+            status: finalText || (body.message ?? "Complete"),
+          });
+        }
       } catch (err) {
         const errText = err instanceof Error ? err.message : "Sync failed";
         appendRunLog({
@@ -1731,14 +1857,27 @@ export default function AdminSyncTable({
             body.message ??
             (rowId ? rows.find((r) => r.id === rowId)?.detail : undefined) ??
             "";
-          appendRunLog({
-            id: `sync-all-${actionId}-${stepT0}`,
-            label,
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            durationMs: Date.now() - stepT0,
-            status: syncAllFinalText || (body.message ?? "Complete"),
-          });
+          const stepFinishedAt = body.finishedAt ?? new Date().toISOString();
+          const stepDurationMs = Date.now() - stepT0;
+          if (body.townResults && body.townResults.length > 0) {
+            appendTownResultsByBucket(appendRunLog, {
+              rowId: rowId ?? actionId,
+              townResults: body.townResults,
+              startedAt: body.startedAt ?? startedAt,
+              finishedAt: stepFinishedAt,
+              durationMs: stepDurationMs,
+              ok: true,
+            });
+          } else {
+            appendRunLog({
+              id: `sync-all-${actionId}-${stepT0}`,
+              label,
+              startedAt,
+              finishedAt: stepFinishedAt,
+              durationMs: stepDurationMs,
+              status: syncAllFinalText || (body.message ?? "Complete"),
+            });
+          }
           if (rowId) {
             clearPendingRetry(rowId);
             setErrors((prev) => ({ ...prev, [rowId]: undefined }));
@@ -1844,39 +1983,6 @@ export default function AdminSyncTable({
 
   return (
     <>
-      {rets ? (
-        <div
-          className={`px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] ${
-            rets.ok ? "bg-sage/10" : "bg-rose-50/90"
-          }`}
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <Link
-                href="/admin?tab=rets"
-                className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 hover:text-navy hover:underline underline-offset-2 mb-1 inline-block"
-              >
-                MLS / RETS connection
-              </Link>
-              <p
-                className={`text-sm font-medium leading-snug ${
-                  rets.ok ? "text-sage" : "text-rose-800"
-                }`}
-              >
-                {rets.message}
-              </p>
-              {rets.detail && !rets.ok ? (
-                <p className="mt-1 font-mono text-[10px] text-rose-700/80 break-words">
-                  {rets.detail}
-                </p>
-              ) : null}
-            </div>
-            <p className="font-mono text-[10px] text-charcoal/45 shrink-0">
-              {rets.checkedAt ? `Checked ${formatTimestamp(rets.checkedAt)}` : "Not checked yet"}
-            </p>
-          </div>
-        </div>
-      ) : null}
       {showRetsAlert && syncFailures.length > 0 ? (
         <div className="px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-white">
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-2">
@@ -2042,7 +2148,7 @@ export default function AdminSyncTable({
               const nowMsOuter = now.getTime();
               const fullResyncRow = rows.find((r) => r.id === "full-resync");
               const fullResyncTiming = fullResyncRow
-                ? (runTimings["full-resync"] ?? timingForRow(fullResyncRow, status))
+                ? timingWithLogFallback(fullResyncRow, status, runTimings, runSnapshot)
                 : null;
               const fullResyncInProgress =
                 runningId === "full-resync" ||
@@ -2055,7 +2161,7 @@ export default function AdminSyncTable({
                 if (runningId === "full-resync" && row.id === "full-resync") {
                   return true;
                 }
-                const timing = runTimings[row.id] ?? timingForRow(row, status);
+                const timing = timingWithLogFallback(row, status, runTimings, runSnapshot);
                 // Sync-all: pin the step currently in flight (started, no End yet).
                 if (
                   syncAllRunning &&
@@ -2086,10 +2192,10 @@ export default function AdminSyncTable({
                 const bRunning = rowIsRunningForSort(b);
                 if (aRunning !== bRunning) return aRunning ? -1 : 1;
                 const aFinished = parseIsoMs(
-                  (runTimings[a.id] ?? timingForRow(a, status)).finished,
+                  timingWithLogFallback(a, status, runTimings, runSnapshot).finished,
                 );
                 const bFinished = parseIsoMs(
-                  (runTimings[b.id] ?? timingForRow(b, status)).finished,
+                  timingWithLogFallback(b, status, runTimings, runSnapshot).finished,
                 );
                 return (bFinished ?? -Infinity) - (aFinished ?? -Infinity);
               })
@@ -2109,9 +2215,11 @@ export default function AdminSyncTable({
                   )
                 : errors[row.id];
               const disabled = !row.actionId || isRunning || isWaiting;
-              const timing = runTimings[row.id] ?? timingForRow(row, status);
+              const timing = timingWithLogFallback(row, status, runTimings, runSnapshot);
               const showSingleTimestamp =
-                row.id === "latest-mls" || row.id === "property-addresses";
+                row.id === "latest-mls" ||
+                row.id === "property-addresses" ||
+                row.id === "zip-boundaries";
               const nextRunAt = nextRunForRow(row, status);
               const visual = resolveSyncRowVisualStatus({
                 row,
@@ -2124,18 +2232,11 @@ export default function AdminSyncTable({
                 error: rowError,
                 nowMs,
               });
-              const rowHung =
-                isTimingHung(timing, nowMs) ||
-                (row.id === "refresh-finished" &&
-                  Boolean(status?.refreshing) &&
-                  (() => {
-                    const startedMs = parseIsoMs(status?.lastRefreshStarted);
-                    return startedMs != null && nowMs - startedMs >= HANG_THRESHOLD_MS;
-                  })());
-              const rowOverdue =
-                visual === "alert" &&
-                !rowHung &&
-                isScheduleBreached(nextRunAt, timing.finished, nowMs);
+              const scheduleBreached = isScheduleBreached(
+                nextRunAt,
+                timing.finished,
+                nowMs,
+              );
               const manualOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
               const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
               const stripe = index % 2 === 1;
@@ -2227,7 +2328,9 @@ export default function AdminSyncTable({
                             ))
                           : isRunning || syncAllRunning
                             ? (descriptions[row.id] ?? "Running…")
-                            : (descriptions[row.id] ?? finalStatuses[row.id])
+                            : (descriptions[row.id] ??
+                              finalStatuses[row.id] ??
+                              statusTextFromRunLog(row, runSnapshot))
                       }
                       isRunning={isRunning || syncAllRunning}
                       isWaiting={isWaiting}
@@ -2238,18 +2341,15 @@ export default function AdminSyncTable({
                   </td>
                   <td className={TD}>
                     {(() => {
-                      // Collect all non-null timestamps to check for a shared calendar date.
-                      const candidates = showSingleTimestamp
-                        ? [timing.finished]
-                        : [timing.started, timing.finished, nextRunAt];
-                      const calDates = candidates
-                        .map(isoCalendarDate)
-                        .filter((d): d is string => d !== null);
-                      const allSameDate =
-                        calDates.length > 0 && new Set(calDates).size === 1;
-                      const sharedDate = allSameDate
-                        ? formatDateShort(calDates[0])
-                        : null;
+                      // Date once above Start (from start, else finished). End/Updated are
+                      // always time-only — midnight crossover is obvious from the clock.
+                      const anchorIso = timing.started ?? timing.finished;
+                      const dateLabel = anchorIso ? formatDateShort(anchorIso) : null;
+                      const anchorCal = isoCalendarDate(anchorIso);
+                      const nextSameDay =
+                        nextRunAt != null &&
+                        anchorCal != null &&
+                        isoCalendarDate(nextRunAt) === anchorCal;
 
                       const startMs = parseIsoMs(timing.started);
                       const endMs = parseIsoMs(timing.finished);
@@ -2261,33 +2361,32 @@ export default function AdminSyncTable({
                       const isPostDeployNext =
                         row.id === "full-resync" &&
                         status?.scheduleHints?.fullResyncSource === "post-deploy";
+                      const hungNext =
+                        isTimingHung(timing, nowMs) ||
+                        (row.id === "refresh-finished" && status?.refreshing);
                       let nextStatusText: string | null = null;
                       let nextStatusClass = "text-sage/80";
                       if (isPostDeployNext) {
                         nextStatusText = "Post-deploy warm";
                         nextStatusClass = "text-gold";
-                      } else if (visual === "alert") {
-                        nextStatusText =
-                          isTimingHung(timing, nowMs) ||
-                          (row.id === "refresh-finished" && status?.refreshing)
-                            ? "Hung"
-                            : "Overdue";
+                      } else if (hungNext) {
+                        nextStatusText = "Hung";
                         nextStatusClass = "text-rose-600/80";
-                      } else if (visual === "ok") {
+                      } else if (scheduleBreached) {
+                        // Font only — row color stays green/idle for a completed run.
+                        nextStatusText = "Overdue";
+                        nextStatusClass = "text-rose-600/80";
+                      } else if (visual === "ok" || nextRunAt != null) {
                         nextStatusText = "On schedule";
                         nextStatusClass = "text-sage/80";
                       }
-                      // formatAdminNextSyncAt already returns time-only within 24h;
-                      // for the shared-date case outside 24h we strip the date prefix.
                       const nextTimeText = isPostDeployNext
                         ? formatAdminNextSyncCountdown(nextRunAt, now)
-                        : allSameDate
+                        : nextSameDay
                           ? formatTimeOnly(nextRunAt)
                           : formatAdminNextSyncAt(nextRunAt, now);
                       const nextTimeClass =
-                        visual === "alert" && nowMs > (parseIsoMs(nextRunAt) ?? 0)
-                          ? "text-rose-700"
-                          : "text-navy";
+                        scheduleBreached || hungNext ? "text-rose-700" : "text-navy";
 
                       const nextLabel = (
                         <>
@@ -2303,28 +2402,31 @@ export default function AdminSyncTable({
 
                       return (
                         <div className="flex flex-col gap-0.5 w-full min-w-[11rem]">
-                          {sharedDate ? (
-                            <p className="font-mono text-[9px] tracking-wide text-charcoal/40 uppercase mb-0.5 text-center">
-                              {sharedDate}
-                            </p>
+                          {dateLabel ? (
+                            <div className="grid grid-cols-2 gap-x-2 w-full min-w-0 mb-0.5">
+                              <span aria-hidden className="block" />
+                              <p className="text-left font-mono text-[9px] tracking-wide text-charcoal/40 uppercase">
+                                {dateLabel}
+                              </p>
+                            </div>
                           ) : null}
                           {showSingleTimestamp ? (
                             <SyncTimestamp
                               label="Updated"
                               value={timing.finished}
-                              timeOnly={allSameDate}
+                              timeOnly
                             />
                           ) : (
                             <>
                               <SyncTimestamp
                                 label="Start"
                                 value={timing.started}
-                                timeOnly={allSameDate}
+                                timeOnly
                               />
                               <SyncTimestamp
                                 label="End"
                                 value={timing.finished}
-                                timeOnly={allSameDate}
+                                timeOnly
                               />
                               <SyncTimingRow
                                 label="Elapsed"

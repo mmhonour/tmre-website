@@ -3,7 +3,9 @@ import 'server-only'
 import {
   deleteSyncMeta as deleteSyncMetaDb,
   getAllSyncMeta as getAllSyncMetaDb,
+  releaseTimedLock as releaseTimedLockDb,
   setSyncMeta as setSyncMetaDb,
+  tryAcquireTimedLock as tryAcquireTimedLockDb,
 } from '@/lib/db/sync-meta'
 
 // ---------------------------------------------------------------------------
@@ -88,4 +90,21 @@ export async function setSyncMetaDurable(key: string, value: string): Promise<vo
 export async function deleteSyncMetaDurable(key: string): Promise<void> {
   cache.delete(key)
   await deleteSyncMetaDb(key)
+}
+
+/** Durable cross-instance lock (Postgres). Updates the local cache on success. */
+export async function tryAcquireTimedLock(
+  key: string,
+  token: string,
+  staleAfterMs: number,
+): Promise<boolean> {
+  const ok = await tryAcquireTimedLockDb(key, token, staleAfterMs)
+  if (ok) cache.set(key, token)
+  return ok
+}
+
+/** Durable unlock — only clears when `token` still matches. */
+export async function releaseTimedLock(key: string, token: string): Promise<void> {
+  await releaseTimedLockDb(key, token)
+  if (cache.get(key) === token) cache.delete(key)
 }

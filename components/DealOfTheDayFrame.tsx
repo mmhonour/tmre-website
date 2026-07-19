@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import GoldilocksScoreExplainModal, {
   type ScoreExplainTopic,
 } from "@/components/GoldilocksScoreExplainModal";
-import ModalPortal from "@/components/ModalPortal";
+import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import {
   formatScoreWeightPct,
   useSiteUnlocked,
@@ -16,7 +16,6 @@ import {
   type DealCarouselScore,
   type DealTransactionFilter,
 } from "@/hooks/useDealOfTheDayCarousel";
-import type { FinishQualityAssessment } from "@/lib/finish-quality-types";
 import { dealOfTheDayHref, listingDetailHrefForListing } from "@/lib/listing-url";
 import { formatDealOfTheDayHeaderSubtitle } from "@/lib/deal-of-the-day-header";
 import ListingThumbImage from "@/components/ListingThumbImage";
@@ -51,40 +50,25 @@ function fmtSqft(sqft: number | null | undefined): string | null {
   return `${sqft.toLocaleString()} sqft`;
 }
 
-function useFinishQuality(mlsId: string | null | undefined) {
-  const [assessment, setAssessment] = useState<FinishQualityAssessment | null>(null);
-  const [loading, setLoading] = useState(false);
+/** Compact mobile: 2100 → 2.1k */
+function fmtSqftK(sqft: number | null | undefined): string | null {
+  if (sqft == null || sqft <= 0) return null;
+  const k = sqft / 1000;
+  if (k >= 10) return `${Math.round(k)}k`;
+  const fixed = k.toFixed(1).replace(/\.0$/, "");
+  return `${fixed}k`;
+}
 
-  useEffect(() => {
-    if (!mlsId) {
-      setAssessment(null);
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    fetch(`/api/listings/${encodeURIComponent(mlsId)}/finish-quality`, {
-      cache: "no-store",
-    })
-      .then(async (r) => (r.ok ? ((await r.json()) as FinishQualityAssessment) : null))
-      .then((data) => {
-        if (cancelled) return;
-        setAssessment(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAssessment(null);
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mlsId]);
-
-  return { assessment, loading };
+/** Compact mobile: 0.34 → .3 ac ; 1.26 → 1.3 ac */
+function fmtLotAcresCompact(acres: number | null | undefined): string | null {
+  if (acres == null || acres <= 0) return null;
+  const rounded = Math.round(acres * 10) / 10;
+  if (rounded <= 0) return null;
+  if (rounded < 1) {
+    const tenth = Math.round(rounded * 10);
+    return `.${tenth} ac`;
+  }
+  return `${rounded.toFixed(1).replace(/\.0$/, "")} ac`;
 }
 
 const FACTORS: {
@@ -240,22 +224,106 @@ function DealPhoto({
   );
 }
 
+/** Phone / narrow: two tight lines + tiny thumb (no price, no score-breakdown link). */
+function DealContentCompact({
+  deal,
+  headerTown,
+  composite,
+  scoreColor,
+  isHero,
+  href,
+}: {
+  deal: DealCarouselPayload;
+  headerTown: string | null;
+  composite: number | null | undefined;
+  scoreColor: string;
+  isHero: boolean;
+  href: string;
+}) {
+  const l = deal.listing;
+  const bedBath =
+    l.beds != null && l.baths != null
+      ? `${l.beds}/${l.baths}`
+      : l.beds != null
+        ? `${l.beds}bd`
+        : l.baths != null
+          ? `${l.baths}ba`
+          : null;
+  const line2 = [
+    l.address.street || l.address.full,
+    bedBath,
+    fmtSqftK(l.sqft),
+    fmtLotAcresCompact(deal.lotAcres),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const thumb = deal.photoUrl ? (
+    <ListingThumbImage
+      src={deal.photoUrl}
+      className="relative block h-9 w-11 shrink-0 overflow-hidden rounded"
+      imgClassName="absolute inset-0 h-full w-full object-cover"
+    />
+  ) : (
+    <div
+      className={`h-9 w-11 shrink-0 rounded ${
+        isHero ? "bg-white/10" : "bg-cream"
+      }`}
+      aria-hidden
+    />
+  );
+
+  return (
+    <Link
+      href={href}
+      {...listingHoverHandlers(l.mlsId || l.listingKey || null)}
+      className={`flex items-center gap-2 px-3 py-2 ${
+        isHero ? "hover:bg-white/[0.04]" : "hover:bg-cream/60"
+      }`}
+    >
+      {thumb}
+      <div className="min-w-0 flex-1 leading-tight">
+        <p
+          className={`font-mono text-[9px] tracking-[0.08em] uppercase truncate ${
+            isHero ? "text-white/70" : "text-slate"
+          }`}
+        >
+          <span className="text-gold">Deal of the Day</span>
+          <span className={isHero ? "text-white/45" : "text-slate/70"}>
+            {" "}
+            {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}
+          </span>
+          {composite != null ? (
+            <span className={`normal-case tracking-normal tabular-nums ${scoreColor}`}>
+              {" "}
+              · {composite.toFixed(1)}
+            </span>
+          ) : null}
+        </p>
+        <p
+          className={`mt-0.5 font-mono text-[10px] truncate ${
+            isHero ? "text-white/85" : "text-navy"
+          }`}
+        >
+          {line2}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
 function DealContent({
   deal,
   slideDir,
   slideKey,
   isHero,
   onOpenBreakdown,
-  finishQuality,
-  finishLoading,
 }: {
   deal: DealCarouselPayload;
   slideDir: "next" | "prev";
   slideKey: string;
   isHero: boolean;
   onOpenBreakdown: () => void;
-  finishQuality: FinishQualityAssessment | null;
-  finishLoading: boolean;
 }) {
   const l = deal.listing;
 
@@ -263,12 +331,6 @@ function DealContent({
     fmtSqft(l.sqft),
     fmtLotAcres(deal.lotAcres),
   ].filter(Boolean);
-
-  const finishLabel = finishQuality?.tier
-    ? finishQuality.tier
-    : finishLoading
-      ? "Assessing…"
-      : null;
 
   const photoLayout = isHero ? "top-right" : "left";
 
@@ -308,29 +370,15 @@ function DealContent({
           {l.address.city}
           {l.beds && l.baths ? ` · ${l.beds}BR/${l.baths}BA` : ""}
         </p>
-        {(detailParts.length > 0 || finishLabel) && (
+        {detailParts.length > 0 ? (
           <p
             className={`font-mono text-[9px] mt-1 leading-relaxed ${
               isHero ? "text-white/45" : "text-slate/80"
             }`}
           >
             {detailParts.join(" · ")}
-            {detailParts.length > 0 && finishLabel ? " · " : ""}
-            {finishLabel ? (
-              <>
-                <span className={isHero ? "text-gold/90" : "text-gold"}>
-                  {finishLabel} finishes
-                </span>
-                {finishQuality?.note && finishQuality.tier ? (
-                  <span className={isHero ? "text-white/35" : "text-slate/60"}>
-                    {" "}
-                    — {finishQuality.note}
-                  </span>
-                ) : null}
-              </>
-            ) : null}
           </p>
-        )}
+        ) : null}
         <div className="flex items-baseline justify-between gap-2 mt-2">
           <span className="font-mono text-sm tabular-nums text-gold">
             {fmtMoney(l.price)}
@@ -411,7 +459,6 @@ export default function DealOfTheDayFrame({
   };
 
   const composite = score?.composite;
-  const { assessment: finishQuality, loading: finishLoading } = useFinishQuality(l?.mlsId);
   const isHero = theme === "hero";
   const scoreColor =
     composite != null && composite >= 85
@@ -427,6 +474,19 @@ export default function DealOfTheDayFrame({
     carouselTowns.length > 1
       ? `${carouselIndex + 1}/${carouselTowns.length}`
       : null;
+  const dealHref = fullDealOfTheDayHref(currentTown ?? city, deal, transactionFilter);
+
+  const emptyCopy = headerTown
+    ? transactionFilter === "sale"
+      ? `No below-median sale pick in ${headerTown} right now.`
+      : transactionFilter === "rental"
+        ? `No below-median rental pick in ${headerTown} right now.`
+        : `No below-median pick in ${headerTown} right now.`
+    : transactionFilter === "sale"
+      ? "No top sales picks available right now."
+      : transactionFilter === "rental"
+        ? "No top rental picks available right now."
+        : "No top picks available right now.";
 
   return (
     <>
@@ -437,93 +497,116 @@ export default function DealOfTheDayFrame({
             : "bg-white border border-charcoal/[0.06]"
         }${className ? ` ${className}` : ""}`}
       >
-        <div
-          className={`px-4 ${isHero ? "py-2" : "py-3"} flex items-center justify-between ${
-            isHero ? "border-b border-white/10" : "border-b border-charcoal/[0.06]"
-          }`}
-        >
-          <Link
-            href={fullDealOfTheDayHref(currentTown ?? city, deal, transactionFilter)}
-            className={`font-mono text-[10px] tracking-[0.2em] uppercase text-gold transition-colors cursor-pointer ${
-              isHero ? "hover:text-gold-light" : "hover:text-navy"
-            }`}
-          >
-            <span className="uppercase">Deal of the Day</span>
-            <span
-              className={`normal-case tracking-normal ${
-                isHero ? "text-white/45" : "text-slate"
-              }`}
-            >
-              {" "}
-              {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}
-            </span>
-          </Link>
+        {/* Mobile: two-line compact strip */}
+        <div className="lg:hidden">
           {loading ? (
-            <span className={`font-mono text-[9px] ${isHero ? "text-white/40" : "text-slate/50"}`}>
-              Loading…
-            </span>
-          ) : composite != null && score ? (
-            <button
-              type="button"
-              onClick={openBreakdown}
-              className={`font-mono text-sm tabular-nums font-medium underline underline-offset-2 transition-colors cursor-pointer ${scoreColor} ${
-                isHero
-                  ? "decoration-white/30 hover:decoration-gold"
-                  : "decoration-charcoal/20 hover:decoration-gold"
-              }`}
-              aria-label="View score breakdown"
-            >
-              {composite.toFixed(1)}
-            </button>
-          ) : null}
-        </div>
-
-        <div className={`overflow-hidden ${isHero ? "min-h-0" : "min-h-[9rem]"}`}>
-          {loading ? (
-            <div className={`p-4 ${isHero ? "h-24" : "h-32"} animate-pulse ${isHero ? "bg-white/5" : "bg-cream/80"}`} />
+            <div
+              className={`h-14 animate-pulse ${isHero ? "bg-white/5" : "bg-cream/80"}`}
+            />
           ) : !deal || !l ? (
             <p
-              className={`p-4 font-mono text-[10px] tracking-wide ${
+              className={`px-3 py-2.5 font-mono text-[10px] tracking-wide ${
                 isHero ? "text-white/40" : "text-slate"
               }`}
             >
-              {headerTown
-                ? transactionFilter === "sale"
-                  ? `No below-median sale pick in ${headerTown} right now.`
-                  : transactionFilter === "rental"
-                    ? `No below-median rental pick in ${headerTown} right now.`
-                    : `No below-median pick in ${headerTown} right now.`
-                : transactionFilter === "sale"
-                  ? "No top sales picks available right now."
-                  : transactionFilter === "rental"
-                    ? "No top rental picks available right now."
-                    : "No top picks available right now."}
+              {emptyCopy}
             </p>
           ) : (
-            <DealContent
+            <DealContentCompact
               deal={deal}
-              slideDir={slideDir}
-              slideKey={`${currentTown}-${carouselIndex}`}
+              headerTown={headerTown}
+              composite={composite}
+              scoreColor={scoreColor}
               isHero={isHero}
-              onOpenBreakdown={openBreakdown}
-              finishQuality={finishQuality}
-              finishLoading={finishLoading}
+              href={dealHref}
             />
           )}
         </div>
 
-        {rotateTowns && (
-          <CarouselControls
-            paused={paused}
-            onTogglePause={togglePause}
-            onPrev={goPrev}
-            onNext={goNext}
-            canNavigate={canNavigate}
-            townLabel={currentTown}
-            positionLabel={positionLabel}
-            isHero={isHero}
-          />
-        )}
+        {/* Desktop / tablet: full card */}
+        <div className="hidden lg:block">
+          <div
+            className={`px-4 ${isHero ? "py-2" : "py-3"} flex items-center justify-between ${
+              isHero ? "border-b border-white/10" : "border-b border-charcoal/[0.06]"
+            }`}
+          >
+            <Link
+              href={dealHref}
+              className={`font-mono text-[10px] tracking-[0.2em] uppercase text-gold transition-colors cursor-pointer ${
+                isHero ? "hover:text-gold-light" : "hover:text-navy"
+              }`}
+            >
+              <span className="uppercase">Deal of the Day</span>
+              <span
+                className={`normal-case tracking-normal ${
+                  isHero ? "text-white/45" : "text-slate"
+                }`}
+              >
+                {" "}
+                {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}
+              </span>
+            </Link>
+            {loading ? (
+              <span
+                className={`font-mono text-[9px] ${isHero ? "text-white/40" : "text-slate/50"}`}
+              >
+                Loading…
+              </span>
+            ) : composite != null && score ? (
+              <button
+                type="button"
+                onClick={openBreakdown}
+                className={`font-mono text-sm tabular-nums font-medium underline underline-offset-2 transition-colors cursor-pointer ${scoreColor} ${
+                  isHero
+                    ? "decoration-white/30 hover:decoration-gold"
+                    : "decoration-charcoal/20 hover:decoration-gold"
+                }`}
+                aria-label="View score breakdown"
+              >
+                {composite.toFixed(1)}
+              </button>
+            ) : null}
+          </div>
+
+          <div className={`overflow-hidden ${isHero ? "min-h-0" : "min-h-[9rem]"}`}>
+            {loading ? (
+              <div
+                className={`p-4 ${isHero ? "h-24" : "h-32"} animate-pulse ${
+                  isHero ? "bg-white/5" : "bg-cream/80"
+                }`}
+              />
+            ) : !deal || !l ? (
+              <p
+                className={`p-4 font-mono text-[10px] tracking-wide ${
+                  isHero ? "text-white/40" : "text-slate"
+                }`}
+              >
+                {emptyCopy}
+              </p>
+            ) : (
+              <DealContent
+                deal={deal}
+                slideDir={slideDir}
+                slideKey={`${currentTown}-${carouselIndex}`}
+                isHero={isHero}
+                onOpenBreakdown={openBreakdown}
+              />
+            )}
+          </div>
+
+          {rotateTowns ? (
+            <CarouselControls
+              paused={paused}
+              onTogglePause={togglePause}
+              onPrev={goPrev}
+              onNext={goNext}
+              canNavigate={canNavigate}
+              townLabel={currentTown}
+              positionLabel={positionLabel}
+              isHero={isHero}
+            />
+          ) : null}
+        </div>
       </aside>
 
       <ModalPortal
@@ -533,7 +616,7 @@ export default function DealOfTheDayFrame({
       >
         {modalScore && (
           <div
-            className="relative bg-white rounded-3xl shadow-2xl shadow-navy/20 max-w-md w-full p-8 max-h-[min(85vh,calc(100vh-6rem))] overflow-y-auto"
+            className={MODAL_PANEL_CLASS}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-6">

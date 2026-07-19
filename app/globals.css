@@ -125,11 +125,27 @@ body {
 @keyframes intelTownStatsSlideIn {
   from {
     opacity: 0.85;
-    transform: translateX(-100%);
+    transform: translateX(100%);
   }
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes intelTownStatsTriSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-intel-town-stats-tri {
+  animation: intelTownStatsTriSpin 7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-intel-town-stats-tri {
+    animation: none;
   }
 }
 
@@ -450,4 +466,82 @@ body {
   background: #c8a951;
   border: 2px solid rgba(18, 26, 46, 0.55);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* Homepage intro — live score swap */
+@keyframes homeScoreSwap {
+  from {
+    opacity: 0.35;
+    transform: translateY(0.35rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.home-score-swap {
+  animation: homeScoreSwap 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-score-swap {
+    animation: none;
+  }
+}
+
+.home-surface-card:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 3px;
+}
+
+/* Header zip pill — rotating border glow until first click */
+@keyframes visitor-zip-border-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.visitor-zip-pill {
+  isolation: isolate;
+}
+
+.visitor-zip-pill__ring {
+  position: absolute;
+  inset: -1px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 62%,
+    rgba(200, 169, 81, 0.15) 70%,
+    #c8a951 78%,
+    #d8bc6e 86%,
+    transparent 94%,
+    transparent 100%
+  );
+  animation: visitor-zip-border-spin 2.4s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.visitor-zip-pill--glow:not(.visitor-zip-pill--confirmed) {
+  box-shadow: 0 0 0 1px rgba(200, 169, 81, 0.2);
+}
+
+.visitor-zip-pill--confirmed > span:last-child {
+  border-color: rgba(200, 169, 81, 0.45);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visitor-zip-pill__ring {
+    animation: none;
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px #c8a951;
+  }
+
+  .visitor-zip-pill--glow {
+    box-shadow: 0 0 0 1.5px #c8a951;
+  }
 }

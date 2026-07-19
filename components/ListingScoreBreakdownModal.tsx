@@ -5,7 +5,7 @@ import { useState } from "react";
 import GoldilocksScoreExplainModal, {
   type ExplainContext,
 } from "@/components/GoldilocksScoreExplainModal";
-import ModalPortal from "@/components/ModalPortal";
+import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import {
   formatScoreWeightPct,
   useSiteUnlocked,
@@ -98,7 +98,7 @@ export default function ListingScoreBreakdownModal({
     <>
       <ModalPortal open={open} onClose={onClose} ariaLabel="Score breakdown">
         <div
-          className="relative bg-white rounded-3xl shadow-2xl shadow-navy/20 max-w-md w-full p-8 max-h-[min(85vh,calc(100vh-6rem))] overflow-y-auto"
+          className={MODAL_PANEL_CLASS}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-start justify-between mb-6">
@@ -107,7 +107,9 @@ export default function ListingScoreBreakdownModal({
                 Goldilocks score
                 {subtitle ? ` · ${subtitle}` : ""}
               </p>
-              <h2 className="font-serif text-2xl text-navy">{title}</h2>
+              <h2 className="font-serif text-xl sm:text-2xl text-navy break-words pr-2">
+                {title}
+              </h2>
             </div>
             <button
               type="button"

@@ -211,6 +211,15 @@ export function describeStartupProcess(): {
           statusLabel: latestSyncEnabled ? "Chained" : "—",
         },
         {
+          id: "incremental-saved-search-alerts",
+          title: "Saved-search listing alerts",
+          timing: "after each incremental (Netlify cron)",
+          detail:
+            "processDueSavedSearchAlerts(): email visitors when new Active listings match their cookie-derived criteria (immediate, or daily/weekly ET schedule windows).",
+          status: latestSyncEnabled ? "scheduled" : "skipped",
+          statusLabel: latestSyncEnabled ? "Chained" : "—",
+        },
+        {
           id: "incremental-town-feeds",
           title: "Latest town feed warm",
           timing: "after each incremental",
@@ -313,7 +322,7 @@ export function describeStartupProcess(): {
           title: "Periodic rebuild if stale",
           timing: "usually every 60 min",
           detail:
-            "rebuildStatsCacheIfStale(true) — includes sales-by-month, active-by-month, and avg-score-by-vintage per town (plus bundled by-town payloads).",
+            "rebuildStatsCacheIfStale(false) — upsert-only when last_stats_cache is older than TTL (or required keys missing); skips while stats rebuild lock or listings refresh is held.",
           status: "active",
           statusLabel: "Running",
         },
@@ -381,13 +390,30 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET.`,
+          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-zip-boundaries monthly (1st ~10:00 UTC).`,
           status: "info",
           statusLabel: "Cron",
         },
       ],
     });
   }
+
+  lanes.push({
+    id: "zip-boundaries",
+    title: "Zip boundary maps (TIGERweb)",
+    subtitle: "Census ZCTA rings → Postgres for Intelligence / Latest SVG maps",
+    steps: [
+      {
+        id: "zip-boundaries-monthly",
+        title: "Monthly TIGERweb → zip_boundaries",
+        timing: "1st of month ~10:00 UTC",
+        detail:
+          "syncAllTmreZipBoundaries() / Netlify sync-zip-boundaries. Skips when Pause is checked on Zip boundary maps (Database tab). Maps read GET /api/zip-boundaries.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
 
   return {
     context: {

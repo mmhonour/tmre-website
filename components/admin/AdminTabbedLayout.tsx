@@ -17,6 +17,14 @@ function tabFromLocation(): AdminTabId {
   if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
   if (VALID_TABS.has(hash)) return hash as AdminTabId;
+  // Deep-links into Postgres schema table cards
+  if (
+    hash.startsWith("schema-table-") ||
+    hash === "admin-sqlite-schemas" ||
+    hash === "postgres-listings"
+  ) {
+    return "postgres";
+  }
   const sectionTab = adminTabForSection(hash);
   if (sectionTab) return sectionTab;
   return "db";
@@ -36,6 +44,7 @@ export default function AdminTabbedLayout({
   pricing,
   rets,
   postgres,
+  syncs,
   server,
   docs,
   glossary,
@@ -47,6 +56,7 @@ export default function AdminTabbedLayout({
   pricing: ReactNode;
   rets: ReactNode;
   postgres: ReactNode;
+  syncs: ReactNode;
   server: ReactNode;
   docs: ReactNode;
   glossary: ReactNode;
@@ -57,20 +67,33 @@ export default function AdminTabbedLayout({
     const syncFromLocation = () => {
       const nextTab = tabFromLocation();
       setTab(nextTab);
-      const hash = window.location.hash.replace(/^#/, "");
-      if (hash && hash !== nextTab && document.getElementById(hash)) {
-        scrollToSection(hash);
-      }
     };
     syncFromLocation();
     window.addEventListener("hashchange", syncFromLocation);
-    return () => window.removeEventListener("hashchange", syncFromLocation);
+    window.addEventListener("popstate", syncFromLocation);
+    return () => {
+      window.removeEventListener("hashchange", syncFromLocation);
+      window.removeEventListener("popstate", syncFromLocation);
+    };
   }, []);
+
+  // After the active tab panel is shown, honor #section deep-links (e.g. schema tables).
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash || hash === tab) return;
+    const tryScroll = () => {
+      if (document.getElementById(hash)) scrollToSection(hash);
+    };
+    tryScroll();
+    const t = window.setTimeout(tryScroll, 80);
+    return () => window.clearTimeout(t);
+  }, [tab]);
 
   function selectTab(next: AdminTabId) {
     setTab(next);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", next);
+    url.hash = "";
     window.history.replaceState(null, "", url);
   }
 
@@ -82,6 +105,7 @@ export default function AdminTabbedLayout({
     pricing,
     rets,
     postgres,
+    syncs,
     server,
     docs,
     glossary,

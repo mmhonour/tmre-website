@@ -27,6 +27,10 @@ export const ADMIN_SYNC_ACTIONS = {
     label: 'Property address directory',
     description: 'MLS + Vision assessor verify for List With Me autocomplete',
   },
+  'zip-boundaries': {
+    label: 'Zip boundary maps',
+    description: 'Census TIGERweb ZCTA rings → Postgres for Intelligence / Latest maps',
+  },
 } as const
 
 export type AdminSyncActionId = keyof typeof ADMIN_SYNC_ACTIONS
@@ -57,6 +61,7 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'deal-of-the-day': 4,
   'refresh-finished': 5,
   'property-addresses': 6,
+  'zip-boundaries': 7,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

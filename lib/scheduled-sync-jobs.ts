@@ -15,4 +15,5 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'stats-cache': 'stats-cache',
   'deal-of-the-day': 'deal-of-the-day',
   'property-addresses': 'property-addresses',
+  'zip-boundaries': 'zip-boundaries',
 }

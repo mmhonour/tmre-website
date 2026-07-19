@@ -41,3 +41,31 @@ export async function getAllSyncMeta(): Promise<Record<string, string>> {
   )
   return Object.fromEntries(rows.map((r) => [r.key, r.value]))
 }
+
+/**
+ * Cross-instance lock: value is an ISO start timestamp. Acquires when the key
+ * is missing, or the existing stamp is older than `staleAfterMs` (dead holder).
+ * Returns true only when this caller owns the lock (RETURNING row present).
+ */
+export async function tryAcquireTimedLock(
+  key: string,
+  token: string,
+  staleAfterMs: number,
+): Promise<boolean> {
+  const staleBefore = new Date(Date.now() - Math.max(0, staleAfterMs)).toISOString()
+  const row = await queryOne<{ key: string }>(
+    `INSERT INTO sync_meta AS t (key, value)
+     VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE
+     SET value = EXCLUDED.value
+     WHERE t.value < $3 OR t.value !~ '^[0-9]{4}-'
+     RETURNING key`,
+    [key, token, staleBefore],
+  )
+  return row != null
+}
+
+/** Release only if we still hold `token` (do not clear a stolen/replaced lock). */
+export async function releaseTimedLock(key: string, token: string): Promise<void> {
+  await execute('DELETE FROM sync_meta WHERE key = $1 AND value = $2', [key, token])
+}

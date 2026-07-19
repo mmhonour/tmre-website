@@ -24,48 +24,48 @@ const cache = new Map<string, Ring[]>();
 /** Cached assembled boundary bundles per popover load key (avoids loading flashes). */
 const boundaryBundleCache = new Map<string, Map<string, Ring[]>>();
 
-const TIGER_LAYER = 1; // 2020 Census ZIP Code Tabulation Areas
+async function fetchBoundariesBatch(zips: readonly string[]): Promise<Map<string, Ring[]>> {
+  const out = new Map<string, Ring[]>();
+  const missing: string[] = [];
+  for (const zip of zips) {
+    const hit = cache.get(zip);
+    if (hit?.length) out.set(zip, hit);
+    else missing.push(zip);
+  }
+  if (missing.length === 0) return out;
+
+  const res = await fetch(`/api/zip-boundaries?zips=${missing.join(",")}`, {
+    cache: "force-cache",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    boundaries?: Record<string, Ring[]>;
+    error?: string;
+  };
+  if (data.error) throw new Error(data.error);
+
+  for (const [zip, rings] of Object.entries(data.boundaries ?? {})) {
+    if (Array.isArray(rings) && rings.length > 0) {
+      cache.set(zip, rings);
+      out.set(zip, rings);
+    }
+  }
+  return out;
+}
 
 async function fetchBoundary(zip: string): Promise<Ring[]> {
   if (cache.has(zip)) return cache.get(zip)!;
-
-  const url =
-    `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/` +
-    `PUMA_TAD_TAZ_UGA_ZCTA/MapServer/${TIGER_LAYER}/query` +
-    `?where=ZCTA5%3D'${encodeURIComponent(zip)}'` +
-    `&outFields=ZCTA5&returnGeometry=true&f=geojson&outSR=4326`;
-
-  const res = await fetch(url, { cache: "force-cache" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = (await res.json()) as {
-    error?: { message?: string };
-    features?: { geometry: { type: string; coordinates: unknown } }[];
-  };
-  if (data.error) throw new Error(data.error.message ?? "Boundary query failed");
-
-  const rings: Ring[] = [];
-  for (const feature of data.features ?? []) {
-    const { type, coordinates } = feature.geometry;
-    if (type === "Polygon") {
-      rings.push((coordinates as Ring[])[0]);
-    } else if (type === "MultiPolygon") {
-      for (const poly of coordinates as Ring[][]) {
-        rings.push(poly[0]);
-      }
-    }
-  }
-  if (rings.length === 0) throw new Error("No boundary geometry");
-  cache.set(zip, rings);
+  const map = await fetchBoundariesBatch([zip]);
+  const rings = map.get(zip);
+  if (!rings?.length) throw new Error("No boundary geometry");
   return rings;
 }
 
 /** Warm the module cache for town zip pills (fire-and-forget). */
 export function prefetchZipBoundaries(zips: readonly string[]): void {
-  for (const zip of zips) {
-    if (!cache.has(zip)) {
-      fetchBoundary(zip).catch(() => {});
-    }
-  }
+  const missing = zips.filter((zip) => !cache.has(zip));
+  if (missing.length === 0) return;
+  fetchBoundariesBatch(missing).catch(() => {});
 }
 
 /** Prefetch a town plus bordering town zips before the popover opens. */
@@ -307,48 +307,66 @@ export default function ZipBoundaryPopover({
       ...contextList.filter((z) => !highlightSet.has(z)),
     ];
 
-    const fromRingCache = new Map<string, Ring[]>();
-    let allCached = true;
+    const byZip = new Map<string, Ring[]>();
     for (const zip of zipsToLoad) {
       const rings = cache.get(zip);
-      if (rings?.length) fromRingCache.set(zip, rings);
-      else allCached = false;
+      if (rings?.length) byZip.set(zip, rings);
     }
-    const hasHighlightCached = highlightZips.some((z) => fromRingCache.has(z));
-    if (allCached && hasHighlightCached) {
-      boundaryBundleCache.set(loadKey, fromRingCache);
-      setBoundary({ status: "ready", byZip: fromRingCache });
-      return;
+
+    const hasHighlight = (map: Map<string, Ring[]>) =>
+      highlightZips.some((z) => (map.get(z)?.length ?? 0) > 0);
+
+    // Paint highlight immediately when any primary zip is already warm.
+    if (hasHighlight(byZip)) {
+      setBoundary({ status: "ready", byZip: new Map(byZip) });
+      if (byZip.size === zipsToLoad.length) {
+        boundaryBundleCache.set(loadKey, new Map(byZip));
+        return;
+      }
+    } else {
+      setBoundary({ status: "loading" });
     }
 
     let cancelled = false;
-    setBoundary({ status: "loading" });
+    const missing = zipsToLoad.filter((zip) => !byZip.has(zip));
+    const highlightMissing = missing.filter((zip) => highlightSet.has(zip));
+    const contextMissing = missing.filter((zip) => !highlightSet.has(zip));
 
-    Promise.all(
-      zipsToLoad.map(async (zip) => {
+    const mergeZip = (zip: string, rings: Ring[]) => {
+      if (cancelled || rings.length === 0) return;
+      byZip.set(zip, rings);
+      setBoundary({ status: "ready", byZip: new Map(byZip) });
+    };
+
+    void (async () => {
+      // Highlight first (one batched API call) so gold outlines paint before neighbors.
+      if (highlightMissing.length > 0) {
         try {
-          const rings = await fetchBoundary(zip);
-          return { zip, rings, ok: true as const };
+          const map = await fetchBoundariesBatch(highlightMissing);
+          for (const [zip, rings] of map) mergeZip(zip, rings);
         } catch {
-          return { zip, rings: [] as Ring[], ok: false as const };
+          /* fall through — may still have partial cache */
         }
-      }),
-    ).then((results) => {
+      }
+
       if (cancelled) return;
-      const hasHighlight = results.some(
-        (r) => highlightSet.has(r.zip) && r.ok && r.rings.length > 0,
-      );
-      if (!hasHighlight) {
+      if (!hasHighlight(byZip)) {
         setBoundary({ status: "error" });
         return;
       }
-      const byZip = new Map<string, Ring[]>();
-      for (const { zip, rings, ok } of results) {
-        if (ok && rings.length) byZip.set(zip, rings);
+
+      if (contextMissing.length > 0) {
+        try {
+          const map = await fetchBoundariesBatch(contextMissing);
+          for (const [zip, rings] of map) mergeZip(zip, rings);
+        } catch {
+          /* context is optional */
+        }
       }
-      boundaryBundleCache.set(loadKey, byZip);
-      setBoundary({ status: "ready", byZip });
-    });
+
+      if (cancelled) return;
+      boundaryBundleCache.set(loadKey, new Map(byZip));
+    })();
 
     return () => {
       cancelled = true;

@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import {
   bedBathLabel,
   dealBoardAcresLabel,
   DealBoardStatusBadge,
+  listingDetailHref,
 } from "@/components/intelligence/deal-board/deal-board-shared";
 import type { LatestListingRow } from "@/lib/latest-listings";
 
@@ -94,12 +96,7 @@ export default function LatestAddressMetaPopover({
   if (!pos || typeof document === "undefined") return null;
 
   const lines = metaLines(listing);
-  const scoreColor =
-    listing.score >= 85
-      ? "text-sage"
-      : listing.score >= 70
-        ? "text-gold"
-        : "text-charcoal/60";
+  const detailHref = listingDetailHref(listing);
 
   return createPortal(
     <div
@@ -114,9 +111,19 @@ export default function LatestAddressMetaPopover({
         <div className="px-3.5 py-3 space-y-2.5">
           <p className="font-medium text-navy text-[13px] leading-snug">{listing.address}</p>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`font-mono text-[12px] font-semibold tabular-nums ${scoreColor}`}>
-              {listing.score.toFixed(1)}
-            </span>
+            <ClickableGoldilocksScore
+              score={listing.score}
+              breakdown={listing.scoreBreakdown}
+              title={listing.address}
+              subtitle={
+                [listing.town || listing.city, listing.zip]
+                  .filter(Boolean)
+                  .join(" · ") || null
+              }
+              listingHref={detailHref}
+              isRental={listing.isRental}
+              className="text-[12px]"
+            />
             <DealBoardStatusBadge status={listing.status} />
           </div>
           <p className="font-mono text-[11px] leading-relaxed text-slate tabular-nums">

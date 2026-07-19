@@ -1,18 +1,27 @@
 import { cookies } from "next/headers";
 import AdminProductDocsPanel from "@/components/admin/AdminProductDocsPanel";
+import AdminRetsConnectionPanel from "@/components/admin/AdminRetsConnectionPanel";
 import AdminRetsCredentialsPanel from "@/components/admin/AdminRetsCredentialsPanel";
 import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPanel";
 import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
 import AdminSyncHistoryPanel from "@/components/admin/AdminSyncHistoryPanel";
 import AdminSyncRunLog from "@/components/admin/AdminSyncRunLog";
+import AdminSyncsOverviewPanel from "@/components/admin/AdminSyncsOverviewPanel";
 import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
 import AdminPhotoHealthPanel from "@/components/admin/AdminPhotoHealthPanel";
 import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
+import AdminBrokeragePanel from "@/components/admin/AdminBrokeragePanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
+import { emptyScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
+import {
+  ZIP_BOUNDARIES_LAST_SYNC_KEY,
+  ZIP_BOUNDARIES_LAST_SYNC_STARTED_KEY,
+  zipBoundariesInventory,
+} from "@/lib/zip-boundary-cache";
 import {
   DB_UPSERT_CHUNK_ROWS_DEFAULT,
   DB_UPSERT_CHUNK_ROWS_MAX,
@@ -29,6 +38,10 @@ import {
   getContactNotifyEmailFresh,
   DEFAULT_CONTACT_NOTIFY_EMAIL,
 } from "@/lib/contact-notify-config";
+import {
+  getBrokerageNameFresh,
+  DEFAULT_BROKERAGE_NAME,
+} from "@/lib/brokerage-config";
 import {
   getContactPhoneFresh,
   DEFAULT_CONTACT_PHONE_DIGITS,
@@ -55,7 +68,6 @@ import {
   isDefaultPricingMatchingConfig,
   PRICING_MATCHING_FIELD_META,
 } from "@/lib/pricing-matching-config";
-import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPanel";
 import AdminGlossaryPanel from "@/components/admin/AdminGlossaryPanel";
@@ -177,14 +189,7 @@ export default async function AdminPage() {
   const scheduledSyncPausedJobs = await safe(
     "scheduled-sync-flag",
     () => getScheduledSyncPausedJobsFresh(),
-    {
-      "full-resync": false,
-      incremental: false,
-      "listing-scores": false,
-      "stats-cache": false,
-      "deal-of-the-day": false,
-      "property-addresses": false,
-    },
+    emptyScheduledSyncPausedJobs(),
   );
   await safe(
     "post-deploy-schedule",
@@ -205,6 +210,19 @@ export default async function AdminPage() {
   const lastRefreshFinished = getSyncMeta("last_refresh_finished_at");
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
+  const zipBoundariesSyncedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_KEY);
+  const zipBoundariesSyncStartedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_STARTED_KEY);
+  const zipInventory = await safe(
+    "zip-boundaries-inventory",
+    () => zipBoundariesInventory(),
+    {
+      storedCount: 0,
+      expectedCount: 0,
+      oldestFetchedAt: null,
+      newestFetchedAt: null,
+      stale: true,
+    },
+  );
   const refreshFinishedAt = lastRefreshFinished ?? refresh.lastFinishedAt;
   const postgresDiagram = await describePostgresDatabase();
   const sqliteDiagrams = [postgresDiagram, ...describeRunningSqliteDatabases()];
@@ -324,6 +342,18 @@ export default async function AdminPage() {
       actionId: "property-addresses",
       nextRunAt: nextRuns["property-addresses"],
     },
+    {
+      id: "zip-boundaries",
+      label: "Zip boundary maps",
+      value: formatTimestamp(zipBoundariesSyncedAt),
+      startedAt: zipBoundariesSyncStartedAt,
+      finishedAt: zipBoundariesSyncedAt,
+      sortMs: timestampSortMs(zipBoundariesSyncedAt),
+      detail:
+        "Census TIGERweb ZCTA rings → Postgres (monthly; see Syncs overview)",
+      actionId: "zip-boundaries",
+      nextRunAt: nextRuns["zip-boundaries"],
+    },
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
@@ -336,6 +366,8 @@ export default async function AdminPage() {
     lastRefreshStarted: lastRefreshStarted,
     latestListingUpdate: latestListingUpdate,
     propertyAddressesSyncedAt: propertyAddressesSyncedAt,
+    zipBoundariesSyncedAt,
+    zipBoundariesSyncStartedAt,
     stats: {
       total: stats.total,
       lastFullSync: stats.lastFullSync,
@@ -377,6 +409,11 @@ export default async function AdminPage() {
     "contact-notify-email",
     () => getContactNotifyEmailFresh(),
     DEFAULT_CONTACT_NOTIFY_EMAIL,
+  )
+  const brokerageName = await safe(
+    "brokerage-name",
+    () => getBrokerageNameFresh(),
+    DEFAULT_BROKERAGE_NAME,
   )
   const contactPhone = await safe(
     "contact-phone",
@@ -437,6 +474,8 @@ export default async function AdminPage() {
 
   const dbPanel = (
     <>
+      <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
+
       <div
         id="admin-sync"
         className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
@@ -565,6 +604,13 @@ export default async function AdminPage() {
         }}
       />
 
+      <AdminBrokeragePanel
+        initial={{
+          name: brokerageName,
+          default: DEFAULT_BROKERAGE_NAME,
+        }}
+      />
+
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <AdminContactEmailPanel
           initial={{
@@ -593,17 +639,19 @@ export default async function AdminPage() {
 
   const pricingPanel = <AdminPricingPanel initial={pricingInitial} />;
 
-  const serverPanel = (
-    <>
-      <div id="admin-startup" className="scroll-mt-24">
-        <AdminStartupDiagram
-          lanes={startupProcess.lanes}
-          context={startupProcess.context}
-        />
-      </div>
-      <AdminServerFunctionsPanel />
-    </>
+  const syncsPanel = (
+    <AdminSyncsOverviewPanel
+      startupLanes={startupProcess.lanes}
+      startupContext={startupProcess.context}
+      pausedJobs={scheduledSyncPausedJobs}
+      zipInventory={zipInventory}
+      zipLastSyncAt={zipBoundariesSyncedAt}
+      zipLastSyncStartedAt={zipBoundariesSyncStartedAt}
+      zipNextRunAt={nextRuns["zip-boundaries"]}
+    />
   );
+
+  const serverPanel = <AdminServerFunctionsPanel />;
 
   const deployId = process.env.DEPLOY_ID ?? null
   const deployBuildTime: Date | null = (() => {
@@ -828,6 +876,7 @@ export default async function AdminPage() {
         pricing={pricingPanel}
         rets={retsPanel}
         postgres={postgresPanel}
+        syncs={syncsPanel}
         server={serverPanel}
         docs={<AdminProductDocsPanel />}
         glossary={<AdminGlossaryPanel />}

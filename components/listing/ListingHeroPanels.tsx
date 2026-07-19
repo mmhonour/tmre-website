@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ListingSubnav, {
@@ -17,6 +17,8 @@ import type { ComponentProps, ReactNode } from "react";
 
 /** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
+/** `top-20` = 5rem — used for mobile tab pin below the meta sticky block. */
+const MOBILE_NAV_TOP_REM = 5;
 
 type ListingHeroPanelsProps = {
   header: ComponentProps<typeof ListingHeader>;
@@ -63,28 +65,49 @@ export default function ListingHeroPanels({
 }: ListingHeroPanelsProps) {
   const isSpotlight = variant === "spotlight";
   const frameClass = listingPanelCompactClass;
-  // Tab route + API prefetch runs inside ListingSubnav (mounted below).
   const compactHero = Boolean(belowTabs || belowHero || sidebar || footer || interest);
+  const isOverview = subnav.active === "overview";
   const stickyChromeRef = useRef<HTMLDivElement>(null);
+  const mobileMetaPinRef = useRef<HTMLDivElement>(null);
+  const mobileTabsPinRef = useRef<HTMLDivElement>(null);
+  const [mobileMetaPinHeight, setMobileMetaPinHeight] = useState(0);
+  // Assume desktop chrome for SSR / first paint to avoid layout flash, then
+  // switch to the mobile sticky-split once we know the viewport.
+  const [isDesktop, setIsDesktop] = useState(true);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // Publish sticky chrome height so scroll-to-section targets clear the pinned tabs.
   useEffect(() => {
-    const el = stickyChromeRef.current;
-    if (!el || typeof document === "undefined") return;
     const publish = () => {
+      const desktop = stickyChromeRef.current;
+      const mobileMeta = mobileMetaPinRef.current;
+      const mobileTabs = mobileTabsPinRef.current;
+      const height = isDesktop
+        ? (desktop?.offsetHeight ?? 0)
+        : (mobileMeta?.offsetHeight ?? 0) + (mobileTabs?.offsetHeight ?? 0);
       document.documentElement.style.setProperty(
         "--listing-sticky-offset",
-        `${el.offsetHeight + 12}px`,
+        `${height + 12}px`,
       );
+      if (mobileMeta) setMobileMetaPinHeight(mobileMeta.offsetHeight);
     };
     publish();
     const ro = new ResizeObserver(publish);
-    ro.observe(el);
+    if (stickyChromeRef.current) ro.observe(stickyChromeRef.current);
+    if (mobileMetaPinRef.current) ro.observe(mobileMetaPinRef.current);
+    if (mobileTabsPinRef.current) ro.observe(mobileTabsPinRef.current);
     return () => {
       ro.disconnect();
       document.documentElement.style.removeProperty("--listing-sticky-offset");
     };
-  }, [subnav.active, belowTabs, propertyTabs]);
+  }, [subnav.active, belowTabs, propertyTabs, isOverview, isDesktop]);
 
   const statusLabel = formatMlsStatus(header.status);
 
@@ -104,41 +127,85 @@ export default function ListingHeroPanels({
       {statusBadge}
     </div>
   ) : !isSpotlight ? (
-    <div className="mb-2 flex items-start justify-between gap-3">
+    <div className="mb-1.5 flex items-start justify-between gap-3">
       <ListingBackLink className="" />
       {statusBadge}
     </div>
   ) : null;
 
+  const headerShared = {
+    ...header,
+    privacyMode: header.privacyMode ?? false,
+    hideMarketMeta: header.hideMarketMeta ?? isSpotlight,
+    insight: isOverview ? header.insight : null,
+    heroAside: !isOverview,
+    className: "mb-0" as const,
+    compact: true as const,
+  };
+
+  const tabsNav = (
+    <Suspense fallback={null}>
+      <ListingSubnav {...subnav} embedded compact />
+    </Suspense>
+  );
+
+  const propertyDetailsLabel = (
+    <div className="mb-1.5 flex items-start justify-between gap-3">
+      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+        Property Details
+      </p>
+    </div>
+  );
+
+  const stickySurfaceClass =
+    "bg-[#1B2A4A]/95 backdrop-blur-md border-b border-white/10";
+
   const propertyPanel = (
     <div className={frameClass}>
-      {/* Pin back link / property tabs / address / meta / section tabs while
-          the tab body scrolls beneath — clears the fixed site nav. */}
-      <div
-        ref={stickyChromeRef}
-        className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-3 mb-1 border-b border-white/10 bg-[#1B2A4A]/95 backdrop-blur-md shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
-      >
-        {topRow}
-        <div className="mb-2 flex items-start justify-between gap-3">
-          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-            Property Details
-          </p>
+      {isDesktop ? (
+        /* Desktop: single sticky chrome (hero + insight + tabs together). */
+        <div
+          ref={stickyChromeRef}
+          className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-2 mb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+        >
+          {topRow}
+          {propertyDetailsLabel}
+          <ListingHeader {...headerShared} tabsSlot={tabsNav} />
         </div>
-        <ListingHeader
-          {...header}
-          privacyMode={header.privacyMode ?? false}
-          hideMarketMeta={header.hideMarketMeta ?? isSpotlight}
-          insight={subnav.active === "overview" ? header.insight : null}
-          heroAside={subnav.active !== "overview"}
-          tabsSlot={
-            <Suspense fallback={null}>
-              <ListingSubnav {...subnav} embedded compact />
-            </Suspense>
-          }
-          className="mb-0"
-          compact
-        />
-      </div>
+      ) : (
+        /* Mobile: pin through Style/Bed/Bath/Sqft; hero + Insight scroll away; tabs pin below. */
+        <>
+          <div
+            ref={mobileMetaPinRef}
+            className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-1 ${stickySurfaceClass}`}
+          >
+            {topRow}
+            {propertyDetailsLabel}
+            <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
+          </div>
+
+          {isOverview ? (
+            <ListingHeader {...headerShared} parts="heroInsight" tabsSlot={null} />
+          ) : header.heroSlot ? (
+            <div className="mt-2 flex justify-end">
+              <div className="shrink-0" style={{ width: "40%", maxWidth: 220 }}>
+                {header.heroSlot}
+              </div>
+            </div>
+          ) : null}
+
+          <div
+            ref={mobileTabsPinRef}
+            className={`sticky z-30 -mx-4 px-4 pb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+            style={{
+              top: `calc(${MOBILE_NAV_TOP_REM}rem + ${mobileMetaPinHeight}px)`,
+            }}
+          >
+            {tabsNav}
+          </div>
+        </>
+      )}
+
       {belowTabs ? (
         <div
           id={
@@ -159,8 +226,6 @@ export default function ListingHeroPanels({
       <p className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
         Location
       </p>
-      {/* Explicit height — absolute hero map needs a sized shell; flex-1 alone
-          collapsed to 0 because the map does not contribute in-flow height. */}
       <div className="relative w-full h-64 sm:h-72 lg:h-80">
         <ListingLocationMap
           latitude={location.latitude}
@@ -184,9 +249,6 @@ export default function ListingHeroPanels({
     />
   ) : null;
 
-  // Sticky (map stays in view while the details column scrolls) but no inner
-  // max-height/overflow — that produced a tacky full-height scrollbar beside
-  // the map. Content flows naturally so nothing is clipped.
   const rightColumn = (
     <div className={`min-w-0 flex flex-col gap-4 lg:sticky ${STICKY_TOP_CLASS}`}>
       {interestButton}

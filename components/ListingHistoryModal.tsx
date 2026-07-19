@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
-import ModalPortal from "@/components/ModalPortal";
+import ModalPortal, { MODAL_PANEL_WIDE_CLASS } from "@/components/ModalPortal";
 import { listingDetailHref, listingHistoryHref } from "@/lib/listing-url";
 
 export default function ListingHistoryModal({
@@ -27,7 +27,7 @@ export default function ListingHistoryModal({
   return (
     <ModalPortal open={open} onClose={onClose} ariaLabel="Listing history">
       <div
-        className="relative bg-white rounded-3xl shadow-2xl shadow-navy/20 max-w-lg w-full p-8 max-h-[min(85vh,calc(100vh-6rem))] overflow-y-auto"
+        className={MODAL_PANEL_WIDE_CLASS}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-6">

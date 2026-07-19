@@ -196,7 +196,8 @@ export async function register() {
           console.info('[stats-cache] skipped — listings refresh in progress')
           return
         }
-        void rebuildStatsCacheIfStale(true).catch((err) => {
+        // Stale-only: skip when last_stats_cache is within TTL (upsert rebuild, no wipe).
+        void rebuildStatsCacheIfStale(false).catch((err) => {
           console.error('[stats-cache/instrumentation]', err)
         })
       }

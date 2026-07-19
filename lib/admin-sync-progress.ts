@@ -1,6 +1,10 @@
 import type { TownSyncResult } from '@/lib/listings-sync'
 import type { TableWriteStats } from '@/lib/sqlite-sync-stats'
 import { FULL_RESYNC_FINALIZE_STEP_LABELS, type FullResyncFinalizeStepId } from '@/lib/admin-sync-types'
+import {
+  formatTownCountsGlom,
+  normalizeSyncStatusBucket,
+} from '@/lib/admin-sync-history-glom'
 
 /** One-line bucket counts, e.g. "Active 234 · Closed 1,892 · Expired 12 (2,138 fetched)". */
 export function formatTownSyncBreakdown(results: TownSyncResult[]): string {
@@ -154,21 +158,63 @@ export function formatFullResyncTownProgressWithTables(options: {
   return tableSummary === 'No table rows yet' ? base : `${base} — ${tableSummary}`
 }
 
+export type BucketTownGroup = {
+  bucket: string
+  towns: { town: string; count: number; ok: boolean; error?: string | null }[]
+  total: number
+  ok: boolean
+}
+
+type TownBucketRow = {
+  town: string
+  statusBucket: string
+  count: number
+  ok: boolean
+  error?: string | null
+}
+
+/** Group per-town sync results by status bucket (Active / Closed / Expired). */
+export function groupTownResultsByBucket(
+  results: readonly TownBucketRow[],
+): BucketTownGroup[] {
+  const order = ['Active', 'Closed', 'Expired']
+  const map = new Map<string, BucketTownGroup>()
+  for (const row of results) {
+    const bucket = normalizeSyncStatusBucket(row.statusBucket)
+    let group = map.get(bucket)
+    if (!group) {
+      group = { bucket, towns: [], total: 0, ok: true }
+      map.set(bucket, group)
+    }
+    group.towns.push({
+      town: row.town,
+      count: row.count,
+      ok: row.ok,
+      error: row.error,
+    })
+    group.total += row.count
+    if (!row.ok) group.ok = false
+  }
+  const keys = [...map.keys()].sort((a, b) => {
+    const ia = order.indexOf(a)
+    const ib = order.indexOf(b)
+    if (ia === -1 && ib === -1) return a.localeCompare(b)
+    if (ia === -1) return 1
+    if (ib === -1) return -1
+    return ia - ib
+  })
+  return keys.map((key) => map.get(key)!)
+}
+
 /** Incremental / multi-town summary. */
 export function formatTownSyncSummary(towns: TownSyncResult[], totalLabel = 'upserts'): string {
   if (towns.length === 0) return 'No town results'
-  const total = towns.reduce((sum, row) => sum + row.count, 0)
-  const withData = towns.filter((row) => row.count > 0)
-  const sample =
-    withData.length > 0
-      ? withData
-          .slice(0, 4)
-          .map((row) => `${row.town} ${row.count.toLocaleString()}`)
-          .join(' · ')
-      : towns
-          .slice(0, 4)
-          .map((row) => `${row.town} 0`)
-          .join(' · ')
-  const suffix = withData.length > 4 ? ` · +${withData.length - 4} more towns` : ''
-  return `${total.toLocaleString()} ${totalLabel} — ${sample}${suffix}`
+  const groups = groupTownResultsByBucket(towns)
+  if (groups.length === 1) {
+    const g = groups[0]
+    return `${g.bucket}: ${formatTownCountsGlom(g.towns)} · ${g.total.toLocaleString()} ${totalLabel}`
+  }
+  return groups
+    .map((g) => `${g.bucket}: ${formatTownCountsGlom(g.towns)}`)
+    .join(' · ')
 }

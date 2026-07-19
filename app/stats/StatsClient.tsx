@@ -749,10 +749,14 @@ export default function StatsClient() {
                 }
               >
                 <SalesTrendChart
-                  key={`trend-${statsKind}-${selectedCity}${chartVersionSuffix}`}
+                  key={`trend-${statsKind}-${selectedCity}-${urlProperty ?? "all"}${chartVersionSuffix}`}
                   city={selectedCity}
                   kind={statsKind}
                   headerActiveCount={chartHeaderActiveCount}
+                  propertyClass={
+                    (urlProperty as "all" | "homes" | "multi" | "condos" | null) ??
+                    "all"
+                  }
                 />
               </StatsChartPrintFrame>
 

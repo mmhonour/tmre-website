@@ -47,6 +47,10 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
     { label: "Deal of the Day", href: "/deal-of-the-day" },
   ],
   "property-addresses": [{ label: "List with me", href: "/list-with-me" }],
+  "zip-boundaries": [
+    { label: "Intelligence", href: "/intelligence" },
+    { label: "Latest", href: "/latest" },
+  ],
 };
 
 export function adminSyncImpactedPages(rowId: string): AdminSyncImpactedPage[] {

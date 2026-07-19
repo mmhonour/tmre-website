@@ -13,6 +13,7 @@ const PRIORITY_TABLES = [
   'listing_if_estimates',
   'listing_tax_history',
   'town_property_addresses',
+  'zip_boundaries',
   'sync_runs',
 ]
 

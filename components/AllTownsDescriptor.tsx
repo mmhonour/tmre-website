@@ -17,7 +17,7 @@ export default function AllTownsDescriptor({
   aggregateMonthsSupply,
   monthlySalesLoaded,
   filterContext,
-  contextParts = [],
+  contextLeading = null,
   trailing = null,
   hideMonthsSupply = false,
   className,
@@ -26,7 +26,8 @@ export default function AllTownsDescriptor({
   aggregateMonthsSupply: number | null;
   monthlySalesLoaded: boolean;
   filterContext: FilterContext;
-  contextParts?: string[];
+  /** Prefixed filter context (e.g. clickable town / For Sale parts). */
+  contextLeading?: ReactNode;
   trailing?: ReactNode;
   hideMonthsSupply?: boolean;
   className?: string;
@@ -96,14 +97,7 @@ export default function AllTownsDescriptor({
     <p
       className={`${className ?? "mt-3"} flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide`}
     >
-      {contextParts.map((part, index) => (
-        <span key={`${part}-${index}`} className="contents">
-          <span className="text-white/45">{part}</span>
-          <span className="text-white/25" aria-hidden>
-            ·
-          </span>
-        </span>
-      ))}
+      {contextLeading}
       <span
         className={`text-white/45 ${loading ? "animate-pulse" : ""}`}
       >

@@ -3,7 +3,8 @@ import Image from "next/image";
 import FooterMarketsColumn from "@/components/FooterMarketsColumn";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 import { getLastFullSync } from "@/lib/listings-store";
-import { AGENT_MLS_ID, AGENT_NAME, BROKERAGE_NAME } from "@/lib/business-info";
+import { AGENT_MLS_ID, AGENT_NAME } from "@/lib/business-info";
+import { getBrokerageNameFresh } from "@/lib/brokerage-config";
 function formatLastBuilt(iso: string | null): string | null {
   if (!iso) return null;
   const date = new Date(iso);
@@ -57,8 +58,13 @@ function EqualHousingMark({ className }: { className?: string }) {
   );
 }
 
-export default async function Footer() {
+export default async function Footer({
+  brokerageName,
+}: {
+  brokerageName?: string;
+} = {}) {
   const lastBuilt = formatLastBuilt(getLastFullSync());
+  const brokerage = brokerageName?.trim() || (await getBrokerageNameFresh());
   return (
     <footer className="navy-gradient text-white mt-auto">
       <div className="mx-auto max-w-7xl px-6 lg:px-10 py-20">
@@ -147,7 +153,7 @@ export default async function Footer() {
           <EqualHousingMark className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />
           <p className="text-[11px] leading-relaxed text-white/40 max-w-3xl">
             {AGENT_NAME} (MLS #{AGENT_MLS_ID}) is a licensed real estate agent
-            affiliated with {BROKERAGE_NAME}. Equal Housing Opportunity. Property and market
+            affiliated with {brokerage}. Equal Housing Opportunity. Property and market
             information is sourced from MLS and public records, is deemed
             reliable but not guaranteed, and should be independently verified.
           </p>

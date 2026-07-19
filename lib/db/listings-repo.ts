@@ -805,12 +805,19 @@ export async function readRecentlyUpdatedListings(options: {
 
   return rows.map((row) => {
     const listing = rowToListing(row)
+    const rawScore = row.goldilocks_score
+    const goldilocksScore =
+      rawScore == null
+        ? null
+        : Number.isFinite(Number(rawScore))
+          ? Number(rawScore)
+          : null
     return {
       listing,
       town: row.town,
       modificationTimestamp: listing.modificationTimestamp,
       syncedAt: tsToIso(row.synced_at) ?? '',
-      goldilocksScore: row.goldilocks_score,
+      goldilocksScore,
       goldilocksBreakdown: jsonbToString(row.goldilocks_breakdown),
       goldilocksScoredAt: tsToIso(row.goldilocks_scored_at),
     }

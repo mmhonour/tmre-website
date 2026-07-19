@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AGENT_MLS_ID, BRAND_NAME, BROKERAGE_NAME } from "@/lib/business-info";
+import { AGENT_MLS_ID, BRAND_NAME } from "@/lib/business-info";
+import { getBrokerageNameFresh } from "@/lib/brokerage-config";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -10,7 +11,8 @@ export const metadata: Metadata = {
 
 const EFFECTIVE_DATE = "July 15, 2026";
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const brokerageName = await getBrokerageNameFresh();
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-10 lg:pt-28 lg:pb-14 relative overflow-hidden">
@@ -36,7 +38,7 @@ export default function PrivacyPage() {
               &ldquo;our&rdquo;) respects your privacy. This policy explains what
               information we collect when you use this website, how we use it,
               and the choices you have. {BRAND_NAME} is operated by a licensed
-              agent of {BROKERAGE_NAME} (MLS #{AGENT_MLS_ID}).
+              agent of {brokerageName} (MLS #{AGENT_MLS_ID}).
             </p>
 
             <LegalSection title="Information we collect">

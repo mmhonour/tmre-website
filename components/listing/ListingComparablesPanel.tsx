@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
@@ -18,6 +19,14 @@ import {
   type ComparablesLookbackMonths,
 } from "@/lib/listing-comparables-shared";
 import MatchingCriteriaSummary from "@/components/listing/MatchingCriteriaSummary";
+import {
+  comparableListingMatchesSession,
+  defaultSessionOverrides,
+  sessionOverridesFromPricingConfig,
+  sessionOverridesNeedWidePool,
+  type SessionMatchOverrides,
+} from "@/lib/listing-comparables-session";
+import type { PricingMatchingConfig } from "@/lib/pricing-matching-config-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
@@ -28,6 +37,7 @@ type ComparablesResponse = {
   criteria: ComparablesCriteria | null;
   missingCriteria: string[];
   defaultLookbackMonths?: ComparablesLookbackMonths;
+  matchConfig?: PricingMatchingConfig;
 };
 
 function fmtCompPricePerSqft(pricePerSqft: number | null | undefined): string | null {
@@ -263,10 +273,19 @@ function CompScoreBadge({
   score,
   variant,
   colorClass,
+  title,
+  listingHref,
+  isRental = false,
+  goldilocksOnly = false,
 }: {
   score: number | null | undefined;
   variant: "page" | "panel" | "modal";
   colorClass?: string | null;
+  title: string;
+  listingHref: string;
+  isRental?: boolean;
+  /** When true, this is a Goldilocks score (clickable breakdown). Edge stays non-modal. */
+  goldilocksOnly?: boolean;
 }) {
   const isModal = variant === "modal";
   const mutedClass = isModal
@@ -286,6 +305,20 @@ function CompScoreBadge({
 
   const tierClass =
     colorClass ?? (isModal ? "bg-charcoal/[0.06] text-navy" : "bg-white/10 text-white");
+
+  if (goldilocksOnly) {
+    return (
+      <span className={`inline-flex rounded-full px-2.5 py-1 ${tierClass}`}>
+        <ClickableGoldilocksScore
+          score={score}
+          title={title}
+          listingHref={listingHref}
+          isRental={isRental}
+          className="text-sm no-underline hover:underline"
+        />
+      </span>
+    );
+  }
 
   return (
     <span
@@ -402,6 +435,10 @@ function CompRow({
             score={comp.edgeScore ?? comp.goldilocksScore}
             variant={variant}
             colorClass={scoreColorClass}
+            title={comp.address || `MLS #${comp.mlsId}`}
+            listingHref={href}
+            isRental={isRental}
+            goldilocksOnly={comp.edgeScore == null && (comp.goldilocksScore ?? 0) > 0}
           />
         </div>
         <div className="min-w-0 flex-1 text-right">
@@ -571,6 +608,17 @@ export default function ListingComparablesPanel({
   const [lookbackMonths, setLookbackMonths] = useState<number>(
     COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
   );
+  /** Session match overrides for the current Sold/Rented tab; reset on tab change. */
+  const [sessionMatch, setSessionMatch] = useState<SessionMatchOverrides | null>(
+    null,
+  );
+  const [baselineMatch, setBaselineMatch] = useState<SessionMatchOverrides | null>(
+    null,
+  );
+  const [sessionTabKey, setSessionTabKey] = useState<string | null>(null);
+  const [widePoolLoaded, setWidePoolLoaded] = useState(false);
+  const [widePoolLoading, setWidePoolLoading] = useState(false);
+  const tabKey = `${mlsId}:${kind}`;
 
   const isRental = kind === "rental";
   const panelTitle = isRental ? "Comparable Rentals" : "Comparables";
@@ -590,11 +638,20 @@ export default function ListingComparablesPanel({
     `/api/listings/${encodeURIComponent(mlsId)}/comparables${
       isRental ? "?kind=rental" : ""
     }`;
+  const wideComparablesUrl = `${comparablesUrl}${
+    comparablesUrl.includes("?") ? "&" : "?"
+  }pool=wide`;
 
+  // Reset session criteria when switching Sold ↔ Rented (or listing).
   useEffect(() => {
+    setSessionMatch(null);
+    setBaselineMatch(null);
+    setSessionTabKey(null);
+    setWidePoolLoaded(false);
+    setWidePoolLoading(false);
     setSoldVisibleCount(COMP_INITIAL_VISIBLE);
     setActiveVisibleCount(COMP_INITIAL_VISIBLE);
-  }, [mlsId, comparablesUrl]);
+  }, [tabKey, comparablesUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -635,6 +692,19 @@ export default function ListingComparablesPanel({
     };
   }, [mlsId, comparablesUrl]);
 
+  // Seed session overrides from Admin Pricing defaults once per Sold/Rented tab.
+  useEffect(() => {
+    const criteria = data?.criteria;
+    if (!criteria) return;
+    if (sessionTabKey === tabKey) return;
+    const seeded = data.matchConfig
+      ? sessionOverridesFromPricingConfig(data.matchConfig, criteria)
+      : defaultSessionOverrides(criteria);
+    setBaselineMatch(seeded);
+    setSessionMatch(seeded);
+    setSessionTabKey(tabKey);
+  }, [data, tabKey, sessionTabKey]);
+
   // When the default look-back window holds fewer than COMP_MIN_LOOKBACK_COMPS
   // sold/rented comps, auto-widen the look-back to the smallest window that
   // reaches the minimum (capped at 3yr) and move the spinner to match. Runs once
@@ -659,15 +729,31 @@ export default function ListingComparablesPanel({
     );
   }, [data]);
 
-  const sold = data?.sold ?? [];
-  const active = data?.active ?? [];
   const criteria = data?.criteria ?? null;
   const missing = data?.missingCriteria ?? [];
   const town = townHint ?? null;
-  const hasContent = sold.length > 0 || active.length > 0;
   const isPage = variant === "page";
   const isModal = variant === "modal";
   const sortTheme: CompSortTheme = isModal ? "light" : "dark";
+
+  const handleSessionMatchChange = (next: SessionMatchOverrides) => {
+    setSessionMatch(next);
+    if (
+      baselineMatch &&
+      sessionOverridesNeedWidePool(next, baselineMatch) &&
+      !widePoolLoaded &&
+      !widePoolLoading
+    ) {
+      setWidePoolLoading(true);
+      void loadTabJson<ComparablesResponse>(wideComparablesUrl)
+        .then((d) => {
+          if (!d) return;
+          setData(d);
+          setWidePoolLoaded(true);
+        })
+        .finally(() => setWidePoolLoading(false));
+    }
+  };
 
   const handleSoldSort = (key: SoldSortKey) => {
     setSoldSort((prev) =>
@@ -685,7 +771,26 @@ export default function ListingComparablesPanel({
     );
   };
 
-  // `sold` is the full 36-month fit-ranked superset from the cache; filter it
+  // Apply session match overrides, then look-back on the sold side.
+  const sold = useMemo(() => {
+    const rows = data?.sold ?? [];
+    if (!criteria || !sessionMatch) return rows;
+    return rows.filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    );
+  }, [data?.sold, criteria, sessionMatch]);
+
+  const active = useMemo(() => {
+    const rows = data?.active ?? [];
+    if (!criteria || !sessionMatch) return rows;
+    return rows.filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    );
+  }, [data?.active, criteria, sessionMatch]);
+
+  const hasContent = sold.length > 0 || active.length > 0;
+
+  // `sold` is the full 36-month fit-ranked (session-filtered) pool; filter it
   // to the selected look-back and keep the top matches by fit before sorting.
   const soldWindowed = useMemo(
     () => soldWithinLookback(sold, lookbackMonths, COMP_MAX_VISIBLE),
@@ -842,7 +947,7 @@ export default function ListingComparablesPanel({
         <p className="text-sm text-slate leading-relaxed">{modalIntro}</p>
       )}
 
-      {criteria && (isPage || isModal || hasContent) && (
+      {criteria && sessionMatch && (isPage || isModal || hasContent) && (
         <p
           className={
             isModal
@@ -851,7 +956,23 @@ export default function ListingComparablesPanel({
           }
         >
           <span className={criteriaLabelClass}>Criteria </span>
-          <MatchingCriteriaSummary criteria={criteria} isModal={isModal} />
+          <MatchingCriteriaSummary
+            criteria={criteria}
+            session={sessionMatch}
+            onSessionChange={handleSessionMatchChange}
+            isModal={isModal}
+          />
+          {widePoolLoading ? (
+            <span
+              className={
+                isModal
+                  ? "ml-2 font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60"
+                  : "ml-2 font-mono text-[9px] tracking-[0.12em] uppercase text-white/35"
+              }
+            >
+              widening pool…
+            </span>
+          ) : null}
         </p>
       )}
 

@@ -1,10 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { adminPostgresTableHref } from "@/lib/admin-nav";
 import type {
   StatsInventoryCategory,
   StatsInventoryEntry,
   StatsStorageMedium,
+} from "@/lib/admin-stats-inventory";
+import {
+  statsInventoryKeyFieldLabel,
+  statsInventoryPostgresTable,
 } from "@/lib/admin-stats-inventory";
 
 type MediumMeta = Record<StatsStorageMedium, { label: string; short: string }>;
@@ -56,6 +62,30 @@ function MediumPill({
     >
       {label}
     </span>
+  );
+}
+
+function PostgresTableLink({ table }: { table: string }) {
+  const href = adminPostgresTableHref(table);
+  return (
+    <a
+      href={href}
+      className="font-mono text-[11px] text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
+      title={`Open ${table} on the Postgres tab`}
+      onClick={(e) => {
+        // Same-page tab switch: update URL and notify AdminTabbedLayout.
+        e.preventDefault();
+        const url = new URL(href, window.location.origin);
+        window.history.pushState(
+          null,
+          "",
+          `${url.pathname}${url.search}${url.hash}`,
+        );
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }}
+    >
+      {table}
+    </a>
   );
 }
 
@@ -143,6 +173,38 @@ export default function AdminStatsInventoryPanel() {
         </div>
 
         <div className="px-5 sm:px-6 py-4 space-y-4">
+          <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 px-4 py-3 text-sm text-slate max-w-3xl space-y-2">
+            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/45">
+              How to read Table vs Key vs Code
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5 text-sm leading-snug">
+              <li>
+                <span className="font-medium text-navy">Table</span> — the
+                Postgres table that holds the state (click through to the{" "}
+                <Link
+                  href="/admin?tab=postgres"
+                  className="text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
+                >
+                  Postgres
+                </Link>{" "}
+                schema card).
+              </li>
+              <li>
+                <span className="font-medium text-navy">Key</span> — how a row is
+                addressed <em>inside</em> that table. For most market/feed/deal
+                caches this is the{" "}
+                <code className="font-mono text-[12px]">stats_cache.cache_key</code>{" "}
+                value pattern — <strong>not</strong> a filesystem path, and not
+                usually “a column name” unless noted (e.g. Goldilocks columns on{" "}
+                <code className="font-mono text-[12px]">listings</code>).
+              </li>
+              <li>
+                <span className="font-medium text-navy">Code</span> — the TypeScript
+                module path that owns read/write for this state.
+              </li>
+            </ul>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {(
               [
@@ -212,6 +274,58 @@ export default function AdminStatsInventoryPanel() {
         </div>
       </div>
 
+      <div
+        id="admin-stats-months-supply"
+        className="scroll-mt-24 rounded-2xl border border-navy/15 bg-white shadow-sm overflow-hidden"
+      >
+        <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-navy/[0.04]">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            Months supply — required cache
+          </p>
+          <p className="mt-1 text-sm text-slate max-w-3xl">
+            Months supply is never computed as a page-blocking step. It is
+            precomputed into{" "}
+            <PostgresTableLink table="stats_cache" /> for every market slice
+            below, then read by Stats, Intelligence, and related APIs.
+          </p>
+        </div>
+        <div className="px-5 sm:px-6 py-4 space-y-3 text-sm text-slate">
+          <p>
+            <span className="font-medium text-navy">Dimensions (always cached):</span>{" "}
+            each TMRE town (+ All Towns) × occupancy (For Sale / For Rental) ×
+            property class (All types / Homes / Multi-family / Condos). With 7
+            towns that is{" "}
+            <span className="font-mono tabular-nums text-navy">8 × 2 × 4 = 64</span>{" "}
+            values (plus an index row).
+          </p>
+          <p>
+            <span className="font-medium text-navy">Formula:</span> active
+            inventory count ÷ trailing 3-month average closings for that same
+            town × occupancy × property class.
+          </p>
+          <p>
+            <span className="font-medium text-navy">Finer filters</span> (beds,
+            baths, zip, price, vintage, board status, …) may adjust the
+            numerator after listings are returned, using the cached average
+            closings for the matching base slice — they must not delay the
+            listing response.
+          </p>
+          <p className="font-mono text-[11px] text-charcoal/55">
+            Keys: months-supply:{"{town|All}"}:{"{sale|rental}"}:{"{all|homes|multi|condos}"}{" "}
+            · Index: months-supply-index:All:all · Rebuild: rebuildStatsCache →
+            rebuildMonthsSupplyCache · API: GET /api/months-supply
+          </p>
+          <p className="font-mono text-[11px] text-charcoal/55">
+            Live rows with prefix months-supply:{" "}
+            <span className="tabular-nums text-navy font-semibold">
+              {live?.byEntryId["months-supply"] == null
+                ? "—"
+                : live.byEntryId["months-supply"].toLocaleString()}
+            </span>
+          </p>
+        </div>
+      </div>
+
       {loading && !data ? (
         <p className="font-mono text-[11px] text-charcoal/45 px-1">
           Loading inventory…
@@ -231,14 +345,15 @@ export default function AdminStatsInventoryPanel() {
             <p className="mt-1 text-sm text-slate max-w-3xl">{category.description}</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left">
+            <table className="w-full min-w-[860px] text-left">
               <thead>
                 <tr className="border-b border-charcoal/[0.08] font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40">
                   <th className="px-5 sm:px-6 py-2.5 font-medium">Name</th>
                   <th className="px-3 py-2.5 font-medium">Stored in</th>
-                  <th className="px-3 py-2.5 font-medium">Key / path</th>
+                  <th className="px-3 py-2.5 font-medium">Table</th>
+                  <th className="px-3 py-2.5 font-medium">Key</th>
                   <th className="px-3 py-2.5 font-medium text-right">Rows</th>
-                  <th className="px-5 sm:px-6 py-2.5 font-medium">Owner</th>
+                  <th className="px-5 sm:px-6 py-2.5 font-medium">Code</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-charcoal/[0.06]">
@@ -246,14 +361,13 @@ export default function AdminStatsInventoryPanel() {
                   const count = live?.byEntryId[entry.id];
                   const mediumLabel =
                     data?.mediums[entry.medium]?.short ?? entry.medium;
+                  const table = statsInventoryPostgresTable(entry);
+                  const keyField = statsInventoryKeyFieldLabel(entry);
                   return (
                     <tr key={entry.id} className="align-top">
                       <td className="px-5 sm:px-6 py-3">
                         <p className="text-sm text-navy font-medium leading-snug">
                           {entry.name}
-                        </p>
-                        <p className="mt-0.5 font-mono text-[10px] text-charcoal/40">
-                          {entry.location}
                         </p>
                         {entry.notes ? (
                           <p className="mt-1 text-xs text-charcoal/50 max-w-xs leading-snug">
@@ -265,6 +379,18 @@ export default function AdminStatsInventoryPanel() {
                         <MediumPill medium={entry.medium} label={mediumLabel} />
                       </td>
                       <td className="px-3 py-3">
+                        {table ? (
+                          <PostgresTableLink table={table} />
+                        ) : (
+                          <span className="font-mono text-[11px] text-charcoal/35">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/35 mb-0.5">
+                          {keyField}
+                        </p>
                         <code className="font-mono text-[11px] text-charcoal/70 break-all">
                           {entry.keyPattern}
                         </code>
@@ -273,7 +399,10 @@ export default function AdminStatsInventoryPanel() {
                         {count == null ? "—" : count.toLocaleString()}
                       </td>
                       <td className="px-5 sm:px-6 py-3">
-                        <code className="font-mono text-[10px] text-charcoal/45 break-all">
+                        <code
+                          className="font-mono text-[10px] text-charcoal/55 break-all"
+                          title="Source module path (repo file), not a database field"
+                        >
                           {entry.owner}
                         </code>
                       </td>

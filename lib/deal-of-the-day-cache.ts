@@ -86,6 +86,11 @@ export async function readDealOfTheDayCache(
   }
 }
 
+/**
+ * Bundle of per-town DOTD cache rows for the carousel.
+ * Returns whatever towns are already cached — does not require a full set
+ * (missing towns used to null the whole bundle and force a slow recompute).
+ */
 export async function readDealOfTheDayBundle(
   kind: DealOfTheDayKind = 'all',
 ): Promise<DealOfTheDayBundleResponse | null> {
@@ -95,13 +100,19 @@ export async function readDealOfTheDayBundle(
   let generatedAt: string | null = null
 
   for (const town of TMRE_TOWNS) {
-    const cached = await readDealOfTheDayCache(town, kind)
-    if (!cached) return null
+    // Prefer the requested kind; fall back to unscoped "all" so a sale/rental
+    // carousel can still paint from a partial rebuild.
+    const cached =
+      (await readDealOfTheDayCache(town, kind)) ??
+      (kind !== 'all' ? await readDealOfTheDayCache(town, 'all') : null)
+    if (!cached) continue
     deals[town] = cached
     if (!generatedAt || cached.generatedAt > generatedAt) {
       generatedAt = cached.generatedAt
     }
   }
+
+  if (Object.keys(deals).length === 0) return null
 
   return {
     generatedAt: generatedAt ?? new Date().toISOString(),

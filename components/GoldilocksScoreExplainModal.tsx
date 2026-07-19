@@ -5,7 +5,7 @@ import {
   resolveExplainContent,
   type ScoreExplainTopic,
 } from "@/lib/goldilocks-score-info";
-import ModalPortal from "@/components/ModalPortal";
+import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 
 type ExplainContext = {
   composite?: number;
@@ -39,7 +39,7 @@ export default function GoldilocksScoreExplainModal({
       zClass={layered ? "z-[210]" : "z-[200]"}
     >
       <div
-        className="relative bg-white rounded-3xl shadow-2xl shadow-navy/20 max-w-md w-full p-8 max-h-[min(85vh,calc(100vh-6rem))] overflow-y-auto"
+        className={MODAL_PANEL_CLASS}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-5">

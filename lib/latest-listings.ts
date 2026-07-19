@@ -119,11 +119,17 @@ function toLatestRow(
       ? ((listing.originalListPrice - listing.price) / listing.originalListPrice) * 100
       : null
 
+  const composite =
+    score?.composite ??
+    (storedScore != null && Number.isFinite(Number(storedScore))
+      ? Number(storedScore)
+      : 0)
+
   return {
     key: listing.listingKey || listing.mlsId,
     listingKey: listing.listingKey ?? null,
     mlsId: listing.mlsId,
-    score: score?.composite ?? storedScore ?? 0,
+    score: composite,
     scoreBreakdown: score,
     address: listing.address.street || listing.address.full,
     city: listing.address.city?.trim() || null,
@@ -311,10 +317,21 @@ export async function fetchLatestUpdatedListings(options: {
   })
   if (rows.length === 0) return []
 
-  // Page requests: never stall on live scoring. Background warm may live-score.
-  const scoredRows = allowLiveScore
-    ? await scoreUnscoredLatestRows(rows)
-    : mapStoredLatestRows(rows)
+  // Prefer stored scores on the request path. If this slice is mostly
+  // unscored (common for brand-new MLS updates), live-score the small
+  // batch so /latest does not show 0.0 while the detail page has a score.
+  let scoredRows: LatestListingRow[]
+  if (allowLiveScore) {
+    scoredRows = await scoreUnscoredLatestRows(rows)
+  } else {
+    const mapped = mapStoredLatestRows(rows)
+    const unscoredCount = mapped.filter((r) => !(r.score > 0)).length
+    const shouldLiveScore =
+      mapped.length > 0 && unscoredCount / mapped.length >= 0.4 && mapped.length <= 40
+    scoredRows = shouldLiveScore
+      ? await scoreUnscoredLatestRows(rows)
+      : mapped
+  }
 
   const sorted = sortLatestByModification(scoredRows).slice(0, cap)
 

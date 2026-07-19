@@ -7,6 +7,7 @@ export const SCHEDULED_SYNC_JOB_IDS = [
   'stats-cache',
   'deal-of-the-day',
   'property-addresses',
+  'zip-boundaries',
 ] as const
 
 export type ScheduledSyncJobId = (typeof SCHEDULED_SYNC_JOB_IDS)[number]
@@ -25,5 +26,6 @@ export function emptyScheduledSyncPausedJobs(): ScheduledSyncPausedJobs {
     'stats-cache': false,
     'deal-of-the-day': false,
     'property-addresses': false,
+    'zip-boundaries': false,
   }
 }

@@ -5,9 +5,13 @@ import {
   readListingsDbStats,
   readListingsFromDb,
 } from '@/lib/db/listings-repo'
-import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
-  clearStatsCache,
+  getSyncMeta,
+  releaseTimedLock,
+  setSyncMeta,
+  tryAcquireTimedLock,
+} from '@/lib/db/sync-meta-store'
+import {
   readStatsCacheRow,
   writeStatsCacheRow,
 } from '@/lib/db/stats-cache-repo'
@@ -34,6 +38,10 @@ import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { rebuildIntelligenceTownSnapshots } from '@/lib/intelligence-town-snapshot'
 import {
+  MONTHS_SUPPLY_INDEX_KEY,
+  rebuildMonthsSupplyCache,
+} from '@/lib/months-supply-cache'
+import {
   SqliteWriteStatsCollector,
   type TableWriteStats,
 } from '@/lib/sqlite-sync-stats'
@@ -41,8 +49,71 @@ import {
 /** Stats payloads are refreshed on this interval (1 hour). */
 export const STATS_CACHE_TTL_MS = 60 * 60 * 1000
 
+/** sync_meta key — ISO start time while a stats_cache rebuild holds the lock. */
+export const STATS_CACHE_REBUILD_LOCK_KEY = 'stats_cache_rebuild_lock'
+
+/** Steal the rebuild lock if the holder has been silent this long (dead Lambda). */
+const STATS_CACHE_REBUILD_LOCK_STALE_MS = 20 * 60 * 1000
+
 let emptyCacheRebuildAttempted = false
 let backgroundRebuildScheduled = false
+
+type KindTownMonthData = Record<
+  (typeof LISTING_KINDS)[number],
+  Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>
+>
+type KindTownActiveMonthData = Record<
+  (typeof LISTING_KINDS)[number],
+  Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>
+>
+type KindTownAvgScoreData = Record<
+  (typeof LISTING_KINDS)[number],
+  Record<TmreTown, AvgScoreByVintagePayload>
+>
+
+function emptyKindTownMonthData(): KindTownMonthData {
+  return {
+    sale: {} as Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>,
+    rental: {} as Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>,
+  }
+}
+
+function emptyKindTownActiveMonthData(): KindTownActiveMonthData {
+  return {
+    sale: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
+    rental: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
+  }
+}
+
+function emptyKindTownAvgScoreData(): KindTownAvgScoreData {
+  return {
+    sale: {} as Record<TmreTown, AvgScoreByVintagePayload>,
+    rental: {} as Record<TmreTown, AvgScoreByVintagePayload>,
+  }
+}
+
+async function acquireStatsCacheRebuildLock(): Promise<string | null> {
+  const token = new Date().toISOString()
+  const ok = await tryAcquireTimedLock(
+    STATS_CACHE_REBUILD_LOCK_KEY,
+    token,
+    STATS_CACHE_REBUILD_LOCK_STALE_MS,
+  )
+  if (!ok) {
+    console.info('[stats-cache] skipped — rebuild lock held')
+    return null
+  }
+  return token
+}
+
+async function releaseStatsCacheRebuildLock(token: string | null): Promise<void> {
+  if (!token) return
+  try {
+    await releaseTimedLock(STATS_CACHE_REBUILD_LOCK_KEY, token)
+  } catch (err) {
+    console.error('[stats-cache] failed to release rebuild lock', err)
+  }
+}
 
 type MonthlyCount = { year: number; month: number; count: number }
 
@@ -173,8 +244,17 @@ async function statsCacheMissingMonthCharts(): Promise<boolean> {
   return false
 }
 
+async function statsCacheMissingMonthsSupply(): Promise<boolean> {
+  const row = await readStatsCacheRow(MONTHS_SUPPLY_INDEX_KEY)
+  return row == null
+}
+
 async function statsCacheMissingRequiredEntries(): Promise<boolean> {
-  return (await statsCacheMissingMedians()) || (await statsCacheMissingMonthCharts())
+  return (
+    (await statsCacheMissingMedians()) ||
+    (await statsCacheMissingMonthCharts()) ||
+    (await statsCacheMissingMonthsSupply())
+  )
 }
 
 async function ensureStatsCachePopulated(): Promise<void> {
@@ -369,107 +449,80 @@ export function computeTownBundleFromListings(
   }
 }
 
-/** Recompute all Stats API payloads from SQLite listings and persist to stats_cache. */
-export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): Promise<{
-  written: number
-  durationMs: number
-}> {
-  const trackRefresh = options.trackRefresh !== false
-  if (trackRefresh) beginSqliteRefresh('stats-cache')
-  const startedAt = new Date().toISOString()
-  setSyncMeta('last_stats_cache_started', startedAt)
-  const t0 = Date.now()
-  try {
-  await clearStatsCache()
+type TownListingsMap = Record<TmreTown, { active: Listing[]; closed: Listing[] }>
 
-  if (!(await hasLocalListingsCache())) {
-    return { written: 0, durationMs: Date.now() - t0 }
-  }
-
+/** Upsert market scopes for one town; optionally fill by-town bundle maps. */
+async function writeTownMarketStats(
+  town: TmreTown,
+  active: Listing[],
+  closed: Listing[],
+  generatedAt: string,
+  bundles?: {
+    salesByMonthByTown: KindTownMonthData
+    activeByMonthByTown: KindTownActiveMonthData
+    avgScoreByVintageByTown: KindTownAvgScoreData
+  },
+): Promise<number> {
   let written = 0
-  const generatedAt = new Date().toISOString()
-  const salesByMonthByTown: Record<
-    (typeof LISTING_KINDS)[number],
-    Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>
-  > = {
-    sale: {} as Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>,
-    rental: {} as Record<TmreTown, ReturnType<typeof computeSalesByMonth>['data']>,
-  }
-  const activeByMonthByTown: Record<
-    (typeof LISTING_KINDS)[number],
-    Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>
-  > = {
-    sale: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
-    rental: {} as Record<TmreTown, ReturnType<typeof computeActiveByMonth>['data']>,
-  }
-  const avgScoreByVintageByTown: Record<
-    (typeof LISTING_KINDS)[number],
-    Record<TmreTown, AvgScoreByVintagePayload>
-  > = {
-    sale: {} as Record<TmreTown, AvgScoreByVintagePayload>,
-    rental: {} as Record<TmreTown, AvgScoreByVintagePayload>,
-  }
+  const scoredActive = await scoredActiveRows(active)
 
-  for (const town of TMRE_TOWNS) {
-    const [active, closed] = await Promise.all([
-      readListingsFromDb(town, 'Active', 500),
-      readListingsFromDb(town, 'Closed', 2500),
-    ])
-    const scoredActive = await scoredActiveRows(active)
+  for (const kind of LISTING_KINDS) {
+    await writeStatsCache('market-stats', town, kind, {
+      ...computeMarketStats(active, town, kind, closed),
+      generatedAt,
+    })
+    written += 1
 
-    for (const kind of LISTING_KINDS) {
-      await writeStatsCache(
-        'market-stats',
-        town,
-        kind,
-        { ...computeMarketStats(active, town, kind, closed), generatedAt },
-      )
-      written += 1
+    await writeStatsCache('market-stats-listings', town, kind, {
+      listings: buildMedianListingRows(closed, town, kind),
+      generatedAt,
+    })
+    written += 1
 
-      await writeStatsCache(
-        'market-stats-listings',
-        town,
-        kind,
-        { listings: buildMedianListingRows(closed, town, kind), generatedAt },
-      )
-      written += 1
+    const monthPayload = computeSalesByMonth(closed, town, kind)
+    await writeStatsCache('sales-by-month', town, kind, { ...monthPayload, generatedAt })
+    if (bundles) bundles.salesByMonthByTown[kind][town] = monthPayload.data
+    written += 1
 
-      const monthPayload = computeSalesByMonth(closed, town, kind)
-      await writeStatsCache('sales-by-month', town, kind, { ...monthPayload, generatedAt })
-      salesByMonthByTown[kind][town] = monthPayload.data
-      written += 1
+    const activeMonthPayload = computeActiveByMonth(active, closed, town, kind)
+    await writeStatsCache('active-by-month', town, kind, {
+      ...activeMonthPayload,
+      generatedAt,
+    })
+    if (bundles) bundles.activeByMonthByTown[kind][town] = activeMonthPayload.data
+    written += 1
 
-      const activeMonthPayload = computeActiveByMonth(active, closed, town, kind)
-      await writeStatsCache('active-by-month', town, kind, { ...activeMonthPayload, generatedAt })
-      activeByMonthByTown[kind][town] = activeMonthPayload.data
-      written += 1
+    await writeStatsCache('sales-by-vintage', town, kind, {
+      ...computeSalesByVintage(closed, town, kind),
+      generatedAt,
+    })
+    written += 1
 
-      await writeStatsCache(
-        'sales-by-vintage',
-        town,
-        kind,
-        { ...computeSalesByVintage(closed, town, kind), generatedAt },
-      )
-      written += 1
+    await writeStatsCache('sales-by-price', town, kind, {
+      ...computeSalesByPrice(closed, town, kind),
+      generatedAt,
+    })
+    written += 1
 
-      await writeStatsCache(
-        'sales-by-price',
-        town,
-        kind,
-        { ...computeSalesByPrice(closed, town, kind), generatedAt },
-      )
-      written += 1
-
-      const avgScorePayload = computeAvgScoreByVintage(scoredActive, town, kind)
-      await writeStatsCache('avg-score-by-vintage', town, kind, {
-        ...avgScorePayload,
-        generatedAt,
-      })
-      avgScoreByVintageByTown[kind][town] = avgScorePayload
-      written += 1
-    }
+    const avgScorePayload = computeAvgScoreByVintage(scoredActive, town, kind)
+    await writeStatsCache('avg-score-by-vintage', town, kind, {
+      ...avgScorePayload,
+      generatedAt,
+    })
+    if (bundles) bundles.avgScoreByVintageByTown[kind][town] = avgScorePayload
+    written += 1
   }
 
+  return written
+}
+
+async function writeByTownBundles(
+  salesByMonthByTown: KindTownMonthData,
+  activeByMonthByTown: KindTownActiveMonthData,
+  avgScoreByVintageByTown: KindTownAvgScoreData,
+  generatedAt: string,
+): Promise<number> {
+  let written = 0
   for (const kind of LISTING_KINDS) {
     await writeStatsCache('sales-by-month-by-town', 'All', kind, {
       kind,
@@ -491,56 +544,242 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     })
     written += 3
   }
+  return written
+}
 
+async function readCachedJsonPayload<T>(cacheKey: string): Promise<T | null> {
+  const row = await readStatsCacheRow(cacheKey)
+  if (!row) return null
+  try {
+    return JSON.parse(row.payload) as T
+  } catch {
+    return null
+  }
+}
+
+/** Rebuild `*-by-town:All` bundles from per-town cache rows (after a partial town upsert). */
+async function refreshByTownBundlesFromTownCaches(generatedAt: string): Promise<number> {
+  const salesByMonthByTown = emptyKindTownMonthData()
+  const activeByMonthByTown = emptyKindTownActiveMonthData()
+  const avgScoreByVintageByTown = emptyKindTownAvgScoreData()
+
+  for (const town of TMRE_TOWNS) {
+    for (const kind of LISTING_KINDS) {
+      const sales = await readCachedJsonPayload<ReturnType<typeof computeSalesByMonth>>(
+        statsCacheKey('sales-by-month', town, kind),
+      )
+      if (sales?.data) salesByMonthByTown[kind][town] = sales.data
+
+      const active = await readCachedJsonPayload<ReturnType<typeof computeActiveByMonth>>(
+        statsCacheKey('active-by-month', town, kind),
+      )
+      if (active?.data) activeByMonthByTown[kind][town] = active.data
+
+      const avg = await readCachedJsonPayload<AvgScoreByVintagePayload>(
+        statsCacheKey('avg-score-by-vintage', town, kind),
+      )
+      if (avg) avgScoreByVintageByTown[kind][town] = avg
+    }
+  }
+
+  return writeByTownBundles(
+    salesByMonthByTown,
+    activeByMonthByTown,
+    avgScoreByVintageByTown,
+    generatedAt,
+  )
+}
+
+async function writeAllAggregateStats(generatedAt: string): Promise<number> {
+  let written = 0
   const [allClosed, allActive] = await Promise.all([
     readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
     readAllListingsFromDb(TMRE_TOWNS, 'Active'),
   ])
   const allScoredActive = await scoredActiveRows(allActive)
   for (const kind of LISTING_KINDS) {
-    await writeStatsCache(
-      'sales-by-vintage',
-      'All',
-      kind,
-      { ...computeSalesByVintage(allClosed, 'All', kind), generatedAt },
-    )
-    await writeStatsCache(
-      'sales-by-price',
-      'All',
-      kind,
-      { ...computeSalesByPrice(allClosed, 'All', kind), generatedAt },
-    )
-    await writeStatsCache(
-      'avg-score-by-vintage',
-      'All',
-      kind,
-      { ...computeAvgScoreByVintage(allScoredActive, 'All', kind), generatedAt },
-    )
+    await writeStatsCache('sales-by-vintage', 'All', kind, {
+      ...computeSalesByVintage(allClosed, 'All', kind),
+      generatedAt,
+    })
+    await writeStatsCache('sales-by-price', 'All', kind, {
+      ...computeSalesByPrice(allClosed, 'All', kind),
+      generatedAt,
+    })
+    await writeStatsCache('avg-score-by-vintage', 'All', kind, {
+      ...computeAvgScoreByVintage(allScoredActive, 'All', kind),
+      generatedAt,
+    })
     written += 3
   }
-
-  setSyncMeta('last_stats_cache', generatedAt)
-  console.info(`[stats-cache] rebuilt ${written} entries in ${Date.now() - t0}ms`)
-
-  try {
-    const snap = await rebuildIntelligenceTownSnapshots()
-    written += snap.written
-  } catch (err) {
-    console.error('[stats-cache] town snapshot rebuild failed', err)
-  }
-
-  return { written, durationMs: Date.now() - t0 }
-  } finally {
-    if (trackRefresh) endSqliteRefresh(new Date().toISOString())
-  }
+  return written
 }
 
-/** Rebuild stats cache when missing or older than STATS_CACHE_TTL_MS. */
-export async function rebuildStatsCacheIfStale(force = false): Promise<{
+type RebuildStatsResult = {
   written: number
   durationMs: number
   skipped?: boolean
-}> {
+}
+
+/**
+ * Recompute Stats API payloads from listings and upsert into stats_cache.
+ * Does not clear existing rows — failed mid-rebuild leaves prior payloads intact.
+ */
+export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): Promise<RebuildStatsResult> {
+  const trackRefresh = options.trackRefresh !== false
+  const lockToken = await acquireStatsCacheRebuildLock()
+  if (!lockToken) {
+    return { written: 0, durationMs: 0, skipped: true }
+  }
+
+  if (trackRefresh) beginSqliteRefresh('stats-cache')
+  const startedAt = new Date().toISOString()
+  setSyncMeta('last_stats_cache_started', startedAt)
+  const t0 = Date.now()
+  try {
+    if (!(await hasLocalListingsCache())) {
+      return { written: 0, durationMs: Date.now() - t0 }
+    }
+
+    let written = 0
+    const generatedAt = new Date().toISOString()
+    const salesByMonthByTown = emptyKindTownMonthData()
+    const activeByMonthByTown = emptyKindTownActiveMonthData()
+    const avgScoreByVintageByTown = emptyKindTownAvgScoreData()
+    const townListingsForMonthsSupply = {} as TownListingsMap
+
+    for (const town of TMRE_TOWNS) {
+      const [active, closed] = await Promise.all([
+        readListingsFromDb(town, 'Active', 500),
+        readListingsFromDb(town, 'Closed', 2500),
+      ])
+      townListingsForMonthsSupply[town] = { active, closed }
+      written += await writeTownMarketStats(town, active, closed, generatedAt, {
+        salesByMonthByTown,
+        activeByMonthByTown,
+        avgScoreByVintageByTown,
+      })
+    }
+
+    written += await writeByTownBundles(
+      salesByMonthByTown,
+      activeByMonthByTown,
+      avgScoreByVintageByTown,
+      generatedAt,
+    )
+    written += await writeAllAggregateStats(generatedAt)
+
+    try {
+      const ms = await rebuildMonthsSupplyCache({
+        townListings: townListingsForMonthsSupply,
+      })
+      written += ms.written
+    } catch (err) {
+      console.error('[stats-cache] months-supply rebuild failed', err)
+    }
+
+    setSyncMeta('last_stats_cache', generatedAt)
+    console.info(`[stats-cache] rebuilt ${written} entries in ${Date.now() - t0}ms`)
+
+    try {
+      const snap = await rebuildIntelligenceTownSnapshots()
+      written += snap.written
+    } catch (err) {
+      console.error('[stats-cache] town snapshot rebuild failed', err)
+    }
+
+    return { written, durationMs: Date.now() - t0 }
+  } finally {
+    if (trackRefresh) endSqliteRefresh(new Date().toISOString())
+    await releaseStatsCacheRebuildLock(lockToken)
+  }
+}
+
+/**
+ * Upsert stats for specific towns, then refresh by-town bundles + All aggregates.
+ * Used after incremental MLS sync when only some towns changed.
+ */
+export async function rebuildStatsCacheForTowns(
+  towns: readonly TmreTown[],
+  options: { trackRefresh?: boolean } = {},
+): Promise<RebuildStatsResult> {
+  const unique = [...new Set(towns)]
+  if (unique.length === 0) {
+    return { written: 0, durationMs: 0, skipped: true }
+  }
+  if (unique.length >= TMRE_TOWNS.length) {
+    return rebuildStatsCache(options)
+  }
+
+  const trackRefresh = options.trackRefresh === true
+  const lockToken = await acquireStatsCacheRebuildLock()
+  if (!lockToken) {
+    return { written: 0, durationMs: 0, skipped: true }
+  }
+
+  if (trackRefresh) beginSqliteRefresh('stats-cache')
+  const startedAt = new Date().toISOString()
+  setSyncMeta('last_stats_cache_started', startedAt)
+  const t0 = Date.now()
+  try {
+    if (!(await hasLocalListingsCache())) {
+      return { written: 0, durationMs: Date.now() - t0 }
+    }
+
+    let written = 0
+    const generatedAt = new Date().toISOString()
+    const townListingsForMonthsSupply = {} as TownListingsMap
+
+    for (const town of unique) {
+      const [active, closed] = await Promise.all([
+        readListingsFromDb(town, 'Active', 500),
+        readListingsFromDb(town, 'Closed', 2500),
+      ])
+      townListingsForMonthsSupply[town] = { active, closed }
+      written += await writeTownMarketStats(town, active, closed, generatedAt)
+    }
+
+    written += await refreshByTownBundlesFromTownCaches(generatedAt)
+    written += await writeAllAggregateStats(generatedAt)
+
+    try {
+      const ms = await rebuildMonthsSupplyCache({
+        townListings: townListingsForMonthsSupply,
+      })
+      written += ms.written
+    } catch (err) {
+      console.error('[stats-cache] months-supply rebuild failed (per-town)', err)
+    }
+
+    setSyncMeta('last_stats_cache', generatedAt)
+    console.info(
+      `[stats-cache] per-town rebuild (${unique.join(', ')}) wrote ${written} entries in ${Date.now() - t0}ms`,
+    )
+
+    try {
+      const snap = await rebuildIntelligenceTownSnapshots()
+      written += snap.written
+    } catch (err) {
+      console.error('[stats-cache] town snapshot rebuild failed (per-town)', err)
+    }
+
+    return { written, durationMs: Date.now() - t0 }
+  } finally {
+    if (trackRefresh) endSqliteRefresh(new Date().toISOString())
+    await releaseStatsCacheRebuildLock(lockToken)
+  }
+}
+
+/** Convenience: rebuild a single town's market stats (+ bundles / All). */
+export async function rebuildStatsCacheForTown(
+  town: TmreTown,
+  options: { trackRefresh?: boolean } = {},
+): Promise<RebuildStatsResult> {
+  return rebuildStatsCacheForTowns([town], options)
+}
+
+/** Rebuild stats cache when missing or older than STATS_CACHE_TTL_MS. */
+export async function rebuildStatsCacheIfStale(force = false): Promise<RebuildStatsResult> {
   if (!(await hasLocalListingsCache())) {
     return { written: 0, durationMs: 0, skipped: true }
   }

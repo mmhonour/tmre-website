@@ -88,7 +88,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const cached = await readDealOfTheDayCache(scope, kindKey)
+    const cached =
+      (await readDealOfTheDayCache(scope, kindKey)) ??
+      (kindKey !== 'all' ? await readDealOfTheDayCache(scope, 'all') : null)
     if (cached) {
       maybeWarmPhotosInBackground(cached)
       return NextResponse.json(

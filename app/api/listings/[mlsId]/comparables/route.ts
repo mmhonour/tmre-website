@@ -16,7 +16,10 @@ export async function GET(
     return NextResponse.json({ error: 'mlsId required' }, { status: 400 })
   }
 
-  const kind = parseListingKindParam(new URL(req.url).searchParams.get('kind'))
+  const url = new URL(req.url)
+  const kind = parseListingKindParam(url.searchParams.get('kind'))
+  const pool =
+    url.searchParams.get('pool') === 'wide' ? ('wide' as const) : ('default' as const)
 
   try {
     const { listing: subject } = await readListingFromDbByMlsId(id)
@@ -24,7 +27,7 @@ export async function GET(
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
 
-    const payload = await resolveComparablesForSubject(subject, kind)
+    const payload = await resolveComparablesForSubject(subject, kind, { pool })
 
     return NextResponse.json(payload)
   } catch (err) {

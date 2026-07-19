@@ -161,7 +161,19 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'AGENT_MLS_ID',
     category: 'mls-data',
     definition:
-      'Timothy Marks’s SmartMLS / brokerage agent ID (855109), stored in lib/business-info.ts and shown next to Berkshire Hathaway attributions.',
+      'Timothy Marks’s SmartMLS / brokerage agent ID (855109), stored in lib/business-info.ts and shown next to brokerage attributions.',
+  },
+  {
+    term: 'Brokerage name',
+    category: 'sync-admin',
+    definition:
+      'Public sponsoring-brokerage display string (default Berkshire Hathaway Home Services NE). Editable in Admin → Site without redeploy; stored in sync_meta key brokerage_name (lib/brokerage-config.ts).',
+  },
+  {
+    term: 'Saved search / listing alert',
+    category: 'product',
+    definition:
+      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries.',
   },
 
   // —— Sync / admin ——
@@ -217,7 +229,19 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'stats_cache',
     category: 'sync-admin',
     definition:
-      'Postgres table of precomputed JSON payloads (market stats, vintage charts, Latest feeds, deal boards, IF/UAG caches) so pages don’t recompute from raw listings every request.',
+      'Postgres table of precomputed JSON payloads (market stats, vintage charts, Latest feeds, deal boards, IF/UAG caches) so pages don’t recompute from raw listings every request. Market rebuild upserts in place (no wipe); hourly cron is stale-only; incremental sync refreshes changed towns.',
+  },
+  {
+    term: 'stats_cache_rebuild_lock',
+    category: 'sync-admin',
+    definition:
+      'Durable sync_meta lock (ISO start time) so only one stats_cache rebuild runs across Lambdas. Stolen after ~20 minutes if a holder dies mid-run.',
+  },
+  {
+    term: 'Months supply (cached)',
+    category: 'sync-admin',
+    definition:
+      'Precomputed in stats_cache for every town × For Sale|For Rental × All/Homes/Multi/Condos (plus All Towns). Formula: active count ÷ trailing 3-month average closings for that slice. Rebuilt with the stats cache; extra filters may adjust the numerator after listings load using the cached average — never recomputed as a page-blocking step.',
   },
   {
     term: 'refresh_in_progress / refresh lock',
@@ -505,7 +529,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'VisitorLocationBadge',
     category: 'ui-tabs',
     definition:
-      'Zip-code pill in the main header (left of the email icon). Planned: rotating border glow until first click; confirm/edit zip for personalization.',
+      'Zip-code pill in the main header (left of the email icon). Rotating gold border glow until first click; click opens confirm/edit ZIP popover (localStorage override + visitor location refresh for personalization).',
   },
 
   // —— Finance ——
@@ -533,7 +557,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'BHHS',
     category: 'product',
     definition:
-      'Berkshire Hathaway HomeServices — sponsoring brokerage (New England Properties). Agent MLS #855109.',
+      'Berkshire Hathaway Home Services NE — sponsoring brokerage display name (admin Site → Brokerage name / sync_meta). Agent MLS #855109.',
   },
   {
     term: 'MVP',

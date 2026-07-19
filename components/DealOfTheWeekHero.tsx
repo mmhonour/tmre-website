@@ -432,7 +432,14 @@ function mapDayDealToApi(deal: DealCarouselPayload): ApiResponse {
   };
 }
 
-export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "day" }) {
+export default function DealOfTheWeekHero({
+  mode = "week",
+  /** When true, nav padding is already handled by HomeMethodOverview above. */
+  afterOverview = false,
+}: {
+  mode?: "week" | "day";
+  afterOverview?: boolean;
+}) {
   const searchParams = useSearchParams();
   const city = searchParams.get("city");
   const listingParam = searchParams.get("listing");
@@ -581,9 +588,13 @@ export default function DealOfTheWeekHero({ mode = "week" }: { mode?: "week" | "
       />
       <div
         className={`relative mx-auto max-w-7xl px-6 lg:px-10 ${
-          isDay
-            ? "pt-20 pb-8 lg:pt-28 lg:pb-12"
-            : "pt-20 pb-12 lg:pt-24 lg:pb-16"
+          afterOverview
+            ? isDay
+              ? "pt-8 pb-8 lg:pt-10 lg:pb-12"
+              : "pt-8 pb-12 lg:pt-10 lg:pb-16"
+            : isDay
+              ? "pt-20 pb-8 lg:pt-28 lg:pb-12"
+              : "pt-20 pb-12 lg:pt-24 lg:pb-16"
         }`}
       >
         <div className="grid lg:grid-cols-[1.05fr_1fr] gap-8 lg:gap-12 items-start">

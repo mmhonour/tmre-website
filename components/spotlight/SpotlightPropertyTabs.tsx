@@ -90,8 +90,8 @@ export function SpotlightPropertyTabs() {
   if (tabsToRender.length <= 1) return null;
 
   return (
-    <div className="mb-3">
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
+    <div className="mb-1.5">
+      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
         Spotlight Properties
       </p>
       <div ref={viewportRef} className="overflow-hidden">

@@ -21,6 +21,22 @@ function unlockBodyScroll() {
   }
 }
 
+/**
+ * Shared panel chrome for modals rendered inside ModalPortal.
+ * Mobile: tighter padding + dvh max-height so content stays on-screen (esp. iOS
+ * dynamic browser chrome). Desktop: previous centered card look.
+ */
+export const MODAL_PANEL_CLASS =
+  "relative bg-white w-full max-w-md rounded-t-3xl rounded-b-2xl sm:rounded-3xl " +
+  "shadow-2xl shadow-navy/20 p-5 sm:p-8 " +
+  "max-h-[min(92dvh,calc(100dvh-1rem))] sm:max-h-[min(85vh,calc(100vh-5rem))] " +
+  "overflow-y-auto overscroll-contain";
+
+export const MODAL_PANEL_WIDE_CLASS = MODAL_PANEL_CLASS.replace(
+  "max-w-md",
+  "max-w-lg",
+);
+
 /** Full-viewport modal shell — portals to body to escape overflow/stacking ancestors. */
 export default function ModalPortal({
   open,
@@ -65,7 +81,19 @@ export default function ModalPortal({
         onClick={onClose}
         aria-hidden
       />
-      <div className="relative flex min-h-full items-start justify-center px-4 pt-20 pb-10 sm:items-center sm:py-10">
+      {/*
+        Mobile: pin to bottom (bottom-sheet) so tall score panels stay in the
+        visible viewport. Desktop: center as before.
+        Use 100dvh — 100vh overshoots on phones with collapsing browser chrome.
+      */}
+      <div
+        className={
+          "relative flex min-h-[100dvh] items-end justify-center " +
+          "px-3 pt-[max(0.5rem,env(safe-area-inset-top))] " +
+          "pb-[max(0.5rem,env(safe-area-inset-bottom))] " +
+          "sm:items-center sm:px-4 sm:py-10"
+        }
+      >
         {children}
       </div>
     </div>,

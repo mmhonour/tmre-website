@@ -29,8 +29,14 @@ export const AGENT_NAME = 'Timothy Marks'
 /** SmartMLS / brokerage agent ID for Timothy Marks. */
 export const AGENT_MLS_ID = '855109'
 
-/** Sponsoring brokerage (real-estate license is held here). */
-export const BROKERAGE_NAME = 'Berkshire Hathaway HomeServices New England Properties'
+/**
+ * Default sponsoring brokerage display name (real-estate license is held here).
+ * Live value is admin-editable via sync_meta — see lib/brokerage-config.ts.
+ */
+export const DEFAULT_BROKERAGE_NAME = 'Berkshire Hathaway Home Services NE'
+
+/** @deprecated Prefer getBrokerageName() / getBrokerageNameFresh(); kept as alias of the default. */
+export const BROKERAGE_NAME = DEFAULT_BROKERAGE_NAME
 
 // ---------------------------------------------------------------------------
 // Phone helpers (client-safe). The live number is admin-configurable via
@@ -100,8 +106,10 @@ export function absoluteUrl(path: string): string {
  * legal details are added when present.
  */
 export function realEstateAgentJsonLd(
-  opts: { phoneDisplay?: string | null } = {},
+  opts: { phoneDisplay?: string | null; brokerageName?: string | null } = {},
 ): Record<string, unknown> {
+  const brokerage =
+    opts.brokerageName?.trim() || DEFAULT_BROKERAGE_NAME
   const node: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'RealEstateAgent',
@@ -131,13 +139,13 @@ export function realEstateAgentJsonLd(
     ],
     parentOrganization: {
       '@type': 'Organization',
-      name: BROKERAGE_NAME,
+      name: brokerage,
     },
     founder: {
       '@type': 'Person',
       name: AGENT_NAME,
       jobTitle: 'Real Estate Agent',
-      worksFor: { '@type': 'Organization', name: BROKERAGE_NAME },
+      worksFor: { '@type': 'Organization', name: brokerage },
     },
   }
 

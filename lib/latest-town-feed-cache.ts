@@ -106,7 +106,7 @@ async function rebuildSingleTownFeedCache(
     limit,
     bypassTownFeedCache: true,
     bypassGlobalFeedCache: true,
-    allowLiveScore: false,
+    allowLiveScore: true,
   })
   if (listings.length === 0) {
     const existing = await readLatestTownFeedCache(town, limit)

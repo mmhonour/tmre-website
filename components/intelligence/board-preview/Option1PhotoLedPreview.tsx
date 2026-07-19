@@ -40,7 +40,11 @@ function PhotoLedRow({
       />
       <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <PreviewScoreBadge score={listing.score} />
+          <PreviewScoreBadge
+            score={listing.score}
+            title={listing.address}
+            listingHref={`/listings/${encodeURIComponent(listing.key)}`}
+          />
           <PreviewStatusBadge status={listing.status} />
         </div>
         <p className="font-medium text-navy text-sm leading-snug truncate">

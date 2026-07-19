@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchVisitorLocation } from "@/lib/visitor-location";
+import {
+  fetchVisitorLocation,
+  refreshVisitorLocation,
+  VISITOR_LOCATION_CHANGED_EVENT,
+} from "@/lib/visitor-location";
 
 /**
  * Returns the town list reordered so that the visitor's nearest town
@@ -11,19 +15,29 @@ export function usePersonalizedTowns<T extends string>(towns: readonly T[]): T[]
   const [ordered, setOrdered] = useState<T[]>([...towns]);
 
   useEffect(() => {
-    fetchVisitorLocation().then((loc) => {
-      const town = loc.town;
-      if (!town) return;
-      const idx = towns.findIndex(
-        (t) => t.toLowerCase() === town.toLowerCase(),
-      );
-      if (idx <= 0) return;
+    const apply = (town: string | null) => {
+      if (!town) {
+        setOrdered([...towns]);
+        return;
+      }
+      const idx = towns.findIndex((t) => t.toLowerCase() === town.toLowerCase());
+      if (idx <= 0) {
+        setOrdered([...towns]);
+        return;
+      }
       const next = [...towns] as T[];
       next.splice(idx, 1);
       next.unshift(towns[idx]);
       setOrdered(next);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
+
+    void fetchVisitorLocation().then((loc) => apply(loc.town));
+    const onChange = () => {
+      void refreshVisitorLocation().then((loc) => apply(loc.town));
+    };
+    window.addEventListener(VISITOR_LOCATION_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(VISITOR_LOCATION_CHANGED_EVENT, onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return ordered;

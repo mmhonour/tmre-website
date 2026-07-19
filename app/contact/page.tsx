@@ -5,11 +5,11 @@ import {
   BRAND_NAME,
   AGENT_NAME,
   AGENT_MLS_ID,
-  BROKERAGE_NAME,
   BASED_IN,
   SERVED_AREAS,
   OFFICE_ADDRESS,
 } from "@/lib/business-info";
+import { getBrokerageNameFresh } from "@/lib/brokerage-config";
 import { getContactPhoneFresh } from "@/lib/phone-config";
 
 export const metadata: Metadata = {
@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 
 export default async function ContactPage() {
   const phone = await getContactPhoneFresh();
+  const brokerageName = await getBrokerageNameFresh();
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-10 lg:pt-28 lg:pb-14 relative overflow-hidden">
@@ -51,7 +52,7 @@ export default async function ContactPage() {
                   {AGENT_NAME}
                 </ContactRow>
                 <ContactRow label="Brokerage">
-                  {BROKERAGE_NAME}
+                  {brokerageName}
                 </ContactRow>
                 <ContactRow label="Agent MLS #">
                   {AGENT_MLS_ID}

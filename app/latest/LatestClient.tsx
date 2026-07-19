@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import LatestLineRow from "@/components/latest/LatestLineRow";
+import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import LatestSmoothScrollList from "@/components/latest/LatestSmoothScrollList";
 import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
@@ -76,8 +77,25 @@ function pickListingRow(
   const bMs = modificationMs(b.modificationTimestamp);
   const newer = bMs > aMs ? b : a;
   const older = bMs > aMs ? a : b;
+  // Poll rows often arrive before Goldilocks is persisted — keep the better
+  // score/breakdown so a fresh 0.0 does not wipe a warm cache score.
+  const newerScore = Number(newer.score) || 0;
+  const olderScore = Number(older.score) || 0;
+  const score =
+    newerScore > 0 && newerScore >= olderScore
+      ? newerScore
+      : olderScore > 0
+        ? olderScore
+        : newerScore;
+  const scoreBreakdown =
+    (newerScore > 0 && newer.scoreBreakdown) ||
+    older.scoreBreakdown ||
+    newer.scoreBreakdown ||
+    null;
   return {
     ...newer,
+    score,
+    scoreBreakdown,
     town: newer.town?.trim() || older.town?.trim() || newer.city || older.city || null,
     city: newer.city?.trim() || older.city?.trim() || null,
   };
@@ -639,6 +657,12 @@ export default function LatestClient({
         </div>
       </section>
 
+      <section className="bg-cream pt-4 pb-0 lg:pt-5">
+        <div className="mx-auto max-w-7xl px-6 lg:px-10">
+          <LatestSearchAlertForm />
+        </div>
+      </section>
+
       <section className="bg-cream pt-4 pb-10 lg:pt-5 lg:pb-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
@@ -661,32 +685,40 @@ export default function LatestClient({
                 </div>
               ) : (
                 <div>
-                  <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-charcoal/[0.08] bg-cream/40 font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/45">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 sm:px-4 py-2 border-b border-charcoal/[0.08] bg-cream/40 font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/45">
                     {groupByTown && groupByZip ? (
-                      <span className="min-w-0 flex-1 text-left">Grouped By Town · Zip</span>
+                      <span className="min-w-0 basis-full sm:basis-auto sm:flex-1 text-left">
+                        Grouped By Town · Zip
+                      </span>
                     ) : groupByTown ? (
-                      <span className="min-w-0 flex-1 text-left">Grouped By Town</span>
+                      <span className="min-w-0 basis-full sm:basis-auto sm:flex-1 text-left">
+                        Grouped By Town
+                      </span>
                     ) : (
-                      <span className="min-w-0 flex-1 text-left">By Updated Timestamp</span>
+                      <span className="min-w-0 basis-full sm:basis-auto sm:flex-1 text-left">
+                        By Updated Timestamp
+                      </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={activateGroupByTown}
-                      className="shrink-0 font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors border border-charcoal/15 hover:border-gold rounded-full px-2.5 py-1"
-                      aria-pressed={groupByTown}
-                    >
-                      {groupByTown ? "SORT BY LATEST TIMESTAMP" : "Group by town"}
-                    </button>
-                    {groupByTown ? (
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        onClick={activateGroupByZip}
+                        onClick={activateGroupByTown}
                         className="shrink-0 font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors border border-charcoal/15 hover:border-gold rounded-full px-2.5 py-1"
-                        aria-pressed={groupByZip}
+                        aria-pressed={groupByTown}
                       >
-                        {groupByZip ? "UNGROUP ZIP" : "Group by zip"}
+                        {groupByTown ? "SORT BY LATEST TIMESTAMP" : "Group by town"}
                       </button>
-                    ) : null}
+                      {groupByTown ? (
+                        <button
+                          type="button"
+                          onClick={activateGroupByZip}
+                          className="shrink-0 font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors border border-charcoal/15 hover:border-gold rounded-full px-2.5 py-1"
+                          aria-pressed={groupByZip}
+                        >
+                          {groupByZip ? "UNGROUP ZIP" : "Group by zip"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   {isGrouped
                     ? feedGroups.map((group) => {
@@ -809,15 +841,33 @@ export default function LatestClient({
                                 type="button"
                                 onClick={() => toggleGroupCollapsed(group.label)}
                                 aria-expanded={!collapsed}
+                                aria-label={
+                                  collapsed
+                                    ? `Expand ${group.label} listings`
+                                    : `Collapse ${group.label} listings`
+                                }
                                 className="group flex min-w-0 items-center gap-2 shrink-0 hover:text-navy transition-colors text-left"
                               >
                                 <span
-                                  className={`inline-flex items-center justify-center shrink-0 rounded-md border border-charcoal/20 border-b-charcoal/30 border-t-white/90 bg-gradient-to-b from-white to-cream font-mono text-[11px] leading-none text-navy/80 font-bold shadow-[0_1px_2px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.95)] transition-[transform,box-shadow] duration-100 group-hover:shadow-[0_2px_3px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.98)] group-active:translate-y-px group-active:shadow-[inset_0_1px_2px_rgba(15,23,42,0.12)] ${
-                                    collapsed ? "h-5 w-5" : "h-5 min-w-[2rem] px-1"
-                                  }`}
+                                  className="inline-flex h-6 w-6 items-center justify-center shrink-0 rounded-md border border-charcoal/20 bg-white text-navy/75 shadow-sm transition-colors group-hover:border-gold/40 group-hover:text-navy"
                                   aria-hidden
                                 >
-                                  {collapsed ? "+" : "+/-"}
+                                  {/* Down = expand collapsed; Up = minimize expanded */}
+                                  <svg
+                                    viewBox="0 0 16 16"
+                                    className="h-3.5 w-3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    {collapsed ? (
+                                      <path d="M3 6l5 5 5-5" />
+                                    ) : (
+                                      <path d="M3 10l5-5 5 5" />
+                                    )}
+                                  </svg>
                                 </span>
                                 <LatestTownMapHover
                                   townName={group.label}

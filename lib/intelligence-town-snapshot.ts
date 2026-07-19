@@ -10,6 +10,7 @@ import type {
   SnapshotValueSignal,
 } from '@/lib/intelligence-town-snapshot-types'
 import { computeSalesByMonth, statsCacheKey, type SalesByMonthPayload } from '@/lib/stats-compute'
+import { readMonthsSupplyCached } from '@/lib/months-supply-cache'
 import type { Listing } from '@/lib/rets'
 import { formatTownZipPlace, isTmreTown, TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
@@ -418,10 +419,17 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
     )
     allRows.push(...rows)
 
+    const cachedSupply = await readMonthsSupplyCached(town, 'sale', 'all')
+    if (cachedSupply?.avgMonthlyClosings != null) {
+      monthlySales[town] = cachedSupply.avgMonthlyClosings
+    }
+
     const fromStats = await salesPayloadForTown(town)
     if (fromStats) {
-      const avg = avgMonthlySalesFromPayload(fromStats.data)
-      if (avg != null) monthlySales[town] = avg
+      if (!(town in monthlySales)) {
+        const avg = avgMonthlySalesFromPayload(fromStats.data)
+        if (avg != null) monthlySales[town] = avg
+      }
       closedThisWeekByTown[town] = fromStats.closedThisWeek ?? 0
       continue
     }
@@ -429,8 +437,10 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
     try {
       const closed = await readListingsFromDb(town, 'Closed', 2500)
       const salesPayload = computeSalesByMonth(closed, town, 'sale')
-      const avg = avgMonthlySalesFromPayload(salesPayload.data)
-      if (avg != null) monthlySales[town] = avg
+      if (!(town in monthlySales)) {
+        const avg = avgMonthlySalesFromPayload(salesPayload.data)
+        if (avg != null) monthlySales[town] = avg
+      }
       closedThisWeekByTown[town] = salesPayload.closedThisWeek
     } catch {
       closedThisWeekByTown[town] = 0

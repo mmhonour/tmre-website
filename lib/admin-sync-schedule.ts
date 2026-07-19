@@ -294,6 +294,7 @@ export function buildAdminSyncNextRuns(input: BuildNextRunsInput, now = new Date
   const nextStatsCache = nextIntervalStart(input.lastStatsCache, statsIntervalMs, now)
   const nextRefresh = earliestDate(nextIncremental, nextFullResync)
   const nextPropertyAddresses = nextMonday1amEt(now)
+  const nextZipBoundaries = nextMonthDayUtc(1, 10, now)
 
   return {
     'full-resync': nextFullResync.toISOString(),
@@ -304,7 +305,19 @@ export function buildAdminSyncNextRuns(input: BuildNextRunsInput, now = new Date
     'stats-cache': nextStatsCache.toISOString(),
     'deal-of-the-day': nextFullResync.toISOString(),
     'property-addresses': nextPropertyAddresses.toISOString(),
+    'zip-boundaries': nextZipBoundaries.toISOString(),
   }
+}
+
+/** Next UTC wall-clock on calendar day `day` at `hour`:00 (e.g. monthly cron). */
+export function nextMonthDayUtc(day: number, hour: number, from = new Date()): Date {
+  const candidate = new Date(
+    Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), day, hour, 0, 0, 0),
+  )
+  if (candidate.getTime() > from.getTime()) return candidate
+  return new Date(
+    Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, day, hour, 0, 0, 0),
+  )
 }
 
 export function buildAdminSyncScheduleHints(now = new Date()): AdminSyncScheduleHints {

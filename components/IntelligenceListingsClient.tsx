@@ -10,9 +10,11 @@ import {
 } from "@/lib/intelligence-url";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { fmtDate } from "@/lib/listing-history";
+import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { prefetchMlsPhotoThumbs } from "@/lib/prefetch-listing-images";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 import { listingZipMatchesTown, TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 type TxFilter = "all" | "sale" | "rental";
@@ -42,6 +44,7 @@ type ApiListing = {
     daysOnMarket: number | null;
     priceReductionPercent: number | null;
     goldilocksScore: number | null;
+    goldilocksBreakdown?: ScoreBreakdown | null;
   };
 };
 
@@ -49,6 +52,7 @@ type BoardListing = {
   key: string;
   mlsId: string;
   score: number;
+  scoreBreakdown: ScoreBreakdown | null;
   address: string;
   city: string;
   zip: string | null;
@@ -132,6 +136,7 @@ function mapListings(api: ApiListing[], townName: TmreTown): BoardListing[] {
         key: l.listingKey || l.mlsId,
         mlsId: l.mlsId,
         score: l.calculated.goldilocksScore ?? 0,
+        scoreBreakdown: l.calculated.goldilocksBreakdown ?? null,
         address: l.address.street || l.address.full,
         city: townName,
         zip: l.address.postalCode ?? null,
@@ -162,6 +167,7 @@ function mapClosedListings(api: ApiListing[], townName: TmreTown): BoardListing[
         key: l.listingKey || l.mlsId,
         mlsId: l.mlsId,
         score: l.calculated.goldilocksScore ?? 0,
+        scoreBreakdown: l.calculated.goldilocksBreakdown ?? null,
         address: l.address.street || l.address.full,
         city: townName,
         zip: l.address.postalCode ?? null,
@@ -516,8 +522,6 @@ function ListingCard({
 }) {
   const detailHref = listingDetailHref(l.mlsId, l.address, l.city);
   const photoSrc = listingPhotoProxyUrl(l.mlsId, 0);
-  const scoreColor =
-    l.score >= 85 ? "text-sage" : l.score >= 70 ? "text-gold" : "text-charcoal/60";
   const closedLabel = l.isRental ? "Leased" : "Closed";
   const statusLabel =
     status === "new"
@@ -545,10 +549,16 @@ function ListingCard({
           {statusLabel}
         </div>
         {status !== "closed" && l.score > 0 ? (
-          <div
-            className={`absolute top-3 right-3 font-mono text-sm tabular-nums font-semibold bg-white/95 px-2.5 py-1 rounded-full shadow-sm ${scoreColor}`}
-          >
-            {l.score.toFixed(1)}
+          <div className="absolute top-3 right-3 bg-white/95 px-2.5 py-1 rounded-full shadow-sm">
+            <ClickableGoldilocksScore
+              score={l.score}
+              breakdown={l.scoreBreakdown}
+              title={l.address}
+              subtitle={[l.city, l.zip].filter(Boolean).join(" · ") || null}
+              listingHref={detailHref}
+              isRental={l.isRental}
+              className="text-sm no-underline hover:underline"
+            />
           </div>
         ) : null}
       </Link>

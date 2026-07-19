@@ -65,7 +65,9 @@ export async function rebuildLatestGlobalFeedCache(
   const t0 = Date.now()
   const listings = await fetchLatestUpdatedListings({
     limit,
-    allowLiveScore: false,
+    // Live-score + persist so the ticker does not show 0.0 for new updates
+    // that the listing detail page would score on demand.
+    allowLiveScore: true,
     bypassGlobalFeedCache: true,
     bypassTownFeedCache: true,
   })

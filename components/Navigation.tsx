@@ -4,7 +4,7 @@ import ContactButton from "./ContactButton";
 import { useSiteUnlockActions, useSiteUnlocked } from "./SiteUnlockProvider";
 import VisitorLocationBadge from "./VisitorLocationBadge";
 import PhoneCta from "./PhoneCta";
-import { AGENT_MLS_ID } from "@/lib/business-info";
+import { AGENT_MLS_ID, DEFAULT_BROKERAGE_NAME } from "@/lib/business-info";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -20,19 +20,19 @@ const BHHS_AGENT_PROFILE_URL = "https://timothymarks.bhhsneproperties.com";
 const BHHS_LOGO_URL =
   "https://cdn-cws.datafloat.com/BNE/images/company/BNE/logo/logo.png";
 
-function BhhsAgentProfileLink() {
+function BhhsAgentProfileLink({ brokerageName }: { brokerageName: string }) {
   return (
     <a
       href={BHHS_AGENT_PROFILE_URL}
       target="_blank"
       rel="noopener noreferrer"
       className="group shrink-0"
-      aria-label={`Timothy Marks (MLS #${AGENT_MLS_ID}) — Berkshire Hathaway HomeServices profile`}
+      aria-label={`Timothy Marks (MLS #${AGENT_MLS_ID}) — ${brokerageName} profile`}
     >
       <span className="relative flex h-[108px] w-[108px] items-center justify-center rounded-md overflow-hidden bg-white ring-1 ring-white/25 shadow-md shadow-black/30 transition-transform group-hover:scale-105 group-hover:ring-gold/50">
         <Image
           src={BHHS_LOGO_URL}
-          alt="Berkshire Hathaway HomeServices"
+          alt={brokerageName}
           width={96}
           height={96}
           className="object-contain"
@@ -447,13 +447,16 @@ function PhoneCallWithLogout({
 export default function Navigation({
   siteUnlocked = false,
   phone,
+  brokerageName = DEFAULT_BROKERAGE_NAME,
 }: {
   siteUnlocked?: boolean;
   phone?: { tel: string; display: string };
+  brokerageName?: string;
 }) {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const brokerage = brokerageName.trim() || DEFAULT_BROKERAGE_NAME;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -514,7 +517,9 @@ export default function Navigation({
             <VisitorLocationBadge />
             <ContactButton className={iconCtaButtonClass} />
             <PhoneCallWithLogout phone={phone} />
-            {SHOW_BHHS_LOGO ? <BhhsAgentProfileLink /> : null}
+            {SHOW_BHHS_LOGO ? (
+              <BhhsAgentProfileLink brokerageName={brokerage} />
+            ) : null}
           </div>
 
           <div className="md:hidden flex items-center gap-2 shrink-0">
@@ -595,7 +600,9 @@ export default function Navigation({
             <div className="mt-3 flex flex-wrap items-start gap-2">
               <ContactButton className={iconCtaButtonClass} />
               <PhoneCallWithLogout align="start" phone={phone} />
-              {SHOW_BHHS_LOGO ? <BhhsAgentProfileLink /> : null}
+              {SHOW_BHHS_LOGO ? (
+              <BhhsAgentProfileLink brokerageName={brokerage} />
+            ) : null}
             </div>
           </nav>
         )}

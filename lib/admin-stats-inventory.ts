@@ -1,6 +1,13 @@
 /**
  * Catalog of product stats / caches for the Admin Stats tab.
  * Keep in sync when adding new stats_cache keys, derived tables, or file stores.
+ *
+ * Mental model for the columns:
+ * - **Table** — Postgres table that holds the state (e.g. `stats_cache`, `listings`).
+ * - **Key pattern** — how a row is addressed *inside* that table (usually
+ *   `stats_cache.cache_key`, or a listing id). This is NOT a filesystem path and
+ *   usually NOT a single column name unless notes say so (e.g. goldilocks columns).
+ * - **Code** — TypeScript module that reads/writes the state (`owner`).
  */
 
 export type StatsStorageMedium =
@@ -68,12 +75,13 @@ export const STATS_INVENTORY_CATEGORIES: StatsInventoryCategory[] = [
     id: 'market',
     label: 'Market & town stats',
     description:
-      'Precomputed Stats / Intelligence inputs rebuilt by rebuildStatsCache (hourly or on full sync).',
+      'Precomputed Stats / Intelligence inputs upserted by rebuildStatsCache (stale hourly cron, full sync, or per-town after incremental), including months-supply slices (town × sale/rental × property class).',
   },
   {
     id: 'feeds',
     label: 'Latest feeds',
-    description: 'Prebuilt Latest ticker and per-town feeds; survive hourly stats_cache clears.',
+    description:
+      'Prebuilt Latest ticker and per-town feeds; market stats rebuild upserts in place (no full wipe).',
   },
   {
     id: 'deals',
@@ -145,6 +153,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'sales-by-month:{town}:{sale|rental}',
     owner: 'lib/stats-cache.ts',
     live: { kind: 'stats_cache_prefix', prefix: 'sales-by-month:' },
+  },
+  {
+    id: 'months-supply',
+    name: 'Months supply (precomputed)',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'months-supply:{town|All}:{sale|rental}:{all|homes|multi|condos}',
+    owner: 'lib/months-supply-cache.ts',
+    notes:
+      'Required site-wide cache: every TMRE town (+ All) × For Sale|For Rental × All types|Homes|Multi-family|Condos. Formula = active inventory ÷ trailing 3-month avg closings for that same slice. RebuildStatsCache always writes these; finer filters (beds, zip, price, …) may refine the numerator after listings return using the cached avg closings — they must not block result delivery. Index key: months-supply-index:All:all.',
+    live: { kind: 'stats_cache_prefix', prefix: 'months-supply:' },
   },
   {
     id: 'active-by-month',
@@ -602,4 +622,42 @@ export function statsInventoryByCategory(): {
     category,
     entries: STATS_INVENTORY.filter((e) => e.category === category.id),
   })).filter((group) => group.entries.length > 0)
+}
+
+/**
+ * Postgres table associated with this catalog entry, when applicable.
+ * Returns null for memory / file / R2 / browser stores.
+ */
+export function statsInventoryPostgresTable(
+  entry: StatsInventoryEntry,
+): string | null {
+  if (entry.medium !== 'postgres') return null
+  switch (entry.live.kind) {
+    case 'postgres_table':
+      return entry.live.table
+    case 'stats_cache_prefix':
+      return 'stats_cache'
+    case 'sync_meta_count':
+      return 'sync_meta'
+    case 'goldilocks_scored':
+      return 'listings'
+    default:
+      break
+  }
+  const loc = entry.location.trim().split(/[\s(+]/)[0] ?? ''
+  if (/^[a-z][a-z0-9_]*$/.test(loc)) return loc
+  return null
+}
+
+/** Human label for what keyPattern means for this entry. */
+export function statsInventoryKeyFieldLabel(entry: StatsInventoryEntry): string {
+  if (entry.live.kind === 'stats_cache_prefix') return 'cache_key'
+  if (entry.live.kind === 'goldilocks_scored') return 'columns'
+  if (entry.live.kind === 'sync_meta_count') return 'key'
+  if (entry.live.kind === 'postgres_table') return 'rows'
+  if (entry.medium === 'file' || entry.medium === 'blobs' || entry.medium === 'r2') {
+    return 'path'
+  }
+  if (entry.medium === 'memory' || entry.medium === 'browser') return 'key'
+  return 'key'
 }

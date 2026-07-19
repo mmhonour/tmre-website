@@ -1,5 +1,6 @@
 import ProfileContactTrigger from "@/components/ProfileContactTrigger";
 import { AGENT_MLS_ID } from "@/lib/business-info";
+import { getBrokerageNameFresh } from "@/lib/brokerage-config";
 import { getContactPhoneFresh } from "@/lib/phone-config";
 
 export const metadata = {
@@ -26,13 +27,14 @@ const values = [
   },
   {
     icon: "◈",
-    title: "Three markets",
-    body: "Fairfield County, Massachusetts, and South Florida. Each market has different dynamics, different opportunities, and different risks. TMRE gives you the local intelligence to navigate all three.",
+    title: "Four markets",
+    body: "Fairfield County, Metro-Boston and greater MA, Palm Beach County in South Florida, New York City. Each market has different dynamics, different opportunities, and different risks. TMRE gives you the local intelligence to navigate all four!",
   },
 ];
 
 export default async function AboutPage() {
   const phone = await getContactPhoneFresh();
+  const brokerageName = await getBrokerageNameFresh();
   return (
     <>
       {/* HERO — matches site-wide nav banner style */}
@@ -144,8 +146,8 @@ export default async function AboutPage() {
                       he&rsquo;s done both versions on his own homes.
                     </p>
                     <p>
-                      He&rsquo;s a licensed agent for Berkshire Hathaway Home
-                      Services NE (MLS #{AGENT_MLS_ID}), and he and his family live in
+                      He&rsquo;s a licensed agent for {brokerageName}{" "}
+                      (MLS #{AGENT_MLS_ID}), and he and his family live in
                       Westport, his kids attend Westport schools, and the homes
                       he underwrites for clients are the same kind he underwrites
                       for himself.

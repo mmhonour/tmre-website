@@ -31,10 +31,22 @@ export default async function handler() {
     } catch (err) {
       console.warn('[netlify/sync-listings] spotlight status refresh failed', err)
     }
+    // Visitor saved-search alerts (email): immediate + due daily/weekly digests.
+    let savedSearchAlerts: { checked: number; sent: number; listings: number } | null =
+      null
+    try {
+      const { processDueSavedSearchAlerts } = await import(
+        '../../lib/saved-search-alerts'
+      )
+      savedSearchAlerts = await processDueSavedSearchAlerts()
+    } catch (err) {
+      console.warn('[netlify/sync-listings] saved-search alerts failed', err)
+    }
     return new Response(
       JSON.stringify({
         ok: result.towns.every((row) => row.ok),
         ...result,
+        savedSearchAlerts,
         stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped
           ? { skipped: true, reason: catchup.reason }
