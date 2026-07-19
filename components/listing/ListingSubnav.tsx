@@ -307,22 +307,28 @@ export default function ListingSubnav({
   };
 
   /** Non-link muted labels around the Sold / Rented tabs. */
-  const compsMutedLabel = (key: string, text: string, keyPrefix = "") => (
+  const compsMutedLabel = (
+    key: string,
+    text: string,
+    keyPrefix = "",
+    /** Leading WHAT matches Overview / Under Agreement tab left inset. */
+    alignStart = false,
+  ) => (
     <span
       key={`${keyPrefix}${key}`}
-      className={`shrink-0 whitespace-nowrap px-1 font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 border-b-2 border-transparent -mb-px ${
-        compact ? "py-2" : "py-2.5"
-      }`}
+      className={`shrink-0 whitespace-nowrap font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 border-b-2 border-transparent -mb-px ${
+        alignStart ? "pl-3 sm:pl-4 pr-1" : "px-1"
+      } ${compact ? "py-2" : "py-2.5"}`}
       aria-hidden
     >
       {text}
     </span>
   );
 
-  const renderCompsTabs = (keyPrefix = "") => (
+  const renderCompsTabs = (keyPrefix = "", alignWhatStart = false) => (
     <>
       {compsTabs.some((tab) => tab.id === "comparables")
-        ? compsMutedLabel("what-label", "What", keyPrefix)
+        ? compsMutedLabel("what-label", "What", keyPrefix, alignWhatStart)
         : null}
       {compsTabs.map((tab) => renderTabLink(tab, keyPrefix))}
       {compsTabs.some((tab) => tab.id === "comparable-rentals")
@@ -340,7 +346,7 @@ export default function ListingSubnav({
         aria-hidden
       >
         {topTabs.map((tab) => renderTabLink(tab, "mf-"))}
-        {renderCompsTabs("mf-")}
+        {renderCompsTabs("mf-", false)}
         {uagTabs.map((tab) => renderTabLink(tab, "mf-"))}
       </div>
 
@@ -356,7 +362,7 @@ export default function ListingSubnav({
             className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
             aria-label="Sold and rented"
           >
-            {renderCompsTabs()}
+            {renderCompsTabs("", true)}
           </nav>
           {uagTabs.length > 0 ? (
             <nav
@@ -373,7 +379,7 @@ export default function ListingSubnav({
           aria-label="Listing sections"
         >
           {topTabs.map((tab) => renderTabLink(tab))}
-          {renderCompsTabs()}
+          {renderCompsTabs("", false)}
           {uagTabs.map((tab) => renderTabLink(tab))}
         </nav>
       )}

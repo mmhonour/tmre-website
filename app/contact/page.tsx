@@ -4,6 +4,7 @@ import ObfuscatedEmail from "@/components/ObfuscatedEmail";
 import {
   BRAND_NAME,
   AGENT_NAME,
+  AGENT_MLS_ID,
   BROKERAGE_NAME,
   BASED_IN,
   SERVED_AREAS,
@@ -51,6 +52,9 @@ export default async function ContactPage() {
                 </ContactRow>
                 <ContactRow label="Brokerage">
                   {BROKERAGE_NAME}
+                </ContactRow>
+                <ContactRow label="Agent MLS #">
+                  {AGENT_MLS_ID}
                 </ContactRow>
                 <ContactRow label="Email">
                   <ObfuscatedEmail />

@@ -1,4 +1,5 @@
 import ProfileContactTrigger from "@/components/ProfileContactTrigger";
+import { AGENT_MLS_ID } from "@/lib/business-info";
 import { getContactPhoneFresh } from "@/lib/phone-config";
 
 export const metadata = {
@@ -144,7 +145,7 @@ export default async function AboutPage() {
                     </p>
                     <p>
                       He&rsquo;s a licensed agent for Berkshire Hathaway Home
-                      Services NE, and he and his family live in
+                      Services NE (MLS #{AGENT_MLS_ID}), and he and his family live in
                       Westport, his kids attend Westport schools, and the homes
                       he underwrites for clients are the same kind he underwrites
                       for himself.

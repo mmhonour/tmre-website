@@ -58,6 +58,7 @@ import {
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPanel";
+import AdminGlossaryPanel from "@/components/admin/AdminGlossaryPanel";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
@@ -829,6 +830,7 @@ export default async function AdminPage() {
         postgres={postgresPanel}
         server={serverPanel}
         docs={<AdminProductDocsPanel />}
+        glossary={<AdminGlossaryPanel />}
       />
     </>
   );

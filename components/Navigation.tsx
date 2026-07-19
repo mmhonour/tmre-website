@@ -4,6 +4,7 @@ import ContactButton from "./ContactButton";
 import { useSiteUnlockActions, useSiteUnlocked } from "./SiteUnlockProvider";
 import VisitorLocationBadge from "./VisitorLocationBadge";
 import PhoneCta from "./PhoneCta";
+import { AGENT_MLS_ID } from "@/lib/business-info";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -26,7 +27,7 @@ function BhhsAgentProfileLink() {
       target="_blank"
       rel="noopener noreferrer"
       className="group shrink-0"
-      aria-label="Timothy Marks — Berkshire Hathaway HomeServices profile"
+      aria-label={`Timothy Marks (MLS #${AGENT_MLS_ID}) — Berkshire Hathaway HomeServices profile`}
     >
       <span className="relative flex h-[108px] w-[108px] items-center justify-center rounded-md overflow-hidden bg-white ring-1 ring-white/25 shadow-md shadow-black/30 transition-transform group-hover:scale-105 group-hover:ring-gold/50">
         <Image

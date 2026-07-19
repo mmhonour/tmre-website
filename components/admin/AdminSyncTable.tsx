@@ -1476,7 +1476,7 @@ export default function AdminSyncTable({
   );
 
   const runSync = useCallback(
-    (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => {
+    async (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => {
       const actionId = row.actionId;
       if (!actionId) return;
 
@@ -1509,7 +1509,7 @@ export default function AdminSyncTable({
         return;
       }
 
-      void executeSync(row, opts);
+      await executeSync(row, opts);
     },
     [executeSync, replaceSyncQueue, clearPendingRetry],
   );

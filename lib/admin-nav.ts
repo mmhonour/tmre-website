@@ -7,7 +7,8 @@ export type AdminTabId =
   | "rets"
   | "postgres"
   | "server"
-  | "docs";
+  | "docs"
+  | "glossary";
 
 export type AdminSectionLink = {
   id: string;
@@ -75,6 +76,11 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     label: "Product docs",
     subtitle: "Live pages and repository reference files",
   },
+  {
+    id: "glossary",
+    label: "Glossary",
+    subtitle: "Acronyms and concepts from product chats on this PC",
+  },
 ];
 
 export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
@@ -107,6 +113,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-api-routes", label: "API routes", tab: "server" },
   { id: "admin-product-pages", label: "Product pages", tab: "docs" },
   { id: "admin-repo-docs", label: "Repository docs", tab: "docs" },
+  { id: "admin-glossary", label: "Glossary", tab: "glossary" },
 ];
 
 export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [

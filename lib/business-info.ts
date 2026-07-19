@@ -26,6 +26,9 @@ export const BRAND_TAGLINE = 'Confidence through clarity'
 /** The licensed agent behind the brand. */
 export const AGENT_NAME = 'Timothy Marks'
 
+/** SmartMLS / brokerage agent ID for Timothy Marks. */
+export const AGENT_MLS_ID = '855109'
+
 /** Sponsoring brokerage (real-estate license is held here). */
 export const BROKERAGE_NAME = 'Berkshire Hathaway HomeServices New England Properties'
 

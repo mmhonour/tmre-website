@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BRAND_NAME, BROKERAGE_NAME } from "@/lib/business-info";
+import { AGENT_MLS_ID, BRAND_NAME, BROKERAGE_NAME } from "@/lib/business-info";
 
 export const metadata: Metadata = {
   title: "Terms of Use",
@@ -35,7 +35,7 @@ export default function TermsPage() {
               These Terms of Use govern your access to and use of this website.
               By using the site, you agree to these terms. If you do not agree,
               please do not use the site. This site is operated by {BRAND_NAME},
-              a licensed agent of {BROKERAGE_NAME}.
+              a licensed agent of {BROKERAGE_NAME} (MLS #{AGENT_MLS_ID}).
             </p>
 
             <LegalSection title="Informational purposes only">

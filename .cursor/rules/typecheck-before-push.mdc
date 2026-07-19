@@ -1,0 +1,20 @@
+---
+description: Always run TypeScript typecheck before git commit/push
+alwaysApply: true
+---
+
+# Typecheck Before Push
+
+Before any `git commit` or `git push` (unless the user explicitly says to skip checks):
+
+1. Run from the repo root:
+
+```powershell
+npx tsc --noEmit
+```
+
+2. If typecheck fails, fix all errors and re-run until exit code is 0.
+3. Only then stage, commit, and push.
+4. Mention in the reply that typecheck passed (or what was fixed).
+
+Do not push a known typecheck failure.

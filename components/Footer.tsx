@@ -3,7 +3,7 @@ import Image from "next/image";
 import FooterMarketsColumn from "@/components/FooterMarketsColumn";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 import { getLastFullSync } from "@/lib/listings-store";
-import { AGENT_NAME, BROKERAGE_NAME } from "@/lib/business-info";
+import { AGENT_MLS_ID, AGENT_NAME, BROKERAGE_NAME } from "@/lib/business-info";
 function formatLastBuilt(iso: string | null): string | null {
   if (!iso) return null;
   const date = new Date(iso);
@@ -146,8 +146,8 @@ export default async function Footer() {
         <div className="mt-6 flex items-start gap-3">
           <EqualHousingMark className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />
           <p className="text-[11px] leading-relaxed text-white/40 max-w-3xl">
-            {AGENT_NAME} is a licensed real estate agent affiliated with{" "}
-            {BROKERAGE_NAME}. Equal Housing Opportunity. Property and market
+            {AGENT_NAME} (MLS #{AGENT_MLS_ID}) is a licensed real estate agent
+            affiliated with {BROKERAGE_NAME}. Equal Housing Opportunity. Property and market
             information is sourced from MLS and public records, is deemed
             reliable but not guaranteed, and should be independently verified.
           </p>

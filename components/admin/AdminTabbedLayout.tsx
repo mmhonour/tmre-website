@@ -38,6 +38,7 @@ export default function AdminTabbedLayout({
   postgres,
   server,
   docs,
+  glossary,
 }: {
   db: ReactNode;
   stats: ReactNode;
@@ -48,6 +49,7 @@ export default function AdminTabbedLayout({
   postgres: ReactNode;
   server: ReactNode;
   docs: ReactNode;
+  glossary: ReactNode;
 }) {
   const [tab, setTab] = useState<AdminTabId>("db");
 
@@ -82,6 +84,7 @@ export default function AdminTabbedLayout({
     postgres,
     server,
     docs,
+    glossary,
   };
   const activeItem = ADMIN_TABS.find((item) => item.id === tab);
 
