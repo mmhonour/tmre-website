@@ -3262,7 +3262,7 @@ export default function IntelligenceClient() {
                 ) : null}
               </div>
 
-              {/* Filter descriptors stay visible even when pill/slider chrome is minimized. */}
+              {/* Price/slider filter chrome first; town context blurb always stays below. */}
               {showSliderChrome &&
               !showSliderFooter &&
               collapsedSliderDescriptors ? (
@@ -3275,62 +3275,6 @@ export default function IntelligenceClient() {
                   {collapsedSliderDescriptors}
                 </p>
               ) : null}
-              {active === "All" ? (
-                <AllTownsDescriptor
-                  className={filtersExpanded ? "mt-3" : "mt-1"}
-                  towns={allTownsDescriptorStats}
-                  aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
-                  monthlySalesLoaded={monthlySalesLoaded}
-                  filterContext={allTownsFilterContext}
-                  contextLeading={filterDescriptorLeading}
-                  trailing={
-                    showSliderChrome &&
-                    collapsedSlidersOpen &&
-                    !filtersExpanded ? (
-                      <>
-                        <IntelFilterDescriptorDot />
-                        <button
-                          type="button"
-                          onClick={hideCollapsedSliders}
-                          className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
-                        >
-                          Hide sliders
-                        </button>
-                      </>
-                    ) : null
-                  }
-                />
-              ) : (
-                <p
-                  className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide transition-[margin] duration-300 ease-out ${
-                    filtersExpanded ? "mt-3" : "mt-1"
-                  }`}
-                >
-                  {filterDescriptorLeading}
-                  <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
-                  <span className="text-white/25" aria-hidden>
-                    ·
-                  </span>
-                  <IntelMonthsSupplyInline
-                    monthsSupply={activeTownMonthsSupply}
-                    monthlySalesLoaded={monthlySalesLoaded}
-                  />
-                  {showSliderChrome &&
-                  collapsedSlidersOpen &&
-                  !filtersExpanded ? (
-                    <>
-                      <IntelFilterDescriptorDot />
-                      <button
-                        type="button"
-                        onClick={hideCollapsedSliders}
-                        className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
-                      >
-                        Hide sliders
-                      </button>
-                    </>
-                  ) : null}
-                </p>
-              )}
               {showSliderChrome &&
               showSliderFooter &&
               sliderDescriptorFooterLabels ? (
@@ -3409,6 +3353,62 @@ export default function IntelligenceClient() {
                   slidersCustomized={slidersCustomized}
                 />
               ) : null}
+              {active === "All" ? (
+                <AllTownsDescriptor
+                  className={filtersExpanded ? "mt-3" : "mt-1"}
+                  towns={allTownsDescriptorStats}
+                  aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
+                  monthlySalesLoaded={monthlySalesLoaded}
+                  filterContext={allTownsFilterContext}
+                  contextLeading={filterDescriptorLeading}
+                  trailing={
+                    showSliderChrome &&
+                    collapsedSlidersOpen &&
+                    !filtersExpanded ? (
+                      <>
+                        <IntelFilterDescriptorDot />
+                        <button
+                          type="button"
+                          onClick={hideCollapsedSliders}
+                          className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
+                        >
+                          Hide sliders
+                        </button>
+                      </>
+                    ) : null
+                  }
+                />
+              ) : (
+                <p
+                  className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide transition-[margin] duration-300 ease-out ${
+                    filtersExpanded ? "mt-3" : "mt-1"
+                  }`}
+                >
+                  {filterDescriptorLeading}
+                  <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
+                  <span className="text-white/25" aria-hidden>
+                    ·
+                  </span>
+                  <IntelMonthsSupplyInline
+                    monthsSupply={activeTownMonthsSupply}
+                    monthlySalesLoaded={monthlySalesLoaded}
+                  />
+                  {showSliderChrome &&
+                  collapsedSlidersOpen &&
+                  !filtersExpanded ? (
+                    <>
+                      <IntelFilterDescriptorDot />
+                      <button
+                        type="button"
+                        onClick={hideCollapsedSliders}
+                        className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
+                      >
+                        Hide sliders
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+              )}
             </div>
             <div className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up">
               <DealOfTheDayFrame

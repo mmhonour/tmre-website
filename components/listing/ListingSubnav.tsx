@@ -311,7 +311,7 @@ export default function ListingSubnav({
     key: string,
     text: string,
     keyPrefix = "",
-    /** Leading WHAT matches Overview / Under Agreement tab left inset. */
+    /** Match Overview / Under Agreement tab left inset on the stacked comps row. */
     alignStart = false,
   ) => (
     <span
@@ -326,43 +326,28 @@ export default function ListingSubnav({
   );
 
   /**
-   * Stacked comps row: What Sold Rented And on market
-   * Single row with other tabs: [ Sold | Rented + On The Market ]
+   * Desktop (inline) and mobile (stacked comps row) share the same chrome:
+   * [ Sold | Rented + On The Market ]
    * Brackets, pipe, and “+ On The Market” are never links.
    */
   const renderCompsTabs = (
     keyPrefix = "",
-    opts: { alignWhatStart?: boolean; inlineCluster?: boolean } = {},
+    opts: { alignStart?: boolean } = {},
   ) => {
-    const { alignWhatStart = false, inlineCluster = false } = opts;
+    const { alignStart = false } = opts;
     const sold = compsTabs.find((tab) => tab.id === "comparables");
     const rented = compsTabs.find((tab) => tab.id === "comparable-rentals");
-
-    if (inlineCluster) {
-      if (!sold && !rented) return null;
-      return (
-        <>
-          {compsMutedLabel("cluster-open", "[", keyPrefix)}
-          {sold ? renderTabLink(sold, keyPrefix) : null}
-          {sold && rented
-            ? compsMutedLabel("cluster-pipe", "|", keyPrefix)
-            : null}
-          {rented ? renderTabLink(rented, keyPrefix) : null}
-          {compsMutedLabel("cluster-on-market", "+ On The Market", keyPrefix)}
-          {compsMutedLabel("cluster-close", "]", keyPrefix)}
-        </>
-      );
-    }
-
+    if (!sold && !rented) return null;
     return (
       <>
-        {sold
-          ? compsMutedLabel("what-label", "What", keyPrefix, alignWhatStart)
+        {compsMutedLabel("cluster-open", "[", keyPrefix, alignStart)}
+        {sold ? renderTabLink(sold, keyPrefix) : null}
+        {sold && rented
+          ? compsMutedLabel("cluster-pipe", "|", keyPrefix)
           : null}
-        {compsTabs.map((tab) => renderTabLink(tab, keyPrefix))}
-        {rented
-          ? compsMutedLabel("on-market-label", "And on market", keyPrefix)
-          : null}
+        {rented ? renderTabLink(rented, keyPrefix) : null}
+        {compsMutedLabel("cluster-on-market", "+ On The Market", keyPrefix)}
+        {compsMutedLabel("cluster-close", "]", keyPrefix)}
       </>
     );
   };
@@ -376,7 +361,7 @@ export default function ListingSubnav({
         aria-hidden
       >
         {topTabs.map((tab) => renderTabLink(tab, "mf-"))}
-        {renderCompsTabs("mf-", { inlineCluster: true })}
+        {renderCompsTabs("mf-")}
         {uagTabs.map((tab) => renderTabLink(tab, "mf-"))}
       </div>
 
@@ -392,7 +377,7 @@ export default function ListingSubnav({
             className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
             aria-label="Sold and rented"
           >
-            {renderCompsTabs("", { alignWhatStart: true })}
+            {renderCompsTabs("", { alignStart: true })}
           </nav>
           {uagTabs.length > 0 ? (
             <nav
@@ -409,7 +394,7 @@ export default function ListingSubnav({
           aria-label="Listing sections"
         >
           {topTabs.map((tab) => renderTabLink(tab))}
-          {renderCompsTabs("", { inlineCluster: true })}
+          {renderCompsTabs("")}
           {uagTabs.map((tab) => renderTabLink(tab))}
         </nav>
       )}
