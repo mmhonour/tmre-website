@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   fmtAcres,
   fmtSqft,
@@ -20,6 +20,13 @@ import {
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
 import { VINTAGE_BUCKETS } from "@/lib/vintage-buckets";
+
+export type CriteriaStepKey = "bed" | "bath" | "vintage" | "sqft" | "lot";
+
+export type CriteriaStepFeedback = {
+  key: CriteriaStepKey;
+  text: string;
+};
 
 /** Acres value without the unit suffix, for ranges like "0.22–0.52 ac". */
 function acresValue(acres: number): string {
@@ -69,7 +76,7 @@ export type MatchCriteriaTolerances = {
 };
 
 type CriteriaBound = {
-  key: "bed" | "bath" | "vintage" | "sqft" | "lot";
+  key: CriteriaStepKey;
   /** Text left of the bracket (empty for the vintage token). */
   label: string;
   /** Compact bracket contents, e.g. "±1" or "Pre-1900, 1900–1940". */
@@ -163,11 +170,11 @@ function RaisedStepButton({
   isModal: boolean;
 }) {
   const enabledClass = isModal
-    ? "bg-gradient-to-b from-white to-cream text-navy border-charcoal/20 shadow-[0_2px_0_0_rgba(28,42,58,0.22),0_3px_6px_rgba(28,42,58,0.12)] hover:from-cream hover:to-white active:translate-y-px active:shadow-[0_1px_0_0_rgba(28,42,58,0.2)]"
-    : "bg-gradient-to-b from-white/25 to-white/10 text-white border-white/35 shadow-[0_2px_0_0_rgba(0,0,0,0.35),0_3px_8px_rgba(0,0,0,0.25)] hover:from-white/35 hover:to-white/15 active:translate-y-px active:shadow-[0_1px_0_0_rgba(0,0,0,0.35)]";
+    ? "bg-navy/[0.08] text-navy hover:bg-navy/[0.14] active:bg-navy/[0.18]"
+    : "bg-white/10 text-white hover:bg-white/18 active:bg-white/22";
   const disabledClass = isModal
-    ? "bg-cream/60 text-charcoal/25 border-charcoal/10 shadow-none cursor-not-allowed"
-    : "bg-white/5 text-white/25 border-white/10 shadow-none cursor-not-allowed";
+    ? "bg-transparent text-charcoal/25 cursor-not-allowed"
+    : "bg-transparent text-white/25 cursor-not-allowed";
 
   return (
     <button
@@ -178,20 +185,26 @@ function RaisedStepButton({
         onClick();
       }}
       aria-label={label === "+" ? "Increase criterion" : "Decrease criterion"}
-      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border font-mono text-[12px] font-bold leading-none transition-[transform,box-shadow,background] ${
+      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-0 p-0 font-sans text-[14px] font-semibold leading-none transition-colors ${
         disabled ? disabledClass : enabledClass
       }`}
     >
-      {label}
+      {/* Optical center: mono +/− sit high; sans + slight nudge looks centered. */}
+      <span className="relative top-px flex h-[1em] w-[1em] items-center justify-center leading-none">
+        {label}
+      </span>
     </button>
   );
 }
 
+/** How long ± steppers keep the expanded bounds visible (not vintage). */
+const AUTO_REVEAL_MS = 10_000;
+
 /**
  * Horizontal "Matching …" criteria line used by Sales, Rentals, and What if.
- * Every bracketed tolerance/vintage is a toggle: click (or hover for the
- * tooltip) to swap the compact "[±1]" bracket for the actual bounds
- * ("3–5 bed"); click again to collapse back.
+ * Compact "[±1]" sits left of the descriptor; click the bracket to toggle the
+ * actual bounds ("3–5 bed"). Pressing ± also reveals those bounds for 10s
+ * (vintage stays as its bracket labels — already readable).
  *
  * When `session` + `onSessionChange` are provided (Sales/Rentals), "Criteria"
  * is a disclosure control: ▶ hides ± steppers by default; click to reveal
@@ -202,27 +215,59 @@ export default function MatchingCriteriaSummary({
   tolerances,
   session,
   onSessionChange,
+  stepFeedback = null,
   isModal = false,
 }: {
   criteria: ComparablesCriteria;
   /** Legacy display-only tolerances (What if). Ignored when `session` is set. */
   tolerances?: MatchCriteriaTolerances;
   session?: SessionMatchOverrides;
-  onSessionChange?: (next: SessionMatchOverrides) => void;
+  onSessionChange?: (
+    next: SessionMatchOverrides,
+    source?: { key: CriteriaStepKey },
+  ) => void;
+  /** Short find/no-find note shown next to the ± that was last pressed. */
+  stepFeedback?: CriteriaStepFeedback | null;
   isModal?: boolean;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [autoRevealKey, setAutoRevealKey] = useState<CriteriaStepKey | null>(
+    null,
+  );
+  const autoRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [controlsOpen, setControlsOpen] = useState(false);
-  const toggle = (key: string) =>
+
+  useEffect(() => {
+    return () => {
+      if (autoRevealTimerRef.current != null) {
+        clearTimeout(autoRevealTimerRef.current);
+      }
+    };
+  }, []);
+
+  const toggle = (key: CriteriaStepKey) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const flashExpanded = (key: CriteriaStepKey) => {
+    // Vintage bracket already lists the buckets — no temporary expand.
+    if (key === "vintage") return;
+    setAutoRevealKey(key);
+    if (autoRevealTimerRef.current != null) {
+      clearTimeout(autoRevealTimerRef.current);
+    }
+    autoRevealTimerRef.current = setTimeout(() => {
+      autoRevealTimerRef.current = null;
+      setAutoRevealKey((current) => (current === key ? null : current));
+    }, AUTO_REVEAL_MS);
+  };
 
   const valueClass = "text-gold";
   const linkClass = isModal
     ? "text-slate underline decoration-slate/40 underline-offset-2 hover:text-navy transition-colors cursor-pointer"
     : "text-white/60 underline decoration-white/40 underline-offset-2 hover:text-white transition-colors cursor-pointer";
-  const criteriaToggleClass = isModal
-    ? "inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.12em] uppercase text-slate underline decoration-slate/40 underline-offset-2 hover:text-navy transition-colors cursor-pointer"
-    : "inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/40 underline decoration-white/30 underline-offset-2 hover:text-white/70 transition-colors cursor-pointer";
+  const triangleBtnClass = isModal
+    ? "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-charcoal/25 bg-white text-navy/80 shadow-sm transition-colors hover:border-gold/40 hover:text-navy"
+    : "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-white/30 bg-white/10 text-white shadow-sm transition-colors hover:border-gold/50 hover:bg-white/15 hover:text-gold";
 
   const effectiveSession: SessionMatchOverrides = session ?? {
     bedTolerance: tolerances?.bedTolerance ?? 1,
@@ -260,16 +305,21 @@ export default function MatchingCriteriaSummary({
             : shrinkVintageLabels(next.allowedVintageLabels, criteria.vintageLabel);
         break;
     }
-    onSessionChange(next);
+    onSessionChange(next, { key });
+    flashExpanded(key);
   };
 
+  const noteClass = isModal
+    ? "font-mono text-[9px] tracking-[0.08em] normal-case text-slate/80"
+    : "font-mono text-[9px] tracking-[0.08em] normal-case text-white/55";
+
   return (
-    <>
+    <span className="inline-flex flex-col items-start gap-y-1">
       {editable ? (
         <button
           type="button"
           onClick={() => setControlsOpen((open) => !open)}
-          className={criteriaToggleClass}
+          className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors"
           aria-expanded={controlsOpen}
           aria-label={
             controlsOpen
@@ -277,33 +327,33 @@ export default function MatchingCriteriaSummary({
               : "Show criteria adjustment controls"
           }
         >
-          Criteria
-          <span className="no-underline tracking-normal" aria-hidden>
+          <span
+            className={
+              isModal
+                ? "font-bold text-navy"
+                : "font-bold text-white"
+            }
+          >
+            Criteria
+          </span>
+          <span className={triangleBtnClass} aria-hidden>
             {controlsOpen ? "◀" : "▶"}
           </span>
         </button>
       ) : null}
-      {editable ? <span>{" "}</span> : null}
       <span className={valueClass}>{criteria.zip}</span>
       {bounds.map((bound) => {
-        const isOpen = expanded[bound.key];
+        const isOpen =
+          Boolean(expanded[bound.key]) || autoRevealKey === bound.key;
+        const showNote =
+          stepFeedback != null && stepFeedback.key === bound.key;
         return (
-          <span key={bound.key} className="inline-flex items-center gap-1">
-            <span>{" · "}</span>
-            {bound.label && !isOpen ? (
-              <span className={valueClass}>{`${bound.label} `}</span>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => toggle(bound.key)}
-              className={linkClass}
-              title={isOpen ? bound.token : bound.expanded}
-              aria-expanded={isOpen}
-            >
-              {isOpen ? bound.expanded : `[${bound.token}]`}
-            </button>
+          <span
+            key={bound.key}
+            className="inline-flex flex-wrap items-center gap-1"
+          >
             {editable && controlsOpen ? (
-              <span className="inline-flex items-center gap-0.5 ml-0.5">
+              <span className="inline-flex items-center gap-0.5 mr-0.5">
                 <RaisedStepButton
                   label="−"
                   disabled={!bound.canDecrement}
@@ -318,9 +368,26 @@ export default function MatchingCriteriaSummary({
                 />
               </span>
             ) : null}
+            <button
+              type="button"
+              onClick={() => toggle(bound.key)}
+              className={linkClass}
+              title={isOpen ? bound.token : bound.expanded}
+              aria-expanded={isOpen}
+            >
+              {isOpen ? bound.expanded : `[${bound.token}]`}
+            </button>
+            {bound.label && !isOpen ? (
+              <span className={valueClass}>{bound.label}</span>
+            ) : null}
+            {showNote ? (
+              <span className={noteClass} role="status" aria-live="polite">
+                {stepFeedback.text}
+              </span>
+            ) : null}
           </span>
         );
       })}
-    </>
+    </span>
   );
 }

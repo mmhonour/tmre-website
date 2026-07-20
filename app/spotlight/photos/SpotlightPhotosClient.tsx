@@ -106,10 +106,14 @@ export default function SpotlightPhotosClient() {
           Spotlight
         </span>
         <p className="font-serif italic text-2xl sm:text-3xl text-white">
-          Coming Soon...
+          {presentation.isComingSoon
+            ? "Coming Soon..."
+            : presentation.headerAddress.street || "Spotlight"}
         </p>
         <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
-          Photography releasing shortly
+          {presentation.isComingSoon
+            ? "Photography releasing shortly"
+            : "Photos unavailable right now"}
         </p>
       </div>
     );

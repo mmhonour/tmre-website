@@ -3,10 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
-import {
-  LISTING_ON_MARKET_PANEL_IDS,
-  LISTING_SECTION_IDS,
-} from "@/components/listing/listing-section-ids";
+import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 
 const ListingIfPageContent = dynamic(
   () =>
@@ -150,32 +147,6 @@ export function ListingMobileScrollSections({
           townHint={townHint}
           routeBase={routeBase}
         />
-      </Section>
-      {/*
-        On The Market tab on mobile: jump into Available Now panels already
-        rendered under Sold / Rented (no third duplicate scroll block).
-      */}
-      <Section id={LISTING_SECTION_IDS["on-the-market"]} title="On the market">
-        <nav
-          className="flex flex-wrap items-center gap-x-4 gap-y-2"
-          aria-label="On the market panels"
-        >
-          <a
-            href={`#${LISTING_ON_MARKET_PANEL_IDS.sale}`}
-            className="font-mono text-[11px] tracking-[0.1em] uppercase text-gold underline decoration-gold/40 underline-offset-2"
-          >
-            For sale
-          </a>
-          <a
-            href={`#${LISTING_ON_MARKET_PANEL_IDS.rental}`}
-            className="font-mono text-[11px] tracking-[0.1em] uppercase text-gold underline decoration-gold/40 underline-offset-2"
-          >
-            For rent
-          </a>
-        </nav>
-        <p className="mt-2 text-sm text-slate-500">
-          Jumps to the Available Now panels in Sold and Rented below.
-        </p>
       </Section>
       <Section id={LISTING_SECTION_IDS.comparables} title="Sold">
         <ListingComparablesPageContent

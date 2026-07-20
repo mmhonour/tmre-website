@@ -67,6 +67,30 @@ export function formatMlsStatus(status: string | null | undefined): string {
   return raw
 }
 
+/**
+ * SmartMLS often keeps MLSStatus=Coming Soon after the listing is live while
+ * RESO StandardStatus has already moved to Active (or Pending/Closed). Prefer
+ * StandardStatus once it leaves Coming Soon so listing pages match the board.
+ */
+export function coalesceListingStatus(
+  mlsStatus: string | null | undefined,
+  standardStatus?: string | null,
+): string {
+  const mls = str(mlsStatus)
+  const standard = str(standardStatus)
+  const mlsLabel = formatMlsStatus(mls)
+  const standardLabel = formatMlsStatus(standard)
+  if (
+    mlsLabel === 'Coming Soon' &&
+    standard &&
+    standardLabel !== 'Coming Soon' &&
+    standardLabel !== 'Unknown'
+  ) {
+    return standardLabel
+  }
+  return mls || standard
+}
+
 export function fmtMoney(n: number | null): string {
   if (n == null) return '—'
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`

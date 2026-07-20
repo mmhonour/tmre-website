@@ -23,7 +23,6 @@ export type ListingTab =
   | "history"
   | "comparables"
   | "comparable-rentals"
-  | "on-the-market"
   | "uag"
   | "if";
 
@@ -37,12 +36,8 @@ type TabDef = { id: ListingTab; label: string; href: string };
 
 /** Always on the first row. */
 const TOP_ROW_IDS: ListingTab[] = ["overview", "history", "if", "photos"];
-/** Second row — Sold / Rented / On The Market. */
-const COMPS_ROW_IDS: ListingTab[] = [
-  "comparables",
-  "comparable-rentals",
-  "on-the-market",
-];
+/** Second row — Sold / Rented. */
+const COMPS_ROW_IDS: ListingTab[] = ["comparables", "comparable-rentals"];
 /** Third row — Under Agreement (always its own line when stacked). */
 const UAG_ROW_IDS: ListingTab[] = ["uag"];
 
@@ -52,14 +47,17 @@ const HASH_JUMP_TABS = new Set<ListingTab>([
   "if",
   "comparables",
   "comparable-rentals",
-  "on-the-market",
   "uag",
 ]);
 
-function tabVisible(active: ListingTab, tabId: ListingTab): boolean {
+function tabVisible(
+  active: ListingTab,
+  tabId: ListingTab,
+  alwaysShowPhotos: boolean,
+): boolean {
   // Photos tab only while on the photos page; every other section tab stays visible
-  // on load (Sales, Rentals, Under Agreement included).
-  if (tabId === "photos") return active === "photos";
+  // on load (Sales, Rentals, Under Agreement included). Local mockups keep Photos visible.
+  if (tabId === "photos") return alwaysShowPhotos || active === "photos";
   return true;
 }
 
@@ -85,6 +83,7 @@ export default function ListingSubnav({
   embedded = false,
   bare = false,
   compact = false,
+  onTabSelect = null,
 }: {
   mlsId: string;
   active: ListingTab;
@@ -95,6 +94,11 @@ export default function ListingSubnav({
   embedded?: boolean;
   bare?: boolean;
   compact?: boolean;
+  /**
+   * When set, tab clicks stay on the current page and call this instead of
+   * navigating to listing/spotlight routes (used by `/test` split mockup).
+   */
+  onTabSelect?: ((tab: ListingTab) => void) | null;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -147,16 +151,13 @@ export default function ListingSubnav({
       label: "Rented",
       href: sectionHref("comparable-rentals"),
     },
-    {
-      id: "on-the-market",
-      label: "On The Market",
-      href: sectionHref("on-the-market"),
-    },
     { id: "uag", label: "Under Agreement", href: sectionHref("uag") },
     { id: "history", label: "History", href: sectionHref("history") },
     { id: "if", label: "What if", href: sectionHref("if") },
   ];
-  const tabs = allTabs.filter((tab) => tabVisible(active, tab.id));
+  const tabs = allTabs.filter((tab) =>
+    tabVisible(active, tab.id, Boolean(onTabSelect)),
+  );
   const topTabs = tabs.filter((tab) => TOP_ROW_IDS.includes(tab.id));
   const compsTabs = tabs.filter((tab) => COMPS_ROW_IDS.includes(tab.id));
   const uagTabs = tabs.filter((tab) => UAG_ROW_IDS.includes(tab.id));
@@ -295,7 +296,7 @@ export default function ListingSubnav({
 
   const renderTabLink = (tab: TabDef, keyPrefix = "") => {
     const highlighted =
-      useHashJump && active === "overview" && scrollActive
+      !onTabSelect && useHashJump && active === "overview" && scrollActive
         ? scrollActive === tab.id
         : active === tab.id;
     return (
@@ -305,6 +306,11 @@ export default function ListingSubnav({
         className={tabLinkClass(highlighted)}
         aria-current={highlighted ? "page" : undefined}
         onClick={(event) => {
+          if (onTabSelect) {
+            event.preventDefault();
+            onTabSelect(tab.id);
+            return;
+          }
           if (!useHashJump || !HASH_JUMP_TABS.has(tab.id)) return;
           // Already on overview with sections mounted — smooth-scroll in place.
           if (active === "overview" && jumpToSection(tab.id)) {
@@ -317,7 +323,7 @@ export default function ListingSubnav({
     );
   };
 
-  /** Non-link pipe between Sold / Rented / On The Market. */
+  /** Non-link pipe between Sold / Rented. */
   const compsMutedPipe = (key: string, keyPrefix = "") => (
     <span
       key={`${keyPrefix}${key}`}
@@ -330,13 +336,11 @@ export default function ListingSubnav({
     </span>
   );
 
-  /** Sold | Rented | On The Market — all three are real tabs. */
+  /** Sold | Rented. */
   const renderCompsTabs = (keyPrefix = "") => {
     const items = compsTabs.filter(
       (tab) =>
-        tab.id === "comparables" ||
-        tab.id === "comparable-rentals" ||
-        tab.id === "on-the-market",
+        tab.id === "comparables" || tab.id === "comparable-rentals",
     );
     if (items.length === 0) return null;
     return (

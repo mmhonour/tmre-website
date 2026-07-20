@@ -13,11 +13,19 @@ type ScoreSample = {
   listingKey?: string | null;
 };
 
+type InterestingStat = {
+  eyebrow: string;
+  value: string;
+  detail: string;
+  href: string;
+};
+
+type SurfaceId = "intelligence" | "spotlight" | "statistics" | "whatif";
+
 type SurfaceMock = {
+  id: SurfaceId;
   name: string;
   href: string;
-  eyebrow: string;
-  line: string;
   rotate: string;
   z: string;
   offset: string;
@@ -39,40 +47,36 @@ const FILTER_SIGNALS = [
 
 const SURFACES: SurfaceMock[] = [
   {
+    id: "intelligence",
     name: "Intelligence",
     href: "/intelligence",
-    eyebrow: "Shortlist",
-    line: "Ranked actives — where to look first",
     rotate: "-6deg",
     z: "z-30",
     offset: "left-0 top-6 sm:top-4",
   },
   {
+    id: "spotlight",
     name: "Spotlight",
     href: "/spotlight",
-    eyebrow: "Featured",
-    line: "A home under the microscope",
     rotate: "3deg",
     z: "z-20",
-    offset: "left-[12%] sm:left-[18%] top-0",
+    offset: "left-[14%] sm:left-[20%] top-0",
   },
   {
+    id: "statistics",
     name: "Statistics",
     href: "/stats",
-    eyebrow: "Market",
-    line: "Town pulse without the noise",
     rotate: "-2deg",
     z: "z-10",
-    offset: "left-[28%] sm:left-[36%] top-10 sm:top-8",
+    offset: "left-[30%] sm:left-[40%] top-10 sm:top-8",
   },
   {
+    id: "whatif",
     name: "What if",
     href: "/score",
-    eyebrow: "Scenarios",
-    line: "Buy · sell · hold — before you commit",
     rotate: "5deg",
     z: "z-[5]",
-    offset: "left-[42%] sm:left-[52%] top-2 sm:top-0",
+    offset: "left-[46%] sm:left-[58%] top-2 sm:top-0",
   },
 ];
 
@@ -84,6 +88,9 @@ export default function HomeMethodOverview() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [samples, setSamples] = useState<ScoreSample[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
+  const [interestingStat, setInterestingStat] = useState<InterestingStat | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -113,7 +120,10 @@ export default function HomeMethodOverview() {
               TmreTown,
               {
                 score?: { composite?: number };
-                listing?: { mlsId?: string; listingKey?: string | null };
+                listing?: {
+                  mlsId?: string;
+                  listingKey?: string | null;
+                };
               }
             >
           >;
@@ -135,6 +145,28 @@ export default function HomeMethodOverview() {
           });
         }
         if (next.length > 0) setSamples(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/interesting-stat", { cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return (await r.json()) as InterestingStat;
+      })
+      .then((d) => {
+        if (cancelled || !d?.value || !d?.detail) return;
+        setInterestingStat({
+          eyebrow: d.eyebrow || "Interesting stat",
+          value: d.value,
+          detail: d.detail,
+          href: d.href || "/stats",
+        });
       })
       .catch(() => {});
     return () => {
@@ -211,12 +243,12 @@ export default function HomeMethodOverview() {
             </div>
           </div>
 
-          {/* Deal of the Day score — same serif as “This week's ##.” */}
-          <div className="lg:col-span-6 flex flex-col items-start lg:items-end animate-fade-up-delay-1">
-            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/90 mb-2">
-              Actual home · rotating towns
-            </p>
-            <div className="relative w-full max-w-md lg:max-w-none lg:text-right">
+          {/* Deal of the Day score — gold shimmer over section atmosphere only. */}
+          <div className="lg:col-span-6 flex flex-col items-start lg:items-end lg:text-right animate-fade-up-delay-1">
+            <div className="w-full max-w-md lg:max-w-lg">
+              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 mb-2">
+                Actual home · rotating towns
+              </p>
               {live ? (
                 <Link
                   href={dealOfTheDayHref(live.town, {
@@ -247,67 +279,48 @@ export default function HomeMethodOverview() {
                   </p>
                 </>
               )}
-              {/* Four-lens mark — overlays the home photo, 1.5× prior size, no TMRE label */}
-              <div
-                className="pointer-events-none relative mt-4 ml-0 lg:ml-auto w-[3.75rem] h-12 opacity-45"
-                aria-hidden
-              >
-                <Image
-                  src="/images/four-lens-camera.png"
-                  alt=""
-                  fill
-                  className="object-contain brightness-110 contrast-110"
-                  sizes="60px"
-                  priority
-                />
-              </div>
+
               <p className="mt-3 text-xs text-white/45 max-w-sm lg:ml-auto leading-relaxed">
                 Today&apos;s pick in each town — tap the score to open that deal.
                 Same yardstick as Deal of the Week.
               </p>
             </div>
+
+            {interestingStat ? (
+              <Link
+                href={interestingStat.href}
+                className="mt-4 block w-full max-w-md lg:max-w-lg border border-transparent px-0 py-1 text-left lg:text-right transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent rounded-sm"
+              >
+                <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                  {interestingStat.eyebrow}
+                </p>
+                <p className="mt-1 font-serif italic text-3xl sm:text-4xl text-white leading-none">
+                  {interestingStat.value}
+                </p>
+                <p className="mt-1.5 text-xs text-white/60 leading-snug">
+                  {interestingStat.detail}
+                </p>
+              </Link>
+            ) : null}
           </div>
         </div>
 
         {/* Overlapping product surfaces + filter signals */}
-        <div className="mt-12 lg:mt-16 relative min-h-[14rem] sm:min-h-[16rem] animate-fade-up-delay-2">
+        <div className="mt-12 lg:mt-16 relative min-h-[16rem] sm:min-h-[18rem] animate-fade-up-delay-2">
           <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 mb-4">
             Same measure · different rooms of the site
           </p>
 
-          <div className="relative h-44 sm:h-52">
+          <div className="relative h-52 sm:h-60">
             {SURFACES.map((surface) => (
               <Link
-                key={surface.name}
+                key={surface.id}
                 href={surface.href}
-                className={`absolute w-[9.5rem] sm:w-[11.5rem] ${surface.offset} ${surface.z} home-surface-card group`}
+                className={`absolute w-[10.5rem] sm:w-[12.5rem] ${surface.offset} ${surface.z} home-surface-card group`}
                 style={{ transform: `rotate(${surface.rotate})` }}
               >
-                <div className="rounded-xl border border-white/15 bg-navy-dark/80 backdrop-blur-md shadow-xl shadow-black/40 overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:border-gold/40">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-white/10 bg-white/[0.04]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-coral/80" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-gold/70" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-sage/70" />
-                    <span className="ml-1 font-mono text-[8px] tracking-[0.12em] uppercase text-white/35 truncate">
-                      {surface.name.toLowerCase()}
-                    </span>
-                  </div>
-                  <div className="px-3 py-3">
-                    <p className="font-mono text-[9px] tracking-[0.16em] uppercase text-gold mb-1">
-                      {surface.eyebrow}
-                    </p>
-                    <p className="font-serif text-sm text-white leading-snug">
-                      {surface.name}
-                    </p>
-                    <p className="mt-1.5 text-[11px] text-white/50 leading-snug">
-                      {surface.line}
-                    </p>
-                    <div className="mt-3 space-y-1" aria-hidden>
-                      <div className="h-1 rounded-full bg-white/10 w-[88%]" />
-                      <div className="h-1 rounded-full bg-white/10 w-[62%]" />
-                      <div className="h-1 rounded-full bg-gold/35 w-[40%]" />
-                    </div>
-                  </div>
+                <div className="rounded-xl border border-white/15 bg-navy-dark/90 backdrop-blur-md shadow-xl shadow-black/40 overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:border-gold/40">
+                  <SurfacePagePreview id={surface.id} name={surface.name} />
                 </div>
               </Link>
             ))}
@@ -347,4 +360,179 @@ export default function HomeMethodOverview() {
       </div>
     </section>
   );
+}
+
+/** Miniature page chrome so each card reads as that product surface, not a blank browser. */
+function SurfacePagePreview({ id, name }: { id: SurfaceId; name: string }) {
+  switch (id) {
+    case "intelligence":
+      return (
+        <div className="bg-[#F5F1E8] text-navy" aria-hidden>
+          <div className="bg-gradient-to-br from-[#1C2A3A] to-[#0F1824] px-2.5 pt-2 pb-2">
+            <p className="font-mono text-[7px] tracking-[0.16em] uppercase text-[#C8A951]/80">
+              Market
+            </p>
+            <p className="font-serif text-[11px] text-white leading-tight">
+              Intelligence{" "}
+              <span className="italic text-[#D8BC6E]">board</span>
+            </p>
+            <div className="mt-1.5 flex gap-1">
+              {["All", "Sale", "Zip"].map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full border border-white/20 px-1.5 py-0.5 font-mono text-[6px] uppercase text-white/70"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="px-2 py-1.5 space-y-1">
+            {[
+              { s: "9.1", w: "88%" },
+              { s: "8.4", w: "72%" },
+              { s: "7.8", w: "64%" },
+            ].map((row) => (
+              <div
+                key={row.s}
+                className="flex items-center gap-1.5 rounded-md border border-charcoal/10 bg-white px-1.5 py-1 shadow-sm"
+              >
+                <span className="font-serif italic text-[10px] text-[#C8A951] w-5 shrink-0">
+                  {row.s}
+                </span>
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div
+                    className="h-1 rounded-full bg-navy/20"
+                    style={{ width: row.w }}
+                  />
+                  <div className="h-0.5 rounded-full bg-navy/10 w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="px-2.5 pb-1.5 font-mono text-[7px] tracking-[0.14em] uppercase text-navy/45">
+            {name}
+          </p>
+        </div>
+      );
+
+    case "spotlight":
+      return (
+        <div className="bg-[#0F1824] text-white" aria-hidden>
+          <div className="relative h-[4.25rem] bg-gradient-to-br from-[#3D4F66] via-[#2A3A4D] to-[#1C2A3A]">
+            <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_30%_20%,rgba(200,169,81,0.35),transparent_55%)]" />
+            <div className="absolute top-1.5 right-1.5 rounded-md border border-gold/40 bg-navy-dark/70 px-1.5 py-0.5">
+              <span className="font-serif italic text-[12px] text-[#D8BC6E]">
+                8.7
+              </span>
+            </div>
+            <div className="absolute bottom-1.5 left-2 right-2">
+              <p className="font-mono text-[6px] tracking-[0.14em] uppercase text-white/50">
+                Featured listing
+              </p>
+              <p className="font-serif text-[10px] text-white truncate">
+                14 Harbor Lane
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-1 px-2 py-1.5 border-b border-white/10">
+            {["Home", "Photos", "Comps", "If"].map((t, i) => (
+              <span
+                key={t}
+                className={`rounded px-1 py-0.5 font-mono text-[6px] uppercase ${
+                  i === 0
+                    ? "bg-gold/20 text-gold"
+                    : "text-white/40"
+                }`}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+          <div className="px-2.5 py-1.5 space-y-1">
+            <div className="h-1 rounded-full bg-white/15 w-[80%]" />
+            <div className="h-1 rounded-full bg-white/10 w-[55%]" />
+            <p className="font-mono text-[7px] tracking-[0.14em] uppercase text-white/40 pt-0.5">
+              {name}
+            </p>
+          </div>
+        </div>
+      );
+
+    case "statistics":
+      return (
+        <div className="bg-[#F5F1E8] text-navy" aria-hidden>
+          <div className="bg-gradient-to-br from-[#1C2A3A] to-[#0F1824] px-2.5 pt-2 pb-1.5">
+            <p className="font-serif text-[11px] text-white leading-tight">
+              Numbers, <span className="italic text-[#D8BC6E]">live!</span>
+            </p>
+            <div className="mt-1 flex gap-1">
+              {["#38A3C8", "#C8A951", "#E07A5F", "#7BA17B"].map((c) => (
+                <span
+                  key={c}
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="px-2.5 pt-2 pb-1 flex items-end gap-1 h-14">
+            {[40, 68, 52, 85, 60, 74, 48].map((h, i) => (
+              <div
+                key={i}
+                className="flex-1 rounded-t-sm"
+                style={{
+                  height: `${h}%`,
+                  backgroundColor:
+                    ["#38A3C8", "#C8A951", "#E07A5F", "#7BA17B", "#38A3C8", "#C8A951", "#E07A5F"][
+                      i
+                    ],
+                  opacity: 0.85,
+                }}
+              />
+            ))}
+          </div>
+          <div className="px-2.5 pb-1.5 space-y-0.5">
+            <div className="h-1 rounded-full bg-navy/15 w-full" />
+            <div className="h-1 rounded-full bg-navy/10 w-4/5" />
+            <p className="font-mono text-[7px] tracking-[0.14em] uppercase text-navy/45 pt-0.5">
+              {name}
+            </p>
+          </div>
+        </div>
+      );
+
+    case "whatif":
+      return (
+        <div className="bg-[#0F1824] text-white" aria-hidden>
+          <div className="px-2.5 pt-2 pb-1 border-b border-white/10">
+            <p className="font-mono text-[7px] tracking-[0.16em] uppercase text-[#C8A951]/80">
+              Scenarios
+            </p>
+            <p className="font-serif text-[11px] text-white leading-tight">
+              What <span className="italic text-[#D8BC6E]">if</span>
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-1 p-2">
+            {["Buy", "Sell", "Hold"].map((label, i) => (
+              <div
+                key={label}
+                className="rounded-md border border-white/10 bg-white/[0.04] px-1 py-1.5"
+              >
+                <p className="font-mono text-[6px] tracking-[0.12em] uppercase text-gold/90">
+                  {label}
+                </p>
+                <p className="mt-0.5 font-serif italic text-[11px] text-white">
+                  {["$1.2M", "$1.4M", "7.6"][i]}
+                </p>
+                <div className="mt-1 h-0.5 rounded-full bg-gold/40 w-3/4" />
+              </div>
+            ))}
+          </div>
+          <p className="px-2.5 pb-1.5 font-mono text-[7px] tracking-[0.14em] uppercase text-white/40">
+            {name}
+          </p>
+        </div>
+      );
+  }
 }

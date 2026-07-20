@@ -149,6 +149,47 @@ body {
   }
 }
 
+/* Intelligence middle-tier expand/collapse affordance */
+@keyframes intelMiddleTierArrowDown {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(3px);
+  }
+}
+
+@keyframes intelMiddleTierArrowUp {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.animate-intel-middle-tier-arrow-down {
+  animation: intelMiddleTierArrowDown 1.1s ease-in-out infinite;
+}
+
+.animate-intel-middle-tier-arrow-up {
+  animation: intelMiddleTierArrowUp 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-intel-middle-tier-arrow-down,
+  .animate-intel-middle-tier-arrow-up {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 @keyframes dealCarouselNext {
   from {
     opacity: 0;
@@ -493,6 +534,25 @@ body {
 .home-surface-card:focus-visible {
   outline: 2px solid var(--color-gold);
   outline-offset: 3px;
+}
+
+/* /test listing split — panes scroll without visible scrollbars */
+.listing-split-pane {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.listing-split-pane::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+html.listing-split-test,
+html.listing-split-test body {
+  overflow: hidden !important;
 }
 
 /* Header zip pill — rotating border glow until first click */

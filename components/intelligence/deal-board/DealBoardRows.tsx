@@ -17,7 +17,15 @@ import {
   listingTown,
 } from "@/components/intelligence/deal-board/deal-board-shared";
 import type { DealBoardRowProps } from "@/components/intelligence/deal-board/deal-board-types";
+import { dealBoardRowDomId } from "@/lib/deal-board-focus";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+
+function dealBoardRowAnchorProps(mlsId: string) {
+  return {
+    id: dealBoardRowDomId(mlsId),
+    "data-deal-mls": mlsId,
+  } as const;
+}
 
 function dealBoardPriceMeta(l: DealBoardRowProps["listing"]) {
   const ppsf =
@@ -41,8 +49,9 @@ export function DealBoardPhotoLedRow({
 
   return (
     <div
+      {...dealBoardRowAnchorProps(l.key)}
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="flex gap-3 sm:gap-4 px-3 sm:px-4 py-2.5 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
+      className="scroll-mt-36 flex gap-3 sm:gap-4 px-3 sm:px-4 py-2.5 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
     >
       <span
         className="font-mono text-xs tabular-nums w-6 shrink-0 pt-1 text-right font-semibold"
@@ -56,6 +65,7 @@ export function DealBoardPhotoLedRow({
         width={128}
         height={84}
         priority={scoreRank < 8}
+        withDealBoardReturn
       />
       <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -89,6 +99,7 @@ export function DealBoardPhotoLedLineRow({
   rankTotal,
   isLive,
   showTown,
+  hideOwnershipType = false,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
@@ -98,61 +109,53 @@ export function DealBoardPhotoLedLineRow({
   const detailHref = listingDetailHref(l);
   const addressClassName =
     "font-medium text-navy hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold";
+  const scoreColor =
+    l.score >= 85
+      ? "text-sage"
+      : l.score >= 70
+        ? "text-gold"
+        : "text-charcoal/50";
 
   return (
     <div
+      {...dealBoardRowAnchorProps(l.key)}
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="flex items-start gap-2 px-3 sm:px-4 py-1 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
+      className="scroll-mt-36 flex items-start gap-2 px-3 sm:px-4 py-2 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
     >
       <span
-        className="font-mono text-[10px] tabular-nums w-5 shrink-0 text-right font-semibold"
+        className="font-mono text-[10px] tabular-nums w-5 shrink-0 text-right font-semibold pt-1"
         style={{ color: rankColor }}
       >
         {scoreRank + 1}
       </span>
-      <DealBoardPrimaryPhoto
-        listing={l}
-        isLive={isLive}
-        width={48}
-        height={32}
-        priority={scoreRank < 8}
-        className="rounded-md"
-      />
-      <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-snug">
-        {(() => {
-          const scoreColor =
-            l.score >= 85
-              ? "text-sage"
-              : l.score >= 70
-                ? "text-gold"
-                : "text-charcoal/50";
-          return (
-            <button
-              type="button"
-              onClick={() => onScoreClick(l)}
-              className={`shrink-0 font-mono text-[11px] font-semibold tabular-nums ${scoreColor} underline underline-offset-2 decoration-charcoal/20 hover:decoration-gold transition-colors`}
-              aria-label={`Score ${l.score.toFixed(1)} — view breakdown`}
-            >
-              {l.score.toFixed(1)}
-            </button>
-          );
-        })()}
-        {isLive && onStatusClick ? (
-          <button
-            type="button"
-            onClick={() => onStatusClick(l)}
-            className="shrink-0 font-mono text-[9px] tracking-[0.12em] uppercase text-slate hover:text-gold transition-colors"
-          >
-            {l.status === "Reduced" ? "Reduced!" : l.status}
-          </button>
-        ) : (
-          <span className="shrink-0 font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
-            {l.status === "Reduced" ? "Reduced!" : l.status}
-          </span>
-        )}
-        <span className="text-charcoal/25 shrink-0" aria-hidden>
-          ·
-        </span>
+      <div className="flex w-12 shrink-0 flex-col items-center gap-1">
+        <DealBoardPrimaryPhoto
+          listing={l}
+          isLive={isLive}
+          width={48}
+          height={32}
+          priority={scoreRank < 8}
+          className="rounded-md"
+          withDealBoardReturn
+          showPhotoCountBadge={false}
+        />
+        <DealBoardStatusBadge
+          status={l.status}
+          size="sm"
+          onClick={
+            isLive && onStatusClick ? () => onStatusClick(l) : undefined
+          }
+        />
+        <button
+          type="button"
+          onClick={() => onScoreClick(l)}
+          className={`font-mono text-[11px] font-semibold tabular-nums leading-none ${scoreColor} underline underline-offset-2 decoration-charcoal/20 hover:decoration-gold transition-colors`}
+          aria-label={`Score ${l.score.toFixed(1)} — view breakdown`}
+        >
+          {l.score.toFixed(1)}
+        </button>
+      </div>
+      <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-snug pt-0.5">
         {isLive ? (
           <Link href={detailHref} className={`min-w-0 break-words ${addressClassName}`}>
             {l.address}
@@ -168,13 +171,13 @@ export function DealBoardPhotoLedLineRow({
         <DealBoardAdaptiveMetaLine
           as="span"
           parts={[
+            l.beds != null ? `${l.beds}bd` : "—bd",
+            l.baths != null ? `${l.baths}ba` : "—ba",
             `$${l.price.toLocaleString()}`,
             dealBoardSqftLabel(l.sqft),
             ppsf,
-            l.beds != null ? `${l.beds}bd` : "—bd",
-            l.baths != null ? `${l.baths}ba` : "—ba",
             l.dom != null ? `${l.dom}d DOM` : null,
-            l.type || null,
+            hideOwnershipType ? null : l.type || null,
             town,
           ]}
           sqft={null}
@@ -207,8 +210,9 @@ export function DealBoardPhotoLedGridCard({
 
   return (
     <div
+      {...dealBoardRowAnchorProps(l.key)}
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="group flex min-w-0 flex-col overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white transition-colors hover:border-gold/25 hover:bg-gold/[0.03]"
+      className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white transition-colors hover:border-gold/25 hover:bg-gold/[0.03]"
     >
       <div className="relative">
         <span
@@ -251,6 +255,7 @@ export function DealBoardPhotoLedGridCard({
           fluid
           className="rounded-none"
           priority={scoreRank < 4}
+          withDealBoardReturn
           overlay={
             <div
               className="absolute bottom-1.5 left-1.5 z-10"
@@ -314,8 +319,9 @@ export function DealBoardPhotoLedLargeCard({
 
   return (
     <div
+      {...dealBoardRowAnchorProps(l.key)}
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="group flex min-w-0 flex-col overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white transition-colors hover:border-gold/25 hover:bg-gold/[0.03]"
+      className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white transition-colors hover:border-gold/25 hover:bg-gold/[0.03]"
     >
       <div className="relative">
         <span
@@ -346,6 +352,7 @@ export function DealBoardPhotoLedLargeCard({
           fluid
           className="rounded-none"
           priority={scoreRank < 4}
+          withDealBoardReturn
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-2.5">

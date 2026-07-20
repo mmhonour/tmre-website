@@ -38,6 +38,7 @@ function scrollToSection(sectionId: string) {
 
 export default function AdminTabbedLayout({
   db,
+  syncLog,
   stats,
   site,
   goldilocks,
@@ -50,6 +51,7 @@ export default function AdminTabbedLayout({
   glossary,
 }: {
   db: ReactNode;
+  syncLog: ReactNode;
   stats: ReactNode;
   site: ReactNode;
   goldilocks: ReactNode;
@@ -99,6 +101,7 @@ export default function AdminTabbedLayout({
 
   const panels: Record<AdminTabId, ReactNode> = {
     db,
+    "sync-log": syncLog,
     stats,
     site,
     goldilocks,

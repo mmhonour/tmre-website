@@ -32,15 +32,21 @@ function tabHref(
   return qs ? `${pathname}?${qs}` : pathname;
 }
 
-export function SpotlightPropertyTabs() {
+export function SpotlightPropertyTabs({
+  lockedTab = null,
+}: {
+  /** When set, highlight this tab and disable navigation (e.g. `/test` mockup). */
+  lockedTab?: SpotlightPropertyTabId | null;
+} = {}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const activeTab = parseSpotlightPropertyTab(searchParams.get("property"));
+  const activeTab =
+    lockedTab ?? parseSpotlightPropertyTab(searchParams.get("property"));
   const [visibleTabs, setVisibleTabs] =
     useState<SpotlightPropertyTabId[]>(DEFAULT_VISIBLE_TABS);
   const viewportRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLElement>(null);
-  const activeTabRef = useRef<HTMLAnchorElement>(null);
+  const activeTabRef = useRef<HTMLElement | null>(null);
 
   // No scrollbar: clip the rail and slide it via transform so the active tab
   // stays centered/visible, moving about one tab at a time.
@@ -102,16 +108,33 @@ export function SpotlightPropertyTabs() {
       >
         {tabsToRender.map((tab) => {
           const isActive = activeTab === tab;
+          const className = `min-w-[2.25rem] shrink-0 px-3 py-1.5 text-center font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
+            isActive
+              ? "text-gold border-gold"
+              : "text-white/50 border-transparent hover:text-white/80"
+          }`;
+          if (lockedTab != null) {
+            return (
+              <span
+                key={tab}
+                ref={(node) => {
+                  if (isActive) activeTabRef.current = node;
+                }}
+                className={`${className} ${isActive ? "" : "opacity-40"}`}
+                aria-current={isActive ? "page" : undefined}
+              >
+                {tab}
+              </span>
+            );
+          }
           return (
             <Link
               key={tab}
-              ref={isActive ? activeTabRef : undefined}
+              ref={(node) => {
+                if (isActive) activeTabRef.current = node;
+              }}
               href={tabHref(pathname, searchParams, tab)}
-              className={`min-w-[2.25rem] shrink-0 px-3 py-1.5 text-center font-mono text-[10px] tracking-[0.15em] uppercase transition-colors border-b-2 -mb-px ${
-                isActive
-                  ? "text-gold border-gold"
-                  : "text-white/50 border-transparent hover:text-white/80"
-              }`}
+              className={className}
               aria-current={isActive ? "page" : undefined}
             >
               {tab}

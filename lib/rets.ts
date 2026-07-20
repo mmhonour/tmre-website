@@ -2,6 +2,7 @@ import 'server-only'
 
 import { parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
 import { propertyTaxFromRaw } from '@/lib/listing-property-tax'
+import { coalesceListingStatus } from '@/lib/listing-history'
 import { getRetsCredentials } from '@/lib/rets-credentials'
 
 type RetsClientModule = typeof import('rets-client')
@@ -231,7 +232,7 @@ function mapListing(r: RawRetsRecord): Listing {
   return {
     mlsId: str(r.ListingId),
     listingKey: str(r.ListingKey),
-    status: str(r.MLSStatus),
+    status: coalesceListingStatus(str(r.MLSStatus), str(r.StandardStatus)),
     propertyType: str(r.PropertyType),
     style: str(r.Style),
     address: buildAddress(r),

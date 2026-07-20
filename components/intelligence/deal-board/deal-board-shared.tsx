@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { formatLotAcresLabel } from "@/lib/listing-lot-acres";
+import { dealBoardReturnPath } from "@/lib/deal-board-focus";
+import { appendReturnToHref } from "@/lib/listing-return-nav";
 import { listingDetailHrefForListing, listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import type { DealBoardListing, DealBoardRowStatus } from "@/components/intelligence/deal-board/deal-board-types";
@@ -173,12 +175,14 @@ export function dealBoardDomWithType(
 }
 
 export function listingDetailHref(l: DealBoardListing): string {
-  return listingDetailHrefForListing({
+  const base = listingDetailHrefForListing({
     mlsId: l.key,
     listingKey: l.listingKey,
     address: { street: l.address, full: l.address },
     city: l.city,
   });
+  // Back to deal board → same row (#deal-…); also used by ListingShell “Back”.
+  return appendReturnToHref(base, dealBoardReturnPath(l.key));
 }
 
 export function DealBoardAddressWithInsight({
@@ -388,6 +392,7 @@ export function DealBoardPrimaryPhoto({
   showPhotoCountBadge = true,
   surface = "dark",
   overlay,
+  withDealBoardReturn = false,
 }: {
   listing: DealBoardListing;
   isLive: boolean;
@@ -403,15 +408,21 @@ export function DealBoardPrimaryPhoto({
   surface?: "dark" | "light";
   /** Absolutely positioned content inside the photo shell (e.g. grid status pill). */
   overlay?: ReactNode;
+  /** Append Intelligence return hash so Back lands on this row. */
+  withDealBoardReturn?: boolean;
 }) {
   const resolvedIndex =
     photoIndex ??
     (listing.primaryPhotoIndex != null && listing.primaryPhotoIndex >= 0
       ? listing.primaryPhotoIndex
       : 0);
-  const href = isLive
+  const photosHref = isLive
     ? listingPhotosHref(listing.key, listing.address, listing.city, resolvedIndex)
     : null;
+  const href =
+    photosHref && withDealBoardReturn
+      ? appendReturnToHref(photosHref, dealBoardReturnPath(listing.key))
+      : photosHref;
   const src = isLive ? listingPhotoProxyUrl(listing.key, resolvedIndex) : null;
 
   const image = src ? (

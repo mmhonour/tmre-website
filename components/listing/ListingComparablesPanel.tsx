@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
@@ -18,7 +18,10 @@ import {
   type ComparablesCriteria,
   type ComparablesLookbackMonths,
 } from "@/lib/listing-comparables-shared";
-import MatchingCriteriaSummary from "@/components/listing/MatchingCriteriaSummary";
+import MatchingCriteriaSummary, {
+  type CriteriaStepFeedback,
+  type CriteriaStepKey,
+} from "@/components/listing/MatchingCriteriaSummary";
 import {
   comparableListingMatchesSession,
   defaultSessionOverrides,
@@ -26,6 +29,31 @@ import {
   sessionOverridesNeedWidePool,
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
+
+/** How long the ± criteria find/no-find note stays visible. */
+const CRITERIA_STEP_FEEDBACK_MS = 10_000;
+
+function criteriaStepMatchNote(opts: {
+  prevSold: number;
+  prevActive: number;
+  nextSold: number;
+  nextActive: number;
+  closedWord: "sold" | "rented";
+  waitingWide: boolean;
+}): string {
+  const prevTotal = opts.prevSold + opts.prevActive;
+  const nextTotal = opts.nextSold + opts.nextActive;
+  const delta = nextTotal - prevTotal;
+  const counts = `${opts.nextSold} ${opts.closedWord} · ${opts.nextActive} on market`;
+
+  if (opts.waitingWide && delta <= 0) {
+    return "No new matches yet — loading wider pool…";
+  }
+  if (nextTotal === 0) return `Nothing matched · ${counts}`;
+  if (delta > 0) return `Found ${delta} more · ${counts}`;
+  if (delta < 0) return `${Math.abs(delta)} fewer · ${counts}`;
+  return `No change · ${counts}`;
+}
 import type { PricingMatchingConfig } from "@/lib/pricing-matching-config-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -591,51 +619,6 @@ export function ListingComparablesPageContent({
   );
 }
 
-/** Desktop On The Market tab — For Sale + For Rent actives side by side. */
-export function ListingOnTheMarketPageContent({
-  mlsId,
-  townHint,
-  saleFetchUrl,
-  rentalFetchUrl,
-}: {
-  mlsId: string;
-  townHint?: string | null;
-  saleFetchUrl?: string;
-  rentalFetchUrl?: string;
-}) {
-  return (
-    <div className="w-full min-w-0 space-y-6">
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-        On The Market
-      </p>
-      <p className="text-white/50 text-sm">
-        Active for-sale and for-rent comps matching this property&apos;s zip,
-        beds, baths, vintage, and lot size.
-      </p>
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 items-start">
-        <ListingComparablesPanel
-          mlsId={mlsId}
-          townHint={townHint}
-          variant="page"
-          kind="sale"
-          columns="active"
-          suppressPageChrome
-          fetchUrl={saleFetchUrl}
-        />
-        <ListingComparablesPanel
-          mlsId={mlsId}
-          townHint={townHint}
-          variant="page"
-          kind="rental"
-          columns="active"
-          suppressPageChrome
-          fetchUrl={rentalFetchUrl}
-        />
-      </div>
-    </div>
-  );
-}
-
 export default function ListingComparablesPanel({
   mlsId,
   townHint,
@@ -669,8 +652,15 @@ export default function ListingComparablesPanel({
     null,
   );
   const [sessionTabKey, setSessionTabKey] = useState<string | null>(null);
-  const [widePoolLoaded, setWidePoolLoaded] = useState(false);
+  /** Wider server pool for interactive ± criteria (kept separate from default cache). */
+  const [wideData, setWideData] = useState<ComparablesResponse | null>(null);
   const [widePoolLoading, setWidePoolLoading] = useState(false);
+  const [criteriaStepFeedback, setCriteriaStepFeedback] =
+    useState<CriteriaStepFeedback | null>(null);
+  const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const pendingWideFeedbackKeyRef = useRef<CriteriaStepKey | null>(null);
   const tabKey = `${mlsId}:${kind}`;
 
   const isRental = kind === "rental";
@@ -700,11 +690,25 @@ export default function ListingComparablesPanel({
     setSessionMatch(null);
     setBaselineMatch(null);
     setSessionTabKey(null);
-    setWidePoolLoaded(false);
+    setWideData(null);
     setWidePoolLoading(false);
+    setCriteriaStepFeedback(null);
+    pendingWideFeedbackKeyRef.current = null;
+    if (criteriaFeedbackTimerRef.current != null) {
+      clearTimeout(criteriaFeedbackTimerRef.current);
+      criteriaFeedbackTimerRef.current = null;
+    }
     setSoldVisibleCount(COMP_INITIAL_VISIBLE);
     setActiveVisibleCount(COMP_INITIAL_VISIBLE);
   }, [tabKey, comparablesUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (criteriaFeedbackTimerRef.current != null) {
+        clearTimeout(criteriaFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -758,14 +762,35 @@ export default function ListingComparablesPanel({
     setSessionTabKey(tabKey);
   }, [data, tabKey, sessionTabKey]);
 
+  // Warm the interactive wide pool so ± criteria can add comps (default pool is
+  // already server-trimmed to admin tolerances — client widen alone can't grow it).
+  const sessionReady = Boolean(data?.criteria && sessionMatch && baselineMatch);
+  useEffect(() => {
+    if (!sessionReady) return;
+    let cancelled = false;
+    setWidePoolLoading(true);
+    void loadTabJson<ComparablesResponse>(wideComparablesUrl)
+      .then((d) => {
+        if (cancelled || !d) return;
+        setWideData(d);
+      })
+      .finally(() => {
+        if (!cancelled) setWidePoolLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionReady, wideComparablesUrl]);
+
   // When the default look-back window holds fewer than COMP_MIN_LOOKBACK_COMPS
   // sold/rented comps, auto-widen the look-back to the smallest window that
   // reaches the minimum (capped at 3yr) and move the spinner to match. Runs once
   // per data load (i.e. per listing), so manual spinner changes are preserved.
   useEffect(() => {
-    const soldList = data?.sold ?? [];
+    const soldList = (wideData ?? data)?.sold ?? [];
     const defaultLookback =
-      data?.defaultLookbackMonths ?? COMPARABLES_DEFAULT_LOOKBACK_MONTHS;
+      (wideData ?? data)?.defaultLookbackMonths ??
+      COMPARABLES_DEFAULT_LOOKBACK_MONTHS;
     if (soldList.length === 0) {
       setLookbackMonths(defaultLookback);
       return;
@@ -780,33 +805,109 @@ export default function ListingComparablesPanel({
         ? defaultLookback
         : minLookbackForComps(soldList, COMP_MIN_LOOKBACK_COMPS),
     );
-  }, [data]);
+  }, [data, wideData]);
 
-  const criteria = data?.criteria ?? null;
-  const missing = data?.missingCriteria ?? [];
+  const pool = wideData ?? data;
+  const criteria = data?.criteria ?? wideData?.criteria ?? null;
+  const missing = pool?.missingCriteria ?? data?.missingCriteria ?? [];
   const town = townHint ?? null;
   const isPage = variant === "page";
   const isModal = variant === "modal";
   const sortTheme: CompSortTheme = isModal ? "light" : "dark";
 
-  const handleSessionMatchChange = (next: SessionMatchOverrides) => {
-    setSessionMatch(next);
-    if (
-      baselineMatch &&
-      sessionOverridesNeedWidePool(next, baselineMatch) &&
-      !widePoolLoaded &&
-      !widePoolLoading
-    ) {
-      setWidePoolLoading(true);
-      void loadTabJson<ComparablesResponse>(wideComparablesUrl)
-        .then((d) => {
-          if (!d) return;
-          setData(d);
-          setWidePoolLoaded(true);
-        })
-        .finally(() => setWidePoolLoading(false));
-    }
+  const ensureWidePool = () => {
+    if (wideData || widePoolLoading) return;
+    setWidePoolLoading(true);
+    void loadTabJson<ComparablesResponse>(wideComparablesUrl)
+      .then((d) => {
+        if (!d) return;
+        setWideData(d);
+      })
+      .finally(() => setWidePoolLoading(false));
   };
+
+  const showCriteriaStepFeedback = (
+    key: CriteriaStepKey,
+    text: string,
+  ) => {
+    setCriteriaStepFeedback({ key, text });
+    if (criteriaFeedbackTimerRef.current != null) {
+      clearTimeout(criteriaFeedbackTimerRef.current);
+    }
+    criteriaFeedbackTimerRef.current = setTimeout(() => {
+      criteriaFeedbackTimerRef.current = null;
+      setCriteriaStepFeedback(null);
+    }, CRITERIA_STEP_FEEDBACK_MS);
+  };
+
+  const handleSessionMatchChange = (
+    next: SessionMatchOverrides,
+    source?: { key: CriteriaStepKey },
+  ) => {
+    const needsWide =
+      Boolean(baselineMatch) &&
+      sessionOverridesNeedWidePool(next, baselineMatch!);
+    const waitingWide = needsWide && !wideData;
+    if (needsWide) ensureWidePool();
+
+    if (source && criteria) {
+      const closedWord = isRental ? ("rented" as const) : ("sold" as const);
+      const soldPool = pool?.sold ?? [];
+      const activePool = pool?.active ?? [];
+      const prevSold = sessionMatch
+        ? soldPool.filter((row) =>
+            comparableListingMatchesSession(row, criteria, sessionMatch),
+          ).length
+        : soldPool.length;
+      const prevActive = sessionMatch
+        ? activePool.filter((row) =>
+            comparableListingMatchesSession(row, criteria, sessionMatch),
+          ).length
+        : activePool.length;
+      const nextSold = soldPool.filter((row) =>
+        comparableListingMatchesSession(row, criteria, next),
+      ).length;
+      const nextActive = activePool.filter((row) =>
+        comparableListingMatchesSession(row, criteria, next),
+      ).length;
+      showCriteriaStepFeedback(
+        source.key,
+        criteriaStepMatchNote({
+          prevSold,
+          prevActive,
+          nextSold,
+          nextActive,
+          closedWord,
+          waitingWide,
+        }),
+      );
+      pendingWideFeedbackKeyRef.current = waitingWide ? source.key : null;
+    }
+
+    setSessionMatch(next);
+  };
+
+  // When the wider pool arrives after a +, refresh the note with real counts.
+  useEffect(() => {
+    const key = pendingWideFeedbackKeyRef.current;
+    if (!key || !wideData || !criteria || !sessionMatch) return;
+    pendingWideFeedbackKeyRef.current = null;
+    const closedWord = isRental ? ("rented" as const) : ("sold" as const);
+    const nextSold = (wideData.sold ?? []).filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    ).length;
+    const nextActive = (wideData.active ?? []).filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    ).length;
+    const total = nextSold + nextActive;
+    showCriteriaStepFeedback(
+      key,
+      total === 0
+        ? `Nothing matched · ${nextSold} ${closedWord} · ${nextActive} on market`
+        : `Found ${total} · ${nextSold} ${closedWord} · ${nextActive} on market`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when wide pool lands
+  }, [wideData]);
 
   const handleSoldSort = (key: SoldSortKey) => {
     setSoldSort((prev) =>
@@ -824,22 +925,22 @@ export default function ListingComparablesPanel({
     );
   };
 
-  // Apply session match overrides, then look-back on the sold side.
+  // Apply session match overrides against the widest available pool, then look-back.
   const sold = useMemo(() => {
-    const rows = data?.sold ?? [];
+    const rows = pool?.sold ?? [];
     if (!criteria || !sessionMatch) return rows;
     return rows.filter((row) =>
       comparableListingMatchesSession(row, criteria, sessionMatch),
     );
-  }, [data?.sold, criteria, sessionMatch]);
+  }, [pool?.sold, criteria, sessionMatch]);
 
   const active = useMemo(() => {
-    const rows = data?.active ?? [];
+    const rows = pool?.active ?? [];
     if (!criteria || !sessionMatch) return rows;
     return rows.filter((row) =>
       comparableListingMatchesSession(row, criteria, sessionMatch),
     );
-  }, [data?.active, criteria, sessionMatch]);
+  }, [pool?.active, criteria, sessionMatch]);
 
   const hasContent = sold.length > 0 || active.length > 0;
 
@@ -932,6 +1033,9 @@ export default function ListingComparablesPanel({
     ? "flex flex-wrap items-center gap-x-4 gap-y-1 sm:hidden"
     : "flex flex-wrap items-center gap-x-4 gap-y-1 md:hidden";
   const closedJumpLabel = isRental ? "Rented" : "Sold";
+  const onMarketJumpLabel = isRental
+    ? "For Rent On Market"
+    : "For Sale On Market";
 
   const onMarketEmptyLabel = isRental
     ? "No on-market rentals found yet."
@@ -984,14 +1088,13 @@ export default function ListingComparablesPanel({
     isModal ? "text-slate/70" : "text-white/40"
   }`;
 
-  const activeColumnTitle =
-    columns === "active"
-      ? isRental
-        ? "For Rent"
-        : "For Sale"
-      : isPage
-        ? "ON MARKET"
-        : "On market";
+  const activeColumnTitle = isRental
+    ? isPage
+      ? "FOR RENT ON MARKET"
+      : "For rent on market"
+    : isPage
+      ? "FOR SALE ON MARKET"
+      : "For sale on market";
 
   return (
     <div className={wrapperClass}>
@@ -1020,8 +1123,10 @@ export default function ListingComparablesPanel({
         <p className="text-sm text-slate leading-relaxed">{modalIntro}</p>
       )}
 
-      {criteria && sessionMatch && (isPage || isModal || hasContent) && (
-        <p
+      {criteria &&
+        sessionMatch &&
+        (isPage || isModal || hasContent) && (
+        <div
           className={
             isModal
               ? "font-mono text-[10px] tracking-[0.12em] uppercase text-slate"
@@ -1032,20 +1137,21 @@ export default function ListingComparablesPanel({
             criteria={criteria}
             session={sessionMatch}
             onSessionChange={handleSessionMatchChange}
+            stepFeedback={criteriaStepFeedback}
             isModal={isModal}
           />
-          {widePoolLoading ? (
+          {widePoolLoading && !wideData ? (
             <span
               className={
                 isModal
-                  ? "ml-2 font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60"
-                  : "ml-2 font-mono text-[9px] tracking-[0.12em] uppercase text-white/35"
+                  ? "mt-1 block font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60"
+                  : "mt-1 block font-mono text-[9px] tracking-[0.12em] uppercase text-white/35"
               }
             >
-              widening pool…
+              loading wider match pool…
             </span>
           ) : null}
-        </p>
+        </div>
       )}
 
       {showStackedPanelJumpLinks ? (
@@ -1057,7 +1163,7 @@ export default function ListingComparablesPanel({
             {closedJumpLabel}({sortedSold.length})
           </a>
           <a href={`#${onMarketPanelId}`} className={stackedJumpLinkClass}>
-            Available Now({sortedActive.length})
+            {onMarketJumpLabel}({sortedActive.length})
           </a>
         </nav>
       ) : null}

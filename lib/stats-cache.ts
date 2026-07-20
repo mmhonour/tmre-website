@@ -37,6 +37,7 @@ import { STATS_MONTH_CHART_START_YEAR, statsMonthChartYears } from '@/lib/stats-
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { rebuildIntelligenceTownSnapshots } from '@/lib/intelligence-town-snapshot'
+import { refreshInterestingStat } from '@/lib/interesting-stat'
 import {
   MONTHS_SUPPLY_INDEX_KEY,
   rebuildMonthsSupplyCache,
@@ -688,6 +689,12 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
       console.error('[stats-cache] town snapshot rebuild failed', err)
     }
 
+    try {
+      if (await refreshInterestingStat(generatedAt)) written += 1
+    } catch (err) {
+      console.error('[stats-cache] interesting-stat refresh failed', err)
+    }
+
     return { written, durationMs: Date.now() - t0 }
   } finally {
     if (trackRefresh) endSqliteRefresh(new Date().toISOString())
@@ -761,6 +768,12 @@ export async function rebuildStatsCacheForTowns(
       written += snap.written
     } catch (err) {
       console.error('[stats-cache] town snapshot rebuild failed (per-town)', err)
+    }
+
+    try {
+      if (await refreshInterestingStat(generatedAt)) written += 1
+    } catch (err) {
+      console.error('[stats-cache] interesting-stat refresh failed (per-town)', err)
     }
 
     return { written, durationMs: Date.now() - t0 }

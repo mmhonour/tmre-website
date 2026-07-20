@@ -1,0 +1,19 @@
+---
+description: End every finished reply with a short local date/time stamp
+alwaysApply: true
+---
+
+# Response timestamp
+
+When you finish a user request (final reply for that turn), end with a short timestamp on its own last line:
+
+`ddmmm hh:nn`
+
+Examples: `20Jul 15:54`, `03Jan 09:05`
+
+Rules:
+- Use the current local time from the latest user/system timestamp when available; otherwise the best known clock for the session.
+- Month is a 3-letter English abbreviation with no period (Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec).
+- Day is zero-padded to 2 digits; hour and minute are 24-hour `hh:nn`, zero-padded.
+- No seconds, no timezone suffix, no extra label (just the stamp).
+- Do this on every completed reply going forward, including short answers.

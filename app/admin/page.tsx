@@ -551,9 +551,12 @@ export default async function AdminPage() {
           max: DB_UPSERT_CHUNK_ROWS_MAX,
         }}
       />
+    </>
+  );
 
+  const syncLogPanel = (
+    <>
       <AdminSyncHistoryPanel initial={syncRunHistory} />
-
       <AdminSyncRunLog />
     </>
   );
@@ -870,6 +873,7 @@ export default async function AdminPage() {
 
       <AdminTabbedLayout
         db={dbPanel}
+        syncLog={syncLogPanel}
         stats={<AdminStatsInventoryPanel />}
         site={sitePanel}
         goldilocks={goldilocksPanel}

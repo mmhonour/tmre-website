@@ -14,12 +14,14 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const kind = parseListingKindParam(searchParams.get('kind'))
+  const pool =
+    searchParams.get('pool') === 'wide' ? ('wide' as const) : ('default' as const)
   const propertyTab = parseSpotlightPropertyTab(searchParams.get('property'))
   const config = getSpotlightListingConfig(propertyTab)
 
   try {
     const subject = await resolveSpotlightSubjectListing(config)
-    const payload = await resolveComparablesForSubject(subject, kind)
+    const payload = await resolveComparablesForSubject(subject, kind, { pool })
 
     return NextResponse.json(payload, {
       headers: spotlightApiCacheHeaders(),

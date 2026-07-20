@@ -1,24 +1,11 @@
-import ListingComparablesClient from "../comparables/ListingComparablesClient";
+import { redirect } from "next/navigation";
+import { LISTING_SALE_ON_MARKET_PANEL_ID } from "@/components/listing/listing-section-ids";
+import { listingSectionHref } from "@/lib/listing-url";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ mlsId: string }>;
-  searchParams: Promise<{ address?: string; city?: string }>;
-}) {
-  const { mlsId } = await params;
-  const { address } = await searchParams;
-  const label = address?.trim() || `Listing ${mlsId}`;
-  return {
-    title: `${label} — On The Market — TMRE`,
-    description: `On-market sale and rental comps for ${label.trim()}.`,
-  };
-}
-
-export default async function ListingOnTheMarketPage({
+/** Legacy route — On The Market group removed; jump to Sold's for-sale on-market panel. */
+export default async function ListingOnTheMarketRedirectPage({
   params,
   searchParams,
 }: {
@@ -27,12 +14,11 @@ export default async function ListingOnTheMarketPage({
 }) {
   const { mlsId } = await params;
   const { address, city } = await searchParams;
-  return (
-    <ListingComparablesClient
-      mlsId={mlsId}
-      addressHint={address?.trim() || null}
-      townHint={city?.trim() || null}
-      mode="on-the-market"
-    />
+  const base = listingSectionHref(
+    mlsId,
+    "comparables",
+    address?.trim() || null,
+    city?.trim() || null,
   );
+  redirect(`${base}#${LISTING_SALE_ON_MARKET_PANEL_ID}`);
 }

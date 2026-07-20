@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AdminInterestingStatsPanel from "@/components/admin/AdminInterestingStatsPanel";
 import { adminPostgresTableHref } from "@/lib/admin-nav";
 import type {
   StatsInventoryCategory,
@@ -150,6 +151,8 @@ export default function AdminStatsInventoryPanel() {
       id="admin-stats-inventory"
       className="scroll-mt-24 space-y-6"
     >
+      <AdminInterestingStatsPanel />
+
       <div className="rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm overflow-hidden">
         <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/20">
           <div className="min-w-0">

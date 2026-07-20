@@ -32,6 +32,8 @@ export type DealBoardListProps = {
   rankTotal: number;
   isLive: boolean;
   showTown: boolean;
+  /** Hide SFR/Rental/etc. in meta when Sale or Rental filter pill is active. */
+  hideOwnershipType?: boolean;
   loading: boolean;
   loadingLabel: string;
   emptyLabel: string;
@@ -64,6 +66,7 @@ export default function DealBoardList({
   rankTotal,
   isLive,
   showTown,
+  hideOwnershipType = false,
   loading,
   loadingLabel,
   emptyLabel,
@@ -88,6 +91,7 @@ export default function DealBoardList({
     rankTotal,
     isLive,
     showTown,
+    hideOwnershipType,
     onScoreClick,
     onStatusClick,
   });

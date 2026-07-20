@@ -4,6 +4,8 @@ import type { SpotlightListingConfig, SpotlightPropertyTabId } from '@/lib/spotl
 import { SPOTLIGHT_PROPERTY_TABS } from '@/lib/spotlight-listing'
 import {
   SPOTLIGHT_COMING_SOON_OBFUSCATED_PHOTO_INDICES,
+  spotlightEffectiveDisplayTitle,
+  spotlightListingIsComingSoon,
   type SpotlightMlsListing,
 } from '@/lib/spotlight-display'
 import { isTmreTown } from '@/lib/tmre-towns'
@@ -13,6 +15,11 @@ export type SpotlightPrivacyTabOverrides = {
   showAddress?: boolean
   showClearPhotos?: boolean
   showPropertyMap?: boolean
+  /**
+   * Sticky admin override: treat this tab as live (no Coming Soon title / blur
+   * behavior) even if MLSStatus still says Coming Soon.
+   */
+  clearComingSoon?: boolean
 }
 
 export type SpotlightPrivacyOverrides = Partial<
@@ -23,6 +30,7 @@ export type SpotlightEffectivePrivacy = {
   showAddress: boolean
   showClearPhotos: boolean
   showPropertyMap: boolean
+  clearComingSoon: boolean
 }
 
 /** Single source of truth for Spotlight address / photo / map presentation. */
@@ -59,6 +67,7 @@ export function spotlightEffectivePrivacy(
     showAddress: tabOverrides.showAddress === true,
     showClearPhotos: tabOverrides.showClearPhotos === true,
     showPropertyMap: tabOverrides.showPropertyMap === true,
+    clearComingSoon: tabOverrides.clearComingSoon === true,
   }
 }
 
@@ -74,19 +83,18 @@ export function spotlightObfuscatesPhotoWithPrivacy(
   config: SpotlightListingConfig,
   photoIndex: number,
   privacy: SpotlightEffectivePrivacy,
+  mls?: SpotlightMlsListing | null,
 ): boolean {
   if (privacy.showClearPhotos) return false
+  if (!spotlightListingIsComingSoon(config, mls ?? null, privacy)) return false
   if (config.obfuscateFirstTwoPhotos) {
     return (SPOTLIGHT_COMING_SOON_OBFUSCATED_PHOTO_INDICES as readonly number[]).includes(
       photoIndex,
     )
   }
-  if (config.status === 'Coming Soon') {
-    return (SPOTLIGHT_COMING_SOON_OBFUSCATED_PHOTO_INDICES as readonly number[]).includes(
-      photoIndex,
-    )
-  }
-  return false
+  return (SPOTLIGHT_COMING_SOON_OBFUSCATED_PHOTO_INDICES as readonly number[]).includes(
+    photoIndex,
+  )
 }
 
 export function spotlightEffectiveHeaderAddress(
@@ -100,10 +108,11 @@ export function spotlightEffectiveHeaderAddress(
   state: string
   postalCode: string
 } {
+  const displayTitle = spotlightEffectiveDisplayTitle(config, mls, privacy)
   if (!privacy.showAddress) {
     return {
-      street: config.displayTitle,
-      full: config.displayTitle,
+      street: displayTitle,
+      full: displayTitle,
       city: '',
       state: '',
       postalCode: '',
@@ -113,10 +122,10 @@ export function spotlightEffectiveHeaderAddress(
   const actualStreet =
     mls?.address?.street?.trim() ||
     config.address.street.trim() ||
-    config.displayTitle
+    displayTitle
   const street = actualStreet
-    ? `${config.displayTitle} — ${actualStreet}`
-    : config.displayTitle
+    ? `${displayTitle} — ${actualStreet}`
+    : displayTitle
   const city =
     mls?.address?.city?.trim() || config.address.city.trim() || config.displayLocation
   const state = config.address.state.trim() || 'CT'
@@ -185,6 +194,7 @@ export function normalizeSpotlightPrivacyOverrides(
       showAddress: row.showAddress === true,
       showClearPhotos: row.showClearPhotos === true,
       showPropertyMap: row.showPropertyMap === true,
+      clearComingSoon: row.clearComingSoon === true,
     }
   }
 
@@ -197,16 +207,16 @@ export function spotlightEffectivePresentation(
   privacy: SpotlightEffectivePrivacy,
   photoCount = 0,
 ): SpotlightPresentation {
-  const isComingSoon = config.status === 'Coming Soon'
+  const isComingSoon = spotlightListingIsComingSoon(config, mls, privacy)
   const headerAddress = spotlightEffectiveHeaderAddress(config, mls, privacy)
   const mapLocation = spotlightEffectiveMapLocation(config, mls, privacy)
   const shouldObfuscatePhoto = (photoIndex: number) =>
-    spotlightObfuscatesPhotoWithPrivacy(config, photoIndex, privacy)
+    spotlightObfuscatesPhotoWithPrivacy(config, photoIndex, privacy, mls)
 
   const streetAddress =
     mls?.address?.street?.trim() ||
     config.address.street.trim() ||
-    config.displayTitle
+    spotlightEffectiveDisplayTitle(config, mls, privacy)
 
   const city =
     mls?.address?.city?.trim() || config.address.city.trim() || null

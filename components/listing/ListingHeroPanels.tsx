@@ -138,10 +138,13 @@ export default function ListingHeroPanels({
     privacyMode: header.privacyMode ?? false,
     hideMarketMeta: header.hideMarketMeta ?? isSpotlight,
     insight: isOverview ? header.insight : null,
-    heroAside: !isOverview,
     className: "mb-0" as const,
     compact: true as const,
   };
+
+  const heroInsight = (
+    <ListingHeader {...headerShared} parts="heroInsight" tabsSlot={null} />
+  );
 
   const tabsNav = (
     <Suspense fallback={null}>
@@ -163,17 +166,21 @@ export default function ListingHeroPanels({
   const propertyPanel = (
     <div className={frameClass}>
       {isDesktop ? (
-        /* Desktop: single sticky chrome (hero + insight + tabs together). */
-        <div
-          ref={stickyChromeRef}
-          className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-2 mb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
-        >
-          {topRow}
-          {propertyDetailsLabel}
-          <ListingHeader {...headerShared} tabsSlot={tabsNav} />
-        </div>
+        /* Desktop: sticky score/address/meta; hero under address; tabs below hero. */
+        <>
+          <div
+            ref={stickyChromeRef}
+            className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-2 mb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+          >
+            {topRow}
+            {propertyDetailsLabel}
+            <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
+          </div>
+          {heroInsight}
+          <div className="mt-2">{tabsNav}</div>
+        </>
       ) : (
-        /* Mobile: pin through Style/Bed/Bath/Sqft; hero + Insight scroll away; tabs pin below. */
+        /* Mobile: pin score/address/meta; full-bleed hero under address; tabs pin below. */
         <>
           <div
             ref={mobileMetaPinRef}
@@ -184,15 +191,7 @@ export default function ListingHeroPanels({
             <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
           </div>
 
-          {isOverview ? (
-            <ListingHeader {...headerShared} parts="heroInsight" tabsSlot={null} />
-          ) : header.heroSlot ? (
-            <div className="mt-2 flex justify-end">
-              <div className="shrink-0" style={{ width: "40%", maxWidth: 220 }}>
-                {header.heroSlot}
-              </div>
-            </div>
-          ) : null}
+          {heroInsight}
 
           <div
             ref={mobileTabsPinRef}

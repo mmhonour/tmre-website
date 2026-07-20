@@ -25,6 +25,15 @@ import {
   DEAL_BOARD_VIEW_VALUES,
   type DealBoardView,
 } from "@/lib/deal-board-view";
+import {
+  clearDealBoardFocus,
+  dealBoardRowDomId,
+  matchListingKeyFromFocusId,
+  parseDealBoardFocusHash,
+  peekDealBoardFocus,
+  rememberDealBoardFocus,
+  stampDealBoardHash,
+} from "@/lib/deal-board-focus";
 import type { TownDescriptorStats } from "@/lib/intelligence-all-towns-descriptor";
 import { monthsSupplyColorStyle } from "@/lib/months-supply-color";
 import ListingScoreBreakdownModal from "./ListingScoreBreakdownModal";
@@ -308,8 +317,8 @@ const BOARD_LISTING_LIMIT = 100;
 const PHOTO_PRIORITY_RANK_COUNT = 12;
 const BED_BATH_MAX = 6;
 const INTEL_SLIDER_WIDTH_CLASS = "w-[7.5rem]";
-/** Keep slider descriptors enlarged this long after the thumb is released. */
-const DESCRIPTOR_ENLARGE_HOLD_MS = 5_000;
+/** Keep slider descriptors enlarged this long after thumb release or descriptor click. */
+const DESCRIPTOR_ENLARGE_HOLD_MS = 10_000;
 type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft";
 
 type SetHeldSliderActive = (
@@ -2349,8 +2358,13 @@ export default function IntelligenceClient() {
 
   const boardTiers = useMemo(() => {
     const rows = boardListings;
-    // Vintage snapshot drilling is a focused slice — show every match, no middle-tier collapse.
-    if (sortKey !== "score" || vintageFilterActive(minVintage, maxVintage)) {
+    // Middle tier only makes sense in the default score ranking (high → low).
+    // Any other sort (or score ascending) shows the flat list — no collapse band.
+    if (
+      sortKey !== "score" ||
+      sortDir !== "desc" ||
+      vintageFilterActive(minVintage, maxVintage)
+    ) {
       return { top: rows, middle: [], bottom: [], canTier: false };
     }
     const tiers = splitBoardByScoreTier(rows);
@@ -2386,6 +2400,111 @@ export default function IntelligenceClient() {
     ? boardTiers.top.length + boardTiers.bottom.length
     : resultCount;
   const poolCount = allListings.length;
+
+  // Leaving a listing from the board: stamp #deal-… so browser Back + “Back to
+  // deal board” can restore the exact row (page + middle tier if needed).
+  useEffect(() => {
+    const root = boardRef.current;
+    if (!root) return;
+    const onClickCapture = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      const anchor = target.closest("a[href*='/listings/']");
+      if (!anchor) return;
+      const row = target.closest("[data-deal-mls]");
+      const mlsId = row?.getAttribute("data-deal-mls")?.trim();
+      if (!mlsId) return;
+      stampDealBoardHash(mlsId);
+      rememberDealBoardFocus({
+        mlsId,
+        boardPage,
+        middleExpanded: effectiveMiddleTierExpanded,
+      });
+    };
+    root.addEventListener("click", onClickCapture, true);
+    return () => root.removeEventListener("click", onClickCapture, true);
+  }, [boardPage, effectiveMiddleTierExpanded]);
+
+  const dealFocusRestoreKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (state !== "ready" && state !== "fallback") return;
+    if (boardSortedListings.length === 0) return;
+
+    const hashToken = parseDealBoardFocusHash(
+      typeof window !== "undefined" ? window.location.hash : "",
+    );
+    const stored = peekDealBoardFocus();
+    const navEntry = performance.getEntriesByType("navigation")[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    const isBackForward = navEntry?.type === "back_forward";
+    // Prefer #deal-… (Back link / stamped URL). Session focus alone only on browser Back.
+    if (!hashToken && !(stored && isBackForward)) return;
+    const rawToken = hashToken ?? stored?.mlsId ?? null;
+    if (!rawToken) return;
+
+    const keys = boardSortedListings.map((l) => l.key);
+    const mlsId =
+      matchListingKeyFromFocusId(rawToken, keys) ??
+      (keys.includes(rawToken) ? rawToken : null) ??
+      (stored && keys.includes(stored.mlsId) ? stored.mlsId : null);
+    if (!mlsId) {
+      clearDealBoardFocus();
+      return;
+    }
+
+    const idx = boardSortedListings.findIndex((l) => l.key === mlsId);
+    if (idx < 0) {
+      clearDealBoardFocus();
+      return;
+    }
+
+    const targetPage = Math.floor(idx / BOARD_LISTING_LIMIT) + 1;
+    if (targetPage !== boardPage) {
+      setBoardPage(targetPage);
+      return;
+    }
+
+    const inMiddle = boardTiers.middle.some((l) => l.key === mlsId);
+    if (inMiddle && !effectiveMiddleTierExpanded) {
+      setMiddleTierExpanded(true);
+      return;
+    }
+
+    const restoreKey = `${mlsId}:${boardPage}:${effectiveMiddleTierExpanded ? 1 : 0}`;
+    if (dealFocusRestoreKeyRef.current === restoreKey) return;
+
+    const el = document.getElementById(dealBoardRowDomId(mlsId));
+    if (!el) return;
+
+    dealFocusRestoreKeyRef.current = restoreKey;
+    const timer = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add(
+        "ring-2",
+        "ring-gold",
+        "ring-offset-2",
+        "ring-offset-cream",
+      );
+      window.setTimeout(() => {
+        el.classList.remove(
+          "ring-2",
+          "ring-gold",
+          "ring-offset-2",
+          "ring-offset-cream",
+        );
+      }, 2400);
+      clearDealBoardFocus();
+    }, 60);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    state,
+    boardSortedListings,
+    boardPage,
+    boardTiers.middle,
+    effectiveMiddleTierExpanded,
+  ]);
 
   const townCounts = useMemo((): TownCountMap => {
     if (state === "loading") return {};
@@ -2508,33 +2627,26 @@ export default function IntelligenceClient() {
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
   }
 
-  function setDescriptorSliderActive(kind: IntelSliderKind, active: boolean) {
-    switch (kind) {
-      case "price":
-        setPriceSliderActive(active, active ? undefined : { immediate: true });
-        break;
-      case "bed":
-        setBedSliderActive(active, active ? undefined : { immediate: true });
-        break;
-      case "bath":
-        setBathSliderActive(active, active ? undefined : { immediate: true });
-        break;
-      case "vintage":
-        setVintageSliderActive(active, active ? undefined : { immediate: true });
-        break;
-      case "sqft":
-        setSqftSliderActive(active, active ? undefined : { immediate: true });
-        break;
-    }
+  /** Enlarge every slider descriptor, then hold the same scale used while dragging. */
+  function pulseAllSliderDescriptors() {
+    setPriceSliderActive(true);
+    setBedSliderActive(true);
+    setBathSliderActive(true);
+    setVintageSliderActive(true);
+    setSqftSliderActive(true);
+    // Release without `immediate` so each label stays enlarged for DESCRIPTOR_ENLARGE_HOLD_MS.
+    setPriceSliderActive(false);
+    setBedSliderActive(false);
+    setBathSliderActive(false);
+    setVintageSliderActive(false);
+    setSqftSliderActive(false);
   }
 
-  function handleDescriptorSliderClick(kind: IntelSliderKind) {
+  function handleDescriptorSliderClick(_kind: IntelSliderKind) {
     if (!filtersExpanded) {
       setCollapsedSlidersOpen(true);
-      setDescriptorSliderActive(kind, true);
-      return;
     }
-    setDescriptorSliderActive(kind, true);
+    pulseAllSliderDescriptors();
   }
 
   function hideCollapsedSliders() {
@@ -3509,6 +3621,7 @@ export default function IntelligenceClient() {
             rankTotal={filteredCount}
             isLive={state === "ready"}
             showTown={active === "All"}
+            hideOwnershipType={tx === "sale" || tx === "rental"}
             loading={state === "loading" && liveListings === null}
             loadingLabel={`Loading ${active}…`}
             emptyLabel={`No ${active === "All" ? "" : `${active} `}${
@@ -4794,15 +4907,14 @@ function PriceRangeInputs({
     onMaxIndexChange(finalIndex);
   };
 
-  const priceInputClass = (bound: "min" | "max") => {
-    const enlarged = focusedBound === bound;
-    return [
-      "w-0 min-w-0 rounded border border-white/20 bg-white/5 font-mono tabular-nums text-gold placeholder:text-white/30 focus:border-gold/50 focus:outline-none disabled:opacity-40 overflow-y-auto transition-[flex-grow,font-size,padding] duration-150",
-      enlarged
-        ? "flex-[1.5] px-1.5 py-1 text-[14px] leading-tight"
-        : "flex-1 px-1 py-0.5 text-[9px]",
-    ].join(" ");
-  };
+  // Either bound focused → enlarge both upper and lower (same scale as before).
+  const priceInputsEnlarged = focusedBound != null;
+  const priceInputClass = [
+    "w-0 min-w-0 flex-1 rounded border border-white/20 bg-white/5 font-mono tabular-nums text-gold placeholder:text-white/30 focus:border-gold/50 focus:outline-none disabled:opacity-40 overflow-y-auto transition-[font-size,padding] duration-150",
+    priceInputsEnlarged
+      ? "px-1.5 py-1 text-[14px] leading-tight"
+      : "px-1 py-0.5 text-[9px]",
+  ].join(" ");
 
   const suffixBtnClass =
     "rounded border border-gold/40 bg-gold/15 px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-gold active:bg-gold/25";
@@ -4839,7 +4951,7 @@ function PriceRangeInputs({
           }}
           title="Type a number, then K (thousands) or M (millions) — or full dollars. Scroll: $500K steps ($1M above $4M)."
           aria-label="Minimum price amount"
-          className={priceInputClass("min")}
+          className={priceInputClass}
         />
         <input
           type="text"
@@ -4869,7 +4981,7 @@ function PriceRangeInputs({
           }}
           title="Type a number, then K (thousands) or M (millions) — or full dollars. Scroll: $500K steps ($1M above $4M)."
           aria-label="Maximum price amount"
-          className={priceInputClass("max")}
+          className={priceInputClass}
         />
       </div>
       {focusedBound && !disabled ? (

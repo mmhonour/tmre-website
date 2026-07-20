@@ -72,7 +72,7 @@ export default function AdminSyncRunLog() {
             Sync type, wall-clock timing, and per-step status from the most recent
             Admin sync in this browser. Incremental runs log one line per status
             bucket (Active / Closed / Expired) with towns glommed. For durable
-            Postgres history, see Database sync history above.
+            Postgres history, see Database sync history on this tab.
           </p>
         </div>
         <p className="font-mono text-[10px] text-charcoal/45 shrink-0">

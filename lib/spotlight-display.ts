@@ -24,6 +24,38 @@ export function spotlightEffectiveStatus(
   return mlsStatus || config.status;
 }
 
+/**
+ * Coming Soon UX (title, blur) follows live MLS status — not the static config
+ * string. Admin `clearComingSoon` forces live treatment.
+ */
+export function spotlightListingIsComingSoon(
+  config: SpotlightListingConfig,
+  mls: { status?: string | null } | null | undefined,
+  privacy?: { clearComingSoon?: boolean } | null,
+): boolean {
+  if (privacy?.clearComingSoon === true) return false;
+  return formatMlsStatus(spotlightEffectiveStatus(config, mls)) === "Coming Soon";
+}
+
+/** Drop a stale "Coming Soon..." title once the listing is live. */
+export function spotlightEffectiveDisplayTitle(
+  config: SpotlightListingConfig,
+  mls: { status?: string | null } | null | undefined,
+  privacy?: { clearComingSoon?: boolean } | null,
+): string {
+  if (
+    !spotlightListingIsComingSoon(config, mls, privacy) &&
+    /^coming\s*soon/i.test(config.displayTitle.trim())
+  ) {
+    return (
+      config.displayLocation.trim() ||
+      config.address.city.trim() ||
+      "Featured listing"
+    );
+  }
+  return config.displayTitle;
+}
+
 /** 0-based photo indices hidden before a Coming Soon listing goes live. */
 export const SPOTLIGHT_COMING_SOON_OBFUSCATED_PHOTO_INDICES = [0, 1] as const;
 
@@ -182,8 +214,8 @@ export function buildSpotlightDisplay(
     status: spotlightEffectiveStatus(config, mls),
     dom: pickNumber(mls?.dom, config.dom),
     headerAddress: {
-      street: config.displayTitle,
-      full: config.displayTitle,
+      street: spotlightEffectiveDisplayTitle(config, mls),
+      full: spotlightEffectiveDisplayTitle(config, mls),
       city: config.hideAddress ? "" : config.displayLocation,
       state: "",
       postalCode: "",

@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { closeFieldsFromListing, streetsMatch } from '@/lib/listing-history'
+import { closeFieldsFromListing, coalesceListingStatus, streetsMatch } from '@/lib/listing-history'
 import {
   applyListingPropertyTax,
   parcelNumberFromRaw,
@@ -740,7 +740,12 @@ function rowToListing(row: ListingJsonRow): Listing {
   // `data` is NOT NULL in the schema, so it is always a serialized Listing object.
   const base = row.data as Listing
   const raw = (row.raw ?? {}) as RawRetsRecord
-  return applyListingPropertyTax({ ...base, raw })
+  const listing = applyListingPropertyTax({ ...base, raw })
+  const status = coalesceListingStatus(
+    listing.status,
+    typeof raw.StandardStatus === 'string' ? raw.StandardStatus : null,
+  )
+  return status !== listing.status ? { ...listing, status } : listing
 }
 
 /** jsonb column (parsed to object by pg) back to the string contract SQLite used. */

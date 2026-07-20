@@ -124,6 +124,18 @@ export const STATS_INVENTORY_CATEGORIES: StatsInventoryCategory[] = [
 export const STATS_INVENTORY: StatsInventoryEntry[] = [
   // —— Market ——
   {
+    id: 'interesting-stat',
+    name: 'Homepage interesting stat',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'interesting-stat:home:v1 · interesting-stat:history:v1',
+    owner: 'lib/interesting-stat.ts',
+    notes:
+      'Deep market highlight appended on each stats_cache rebuild (history ring, cap 24). Homepage rotates among recent entries ~every 45m. Browse pool on Admin → Stats.',
+    live: { kind: 'stats_cache_prefix', prefix: 'interesting-stat:' },
+  },
+  {
     id: 'market-stats',
     name: 'Market stats',
     category: 'market',

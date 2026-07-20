@@ -47,6 +47,7 @@ const DEFAULT_PRIVACY: SpotlightEffectivePrivacy = {
   showAddress: false,
   showClearPhotos: false,
   showPropertyMap: false,
+  clearComingSoon: false,
 };
 
 export default function AdminSpotlightPrivacyPanel() {
@@ -333,8 +334,10 @@ export default function AdminSpotlightPrivacyPanel() {
           Assign an MLS # to each slot (validated against Postgres, then RETS).
           Each listing can only appear once — duplicates are rejected. Blank
           slots are hidden on the public spotlight page. Privacy toggles default
-          off (address hidden, photos 1 &amp; 2 blurred, town-only map). Changes
-          save automatically.
+          off (address hidden, photos 1 &amp; 2 blurred, town-only map). Check{" "}
+          <span className="text-charcoal/80">No longer Coming Soon</span> once a
+          listing goes live (or when MLS status is Active — that happens
+          automatically). Changes save automatically.
         </p>
       </div>
 
@@ -424,7 +427,7 @@ export default function AdminSpotlightPrivacyPanel() {
                     </label>
                   </div>
 
-                  <div className="grid flex-1 gap-3 sm:grid-cols-3">
+                  <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="flex flex-col gap-2">
                       <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
                         <input
@@ -490,6 +493,24 @@ export default function AdminSpotlightPrivacyPanel() {
                         </span>
                         <span className="block text-xs text-charcoal/55 mt-0.5">
                           Exact location with house marker (off = town map only)
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-charcoal/[0.08] px-4 py-3 cursor-pointer hover:border-gold/30">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-gold"
+                        checked={tabOverrides.clearComingSoon === true}
+                        onChange={(e) =>
+                          toggle(row.tab, "clearComingSoon", e.target.checked)
+                        }
+                      />
+                      <span>
+                        <span className="block text-sm text-charcoal font-medium">
+                          No longer Coming Soon
+                        </span>
+                        <span className="block text-xs text-charcoal/55 mt-0.5">
+                          Sticky — drop Coming Soon title/blur even if MLS lags
                         </span>
                       </span>
                     </label>

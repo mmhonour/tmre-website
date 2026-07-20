@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-// heroSlot renders the primary photo between the meta line and the insight.
 import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
 import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
@@ -35,26 +34,22 @@ type ListingHeaderProps = {
   scoreTitle?: string | null;
   scoreSubtitle?: string | null;
   isRental?: boolean;
-  /** Primary/hero photo, rendered between the meta line and the insight. */
+  /** Primary/hero photo — rendered full-width under score + address. */
   heroSlot?: ReactNode;
   /**
-   * Tab nav bar. Rendered directly under the style / beds-baths / sqft meta
-   * line so it hugs the header and reclaims dead space beside a tall hero
-   * thumbnail on non-Overview tabs. On Overview the floated hero stays put and
-   * the tabs fall below it.
+   * Tab nav bar. Rendered under the hero (and insight on Overview) so the
+   * photo always sits directly under the address stack.
    */
   tabsSlot?: ReactNode;
   /**
-   * When true, the hero photo sits right-aligned and top-aligned to the
-   * address instead of floated below the meta line (used on non-Overview
-   * tabs where there is no insight copy to wrap around it).
+   * @deprecated Kept for call-site compat; hero is always under score/address now.
    */
   heroAside?: boolean;
   /**
-   * Render only a slice of the header (for mobile sticky split in HeroPanels).
+   * Render only a slice of the header (for sticky split in HeroPanels).
    * - full: default complete header
    * - meta: title through Style / Bed/Bath / Sqft
-   * - heroInsight: floated hero + Insight block only
+   * - heroInsight: full-width hero + Insight block only
    */
   parts?: "full" | "meta" | "heroInsight";
 };
@@ -73,9 +68,13 @@ function joinMetaSegments(segments: ReactNode[]): ReactNode {
   ));
 }
 
+/** Phone: break out to viewport width. Desktop: stay in the panel column. */
+const HERO_BLEED_CLASS =
+  "max-lg:relative max-lg:left-1/2 max-lg:right-1/2 max-lg:-ml-[50vw] max-lg:-mr-[50vw] max-lg:w-screen max-lg:max-w-[100vw]";
+
 export default function ListingHeader({
   mlsId,
-  status,
+  status: _status,
   address,
   propertyType,
   style,
@@ -94,7 +93,7 @@ export default function ListingHeader({
   isRental = false,
   heroSlot = null,
   tabsSlot = null,
-  heroAside = false,
+  heroAside: _heroAside = false,
   compact = false,
   className = "",
   parts = "full",
@@ -122,8 +121,6 @@ export default function ListingHeader({
   const title = address.street || address.full;
   const showScore = goldilocksScore != null && goldilocksScore > 0;
 
-  // Secondary meta (style / beds+baths / sqft) sits directly under the type /
-  // year-built line so listing + spotlight headers share the same stack.
   const metaSecondary = joinMetaSegments([
     style,
     bedBathSegment,
@@ -193,26 +190,29 @@ export default function ListingHeader({
     </>
   );
 
-  const heroInsightBlock =
-    heroSlot || insight ? (
-      <div className={compact ? "mt-2" : "mt-3"}>
-        {heroSlot ? (
-          // Float the hero (half width) so the insight starts at its
-          // top-right and wraps back to full width below the image.
-          <div className="mr-4 mb-2 w-1/2" style={{ float: "left" }}>
-            {heroSlot}
-          </div>
-        ) : null}
-        {insight ? (
-          <>
-            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-0.5">
-              Insight
-            </p>
-            <ListingInsightCopy text={insight} />
-          </>
-        ) : null}
-        <div style={{ clear: "both" }} aria-hidden />
+  const heroBlock = heroSlot ? (
+    <div className={`${compact ? "mt-3" : "mt-4"} ${HERO_BLEED_CLASS}`}>
+      <div className="listing-hero-under-address [&_a]:max-lg:rounded-none [&_a]:max-lg:border-x-0 [&>div>div>a]:max-lg:rounded-none [&>div>div>div]:max-lg:rounded-none">
+        {heroSlot}
       </div>
+    </div>
+  ) : null;
+
+  const insightBlock = insight ? (
+    <div className={compact ? "mt-3" : "mt-4"}>
+      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-0.5">
+        Insight
+      </p>
+      <ListingInsightCopy text={insight} />
+    </div>
+  ) : null;
+
+  const heroInsightBlock =
+    heroBlock || insightBlock ? (
+      <>
+        {heroBlock}
+        {insightBlock}
+      </>
     ) : null;
 
   const scoreModal =
@@ -238,37 +238,18 @@ export default function ListingHeader({
 
   if (parts === "heroInsight") {
     if (!heroInsightBlock) return null;
-    return <div className={className ? className : undefined}>{heroInsightBlock}</div>;
+    return (
+      <div className={className ? className : undefined}>{heroInsightBlock}</div>
+    );
   }
 
   return (
     <div className={className ? className : "mb-6"}>
-      {heroAside && heroSlot ? (
-        // Non-Overview tabs: hero sits right-aligned, top-aligned to the
-        // address, and links to the Photos tab. The tab bar slots into the
-        // left column directly under the meta line so it fills the dead space
-        // beside the taller hero thumbnail instead of dropping below the row.
-        <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1">
-            {titleAndMeta}
-            {tabsSlot ? (
-              <div className={compact ? "mt-1" : "mt-3"}>{tabsSlot}</div>
-            ) : null}
-          </div>
-          <div className="shrink-0" style={{ width: "40%", maxWidth: 220 }}>
-            {heroSlot}
-          </div>
-        </div>
-      ) : (
-        <>
-          {titleAndMeta}
-          {heroInsightBlock}
-          {tabsSlot ? (
-            <div className={compact ? "mt-1" : "mt-3"}>{tabsSlot}</div>
-          ) : null}
-        </>
-      )}
-
+      {titleAndMeta}
+      {heroInsightBlock}
+      {tabsSlot ? (
+        <div className={compact ? "mt-2" : "mt-3"}>{tabsSlot}</div>
+      ) : null}
       {scoreModal}
     </div>
   );

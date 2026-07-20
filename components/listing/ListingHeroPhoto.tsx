@@ -30,12 +30,11 @@ export default function ListingHeroPhoto({
 }: ListingHeroPhotoProps) {
   const panelClass = unframed ? listingPanelClass : listingFrameClass;
 
+  const shellClass =
+    "block relative overflow-hidden border border-white/10 bg-navy-dark aspect-[4/3] max-lg:aspect-[16/10] rounded-xl max-lg:rounded-none max-lg:border-x-0 group";
+
   const media = href ? (
-    <Link
-      href={href}
-      className="block relative rounded-xl overflow-hidden border border-white/10 bg-navy-dark aspect-[4/3] group"
-      aria-label="View all photos"
-    >
+    <Link href={href} className={shellClass} aria-label="View all photos">
       <ListingThumbImage
         src={url}
         alt={alt}
@@ -49,7 +48,7 @@ export default function ListingHeroPhoto({
       {obfuscate ? <ListingPhotoObfuscationOverlay /> : null}
     </Link>
   ) : (
-    <div className="relative rounded-xl overflow-hidden border border-white/10 bg-navy-dark aspect-[4/3]">
+    <div className={shellClass}>
       <ListingThumbImage
         src={url}
         alt={alt}
@@ -66,7 +65,7 @@ export default function ListingHeroPhoto({
 
   const caption =
     photoCount > 1 ? (
-      <p className="mt-1.5 text-right font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
+      <p className="mt-1.5 px-4 lg:px-0 text-right font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
         {photoIndex + 1} / {photoCount}
       </p>
     ) : null;

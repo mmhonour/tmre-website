@@ -34,6 +34,8 @@ export type DealBoardRowProps = {
   rankTotal: number;
   isLive: boolean;
   showTown: boolean;
+  /** When Sale or Rental filter is on, omit ownership/type from the meta line. */
+  hideOwnershipType?: boolean;
   onScoreClick: (listing: DealBoardListing) => void;
   onStatusClick?: (listing: DealBoardListing) => void;
 };

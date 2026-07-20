@@ -469,13 +469,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Sold / Rented tabs',
     category: 'ui-tabs',
     definition:
-      'Listing subnav tabs (formerly Sales / Rentals) for recently closed comps vs currently on-market matches. Prefixed by WHAT / AND ON MARKET labels when stacked.',
+      'Listing subnav tabs for recently closed comps vs currently on-market matches (Sold | Rented).',
   },
   {
-    term: 'On market / Available Now',
+    term: 'For Sale On Market',
     category: 'ui-tabs',
     definition:
-      'Active / Coming Soon similar homes for the subject. On mobile, jump links use “Available Now(n)” for the on-market panel.',
+      'Active / Coming Soon for-sale comps shown beside Recently Sold on the Sold tab. Mobile jump links use “For Sale On Market(n)”.',
   },
   {
     term: 'Criteria',

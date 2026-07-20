@@ -24,6 +24,11 @@ type LoadState = "ready" | "error";
 type UseSpotlightListingOptions = {
   /** When true, loads and returns the full photo URL list (photos tab). */
   photos?: boolean;
+  /**
+   * Force a Spotlight property tab (e.g. `/test` mockup locked to #1).
+   * When set, ignores `?property=` on the URL.
+   */
+  propertyTabOverride?: SpotlightPropertyTabId;
 };
 
 type SpotlightFetchPayload = {
@@ -46,9 +51,9 @@ function spotlightFetchKey(
 export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   const includePhotos = options.photos === true;
   const searchParams = useSearchParams();
-  const propertyTab: SpotlightPropertyTabId = parseSpotlightPropertyTab(
-    searchParams.get("property"),
-  );
+  const propertyTab: SpotlightPropertyTabId =
+    options.propertyTabOverride ??
+    parseSpotlightPropertyTab(searchParams.get("property"));
   const config = useMemo(
     () => getSpotlightListingConfig(propertyTab),
     [propertyTab],

@@ -11,6 +11,7 @@ const DEFAULT_PRIVACY: SpotlightEffectivePrivacy = {
   showAddress: false,
   showClearPhotos: false,
   showPropertyMap: false,
+  clearComingSoon: false,
 };
 
 export function useSpotlightPrivacy(propertyTab: SpotlightPropertyTabId) {

@@ -1,5 +1,6 @@
 export type AdminTabId =
   | "db"
+  | "sync-log"
   | "stats"
   | "site"
   | "goldilocks"
@@ -35,7 +36,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "db",
     label: "Database",
-    subtitle: "Scheduled sync control, sync status, and run log",
+    subtitle: "RETS probe, sync status / pause, town counts, and write tuning",
+  },
+  {
+    id: "sync-log",
+    label: "Sync history",
+    subtitle: "Durable database sync history and latest in-browser sync steps",
   },
   {
     id: "stats",
@@ -94,8 +100,9 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-sync", label: "Sync status / Pause", tab: "db" },
   { id: "admin-town-counts", label: "Listings by town", tab: "db" },
   { id: "admin-db-tuning", label: "DB write tuning", tab: "db" },
-  { id: "admin-sync-history", label: "DB sync history", tab: "db" },
-  { id: "admin-sync-log", label: "Latest sync steps", tab: "db" },
+  { id: "admin-sync-history", label: "DB sync history", tab: "sync-log" },
+  { id: "admin-sync-log", label: "Latest sync steps", tab: "sync-log" },
+  { id: "admin-stats-interesting", label: "Interesting stats", tab: "stats" },
   { id: "admin-stats-inventory", label: "Stats storage map", tab: "stats" },
   { id: "admin-stats-market", label: "Market & town stats", tab: "stats" },
   { id: "admin-stats-feeds", label: "Latest feeds", tab: "stats" },
