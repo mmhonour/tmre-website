@@ -193,8 +193,9 @@ function RaisedStepButton({
  * tooltip) to swap the compact "[±1]" bracket for the actual bounds
  * ("3–5 bed"); click again to collapse back.
  *
- * When `session` + `onSessionChange` are provided (Sales/Rentals), each
- * criterion also gets raised +/- steppers for the current tab session.
+ * When `session` + `onSessionChange` are provided (Sales/Rentals), "Criteria"
+ * is a disclosure control: ▶ hides ± steppers by default; click to reveal
+ * (triangle flips to ◀); click again to collapse.
  */
 export default function MatchingCriteriaSummary({
   criteria,
@@ -211,6 +212,7 @@ export default function MatchingCriteriaSummary({
   isModal?: boolean;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [controlsOpen, setControlsOpen] = useState(false);
   const toggle = (key: string) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
@@ -218,6 +220,9 @@ export default function MatchingCriteriaSummary({
   const linkClass = isModal
     ? "text-slate underline decoration-slate/40 underline-offset-2 hover:text-navy transition-colors cursor-pointer"
     : "text-white/60 underline decoration-white/40 underline-offset-2 hover:text-white transition-colors cursor-pointer";
+  const criteriaToggleClass = isModal
+    ? "inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.12em] uppercase text-slate underline decoration-slate/40 underline-offset-2 hover:text-navy transition-colors cursor-pointer"
+    : "inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/40 underline decoration-white/30 underline-offset-2 hover:text-white/70 transition-colors cursor-pointer";
 
   const effectiveSession: SessionMatchOverrides = session ?? {
     bedTolerance: tolerances?.bedTolerance ?? 1,
@@ -260,6 +265,25 @@ export default function MatchingCriteriaSummary({
 
   return (
     <>
+      {editable ? (
+        <button
+          type="button"
+          onClick={() => setControlsOpen((open) => !open)}
+          className={criteriaToggleClass}
+          aria-expanded={controlsOpen}
+          aria-label={
+            controlsOpen
+              ? "Hide criteria adjustment controls"
+              : "Show criteria adjustment controls"
+          }
+        >
+          Criteria
+          <span className="no-underline tracking-normal" aria-hidden>
+            {controlsOpen ? "◀" : "▶"}
+          </span>
+        </button>
+      ) : null}
+      {editable ? <span>{" "}</span> : null}
       <span className={valueClass}>{criteria.zip}</span>
       {bounds.map((bound) => {
         const isOpen = expanded[bound.key];
@@ -278,7 +302,7 @@ export default function MatchingCriteriaSummary({
             >
               {isOpen ? bound.expanded : `[${bound.token}]`}
             </button>
-            {editable ? (
+            {editable && controlsOpen ? (
               <span className="inline-flex items-center gap-0.5 ml-0.5">
                 <RaisedStepButton
                   label="−"

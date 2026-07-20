@@ -932,9 +932,6 @@ export default function ListingComparablesPanel({
     ? "flex flex-wrap items-center gap-x-4 gap-y-1 sm:hidden"
     : "flex flex-wrap items-center gap-x-4 gap-y-1 md:hidden";
   const closedJumpLabel = isRental ? "Rented" : "Sold";
-  const criteriaLabelClass = isModal
-    ? "text-slate"
-    : "text-white/40";
 
   const onMarketEmptyLabel = isRental
     ? "No on-market rentals found yet."
@@ -1031,7 +1028,6 @@ export default function ListingComparablesPanel({
               : "font-mono text-[10px] tracking-[0.12em] uppercase text-white/40"
           }
         >
-          <span className={criteriaLabelClass}>Criteria </span>
           <MatchingCriteriaSummary
             criteria={criteria}
             session={sessionMatch}

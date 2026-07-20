@@ -2376,10 +2376,8 @@ export default function AdminSyncTable({
                         // Font only — row color stays green/idle for a completed run.
                         nextStatusText = "Overdue";
                         nextStatusClass = "text-rose-600/80";
-                      } else if (visual === "ok" || nextRunAt != null) {
-                        nextStatusText = "On schedule";
-                        nextStatusClass = "text-sage/80";
                       }
+                      // Idle / on-schedule: label stays plain "NEXT" (no status suffix).
                       const nextTimeText = isPostDeployNext
                         ? formatAdminNextSyncCountdown(nextRunAt, now)
                         : nextSameDay

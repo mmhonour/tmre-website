@@ -177,22 +177,6 @@ export default function HomeMethodOverview() {
         <div className="grid lg:grid-cols-12 gap-10 lg:gap-8 items-start">
           {/* Copy column */}
           <div className="lg:col-span-6 min-w-0">
-            <div className="flex items-center gap-3 mb-4 animate-fade-up">
-              <div className="relative w-10 h-8 shrink-0 opacity-90">
-                <Image
-                  src="/images/four-lens-camera.png"
-                  alt=""
-                  fill
-                  className="object-contain brightness-110 contrast-110"
-                  sizes="40px"
-                  priority
-                />
-              </div>
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                TMRE
-              </p>
-            </div>
-
             <h1 className="font-serif text-4xl sm:text-5xl lg:text-[3.35rem] text-white leading-[1.05] animate-fade-up">
               Cut through the noise.{" "}
               <span className="italic text-gold-light">One clear score.</span>
@@ -230,7 +214,7 @@ export default function HomeMethodOverview() {
           {/* Deal of the Day score — same serif as “This week's ##.” */}
           <div className="lg:col-span-6 flex flex-col items-start lg:items-end animate-fade-up-delay-1">
             <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/90 mb-2">
-              Deal of the Day · rotating towns
+              Actual home · rotating towns
             </p>
             <div className="relative w-full max-w-md lg:max-w-none lg:text-right">
               {live ? (
@@ -263,6 +247,20 @@ export default function HomeMethodOverview() {
                   </p>
                 </>
               )}
+              {/* Four-lens mark — overlays the home photo, 1.5× prior size, no TMRE label */}
+              <div
+                className="pointer-events-none relative mt-4 ml-0 lg:ml-auto w-[3.75rem] h-12 opacity-45"
+                aria-hidden
+              >
+                <Image
+                  src="/images/four-lens-camera.png"
+                  alt=""
+                  fill
+                  className="object-contain brightness-110 contrast-110"
+                  sizes="60px"
+                  priority
+                />
+              </div>
               <p className="mt-3 text-xs text-white/45 max-w-sm lg:ml-auto leading-relaxed">
                 Today&apos;s pick in each town — tap the score to open that deal.
                 Same yardstick as Deal of the Week.
