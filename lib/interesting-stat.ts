@@ -270,8 +270,9 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
   if (best?.avgScore != null && best.count >= 3) {
     pushCandidate(candidates, {
       kind: 'best-vintage',
-      value: best.avgScore.toFixed(1),
-      detail: `${town} best Goldilocks vintage · ${best.label}`,
+      // Call out the era — the score number alone reads as jargon.
+      value: best.label,
+      detail: `${town}'s highest-scoring homes on market · avg ${best.avgScore.toFixed(1)}`,
       href: hrefFor('best-vintage'),
       town,
       weight: best.avgScore,
@@ -289,7 +290,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
         pushCandidate(candidates, {
           kind: 'vintage-gap',
           value: gap.toFixed(1),
-          detail: `${town} score gap · ${top.label} vs ${bottom.label}`,
+          detail: `${town} era score spread · ${top.label} vs ${bottom.label}`,
           href: hrefFor('vintage-gap'),
           town,
           weight: gap * 2,

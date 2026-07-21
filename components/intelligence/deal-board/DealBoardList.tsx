@@ -21,6 +21,9 @@ import type { ReactNode } from "react";
 
 export type DealBoardListProps = {
   topRows: DealBoardListing[];
+  /** Middle rows always shown (kept visible to honor the min-visible floor). */
+  middlePinnedRows?: DealBoardListing[];
+  /** Middle rows the collapse toggle may hide. */
   middleRows: DealBoardListing[];
   bottomRows: DealBoardListing[];
   canTier: boolean;
@@ -55,6 +58,7 @@ export type DealBoardListProps = {
 
 export default function DealBoardList({
   topRows,
+  middlePinnedRows = [],
   middleRows,
   bottomRows,
   canTier,
@@ -218,6 +222,7 @@ export default function DealBoardList({
             </div>
             <div>
               {renderRows(topRows)}
+              {renderRows(middlePinnedRows)}
               {tierBlock}
               {middleTierExpanded ? renderRows(middleRows) : null}
               {hideMiddleControl}

@@ -487,6 +487,40 @@ function splitBoardByScoreTier(listings: DisplayListing[]): BoardScoreTiers {
   };
 }
 
+/** Always keep at least this many rows visible when the middle tier is collapsed. */
+const BOARD_MIN_VISIBLE = 10;
+
+type BoardMiddleCollapsePlan = {
+  top: DisplayListing[];
+  /** Middle rows that stay visible even when collapsed (to hit the min). */
+  middlePinned: DisplayListing[];
+  /** Middle rows the toggle may hide. */
+  middleCollapsible: DisplayListing[];
+  bottom: DisplayListing[];
+  canCollapse: boolean;
+  hideableCount: number;
+};
+
+/**
+ * Middle tier may hide at most `total − BOARD_MIN_VISIBLE` listings so the
+ * collapsed board never dips below 10 (or the full set when smaller).
+ */
+function planMiddleTierCollapse(tiers: BoardScoreTiers): BoardMiddleCollapsePlan {
+  const { top, middle, bottom, canTier } = tiers;
+  const total = top.length + middle.length + bottom.length;
+  const maxHide = Math.max(0, total - BOARD_MIN_VISIBLE);
+  const hideableCount = canTier ? Math.min(middle.length, maxHide) : 0;
+  const pinCount = middle.length - hideableCount;
+  return {
+    top,
+    middlePinned: middle.slice(0, pinCount),
+    middleCollapsible: middle.slice(pinCount),
+    bottom,
+    canCollapse: hideableCount > 0,
+    hideableCount,
+  };
+}
+
 function buildScoreRankMap(listings: DisplayListing[]): Map<string, number> {
   const sorted = [...listings].sort((a, b) => b.score - a.score);
   const map = new Map<string, number>();
@@ -2365,14 +2399,32 @@ export default function IntelligenceClient() {
       sortDir !== "desc" ||
       vintageFilterActive(minVintage, maxVintage)
     ) {
-      return { top: rows, middle: [], bottom: [], canTier: false };
+      return {
+        top: rows,
+        middle: [] as DisplayListing[],
+        bottom: [] as DisplayListing[],
+        canTier: false,
+        middlePinned: [] as DisplayListing[],
+        middleCollapsible: [] as DisplayListing[],
+        canCollapse: false,
+        hideableCount: 0,
+      };
     }
     const tiers = splitBoardByScoreTier(rows);
+    const planned = planMiddleTierCollapse(tiers);
     return {
-      ...tiers,
-      top: sortListings(tiers.top, sortKey, sortDir),
-      middle: sortListings(tiers.middle, sortKey, sortDir),
-      bottom: sortListings(tiers.bottom, sortKey, sortDir),
+      top: sortListings(planned.top, sortKey, sortDir),
+      middle: sortListings(
+        [...planned.middlePinned, ...planned.middleCollapsible],
+        sortKey,
+        sortDir,
+      ),
+      middlePinned: sortListings(planned.middlePinned, sortKey, sortDir),
+      middleCollapsible: sortListings(planned.middleCollapsible, sortKey, sortDir),
+      bottom: sortListings(planned.bottom, sortKey, sortDir),
+      canTier: tiers.canTier,
+      canCollapse: planned.canCollapse,
+      hideableCount: planned.hideableCount,
     };
   }, [boardListings, sortKey, sortDir, minVintage, maxVintage]);
 
@@ -2384,20 +2436,19 @@ export default function IntelligenceClient() {
   const boardPageEnd = Math.min(boardPage * BOARD_LISTING_LIMIT, filteredCount);
   const showBoardPagination = filteredCount > BOARD_LISTING_LIMIT;
 
-  const gridAutoExpandMiddleTier =
-    boardView === "grid" && filteredCount > 0 && filteredCount < 10;
   const effectiveMiddleTierExpanded =
-    middleTierExpanded || gridAutoExpandMiddleTier;
+    middleTierExpanded || !boardTiers.canCollapse;
+  const hideMiddleTierToggle = !boardTiers.canCollapse;
 
   useEffect(() => {
     if (boardPage > totalBoardPages) setBoardPage(totalBoardPages);
   }, [boardPage, totalBoardPages]);
   const middleHidden =
-    boardTiers.canTier &&
-    boardTiers.middle.length > 0 &&
+    boardTiers.canCollapse &&
+    boardTiers.hideableCount > 0 &&
     !effectiveMiddleTierExpanded;
   const visibleCount = middleHidden
-    ? boardTiers.top.length + boardTiers.bottom.length
+    ? resultCount - boardTiers.hideableCount
     : resultCount;
   const poolCount = allListings.length;
 
@@ -3329,7 +3380,7 @@ export default function IntelligenceClient() {
                         { value: "rental", label: "Rentals" },
                       ]}
                     />
-                    {!filterChromeCollapsed && tx === "sale" ? (
+                    {!filterChromeCollapsed && tx !== "rental" ? (
                       <>
                         <div
                           className={`hidden sm:block ${filterPillSeparatorClass("compact")}`}
@@ -3615,11 +3666,12 @@ export default function IntelligenceClient() {
             <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
           <DealBoardList
             topRows={boardTiers.top}
-            middleRows={boardTiers.middle}
+            middlePinnedRows={boardTiers.middlePinned}
+            middleRows={boardTiers.middleCollapsible}
             bottomRows={boardTiers.bottom}
-            canTier={boardTiers.canTier}
+            canTier={boardTiers.canCollapse}
             middleTierExpanded={effectiveMiddleTierExpanded}
-            hideMiddleTierToggle={gridAutoExpandMiddleTier}
+            hideMiddleTierToggle={hideMiddleTierToggle}
             onMiddleTierToggle={() => setMiddleTierExpanded((v) => !v)}
             resultCount={resultCount}
             scoreRankByKey={scoreRankByKey}
@@ -3697,7 +3749,7 @@ export default function IntelligenceClient() {
                       <span className="text-slate/55 normal-case tracking-normal">
                         {" "}
                         · middle tier collapsed (
-                        {boardTiers.middle.length.toLocaleString()} hidden)
+                        {boardTiers.hideableCount.toLocaleString()} hidden)
                       </span>
                     ) : filtersActive && poolCount > filteredCount ? (
                       <span className="text-slate/55 normal-case tracking-normal">
@@ -3723,7 +3775,7 @@ export default function IntelligenceClient() {
                 {visibleCount.toLocaleString()} of {resultCount.toLocaleString()}{" "}
                 {resultCount === 1 ? "listing" : "listings"} in this view
                 {middleHidden
-                  ? ` · ${boardTiers.middle.length} in middle tier hidden`
+                  ? ` · ${boardTiers.hideableCount} in middle tier hidden`
                   : ""}
                 {showBoardPagination
                   ? ` · page ${boardPage}/${totalBoardPages} · ${boardPageStart.toLocaleString()}–${boardPageEnd.toLocaleString()} of ${filteredCount.toLocaleString()}`
@@ -4195,19 +4247,49 @@ function SqftRangeLabel({
   const hi = Math.max(minIndex, maxIndex);
   const interactive = onClick != null;
   const className = descriptorLabelClass(active, interactive);
+  const label = formatIntelSqftRangeLabelFromSteps(steps, lo, hi);
+  const content = (
+    <span className="inline-flex items-center gap-1">
+      <span
+        className={`inline-flex shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
+        aria-hidden
+      >
+        <SqftDescriptorSearchIcon className={active ? "h-3.5 w-3.5" : "h-2.5 w-2.5"} />
+      </span>
+      <span>{label}</span>
+    </span>
+  );
 
   if (interactive) {
     return (
-      <button type="button" onClick={onClick} className={className}>
-        {formatIntelSqftRangeLabelFromSteps(steps, lo, hi)}
+      <button
+        type="button"
+        onClick={onClick}
+        className={className}
+        aria-label={`${label} — open size filters`}
+      >
+        {content}
       </button>
     );
   }
 
+  return <span className={className}>{content}</span>;
+}
+
+function SqftDescriptorSearchIcon({ className }: { className?: string }) {
   return (
-    <span className={className}>
-      {formatIntelSqftRangeLabelFromSteps(steps, lo, hi)}
-    </span>
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+    </svg>
   );
 }
 

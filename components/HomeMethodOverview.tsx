@@ -96,7 +96,7 @@ const SURFACE_HOLD_MS = 7000;
 /** Pill show/hide cadence — 75% slower than the original timers (×1.75). */
 const PILL_TIME_SCALE = 1.75;
 /**
- * Homepage primer: educate on the Goldilocks score, preview site surfaces,
+ * Homepage primer: educate on the listing score, preview site surfaces,
  * and hand off to this week’s Deal of the Week — atmosphere from that listing.
  */
 export default function HomeMethodOverview() {
