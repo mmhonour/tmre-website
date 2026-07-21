@@ -41,6 +41,7 @@ export default function AdminTabbedLayout({
   syncLog,
   stats,
   site,
+  spotlight,
   goldilocks,
   pricing,
   rets,
@@ -54,6 +55,7 @@ export default function AdminTabbedLayout({
   syncLog: ReactNode;
   stats: ReactNode;
   site: ReactNode;
+  spotlight: ReactNode;
   goldilocks: ReactNode;
   pricing: ReactNode;
   rets: ReactNode;
@@ -104,6 +106,7 @@ export default function AdminTabbedLayout({
     "sync-log": syncLog,
     stats,
     site,
+    spotlight,
     goldilocks,
     pricing,
     rets,

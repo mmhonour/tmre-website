@@ -631,10 +631,10 @@ export default async function AdminPage() {
           }}
         />
       </div>
-
-      <AdminSpotlightSitePanel />
     </>
   );
+
+  const spotlightPanel = <AdminSpotlightSitePanel />;
 
   const goldilocksPanel = (
     <AdminGoldilocksPanel initial={goldilocksInitial} />
@@ -740,7 +740,7 @@ export default async function AdminPage() {
             <span className="italic gold-shimmer">status.</span>
           </h1>
           <p className="mt-4 text-sm lg:text-base text-white/70 max-w-2xl leading-relaxed animate-fade-up-delay-1">
-            Database sync, web server schedules, product pages, and spotlight controls — use
+            Database sync, web server schedules, product pages, and site controls — use
             the tabs below or jump links to navigate.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs animate-fade-up-delay-2">
@@ -876,6 +876,7 @@ export default async function AdminPage() {
         syncLog={syncLogPanel}
         stats={<AdminStatsInventoryPanel />}
         site={sitePanel}
+        spotlight={spotlightPanel}
         goldilocks={goldilocksPanel}
         pricing={pricingPanel}
         rets={retsPanel}

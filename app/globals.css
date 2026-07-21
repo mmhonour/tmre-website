@@ -536,6 +536,57 @@ body {
   outline-offset: 3px;
 }
 
+@keyframes homeSurfaceTeaser {
+  from {
+    opacity: 0;
+    letter-spacing: 0.28em;
+    transform: translateY(0.25rem);
+  }
+  to {
+    opacity: 1;
+    letter-spacing: 0.16em;
+    transform: translateY(0);
+  }
+}
+
+.home-surface-teaser {
+  animation: homeSurfaceTeaser 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes homeFilterChipEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes homeFilterChipExit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.home-filter-chip-enter {
+  animation: homeFilterChipEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.home-filter-chip-exit {
+  animation: homeFilterChipExit 0.4s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-surface-teaser,
+  .home-filter-chip-enter,
+  .home-filter-chip-exit {
+    animation: none;
+  }
+}
+
 /* /test listing split — panes scroll without visible scrollbars */
 .listing-split-pane {
   overflow-x: hidden;

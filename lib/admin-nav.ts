@@ -3,6 +3,7 @@ export type AdminTabId =
   | "sync-log"
   | "stats"
   | "site"
+  | "spotlight"
   | "goldilocks"
   | "pricing"
   | "rets"
@@ -51,7 +52,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "site",
     label: "Site controls",
-    subtitle: "Listing photos, contact details, and spotlight",
+    subtitle: "Listing photos and contact details",
+  },
+  {
+    id: "spotlight",
+    label: "Spotlight",
+    subtitle: "Curated homepage slots (#1–#3) and privacy",
   },
   {
     id: "goldilocks",
@@ -118,7 +124,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-brokerage-name", label: "Brokerage name", tab: "site" },
   { id: "admin-contact-email", label: "Contact form email", tab: "site" },
   { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
-  { id: "admin-spotlight", label: "Spotlight properties", tab: "site" },
+  { id: "admin-spotlight", label: "Spotlight properties", tab: "spotlight" },
   { id: "admin-goldilocks", label: "Goldilocks scoring", tab: "goldilocks" },
   { id: "admin-pricing", label: "Pricing match parameters", tab: "pricing" },
   { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { loadTabJson } from "@/lib/tab-data-prefetch";
 import {
   statsByMonthTitle,
   statsClosedLabel,
@@ -57,11 +58,7 @@ export default function SalesTrendChart({
       kind,
       property: propertyClass,
     });
-    void fetch(`/api/months-supply?${params}`, { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) return null;
-        return (await res.json()) as CachedMonthsSupply;
-      })
+    void loadTabJson<CachedMonthsSupply>(`/api/months-supply?${params}`)
       .then((body) => {
         if (cancelled || !body) return;
         setCached({

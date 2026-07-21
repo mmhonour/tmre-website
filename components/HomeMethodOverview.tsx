@@ -3,7 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  interestingStatWarmUrls,
+  type InterestingStatKind,
+} from "@/lib/interesting-stat-link";
 import { dealOfTheDayHref } from "@/lib/listing-url";
+import { prefetchTabJson } from "@/lib/tab-data-prefetch";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 type ScoreSample = {
@@ -18,6 +23,8 @@ type InterestingStat = {
   value: string;
   detail: string;
   href: string;
+  kind?: InterestingStatKind;
+  town?: TmreTown | null;
 };
 
 type SurfaceId = "intelligence" | "spotlight" | "statistics" | "whatif";
@@ -26,60 +33,65 @@ type SurfaceMock = {
   id: SurfaceId;
   name: string;
   href: string;
+  /** Teaser spoken before this preview fades in. */
+  teaser: string;
   rotate: string;
-  z: string;
-  offset: string;
 };
 
-/** Buyer/seller objectives — not listing field names. */
+/** Buyer/seller objectives — each pill routes to a page that can fulfill it. */
 const FILTER_SIGNALS = [
-  "Ready now",
-  "Room to grow",
-  "Ask vs worth",
-  "Hold or list",
-  "Walkable core",
-  "Quiet street",
-  "Below rebuild",
-  "School fit",
-  "Light remodel",
-  "Income angle",
+  { label: "Ready now", href: "/intelligence" },
+  { label: "Room to grow", href: "/intelligence" },
+  { label: "Ask vs worth", href: "/score" },
+  { label: "Hold or list", href: "/score" },
+  { label: "Walkable core", href: "/find" },
+  { label: "Quiet street", href: "/find" },
+  { label: "Below rebuild", href: "/fixer-uppers" },
+  { label: "School fit", href: "/intelligence" },
+  { label: "Light remodel", href: "/fixer-uppers" },
+  { label: "Income angle", href: "/intelligence" },
 ] as const;
+
+/** Stable off-level angles + vertical offsets so pills never sit on one straight line. */
+const PILL_TILTS = [-3.6, 2.4, -1.8, 3.2, -2.7, 1.5, -3.1, 2.8, -1.2, 2.0] as const;
+const PILL_Y = [-6, 8, 1, 10, -4, 7, -8, 4, 9, -3] as const;
+const PILL_MIN_VISIBLE = 3;
+const PILL_MAX_VISIBLE = 5;
 
 const SURFACES: SurfaceMock[] = [
   {
     id: "intelligence",
     name: "Intelligence",
     href: "/intelligence",
-    rotate: "-6deg",
-    z: "z-30",
-    offset: "left-0 top-6 sm:top-4",
+    teaser: "Compare every listing…",
+    rotate: "-5deg",
   },
   {
     id: "spotlight",
     name: "Spotlight",
     href: "/spotlight",
-    rotate: "3deg",
-    z: "z-20",
-    offset: "left-[14%] sm:left-[20%] top-0",
+    teaser: "Today’s one pick…",
+    rotate: "3.5deg",
   },
   {
     id: "statistics",
     name: "Statistics",
     href: "/stats",
+    teaser: "See the charts…",
     rotate: "-2deg",
-    z: "z-10",
-    offset: "left-[30%] sm:left-[40%] top-10 sm:top-8",
   },
   {
     id: "whatif",
     name: "What if",
     href: "/score",
-    rotate: "5deg",
-    z: "z-[5]",
-    offset: "left-[46%] sm:left-[58%] top-2 sm:top-0",
+    teaser: "Run a scenario…",
+    rotate: "4deg",
   },
 ];
 
+const SURFACE_TEASER_MS = 1200;
+const SURFACE_FADE_MS = 600;
+const SURFACE_HOLD_MS = 3500;
 /**
  * Homepage primer: educate on the Goldilocks score, preview site surfaces,
  * and hand off to this week’s Deal of the Week — atmosphere from that listing.
@@ -161,12 +173,23 @@ export default function HomeMethodOverview() {
       })
       .then((d) => {
         if (cancelled || !d?.value || !d?.detail) return;
-        setInterestingStat({
+        const next: InterestingStat = {
           eyebrow: d.eyebrow || "Interesting stat",
           value: d.value,
           detail: d.detail,
           href: d.href || "/stats",
-        });
+          kind: d.kind,
+          town: d.town ?? null,
+        };
+        setInterestingStat(next);
+        // Warm the Stats chart APIs so the graph is ready on click.
+        if (next.kind) {
+          for (const url of interestingStatWarmUrls(next.kind, next.town ?? null)) {
+            prefetchTabJson(url);
+          }
+        } else if (next.href.startsWith("/stats")) {
+          prefetchTabJson("/api/stats/page?kind=sale");
+        }
       })
       .catch(() => {});
     return () => {
@@ -244,8 +267,8 @@ export default function HomeMethodOverview() {
           </div>
 
           {/* Deal of the Day score — gold shimmer over section atmosphere only. */}
-          <div className="lg:col-span-6 flex flex-col items-start lg:items-end lg:text-right animate-fade-up-delay-1">
-            <div className="w-full max-w-md lg:max-w-lg">
+          <div className="lg:col-span-6 flex flex-col items-end text-right animate-fade-up-delay-1">
+            <div className="w-full max-w-md lg:max-w-lg ml-auto">
               <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 mb-2">
                 Actual home · rotating towns
               </p>
@@ -280,73 +303,49 @@ export default function HomeMethodOverview() {
                 </>
               )}
 
-              <p className="mt-3 text-xs text-white/45 max-w-sm lg:ml-auto leading-relaxed">
+              <p className="mt-3 text-xs text-white/45 max-w-sm ml-auto leading-relaxed">
                 Today&apos;s pick in each town — tap the score to open that deal.
                 Same yardstick as Deal of the Week.
               </p>
-            </div>
 
-            {interestingStat ? (
-              <Link
-                href={interestingStat.href}
-                className="mt-4 block w-full max-w-md lg:max-w-lg border border-transparent px-0 py-1 text-left lg:text-right transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent rounded-sm"
-              >
-                <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-                  {interestingStat.eyebrow}
-                </p>
-                <p className="mt-1 font-serif italic text-3xl sm:text-4xl text-white leading-none">
-                  {interestingStat.value}
-                </p>
-                <p className="mt-1.5 text-xs text-white/60 leading-snug">
-                  {interestingStat.detail}
-                </p>
-              </Link>
-            ) : null}
+              {interestingStat ? (
+                <Link
+                  href={interestingStat.href}
+                  onMouseEnter={() => {
+                    if (!interestingStat.kind) return;
+                    for (const url of interestingStatWarmUrls(
+                      interestingStat.kind,
+                      interestingStat.town ?? null,
+                    )) {
+                      prefetchTabJson(url);
+                    }
+                  }}
+                  className="mt-4 ml-auto flex w-full flex-nowrap items-baseline justify-end gap-x-2.5 border border-transparent px-0 py-1 text-right cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent rounded-sm"
+                  title="Open this chart on Statistics"
+                >
+                  <span className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                    {interestingStat.eyebrow}
+                  </span>
+                  <span className="shrink-0 font-serif italic text-2xl sm:text-3xl text-white leading-none underline decoration-gold/35 underline-offset-4">
+                    {interestingStat.value}
+                  </span>
+                  <span className="min-w-0 truncate text-xs text-white/60 leading-none">
+                    {interestingStat.detail}
+                  </span>
+                </Link>
+              ) : null}
+            </div>
           </div>
         </div>
 
-        {/* Overlapping product surfaces + filter signals */}
-        <div className="mt-12 lg:mt-16 relative min-h-[16rem] sm:min-h-[18rem] animate-fade-up-delay-2">
+        {/* Rotating surface previews + objective pills */}
+        <div className="mt-12 lg:mt-16 relative animate-fade-up-delay-2">
           <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 mb-4">
             Same measure · different rooms of the site
           </p>
 
-          <div className="relative h-52 sm:h-60">
-            {SURFACES.map((surface) => (
-              <Link
-                key={surface.id}
-                href={surface.href}
-                className={`absolute w-[10.5rem] sm:w-[12.5rem] ${surface.offset} ${surface.z} home-surface-card group`}
-                style={{ transform: `rotate(${surface.rotate})` }}
-              >
-                <div className="rounded-xl border border-white/15 bg-navy-dark/90 backdrop-blur-md shadow-xl shadow-black/40 overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:border-gold/40">
-                  <SurfacePagePreview id={surface.id} name={surface.name} />
-                </div>
-              </Link>
-            ))}
-          </div>
-
-          {/* Overlapping comparison criteria */}
-          <div className="relative mt-2 sm:mt-0 flex flex-wrap gap-2 max-w-3xl">
-            {FILTER_SIGNALS.map((label, i) => (
-              <span
-                key={label}
-                className="home-filter-chip inline-flex items-center rounded-full border border-white/20 bg-white/[0.07] px-3 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/75 backdrop-blur-sm"
-                style={{
-                  transform: `rotate(${((i % 5) - 2) * 1.4}deg) translateY(${
-                    (i % 3) * 2
-                  }px)`,
-                  zIndex: 40 - i,
-                }}
-              >
-                {label}
-              </span>
-            ))}
-          </div>
-          <p className="mt-4 text-xs text-white/40 max-w-lg leading-relaxed">
-            Dynamic criteria for comparing properties — layered the way real
-            decisions are made, not as a spreadsheet dump.
-          </p>
+          <HomeSurfaceStage />
+          <HomeObjectivePills />
         </div>
 
         <div className="mt-10 lg:mt-12 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-t border-white/10 pt-6">
@@ -359,6 +358,257 @@ export default function HomeMethodOverview() {
         </div>
       </div>
     </section>
+  );
+}
+
+type SurfacePhase = "teaser" | "in" | "hold" | "out";
+
+/**
+ * One primary preview + a faint outgoing card. Teaser copy plays before each
+ * fade-in so the next room of the site is announced.
+ */
+function HomeSurfaceStage() {
+  const [index, setIndex] = useState(0);
+  const [prevIndex, setPrevIndex] = useState<number | null>(null);
+  const [phase, setPhase] = useState<SurfacePhase>("teaser");
+  const [cardOpacity, setCardOpacity] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    setReduceMotion(
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (phase === "teaser") {
+      setCardOpacity(0);
+      return;
+    }
+    if (phase === "hold") {
+      setCardOpacity(1);
+      return;
+    }
+    if (phase === "out") {
+      setCardOpacity(0);
+      return;
+    }
+    // "in" — mount at 0, then fade up on the next frame.
+    setCardOpacity(0);
+    const raf = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => setCardOpacity(1));
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [phase, index]);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setPhase("hold");
+      setCardOpacity(1);
+      const id = window.setInterval(() => {
+        setPrevIndex(null);
+        setIndex((i) => (i + 1) % SURFACES.length);
+      }, SURFACE_TEASER_MS + SURFACE_HOLD_MS);
+      return () => window.clearInterval(id);
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const schedule = (ms: number, fn: () => void) => {
+      timer = setTimeout(() => {
+        if (!cancelled) fn();
+      }, ms);
+    };
+
+    if (phase === "teaser") {
+      schedule(SURFACE_TEASER_MS, () => setPhase("in"));
+    } else if (phase === "in") {
+      schedule(SURFACE_FADE_MS, () => {
+        setPrevIndex(null);
+        setPhase("hold");
+      });
+    } else if (phase === "hold") {
+      schedule(SURFACE_HOLD_MS, () => setPhase("out"));
+    } else {
+      schedule(SURFACE_FADE_MS, () => {
+        setPrevIndex(index);
+        setIndex((i) => (i + 1) % SURFACES.length);
+        setPhase("teaser");
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [phase, index, reduceMotion]);
+
+  const current = SURFACES[index]!;
+  const outgoing =
+    prevIndex != null && prevIndex !== index ? SURFACES[prevIndex]! : null;
+  const showTeaser = phase === "teaser" || phase === "out";
+  const showCard = phase !== "teaser" || cardOpacity > 0;
+
+  return (
+    <div className="relative mb-6 min-h-[14.5rem] sm:min-h-[16rem]">
+      <div
+        className="absolute left-0 right-0 top-0 z-20 flex h-10 items-center"
+        aria-live="polite"
+      >
+        <p
+          key={`${current.id}-teaser`}
+          className={`font-mono text-[11px] sm:text-xs tracking-[0.16em] uppercase text-gold/90 ${
+            showTeaser ? "opacity-100 home-surface-teaser" : "opacity-0"
+          }`}
+        >
+          {current.teaser}
+        </p>
+      </div>
+
+      <div className="relative mt-10 h-[12.5rem] sm:h-[14rem]">
+        {outgoing ? (
+          <div
+            className="home-surface-card absolute left-[8%] sm:left-[18%] top-2 z-10 w-[10.5rem] sm:w-[12.5rem] pointer-events-none"
+            style={{
+              transform: `rotate(${outgoing.rotate}) scale(0.94)`,
+              opacity: 0.32,
+            }}
+            aria-hidden
+          >
+            <div className="rounded-xl border border-white/10 bg-navy-dark/80 backdrop-blur-md shadow-lg shadow-black/30 overflow-hidden">
+              <SurfacePagePreview id={outgoing.id} name={outgoing.name} />
+            </div>
+          </div>
+        ) : null}
+
+        {showCard ? (
+          <Link
+            href={current.href}
+            className="home-surface-card absolute left-[18%] sm:left-[28%] top-0 z-20 w-[11rem] sm:w-[13rem] group"
+            style={{
+              transform: `rotate(${current.rotate}) translateY(${
+                cardOpacity > 0.5 ? "0" : "0.35rem"
+              })`,
+              opacity: cardOpacity,
+              transition: `opacity ${SURFACE_FADE_MS}ms ease, transform ${SURFACE_FADE_MS}ms ease`,
+            }}
+            aria-label={`Open ${current.name}`}
+          >
+            <div className="rounded-xl border border-white/15 bg-navy-dark/90 backdrop-blur-md shadow-xl shadow-black/40 overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:border-gold/40">
+              <SurfacePagePreview id={current.id} name={current.name} />
+            </div>
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Objective pills — each fades in/out on its own random timer (not as a pack),
+ * and each keeps a fixed crooked tilt + vertical offset so the row never looks level.
+ */
+function HomeObjectivePills() {
+  const [visible, setVisible] = useState<boolean[]>(() =>
+    FILTER_SIGNALS.map((_, i) => i < PILL_MAX_VISIBLE),
+  );
+
+  useEffect(() => {
+    const timers: Array<ReturnType<typeof setTimeout> | null> = FILTER_SIGNALS.map(
+      () => null,
+    );
+    let cancelled = false;
+
+    const countVisible = (flags: boolean[]) =>
+      flags.reduce((n, on) => n + (on ? 1 : 0), 0);
+
+    const clearTimer = (i: number) => {
+      const t = timers[i];
+      if (t != null) clearTimeout(t);
+      timers[i] = null;
+    };
+
+    const schedule = (i: number, fn: () => void, ms: number) => {
+      clearTimer(i);
+      timers[i] = setTimeout(() => {
+        if (!cancelled) fn();
+      }, ms);
+    };
+
+    const hidePill = (i: number) => {
+      setVisible((prev) => {
+        if (!prev[i]) return prev;
+        if (countVisible(prev) <= PILL_MIN_VISIBLE) {
+          // Can't drop below the floor — try again later.
+          schedule(i, () => hidePill(i), 1200 + Math.random() * 1800);
+          return prev;
+        }
+        const next = [...prev];
+        next[i] = false;
+        schedule(i, () => showPill(i), 700 + Math.random() * 2200);
+        return next;
+      });
+    };
+
+    const showPill = (i: number) => {
+      setVisible((prev) => {
+        if (prev[i]) return prev;
+        if (countVisible(prev) >= PILL_MAX_VISIBLE) {
+          schedule(i, () => showPill(i), 900 + Math.random() * 1600);
+          return prev;
+        }
+        const next = [...prev];
+        next[i] = true;
+        schedule(i, () => hidePill(i), 2200 + Math.random() * 3800);
+        return next;
+      });
+    };
+
+    // Kick each pill on its own phase so they don’t sync.
+    FILTER_SIGNALS.forEach((_, i) => {
+      const startVisible = i < PILL_MAX_VISIBLE;
+      if (startVisible) {
+        schedule(i, () => hidePill(i), 1400 + Math.random() * 3200 + i * 180);
+      } else {
+        schedule(i, () => showPill(i), 800 + Math.random() * 2800 + i * 120);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      timers.forEach((t, i) => {
+        if (t != null) clearTimeout(t);
+        timers[i] = null;
+      });
+    };
+  }, []);
+
+  return (
+    <div className="relative mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-3 max-w-3xl min-h-[3.75rem] content-center">
+      {FILTER_SIGNALS.map((pill, idx) => {
+        if (!visible[idx]) return null;
+        return (
+          <span
+            key={pill.label}
+            className="inline-block home-filter-chip-enter"
+            style={{
+              transform: `rotate(${PILL_TILTS[idx % PILL_TILTS.length]}deg) translateY(${
+                PILL_Y[idx % PILL_Y.length]
+              }px)`,
+              zIndex: 40 - idx,
+            }}
+          >
+            <Link
+              href={pill.href}
+              className="home-filter-chip inline-flex items-center rounded-full border border-white/20 bg-white/[0.07] px-3 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/75 backdrop-blur-sm transition-colors hover:border-gold/45 hover:text-gold"
+            >
+              {pill.label}
+            </Link>
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

@@ -11,7 +11,13 @@ import {
   type SalesByPricePayload,
   type SalesByVintagePayload,
 } from '@/lib/stats-compute'
+import {
+  interestingStatHref,
+  type InterestingStatKind,
+} from '@/lib/interesting-stat-link'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+
+export type { InterestingStatKind } from '@/lib/interesting-stat-link'
 
 /** Featured slot written on each rebuild (newest insight). Homepage may rotate across history. */
 export const INTERESTING_STAT_CACHE_KEY = 'interesting-stat:home:v1'
@@ -31,31 +37,12 @@ export type InterestingStatPayload = {
   value: string
   /** Context under the value. */
   detail: string
+  /** Deep link to Stats with the matching chart selected. */
   href: string
   town: TmreTown | null
   kind: InterestingStatKind
   generatedAt: string
 }
-
-export type InterestingStatKind =
-  | 'closed-this-week'
-  | 'closed-zip'
-  | 'months-supply'
-  | 'tightest-supply'
-  | 'median-price'
-  | 'avg-dom'
-  | 'fastest-dom'
-  | 'best-vintage'
-  | 'vintage-gap'
-  | 'active-count'
-  | 'most-active'
-  | 'avg-ppsf'
-  | 'avg-beds'
-  | 'sales-vintage'
-  | 'sales-price-band'
-  | 'sales-yoy'
-  | 'sales-mom'
-  | 'inventory-mom'
 
 export type InterestingStatHistoryPayload = {
   updatedAt: string
@@ -180,15 +167,14 @@ async function loadTownSlice(town: TmreTown): Promise<TownSlice> {
 function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
   const { town, market, sales, activeByMonth, avgScore, salesVintage, salesPrice, months } =
     slice
-  const statsHref = `/stats?city=${encodeURIComponent(town)}`
-  const intelHref = `/intelligence?city=${encodeURIComponent(town)}`
+  const hrefFor = (kind: InterestingStatKind) => interestingStatHref(kind, town)
 
   if (sales && sales.closedThisWeek > 0) {
     pushCandidate(candidates, {
       kind: 'closed-this-week',
       value: String(sales.closedThisWeek),
       detail: `${town} homes closed this week`,
-      href: statsHref,
+      href: hrefFor('closed-this-week'),
       town,
       weight: sales.closedThisWeek * 2,
     })
@@ -204,7 +190,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
           kind: 'closed-zip',
           value: String(n),
           detail: `${town} closings this week in ${zip}`,
-          href: statsHref,
+          href: hrefFor('closed-zip'),
           town,
           weight: n * 3,
         })
@@ -222,7 +208,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'months-supply',
       value: `${months.monthsSupply.toFixed(1)} mo`,
       detail: `${town} homes months of supply`,
-      href: statsHref,
+      href: hrefFor('months-supply'),
       town,
       weight: 1 / months.monthsSupply,
     })
@@ -233,7 +219,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'median-price',
       value: formatPriceShort(market.medianPrice),
       detail: `${town} median sale price (closed + active)`,
-      href: intelHref,
+      href: hrefFor('median-price'),
       town,
       weight: market.medianPrice / 1_000_000,
     })
@@ -248,7 +234,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'avg-dom',
       value: `${Math.round(market.avgDaysOnMarket)}d`,
       detail: `${town} avg days on market`,
-      href: intelHref,
+      href: hrefFor('avg-dom'),
       town,
       weight: 100 / market.avgDaysOnMarket,
     })
@@ -263,7 +249,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'avg-ppsf',
       value: `$${Math.round(market.avgPricePerSqft)}`,
       detail: `${town} avg ask per sq ft (active)`,
-      href: intelHref,
+      href: hrefFor('avg-ppsf'),
       town,
       weight: market.avgPricePerSqft / 100,
     })
@@ -274,7 +260,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'avg-beds',
       value: market.avgBeds.toFixed(1),
       detail: `${town} avg beds on active sales`,
-      href: intelHref,
+      href: hrefFor('avg-beds'),
       town,
       weight: market.avgBeds,
     })
@@ -286,7 +272,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'best-vintage',
       value: best.avgScore.toFixed(1),
       detail: `${town} best Goldilocks vintage · ${best.label}`,
-      href: intelHref,
+      href: hrefFor('best-vintage'),
       town,
       weight: best.avgScore,
     })
@@ -304,7 +290,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
           kind: 'vintage-gap',
           value: gap.toFixed(1),
           detail: `${town} score gap · ${top.label} vs ${bottom.label}`,
-          href: intelHref,
+          href: hrefFor('vintage-gap'),
           town,
           weight: gap * 2,
         })
@@ -317,7 +303,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'active-count',
       value: String(market.activeCount),
       detail: `${town} homes on market`,
-      href: intelHref,
+      href: hrefFor('active-count'),
       town,
       weight: market.activeCount,
     })
@@ -330,7 +316,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'sales-vintage',
       value: `${pct}%`,
       detail: `${town} closed sales in ${topVintage.label}`,
-      href: statsHref,
+      href: hrefFor('sales-vintage'),
       town,
       weight: topVintage.count,
     })
@@ -343,7 +329,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       kind: 'sales-price-band',
       value: `${pct}%`,
       detail: `${town} closed sales in ${topPrice.label}`,
-      href: statsHref,
+      href: hrefFor('sales-price-band'),
       town,
       weight: topPrice.count,
     })
@@ -368,7 +354,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
           kind: 'sales-yoy',
           value: `${pct > 0 ? '+' : ''}${pct}%`,
           detail: `${town} closings vs ${monthLabel(prevYear - 1, prevMonth)}`,
-          href: statsHref,
+          href: hrefFor('sales-yoy'),
           town,
           weight: Math.abs(pct),
         })
@@ -387,7 +373,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
           kind: 'sales-mom',
           value: `${pct > 0 ? '+' : ''}${pct}%`,
           detail: `${town} closings ${monthLabel(prevYear, prevMonth)} vs prior month`,
-          href: statsHref,
+          href: hrefFor('sales-mom'),
           town,
           weight: Math.abs(pct),
         })
@@ -415,7 +401,7 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
           kind: 'inventory-mom',
           value: `${pct > 0 ? '+' : ''}${pct}%`,
           detail: `${town} active inventory vs prior month`,
-          href: statsHref,
+          href: hrefFor('inventory-mom'),
           town,
           weight: Math.abs(pct),
         })
@@ -440,7 +426,7 @@ function addCrossTownCandidates(candidates: Candidate[], slices: TownSlice[]): v
       kind: 'fastest-dom',
       value: `${Math.round(fastest.market!.avgDaysOnMarket!)}d`,
       detail: `Fastest avg DOM among TMRE towns · ${fastest.town}`,
-      href: `/intelligence?city=${encodeURIComponent(fastest.town)}`,
+      href: interestingStatHref('fastest-dom', fastest.town),
       town: fastest.town,
       weight: 200 / fastest.market!.avgDaysOnMarket!,
     })
@@ -461,7 +447,7 @@ function addCrossTownCandidates(candidates: Candidate[], slices: TownSlice[]): v
       kind: 'tightest-supply',
       value: `${tightest.months!.monthsSupply!.toFixed(1)} mo`,
       detail: `Tightest homes supply · ${tightest.town}`,
-      href: `/stats?city=${encodeURIComponent(tightest.town)}`,
+      href: interestingStatHref('tightest-supply', tightest.town),
       town: tightest.town,
       weight: 10 / tightest.months!.monthsSupply!,
     })
@@ -476,7 +462,7 @@ function addCrossTownCandidates(candidates: Candidate[], slices: TownSlice[]): v
       kind: 'most-active',
       value: String(most.market!.activeCount),
       detail: `Most active sale inventory · ${most.town}`,
-      href: `/intelligence?city=${encodeURIComponent(most.town)}`,
+      href: interestingStatHref('most-active', most.town),
       town: most.town,
       weight: most.market!.activeCount,
     })
@@ -573,6 +559,14 @@ export async function refreshInterestingStat(generatedAt: string): Promise<boole
   return true
 }
 
+/** Ensure deep link always targets the Stats chart for this kind (even for older cache rows). */
+function withFreshHref(stat: InterestingStatPayload): InterestingStatPayload {
+  return {
+    ...stat,
+    href: interestingStatHref(stat.kind, stat.town),
+  }
+}
+
 /**
  * Homepage: rotate among recent insights so the pulse changes during the day
  * even between stats rebuilds. Falls back to featured row / cold build.
@@ -580,14 +574,15 @@ export async function refreshInterestingStat(generatedAt: string): Promise<boole
 export async function readInterestingStat(): Promise<InterestingStatPayload | null> {
   const history = await readInterestingStatHistory()
   const rotated = rotateFrom(recentForRotation(history))
-  if (rotated?.value && rotated?.detail) return rotated
+  if (rotated?.value && rotated?.detail) return withFreshHref(rotated)
 
   const cached = parsePayload<InterestingStatPayload>(
     await readStatsCacheRow(INTERESTING_STAT_CACHE_KEY),
   )
-  if (cached?.value && cached?.detail) return cached
+  if (cached?.value && cached?.detail) return withFreshHref(cached)
 
-  return buildInterestingStatFromCaches(new Date().toISOString())
+  const built = await buildInterestingStatFromCaches(new Date().toISOString())
+  return built ? withFreshHref(built) : null
 }
 
 export type InterestingStatAdminView = {
@@ -605,11 +600,14 @@ export async function readInterestingStatAdminView(): Promise<InterestingStatAdm
   const featured = parsePayload<InterestingStatPayload>(
     await readStatsCacheRow(INTERESTING_STAT_CACHE_KEY),
   )
-  const homepage = rotateFrom(recentForRotation(history)) ?? featured
+  const homepageRaw = rotateFrom(recentForRotation(history)) ?? featured
+  const historyEntries = (history?.entries ?? (featured ? [featured] : [])).map(
+    withFreshHref,
+  )
   return {
-    current: featured,
-    homepage,
-    history: history?.entries ?? (featured ? [featured] : []),
+    current: featured ? withFreshHref(featured) : null,
+    homepage: homepageRaw ? withFreshHref(homepageRaw) : null,
+    history: historyEntries,
     rotateIntervalMs: INTERESTING_STAT_ROTATE_MS,
     historyCap: INTERESTING_STAT_HISTORY_CAP,
     updatedAt: history?.updatedAt ?? featured?.generatedAt ?? null,

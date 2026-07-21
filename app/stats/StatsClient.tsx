@@ -5,6 +5,11 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { fetchActiveMedianListings } from "@/lib/active-median-listings";
+import {
+  interestingStatChartElementId,
+  parseInterestingStatChartId,
+} from "@/lib/interesting-stat-link";
+import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { TOWN_LIST, STATS_CITIES, STATS_KINDS, type StatsCity, type StatsKind, type Town } from "./stats-towns";
 import { formatTownList } from "@/lib/tmre-towns";
 import type { TownCountMap } from "@/lib/town-listing-counts";
@@ -142,6 +147,7 @@ export default function StatsClient() {
   const urlCls = searchParams.get("cls");
   const urlProperty = searchParams.get("property");
   const urlKind = searchParams.get("kind");
+  const urlChart = parseInterestingStatChartId(searchParams.get("chart"));
 
   const [stats, setStats] = useState<Record<Town, CityStats | null>>(emptyTownRecord(null));
   const [medianListings, setMedianListings] = useState<MedianListingRow[]>([]);
@@ -191,6 +197,7 @@ export default function StatsClient() {
   const townKindResetReady = useRef(false);
   const orderedTowns = usePersonalizedTowns(TOWN_LIST);
   const deepLinkApplied = useRef(false);
+  const chartScrollApplied = useRef(false);
 
   useEffect(() => {
     if (deepLinkApplied.current) return;
@@ -208,6 +215,35 @@ export default function StatsClient() {
     }
     deepLinkApplied.current = true;
   }, [urlCity, urlView, urlPool, urlKind, setSelectedCity, setStatsKind]);
+
+  // Homepage interesting-stat deep link: scroll to the target chart once ready.
+  useEffect(() => {
+    if (!urlChart || chartScrollApplied.current) return;
+    if (loadState !== "ready" && loadState !== "error") return;
+
+    const targetId = interestingStatChartElementId(urlChart);
+    let attempts = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(targetId);
+      if (el) {
+        chartScrollApplied.current = true;
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.classList.add("ring-2", "ring-gold/50", "ring-offset-2", "ring-offset-cream");
+        window.setTimeout(() => {
+          el.classList.remove(
+            "ring-2",
+            "ring-gold/50",
+            "ring-offset-2",
+            "ring-offset-cream",
+          );
+        }, 2800);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 24) window.setTimeout(tryScroll, 150);
+    };
+    requestAnimationFrame(tryScroll);
+  }, [urlChart, loadState, selectedCity, statsKind]);
 
   useEffect(() => {
     const city = parseUrlTown(urlCity);
@@ -347,11 +383,7 @@ export default function StatsClient() {
     setVintageLoadState("loading");
     setListingsLoadState("loading");
 
-    fetch(`/api/stats/page?kind=${statsKind}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(
-        (
-          data: {
+    void loadTabJson<{
             towns?: Record<
               Town,
               {
@@ -362,8 +394,9 @@ export default function StatsClient() {
             >;
             generatedAt?: string | null;
             statsCache?: boolean;
-          } | null,
-        ) => {
+          }>(`/api/stats/page?kind=${statsKind}`)
+      .then(
+        (data) => {
           if (cancelled || !data?.towns) {
             if (!cancelled) {
               setLoadState("error");

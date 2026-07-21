@@ -1,3 +1,4 @@
+import { loadTabJson, prefetchTabJson } from "@/lib/tab-data-prefetch";
 import type { StatsCity, StatsKind } from "./stats-towns";
 
 export type MonthlyCount = { year: number; month: number; count: number };
@@ -8,10 +9,18 @@ export type StatsMonthApiResponse = {
   fallback?: boolean;
 };
 
-const inflight = new Map<string, Promise<StatsMonthApiResponse | null>>();
+function monthApiUrl(apiPath: string, city: StatsCity, kind: StatsKind): string {
+  const cityParam =
+    city === "All" ? "city=All" : `city=${encodeURIComponent(city)}`;
+  return `${apiPath}?${cityParam}&kind=${kind}`;
+}
 
-function cacheKey(apiPath: string, city: StatsCity, kind: StatsKind): string {
-  return `${apiPath}:${city}:${kind}`;
+export function prefetchStatsMonthData(
+  apiPath: string,
+  city: StatsCity,
+  kind: StatsKind,
+): void {
+  prefetchTabJson(monthApiUrl(apiPath, city, kind));
 }
 
 export function fetchStatsMonthData(
@@ -19,20 +28,10 @@ export function fetchStatsMonthData(
   city: StatsCity,
   kind: StatsKind,
 ): Promise<StatsMonthApiResponse | null> {
-  const key = cacheKey(apiPath, city, kind);
-  const existing = inflight.get(key);
-  if (existing) return existing;
-
-  const cityParam =
-    city === "All" ? "city=All" : `city=${encodeURIComponent(city)}`;
-  const promise = fetch(`${apiPath}?${cityParam}&kind=${kind}`, { cache: "no-store" })
-    .then((r) => (r.ok ? (r.json() as Promise<StatsMonthApiResponse>) : null))
-    .catch(() => null);
-
-  inflight.set(key, promise);
-  return promise;
+  return loadTabJson<StatsMonthApiResponse>(monthApiUrl(apiPath, city, kind));
 }
 
+/** @deprecated Cache is now the shared tab-json prefetch map. */
 export function clearStatsMonthApiCache(): void {
-  inflight.clear();
+  // no-op — kept for call-site compat
 }

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { formatRunDuration } from "@/components/admin/AdminSyncTable";
 import {
   glomSyncHistoryRuns,
@@ -44,7 +51,7 @@ function formatSyncTime(iso: string | null | undefined): string {
 /**
  * Durable log of every MLS town/bucket sync written to Postgres `sync_runs`
  * (admin, cron, overdue catch-up). Display gloms towns that ran together into
- * one line per status bucket (Active / Closed / Expired).
+ * one line per sync type × status bucket, nested as type → bucket groups.
  */
 export default function AdminSyncHistoryPanel({
   initial,
@@ -99,6 +106,130 @@ export default function AdminSyncHistoryPanel({
   const glommed = useMemo(() => glomSyncHistoryRuns(runs), [runs]);
   const hasMore = runs.length < total;
 
+  type BucketGroup = {
+    bucket: string;
+    rows: typeof glommed;
+    latestMs: number;
+  };
+  type SyncTypeGroup = {
+    syncType: string;
+    buckets: BucketGroup[];
+    latestMs: number;
+    lineCount: number;
+    failCount: number;
+  };
+
+  /** Sync-type groups → bucket subgroups; newest entry rises to the top at each level. */
+  const syncTypeGroups = useMemo((): SyncTypeGroup[] => {
+    const byType = new Map<string, typeof glommed>();
+    for (const row of glommed) {
+      const list = byType.get(row.syncType) ?? [];
+      list.push(row);
+      byType.set(row.syncType, list);
+    }
+
+    const groups: SyncTypeGroup[] = [...byType.entries()].map(([syncType, typeRows]) => {
+      const byBucket = new Map<string, typeof glommed>();
+      for (const row of typeRows) {
+        const list = byBucket.get(row.bucket) ?? [];
+        list.push(row);
+        byBucket.set(row.bucket, list);
+      }
+      const buckets: BucketGroup[] = [...byBucket.entries()].map(([bucket, rows]) => {
+        const sorted = [...rows].sort((a, b) => {
+          const da = Date.parse(a.startedAt);
+          const db = Date.parse(b.startedAt);
+          if (Number.isFinite(da) && Number.isFinite(db) && da !== db) {
+            return db - da;
+          }
+          return 0;
+        });
+        const latestMs = Math.max(
+          ...sorted.map((r) => Date.parse(r.startedAt)).filter(Number.isFinite),
+          0,
+        );
+        return { bucket, rows: sorted, latestMs };
+      });
+      buckets.sort((a, b) => b.latestMs - a.latestMs);
+      const latestMs = Math.max(...buckets.map((b) => b.latestMs), 0);
+      return {
+        syncType,
+        buckets,
+        latestMs,
+        lineCount: typeRows.length,
+        failCount: typeRows.filter((r) => !r.ok).length,
+      };
+    });
+    groups.sort((a, b) => b.latestMs - a.latestMs);
+    return groups;
+  }, [glommed]);
+
+  const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
+  const [expandedBuckets, setExpandedBuckets] = useState<Record<string, boolean>>(
+    {},
+  );
+
+  const bucketKey = (syncType: string, bucket: string) => `${syncType}:${bucket}`;
+
+  // Expand the newest sync type + its newest bucket by default when first seen.
+  useEffect(() => {
+    if (syncTypeGroups.length === 0) return;
+    setExpandedTypes((prev) => {
+      const next = { ...prev };
+      let touched = false;
+      for (const g of syncTypeGroups) {
+        if (next[g.syncType] === undefined) {
+          next[g.syncType] = false;
+          touched = true;
+        }
+      }
+      const top = syncTypeGroups[0]?.syncType;
+      if (top && prev[top] === undefined) {
+        next[top] = true;
+        touched = true;
+      }
+      return touched ? next : prev;
+    });
+    setExpandedBuckets((prev) => {
+      const next = { ...prev };
+      let touched = false;
+      for (const typeGroup of syncTypeGroups) {
+        for (const bucketGroup of typeGroup.buckets) {
+          const key = bucketKey(typeGroup.syncType, bucketGroup.bucket);
+          if (next[key] === undefined) {
+            next[key] = false;
+            touched = true;
+          }
+        }
+      }
+      const topType = syncTypeGroups[0];
+      const topBucket = topType?.buckets[0];
+      if (topType && topBucket) {
+        const key = bucketKey(topType.syncType, topBucket.bucket);
+        if (prev[key] === undefined) {
+          next[key] = true;
+          touched = true;
+        }
+      }
+      return touched ? next : prev;
+    });
+  }, [syncTypeGroups]);
+
+  const toggleType = (syncType: string) => {
+    setExpandedTypes((prev) => ({
+      ...prev,
+      [syncType]: !prev[syncType],
+    }));
+  };
+
+  const toggleBucket = (syncType: string, bucket: string) => {
+    const key = bucketKey(syncType, bucket);
+    setExpandedBuckets((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
   return (
     <div
       id="admin-sync-history"
@@ -110,9 +241,10 @@ export default function AdminSyncHistoryPanel({
             Database sync history
           </p>
           <p className="mt-1 text-sm text-slate max-w-2xl">
-            MLS syncs from Admin, cron, and overdue catch-up — towns that ran together
-            are glommed into one line per status bucket (Active, Closed, Expired). Newest
-            first.
+            MLS syncs from Admin, cron, and overdue catch-up — grouped by sync
+            type (Full, Incremental), then by status bucket (Active, Closed,
+            Expired). Newest groups rise to the top; use + / − to expand or
+            collapse each level.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -159,7 +291,9 @@ export default function AdminSyncHistoryPanel({
             ? "loading…"
             : `${total.toLocaleString()} town run${total === 1 ? "" : "s"}${
                 filter !== "all" ? ` · showing ${filter}` : ""
-              } · ${glommed.length.toLocaleString()} bucket line${
+              } · ${syncTypeGroups.length.toLocaleString()} sync type${
+                syncTypeGroups.length === 1 ? "" : "s"
+              } · ${glommed.length.toLocaleString()} line${
                 glommed.length === 1 ? "" : "s"
               } loaded`}
         </p>
@@ -205,54 +339,160 @@ export default function AdminSyncHistoryPanel({
               </tr>
             </thead>
             <tbody>
-              {glommed.map((run, index) => (
-                <tr
-                  key={run.key}
-                  className={
-                    !run.ok
-                      ? "bg-rose-50/80"
-                      : index % 2 === 1
-                        ? "bg-cream/[0.18]"
-                        : "bg-white"
-                  }
-                >
-                  <td className="px-4 py-2.5 align-top font-mono text-[11px] tabular-nums text-slate whitespace-nowrap">
-                    {formatSyncDate(run.startedAt)}
-                  </td>
-                  <td className="px-4 py-2.5 align-top font-mono text-[11px] tabular-nums text-slate whitespace-nowrap">
-                    {formatSyncTime(run.startedAt)}
-                  </td>
-                  <td className="px-4 py-2.5 align-top font-mono text-[11px] tabular-nums text-slate whitespace-nowrap">
-                    {formatSyncTime(run.finishedAt)}
-                  </td>
-                  <td className="px-4 py-2.5 align-top font-mono text-[11px] tracking-[0.06em] uppercase text-navy">
-                    {run.bucket}
-                  </td>
-                  <td className="px-4 py-2.5 align-top font-mono text-[11px] text-charcoal/70 leading-snug">
-                    {run.townsLabel}
-                  </td>
-                  <td className="px-4 py-2.5 align-top text-right font-mono text-[11px] tabular-nums text-navy">
-                    {run.listingsCount.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2.5 align-top text-right font-mono text-[11px] tabular-nums text-charcoal/50">
-                    {formatRunDuration(run.durationMs)}
-                  </td>
-                  <td className="px-4 py-2.5 align-top min-w-[10rem]">
-                    <p
-                      className={`font-mono text-[10px] tracking-[0.1em] uppercase ${
-                        run.ok ? "text-sage" : "text-coral"
-                      }`}
-                    >
-                      {run.ok ? "OK" : "Failed"}
-                    </p>
-                    {run.error ? (
-                      <p className="mt-0.5 font-mono text-[10px] leading-snug text-coral break-words whitespace-pre-line">
-                        {run.error}
-                      </p>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
+              {syncTypeGroups.map((typeGroup) => {
+                const typeOpen = expandedTypes[typeGroup.syncType] ?? false;
+                return (
+                  <Fragment key={typeGroup.syncType}>
+                    <tr className="bg-navy/[0.06] border-t border-charcoal/[0.12]">
+                      <td colSpan={8} className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleType(typeGroup.syncType)}
+                          aria-expanded={typeOpen}
+                          className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.1em] uppercase text-navy hover:text-gold transition-colors"
+                        >
+                          <span
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-navy/25 bg-white text-[13px] font-semibold leading-none tabular-nums"
+                            aria-hidden
+                          >
+                            {typeOpen ? "−" : "+"}
+                          </span>
+                          <span className="font-semibold">{typeGroup.syncType}</span>
+                          <span className="normal-case tracking-normal text-charcoal/45">
+                            {typeGroup.buckets.length.toLocaleString()} bucket
+                            {typeGroup.buckets.length === 1 ? "" : "s"}
+                            {" · "}
+                            {typeGroup.lineCount.toLocaleString()} line
+                            {typeGroup.lineCount === 1 ? "" : "s"}
+                            {typeGroup.failCount > 0
+                              ? ` · ${typeGroup.failCount} failed`
+                              : ""}
+                            {typeGroup.latestMs > 0
+                              ? ` · latest ${formatSyncDate(
+                                  new Date(typeGroup.latestMs).toISOString(),
+                                )} ${formatSyncTime(
+                                  new Date(typeGroup.latestMs).toISOString(),
+                                )}`
+                              : ""}
+                          </span>
+                        </button>
+                      </td>
+                    </tr>
+                    {typeOpen
+                      ? typeGroup.buckets.map((bucketGroup) => {
+                          const bKey = bucketKey(
+                            typeGroup.syncType,
+                            bucketGroup.bucket,
+                          );
+                          const bucketOpen = expandedBuckets[bKey] ?? false;
+                          const failCount = bucketGroup.rows.filter(
+                            (r) => !r.ok,
+                          ).length;
+                          return (
+                            <Fragment key={bKey}>
+                              <tr className="bg-navy/[0.03] border-t border-charcoal/[0.08]">
+                                <td colSpan={8} className="px-3 py-1.5 pl-8">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      toggleBucket(
+                                        typeGroup.syncType,
+                                        bucketGroup.bucket,
+                                      )
+                                    }
+                                    aria-expanded={bucketOpen}
+                                    className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.1em] uppercase text-navy/90 hover:text-gold transition-colors"
+                                  >
+                                    <span
+                                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-navy/20 bg-white text-[13px] font-semibold leading-none tabular-nums"
+                                      aria-hidden
+                                    >
+                                      {bucketOpen ? "−" : "+"}
+                                    </span>
+                                    <span className="font-semibold">
+                                      {bucketGroup.bucket}
+                                    </span>
+                                    <span className="normal-case tracking-normal text-charcoal/45">
+                                      {bucketGroup.rows.length.toLocaleString()}{" "}
+                                      line
+                                      {bucketGroup.rows.length === 1
+                                        ? ""
+                                        : "s"}
+                                      {failCount > 0
+                                        ? ` · ${failCount} failed`
+                                        : ""}
+                                      {bucketGroup.latestMs > 0
+                                        ? ` · latest ${formatSyncDate(
+                                            new Date(
+                                              bucketGroup.latestMs,
+                                            ).toISOString(),
+                                          )} ${formatSyncTime(
+                                            new Date(
+                                              bucketGroup.latestMs,
+                                            ).toISOString(),
+                                          )}`
+                                        : ""}
+                                    </span>
+                                  </button>
+                                </td>
+                              </tr>
+                              {bucketOpen
+                                ? bucketGroup.rows.map((run, index) => (
+                                    <tr
+                                      key={run.key}
+                                      className={
+                                        !run.ok
+                                          ? "bg-rose-50/80"
+                                          : index % 2 === 1
+                                            ? "bg-cream/[0.18]"
+                                            : "bg-white"
+                                      }
+                                    >
+                                      <td className="px-4 py-2.5 pl-12 align-top font-mono text-[11px] tabular-nums text-slate whitespace-nowrap">
+                                        {formatSyncDate(run.startedAt)}
+                                      </td>
+                                      <td className="px-4 py-2.5 align-top font-mono text-[11px] tabular-nums text-slate whitespace-nowrap">
+                                        {formatSyncTime(run.startedAt)}
+                                      </td>
+                                      <td className="px-4 py-2.5 align-top font-mono text-[11px] tabular-nums text-slate whitespace-nowrap">
+                                        {formatSyncTime(run.finishedAt)}
+                                      </td>
+                                      <td className="px-4 py-2.5 align-top font-mono text-[11px] tracking-[0.06em] uppercase text-navy">
+                                        {run.bucket}
+                                      </td>
+                                      <td className="px-4 py-2.5 align-top font-mono text-[11px] text-charcoal/70 leading-snug">
+                                        {run.townsLabel}
+                                      </td>
+                                      <td className="px-4 py-2.5 align-top text-right font-mono text-[11px] tabular-nums text-navy">
+                                        {run.listingsCount.toLocaleString()}
+                                      </td>
+                                      <td className="px-4 py-2.5 align-top text-right font-mono text-[11px] tabular-nums text-charcoal/50">
+                                        {formatRunDuration(run.durationMs)}
+                                      </td>
+                                      <td className="px-4 py-2.5 align-top min-w-[10rem]">
+                                        <p
+                                          className={`font-mono text-[10px] tracking-[0.1em] uppercase ${
+                                            run.ok ? "text-sage" : "text-coral"
+                                          }`}
+                                        >
+                                          {run.ok ? "OK" : "Failed"}
+                                        </p>
+                                        {run.error ? (
+                                          <p className="mt-0.5 font-mono text-[10px] leading-snug text-coral break-words whitespace-pre-line">
+                                            {run.error}
+                                          </p>
+                                        ) : null}
+                                      </td>
+                                    </tr>
+                                  ))
+                                : null}
+                            </Fragment>
+                          );
+                        })
+                      : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}

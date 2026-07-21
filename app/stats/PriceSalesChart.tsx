@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { loadTabJson } from "@/lib/tab-data-prefetch";
 import type { StatsCity, StatsKind } from "./stats-towns";
 import { TOWN_LIST } from "./stats-towns";
 import {
@@ -94,9 +95,12 @@ export default function PriceSalesChart({
         ? `/api/sales-by-price?city=All&kind=${kind}`
         : `/api/sales-by-price?city=${encodeURIComponent(city)}&kind=${kind}`;
 
-    fetch(url, { cache: "no-store" })
-      .then((r) => r.json() as Promise<ApiResponse>)
+    void loadTabJson<ApiResponse>(url)
       .then((d) => {
+        if (!d) {
+          setLoading(false);
+          return;
+        }
         setCache((prev) => ({ ...prev, [key]: d }));
         setLoading(false);
       })

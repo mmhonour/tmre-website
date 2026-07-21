@@ -5,6 +5,17 @@ export function normalizeSyncStatusBucket(bucket: string | null | undefined): st
   return raw.split('/')[0]?.trim() || raw
 }
 
+/**
+ * Sync mode from status_bucket suffixes, e.g. "Active/incremental" → "Incremental".
+ * Plain Active / Closed / Expired (full town/bucket pulls) → "Full".
+ */
+export function normalizeSyncType(bucket: string | null | undefined): string {
+  const raw = (bucket ?? '').trim()
+  const suffix = raw.includes('/') ? raw.split('/').slice(1).join('/').trim() : ''
+  if (!suffix) return 'Full'
+  return suffix.charAt(0).toUpperCase() + suffix.slice(1).toLowerCase()
+}
+
 /** "Westport (12), Norwalk (8)". */
 export function formatTownCountsGlom(
   towns: readonly { town: string; count: number }[],
@@ -26,11 +37,12 @@ export type SyncHistoryRawRow = {
   error: string | null
 }
 
-/** One display row: a sync batch glommed by status bucket across towns. */
+/** One display row: a sync batch glommed by sync type × status bucket across towns. */
 export type SyncHistoryGlomRow = {
   key: string
   startedAt: string
   finishedAt: string | null
+  syncType: string
   bucket: string
   townsLabel: string
   listingsCount: number
@@ -50,9 +62,18 @@ function parseMs(iso: string | null | undefined): number {
   return Date.parse(iso)
 }
 
+function bucketSortKey(a: string, b: string): number {
+  const ia = BUCKET_ORDER.indexOf(a)
+  const ib = BUCKET_ORDER.indexOf(b)
+  if (ia === -1 && ib === -1) return a.localeCompare(b)
+  if (ia === -1) return 1
+  if (ib === -1) return -1
+  return ia - ib
+}
+
 /**
- * Collapse per-town sync_runs into one line per (batch × bucket), e.g.
- * Active · Westport (12), Norwalk (8)
+ * Collapse per-town sync_runs into one line per (batch × sync type × bucket), e.g.
+ * Incremental · Active · Westport (12), Norwalk (8)
  */
 export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomRow[] {
   if (runs.length === 0) return []
@@ -83,24 +104,26 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
   const out: SyncHistoryGlomRow[] = []
   for (let bi = 0; bi < batches.length; bi++) {
     const batch = batches[bi]
-    const byBucket = new Map<string, SyncHistoryRawRow[]>()
+    const byTypeBucket = new Map<string, SyncHistoryRawRow[]>()
     for (const run of batch) {
+      const syncType = normalizeSyncType(run.statusBucket)
       const bucket = normalizeSyncStatusBucket(run.statusBucket)
-      const list = byBucket.get(bucket) ?? []
+      const key = `${syncType}\0${bucket}`
+      const list = byTypeBucket.get(key) ?? []
       list.push(run)
-      byBucket.set(bucket, list)
+      byTypeBucket.set(key, list)
     }
-    const buckets = [...byBucket.keys()].sort((a, b) => {
-      const ia = BUCKET_ORDER.indexOf(a)
-      const ib = BUCKET_ORDER.indexOf(b)
-      if (ia === -1 && ib === -1) return a.localeCompare(b)
-      if (ia === -1) return 1
-      if (ib === -1) return -1
-      return ia - ib
+    const keys = [...byTypeBucket.keys()].sort((ka, kb) => {
+      const [typeA, bucketA] = ka.split('\0')
+      const [typeB, bucketB] = kb.split('\0')
+      if (typeA !== typeB) return typeA.localeCompare(typeB)
+      return bucketSortKey(bucketA!, bucketB!)
     })
 
-    for (const bucket of buckets) {
-      const rows = byBucket.get(bucket)!
+    for (const key of keys) {
+      const rows = byTypeBucket.get(key)!
+      const syncType = normalizeSyncType(rows[0]?.statusBucket)
+      const bucket = normalizeSyncStatusBucket(rows[0]?.statusBucket)
       const startedMs = Math.min(...rows.map((r) => parseMs(r.startedAt)).filter(Number.isFinite))
       const finishedMsList = rows
         .map((r) => parseMs(r.finishedAt))
@@ -129,13 +152,14 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
       const listingsCount = towns.reduce((sum, t) => sum + t.count, 0)
 
       out.push({
-        key: `batch-${bi}-${bucket}-${rows[0]?.id ?? 0}`,
+        key: `batch-${bi}-${syncType}-${bucket}-${rows[0]?.id ?? 0}`,
         startedAt: Number.isFinite(startedMs)
           ? new Date(startedMs).toISOString()
           : rows[0].startedAt,
         finishedAt: Number.isFinite(finishedMs)
           ? new Date(finishedMs).toISOString()
           : null,
+        syncType,
         bucket,
         townsLabel: formatTownCountsGlom(towns),
         listingsCount,
@@ -150,6 +174,6 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
     }
   }
 
-  // Newest batch first; within a batch keep Active → Closed → Expired order
+  // Newest batch first; within a batch keep type then Active → Closed → Expired
   return out.reverse()
 }

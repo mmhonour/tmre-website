@@ -499,7 +499,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Spotlight',
     category: 'ui-tabs',
     definition:
-      'Curated property slots (#1–#3) with privacy controls (hide address/photos/map) managed in Admin Site controls.',
+      'Curated property slots (#1–#3) with privacy controls (hide address/photos/map) managed in the Admin Spotlight tab.',
   },
   {
     term: 'Deal of the Day / Week',
