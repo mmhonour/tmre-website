@@ -1,19 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ListingThumbImage from "@/components/ListingThumbImage";
+import {
+  CompExactMatchLegend,
+  renderCompBedBathMeta,
+} from "@/components/listing/CompExactMatchMeta";
+import ListingCriteriaSideLayout from "@/components/listing/ListingCriteriaSideLayout";
+import MatchingCriteriaSummary, {
+  type CriteriaStepFeedback,
+  type CriteriaStepKey,
+} from "@/components/listing/MatchingCriteriaSummary";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtAcres,
   fmtSqft,
   fmtPricePerSqft,
   fmtYearBuilt,
-  vintageCriteriaList,
   type ComparableListing,
   type ComparablesCriteria,
   type CompactListingHistoryEvent,
 } from "@/lib/listing-comparables-shared";
+import {
+  comparableListingMatchesSession,
+  defaultSessionOverrides,
+  sessionOverridesFromPricingConfig,
+  sessionOverridesNeedWidePool,
+  type SessionMatchOverrides,
+} from "@/lib/listing-comparables-session";
+import type { PricingMatchingConfig } from "@/lib/pricing-matching-config-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import {
@@ -27,7 +43,31 @@ type UagResponse = {
   rental: ComparableListing[];
   criteria: ComparablesCriteria | null;
   missingCriteria: string[];
+  matchConfig?: PricingMatchingConfig;
 };
+
+const CRITERIA_STEP_FEEDBACK_MS = 10_000;
+
+function criteriaStepMatchNote(opts: {
+  prevSale: number;
+  prevRental: number;
+  nextSale: number;
+  nextRental: number;
+  waitingWide: boolean;
+}): string {
+  const prevTotal = opts.prevSale + opts.prevRental;
+  const nextTotal = opts.nextSale + opts.nextRental;
+  const delta = nextTotal - prevTotal;
+  const counts = `${opts.nextSale} sale · ${opts.nextRental} rental`;
+
+  if (opts.waitingWide && delta <= 0) {
+    return "No new matches yet — loading wider pool…";
+  }
+  if (nextTotal === 0) return `Nothing matched · ${counts}`;
+  if (delta > 0) return `Found ${delta} more · ${counts}`;
+  if (delta < 0) return `${Math.abs(delta)} fewer · ${counts}`;
+  return `No change · ${counts}`;
+}
 
 type HistoryResponse = {
   events: CompactListingHistoryEvent[];
@@ -45,30 +85,26 @@ const UAG_INITIAL_VISIBLE = 4;
 const UAG_SHOW_MORE_STEP = 4;
 const UAG_MAX_VISIBLE = 8;
 
-function bedBathLabel(beds: number | null, baths: number | null): string {
-  const parts: string[] = [];
-  if (beds != null) parts.push(`${beds} bd`);
-  if (baths != null) parts.push(`${baths} ba`);
-  return parts.length ? parts.join(" · ") : "—";
-}
-
-// Identical thresholds to the Comparables / Comparable Rentals tabs — UAG shares
-// the same subjectComparablesCriteria + matchesComparableCriteria under the hood,
-// so the summary here mirrors those tabs (beds/baths ±1, living area ±30%,
-// lot ±40%, same vintage era plus the bordering era near an edge).
-function criteriaSummary(criteria: ComparablesCriteria): string {
-  const parts = [
-    `Zip ${criteria.zip}`,
-    `${criteria.beds} bed ±1 / ${criteria.baths} bath ±1`,
-    vintageCriteriaList(criteria),
-  ];
-  if (criteria.sqft != null) {
-    parts.push(`${fmtSqft(criteria.sqft)} ±30%`);
-  }
-  if (criteria.lotAcres != null) {
-    parts.push(`${fmtAcres(criteria.lotAcres)} ±40%`);
-  }
-  return parts.join(" · ");
+function UagMetaLine({
+  beds,
+  baths,
+  subjectBeds,
+  subjectBaths,
+  restParts,
+}: {
+  beds: number | null;
+  baths: number | null;
+  subjectBeds?: number | null;
+  subjectBaths?: number | null;
+  restParts: (string | null | undefined)[];
+}): ReactNode {
+  const rest = restParts.filter(Boolean) as string[];
+  return (
+    <p className="text-white/50 text-xs">
+      {renderCompBedBathMeta({ beds, baths, subjectBeds, subjectBaths })}
+      {rest.length > 0 ? ` · ${rest.join(" · ")}` : null}
+    </p>
+  );
 }
 
 function historyUrl(mlsId: string, town: string | null): string {
@@ -185,10 +221,14 @@ function UagRow({
   comp,
   town,
   isRental,
+  subjectBeds = null,
+  subjectBaths = null,
 }: {
   comp: ComparableListing;
   town: string | null;
   isRental: boolean;
+  subjectBeds?: number | null;
+  subjectBaths?: number | null;
 }) {
   const id = comp.listingKey?.trim() || comp.mlsId;
   const href = listingDetailHref(id, comp.address, town || comp.city);
@@ -198,13 +238,12 @@ function UagRow({
     id && comp.photoCount !== 0 ? listingPhotoProxyUrl(id, 0) : null;
 
   const priceLabel = `${fmtMoney(comp.price)}${isRental ? "/mo" : ""}`;
-  const metaParts = [
-    bedBathLabel(comp.beds, comp.baths),
+  const restMetaParts = [
     fmtSqft(comp.sqft),
     fmtAcres(comp.lotAcres),
     fmtYearBuilt(comp.yearBuilt),
     isRental ? null : fmtPricePerSqft(comp.pricePerSqft),
-  ].filter(Boolean);
+  ];
 
   return (
     <li
@@ -251,11 +290,15 @@ function UagRow({
               {comp.dom} DOM
             </p>
           ) : null}
-          <p
-            className={`text-white/50 text-xs${comp.dom != null ? " mt-1" : ""}`}
-          >
-            {metaParts.join(" · ")}
-          </p>
+          <div className={comp.dom != null ? "mt-1" : undefined}>
+            <UagMetaLine
+              beds={comp.beds}
+              baths={comp.baths}
+              subjectBeds={subjectBeds}
+              subjectBaths={subjectBaths}
+              restParts={restMetaParts}
+            />
+          </div>
         </div>
       </div>
       <UagRowHistory
@@ -273,12 +316,19 @@ function UagColumn({
   comps,
   town,
   isRental,
+  subjectBeds = null,
+  subjectBaths = null,
+  foundCountEmphasized = false,
 }: {
   label: string;
   emptyLabel: string;
   comps: ComparableListing[];
   town: string | null;
   isRental: boolean;
+  subjectBeds?: number | null;
+  subjectBaths?: number | null;
+  /** Scale "N found" up 50% while Criteria ± feedback is active. */
+  foundCountEmphasized?: boolean;
 }) {
   const [visibleCount, setVisibleCount] = useState(UAG_INITIAL_VISIBLE);
 
@@ -301,9 +351,20 @@ function UagColumn({
 
   return (
     <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-      <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 mb-3">
-        {label}
-      </p>
+      <div className="relative mb-1 pr-[4.5rem]">
+        <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
+          {label}
+        </p>
+        <span
+          className={`absolute top-0 right-0 inline-block origin-top-right font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums whitespace-nowrap text-white/40 transition-transform duration-300 ease-out ${
+            foundCountEmphasized ? "scale-150" : "scale-100"
+          }`}
+        >
+          {comps.length} found
+        </span>
+      </div>
+      <CompExactMatchLegend theme="dark" />
+      <div className="mt-3">
       {visible.length > 0 ? (
         <>
           <ul className="space-y-3">
@@ -313,6 +374,8 @@ function UagColumn({
                 comp={comp}
                 town={town}
                 isRental={isRental}
+                subjectBeds={subjectBeds}
+                subjectBaths={subjectBaths}
               />
             ))}
           </ul>
@@ -333,6 +396,7 @@ function UagColumn({
       ) : (
         <p className="text-white/50 text-sm">{emptyLabel}</p>
       )}
+      </div>
     </div>
   );
 }
@@ -349,9 +413,47 @@ export function ListingUagPageContent({
   const [data, setData] = useState<UagResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [sessionMatch, setSessionMatch] = useState<SessionMatchOverrides | null>(
+    null,
+  );
+  const [baselineMatch, setBaselineMatch] = useState<SessionMatchOverrides | null>(
+    null,
+  );
+  const [sessionSeeded, setSessionSeeded] = useState(false);
+  const [wideData, setWideData] = useState<UagResponse | null>(null);
+  const [widePoolLoading, setWidePoolLoading] = useState(false);
+  const [criteriaStepFeedback, setCriteriaStepFeedback] =
+    useState<CriteriaStepFeedback | null>(null);
+  const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const pendingWideFeedbackKeyRef = useRef<CriteriaStepKey | null>(null);
 
   const uagUrl = fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/uag`;
+  const wideUagUrl = `${uagUrl}${uagUrl.includes("?") ? "&" : "?"}pool=wide`;
   const town = townHint ?? null;
+
+  useEffect(() => {
+    setSessionMatch(null);
+    setBaselineMatch(null);
+    setSessionSeeded(false);
+    setWideData(null);
+    setWidePoolLoading(false);
+    setCriteriaStepFeedback(null);
+    pendingWideFeedbackKeyRef.current = null;
+    if (criteriaFeedbackTimerRef.current != null) {
+      clearTimeout(criteriaFeedbackTimerRef.current);
+      criteriaFeedbackTimerRef.current = null;
+    }
+  }, [uagUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (criteriaFeedbackTimerRef.current != null) {
+        clearTimeout(criteriaFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -394,30 +496,167 @@ export function ListingUagPageContent({
     };
   }, [uagUrl]);
 
-  const sale = data?.sale ?? [];
-  const rental = data?.rental ?? [];
-  const criteria = data?.criteria ?? null;
-  const missing = data?.missingCriteria ?? [];
+  useEffect(() => {
+    const criteria = data?.criteria;
+    if (!criteria || sessionSeeded) return;
+    const seeded = data.matchConfig
+      ? sessionOverridesFromPricingConfig(data.matchConfig, criteria)
+      : defaultSessionOverrides(criteria);
+    setBaselineMatch(seeded);
+    setSessionMatch(seeded);
+    setSessionSeeded(true);
+  }, [data, sessionSeeded]);
 
-  return (
-    <div className="w-full min-w-0 space-y-6">
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-        Under Agreement
-      </p>
-      <p className="text-white/50 text-sm">
-        Homes currently under contract (Under Contract and Under Contract –
-        Continue to Show), matched with the same thresholds as Comparables:
-        same zip, beds within ±1, baths within ±1, living area within ±30%,
-        similar vintage (same era, plus the bordering era near a vintage edge),
-        and lot size when available — pulled live from the MLS.
-      </p>
+  const sessionReady = Boolean(data?.criteria && sessionMatch && baselineMatch);
+  useEffect(() => {
+    if (!sessionReady) return;
+    let cancelled = false;
+    setWidePoolLoading(true);
+    void loadTabJson<UagResponse>(wideUagUrl)
+      .then((d) => {
+        if (cancelled || !d) return;
+        setWideData(d);
+      })
+      .finally(() => {
+        if (!cancelled) setWidePoolLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionReady, wideUagUrl]);
 
-      {criteria && (
-        <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
-          Matching {criteriaSummary(criteria)}
-        </p>
-      )}
+  const ensureWidePool = () => {
+    if (wideData || widePoolLoading) return;
+    setWidePoolLoading(true);
+    void loadTabJson<UagResponse>(wideUagUrl)
+      .then((d) => {
+        if (!d) return;
+        setWideData(d);
+      })
+      .finally(() => setWidePoolLoading(false));
+  };
 
+  const showCriteriaStepFeedback = (
+    key: CriteriaStepKey,
+    text: string,
+  ) => {
+    setCriteriaStepFeedback({ key, text });
+    if (criteriaFeedbackTimerRef.current != null) {
+      clearTimeout(criteriaFeedbackTimerRef.current);
+    }
+    criteriaFeedbackTimerRef.current = setTimeout(() => {
+      criteriaFeedbackTimerRef.current = null;
+      setCriteriaStepFeedback(null);
+    }, CRITERIA_STEP_FEEDBACK_MS);
+  };
+
+  const pool = wideData ?? data;
+  const criteria = data?.criteria ?? wideData?.criteria ?? null;
+  const missing = pool?.missingCriteria ?? data?.missingCriteria ?? [];
+
+  const handleSessionMatchChange = (
+    next: SessionMatchOverrides,
+    source?: { key: CriteriaStepKey },
+  ) => {
+    const needsWide =
+      Boolean(baselineMatch) &&
+      sessionOverridesNeedWidePool(next, baselineMatch!);
+    const waitingWide = needsWide && !wideData;
+    if (needsWide) ensureWidePool();
+
+    if (source && criteria) {
+      const salePool = pool?.sale ?? [];
+      const rentalPool = pool?.rental ?? [];
+      const prevSale = sessionMatch
+        ? salePool.filter((row) =>
+            comparableListingMatchesSession(row, criteria, sessionMatch),
+          ).length
+        : salePool.length;
+      const prevRental = sessionMatch
+        ? rentalPool.filter((row) =>
+            comparableListingMatchesSession(row, criteria, sessionMatch),
+          ).length
+        : rentalPool.length;
+      const nextSale = salePool.filter((row) =>
+        comparableListingMatchesSession(row, criteria, next),
+      ).length;
+      const nextRental = rentalPool.filter((row) =>
+        comparableListingMatchesSession(row, criteria, next),
+      ).length;
+      showCriteriaStepFeedback(
+        source.key,
+        criteriaStepMatchNote({
+          prevSale,
+          prevRental,
+          nextSale,
+          nextRental,
+          waitingWide,
+        }),
+      );
+      pendingWideFeedbackKeyRef.current = waitingWide ? source.key : null;
+    }
+
+    setSessionMatch(next);
+  };
+
+  useEffect(() => {
+    const key = pendingWideFeedbackKeyRef.current;
+    if (!key || !wideData || !criteria || !sessionMatch) return;
+    pendingWideFeedbackKeyRef.current = null;
+    const nextSale = (wideData.sale ?? []).filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    ).length;
+    const nextRental = (wideData.rental ?? []).filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    ).length;
+    const total = nextSale + nextRental;
+    showCriteriaStepFeedback(
+      key,
+      total === 0
+        ? `Nothing matched · ${nextSale} sale · ${nextRental} rental`
+        : `Found ${total} · ${nextSale} sale · ${nextRental} rental`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when wide pool lands
+  }, [wideData]);
+
+  const sale = useMemo(() => {
+    const rows = pool?.sale ?? [];
+    if (!criteria || !sessionMatch) return rows;
+    return rows.filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    );
+  }, [pool?.sale, criteria, sessionMatch]);
+
+  const rental = useMemo(() => {
+    const rows = pool?.rental ?? [];
+    if (!criteria || !sessionMatch) return rows;
+    return rows.filter((row) =>
+      comparableListingMatchesSession(row, criteria, sessionMatch),
+    );
+  }, [pool?.rental, criteria, sessionMatch]);
+
+  const showCriteria = Boolean(criteria && sessionMatch) && !loading;
+
+  const criteriaBlock =
+    showCriteria && criteria && sessionMatch ? (
+      <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
+        <MatchingCriteriaSummary
+          criteria={criteria}
+          session={sessionMatch}
+          onSessionChange={handleSessionMatchChange}
+          stepFeedback={criteriaStepFeedback}
+          defaultControlsOpen
+        />
+        {widePoolLoading && !wideData ? (
+          <span className="mt-1 block font-mono text-[9px] tracking-[0.12em] uppercase text-white/35">
+            loading wider match pool…
+          </span>
+        ) : null}
+      </div>
+    ) : null;
+
+  const mainColumn = (
+    <>
       {loading && (
         <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/40">
           Loading…
@@ -447,6 +686,9 @@ export function ListingUagPageContent({
             comps={sale}
             town={town}
             isRental={false}
+            subjectBeds={criteria?.beds ?? null}
+            subjectBaths={criteria?.baths ?? null}
+            foundCountEmphasized={Boolean(criteriaStepFeedback)}
           />
           <UagColumn
             label="Rentals · Under agreement"
@@ -454,8 +696,34 @@ export function ListingUagPageContent({
             comps={rental}
             town={town}
             isRental
+            subjectBeds={criteria?.beds ?? null}
+            subjectBaths={criteria?.baths ?? null}
+            foundCountEmphasized={Boolean(criteriaStepFeedback)}
           />
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="w-full min-w-0 space-y-6">
+      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
+        Under Agreement
+      </p>
+      <p className="text-white/50 text-sm">
+        Homes currently under contract (Under Contract and Under Contract –
+        Continue to Show), matched with the same thresholds as Comparables:
+        same zip, beds within ±1, baths within ±1, living area within ±30%,
+        similar vintage (same era, plus the bordering era near a vintage edge),
+        and lot size when available — pulled live from the MLS.
+      </p>
+
+      {showCriteria ? (
+        <ListingCriteriaSideLayout criteria={criteriaBlock}>
+          {mainColumn}
+        </ListingCriteriaSideLayout>
+      ) : (
+        mainColumn
       )}
     </div>
   );

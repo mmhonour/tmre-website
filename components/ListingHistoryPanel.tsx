@@ -21,6 +21,7 @@ type PriorListing = {
   originalListPrice: number | null;
   closeDate: string | null;
   closePrice: number | null;
+  isRental?: boolean;
 };
 
 type HistoryResponse = {

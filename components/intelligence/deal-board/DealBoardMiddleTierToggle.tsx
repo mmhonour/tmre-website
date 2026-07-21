@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * Collapse band between top/bottom Goldilocks tiers. Only shown when the board
- * is sorted by score descending — otherwise middle-tier collapse is disabled.
+ * Collapse band between top/bottom Goldilocks tiers. Shown only while middle
+ * rows are hidden — once expanded, this panel disappears (see DealBoardList).
  */
 export default function DealBoardMiddleTierToggle({
-  expanded,
   middleCount,
   resultCount,
   onToggle,
 }: {
-  expanded: boolean;
+  /** @deprecated Always collapsed when this control is mounted. */
+  expanded?: boolean;
   middleCount: number;
   resultCount: number;
   onToggle: () => void;
@@ -26,15 +26,15 @@ export default function DealBoardMiddleTierToggle({
       <button
         type="button"
         onClick={onToggle}
-        aria-expanded={expanded}
+        aria-expanded={false}
         className="group w-full flex flex-col items-center gap-1.5 rounded-xl border border-navy/20 bg-white px-4 py-3.5 shadow-[0_3px_0_0_rgba(28,42,58,0.18),0_4px_12px_rgba(28,42,58,0.08)] transition-[transform,box-shadow,border-color] hover:border-navy/35 hover:shadow-[0_2px_0_0_rgba(28,42,58,0.18)] active:translate-y-px active:shadow-[0_1px_0_0_rgba(28,42,58,0.16)]"
       >
         <span className="inline-flex items-center gap-2.5">
-          <FlashArrow dir={expanded ? "up" : "down"} />
+          <FlashArrow dir="down" />
           <span className="font-mono text-[11px] sm:text-[12px] tracking-[0.16em] uppercase font-bold text-navy">
             Middle tier
           </span>
-          <FlashArrow dir={expanded ? "up" : "down"} />
+          <FlashArrow dir="down" />
         </span>
 
         <span className="font-serif italic text-xl sm:text-2xl text-navy leading-none tabular-nums">
@@ -42,24 +42,16 @@ export default function DealBoardMiddleTierToggle({
         </span>
 
         <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
-          {expanded ? (
-            <>
-              Tap to hide · {pct}% of this page
-            </>
-          ) : (
-            <>
-              Tap to show · {pct}% of this page hidden between top &amp; bottom
-            </>
-          )}
+          Tap to show · {pct}% of this page hidden between top &amp; bottom
         </span>
 
         <span
           className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-[9px] tracking-[0.14em] uppercase text-gold"
           aria-hidden
         >
-          <FlashArrow dir={expanded ? "up" : "down"} small />
-          <span>{expanded ? "Collapse" : "Expand"}</span>
-          <FlashArrow dir={expanded ? "up" : "down"} small />
+          <FlashArrow dir="down" small />
+          <span>Expand</span>
+          <FlashArrow dir="down" small />
         </span>
       </button>
     </div>

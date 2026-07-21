@@ -351,7 +351,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Goldilocks score',
     category: 'scoring',
     definition:
-      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools) — “not too cheap, not overpriced.” Persisted on listings and read by pages.',
+      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools, DOM) — “not too cheap, not overpriced.” Persisted on listings and read by pages. DOM bands are editable in Admin → Goldilocks.',
   },
   {
     term: 'PPSF',

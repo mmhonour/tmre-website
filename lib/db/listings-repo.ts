@@ -20,6 +20,12 @@ import {
   type ListingSnapshotEntry,
 } from '@/lib/db/listing-history-log'
 import type { PoolClient } from 'pg'
+import { ADMIN_SYNC_HISTORY_MAX_LIMIT } from '@/lib/admin-sync-history-glom'
+
+export {
+  ADMIN_SYNC_HISTORY_DEFAULT_DAYS,
+  ADMIN_SYNC_HISTORY_MAX_LIMIT,
+} from '@/lib/admin-sync-history-glom'
 
 // ---------------------------------------------------------------------------
 // listings-repo — Postgres write path (Phase 3 of the SQLite → Postgres move).
@@ -517,6 +523,8 @@ export type AdminSyncRunHistoryResult = {
   total: number
   limit: number
   offset: number
+  /** ISO lower bound applied to `started_at`, when requested. */
+  since: string | null
 }
 
 /**
@@ -528,19 +536,46 @@ export async function readAdminSyncRunHistory(options?: {
   offset?: number
   /** When set, only successful (`true`) or failed (`false`) rows. */
   ok?: boolean | null
+  /**
+   * Inclusive lower bound on `started_at` (Date or ISO string).
+   * Prefer this over a tiny limit so Admin can load a full week of runs.
+   */
+  since?: Date | string | null
 }): Promise<AdminSyncRunHistoryResult> {
-  const limit = Math.min(200, Math.max(1, options?.limit ?? 50))
+  const limit = Math.min(
+    ADMIN_SYNC_HISTORY_MAX_LIMIT,
+    Math.max(1, options?.limit ?? 50),
+  )
   const offset = Math.max(0, options?.offset ?? 0)
   const okFilter = options?.ok
 
-  const where =
-    okFilter === true ? 'WHERE ok = true' : okFilter === false ? 'WHERE ok = false' : ''
+  let sinceIso: string | null = null
+  if (options?.since != null && options.since !== '') {
+    const ms =
+      options.since instanceof Date
+        ? options.since.getTime()
+        : Date.parse(String(options.since))
+    if (Number.isFinite(ms)) sinceIso = new Date(ms).toISOString()
+  }
+
+  const clauses: string[] = []
+  const params: unknown[] = []
+  if (okFilter === true) clauses.push('ok = true')
+  else if (okFilter === false) clauses.push('ok = false')
+  if (sinceIso) {
+    params.push(sinceIso)
+    clauses.push(`started_at >= $${params.length}::timestamptz`)
+  }
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
 
   const countRow = await queryOne<{ n: number }>(
     `SELECT count(*)::int AS n FROM sync_runs ${where}`,
+    params,
   )
   const total = countRow?.n ?? 0
 
+  const limitParam = params.length + 1
+  const offsetParam = params.length + 2
   const runs = await query<AdminSyncRunHistoryRow>(
     `SELECT id,
             started_at::text          AS "startedAt",
@@ -553,11 +588,11 @@ export async function readAdminSyncRunHistory(options?: {
        FROM sync_runs
        ${where}
       ORDER BY started_at DESC, id DESC
-      LIMIT $1 OFFSET $2`,
-    [limit, offset],
+      LIMIT $${limitParam} OFFSET $${offsetParam}`,
+    [...params, limit, offset],
   )
 
-  return { runs, total, limit, offset }
+  return { runs, total, limit, offset, since: sinceIso }
 }
 
 /** Total listings row count. */

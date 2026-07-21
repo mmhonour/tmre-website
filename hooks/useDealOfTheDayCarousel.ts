@@ -71,6 +71,7 @@ function hasListing(deal: DealCarouselPayload | null | undefined): deal is DealC
 }
 
 export type DealTransactionFilter = "all" | "sale" | "rental";
+export type DealPropertyClassFilter = "homes" | "multi" | "condos";
 
 export function useDealOfTheDayCarousel(options?: {
   /** Start the carousel on this town when available. */
@@ -81,6 +82,8 @@ export function useDealOfTheDayCarousel(options?: {
   enabled?: boolean;
   /** Match Intelligence tx filter — sale/rental only, or all property types. */
   transactionFilter?: DealTransactionFilter;
+  /** Single-family / multi / condo — defaults to homes. */
+  propertyClass?: DealPropertyClassFilter;
   /** When set, fetch this exact listing instead of the town's auto-pick. */
   pinnedListingId?: string | null;
 }) {
@@ -110,7 +113,11 @@ export function useDealOfTheDayCarousel(options?: {
       ? "sale"
       : options?.transactionFilter === "rental"
         ? "rental"
-        : null;
+        : "sale";
+  const propertyClassParam: DealPropertyClassFilter =
+    options?.propertyClass === "multi" || options?.propertyClass === "condos"
+      ? options.propertyClass
+      : "homes";
   const pinnedListingId = options?.pinnedListingId?.trim() || null;
 
   useEffect(() => {
@@ -152,8 +159,11 @@ export function useDealOfTheDayCarousel(options?: {
     if (useBundle) {
       void (async () => {
         try {
-          const qs = new URLSearchParams({ bundle: "1" });
-          if (kindParam) qs.set("kind", kindParam);
+          const qs = new URLSearchParams({
+            bundle: "1",
+            kind: kindParam,
+            property: propertyClassParam,
+          });
           const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
           if (r.ok) {
             const body = (await r.json()) as {
@@ -179,8 +189,11 @@ export function useDealOfTheDayCarousel(options?: {
           void (async () => {
             let deal: DealCarouselPayload | null = null;
             try {
-              const qs = new URLSearchParams({ city: town });
-              if (kindParam) qs.set("kind", kindParam);
+              const qs = new URLSearchParams({
+                city: town,
+                kind: kindParam,
+                property: propertyClassParam,
+              });
               const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
               if (r.ok) {
                 const body = (await r.json()) as DealCarouselPayload;
@@ -201,8 +214,11 @@ export function useDealOfTheDayCarousel(options?: {
         void (async () => {
           let deal: DealCarouselPayload | null = null;
           try {
-            const qs = new URLSearchParams({ city: town });
-            if (kindParam) qs.set("kind", kindParam);
+            const qs = new URLSearchParams({
+              city: town,
+              kind: kindParam,
+              property: propertyClassParam,
+            });
             if (pinnedListingId) qs.set("listing", pinnedListingId);
             const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
             if (r.ok) {
@@ -224,7 +240,15 @@ export function useDealOfTheDayCarousel(options?: {
     return () => {
       cancelled = true;
     };
-  }, [townsToFetch, enabled, kindParam, pinnedListingId, rotate, options?.initialTown]);
+  }, [
+    townsToFetch,
+    enabled,
+    kindParam,
+    propertyClassParam,
+    pinnedListingId,
+    rotate,
+    options?.initialTown,
+  ]);
 
   const carouselTowns = useMemo(
     () => townsToFetch.filter((town) => hasListing(dealsByTown[town])),
@@ -241,7 +265,7 @@ export function useDealOfTheDayCarousel(options?: {
 
   useEffect(() => {
     setIndex(0);
-  }, [rotate, options?.initialTown, kindParam, pinnedListingId]);
+  }, [rotate, options?.initialTown, kindParam, propertyClassParam, pinnedListingId]);
 
   useEffect(() => {
     if (pinnedTown || carouselTowns.length === 0) return;

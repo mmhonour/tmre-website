@@ -15,7 +15,7 @@ export default function ListingSidebar({
   unframed?: boolean;
 }) {
   return (
-    <div className="space-y-6 min-w-0">
+    <div className="space-y-3 min-w-0">
       {heroPhoto ? (
         <ListingHeroPhoto {...heroPhoto} unframed={unframed} />
       ) : null}

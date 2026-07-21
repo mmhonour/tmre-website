@@ -4,7 +4,8 @@ export type GoldilocksFactorKey =
   | "finishes"
   | "ppsf"
   | "layout"
-  | "schools";
+  | "schools"
+  | "dom";
 
 /** Client-safe score breakdown shape (shared with API responses). */
 export type ScoreBreakdown = {
@@ -14,6 +15,8 @@ export type ScoreBreakdown = {
   pricePerSqftFit: number;
   layoutQuality: number;
   schoolRating: number;
+  /** Days-on-market factor (0–100). Older stored scores may omit this. */
+  domRating?: number;
   composite: number;
   weights: {
     age: number;
@@ -22,6 +25,7 @@ export type ScoreBreakdown = {
     ppsf: number;
     layout: number;
     schools: number;
+    dom?: number;
   };
 };
 
@@ -41,6 +45,7 @@ export const FACTOR_LABELS: Record<GoldilocksFactorKey, string> = {
   ppsf: "PPSF fit",
   layout: "Layout",
   schools: "Schools",
+  dom: "DOM",
 };
 
 export const FACTOR_DESCRIPTIONS: Record<GoldilocksFactorKey, string> = {
@@ -55,6 +60,7 @@ export const FACTOR_DESCRIPTIONS: Record<GoldilocksFactorKey, string> = {
     "Bed/bath fit, square footage per bedroom, and layout keywords like open floor plan or master suite.",
   schools:
     "Elementary, middle, and high school ratings for the listing, with a town baseline when school names are missing.",
+  dom: "Days on market — homes in the mid-range sweet spot score highest; brand-new listings and very long DOM score lower. Bands are editable in Admin → Goldilocks.",
 };
 
 export function factorContribution(factorScore: number, weight: number): number {
@@ -89,7 +95,7 @@ export function buildCompositeExplain(composite: number): { title: string; lines
   return {
     title: "Goldilocks composite",
     lines: [
-      `${composite.toFixed(1)}/100 summarizes how this listing ranks on age, condition, finishes, PPSF fit, layout, and schools.`,
+      `${composite.toFixed(1)}/100 summarizes how this listing ranks on age, condition, finishes, PPSF fit, layout, schools, and days on market.`,
       "Scores above 85 are exceptional picks; 70–84 are strong; below 70 still qualify but with more trade-offs.",
     ],
   };

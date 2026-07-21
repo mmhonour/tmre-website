@@ -3527,7 +3527,12 @@ export default function IntelligenceClient() {
                 city={active}
                 theme="hero"
                 rotateTowns={active === "All"}
-                transactionFilter={tx}
+                transactionFilter={tx === "all" ? "sale" : tx}
+                propertyClass={
+                  saleProperty === "multi" || saleProperty === "condos"
+                    ? saleProperty
+                    : "homes"
+                }
                 className="w-full"
               />
             </div>
@@ -3856,6 +3861,7 @@ export default function IntelligenceClient() {
               { label: "PPSF fit", detail: "Price-per-sqft vs city median — the Goldilocks value band" },
               { label: "Layout", detail: "Bed/bath fit, sqft per bedroom, and floor-plan keywords" },
               { label: "Schools", detail: "School ratings for the listing, with town baselines as fallback" },
+              { label: "DOM", detail: "Days on market — mid-range sweet spot scores highest; very new or very stale score lower" },
             ].map((row) => (
               <li key={row.label} className="flex gap-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-gold mt-1.5 shrink-0" />
@@ -3948,7 +3954,7 @@ function ScoreInfoButton({ onInfoClick }: { onInfoClick: () => void }) {
             transform: tipPos.placeAbove ? "translateY(-100%)" : undefined,
           }}
         >
-          A 0–100 Goldilocks composite — age, condition, finishes, PPSF fit, layout, and schools — ranked against peers in each town.
+          A 0–100 Goldilocks composite — age, condition, finishes, PPSF fit, layout, schools, and DOM — ranked against peers in each town.
           <span
             className={`absolute left-1/2 -translate-x-1/2 border-4 border-transparent ${
               tipPos.placeAbove
@@ -4826,6 +4832,8 @@ function PriceRangeInputs({
   const [minDraft, setMinDraft] = useState<string | null>(null);
   const [maxDraft, setMaxDraft] = useState<string | null>(null);
   const [focusedBound, setFocusedBound] = useState<"min" | "max" | null>(null);
+  const [boundNote, setBoundNote] = useState<string | null>(null);
+  const boundNoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxStepIndex = boardPriceMaxIndex(steps);
   const lo = Math.min(minIndex, maxIndex);
   const hi = Math.max(minIndex, maxIndex);
@@ -4835,15 +4843,57 @@ function PriceRangeInputs({
   const priceFloor = steps[0] ?? 0;
   const priceCeiling = steps[maxStepIndex] ?? 0;
 
+  const clearBoundNoteTimer = () => {
+    if (boundNoteTimerRef.current != null) {
+      clearTimeout(boundNoteTimerRef.current);
+      boundNoteTimerRef.current = null;
+    }
+  };
+
+  const showBoundNote = (message: string) => {
+    clearBoundNoteTimer();
+    setBoundNote(message);
+    boundNoteTimerRef.current = setTimeout(() => {
+      setBoundNote(null);
+      boundNoteTimerRef.current = null;
+    }, 10_000);
+  };
+
+  useEffect(() => () => clearBoundNoteTimer(), []);
+
   const setSliderActive = (next: boolean) => {
     onActiveChange(next);
   };
 
   const commitMinPrice = (raw: string) => {
     setMinDraft(null);
+    const trimmed = raw.trim();
+    if (!trimmed) return;
     const parsed = parseIntelPriceInput(raw);
-    if (parsed == null) return;
-    const clamped = Math.max(priceFloor, Math.min(parsed, steps[hi] ?? parsed));
+    if (parsed == null) {
+      showBoundNote(
+        "Lower price isn’t valid — use dollars, or a number with K/M (e.g. 750k or 1.2m).",
+      );
+      return;
+    }
+    const upperCap = steps[hi] ?? parsed;
+    if (parsed < priceFloor) {
+      showBoundNote(
+        `Lower price can’t be below ${formatIntelPriceStep(priceFloor)} (lowest on this board).`,
+      );
+    } else if (parsed > upperCap) {
+      showBoundNote(
+        `Lower price can’t be above the upper bound (${formatIntelPriceStep(upperCap)}).`,
+      );
+    } else if (parsed > priceCeiling) {
+      showBoundNote(
+        `Lower price can’t be above ${formatIntelPriceStep(priceCeiling)} (highest on this board).`,
+      );
+    } else {
+      clearBoundNoteTimer();
+      setBoundNote(null);
+    }
+    const clamped = Math.max(priceFloor, Math.min(parsed, upperCap));
     const index = minPriceToStepIndex(clamped, steps);
     const finalIndex = Math.min(index, hi);
     if (finalIndex !== lo) setSliderActive(true);
@@ -4852,9 +4902,33 @@ function PriceRangeInputs({
 
   const commitMaxPrice = (raw: string) => {
     setMaxDraft(null);
+    const trimmed = raw.trim();
+    if (!trimmed) return;
     const parsed = parseIntelPriceInput(raw);
-    if (parsed == null) return;
-    const clamped = Math.min(priceCeiling, Math.max(parsed, steps[lo] ?? parsed));
+    if (parsed == null) {
+      showBoundNote(
+        "Upper price isn’t valid — use dollars, or a number with K/M (e.g. 750k or 1.2m).",
+      );
+      return;
+    }
+    const lowerCap = steps[lo] ?? parsed;
+    if (parsed > priceCeiling) {
+      showBoundNote(
+        `Upper price can’t be above ${formatIntelPriceStep(priceCeiling)} (highest on this board).`,
+      );
+    } else if (parsed < lowerCap) {
+      showBoundNote(
+        `Upper price can’t be below the lower bound (${formatIntelPriceStep(lowerCap)}).`,
+      );
+    } else if (parsed < priceFloor) {
+      showBoundNote(
+        `Upper price can’t be below ${formatIntelPriceStep(priceFloor)} (lowest on this board).`,
+      );
+    } else {
+      clearBoundNoteTimer();
+      setBoundNote(null);
+    }
+    const clamped = Math.min(priceCeiling, Math.max(parsed, lowerCap));
     const index = maxPriceToStepIndex(clamped, steps);
     const finalIndex = Math.max(index, lo);
     if (finalIndex !== hi) setSliderActive(true);
@@ -4865,10 +4939,20 @@ function PriceRangeInputs({
   const applyPriceSuffix = (bound: "min" | "max", suffix: "k" | "m") => {
     if (disabled) return;
     const draft = bound === "min" ? minDraft : maxDraft;
-    if (draft == null || !draft.trim()) return;
+    if (draft == null || !draft.trim()) {
+      showBoundNote(
+        `Type a number in the ${bound === "min" ? "lower" : "upper"} price box before tapping ${suffix.toUpperCase()}.`,
+      );
+      return;
+    }
     const baseRaw = draft.replace(/[kKmM]+$/g, "");
     const coefficient = Number(baseRaw.replace(/[^0-9.]/g, ""));
-    if (!Number.isFinite(coefficient) || coefficient < 0) return;
+    if (!Number.isFinite(coefficient) || coefficient < 0) {
+      showBoundNote(
+        `${bound === "min" ? "Lower" : "Upper"} price isn’t valid — type a number first, then ${suffix.toUpperCase()}.`,
+      );
+      return;
+    }
     const dollars = Math.round(coefficient * (suffix === "m" ? 1_000_000 : 1_000));
     if (bound === "min") {
       commitMinPrice(String(dollars));
@@ -5009,6 +5093,15 @@ function PriceRangeInputs({
             M
           </button>
         </div>
+      ) : null}
+      {boundNote ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="font-mono text-[10px] leading-snug text-coral"
+        >
+          {boundNote}
+        </p>
       ) : null}
     </div>
   );

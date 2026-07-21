@@ -15,9 +15,10 @@ import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, resolveListingTown } from '@/lib/tmre-towns'
+import { matchedRemarkPhrases } from '@/lib/remarks-phrase-match'
 
 /** Bump when edge scoring weights / signals change so scores rebuild. */
-export const EDGE_SCORE_ALGO_VERSION = 1
+export const EDGE_SCORE_ALGO_VERSION = 2
 
 const WEIGHTS = {
   location: 0.12,
@@ -153,7 +154,7 @@ function collectRemarks(l: Listing): string {
 }
 
 function matched(haystack: string, needles: string[]): string[] {
-  return needles.filter((n) => haystack.includes(n))
+  return matchedRemarkPhrases(haystack, needles)
 }
 
 function referencePrice(l: Listing): number | null {

@@ -89,9 +89,12 @@ const SURFACES: SurfaceMock[] = [
   },
 ];
 
-const SURFACE_TEASER_MS = 1200;
-const SURFACE_FADE_MS = 600;
-const SURFACE_HOLD_MS = 3500;
+const SURFACE_TEASER_MS = 2400;
+const SURFACE_FADE_MS = 1200;
+const SURFACE_HOLD_MS = 7000;
+
+/** Pill show/hide cadence — 75% slower than the original timers (×1.75). */
+const PILL_TIME_SCALE = 1.75;
 /**
  * Homepage primer: educate on the Goldilocks score, preview site surfaces,
  * and hand off to this week’s Deal of the Week — atmosphere from that listing.
@@ -123,7 +126,7 @@ export default function HomeMethodOverview() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/deal-of-the-day?bundle=1&kind=sale", { cache: "no-store" })
+    fetch("/api/deal-of-the-day?bundle=1&kind=sale&property=homes", { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as {
@@ -278,6 +281,7 @@ export default function HomeMethodOverview() {
                     mlsId: live.mlsId,
                     listingKey: live.listingKey,
                     kind: "sale",
+                    propertyClass: "homes",
                   })}
                   className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark rounded-sm"
                   aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
@@ -541,12 +545,20 @@ function HomeObjectivePills() {
         if (!prev[i]) return prev;
         if (countVisible(prev) <= PILL_MIN_VISIBLE) {
           // Can't drop below the floor — try again later.
-          schedule(i, () => hidePill(i), 1200 + Math.random() * 1800);
+          schedule(
+            i,
+            () => hidePill(i),
+            (1200 + Math.random() * 1800) * PILL_TIME_SCALE,
+          );
           return prev;
         }
         const next = [...prev];
         next[i] = false;
-        schedule(i, () => showPill(i), 700 + Math.random() * 2200);
+        schedule(
+          i,
+          () => showPill(i),
+          (700 + Math.random() * 2200) * PILL_TIME_SCALE,
+        );
         return next;
       });
     };
@@ -555,12 +567,20 @@ function HomeObjectivePills() {
       setVisible((prev) => {
         if (prev[i]) return prev;
         if (countVisible(prev) >= PILL_MAX_VISIBLE) {
-          schedule(i, () => showPill(i), 900 + Math.random() * 1600);
+          schedule(
+            i,
+            () => showPill(i),
+            (900 + Math.random() * 1600) * PILL_TIME_SCALE,
+          );
           return prev;
         }
         const next = [...prev];
         next[i] = true;
-        schedule(i, () => hidePill(i), 2200 + Math.random() * 3800);
+        schedule(
+          i,
+          () => hidePill(i),
+          (2200 + Math.random() * 3800) * PILL_TIME_SCALE,
+        );
         return next;
       });
     };
@@ -569,9 +589,17 @@ function HomeObjectivePills() {
     FILTER_SIGNALS.forEach((_, i) => {
       const startVisible = i < PILL_MAX_VISIBLE;
       if (startVisible) {
-        schedule(i, () => hidePill(i), 1400 + Math.random() * 3200 + i * 180);
+        schedule(
+          i,
+          () => hidePill(i),
+          (1400 + Math.random() * 3200 + i * 180) * PILL_TIME_SCALE,
+        );
       } else {
-        schedule(i, () => showPill(i), 800 + Math.random() * 2800 + i * 120);
+        schedule(
+          i,
+          () => showPill(i),
+          (800 + Math.random() * 2800 + i * 120) * PILL_TIME_SCALE,
+        );
       }
     });
 

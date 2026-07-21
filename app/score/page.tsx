@@ -21,6 +21,7 @@ const FACTOR_ICONS: Record<GoldilocksFactorKey, string> = {
   ppsf: "◇",
   layout: "△",
   schools: "◈",
+  dom: "◷",
 };
 
 export default async function ScorePage() {
@@ -88,7 +89,7 @@ export default async function ScorePage() {
               One number that tells you where to look first.
             </p>
             <p className="text-charcoal/75 leading-relaxed">
-              Every listing that enters our markets is evaluated through the Goldilocks model — the same composite used on Intelligence, Deal of the Day, and Deal of the Week. Six factors are each scored 0–100, weighted, and summed into a single composite out of 100.
+              Every listing that enters our markets is evaluated through the Goldilocks model — the same composite used on Intelligence, Deal of the Day, and Deal of the Week. Seven factors are each scored 0–100, weighted, and summed into a single composite out of 100.
             </p>
             <p className="text-charcoal/75 leading-relaxed">
               The model is calibrated separately for each city, so an 82 in Norwalk reflects the same relative strength as an 82 in Westport — even though the absolute prices are very different. Scores are relative to active inventory, not absolute thresholds.

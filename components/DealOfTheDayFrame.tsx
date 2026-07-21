@@ -14,6 +14,7 @@ import {
   useDealOfTheDayCarousel,
   type DealCarouselPayload,
   type DealCarouselScore,
+  type DealPropertyClassFilter,
   type DealTransactionFilter,
 } from "@/hooks/useDealOfTheDayCarousel";
 import { dealOfTheDayHref, listingDetailHrefForListing } from "@/lib/listing-url";
@@ -25,12 +26,14 @@ function fullDealOfTheDayHref(
   town: string | null | undefined,
   deal: DealCarouselPayload | null | undefined,
   transactionFilter: DealTransactionFilter,
+  propertyClass: DealPropertyClassFilter = "homes",
 ): string {
   const listing = deal?.listing;
   return dealOfTheDayHref(town, {
     mlsId: listing?.mlsId,
     listingKey: listing?.listingKey,
-    kind: deal?.kind ?? (transactionFilter === "all" ? null : transactionFilter),
+    kind: deal?.kind ?? (transactionFilter === "all" ? "sale" : transactionFilter),
+    propertyClass,
   });
 }
 
@@ -406,7 +409,8 @@ export default function DealOfTheDayFrame({
   city,
   theme = "hero",
   rotateTowns = true,
-  transactionFilter = "all",
+  transactionFilter = "sale",
+  propertyClass = "homes",
   className,
 }: {
   city?: string;
@@ -415,6 +419,8 @@ export default function DealOfTheDayFrame({
   rotateTowns?: boolean;
   /** Sales/rentals filter — matches Intelligence tx pills when set. */
   transactionFilter?: DealTransactionFilter;
+  /** Homes / multi / condos — defaults to single-family. */
+  propertyClass?: DealPropertyClassFilter;
   className?: string;
 }) {
   const {
@@ -433,6 +439,7 @@ export default function DealOfTheDayFrame({
     initialTown: city,
     rotate: rotateTowns,
     transactionFilter,
+    propertyClass,
   });
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -474,7 +481,12 @@ export default function DealOfTheDayFrame({
     carouselTowns.length > 1
       ? `${carouselIndex + 1}/${carouselTowns.length}`
       : null;
-  const dealHref = fullDealOfTheDayHref(currentTown ?? city, deal, transactionFilter);
+  const dealHref = fullDealOfTheDayHref(
+    currentTown ?? city,
+    deal,
+    transactionFilter,
+    propertyClass,
+  );
 
   const emptyCopy = headerTown
     ? transactionFilter === "sale"
@@ -716,7 +728,12 @@ export default function DealOfTheDayFrame({
                 </Link>
               )}
               <Link
-                href={fullDealOfTheDayHref(currentTown ?? city, modalDeal, transactionFilter)}
+                href={fullDealOfTheDayHref(
+                  currentTown ?? city,
+                  modalDeal,
+                  transactionFilter,
+                  propertyClass,
+                )}
                 className="font-mono text-[10px] tracking-[0.15em] uppercase text-gold hover:underline ml-auto"
               >
                 Full Deal of the Day →

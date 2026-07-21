@@ -21,7 +21,8 @@ export const ADMIN_SYNC_ACTIONS = {
   },
   'deal-of-the-day': {
     label: 'Deal of the Day cache',
-    description: 'Recompute Deal of the Day picks for all towns',
+    description:
+      'Recompute Deal of the Day picks (7 towns × sale/rental × homes/multi/condos)',
   },
   'property-addresses': {
     label: 'Property address directory',

@@ -4,6 +4,7 @@ import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingsFromDb, upsertListingScores } from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
+import { markGoldilocksConfigAppliedToScores } from '@/lib/goldilocks-config'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 export type TownScoreRebuildResult = {
@@ -145,6 +146,19 @@ export async function rebuildAllListingScores(): Promise<ListingScoresRebuildRes
       await rebuildAvgScoreByVintageCache()
     } catch (err) {
       console.error('[listing-scores] avg-score-by-vintage cache refresh failed', err)
+    }
+  }
+
+  // Mark the saved scoring config as applied so Admin can disable Rebuild until
+  // weights / characteristics / DOM tiers change again.
+  if (towns.every((row) => row.ok)) {
+    try {
+      await markGoldilocksConfigAppliedToScores()
+    } catch (err) {
+      console.error(
+        '[listing-scores] failed to record applied Goldilocks config fingerprint',
+        err,
+      )
     }
   }
 

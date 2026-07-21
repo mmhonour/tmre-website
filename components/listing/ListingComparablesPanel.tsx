@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
+import {
+  CompExactMatchLegend,
+  renderCompBedBathMeta,
+} from "@/components/listing/CompExactMatchMeta";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtAcres,
@@ -29,6 +33,8 @@ import {
   sessionOverridesNeedWidePool,
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
+import { listingRecentlyClosedPanelId } from "@/components/listing/listing-section-ids";
+import ListingCriteriaSideLayout from "@/components/listing/ListingCriteriaSideLayout";
 
 /** How long the ± criteria find/no-find note stays visible. */
 const CRITERIA_STEP_FEEDBACK_MS = 10_000;
@@ -54,6 +60,7 @@ function criteriaStepMatchNote(opts: {
   if (delta < 0) return `${Math.abs(delta)} fewer · ${counts}`;
   return `No change · ${counts}`;
 }
+
 import type { PricingMatchingConfig } from "@/lib/pricing-matching-config-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -72,11 +79,28 @@ function fmtCompPricePerSqft(pricePerSqft: number | null | undefined): string | 
   return fmtPricePerSqft(pricePerSqft);
 }
 
-function bedBathLabel(beds: number | null, baths: number | null): string {
-  const parts: string[] = [];
-  if (beds != null) parts.push(`${beds} bd`);
-  if (baths != null) parts.push(`${baths} ba`);
-  return parts.length ? parts.join(" · ") : "—";
+function CompMetaLine({
+  beds,
+  baths,
+  subjectBeds,
+  subjectBaths,
+  restParts,
+  className,
+}: {
+  beds: number | null;
+  baths: number | null;
+  subjectBeds?: number | null;
+  subjectBaths?: number | null;
+  restParts: (string | null | undefined)[];
+  className: string;
+}): ReactNode {
+  const rest = restParts.filter(Boolean) as string[];
+  return (
+    <p className={className}>
+      {renderCompBedBathMeta({ beds, baths, subjectBeds, subjectBaths })}
+      {rest.length > 0 ? ` · ${rest.join(" · ")}` : null}
+    </p>
+  );
 }
 
 type SortDir = "asc" | "desc";
@@ -365,6 +389,8 @@ function CompRow({
   showCloseDate,
   isRental = false,
   scoreColorClass,
+  subjectBeds = null,
+  subjectBaths = null,
 }: {
   comp: ComparableListing;
   town: string | null;
@@ -372,6 +398,8 @@ function CompRow({
   showCloseDate: boolean;
   isRental?: boolean;
   scoreColorClass?: string | null;
+  subjectBeds?: number | null;
+  subjectBaths?: number | null;
 }) {
   const isModal = variant === "modal";
   const id = comp.listingKey?.trim() || comp.mlsId;
@@ -387,13 +415,12 @@ function CompRow({
       : `${fmtMoney(comp.price)}${isRental ? "/mo" : ""}`
     : `${fmtMoney(comp.price)}${isRental ? "/mo" : ""}`;
 
-  const metaParts = [
-    bedBathLabel(comp.beds, comp.baths),
+  const restMetaParts = [
     fmtSqft(comp.sqft),
     fmtAcres(comp.lotAcres),
     fmtYearBuilt(comp.yearBuilt),
     isRental ? null : fmtCompPricePerSqft(comp.pricePerSqft),
-  ].filter(Boolean);
+  ];
 
   const thumbBorderClass = isModal
     ? "border-charcoal/10 bg-cream/60"
@@ -475,13 +502,16 @@ function CompRow({
               {timingLabel}
             </p>
           ) : null}
-          <p
+          <CompMetaLine
+            beds={comp.beds}
+            baths={comp.baths}
+            subjectBeds={subjectBeds}
+            subjectBaths={subjectBaths}
+            restParts={restMetaParts}
             className={`${
               isModal ? "text-slate text-xs" : "text-white/50 text-xs"
             }${timingLabel ? " mt-1" : ""}`}
-          >
-            {metaParts.join(" · ")}
-          </p>
+          />
         </div>
       </div>
     </li>
@@ -1024,8 +1054,29 @@ export default function ListingComparablesPanel({
   /** Both panels present — jump links only while stacked (below sm on page, md otherwise). */
   const showStackedPanelJumpLinks =
     columns === "both" && showSoldColumn && showActiveColumn && showCompsGrid;
-  const soldPanelId = `comparables-sold-${kind}`;
+  const soldPanelId = listingRecentlyClosedPanelId(kind);
   const onMarketPanelId = `comparables-on-market-${kind}`;
+
+  // Sold / Rented subnav links land on #comparables-sold-* — scroll once the panel mounts.
+  useEffect(() => {
+    if (!showSoldColumn) return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash !== soldPanelId) return;
+    let cancelled = false;
+    const scroll = () => {
+      if (cancelled) return;
+      const el = document.getElementById(soldPanelId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    const t0 = window.setTimeout(scroll, 50);
+    const t1 = window.setTimeout(scroll, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [showSoldColumn, soldPanelId, mlsId, kind, loading]);
   const stackedJumpLinkClass = isModal
     ? "font-mono text-[11px] tracking-[0.1em] uppercase text-navy underline decoration-navy/30 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors"
     : "font-mono text-[11px] tracking-[0.1em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:text-white hover:decoration-white/50 transition-colors";
@@ -1084,9 +1135,11 @@ export default function ListingComparablesPanel({
     : "font-mono text-[10px] tracking-[0.15em] uppercase text-white/45";
 
   // "N found" count shown in the top-right corner of each comps panel.
-  const foundCountClass = `font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums whitespace-nowrap ${
+  // Scales up 50% for 10s after a Criteria ± change (tied to step feedback).
+  const foundCountEmphasized = Boolean(criteriaStepFeedback);
+  const foundCountClass = `inline-block origin-top-right font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums whitespace-nowrap transition-transform duration-300 ease-out ${
     isModal ? "text-slate/70" : "text-white/40"
-  }`;
+  } ${foundCountEmphasized ? "scale-150" : "scale-100"}`;
 
   const activeColumnTitle = isRental
     ? isPage
@@ -1096,8 +1149,44 @@ export default function ListingComparablesPanel({
       ? "FOR SALE ON MARKET"
       : "For sale on market";
 
-  return (
-    <div className={wrapperClass}>
+  const showCriteria =
+    Boolean(criteria && sessionMatch) && (isPage || isModal || hasContent);
+  /** Page layout: Criteria is a desktop side panel + mobile drawer (not inline). */
+  const criteriaInSidePanel = isPage && showCriteria;
+
+  const criteriaBlock =
+    showCriteria && criteria && sessionMatch ? (
+      <div
+        className={
+          isModal
+            ? "font-mono text-[10px] tracking-[0.12em] uppercase text-slate"
+            : "font-mono text-[10px] tracking-[0.12em] uppercase text-white/40"
+        }
+      >
+        <MatchingCriteriaSummary
+          criteria={criteria}
+          session={sessionMatch}
+          onSessionChange={handleSessionMatchChange}
+          stepFeedback={criteriaStepFeedback}
+          isModal={isModal}
+          defaultControlsOpen={criteriaInSidePanel}
+        />
+        {widePoolLoading && !wideData ? (
+          <span
+            className={
+              isModal
+                ? "mt-1 block font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60"
+                : "mt-1 block font-mono text-[9px] tracking-[0.12em] uppercase text-white/35"
+            }
+          >
+            loading wider match pool…
+          </span>
+        ) : null}
+      </div>
+    ) : null;
+
+  const pageChrome = (
+    <>
       {isPage && !suppressPageChrome && (
         <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
           {panelTitle}
@@ -1109,9 +1198,7 @@ export default function ListingComparablesPanel({
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
             {panelTitle}
           </p>
-          <p className="text-white/50 text-xs">
-            {panelIntro}
-          </p>
+          <p className="text-white/50 text-xs">{panelIntro}</p>
         </div>
       )}
 
@@ -1122,37 +1209,13 @@ export default function ListingComparablesPanel({
       {isModal && (
         <p className="text-sm text-slate leading-relaxed">{modalIntro}</p>
       )}
+    </>
+  );
 
-      {criteria &&
-        sessionMatch &&
-        (isPage || isModal || hasContent) && (
-        <div
-          className={
-            isModal
-              ? "font-mono text-[10px] tracking-[0.12em] uppercase text-slate"
-              : "font-mono text-[10px] tracking-[0.12em] uppercase text-white/40"
-          }
-        >
-          <MatchingCriteriaSummary
-            criteria={criteria}
-            session={sessionMatch}
-            onSessionChange={handleSessionMatchChange}
-            stepFeedback={criteriaStepFeedback}
-            isModal={isModal}
-          />
-          {widePoolLoading && !wideData ? (
-            <span
-              className={
-                isModal
-                  ? "mt-1 block font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60"
-                  : "mt-1 block font-mono text-[9px] tracking-[0.12em] uppercase text-white/35"
-              }
-            >
-              loading wider match pool…
-            </span>
-          ) : null}
-        </div>
-      )}
+  const mainColumn = (
+    <>
+      {/* Inline Criteria only when not using the page side panel / drawer. */}
+      {!criteriaInSidePanel ? criteriaBlock : null}
 
       {showStackedPanelJumpLinks ? (
         <nav
@@ -1237,10 +1300,10 @@ export default function ListingComparablesPanel({
           id={soldPanelId}
           className={
             isPage
-              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+              ? "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
-                : "scroll-mt-24 min-w-0"
+                : "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0"
           }
         >
           <div className="relative mb-3 pr-[4.5rem]">
@@ -1272,6 +1335,7 @@ export default function ListingComparablesPanel({
               {sortedSold.length} found
             </span>
           </div>
+          <CompExactMatchLegend theme={isModal ? "light" : "dark"} />
           {sortedSold.length > 0 ? (
             <>
               <div className="space-y-3">
@@ -1296,6 +1360,8 @@ export default function ListingComparablesPanel({
                           showCloseDate
                           isRental={isRental}
                           scoreColorClass={soldScoreColors.get(comp.mlsId) ?? null}
+                          subjectBeds={criteria?.beds ?? null}
+                          subjectBaths={criteria?.baths ?? null}
                         />
                       ))}
                     </ul>
@@ -1363,6 +1429,7 @@ export default function ListingComparablesPanel({
               {sortedActive.length} found
             </span>
           </div>
+          <CompExactMatchLegend theme={isModal ? "light" : "dark"} />
           {active.length > 0 ? (
             <>
               <ul className="space-y-3">
@@ -1375,6 +1442,8 @@ export default function ListingComparablesPanel({
                     showCloseDate={false}
                     isRental={isRental}
                     scoreColorClass={activeScoreColors.get(comp.mlsId) ?? null}
+                    subjectBeds={criteria?.beds ?? null}
+                    subjectBaths={criteria?.baths ?? null}
                   />
                 ))}
               </ul>
@@ -1397,6 +1466,19 @@ export default function ListingComparablesPanel({
         </div>
       )}
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className={wrapperClass}>
+      {pageChrome}
+      {criteriaInSidePanel ? (
+        <ListingCriteriaSideLayout criteria={criteriaBlock}>
+          {mainColumn}
+        </ListingCriteriaSideLayout>
+      ) : (
+        mainColumn
       )}
     </div>
   );

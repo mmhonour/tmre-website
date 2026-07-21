@@ -160,6 +160,7 @@ export function dealOfTheDayHref(
     mlsId?: string | null;
     listingKey?: string | null;
     kind?: "sale" | "rental" | null;
+    propertyClass?: "homes" | "multi" | "condos" | null;
   },
 ): string {
   const params = new URLSearchParams();
@@ -167,6 +168,9 @@ export function dealOfTheDayHref(
   const listingId = opts?.listingKey?.trim() || opts?.mlsId?.trim();
   if (listingId) params.set("listing", listingId);
   if (opts?.kind) params.set("kind", opts.kind);
+  if (opts?.propertyClass && opts.propertyClass !== "homes") {
+    params.set("property", opts.propertyClass);
+  }
   const qs = params.toString();
   return qs ? `/deal-of-the-day?${qs}` : "/deal-of-the-day";
 }

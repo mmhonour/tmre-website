@@ -280,9 +280,9 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'deals',
     medium: 'postgres',
     location: 'stats_cache',
-    keyPattern: 'deal-of-the-day:v5:{scope}:{kind}',
+    keyPattern: 'deal-of-the-day:v6:{town}:{kind}:{propertyClass}',
     owner: 'lib/deal-of-the-day-cache.ts',
-    notes: 'Preserved across hourly stats_cache clears.',
+    notes: '7 towns × sale/rental × homes/multi/condos = 42. Preserved across hourly stats_cache clears.',
     live: { kind: 'stats_cache_prefix', prefix: 'deal-of-the-day:' },
   },
   {

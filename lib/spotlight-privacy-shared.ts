@@ -145,6 +145,8 @@ export function spotlightEffectiveMapLocation(
   longitude: number | null
   addressQuery: string
   hidePin: boolean
+  /** When property map/pin is off: outline this TMRE town with a ? marker. */
+  outlineTown: string | null
   defaultZoom: number
 } {
   const propertyLat = mls?.latitude ?? config.latitude
@@ -161,16 +163,24 @@ export function spotlightEffectiveMapLocation(
       longitude: propertyLon,
       addressQuery: query || config.displayLocation,
       hidePin: false,
+      outlineTown: null,
       defaultZoom: SPOTLIGHT_PROPERTY_MAP_ZOOM,
     }
   }
 
   const center = spotlightTownCenter(config)
+  const city =
+    mls?.address?.city?.trim() ||
+    config.address.city?.trim() ||
+    null
+  const outlineTown = city && isTmreTown(city) ? city : null
+
   return {
     latitude: center?.lat ?? null,
     longitude: center?.lon ?? null,
     addressQuery: config.displayLocation,
     hidePin: true,
+    outlineTown,
     defaultZoom: SPOTLIGHT_TOWN_MAP_ZOOM,
   }
 }

@@ -1,8 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
+import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
+import ListingSideDrawer from "@/components/listing/ListingSideDrawer";
 import ListingSubnav, {
   type ListingInterestProps,
   type ListingTab,
@@ -15,10 +17,10 @@ import { ListingBackLink } from "@/components/listing/ListingShell";
 import { formatMlsStatus } from "@/lib/listing-history";
 import type { ComponentProps, ReactNode } from "react";
 
+type MobileDrawerId = "map" | "details" | null;
+
 /** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
-/** `top-20` = 5rem — used for mobile tab pin below the meta sticky block. */
-const MOBILE_NAV_TOP_REM = 5;
 
 type ListingHeroPanelsProps = {
   header: ComponentProps<typeof ListingHeader>;
@@ -27,6 +29,8 @@ type ListingHeroPanelsProps = {
     longitude: number | null;
     addressQuery: string;
     hidePin?: boolean;
+    /** Spotlight privacy: outline this town with a ? instead of a property pin. */
+    outlineTown?: string | null;
     defaultZoom?: number;
   };
   subnav: {
@@ -68,48 +72,32 @@ export default function ListingHeroPanels({
   const compactHero = Boolean(belowTabs || belowHero || sidebar || footer || interest);
   const isOverview = subnav.active === "overview";
   const stickyChromeRef = useRef<HTMLDivElement>(null);
-  const mobileMetaPinRef = useRef<HTMLDivElement>(null);
-  const mobileTabsPinRef = useRef<HTMLDivElement>(null);
-  const [mobileMetaPinHeight, setMobileMetaPinHeight] = useState(0);
-  // Assume desktop chrome for SSR / first paint to avoid layout flash, then
-  // switch to the mobile sticky-split once we know the viewport.
-  const [isDesktop, setIsDesktop] = useState(true);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const update = () => setIsDesktop(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
+  const [mobileDrawer, setMobileDrawer] = useState<MobileDrawerId>(null);
+  const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
 
   // Publish sticky chrome height so scroll-to-section targets clear the pinned tabs.
   useEffect(() => {
     const publish = () => {
-      const desktop = stickyChromeRef.current;
-      const mobileMeta = mobileMetaPinRef.current;
-      const mobileTabs = mobileTabsPinRef.current;
-      const height = isDesktop
-        ? (desktop?.offsetHeight ?? 0)
-        : (mobileMeta?.offsetHeight ?? 0) + (mobileTabs?.offsetHeight ?? 0);
+      const height = stickyChromeRef.current?.offsetHeight ?? 0;
       document.documentElement.style.setProperty(
         "--listing-sticky-offset",
         `${height + 12}px`,
       );
-      if (mobileMeta) setMobileMetaPinHeight(mobileMeta.offsetHeight);
     };
     publish();
+    const el = stickyChromeRef.current;
+    if (!el) return;
     const ro = new ResizeObserver(publish);
-    if (stickyChromeRef.current) ro.observe(stickyChromeRef.current);
-    if (mobileMetaPinRef.current) ro.observe(mobileMetaPinRef.current);
-    if (mobileTabsPinRef.current) ro.observe(mobileTabsPinRef.current);
+    ro.observe(el);
     return () => {
       ro.disconnect();
       document.documentElement.style.removeProperty("--listing-sticky-offset");
     };
-  }, [subnav.active, belowTabs, propertyTabs, isOverview, isDesktop]);
+  }, [subnav.active, belowTabs, propertyTabs, isOverview, header.insight]);
 
   const statusLabel = formatMlsStatus(header.status);
+  const overviewInsight =
+    isOverview && header.insight?.trim() ? header.insight.trim() : null;
 
   const statusBadge =
     statusLabel && !hideStatusBadge ? (
@@ -118,31 +106,49 @@ export default function ListingHeroPanels({
       </span>
     ) : null;
 
-  // Hoist the status badge to the top row of the panel so it sits top-aligned
-  // regardless of page: on Spotlight next to the "Spotlight Properties" tabs,
-  // and on a property detail page next to the back link (same location).
-  const topRow = propertyTabs ? (
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">{propertyTabs}</div>
-      {statusBadge}
-    </div>
+  const insightPanel = overviewInsight ? (
+    <aside
+      className="w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      aria-label="Listing insight"
+    >
+      <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+        Insight
+      </p>
+      <ListingInsightCopy
+        text={overviewInsight}
+        className="text-[12px] sm:text-[13px] leading-snug text-white/70"
+      />
+    </aside>
+  ) : null;
+
+  /** Status + insight stack — right side of Property Details. */
+  const statusInsightColumn =
+    statusBadge || insightPanel ? (
+      <div className="flex w-full shrink-0 flex-col items-end gap-2 sm:w-[min(17.5rem,42%)]">
+        {statusBadge ? (
+          <div className="flex w-full justify-end">{statusBadge}</div>
+        ) : null}
+        {insightPanel}
+      </div>
+    ) : null;
+
+  const topLeft = propertyTabs ? (
+    <div className="min-w-0">{propertyTabs}</div>
   ) : !isSpotlight ? (
-    <div className="mb-1.5 flex items-start justify-between gap-3">
-      <ListingBackLink className="" />
-      {statusBadge}
-    </div>
+    <ListingBackLink className="" />
   ) : null;
 
   const headerShared = {
     ...header,
     privacyMode: header.privacyMode ?? false,
     hideMarketMeta: header.hideMarketMeta ?? isSpotlight,
-    insight: isOverview ? header.insight : null,
+    // Insight renders in the Property Details right panel, not above the photos.
+    insight: null,
     className: "mb-0" as const,
     compact: true as const,
   };
 
-  const heroInsight = (
+  const heroOnly = (
     <ListingHeader {...headerShared} parts="heroInsight" tabsSlot={null} />
   );
 
@@ -152,58 +158,34 @@ export default function ListingHeroPanels({
     </Suspense>
   );
 
-  const propertyDetailsLabel = (
-    <div className="mb-1.5 flex items-start justify-between gap-3">
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-        Property Details
-      </p>
-    </div>
-  );
-
   const stickySurfaceClass =
     "bg-[#1B2A4A]/95 backdrop-blur-md border-b border-white/10";
 
   const propertyPanel = (
     <div className={frameClass}>
-      {isDesktop ? (
-        /* Desktop: sticky score/address/meta; hero under address; tabs below hero. */
-        <>
-          <div
-            ref={stickyChromeRef}
-            className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-2 mb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
-          >
-            {topRow}
-            {propertyDetailsLabel}
+      {/* Meta + section tabs stay pinned under the site nav while photos/content scroll. */}
+      <div
+        ref={stickyChromeRef}
+        className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+      >
+        {topLeft ? (
+          <div className={propertyTabs ? undefined : "mb-1.5"}>{topLeft}</div>
+        ) : null}
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+              Property Details
+            </p>
             <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
           </div>
-          {heroInsight}
-          <div className="mt-2">{tabsNav}</div>
-        </>
-      ) : (
-        /* Mobile: pin score/address/meta; full-bleed hero under address; tabs pin below. */
-        <>
-          <div
-            ref={mobileMetaPinRef}
-            className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-1 ${stickySurfaceClass}`}
-          >
-            {topRow}
-            {propertyDetailsLabel}
-            <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
-          </div>
+          {statusInsightColumn}
+        </div>
 
-          {heroInsight}
+        <div className="mt-2">{tabsNav}</div>
+      </div>
 
-          <div
-            ref={mobileTabsPinRef}
-            className={`sticky z-30 -mx-4 px-4 pb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
-            style={{
-              top: `calc(${MOBILE_NAV_TOP_REM}rem + ${mobileMetaPinHeight}px)`,
-            }}
-          >
-            {tabsNav}
-          </div>
-        </>
-      )}
+      {heroOnly}
 
       {belowTabs ? (
         <div
@@ -212,7 +194,7 @@ export default function ListingHeroPanels({
               ? LISTING_SECTION_IDS.overview
               : undefined
           }
-          className="mt-3 pt-3 border-t border-white/10 scroll-mt-[var(--listing-sticky-offset,6rem)]"
+          className="mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
         >
           {belowTabs}
         </div>
@@ -220,12 +202,14 @@ export default function ListingHeroPanels({
     </div>
   );
 
-  const locationPanel = (
+  const mapBlock = (heightClass: string, showLabel: boolean) => (
     <div className={`${frameClass} flex flex-col`}>
-      <p className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-2">
-        Location
-      </p>
-      <div className="relative w-full h-64 sm:h-72 lg:h-80">
+      {showLabel ? (
+        <p className="mb-2 shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          Location
+        </p>
+      ) : null}
+      <div className={`relative w-full ${heightClass}`}>
         <ListingLocationMap
           latitude={location.latitude}
           longitude={location.longitude}
@@ -234,6 +218,7 @@ export default function ListingHeroPanels({
           className="absolute inset-0"
           hideLabel
           hidePin={location.hidePin}
+          outlineTown={location.outlineTown}
           defaultZoom={location.defaultZoom}
         />
       </div>
@@ -248,35 +233,107 @@ export default function ListingHeroPanels({
     />
   ) : null;
 
-  const rightColumn = (
-    <div className={`min-w-0 flex flex-col gap-4 lg:sticky ${STICKY_TOP_CLASS}`}>
+  const detailsBlock = (
+    <div className="flex min-w-0 flex-col gap-4">
       {interestButton}
-      {locationPanel}
       {sidebar ? <div className="shrink-0">{sidebar}</div> : null}
     </div>
   );
 
+  const rightColumn = (
+    <div
+      className={`hidden min-w-0 flex-col gap-4 lg:sticky lg:flex ${STICKY_TOP_CLASS}`}
+    >
+      {interestButton}
+      {mapBlock("h-64 sm:h-72 lg:h-80", true)}
+      {sidebar ? <div className="shrink-0">{sidebar}</div> : null}
+    </div>
+  );
+
+  const edgeTabClass = (active: boolean) =>
+    `flex items-center justify-center rounded-l-lg border border-r-0 px-1.5 py-3 shadow-[-4px_0_16px_-8px_rgba(0,0,0,0.55)] transition-colors ${
+      active
+        ? "border-gold/50 bg-gold text-navy"
+        : "border-white/15 bg-[#1B2A4A]/95 text-gold backdrop-blur-md hover:border-gold/40 hover:text-gold-light"
+    }`;
+
   return (
     <>
       <div
-        className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] gap-x-7 lg:gap-x-10 gap-y-4 items-start ${
+        className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
           compactHero ? "" : "mb-6"
         }`}
       >
-        <div className="min-w-0 order-1 lg:col-start-1 lg:row-start-1">
+        <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
           {propertyPanel}
           {footer ? <div className="mt-4">{footer}</div> : null}
         </div>
 
-        <div className="min-w-0 order-2 lg:col-start-2 lg:row-start-1">
+        <div className="order-2 min-w-0 lg:col-start-2 lg:row-start-1">
           {rightColumn}
         </div>
       </div>
       {belowHero ? (
-        <div className="mt-6 lg:mt-8 border-t border-white/10 pt-6 lg:pt-8">
+        <div className="mt-6 border-t border-white/10 pt-6 lg:mt-8 lg:pt-8">
           {belowHero}
         </div>
       ) : null}
+
+      {/* Mobile: Map + Details peek from the right edge and open as slide-overs. */}
+      <div
+        className="fixed right-0 top-[42%] z-[60] flex -translate-y-1/2 flex-col gap-2 lg:hidden"
+        role="group"
+        aria-label="Listing side panels"
+      >
+        <button
+          type="button"
+          className={edgeTabClass(mobileDrawer === "map")}
+          aria-expanded={mobileDrawer === "map"}
+          aria-controls="listing-map-drawer"
+          onClick={() =>
+            setMobileDrawer((prev) => (prev === "map" ? null : "map"))
+          }
+        >
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] [writing-mode:vertical-rl] rotate-180">
+            Map
+          </span>
+        </button>
+        {sidebar || interest ? (
+          <button
+            type="button"
+            className={edgeTabClass(mobileDrawer === "details")}
+            aria-expanded={mobileDrawer === "details"}
+            aria-controls="listing-details-drawer"
+            onClick={() =>
+              setMobileDrawer((prev) =>
+                prev === "details" ? null : "details",
+              )
+            }
+          >
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] [writing-mode:vertical-rl] rotate-180">
+              Details
+            </span>
+          </button>
+        ) : null}
+      </div>
+
+      <ListingSideDrawer
+        open={mobileDrawer === "map"}
+        onClose={closeMobileDrawer}
+        title="Map"
+      >
+        <div id="listing-map-drawer">
+          {mapBlock("h-[min(70vh,28rem)]", false)}
+        </div>
+      </ListingSideDrawer>
+
+      <ListingSideDrawer
+        open={mobileDrawer === "details"}
+        onClose={closeMobileDrawer}
+        title="Details"
+      >
+        <div id="listing-details-drawer">{detailsBlock}</div>
+      </ListingSideDrawer>
     </>
   );
 }

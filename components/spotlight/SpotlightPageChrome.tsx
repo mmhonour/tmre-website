@@ -52,7 +52,7 @@ export function SpotlightPageChrome({
   belowHero?: ReactNode;
   sidebar?: ReactNode;
   footer?: ReactNode;
-  /** Primary photo rendered between the meta line and the insight in the header. */
+  /** Primary photo rendered under Property Details (insight is beside status). */
   heroSlot?: ReactNode;
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ListingScoreApiFields["goldilocksBreakdown"];
@@ -108,6 +108,7 @@ export function SpotlightPageChrome({
           longitude: presentation.mapLocation.longitude,
           addressQuery: presentation.mapLocation.addressQuery,
           hidePin: presentation.mapLocation.hidePin,
+          outlineTown: presentation.mapLocation.outlineTown,
           defaultZoom: presentation.mapLocation.defaultZoom,
         }}
         subnav={{

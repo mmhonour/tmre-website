@@ -488,10 +488,16 @@ export type IfCompRow = {
   listingKey: string
   address: string
   city: string | null
+  /** Match fields — used by Criteria ± client filtering on What if. */
+  zip: string | null
+  beds: number | null
+  baths: number | null
+  lotAcres: number | null
   role: 'sold' | 'active'
   price: number | null
   closeDate: string | null
   sqft: number | null
+  vintageLabel: string
   pricePerSqft: number | null
   adjustedPricePerSqft: number | null
   /** Comp $/sqft (adjusted) × subject sqft, or adjusted price when no sqft. */
@@ -611,10 +617,15 @@ function buildCompRows(
       listingKey: comp.listingKey?.trim() || comp.mlsId,
       address: comp.address,
       city: comp.city,
+      zip: comp.zip,
+      beds: comp.beds,
+      baths: comp.baths,
+      lotAcres: comp.lotAcres,
       role,
       price,
       closeDate: role === 'sold' ? comp.closeDate : null,
       sqft: comp.sqft,
+      vintageLabel: comp.vintageLabel,
       pricePerSqft: validPpsf(comp.pricePerSqft) ? comp.pricePerSqft : null,
       adjustedPricePerSqft: adjPpsf,
       impliedSubjectAmount: implied,

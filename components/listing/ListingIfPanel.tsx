@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeftRightIcon } from "@/components/icons";
+import ListingCriteriaSideLayout from "@/components/listing/ListingCriteriaSideLayout";
+import MatchingCriteriaSummary, {
+  type CriteriaStepFeedback,
+  type CriteriaStepKey,
+} from "@/components/listing/MatchingCriteriaSummary";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtIfRentMoney,
@@ -16,10 +21,85 @@ import {
   type IfScenario,
   type ListingIfPayload,
 } from "@/lib/listing-if-estimates";
-import MatchingCriteriaSummary from "@/components/listing/MatchingCriteriaSummary";
 import type { ComparablesCriteria } from "@/lib/listing-comparables-shared";
+import {
+  comparableListingMatchesSession,
+  type SessionMatchOverrides,
+} from "@/lib/listing-comparables-session";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+
+const CRITERIA_STEP_FEEDBACK_MS = 10_000;
+
+function sessionFromIfParams(params: IfMatchParams): SessionMatchOverrides {
+  const labels = [
+    ...(params.vintageLabel ? [params.vintageLabel] : []),
+    ...params.vintageEdgeLabels,
+  ].filter(Boolean);
+  const allowedVintageLabels = [...new Set(labels)];
+  return {
+    bedTolerance: params.bedTolerance,
+    bathTolerance: params.bathTolerance,
+    sqftTolerancePct: params.sqftTolerancePct,
+    lotTolerancePct: params.lotTolerancePct,
+    allowedVintageLabels:
+      allowedVintageLabels.length > 0
+        ? allowedVintageLabels
+        : params.vintageLabel
+          ? [params.vintageLabel]
+          : [],
+  };
+}
+
+function ifCompMatchesSession(
+  comp: IfCompRow,
+  criteria: ComparablesCriteria,
+  session: SessionMatchOverrides,
+): boolean {
+  return comparableListingMatchesSession(
+    {
+      mlsId: comp.mlsId,
+      listingKey: comp.listingKey,
+      address: comp.address,
+      city: comp.city,
+      zip: comp.zip,
+      price: comp.price,
+      closePrice: null,
+      closeDate: comp.closeDate,
+      beds: comp.beds,
+      baths: comp.baths,
+      lotAcres: comp.lotAcres,
+      sqft: comp.sqft,
+      vintageBucket: "unknown",
+      vintageLabel: comp.vintageLabel,
+      yearBuilt: null,
+      pricePerSqft: comp.pricePerSqft,
+      dom: null,
+      photoCount: null,
+      latitude: null,
+      longitude: null,
+      locationPremiumMultiplier: 1,
+    },
+    criteria,
+    session,
+  );
+}
+
+function criteriaStepMatchNote(opts: {
+  prevSale: number;
+  prevRent: number;
+  nextSale: number;
+  nextRent: number;
+}): string {
+  const prevTotal = opts.prevSale + opts.prevRent;
+  const nextTotal = opts.nextSale + opts.nextRent;
+  const delta = nextTotal - prevTotal;
+  const counts = `${opts.nextSale} sale · ${opts.nextRent} rent`;
+  if (nextTotal === 0) return `Nothing matched · ${counts}`;
+  if (delta > 0) return `Found ${delta} more · ${counts}`;
+  if (delta < 0) return `${Math.abs(delta)} fewer · ${counts}`;
+  return `No change · ${counts}`;
+}
 
 type IfCompSortKey = "price" | "closeDate";
 type SortDir = "asc" | "desc";
@@ -324,12 +404,14 @@ function CompList({
   townHint,
   amountLow,
   amountHigh,
+  foundCountEmphasized = false,
 }: {
   comps: IfCompRow[];
   kind: "sale" | "rent";
   townHint?: string | null;
   amountLow?: number | null;
   amountHigh?: number | null;
+  foundCountEmphasized?: boolean;
 }) {
   const [sort, setSort] = useState<{ key: IfCompSortKey; dir: SortDir }>({
     key: "price",
@@ -354,7 +436,11 @@ function CompList({
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/50">
+        <p
+          className={`inline-block origin-left font-mono text-[10px] tracking-[0.14em] uppercase text-white/50 transition-transform duration-300 ease-out ${
+            foundCountEmphasized ? "scale-150" : "scale-100"
+          }`}
+        >
           Properties used ({comps.length})
         </p>
         <div
@@ -484,22 +570,26 @@ function ScenarioPanel({
   title,
   headline,
   scenario,
+  comps,
   kind,
   townHint,
   range,
   midpoint,
   amountLabel,
   midpointLabel,
+  foundCountEmphasized = false,
 }: {
   title: string;
   headline: string;
   scenario: IfScenario;
+  comps: IfCompRow[];
   kind: "sale" | "rent";
   townHint?: string | null;
   range: ReactNode;
   midpoint: string | null;
   amountLabel: string;
   midpointLabel: string;
+  foundCountEmphasized?: boolean;
 }) {
   const hasEstimate =
     scenario.amount != null ||
@@ -540,11 +630,12 @@ function ScenarioPanel({
             kind={kind}
           />
           <CompList
-            comps={scenario.comps}
+            comps={comps}
             kind={kind}
             townHint={townHint}
             amountLow={scenario.amountLow}
             amountHigh={scenario.amountHigh}
+            foundCountEmphasized={foundCountEmphasized}
           />
         </>
       )}
@@ -590,7 +681,34 @@ export default function ListingIfPanel({
   void _routeBase;
   const [data, setData] = useState<ListingIfPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionMatch, setSessionMatch] = useState<SessionMatchOverrides | null>(
+    null,
+  );
+  const [sessionSeeded, setSessionSeeded] = useState(false);
+  const [criteriaStepFeedback, setCriteriaStepFeedback] =
+    useState<CriteriaStepFeedback | null>(null);
+  const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const isPage = variant === "page";
+
+  useEffect(() => {
+    setSessionMatch(null);
+    setSessionSeeded(false);
+    setCriteriaStepFeedback(null);
+    if (criteriaFeedbackTimerRef.current != null) {
+      clearTimeout(criteriaFeedbackTimerRef.current);
+      criteriaFeedbackTimerRef.current = null;
+    }
+  }, [mlsId]);
+
+  useEffect(() => {
+    return () => {
+      if (criteriaFeedbackTimerRef.current != null) {
+        clearTimeout(criteriaFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -625,6 +743,76 @@ export default function ListingIfPanel({
     : { ...emptyScenario(), params: { ...emptyScenario().params, kind: "rent" as const } };
   const matchCriteria = criteriaFromIfParams(saleEstimate.params);
 
+  useEffect(() => {
+    if (!matchCriteria || !saleEstimate.params.zip || sessionSeeded) return;
+    setSessionMatch(sessionFromIfParams(saleEstimate.params));
+    setSessionSeeded(true);
+  }, [matchCriteria, saleEstimate.params, sessionSeeded]);
+
+  const showCriteriaStepFeedback = (
+    key: CriteriaStepKey,
+    text: string,
+  ) => {
+    setCriteriaStepFeedback({ key, text });
+    if (criteriaFeedbackTimerRef.current != null) {
+      clearTimeout(criteriaFeedbackTimerRef.current);
+    }
+    criteriaFeedbackTimerRef.current = setTimeout(() => {
+      criteriaFeedbackTimerRef.current = null;
+      setCriteriaStepFeedback(null);
+    }, CRITERIA_STEP_FEEDBACK_MS);
+  };
+
+  const handleSessionMatchChange = (
+    next: SessionMatchOverrides,
+    source?: { key: CriteriaStepKey },
+  ) => {
+    if (source && matchCriteria) {
+      const prevSale = sessionMatch
+        ? saleEstimate.comps.filter((row) =>
+            ifCompMatchesSession(row, matchCriteria, sessionMatch),
+          ).length
+        : saleEstimate.comps.length;
+      const prevRent = sessionMatch
+        ? rentEstimate.comps.filter((row) =>
+            ifCompMatchesSession(row, matchCriteria, sessionMatch),
+          ).length
+        : rentEstimate.comps.length;
+      const nextSale = saleEstimate.comps.filter((row) =>
+        ifCompMatchesSession(row, matchCriteria, next),
+      ).length;
+      const nextRent = rentEstimate.comps.filter((row) =>
+        ifCompMatchesSession(row, matchCriteria, next),
+      ).length;
+      showCriteriaStepFeedback(
+        source.key,
+        criteriaStepMatchNote({
+          prevSale,
+          prevRent,
+          nextSale,
+          nextRent,
+        }),
+      );
+    }
+    setSessionMatch(next);
+  };
+
+  const saleComps = useMemo(() => {
+    if (!matchCriteria || !sessionMatch) return saleEstimate.comps;
+    return saleEstimate.comps.filter((row) =>
+      ifCompMatchesSession(row, matchCriteria, sessionMatch),
+    );
+  }, [saleEstimate.comps, matchCriteria, sessionMatch]);
+
+  const rentComps = useMemo(() => {
+    if (!matchCriteria || !sessionMatch) return rentEstimate.comps;
+    return rentEstimate.comps.filter((row) =>
+      ifCompMatchesSession(row, matchCriteria, sessionMatch),
+    );
+  }, [rentEstimate.comps, matchCriteria, sessionMatch]);
+
+  const foundCountEmphasized = Boolean(criteriaStepFeedback);
+
   if (loading) {
     return (
       <div
@@ -646,43 +834,37 @@ export default function ListingIfPanel({
     );
   }
 
-  return (
-    <div
-      className={
-        isPage
-          ? "w-full min-w-0 space-y-6"
-          : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5"
-      }
-    >
-      {isPage && (
-        <>
-          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-            If...
-          </p>
-          <p className="text-white/50 text-sm leading-relaxed">
-            Based on the criteria below, we estimate a sale and rent range for
-            this home — and show the comps that fed each number.
-          </p>
-        </>
-      )}
+  const criteriaInSidePanel = isPage && Boolean(matchCriteria && sessionMatch);
 
-      {matchCriteria ? (
-        <div className="text-center space-y-1">
-          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-            Criteria
-          </p>
-          <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
-            <MatchingCriteriaSummary
-              criteria={matchCriteria}
-              tolerances={{
-                bedTolerance: saleEstimate.params.bedTolerance,
-                bathTolerance: saleEstimate.params.bathTolerance,
-                sqftTolerancePct: saleEstimate.params.sqftTolerancePct,
-                lotTolerancePct: saleEstimate.params.lotTolerancePct,
-              }}
-            />
-          </p>
-        </div>
+  const criteriaBlock =
+    matchCriteria && sessionMatch ? (
+      <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
+        <MatchingCriteriaSummary
+          criteria={matchCriteria}
+          session={sessionMatch}
+          onSessionChange={handleSessionMatchChange}
+          stepFeedback={criteriaStepFeedback}
+          defaultControlsOpen={criteriaInSidePanel}
+        />
+      </div>
+    ) : matchCriteria ? (
+      <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40">
+        <MatchingCriteriaSummary
+          criteria={matchCriteria}
+          tolerances={{
+            bedTolerance: saleEstimate.params.bedTolerance,
+            bathTolerance: saleEstimate.params.bathTolerance,
+            sqftTolerancePct: saleEstimate.params.sqftTolerancePct,
+            lotTolerancePct: saleEstimate.params.lotTolerancePct,
+          }}
+        />
+      </div>
+    ) : null;
+
+  const mainColumn = (
+    <>
+      {!criteriaInSidePanel && criteriaBlock ? (
+        <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2 items-start">
@@ -690,8 +872,10 @@ export default function ListingIfPanel({
           title="If you sell"
           headline="Likely sale range if this home went to market today."
           scenario={saleEstimate}
+          comps={saleComps}
           kind="sale"
           townHint={townHint}
+          foundCountEmphasized={foundCountEmphasized}
           range={
             <IfEstimateRangeDisplay
               low={saleEstimate.amountLow}
@@ -712,8 +896,10 @@ export default function ListingIfPanel({
           title="If you rent"
           headline="Likely monthly rent range if this home were leased today."
           scenario={rentEstimate}
+          comps={rentComps}
           kind="rent"
           townHint={townHint}
+          foundCountEmphasized={foundCountEmphasized}
           range={
             <IfEstimateRangeDisplay
               low={
@@ -751,6 +937,36 @@ export default function ListingIfPanel({
           {townHint ? `, ${townHint}` : ""}
         </p>
       ) : null}
+    </>
+  );
+
+  return (
+    <div
+      className={
+        isPage
+          ? "w-full min-w-0 space-y-6"
+          : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5"
+      }
+    >
+      {isPage && (
+        <>
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
+            If...
+          </p>
+          <p className="text-white/50 text-sm leading-relaxed">
+            Based on matching criteria, we estimate a sale and rent range for
+            this home — and show the comps that fed each number.
+          </p>
+        </>
+      )}
+
+      {criteriaInSidePanel ? (
+        <ListingCriteriaSideLayout criteria={criteriaBlock}>
+          {mainColumn}
+        </ListingCriteriaSideLayout>
+      ) : (
+        mainColumn
+      )}
     </div>
   );
 }

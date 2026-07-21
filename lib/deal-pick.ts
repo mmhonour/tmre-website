@@ -10,6 +10,7 @@ import {
 } from './goldilocks'
 import { scoreListingsWithBoardPeers } from './board-scoring'
 import { filterListingsToTmreTowns } from './tmre-towns'
+import { listingMatchesPropertyClass } from './listing-property-class'
 import { isNewConstructionListing } from './new-construction-server'
 import {
   computeListingPeerStats,
@@ -442,11 +443,21 @@ export async function pickDealOfTheDayFromBoardScored(
  */
 export async function computeDealOfTheDay(
   listings: Listing[],
-  opts?: { kind?: 'sale' | 'rental'; peerListings?: Listing[]; listingId?: string },
+  opts?: {
+    kind?: 'sale' | 'rental'
+    propertyClass?: 'homes' | 'multi' | 'condos'
+    peerListings?: Listing[]
+    listingId?: string
+  },
 ): Promise<DealPickPayload | null> {
   let scoped = filterListingsToTmreTowns(listings)
   if (opts?.kind) {
     scoped = scoped.filter((l) => kindOf(l) === opts.kind)
+  }
+  if (opts?.propertyClass) {
+    scoped = scoped.filter((l) =>
+      listingMatchesPropertyClass(l.propertyType ?? '', opts.propertyClass!),
+    )
   }
   if (!scoped.length) return null
 

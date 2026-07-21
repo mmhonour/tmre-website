@@ -6,16 +6,16 @@ import { fmtDate, fmtMoney, formatMlsStatus } from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
-import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import { ListingMobileScrollSections } from "@/components/listing/ListingMobileScrollSections";
 import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
+import ListingPhotoScrollStack from "@/components/listing/ListingPhotoScrollStack";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
-import { listingPhotoProxyUrl, listingPhotosHref } from "@/lib/listing-url";
+import { listingPhotosHref } from "@/lib/listing-url";
 import { ListingShell } from "@/components/listing/ListingShell";
 import {
   listingChromeApiUrl,
@@ -204,13 +204,18 @@ export default function ListingDetailClient({
   );
   const heroSlot =
     !isComingSoon && photoCount > 0 ? (
-      <ListingHeroPhoto
-        url={listingPhotoProxyUrl(l.mlsId, activePhotoIndex)}
-        alt={street || "Listing photo"}
-        href={galleryHref}
+      <ListingPhotoScrollStack
+        mlsId={l.mlsId}
         photoCount={photoCount}
-        photoIndex={activePhotoIndex}
-        bare
+        altBase={street || "Listing photo"}
+        photoHref={(i) =>
+          listingPhotosHref(
+            l.mlsId,
+            street || addressHint,
+            townHint || l.address.city,
+            i,
+          )
+        }
       />
     ) : null;
 

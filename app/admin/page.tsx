@@ -51,6 +51,7 @@ import { describePostgresTarget } from "@/lib/db/postgres-target";
 import {
   DEFAULT_GOLDILOCKS_SCORING_CONFIG,
   getGoldilocksConfigFresh,
+  goldilocksScoresNeedRebuild,
   goldilocksWeightSum,
   GOLDILOCKS_FACTOR_ORDER,
   GOLDILOCKS_KEYWORD_GROUP_HINTS,
@@ -74,6 +75,10 @@ import AdminGlossaryPanel from "@/components/admin/AdminGlossaryPanel";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
+import {
+  ADMIN_SYNC_HISTORY_DEFAULT_DAYS,
+  ADMIN_SYNC_HISTORY_MAX_LIMIT,
+} from "@/lib/admin-sync-history-glom";
 import {
   readAdminSyncRunHistory,
   readInventorySnapshot,
@@ -233,8 +238,21 @@ export default async function AdminPage() {
   );
   const syncRunHistory = await safe(
     "sync-run-history",
-    () => readAdminSyncRunHistory({ limit: 50, offset: 0 }),
-    { runs: [], total: 0, limit: 50, offset: 0 },
+    () =>
+      readAdminSyncRunHistory({
+        limit: ADMIN_SYNC_HISTORY_MAX_LIMIT,
+        offset: 0,
+        since: new Date(
+          Date.now() - ADMIN_SYNC_HISTORY_DEFAULT_DAYS * 24 * 60 * 60 * 1000,
+        ),
+      }),
+    {
+      runs: [],
+      total: 0,
+      limit: ADMIN_SYNC_HISTORY_MAX_LIMIT,
+      offset: 0,
+      since: null,
+    },
   );
   const blobRuntime = await safe("photos-blob-runtime", () => describePhotosBlobPersistRuntime(), {
     active: false,
@@ -433,11 +451,17 @@ export default async function AdminPage() {
     () => getGoldilocksConfigFresh(),
     DEFAULT_GOLDILOCKS_SCORING_CONFIG,
   )
+  const goldilocksNeedsRebuild = await safe(
+    "goldilocks-needs-rebuild",
+    () => goldilocksScoresNeedRebuild(goldilocksConfig),
+    true,
+  )
   const goldilocksInitial = {
     config: goldilocksConfig,
     default: DEFAULT_GOLDILOCKS_SCORING_CONFIG,
     isDefault: isDefaultGoldilocksConfig(goldilocksConfig),
     weightSum: goldilocksWeightSum(goldilocksConfig.weights),
+    needsRebuild: goldilocksNeedsRebuild,
     meta: {
       factors: GOLDILOCKS_FACTOR_ORDER.map((key) => ({
         key,

@@ -4,12 +4,11 @@ import { refreshListingPropertyTax } from '@/lib/listing-property-tax'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import {
-  fetchListingByMlsId,
   persistListingRecord,
   readListingFromDbByMlsId,
   type ListingsSource,
 } from '@/lib/listings-store'
-import type { Listing } from '@/lib/rets'
+import { getListingByMlsId, type Listing } from '@/lib/rets'
 import {
   getSpotlightListingConfig,
   type SpotlightListingConfig,
@@ -40,29 +39,57 @@ function withFreshTax(listing: Listing | null): Listing | null {
   return listing ? refreshListingPropertyTax(listing) : null
 }
 
-/** SQLite row first (property_tax columns), then spotlight cache, then RETS. */
+/**
+ * Spotlight must reflect the live MLS row. When the stats_cache TTL has expired
+ * (or the DB row looks Closed/Expired), pull RETS first and persist. Fresh cache
+ * hits stay on Postgres so we do not RETS-hammer every page view.
+ */
 async function loadSpotlightListingRecord(
   mlsId: string,
   cached: SpotlightCachePayload | null,
   listingFresh: boolean,
 ): Promise<{ listing: Listing | null; source: ListingsSource }> {
   const { listing: dbListing } = await readListingFromDbByMlsId(mlsId)
-  if (dbListing) {
-    return { listing: dbListing, source: 'db' }
-  }
+
   if (listingFresh && cached?.listing) {
     return {
       listing: withFreshTax(cached.listing),
       source: cached.source ?? 'db',
     }
   }
-  const fetched = await fetchListingByMlsId(mlsId)
-  if (fetched.listing) {
-    void persistListingRecord(fetched.listing).catch((err) => {
-      console.warn('[spotlight-cache] listing persist skipped:', err)
-    })
+
+  const dbStatus = (dbListing?.status || '').toLowerCase()
+  const dbLooksInactive =
+    !dbListing ||
+    dbStatus.includes('closed') ||
+    dbStatus.includes('expired') ||
+    dbStatus.includes('withdrawn')
+
+  // Cache miss / TTL expired, or DB stuck on a prior Closed row for this MLS id.
+  if (!listingFresh || dbLooksInactive) {
+    try {
+      const live = await getListingByMlsId(mlsId)
+      if (live) {
+        void persistListingRecord(live).catch((err) => {
+          console.warn('[spotlight-cache] listing persist skipped:', err)
+        })
+        return { listing: withFreshTax(live), source: 'rets' }
+      }
+    } catch (err) {
+      console.warn('[spotlight-cache] RETS lookup failed — falling back to DB', err)
+    }
   }
-  return { listing: withFreshTax(fetched.listing), source: fetched.source }
+
+  if (dbListing) {
+    return { listing: dbListing, source: 'db' }
+  }
+  if (cached?.listing) {
+    return {
+      listing: withFreshTax(cached.listing),
+      source: cached.source ?? 'db',
+    }
+  }
+  return { listing: null, source: 'db' }
 }
 
 function isFresh(iso: string | undefined, ttlMs: number): boolean {

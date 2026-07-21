@@ -3,6 +3,7 @@ import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   DEFAULT_GOLDILOCKS_SCORING_CONFIG,
   getGoldilocksConfigFresh,
+  goldilocksScoresNeedRebuild,
   isDefaultGoldilocksConfig,
   setGoldilocksConfig,
 } from '@/lib/goldilocks-config'
@@ -20,11 +21,13 @@ export const dynamic = 'force-dynamic'
 
 async function payload() {
   const config = await getGoldilocksConfigFresh()
+  const needsRebuild = await goldilocksScoresNeedRebuild(config)
   return {
     config,
     default: DEFAULT_GOLDILOCKS_SCORING_CONFIG,
     isDefault: isDefaultGoldilocksConfig(config),
     weightSum: goldilocksWeightSum(config.weights),
+    needsRebuild,
     meta: {
       factors: GOLDILOCKS_FACTOR_ORDER.map((key) => ({
         key,

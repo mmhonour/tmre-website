@@ -15,6 +15,7 @@ import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import {
   useDealOfTheDayCarousel,
   type DealCarouselPayload,
+  type DealPropertyClassFilter,
 } from "@/hooks/useDealOfTheDayCarousel";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 import {
@@ -31,6 +32,9 @@ import {
 } from "@/lib/deal-superlatives";
 import { splitSentences } from "@/lib/split-sentences";
 import { formatDealOfTheDayHeaderSubtitle } from "@/lib/deal-of-the-day-header";
+import { listingPropertyClassLabel } from "@/lib/listing-property-class";
+
+const DEAL_PROPERTY_CLASS_VALUES = ["homes", "multi", "condos"] as const;
 
 type ListingKind = "sale" | "rental";
 
@@ -72,6 +76,7 @@ type ApiResponse = {
     pricePerSqftFit: number;
     layoutQuality: number;
     schoolRating: number;
+    domRating?: number;
     composite: number;
     weights: {
       age: number;
@@ -80,6 +85,7 @@ type ApiResponse = {
       ppsf: number;
       layout: number;
       schools: number;
+      dom?: number;
     };
   };
   pricePerSqft: number | null;
@@ -117,7 +123,7 @@ const FALLBACK: ApiResponse = {
   qualifiedCount: 0,
   kind: "sale",
   insight:
-    `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, and school ratings. This week's pick is loading — refresh in a moment to see it.`,
+    `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, schools, and days on market. This week's pick is loading — refresh in a moment to see it.`,
   superlatives: ["Value", "Turnkey", "Fresh", "Layout"],
   score: {
     age: 88,
@@ -126,14 +132,16 @@ const FALLBACK: ApiResponse = {
     pricePerSqftFit: 88,
     layoutQuality: 84,
     schoolRating: 88,
+    domRating: 100,
     composite: 87.0,
     weights: {
-      age: 0.1,
-      condition: 0.2,
-      finishes: 0.25,
-      ppsf: 0.25,
+      age: 0.08,
+      condition: 0.18,
+      finishes: 0.22,
+      ppsf: 0.22,
       layout: 0.1,
       schools: 0.1,
+      dom: 0.1,
     },
   },
   pricePerSqft: 378,
@@ -444,8 +452,15 @@ export default function DealOfTheWeekHero({
   const city = searchParams.get("city");
   const listingParam = searchParams.get("listing");
   const kindParam = searchParams.get("kind");
+  const propertyParam = searchParams.get("property");
   const pinnedKind =
     kindParam === "sale" || kindParam === "rental" ? kindParam : null;
+  const pinnedProperty: DealPropertyClassFilter | null =
+    propertyParam === "homes" ||
+    propertyParam === "multi" ||
+    propertyParam === "condos"
+      ? propertyParam
+      : null;
   const periodLabel = mode === "day" ? "Day" : "Week";
   const headlineLead = mode === "day" ? "Today's" : "This week's";
   const apiPath =
@@ -460,15 +475,26 @@ export default function DealOfTheWeekHero({
     "sale",
     ["sale", "rental"],
   );
+  const [propertyClass, setPropertyClass] =
+    usePersistedFilter<DealPropertyClassFilter>(
+      "deal-of-the-day-property",
+      "homes",
+      DEAL_PROPERTY_CLASS_VALUES,
+    );
   useEffect(() => {
     if (isDay && pinnedKind) setTxFilter(pinnedKind);
   }, [isDay, pinnedKind, setTxFilter]);
+  useEffect(() => {
+    if (isDay && pinnedProperty) setPropertyClass(pinnedProperty);
+  }, [isDay, pinnedProperty, setPropertyClass]);
   const dayTxFilter = pinnedKind ?? txFilter;
+  const dayPropertyClass = pinnedProperty ?? propertyClass;
   const carousel = useDealOfTheDayCarousel({
     initialTown: city,
     rotate: isDay && !city && !listingParam,
     enabled: isDay,
     transactionFilter: dayTxFilter,
+    propertyClass: dayPropertyClass,
     pinnedListingId: listingParam,
   });
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -514,12 +540,12 @@ export default function DealOfTheWeekHero({
   const loadingState = isDay ? carousel.loading : loading;
   const slideDir = carousel.slideDir;
   const slideKey = isDay
-    ? `${dayTxFilter}-${listingParam ?? "auto"}-${carousel.currentTown ?? "none"}-${carousel.carouselIndex}`
+    ? `${dayTxFilter}-${dayPropertyClass}-${listingParam ?? "auto"}-${carousel.currentTown ?? "none"}-${carousel.carouselIndex}`
     : "static";
   const dayInsight = dayEmpty
     ? dayTxFilter === "rental"
-      ? `No below-median rental picks${city ? ` in ${city}` : " available"} right now.`
-      : `No below-median for-sale picks${city ? ` in ${city}` : " available"} right now.`
+      ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental picks${city ? ` in ${city}` : " available"} right now.`
+      : `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} for-sale picks${city ? ` in ${city}` : " available"} right now.`
     : showing?.insight ?? "Scanning listings…";
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -777,6 +803,8 @@ export default function DealOfTheWeekHero({
               townLabel={isDay ? carousel.currentTown : null}
               transactionFilter={isDay ? dayTxFilter : undefined}
               onTransactionFilterChange={isDay ? setTxFilter : undefined}
+              propertyClass={isDay ? dayPropertyClass : undefined}
+              onPropertyClassChange={isDay ? setPropertyClass : undefined}
               carouselControls={
                 isDay && !city && carousel.carouselTowns.length > 0
                   ? {
@@ -832,6 +860,39 @@ function DealTransactionFilterPills({
   );
 }
 
+function DealPropertyClassFilterPills({
+  value,
+  onChange,
+}: {
+  value: DealPropertyClassFilter;
+  onChange: (value: DealPropertyClassFilter) => void;
+}) {
+  const options: { value: DealPropertyClassFilter; label: string }[] = [
+    { value: "homes", label: "Homes" },
+    { value: "multi", label: "Multi" },
+    { value: "condos", label: "Condos" },
+  ];
+  return (
+    <div
+      className={`${filterPillContainerClass("compact", { wrap: false, bordered: false })} shrink-0 opacity-90`}
+      role="group"
+      aria-label="Property type"
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          aria-pressed={value === opt.value}
+          className={filterPillButtonClass(value === opt.value, "compact")}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DealCard({
   detailHref = null,
   photosHref = null,
@@ -862,6 +923,8 @@ function DealCard({
   carouselControls = null,
   transactionFilter,
   onTransactionFilterChange,
+  propertyClass,
+  onPropertyClassChange,
   empty = false,
   hidePhoto = false,
 }: {
@@ -903,6 +966,8 @@ function DealCard({
   } | null;
   transactionFilter?: "sale" | "rental";
   onTransactionFilterChange?: (value: "sale" | "rental") => void;
+  propertyClass?: DealPropertyClassFilter;
+  onPropertyClassChange?: (value: DealPropertyClassFilter) => void;
   empty?: boolean;
   hidePhoto?: boolean;
 }) {
@@ -925,6 +990,10 @@ function DealCard({
       ? "animate-deal-book-flip-next"
       : "animate-deal-book-flip-prev"
     : "animate-fade-up-delay-2";
+  const showFilterBar =
+    Boolean(townLabel) ||
+    Boolean(transactionFilter && onTransactionFilterChange) ||
+    Boolean(propertyClass && onPropertyClassChange);
   return (
     <>
     <aside
@@ -937,9 +1006,9 @@ function DealCard({
         style={{ mask: "linear-gradient(white, transparent)" }}
       />
       <div className="relative">
-        {(townLabel || (transactionFilter && onTransactionFilterChange)) ? (
+        {showFilterBar ? (
           <div
-            className={`flex items-center gap-3 px-5 py-2.5 border-b border-white/10 bg-white/[0.03] ${
+            className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-2.5 border-b border-white/10 bg-white/[0.03] ${
               townLabel ? "justify-between" : "justify-end"
             }`}
           >
@@ -993,11 +1062,22 @@ function DealCard({
                 </p>
               )
             ) : null}
-            {transactionFilter && onTransactionFilterChange ? (
-              <DealTransactionFilterPills
-                value={transactionFilter}
-                onChange={onTransactionFilterChange}
-              />
+            {(transactionFilter && onTransactionFilterChange) ||
+            (propertyClass && onPropertyClassChange) ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
+                {propertyClass && onPropertyClassChange ? (
+                  <DealPropertyClassFilterPills
+                    value={propertyClass}
+                    onChange={onPropertyClassChange}
+                  />
+                ) : null}
+                {transactionFilter && onTransactionFilterChange ? (
+                  <DealTransactionFilterPills
+                    value={transactionFilter}
+                    onChange={onTransactionFilterChange}
+                  />
+                ) : null}
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -1008,11 +1088,11 @@ function DealCard({
                 <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
                   {transactionFilter === "rental"
                     ? townLabel
-                      ? `No below-median rental pick in ${townLabel} right now.`
-                      : "No below-median rental picks available right now."
+                      ? `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}rental pick in ${townLabel} right now.`
+                      : `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}rental picks available right now.`
                     : townLabel
-                      ? `No below-median for-sale pick in ${townLabel} right now.`
-                      : "No below-median for-sale picks available right now."}
+                      ? `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}for-sale pick in ${townLabel} right now.`
+                      : `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}for-sale picks available right now.`}
                 </p>
               </div>
             ) : (
@@ -1222,6 +1302,9 @@ function DealCard({
             <Factor label="PPSF fit" value={score.pricePerSqftFit} weight={score.weights.ppsf} showWeight={showWeights} factorKey="ppsf" onExplain={scoreExplains ? setExplainTopic : undefined} />
             <Factor label="Layout" value={score.layoutQuality} weight={score.weights.layout} showWeight={showWeights} factorKey="layout" onExplain={scoreExplains ? setExplainTopic : undefined} />
             <Factor label="Schools" value={score.schoolRating} weight={score.weights.schools} showWeight={showWeights} factorKey="schools" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            {score.domRating != null ? (
+              <Factor label="DOM" value={score.domRating} weight={score.weights.dom ?? 0} showWeight={showWeights} factorKey="dom" onExplain={scoreExplains ? setExplainTopic : undefined} />
+            ) : null}
           </div>
         </div>
 
@@ -1257,6 +1340,7 @@ function DealCard({
             : explainTopic === "ppsf" ? score.pricePerSqftFit
             : explainTopic === "layout" ? score.layoutQuality
             : explainTopic === "schools" ? score.schoolRating
+            : explainTopic === "dom" ? score.domRating
             : undefined,
           weight:
             explainTopic === "age" ? score.weights.age
@@ -1265,6 +1349,7 @@ function DealCard({
             : explainTopic === "ppsf" ? score.weights.ppsf
             : explainTopic === "layout" ? score.weights.layout
             : explainTopic === "schools" ? score.weights.schools
+            : explainTopic === "dom" ? score.weights.dom
             : undefined,
           ppsfDiscount: ppsfDiscount ?? undefined,
           reductionPct: reductionPct ?? undefined,

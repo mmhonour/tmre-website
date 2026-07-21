@@ -492,6 +492,7 @@ function ListingSplitTestInner() {
                     className="absolute inset-0"
                     hideLabel
                     hidePin={presentation.mapLocation.hidePin}
+                    outlineTown={presentation.mapLocation.outlineTown}
                     defaultZoom={presentation.mapLocation.defaultZoom}
                   />
                 </div>

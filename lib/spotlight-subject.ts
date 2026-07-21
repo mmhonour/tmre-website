@@ -54,6 +54,40 @@ export function buildSpotlightSubjectListing(
 ): Listing {
   const base = mls ?? listingFromConfig(config)
 
+  // When a live MLS row is present, it wins for listing facts. Config only fills
+  // gaps (and supplies curated display fields like city for privacy).
+  if (mls) {
+    return {
+      ...mls,
+      mlsId: config.mlsId?.trim() || mls.mlsId,
+      listingKey: mls.listingKey?.trim() || config.listingKey?.trim() || mls.listingKey,
+      status: spotlightEffectiveStatus(config, mls),
+      propertyType: mls.propertyType || config.propertyType,
+      style: mls.style || config.style,
+      beds: mls.beds ?? config.beds,
+      baths: mls.baths ?? config.baths,
+      sqft: mls.sqft ?? config.sqft,
+      yearBuilt: mls.yearBuilt ?? config.yearBuilt,
+      price: mls.price ?? config.price,
+      originalListPrice: mls.originalListPrice ?? config.originalListPrice,
+      latitude: mls.latitude ?? config.latitude,
+      longitude: mls.longitude ?? config.longitude,
+      photoCount: mls.photoCount ?? config.photoCount,
+      schools: {
+        elementary: mls.schools.elementary ?? config.schools.elementary,
+        middle: mls.schools.middle ?? config.schools.middle,
+        high: mls.schools.high ?? config.schools.high,
+        district: mls.schools.district ?? config.schools.district,
+      },
+      address: {
+        ...mls.address,
+        city: mls.address.city || config.address.city,
+        state: mls.address.state || config.address.state,
+        postalCode: mls.address.postalCode || config.address.postalCode,
+      },
+    }
+  }
+
   return {
     ...base,
     mlsId: config.mlsId?.trim() || base.mlsId,
@@ -85,7 +119,7 @@ export function buildSpotlightSubjectListing(
   }
 }
 
-/** DB-first spotlight subject for comps / IF — avoids RETS + photo cache on API routes. */
+/** DB-first spotlight subject for comps / IF — live RETS when DB is missing or Closed. */
 export async function resolveSpotlightSubjectListing(
   config: SpotlightListingConfig = SPOTLIGHT_LISTING,
 ): Promise<Listing> {
@@ -98,15 +132,31 @@ export async function resolveSpotlightSubjectListing(
 
   const withMls = { ...config, mlsId }
   const cached = await readListingByIdFromDb(mlsId)
-  if (cached) {
+  const status = (cached?.status || '').toLowerCase()
+  const dbLooksInactive =
+    !cached ||
+    status.includes('closed') ||
+    status.includes('expired') ||
+    status.includes('withdrawn')
+
+  if (cached && !dbLooksInactive) {
     return buildSpotlightSubjectListing(cached, withMls)
   }
 
   try {
     const { listing } = await fetchListingByMlsId(mlsId)
+    // fetchListingByMlsId is DB-first — if DB had a Closed row it returns that.
+    // Force a live RETS pull when the cached row looks inactive.
+    if (dbLooksInactive) {
+      const { getListingByMlsId } = await import('@/lib/rets')
+      const live = await getListingByMlsId(mlsId)
+      if (live) {
+        return buildSpotlightSubjectListing(live, withMls)
+      }
+    }
     return buildSpotlightSubjectListing(listing, withMls)
   } catch (err) {
     console.warn('[spotlight-subject] MLS lookup failed — using config fallback', err)
-    return buildSpotlightSubjectListing(null, withMls)
+    return buildSpotlightSubjectListing(cached ?? null, withMls)
   }
 }

@@ -4,11 +4,10 @@ import { useEffect, useState } from "react";
 import { fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
-import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import { ListingMobileScrollSections } from "@/components/listing/ListingMobileScrollSections";
 import { ListingOverviewPhotoDeck } from "@/components/listing/ListingOverviewPhotoDeck";
+import ListingPhotoScrollStack from "@/components/listing/ListingPhotoScrollStack";
 import ListingSidebar from "@/components/listing/ListingSidebar";
-import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome";
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
@@ -65,14 +64,12 @@ export default function SpotlightListingClient() {
   const isClosed = details.isClosed;
 
   const heroSlot = presentation.showHero ? (
-    <ListingHeroPhoto
-      url={listingPhotoProxyUrl(display.mlsId, activePhotoIndex)}
-      alt={display.config.displayTitle}
-      href={spotlightPhotosHref(propertyTab)}
+    <ListingPhotoScrollStack
+      mlsId={display.mlsId}
       photoCount={display.photoCount}
-      photoIndex={activePhotoIndex}
-      obfuscate={presentation.shouldObfuscatePhoto(activePhotoIndex)}
-      bare
+      altBase={display.config.displayTitle}
+      photoHref={(i) => spotlightPhotosHref(propertyTab, i)}
+      obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
     />
   ) : null;
 

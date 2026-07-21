@@ -1,3 +1,9 @@
+/** Default window for Admin Database sync history. */
+export const ADMIN_SYNC_HISTORY_DEFAULT_DAYS = 7
+
+/** Cap for a single history page (week windows can be large). */
+export const ADMIN_SYNC_HISTORY_MAX_LIMIT = 5000
+
 /** Strip suffixes like "Active/incremental" → "Active". */
 export function normalizeSyncStatusBucket(bucket: string | null | undefined): string {
   const raw = (bucket ?? 'Unknown').trim()

@@ -1,4 +1,5 @@
 import type { Listing } from '@/lib/rets'
+import { isRentalListing } from '@/lib/listing-kind'
 
 export type ListingHistoryEvent = {
   date: string | null
@@ -15,6 +16,7 @@ export type PriorListingSummary = {
   originalListPrice: number | null
   closeDate: string | null
   closePrice: number | null
+  isRental: boolean
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -281,5 +283,23 @@ export function summarizePriorListing(listing: Listing): PriorListingSummary {
     originalListPrice: listing.originalListPrice,
     closeDate,
     closePrice,
+    isRental: isRentalListing(listing),
   }
+}
+
+/** Closed price as a percent of last list (100 = sold/rented at list). */
+export function closedVsLastListPct(
+  lastListPrice: number | null | undefined,
+  closedPrice: number | null | undefined,
+): number | null {
+  if (
+    lastListPrice == null ||
+    closedPrice == null ||
+    !Number.isFinite(lastListPrice) ||
+    !Number.isFinite(closedPrice) ||
+    lastListPrice <= 0
+  ) {
+    return null
+  }
+  return Math.round((closedPrice / lastListPrice) * 100)
 }

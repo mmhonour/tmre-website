@@ -10,6 +10,8 @@ import {
 } from "react";
 import { formatRunDuration } from "@/components/admin/AdminSyncTable";
 import {
+  ADMIN_SYNC_HISTORY_DEFAULT_DAYS,
+  ADMIN_SYNC_HISTORY_MAX_LIMIT,
   glomSyncHistoryRuns,
   type SyncHistoryRawRow,
 } from "@/lib/admin-sync-history-glom";
@@ -19,12 +21,15 @@ type SyncHistoryResponse = {
   total: number;
   limit: number;
   offset: number;
+  since?: string | null;
   error?: string;
 };
 
 type OkFilter = "all" | "ok" | "fail";
 
-const PAGE_SIZE = 50;
+function historySinceIso(days = ADMIN_SYNC_HISTORY_DEFAULT_DAYS): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
 
 function formatSyncDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -50,8 +55,8 @@ function formatSyncTime(iso: string | null | undefined): string {
 
 /**
  * Durable log of every MLS town/bucket sync written to Postgres `sync_runs`
- * (admin, cron, overdue catch-up). Display gloms towns that ran together into
- * one line per sync type × status bucket, nested as type → bucket groups.
+ * (admin, cron, overdue catch-up). Loads ≥1 week by default; display collapses
+ * by sync type (Full / Incremental), then by status bucket.
  */
 export default function AdminSyncHistoryPanel({
   initial,
@@ -61,38 +66,51 @@ export default function AdminSyncHistoryPanel({
   const [filter, setFilter] = useState<OkFilter>("all");
   const [runs, setRuns] = useState<SyncHistoryRawRow[]>(initial?.runs ?? []);
   const [total, setTotal] = useState(initial?.total ?? 0);
+  const [since, setSince] = useState<string | null>(
+    initial?.since ?? historySinceIso(),
+  );
   const [loading, setLoading] = useState(initial == null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const skipInitialFetchRef = useRef(initial != null);
 
-  const load = useCallback(async (opts: { ok: OkFilter; offset: number; append: boolean }) => {
-    if (opts.append) setLoadingMore(true);
-    else setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        limit: String(PAGE_SIZE),
-        offset: String(opts.offset),
-      });
-      if (opts.ok !== "all") params.set("ok", opts.ok);
-      const res = await fetch(`/api/admin/sync-runs?${params}`, {
-        cache: "no-store",
-      });
-      const body = (await res.json()) as SyncHistoryResponse;
-      if (!res.ok) {
-        setError(body.error ?? "Failed to load sync history");
-        return;
+  const load = useCallback(
+    async (opts: {
+      ok: OkFilter;
+      offset: number;
+      append: boolean;
+      since: string | null;
+    }) => {
+      if (opts.append) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          limit: String(ADMIN_SYNC_HISTORY_MAX_LIMIT),
+          offset: String(opts.offset),
+          since: opts.since ?? "all",
+        });
+        if (opts.ok !== "all") params.set("ok", opts.ok);
+        const res = await fetch(`/api/admin/sync-runs?${params}`, {
+          cache: "no-store",
+        });
+        const body = (await res.json()) as SyncHistoryResponse;
+        if (!res.ok) {
+          setError(body.error ?? "Failed to load sync history");
+          return;
+        }
+        setTotal(body.total);
+        setSince(body.since ?? opts.since);
+        setRuns((prev) => (opts.append ? [...prev, ...body.runs] : body.runs));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load sync history");
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
       }
-      setTotal(body.total);
-      setRuns((prev) => (opts.append ? [...prev, ...body.runs] : body.runs));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load sync history");
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (skipInitialFetchRef.current && filter === "all") {
@@ -100,7 +118,8 @@ export default function AdminSyncHistoryPanel({
       return;
     }
     skipInitialFetchRef.current = false;
-    void load({ ok: filter, offset: 0, append: false });
+    const windowSince = historySinceIso();
+    void load({ ok: filter, offset: 0, append: false, since: windowSince });
   }, [filter, load]);
 
   const glommed = useMemo(() => glomSyncHistoryRuns(runs), [runs]);
@@ -171,7 +190,7 @@ export default function AdminSyncHistoryPanel({
 
   const bucketKey = (syncType: string, bucket: string) => `${syncType}:${bucket}`;
 
-  // Expand the newest sync type + its newest bucket by default when first seen.
+  // Keep sync-type (and bucket) groups collapsed by default as new types appear.
   useEffect(() => {
     if (syncTypeGroups.length === 0) return;
     setExpandedTypes((prev) => {
@@ -182,11 +201,6 @@ export default function AdminSyncHistoryPanel({
           next[g.syncType] = false;
           touched = true;
         }
-      }
-      const top = syncTypeGroups[0]?.syncType;
-      if (top && prev[top] === undefined) {
-        next[top] = true;
-        touched = true;
       }
       return touched ? next : prev;
     });
@@ -200,15 +214,6 @@ export default function AdminSyncHistoryPanel({
             next[key] = false;
             touched = true;
           }
-        }
-      }
-      const topType = syncTypeGroups[0];
-      const topBucket = topType?.buckets[0];
-      if (topType && topBucket) {
-        const key = bucketKey(topType.syncType, topBucket.bucket);
-        if (prev[key] === undefined) {
-          next[key] = true;
-          touched = true;
         }
       }
       return touched ? next : prev;
@@ -230,6 +235,11 @@ export default function AdminSyncHistoryPanel({
     }));
   };
 
+  const windowLabel =
+    since != null
+      ? `last ${ADMIN_SYNC_HISTORY_DEFAULT_DAYS} days`
+      : "all time";
+
   return (
     <div
       id="admin-sync-history"
@@ -241,10 +251,10 @@ export default function AdminSyncHistoryPanel({
             Database sync history
           </p>
           <p className="mt-1 text-sm text-slate max-w-2xl">
-            MLS syncs from Admin, cron, and overdue catch-up — grouped by sync
-            type (Full, Incremental), then by status bucket (Active, Closed,
-            Expired). Newest groups rise to the top; use + / − to expand or
-            collapse each level.
+            MLS syncs from Admin, cron, and overdue catch-up for the{" "}
+            {windowLabel} — collapsed by sync type (Full, Incremental), then by
+            status bucket (Active, Closed, Expired). Expand a type with + to see
+            its runs.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -276,7 +286,14 @@ export default function AdminSyncHistoryPanel({
           </div>
           <button
             type="button"
-            onClick={() => void load({ ok: filter, offset: 0, append: false })}
+            onClick={() =>
+              void load({
+                ok: filter,
+                offset: 0,
+                append: false,
+                since: historySinceIso(),
+              })
+            }
             disabled={loading}
             className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 transition-colors"
           >
@@ -289,7 +306,7 @@ export default function AdminSyncHistoryPanel({
         <p className="font-mono text-[10px] text-charcoal/45">
           {loading && runs.length === 0
             ? "loading…"
-            : `${total.toLocaleString()} town run${total === 1 ? "" : "s"}${
+            : `${total.toLocaleString()} town run${total === 1 ? "" : "s"} · ${windowLabel}${
                 filter !== "all" ? ` · showing ${filter}` : ""
               } · ${syncTypeGroups.length.toLocaleString()} sync type${
                 syncTypeGroups.length === 1 ? "" : "s"
@@ -305,8 +322,8 @@ export default function AdminSyncHistoryPanel({
       <div className="overflow-x-auto">
         {runs.length === 0 && !loading ? (
           <p className="px-5 sm:px-6 py-6 text-sm text-slate/70">
-            No sync runs recorded yet. After a full or incremental sync, bucket lines
-            appear here with towns glommed together.
+            No sync runs in the {windowLabel}. After a full or incremental sync,
+            bucket lines appear here grouped by sync type.
           </p>
         ) : (
           <table className="w-full min-w-[820px] border-collapse">
@@ -503,7 +520,12 @@ export default function AdminSyncHistoryPanel({
           <button
             type="button"
             onClick={() =>
-              void load({ ok: filter, offset: runs.length, append: true })
+              void load({
+                ok: filter,
+                offset: runs.length,
+                append: true,
+                since,
+              })
             }
             disabled={loadingMore}
             className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 transition-colors"

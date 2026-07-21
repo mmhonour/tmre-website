@@ -1,10 +1,14 @@
 import 'server-only'
 
-import { findUagRanked } from '@/lib/listing-comparables'
+import {
+  findUagRanked,
+  subjectComparablesCriteria,
+} from '@/lib/listing-comparables'
 import type {
   ComparableListing,
   ComparablesCriteria,
 } from '@/lib/listing-comparables-shared'
+import { widePricingMatchingConfig } from '@/lib/listing-comparables-session'
 import {
   listingRowId,
   readListingEdgeScoresByMlsIds,
@@ -17,6 +21,7 @@ import {
   getPricingMatchingConfigFresh,
   pricingMatchingConfigFingerprint,
 } from '@/lib/pricing-matching-config'
+import type { PricingMatchingConfig } from '@/lib/pricing-matching-config-shared'
 import { isRetsConfigured, searchListings, type Listing } from '@/lib/rets'
 import { normalizeZip } from '@/lib/tmre-towns'
 
@@ -48,7 +53,11 @@ export type UagResult = {
   missingCriteria: string[]
 }
 
-export type UagPayload = UagResult & { mlsId: string }
+export type UagPayload = UagResult & {
+  mlsId: string
+  /** Admin Pricing match defaults — seeds the Criteria ± panel. */
+  matchConfig?: PricingMatchingConfig
+}
 
 function uagCacheKey(subjectId: string, matchFp: string): string {
   return `uag:v${UAG_CACHE_VERSION}:${subjectId}:${matchFp}`
@@ -120,15 +129,49 @@ async function attachStoredEdgeScores(result: UagResult): Promise<UagResult> {
 }
 
 /**
+ * Live wide pool for interactive Criteria ± (not written to stats_cache).
+ * Uses max bed/bath/% bands so the client can filter down to session overrides.
+ */
+async function resolveWideUagPool(
+  subject: Listing,
+  match: PricingMatchingConfig,
+): Promise<UagPayload> {
+  const zip = normalizeZip(subject.address.postalCode)
+  const pool = zip ? await fetchUnderContractPoolForZip(zip) : []
+  const wide = widePricingMatchingConfig(match)
+  const ranked = findUagRanked(subject, pool, wide)
+  const result: UagResult = {
+    sale: ranked.sale.map((r) => r.listing),
+    rental: ranked.rental.map((r) => r.listing),
+    criteria: ranked.criteria,
+    missingCriteria: ranked.missingCriteria,
+  }
+  // Keep admin Pricing criteria (vintage edge labels) for session seeding.
+  const adminCriteria = subjectComparablesCriteria(subject, match)
+  if (adminCriteria.criteria) {
+    result.criteria = adminCriteria.criteria
+    result.missingCriteria = adminCriteria.missingCriteria
+  }
+  const withScores = await attachStoredEdgeScores(result)
+  return { mlsId: subject.mlsId, ...withScores, matchConfig: match }
+}
+
+/**
  * Resolve under-agreement comps for a subject: cache-first, then on-demand RETS.
  * The heavy `Listing.raw` payloads never touch Postgres — only the slim comp
  * rows are cached.
  */
 export async function resolveUagForSubject(
   subject: Listing,
+  options: { pool?: 'default' | 'wide' } = {},
 ): Promise<UagPayload> {
   const subjectId = listingRowId(subject)
   const match = await getPricingMatchingConfigFresh()
+
+  if (options.pool === 'wide') {
+    return resolveWideUagPool(subject, match)
+  }
+
   const matchFp = pricingMatchingConfigFingerprint(match)
 
   if (subjectId) {
@@ -137,7 +180,7 @@ export async function resolveUagForSubject(
       if (cached && isFresh(cached.computedAt, UAG_RESULT_TTL_MS)) {
         const parsed = JSON.parse(cached.payload) as UagResult
         const withScores = await attachStoredEdgeScores(parsed)
-        return { mlsId: subject.mlsId, ...withScores }
+        return { mlsId: subject.mlsId, ...withScores, matchConfig: match }
       }
     } catch {
       // Cache miss / parse failure falls through to a fresh compute.
@@ -164,5 +207,5 @@ export async function resolveUagForSubject(
   }
 
   const withScores = await attachStoredEdgeScores(result)
-  return { mlsId: subject.mlsId, ...withScores }
+  return { mlsId: subject.mlsId, ...withScores, matchConfig: match }
 }

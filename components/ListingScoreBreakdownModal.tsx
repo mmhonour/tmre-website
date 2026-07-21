@@ -25,6 +25,7 @@ const FACTORS: {
   { key: "ppsf", label: "PPSF fit", scoreKey: "pricePerSqftFit", explainKey: "ppsf" },
   { key: "layout", label: "Layout", scoreKey: "layoutQuality", explainKey: "layout" },
   { key: "schools", label: "Schools", scoreKey: "schoolRating", explainKey: "schools" },
+  { key: "dom", label: "DOM", scoreKey: "domRating", explainKey: "dom" },
 ];
 
 export default function ListingScoreBreakdownModal({
@@ -77,7 +78,9 @@ export default function ListingScoreBreakdownModal({
               ? score.layoutQuality
               : explainTopic === "schools"
                 ? score.schoolRating
-                : undefined,
+                : explainTopic === "dom"
+                  ? score.domRating
+                  : undefined,
     weight:
       explainTopic === "age"
         ? score.weights.age
@@ -91,7 +94,9 @@ export default function ListingScoreBreakdownModal({
               ? score.weights.layout
               : explainTopic === "schools"
                 ? score.weights.schools
-                : undefined,
+                : explainTopic === "dom"
+                  ? score.weights.dom
+                  : undefined,
   };
 
   return (
@@ -147,14 +152,20 @@ export default function ListingScoreBreakdownModal({
           </p>
           <div className="space-y-4 mb-6">
             {FACTORS.map(({ key, label, scoreKey, explainKey }) => {
-              const value = score[scoreKey] as number;
-              const weightPct = formatScoreWeightPct(score.weights[key]);
+              const raw = score[scoreKey];
+              if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+              const value = raw;
+              const weightRaw = score.weights[key];
+              const weightPct =
+                typeof weightRaw === "number"
+                  ? formatScoreWeightPct(weightRaw)
+                  : null;
               return (
                 <div key={key}>
                   <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/70 mb-1.5">
                     <span>
                       {label}
-                      {showWeights ? (
+                      {showWeights && weightPct ? (
                         <span className="ml-1.5 text-slate/55 normal-case tracking-normal">
                           ({weightPct})
                         </span>

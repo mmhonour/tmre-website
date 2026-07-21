@@ -16,6 +16,8 @@ export type ListingHeroPhotoProps = {
   unframed?: boolean;
   bare?: boolean;
   obfuscate?: boolean;
+  /** Eager-load for LCP; leave false for stacked photos below the fold. */
+  priority?: boolean;
 };
 
 export default function ListingHeroPhoto({
@@ -27,6 +29,7 @@ export default function ListingHeroPhoto({
   unframed = false,
   bare = false,
   obfuscate = false,
+  priority = true,
 }: ListingHeroPhotoProps) {
   const panelClass = unframed ? listingPanelClass : listingFrameClass;
 
@@ -38,7 +41,7 @@ export default function ListingHeroPhoto({
       <ListingThumbImage
         src={url}
         alt={alt}
-        priority
+        priority={priority}
         className="absolute inset-0 block w-full h-full"
         imgClassName={listingPhotoObfuscationImgClass(
           obfuscate,
@@ -52,7 +55,7 @@ export default function ListingHeroPhoto({
       <ListingThumbImage
         src={url}
         alt={alt}
-        priority
+        priority={priority}
         className="absolute inset-0 block w-full h-full"
         imgClassName={listingPhotoObfuscationImgClass(
           obfuscate,

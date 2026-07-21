@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 /** Under-agreement (under-contract) comps for a listing: rental + sale columns. */
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ mlsId: string }> },
 ) {
   const { mlsId } = await ctx.params
@@ -16,13 +16,17 @@ export async function GET(
     return NextResponse.json({ error: 'mlsId required' }, { status: 400 })
   }
 
+  const url = new URL(req.url)
+  const pool =
+    url.searchParams.get('pool') === 'wide' ? ('wide' as const) : ('default' as const)
+
   try {
     const { listing: subject } = await readListingFromDbByMlsId(id)
     if (!subject) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
 
-    const payload = await resolveUagForSubject(subject)
+    const payload = await resolveUagForSubject(subject, { pool })
 
     return NextResponse.json(payload)
   } catch (err) {

@@ -41,11 +41,13 @@ export function DealBoardPhotoLedRow({
   scoreRank,
   rankTotal,
   isLive,
+  showTown,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
   const { ppsf, domType } = dealBoardPriceMeta(l);
+  const town = showTown ? listingTown(l) : null;
 
   return (
     <div
@@ -81,6 +83,11 @@ export function DealBoardPhotoLedRow({
           />
         </div>
         <DealBoardAddressWithInsight listing={l} isLive={isLive} />
+        {town ? (
+          <p className="font-mono text-[10px] tracking-[0.08em] uppercase text-navy/65">
+            {town}
+          </p>
+        ) : null}
         <p className="font-mono text-[11px] text-slate tabular-nums truncate">
           {bedBathLabel(l.beds, l.baths)}
           {" · "}
@@ -165,6 +172,16 @@ export function DealBoardPhotoLedLineRow({
             {l.address}
           </span>
         )}
+        {town ? (
+          <>
+            <span className="text-charcoal/25 shrink-0" aria-hidden>
+              ·
+            </span>
+            <span className="shrink-0 font-mono text-[10px] tracking-[0.08em] uppercase text-navy/70">
+              {town}
+            </span>
+          </>
+        ) : null}
         <span className="text-charcoal/25 shrink-0" aria-hidden>
           ·
         </span>
@@ -178,7 +195,6 @@ export function DealBoardPhotoLedLineRow({
             ppsf,
             l.dom != null ? `${l.dom}d DOM` : null,
             hideOwnershipType ? null : l.type || null,
-            town,
           ]}
           sqft={null}
           yearBuilt={l.yearBuilt}
@@ -239,6 +255,11 @@ export function DealBoardPhotoLedGridCard({
                 {l.address}
               </span>
             )}
+            {town ? (
+              <p className="mt-0.5 text-right font-mono text-[9px] tracking-[0.1em] uppercase text-navy/65 truncate">
+                {town}
+              </p>
+            ) : null}
           </div>
           <DealBoardScoreBadge
             value={l.score}
@@ -287,7 +308,6 @@ export function DealBoardPhotoLedGridCard({
             l.dom != null ? `${l.dom}d DOM` : null,
             l.type || null,
             dealBoardYearBuiltLabel(l.yearBuilt),
-            town,
           ]}
           sqft={null}
           yearBuilt={null}
@@ -343,6 +363,11 @@ export function DealBoardPhotoLedLargeCard({
               {l.address}
             </span>
           )}
+          {town ? (
+            <p className="mt-0.5 text-right font-mono text-[9px] tracking-[0.1em] uppercase text-navy/65 truncate">
+              {town}
+            </p>
+          ) : null}
         </div>
         <DealBoardPrimaryPhoto
           listing={l}
@@ -375,7 +400,7 @@ export function DealBoardPhotoLedLargeCard({
           <span className="text-navy">${l.price.toLocaleString()}</span>
         </p>
         <DealBoardAdaptiveMetaLine
-          parts={[ppsf, domType, town]}
+          parts={[ppsf, domType]}
           sqft={l.sqft}
           yearBuilt={l.yearBuilt}
           lotAcres={l.lotAcres}

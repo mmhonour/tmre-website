@@ -2,9 +2,11 @@ import type { Listing } from './rets'
 import type { ScoreBreakdown } from './goldilocks-score-info'
 import {
   DEFAULT_GOLDILOCKS_SCORING_CONFIG,
+  scoreDomDays,
   type GoldilocksScoringConfig,
 } from './goldilocks-config-shared'
 import { isFreshFirstSaleNewConstruction } from './new-construction'
+import { matchedRemarkPhrases } from './remarks-phrase-match'
 
 export type { GoldilocksScoringConfig } from './goldilocks-config-shared'
 
@@ -161,7 +163,7 @@ function collectRemarks(l: Listing): string {
 }
 
 function matched(haystack: string, needles: string[]): string[] {
-  return needles.filter((n) => haystack.includes(n))
+  return matchedRemarkPhrases(haystack, needles)
 }
 
 function clamp(n: number, lo = 0, hi = 100): number {
@@ -313,7 +315,9 @@ export function disqualify(
   const disqualifying =
     opts.config?.keywords.disqualifying ??
     DEFAULT_GOLDILOCKS_SCORING_CONFIG.keywords.disqualifying
-  if (disqualifying.some((k) => remarks.includes(k))) return 'disqualifying_keyword'
+  if (matchedRemarkPhrases(remarks, disqualifying).length > 0) {
+    return 'disqualifying_keyword'
+  }
   const cityAgg = aggregates.get(aggregateKey(l.address.city, kind))
   if (cityAgg?.topPrice15 != null && l.price >= cityAgg.topPrice15) return 'top_price_for_town'
   if (!opts.skipSchoolGate && scoreSchools(l, opts.schoolOverride) < MIN_SCHOOL_RATING) {
@@ -362,6 +366,7 @@ export function scoreListing(
   )
   const layout = scoreLayout(l.sqft, l.beds, l.baths, goodLayout, badLayout)
   const schools = scoreSchools(l, schoolOverride)
+  const dom = scoreDomDays(l.dom, config.domTiers, config.domMissingScore)
 
   const composite =
     age * weights.age +
@@ -369,7 +374,8 @@ export function scoreListing(
     finishes * weights.finishes +
     ppsfFit * weights.ppsf +
     layout * weights.layout +
-    schools * weights.schools
+    schools * weights.schools +
+    dom * (weights.dom ?? 0)
 
   return {
     listing: l,
@@ -381,6 +387,7 @@ export function scoreListing(
       pricePerSqftFit: Math.round(ppsfFit * 10) / 10,
       layoutQuality: Math.round(layout * 10) / 10,
       schoolRating: Math.round(schools * 10) / 10,
+      domRating: Math.round(dom * 10) / 10,
       composite: Math.round(composite * 10) / 10,
       weights: { ...weights },
     },

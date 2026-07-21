@@ -37,8 +37,8 @@ type ListingHeaderProps = {
   /** Primary/hero photo — rendered full-width under score + address. */
   heroSlot?: ReactNode;
   /**
-   * Tab nav bar. Rendered under the hero (and insight on Overview) so the
-   * photo always sits directly under the address stack.
+   * Tab nav bar. Rendered under the hero so the photo sits directly under the
+   * address stack. Insight lives in ListingHeroPanels (right of Property Details).
    */
   tabsSlot?: ReactNode;
   /**
@@ -49,7 +49,7 @@ type ListingHeaderProps = {
    * Render only a slice of the header (for sticky split in HeroPanels).
    * - full: default complete header
    * - meta: title through Style / Bed/Bath / Sqft
-   * - heroInsight: full-width hero + Insight block only
+   * - heroInsight: full-width hero (+ optional legacy insight) only
    */
   parts?: "full" | "meta" | "heroInsight";
 };
@@ -207,11 +207,13 @@ export default function ListingHeader({
     </div>
   ) : null;
 
+  // Insight sits above the hero so a continuous photo stack can scroll under sticky tabs
+  // without pushing the summary far down the page.
   const heroInsightBlock =
     heroBlock || insightBlock ? (
       <>
-        {heroBlock}
         {insightBlock}
+        {heroBlock}
       </>
     ) : null;
 

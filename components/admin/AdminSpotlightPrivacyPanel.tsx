@@ -492,7 +492,7 @@ export default function AdminSpotlightPrivacyPanel() {
                           Property map &amp; pin
                         </span>
                         <span className="block text-xs text-charcoal/55 mt-0.5">
-                          Exact location with house marker (off = town map only)
+                          Exact location with house marker (off = town outline with ?)
                         </span>
                       </span>
                     </label>

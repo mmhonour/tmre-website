@@ -148,14 +148,35 @@ export default function DealBoardList({
     </div>
   );
 
+  const showMiddleTierControl =
+    canTier && middleRows.length > 0 && !hideMiddleTierToggle;
+  // Collapsed: big Middle tier panel. Expanded: panel disappears; listings show
+  // with a compact control to collapse again.
   const tierBlock =
-    canTier && middleRows.length > 0 && !hideMiddleTierToggle ? (
+    showMiddleTierControl && !middleTierExpanded ? (
       <DealBoardMiddleTierToggle
-        expanded={middleTierExpanded}
+        expanded={false}
         middleCount={middleRows.length}
         resultCount={resultCount}
         onToggle={onMiddleTierToggle}
       />
+    ) : null;
+  const hideMiddleControl =
+    showMiddleTierControl && middleTierExpanded ? (
+      <div className="flex justify-center border-y border-charcoal/[0.08] bg-cream/40 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={onMiddleTierToggle}
+          aria-expanded
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-navy/55 hover:bg-navy/5 hover:text-navy transition-colors"
+        >
+          <span aria-hidden>↑</span>
+          Hide middle tier
+          <span className="tabular-nums text-navy/40">
+            ({middleRows.length.toLocaleString()})
+          </span>
+        </button>
+      </div>
     ) : null;
 
   const hasResults = resultCount > 0;
@@ -199,6 +220,7 @@ export default function DealBoardList({
               {renderRows(topRows)}
               {tierBlock}
               {middleTierExpanded ? renderRows(middleRows) : null}
+              {hideMiddleControl}
               {renderRows(bottomRows)}
             </div>
           </>

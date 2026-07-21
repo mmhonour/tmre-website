@@ -4,10 +4,12 @@ import { computeDealOfTheDay, type DealPickPayload } from '@/lib/deal-pick'
 import { SCORE_PEER_LIMIT } from '@/lib/goldilocks'
 import {
   buildDealOfTheDayResponse,
+  DEAL_OF_THE_DAY_PROPERTY_CLASSES,
   readDealOfTheDayBundle,
   readDealOfTheDayCache,
   writeDealOfTheDayCache,
   type DealOfTheDayKind,
+  type DealOfTheDayPropertyClass,
   type DealOfTheDayScope,
   type DealOfTheDayResponse,
 } from '@/lib/deal-of-the-day-cache'
@@ -31,15 +33,21 @@ function resolveTown(cityParam: string | null): TmreTown | null {
   return TMRE_TOWNS.find((t) => t.toLowerCase() === normalized.toLowerCase()) ?? null
 }
 
-function resolveKindParam(raw: string | null): 'sale' | 'rental' | undefined {
+function resolveKindParam(raw: string | null): DealOfTheDayKind {
   const key = raw?.trim().toLowerCase()
-  if (key === 'sale' || key === 'sales') return 'sale'
   if (key === 'rental' || key === 'rentals') return 'rental'
-  return undefined
+  return 'sale'
 }
 
-function cacheKind(kind: 'sale' | 'rental' | undefined): DealOfTheDayKind {
-  return kind ?? 'all'
+function resolvePropertyClassParam(raw: string | null): DealOfTheDayPropertyClass {
+  const key = raw?.trim().toLowerCase()
+  if (
+    key &&
+    (DEAL_OF_THE_DAY_PROPERTY_CLASSES as readonly string[]).includes(key)
+  ) {
+    return key as DealOfTheDayPropertyClass
+  }
+  return 'homes'
 }
 
 function cacheHitHeaders(): HeadersInit {
@@ -63,6 +71,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const cityParam = searchParams.get('city')
   const kind = resolveKindParam(searchParams.get('kind'))
+  const propertyClass = resolvePropertyClassParam(
+    searchParams.get('property') ?? searchParams.get('propertyClass'),
+  )
   const listingId = searchParams.get('listing')?.trim() || null
   const bundle = searchParams.get('bundle') === '1'
   const town = resolveTown(cityParam)
@@ -73,13 +84,10 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const scope: DealOfTheDayScope = town ?? 'All'
-  const kindKey = cacheKind(kind)
-
   // Pinned listing is a one-off view — not cached. Everything else is SQLite-first.
   if (!listingId) {
     if (bundle && !town) {
-      const bundled = await readDealOfTheDayBundle(kindKey)
+      const bundled = await readDealOfTheDayBundle(kind, propertyClass)
       if (bundled) {
         for (const deal of Object.values(bundled.deals)) {
           if (deal) maybeWarmPhotosInBackground(deal)
@@ -88,15 +96,31 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const cached =
-      (await readDealOfTheDayCache(scope, kindKey)) ??
-      (kindKey !== 'all' ? await readDealOfTheDayCache(scope, 'all') : null)
-    if (cached) {
-      maybeWarmPhotosInBackground(cached)
-      return NextResponse.json(
-        { ...cached, source: 'db', dealCache: true },
-        { headers: cacheHitHeaders() },
-      )
+    if (town) {
+      const cached = await readDealOfTheDayCache(town, kind, propertyClass)
+      if (cached) {
+        maybeWarmPhotosInBackground(cached)
+        return NextResponse.json(
+          { ...cached, source: 'db', dealCache: true },
+          { headers: cacheHitHeaders() },
+        )
+      }
+    } else {
+      // No city → prefer bundle composition; if missing, fall through to live pick
+      // for a single synthetic "first town" isn't useful — recompute below across towns.
+      const bundled = await readDealOfTheDayBundle(kind, propertyClass)
+      if (bundled) {
+        // Return first available deal as a single-payload convenience, matching prior "All" shape.
+        const firstTown = TMRE_TOWNS.find((t) => bundled.deals[t])
+        const first = firstTown ? bundled.deals[firstTown] : null
+        if (first) {
+          maybeWarmPhotosInBackground(first)
+          return NextResponse.json(
+            { ...first, source: 'db', dealCache: true },
+            { headers: cacheHitHeaders() },
+          )
+        }
+      }
     }
   }
 
@@ -132,31 +156,36 @@ export async function GET(req: NextRequest) {
 
     const payload = await computeDealOfTheDay(listings, {
       peerListings,
-      ...(kind ? { kind } : {}),
+      kind,
+      propertyClass,
       ...(listingId ? { listingId } : {}),
     })
     if (!payload) {
       return NextResponse.json(
         {
-          error: kind
-            ? `No active ${kind === 'sale' ? 'sales' : 'rentals'} found`
-            : 'No active listings found',
+          error: `No active ${kind === 'sale' ? 'sales' : 'rentals'} (${propertyClass}) found`,
           totalReviewed: listings.length,
           towns: town ? [town] : [...TMRE_TOWNS],
           city: town,
           kind,
+          propertyClass,
         },
         { status: 404 },
       )
     }
 
     const response = {
-      ...buildDealOfTheDayResponse(payload, town, kind),
+      ...buildDealOfTheDayResponse(payload, town, kind, propertyClass),
       source,
     }
 
-    if (source === 'db' && !listingId) {
-      await writeDealOfTheDayCache(scope, response as DealOfTheDayResponse, kindKey)
+    if (source === 'db' && !listingId && town) {
+      await writeDealOfTheDayCache(
+        town as DealOfTheDayScope,
+        response as DealOfTheDayResponse,
+        kind,
+        propertyClass,
+      )
     }
 
     maybeWarmPhotosInBackground(response)

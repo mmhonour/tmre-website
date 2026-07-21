@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import {
+  LISTING_RECENTLY_RENTED_PANEL_ID,
+  LISTING_RECENTLY_SOLD_PANEL_ID,
   LISTING_SECTION_IDS,
+  listingRecentlyClosedPanelIdForTab,
   listingSectionIdForTab,
   listingTabFromSectionId,
 } from "@/components/listing/listing-section-ids";
@@ -130,6 +133,22 @@ export default function ListingSubnav({
   };
 
   const sectionHref = (section: ListingTab) => {
+    // Sold / Rented always deep-link to the Recently Sold / Recently Rented panel.
+    const recentlyClosedId = listingRecentlyClosedPanelIdForTab(section);
+    if (recentlyClosedId) {
+      if (useHashJump) {
+        const overview = routeHref("overview");
+        const hash = `#${recentlyClosedId}`;
+        return overview.includes("#")
+          ? `${overview.replace(/#.*$/, "")}${hash}`
+          : `${overview}${hash}`;
+      }
+      const base = routeHref(section);
+      return base.includes("#")
+        ? `${base.replace(/#.*$/, "")}#${recentlyClosedId}`
+        : `${base}#${recentlyClosedId}`;
+    }
+
     if (!useHashJump || !HASH_JUMP_TABS.has(section)) {
       return routeHref(section);
     }
@@ -248,7 +267,12 @@ export default function ListingSubnav({
     const observed = new Set<string>();
     const tryObserve = () => {
       if (cancelled) return;
-      for (const id of Object.values(LISTING_SECTION_IDS)) {
+      const anchorIds = [
+        ...Object.values(LISTING_SECTION_IDS),
+        LISTING_RECENTLY_SOLD_PANEL_ID,
+        LISTING_RECENTLY_RENTED_PANEL_ID,
+      ];
+      for (const id of anchorIds) {
         if (observed.has(id)) continue;
         const el = document.getElementById(id);
         if (!el) continue;
@@ -278,20 +302,26 @@ export default function ListingSubnav({
         : "text-white/50 border-transparent hover:text-white/80"
     }`;
 
-  const jumpToSection = (tab: ListingTab) => {
-    const sectionId = listingSectionIdForTab(tab);
-    if (!sectionId) return false;
-    const el = document.getElementById(sectionId);
+  const jumpToAnchor = (tab: ListingTab, anchorId: string) => {
+    const el = document.getElementById(anchorId);
     if (!el) return false;
     el.scrollIntoView({ behavior: "smooth", block: "start" });
     const url = new URL(window.location.href);
     window.history.replaceState(
       null,
       "",
-      `${url.pathname}${url.search}#${sectionId}`,
+      `${url.pathname}${url.search}#${anchorId}`,
     );
     setScrollActive(tab);
     return true;
+  };
+
+  const jumpToSection = (tab: ListingTab) => {
+    const recentlyClosedId = listingRecentlyClosedPanelIdForTab(tab);
+    if (recentlyClosedId && jumpToAnchor(tab, recentlyClosedId)) return true;
+    const sectionId = listingSectionIdForTab(tab);
+    if (!sectionId) return false;
+    return jumpToAnchor(tab, sectionId);
   };
 
   const renderTabLink = (tab: TabDef, keyPrefix = "") => {
@@ -311,6 +341,13 @@ export default function ListingSubnav({
             onTabSelect(tab.id);
             return;
           }
+          // Sold / Rented: if the Recently Sold/Rented panel is already on the
+          // page (overview stack or the Sold/Rented tab), scroll to it in place.
+          const recentlyClosedId = listingRecentlyClosedPanelIdForTab(tab.id);
+          if (recentlyClosedId && jumpToAnchor(tab.id, recentlyClosedId)) {
+            event.preventDefault();
+            return;
+          }
           if (!useHashJump || !HASH_JUMP_TABS.has(tab.id)) return;
           // Already on overview with sections mounted — smooth-scroll in place.
           if (active === "overview" && jumpToSection(tab.id)) {
@@ -323,20 +360,20 @@ export default function ListingSubnav({
     );
   };
 
-  /** Non-link pipe between Sold / Rented. */
-  const compsMutedPipe = (key: string, keyPrefix = "") => (
+  /** Non-link italic "or" between Sold / Rented. */
+  const compsMutedOr = (key: string, keyPrefix = "") => (
     <span
       key={`${keyPrefix}${key}`}
-      className={`shrink-0 whitespace-nowrap font-mono text-[10px] tracking-[0.15em] uppercase text-white/35 border-b-2 border-transparent -mb-px pointer-events-none select-none px-1 ${
+      className={`shrink-0 whitespace-nowrap font-mono text-[10px] tracking-[0.15em] italic lowercase text-white/35 border-b-2 border-transparent -mb-px pointer-events-none select-none px-1 ${
         compact ? "py-1" : "py-2"
       }`}
       aria-hidden
     >
-      |
+      or
     </span>
   );
 
-  /** Sold | Rented. */
+  /** Sold or Rented. */
   const renderCompsTabs = (keyPrefix = "") => {
     const items = compsTabs.filter(
       (tab) =>
@@ -347,7 +384,7 @@ export default function ListingSubnav({
       <>
         {items.map((tab, index) => (
           <span key={`${keyPrefix}${tab.id}-wrap`} className="contents">
-            {index > 0 ? compsMutedPipe(`pipe-${index}`, keyPrefix) : null}
+            {index > 0 ? compsMutedOr(`or-${index}`, keyPrefix) : null}
             {renderTabLink(tab, keyPrefix)}
           </span>
         ))}
@@ -411,7 +448,7 @@ export default function ListingSubnav({
       className={
         embedded
           ? compact
-            ? // Tight gap under the insight / Style meta → first tab row.
+            ? // Tight gap under Style meta → first tab row.
               "mt-0.5 pt-1 border-t border-white/10"
             : "mt-6 pt-6 border-t border-white/10"
           : `${listingRegionOutlineClass} mb-8`

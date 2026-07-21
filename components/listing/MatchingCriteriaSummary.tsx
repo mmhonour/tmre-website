@@ -217,6 +217,8 @@ export default function MatchingCriteriaSummary({
   onSessionChange,
   stepFeedback = null,
   isModal = false,
+  /** Side panel / drawer: open ± steppers by default. */
+  defaultControlsOpen = false,
 }: {
   criteria: ComparablesCriteria;
   /** Legacy display-only tolerances (What if). Ignored when `session` is set. */
@@ -229,13 +231,14 @@ export default function MatchingCriteriaSummary({
   /** Short find/no-find note shown next to the ± that was last pressed. */
   stepFeedback?: CriteriaStepFeedback | null;
   isModal?: boolean;
+  defaultControlsOpen?: boolean;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [autoRevealKey, setAutoRevealKey] = useState<CriteriaStepKey | null>(
     null,
   );
   const autoRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [controlsOpen, setControlsOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(defaultControlsOpen);
 
   useEffect(() => {
     return () => {

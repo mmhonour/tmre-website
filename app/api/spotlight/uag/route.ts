@@ -14,10 +14,12 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const propertyTab = parseSpotlightPropertyTab(searchParams.get('property'))
   const config = getSpotlightListingConfig(propertyTab)
+  const pool =
+    searchParams.get('pool') === 'wide' ? ('wide' as const) : ('default' as const)
 
   try {
     const subject = await resolveSpotlightSubjectListing(config)
-    const payload = await resolveUagForSubject(subject)
+    const payload = await resolveUagForSubject(subject, { pool })
 
     return NextResponse.json(payload, {
       headers: spotlightApiCacheHeaders(),
