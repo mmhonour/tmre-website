@@ -86,8 +86,9 @@ function scrollToHashTarget() {
 }
 
 /**
- * Phone / narrow: stack History → What if → Sales → Rentals → UAG under Overview
- * so tab taps can jump to in-page sections. Hidden from `lg` up (desktop keeps routes).
+ * Continuous listing / Spotlight body under Overview: History → What if →
+ * Sold → Rented → UAG. Tab clicks jump to in-page anchors (no route remount).
+ * Photos stays its own route (different chrome).
  */
 export function ListingMobileScrollSections({
   mlsId,
@@ -132,7 +133,7 @@ export function ListingMobileScrollSections({
   }, [mlsId]);
 
   return (
-    <div className="lg:hidden mt-8 space-y-0">
+    <div className="mt-8 space-y-0">
       <Section id={LISTING_SECTION_IDS.history} title="History">
         <ListingHistoryPanel
           mlsId={mlsId}

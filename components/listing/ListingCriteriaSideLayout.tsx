@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import ListingSideDrawer from "@/components/listing/ListingSideDrawer";
 
+/** Mount point in ListingHeroPanels right column (under Details). */
+export const LISTING_CRITERIA_SLOT_ID = "listing-criteria-slot";
+
 /**
- * Desktop: sticky Criteria column beside main comps content.
+ * Desktop: Criteria portals into the page right column under Details (beside
+ * Comparables / main content) — never a 3rd column inside the main panel.
  * Mobile: Criteria edge tab → right slide-over (same chrome as Map / Details).
  */
 export default function ListingCriteriaSideLayout({
@@ -17,6 +22,7 @@ export default function ListingCriteriaSideLayout({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(true);
+  const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -30,6 +36,25 @@ export default function ListingCriteriaSideLayout({
     if (isDesktop) setDrawerOpen(false);
   }, [isDesktop]);
 
+  useEffect(() => {
+    if (!criteria || !isDesktop) {
+      setDesktopSlot(null);
+      return;
+    }
+    const sync = () => {
+      setDesktopSlot(document.getElementById(LISTING_CRITERIA_SLOT_ID));
+    };
+    sync();
+    // Slot mounts with the listing chrome; retry briefly if this tab content
+    // hydrates before ListingHeroPanels paints the anchor.
+    const t1 = window.setTimeout(sync, 0);
+    const t2 = window.setTimeout(sync, 50);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [criteria, isDesktop]);
+
   if (!criteria) {
     return <>{children}</>;
   }
@@ -41,18 +66,29 @@ export default function ListingCriteriaSideLayout({
         : "border-white/15 bg-[#1B2A4A]/95 text-gold backdrop-blur-md hover:border-gold/40 hover:text-gold-light"
     }`;
 
+  const criteriaPanel = (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      {criteria}
+    </div>
+  );
+
   return (
     <>
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(13.5rem,16.5rem)] lg:gap-6 lg:items-start">
-        <div className="min-w-0 space-y-6">{children}</div>
-        {isDesktop ? (
-          <aside className="lg:sticky lg:top-[var(--listing-sticky-offset,6rem)] min-w-0">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              {criteria}
-            </div>
-          </aside>
-        ) : null}
-      </div>
+      <div className="min-w-0 space-y-6">{children}</div>
+
+      {isDesktop && desktopSlot
+        ? createPortal(
+            <aside className="min-w-0" aria-label="Criteria">
+              {criteriaPanel}
+            </aside>,
+            desktopSlot,
+          )
+        : null}
+
+      {/* Desktop fallback if the page chrome slot is missing (e.g. embedded). */}
+      {isDesktop && !desktopSlot ? (
+        <div className="mt-6 min-w-0 lg:mt-8">{criteriaPanel}</div>
+      ) : null}
 
       {!isDesktop ? (
         <>

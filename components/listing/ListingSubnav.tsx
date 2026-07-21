@@ -64,18 +64,6 @@ function tabVisible(
   return true;
 }
 
-function useIsNarrowViewport() {
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
-    const update = () => setNarrow(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-  return narrow;
-}
-
 export default function ListingSubnav({
   mlsId,
   active,
@@ -108,10 +96,13 @@ export default function ListingSubnav({
   const viewportRef = useRef<HTMLDivElement>(null);
   const measureFullRef = useRef<HTMLDivElement>(null);
   const [stackRows, setStackRows] = useState(false);
-  const isNarrow = useIsNarrowViewport();
   const [scrollActive, setScrollActive] = useState<ListingTab | null>(null);
-  /** Narrow viewports: jump to stacked sections on the overview page. */
-  const useHashJump = isNarrow;
+  /**
+   * In-page section jumps on Overview (all viewports). Avoids remounting the
+   * listing/Spotlight chrome when switching History / Sold / What if / etc.
+   * Photos stays a real route. Dedicated tab URLs still work as deep links.
+   */
+  const useHashJump = !onTabSelect;
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -221,7 +212,7 @@ export default function ListingSubnav({
     };
   }, [active, tabs]);
 
-  // On overview (narrow), highlight the section in view / from the hash.
+  // On overview, highlight the section in view / from the hash.
   useEffect(() => {
     if (!useHashJump || active !== "overview") {
       setScrollActive(null);

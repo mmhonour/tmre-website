@@ -7,7 +7,7 @@ export type ListingScrollSectionTab =
   | "comparable-rentals"
   | "uag";
 
-/** In-page section anchors used by mobile continuous scroll on Overview. */
+/** In-page section anchors used by continuous Overview scroll (listing / Spotlight). */
 export const LISTING_SECTION_IDS: Record<ListingScrollSectionTab, string> = {
   overview: "listing-sec-overview",
   history: "listing-sec-history",

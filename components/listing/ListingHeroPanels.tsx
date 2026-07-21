@@ -13,6 +13,7 @@ import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import ListingInterestButton from "@/components/listing/ListingInterestButton";
+import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import { formatMlsStatus } from "@/lib/listing-history";
 import type { ComponentProps, ReactNode } from "react";
@@ -107,10 +108,7 @@ export default function ListingHeroPanels({
     ) : null;
 
   const insightPanel = overviewInsight ? (
-    <aside
-      className="w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-      aria-label="Listing insight"
-    >
+    <aside className="w-full text-left" aria-label="Listing insight">
       <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
         Insight
       </p>
@@ -186,19 +184,6 @@ export default function ListingHeroPanels({
       </div>
 
       {heroOnly}
-
-      {belowTabs ? (
-        <div
-          id={
-            subnav.active === "overview"
-              ? LISTING_SECTION_IDS.overview
-              : undefined
-          }
-          className="mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
-        >
-          {belowTabs}
-        </div>
-      ) : null}
     </div>
   );
 
@@ -250,6 +235,17 @@ export default function ListingHeroPanels({
     </div>
   );
 
+  const belowTabsBlock = belowTabs ? (
+    <div
+      id={
+        subnav.active === "overview" ? LISTING_SECTION_IDS.overview : undefined
+      }
+      className="mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
+    >
+      {belowTabs}
+    </div>
+  ) : null;
+
   const edgeTabClass = (active: boolean) =>
     `flex items-center justify-center rounded-l-lg border border-r-0 px-1.5 py-3 shadow-[-4px_0_16px_-8px_rgba(0,0,0,0.55)] transition-colors ${
       active
@@ -266,12 +262,28 @@ export default function ListingHeroPanels({
       >
         <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
           {propertyPanel}
-          {footer ? <div className="mt-4">{footer}</div> : null}
         </div>
 
         <div className="order-2 min-w-0 lg:col-start-2 lg:row-start-1">
           {rightColumn}
         </div>
+
+        {belowTabsBlock ? (
+          <div className="order-3 min-w-0 lg:col-start-1 lg:row-start-2">
+            {belowTabsBlock}
+            {footer ? <div className="mt-4">{footer}</div> : null}
+          </div>
+        ) : footer ? (
+          <div className="order-3 min-w-0 lg:col-start-1 lg:row-start-2">
+            <div className="mt-4">{footer}</div>
+          </div>
+        ) : null}
+
+        {/* Under Details, top-aligned with Comparables / tab content — Criteria portals in. */}
+        <div
+          id={LISTING_CRITERIA_SLOT_ID}
+          className={`order-4 hidden min-w-0 empty:hidden lg:col-start-2 lg:row-start-2 lg:sticky lg:block ${STICKY_TOP_CLASS}`}
+        />
       </div>
       {belowHero ? (
         <div className="mt-6 border-t border-white/10 pt-6 lg:mt-8 lg:pt-8">
