@@ -179,6 +179,7 @@ export async function resolveSpotlightListing(options: {
       mlsId,
       listing.listingKey || mlsId,
       listing.photoCount,
+      { size: 'full' },
     )
     photos = resolved.photos
     photosCachedAt = new Date().toISOString()

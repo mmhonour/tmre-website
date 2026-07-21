@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { notifyContactByEmail } from '@/lib/contact-notify'
-import { updateVisitors } from '@/lib/visitors'
+import { attachLeadFieldsToVisitor } from '@/lib/visitors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,14 +56,12 @@ async function writeLeads(leads: Lead[]): Promise<void> {
 
 async function attachLeadToVisitor(vid: string, lead: Lead): Promise<void> {
   try {
-    await updateVisitors((visitors) => {
-      const v = visitors[vid]
-      if (!v) return
-      v.email = lead.email
-      v.zip = lead.zip
-      v.name = lead.name
-      v.audienceType = lead.audience_type
-      v.leadId = lead.id
+    await attachLeadFieldsToVisitor(vid, {
+      email: lead.email,
+      zip: lead.zip,
+      name: lead.name,
+      audienceType: lead.audience_type,
+      leadId: lead.id,
     })
   } catch (err) {
     console.warn('[leads] attachLeadToVisitor failed', err)

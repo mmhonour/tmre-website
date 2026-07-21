@@ -8,7 +8,7 @@ import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
-import { listingPhotoProxyUrlsFromCount } from "@/lib/listing-url";
+import { listingPhotoProxyUrlAsFull, listingPhotoProxyUrlsFromCount } from "@/lib/listing-url";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -39,11 +39,13 @@ export default function SpotlightPhotosClient() {
   const photoParam = searchParams.get("photo");
 
   const galleryPhotos = useMemo(() => {
-    if (photos.length > 0) return photos;
-    return listingPhotoProxyUrlsFromCount(
-      display.mlsId,
-      display.photoCount ?? 0,
-    );
+    const raw =
+      photos.length > 0
+        ? photos
+        : listingPhotoProxyUrlsFromCount(display.mlsId, display.photoCount ?? 0, 60, {
+            size: "full",
+          });
+    return raw.map(listingPhotoProxyUrlAsFull);
   }, [photos, display.mlsId, display.photoCount]);
 
   useEffect(() => {

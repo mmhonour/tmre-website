@@ -36,6 +36,7 @@ import {
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import {
   listingPhotoProxyUrl,
+  listingPhotoProxyUrlAsFull,
   listingPhotoProxyUrlsFromCount,
 } from "@/lib/listing-url";
 import { spotlightAllowsInterest } from "@/lib/spotlight-display";
@@ -133,11 +134,16 @@ function ListingSplitTestInner() {
   }, [dragging]);
 
   const galleryPhotos = useMemo(() => {
-    if (photos.length > 0) return photos;
-    return listingPhotoProxyUrlsFromCount(
-      display.mlsId,
-      display.photoCount ?? 0,
-    );
+    const raw =
+      photos.length > 0
+        ? photos
+        : listingPhotoProxyUrlsFromCount(
+            display.mlsId,
+            display.photoCount ?? 0,
+            60,
+            { size: "full" },
+          );
+    return raw.map(listingPhotoProxyUrlAsFull);
   }, [photos, display.mlsId, display.photoCount]);
 
   const photoCount =

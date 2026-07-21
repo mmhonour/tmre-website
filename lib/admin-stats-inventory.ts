@@ -543,14 +543,15 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
 
   // —— Site data ——
   {
-    id: 'visitors-json',
+    id: 'visitors-postgres',
     name: 'Visitors log',
     category: 'site-data',
-    medium: 'file',
-    location: 'data/visitors.json',
-    keyPattern: 'data/visitors.json',
-    owner: 'lib/visitors.ts',
-    live: { kind: 'none' },
+    medium: 'postgres',
+    location: 'visitors',
+    keyPattern: 'visitors.vid',
+    owner: 'lib/db/visitors-repo.ts',
+    notes: 'Replaces data/visitors.json — durable on Netlify serverless.',
+    live: { kind: 'postgres_table', table: 'visitors' },
   },
   {
     id: 'contacts-json',

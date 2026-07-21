@@ -39,7 +39,7 @@ export default function ListingPhotoScrollStack({
       {Array.from({ length: photoCount }, (_, index) => {
         const photo = (
           <ListingHeroPhoto
-            url={listingPhotoProxyUrl(mlsId, index)}
+            url={listingPhotoProxyUrl(mlsId, index, { size: "full" })}
             alt={`${altBase} · photo ${index + 1}`}
             photoCount={photoCount}
             photoIndex={index}

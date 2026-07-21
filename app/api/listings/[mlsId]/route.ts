@@ -34,7 +34,7 @@ export async function GET(
             id,
             listing.listingKey || id,
             listing.photoCount,
-            { sqliteOnly: true },
+            { sqliteOnly: true, size: 'full' },
           ).then((r) => r.photos)
         : Promise.resolve([] as string[]),
       scoreListingForDetailPage(listing),

@@ -12,13 +12,18 @@ import {
 import { discoverListingPhotoCount } from '@/lib/rets'
 
 /** Local proxy paths — bytes always served from the photo store via the photo API. */
-export function buildListingPhotoProxyUrls(mlsId: string, count: number): string[] {
+export function buildListingPhotoProxyUrls(
+  mlsId: string,
+  count: number,
+  opts?: { size?: 'full' },
+): string[] {
   const id = mlsId.trim()
   if (!id || count <= 0) return []
   const capped = Math.min(count, 250)
+  const qs = opts?.size === 'full' ? '?size=full' : ''
   return Array.from(
     { length: capped },
-    (_, i) => `/api/listings/${encodeURIComponent(id)}/photos/${i}`,
+    (_, i) => `/api/listings/${encodeURIComponent(id)}/photos/${i}${qs}`,
   )
 }
 
@@ -26,13 +31,18 @@ export function buildListingPhotoProxyUrls(mlsId: string, count: number): string
 export function buildListingPhotoProxyUrlsForIndices(
   mlsId: string,
   indices: readonly number[],
+  opts?: { size?: 'full' },
 ): string[] {
   const id = mlsId.trim()
   if (!id || indices.length === 0) return []
+  const qs = opts?.size === 'full' ? '?size=full' : ''
   return indices
     .filter((index) => Number.isFinite(index) && index >= 0)
     .slice(0, 250)
-    .map((index) => `/api/listings/${encodeURIComponent(id)}/photos/${index}`)
+    .map(
+      (index) =>
+        `/api/listings/${encodeURIComponent(id)}/photos/${index}${qs}`,
+    )
 }
 
 /**
@@ -49,10 +59,16 @@ export async function resolveListingPhotoUrls(
   mlsId: string,
   listingKey: string,
   photoCountHint?: number | null,
-  options: { forceRefresh?: boolean; sqliteOnly?: boolean } = {},
+  options: {
+    forceRefresh?: boolean
+    sqliteOnly?: boolean
+    /** Gallery / Photos tab — full CDN MediaURL via `?size=full`. */
+    size?: 'full'
+  } = {},
 ): Promise<{ photos: string[]; cacheHit: boolean }> {
   const id = mlsId.trim()
   if (!id) return { photos: [], cacheHit: false }
+  const sizeOpts = options.size === 'full' ? { size: 'full' as const } : undefined
 
   const cacheId = listingKey?.trim() || id
   let indexLookupId = cacheId
@@ -72,7 +88,7 @@ export async function resolveListingPhotoUrls(
     )
     return {
       // Client URLs keep the request mlsId; the photo proxy remaps to cache id.
-      photos: buildListingPhotoProxyUrlsForIndices(id, storedIndices),
+      photos: buildListingPhotoProxyUrlsForIndices(id, storedIndices, sizeOpts),
       cacheHit: freshRows >= storedIndices.length,
     }
   }
@@ -96,7 +112,7 @@ export async function resolveListingPhotoUrls(
 
   // Cold path — dense placeholders so the photo API can fetch on demand.
   return {
-    photos: buildListingPhotoProxyUrls(id, count),
+    photos: buildListingPhotoProxyUrls(id, count, sizeOpts),
     cacheHit: false,
   }
 }

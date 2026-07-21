@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import {
   emptyVisitorGeo,
-  readVisitorsMap,
-  updateVisitors,
+  readVisitorByVid,
+  recordVisitorPageview,
   type VisitorGeo,
 } from '@/lib/visitors'
 
@@ -66,35 +66,17 @@ export async function POST(req: NextRequest) {
 
   try {
     // Geolocation is a slow network call — do it outside the write lock so it
-    // can't stall other pageviews. A pre-read (unsynchronized) decides whether
-    // this vid is likely new and therefore needs geo lookup.
-    const preexisting = (await readVisitorsMap())[vid]
+    // can't stall other pageviews. A cheap vid lookup decides whether this is
+    // a first-seen visitor that needs geo.
+    const preexisting = await readVisitorByVid(vid)
     const geo = preexisting ? null : await geolocate(ip)
 
-    await updateVisitors((visitors) => {
-      const existing = visitors[vid]
-      if (existing) {
-        existing.lastSeen = now
-        existing.pageviews += 1
-        existing.pages.push({ path: pagePath, at: now })
-        if (existing.pages.length > 50) existing.pages = existing.pages.slice(-50)
-        if (ip && !existing.ip) existing.ip = ip
-      } else {
-        visitors[vid] = {
-          vid,
-          firstSeen: now,
-          lastSeen: now,
-          pageviews: 1,
-          ip,
-          geo: geo ?? emptyVisitorGeo(),
-          pages: [{ path: pagePath, at: now }],
-          email: null,
-          zip: null,
-          name: null,
-          audienceType: null,
-          leadId: null,
-        }
-      }
+    await recordVisitorPageview({
+      vid,
+      path: pagePath,
+      at: now,
+      ip,
+      geo: geo ?? undefined,
     })
   } catch (err) {
     console.error('[visitor/log] write failed', err)

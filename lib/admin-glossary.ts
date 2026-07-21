@@ -443,7 +443,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Photo 404 / ?fetch=1',
     category: 'photos-cdn',
     definition:
-      'Cache miss returns 404; UI retries with ?fetch=1 to pull from RETS into R2. Bare 404s must not be CDN-cached as if they were the final image.',
+      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image.',
+  },
+  {
+    term: '?size=full',
+    category: 'photos-cdn',
+    definition:
+      'Gallery / full-view photo proxy flag. Serves full MediaURL from the MLS CDN (not RETS Thumbnail objects) and refuses undersized thumb cache hits.',
   },
   {
     term: 'listing-photos.db',
@@ -518,6 +524,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'ui-tabs',
     definition:
       'Market / deal board with filters, town snapshots, scored listings, and Deal of the Day.',
+  },
+  {
+    term: 'Visitors log',
+    category: 'sync-admin',
+    definition:
+      'Password-gated /visitors activity log. Stored in Neon Postgres (`visitors` table) — not a local JSON file — so it persists on Netlify serverless.',
   },
   {
     term: 'List with Me',

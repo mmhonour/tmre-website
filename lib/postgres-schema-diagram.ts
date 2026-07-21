@@ -58,6 +58,7 @@ const PRIORITY_TABLES = [
   'listing_price_history',
   'town_property_addresses',
   'zip_boundaries',
+  'visitors',
   'saved_search_alerts',
   'saved_search_alert_deliveries',
   'sync_runs',

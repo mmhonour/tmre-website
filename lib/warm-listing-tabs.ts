@@ -64,7 +64,8 @@ async function warmListingPhotos(
   }
 
   // Photos tab: pull a wider set with bounded concurrency so cold galleries
-  // populate without opening dozens of RETS sockets at once.
+  // populate from the MLS Media CDN (full MediaURL) without opening dozens of
+  // RETS object sockets at once.
   let cursor = 0
   async function worker(): Promise<void> {
     while (cursor <= lastIndex) {
@@ -75,6 +76,7 @@ async function warmListingPhotos(
         listingKey,
         photoIndex,
         photoCountHint: photoCount,
+        quality: 'full',
       }).catch(() => null)
     }
   }

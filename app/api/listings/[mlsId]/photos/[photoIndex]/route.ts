@@ -12,16 +12,20 @@ const PHOTO_HIT_CACHE_CONTROL =
 /**
  * Netlify CDN ignores query strings in the cache key unless Netlify-Vary says
  * otherwise. Without this, a cache-only 404 for `/photos/0` is reused for
- * `/photos/0?fetch=1` and ListingThumbImage's RETS retry never reaches origin.
+ * `/photos/0?fetch=1` and ListingThumbImage's CDN retry never reaches origin.
+ * `size` must vary too so full-res gallery URLs are not served thumb bytes.
  */
-const PHOTO_VARY = 'query=fetch'
+const PHOTO_VARY = 'query=fetch|size'
 
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ mlsId: string; photoIndex: string }> },
 ) {
   const { mlsId, photoIndex } = await ctx.params
-  const allowFetch = new URL(req.url).searchParams.get('fetch') === '1'
+  const url = new URL(req.url)
+  const allowFetch = url.searchParams.get('fetch') === '1'
+  const quality =
+    url.searchParams.get('size') === 'full' ? ('full' as const) : ('display' as const)
   const id = (mlsId ?? '').trim()
   const index = parseInt(photoIndex ?? '0', 10)
 
@@ -44,6 +48,7 @@ export async function GET(
       photoIndex: index,
       photoCountHint: listing?.photoCount,
       sqliteOnly: !allowFetch,
+      quality,
     })
 
     if (!resolved) {
@@ -69,6 +74,7 @@ export async function GET(
         'Cache-Control': PHOTO_HIT_CACHE_CONTROL,
         'Netlify-Vary': PHOTO_VARY,
         'X-Photo-Cache': resolved.cacheHit ? 'hit' : 'miss',
+        'X-Photo-Quality': quality,
       },
     })
   } catch (err) {

@@ -15,7 +15,7 @@ import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
-import { listingPhotoProxyUrlsFromCount } from "@/lib/listing-url";
+import { listingPhotoProxyUrlAsFull, listingPhotoProxyUrlsFromCount } from "@/lib/listing-url";
 
 type Schools = {
   elementary: string | null;
@@ -116,11 +116,16 @@ export default function ListingPhotosClient({
 
   const galleryPhotos = useMemo(() => {
     if (!data) return [] as string[];
-    if (data.photos.length > 0) return data.photos;
-    return listingPhotoProxyUrlsFromCount(
-      mlsId,
-      data.listing.photoCount ?? 0,
-    );
+    const raw =
+      data.photos.length > 0
+        ? data.photos
+        : listingPhotoProxyUrlsFromCount(
+            mlsId,
+            data.listing.photoCount ?? 0,
+            60,
+            { size: "full" },
+          );
+    return raw.map(listingPhotoProxyUrlAsFull);
   }, [data, mlsId]);
 
   useEffect(() => {

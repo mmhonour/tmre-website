@@ -108,8 +108,21 @@ export function listingSectionHref(
   return qs ? `${path}?${qs}` : path;
 }
 
-export function listingPhotoProxyUrl(mlsId: string, index: number): string {
-  return `/api/listings/${encodeURIComponent(mlsId)}/photos/${index}`;
+export function listingPhotoProxyUrl(
+  mlsId: string,
+  index: number,
+  opts?: { size?: "full" },
+): string {
+  const base = `/api/listings/${encodeURIComponent(mlsId)}/photos/${index}`;
+  if (opts?.size === "full") return `${base}?size=full`;
+  return base;
+}
+
+/** Ensure a photo-proxy URL requests full CDN MediaURL quality (gallery / full-view). */
+export function listingPhotoProxyUrlAsFull(url: string): string {
+  if (!url.includes("/photos/")) return url;
+  if (/(?:^|[?&])size=full(?:&|$)/.test(url)) return url;
+  return url.includes("?") ? `${url}&size=full` : `${url}?size=full`;
 }
 
 /** Dense placeholder proxy URLs when the API returns an empty photos[] but MLS reports a count. */
@@ -117,11 +130,14 @@ export function listingPhotoProxyUrlsFromCount(
   mlsId: string,
   count: number,
   cap = 60,
+  opts?: { size?: "full" },
 ): string[] {
   const id = mlsId.trim();
   const n = Math.min(Math.max(0, Math.floor(count)), cap);
   if (!id || n <= 0) return [];
-  return Array.from({ length: n }, (_, i) => listingPhotoProxyUrl(id, i));
+  return Array.from({ length: n }, (_, i) =>
+    listingPhotoProxyUrl(id, i, opts),
+  );
 }
 
 /** Up to N listing photo proxy URLs for thumbnail previews (0-based index). */
