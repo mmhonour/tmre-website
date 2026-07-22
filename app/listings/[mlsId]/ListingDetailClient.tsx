@@ -195,22 +195,27 @@ export default function ListingDetailClient({
   );
   const isClosed = details.isClosed;
   const isComingSoon = formatMlsStatus(l.status) === "Coming Soon";
-  const heroSlot =
-    !isComingSoon && photoCount > 0 ? (
-      <ListingPhotoScrollStack
-        mlsId={l.mlsId}
-        photoCount={photoCount}
-        altBase={street || "Listing photo"}
-        photoHref={(i) =>
-          listingPhotosHref(
-            l.mlsId,
-            street || addressHint,
-            townHint || l.address.city,
-            i,
-          )
-        }
-      />
-    ) : null;
+  const mapSlot = {
+    latitude: l.latitude,
+    longitude: l.longitude,
+    addressQuery: mapsQuery,
+  };
+  const heroSlot = !isComingSoon ? (
+    <ListingPhotoScrollStack
+      mlsId={l.mlsId}
+      photoCount={photoCount}
+      altBase={street || "Listing photo"}
+      mapSlot={mapSlot}
+      photoHref={(i) =>
+        listingPhotosHref(
+          l.mlsId,
+          street || addressHint,
+          townHint || l.address.city,
+          i,
+        )
+      }
+    />
+  ) : null;
 
   return (
     <ListingShell>
@@ -264,6 +269,7 @@ export default function ListingDetailClient({
             heroAlt={street || "Listing photo"}
             hideHero={isComingSoon}
             showHero
+            mapSlot={mapSlot}
           />
         }
         remarks={remarks || null}

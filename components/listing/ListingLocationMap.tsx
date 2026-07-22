@@ -352,6 +352,7 @@ export default function ListingLocationMap({
   hidePin = false,
   outlineTown = null,
   defaultZoom,
+  seamless = false,
 }: {
   latitude: number | null;
   longitude: number | null;
@@ -365,6 +366,8 @@ export default function ListingLocationMap({
   outlineTown?: string | null;
   /** Initial zoom when coords load (e.g. town overview vs property). */
   defaultZoom?: number;
+  /** Flush stack: no radius / border (matches seamless listing photos). */
+  seamless?: boolean;
 }) {
   const initialZoom = defaultZoom ?? DEFAULT_ZOOM;
   const [zoom, setZoom] = useState(initialZoom);
@@ -438,7 +441,11 @@ export default function ListingLocationMap({
       {showMapFrame ? (
         <div
           ref={mapContainerRef}
-          className={`overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] ${mapFrameClass}`}
+          className={`overflow-hidden bg-navy-dark ${
+            seamless
+              ? "rounded-none border-0"
+              : "rounded-xl border border-white/10 bg-white/[0.04]"
+          } ${mapFrameClass}`}
           aria-label={
             showTownMystery
               ? `Approximate location in ${resolvedOutlineTown}`
@@ -497,7 +504,11 @@ export default function ListingLocationMap({
         </div>
       ) : (
         <div
-          className={`flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-2 text-center ${
+          className={`flex items-center justify-center px-2 text-center ${
+            seamless
+              ? "rounded-none border-0 bg-navy-dark"
+              : "rounded-xl border border-white/10 bg-white/[0.03]"
+          } ${
             isHero
               ? "absolute inset-0 w-full h-full"
               : "relative w-full h-20 sm:h-[5.5rem]"

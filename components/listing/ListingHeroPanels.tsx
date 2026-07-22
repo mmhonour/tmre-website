@@ -22,7 +22,12 @@ import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingCriteriaVisibilityProvider } from "@/components/listing/ListingCriteriaVisibilityContext";
 import { ListingPhotosModeContext } from "@/components/listing/ListingPhotosModeContext";
-import { ListingRemarksContent } from "@/components/listing/ListingOverviewPanels";
+import {
+  firstListingRemarksLine,
+} from "@/components/listing/ListingOverviewPanels";
+import ListingRemarksSidePanel, {
+  useListingRemarksExpand,
+} from "@/components/listing/ListingRemarksSidePanel";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import { LISTING_ANALYSIS_ID } from "@/components/listing/ListingDetailsSchoolsPanel";
 import { formatMlsStatus } from "@/lib/listing-history";
@@ -142,6 +147,11 @@ export default function ListingHeroPanels({
   const [mapVisible, setMapVisible] = useState(false);
   /** Drawer is mobile-only; keep Location open when resizing up to desktop. */
   const [isDesktopLayout, setIsDesktopLayout] = useState(false);
+  const {
+    expanded: remarksExpanded,
+    expand: expandRemarks,
+    collapse: collapseRemarks,
+  } = useListingRemarksExpand();
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
   const toggleMap = useCallback(() => {
     setMapVisible((prev) => {
@@ -390,6 +400,17 @@ export default function ListingHeroPanels({
 
   // No card shell — rounded/frosted frames read as medium-blue borders on the
   // navy page and around slide-up tab content.
+  const remarksTeaserLine = firstListingRemarksLine(remarks);
+  const remarksSurfaceActive =
+    isOverview &&
+    (!useSlidePanel || panelTab === null || panelTab === "overview");
+  const showRemarksTeaser =
+    remarksSurfaceActive && Boolean(remarksTeaserLine);
+
+  useEffect(() => {
+    if (!remarksSurfaceActive) collapseRemarks();
+  }, [remarksSurfaceActive, collapseRemarks]);
+
   const propertyPanel = (
     <div className="min-w-0">
       {/* Meta + section tabs stay pinned under the site nav while photos/content scroll. */}
@@ -413,6 +434,21 @@ export default function ListingHeroPanels({
 
         <div className="mt-2">{tabsNav}</div>
       </div>
+
+      {showRemarksTeaser ? (
+        <button
+          type="button"
+          onClick={expandRemarks}
+          className="mt-2 mb-2 w-full min-w-0 text-left text-[11px] leading-snug text-white/70 transition-colors hover:text-gold focus:outline-none focus-visible:text-gold"
+          aria-expanded={remarksExpanded}
+          title="Expand listing remarks"
+        >
+          <span className="line-clamp-1">
+            {remarksTeaserLine}
+            …
+          </span>
+        </button>
+      ) : null}
 
       <ListingPhotosModeContext.Provider
         value={useSlidePanel ? closePanel : null}
@@ -461,14 +497,14 @@ export default function ListingHeroPanels({
   );
 
   // Desktop remarks above Location — only while Overview (not Sold / History / …).
-  const showRemarksPanel =
-    isOverview &&
-    (!useSlidePanel || panelTab === null || panelTab === "overview");
-
-  const remarksPanel = showRemarksPanel ? (
-    <div className={`${frameClass} flex flex-col`}>
-      <ListingRemarksContent remarks={remarks} compact />
-    </div>
+  const remarksPanel = remarksSurfaceActive ? (
+    <ListingRemarksSidePanel
+      remarks={remarks}
+      frameClass={frameClass}
+      expanded={remarksExpanded}
+      onExpand={expandRemarks}
+      onCollapse={collapseRemarks}
+    />
   ) : null;
 
   const rightColumn = (

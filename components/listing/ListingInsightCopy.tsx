@@ -50,6 +50,10 @@ function renderSentenceWithMedianLink(
       <a
         href={medianHref}
         className="text-gold underline decoration-gold/40 underline-offset-2 hover:text-gold-light hover:decoration-gold/70"
+        onClick={(event) => {
+          // Analysis flash is handled in ListingDetailsSchoolsPanel; keep viewport still.
+          event.preventDefault();
+        }}
       >
         {inner}
       </a>

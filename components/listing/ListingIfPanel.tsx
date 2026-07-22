@@ -503,9 +503,19 @@ function CompList({
 
       {showWtExplain ? (
         <div className="mb-3 space-y-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
-          <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold">
-            How wt is calculated
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold">
+              How wt is calculated
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowWtExplain(false)}
+              className="shrink-0 font-mono text-lg leading-none text-white/45 transition-colors hover:text-white"
+              aria-label="Close weight explanation"
+            >
+              ×
+            </button>
+          </div>
           {ifCompWeightExplainLines().map((line) => (
             <p
               key={line.slice(0, 48)}
@@ -588,6 +598,13 @@ function CompList({
                             )
                       }/sqft`
                     : ""}
+                  {bedBath !== "—" ? (
+                    <>
+                      {" · "}
+                      {bedBath}
+                    </>
+                  ) : null}
+                  {sizeParts.length > 0 ? ` · ${sizeParts.join(" · ")}` : null}
                   {" · "}
                   <button
                     type="button"
@@ -598,13 +615,6 @@ function CompList({
                   >
                     wt {comp.weight.toFixed(2)}
                   </button>
-                  {bedBath !== "—" ? (
-                    <>
-                      {" · "}
-                      {bedBath}
-                    </>
-                  ) : null}
-                  {sizeParts.length > 0 ? ` · ${sizeParts.join(" · ")}` : null}
                 </p>
               </div>
               {implied ? (

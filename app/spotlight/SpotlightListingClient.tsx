@@ -72,6 +72,7 @@ export default function SpotlightListingClient() {
       altBase={display.config.displayTitle}
       photoHref={(i) => spotlightPhotosHref(propertyTab, i)}
       obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
+      mapSlot={presentation.mapLocation}
     />
   ) : null;
 
@@ -95,6 +96,7 @@ export default function SpotlightListingClient() {
           hideHero={presentation.hidePhotoDeckHero}
           obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
           showHero
+          mapSlot={presentation.mapLocation}
         />
       }
       remarks={display.remarks}

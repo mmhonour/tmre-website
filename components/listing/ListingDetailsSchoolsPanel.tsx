@@ -185,9 +185,17 @@ export default function ListingDetailsSchoolsPanel({
       if (!href) return;
       try {
         const url = new URL(href, window.location.href);
-        if (url.hash.replace(/^#/, "") === LISTING_ANALYSIS_ID) {
-          // Same-hash re-clicks still flash; scroll happens via default.
-          flashAnalysisHighlight();
+        if (url.hash.replace(/^#/, "") !== LISTING_ANALYSIS_ID) return;
+        // Highlight Analysis in place — do not scroll the page / move tab chrome.
+        event.preventDefault();
+        flashAnalysisHighlight();
+        const loc = new URL(window.location.href);
+        if (loc.hash.replace(/^#/, "") !== LISTING_ANALYSIS_ID) {
+          window.history.replaceState(
+            null,
+            "",
+            `${loc.pathname}${loc.search}#${LISTING_ANALYSIS_ID}`,
+          );
         }
       } catch {
         /* ignore invalid href */
@@ -196,10 +204,10 @@ export default function ListingDetailsSchoolsPanel({
 
     if (hashTargetsAnalysis()) flashAnalysisHighlight();
     window.addEventListener("hashchange", onHashChange);
-    document.addEventListener("click", onDocClick);
+    document.addEventListener("click", onDocClick, true);
     return () => {
       window.removeEventListener("hashchange", onHashChange);
-      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("click", onDocClick, true);
       if (analysisHighlightTimerRef.current != null) {
         clearTimeout(analysisHighlightTimerRef.current);
         analysisHighlightTimerRef.current = null;

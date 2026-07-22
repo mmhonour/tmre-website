@@ -1,7 +1,9 @@
 "use client";
 
 import { ListingRemarksContent } from "@/components/listing/ListingOverviewPanels";
-import ListingPhotoScrollStack from "@/components/listing/ListingPhotoScrollStack";
+import ListingPhotoScrollStack, {
+  type ListingPhotoStackMapSlot,
+} from "@/components/listing/ListingPhotoScrollStack";
 import { useListingPhotosMode } from "@/components/listing/ListingPhotosModeContext";
 
 /**
@@ -17,6 +19,7 @@ export function ListingOverviewPhotoDeck({
   hideHero = false,
   obfuscatePhotoIndex,
   showHero = true,
+  mapSlot = null,
 }: {
   remarks: string | null;
   mlsId: string;
@@ -33,10 +36,12 @@ export function ListingOverviewPhotoDeck({
   onPhotoSelect?: (photoIndex: number) => void;
   /** When false, only remarks (hero lives in PhotoMode behind the panel). */
   showHero?: boolean;
+  /** Frameless map in the 2nd stack slot (Overview). */
+  mapSlot?: ListingPhotoStackMapSlot | null;
 }) {
   const goToPhotos = useListingPhotosMode();
   const count = photoCount ?? 0;
-  const showStack = showHero && !hideHero && count > 0;
+  const showStack = showHero && !hideHero && (count > 0 || Boolean(mapSlot));
 
   return (
     <div className="min-w-0">
@@ -51,6 +56,7 @@ export function ListingOverviewPhotoDeck({
             photoCount={count}
             altBase={heroAlt}
             obfuscatePhotoIndex={obfuscatePhotoIndex}
+            mapSlot={mapSlot}
             onPhotoActivate={goToPhotos ? () => goToPhotos() : undefined}
           />
         </div>

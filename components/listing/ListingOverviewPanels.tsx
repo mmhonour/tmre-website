@@ -7,6 +7,19 @@ import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/Listi
 
 export type { ListingOverviewSchools } from "@/components/listing/ListingDetailsSchoolsPanel";
 
+/** First non-empty line of listing remarks (for Overview teaser). */
+export function firstListingRemarksLine(
+  remarks: string | null | undefined,
+): string | null {
+  if (!remarks) return null;
+  const line = remarks
+    .trim()
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .find(Boolean);
+  return line || null;
+}
+
 export function ListingRemarksContent({
   remarks,
   /** 2pt smaller body/label for the right-column panel. */
