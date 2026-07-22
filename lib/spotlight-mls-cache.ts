@@ -2,6 +2,7 @@ import 'server-only'
 
 import { resolveMlsIdByAddress } from '@/lib/address-mls-resolve'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
+import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import {
   spotlightTabForConfigId,
   type SpotlightListingConfig,
@@ -41,6 +42,10 @@ export function writeSpotlightResolvedMlsId(configId: string, mlsId: string): vo
   setSyncMeta(SPOTLIGHT_RESOLVED_MLS_SYNC_KEY, JSON.stringify(map))
 }
 
+function listingLooksOnMarket(status: string | null | undefined): boolean {
+  return /active|coming\s*soon/i.test(status ?? '')
+}
+
 /**
  * @deprecated Prefer {@link resolveSpotlightMlsId}. This sync helper reads the
  * per-process sync_meta cache and can be stale across warm Lambdas. Kept only
@@ -59,7 +64,12 @@ export function spotlightConfigMlsId(
   return config.mlsId?.trim() || readSpotlightResolvedMlsId(config.id) || null
 }
 
-/** DB-first address lookup for spotlight configs without a fixed MLS id. */
+/**
+ * Resolve the MLS id Spotlight should show for a property tab.
+ * Admin override wins. Otherwise prefer the live on-market listing at the
+ * configured address (so a prior Closed sale like 170610470 cannot stick).
+ * Hardcoded config.mlsId / sync_meta cache are fallbacks only.
+ */
 export async function resolveSpotlightMlsId(
   config: SpotlightListingConfig,
 ): Promise<string | null> {
@@ -73,21 +83,39 @@ export async function resolveSpotlightMlsId(
     }
   }
 
-  const fixed = config.mlsId?.trim() || readSpotlightResolvedMlsId(config.id)
-  if (fixed) return fixed
-
   const street = config.address.street.trim()
   const city = config.address.city.trim()
-  if (street.length < 2 || city.length < 2) return null
+  if (street.length >= 2 && city.length >= 2) {
+    try {
+      const resolved = await resolveMlsIdByAddress({
+        street,
+        city,
+        state: config.address.state,
+        postalCode: config.address.postalCode,
+      })
+      const liveId = resolved.mlsId?.trim() ?? null
+      if (liveId && listingLooksOnMarket(resolved.listing?.status)) {
+        writeSpotlightResolvedMlsId(config.id, liveId)
+        return liveId
+      }
+      // Address hit an off-market row — if config has a different fixed id that
+      // is still Active in DB, prefer that over the closed sale.
+      const fixed = config.mlsId?.trim() || null
+      if (fixed && fixed !== liveId) {
+        const { listing } = await readListingFromDbByMlsId(fixed)
+        if (listingLooksOnMarket(listing?.status)) {
+          writeSpotlightResolvedMlsId(config.id, fixed)
+          return fixed
+        }
+      }
+      if (liveId) {
+        writeSpotlightResolvedMlsId(config.id, liveId)
+        return liveId
+      }
+    } catch (err) {
+      console.warn('[spotlight-mls] address resolve failed — using config id', err)
+    }
+  }
 
-  const resolved = await resolveMlsIdByAddress({
-    street,
-    city,
-    state: config.address.state,
-    postalCode: config.address.postalCode,
-  })
-
-  const mlsId = resolved.mlsId?.trim() ?? null
-  if (mlsId) writeSpotlightResolvedMlsId(config.id, mlsId)
-  return mlsId
+  return config.mlsId?.trim() || readSpotlightResolvedMlsId(config.id) || null
 }

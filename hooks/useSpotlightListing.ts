@@ -17,7 +17,7 @@ import {
   spotlightPropertySearchParam,
   type SpotlightPropertyTabId,
 } from "@/lib/spotlight-listing";
-import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+import { loadTabJson, peekTabJson, invalidateTabJson } from "@/lib/tab-data-prefetch";
 
 type LoadState = "ready" | "error";
 
@@ -37,6 +37,9 @@ type SpotlightFetchPayload = {
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ListingScoreApiFields["goldilocksBreakdown"];
   insight?: string | null;
+  cityMedianPpsf?: number | null;
+  pricePerSqft?: number | null;
+  medianPpsfBand?: ListingScoreApiFields["medianPpsfBand"];
 };
 
 const spotlightFetchCache = new Map<string, SpotlightFetchPayload>();
@@ -64,6 +67,10 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   const [goldilocksBreakdown, setGoldilocksBreakdown] =
     useState<ListingScoreApiFields["goldilocksBreakdown"]>(null);
   const [insight, setInsight] = useState<string | null>(null);
+  const [cityMedianPpsf, setCityMedianPpsf] = useState<number | null>(null);
+  const [pricePerSqft, setPricePerSqft] = useState<number | null>(null);
+  const [medianPpsfBand, setMedianPpsfBand] =
+    useState<ListingScoreApiFields["medianPpsfBand"]>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("ready");
   const [photosState, setPhotosState] = useState<
@@ -81,6 +88,9 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setGoldilocksScore(null);
       setGoldilocksBreakdown(null);
       setInsight(null);
+      setCityMedianPpsf(null);
+      setPricePerSqft(null);
+      setMedianPpsfBand(null);
       setPhotos([]);
       lastPropertyTabRef.current = propertyTab;
     } else if (cached?.listing) {
@@ -88,6 +98,9 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setGoldilocksScore(cached.goldilocksScore ?? null);
       setGoldilocksBreakdown(cached.goldilocksBreakdown ?? null);
       setInsight(cached.insight ?? null);
+      setCityMedianPpsf(cached.cityMedianPpsf ?? null);
+      setPricePerSqft(cached.pricePerSqft ?? null);
+      setMedianPpsfBand(cached.medianPpsfBand ?? null);
       if (includePhotos && cached.photos) {
         setPhotos(cached.photos);
         setPhotosState("ready");
@@ -101,6 +114,11 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     const propertyQs = propertyParam ? `&property=${propertyParam}` : "";
     const spotlightUrl = `/api/spotlight?photos=${includePhotos ? "1" : "0"}${propertyQs}`;
 
+    // Always revalidate Spotlight from the API — never trust a session-stale
+    // payload that may still hold a prior Closed MLS at this address.
+    invalidateTabJson(spotlightUrl);
+    spotlightFetchCache.delete(cacheKey);
+
     const peeked = peekTabJson<SpotlightFetchPayload>(spotlightUrl);
     if (peeked?.listing) {
       spotlightFetchCache.set(cacheKey, peeked);
@@ -108,13 +126,16 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setGoldilocksScore(peeked.goldilocksScore ?? null);
       setGoldilocksBreakdown(peeked.goldilocksBreakdown ?? null);
       setInsight(peeked.insight ?? null);
+      setCityMedianPpsf(peeked.cityMedianPpsf ?? null);
+      setPricePerSqft(peeked.pricePerSqft ?? null);
+      setMedianPpsfBand(peeked.medianPpsfBand ?? null);
       if (includePhotos && peeked.photos) {
         setPhotos(peeked.photos);
         setPhotosState("ready");
       }
     }
 
-    void loadTabJson<SpotlightFetchPayload>(spotlightUrl)
+    void loadTabJson<SpotlightFetchPayload>(spotlightUrl, { force: true })
       .then((d) => {
         if (cancelled) return;
         if (!d) {
@@ -126,6 +147,9 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
         setGoldilocksScore(d.goldilocksScore ?? null);
         setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
         setInsight(d.insight ?? null);
+        setCityMedianPpsf(d.cityMedianPpsf ?? null);
+        setPricePerSqft(d.pricePerSqft ?? null);
+        setMedianPpsfBand(d.medianPpsfBand ?? null);
         if (includePhotos) {
           setPhotos(d.photos ?? []);
           setPhotosState("ready");
@@ -169,6 +193,9 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     goldilocksScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     photos,
     photosState,
     privacy,

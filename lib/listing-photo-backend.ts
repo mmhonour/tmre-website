@@ -73,7 +73,29 @@ export async function readListingPhotoBytes(
   photoIndex: number,
 ): Promise<PhotoBytes | null> {
   if (photoBackendUsesR2()) {
-    return getR2ListingPhoto(cacheId, photoIndex)
+    try {
+      const fromR2 = await getR2ListingPhoto(cacheId, photoIndex)
+      if (fromR2) return fromR2
+    } catch (err) {
+      // R2 outage / bad credentials — fall through to local SQLite so dev and
+      // degraded prod can still serve previously synced thumbs.
+      console.warn(
+        '[listing-photo-backend] R2 read failed; trying SQLite',
+        cacheId,
+        photoIndex,
+        err instanceof Error ? err.message : err,
+      )
+    }
+    // Local SQLite often still has older warm caches (especially in dev).
+    const sqliteRow = sqliteReadBlob(cacheId, photoIndex)
+    if (sqliteRow) {
+      return {
+        data: sqliteRow.data,
+        contentType: sqliteRow.contentType,
+        syncedAt: sqliteRow.syncedAt,
+      }
+    }
+    return null
   }
   const row = sqliteReadBlob(cacheId, photoIndex)
   if (!row) return null

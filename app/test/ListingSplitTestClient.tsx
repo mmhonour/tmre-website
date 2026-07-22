@@ -72,6 +72,9 @@ function ListingSplitTestInner() {
     goldilocksScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     photos,
     photosState,
     presentation,
@@ -158,6 +161,11 @@ function ListingSplitTestInner() {
     mlsListing,
     fmtMoney,
     presentation,
+    {
+      cityMedianPpsf,
+      listingPricePerSqft: pricePerSqft,
+      medianPpsfBand,
+    },
   );
 
   const bedBathSearchHref = intelligenceSearchHrefFromListing(

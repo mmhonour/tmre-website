@@ -7,6 +7,7 @@ import {
 } from './goldilocks-config-shared'
 import { isFreshFirstSaleNewConstruction } from './new-construction'
 import { matchedRemarkPhrases } from './remarks-phrase-match'
+import { formatInsightMedianPpsf } from './insight-median-ppsf'
 
 export type { GoldilocksScoringConfig } from './goldilocks-config-shared'
 
@@ -508,17 +509,20 @@ function buildSaleInsight(s: ScoredListing): string {
   // priced homes have been selling — belong in the refresh-cycle cache, not in
   // a per-request page load, so they are intentionally not computed here.
   if (s.pricePerSqft && s.cityMedianPpsf) {
+    const med = formatInsightMedianPpsf(s.cityMedianPpsf, false)
     const diff = (s.pricePerSqft - s.cityMedianPpsf) / s.cityMedianPpsf
     if (diff < -0.05) {
       sentences.push(
-        `On price-per-sqft it comes in ${pct(diff * 100)} below the ${city} median — value for its price band.`,
+        `On price-per-sqft it comes in ${pct(diff * 100)} below the ${city} median (${med}) — value for its price band.`,
       )
     } else if (diff > 0.05) {
       sentences.push(
-        `It carries a ${pct(diff * 100)} premium to the ${city} median price-per-sqft, in line with a higher-finish tier.`,
+        `It carries a ${pct(diff * 100)} premium to the ${city} median price-per-sqft (${med}), in line with a higher-finish tier.`,
       )
     } else {
-      sentences.push(`Its price-per-sqft sits right at the ${city} median.`)
+      sentences.push(
+        `Its price-per-sqft sits right at the ${city} median (${med}).`,
+      )
     }
   }
 
@@ -537,13 +541,20 @@ function buildRentalInsight(s: ScoredListing): string {
   const sentences: string[] = []
 
   if (s.pricePerSqft && s.cityMedianPpsf) {
+    const med = formatInsightMedianPpsf(s.cityMedianPpsf, true)
     const diff = (s.pricePerSqft - s.cityMedianPpsf) / s.cityMedianPpsf
     if (diff < -0.05) {
-      sentences.push(`On rent-per-sqft it asks ${pct(diff * 100)} below the ${city} median.`)
+      sentences.push(
+        `On rent-per-sqft it asks ${pct(diff * 100)} below the ${city} median (${med}).`,
+      )
     } else if (diff > 0.05) {
-      sentences.push(`It asks ${pct(diff * 100)} above the ${city} median rent-per-sqft.`)
+      sentences.push(
+        `It asks ${pct(diff * 100)} above the ${city} median rent-per-sqft (${med}).`,
+      )
     } else {
-      sentences.push(`Rent-per-sqft is right at the ${city} median.`)
+      sentences.push(
+        `Rent-per-sqft is right at the ${city} median (${med}).`,
+      )
     }
   }
 

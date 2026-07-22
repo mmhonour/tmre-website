@@ -1,3 +1,4 @@
+import type { MedianPpsfBand } from "@/lib/insight-median-ppsf";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 
 export function listingHeaderScoreProps(input: {
@@ -22,6 +23,9 @@ export type ListingScoreApiFields = {
   goldilocksScore?: number | null;
   goldilocksBreakdown?: ScoreBreakdown | null;
   insight?: string | null;
+  cityMedianPpsf?: number | null;
+  pricePerSqft?: number | null;
+  medianPpsfBand?: MedianPpsfBand | null;
   edgeScore?: number | null;
   edgeScoreBreakdown?: Record<string, unknown> | null;
 };

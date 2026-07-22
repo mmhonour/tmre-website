@@ -68,9 +68,9 @@ function joinMetaSegments(segments: ReactNode[]): ReactNode {
   ));
 }
 
-/** Phone: break out to viewport width. Desktop: stay in the panel column. */
+/** Phone: break out to viewport width. Desktop: bleed to panel edges (cancel p-4). */
 const HERO_BLEED_CLASS =
-  "max-lg:relative max-lg:left-1/2 max-lg:right-1/2 max-lg:-ml-[50vw] max-lg:-mr-[50vw] max-lg:w-screen max-lg:max-w-[100vw]";
+  "max-lg:relative max-lg:left-1/2 max-lg:right-1/2 max-lg:-ml-[50vw] max-lg:-mr-[50vw] max-lg:w-screen max-lg:max-w-[100vw] lg:-mx-4";
 
 export default function ListingHeader({
   mlsId,
@@ -191,8 +191,8 @@ export default function ListingHeader({
   );
 
   const heroBlock = heroSlot ? (
-    <div className={`${compact ? "mt-3" : "mt-4"} ${HERO_BLEED_CLASS}`}>
-      <div className="listing-hero-under-address [&_a]:max-lg:rounded-none [&_a]:max-lg:border-x-0 [&>div>div>a]:max-lg:rounded-none [&>div>div>div]:max-lg:rounded-none">
+    <div className={`${compact ? "mt-0" : "mt-4"} ${HERO_BLEED_CLASS}`}>
+      <div className="listing-hero-under-address [&_a]:rounded-none [&_a]:border-0 [&>div>div>a]:rounded-none [&>div>div>div]:rounded-none">
         {heroSlot}
       </div>
     </div>
@@ -200,7 +200,7 @@ export default function ListingHeader({
 
   const insightBlock = insight ? (
     <div className={compact ? "mt-3" : "mt-4"}>
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-0.5">
+      <p className="mb-0.5 text-center font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
         Insight
       </p>
       <ListingInsightCopy text={insight} />

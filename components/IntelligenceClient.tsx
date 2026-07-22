@@ -4249,14 +4249,18 @@ function SqftRangeLabel({
   const className = descriptorLabelClass(active, interactive);
   const label = formatIntelSqftRangeLabelFromSteps(steps, lo, hi);
   const content = (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-1.5">
+      <span>{label}</span>
       <span
-        className={`inline-flex shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
+        className={`inline-flex shrink-0 text-gold drop-shadow-sm ${
+          active ? "opacity-100" : "opacity-95"
+        }`}
         aria-hidden
       >
-        <SqftDescriptorSearchIcon className={active ? "h-3.5 w-3.5" : "h-2.5 w-2.5"} />
+        <SqftDescriptorSearchIcon
+          className={active ? "h-5 w-5" : "h-4 w-4"}
+        />
       </span>
-      <span>{label}</span>
     </span>
   );
 
@@ -4283,7 +4287,7 @@ function SqftDescriptorSearchIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.25"
+      strokeWidth="2.75"
       strokeLinecap="round"
       strokeLinejoin="round"
     >

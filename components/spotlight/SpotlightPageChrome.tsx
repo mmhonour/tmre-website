@@ -34,6 +34,8 @@ export function SpotlightPageChrome({
   presentation,
   isClosed,
   belowTabs,
+  remarks = null,
+  sections,
   belowHero,
   sidebar,
   footer,
@@ -48,6 +50,10 @@ export function SpotlightPageChrome({
   presentation: SpotlightPresentation;
   isClosed: boolean;
   belowTabs?: ReactNode;
+  /** Desktop Listing remarks panel (above Location) on Overview. */
+  remarks?: string | null;
+  /** Section bodies for the slide-up panel on overview. */
+  sections?: ReactNode;
   /** Full-width content below the hero grid (e.g. comparables columns). */
   belowHero?: ReactNode;
   sidebar?: ReactNode;
@@ -129,6 +135,8 @@ export function SpotlightPageChrome({
             : null
         }
         belowTabs={belowTabs}
+        remarks={remarks}
+        sections={sections}
         belowHero={belowHero}
         sidebar={sidebar}
         footer={footer}

@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeftRightIcon } from "@/components/icons";
-import ListingCriteriaSideLayout from "@/components/listing/ListingCriteriaSideLayout";
+import ListingCriteriaSideLayout, {
+  listingCriteriaLinkSlotId,
+} from "@/components/listing/ListingCriteriaSideLayout";
+import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import MatchingCriteriaSummary, {
   type CriteriaStepFeedback,
   type CriteriaStepKey,
@@ -12,6 +15,7 @@ import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtIfRentMoney,
   fmtIfSaleMoney,
+  ifCompWeightExplainLines,
   roundIfRentHigh,
   roundIfRentLow,
   roundIfRentMidpoint,
@@ -21,7 +25,12 @@ import {
   type IfScenario,
   type ListingIfPayload,
 } from "@/lib/listing-if-estimates";
-import type { ComparablesCriteria } from "@/lib/listing-comparables-shared";
+import {
+  fmtAcres,
+  fmtSqft,
+  type ComparablesCriteria,
+} from "@/lib/listing-comparables-shared";
+import { renderCompBedBathMeta } from "@/components/listing/CompExactMatchMeta";
 import {
   comparableListingMatchesSession,
   type SessionMatchOverrides,
@@ -404,6 +413,8 @@ function CompList({
   townHint,
   amountLow,
   amountHigh,
+  subjectBeds = null,
+  subjectBaths = null,
   foundCountEmphasized = false,
 }: {
   comps: IfCompRow[];
@@ -411,12 +422,15 @@ function CompList({
   townHint?: string | null;
   amountLow?: number | null;
   amountHigh?: number | null;
+  subjectBeds?: number | null;
+  subjectBaths?: number | null;
   foundCountEmphasized?: boolean;
 }) {
   const [sort, setSort] = useState<{ key: IfCompSortKey; dir: SortDir }>({
     key: "price",
     dir: "asc",
   });
+  const [showWtExplain, setShowWtExplain] = useState(false);
   const sorted = useMemo(
     () => sortIfComps(comps, sort.key, sort.dir),
     [comps, sort.key, sort.dir],
@@ -424,6 +438,8 @@ function CompList({
 
   if (comps.length === 0) return null;
   const isRent = kind === "rent";
+  const wtLinkClass =
+    "text-gold underline decoration-gold/50 underline-offset-2 hover:text-gold-light transition-colors cursor-pointer";
 
   const handleSort = (key: IfCompSortKey) => {
     setSort((prev) =>
@@ -484,6 +500,23 @@ function CompList({
           })}
         </div>
       </div>
+
+      {showWtExplain ? (
+        <div className="mb-3 space-y-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
+          <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold">
+            How wt is calculated
+          </p>
+          {ifCompWeightExplainLines().map((line) => (
+            <p
+              key={line.slice(0, 48)}
+              className="text-[11px] leading-relaxed text-white/55 normal-case tracking-normal"
+            >
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
       <ul className="divide-y divide-white/[0.06] border-t border-white/10">
         {sorted.map((comp) => {
           const id = comp.listingKey || comp.mlsId;
@@ -513,6 +546,15 @@ function CompList({
                 ? `${fmtIfRentMoney(comp.impliedSubjectAmount)}/mo`
                 : fmtIfSaleMoney(comp.impliedSubjectAmount)
               : null;
+          const bedBath = renderCompBedBathMeta({
+            beds: comp.beds,
+            baths: comp.baths,
+            subjectBeds,
+            subjectBaths,
+          });
+          const sizeParts = [fmtSqft(comp.sqft), fmtAcres(comp.lotAcres)].filter(
+            (part) => part !== "—",
+          );
 
           return (
             <li
@@ -546,7 +588,23 @@ function CompList({
                             )
                       }/sqft`
                     : ""}
-                  {` · wt ${comp.weight.toFixed(2)}`}
+                  {" · "}
+                  <button
+                    type="button"
+                    className={wtLinkClass}
+                    onClick={() => setShowWtExplain((v) => !v)}
+                    aria-expanded={showWtExplain}
+                    title="How wt is calculated"
+                  >
+                    wt {comp.weight.toFixed(2)}
+                  </button>
+                  {bedBath !== "—" ? (
+                    <>
+                      {" · "}
+                      {bedBath}
+                    </>
+                  ) : null}
+                  {sizeParts.length > 0 ? ` · ${sizeParts.join(" · ")}` : null}
                 </p>
               </div>
               {implied ? (
@@ -635,6 +693,8 @@ function ScenarioPanel({
             townHint={townHint}
             amountLow={scenario.amountLow}
             amountHigh={scenario.amountHigh}
+            subjectBeds={scenario.params.beds}
+            subjectBaths={scenario.params.baths}
             foundCountEmphasized={foundCountEmphasized}
           />
         </>
@@ -648,11 +708,13 @@ export function ListingIfPageContent({
   addressHint,
   townHint,
   routeBase = "listing",
+  suppressPageChrome = false,
 }: {
   mlsId: string;
   addressHint?: string | null;
   townHint?: string | null;
   routeBase?: "listing" | "spotlight";
+  suppressPageChrome?: boolean;
 }) {
   return (
     <ListingIfPanel
@@ -661,6 +723,7 @@ export function ListingIfPageContent({
       townHint={townHint}
       routeBase={routeBase}
       variant="page"
+      suppressPageChrome={suppressPageChrome}
     />
   );
 }
@@ -671,12 +734,14 @@ export default function ListingIfPanel({
   townHint,
   routeBase: _routeBase = "listing",
   variant = "panel",
+  suppressPageChrome = false,
 }: {
   mlsId: string;
   addressHint?: string | null;
   townHint?: string | null;
   routeBase?: "listing" | "spotlight";
   variant?: "panel" | "page";
+  suppressPageChrome?: boolean;
 }) {
   void _routeBase;
   const [data, setData] = useState<ListingIfPayload | null>(null);
@@ -867,7 +932,8 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2 items-start">
+      {/* Near-touching columns; title row above uses the same gap for What if / Criteria. */}
+      <div className="grid gap-1 lg:grid-cols-2 items-start">
         <ScenarioPanel
           title="If you sell"
           headline="Likely sale range if this home went to market today."
@@ -948,20 +1014,32 @@ export default function ListingIfPanel({
           : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5"
       }
     >
-      {isPage && (
-        <>
-          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-            If...
-          </p>
-          <p className="text-white/50 text-sm leading-relaxed">
-            Based on matching criteria, we estimate a sale and rent range for
-            this home — and show the comps that fed each number.
-          </p>
-        </>
-      )}
+      {isPage && !suppressPageChrome ? (
+        <div className="grid grid-cols-1 items-start gap-1 lg:grid-cols-2">
+          <div className="min-w-0 text-left">
+            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
+              If...
+            </p>
+            <p className="text-white/50 text-sm leading-relaxed">
+              Based on matching criteria, we estimate a sale and rent range for
+              this home — and show the comps that fed each number.
+            </p>
+          </div>
+          {criteriaInSidePanel ? (
+            <div
+              id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
+              className="flex shrink-0 justify-end empty:hidden"
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {criteriaInSidePanel ? (
-        <ListingCriteriaSideLayout criteria={criteriaBlock}>
+        <ListingCriteriaSideLayout
+          criteria={criteriaBlock}
+          heading="What if criteria"
+          linkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
+        >
           {mainColumn}
         </ListingCriteriaSideLayout>
       ) : (

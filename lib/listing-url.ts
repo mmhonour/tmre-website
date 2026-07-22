@@ -74,6 +74,7 @@ export function listingSectionHref(
     | "overview"
     | "history"
     | "photos"
+    | "map"
     | "comparables"
     | "comparable-rentals"
     | "on-the-market"
@@ -89,6 +90,7 @@ export function listingSectionHref(
   if (street) params.set("address", street);
   if (town?.trim()) params.set("city", town.trim());
   const qs = params.toString();
+  // Map has no dedicated route — it toggles the Location panel on overview.
   const path =
     section === "history"
       ? `/listings/${listingId}/history`

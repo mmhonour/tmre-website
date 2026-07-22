@@ -601,6 +601,17 @@ body {
   display: none;
 }
 
+/* Listing / Spotlight slide-up tab panel — scroll without a visible bar */
+.listing-tab-panel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.listing-tab-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 html.listing-split-test,
 html.listing-split-test body {
   overflow: hidden !important;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { listingRegionOutlineClass } from "@/components/listing/listing-frame";
 import {
@@ -11,6 +11,7 @@ import {
   listingRecentlyClosedPanelIdForTab,
   listingSectionIdForTab,
   listingTabFromSectionId,
+  type ListingScrollSectionTab,
 } from "@/components/listing/listing-section-ids";
 import { listingSectionHref } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
@@ -23,6 +24,7 @@ import {
 export type ListingTab =
   | "overview"
   | "photos"
+  | "map"
   | "history"
   | "comparables"
   | "comparable-rentals"
@@ -37,14 +39,38 @@ export type ListingInterestProps = {
 
 type TabDef = { id: ListingTab; label: string; href: string };
 
-/** Always on the first row. */
-const TOP_ROW_IDS: ListingTab[] = ["overview", "history", "if", "photos"];
-/** Second row — Sold / Rented. */
-const COMPS_ROW_IDS: ListingTab[] = ["comparables", "comparable-rentals"];
-/** Third row — Under Agreement (always its own line when stacked). */
-const UAG_ROW_IDS: ListingTab[] = ["uag"];
+/**
+ * Canonical tab order (listing + Spotlight).
+ * Overview → Photos → Sold → Rented → Under Agreement → What if → History → Map
+ */
+const TAB_ORDER: ListingTab[] = [
+  "overview",
+  "photos",
+  "comparables",
+  "comparable-rentals",
+  "uag",
+  "if",
+  "history",
+  "map",
+];
+
+/** When the strip overflows, wrap into these rows (same overall order). */
+const STACK_ROWS: ListingTab[][] = [
+  ["overview", "photos"],
+  ["comparables", "comparable-rentals", "uag"],
+  ["if", "history", "map"],
+];
 
 const HASH_JUMP_TABS = new Set<ListingTab>([
+  "overview",
+  "history",
+  "if",
+  "comparables",
+  "comparable-rentals",
+  "uag",
+]);
+
+const PANEL_SECTION_TABS = new Set<ListingTab>([
   "overview",
   "history",
   "if",
@@ -58,8 +84,8 @@ function tabVisible(
   tabId: ListingTab,
   alwaysShowPhotos: boolean,
 ): boolean {
-  // Photos tab only while on the photos page; every other section tab stays visible
-  // on load (Sales, Rentals, Under Agreement included). Local mockups keep Photos visible.
+  // Photos tab only while on the photos page, while the slide-up panel is open,
+  // or on local mockups that always show it.
   if (tabId === "photos") return alwaysShowPhotos || active === "photos";
   return true;
 }
@@ -75,6 +101,12 @@ export default function ListingSubnav({
   bare = false,
   compact = false,
   onTabSelect = null,
+  panelTab = null,
+  onPanelOpen = null,
+  onPanelClose = null,
+  forceShowPhotos = false,
+  mapVisible = false,
+  onMapToggle = null,
 }: {
   mlsId: string;
   active: ListingTab;
@@ -90,6 +122,21 @@ export default function ListingSubnav({
    * navigating to listing/spotlight routes (used by `/test` split mockup).
    */
   onTabSelect?: ((tab: ListingTab) => void) | null;
+  /**
+   * Slide-up panel mode (listing / Spotlight overview): which section is open,
+   * or null when the panel is collapsed over the hero.
+   */
+  panelTab?: ListingScrollSectionTab | null;
+  /** Open / switch the slide-up panel to this section tab. */
+  onPanelOpen?: ((tab: ListingScrollSectionTab) => void) | null;
+  /** Collapse the slide-up panel (Photos tab while panel is open). */
+  onPanelClose?: (() => void) | null;
+  /** Force Photos tab visible (panel open). */
+  forceShowPhotos?: boolean;
+  /** Location panel is open (Map tab highlight). */
+  mapVisible?: boolean;
+  /** Toggle Location panel without opening slide content. */
+  onMapToggle?: (() => void) | null;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -97,12 +144,13 @@ export default function ListingSubnav({
   const measureFullRef = useRef<HTMLDivElement>(null);
   const [stackRows, setStackRows] = useState(false);
   const [scrollActive, setScrollActive] = useState<ListingTab | null>(null);
+
+  const panelMode = Boolean(onPanelOpen && onPanelClose);
   /**
-   * In-page section jumps on Overview (all viewports). Avoids remounting the
-   * listing/Spotlight chrome when switching History / Sold / What if / etc.
-   * Photos stays a real route. Dedicated tab URLs still work as deep links.
+   * Legacy in-page hash jumps when not using the slide-up panel or onTabSelect.
    */
-  const useHashJump = !onTabSelect;
+  const useHashJump = !onTabSelect && !panelMode;
+  const showPhotosTab = forceShowPhotos || Boolean(onTabSelect);
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -127,7 +175,7 @@ export default function ListingSubnav({
     // Sold / Rented always deep-link to the Recently Sold / Recently Rented panel.
     const recentlyClosedId = listingRecentlyClosedPanelIdForTab(section);
     if (recentlyClosedId) {
-      if (useHashJump) {
+      if (useHashJump || panelMode) {
         const overview = routeHref("overview");
         const hash = `#${recentlyClosedId}`;
         return overview.includes("#")
@@ -138,6 +186,24 @@ export default function ListingSubnav({
       return base.includes("#")
         ? `${base.replace(/#.*$/, "")}#${recentlyClosedId}`
         : `${base}#${recentlyClosedId}`;
+    }
+
+    if (panelMode && PANEL_SECTION_TABS.has(section)) {
+      const sectionId = listingSectionIdForTab(section);
+      const overview = routeHref("overview");
+      if (!sectionId) return overview;
+      const hash = `#${sectionId}`;
+      return overview.includes("#")
+        ? `${overview.replace(/#.*$/, "")}${hash}`
+        : `${overview}${hash}`;
+    }
+
+    if (section === "map") {
+      const overview = routeHref("overview");
+      const hash = "#listing-location";
+      return overview.includes("#")
+        ? `${overview.replace(/#.*$/, "")}${hash}`
+        : `${overview}${hash}`;
     }
 
     if (!useHashJump || !HASH_JUMP_TABS.has(section)) {
@@ -162,22 +228,27 @@ export default function ListingSubnav({
       href: sectionHref("comparable-rentals"),
     },
     { id: "uag", label: "Under Agreement", href: sectionHref("uag") },
-    { id: "history", label: "History", href: sectionHref("history") },
     { id: "if", label: "What if", href: sectionHref("if") },
+    { id: "history", label: "History", href: sectionHref("history") },
+    { id: "map", label: "Map", href: sectionHref("map") },
   ];
-  const tabs = allTabs.filter((tab) =>
-    tabVisible(active, tab.id, Boolean(onTabSelect)),
+  const tabsById = new Map(
+    allTabs
+      .filter((tab) => tabVisible(active, tab.id, showPhotosTab))
+      .map((tab) => [tab.id, tab]),
   );
-  const topTabs = tabs.filter((tab) => TOP_ROW_IDS.includes(tab.id));
-  const compsTabs = tabs.filter((tab) => COMPS_ROW_IDS.includes(tab.id));
-  const uagTabs = tabs.filter((tab) => UAG_ROW_IDS.includes(tab.id));
+  const tabs = TAB_ORDER.map((id) => tabsById.get(id)).filter(
+    (tab): tab is TabDef => tab != null,
+  );
 
   // Prefetch Next.js tab routes + API JSON as soon as any tab of this property
   // mounts, so the next click is a cache hit (browser + Postgres warm).
   useEffect(() => {
     for (const tab of allTabs) {
-      if (tab.id === "photos" && active !== "photos") continue;
-      // Prefetch the real route even when the visible href is a hash jump.
+      if (tab.id === "map") continue;
+      if (tab.id === "photos" && active !== "photos" && !forceShowPhotos) {
+        continue;
+      }
       router.prefetch(routeHref(tab.id));
     }
     const propertyTab = parseSpotlightPropertyTab(searchParams.get("property"));
@@ -189,9 +260,8 @@ export default function ListingSubnav({
           ? spotlightPropertySearchParam(propertyTab)
           : null,
     });
-    // allTabs hrefs are derived from mlsId / routeBase / hints / search — listed deps cover that.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: warm once per property surface
-  }, [mlsId, routeBase, townHint, router, searchParams, active]);
+  }, [mlsId, routeBase, townHint, router, searchParams, active, forceShowPhotos]);
 
   useEffect(() => {
     const measure = () => {
@@ -210,9 +280,9 @@ export default function ListingSubnav({
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [active, tabs]);
+  }, [active, tabs, forceShowPhotos, panelTab]);
 
-  // On overview, highlight the section in view / from the hash.
+  // Legacy stack mode: highlight the section in view / from the hash.
   useEffect(() => {
     if (!useHashJump || active !== "overview") {
       setScrollActive(null);
@@ -253,7 +323,6 @@ export default function ListingSubnav({
       },
     );
 
-    // Sections mount lazily — keep trying briefly so the observer attaches.
     let cancelled = false;
     const observed = new Set<string>();
     const tryObserve = () => {
@@ -317,9 +386,13 @@ export default function ListingSubnav({
 
   const renderTabLink = (tab: TabDef, keyPrefix = "") => {
     const highlighted =
-      !onTabSelect && useHashJump && active === "overview" && scrollActive
-        ? scrollActive === tab.id
-        : active === tab.id;
+      tab.id === "map"
+        ? mapVisible
+        : panelMode
+          ? panelTab === tab.id
+          : !onTabSelect && useHashJump && active === "overview" && scrollActive
+            ? scrollActive === tab.id
+            : active === tab.id;
     return (
       <Link
         key={`${keyPrefix}${tab.id}`}
@@ -327,11 +400,33 @@ export default function ListingSubnav({
         className={tabLinkClass(highlighted)}
         aria-current={highlighted ? "page" : undefined}
         onClick={(event) => {
+          if (tab.id === "map") {
+            event.preventDefault();
+            onMapToggle?.();
+            return;
+          }
+
           if (onTabSelect) {
             event.preventDefault();
             onTabSelect(tab.id);
             return;
           }
+
+          if (panelMode && onPanelOpen && onPanelClose) {
+            if (tab.id === "photos") {
+              if (panelTab != null) {
+                event.preventDefault();
+                onPanelClose();
+              }
+              return;
+            }
+            if (PANEL_SECTION_TABS.has(tab.id)) {
+              event.preventDefault();
+              onPanelOpen(tab.id as ListingScrollSectionTab);
+              return;
+            }
+          }
+
           // Sold / Rented: if the Recently Sold/Rented panel is already on the
           // page (overview stack or the Sold/Rented tab), scroll to it in place.
           const recentlyClosedId = listingRecentlyClosedPanelIdForTab(tab.id);
@@ -340,7 +435,6 @@ export default function ListingSubnav({
             return;
           }
           if (!useHashJump || !HASH_JUMP_TABS.has(tab.id)) return;
-          // Already on overview with sections mounted — smooth-scroll in place.
           if (active === "overview" && jumpToSection(tab.id)) {
             event.preventDefault();
           }
@@ -364,69 +458,66 @@ export default function ListingSubnav({
     </span>
   );
 
-  /** Sold or Rented. */
-  const renderCompsTabs = (keyPrefix = "") => {
-    const items = compsTabs.filter(
-      (tab) =>
-        tab.id === "comparables" || tab.id === "comparable-rentals",
-    );
-    if (items.length === 0) return null;
-    return (
-      <>
-        {items.map((tab, index) => (
-          <span key={`${keyPrefix}${tab.id}-wrap`} className="contents">
-            {index > 0 ? compsMutedOr(`or-${index}`, keyPrefix) : null}
-            {renderTabLink(tab, keyPrefix)}
-          </span>
-        ))}
-      </>
-    );
+  /** Render tabs in order; insert muted "or" between Sold and Rented. */
+  const renderOrderedTabs = (ids: ListingTab[], keyPrefix = "") => {
+    const nodes: ReactNode[] = [];
+    for (const id of ids) {
+      const tab = tabsById.get(id);
+      if (!tab) continue;
+      if (id === "comparable-rentals") {
+        const soldVisible = tabsById.has("comparables");
+        if (soldVisible) {
+          nodes.push(compsMutedOr(`or-${id}`, keyPrefix));
+        }
+      }
+      nodes.push(renderTabLink(tab, keyPrefix));
+    }
+    return nodes;
   };
 
+  const visibleStackRows = STACK_ROWS.map((rowIds) =>
+    rowIds.filter((id) => tabsById.has(id)),
+  ).filter((rowIds) => rowIds.length > 0);
+
   const tabsRow = (
-    <div ref={viewportRef} className="relative border-b border-white/10">
-      {/* Full single-row width — if it overflows, use 3 stacked rows. */}
+    <div ref={viewportRef} className="relative">
+      {/* Full single-row width — if it overflows, use stacked rows. */}
       <div
         ref={measureFullRef}
         className="pointer-events-none invisible absolute flex h-0 flex-nowrap gap-x-1 overflow-hidden"
         aria-hidden
       >
-        {topTabs.map((tab) => renderTabLink(tab, "mf-"))}
-        {renderCompsTabs("mf-")}
-        {uagTabs.map((tab) => renderTabLink(tab, "mf-"))}
+        {renderOrderedTabs(TAB_ORDER, "mf-")}
       </div>
 
       {stackRows ? (
         <>
-          <nav
-            className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
-            aria-label="Listing sections"
-          >
-            {topTabs.map((tab) => renderTabLink(tab))}
-          </nav>
-          <nav
-            className="relative flex flex-nowrap gap-x-1 border-b border-white/10"
-            aria-label="Sold and rented"
-          >
-            {renderCompsTabs("")}
-          </nav>
-          {uagTabs.length > 0 ? (
+          {visibleStackRows.map((rowIds, rowIndex) => (
             <nav
-              className="relative flex flex-nowrap gap-x-1"
-              aria-label="Under Agreement"
+              key={`stack-row-${rowIndex}`}
+              className={`relative flex flex-nowrap gap-x-1${
+                rowIndex < visibleStackRows.length - 1
+                  ? " border-b border-white/10"
+                  : ""
+              }`}
+              aria-label={
+                rowIndex === 0
+                  ? "Listing sections"
+                  : rowIndex === 1
+                    ? "Sold, rented, and under agreement"
+                    : "What if, history, and map"
+              }
             >
-              {uagTabs.map((tab) => renderTabLink(tab))}
+              {renderOrderedTabs(rowIds)}
             </nav>
-          ) : null}
+          ))}
         </>
       ) : (
         <nav
           className="relative flex flex-nowrap gap-x-1"
           aria-label="Listing sections"
         >
-          {topTabs.map((tab) => renderTabLink(tab))}
-          {renderCompsTabs("")}
-          {uagTabs.map((tab) => renderTabLink(tab))}
+          {renderOrderedTabs(TAB_ORDER)}
         </nav>
       )}
     </div>
@@ -439,9 +530,9 @@ export default function ListingSubnav({
       className={
         embedded
           ? compact
-            ? // Tight gap under Style meta → first tab row.
-              "mt-0.5 pt-1 border-t border-white/10"
-            : "mt-6 pt-6 border-t border-white/10"
+            ? // Tight gap under Style meta → first tab row (no divider line).
+              "mt-0.5 pt-1"
+            : "mt-6 pt-6"
           : `${listingRegionOutlineClass} mb-8`
       }
     >

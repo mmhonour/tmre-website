@@ -34,7 +34,7 @@ export function listingRecentlyClosedPanelId(
 
 /** Panel id to scroll to when clicking Sold / Rented in the listing subnav. */
 export function listingRecentlyClosedPanelIdForTab(
-  tab: ListingScrollSectionTab | "photos",
+  tab: ListingScrollSectionTab | "photos" | "map",
 ): string | null {
   if (tab === "comparables") return LISTING_RECENTLY_SOLD_PANEL_ID;
   if (tab === "comparable-rentals") return LISTING_RECENTLY_RENTED_PANEL_ID;
@@ -42,9 +42,9 @@ export function listingRecentlyClosedPanelIdForTab(
 }
 
 export function listingSectionIdForTab(
-  tab: ListingScrollSectionTab | "photos",
+  tab: ListingScrollSectionTab | "photos" | "map",
 ): string | null {
-  if (tab === "photos") return null;
+  if (tab === "photos" || tab === "map") return null;
   return LISTING_SECTION_IDS[tab] ?? null;
 }
 

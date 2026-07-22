@@ -68,7 +68,7 @@ export const SPOTLIGHT_LISTING: SpotlightListingConfig = {
     state: "Connecticut",
     postalCode: "06880",
   },
-  /** Live Active MLS # at this address (prior closed sale was 170610470). */
+  /** Resolved live via address → MLS; prior closed sale at this address was 170610470. */
   mlsId: "24192179",
   listingKey: null,
   status: "Active",

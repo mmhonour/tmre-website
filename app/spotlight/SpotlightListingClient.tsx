@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
@@ -35,14 +34,12 @@ export default function SpotlightListingClient() {
     goldilocksScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     propertyTab,
     presentation,
   } = useSpotlightListing();
-  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-
-  useEffect(() => {
-    setActivePhotoIndex(0);
-  }, [display.mlsId]);
 
   if (loadState === "error") {
     return (
@@ -60,6 +57,11 @@ export default function SpotlightListingClient() {
     mlsListing,
     fmtMoney,
     presentation,
+    {
+      cityMedianPpsf,
+      listingPricePerSqft: pricePerSqft,
+      medianPpsfBand,
+    },
   );
   const isClosed = details.isClosed;
 
@@ -85,30 +87,26 @@ export default function SpotlightListingClient() {
       insight={insight}
       heroSlot={heroSlot}
       belowTabs={
-        <>
-          <ListingOverviewPhotoDeck
-            remarks={display.remarks}
-            mlsId={display.mlsId}
-            photoCount={display.photoCount > 0 ? display.photoCount : null}
-            address={presentation.headerAddress.street}
-            city={presentation.photoDeckCity}
-            heroAlt={display.config.displayTitle}
-            galleryHref={spotlightPhotosHref(propertyTab)}
-            photoHref={(i) => spotlightPhotosHref(propertyTab, i)}
-            hideHero={presentation.hidePhotoDeckHero}
-            obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
-            activePhotoIndex={activePhotoIndex}
-            onPhotoSelect={setActivePhotoIndex}
-            showHero={false}
-          />
-          <ListingMobileScrollSections
-            mlsId={display.mlsId}
-            addressHint={presentation.ifAddressHint}
-            townHint={presentation.townHint}
-            routeBase="spotlight"
-            propertyParam={spotlightPropertySearchParam(propertyTab)}
-          />
-        </>
+        <ListingOverviewPhotoDeck
+          remarks={display.remarks}
+          mlsId={display.mlsId}
+          photoCount={display.photoCount > 0 ? display.photoCount : null}
+          heroAlt={display.config.displayTitle}
+          hideHero={presentation.hidePhotoDeckHero}
+          obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
+          showHero
+        />
+      }
+      remarks={display.remarks}
+      sections={
+        <ListingMobileScrollSections
+          mlsId={display.mlsId}
+          addressHint={presentation.ifAddressHint}
+          townHint={presentation.townHint}
+          routeBase="spotlight"
+          propertyParam={spotlightPropertySearchParam(propertyTab)}
+          mode="panel"
+        />
       }
       sidebar={<ListingSidebar details={details} />}
     />

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
+import { photoBackendUsesR2, readListingPhotoBytes } from '@/lib/listing-photo-backend'
 import { recordPhotoProxyOutcome } from '@/lib/listing-photo-health'
 import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
+import { isR2PhotoStoreConfigured } from '@/lib/r2-photo-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -42,6 +44,7 @@ export async function GET(
     // sync writes under so both entry points hit the same blob.
     const photoKey = listing?.listingKey?.trim() || id
     const retsKey = listing?.listingKey?.trim() || photoKey
+    const mlsId = listing?.mlsId?.trim() || (id !== photoKey ? id : '')
     const resolved = await resolveListingPhotoBuffer({
       mlsId: photoKey,
       listingKey: retsKey,
@@ -49,17 +52,50 @@ export async function GET(
       photoCountHint: listing?.photoCount,
       sqliteOnly: !allowFetch,
       quality,
+      // Also try MLS id when photos were cached under ListingId historically.
+      alternateCacheIds: mlsId && mlsId !== photoKey ? [mlsId] : undefined,
     })
 
     if (!resolved) {
       if (allowFetch) recordPhotoProxyOutcome('fetch-fail')
       else recordPhotoProxyOutcome('cache-miss')
+      if (url.searchParams.get('debug') === '1') {
+        const direct = await readListingPhotoBytes(photoKey, index)
+        return NextResponse.json(
+          {
+            id,
+            photoKey,
+            retsKey,
+            mlsId: mlsId || null,
+            index,
+            quality,
+            allowFetch,
+            r2Configured: isR2PhotoStoreConfigured(),
+            usesR2: photoBackendUsesR2(),
+            directBytes: direct?.data.length ?? null,
+            listingFound: Boolean(listing),
+            photoCount: listing?.photoCount ?? null,
+          },
+          {
+            status: 404,
+            headers: {
+              'Cache-Control': 'private, no-store',
+              'Netlify-Vary': PHOTO_VARY,
+              'X-Photo-Proxy': 'miss',
+            },
+          },
+        )
+      }
       // Never CDN-cache misses — the client retries with ?fetch=1.
+      // Use 404 with an explicit image content-type so App Router does not
+      // replace the body with the HTML not-found page.
       return new NextResponse('No photo found', {
         status: 404,
         headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
           'Cache-Control': 'private, no-store',
           'Netlify-Vary': PHOTO_VARY,
+          'X-Photo-Proxy': 'miss',
         },
       })
     }

@@ -38,6 +38,15 @@ export function useListingChrome<TListing>(mlsId: string) {
   const [insight, setInsight] = useState<string | null>(
     () => initial?.insight ?? null,
   );
+  const [cityMedianPpsf, setCityMedianPpsf] = useState<number | null>(
+    () => initial?.cityMedianPpsf ?? null,
+  );
+  const [pricePerSqft, setPricePerSqft] = useState<number | null>(
+    () => initial?.pricePerSqft ?? null,
+  );
+  const [medianPpsfBand, setMedianPpsfBand] = useState<
+    ListingScoreApiFields["medianPpsfBand"]
+  >(() => initial?.medianPpsfBand ?? null);
   const [state, setState] = useState<LoadState>(() =>
     initial?.listing ? "ready" : "loading",
   );
@@ -53,6 +62,9 @@ export function useListingChrome<TListing>(mlsId: string) {
       setEdgeScore(cached.edgeScore ?? null);
       setGoldilocksBreakdown(cached.goldilocksBreakdown ?? null);
       setInsight(cached.insight ?? null);
+      setCityMedianPpsf(cached.cityMedianPpsf ?? null);
+      setPricePerSqft(cached.pricePerSqft ?? null);
+      setMedianPpsfBand(cached.medianPpsfBand ?? null);
       setState("ready");
     } else {
       setListing(null);
@@ -60,6 +72,9 @@ export function useListingChrome<TListing>(mlsId: string) {
       setEdgeScore(null);
       setGoldilocksBreakdown(null);
       setInsight(null);
+      setCityMedianPpsf(null);
+      setPricePerSqft(null);
+      setMedianPpsfBand(null);
       setState("loading");
     }
 
@@ -77,6 +92,9 @@ export function useListingChrome<TListing>(mlsId: string) {
         setEdgeScore(d.edgeScore ?? null);
         setGoldilocksBreakdown(d.goldilocksBreakdown ?? null);
         setInsight(d.insight ?? null);
+        setCityMedianPpsf(d.cityMedianPpsf ?? null);
+        setPricePerSqft(d.pricePerSqft ?? null);
+        setMedianPpsfBand(d.medianPpsfBand ?? null);
         setState("ready");
       })
       .catch(() => {
@@ -94,6 +112,9 @@ export function useListingChrome<TListing>(mlsId: string) {
     edgeScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     state,
   };
 }

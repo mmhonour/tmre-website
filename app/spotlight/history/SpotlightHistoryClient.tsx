@@ -17,6 +17,9 @@ export default function SpotlightHistoryClient() {
     goldilocksScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     propertyTab,
     presentation,
   } = useSpotlightListing();
@@ -38,6 +41,11 @@ export default function SpotlightHistoryClient() {
     mlsListing,
     fmtMoney,
     presentation,
+    {
+      cityMedianPpsf,
+      listingPricePerSqft: pricePerSqft,
+      medianPpsfBand,
+    },
   );
 
   return (

@@ -57,7 +57,16 @@ export default function ListingHistoryClient({
   addressHint?: string | null;
   townHint?: string | null;
 }) {
-  const { listing, goldilocksScore, goldilocksBreakdown, insight, state } =
+  const {
+    listing,
+    goldilocksScore,
+    goldilocksBreakdown,
+    insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
+    state,
+  } =
     useListingChrome<Listing>(mlsId);
 
   useRecordLookedAtListing(state === "ready", listing, {
@@ -128,6 +137,9 @@ export default function ListingHistoryClient({
       listingId: mlsId,
       addressHint: street || addressHint,
       townHint: resolvedTown,
+      cityMedianPpsf,
+      listingPricePerSqft: pricePerSqft,
+      medianPpsfBand,
     },
   );
 

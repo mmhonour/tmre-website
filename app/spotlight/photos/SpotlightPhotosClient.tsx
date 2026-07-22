@@ -27,6 +27,9 @@ export default function SpotlightPhotosClient() {
     goldilocksScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     photos,
     photosState,
     propertyTab,
@@ -80,6 +83,11 @@ export default function SpotlightPhotosClient() {
     mlsListing,
     fmtMoney,
     presentation,
+    {
+      cityMedianPpsf,
+      listingPricePerSqft: pricePerSqft,
+      medianPpsfBand,
+    },
   );
 
   const belowTabs =

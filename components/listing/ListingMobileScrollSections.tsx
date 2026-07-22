@@ -3,7 +3,11 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
-import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
+import {
+  LISTING_SECTION_IDS,
+  type ListingScrollSectionTab,
+} from "@/components/listing/listing-section-ids";
+import { listingCriteriaLinkSlotId } from "@/components/listing/ListingCriteriaSideLayout";
 
 const ListingIfPageContent = dynamic(
   () =>
@@ -51,25 +55,74 @@ type Props = {
   routeBase?: "listing" | "spotlight";
   /** Spotlight property query (`property=…`) for comps / UAG APIs. */
   propertyParam?: string | null;
+  /**
+   * `stack` — continuous page sections (legacy /test).
+   * `panel` — show/hide a single section inside the slide-up overlay.
+   */
+  mode?: "stack" | "panel";
+  /** Which section to show when `mode="panel"`. Overview is handled by the parent. */
+  activeTab?: ListingScrollSectionTab | null;
 };
 
 function Section({
   id,
   title,
   children,
+  hidden = false,
+  showCriteriaLinkSlot = false,
+  compact = false,
+  /** Match a 2-col body (What if): title left over col 1, Criteria right over col 2. */
+  dualColumnTitle = false,
 }: {
   id: string;
   title: string;
   children: React.ReactNode;
+  hidden?: boolean;
+  /** Reserve top-right space for the Criteria toggle (Sold / Rented / etc.). */
+  showCriteriaLinkSlot?: boolean;
+  /** Panel mode: no divider / top margin under the tab row. */
+  compact?: boolean;
+  dualColumnTitle?: boolean;
 }) {
   return (
     <section
       id={id}
-      className="scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-slate-200 pt-5 mt-6"
+      hidden={hidden}
+      className={
+        compact
+          ? "scroll-mt-[var(--listing-sticky-offset,6rem)]"
+          : "scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-5 mt-6 first:mt-0 first:border-t-0 first:pt-0"
+      }
     >
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-3">
-        {title}
-      </h2>
+      <div
+        className={
+          dualColumnTitle
+            ? `grid grid-cols-1 items-center gap-1 lg:grid-cols-2 ${
+                compact ? "mb-2" : "mb-3"
+              }`
+            : `flex items-center justify-between gap-3 ${
+                compact ? "mb-2" : "mb-3"
+              }`
+        }
+      >
+        <h2
+          className={
+            compact
+              ? "font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold text-left"
+              : "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 text-left"
+          }
+        >
+          {title}
+        </h2>
+        {showCriteriaLinkSlot ? (
+          <div
+            id={listingCriteriaLinkSlotId(id)}
+            className={`shrink-0 empty:hidden ${
+              dualColumnTitle ? "flex justify-end" : ""
+            }`}
+          />
+        ) : null}
+      </div>
       {children}
     </section>
   );
@@ -86,9 +139,8 @@ function scrollToHashTarget() {
 }
 
 /**
- * Continuous listing / Spotlight body under Overview: History → What if →
- * Sold → Rented → UAG. Tab clicks jump to in-page anchors (no route remount).
- * Photos stays its own route (different chrome).
+ * Listing / Spotlight section bodies: History → What if → Sold → Rented → UAG.
+ * In panel mode, only the active tab’s section is visible (no page scroll).
  */
 export function ListingMobileScrollSections({
   mlsId,
@@ -96,7 +148,10 @@ export function ListingMobileScrollSections({
   townHint,
   routeBase = "listing",
   propertyParam = null,
+  mode = "stack",
+  activeTab = null,
 }: Props) {
+  const isPanel = mode === "panel";
   const salesParams = new URLSearchParams();
   const rentalsParams = new URLSearchParams();
   rentalsParams.set("kind", "rental");
@@ -120,8 +175,9 @@ export function ListingMobileScrollSections({
       ? `/api/spotlight/uag${uagParams.toString() ? `?${uagParams}` : ""}`
       : undefined;
 
-  // Deep-link / tab jump: scroll once the target section exists (lazy panels).
+  // Stack mode only: deep-link / tab jump scrolls the page once the section exists.
   useEffect(() => {
+    if (isPanel) return;
     if (scrollToHashTarget()) return;
     const started = Date.now();
     const id = window.setInterval(() => {
@@ -130,46 +186,83 @@ export function ListingMobileScrollSections({
       }
     }, 120);
     return () => window.clearInterval(id);
-  }, [mlsId]);
+  }, [mlsId, isPanel]);
+
+  const show = (tab: ListingScrollSectionTab) =>
+    !isPanel || activeTab === tab;
 
   return (
-    <div className="mt-8 space-y-0">
-      <Section id={LISTING_SECTION_IDS.history} title="History">
+    <div className={isPanel ? "space-y-0" : "mt-8 space-y-0"}>
+      <Section
+        id={LISTING_SECTION_IDS.history}
+        title="History"
+        hidden={!show("history")}
+        compact={isPanel}
+      >
         <ListingHistoryPanel
           mlsId={mlsId}
           townHint={townHint}
           variant="page"
         />
       </Section>
-      <Section id={LISTING_SECTION_IDS.if} title="What if">
+      <Section
+        id={LISTING_SECTION_IDS.if}
+        title="What if"
+        hidden={!show("if")}
+        showCriteriaLinkSlot
+        dualColumnTitle
+        compact={isPanel}
+      >
         <ListingIfPageContent
           mlsId={mlsId}
           addressHint={addressHint}
           townHint={townHint}
           routeBase={routeBase}
+          suppressPageChrome={isPanel}
         />
       </Section>
-      <Section id={LISTING_SECTION_IDS.comparables} title="Sold">
+      <Section
+        id={LISTING_SECTION_IDS.comparables}
+        title="Sold"
+        hidden={!show("comparables")}
+        showCriteriaLinkSlot
+        compact={isPanel}
+      >
         <ListingComparablesPageContent
           mlsId={mlsId}
           townHint={townHint}
           kind="sale"
           fetchUrl={salesFetchUrl}
+          suppressPageChrome={isPanel}
         />
       </Section>
-      <Section id={LISTING_SECTION_IDS["comparable-rentals"]} title="Rented">
+      <Section
+        id={LISTING_SECTION_IDS["comparable-rentals"]}
+        title="Rented"
+        hidden={!show("comparable-rentals")}
+        showCriteriaLinkSlot
+        compact={isPanel}
+      >
         <ListingComparablesPageContent
           mlsId={mlsId}
           townHint={townHint}
           kind="rental"
           fetchUrl={rentalsFetchUrl}
+          suppressPageChrome={isPanel}
         />
       </Section>
-      <Section id={LISTING_SECTION_IDS.uag} title="Under agreement">
+      <Section
+        id={LISTING_SECTION_IDS.uag}
+        title="Under agreement"
+        hidden={!show("uag")}
+        showCriteriaLinkSlot
+        compact={isPanel}
+      >
         <ListingUagPageContent
           mlsId={mlsId}
           townHint={townHint}
           fetchUrl={uagFetchUrl}
+          suppressPageChrome={isPanel}
         />
       </Section>
     </div>

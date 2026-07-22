@@ -9,6 +9,7 @@ import {
 } from "@/components/listing/listing-frame";
 import { fmtAcres } from "@/lib/listing-comparables-shared";
 import { closedVsLastListPct } from "@/lib/listing-history";
+import { formatInsightMedianPpsf } from "@/lib/insight-median-ppsf";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 
 export type ListingOverviewSchools = {
@@ -37,10 +38,23 @@ export type ListingDetailsSchoolsPanelProps = {
   propertyTaxLabel: string;
   photoCount: number;
   photosHref?: string | null;
+  /** City peer median $/sqft from Goldilocks scoring (sale or rent). */
+  cityMedianPpsf?: number | null;
+  /** Listing $/sqft used for median comparison (includes rentals). */
+  listingPricePerSqft?: number | null;
+  medianPpsfBand?: "below" | "at" | "above" | null;
   schools: ListingOverviewSchools;
   fmtMoney: (n: number | null) => string;
   fmtDate: (value: string | null) => string | null;
 };
+
+/** Anchor for Insight median $/sqft links on listing + Spotlight. */
+export const LISTING_ANALYSIS_ID = "listing-analysis";
+
+/** Flash Analysis background after Insight median $/sqft deep-link. */
+const ANALYSIS_HIGHLIGHT_MS = 10_000;
+const ANALYSIS_HIGHLIGHT_CLASS = "bg-[#2A3D6B]";
+const ANALYSIS_IDLE_CLASS = "bg-transparent";
 
 type PriorListing = {
   mlsId: string;
@@ -113,6 +127,9 @@ export default function ListingDetailsSchoolsPanel({
   propertyTaxLabel,
   photoCount,
   photosHref = null,
+  cityMedianPpsf = null,
+  listingPricePerSqft = null,
+  medianPpsfBand = null,
   schools,
   fmtMoney,
   fmtDate,
@@ -122,6 +139,10 @@ export default function ListingDetailsSchoolsPanel({
   const [priorListings, setPriorListings] = useState<PriorListing[]>([]);
   const [analysisKind, setAnalysisKind] = useState<AnalysisKind>(
     isRental ? "rental" : "sale",
+  );
+  const [analysisHighlighted, setAnalysisHighlighted] = useState(false);
+  const analysisHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
   );
   const analysisDefaultKeyRef = useRef<string>("");
   const panelClass = unframed
@@ -133,6 +154,59 @@ export default function ListingDetailsSchoolsPanel({
       schools.high ||
       schools.district,
   );
+
+  const flashAnalysisHighlight = () => {
+    if (analysisHighlightTimerRef.current != null) {
+      clearTimeout(analysisHighlightTimerRef.current);
+      analysisHighlightTimerRef.current = null;
+    }
+    setAnalysisHighlighted(true);
+    analysisHighlightTimerRef.current = setTimeout(() => {
+      analysisHighlightTimerRef.current = null;
+      setAnalysisHighlighted(false);
+    }, ANALYSIS_HIGHLIGHT_MS);
+  };
+
+  // Insight median link → #listing-analysis: lighten Analysis for 10s.
+  useEffect(() => {
+    const hashTargetsAnalysis = () =>
+      window.location.hash.replace(/^#/, "") === LISTING_ANALYSIS_ID;
+
+    const onHashChange = () => {
+      if (hashTargetsAnalysis()) flashAnalysisHighlight();
+    };
+
+    const onDocClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+      try {
+        const url = new URL(href, window.location.href);
+        if (url.hash.replace(/^#/, "") === LISTING_ANALYSIS_ID) {
+          // Same-hash re-clicks still flash; scroll happens via default.
+          flashAnalysisHighlight();
+        }
+      } catch {
+        /* ignore invalid href */
+      }
+    };
+
+    if (hashTargetsAnalysis()) flashAnalysisHighlight();
+    window.addEventListener("hashchange", onHashChange);
+    document.addEventListener("click", onDocClick);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      document.removeEventListener("click", onDocClick);
+      if (analysisHighlightTimerRef.current != null) {
+        clearTimeout(analysisHighlightTimerRef.current);
+        analysisHighlightTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount once; flash uses refs/state setters
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,7 +288,30 @@ export default function ListingDetailsSchoolsPanel({
     (analysisKind === "rental" ? rentalAnalysis : saleAnalysis) ??
     saleAnalysis ??
     rentalAnalysis;
-  const showAnalysis = Boolean(activeAnalysis || (saleAnalysis && rentalPrice));
+  const showMedianPpsf =
+    cityMedianPpsf != null && cityMedianPpsf > 0;
+  const showAnalysis = Boolean(
+    activeAnalysis || (saleAnalysis && rentalPrice) || showMedianPpsf,
+  );
+  const comparePpsf =
+    listingPricePerSqft ??
+    (typeof ppsf === "number" ? ppsf : null);
+  const medianLabel = townHint?.trim() || "City";
+  const medianFmt = showMedianPpsf
+    ? formatInsightMedianPpsf(cityMedianPpsf, isRental)
+    : null;
+  const listingPpsfFmt =
+    comparePpsf != null
+      ? formatInsightMedianPpsf(comparePpsf, isRental)
+      : null;
+  const bandCopy =
+    medianPpsfBand === "below"
+      ? "below median"
+      : medianPpsfBand === "above"
+        ? "above median"
+        : medianPpsfBand === "at"
+          ? "at median"
+          : null;
 
   // Set Sale/Rental default once per listing when both sides become available.
   useEffect(() => {
@@ -311,7 +408,14 @@ export default function ListingDetailsSchoolsPanel({
       </div>
 
       {showAnalysis ? (
-        <div className="border-t border-white/10 pt-3 space-y-2">
+        <div
+          id={LISTING_ANALYSIS_ID}
+          className={`-mx-1 space-y-2 rounded-lg border-t border-white/10 px-1 pt-3 scroll-mt-28 transition-colors duration-700 ease-out ${
+            analysisHighlighted
+              ? ANALYSIS_HIGHLIGHT_CLASS
+              : ANALYSIS_IDLE_CLASS
+          }`}
+        >
           <div className="flex items-center justify-between gap-2">
             <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold">
               Analysis
@@ -344,6 +448,28 @@ export default function ListingDetailsSchoolsPanel({
               </div>
             ) : null}
           </div>
+
+          {showMedianPpsf && medianFmt ? (
+            <div className="space-y-1">
+              <Stat
+                label={
+                  isRental
+                    ? `${medianLabel} rent median $/sqft`
+                    : `${medianLabel} median $/sqft`
+                }
+                value={medianFmt}
+                large
+              />
+              <p className="font-mono text-[9px] leading-snug text-white/45">
+                {listingPpsfFmt
+                  ? `This listing ${listingPpsfFmt}`
+                  : "This listing"}
+                {bandCopy ? ` · ${bandCopy}` : ""}
+                {" · "}
+                {isRental ? "rent-per-sqft" : "price-per-sqft"} vs active peers
+              </p>
+            </div>
+          ) : null}
 
           {activeAnalysis ? (
             <div className="space-y-1">

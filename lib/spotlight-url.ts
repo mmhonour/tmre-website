@@ -1,6 +1,7 @@
 export type SpotlightSection =
   | "overview"
   | "photos"
+  | "map"
   | "history"
   | "comparables"
   | "comparable-rentals"
@@ -16,6 +17,7 @@ export function spotlightSectionHref(section: SpotlightSection): string {
   if (section === "on-the-market") return "/spotlight/on-the-market";
   if (section === "uag") return "/spotlight/uag";
   if (section === "if") return "/spotlight/if";
+  // Map toggles Location on the overview surface (no dedicated route).
   return "/spotlight";
 }
 

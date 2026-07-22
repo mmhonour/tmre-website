@@ -178,6 +178,8 @@ export type ResolveListingPhotoOptions = {
    * thumb cache hits. `display` — hero/deck thumbs (index > 0 may be Thumbnail).
    */
   quality?: ListingPhotoQuality
+  /** Extra cache ids to probe (e.g. MLS id when primary key is listingKey). */
+  alternateCacheIds?: readonly string[]
 }
 
 function asPhotoResult(
@@ -199,6 +201,25 @@ function cacheSatisfiesQuality(
   return row.data.length >= FULL_QUALITY_MIN_BYTES
 }
 
+async function readCachedPhotoAcrossIds(
+  primaryId: string,
+  photoIndex: number,
+  alternateCacheIds?: readonly string[],
+): Promise<{ cacheId: string; row: PhotoBytes } | null> {
+  const ids = [
+    primaryId,
+    ...(alternateCacheIds ?? []).map((v) => v.trim()).filter(Boolean),
+  ]
+  const seen = new Set<string>()
+  for (const cacheId of ids) {
+    if (!cacheId || seen.has(cacheId)) continue
+    seen.add(cacheId)
+    const row = await readListingPhotoBytes(cacheId, photoIndex)
+    if (row) return { cacheId, row }
+  }
+  return null
+}
+
 /** Cached bytes first — refresh from media/RETS only when missing or past the configured TTL. */
 export async function resolveListingPhotoBuffer(
   options: ResolveListingPhotoOptions,
@@ -209,7 +230,12 @@ export async function resolveListingPhotoBuffer(
   const quality: ListingPhotoQuality = options.quality ?? 'display'
   if (!id || photoIndex < 0) return null
 
-  const cached = await readListingPhotoBytes(id, photoIndex)
+  const cachedHit = await readCachedPhotoAcrossIds(
+    id,
+    photoIndex,
+    options.alternateCacheIds,
+  )
+  const cached = cachedHit?.row ?? null
   const cacheFresh =
     cached != null &&
     isListingPhotoFresh(cached.syncedAt, getListingPhotoTtlMs()) &&

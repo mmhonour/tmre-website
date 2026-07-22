@@ -7,7 +7,10 @@ import {
   CompExactMatchLegend,
   renderCompBedBathMeta,
 } from "@/components/listing/CompExactMatchMeta";
-import ListingCriteriaSideLayout from "@/components/listing/ListingCriteriaSideLayout";
+import ListingCriteriaSideLayout, {
+  listingCriteriaLinkSlotId,
+} from "@/components/listing/ListingCriteriaSideLayout";
+import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import MatchingCriteriaSummary, {
   type CriteriaStepFeedback,
   type CriteriaStepKey,
@@ -405,10 +408,12 @@ export function ListingUagPageContent({
   mlsId,
   townHint,
   fetchUrl,
+  suppressPageChrome = false,
 }: {
   mlsId: string;
   townHint?: string | null;
   fetchUrl?: string;
+  suppressPageChrome?: boolean;
 }) {
   const [data, setData] = useState<UagResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -707,19 +712,27 @@ export function ListingUagPageContent({
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-        Under Agreement
-      </p>
-      <p className="text-white/50 text-sm">
-        Homes currently under contract (Under Contract and Under Contract –
-        Continue to Show), matched with the same thresholds as Comparables:
-        same zip, beds within ±1, baths within ±1, living area within ±30%,
-        similar vintage (same era, plus the bordering era near a vintage edge),
-        and lot size when available — pulled live from the MLS.
-      </p>
+      {!suppressPageChrome ? (
+        <>
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
+            Under Agreement
+          </p>
+          <p className="text-white/50 text-sm">
+            Homes currently under contract (Under Contract and Under Contract –
+            Continue to Show), matched with the same thresholds as Comparables:
+            same zip, beds within ±1, baths within ±1, living area within ±30%,
+            similar vintage (same era, plus the bordering era near a vintage edge),
+            and lot size when available — pulled live from the MLS.
+          </p>
+        </>
+      ) : null}
 
       {showCriteria ? (
-        <ListingCriteriaSideLayout criteria={criteriaBlock}>
+        <ListingCriteriaSideLayout
+          criteria={criteriaBlock}
+          heading="Under agreement criteria"
+          linkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)}
+        >
           {mainColumn}
         </ListingCriteriaSideLayout>
       ) : (

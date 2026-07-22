@@ -165,10 +165,24 @@ async function lookupDirectoryMlsId(input: AddressLookupInput): Promise<string |
   return null
 }
 
+function listingLooksOffMarket(listing: Listing | null | undefined): boolean {
+  if (!listing) return true
+  const s = (listing.status ?? '').toLowerCase()
+  return (
+    s.includes('closed') ||
+    s.includes('expired') ||
+    s.includes('withdrawn') ||
+    s.includes('cancelled') ||
+    s.includes('canceled')
+  )
+}
+
 /**
  * Resolve a TMRE town address to an MLS id.
- * Order: property-address directory → listings SQLite → SmartMLS (optional).
+ * Order: property-address directory → listings DB → SmartMLS (optional).
  * Successful matches are persisted for future lookups.
+ * Directory hits that point at Closed/Expired rows are skipped so Spotlight
+ * can find the live Active listing at the same address.
  */
 export async function resolveMlsIdByAddress(
   input: AddressLookupInput,
@@ -196,25 +210,31 @@ export async function resolveMlsIdByAddress(
     postalCode: input.postalCode?.trim(),
   }
 
+  const statusBuckets = options.statusBuckets ?? ['Active', 'Closed', 'Expired']
+
   const directoryMlsId = await lookupDirectoryMlsId(normalized)
   if (directoryMlsId) {
     const dbHits = await searchListingsInDbByQuery(directoryMlsId, {
       limit: 1,
-      statusBuckets: options.statusBuckets ?? ['Active', 'Closed', 'Expired'],
+      statusBuckets,
     })
     const listing = dbHits[0] ?? null
-    return {
-      mlsId: directoryMlsId,
-      listingKey: listing?.listingKey?.trim() || null,
-      listing,
-      source: 'directory',
-      address: normalized,
+    // Stale directory rows often still point at a prior Closed sale at this
+    // address — keep searching for the current Active listing instead.
+    if (listing && !listingLooksOffMarket(listing)) {
+      return {
+        mlsId: directoryMlsId,
+        listingKey: listing.listingKey?.trim() || null,
+        listing,
+        source: 'directory',
+        address: normalized,
+      }
     }
   }
 
   const dbHits = await searchListingsInDbByQuery(street, {
     limit: 24,
-    statusBuckets: options.statusBuckets ?? ['Active', 'Closed', 'Expired'],
+    statusBuckets,
   })
   const dbMatch = pickBestListingMatch(dbHits, normalized)
   if (dbMatch?.mlsId?.trim()) {
@@ -246,6 +266,21 @@ export async function resolveMlsIdByAddress(
     }
   } catch (err) {
     console.warn('[address-mls-resolve] RETS lookup failed', err)
+  }
+
+  // Last resort: directory Closed id if nothing on-market was found.
+  if (directoryMlsId) {
+    const dbHits = await searchListingsInDbByQuery(directoryMlsId, {
+      limit: 1,
+      statusBuckets,
+    })
+    return {
+      mlsId: directoryMlsId,
+      listingKey: dbHits[0]?.listingKey?.trim() || null,
+      listing: dbHits[0] ?? null,
+      source: 'directory',
+      address: normalized,
+    }
   }
 
   return {

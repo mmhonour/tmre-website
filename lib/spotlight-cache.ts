@@ -40,46 +40,30 @@ function withFreshTax(listing: Listing | null): Listing | null {
 }
 
 /**
- * Spotlight must reflect the live MLS row. When the stats_cache TTL has expired
- * (or the DB row looks Closed/Expired), pull RETS first and persist. Fresh cache
- * hits stay on Postgres so we do not RETS-hammer every page view.
+ * Spotlight must reflect the live MLS row. Always try RETS first so a prior
+ * Closed sale (or stale Postgres/cache facts) cannot linger on /spotlight.
+ * Fall back to DB / stats_cache only when RETS is unavailable.
  */
 async function loadSpotlightListingRecord(
   mlsId: string,
   cached: SpotlightCachePayload | null,
-  listingFresh: boolean,
+  _listingFresh: boolean,
 ): Promise<{ listing: Listing | null; source: ListingsSource }> {
+  void _listingFresh
+
+  try {
+    const live = await getListingByMlsId(mlsId)
+    if (live) {
+      void persistListingRecord(live).catch((err) => {
+        console.warn('[spotlight-cache] listing persist skipped:', err)
+      })
+      return { listing: withFreshTax(live), source: 'rets' }
+    }
+  } catch (err) {
+    console.warn('[spotlight-cache] RETS lookup failed — falling back to DB', err)
+  }
+
   const { listing: dbListing } = await readListingFromDbByMlsId(mlsId)
-
-  if (listingFresh && cached?.listing) {
-    return {
-      listing: withFreshTax(cached.listing),
-      source: cached.source ?? 'db',
-    }
-  }
-
-  const dbStatus = (dbListing?.status || '').toLowerCase()
-  const dbLooksInactive =
-    !dbListing ||
-    dbStatus.includes('closed') ||
-    dbStatus.includes('expired') ||
-    dbStatus.includes('withdrawn')
-
-  // Cache miss / TTL expired, or DB stuck on a prior Closed row for this MLS id.
-  if (!listingFresh || dbLooksInactive) {
-    try {
-      const live = await getListingByMlsId(mlsId)
-      if (live) {
-        void persistListingRecord(live).catch((err) => {
-          console.warn('[spotlight-cache] listing persist skipped:', err)
-        })
-        return { listing: withFreshTax(live), source: 'rets' }
-      }
-    } catch (err) {
-      console.warn('[spotlight-cache] RETS lookup failed — falling back to DB', err)
-    }
-  }
-
   if (dbListing) {
     return { listing: dbListing, source: 'db' }
   }
@@ -142,9 +126,9 @@ export async function resolveSpotlightListing(options: {
   }
 
   const cached = options.forceRefresh ? null : await readSpotlightCache(mlsId)
-  const listingFresh =
-    cached?.listing != null &&
-    isFresh(cached.cachedAt, SPOTLIGHT_LISTING_TTL_MS)
+  // Listing facts always revalidate via RETS inside loadSpotlightListingRecord.
+  // Photo URLs may still use the longer photos TTL.
+  const listingFresh = false
   const photosFresh =
     photosAreLocalProxy(cached?.photos) &&
     isFresh(cached?.photosCachedAt, SPOTLIGHT_PHOTOS_TTL_MS)

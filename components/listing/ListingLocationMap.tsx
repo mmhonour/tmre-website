@@ -31,16 +31,27 @@ function hasValidCoords(
   );
 }
 
-function mapPreviewUrl(latitude: number, longitude: number, zoom: number): string {
-  return `/api/map/preview?lat=${latitude}&lon=${longitude}&z=${zoom}`;
+function mapTileUrl(z: number, x: number, y: number): string {
+  return `/api/map/tile?z=${z}&x=${x}&y=${y}`;
 }
 
-/** Pixel offset of lat/lon within its OSM tile (0–256). */
-function tilePixelPosition(
+type MosaicTile = {
+  key: string;
+  src: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * World-pixel position of lat/lon at zoom, plus the containing OSM tile index.
+ */
+function geoToTile(
   latitude: number,
   longitude: number,
   zoom: number,
-): { px: number; py: number } {
+): { tileX: number; tileY: number; px: number; py: number; n: number } {
   const n = 2 ** zoom;
   const worldX = ((longitude + 180) / 360) * n * TILE_SIZE;
   const latRad = (latitude * Math.PI) / 180;
@@ -48,34 +59,69 @@ function tilePixelPosition(
     ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) *
     n *
     TILE_SIZE;
+  const tileX = Math.floor(worldX / TILE_SIZE);
+  const tileY = Math.floor(worldY / TILE_SIZE);
   return {
-    px: worldX - Math.floor(worldX / TILE_SIZE) * TILE_SIZE,
-    py: worldY - Math.floor(worldY / TILE_SIZE) * TILE_SIZE,
+    tileX,
+    tileY,
+    px: worldX - tileX * TILE_SIZE,
+    py: worldY - tileY * TILE_SIZE,
+    n,
   };
 }
 
 /**
- * Cover-scale a tile and pan so (px, py) sits at the container center.
- * Do not clamp to fill the frame — clamping used to shift the geographic
- * point away from center while the pin stayed fixed, so the house looked wrong.
- * Near tile edges you may see a narrow empty band; the pin stays on the house.
+ * Cover the container with neighboring OSM tiles centered on (px, py) within
+ * the subject tile. A single scaled tile leaves blank bands in non-square
+ * panels when the pin sits near a tile edge — the mosaic fills those gaps.
  */
-function centeredTileLayout(
+function centeredTileMosaic(
   containerWidth: number,
   containerHeight: number,
+  zoom: number,
+  tileX: number,
+  tileY: number,
   px: number,
   py: number,
-): { width: number; height: number; left: number; top: number } | null {
+  n: number,
+): { tiles: MosaicTile[]; pinLeft: number; pinTop: number } | null {
   if (containerWidth <= 0 || containerHeight <= 0) return null;
+
   const scale = Math.max(
     containerWidth / TILE_SIZE,
     containerHeight / TILE_SIZE,
   );
-  const width = TILE_SIZE * scale;
-  const height = TILE_SIZE * scale;
-  const left = containerWidth / 2 - px * scale;
-  const top = containerHeight / 2 - py * scale;
-  return { width, height, left, top };
+  const tileDisplay = TILE_SIZE * scale;
+  const originLeft = containerWidth / 2 - px * scale;
+  const originTop = containerHeight / 2 - py * scale;
+
+  const minCol = Math.floor((0 - originLeft) / tileDisplay) - 1;
+  const maxCol = Math.ceil((containerWidth - originLeft) / tileDisplay);
+  const minRow = Math.floor((0 - originTop) / tileDisplay) - 1;
+  const maxRow = Math.ceil((containerHeight - originTop) / tileDisplay);
+
+  const tiles: MosaicTile[] = [];
+  for (let row = minRow; row <= maxRow; row++) {
+    const y = tileY + row;
+    if (y < 0 || y >= n) continue;
+    for (let col = minCol; col <= maxCol; col++) {
+      const x = ((tileX + col) % n + n) % n;
+      tiles.push({
+        key: `${zoom}/${x}/${y}/${col}/${row}`,
+        src: mapTileUrl(zoom, x, y),
+        left: originLeft + col * tileDisplay,
+        top: originTop + row * tileDisplay,
+        width: tileDisplay,
+        height: tileDisplay,
+      });
+    }
+  }
+
+  return {
+    tiles,
+    pinLeft: containerWidth / 2,
+    pinTop: containerHeight / 2,
+  };
 }
 
 function projectTownRings(
@@ -352,28 +398,21 @@ export default function ListingLocationMap({
   }, [variant, lat, lon, showTownMystery]);
 
   const coordsOk = hasValidCoords(lat, lon);
-  const tilePixel =
-    coordsOk && lat != null && lon != null
-      ? tilePixelPosition(lat, lon, zoom)
-      : null;
-  const tileLayout =
-    tilePixel != null
-      ? centeredTileLayout(
-          containerSize.width,
-          containerSize.height,
-          tilePixel.px,
-          tilePixel.py,
-        )
-      : null;
-
-  // Pin must follow the lat/lon on the scaled tile — not the container center.
-  const pinPosition =
-    tileLayout && tilePixel
-      ? {
-          left: tileLayout.left + tilePixel.px * (tileLayout.width / TILE_SIZE),
-          top: tileLayout.top + tilePixel.py * (tileLayout.height / TILE_SIZE),
-        }
-      : null;
+  const mosaic = useMemo(() => {
+    if (!coordsOk || lat == null || lon == null) return null;
+    if (containerSize.width <= 0 || containerSize.height <= 0) return null;
+    const { tileX, tileY, px, py, n } = geoToTile(lat, lon, zoom);
+    return centeredTileMosaic(
+      containerSize.width,
+      containerSize.height,
+      zoom,
+      tileX,
+      tileY,
+      px,
+      py,
+      n,
+    );
+  }, [coordsOk, lat, lon, zoom, containerSize.width, containerSize.height]);
 
   const isHero = variant === "hero";
   // Hero: fill the parent shell (absolute inset-0 from ListingHeroPanels).
@@ -406,27 +445,29 @@ export default function ListingLocationMap({
               : `Map for ${addressQuery}`
           }
         >
-          {coordsOk && lat != null && lon != null && tileLayout ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={zoom}
-              src={mapPreviewUrl(lat, lon, zoom)}
-              alt=""
-              className={`absolute max-w-none ${
-                showTownMystery ? "opacity-35 saturate-50" : ""
-              }`}
-              style={{
-                width: tileLayout.width,
-                height: tileLayout.height,
-                left: tileLayout.left,
-                top: tileLayout.top,
-              }}
-              loading="lazy"
-              draggable={false}
-            />
-          ) : showTownMystery ? (
-            <div className="absolute inset-0 bg-[#152238]" aria-hidden />
-          ) : null}
+          {mosaic
+            ? mosaic.tiles.map((tile) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={tile.key}
+                  src={tile.src}
+                  alt=""
+                  className={`absolute max-w-none ${
+                    showTownMystery ? "opacity-35 saturate-50" : ""
+                  }`}
+                  style={{
+                    width: tile.width,
+                    height: tile.height,
+                    left: tile.left,
+                    top: tile.top,
+                  }}
+                  loading="lazy"
+                  draggable={false}
+                />
+              ))
+            : showTownMystery ? (
+                <div className="absolute inset-0 bg-[#152238]" aria-hidden />
+              ) : null}
 
           {showTownMystery && resolvedOutlineTown ? (
             <TownOutlineOverlay
@@ -436,10 +477,10 @@ export default function ListingLocationMap({
             />
           ) : null}
 
-          {pinPosition && !hidePin && !showTownMystery ? (
+          {mosaic && !hidePin && !showTownMystery ? (
             <span
               className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full text-blue-600 drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]"
-              style={{ left: pinPosition.left, top: pinPosition.top }}
+              style={{ left: mosaic.pinLeft, top: mosaic.pinTop }}
               aria-hidden
             >
               <HouseIcon className="h-5 w-5" />

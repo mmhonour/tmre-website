@@ -9,19 +9,59 @@ import ListingSubnav, {
   type ListingInterestProps,
   type ListingTab,
 } from "@/components/listing/ListingSubnav";
-import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
+import {
+  LISTING_SECTION_IDS,
+  listingRecentlyClosedPanelIdForTab,
+  listingSectionIdForTab,
+  listingTabFromSectionId,
+  type ListingScrollSectionTab,
+} from "@/components/listing/listing-section-ids";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
+import { ListingCriteriaVisibilityProvider } from "@/components/listing/ListingCriteriaVisibilityContext";
+import { ListingPhotosModeContext } from "@/components/listing/ListingPhotosModeContext";
+import { ListingRemarksContent } from "@/components/listing/ListingOverviewPanels";
 import { ListingBackLink } from "@/components/listing/ListingShell";
+import { LISTING_ANALYSIS_ID } from "@/components/listing/ListingDetailsSchoolsPanel";
 import { formatMlsStatus } from "@/lib/listing-history";
-import type { ComponentProps, ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  type ComponentProps,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
-type MobileDrawerId = "map" | "details" | null;
+type MobileDrawerId = "details" | null;
 
 /** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
+
+const PANEL_SECTION_TABS = new Set<string>([
+  "overview",
+  "history",
+  "if",
+  "comparables",
+  "comparable-rentals",
+  "uag",
+]);
+
+function tabFromLocationHash(): ListingScrollSectionTab | null {
+  if (typeof window === "undefined") return null;
+  const id = window.location.hash.replace(/^#/, "");
+  if (!id) return null;
+  const tab = listingTabFromSectionId(id);
+  if (tab && PANEL_SECTION_TABS.has(tab)) return tab;
+  return null;
+}
+
+function hashForPanelTab(tab: ListingScrollSectionTab): string {
+  const recentlyClosed = listingRecentlyClosedPanelIdForTab(tab);
+  if (recentlyClosed) return recentlyClosed;
+  return listingSectionIdForTab(tab) ?? LISTING_SECTION_IDS.overview;
+}
 
 type ListingHeroPanelsProps = {
   header: ComponentProps<typeof ListingHeader>;
@@ -47,7 +87,21 @@ type ListingHeroPanelsProps = {
   propertyTabs?: ReactNode;
   /** Suppress the MLS status badge (e.g. the Coming Soon spotlight tab). */
   hideStatusBadge?: boolean;
+  /**
+   * Overview photo-deck content (remarks on mobile + photo stack). Shown inside
+   * the slide-up panel when Overview is selected — not in the page scroll flow.
+   */
   belowTabs?: ReactNode;
+  /**
+   * Listing remarks for the desktop right column (above Location) while Overview
+   * is active. Hidden when another analysis tab is open.
+   */
+  remarks?: string | null;
+  /**
+   * Section bodies (History / What if / Sold / …) for the slide-up panel.
+   * When provided on overview, enables panel mode instead of page scroll.
+   */
+  sections?: ReactNode;
   /** Full-width content below the hero grid (e.g. comparables columns). */
   belowHero?: ReactNode;
   sidebar?: ReactNode;
@@ -63,6 +117,8 @@ export default function ListingHeroPanels({
   propertyTabs = null,
   hideStatusBadge = false,
   belowTabs,
+  remarks = null,
+  sections = null,
   belowHero,
   sidebar,
   footer,
@@ -70,11 +126,109 @@ export default function ListingHeroPanels({
 }: ListingHeroPanelsProps) {
   const isSpotlight = variant === "spotlight";
   const frameClass = listingPanelCompactClass;
-  const compactHero = Boolean(belowTabs || belowHero || sidebar || footer || interest);
+  const compactHero = Boolean(
+    belowTabs || sections || belowHero || sidebar || footer || interest,
+  );
   const isOverview = subnav.active === "overview";
+  const useSlidePanel = isOverview && sections != null;
   const stickyChromeRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const panelScrollRef = useRef<HTMLDivElement>(null);
   const [mobileDrawer, setMobileDrawer] = useState<MobileDrawerId>(null);
+  const [panelTab, setPanelTab] = useState<ListingScrollSectionTab | null>(
+    null,
+  );
+  /** Location panel / map drawer — off by default; Map tab toggles it. */
+  const [mapVisible, setMapVisible] = useState(false);
+  /** Drawer is mobile-only; keep Location open when resizing up to desktop. */
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false);
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
+  const toggleMap = useCallback(() => {
+    setMapVisible((prev) => {
+      const next = !prev;
+      if (next) setMobileDrawer(null);
+      const url = new URL(window.location.href);
+      if (next) {
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}#listing-location`,
+        );
+      } else if (url.hash === "#listing-location") {
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      }
+      return next;
+    });
+  }, []);
+  const closeMap = useCallback(() => {
+    setMapVisible(false);
+    const url = new URL(window.location.href);
+    if (url.hash === "#listing-location") {
+      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsDesktopLayout(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const openPanel = useCallback((tab: ListingScrollSectionTab) => {
+    setPanelTab(tab);
+    const hash = hashForPanelTab(tab);
+    const url = new URL(window.location.href);
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}#${hash}`,
+    );
+    // Scroll panel content to top when switching tabs.
+    requestAnimationFrame(() => {
+      panelScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, []);
+
+  const closePanel = useCallback(() => {
+    setPanelTab(null);
+    const url = new URL(window.location.href);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }, []);
+
+  // Deep-link: open panel from hash on overview mount / hash changes.
+  useEffect(() => {
+    if (!useSlidePanel) {
+      setPanelTab(null);
+      return;
+    }
+    const applyHash = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      if (hash === "listing-location") {
+        setMapVisible(true);
+        return;
+      }
+      const tab = tabFromLocationHash();
+      if (tab) setPanelTab(tab);
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, [useSlidePanel, subnav.mlsId]);
+
+  // Non-panel pages: still honor #listing-location for the Map tab.
+  useEffect(() => {
+    if (useSlidePanel) return;
+    const applyHash = () => {
+      if (window.location.hash.replace(/^#/, "") === "listing-location") {
+        setMapVisible(true);
+      }
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, [useSlidePanel, subnav.mlsId]);
 
   // Publish sticky chrome height so scroll-to-section targets clear the pinned tabs.
   useEffect(() => {
@@ -94,7 +248,7 @@ export default function ListingHeroPanels({
       ro.disconnect();
       document.documentElement.style.removeProperty("--listing-sticky-offset");
     };
-  }, [subnav.active, belowTabs, propertyTabs, isOverview, header.insight]);
+  }, [subnav.active, belowTabs, sections, propertyTabs, isOverview, header.insight, panelTab]);
 
   const statusLabel = formatMlsStatus(header.status);
   const overviewInsight =
@@ -108,21 +262,25 @@ export default function ListingHeroPanels({
     ) : null;
 
   const insightPanel = overviewInsight ? (
-    <aside className="w-full text-left" aria-label="Listing insight">
-      <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+    <aside
+      className="ml-auto flex w-fit max-w-full min-w-0 flex-col overflow-visible"
+      aria-label="Listing insight"
+    >
+      <p className="mb-1 text-center font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
         Insight
       </p>
       <ListingInsightCopy
         text={overviewInsight}
-        className="text-[12px] sm:text-[13px] leading-snug text-white/70"
+        className="text-left text-[10px] sm:text-[11px] leading-snug text-white/70 break-words"
+        medianHref={`#${LISTING_ANALYSIS_ID}`}
       />
     </aside>
   ) : null;
 
-  /** Status + insight stack — right side of Property Details. */
+  /** Status + insight docked to the right of Property Details; label centered over copy. */
   const statusInsightColumn =
     statusBadge || insightPanel ? (
-      <div className="flex w-full shrink-0 flex-col items-end gap-2 sm:w-[min(17.5rem,42%)]">
+      <div className="ml-auto flex w-full shrink-0 flex-col items-end gap-2 sm:w-[min(20rem,46%)]">
         {statusBadge ? (
           <div className="flex w-full justify-end">{statusBadge}</div>
         ) : null}
@@ -152,19 +310,92 @@ export default function ListingHeroPanels({
 
   const tabsNav = (
     <Suspense fallback={null}>
-      <ListingSubnav {...subnav} embedded compact />
+      <ListingSubnav
+        {...subnav}
+        embedded
+        compact
+        panelTab={useSlidePanel ? panelTab : null}
+        onPanelOpen={useSlidePanel ? openPanel : null}
+        onPanelClose={useSlidePanel ? closePanel : null}
+        forceShowPhotos={useSlidePanel && panelTab != null}
+        mapVisible={mapVisible}
+        onMapToggle={toggleMap}
+      />
     </Suspense>
   );
 
   const stickySurfaceClass =
-    "bg-[#1B2A4A]/95 backdrop-blur-md border-b border-white/10";
+    "bg-[#1B2A4A]/95 backdrop-blur-md";
 
+  const panelOpen = useSlidePanel && panelTab != null;
+
+  const panelSections =
+    useSlidePanel && isValidElement(sections)
+      ? cloneElement(
+          sections as ReactElement<{
+            mode?: "stack" | "panel";
+            activeTab?: ListingScrollSectionTab | null;
+          }>,
+          {
+            mode: "panel",
+            activeTab:
+              panelTab && panelTab !== "overview" ? panelTab : null,
+          },
+        )
+      : sections;
+
+  const slidePanel = useSlidePanel ? (
+    <div
+      ref={panelScrollRef}
+      id={LISTING_SECTION_IDS.overview}
+      className={`listing-tab-panel absolute inset-x-0 top-0 z-20 flex flex-col border-0 bg-[#1B2A4A] pt-2 pb-4 shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.55)] transition-transform duration-300 ease-out ${
+        panelOpen
+          ? "max-h-[min(70vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))] min-h-full translate-y-0 overflow-y-auto overscroll-contain"
+          : "pointer-events-none invisible h-0 min-h-0 max-h-0 translate-y-full overflow-hidden p-0 shadow-none"
+      }`}
+      aria-hidden={!panelOpen}
+    >
+      {panelOpen ? (
+        <>
+          <div
+            className={`min-w-0 ${panelTab === "overview" ? "block" : "hidden"}`}
+          >
+            {belowTabs}
+          </div>
+          <div
+            className={`min-w-0 px-4 ${
+              panelTab && panelTab !== "overview" ? "block" : "hidden"
+            }`}
+          >
+            {panelSections}
+          </div>
+        </>
+      ) : null}
+    </div>
+  ) : null;
+
+  const heroStage = useSlidePanel ? (
+    <div
+      ref={stageRef}
+      className={`relative mt-0 overflow-x-hidden ${
+        panelOpen ? "overflow-y-hidden" : "overflow-visible"
+      }`}
+    >
+      {heroOnly}
+      {slidePanel}
+    </div>
+  ) : (
+    heroOnly
+  );
+
+  // No card shell — rounded/frosted frames read as medium-blue borders on the
+  // navy page and around slide-up tab content.
   const propertyPanel = (
-    <div className={frameClass}>
+    <div className="min-w-0">
       {/* Meta + section tabs stay pinned under the site nav while photos/content scroll. */}
       <div
         ref={stickyChromeRef}
-        className={`sticky ${STICKY_TOP_CLASS} z-30 -mx-4 px-4 pt-1 pb-1 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+        className={`sticky ${STICKY_TOP_CLASS} z-30 overflow-visible pt-1 pb-3 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
       >
         {topLeft ? (
           <div className={propertyTabs ? undefined : "mb-1.5"}>{topLeft}</div>
@@ -183,18 +414,22 @@ export default function ListingHeroPanels({
         <div className="mt-2">{tabsNav}</div>
       </div>
 
-      {heroOnly}
+      <ListingPhotosModeContext.Provider
+        value={useSlidePanel ? closePanel : null}
+      >
+        {heroStage}
+      </ListingPhotosModeContext.Provider>
     </div>
   );
 
-  const mapBlock = (heightClass: string, showLabel: boolean) => (
-    <div className={`${frameClass} flex flex-col`}>
+  const mapBlock = (frameClassName: string, showLabel: boolean) => (
+    <div id="listing-location" className={`${frameClass} flex flex-col`}>
       {showLabel ? (
         <p className="mb-2 shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
           Location
         </p>
       ) : null}
-      <div className={`relative w-full ${heightClass}`}>
+      <div className={`relative w-full ${frameClassName}`}>
         <ListingLocationMap
           latitude={location.latitude}
           longitude={location.longitude}
@@ -225,26 +460,46 @@ export default function ListingHeroPanels({
     </div>
   );
 
+  // Desktop remarks above Location — only while Overview (not Sold / History / …).
+  const showRemarksPanel =
+    isOverview &&
+    (!useSlidePanel || panelTab === null || panelTab === "overview");
+
+  const remarksPanel = showRemarksPanel ? (
+    <div className={`${frameClass} flex flex-col`}>
+      <ListingRemarksContent remarks={remarks} compact />
+    </div>
+  ) : null;
+
   const rightColumn = (
     <div
-      className={`hidden min-w-0 flex-col gap-4 lg:sticky lg:flex ${STICKY_TOP_CLASS}`}
+      className={`hidden min-w-0 flex-col gap-4 lg:sticky lg:flex ${STICKY_TOP_CLASS} z-20`}
     >
       {interestButton}
-      {mapBlock("h-64 sm:h-72 lg:h-80", true)}
+      {/* Criteria panel portals here when open — always above Location. */}
+      <div
+        id={LISTING_CRITERIA_SLOT_ID}
+        className="min-w-0 w-full text-left empty:hidden"
+      />
+      {remarksPanel}
+      {mapVisible ? mapBlock("aspect-square", true) : null}
       {sidebar ? <div className="shrink-0">{sidebar}</div> : null}
     </div>
   );
 
-  const belowTabsBlock = belowTabs ? (
-    <div
-      id={
-        subnav.active === "overview" ? LISTING_SECTION_IDS.overview : undefined
-      }
-      className="mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
-    >
-      {belowTabs}
-    </div>
-  ) : null;
+  // Legacy: non-overview pages still put content in belowTabs page flow.
+  // Overview + sections uses the slide-up panel only (no long page scroll).
+  const belowTabsBlock =
+    !useSlidePanel && belowTabs ? (
+      <div
+        id={
+          subnav.active === "overview" ? LISTING_SECTION_IDS.overview : undefined
+        }
+        className="mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
+      >
+        {belowTabs}
+      </div>
+    ) : null;
 
   const edgeTabClass = (active: boolean) =>
     `flex items-center justify-center rounded-l-lg border border-r-0 px-1.5 py-3 shadow-[-4px_0_16px_-8px_rgba(0,0,0,0.55)] transition-colors ${
@@ -254,7 +509,7 @@ export default function ListingHeroPanels({
     }`;
 
   return (
-    <>
+    <ListingCriteriaVisibilityProvider>
       <div
         className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
           compactHero ? "" : "mb-6"
@@ -264,7 +519,12 @@ export default function ListingHeroPanels({
           {propertyPanel}
         </div>
 
-        <div className="order-2 min-w-0 lg:col-start-2 lg:row-start-1">
+        {/*
+          Stretch this cell to the full grid-row height (driven by the left
+          column) so `position: sticky` on the right stack has room to pin —
+          same idea as Property Details chrome sitting in a tall left frame.
+        */}
+        <div className="order-2 min-w-0 lg:col-start-2 lg:row-start-1 lg:self-stretch">
           {rightColumn}
         </div>
 
@@ -278,12 +538,6 @@ export default function ListingHeroPanels({
             <div className="mt-4">{footer}</div>
           </div>
         ) : null}
-
-        {/* Under Details, top-aligned with Comparables / tab content — Criteria portals in. */}
-        <div
-          id={LISTING_CRITERIA_SLOT_ID}
-          className={`order-4 hidden min-w-0 empty:hidden lg:col-start-2 lg:row-start-2 lg:sticky lg:block ${STICKY_TOP_CLASS}`}
-        />
       </div>
       {belowHero ? (
         <div className="mt-6 border-t border-white/10 pt-6 lg:mt-8 lg:pt-8">
@@ -299,12 +553,13 @@ export default function ListingHeroPanels({
       >
         <button
           type="button"
-          className={edgeTabClass(mobileDrawer === "map")}
-          aria-expanded={mobileDrawer === "map"}
+          className={edgeTabClass(mapVisible)}
+          aria-expanded={mapVisible}
           aria-controls="listing-map-drawer"
-          onClick={() =>
-            setMobileDrawer((prev) => (prev === "map" ? null : "map"))
-          }
+          onClick={() => {
+            setMobileDrawer(null);
+            setMapVisible((prev) => !prev);
+          }}
         >
           <span className="font-mono text-[10px] uppercase tracking-[0.18em] [writing-mode:vertical-rl] rotate-180">
             Map
@@ -316,11 +571,12 @@ export default function ListingHeroPanels({
             className={edgeTabClass(mobileDrawer === "details")}
             aria-expanded={mobileDrawer === "details"}
             aria-controls="listing-details-drawer"
-            onClick={() =>
+            onClick={() => {
+              setMapVisible(false);
               setMobileDrawer((prev) =>
                 prev === "details" ? null : "details",
-              )
-            }
+              );
+            }}
           >
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] [writing-mode:vertical-rl] rotate-180">
               Details
@@ -330,12 +586,17 @@ export default function ListingHeroPanels({
       </div>
 
       <ListingSideDrawer
-        open={mobileDrawer === "map"}
-        onClose={closeMobileDrawer}
+        open={mapVisible && !isDesktopLayout}
+        onClose={() => {
+          // SideDrawer calls onClose when crossing to lg — keep Location open
+          // so the desktop panel stays visible after a mobile Map open.
+          if (window.matchMedia("(min-width: 1024px)").matches) return;
+          closeMap();
+        }}
         title="Map"
       >
         <div id="listing-map-drawer">
-          {mapBlock("h-[min(70vh,28rem)]", false)}
+          {mapBlock("aspect-square max-h-[min(70vh,28rem)]", false)}
         </div>
       </ListingSideDrawer>
 
@@ -346,6 +607,6 @@ export default function ListingHeroPanels({
       >
         <div id="listing-details-drawer">{detailsBlock}</div>
       </ListingSideDrawer>
-    </>
+    </ListingCriteriaVisibilityProvider>
   );
 }

@@ -69,6 +69,9 @@ export default function ListingComparablesClient({
     edgeScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     state,
   } = useListingChrome<Listing>(mlsId);
   const activeTab =
@@ -155,6 +158,9 @@ export default function ListingComparablesClient({
       listingId: mlsId,
       addressHint: street || addressHint,
       townHint: resolvedTown,
+      cityMedianPpsf,
+      listingPricePerSqft: pricePerSqft,
+      medianPpsfBand,
     },
   );
 

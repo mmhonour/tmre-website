@@ -34,7 +34,10 @@ import {
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
 import { listingRecentlyClosedPanelId } from "@/components/listing/listing-section-ids";
-import ListingCriteriaSideLayout from "@/components/listing/ListingCriteriaSideLayout";
+import ListingCriteriaSideLayout, {
+  listingCriteriaLinkSlotId,
+} from "@/components/listing/ListingCriteriaSideLayout";
+import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 
 /** How long the ± criteria find/no-find note stays visible. */
 const CRITERIA_STEP_FEEDBACK_MS = 10_000;
@@ -634,9 +637,10 @@ export function ListingComparablesPageContent({
   townHint,
   kind = "sale",
   fetchUrl,
+  suppressPageChrome = false,
 }: Pick<
   ListingComparablesPanelProps,
-  "mlsId" | "townHint" | "kind" | "fetchUrl"
+  "mlsId" | "townHint" | "kind" | "fetchUrl" | "suppressPageChrome"
 >) {
   return (
     <ListingComparablesPanel
@@ -645,6 +649,7 @@ export function ListingComparablesPageContent({
       variant="page"
       kind={kind}
       fetchUrl={fetchUrl}
+      suppressPageChrome={suppressPageChrome}
     />
   );
 }
@@ -1474,7 +1479,15 @@ export default function ListingComparablesPanel({
     <div className={wrapperClass}>
       {pageChrome}
       {criteriaInSidePanel ? (
-        <ListingCriteriaSideLayout criteria={criteriaBlock}>
+        <ListingCriteriaSideLayout
+          criteria={criteriaBlock}
+          heading={isRental ? "Rented criteria" : "Sold criteria"}
+          linkSlotId={listingCriteriaLinkSlotId(
+            isRental
+              ? LISTING_SECTION_IDS["comparable-rentals"]
+              : LISTING_SECTION_IDS.comparables,
+          )}
+        >
           {mainColumn}
         </ListingCriteriaSideLayout>
       ) : (

@@ -32,6 +32,34 @@ const MIN_SALE_RANGE_SPREAD = 10_000
 const MIN_RENT_RANGE_SPREAD = 200
 const SINGLE_COMP_RANGE_PAD = 0.05
 
+/** Vintage factor in `compWeight` — keep explain copy in sync. */
+export const IF_VINTAGE_WEIGHT_SAME = 4
+export const IF_VINTAGE_WEIGHT_ADJACENT = 1.75
+export const IF_VINTAGE_WEIGHT_FAR = 0.5
+
+/** Location-premium |subject − comp| tiers → multipliers in `compWeight`. */
+export const IF_LOCATION_PREMIUM_TIER_1 = 0.02
+export const IF_LOCATION_PREMIUM_TIER_2 = 0.05
+export const IF_LOCATION_PREMIUM_TIER_3 = 0.1
+export const IF_LOCATION_WEIGHT_TIER_1 = 2.5
+export const IF_LOCATION_WEIGHT_TIER_2 = 1.6
+export const IF_LOCATION_WEIGHT_TIER_3 = 1.2
+export const IF_LOCATION_WEIGHT_FAR = 0.85
+
+/**
+ * Plain-language explanation of the per-comp `wt` shown on What if.
+ * Formula: wt = vintageWeight × locationPremiumWeight.
+ */
+export function ifCompWeightExplainLines(): string[] {
+  return [
+    'wt is the weight each comparable gets in the weighted median $/sqft (and price) that feeds the What if estimate. Higher wt pulls the midpoint more toward that property.',
+    'wt = vintage factor × location-tier factor.',
+    `Vintage factor: same era ×${IF_VINTAGE_WEIGHT_SAME}, neighboring era ×${IF_VINTAGE_WEIGHT_ADJACENT}, farther eras ×${IF_VINTAGE_WEIGHT_FAR}. If this home’s vintage is unknown, every comp uses ×1.`,
+    `Location-tier factor: compare this home’s location-premium multiplier to the comp’s. Difference ≤${IF_LOCATION_PREMIUM_TIER_1} → ×${IF_LOCATION_WEIGHT_TIER_1}; ≤${IF_LOCATION_PREMIUM_TIER_2} → ×${IF_LOCATION_WEIGHT_TIER_2}; ≤${IF_LOCATION_PREMIUM_TIER_3} → ×${IF_LOCATION_WEIGHT_TIER_3}; otherwise ×${IF_LOCATION_WEIGHT_FAR}. If this home has no location premium, every comp uses ×1.`,
+    'Example: same-vintage (×4) and close location tier (×2.5) → wt 10.00. Neighboring vintage (×1.75) and far tier (×0.85) → wt 1.49.',
+  ]
+}
+
 export type IfEstimateContext = {
   subjectVintage?: VintageBucketId | null
   locationPremium?: LocationPremiumFactors | null
@@ -103,21 +131,23 @@ function vintageWeight(
 ): number {
   if (!subjectVintage || subjectVintage === 'unknown') return 1
   const distance = vintageBucketDistance(subjectVintage, compVintage)
-  if (distance === 0) return 4
-  if (distance === 1) return 1.75
-  return 0.5
+  if (distance === 0) return IF_VINTAGE_WEIGHT_SAME
+  if (distance === 1) return IF_VINTAGE_WEIGHT_ADJACENT
+  return IF_VINTAGE_WEIGHT_FAR
 }
 
 function locationPremiumWeight(
   subjectPremium: LocationPremiumFactors | null | undefined,
   compMultiplier: number,
 ): number {
-  if (!subjectPremium || subjectPremium.combinedMultiplier === 1) return 1
+  if (!subjectPremium || subjectPremium.combinedMultiplier === 1) {
+    return 1
+  }
   const diff = Math.abs(compMultiplier - subjectPremium.combinedMultiplier)
-  if (diff <= 0.02) return 2.5
-  if (diff <= 0.05) return 1.6
-  if (diff <= 0.1) return 1.2
-  return 0.85
+  if (diff <= IF_LOCATION_PREMIUM_TIER_1) return IF_LOCATION_WEIGHT_TIER_1
+  if (diff <= IF_LOCATION_PREMIUM_TIER_2) return IF_LOCATION_WEIGHT_TIER_2
+  if (diff <= IF_LOCATION_PREMIUM_TIER_3) return IF_LOCATION_WEIGHT_TIER_3
+  return IF_LOCATION_WEIGHT_FAR
 }
 
 function locationPremiumRatio(

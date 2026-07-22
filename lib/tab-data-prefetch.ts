@@ -29,7 +29,7 @@ export function prefetchTabJson(url: string): void {
   const key = url.trim()
   if (!key || cache.has(key)) return
 
-  const promise = fetch(key, { cache: 'default' })
+  const promise = fetch(key, { cache: 'no-store' })
     .then(async (res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       return res.json() as Promise<unknown>
@@ -46,6 +46,12 @@ export function prefetchTabJson(url: string): void {
   cache.set(key, { status: 'pending', promise })
 }
 
+/** Drop a cached URL so the next load/prefetch hits the network. */
+export function invalidateTabJson(url: string): void {
+  const key = url.trim()
+  if (key) cache.delete(key)
+}
+
 /** Sync read — returns data only if the prefetch already finished successfully. */
 export function peekTabJson<T>(url: string): T | undefined {
   const entry = cache.get(url.trim())
@@ -54,9 +60,14 @@ export function peekTabJson<T>(url: string): T | undefined {
 }
 
 /** Async read — awaits an in-flight prefetch or fetches now. */
-export async function loadTabJson<T>(url: string): Promise<T | null> {
+export async function loadTabJson<T>(
+  url: string,
+  options?: { force?: boolean },
+): Promise<T | null> {
   const key = url.trim()
   if (!key) return null
+
+  if (options?.force) cache.delete(key)
 
   const existing = cache.get(key)
   if (existing?.status === 'ok') return existing.data as T

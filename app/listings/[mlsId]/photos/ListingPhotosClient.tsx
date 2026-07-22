@@ -205,6 +205,9 @@ export default function ListingPhotosClient({
       listingId: mlsId,
       addressHint: street || addressHint,
       townHint: townHint || listing.address.city,
+      cityMedianPpsf: data.cityMedianPpsf,
+      listingPricePerSqft: data.pricePerSqft,
+      medianPpsfBand: data.medianPpsfBand,
     },
   );
 

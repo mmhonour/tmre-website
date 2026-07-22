@@ -3,26 +3,53 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import ListingSideDrawer from "@/components/listing/ListingSideDrawer";
+import { useListingCriteriaVisibility } from "@/components/listing/ListingCriteriaVisibilityContext";
 
-/** Mount point in ListingHeroPanels right column (under Details). */
+/** Mount point in ListingHeroPanels right column (above Location). */
 export const LISTING_CRITERIA_SLOT_ID = "listing-criteria-slot";
 
+/** Link mount next to a section title (`{sectionId}-criteria-link`). */
+export function listingCriteriaLinkSlotId(sectionId: string): string {
+  return `${sectionId}-criteria-link`;
+}
+
 /**
- * Desktop: Criteria portals into the page right column under Details (beside
- * Comparables / main content) — never a 3rd column inside the main panel.
- * Mobile: Criteria edge tab → right slide-over (same chrome as Map / Details).
+ * Desktop: "Criteria" / "Hide criteria" sits top-right beside the section title;
+ * the criteria panel always portals above Location in the right column when open.
+ * Visibility is shared across analysis tabs when wrapped in
+ * ListingCriteriaVisibilityProvider.
+ * Mobile: Criteria edge tab → right slide-over (same shared open state).
  */
 export default function ListingCriteriaSideLayout({
   criteria,
+  heading,
+  linkSlotId,
   children,
 }: {
   /** When null, children render full-width with no side chrome. */
   criteria: ReactNode | null;
+  /**
+   * Side-panel title when open, e.g. "Sold criteria" → rendered as SOLD CRITERIA.
+   */
+  heading: string;
+  /** Optional portal target beside the section H2 (panel / stack titles). */
+  linkSlotId?: string | null;
   children: ReactNode;
 }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const shared = useListingCriteriaVisibility();
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = shared ? shared.open : localOpen;
+  const setOpen = shared ? shared.setOpen : setLocalOpen;
+  const toggle = shared
+    ? shared.toggle
+    : () => setLocalOpen((v) => !v);
+
   const [isDesktop, setIsDesktop] = useState(true);
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
+  const [linkSlot, setLinkSlot] = useState<HTMLElement | null>(null);
+  const [sectionVisible, setSectionVisible] = useState(true);
+
+  const headingLabel = heading.trim().toUpperCase();
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -33,27 +60,50 @@ export default function ListingCriteriaSideLayout({
   }, []);
 
   useEffect(() => {
-    if (isDesktop) setDrawerOpen(false);
-  }, [isDesktop]);
-
-  useEffect(() => {
-    if (!criteria || !isDesktop) {
+    if (!criteria) {
       setDesktopSlot(null);
+      setLinkSlot(null);
       return;
     }
     const sync = () => {
       setDesktopSlot(document.getElementById(LISTING_CRITERIA_SLOT_ID));
+      const link = linkSlotId
+        ? document.getElementById(linkSlotId)
+        : null;
+      setLinkSlot(link);
+      const section = link?.closest("section");
+      setSectionVisible(!section || !section.hasAttribute("hidden"));
     };
     sync();
-    // Slot mounts with the listing chrome; retry briefly if this tab content
-    // hydrates before ListingHeroPanels paints the anchor.
     const t1 = window.setTimeout(sync, 0);
     const t2 = window.setTimeout(sync, 50);
+    const t3 = window.setTimeout(sync, 200);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      window.clearTimeout(t3);
     };
-  }, [criteria, isDesktop]);
+  }, [criteria, linkSlotId, open, isDesktop]);
+
+  // Follow section show/hide when switching analysis tabs (shared open stays).
+  useEffect(() => {
+    if (!linkSlotId) {
+      setSectionVisible(true);
+      return;
+    }
+    const link = document.getElementById(linkSlotId);
+    const section = link?.closest("section");
+    if (!section) {
+      setSectionVisible(true);
+      return;
+    }
+    const update = () =>
+      setSectionVisible(!section.hasAttribute("hidden"));
+    update();
+    const mo = new MutationObserver(update);
+    mo.observe(section, { attributes: true, attributeFilter: ["hidden"] });
+    return () => mo.disconnect();
+  }, [linkSlotId, criteria]);
 
   if (!criteria) {
     return <>{children}</>;
@@ -66,31 +116,58 @@ export default function ListingCriteriaSideLayout({
         : "border-white/15 bg-[#1B2A4A]/95 text-gold backdrop-blur-md hover:border-gold/40 hover:text-gold-light"
     }`;
 
+  const toggleLinkClass =
+    "shrink-0 font-mono text-[10px] tracking-[0.18em] uppercase text-gold/80 underline decoration-gold/35 underline-offset-2 transition-colors hover:text-gold whitespace-nowrap";
+
+  const desktopToggle = (
+    <button
+      type="button"
+      className={toggleLinkClass}
+      aria-expanded={open}
+      aria-controls={LISTING_CRITERIA_SLOT_ID}
+      onClick={toggle}
+    >
+      {open ? "Hide criteria" : "Criteria"}
+    </button>
+  );
+
   const criteriaPanel = (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+    <div className="min-w-0 w-full rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left">
+      <p className="mb-3 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+        {headingLabel}
+      </p>
       {criteria}
     </div>
   );
 
+  // Panel always above Location; only the active tab fills the shared slot.
+  const showDesktopPanel =
+    isDesktop && open && desktopSlot && sectionVisible;
+
+  const showTitleLink = isDesktop && linkSlot && sectionVisible;
+
   return (
     <>
+      {isDesktop && !linkSlot ? (
+        <div className="mb-3 flex justify-end">{desktopToggle}</div>
+      ) : null}
+
       <div className="min-w-0 space-y-6">{children}</div>
 
-      {isDesktop && desktopSlot
+      {showTitleLink && linkSlot
+        ? createPortal(desktopToggle, linkSlot)
+        : null}
+
+      {showDesktopPanel
         ? createPortal(
-            <aside className="min-w-0" aria-label="Criteria">
+            <aside className="min-w-0 w-full" aria-label={headingLabel}>
               {criteriaPanel}
             </aside>,
             desktopSlot,
           )
         : null}
 
-      {/* Desktop fallback if the page chrome slot is missing (e.g. embedded). */}
-      {isDesktop && !desktopSlot ? (
-        <div className="mt-6 min-w-0 lg:mt-8">{criteriaPanel}</div>
-      ) : null}
-
-      {!isDesktop ? (
+      {!isDesktop && sectionVisible ? (
         <>
           <div
             className="fixed right-0 top-[28%] z-[60] flex -translate-y-1/2 flex-col gap-2"
@@ -99,10 +176,10 @@ export default function ListingCriteriaSideLayout({
           >
             <button
               type="button"
-              className={edgeTabClass(drawerOpen)}
-              aria-expanded={drawerOpen}
+              className={edgeTabClass(open)}
+              aria-expanded={open}
               aria-controls="listing-criteria-drawer"
-              onClick={() => setDrawerOpen((open) => !open)}
+              onClick={toggle}
             >
               <span className="font-mono text-[10px] tracking-[0.18em] uppercase [writing-mode:vertical-rl] rotate-180">
                 Criteria
@@ -110,9 +187,9 @@ export default function ListingCriteriaSideLayout({
             </button>
           </div>
           <ListingSideDrawer
-            open={drawerOpen}
-            onClose={() => setDrawerOpen(false)}
-            title="Criteria"
+            open={open}
+            onClose={() => setOpen(false)}
+            title={headingLabel}
           >
             <div id="listing-criteria-drawer">{criteria}</div>
           </ListingSideDrawer>

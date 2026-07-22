@@ -69,6 +69,9 @@ export async function GET(
         goldilocksScore: detailScore?.breakdown.composite ?? null,
         goldilocksBreakdown: detailScore?.breakdown ?? null,
         insight: detailScore?.insight ?? null,
+        cityMedianPpsf: detailScore?.cityMedianPpsf ?? null,
+        pricePerSqft: detailScore?.pricePerSqft ?? null,
+        medianPpsfBand: detailScore?.medianPpsfBand ?? null,
         edgeScore: edgeScoreRow?.edgeScore ?? null,
         edgeScoreBreakdown: edgeScoreRow?.breakdownJson
           ? (JSON.parse(edgeScoreRow.breakdownJson) as Record<string, unknown>)

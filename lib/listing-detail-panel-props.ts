@@ -53,6 +53,10 @@ export type BuildListingDetailsPanelOpts = {
   listingId?: string;
   addressHint?: string | null;
   townHint?: string | null;
+  cityMedianPpsf?: number | null;
+  /** Scored listing $/sqft (sale or rent); preferred over panel-computed sale ppsf. */
+  listingPricePerSqft?: number | null;
+  medianPpsfBand?: "below" | "at" | "above" | null;
 };
 
 type SpotlightMlsEnrichment = {
@@ -69,6 +73,11 @@ export function buildSpotlightDetailsPanelProps(
   mlsListing: SpotlightMlsListing | SpotlightMlsEnrichment,
   fmtMoney: (n: number | null) => string,
   presentation?: SpotlightPresentation,
+  median?: {
+    cityMedianPpsf?: number | null;
+    listingPricePerSqft?: number | null;
+    medianPpsfBand?: "below" | "at" | "above" | null;
+  },
 ): ListingDetailsSchoolsPanelProps {
   return buildListingDetailsPanelProps(
     {
@@ -89,7 +98,12 @@ export function buildSpotlightDetailsPanelProps(
       raw: mlsListing?.raw,
     },
     fmtMoney,
-    { routeBase: "spotlight" },
+    {
+      routeBase: "spotlight",
+      cityMedianPpsf: median?.cityMedianPpsf,
+      listingPricePerSqft: median?.listingPricePerSqft,
+      medianPpsfBand: median?.medianPpsfBand,
+    },
   );
 }
 
@@ -163,6 +177,9 @@ export function buildListingDetailsPanelProps(
     propertyTaxLabel: formatPropertyTaxLabel(propertyTaxYear),
     photoCount: listing.photoCount ?? 0,
     photosHref,
+    cityMedianPpsf: opts?.cityMedianPpsf ?? null,
+    listingPricePerSqft: opts?.listingPricePerSqft ?? null,
+    medianPpsfBand: opts?.medianPpsfBand ?? null,
     schools: listing.schools ?? {
       elementary: null,
       middle: null,

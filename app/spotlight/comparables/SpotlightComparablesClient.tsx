@@ -25,6 +25,9 @@ export default function SpotlightComparablesClient({
     goldilocksScore,
     goldilocksBreakdown,
     insight,
+    cityMedianPpsf,
+    pricePerSqft,
+    medianPpsfBand,
     propertyTab,
     presentation,
   } = useSpotlightListing();
@@ -46,6 +49,11 @@ export default function SpotlightComparablesClient({
     mlsListing,
     fmtMoney,
     presentation,
+    {
+      cityMedianPpsf,
+      listingPricePerSqft: pricePerSqft,
+      medianPpsfBand,
+    },
   );
 
   const activeTab =

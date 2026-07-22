@@ -7,25 +7,34 @@ import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/Listi
 
 export type { ListingOverviewSchools } from "@/components/listing/ListingDetailsSchoolsPanel";
 
-export function ListingRemarksContent({ remarks }: { remarks: string | null }) {
+export function ListingRemarksContent({
+  remarks,
+  /** 2pt smaller body/label for the right-column panel. */
+  compact = false,
+}: {
+  remarks: string | null;
+  compact?: boolean;
+}) {
+  const labelClass = compact
+    ? "font-mono text-[8px] tracking-[0.2em] uppercase text-gold mb-2"
+    : "font-mono text-[10px] tracking-[0.2em] uppercase text-white/45 mb-3";
+  const bodyClass = compact
+    ? "text-white/80 text-[12px] leading-relaxed whitespace-pre-line"
+    : "text-white/80 text-sm leading-relaxed whitespace-pre-line";
+  const emptyClass = compact
+    ? "text-white/50 text-[12px] leading-relaxed"
+    : "text-white/50 text-sm leading-relaxed";
+
   if (remarks) {
     return (
       <div>
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/45 mb-3">
-          Listing remarks
-        </p>
-        <p className="text-white/80 text-sm leading-relaxed whitespace-pre-line">
-          {remarks}
-        </p>
+        <p className={labelClass}>Listing remarks</p>
+        <p className={bodyClass}>{remarks}</p>
       </div>
     );
   }
 
-  return (
-    <p className="text-white/50 text-sm leading-relaxed">
-      No public remarks for this listing.
-    </p>
-  );
+  return <p className={emptyClass}>No public remarks for this listing.</p>;
 }
 
 export function ListingRemarksWithThumbnails({
