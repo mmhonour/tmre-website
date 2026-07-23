@@ -486,7 +486,7 @@ export default function ListingHeroPanels({
       <div
         ref={stickyChromeRef}
         className={`sticky ${STICKY_TOP_CLASS} z-30 overflow-visible pt-1 max-lg:px-3 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] ${
-          subnav.active === "photos" && !heroSlot ? "pb-0" : "pb-3"
+          subnav.active === "photos" ? "pb-0" : "pb-3"
         }`}
       >
         {/* Status top-aligned with Spotlight Properties / ← Back to …;

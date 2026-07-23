@@ -1,6 +1,11 @@
 import 'server-only'
 
 import { parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
+import {
+  listingFurnished,
+  parseFurnishedFromRaw,
+  type ListingFurnished,
+} from '@/lib/listing-furnished'
 import { propertyTaxFromRaw } from '@/lib/listing-property-tax'
 import { coalesceListingStatus } from '@/lib/listing-history'
 import { getRetsCredentials } from '@/lib/rets-credentials'
@@ -61,6 +66,11 @@ export type Listing = {
   sqft: number | null
   /** Lot size in acres when disclosed in MLS. */
   lotAcres: number | null
+  /**
+   * RESO Furnished enum when disclosed (rentals): Furnished / Unfurnished /
+   * Partially / Negotiable.
+   */
+  furnished: ListingFurnished | null
   yearBuilt: number | null
   dom: number | null
   listDate: string | null
@@ -226,6 +236,13 @@ export function refreshListingSchools(listing: Listing): Listing {
   return { ...listing, schools: buildSchools(listing.raw) }
 }
 
+/** Re-derive Furnished from raw (handles older data jsonb without the field). */
+export function refreshListingFurnished(listing: Listing): Listing {
+  const furnished = listingFurnished(listing)
+  if (furnished === (listing.furnished ?? null)) return listing
+  return { ...listing, furnished }
+}
+
 function mapListing(r: RawRetsRecord): Listing {
   const { annualAmount: propertyTax, yearLabel: propertyTaxYear } =
     propertyTaxFromRaw(r)
@@ -245,6 +262,7 @@ function mapListing(r: RawRetsRecord): Listing {
       num(r.LivingAreaSQFTPerPublicRecord) ??
       num(r.SqFtEstHeatedAboveGrade),
     lotAcres: parseLotAcresFromRaw(r),
+    furnished: parseFurnishedFromRaw(r),
     yearBuilt: num(r.YearBuilt),
     dom: num(r.DOM),
     listDate: str(r.ListingContractDate) || null,

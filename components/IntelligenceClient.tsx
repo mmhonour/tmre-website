@@ -35,6 +35,10 @@ import {
   stampDealBoardHash,
 } from "@/lib/deal-board-focus";
 import type { TownDescriptorStats } from "@/lib/intelligence-all-towns-descriptor";
+import {
+  LISTING_FURNISHED_VALUES,
+  type ListingFurnished,
+} from "@/lib/listing-furnished";
 import { monthsSupplyColorStyle } from "@/lib/months-supply-color";
 import ListingScoreBreakdownModal from "./ListingScoreBreakdownModal";
 import ListingHistoryModal from "./ListingHistoryModal";
@@ -49,7 +53,7 @@ import {
 import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
-import { underContractStatusLabel } from "@/lib/listings-store";
+import { underContractStatusLabel } from "@/lib/listing-status";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
 import { parseIntelligenceSearchParams } from "@/lib/intelligence-search-url";
 import {
@@ -114,6 +118,7 @@ type TxFilter = "all" | "sale" | "rental";
 type ClsFilter = "all" | "residential" | "commercial";
 type SalePropertyFilter = "all" | "homes" | "multi" | "condos";
 type BoardStatusFilter = DealBoardStatusFilter;
+type FurnishedFilter = "all" | ListingFurnished;
 
 const BOARD_STATUS_VALUES = ["all", "new", "reduced", "active"] as const satisfies readonly BoardStatusFilter[];
 
@@ -123,6 +128,7 @@ const MIN_BED_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
 const MIN_BATH_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
 const SALE_PROPERTY_VALUES = ["all", "homes", "multi", "condos"] as const;
 const NEW_CONSTRUCTION_VALUES = ["all", "new"] as const;
+const FURNISHED_FILTER_VALUES = ["all", ...LISTING_FURNISHED_VALUES] as const;
 const STATS_EXPANDED_PREF = "tmre_intel_stats_expanded_towns";
 const FILTERS_EXPANDED_VALUES = ["true", "false"] as const;
 type FiltersExpandedPref = (typeof FILTERS_EXPANDED_VALUES)[number];
@@ -150,6 +156,7 @@ function intelFilterDescriptorParts({
   saleProperty,
   newConstructionOnly,
   boardStatusFilter,
+  furnishedFilter,
 }: {
   active: IntelCity;
   zip: string | null;
@@ -158,6 +165,7 @@ function intelFilterDescriptorParts({
   saleProperty: SalePropertyFilter;
   newConstructionOnly: boolean;
   boardStatusFilter: BoardStatusFilter;
+  furnishedFilter: FurnishedFilter;
 }): IntelDescriptorPart[] {
   const parts: IntelDescriptorPart[] = [];
 
@@ -181,6 +189,10 @@ function intelFilterDescriptorParts({
     if (saleProperty === "homes") parts.push({ kind: "tx", label: "Homes" });
     else if (saleProperty === "multi") parts.push({ kind: "tx", label: "Multi-family" });
     else if (saleProperty === "condos") parts.push({ kind: "tx", label: "Condos" });
+  }
+
+  if (tx === "rental" && furnishedFilter !== "all") {
+    parts.push({ kind: "plain", label: furnishedFilter });
   }
 
   if (newConstructionOnly) parts.push({ kind: "plain", label: "New construction" });
@@ -547,6 +559,7 @@ type DisplayListing = {
   isRental: boolean;
   isCommercial: boolean;
   propertyType?: string;
+  furnished?: ListingFurnished | null;
   yearBuilt?: number | null;
   beds?: number | null;
   baths?: number | null;
@@ -711,6 +724,7 @@ function filterBoardListings(
   minBaths = 0,
   maxBaths = BED_BATH_MAX,
   newConstructionOnly = false,
+  furnishedFilter: FurnishedFilter = "all",
   exactBeds = false,
   minPrice = 0,
   maxPrice: number | null = null,
@@ -729,6 +743,12 @@ function filterBoardListings(
       if (saleProperty === "homes" && !isHomePropertyType(propertyType)) return false;
       if (saleProperty === "multi" && !isMultiFamilyPropertyType(propertyType)) return false;
       if (saleProperty === "condos" && !isCondoPropertyType(propertyType)) return false;
+    }
+    if (
+      furnishedFilter !== "all" &&
+      (!l.isRental || l.furnished !== furnishedFilter)
+    ) {
+      return false;
     }
     if (exactBeds && minBeds > 0) {
       if (l.beds == null || l.beds !== minBeds) return false;
@@ -1355,6 +1375,7 @@ type DealBoardApiListing = {
   yearBuilt?: number | null;
   beds?: number | null;
   baths?: number | null;
+  furnished?: ListingFurnished | null;
   zip: string | null;
   headline?: string;
   photoCount?: number | null;
@@ -1388,6 +1409,7 @@ function mapBoardCacheListing(row: DealBoardApiListing, town: TmreTown): Display
     yearBuilt: row.yearBuilt ?? null,
     beds: row.beds ?? null,
     baths: row.baths ?? null,
+    furnished: row.furnished ?? null,
     headline: row.headline ?? "",
     zip: row.zip,
     photoCount: row.photoCount ?? null,
@@ -1518,6 +1540,11 @@ export default function IntelligenceClient() {
       NEW_CONSTRUCTION_VALUES,
     );
   const newConstructionOnly = newConstructionFilter === "new";
+  const [furnishedFilter, setFurnishedFilter] = usePersistedFilter<FurnishedFilter>(
+    "tmre_intel_furnished",
+    "all",
+    FURNISHED_FILTER_VALUES,
+  );
   const [zip, setZip] = usePersistedNullableFilter("tmre_intel_zip");
   const [boardStatusFilter, setBoardStatusFilter] = usePersistedFilter<BoardStatusFilter>(
     "tmre_intel_board_status",
@@ -2077,6 +2104,10 @@ export default function IntelligenceClient() {
   }, [tx, saleProperty, setSaleProperty]);
 
   useEffect(() => {
+    if (tx !== "rental" && furnishedFilter !== "all") setFurnishedFilter("all");
+  }, [tx, furnishedFilter, setFurnishedFilter]);
+
+  useEffect(() => {
     if (cls === "commercial") {
       if (minBedsFilter !== "0") setMinBedsFilter("0");
       if (maxBedsFilter !== "6") setMaxBedsFilter("6");
@@ -2124,13 +2155,14 @@ export default function IntelligenceClient() {
         minBathrooms,
         maxBathrooms,
         newConstructionOnly,
+        furnishedFilter,
         false,
         0,
         null,
         minVintage,
         maxVintage,
       ),
-    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minVintage, maxVintage],
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minVintage, maxVintage],
   );
 
   const boardPriceSteps = useMemo(
@@ -2158,6 +2190,7 @@ export default function IntelligenceClient() {
         minBathrooms,
         maxBathrooms,
         newConstructionOnly ? "1" : "0",
+        furnishedFilter,
       ].join("|"),
     [
       active,
@@ -2171,6 +2204,7 @@ export default function IntelligenceClient() {
       minBathrooms,
       maxBathrooms,
       newConstructionOnly,
+      furnishedFilter,
     ],
   );
 
@@ -2226,6 +2260,7 @@ export default function IntelligenceClient() {
         minBathrooms,
         maxBathrooms,
         newConstructionOnly,
+        furnishedFilter,
         false,
         minPrice,
         maxPrice,
@@ -2244,6 +2279,7 @@ export default function IntelligenceClient() {
       minBathrooms,
       maxBathrooms,
       newConstructionOnly,
+      furnishedFilter,
       minPrice,
       maxPrice,
       minVintage,
@@ -2276,6 +2312,7 @@ export default function IntelligenceClient() {
         minBathrooms,
         maxBathrooms,
         newConstructionOnly ? "1" : "0",
+        furnishedFilter,
         minVintage,
         maxVintage,
         minPriceIndex,
@@ -2293,6 +2330,7 @@ export default function IntelligenceClient() {
       minBathrooms,
       maxBathrooms,
       newConstructionOnly,
+      furnishedFilter,
       minVintage,
       maxVintage,
       minPriceIndex,
@@ -2343,7 +2381,7 @@ export default function IntelligenceClient() {
   useEffect(() => {
     setMiddleTierExpanded(false);
     setBoardPage(1);
-  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex, sortKey, sortDir]);
+  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, furnishedFilter, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex, sortKey, sortDir]);
 
   const listings = useMemo(
     () =>
@@ -2359,6 +2397,7 @@ export default function IntelligenceClient() {
         minBathrooms,
         maxBathrooms,
         newConstructionOnly,
+        furnishedFilter,
         false,
         minPrice,
         maxPrice,
@@ -2367,7 +2406,7 @@ export default function IntelligenceClient() {
         minSqft,
         maxSqft,
       ),
-    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft],
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft],
   );
 
   const rankedListings = useMemo(() => rankListingsByScore(listings), [listings]);
@@ -2582,6 +2621,7 @@ export default function IntelligenceClient() {
         minBathrooms,
         maxBathrooms,
         newConstructionOnly,
+        furnishedFilter,
         false,
         minPrice,
         maxPrice,
@@ -2594,7 +2634,7 @@ export default function IntelligenceClient() {
       all += n;
     }
     return { ...counts, All: all };
-  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
+  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
 
   const { zipCounts, zipAllCount } = useMemo(() => {
     if (active === "All") {
@@ -2613,6 +2653,7 @@ export default function IntelligenceClient() {
       minBathrooms,
       maxBathrooms,
       newConstructionOnly,
+      furnishedFilter,
       false,
       minPrice,
       maxPrice,
@@ -2627,7 +2668,7 @@ export default function IntelligenceClient() {
       zipCounts.set(l.zip, (zipCounts.get(l.zip) ?? 0) + 1);
     });
     return { zipCounts, zipAllCount: filtered.length };
-  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
+  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
 
   const scoreRankByKey = useMemo(() => buildScoreRankMap(rankedListings), [rankedListings]);
   const filtersActive =
@@ -2641,6 +2682,7 @@ export default function IntelligenceClient() {
     vintageFilterActive(minVintage, maxVintage) ||
     sqftFilterActive ||
     newConstructionOnly ||
+    furnishedFilter !== "all" ||
     zip != null ||
     boardStatusFilter !== "all" ||
     priceFilterActive;
@@ -2682,6 +2724,7 @@ export default function IntelligenceClient() {
     setMinPriceIndex(0);
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
     setBoardStatusFilter("all");
+    setFurnishedFilter("all");
     setBoardPage(1);
   }
 
@@ -2732,6 +2775,7 @@ export default function IntelligenceClient() {
       minBathrooms,
       maxBathrooms,
       newConstructionOnly,
+      furnishedFilter,
       false,
       minPrice,
       maxPrice,
@@ -2741,7 +2785,7 @@ export default function IntelligenceClient() {
       maxSqft,
     ).length;
     return computeMonthsSupply(count, monthlySales[active]);
-  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, monthlySales]);
+  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, monthlySales]);
 
   const showVintageStats = listings.length > 0;
   const vintageStatsTitle =
@@ -2766,6 +2810,7 @@ export default function IntelligenceClient() {
       maxVintage,
       exactBeds: false,
       newConstructionOnly,
+      furnishedFilter,
       minPrice,
       maxPrice,
       minSqft,
@@ -2785,6 +2830,7 @@ export default function IntelligenceClient() {
         minBathrooms,
         maxBathrooms,
         newConstructionOnly,
+        furnishedFilter,
         false,
         minPrice,
         maxPrice,
@@ -2864,6 +2910,7 @@ export default function IntelligenceClient() {
     minVintage,
     maxVintage,
     newConstructionOnly,
+    furnishedFilter,
     minPrice,
     maxPrice,
     minSqft,
@@ -2955,6 +3002,7 @@ export default function IntelligenceClient() {
         saleProperty,
         newConstructionOnly,
         boardStatusFilter,
+        furnishedFilter,
       }),
     [
       active,
@@ -2964,6 +3012,7 @@ export default function IntelligenceClient() {
       saleProperty,
       newConstructionOnly,
       boardStatusFilter,
+      furnishedFilter,
     ],
   );
 
@@ -3402,6 +3451,26 @@ export default function IntelligenceClient() {
                             { value: "homes", label: "Homes" },
                             { value: "multi", label: "Multi-family" },
                             { value: "condos", label: "Condos" },
+                          ]}
+                        />
+                      </>
+                    ) : null}
+                    {!filterChromeCollapsed && tx === "rental" ? (
+                      <>
+                        <div
+                          className={`hidden sm:block ${filterPillSeparatorClass("compact")}`}
+                          aria-hidden
+                        />
+                        <FilterGroup
+                          label=""
+                          value={furnishedFilter}
+                          onChange={setFurnishedFilter}
+                          options={[
+                            { value: "all", label: "Any furnish" },
+                            { value: "Furnished", label: "Furnished" },
+                            { value: "Unfurnished", label: "Unfurnished" },
+                            { value: "Partially", label: "Partially" },
+                            { value: "Negotiable", label: "Negotiable" },
                           ]}
                         />
                       </>

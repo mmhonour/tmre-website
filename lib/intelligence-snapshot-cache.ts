@@ -14,6 +14,7 @@ export type IntelligenceSnapshotFilters = {
   maxSqft: number | null;
   exactBeds: boolean;
   newConstructionOnly: boolean;
+  furnishedFilter: string;
   minPrice: number;
   maxPrice: number | null;
 };
@@ -38,6 +39,7 @@ function filtersKey(filters: IntelligenceSnapshotFilters): string {
     filters.maxSqft ?? "",
     filters.exactBeds ? "1" : "0",
     filters.newConstructionOnly ? "1" : "0",
+    filters.furnishedFilter,
     filters.minPrice,
     filters.maxPrice ?? "",
   ].join("|");

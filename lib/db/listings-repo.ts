@@ -8,6 +8,7 @@ import {
   propertyTaxFromRaw,
 } from '@/lib/listing-property-tax'
 import type { Listing, RawRetsRecord } from '@/lib/rets'
+import { listingFurnished } from '@/lib/listing-furnished'
 import { query, queryOne, withTransaction } from '@/lib/db/postgres'
 import { getAllSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta'
 import { getSyncMeta as getCachedSyncMeta } from '@/lib/db/sync-meta-store'
@@ -782,11 +783,18 @@ function rowToListing(row: ListingJsonRow): Listing {
   const base = row.data as Listing
   const raw = (row.raw ?? {}) as RawRetsRecord
   const listing = applyListingPropertyTax({ ...base, raw })
+  const furnished = listingFurnished(listing)
+  const withFurnished =
+    furnished !== (listing.furnished ?? null)
+      ? { ...listing, furnished }
+      : { ...listing, furnished: listing.furnished ?? null }
   const status = coalesceListingStatus(
-    listing.status,
+    withFurnished.status,
     typeof raw.StandardStatus === 'string' ? raw.StandardStatus : null,
   )
-  return status !== listing.status ? { ...listing, status } : listing
+  return status !== withFurnished.status
+    ? { ...withFurnished, status }
+    : withFurnished
 }
 
 /** jsonb column (parsed to object by pg) back to the string contract SQLite used. */

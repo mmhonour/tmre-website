@@ -31,6 +31,7 @@ function listingFromConfig(config: SpotlightListingConfig): Listing {
     baths: config.baths,
     sqft: config.sqft,
     lotAcres: null,
+    furnished: null,
     yearBuilt: config.yearBuilt,
     dom: config.dom,
     listDate: null,

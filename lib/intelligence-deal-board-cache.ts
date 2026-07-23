@@ -15,7 +15,8 @@ import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
 import type { Listing } from '@/lib/rets'
-import { underContractStatusLabel } from '@/lib/listings-store'
+import { listingFurnished, type ListingFurnished } from '@/lib/listing-furnished'
+import { underContractStatusLabel } from '@/lib/listing-status'
 import { statsCacheKey } from '@/lib/stats-compute'
 import {
   isTmreTown,
@@ -25,7 +26,7 @@ import {
   type TmreTown,
 } from '@/lib/tmre-towns'
 
-export const INTELLIGENCE_DEAL_BOARD_CACHE_KEY = 'intelligence-deal-board:v3'
+export const INTELLIGENCE_DEAL_BOARD_CACHE_KEY = 'intelligence-deal-board:v4'
 /** Per-town cap for the board payload. Keep at/above Active inventory depth. */
 export const INTELLIGENCE_DEAL_BOARD_LIMIT = 2000
 
@@ -43,6 +44,8 @@ export type IntelligenceBoardListing = {
   pricePerSqft: number | null
   sqft: number | null
   lotAcres: number | null
+  /** RESO Furnished when disclosed (rentals). */
+  furnished: ListingFurnished | null
   dom: number | null
   status: 'Active' | 'Pending' | 'New' | 'Reduced'
   /** Under-contract MLS sub-status when applicable. */
@@ -216,6 +219,7 @@ function toBoardListing(
     pricePerSqft,
     sqft: listing.sqft,
     lotAcres: listing.lotAcres ?? null,
+    furnished: listingFurnished(listing),
     dom: daysOnMarket,
     status: deriveStatus(listing, priceReductionPercent, daysOnMarket),
     contractStatus: underContractStatusLabel(listing.status),

@@ -317,7 +317,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'intelligence',
     medium: 'postgres',
     location: 'stats_cache',
-    keyPattern: 'intelligence-deal-board:v2',
+    keyPattern: 'intelligence-deal-board:v4',
     owner: 'lib/intelligence-deal-board-cache.ts',
     live: { kind: 'stats_cache_prefix', prefix: 'intelligence-deal-board:' },
   },
