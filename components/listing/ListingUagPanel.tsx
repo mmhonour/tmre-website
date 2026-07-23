@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import {
-  CompExactMatchLegend,
+  CompFoundLegendRow,
   renderCompBedBathMeta,
 } from "@/components/listing/CompExactMatchMeta";
 import ListingCriteriaSideLayout, {
@@ -322,6 +322,7 @@ function UagColumn({
   subjectBeds = null,
   subjectBaths = null,
   foundCountEmphasized = false,
+  criteriaLinkSlotId = null,
 }: {
   label: string;
   emptyLabel: string;
@@ -332,6 +333,8 @@ function UagColumn({
   subjectBaths?: number | null;
   /** Scale "N found" up 50% while Criteria ± feedback is active. */
   foundCountEmphasized?: boolean;
+  /** Optional Criteria toggle mount (first column only). */
+  criteriaLinkSlotId?: string | null;
 }) {
   const [visibleCount, setVisibleCount] = useState(UAG_INITIAL_VISIBLE);
 
@@ -354,20 +357,25 @@ function UagColumn({
 
   return (
     <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:py-4">
-      <div className="relative mb-1 pr-[4.5rem]">
+      <div className="mb-2">
         <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
           {label}
         </p>
-        <span
-          className={`absolute top-0 right-0 inline-block origin-top-right font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums whitespace-nowrap text-white/40 transition-transform duration-300 ease-out ${
-            foundCountEmphasized ? "scale-150" : "scale-100"
-          }`}
-        >
-          {comps.length} found
-        </span>
+        {criteriaLinkSlotId ? (
+          <div
+            id={criteriaLinkSlotId}
+            className="mt-2 flex justify-end"
+          />
+        ) : null}
       </div>
-      <CompExactMatchLegend theme="dark" />
-      <div className="mt-3">
+      <CompFoundLegendRow
+        theme="dark"
+        foundCount={comps.length}
+        foundCountClass={`inline-block origin-top-right font-mono text-[10px] tracking-[0.16em] uppercase tabular-nums whitespace-nowrap text-white/40 transition-transform duration-300 ease-out ${
+          foundCountEmphasized ? "scale-150" : "scale-100"
+        }`}
+      />
+      <div className="mt-0">
       {visible.length > 0 ? (
         <>
           <ul className="space-y-3">
@@ -694,6 +702,11 @@ export function ListingUagPageContent({
             subjectBeds={criteria?.beds ?? null}
             subjectBaths={criteria?.baths ?? null}
             foundCountEmphasized={Boolean(criteriaStepFeedback)}
+            criteriaLinkSlotId={
+              showCriteria
+                ? listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)
+                : null
+            }
           />
           <UagColumn
             label="Rentals · Under agreement"
@@ -718,12 +731,6 @@ export function ListingUagPageContent({
             <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
               Under Agreement
             </p>
-            {showCriteria ? (
-              <div
-                id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)}
-                className="ml-auto flex shrink-0 justify-end"
-              />
-            ) : null}
           </div>
           <p className="text-white/50 text-sm max-lg:px-3 lg:px-0">
             Homes currently under contract (Under Contract and Under Contract –

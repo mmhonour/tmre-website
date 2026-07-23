@@ -14,11 +14,12 @@ export function listingCriteriaLinkSlotId(sectionId: string): string {
 }
 
 /**
- * Desktop: "Criteria" / "Hide criteria" sits top-right beside the section title;
- * the criteria panel always portals above Location in the right column when open.
+ * Desktop: "Criteria" / "Hide criteria" portals into the panel slot above
+ * "N found" (beside Green = exact match); the criteria panel always portals
+ * above Location in the right column when open.
  * Visibility is shared across analysis tabs when wrapped in
  * ListingCriteriaVisibilityProvider.
- * Mobile: same top-right title link → right slide-over (no fixed edge tab).
+ * Mobile: same in-panel link → right slide-over (no fixed edge tab).
  */
 export default function ListingCriteriaSideLayout({
   criteria,

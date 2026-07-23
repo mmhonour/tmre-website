@@ -65,17 +65,39 @@ export function renderCompBedBathMeta(options: {
 /** Legend shown at the top of Sold / Rented / On Market / UAG panels. */
 export function CompExactMatchLegend({
   theme = "dark",
+  className = "",
 }: {
   theme?: "dark" | "light";
+  className?: string;
 }) {
   const base =
     theme === "light"
       ? "font-mono text-[9px] tracking-[0.12em] uppercase text-slate/70"
       : "font-mono text-[9px] tracking-[0.12em] uppercase text-white/40";
   return (
-    <p className={`${base} mt-1`} role="note">
+    <p className={`${base} ${className}`.trim()} role="note">
       <span className="font-semibold text-sage">Green</span>
       {" = exact match"}
     </p>
+  );
+}
+
+/** Green = exact match left, "N found" right-aligned on one row. */
+export function CompFoundLegendRow({
+  theme = "dark",
+  foundCount,
+  foundCountClass,
+}: {
+  theme?: "dark" | "light";
+  foundCount: number;
+  foundCountClass: string;
+}) {
+  return (
+    <div className="mb-3 flex items-baseline justify-between gap-3">
+      <CompExactMatchLegend theme={theme} className="min-w-0" />
+      <span className={`${foundCountClass} shrink-0 text-right`}>
+        {foundCount} found
+      </span>
+    </div>
   );
 }

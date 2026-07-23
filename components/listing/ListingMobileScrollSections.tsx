@@ -7,7 +7,6 @@ import {
   LISTING_SECTION_IDS,
   type ListingScrollSectionTab,
 } from "@/components/listing/listing-section-ids";
-import { listingCriteriaLinkSlotId } from "@/components/listing/ListingCriteriaSideLayout";
 
 const ListingIfPageContent = dynamic(
   () =>
@@ -69,17 +68,14 @@ function Section({
   title,
   children,
   hidden = false,
-  showCriteriaLinkSlot = false,
   compact = false,
-  /** Match a 2-col body (What if): title left over col 1, Criteria right over col 2. */
+  /** Match a 2-col body (What if): title left over col 1. */
   dualColumnTitle = false,
 }: {
   id: string;
   title: string;
   children: React.ReactNode;
   hidden?: boolean;
-  /** Reserve top-right space for the Criteria toggle (Sold / Rented / etc.). */
-  showCriteriaLinkSlot?: boolean;
   /** Panel mode: no divider / top margin under the tab row. */
   compact?: boolean;
   dualColumnTitle?: boolean;
@@ -114,12 +110,6 @@ function Section({
         >
           {title}
         </h2>
-        {showCriteriaLinkSlot ? (
-          <div
-            id={listingCriteriaLinkSlotId(id)}
-            className="ml-auto flex shrink-0 justify-end"
-          />
-        ) : null}
       </div>
       {children}
     </section>
@@ -207,7 +197,6 @@ export function ListingMobileScrollSections({
         id={LISTING_SECTION_IDS.if}
         title="What if"
         hidden={!show("if")}
-        showCriteriaLinkSlot
         dualColumnTitle
         compact={isPanel}
       >
@@ -223,7 +212,6 @@ export function ListingMobileScrollSections({
         id={LISTING_SECTION_IDS.comparables}
         title="Sold"
         hidden={!show("comparables")}
-        showCriteriaLinkSlot
         compact={isPanel}
       >
         <ListingComparablesPageContent
@@ -238,7 +226,6 @@ export function ListingMobileScrollSections({
         id={LISTING_SECTION_IDS["comparable-rentals"]}
         title="Rented"
         hidden={!show("comparable-rentals")}
-        showCriteriaLinkSlot
         compact={isPanel}
       >
         <ListingComparablesPageContent
@@ -253,7 +240,6 @@ export function ListingMobileScrollSections({
         id={LISTING_SECTION_IDS.uag}
         title="Under agreement"
         hidden={!show("uag")}
-        showCriteriaLinkSlot
         compact={isPanel}
       >
         <ListingUagPageContent

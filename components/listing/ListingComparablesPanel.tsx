@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import {
-  CompExactMatchLegend,
+  CompFoundLegendRow,
   renderCompBedBathMeta,
 } from "@/components/listing/CompExactMatchMeta";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
@@ -1204,12 +1204,6 @@ export default function ListingComparablesPanel({
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
             {panelTitle}
           </p>
-          {criteriaInSidePanel ? (
-            <div
-              id={criteriaLinkSlotId}
-              className="ml-auto flex shrink-0 justify-end"
-            />
-          ) : null}
         </div>
       )}
 
@@ -1326,7 +1320,7 @@ export default function ListingComparablesPanel({
                 : "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 max-lg:px-3"
           }
         >
-          <div className="relative mb-3 pr-[4.5rem]">
+          <div className="mb-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
@@ -1351,11 +1345,18 @@ export default function ListingComparablesPanel({
                 />
               ) : null}
             </div>
-            <span className={`${foundCountClass} absolute top-0 right-0`}>
-              {sortedSold.length} found
-            </span>
+            {criteriaInSidePanel ? (
+              <div
+                id={criteriaLinkSlotId}
+                className="mt-2 flex justify-end"
+              />
+            ) : null}
           </div>
-          <CompExactMatchLegend theme={isModal ? "light" : "dark"} />
+          <CompFoundLegendRow
+            theme={isModal ? "light" : "dark"}
+            foundCount={sortedSold.length}
+            foundCountClass={foundCountClass}
+          />
           {sortedSold.length > 0 ? (
             <>
               <div className="space-y-3">
@@ -1427,7 +1428,7 @@ export default function ListingComparablesPanel({
                 : "scroll-mt-24 min-w-0 max-lg:px-3"
           }
         >
-          <div className="relative mb-3 pr-[4.5rem]">
+          <div className="mb-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <p className={sectionTitleClass}>{activeColumnTitle}</p>
               {sortedActive.length > 0 ? (
@@ -1445,11 +1446,18 @@ export default function ListingComparablesPanel({
                 />
               ) : null}
             </div>
-            <span className={`${foundCountClass} absolute top-0 right-0`}>
-              {sortedActive.length} found
-            </span>
+            {criteriaInSidePanel && !showSoldColumn ? (
+              <div
+                id={criteriaLinkSlotId}
+                className="mt-2 flex justify-end"
+              />
+            ) : null}
           </div>
-          <CompExactMatchLegend theme={isModal ? "light" : "dark"} />
+          <CompFoundLegendRow
+            theme={isModal ? "light" : "dark"}
+            foundCount={sortedActive.length}
+            foundCountClass={foundCountClass}
+          />
           {active.length > 0 ? (
             <>
               <ul className="space-y-3">

@@ -942,6 +942,13 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
+      {criteriaInSidePanel ? (
+        <div
+          id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
+          className="mb-2 flex justify-end max-lg:px-3 lg:px-0"
+        />
+      ) : null}
+
       {/* Near-touching columns; title row above uses the same gap for What if / Criteria. */}
       <div className="grid gap-1 lg:grid-cols-2 items-start">
         <ScenarioPanel
@@ -1025,7 +1032,7 @@ export default function ListingIfPanel({
       }
     >
       {isPage && !suppressPageChrome ? (
-        <div className="grid grid-cols-1 items-start gap-1 max-lg:px-3 lg:grid-cols-2 lg:px-0">
+        <div className="max-lg:px-3 lg:px-0">
           <div className="min-w-0 text-left">
             <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
               If...
@@ -1035,12 +1042,6 @@ export default function ListingIfPanel({
               this home — and show the comps that fed each number.
             </p>
           </div>
-          {criteriaInSidePanel ? (
-            <div
-              id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
-              className="ml-auto flex shrink-0 justify-end"
-            />
-          ) : null}
         </div>
       ) : null}
 

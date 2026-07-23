@@ -489,24 +489,11 @@ export default function ListingHeroPanels({
           subnav.active === "photos" ? "pb-0" : "pb-3"
         }`}
       >
-        {/* Status top-aligned with Spotlight Properties / ← Back to …;
-            mobile MORE sits under the status pill. */}
+        {/* Status top-aligned with Spotlight Properties / ← Back to … */}
         <div className="mb-1.5 flex items-start justify-between gap-3">
           <div className="min-w-0">{topLeft}</div>
           <div className="flex shrink-0 flex-col items-end gap-1 self-start">
             {statusBadge}
-            <button
-              type="button"
-              className="lg:hidden font-mono text-[9px] uppercase tracking-[0.14em] text-white/70 underline decoration-white/35 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50"
-              aria-expanded={mobileDrawer === "more"}
-              aria-controls="listing-more-drawer"
-              onClick={() => {
-                setMapVisible(false);
-                setMobileDrawer((prev) => (prev === "more" ? null : "more"));
-              }}
-            >
-              More
-            </button>
           </div>
         </div>
 
@@ -520,7 +507,26 @@ export default function ListingHeroPanels({
           {insightColumn}
         </div>
 
-        <div className="mt-2">{tabsNav}</div>
+        {/* Tabs + mobile More half-pill (right edge, over the Overview row). */}
+        <div className="relative mt-2">
+          <div className="min-w-0 max-lg:pr-14">{tabsNav}</div>
+          <button
+            type="button"
+            className={`lg:hidden absolute right-0 top-1/2 z-10 max-lg:-mr-3 -translate-y-1/2 inline-flex items-center rounded-l-full rounded-r-none border border-r-0 pl-3.5 pr-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] shadow-[-4px_2px_12px_-4px_rgba(0,0,0,0.55)] transition-colors ${
+              mobileDrawer === "more"
+                ? "border-gold bg-navy text-gold"
+                : "border-gold/45 bg-[#121c2e]/95 text-gold/90 hover:border-gold hover:bg-navy hover:text-gold"
+            }`}
+            aria-expanded={mobileDrawer === "more"}
+            aria-controls="listing-more-drawer"
+            onClick={() => {
+              setMapVisible(false);
+              setMobileDrawer((prev) => (prev === "more" ? null : "more"));
+            }}
+          >
+            More
+          </button>
+        </div>
 
         {/*
           Keep the Overview remarks teaser inside sticky chrome so it stays
