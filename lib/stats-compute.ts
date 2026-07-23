@@ -431,6 +431,8 @@ export function computeSalesByPrice(
   listings: Listing[],
   city: string,
   kind: ListingKind,
+  /** Admin-configured sale bands; defaults to shipped PRICE_BUCKETS. */
+  saleBuckets: readonly (typeof PRICE_BUCKETS)[number][] = PRICE_BUCKETS,
 ): SalesByPricePayload {
   const filtered = filterListingsByKind(listings, kind)
 
@@ -463,21 +465,23 @@ export function computeSalesByPrice(
     }
   }
 
-  const counts = emptyPriceCounts()
+  const bandDefs = saleBuckets.length > 0 ? saleBuckets : PRICE_BUCKETS
+  const counts = emptyPriceCounts(bandDefs)
   let total = 0
   for (const l of filtered) {
     const ts = closedListingTimestamp(l)
     if (!inStatsClosedPeriod(ts)) continue
     total += 1
-    counts[classifySalePrice(closedSalePrice(l))] += 1
+    const id = classifySalePrice(closedSalePrice(l), bandDefs)
+    counts[id] = (counts[id] ?? 0) + 1
   }
 
-  const knownTotal = total - counts.unknown
-  const buckets = PRICE_BUCKETS.map((b) => ({
+  const knownTotal = total - (counts.unknown ?? 0)
+  const buckets = bandDefs.map((b) => ({
     id: b.id,
     label: b.label,
-    count: counts[b.id],
-    share: knownTotal > 0 ? counts[b.id] / knownTotal : 0,
+    count: counts[b.id] ?? 0,
+    share: knownTotal > 0 ? (counts[b.id] ?? 0) / knownTotal : 0,
   }))
   const ranked = [...buckets].sort((a, b) => b.count - a.count)
 
@@ -487,7 +491,7 @@ export function computeSalesByPrice(
     period: `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`,
     totalSales: total,
     knownPrice: knownTotal,
-    unknownPrice: counts.unknown,
+    unknownPrice: counts.unknown ?? 0,
     buckets,
     topBucket: ranked[0]?.count ? ranked[0] : null,
   }

@@ -170,7 +170,7 @@ export default function ListingCriteriaSideLayout({
       {!isDesktop && sectionVisible ? (
         <>
           <div
-            className="fixed right-0 top-[28%] z-[55] flex -translate-y-1/2 flex-col gap-2 max-lg:bottom-[4.75rem] max-lg:top-auto max-lg:translate-y-0"
+            className="fixed right-0 top-[28%] z-[55] flex -translate-y-1/2 flex-col gap-2"
             role="group"
             aria-label="Criteria panel"
           >

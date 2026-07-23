@@ -38,6 +38,8 @@ import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { rebuildIntelligenceTownSnapshots } from '@/lib/intelligence-town-snapshot'
 import { refreshInterestingStat } from '@/lib/interesting-stat'
+import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
+import type { PriceBucketDef } from '@/lib/price-buckets-shared'
 import {
   MONTHS_SUPPLY_INDEX_KEY,
   rebuildMonthsSupplyCache,
@@ -458,6 +460,7 @@ async function writeTownMarketStats(
   active: Listing[],
   closed: Listing[],
   generatedAt: string,
+  saleBuckets: readonly PriceBucketDef[],
   bundles?: {
     salesByMonthByTown: KindTownMonthData
     activeByMonthByTown: KindTownActiveMonthData
@@ -500,7 +503,7 @@ async function writeTownMarketStats(
     written += 1
 
     await writeStatsCache('sales-by-price', town, kind, {
-      ...computeSalesByPrice(closed, town, kind),
+      ...computeSalesByPrice(closed, town, kind, saleBuckets),
       generatedAt,
     })
     written += 1
@@ -591,7 +594,10 @@ async function refreshByTownBundlesFromTownCaches(generatedAt: string): Promise<
   )
 }
 
-async function writeAllAggregateStats(generatedAt: string): Promise<number> {
+async function writeAllAggregateStats(
+  generatedAt: string,
+  saleBuckets: readonly PriceBucketDef[],
+): Promise<number> {
   let written = 0
   const [allClosed, allActive] = await Promise.all([
     readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
@@ -604,7 +610,7 @@ async function writeAllAggregateStats(generatedAt: string): Promise<number> {
       generatedAt,
     })
     await writeStatsCache('sales-by-price', 'All', kind, {
-      ...computeSalesByPrice(allClosed, 'All', kind),
+      ...computeSalesByPrice(allClosed, 'All', kind, saleBuckets),
       generatedAt,
     })
     await writeStatsCache('avg-score-by-vintage', 'All', kind, {
@@ -644,6 +650,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
 
     let written = 0
     const generatedAt = new Date().toISOString()
+    const saleBuckets = await getPriceBucketsFresh()
     const salesByMonthByTown = emptyKindTownMonthData()
     const activeByMonthByTown = emptyKindTownActiveMonthData()
     const avgScoreByVintageByTown = emptyKindTownAvgScoreData()
@@ -655,11 +662,18 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
         readListingsFromDb(town, 'Closed', 2500),
       ])
       townListingsForMonthsSupply[town] = { active, closed }
-      written += await writeTownMarketStats(town, active, closed, generatedAt, {
-        salesByMonthByTown,
-        activeByMonthByTown,
-        avgScoreByVintageByTown,
-      })
+      written += await writeTownMarketStats(
+        town,
+        active,
+        closed,
+        generatedAt,
+        saleBuckets,
+        {
+          salesByMonthByTown,
+          activeByMonthByTown,
+          avgScoreByVintageByTown,
+        },
+      )
     }
 
     written += await writeByTownBundles(
@@ -668,7 +682,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
       avgScoreByVintageByTown,
       generatedAt,
     )
-    written += await writeAllAggregateStats(generatedAt)
+    written += await writeAllAggregateStats(generatedAt, saleBuckets)
 
     try {
       const ms = await rebuildMonthsSupplyCache({
@@ -735,6 +749,7 @@ export async function rebuildStatsCacheForTowns(
 
     let written = 0
     const generatedAt = new Date().toISOString()
+    const saleBuckets = await getPriceBucketsFresh()
     const townListingsForMonthsSupply = {} as TownListingsMap
 
     for (const town of unique) {
@@ -743,11 +758,17 @@ export async function rebuildStatsCacheForTowns(
         readListingsFromDb(town, 'Closed', 2500),
       ])
       townListingsForMonthsSupply[town] = { active, closed }
-      written += await writeTownMarketStats(town, active, closed, generatedAt)
+      written += await writeTownMarketStats(
+        town,
+        active,
+        closed,
+        generatedAt,
+        saleBuckets,
+      )
     }
 
     written += await refreshByTownBundlesFromTownCaches(generatedAt)
-    written += await writeAllAggregateStats(generatedAt)
+    written += await writeAllAggregateStats(generatedAt, saleBuckets)
 
     try {
       const ms = await rebuildMonthsSupplyCache({

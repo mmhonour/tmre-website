@@ -10,6 +10,7 @@ import {
   PRICE_BUCKETS,
   type PriceBucketId,
 } from '@/lib/price-buckets'
+import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
 import {
   emptyRentCounts,
   RENT_BUCKETS,
@@ -201,7 +202,8 @@ export async function GET(req: NextRequest) {
           })
         : await fetchClosedListingsForCity(city, 2500)
 
-    const payload = computeSalesByPrice(raw, city, kind)
+    const saleBuckets = await getPriceBucketsFresh()
+    const payload = computeSalesByPrice(raw, city, kind, saleBuckets)
     const generatedAt = new Date().toISOString()
 
     if (source === 'db') {

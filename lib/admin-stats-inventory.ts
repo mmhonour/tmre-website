@@ -226,7 +226,21 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     location: 'stats_cache',
     keyPattern: 'sales-by-price:{town|All}:{sale|rental}',
     owner: 'lib/stats-cache.ts',
+    notes:
+      'Band definitions (sale): Admin → Stats → Sales by price bands (sync_meta stats_sale_price_buckets). Rent bands remain in lib/rent-buckets.ts.',
     live: { kind: 'stats_cache_prefix', prefix: 'sales-by-price:' },
+  },
+  {
+    id: 'sale-price-bucket-defs',
+    name: 'Sale price band definitions',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'sync_meta',
+    keyPattern: 'stats_sale_price_buckets',
+    owner: 'lib/price-buckets-config.ts',
+    notes:
+      'Editable on Admin → Stats → Sales by price bands. Defaults from lib/price-buckets-shared.ts. Rebuild stats cache after changes.',
+    live: { kind: 'none' },
   },
   {
     id: 'avg-score-by-vintage',

@@ -41,7 +41,9 @@ type TabDef = { id: ListingTab; label: string; href: string };
 
 /**
  * Canonical tab order (listing + Spotlight).
- * Overview → Photos → Sold → Rented → Under Agreement → What if → History → Map
+ * Overview → Photos → (Transactions) → Sold → Rented → Under Agreement → What if → History → Map
+ * Sold / Rented / Under Agreement stay collapsed behind the Transactions control
+ * until that control is opened (or one of those tabs is already active).
  */
 const TAB_ORDER: ListingTab[] = [
   "overview",
@@ -60,6 +62,12 @@ const STACK_ROWS: ListingTab[][] = [
   ["comparables", "comparable-rentals", "uag"],
   ["if", "history", "map"],
 ];
+
+const TRANSACTION_TABS = new Set<ListingTab>([
+  "comparables",
+  "comparable-rentals",
+  "uag",
+]);
 
 const HASH_JUMP_TABS = new Set<ListingTab>([
   "overview",
@@ -83,10 +91,12 @@ function tabVisible(
   active: ListingTab,
   tabId: ListingTab,
   alwaysShowPhotos: boolean,
+  showTransactionTabs: boolean,
 ): boolean {
   // Photos tab only while on the photos page, while the slide-up panel is open,
   // or on local mockups that always show it.
   if (tabId === "photos") return alwaysShowPhotos || active === "photos";
+  if (TRANSACTION_TABS.has(tabId)) return showTransactionTabs;
   return true;
 }
 
@@ -144,6 +154,8 @@ export default function ListingSubnav({
   const measureFullRef = useRef<HTMLDivElement>(null);
   const [stackRows, setStackRows] = useState(false);
   const [scrollActive, setScrollActive] = useState<ListingTab | null>(null);
+  /** Reveals Sold / Rented / Under Agreement; hides the Transactions control. */
+  const [transactionsOpen, setTransactionsOpen] = useState(false);
 
   const panelMode = Boolean(onPanelOpen && onPanelClose);
   /**
@@ -151,6 +163,16 @@ export default function ListingSubnav({
    */
   const useHashJump = !onTabSelect && !panelMode;
   const showPhotosTab = forceShowPhotos || Boolean(onTabSelect);
+
+  const transactionContext =
+    TRANSACTION_TABS.has(active) ||
+    (panelTab != null && TRANSACTION_TABS.has(panelTab)) ||
+    (scrollActive != null && TRANSACTION_TABS.has(scrollActive));
+  const showTransactionTabs = transactionsOpen || transactionContext;
+
+  useEffect(() => {
+    if (transactionContext) setTransactionsOpen(true);
+  }, [transactionContext]);
 
   const extra = new URLSearchParams(searchParams.toString());
   extra.delete("address");
@@ -234,7 +256,9 @@ export default function ListingSubnav({
   ];
   const tabsById = new Map(
     allTabs
-      .filter((tab) => tabVisible(active, tab.id, showPhotosTab))
+      .filter((tab) =>
+        tabVisible(active, tab.id, showPhotosTab, showTransactionTabs),
+      )
       .map((tab) => [tab.id, tab]),
   );
   const tabs = TAB_ORDER.map((id) => tabsById.get(id)).filter(
@@ -280,7 +304,7 @@ export default function ListingSubnav({
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [active, tabs, forceShowPhotos, panelTab]);
+  }, [active, tabs, forceShowPhotos, panelTab, showTransactionTabs]);
 
   // Legacy stack mode: highlight the section in view / from the hash.
   useEffect(() => {
@@ -384,6 +408,23 @@ export default function ListingSubnav({
     return jumpToAnchor(tab, sectionId);
   };
 
+  const noteNonTransactionTab = (tabId: ListingTab) => {
+    if (!TRANSACTION_TABS.has(tabId)) setTransactionsOpen(false);
+  };
+
+  const renderTransactionsControl = (keyPrefix = "") => (
+    <button
+      key={`${keyPrefix}transactions`}
+      type="button"
+      className={tabLinkClass(false)}
+      aria-expanded={false}
+      aria-controls="listing-transaction-tabs"
+      onClick={() => setTransactionsOpen(true)}
+    >
+      Transactions
+    </button>
+  );
+
   const renderTabLink = (tab: TabDef, keyPrefix = "") => {
     const highlighted =
       tab.id === "map"
@@ -400,6 +441,8 @@ export default function ListingSubnav({
         className={tabLinkClass(highlighted)}
         aria-current={highlighted ? "page" : undefined}
         onClick={(event) => {
+          noteNonTransactionTab(tab.id);
+
           if (tab.id === "map") {
             event.preventDefault();
             onMapToggle?.();
@@ -458,10 +501,22 @@ export default function ListingSubnav({
     </span>
   );
 
-  /** Render tabs in order; insert muted "or" between Sold and Rented. */
+  /**
+   * Render tabs in order; insert Transactions after Photos when the Sold /
+   * Rented / Under Agreement group is collapsed; insert muted "or" between
+   * Sold and Rented when that group is open.
+   */
   const renderOrderedTabs = (ids: ListingTab[], keyPrefix = "") => {
     const nodes: ReactNode[] = [];
     for (const id of ids) {
+      if (id === "photos") {
+        const photosTab = tabsById.get(id);
+        if (photosTab) nodes.push(renderTabLink(photosTab, keyPrefix));
+        if (!showTransactionTabs) {
+          nodes.push(renderTransactionsControl(keyPrefix));
+        }
+        continue;
+      }
       const tab = tabsById.get(id);
       if (!tab) continue;
       if (id === "comparable-rentals") {
@@ -476,8 +531,20 @@ export default function ListingSubnav({
   };
 
   const visibleStackRows = STACK_ROWS.map((rowIds) =>
-    rowIds.filter((id) => tabsById.has(id)),
-  ).filter((rowIds) => rowIds.length > 0);
+    rowIds.filter((id) => {
+      // Keep the Photos slot so Transactions can still render after it when
+      // the Photos tab itself is hidden.
+      if (id === "photos") return true;
+      return tabsById.has(id);
+    }),
+  ).filter((rowIds) =>
+    rowIds.some((id) => {
+      if (id === "photos") {
+        return tabsById.has("photos") || !showTransactionTabs;
+      }
+      return tabsById.has(id);
+    }),
+  );
 
   const tabsRow = (
     <div ref={viewportRef} className="relative">
@@ -492,28 +559,37 @@ export default function ListingSubnav({
 
       {stackRows ? (
         <>
-          {visibleStackRows.map((rowIds, rowIndex) => (
-            <nav
-              key={`stack-row-${rowIndex}`}
-              className={`relative flex flex-nowrap gap-x-1${
-                rowIndex < visibleStackRows.length - 1
-                  ? " border-b border-white/10"
-                  : ""
-              }`}
-              aria-label={
-                rowIndex === 0
-                  ? "Listing sections"
-                  : rowIndex === 1
-                    ? "Sold, rented, and under agreement"
-                    : "What if, history, and map"
-              }
-            >
-              {renderOrderedTabs(rowIds)}
-            </nav>
-          ))}
+          {visibleStackRows.map((rowIds, rowIndex) => {
+            const isTransactionRow = rowIds.some((id) =>
+              TRANSACTION_TABS.has(id),
+            );
+            return (
+              <nav
+                key={`stack-row-${rowIndex}`}
+                id={isTransactionRow ? "listing-transaction-tabs" : undefined}
+                className={`relative flex flex-nowrap gap-x-1${
+                  rowIndex < visibleStackRows.length - 1
+                    ? " border-b border-white/10"
+                    : ""
+                }`}
+                aria-label={
+                  rowIndex === 0
+                    ? "Listing sections"
+                    : isTransactionRow
+                      ? "Sold, rented, and under agreement"
+                      : "What if, history, and map"
+                }
+              >
+                {renderOrderedTabs(rowIds)}
+              </nav>
+            );
+          })}
         </>
       ) : (
         <nav
+          id={
+            showTransactionTabs ? "listing-transaction-tabs" : undefined
+          }
           className="relative flex flex-nowrap gap-x-1"
           aria-label="Listing sections"
         >

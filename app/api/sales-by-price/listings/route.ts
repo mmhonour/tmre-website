@@ -9,7 +9,8 @@ import {
   parseListingKindParam,
   type ListingKind,
 } from '@/lib/listing-kind'
-import { classifySalePrice, PRICE_BUCKETS, type PriceBucketId } from '@/lib/price-buckets'
+import { classifySalePrice, PRICE_BUCKETS } from '@/lib/price-buckets'
+import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
 import { classifyRentPrice, RENT_BUCKETS, type RentBucketId } from '@/lib/rent-buckets'
 import {
   closedListingTimestamp,
@@ -28,22 +29,37 @@ export const dynamic = 'force-dynamic'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
-function isValidBucket(kind: ListingKind, bucket: string): boolean {
+function isValidBucket(
+  kind: ListingKind,
+  bucket: string,
+  saleBuckets: typeof PRICE_BUCKETS,
+): boolean {
   if (bucket === 'unknown') return true
   if (kind === 'rental') {
     return RENT_BUCKETS.some((b) => b.id === bucket)
   }
-  return PRICE_BUCKETS.some((b) => b.id === bucket)
+  return saleBuckets.some((b) => b.id === bucket)
 }
 
-function bucketForListing(l: Listing, kind: ListingKind): PriceBucketId | RentBucketId | 'unknown' {
+function bucketForListing(
+  l: Listing,
+  kind: ListingKind,
+  saleBuckets: typeof PRICE_BUCKETS,
+): string {
   const price = kind === 'sale' ? closedSalePrice(l) : l.price
-  return kind === 'rental' ? classifyRentPrice(price) : classifySalePrice(price)
+  return kind === 'rental'
+    ? classifyRentPrice(price)
+    : classifySalePrice(price, saleBuckets)
 }
 
-function listingInBucket(l: Listing, kind: ListingKind, bucket: string): boolean {
+function listingInBucket(
+  l: Listing,
+  kind: ListingKind,
+  bucket: string,
+  saleBuckets: typeof PRICE_BUCKETS,
+): boolean {
   if (!inStatsClosedPeriod(closedListingTimestamp(l))) return false
-  return bucketForListing(l, kind) === bucket
+  return bucketForListing(l, kind, saleBuckets) === bucket
 }
 
 export async function GET(req: NextRequest) {
@@ -62,7 +78,8 @@ export async function GET(req: NextRequest) {
   }
 
   const kind: ListingKind = parseListingKindParam(searchParams.get('kind'))
-  if (!isValidBucket(kind, bucket)) {
+  const saleBuckets = await getPriceBucketsFresh()
+  if (!isValidBucket(kind, bucket, saleBuckets)) {
     return NextResponse.json({ error: `Unsupported bucket '${bucket}'` }, { status: 400 })
   }
 
@@ -76,7 +93,7 @@ export async function GET(req: NextRequest) {
 
     const listings = filterListingsByKind(raw, kind)
     const rows: StatsListingRow[] = listings
-      .filter((l) => listingInBucket(l, kind, bucket))
+      .filter((l) => listingInBucket(l, kind, bucket, saleBuckets))
       .map((l) => listingToStatsRow(l, resolveListingTown(l, city === 'All' ? undefined : city), kind))
       .filter((row): row is StatsListingRow => row != null)
       .sort((a, b) => {

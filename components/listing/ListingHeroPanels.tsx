@@ -327,16 +327,12 @@ export default function ListingHeroPanels({
     </aside>
   ) : null;
 
-  /** Status (+ desktop insight) docked to the right of Property Details. */
-  const statusInsightColumn =
-    statusBadge || insightPanel ? (
-      <div className="ml-auto flex w-full shrink-0 flex-col items-end gap-2 sm:w-[min(20rem,46%)]">
-        {statusBadge ? (
-          <div className="flex w-full justify-end">{statusBadge}</div>
-        ) : null}
-        {insightPanel}
-      </div>
-    ) : null;
+  /** Desktop insight only — status sits on the Spotlight / Back row above. */
+  const insightColumn = insightPanel ? (
+    <div className="ml-auto hidden w-full shrink-0 flex-col items-end sm:w-[min(20rem,46%)] lg:flex">
+      {insightPanel}
+    </div>
+  ) : null;
 
   const topLeft = propertyTabs ? (
     <div className="min-w-0">{propertyTabs}</div>
@@ -416,7 +412,7 @@ export default function ListingHeroPanels({
     <div
       className={
         panelOpen
-          ? "z-20 flex flex-col border-0 bg-[#1B2A4A] shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.55)] max-lg:fixed max-lg:inset-x-0 max-lg:top-[var(--listing-sticky-offset,6rem)] max-lg:bottom-[calc(3.75rem+env(safe-area-inset-bottom,0px))] lg:absolute lg:inset-x-0 lg:top-0 lg:h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
+          ? "z-20 flex flex-col border-0 bg-[#1B2A4A] shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.55)] max-lg:fixed max-lg:inset-x-0 max-lg:top-[var(--listing-sticky-offset,6rem)] max-lg:bottom-0 lg:absolute lg:inset-x-0 lg:top-0 lg:h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
           : "pointer-events-none invisible absolute inset-x-0 top-0 z-20 h-0 max-h-0 translate-y-full overflow-hidden"
       }
       aria-hidden={!panelOpen}
@@ -476,54 +472,65 @@ export default function ListingHeroPanels({
         ref={stickyChromeRef}
         className={`sticky ${STICKY_TOP_CLASS} z-30 overflow-visible pt-1 pb-3 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
       >
-        {topLeft ? (
-          <div className={propertyTabs ? undefined : "mb-1.5"}>{topLeft}</div>
+        {/* Status top-aligned with Spotlight Properties / ← Back to … */}
+        {topLeft || statusBadge ? (
+          <div className="mb-1.5 flex items-start justify-between gap-3 max-lg:pr-[min(12rem,48vw)]">
+            <div className="min-w-0">{topLeft}</div>
+            {statusBadge ? (
+              <div className="shrink-0 self-start">{statusBadge}</div>
+            ) : null}
+          </div>
         ) : null}
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex flex-col gap-3 max-lg:pr-[min(12rem,48vw)] sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
             <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
               Property Details
             </p>
             <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
           </div>
-          {statusInsightColumn}
+          {insightColumn}
         </div>
 
         <div className="mt-2">{tabsNav}</div>
-      </div>
 
-      {showRemarksTeaser ? (
-        <button
-          type="button"
-          onClick={() => {
-            if (isDesktopLayout) {
-              expandRemarks();
-              return;
+        {/*
+          Keep the Overview remarks teaser inside sticky chrome so it stays
+          above the hero (and above the mobile slide-up panel, which is fixed
+          from --listing-sticky-offset downward and would otherwise cover it).
+        */}
+        {showRemarksTeaser ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (isDesktopLayout) {
+                expandRemarks();
+                return;
+              }
+              setMapVisible(false);
+              setMobileDrawer((prev) =>
+                prev === "remarks" ? null : "remarks",
+              );
+            }}
+            className="mt-2 w-full min-w-0 text-left text-[11px] leading-snug text-white/70 underline decoration-white/45 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 focus:outline-none focus-visible:text-gold"
+            aria-expanded={
+              isDesktopLayout
+                ? remarksExpanded
+                : mobileDrawer === "remarks"
             }
-            setMapVisible(false);
-            setMobileDrawer((prev) =>
-              prev === "remarks" ? null : "remarks",
-            );
-          }}
-          className="mt-2 mb-2 w-full min-w-0 text-left text-[11px] leading-snug text-white/70 underline decoration-white/45 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 focus:outline-none focus-visible:text-gold"
-          aria-expanded={
-            isDesktopLayout
-              ? remarksExpanded
-              : mobileDrawer === "remarks"
-          }
-          title={
-            isDesktopLayout
-              ? "Expand listing remarks"
-              : "Open listing remarks"
-          }
-        >
-          <span className="line-clamp-1">
-            {remarksTeaserLine}
-            …
-          </span>
-        </button>
-      ) : null}
+            title={
+              isDesktopLayout
+                ? "Expand listing remarks"
+                : "Open listing remarks"
+            }
+          >
+            <span className="line-clamp-1">
+              {remarksTeaserLine}
+              …
+            </span>
+          </button>
+        ) : null}
+      </div>
 
       <ListingPhotosModeContext.Provider
         value={useSlidePanel ? closePanel : null}
@@ -635,7 +642,7 @@ export default function ListingHeroPanels({
   return (
     <ListingCriteriaVisibilityProvider>
       <div
-        className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 max-lg:pb-20 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
+        className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
           compactHero ? "" : "mb-6"
         }`}
       >
@@ -664,16 +671,16 @@ export default function ListingHeroPanels({
         ) : null}
       </div>
       {belowHero ? (
-        <div className="mt-6 border-t border-white/10 pt-6 max-lg:pb-20 lg:mt-8 lg:pt-8">
+        <div className="mt-6 border-t border-white/10 pt-6 lg:mt-8 lg:pt-8">
           {belowHero}
         </div>
       ) : null}
 
-      {/* Mobile: horizontally aligned pop-out tabs */}
+      {/* Mobile: horizontal pop-out tabs, fixed upper-right */}
       <div
-        className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap items-center justify-center gap-1.5 border-t border-white/10 bg-[#1B2A4A]/95 px-2 py-2.5 backdrop-blur-md lg:hidden"
+        className="fixed right-2 z-[60] flex max-w-[calc(100vw-1rem)] flex-row flex-wrap items-center justify-end gap-1.5 lg:hidden"
         style={{
-          paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))",
+          top: "max(4.75rem, calc(env(safe-area-inset-top, 0px) + 3.75rem))",
         }}
         role="group"
         aria-label="Listing side panels"
