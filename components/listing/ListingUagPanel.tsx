@@ -657,6 +657,10 @@ export function ListingUagPageContent({
           criteria={criteria}
           session={sessionMatch}
           onSessionChange={handleSessionMatchChange}
+          baseline={baselineMatch}
+          onReset={() => {
+            if (baselineMatch) setSessionMatch(baselineMatch);
+          }}
           stepFeedback={criteriaStepFeedback}
           defaultControlsOpen
         />

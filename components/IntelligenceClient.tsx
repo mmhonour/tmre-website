@@ -11,6 +11,7 @@ import ZipBoundaryPopover, {
 } from "./ZipBoundaryPopover";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import AllTownsDescriptor from "@/components/AllTownsDescriptor";
+import FilterResetButton from "@/components/FilterResetButton";
 import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
@@ -2785,7 +2786,6 @@ export default function IntelligenceClient() {
     setFurnishedSliderActive(false, { immediate: true });
   }
 
-  const showSliderFooter = filtersExpanded || collapsedSlidersOpen;
   const showFurnishedSlider = tx !== "sale";
 
   const activeTownMonthsSupply = useMemo(() => {
@@ -3106,7 +3106,8 @@ export default function IntelligenceClient() {
     scrollToBoard();
   };
 
-  const collapsedSliderDescriptors = !filtersExpanded && !collapsedSlidersOpen ? (
+  /** Range labels — always available (including when pill chrome is minimized). */
+  const sliderDescriptorLabels = (
     <IntelSliderDescriptorLabels
       showPriceFilter={showPriceFilter}
       cls={cls}
@@ -3132,35 +3133,40 @@ export default function IntelligenceClient() {
       vintageSliderActive={vintageSliderActive}
       sqftSliderActive={sqftSliderActive}
     />
-  ) : null;
+  );
 
-  const sliderDescriptorFooterLabels = showSliderFooter ? (
-    <IntelSliderDescriptorLabels
-      showPriceFilter={showPriceFilter}
-      cls={cls}
-      showFurnished={showFurnishedSlider}
-      furnishedFilter={furnishedFilter}
-      furnishedSliderActive={furnishedSliderActive}
-      onDescriptorClick={handleDescriptorSliderClick}
-      boardPriceSteps={boardPriceSteps}
-      minPriceIndex={minPriceIndex}
-      maxPriceIndex={maxPriceIndex}
-      priceSliderActive={priceSliderActive}
-      minBedrooms={minBedrooms}
-      maxBedrooms={maxBedrooms}
-      minBathrooms={minBathrooms}
-      maxBathrooms={maxBathrooms}
-      minVintage={minVintage}
-      maxVintage={maxVintage}
-      boardSqftSteps={boardSqftSteps}
-      minSqftIndex={minSqftIndex}
-      maxSqftIndex={maxSqftIndex}
-      bedSliderActive={bedSliderActive}
-      bathSliderActive={bathSliderActive}
-      vintageSliderActive={vintageSliderActive}
-      sqftSliderActive={sqftSliderActive}
-    />
-  ) : null;
+  const descriptorSentinelRef = useRef<HTMLDivElement>(null);
+  const [descriptorsPinned, setDescriptorsPinned] = useState(false);
+
+  // Pin descriptors under the site nav once their in-flow row scrolls away.
+  // (Hero `overflow-hidden` prevents CSS sticky from spanning the deal board.)
+  useEffect(() => {
+    const sentinel = descriptorSentinelRef.current;
+    if (!sentinel) {
+      setDescriptorsPinned(false);
+      return;
+    }
+    const navOffsetPx = () =>
+      window.matchMedia("(min-width: 1024px)").matches ? 96 : 80;
+    const update = () => {
+      const top = sentinel.getBoundingClientRect().top;
+      setDescriptorsPinned(top < navOffsetPx());
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [
+    showPriceFilter,
+    cls,
+    showFurnishedSlider,
+    filtersExpanded,
+    collapsedSlidersOpen,
+    filterChromeCollapsed,
+  ]);
 
   const closeTownStats = () => setTownStatsOpen(false);
 
@@ -3227,8 +3233,24 @@ export default function IntelligenceClient() {
     </>
   );
 
+  const pinnedDescriptorBar =
+    descriptorsPinned && typeof document !== "undefined" ? (
+      <div
+        className="fixed top-20 lg:top-24 inset-x-0 z-40 border-b border-white/10 bg-[#1B2A4A]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md"
+        data-intel-slider-context-blurb-pinned
+      >
+        <div className="mx-auto max-w-7xl px-6 lg:px-10 py-2">
+          <p className="flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide">
+            {filterDescriptorLeading}
+            {sliderDescriptorLabels}
+          </p>
+        </div>
+      </div>
+    ) : null;
+
   return (
     <>
+      {pinnedDescriptorBar}
       <section
         className={`navy-gradient text-white pt-20 lg:pt-24 relative overflow-hidden transition-[padding] duration-300 ease-out ${
           filtersExpanded ? "pb-1 lg:pb-1" : "pb-1"
@@ -3457,27 +3479,19 @@ export default function IntelligenceClient() {
                   </div>
                 ) : null}
 
-              {/* Slider range labels sit above All / For Sale / Rentals. */}
-              {showSliderChrome &&
-              !showSliderFooter &&
-              collapsedSliderDescriptors ? (
-                <p
-                  className="flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide mt-0.5"
-                  data-intel-slider-context-blurb
-                >
-                  {collapsedSliderDescriptors}
-                </p>
-              ) : null}
-              {showSliderChrome &&
-              showSliderFooter &&
-              sliderDescriptorFooterLabels ? (
-                <p
-                  className="flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide mt-0.5"
-                  data-intel-slider-context-blurb
-                >
-                  {sliderDescriptorFooterLabels}
-                </p>
-              ) : null}
+              {/* Slider range labels sit above All / For Sale / Rentals; pin on scroll. */}
+              <div ref={descriptorSentinelRef} className="h-0 w-full" aria-hidden />
+              <p
+                className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide mt-0.5 ${
+                  descriptorsPinned
+                    ? "invisible pointer-events-none"
+                    : ""
+                }`}
+                data-intel-slider-context-blurb
+                aria-hidden={descriptorsPinned || undefined}
+              >
+                {sliderDescriptorLabels}
+              </p>
 
                 {showTxChrome ? (
                   <div className="flex flex-wrap items-center gap-2 min-w-0 self-start w-full">
@@ -3692,8 +3706,10 @@ export default function IntelligenceClient() {
           <div className="mb-4 lg:mb-5 flex items-end justify-between gap-4">
             <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5 min-w-0">
               <h2 className="font-serif text-2xl sm:text-3xl lg:text-[2rem] text-navy leading-tight">
-                Your {filteredCount.toLocaleString()}{" "}
-                {filteredCount === 1 ? "listing" : "listings"},{" "}
+                Your {filteredCount.toLocaleString()} of{" "}
+                {poolCount.toLocaleString()}{" "}
+                {poolCount === 1 ? "listing" : "listings"} in{" "}
+                {active === "All" ? "selected towns" : active},{" "}
                 <span className="italic">scored.</span>
               </h2>
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
@@ -3815,51 +3831,40 @@ export default function IntelligenceClient() {
               <ScoreInfoButton onInfoClick={() => setScoreInfoOpen(true)} />
             }
             resultsSummary={
-              <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
-                {state === "loading" && liveListings === null ? (
-                  "Loading results…"
-                ) : resultCount === 0 ? (
-                  "No results match your filters"
-                ) : (
-                  <>
-                    Showing{" "}
-                    <span className="text-navy font-medium tabular-nums">
-                      {visibleCount.toLocaleString()}
-                    </span>
-                    {middleHidden ? (
-                      <>
-                        {" "}
-                        of{" "}
-                        <span className="text-navy font-medium tabular-nums">
-                          {resultCount.toLocaleString()}
-                        </span>
-                      </>
-                    ) : null}{" "}
-                    {visibleCount === 1 ? "listing" : "listings"}
-                    {middleHidden ? (
-                      <span className="text-slate/55 normal-case tracking-normal">
-                        {" "}
-                        · middle tier collapsed (
-                        {boardTiers.hideableCount.toLocaleString()} hidden)
-                      </span>
-                    ) : filtersActive && poolCount > filteredCount ? (
-                      <span className="text-slate/55 normal-case tracking-normal">
-                        {" "}
-                        (of {poolCount.toLocaleString()} in{" "}
-                        {active === "All" ? "selected towns" : active})
-                      </span>
-                    ) : showBoardPagination ? (
-                      <span className="text-slate/55 normal-case tracking-normal">
-                        {" "}
-                        · page {boardPage} of {totalBoardPages} (
-                        {boardPageStart.toLocaleString()}–
-                        {boardPageEnd.toLocaleString()} of{" "}
-                        {filteredCount.toLocaleString()})
-                      </span>
-                    ) : null}
-                  </>
-                )}
-              </p>
+              state === "loading" && liveListings === null ? (
+                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                  Loading results…
+                </p>
+              ) : resultCount === 0 ? (
+                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                  No results match your filters
+                </p>
+              ) : middleHidden ? (
+                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                  <span className="text-navy font-medium tabular-nums">
+                    {visibleCount.toLocaleString()}
+                  </span>
+                  {" of "}
+                  <span className="text-navy font-medium tabular-nums">
+                    {resultCount.toLocaleString()}
+                  </span>{" "}
+                  visible
+                  <span className="text-slate/55 normal-case tracking-normal">
+                    {" "}
+                    · middle tier collapsed (
+                    {boardTiers.hideableCount.toLocaleString()} hidden)
+                  </span>
+                </p>
+              ) : showBoardPagination ? (
+                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                  <span className="text-slate/55 normal-case tracking-normal">
+                    Page {boardPage} of {totalBoardPages} (
+                    {boardPageStart.toLocaleString()}–
+                    {boardPageEnd.toLocaleString()} of{" "}
+                    {filteredCount.toLocaleString()})
+                  </span>
+                </p>
+              ) : null
             }
             footer={
               <div className="border-t border-charcoal/[0.12] bg-cream/60 px-5 py-3 font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
@@ -4363,39 +4368,19 @@ function SqftRangeLabel({
   const interactive = onClick != null;
   const className = descriptorLabelClass(active, interactive);
   const label = formatIntelSqftRangeLabelFromSteps(steps, lo, hi);
-  const content = (
-    <span className="inline-flex items-center gap-1.5">
-      <span>{label}</span>
-      <span
-        className={`inline-flex shrink-0 text-gold drop-shadow-sm ${
-          active ? "opacity-100" : "opacity-95"
-        }`}
-        aria-hidden
-      >
-        <SqftDescriptorSearchIcon
-          className={active ? "h-5 w-5" : "h-4 w-4"}
-        />
-      </span>
-    </span>
-  );
 
   if (interactive) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={className}
-        aria-label={`${label} — open size filters`}
-      >
-        {content}
+      <button type="button" onClick={onClick} className={className}>
+        {label}
       </button>
     );
   }
 
-  return <span className={className}>{content}</span>;
+  return <span className={className}>{label}</span>;
 }
 
-function SqftDescriptorSearchIcon({ className }: { className?: string }) {
+function DescriptorSearchIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -4409,6 +4394,27 @@ function SqftDescriptorSearchIcon({ className }: { className?: string }) {
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-3.5-3.5" />
     </svg>
+  );
+}
+
+function DescriptorSearchControl({
+  active,
+  onClick,
+}: {
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Open filter sliders"
+      className={`inline-flex shrink-0 self-center text-gold drop-shadow-sm transition-all duration-300 ease-out ${
+        active ? "opacity-100 scale-110" : "opacity-95 scale-100"
+      } cursor-pointer hover:text-gold-light`}
+    >
+      <DescriptorSearchIcon className={active ? "h-5 w-5" : "h-4 w-4"} />
+    </button>
   );
 }
 
@@ -4501,6 +4507,21 @@ function IntelSliderDescriptorLabels({
 
   const leadingDot = withLeadingSeparator;
   const showResidentialSliders = cls !== "commercial";
+  const searchActive =
+    priceSliderActive ||
+    bedSliderActive ||
+    bathSliderActive ||
+    vintageSliderActive ||
+    sqftSliderActive ||
+    furnishedSliderActive;
+  const openViaSearch = () =>
+    onDescriptorClick(
+      showResidentialSliders
+        ? "sqft"
+        : showPriceFilter
+          ? "price"
+          : "furnished",
+    );
 
   return (
     <>
@@ -4559,6 +4580,8 @@ function IntelSliderDescriptorLabels({
           />
         </>
       ) : null}
+      {/* Always trailing — right of whatever descriptors are showing. */}
+      <DescriptorSearchControl active={searchActive} onClick={openViaSearch} />
     </>
   );
 }
@@ -4682,28 +4705,11 @@ function IntelFilterControlsRow({
             />
           </div>
         ) : null}
-        <button
-          type="button"
+        <FilterResetButton
           onClick={onResetSliders}
           disabled={!slidersCustomized}
-          aria-label="Reset sliders"
-          title="Reset sliders"
-          className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full text-white transition-opacity hover:opacity-80 disabled:opacity-30 disabled:pointer-events-none"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="h-3.5 w-3.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <polyline points="1 4 1 10 7 10" />
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-          </svg>
-        </button>
+          label="Reset sliders"
+        />
       </div>
       {cls !== "commercial" ? (
         <BedBathVintageSqftRow

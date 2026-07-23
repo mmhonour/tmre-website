@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
+import { listingCriteriaLinkSlotId } from "@/components/listing/ListingCriteriaSideLayout";
 import {
   LISTING_SECTION_IDS,
   type ListingScrollSectionTab,
@@ -69,8 +70,8 @@ function Section({
   children,
   hidden = false,
   compact = false,
-  /** Match a 2-col body (What if): title left over col 1. */
-  dualColumnTitle = false,
+  /** Portal mount for Criteria / Hide criteria (top-aligned with title). */
+  criteriaLinkSlotId = null,
 }: {
   id: string;
   title: string;
@@ -78,7 +79,7 @@ function Section({
   hidden?: boolean;
   /** Panel mode: no divider / top margin under the tab row. */
   compact?: boolean;
-  dualColumnTitle?: boolean;
+  criteriaLinkSlotId?: string | null;
 }) {
   return (
     <section
@@ -91,25 +92,25 @@ function Section({
       }
     >
       <div
-        className={
-          dualColumnTitle
-            ? `grid grid-cols-1 items-center gap-1 max-lg:px-3 lg:grid-cols-2 lg:px-0 ${
-                compact ? "mb-2" : "mb-3"
-              }`
-            : `flex items-center justify-between gap-3 max-lg:px-3 lg:px-0 ${
-                compact ? "mb-2" : "mb-3"
-              }`
-        }
+        className={`flex items-start justify-between gap-3 max-lg:px-3 lg:px-0 ${
+          compact ? "mb-1" : "mb-2"
+        }`}
       >
         <h2
           className={
             compact
-              ? "font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold text-left"
-              : "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 text-left"
+              ? "font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold text-left leading-none"
+              : "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 text-left leading-none"
           }
         >
           {title}
         </h2>
+        {criteriaLinkSlotId ? (
+          <div
+            id={criteriaLinkSlotId}
+            className="flex shrink-0 items-start justify-end min-h-[1em]"
+          />
+        ) : null}
       </div>
       {children}
     </section>
@@ -197,7 +198,7 @@ export function ListingMobileScrollSections({
         id={LISTING_SECTION_IDS.if}
         title="What if"
         hidden={!show("if")}
-        dualColumnTitle
+        criteriaLinkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
         compact={isPanel}
       >
         <ListingIfPageContent

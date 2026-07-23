@@ -23,3 +23,11 @@ export function spotlightSectionHref(section: SpotlightSection): string {
 
 /** Canonical shareable spotlight URL (use in marketing / email). */
 export const SPOTLIGHT_SHARE_URL = "/spotlight";
+
+/** Absolute spotlight share URL for clipboard / Web Share. */
+export function spotlightShareUrl(origin?: string): string {
+  const base =
+    origin?.replace(/\/$/, "") ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  return base ? `${base}${SPOTLIGHT_SHARE_URL}` : SPOTLIGHT_SHARE_URL;
+}

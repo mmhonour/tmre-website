@@ -43,6 +43,8 @@ export type ListingDetailsSchoolsPanelProps = {
   /** Listing $/sqft used for median comparison (includes rentals). */
   listingPricePerSqft?: number | null;
   medianPpsfBand?: "below" | "at" | "above" | null;
+  /** Shown only when MLS discloses Furnished or Partially furnished. */
+  furnishedLabel?: string | null;
   schools: ListingOverviewSchools;
   fmtMoney: (n: number | null) => string;
   fmtDate: (value: string | null) => string | null;
@@ -130,6 +132,7 @@ export default function ListingDetailsSchoolsPanel({
   cityMedianPpsf = null,
   listingPricePerSqft = null,
   medianPpsfBand = null,
+  furnishedLabel = null,
   schools,
   fmtMoney,
   fmtDate,
@@ -144,6 +147,7 @@ export default function ListingDetailsSchoolsPanel({
   const analysisHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const analysisHighlightRafRef = useRef<number | null>(null);
   const analysisDefaultKeyRef = useRef<string>("");
   const panelClass = unframed
     ? listingPanelCompactClass
@@ -160,11 +164,23 @@ export default function ListingDetailsSchoolsPanel({
       clearTimeout(analysisHighlightTimerRef.current);
       analysisHighlightTimerRef.current = null;
     }
-    setAnalysisHighlighted(true);
-    analysisHighlightTimerRef.current = setTimeout(() => {
-      analysisHighlightTimerRef.current = null;
-      setAnalysisHighlighted(false);
-    }, ANALYSIS_HIGHLIGHT_MS);
+    if (analysisHighlightRafRef.current != null) {
+      cancelAnimationFrame(analysisHighlightRafRef.current);
+      analysisHighlightRafRef.current = null;
+    }
+    // Drop to idle first so a repeat median-link click restarts the transition
+    // even when Analysis is already highlighted.
+    setAnalysisHighlighted(false);
+    analysisHighlightRafRef.current = requestAnimationFrame(() => {
+      analysisHighlightRafRef.current = requestAnimationFrame(() => {
+        analysisHighlightRafRef.current = null;
+        setAnalysisHighlighted(true);
+        analysisHighlightTimerRef.current = setTimeout(() => {
+          analysisHighlightTimerRef.current = null;
+          setAnalysisHighlighted(false);
+        }, ANALYSIS_HIGHLIGHT_MS);
+      });
+    });
   };
 
   // Insight median link → #listing-analysis: lighten Analysis for 10s.
@@ -211,6 +227,10 @@ export default function ListingDetailsSchoolsPanel({
       if (analysisHighlightTimerRef.current != null) {
         clearTimeout(analysisHighlightTimerRef.current);
         analysisHighlightTimerRef.current = null;
+      }
+      if (analysisHighlightRafRef.current != null) {
+        cancelAnimationFrame(analysisHighlightRafRef.current);
+        analysisHighlightRafRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount once; flash uses refs/state setters
@@ -398,6 +418,9 @@ export default function ListingDetailsSchoolsPanel({
           )}
           {lotAcres != null && lotAcres > 0 ? (
             <Stat label="Lot size" value={fmtAcres(lotAcres)} />
+          ) : null}
+          {furnishedLabel ? (
+            <Stat label="Furnishings" value={furnishedLabel} />
           ) : null}
           {!isRental && annualPropertyTax != null && (
             <Stat

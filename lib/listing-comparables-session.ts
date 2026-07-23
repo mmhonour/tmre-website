@@ -60,6 +60,21 @@ export function defaultSessionOverrides(
   return sessionOverridesFromPricingConfig(DEFAULT_PRICING_MATCHING_CONFIG, criteria)
 }
 
+/** True when session overrides match the seeded / original baseline. */
+export function sessionMatchOverridesEqual(
+  a: SessionMatchOverrides,
+  b: SessionMatchOverrides,
+): boolean {
+  if (a.bedTolerance !== b.bedTolerance) return false
+  if (a.bathTolerance !== b.bathTolerance) return false
+  if (a.sqftTolerancePct !== b.sqftTolerancePct) return false
+  if (a.lotTolerancePct !== b.lotTolerancePct) return false
+  const aa = sortVintageLabels(a.allowedVintageLabels)
+  const bb = sortVintageLabels(b.allowedVintageLabels)
+  if (aa.length !== bb.length) return false
+  return aa.every((label, i) => label === bb[i])
+}
+
 /** True when session overrides need a wider server pool than admin defaults. */
 export function sessionOverridesNeedWidePool(
   session: SessionMatchOverrides,

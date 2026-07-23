@@ -1173,6 +1173,10 @@ export default function ListingComparablesPanel({
           criteria={criteria}
           session={sessionMatch}
           onSessionChange={handleSessionMatchChange}
+          baseline={baselineMatch}
+          onReset={() => {
+            if (baselineMatch) setSessionMatch(baselineMatch);
+          }}
           stepFeedback={criteriaStepFeedback}
           isModal={isModal}
           defaultControlsOpen={criteriaInSidePanel}

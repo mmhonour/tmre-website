@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
+import { DealBoardScoreBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import {
   buildVintageBucketSnapshots,
+  formatVintageHeaderPrice,
   sortVintageBucketSnapshots,
   type VintageSnapshotMetric,
   type VintageSnapshotValueSignal,
@@ -25,11 +27,6 @@ function snapshotValueColorClass(
   if (signal === "good") return "text-sage";
   if (signal === "bad") return "text-coral";
   return "text-navy";
-}
-
-function formatAvgScore(score: number | null | undefined): string {
-  if (score == null || !Number.isFinite(score)) return "—";
-  return score.toFixed(1);
 }
 
 function VintageSnapshotCardBody({
@@ -79,30 +76,67 @@ function VintageSnapshotCardBody({
   );
 }
 
+function VintagePricePill({
+  label,
+  opaque = false,
+  title,
+}: {
+  label: string;
+  opaque?: boolean;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={`inline-flex m-0 h-auto min-h-0 shrink-0 items-center justify-center rounded-full border px-2.5 py-px font-mono text-xs font-semibold leading-none tabular-nums ${
+        opaque
+          ? "text-white border-gold/40 bg-[#A88932] shadow-sm"
+          : "text-gold border-gold/35 bg-gradient-to-br from-gold/35 via-gold/20 to-gold/10"
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function VintageSnapshotSummaryBody({
   metrics,
   vintageLabel,
   onListingsClick,
   avgScore,
+  medianPrice,
+  sortKey,
+  priceKind,
 }: {
   metrics: VintageSnapshotMetric[];
   vintageLabel: string;
   onListingsClick?: () => void;
   avgScore: number | null;
+  medianPrice: number | null;
+  sortKey: VintageStatsSortKey;
+  priceKind: "sale" | "rental";
 }) {
   const listings = metrics.find((m) => m.label === "Listings")?.value ?? "—";
-  const medianPrice =
-    metrics.find((m) => m.label === "Median price")?.value ?? "—";
   const medianDomRaw =
     metrics.find((m) => m.label === "Median DOM")?.value ?? "—";
   const medianDom =
     medianDomRaw !== "—" ? `${medianDomRaw} DOM` : "—";
+  const showPrice = sortKey === "price";
+  const showScore = sortKey === "score" || sortKey === "vintage";
+  const priceLabel = formatVintageHeaderPrice(medianPrice, priceKind);
 
   return (
     <div className="px-3 py-2 font-mono text-[10px] leading-snug tabular-nums text-slate">
-      <span className="text-navy font-semibold tabular-nums">
-        {formatAvgScore(avgScore)}
-      </span>
+      {showPrice ? (
+        <VintagePricePill
+          label={priceLabel}
+          title="Median price for Active listings in this vintage"
+        />
+      ) : showScore && avgScore != null && Number.isFinite(avgScore) ? (
+        <DealBoardScoreBadge value={avgScore} variant="pill" />
+      ) : showScore ? (
+        <span className="text-navy font-semibold tabular-nums">—</span>
+      ) : null}
       <span className="text-slate/35" aria-hidden>
         {" "}
         ·{" "}
@@ -119,11 +153,6 @@ function VintageSnapshotSummaryBody({
       ) : (
         <span className="text-navy font-medium">{listings} listings</span>
       )}
-      <span className="text-slate/35" aria-hidden>
-        {" "}
-        ·{" "}
-      </span>
-      <span className="text-navy">{medianPrice}</span>
       <span className="text-slate/35" aria-hidden>
         {" "}
         ·{" "}
@@ -277,6 +306,12 @@ export default function IntelligenceVintageStats({
             dir={sortDir}
             onClick={() => toggleSort("score")}
           />
+          <SortChip
+            label="Median $"
+            active={sortKey === "price"}
+            dir={sortDir}
+            onClick={() => toggleSort("price")}
+          />
         </div>
       </div>
 
@@ -288,6 +323,11 @@ export default function IntelligenceVintageStats({
         const handleListingsClick = onVintageListingsClick
           ? () => onVintageListingsClick(snapshot.id)
           : undefined;
+        const showPriceBadge = sortKey === "price";
+        const priceLabel = formatVintageHeaderPrice(
+          snapshot.medianPrice,
+          kind,
+        );
 
         return (
           <div
@@ -308,11 +348,25 @@ export default function IntelligenceVintageStats({
                     : "text-[9px] tracking-[0.18em]"
                 }`}
               >
-                <span
-                  className="shrink-0 tabular-nums text-white"
-                  title="Average Goldilocks score for Active listings in this vintage"
-                >
-                  {formatAvgScore(snapshot.avgScore)}
+                <span className="shrink-0">
+                  {showPriceBadge ? (
+                    <VintagePricePill
+                      label={priceLabel}
+                      opaque
+                      title="Median price for Active listings in this vintage"
+                    />
+                  ) : snapshot.avgScore != null &&
+                    Number.isFinite(snapshot.avgScore) ? (
+                    <span title="Average Goldilocks score for Active listings in this vintage">
+                      <DealBoardScoreBadge
+                        value={snapshot.avgScore}
+                        variant="pill"
+                        opaque
+                      />
+                    </span>
+                  ) : (
+                    <span className="tabular-nums text-white">—</span>
+                  )}
                 </span>
                 <span className="truncate">{snapshot.label}</span>
                 <span className="shrink-0">Vintage</span>
@@ -337,6 +391,9 @@ export default function IntelligenceVintageStats({
                 vintageLabel={panelTitle}
                 onListingsClick={handleListingsClick}
                 avgScore={snapshot.avgScore}
+                medianPrice={snapshot.medianPrice}
+                sortKey={sortKey}
+                priceKind={kind}
               />
             )}
           </div>

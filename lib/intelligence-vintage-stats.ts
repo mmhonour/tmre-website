@@ -19,6 +19,8 @@ export type VintageBucketSnapshot = {
   metrics: VintageSnapshotMetric[];
   /** Mean Active Goldilocks for this vintage (from board rows and/or stats_cache). */
   avgScore: number | null;
+  /** Median list/ask price for Active listings in this vintage. */
+  medianPrice: number | null;
 };
 
 export type VintageListingRow = {
@@ -59,6 +61,29 @@ function formatSnapshotPrice(value: number | null): string {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
   if (value >= 1_000) return `$${Math.round(value / 1_000)}K`;
   return `$${Math.round(value)}`;
+}
+
+/**
+ * Compact header price when sorting by median:
+ * rentals → `$XK`, sales → `$X.XM`.
+ */
+export function formatVintageHeaderPrice(
+  value: number | null | undefined,
+  kind: "sale" | "rental",
+): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return "—";
+  if (kind === "rental") {
+    if (value >= 1000) {
+      const k = value / 1000;
+      const rounded = Math.round(k * 10) / 10;
+      return `$${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}K`;
+    }
+    return `$${Math.round(value)}`;
+  }
+  const m = value / 1_000_000;
+  if (m >= 10) return `$${Math.round(m)}M`;
+  const rounded = Math.round(m * 100) / 100;
+  return `$${rounded.toFixed(2)}M`.replace(/\.00M$/, "M").replace(/(\.\d)0M$/, "$1M");
 }
 
 function formatSnapshotSqft(value: number | null): string {
@@ -297,10 +322,14 @@ export function buildVintageBucketSnapshots(
           : cached != null && Number.isFinite(cached)
             ? cached
             : null;
+      const prices = bucketListings
+        .map((listing) => listing.price)
+        .filter((price) => price > 0);
       return {
         id,
         label,
         avgScore,
+        medianPrice: median(prices),
         metrics: buildVintageMetrics(
           bucketListings,
           listings.length,
@@ -311,7 +340,7 @@ export function buildVintageBucketSnapshots(
     .filter((snapshot): snapshot is VintageBucketSnapshot => snapshot != null);
 }
 
-export type VintageStatsSortKey = "vintage" | "score";
+export type VintageStatsSortKey = "vintage" | "score" | "price";
 export type VintageStatsSortDir = "asc" | "desc";
 
 /** Vintage index for sort (unknown last). Higher index = newer era. */
@@ -332,6 +361,12 @@ export function sortVintageBucketSnapshots(
       const aScore = a.avgScore ?? -1;
       const bScore = b.avgScore ?? -1;
       if (aScore !== bScore) return (aScore - bScore) * mult;
+      return (vintageSortIndex(a.id) - vintageSortIndex(b.id)) * -1;
+    }
+    if (key === "price") {
+      const aPrice = a.medianPrice ?? -1;
+      const bPrice = b.medianPrice ?? -1;
+      if (aPrice !== bPrice) return (aPrice - bPrice) * mult;
       return (vintageSortIndex(a.id) - vintageSortIndex(b.id)) * -1;
     }
     const aIdx = vintageSortIndex(a.id);

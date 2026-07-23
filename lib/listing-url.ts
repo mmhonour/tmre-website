@@ -6,6 +6,23 @@ export function listingDetailHref(
   return listingSectionHref(id, "overview", address, town);
 }
 
+/**
+ * Canonical short share path — MLS id only, no address/city query params.
+ * In-app navigation may still use the longer `listingDetailHref` form.
+ */
+export function listingShareHref(id: string): string {
+  return `/listings/${encodeURIComponent(id.trim())}`;
+}
+
+/** Absolute short share URL for clipboard / Web Share (browser or given origin). */
+export function listingShareUrl(id: string, origin?: string): string {
+  const path = listingShareHref(id);
+  const base =
+    origin?.replace(/\/$/, "") ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  return base ? `${base}${path}` : path;
+}
+
 export function listingPhotosHref(
   id: string,
   address?: string | null,

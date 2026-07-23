@@ -153,3 +153,15 @@ export function listingFurnished(
     parseFurnishedFromRaw(listing.raw ?? undefined)
   );
 }
+
+/**
+ * Details-panel copy when furnishings are disclosed as furnished / partial.
+ * Returns null for Unfurnished, Negotiable, or unknown (nothing to show).
+ */
+export function formatFurnishedDetailLabel(
+  value: ListingFurnished | null | undefined,
+): string | null {
+  if (value === "Furnished") return "Furnished";
+  if (value === "Partially") return "Partially furnished";
+  return null;
+}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
+import ListingShareButton from "@/components/listing/ListingShareButton";
 import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
@@ -55,6 +56,11 @@ type ListingHeaderProps = {
    * - heroInsight: full-width hero (+ optional legacy insight) only
    */
   parts?: "full" | "meta" | "heroInsight";
+  /**
+   * Short canonical share path (`/listings/{id}` or `/spotlight`).
+   * When set, shows Share/Copy that always uses this URL.
+   */
+  shareHref?: string | null;
 };
 
 function joinMetaSegments(segments: ReactNode[]): ReactNode {
@@ -103,6 +109,7 @@ export default function ListingHeader({
   compact = false,
   className = "",
   parts = "full",
+  shareHref = null,
 }: ListingHeaderProps & { className?: string; compact?: boolean }) {
   const hideMeta = hideMarketMeta || privacyMode;
   const [scoreOpen, setScoreOpen] = useState(false);
@@ -149,8 +156,8 @@ export default function ListingHeader({
             }
           />
         ) : null}
-        <div className="flex min-w-0 flex-1 items-stretch gap-x-3">
-          <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-start gap-x-3">
+          <div className="min-w-0 max-w-[65%] shrink">
             <h1
               className={`font-serif text-white leading-tight min-w-0 ${
                 compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
@@ -159,7 +166,8 @@ export default function ListingHeader({
               {title}
             </h1>
             {(!privacyMode && (address.city || address.postalCode)) ||
-            !hideMeta ? (
+            !hideMeta ||
+            shareHref ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 {!privacyMode && (address.city || address.postalCode) ? (
                   <span className="font-mono text-[11px] sm:text-xs tracking-[0.12em] uppercase text-white/65">
@@ -177,27 +185,32 @@ export default function ListingHeader({
                     #{mlsId}
                   </span>
                 ) : null}
+                {shareHref ? (
+                  <ListingShareButton href={shareHref} title={title} />
+                ) : null}
               </div>
             ) : null}
           </div>
           {priceLabel ? (
-            <span
-              className={`flex shrink-0 items-center font-serif font-bold tabular-nums leading-none text-white ${
-                compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
-              }`}
-              aria-label={
-                isRental
-                  ? `Monthly rent ${priceLabel}`
-                  : `List price ${priceLabel}`
-              }
-            >
-              {priceLabel}
-              {isRental ? (
-                <span className="ml-0.5 self-end pb-0.5 font-mono text-[10px] font-normal tracking-[0.08em] uppercase text-white/55">
-                  /mo
-                </span>
-              ) : null}
-            </span>
+            <div className="flex min-w-0 flex-1 items-start justify-center">
+              <span
+                className={`inline-flex items-start font-serif font-bold tabular-nums leading-none text-gold ${
+                  compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
+                }`}
+                aria-label={
+                  isRental
+                    ? `Monthly rent ${priceLabel}`
+                    : `List price ${priceLabel}`
+                }
+              >
+                {priceLabel}
+                {isRental ? (
+                  <span className="ml-0.5 self-end pb-0.5 font-mono text-[10px] font-normal tracking-[0.08em] uppercase text-gold/70">
+                    /mo
+                  </span>
+                ) : null}
+              </span>
+            </div>
           ) : null}
         </div>
       </div>

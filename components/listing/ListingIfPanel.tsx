@@ -634,6 +634,11 @@ function CompList({
   );
 }
 
+const IF_SCENARIO_PANEL_IDS = {
+  sale: "if-you-sell",
+  rent: "if-you-rent",
+} as const;
+
 function ScenarioPanel({
   title,
   headline,
@@ -664,12 +669,36 @@ function ScenarioPanel({
     scenario.soldCount + scenario.activeCount > 0 ||
     scenario.math.matchedSoldCount + scenario.math.matchedActiveCount > 0;
 
+  const panelId = IF_SCENARIO_PANEL_IDS[kind];
+  const crossLink =
+    kind === "sale"
+      ? { href: `#${IF_SCENARIO_PANEL_IDS.rent}`, label: "If you rent" }
+      : { href: `#${IF_SCENARIO_PANEL_IDS.sale}`, label: "If you sell" };
+
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8 flex flex-col gap-6">
+    <article
+      id={panelId}
+      className="scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8 flex flex-col gap-6"
+    >
       <div>
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-          {title}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+            {title}
+          </p>
+          <a
+            href={crossLink.href}
+            className="lg:hidden shrink-0 self-start text-right font-mono text-[10px] tracking-[0.2em] uppercase text-gold/70 hover:text-gold transition-colors"
+            onClick={(e) => {
+              const id = crossLink.href.slice(1);
+              const el = document.getElementById(id);
+              if (!el) return;
+              e.preventDefault();
+              el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            {crossLink.label}
+          </a>
+        </div>
         <p className="mt-2 text-white/70 text-sm leading-relaxed">{headline}</p>
       </div>
 
@@ -759,6 +788,9 @@ export default function ListingIfPanel({
   const [sessionMatch, setSessionMatch] = useState<SessionMatchOverrides | null>(
     null,
   );
+  const [baselineMatch, setBaselineMatch] = useState<SessionMatchOverrides | null>(
+    null,
+  );
   const [sessionSeeded, setSessionSeeded] = useState(false);
   const [criteriaStepFeedback, setCriteriaStepFeedback] =
     useState<CriteriaStepFeedback | null>(null);
@@ -769,6 +801,7 @@ export default function ListingIfPanel({
 
   useEffect(() => {
     setSessionMatch(null);
+    setBaselineMatch(null);
     setSessionSeeded(false);
     setCriteriaStepFeedback(null);
     if (criteriaFeedbackTimerRef.current != null) {
@@ -820,7 +853,9 @@ export default function ListingIfPanel({
 
   useEffect(() => {
     if (!matchCriteria || !saleEstimate.params.zip || sessionSeeded) return;
-    setSessionMatch(sessionFromIfParams(saleEstimate.params));
+    const seeded = sessionFromIfParams(saleEstimate.params);
+    setBaselineMatch(seeded);
+    setSessionMatch(seeded);
     setSessionSeeded(true);
   }, [matchCriteria, saleEstimate.params, sessionSeeded]);
 
@@ -918,6 +953,10 @@ export default function ListingIfPanel({
           criteria={matchCriteria}
           session={sessionMatch}
           onSessionChange={handleSessionMatchChange}
+          baseline={baselineMatch}
+          onReset={() => {
+            if (baselineMatch) setSessionMatch(baselineMatch);
+          }}
           stepFeedback={criteriaStepFeedback}
           defaultControlsOpen={criteriaInSidePanel}
         />
@@ -942,14 +981,7 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
-      {criteriaInSidePanel ? (
-        <div
-          id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
-          className="mb-2 flex justify-end max-lg:px-3 lg:px-0"
-        />
-      ) : null}
-
-      {/* Near-touching columns; title row above uses the same gap for What if / Criteria. */}
+      {/* Sell / rent sit directly under the What if + Criteria title row. */}
       <div className="grid gap-1 lg:grid-cols-2 items-start">
         <ScenarioPanel
           title="If you sell"
@@ -1027,7 +1059,7 @@ export default function ListingIfPanel({
     <div
       className={
         isPage
-          ? "w-full min-w-0 space-y-6"
+          ? "w-full min-w-0 space-y-2"
           : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5"
       }
     >

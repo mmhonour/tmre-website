@@ -28,7 +28,7 @@ export default function DealBoardStatusFilterPills({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-1"
+      className="flex flex-nowrap items-center justify-center gap-1"
       role="group"
       aria-label="Filter by listing status"
     >

@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import FilterResetButton from "@/components/FilterResetButton";
 import {
-  fmtAcres,
-  fmtSqft,
   vintageCriteriaList,
   type ComparablesCriteria,
 } from "@/lib/listing-comparables-shared";
@@ -16,6 +15,7 @@ import {
   expandVintageLabels,
   SESSION_BATH_TOLERANCE_MAX,
   SESSION_BED_TOLERANCE_MAX,
+  sessionMatchOverridesEqual,
   shrinkVintageLabels,
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
@@ -28,11 +28,15 @@ export type CriteriaStepFeedback = {
   text: string;
 };
 
-/** Acres value without the unit suffix, for ranges like "0.22–0.52 ac". */
+/** Acres value without the unit suffix, for ranges like "0.22–0.52". */
 function acresValue(acres: number): string {
   if (acres < 0.01) return "<0.01";
   if (acres < 10) return acres.toFixed(2);
   return acres.toFixed(1);
+}
+
+function formatSqftValue(sqft: number): string {
+  return sqft.toLocaleString("en-US");
 }
 
 /**
@@ -77,11 +81,13 @@ export type MatchCriteriaTolerances = {
 
 type CriteriaBound = {
   key: CriteriaStepKey;
-  /** Text left of the bracket (empty for the vintage token). */
-  label: string;
-  /** Compact bracket contents, e.g. "±1" or "Pre-1900, 1900–1940". */
+  /** Left column label: Beds, Baths, Vintage, SQFT, Acres. */
+  rowLabel: string;
+  /** Subject value shown after the label (`n` / `n.n`). */
+  value: string;
+  /** Compact bracket contents, e.g. "±1" or vintage list. */
   token: string;
-  /** Expanded bounds, e.g. "3–5 bed" or "< 1900–1940". */
+  /** Expanded bounds shown when the bracket is clicked. */
   expanded: string;
   canDecrement: boolean;
   canIncrement: boolean;
@@ -102,17 +108,19 @@ function criteriaBounds(
   const bounds: CriteriaBound[] = [
     {
       key: "bed",
-      label: `${criteria.beds} bed`,
+      rowLabel: "Beds",
+      value: String(criteria.beds),
       token: `±${bedTol}`,
-      expanded: `${Math.max(0, criteria.beds - bedTol)}–${criteria.beds + bedTol} bed`,
+      expanded: `${Math.max(0, criteria.beds - bedTol)}–${criteria.beds + bedTol}`,
       canDecrement: bedTol > 0,
       canIncrement: bedTol < SESSION_BED_TOLERANCE_MAX,
     },
     {
       key: "bath",
-      label: `${criteria.baths} bath`,
+      rowLabel: "Baths",
+      value: String(criteria.baths),
       token: `±${bathTol}`,
-      expanded: `${Math.max(0, criteria.baths - bathTol)}–${criteria.baths + bathTol} bath`,
+      expanded: `${Math.max(0, criteria.baths - bathTol)}–${criteria.baths + bathTol}`,
       canDecrement: bathTol > 0,
       canIncrement: bathTol < SESSION_BATH_TOLERANCE_MAX,
     },
@@ -121,7 +129,8 @@ function criteriaBounds(
   if (vintageLabels.length > 0) {
     bounds.push({
       key: "vintage",
-      label: "",
+      rowLabel: "Vintage",
+      value: criteria.vintageLabel,
       token: vintageLabels.join(", "),
       expanded: vintageExpandedSpan(vintageLabels),
       canDecrement: canShrinkVintage(vintageLabels, criteria.vintageLabel),
@@ -132,11 +141,12 @@ function criteriaBounds(
   if (criteria.sqft != null) {
     bounds.push({
       key: "sqft",
-      label: fmtSqft(criteria.sqft),
+      rowLabel: "SQFT",
+      value: formatSqftValue(criteria.sqft),
       token: `±${sqftPct}%`,
-      expanded: `${Math.round(criteria.sqft * (1 - sqftFrac)).toLocaleString("en-US")}–${Math.round(
-        criteria.sqft * (1 + sqftFrac),
-      ).toLocaleString("en-US")} sqft`,
+      expanded: `${formatSqftValue(Math.round(criteria.sqft * (1 - sqftFrac)))}–${formatSqftValue(
+        Math.round(criteria.sqft * (1 + sqftFrac)),
+      )}`,
       canDecrement: sqftPct > 0,
       canIncrement: sqftPct < 100,
     });
@@ -145,11 +155,12 @@ function criteriaBounds(
   if (criteria.lotAcres != null) {
     bounds.push({
       key: "lot",
-      label: fmtAcres(criteria.lotAcres),
+      rowLabel: "Acres",
+      value: acresValue(criteria.lotAcres),
       token: `±${lotPct}%`,
       expanded: `${acresValue(criteria.lotAcres * (1 - lotFrac))}–${acresValue(
         criteria.lotAcres * (1 + lotFrac),
-      )} ac`,
+      )}`,
       canDecrement: lotPct > 0,
       canIncrement: lotPct < 100,
     });
@@ -189,7 +200,6 @@ function RaisedStepButton({
         disabled ? disabledClass : enabledClass
       }`}
     >
-      {/* Optical center: mono +/− sit high; sans + slight nudge looks centered. */}
       <span className="relative top-px flex h-[1em] w-[1em] items-center justify-center leading-none">
         {label}
       </span>
@@ -201,20 +211,24 @@ function RaisedStepButton({
 const AUTO_REVEAL_MS = 10_000;
 
 /**
- * Horizontal "Matching …" criteria line used by Sales, Rentals, and What if.
- * Compact "[±1]" sits left of the descriptor; click the bracket to toggle the
- * actual bounds ("3–5 bed"). Pressing ± also reveals those bounds for 10s
- * (vintage stays as its bracket labels — already readable).
+ * Criteria panel rows for Sales, Rentals, What if, and UAG.
  *
- * When `session` + `onSessionChange` are provided (Sales/Rentals), "Criteria"
- * is a disclosure control: ▶ hides ± steppers by default; click to reveal
- * (triangle flips to ◀); click again to collapse.
+ *   Beds     n [±n]           (−)(+)
+ *   Baths    n [±n]           (−)(+)
+ *   Vintage  n [v1, v2, …]    (−)(+)
+ *   SQFT     n [±n%]          (−)(+)
+ *   Acres    n.n [±n%]        (−)(+)
+ *
+ * Click the bracket to toggle the encapsulated range. When manipulation is
+ * enabled, ± buttons sit right-aligned on each row.
  */
 export default function MatchingCriteriaSummary({
   criteria,
   tolerances,
   session,
   onSessionChange,
+  baseline = null,
+  onReset,
   stepFeedback = null,
   isModal = false,
   /** Side panel / drawer: open ± steppers by default. */
@@ -228,6 +242,9 @@ export default function MatchingCriteriaSummary({
     next: SessionMatchOverrides,
     source?: { key: CriteriaStepKey },
   ) => void;
+  /** Original seeded overrides — enables the Intelligence-style reset control. */
+  baseline?: SessionMatchOverrides | null;
+  onReset?: () => void;
   /** Short find/no-find note shown next to the ± that was last pressed. */
   stepFeedback?: CriteriaStepFeedback | null;
   isModal?: boolean;
@@ -264,7 +281,10 @@ export default function MatchingCriteriaSummary({
     }, AUTO_REVEAL_MS);
   };
 
-  const valueClass = "text-gold";
+  const valueClass = "text-gold tabular-nums";
+  const labelClass = isModal
+    ? "font-mono text-[10px] tracking-[0.12em] uppercase text-navy/70"
+    : "font-mono text-[10px] tracking-[0.12em] uppercase text-white/55";
   const linkClass = isModal
     ? "text-slate underline decoration-slate/40 underline-offset-2 hover:text-navy transition-colors cursor-pointer"
     : "text-white/60 underline decoration-white/40 underline-offset-2 hover:text-white transition-colors cursor-pointer";
@@ -283,6 +303,13 @@ export default function MatchingCriteriaSummary({
   };
 
   const editable = Boolean(session && onSessionChange);
+  const canReset = Boolean(
+    editable &&
+      onReset &&
+      session &&
+      baseline &&
+      !sessionMatchOverridesEqual(session, baseline),
+  );
   const bounds = criteriaBounds(criteria, effectiveSession);
 
   const bump = (key: CriteriaBound["key"], delta: 1 | -1) => {
@@ -317,46 +344,76 @@ export default function MatchingCriteriaSummary({
     : "font-mono text-[9px] tracking-[0.08em] normal-case text-white/55";
 
   return (
-    <span className="inline-flex flex-col items-start gap-y-1">
+    <div className="flex w-full min-w-0 flex-col items-stretch gap-y-1.5">
       {editable ? (
-        <button
-          type="button"
-          onClick={() => setControlsOpen((open) => !open)}
-          className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors"
-          aria-expanded={controlsOpen}
-          aria-label={
-            controlsOpen
-              ? "Hide criteria adjustment controls"
-              : "Show criteria adjustment controls"
-          }
-        >
-          <span
-            className={
-              isModal
-                ? "font-bold text-navy"
-                : "font-bold text-white"
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setControlsOpen((open) => !open)}
+            className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors"
+            aria-expanded={controlsOpen}
+            aria-label={
+              controlsOpen
+                ? "Hide criteria adjustment controls"
+                : "Show criteria adjustment controls"
             }
           >
-            Criteria
-          </span>
-          <span className={triangleBtnClass} aria-hidden>
-            {controlsOpen ? "◀" : "▶"}
-          </span>
-        </button>
+            <span
+              className={isModal ? "font-bold text-navy" : "font-bold text-white"}
+            >
+              Criteria
+            </span>
+            <span className={triangleBtnClass} aria-hidden>
+              {controlsOpen ? "◀" : "▶"}
+            </span>
+          </button>
+          {onReset ? (
+            <FilterResetButton
+              onClick={onReset}
+              disabled={!canReset}
+              label="Reset criteria"
+              tone={isModal ? "onLight" : "onDark"}
+            />
+          ) : null}
+        </div>
       ) : null}
-      <span className={valueClass}>{criteria.zip}</span>
+
+      <div className={`font-mono text-[10px] tracking-[0.12em] ${valueClass}`}>
+        {criteria.zip}
+      </div>
+
       {bounds.map((bound) => {
         const isOpen =
           Boolean(expanded[bound.key]) || autoRevealKey === bound.key;
         const showNote =
           stepFeedback != null && stepFeedback.key === bound.key;
         return (
-          <span
+          <div
             key={bound.key}
-            className="inline-flex flex-wrap items-center gap-1"
+            className="flex w-full min-w-0 items-center gap-x-2 gap-y-0.5"
           >
+            <span className={`w-[4.5rem] shrink-0 ${labelClass}`}>
+              {bound.rowLabel}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span className={valueClass}>{bound.value}</span>
+              <button
+                type="button"
+                onClick={() => toggle(bound.key)}
+                className={linkClass}
+                title={isOpen ? bound.token : bound.expanded}
+                aria-expanded={isOpen}
+              >
+                {isOpen ? bound.expanded : `[${bound.token}]`}
+              </button>
+              {showNote ? (
+                <span className={noteClass} role="status" aria-live="polite">
+                  {stepFeedback.text}
+                </span>
+              ) : null}
+            </div>
             {editable && controlsOpen ? (
-              <span className="inline-flex items-center gap-0.5 mr-0.5">
+              <span className="ml-auto inline-flex shrink-0 items-center gap-0.5">
                 <RaisedStepButton
                   label="−"
                   disabled={!bound.canDecrement}
@@ -371,26 +428,9 @@ export default function MatchingCriteriaSummary({
                 />
               </span>
             ) : null}
-            <button
-              type="button"
-              onClick={() => toggle(bound.key)}
-              className={linkClass}
-              title={isOpen ? bound.token : bound.expanded}
-              aria-expanded={isOpen}
-            >
-              {isOpen ? bound.expanded : `[${bound.token}]`}
-            </button>
-            {bound.label && !isOpen ? (
-              <span className={valueClass}>{bound.label}</span>
-            ) : null}
-            {showNote ? (
-              <span className={noteClass} role="status" aria-live="polite">
-                {stepFeedback.text}
-              </span>
-            ) : null}
-          </span>
+          </div>
         );
       })}
-    </span>
+    </div>
   );
 }

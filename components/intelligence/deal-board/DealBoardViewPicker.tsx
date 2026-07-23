@@ -68,37 +68,32 @@ export default function DealBoardViewPicker({
   onChange: (view: DealBoardView) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5">
-      <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
-        View
-      </span>
-      <div
-        className="inline-flex rounded-md border border-charcoal/[0.08] bg-white p-0.5"
-        role="group"
-        aria-label="Board view"
-      >
-        {DEAL_BOARD_VIEW_VALUES.map((mode) => {
-          const active = view === mode;
-          const label = DEAL_BOARD_VIEW_LABELS[mode];
-          return (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => onChange(mode)}
-              className={`inline-flex h-6 w-6 items-center justify-center rounded transition-colors ${
-                active
-                  ? "bg-navy text-white ring-1 ring-gold/40"
-                  : "text-slate hover:bg-charcoal/[0.04] hover:text-navy"
-              }`}
-              aria-pressed={active}
-              aria-label={label}
-              title={label}
-            >
-              <DealBoardViewIcon mode={mode} />
-            </button>
-          );
-        })}
-      </div>
+    <div
+      className="inline-flex rounded-md border border-charcoal/[0.08] bg-white p-0.5"
+      role="group"
+      aria-label="Board view"
+    >
+      {DEAL_BOARD_VIEW_VALUES.map((mode) => {
+        const active = view === mode;
+        const label = DEAL_BOARD_VIEW_LABELS[mode];
+        return (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onChange(mode)}
+            className={`inline-flex h-6 w-6 items-center justify-center rounded transition-colors ${
+              active
+                ? "bg-navy text-white ring-1 ring-gold/40"
+                : "text-slate hover:bg-charcoal/[0.04] hover:text-navy"
+            }`}
+            aria-pressed={active}
+            aria-label={label}
+            title={label}
+          >
+            <DealBoardViewIcon mode={mode} />
+          </button>
+        );
+      })}
     </div>
   );
 }

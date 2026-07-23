@@ -185,15 +185,17 @@ export default function DealBoardList({
   const hasResults = resultCount > 0;
 
   const resultsToolbar = (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
-      {resultsSummary}
-      <div className="flex flex-wrap items-center justify-end gap-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5 border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
+      <div className="min-w-0 justify-self-start">{resultsSummary}</div>
+      <div className="justify-self-center">
         {onBoardStatusFilterChange ? (
           <DealBoardStatusFilterPills
             value={boardStatusFilter}
             onChange={onBoardStatusFilterChange}
           />
         ) : null}
+      </div>
+      <div className="justify-self-end">
         <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
       </div>
     </div>

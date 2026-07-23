@@ -31,6 +31,8 @@ import ListingRemarksSidePanel, {
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import { LISTING_ANALYSIS_ID } from "@/components/listing/ListingDetailsSchoolsPanel";
 import { formatMlsStatus } from "@/lib/listing-history";
+import { listingShareHref } from "@/lib/listing-url";
+import { SPOTLIGHT_SHARE_URL } from "@/lib/spotlight-url";
 import {
   cloneElement,
   isValidElement,
@@ -381,6 +383,10 @@ export default function ListingHeroPanels({
     insight: null,
     className: "mb-0" as const,
     compact: true as const,
+    // Short share URL — never includes address/city query params.
+    shareHref: isSpotlight
+      ? SPOTLIGHT_SHARE_URL
+      : listingShareHref(header.mlsId),
   };
 
   const heroOnly = (

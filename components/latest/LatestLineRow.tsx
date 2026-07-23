@@ -46,6 +46,11 @@ type LatestLineRowProps = {
   hideTown?: boolean;
   /** Show zip map hover whenever a zip is present (e.g. zip-grouped feed). */
   showZipMap?: boolean;
+  /**
+   * Fixed address column width in `ch` (from max address length in the feed)
+   * so price columns left-align across rows.
+   */
+  addressColumnCh?: number;
 };
 
 function LatestLineRow({
@@ -54,6 +59,7 @@ function LatestLineRow({
   isNew = false,
   hideTown = false,
   showZipMap = false,
+  addressColumnCh = 24,
 }: LatestLineRowProps) {
   const town = hideTown ? null : displayTown(l);
   const listingTownName = l.town?.trim() || l.city?.trim() || null;
@@ -75,6 +81,11 @@ function LatestLineRow({
   /** Invisible borders keep columns aligned like a table without showing grid lines. */
   const metaColClass =
     "box-border border border-transparent px-1.5 min-w-0 text-left";
+  const addressColStyle = {
+    width: `min(${addressColumnCh}ch, 46vw)`,
+    minWidth: `min(${addressColumnCh}ch, 46vw)`,
+    maxWidth: `min(${addressColumnCh}ch, 46vw)`,
+  } as const;
 
   return (
     <div
@@ -121,13 +132,14 @@ function LatestLineRow({
 
       <div className="flex min-w-0 flex-1 items-start sm:items-center">
         <div
-          className={`${metaColClass} flex min-w-0 flex-[1.35] basis-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5`}
+          className={`${metaColClass} flex shrink-0 items-baseline gap-x-1.5 overflow-hidden`}
+          style={addressColStyle}
         >
           <LatestAddressMetaHover
             listing={l}
             href={detailHref}
             isLive={isLive}
-            className="min-w-0 font-medium text-navy hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold whitespace-normal break-words [overflow-wrap:anywhere] sm:truncate sm:whitespace-nowrap sm:break-normal"
+            className="min-w-0 flex-1 truncate font-medium text-navy hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold whitespace-nowrap"
           >
             {l.address}
           </LatestAddressMetaHover>
@@ -140,7 +152,7 @@ function LatestLineRow({
           ) : null}
         </div>
         <div
-          className={`${metaColClass} w-[6.75rem] shrink-0 font-mono text-[12px] sm:text-[13px] tabular-nums text-navy`}
+          className={`${metaColClass} w-[7.5rem] shrink-0 font-mono text-[12px] sm:text-[13px] tabular-nums text-navy`}
         >
           {priceLabel}
         </div>

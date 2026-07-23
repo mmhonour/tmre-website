@@ -4,6 +4,11 @@ import {
   fmtDate,
 } from "@/lib/listing-history";
 import { isRentalListing } from "@/lib/listing-kind";
+import {
+  formatFurnishedDetailLabel,
+  listingFurnished,
+  type ListingFurnished,
+} from "@/lib/listing-furnished";
 import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
 import {
   formatPropertyTaxLabel,
@@ -35,6 +40,7 @@ type ListingForDetailsPanel = {
   photoCount?: number | null;
   propertyTax?: number | null;
   propertyTaxYear?: string | null;
+  furnished?: ListingFurnished | null;
   schools?: ListingOverviewSchools;
   raw?: Record<string, string>;
 };
@@ -157,6 +163,12 @@ export function buildListingDetailsPanelProps(
       : listingPhotosHref(opts?.listingId ?? listing.mlsId, street, town);
   const lotAcres =
     listing.lotAcres ?? parseLotAcresFromRaw(listing.raw) ?? null;
+  const furnishedLabel = formatFurnishedDetailLabel(
+    listingFurnished({
+      furnished: listing.furnished,
+      raw: listing.raw,
+    }),
+  );
 
   return {
     mlsId: listing.mlsId,
@@ -180,6 +192,7 @@ export function buildListingDetailsPanelProps(
     cityMedianPpsf: opts?.cityMedianPpsf ?? null,
     listingPricePerSqft: opts?.listingPricePerSqft ?? null,
     medianPpsfBand: opts?.medianPpsfBand ?? null,
+    furnishedLabel,
     schools: listing.schools ?? {
       elementary: null,
       middle: null,

@@ -513,6 +513,22 @@ export default function LatestClient({
     topTownBackfill,
   ]);
 
+  /** Fixed address column width from longest address (+ zip) in the visible feed. */
+  const addressColumnCh = useMemo(() => {
+    const rows = isGrouped
+      ? feedGroups.flatMap((g) => g.rows)
+      : visibleListings;
+    let max = 16;
+    for (const row of rows) {
+      const addr = row.address?.trim() ?? "";
+      const zip = row.zip?.trim() ?? "";
+      const n = addr.length + (zip ? zip.length + 1 : 0);
+      if (n > max) max = n;
+    }
+    // Cap so one runaway address does not crush price/specs on narrow screens.
+    return Math.min(Math.max(max + 1, 16), 48);
+  }, [isGrouped, feedGroups, visibleListings]);
+
   // Top town groups that don't yet have enough listings in the global feed to hit the
   // preview count — fetch the rest of the town's recent updates to backfill.
   const topTownsNeedingBackfill = useMemo(() => {
@@ -748,6 +764,7 @@ export default function LatestClient({
                               isNew={newKeys.has(l.key)}
                               hideTown={groupByTown}
                               showZipMap={groupByZip}
+                              addressColumnCh={addressColumnCh}
                             />
                           </div>
                         );
@@ -955,6 +972,7 @@ export default function LatestClient({
                                 listing={l}
                                 isLive
                                 isNew={newKeys.has(l.key)}
+                                addressColumnCh={addressColumnCh}
                               />
                             </div>
                           );

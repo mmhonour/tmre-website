@@ -226,6 +226,7 @@ export function DealBoardPhotoLedGridCard({
   const rankColor = boardRankColor(scoreRank, rankTotal);
   const { ppsf } = dealBoardPriceMeta(l);
   const town = showTown ? listingTown(l) : null;
+  const sqftLabel = dealBoardSqftLabel(l.sqft);
 
   return (
     <div
@@ -304,10 +305,15 @@ export function DealBoardPhotoLedGridCard({
           {bedBathLabel(l.beds, l.baths)}
           {" · "}
           <span className="text-navy">${l.price.toLocaleString()}</span>
+          {sqftLabel ? (
+            <>
+              {" · "}
+              {sqftLabel}
+            </>
+          ) : null}
         </p>
         <DealBoardAdaptiveMetaLine
           parts={[
-            dealBoardSqftLabel(l.sqft),
             ppsf,
             dealBoardAcresLabel(l.lotAcres),
             l.dom != null ? `${l.dom}d DOM` : null,
