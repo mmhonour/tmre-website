@@ -158,6 +158,8 @@ export function useDealOfTheDayCarousel(options?: {
 
     if (useBundle) {
       void (async () => {
+        const fromBundle: Partial<Record<TmreTown, DealCarouselPayload | null>> =
+          {};
         try {
           const qs = new URLSearchParams({
             bundle: "1",
@@ -169,23 +171,29 @@ export function useDealOfTheDayCarousel(options?: {
             const body = (await r.json()) as {
               deals?: Partial<Record<TmreTown, DealCarouselPayload>>;
             };
-            const next: Partial<Record<TmreTown, DealCarouselPayload | null>> = {};
+            let any = false;
             for (const town of townsToFetch) {
               const deal = body.deals?.[town];
-              next[town] = deal && hasListing(deal) ? deal : null;
-              if (next[town]) prefetchListingImages(next[town]!);
+              fromBundle[town] = deal && hasListing(deal) ? deal : null;
+              if (fromBundle[town]) {
+                any = true;
+                prefetchListingImages(fromBundle[town]!);
+              }
             }
-            if (!cancelled) {
-              setDealsByTown(next);
+            if (any && !cancelled) {
+              setDealsByTown(fromBundle);
               setLoading(false);
             }
-            return;
           }
         } catch {
           // fall through to per-town fetch
         }
         if (cancelled) return;
-        for (const town of townsToFetch) {
+        const missing = townsToFetch.filter(
+          (town) => !hasListing(fromBundle[town]),
+        );
+        if (missing.length === 0) return;
+        for (const town of missing) {
           void (async () => {
             let deal: DealCarouselPayload | null = null;
             try {

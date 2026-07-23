@@ -8,6 +8,7 @@ import {
   readDealOfTheDayBundle,
   readDealOfTheDayCache,
   writeDealOfTheDayCache,
+  type DealOfTheDayBundleResponse,
   type DealOfTheDayKind,
   type DealOfTheDayPropertyClass,
   type DealOfTheDayScope,
@@ -94,6 +95,25 @@ export async function GET(req: NextRequest) {
         }
         return NextResponse.json(bundled, { headers: cacheHitHeaders() })
       }
+      // Home / carousel expect `{ deals }` — never fall through to a single-payload
+      // live pick (wrong shape + multi-town recompute that leaves the hero blank).
+      return NextResponse.json(
+        {
+          generatedAt: new Date().toISOString(),
+          kind,
+          propertyClass,
+          deals: {},
+          source: 'db',
+          dealCache: true,
+        } satisfies DealOfTheDayBundleResponse,
+        {
+          headers: {
+            ...listingCacheHeaders('db'),
+            'X-Deal-Cache': 'miss',
+            'Cache-Control': 'no-store',
+          },
+        },
+      )
     }
 
     if (town) {

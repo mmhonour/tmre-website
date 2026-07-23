@@ -601,8 +601,14 @@ body {
   display: none;
 }
 
-/* Listing / Spotlight slide-up tab panel — scroll without a visible bar */
+/* Listing / Spotlight slide-up tab panel — scroll without a visible bar.
+   overflow-y: scroll (not auto) + no transform on this node — Android Chrome
+   often refuses to scroll overflow:auto parents that also use transform. */
 .listing-tab-panel {
+  overflow-y: scroll;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }

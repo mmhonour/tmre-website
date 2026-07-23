@@ -1,18 +1,16 @@
 "use client";
 
-import { ListingRemarksContent } from "@/components/listing/ListingOverviewPanels";
 import ListingPhotoScrollStack, {
   type ListingPhotoStackMapSlot,
 } from "@/components/listing/ListingPhotoScrollStack";
 import { useListingPhotosMode } from "@/components/listing/ListingPhotosModeContext";
 
 /**
- * Overview tab body: remarks on small screens + full-width hero stack.
- * Desktop remarks live in ListingHeroPanels (above Location).
+ * Overview tab body: full-width hero stack.
+ * Remarks: desktop side panel + mobile teaser/drawer in ListingHeroPanels.
  * Clicking the hero switches to the Photos tab (collapses the slide-up panel).
  */
 export function ListingOverviewPhotoDeck({
-  remarks,
   mlsId,
   photoCount,
   heroAlt,
@@ -21,7 +19,8 @@ export function ListingOverviewPhotoDeck({
   showHero = true,
   mapSlot = null,
 }: {
-  remarks: string | null;
+  /** Kept for call-site compatibility; remarks render via ListingHeroPanels. */
+  remarks?: string | null;
   mlsId: string;
   photoCount: number | null;
   /** @deprecated Thumbnails removed — kept for call-site compatibility. */
@@ -34,7 +33,7 @@ export function ListingOverviewPhotoDeck({
   obfuscatePhotoIndex?: (photoIndex: number) => boolean;
   activePhotoIndex?: number;
   onPhotoSelect?: (photoIndex: number) => void;
-  /** When false, only remarks (hero lives in PhotoMode behind the panel). */
+  /** When false, hero lives in PhotoMode behind the panel. */
   showHero?: boolean;
   /** Frameless map in the 2nd stack slot (Overview). */
   mapSlot?: ListingPhotoStackMapSlot | null;
@@ -43,24 +42,18 @@ export function ListingOverviewPhotoDeck({
   const count = photoCount ?? 0;
   const showStack = showHero && !hideHero && (count > 0 || Boolean(mapSlot));
 
+  if (!showStack) return null;
+
   return (
     <div className="min-w-0">
-      {/* Mobile / narrow: remarks stay in the Overview slide panel. */}
-      <div className="px-4 lg:hidden">
-        <ListingRemarksContent remarks={remarks} />
-      </div>
-      {showStack ? (
-        <div className="mt-4 max-lg:mt-4 lg:mt-0">
-          <ListingPhotoScrollStack
-            mlsId={mlsId}
-            photoCount={count}
-            altBase={heroAlt}
-            obfuscatePhotoIndex={obfuscatePhotoIndex}
-            mapSlot={mapSlot}
-            onPhotoActivate={goToPhotos ? () => goToPhotos() : undefined}
-          />
-        </div>
-      ) : null}
+      <ListingPhotoScrollStack
+        mlsId={mlsId}
+        photoCount={count}
+        altBase={heroAlt}
+        obfuscatePhotoIndex={obfuscatePhotoIndex}
+        mapSlot={mapSlot}
+        onPhotoActivate={goToPhotos ? () => goToPhotos() : undefined}
+      />
     </div>
   );
 }

@@ -107,94 +107,175 @@ export default function HomeMethodOverview() {
     null,
   );
 
+  // Scores first — photo + interesting-stat wait until we have a sample (or the
+  // score fetch finished empty) so the hero number is never starved by other APIs.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/deal-of-the-week", { cache: "no-store" })
-      .then(async (r) => {
-        if (!r.ok) return null;
-        return (await r.json()) as { photoUrl?: string | null };
-      })
-      .then((d) => {
-        if (cancelled || !d?.photoUrl) return;
-        setPhotoUrl(d.photoUrl);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const seenTowns = new Set<TmreTown>();
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/deal-of-the-day?bundle=1&kind=sale&property=homes", { cache: "no-store" })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return (await r.json()) as {
-          deals?: Partial<
-            Record<
-              TmreTown,
-              {
-                score?: { composite?: number };
-                listing?: {
-                  mlsId?: string;
-                  listingKey?: string | null;
-                };
-              }
-            >
-          >;
-        };
-      })
-      .then((payload) => {
-        if (cancelled) return;
-        const next: ScoreSample[] = [];
-        for (const town of TMRE_TOWNS) {
-          const deal = payload.deals?.[town];
-          const score = deal?.score?.composite;
-          const mlsId = deal?.listing?.mlsId?.trim();
-          if (typeof score !== "number" || !mlsId) continue;
-          next.push({
-            town,
-            score,
-            mlsId,
-            listingKey: deal?.listing?.listingKey ?? null,
-          });
-        }
-        if (next.length > 0) setSamples(next);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/interesting-stat", { cache: "no-store" })
-      .then(async (r) => {
-        if (!r.ok) return null;
-        return (await r.json()) as InterestingStat;
-      })
-      .then((d) => {
-        if (cancelled || !d?.value || !d?.detail) return;
-        const next: InterestingStat = {
-          eyebrow: d.eyebrow || "Interesting stat",
-          value: d.value,
-          detail: d.detail,
-          href: d.href || "/stats",
-          kind: d.kind,
-          town: d.town ?? null,
-        };
-        setInterestingStat(next);
-        // Warm the Stats chart APIs so the graph is ready on click.
-        if (next.kind) {
-          for (const url of interestingStatWarmUrls(next.kind, next.town ?? null)) {
-            prefetchTabJson(url);
+    const sampleFromDeal = (
+      town: TmreTown,
+      deal:
+        | {
+            score?: { composite?: number };
+            listing?: { mlsId?: string; listingKey?: string | null };
           }
-        } else if (next.href.startsWith("/stats")) {
-          prefetchTabJson("/api/stats/page?kind=sale");
+        | null
+        | undefined,
+    ): ScoreSample | null => {
+      const score = deal?.score?.composite;
+      const mlsId = deal?.listing?.mlsId?.trim();
+      if (typeof score !== "number" || !mlsId) return null;
+      return {
+        town,
+        score,
+        mlsId,
+        listingKey: deal?.listing?.listingKey ?? null,
+      };
+    };
+
+    const mergeSample = (sample: ScoreSample) => {
+      if (cancelled) return;
+      seenTowns.add(sample.town);
+      setSamples((prev) => {
+        if (prev.some((p) => p.town === sample.town)) {
+          return prev.map((p) => (p.town === sample.town ? sample : p));
         }
-      })
-      .catch(() => {});
+        return [...prev, sample];
+      });
+    };
+
+    const fetchTownSample = async (town: TmreTown) => {
+      try {
+        const qs = new URLSearchParams({
+          city: town,
+          kind: "sale",
+          property: "homes",
+        });
+        const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`, {
+          cache: "no-store",
+        });
+        if (!r.ok) return;
+        const deal = (await r.json()) as {
+          score?: { composite?: number };
+          listing?: { mlsId?: string; listingKey?: string | null };
+        };
+        const sample = sampleFromDeal(town, deal);
+        if (sample) mergeSample(sample);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const loadPhoto = () => {
+      fetch("/api/deal-of-the-week", { cache: "no-store" })
+        .then(async (r) => {
+          if (!r.ok) return null;
+          return (await r.json()) as { photoUrl?: string | null };
+        })
+        .then((d) => {
+          if (cancelled || !d?.photoUrl) return;
+          setPhotoUrl(d.photoUrl);
+        })
+        .catch(() => {});
+    };
+
+    const loadInterestingStat = () => {
+      fetch("/api/interesting-stat", { cache: "no-store" })
+        .then(async (r) => {
+          if (!r.ok) return null;
+          return (await r.json()) as InterestingStat;
+        })
+        .then((d) => {
+          if (cancelled || !d?.value || !d?.detail) return;
+          const next: InterestingStat = {
+            eyebrow: d.eyebrow || "Interesting stat",
+            value: d.value,
+            detail: d.detail,
+            href: d.href || "/stats",
+            kind: d.kind,
+            town: d.town ?? null,
+          };
+          setInterestingStat(next);
+          if (next.kind) {
+            for (const url of interestingStatWarmUrls(
+              next.kind,
+              next.town ?? null,
+            )) {
+              prefetchTabJson(url);
+            }
+          } else if (next.href.startsWith("/stats")) {
+            prefetchTabJson("/api/stats/page?kind=sale");
+          }
+        })
+        .catch(() => {});
+    };
+
+    void (async () => {
+      let gotAny = false;
+      try {
+        const r = await fetch(
+          "/api/deal-of-the-day?bundle=1&kind=sale&property=homes",
+          { cache: "no-store" },
+        );
+        if (r.ok) {
+          const payload = (await r.json()) as {
+            deals?: Partial<
+              Record<
+                TmreTown,
+                {
+                  score?: { composite?: number };
+                  listing?: {
+                    mlsId?: string;
+                    listingKey?: string | null;
+                  };
+                }
+              >
+            >;
+          };
+          const next: ScoreSample[] = [];
+          for (const town of TMRE_TOWNS) {
+            const sample = sampleFromDeal(town, payload.deals?.[town]);
+            if (sample) {
+              next.push(sample);
+              seenTowns.add(town);
+            }
+          }
+          if (next.length > 0) {
+            gotAny = true;
+            if (!cancelled) setSamples(next);
+            loadPhoto();
+            loadInterestingStat();
+          }
+        }
+      } catch {
+        /* fall through */
+      }
+
+      if (cancelled) return;
+
+      if (!gotAny) {
+        let secondaryStarted = false;
+        await Promise.all(
+          TMRE_TOWNS.map(async (town) => {
+            await fetchTownSample(town);
+            if (!cancelled && !secondaryStarted && seenTowns.size > 0) {
+              secondaryStarted = true;
+              loadPhoto();
+              loadInterestingStat();
+            }
+          }),
+        );
+        if (!cancelled && !secondaryStarted) {
+          loadPhoto();
+          loadInterestingStat();
+        }
+      } else {
+        const missing = TMRE_TOWNS.filter((town) => !seenTowns.has(town));
+        void Promise.all(missing.map((town) => fetchTownSample(town)));
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -208,7 +289,16 @@ export default function HomeMethodOverview() {
     return () => window.clearInterval(id);
   }, [samples.length]);
 
-  const live = samples[sampleIndex] ?? null;
+  // Keep index in range when the sample list grows/shrinks.
+  useEffect(() => {
+    if (samples.length === 0) {
+      setSampleIndex(0);
+      return;
+    }
+    setSampleIndex((i) => (i >= samples.length ? 0 : i));
+  }, [samples.length]);
+
+  const live = samples[sampleIndex] ?? samples[0] ?? null;
 
   return (
     <section className="relative overflow-hidden text-white pt-20 pb-12 lg:pt-24 lg:pb-14">

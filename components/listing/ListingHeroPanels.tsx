@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
-import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import { ListingInsightCopy, insightTextHasMedianPpsf } from "@/components/listing/ListingInsightCopy";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ListingSideDrawer from "@/components/listing/ListingSideDrawer";
 import ListingSubnav, {
@@ -24,6 +24,7 @@ import { ListingCriteriaVisibilityProvider } from "@/components/listing/ListingC
 import { ListingPhotosModeContext } from "@/components/listing/ListingPhotosModeContext";
 import {
   firstListingRemarksLine,
+  ListingRemarksContent,
 } from "@/components/listing/ListingOverviewPanels";
 import ListingRemarksSidePanel, {
   useListingRemarksExpand,
@@ -39,7 +40,7 @@ import {
   type ReactNode,
 } from "react";
 
-type MobileDrawerId = "details" | null;
+type MobileDrawerId = "remarks" | "insight" | "analysis" | "details" | null;
 
 /** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
@@ -153,6 +154,18 @@ export default function ListingHeroPanels({
     collapse: collapseRemarks,
   } = useListingRemarksExpand();
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
+  const openAnalysisPopout = useCallback(() => {
+    setMapVisible(false);
+    setMobileDrawer("analysis");
+    const loc = new URL(window.location.href);
+    if (loc.hash.replace(/^#/, "") !== LISTING_ANALYSIS_ID) {
+      window.history.replaceState(
+        null,
+        "",
+        `${loc.pathname}${loc.search}#${LISTING_ANALYSIS_ID}`,
+      );
+    }
+  }, []);
   const toggleMap = useCallback(() => {
     setMapVisible((prev) => {
       const next = !prev;
@@ -185,6 +198,26 @@ export default function ListingHeroPanels({
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+
+  // After Analysis pop-out opens, scroll the drawer copy into view (not the
+  // desktop-hidden duplicate — right column is unmounted on mobile).
+  useEffect(() => {
+    if (mobileDrawer !== "analysis" || isDesktopLayout) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      const el = document.querySelector(
+        `#listing-details-drawer #${LISTING_ANALYSIS_ID}`,
+      );
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    }, 80);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [mobileDrawer, isDesktopLayout]);
 
   const openPanel = useCallback((tab: ListingScrollSectionTab) => {
     setPanelTab(tab);
@@ -260,9 +293,11 @@ export default function ListingHeroPanels({
     };
   }, [subnav.active, belowTabs, sections, propertyTabs, isOverview, header.insight, panelTab]);
 
-  const statusLabel = formatMlsStatus(header.status);
   const overviewInsight =
     isOverview && header.insight?.trim() ? header.insight.trim() : null;
+  const insightHasMedianPpsf = insightTextHasMedianPpsf(overviewInsight);
+
+  const statusLabel = formatMlsStatus(header.status);
 
   const statusBadge =
     statusLabel && !hideStatusBadge ? (
@@ -271,23 +306,28 @@ export default function ListingHeroPanels({
       </span>
     ) : null;
 
-  const insightPanel = overviewInsight ? (
+  const insightBody = overviewInsight ? (
+    <ListingInsightCopy
+      text={overviewInsight}
+      className="text-left text-[10px] sm:text-[11px] leading-snug text-white/70 break-words"
+      medianHref={`#${LISTING_ANALYSIS_ID}`}
+    />
+  ) : null;
+
+  /** Desktop only — mobile uses the Insight bottom pop-out tab. */
+  const insightPanel = insightBody ? (
     <aside
-      className="ml-auto flex w-fit max-w-full min-w-0 flex-col overflow-visible"
+      className="ml-auto hidden w-fit max-w-full min-w-0 flex-col overflow-visible lg:flex"
       aria-label="Listing insight"
     >
       <p className="mb-1 text-center font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
         Insight
       </p>
-      <ListingInsightCopy
-        text={overviewInsight}
-        className="text-left text-[10px] sm:text-[11px] leading-snug text-white/70 break-words"
-        medianHref={`#${LISTING_ANALYSIS_ID}`}
-      />
+      {insightBody}
     </aside>
   ) : null;
 
-  /** Status + insight docked to the right of Property Details; label centered over copy. */
+  /** Status (+ desktop insight) docked to the right of Property Details. */
   const statusInsightColumn =
     statusBadge || insightPanel ? (
       <div className="ml-auto flex w-full shrink-0 flex-col items-end gap-2 sm:w-[min(20rem,46%)]">
@@ -339,6 +379,22 @@ export default function ListingHeroPanels({
 
   const panelOpen = useSlidePanel && panelTab != null;
 
+  // Android: lock document scroll while the slide-up tab panel is open so
+  // touch pans hit the panel scrollport instead of the page behind it.
+  useEffect(() => {
+    if (!panelOpen || isDesktopLayout) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, [panelOpen, isDesktopLayout]);
+
   const panelSections =
     useSlidePanel && isValidElement(sections)
       ? cloneElement(
@@ -354,19 +410,23 @@ export default function ListingHeroPanels({
         )
       : sections;
 
+  // Mobile: fixed scrollport under sticky chrome (Android Chrome often won't
+  // scroll an absolute panel that also has transform). Desktop: absolute over hero.
   const slidePanel = useSlidePanel ? (
     <div
-      ref={panelScrollRef}
-      id={LISTING_SECTION_IDS.overview}
-      className={`listing-tab-panel absolute inset-x-0 top-0 z-20 flex flex-col border-0 bg-[#1B2A4A] pt-2 pb-4 shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.55)] transition-transform duration-300 ease-out ${
+      className={
         panelOpen
-          ? "max-h-[min(70vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))] min-h-full translate-y-0 overflow-y-auto overscroll-contain"
-          : "pointer-events-none invisible h-0 min-h-0 max-h-0 translate-y-full overflow-hidden p-0 shadow-none"
-      }`}
+          ? "z-20 flex flex-col border-0 bg-[#1B2A4A] shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.55)] max-lg:fixed max-lg:inset-x-0 max-lg:top-[var(--listing-sticky-offset,6rem)] max-lg:bottom-[calc(3.75rem+env(safe-area-inset-bottom,0px))] lg:absolute lg:inset-x-0 lg:top-0 lg:h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
+          : "pointer-events-none invisible absolute inset-x-0 top-0 z-20 h-0 max-h-0 translate-y-full overflow-hidden"
+      }
       aria-hidden={!panelOpen}
     >
       {panelOpen ? (
-        <>
+        <div
+          ref={panelScrollRef}
+          id={LISTING_SECTION_IDS.overview}
+          className="listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-2 pb-4 lg:pb-4"
+        >
           <div
             className={`min-w-0 ${panelTab === "overview" ? "block" : "hidden"}`}
           >
@@ -379,7 +439,7 @@ export default function ListingHeroPanels({
           >
             {panelSections}
           </div>
-        </>
+        </div>
       ) : null}
     </div>
   ) : null;
@@ -387,9 +447,7 @@ export default function ListingHeroPanels({
   const heroStage = useSlidePanel ? (
     <div
       ref={stageRef}
-      className={`relative mt-0 overflow-x-hidden ${
-        panelOpen ? "overflow-y-hidden" : "overflow-visible"
-      }`}
+      className="relative mt-0 overflow-x-hidden overflow-y-visible"
     >
       {heroOnly}
       {slidePanel}
@@ -438,10 +496,27 @@ export default function ListingHeroPanels({
       {showRemarksTeaser ? (
         <button
           type="button"
-          onClick={expandRemarks}
-          className="mt-2 mb-2 w-full min-w-0 text-left text-[11px] leading-snug text-white/70 transition-colors hover:text-gold focus:outline-none focus-visible:text-gold"
-          aria-expanded={remarksExpanded}
-          title="Expand listing remarks"
+          onClick={() => {
+            if (isDesktopLayout) {
+              expandRemarks();
+              return;
+            }
+            setMapVisible(false);
+            setMobileDrawer((prev) =>
+              prev === "remarks" ? null : "remarks",
+            );
+          }}
+          className="mt-2 mb-2 w-full min-w-0 text-left text-[11px] leading-snug text-white/70 underline decoration-white/45 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 focus:outline-none focus-visible:text-gold"
+          aria-expanded={
+            isDesktopLayout
+              ? remarksExpanded
+              : mobileDrawer === "remarks"
+          }
+          title={
+            isDesktopLayout
+              ? "Expand listing remarks"
+              : "Open listing remarks"
+          }
         >
           <span className="line-clamp-1">
             {remarksTeaserLine}
@@ -519,7 +594,10 @@ export default function ListingHeroPanels({
       />
       {remarksPanel}
       {mapVisible ? mapBlock("aspect-square", true) : null}
-      {sidebar ? <div className="shrink-0">{sidebar}</div> : null}
+      {/* Mount Details only on desktop so Analysis id isn't duplicated vs the mobile drawer. */}
+      {isDesktopLayout && sidebar ? (
+        <div className="shrink-0">{sidebar}</div>
+      ) : null}
     </div>
   );
 
@@ -538,16 +616,26 @@ export default function ListingHeroPanels({
     ) : null;
 
   const edgeTabClass = (active: boolean) =>
-    `flex items-center justify-center rounded-l-lg border border-r-0 px-1.5 py-3 shadow-[-4px_0_16px_-8px_rgba(0,0,0,0.55)] transition-colors ${
+    `inline-flex shrink-0 items-center justify-center rounded-full border px-3 py-2 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
       active
         ? "border-gold/50 bg-gold text-navy"
         : "border-white/15 bg-[#1B2A4A]/95 text-gold backdrop-blur-md hover:border-gold/40 hover:text-gold-light"
     }`;
 
+  const openMobileDrawer = (id: Exclude<MobileDrawerId, null>) => {
+    setMapVisible(false);
+    setMobileDrawer((prev) => (prev === id ? null : id));
+  };
+
+  const openMobileMap = () => {
+    setMobileDrawer(null);
+    setMapVisible((prev) => !prev);
+  };
+
   return (
     <ListingCriteriaVisibilityProvider>
       <div
-        className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
+        className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 max-lg:pb-20 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
           compactHero ? "" : "mb-6"
         }`}
       >
@@ -576,30 +664,61 @@ export default function ListingHeroPanels({
         ) : null}
       </div>
       {belowHero ? (
-        <div className="mt-6 border-t border-white/10 pt-6 lg:mt-8 lg:pt-8">
+        <div className="mt-6 border-t border-white/10 pt-6 max-lg:pb-20 lg:mt-8 lg:pt-8">
           {belowHero}
         </div>
       ) : null}
 
-      {/* Mobile: Map + Details peek from the right edge and open as slide-overs. */}
+      {/* Mobile: horizontally aligned pop-out tabs */}
       <div
-        className="fixed right-0 top-[42%] z-[60] flex -translate-y-1/2 flex-col gap-2 lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap items-center justify-center gap-1.5 border-t border-white/10 bg-[#1B2A4A]/95 px-2 py-2.5 backdrop-blur-md lg:hidden"
+        style={{
+          paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))",
+        }}
         role="group"
         aria-label="Listing side panels"
       >
+        {remarks != null && String(remarks).trim() !== "" ? (
+          <button
+            type="button"
+            className={edgeTabClass(mobileDrawer === "remarks")}
+            aria-expanded={mobileDrawer === "remarks"}
+            aria-controls="listing-remarks-drawer"
+            onClick={() => openMobileDrawer("remarks")}
+          >
+            Listing remarks
+          </button>
+        ) : null}
+        {overviewInsight ? (
+          <button
+            type="button"
+            className={edgeTabClass(mobileDrawer === "insight")}
+            aria-expanded={mobileDrawer === "insight"}
+            aria-controls="listing-insight-drawer"
+            onClick={() => openMobileDrawer("insight")}
+          >
+            Insight
+          </button>
+        ) : null}
+        {insightHasMedianPpsf && (sidebar || interest) ? (
+          <button
+            type="button"
+            className={edgeTabClass(mobileDrawer === "analysis")}
+            aria-expanded={mobileDrawer === "analysis"}
+            aria-controls="listing-details-drawer"
+            onClick={openAnalysisPopout}
+          >
+            Analysis
+          </button>
+        ) : null}
         <button
           type="button"
           className={edgeTabClass(mapVisible)}
           aria-expanded={mapVisible}
           aria-controls="listing-map-drawer"
-          onClick={() => {
-            setMobileDrawer(null);
-            setMapVisible((prev) => !prev);
-          }}
+          onClick={openMobileMap}
         >
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] [writing-mode:vertical-rl] rotate-180">
-            Map
-          </span>
+          Map
         </button>
         {sidebar || interest ? (
           <button
@@ -607,19 +726,39 @@ export default function ListingHeroPanels({
             className={edgeTabClass(mobileDrawer === "details")}
             aria-expanded={mobileDrawer === "details"}
             aria-controls="listing-details-drawer"
-            onClick={() => {
-              setMapVisible(false);
-              setMobileDrawer((prev) =>
-                prev === "details" ? null : "details",
-              );
-            }}
+            onClick={() => openMobileDrawer("details")}
           >
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] [writing-mode:vertical-rl] rotate-180">
-              Details
-            </span>
+            Details
           </button>
         ) : null}
       </div>
+
+      <ListingSideDrawer
+        open={mobileDrawer === "remarks" && !isDesktopLayout}
+        onClose={closeMobileDrawer}
+        title="Listing remarks"
+      >
+        <div id="listing-remarks-drawer">
+          <ListingRemarksContent remarks={remarks} compact />
+        </div>
+      </ListingSideDrawer>
+
+      <ListingSideDrawer
+        open={mobileDrawer === "insight" && !isDesktopLayout}
+        onClose={closeMobileDrawer}
+        title="Insight"
+      >
+        <div id="listing-insight-drawer">
+          {overviewInsight ? (
+            <ListingInsightCopy
+              text={overviewInsight}
+              className="text-left text-sm leading-relaxed text-white/80 break-words"
+              medianHref={`#${LISTING_ANALYSIS_ID}`}
+              onMedianClick={openAnalysisPopout}
+            />
+          ) : null}
+        </div>
+      </ListingSideDrawer>
 
       <ListingSideDrawer
         open={mapVisible && !isDesktopLayout}
@@ -637,9 +776,12 @@ export default function ListingHeroPanels({
       </ListingSideDrawer>
 
       <ListingSideDrawer
-        open={mobileDrawer === "details"}
+        open={
+          (mobileDrawer === "details" || mobileDrawer === "analysis") &&
+          !isDesktopLayout
+        }
         onClose={closeMobileDrawer}
-        title="Details"
+        title={mobileDrawer === "analysis" ? "Analysis" : "Details"}
       >
         <div id="listing-details-drawer">{detailsBlock}</div>
       </ListingSideDrawer>

@@ -22,13 +22,21 @@ function splitSentences(text: string): string[] {
 }
 
 /** Matches `($465/sqft)` or `($2.10/sqft)` from insight median copy. */
-const MEDIAN_PPSF_TOKEN = /(\(\$\d[\d,]*(?:\.\d{2})?\/sqft\))/;
+export const MEDIAN_PPSF_TOKEN = /(\(\$\d[\d,]*(?:\.\d{2})?\/sqft\))/;
+
+export function insightTextHasMedianPpsf(
+  text: string | null | undefined,
+): boolean {
+  if (!text) return false;
+  return MEDIAN_PPSF_TOKEN.test(text);
+}
 
 function renderSentenceWithMedianLink(
   sentence: string,
   medianHref: string,
   className: string,
   key: number,
+  onMedianClick?: () => void,
 ) {
   const match = MEDIAN_PPSF_TOKEN.exec(sentence);
   if (!match || match.index == null) {
@@ -53,6 +61,7 @@ function renderSentenceWithMedianLink(
         onClick={(event) => {
           // Analysis flash is handled in ListingDetailsSchoolsPanel; keep viewport still.
           event.preventDefault();
+          onMedianClick?.();
         }}
       >
         {inner}
@@ -66,11 +75,14 @@ export function ListingInsightCopy({
   text,
   className = "text-sm text-white/60 leading-relaxed",
   medianHref = null,
+  onMedianClick,
 }: {
   text: string;
   className?: string;
   /** When set (listing / Spotlight only), links the median `$…/sqft` to Analysis. */
   medianHref?: string | null;
+  /** Mobile: open Analysis pop-out when the median link is tapped. */
+  onMedianClick?: () => void;
 }) {
   const sentences = splitSentences(text);
   if (sentences.length === 0) return null;
@@ -91,13 +103,25 @@ export function ListingInsightCopy({
   }
 
   if (sentences.length <= 1) {
-    return renderSentenceWithMedianLink(text, medianHref, className, 0);
+    return renderSentenceWithMedianLink(
+      text,
+      medianHref,
+      className,
+      0,
+      onMedianClick,
+    );
   }
 
   return (
     <div className="space-y-2">
       {sentences.map((sentence, index) =>
-        renderSentenceWithMedianLink(sentence, medianHref, className, index),
+        renderSentenceWithMedianLink(
+          sentence,
+          medianHref,
+          className,
+          index,
+          onMedianClick,
+        ),
       )}
     </div>
   );

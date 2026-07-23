@@ -495,8 +495,10 @@ export async function readRecentSyncFailures(limit = 5): Promise<SyncRunFailure[
     `SELECT town,
             status_bucket           AS "statusBucket",
             error,
-            finished_at::text       AS "finishedAt",
-            started_at::text        AS "startedAt"
+            to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                                    AS "finishedAt",
+            to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                                    AS "startedAt"
        FROM sync_runs
       WHERE ok = false AND error IS NOT NULL AND btrim(error) <> ''
       ORDER BY finished_at DESC
@@ -578,11 +580,15 @@ export async function readAdminSyncRunHistory(options?: {
   const offsetParam = params.length + 2
   const runs = await query<AdminSyncRunHistoryRow>(
     `SELECT id,
-            started_at::text          AS "startedAt",
-            finished_at::text         AS "finishedAt",
+            to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                                  AS "startedAt",
+            CASE
+              WHEN finished_at IS NULL THEN NULL
+              ELSE to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            END                   AS "finishedAt",
             town,
-            status_bucket             AS "statusBucket",
-            listings_count::int       AS "listingsCount",
+            status_bucket         AS "statusBucket",
+            listings_count::int   AS "listingsCount",
             ok,
             error
        FROM sync_runs

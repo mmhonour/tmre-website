@@ -179,7 +179,7 @@ function MapZoomControls({
   onZoomOut: () => void;
 }) {
   return (
-    <div className="absolute right-2 top-2 z-20 flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
+    <div className="absolute left-2 top-2 z-20 flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
       <button
         type="button"
         onClick={onZoomIn}

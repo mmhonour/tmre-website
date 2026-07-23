@@ -72,7 +72,11 @@ export default function AdminSyncHistoryPanel({
   const [loading, setLoading] = useState(initial == null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const skipInitialFetchRef = useRef(initial != null);
+  // Only skip the first client fetch when SSR already returned rows. An empty
+  // safe() fallback must not block Refresh-on-mount or the panel stays blank.
+  const skipInitialFetchRef = useRef(
+    initial != null && (initial.runs?.length ?? 0) > 0,
+  );
 
   const load = useCallback(
     async (opts: {
@@ -187,10 +191,13 @@ export default function AdminSyncHistoryPanel({
   const [expandedBuckets, setExpandedBuckets] = useState<Record<string, boolean>>(
     {},
   );
+  const didAutoExpandRef = useRef(false);
 
   const bucketKey = (syncType: string, bucket: string) => `${syncType}:${bucket}`;
 
-  // Keep sync-type (and bucket) groups collapsed by default as new types appear.
+  // Keep sync-type (and bucket) groups collapsed by default as new types appear,
+  // but auto-expand the newest type + its newest bucket once so recent Incremental
+  // runs are visible without digging (Full stays paused and looks "stale").
   useEffect(() => {
     if (syncTypeGroups.length === 0) return;
     setExpandedTypes((prev) => {
@@ -199,6 +206,13 @@ export default function AdminSyncHistoryPanel({
       for (const g of syncTypeGroups) {
         if (next[g.syncType] === undefined) {
           next[g.syncType] = false;
+          touched = true;
+        }
+      }
+      if (!didAutoExpandRef.current) {
+        const newest = syncTypeGroups[0];
+        if (newest && next[newest.syncType] === false) {
+          next[newest.syncType] = true;
           touched = true;
         }
       }
@@ -216,8 +230,20 @@ export default function AdminSyncHistoryPanel({
           }
         }
       }
+      if (!didAutoExpandRef.current) {
+        const newestType = syncTypeGroups[0];
+        const newestBucket = newestType?.buckets[0];
+        if (newestType && newestBucket) {
+          const key = bucketKey(newestType.syncType, newestBucket.bucket);
+          if (next[key] === false) {
+            next[key] = true;
+            touched = true;
+          }
+        }
+      }
       return touched ? next : prev;
     });
+    didAutoExpandRef.current = true;
   }, [syncTypeGroups]);
 
   const toggleType = (syncType: string) => {
@@ -240,6 +266,14 @@ export default function AdminSyncHistoryPanel({
       ? `last ${ADMIN_SYNC_HISTORY_DEFAULT_DAYS} days`
       : "all time";
 
+  const overallLatestMs = syncTypeGroups[0]?.latestMs ?? 0;
+  const overallLatestLabel =
+    overallLatestMs > 0
+      ? `${formatSyncDate(new Date(overallLatestMs).toISOString())} ${formatSyncTime(
+          new Date(overallLatestMs).toISOString(),
+        )}`
+      : null;
+
   return (
     <div
       id="admin-sync-history"
@@ -253,8 +287,20 @@ export default function AdminSyncHistoryPanel({
           <p className="mt-1 text-sm text-slate max-w-2xl">
             MLS syncs from Admin, cron, and overdue catch-up for the{" "}
             {windowLabel} — collapsed by sync type (Full, Incremental), then by
-            status bucket (Active, Closed, Expired). Expand a type with + to see
-            its runs.
+            status bucket (Active, Closed, Expired). The newest type opens by
+            default
+            {overallLatestLabel ? (
+              <>
+                {" "}
+                (latest town run{" "}
+                <span className="font-mono text-[12px] text-navy">
+                  {overallLatestLabel}
+                </span>
+                )
+              </>
+            ) : null}
+            . Full rows only appear after a full resync (weekly or manual) —
+            Incremental continues on its own schedule.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
