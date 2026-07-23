@@ -18,6 +18,11 @@ export type DealBoardListing = {
   lotAcres?: number | null;
   dom: number | null;
   status: DealBoardRowStatus;
+  /**
+   * Under-contract MLS sub-status pill ("Under Contract" / "Continue to Show"),
+   * shown beside the board New/Reduced/Active signal when applicable.
+   */
+  contractStatus?: string | null;
   isRental: boolean;
   beds?: number | null;
   baths?: number | null;

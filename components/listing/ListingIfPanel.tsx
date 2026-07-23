@@ -1038,7 +1038,7 @@ export default function ListingIfPanel({
           {criteriaInSidePanel ? (
             <div
               id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
-              className="ml-auto flex shrink-0 justify-end empty:hidden"
+              className="ml-auto flex shrink-0 justify-end"
             />
           ) : null}
         </div>

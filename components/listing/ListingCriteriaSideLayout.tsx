@@ -44,7 +44,7 @@ export default function ListingCriteriaSideLayout({
     ? shared.toggle
     : () => setLocalOpen((v) => !v);
 
-  const [isDesktop, setIsDesktop] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(false);
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
   const [linkSlot, setLinkSlot] = useState<HTMLElement | null>(null);
   const [sectionVisible, setSectionVisible] = useState(true);
@@ -75,13 +75,12 @@ export default function ListingCriteriaSideLayout({
       setSectionVisible(!section || !section.hasAttribute("hidden"));
     };
     sync();
-    const t1 = window.setTimeout(sync, 0);
-    const t2 = window.setTimeout(sync, 50);
-    const t3 = window.setTimeout(sync, 200);
+    // Dynamic Sold/Rented/UAG panels mount after the title slot — keep trying briefly.
+    const interval = window.setInterval(sync, 100);
+    const stop = window.setTimeout(() => window.clearInterval(interval), 2500);
     return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
+      window.clearInterval(interval);
+      window.clearTimeout(stop);
     };
   }, [criteria, linkSlotId, open, isDesktop]);
 
@@ -140,11 +139,13 @@ export default function ListingCriteriaSideLayout({
     isDesktop && open && desktopSlot && sectionVisible;
 
   const showTitleLink = Boolean(linkSlot && sectionVisible);
+  // Mobile fallback when the title slot isn't ready yet (dynamic panel mount).
+  const showMobileFallback = !isDesktop && sectionVisible && !showTitleLink;
+  const showDesktopFallback = isDesktop && !linkSlot && sectionVisible;
 
   return (
     <>
-      {/* Fallback when the section title has no Criteria mount point. */}
-      {!linkSlot && sectionVisible ? (
+      {showMobileFallback || showDesktopFallback ? (
         <div className="mb-3 flex justify-end max-lg:px-3 lg:px-0">
           {criteriaToggle}
         </div>

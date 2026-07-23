@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { MouseEvent } from "react";
 import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
+import { useListingPhotosMode } from "@/components/listing/ListingPhotosModeContext";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 
 export type ListingPhotoStackMapSlot = {
@@ -38,7 +39,7 @@ function buildSlots(
  * Vertical stack of listing photos for continuous page scroll under sticky tabs.
  * Photos are flush edge-to-edge (no gaps, borders, or radius between frames).
  * Each photo links to the Photos gallery at that index when `photoHref` is set,
- * or calls `onPhotoActivate` (e.g. switch to Photos tab) when provided instead.
+ * or calls `onPhotoActivate` / Overview photos-mode context when provided.
  * When `mapSlot` is set, a frameless Location map sits in the 2nd stack position.
  */
 export default function ListingPhotoScrollStack({
@@ -57,8 +58,8 @@ export default function ListingPhotoScrollStack({
   /** When set, each photo navigates to the Photos gallery at that index. */
   photoHref?: (photoIndex: number) => string;
   /**
-   * When set (and photoHref is not), clicking a photo runs this — used to
-   * collapse the slide-up panel to Photos mode.
+   * When set, clicking a photo runs this — used to collapse the slide-up panel
+   * to Photos mode. Overview context also activates photos mode when present.
    */
   onPhotoActivate?: (photoIndex: number) => void;
   obfuscatePhotoIndex?: (photoIndex: number) => boolean;
@@ -66,6 +67,7 @@ export default function ListingPhotoScrollStack({
   mapSlot?: ListingPhotoStackMapSlot | null;
   emptyLabel?: string;
 }) {
+  const enterPhotosMode = useListingPhotosMode();
   const slots = buildSlots(photoCount, Boolean(mapSlot));
 
   if (slots.length === 0) {
@@ -122,6 +124,33 @@ export default function ListingPhotoScrollStack({
             seamless
           />
         );
+
+        const activate =
+          onPhotoActivate != null
+            ? () => onPhotoActivate(index)
+            : enterPhotosMode
+              ? () => enterPhotosMode()
+              : null;
+
+        // Overview photos-mode (context or prop) wins over gallery links so a
+        // photo click reveals the Photos tab instead of leaving the page.
+        if (activate) {
+          return (
+            <button
+              key={`${mlsId}-${index}`}
+              type="button"
+              className="relative block w-full cursor-pointer p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold/50"
+              aria-label={`Show photos · photo ${index + 1} of ${photoCount}`}
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                event.preventDefault();
+                activate();
+              }}
+            >
+              {photo}
+            </button>
+          );
+        }
+
         const href = photoHref?.(index);
         if (href) {
           return (
@@ -135,22 +164,7 @@ export default function ListingPhotoScrollStack({
             </Link>
           );
         }
-        if (onPhotoActivate) {
-          return (
-            <button
-              key={`${mlsId}-${index}`}
-              type="button"
-              className="relative block w-full cursor-pointer p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold/50"
-              aria-label={`Show photos · photo ${index + 1} of ${photoCount}`}
-              onClick={(event: MouseEvent<HTMLButtonElement>) => {
-                event.preventDefault();
-                onPhotoActivate(index);
-              }}
-            >
-              {photo}
-            </button>
-          );
-        }
+
         return (
           <div key={`${mlsId}-${index}`} className="relative w-full">
             {photo}

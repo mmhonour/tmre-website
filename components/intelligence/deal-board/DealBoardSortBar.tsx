@@ -130,7 +130,8 @@ export default function DealBoardSortBar({
 
   return (
     <>
-      {/* Mobile: compact Sort control → side panel (same pattern as Town stats). */}
+      {/* Mobile: Sort control + status pills on their own row (pills used to
+          sit beside Sort and clip off-screen on narrow phones / town filters). */}
       <div className="border-b border-charcoal/[0.12] bg-cream lg:hidden">
         <div className="flex items-center gap-2 px-4 py-2.5">
           <button
@@ -159,15 +160,15 @@ export default function DealBoardSortBar({
             </span>
           </button>
           {scoreInfoButton}
-          {showStatusFilters && onStatusFilterChange ? (
-            <div className="shrink-0">
-              <DealBoardStatusFilterPills
-                value={statusFilter}
-                onChange={onStatusFilterChange}
-              />
-            </div>
-          ) : null}
         </div>
+        {showStatusFilters && onStatusFilterChange ? (
+          <div className="flex items-center px-4 pb-2.5 pt-0">
+            <DealBoardStatusFilterPills
+              value={statusFilter}
+              onChange={onStatusFilterChange}
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* Desktop: full horizontal sort fields */}

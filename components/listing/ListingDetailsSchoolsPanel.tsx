@@ -468,12 +468,28 @@ export default function ListingDetailsSchoolsPanel({
                 value={medianFmt}
                 large
               />
+              {listingPpsfFmt ? (
+                <Stat
+                  label={
+                    isRental
+                      ? "This listing rent $/sqft"
+                      : "This listing $/sqft"
+                  }
+                  value={listingPpsfFmt}
+                  large
+                  accent={
+                    medianPpsfBand === "below"
+                      ? "sage"
+                      : medianPpsfBand === "above"
+                        ? "coral"
+                        : undefined
+                  }
+                />
+              ) : null}
               <p className="font-mono text-[9px] leading-snug text-white/45">
-                {listingPpsfFmt
-                  ? `This listing ${listingPpsfFmt}`
-                  : "This listing"}
-                {bandCopy ? ` · ${bandCopy}` : ""}
-                {" · "}
+                {bandCopy
+                  ? `${bandCopy} · `
+                  : null}
                 {isRental ? "rent-per-sqft" : "price-per-sqft"} vs active peers
               </p>
             </div>

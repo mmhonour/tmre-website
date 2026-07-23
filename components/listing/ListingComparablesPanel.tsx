@@ -1062,7 +1062,8 @@ export default function ListingComparablesPanel({
   const soldPanelId = listingRecentlyClosedPanelId(kind);
   const onMarketPanelId = `comparables-on-market-${kind}`;
 
-  // Sold / Rented subnav links land on #comparables-sold-* — scroll once the panel mounts.
+  // Only auto-scroll when the hash explicitly targets this panel (in-page
+  // jump links). Tab navigation uses the section id (SOLD / RENTED label).
   useEffect(() => {
     if (!showSoldColumn) return;
     const hash = window.location.hash.replace(/^#/, "");
@@ -1206,7 +1207,7 @@ export default function ListingComparablesPanel({
           {criteriaInSidePanel ? (
             <div
               id={criteriaLinkSlotId}
-              className="ml-auto flex shrink-0 justify-end empty:hidden"
+              className="ml-auto flex shrink-0 justify-end"
             />
           ) : null}
         </div>

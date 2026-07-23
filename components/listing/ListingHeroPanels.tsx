@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
-import { ListingInsightCopy, insightTextHasMedianPpsf } from "@/components/listing/ListingInsightCopy";
+import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ListingSideDrawer from "@/components/listing/ListingSideDrawer";
 import ListingSubnav, {
@@ -11,7 +11,6 @@ import ListingSubnav, {
 } from "@/components/listing/ListingSubnav";
 import {
   LISTING_SECTION_IDS,
-  listingRecentlyClosedPanelIdForTab,
   listingSectionIdForTab,
   listingTabFromSectionId,
   type ListingScrollSectionTab,
@@ -40,7 +39,7 @@ import {
   type ReactNode,
 } from "react";
 
-type MobileDrawerId = "remarks" | "insight" | "analysis" | "details" | null;
+type MobileDrawerId = "more" | "remarks" | "insight" | "details" | null;
 
 /** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
@@ -64,8 +63,8 @@ function tabFromLocationHash(): ListingScrollSectionTab | null {
 }
 
 function hashForPanelTab(tab: ListingScrollSectionTab): string {
-  const recentlyClosed = listingRecentlyClosedPanelIdForTab(tab);
-  if (recentlyClosed) return recentlyClosed;
+  // Land on the section label (SOLD / RENTED / …), not the inner
+  // Recently sold/rented panel (which sits below the Green = exact match legend).
   return listingSectionIdForTab(tab) ?? LISTING_SECTION_IDS.overview;
 }
 
@@ -144,6 +143,11 @@ export default function ListingHeroPanels({
   const [panelTab, setPanelTab] = useState<ListingScrollSectionTab | null>(
     null,
   );
+  /**
+   * Photos tab stays hidden until the user clicks a photo on Overview
+   * (enters photos mode). Resets when the listing changes.
+   */
+  const [photosTabVisible, setPhotosTabVisible] = useState(false);
   /** Location panel / map drawer — off by default; Map tab toggles it. */
   const [mapVisible, setMapVisible] = useState(false);
   /** Drawer is mobile-only; keep Location open when resizing up to desktop. */
@@ -154,9 +158,9 @@ export default function ListingHeroPanels({
     collapse: collapseRemarks,
   } = useListingRemarksExpand();
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
-  const openAnalysisPopout = useCallback(() => {
+  const openAnalysisInDetails = useCallback(() => {
     setMapVisible(false);
-    setMobileDrawer("analysis");
+    setMobileDrawer("details");
     const loc = new URL(window.location.href);
     if (loc.hash.replace(/^#/, "") !== LISTING_ANALYSIS_ID) {
       window.history.replaceState(
@@ -199,10 +203,10 @@ export default function ListingHeroPanels({
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  // After Analysis pop-out opens, scroll the drawer copy into view (not the
-  // desktop-hidden duplicate — right column is unmounted on mobile).
+  // Median PPSF → Details drawer: scroll Analysis into view and highlight it.
   useEffect(() => {
-    if (mobileDrawer !== "analysis" || isDesktopLayout) return;
+    if (mobileDrawer !== "details" || isDesktopLayout) return;
+    if (window.location.hash.replace(/^#/, "") !== LISTING_ANALYSIS_ID) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       if (cancelled) return;
@@ -239,6 +243,18 @@ export default function ListingHeroPanels({
     const url = new URL(window.location.href);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }, []);
+
+  /** Clicking an Overview photo: reveal Photos tab + collapse any slide panel. */
+  const enterPhotosMode = useCallback(() => {
+    setPhotosTabVisible(true);
+    setPanelTab(null);
+    const url = new URL(window.location.href);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }, []);
+
+  useEffect(() => {
+    setPhotosTabVisible(false);
+  }, [subnav.mlsId]);
 
   // Deep-link: open panel from hash on overview mount / hash changes.
   useEffect(() => {
@@ -295,7 +311,6 @@ export default function ListingHeroPanels({
 
   const overviewInsight =
     isOverview && header.insight?.trim() ? header.insight.trim() : null;
-  const insightHasMedianPpsf = insightTextHasMedianPpsf(overviewInsight);
 
   const statusLabel = formatMlsStatus(header.status);
 
@@ -363,7 +378,7 @@ export default function ListingHeroPanels({
         panelTab={useSlidePanel ? panelTab : null}
         onPanelOpen={useSlidePanel ? openPanel : null}
         onPanelClose={useSlidePanel ? closePanel : null}
-        forceShowPhotos={useSlidePanel && panelTab != null}
+        forceShowPhotos={photosTabVisible}
         mapVisible={mapVisible}
         onMapToggle={toggleMap}
       />
@@ -470,17 +485,30 @@ export default function ListingHeroPanels({
       {/* Meta + section tabs stay pinned under the site nav while photos/content scroll. */}
       <div
         ref={stickyChromeRef}
-        className={`sticky ${STICKY_TOP_CLASS} z-30 overflow-visible pt-1 pb-3 max-lg:px-3 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+        className={`sticky ${STICKY_TOP_CLASS} z-30 overflow-visible pt-1 max-lg:px-3 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] ${
+          subnav.active === "photos" && !heroSlot ? "pb-0" : "pb-3"
+        }`}
       >
-        {/* Status top-aligned with Spotlight Properties / ← Back to … */}
-        {topLeft || statusBadge ? (
-          <div className="mb-1.5 flex items-start justify-between gap-3">
-            <div className="min-w-0">{topLeft}</div>
-            {statusBadge ? (
-              <div className="shrink-0 self-start">{statusBadge}</div>
-            ) : null}
+        {/* Status top-aligned with Spotlight Properties / ← Back to …;
+            mobile MORE sits under the status pill. */}
+        <div className="mb-1.5 flex items-start justify-between gap-3">
+          <div className="min-w-0">{topLeft}</div>
+          <div className="flex shrink-0 flex-col items-end gap-1 self-start">
+            {statusBadge}
+            <button
+              type="button"
+              className="lg:hidden font-mono text-[9px] uppercase tracking-[0.14em] text-white/70 underline decoration-white/35 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50"
+              aria-expanded={mobileDrawer === "more"}
+              aria-controls="listing-more-drawer"
+              onClick={() => {
+                setMapVisible(false);
+                setMobileDrawer((prev) => (prev === "more" ? null : "more"));
+              }}
+            >
+              More
+            </button>
           </div>
-        ) : null}
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
@@ -533,7 +561,7 @@ export default function ListingHeroPanels({
       </div>
 
       <ListingPhotosModeContext.Provider
-        value={useSlidePanel ? closePanel : null}
+        value={useSlidePanel ? enterPhotosMode : null}
       >
         {heroStage}
       </ListingPhotosModeContext.Provider>
@@ -610,33 +638,40 @@ export default function ListingHeroPanels({
 
   // Legacy: non-overview pages still put content in belowTabs page flow.
   // Overview + sections uses the slide-up panel only (no long page scroll).
+  // Photos: sit flush under the tab strip (Intelligence deep-links here).
   const belowTabsBlock =
     !useSlidePanel && belowTabs ? (
       <div
         id={
           subnav.active === "overview" ? LISTING_SECTION_IDS.overview : undefined
         }
-        className="mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
+        className={
+          subnav.active === "photos"
+            ? "min-w-0 scroll-mt-[var(--listing-sticky-offset,6rem)]"
+            : "mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
+        }
       >
         {belowTabs}
       </div>
     ) : null;
 
-  const edgeTabClass = (active: boolean) =>
-    `pointer-events-auto shrink-0 py-0.5 text-right font-mono text-[9px] uppercase tracking-[0.14em] underline underline-offset-2 transition-colors ${
-      active
-        ? "text-gold decoration-gold"
-        : "text-white/70 decoration-white/35 hover:text-gold hover:decoration-gold/50"
-    }`;
+  const moreMenuLinkClass =
+    "w-full text-left font-mono text-[11px] uppercase tracking-[0.16em] text-gold/90 underline decoration-gold/35 underline-offset-2 transition-colors hover:text-gold py-2";
 
   const openMobileDrawer = (id: Exclude<MobileDrawerId, null>) => {
     setMapVisible(false);
-    setMobileDrawer((prev) => (prev === id ? null : id));
+    setMobileDrawer(id);
   };
 
   const openMobileMap = () => {
     setMobileDrawer(null);
-    setMapVisible((prev) => !prev);
+    setMapVisible(true);
+    const url = new URL(window.location.href);
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}#listing-location`,
+    );
   };
 
   return (
@@ -676,72 +711,44 @@ export default function ListingHeroPanels({
         </div>
       ) : null}
 
-      {/*
-        Mobile: horizontal-label pills stacked one-per-row, fixed upper-right,
-        floating over the Property Details sticky panel (not in document flow).
-      */}
-      <div
-        className="pointer-events-none fixed right-2 z-[60] flex max-w-[min(11rem,46vw)] flex-col items-end gap-1 lg:hidden"
-        style={{
-          top: "max(5.25rem, calc(env(safe-area-inset-top, 0px) + 4.25rem))",
-        }}
-        role="group"
-        aria-label="Listing side panels"
+      {/* Mobile: MORE menu → Insight / Details / Map; remarks via teaser only. */}
+      <ListingSideDrawer
+        open={mobileDrawer === "more" && !isDesktopLayout}
+        onClose={closeMobileDrawer}
+        title="More"
       >
-        {remarks != null && String(remarks).trim() !== "" ? (
-          <button
-            type="button"
-            className={edgeTabClass(mobileDrawer === "remarks")}
-            aria-expanded={mobileDrawer === "remarks"}
-            aria-controls="listing-remarks-drawer"
-            onClick={() => openMobileDrawer("remarks")}
-          >
-            Listing remarks
-          </button>
-        ) : null}
-        {overviewInsight ? (
-          <button
-            type="button"
-            className={edgeTabClass(mobileDrawer === "insight")}
-            aria-expanded={mobileDrawer === "insight"}
-            aria-controls="listing-insight-drawer"
-            onClick={() => openMobileDrawer("insight")}
-          >
-            Insight
-          </button>
-        ) : null}
-        {insightHasMedianPpsf && (sidebar || interest) ? (
-          <button
-            type="button"
-            className={edgeTabClass(mobileDrawer === "analysis")}
-            aria-expanded={mobileDrawer === "analysis"}
-            aria-controls="listing-details-drawer"
-            onClick={openAnalysisPopout}
-          >
-            Analysis
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className={edgeTabClass(mapVisible)}
-          aria-expanded={mapVisible}
-          aria-controls="listing-map-drawer"
-          onClick={openMobileMap}
+        <nav
+          id="listing-more-drawer"
+          className="flex flex-col divide-y divide-white/10"
+          aria-label="More listing panels"
         >
-          Map
-        </button>
-        {sidebar || interest ? (
+          {overviewInsight ? (
+            <button
+              type="button"
+              className={moreMenuLinkClass}
+              onClick={() => openMobileDrawer("insight")}
+            >
+              Insight
+            </button>
+          ) : null}
+          {sidebar || interest ? (
+            <button
+              type="button"
+              className={moreMenuLinkClass}
+              onClick={() => openMobileDrawer("details")}
+            >
+              Details
+            </button>
+          ) : null}
           <button
             type="button"
-            className={edgeTabClass(mobileDrawer === "details")}
-            aria-expanded={mobileDrawer === "details"}
-            aria-controls="listing-details-drawer"
-            onClick={() => openMobileDrawer("details")}
+            className={moreMenuLinkClass}
+            onClick={openMobileMap}
           >
-            Details
+            Map
           </button>
-        ) : null}
-      </div>
+        </nav>
+      </ListingSideDrawer>
 
       <ListingSideDrawer
         open={mobileDrawer === "remarks" && !isDesktopLayout}
@@ -764,7 +771,7 @@ export default function ListingHeroPanels({
               text={overviewInsight}
               className="text-left text-sm leading-relaxed text-white/80 break-words"
               medianHref={`#${LISTING_ANALYSIS_ID}`}
-              onMedianClick={openAnalysisPopout}
+              onMedianClick={openAnalysisInDetails}
             />
           ) : null}
         </div>
@@ -786,12 +793,9 @@ export default function ListingHeroPanels({
       </ListingSideDrawer>
 
       <ListingSideDrawer
-        open={
-          (mobileDrawer === "details" || mobileDrawer === "analysis") &&
-          !isDesktopLayout
-        }
+        open={mobileDrawer === "details" && !isDesktopLayout}
         onClose={closeMobileDrawer}
-        title={mobileDrawer === "analysis" ? "Analysis" : "Details"}
+        title="Details"
       >
         <div id="listing-details-drawer">{detailsBlock}</div>
       </ListingSideDrawer>

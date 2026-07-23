@@ -50,7 +50,6 @@ export type DealBoardListProps = {
   onBoardViewChange: (view: DealBoardView) => void;
   boardStatusFilter?: DealBoardStatusFilter;
   onBoardStatusFilterChange?: (value: DealBoardStatusFilter) => void;
-  filtersExpanded?: boolean;
   scoreInfoButton: ReactNode;
   footer: ReactNode;
   resultsSummary: ReactNode;
@@ -84,7 +83,6 @@ export default function DealBoardList({
   onBoardViewChange,
   boardStatusFilter = "all",
   onBoardStatusFilterChange,
-  filtersExpanded = true,
   scoreInfoButton,
   footer,
   resultsSummary,
@@ -215,7 +213,7 @@ export default function DealBoardList({
                 onSort={onSort}
                 showTown={showTown}
                 scoreInfoButton={scoreInfoButton}
-                showStatusFilters={boardView === "grid" && filtersExpanded}
+                showStatusFilters={Boolean(onBoardStatusFilterChange)}
                 statusFilter={boardStatusFilter}
                 onStatusFilterChange={onBoardStatusFilterChange}
               />

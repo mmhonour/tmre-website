@@ -2,7 +2,10 @@
 
 import { createContext, useContext } from "react";
 
-/** Slide-up panel: switch to Photos mode (collapse panel over the hero). */
+/**
+ * Overview slide-panel mode: enter Photos mode (collapse panel + reveal Photos
+ * tab). Provided by ListingHeroPanels; consumed by photo stacks on Overview.
+ */
 export const ListingPhotosModeContext = createContext<(() => void) | null>(
   null,
 );

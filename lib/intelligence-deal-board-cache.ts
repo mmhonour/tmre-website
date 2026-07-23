@@ -15,6 +15,7 @@ import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { formatSuperlativesHeadline } from '@/lib/deal-superlatives'
 import type { Listing } from '@/lib/rets'
+import { underContractStatusLabel } from '@/lib/listings-store'
 import { statsCacheKey } from '@/lib/stats-compute'
 import {
   isTmreTown,
@@ -24,7 +25,7 @@ import {
   type TmreTown,
 } from '@/lib/tmre-towns'
 
-export const INTELLIGENCE_DEAL_BOARD_CACHE_KEY = 'intelligence-deal-board:v2'
+export const INTELLIGENCE_DEAL_BOARD_CACHE_KEY = 'intelligence-deal-board:v3'
 /** Per-town cap for the board payload. Keep at/above Active inventory depth. */
 export const INTELLIGENCE_DEAL_BOARD_LIMIT = 2000
 
@@ -44,6 +45,8 @@ export type IntelligenceBoardListing = {
   lotAcres: number | null
   dom: number | null
   status: 'Active' | 'Pending' | 'New' | 'Reduced'
+  /** Under-contract MLS sub-status when applicable. */
+  contractStatus: string | null
   isRental: boolean
   isCommercial: boolean
   yearBuilt: number | null
@@ -215,6 +218,7 @@ function toBoardListing(
     lotAcres: listing.lotAcres ?? null,
     dom: daysOnMarket,
     status: deriveStatus(listing, priceReductionPercent, daysOnMarket),
+    contractStatus: underContractStatusLabel(listing.status),
     isRental: rental,
     isCommercial: commercial,
     yearBuilt: listing.yearBuilt,

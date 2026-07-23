@@ -42,7 +42,7 @@ export default function PhotoGallery({
   return (
     <div className="space-y-3">
       <div>
-        <div className="relative rounded-2xl overflow-hidden bg-navy-dark border border-white/10 aspect-[16/10]">
+        <div className="relative overflow-hidden bg-navy-dark aspect-[16/10] max-lg:rounded-none max-lg:border-x-0 max-lg:border-b border-white/10 lg:rounded-2xl lg:border">
           <ListingThumbImage
             src={current}
             alt={`${address} — photo ${active + 1} of ${photos.length}`}
@@ -55,13 +55,13 @@ export default function PhotoGallery({
           {obfuscateActive ? <ListingPhotoObfuscationOverlay /> : null}
         </div>
         {photos.length > 1 ? (
-          <p className="mt-1.5 text-right font-mono text-[10px] tracking-[0.15em] uppercase text-white/55">
+          <p className="mt-1.5 text-right font-mono text-[10px] tracking-[0.15em] uppercase text-white/55 max-lg:px-3">
             {active + 1} / {photos.length}
           </p>
         ) : null}
       </div>
       {photos.length > 1 && (
-        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-lg:px-3">
           {photos.map((p, i) => {
             const obfuscateThumb = shouldObfuscate(i);
             return (

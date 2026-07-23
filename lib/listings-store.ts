@@ -67,8 +67,8 @@ export function isClosedListing(l: Listing): boolean {
  * We match the long labels (as returned in `status`), short values, and raw
  * codes so this holds regardless of which representation a row carries.
  */
-export function isUnderContractListing(l: Listing): boolean {
-  const s = l.status?.trim().toLowerCase()
+export function isUnderContractStatus(status: string | null | undefined): boolean {
+  const s = status?.trim().toLowerCase() ?? ''
   if (!s) return false
   return (
     s === 'under contract' ||
@@ -77,8 +77,33 @@ export function isUnderContractListing(l: Listing): boolean {
     s === 'uc' ||
     s === 'uc-cts' ||
     s === 'd' ||
-    s === 'sh'
+    s === 'sh' ||
+    s.includes('under contract')
   )
+}
+
+export function isUnderContractListing(l: Listing): boolean {
+  return isUnderContractStatus(l.status)
+}
+
+/**
+ * Short Intelligence-board pill label for under-contract MLS status, or null
+ * when the listing is not under contract.
+ */
+export function underContractStatusLabel(
+  status: string | null | undefined,
+): string | null {
+  if (!isUnderContractStatus(status)) return null
+  const s = status!.trim().toLowerCase()
+  if (
+    s.includes('continue to show') ||
+    s.includes('continue-to-show') ||
+    s === 'uc-cts' ||
+    s === 'sh'
+  ) {
+    return 'Continue to Show'
+  }
+  return 'Under Contract'
 }
 
 /** @deprecated Use isMarketListing */

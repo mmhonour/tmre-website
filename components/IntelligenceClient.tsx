@@ -49,6 +49,7 @@ import {
 import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
+import { underContractStatusLabel } from "@/lib/listings-store";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
 import { parseIntelligenceSearchParams } from "@/lib/intelligence-search-url";
 import {
@@ -542,6 +543,7 @@ type DisplayListing = {
   lotAcres?: number | null;
   dom: number | null;
   status: RowStatus;
+  contractStatus?: string | null;
   isRental: boolean;
   isCommercial: boolean;
   propertyType?: string;
@@ -1234,6 +1236,7 @@ function mapListings(api: ApiListing[], townName?: TmreTown): DisplayListing[] {
         lotAcres: l.lotAcres ?? null,
         dom: l.calculated.daysOnMarket,
         status,
+        contractStatus: underContractStatusLabel(l.status),
         isRental: rental,
         isCommercial: commercial,
         propertyType: l.propertyType,
@@ -1346,6 +1349,7 @@ type DealBoardApiListing = {
   lotAcres?: number | null;
   dom: number | null;
   status: RowStatus;
+  contractStatus?: string | null;
   isRental: boolean;
   isCommercial: boolean;
   yearBuilt?: number | null;
@@ -1378,6 +1382,7 @@ function mapBoardCacheListing(row: DealBoardApiListing, town: TmreTown): Display
     lotAcres: row.lotAcres ?? null,
     dom: row.dom,
     status: row.status,
+    contractStatus: row.contractStatus ?? null,
     isRental: row.isRental,
     isCommercial: row.isCommercial,
     yearBuilt: row.yearBuilt ?? null,
@@ -2676,6 +2681,8 @@ export default function IntelligenceClient() {
     priceRangeCustomizedRef.current = false;
     setMinPriceIndex(0);
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
+    setBoardStatusFilter("all");
+    setBoardPage(1);
   }
 
   /** Enlarge every slider descriptor, then hold the same scale used while dragging. */
@@ -3719,7 +3726,6 @@ export default function IntelligenceClient() {
               setBoardStatusFilter(value);
               setBoardPage(1);
             }}
-            filtersExpanded={filtersExpanded}
             scoreInfoButton={
               <ScoreInfoButton onInfoClick={() => setScoreInfoOpen(true)} />
             }

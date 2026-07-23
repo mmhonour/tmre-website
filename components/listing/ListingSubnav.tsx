@@ -8,7 +8,6 @@ import {
   LISTING_RECENTLY_RENTED_PANEL_ID,
   LISTING_RECENTLY_SOLD_PANEL_ID,
   LISTING_SECTION_IDS,
-  listingRecentlyClosedPanelIdForTab,
   listingSectionIdForTab,
   listingTabFromSectionId,
   type ListingScrollSectionTab,
@@ -93,8 +92,8 @@ function tabVisible(
   alwaysShowPhotos: boolean,
   showTransactionTabs: boolean,
 ): boolean {
-  // Photos tab only while on the photos page, while the slide-up panel is open,
-  // or on local mockups that always show it.
+  // Photos tab only after the user clicks a photo on Overview (photos mode),
+  // while on the dedicated photos page, or on local mockups that always show it.
   if (tabId === "photos") return alwaysShowPhotos || active === "photos";
   if (TRANSACTION_TABS.has(tabId)) return showTransactionTabs;
   return true;
@@ -194,22 +193,8 @@ export default function ListingSubnav({
   };
 
   const sectionHref = (section: ListingTab) => {
-    // Sold / Rented always deep-link to the Recently Sold / Recently Rented panel.
-    const recentlyClosedId = listingRecentlyClosedPanelIdForTab(section);
-    if (recentlyClosedId) {
-      if (useHashJump || panelMode) {
-        const overview = routeHref("overview");
-        const hash = `#${recentlyClosedId}`;
-        return overview.includes("#")
-          ? `${overview.replace(/#.*$/, "")}${hash}`
-          : `${overview}${hash}`;
-      }
-      const base = routeHref(section);
-      return base.includes("#")
-        ? `${base.replace(/#.*$/, "")}#${recentlyClosedId}`
-        : `${base}#${recentlyClosedId}`;
-    }
-
+    // Sold / Rented land on the section label (SOLD / RENTED), not the inner
+    // Recently sold/rented panel under the Green = exact match legend.
     if (panelMode && PANEL_SECTION_TABS.has(section)) {
       const sectionId = listingSectionIdForTab(section);
       const overview = routeHref("overview");
@@ -401,8 +386,6 @@ export default function ListingSubnav({
   };
 
   const jumpToSection = (tab: ListingTab) => {
-    const recentlyClosedId = listingRecentlyClosedPanelIdForTab(tab);
-    if (recentlyClosedId && jumpToAnchor(tab, recentlyClosedId)) return true;
     const sectionId = listingSectionIdForTab(tab);
     if (!sectionId) return false;
     return jumpToAnchor(tab, sectionId);
@@ -470,13 +453,6 @@ export default function ListingSubnav({
             }
           }
 
-          // Sold / Rented: if the Recently Sold/Rented panel is already on the
-          // page (overview stack or the Sold/Rented tab), scroll to it in place.
-          const recentlyClosedId = listingRecentlyClosedPanelIdForTab(tab.id);
-          if (recentlyClosedId && jumpToAnchor(tab.id, recentlyClosedId)) {
-            event.preventDefault();
-            return;
-          }
           if (!useHashJump || !HASH_JUMP_TABS.has(tab.id)) return;
           if (active === "overview" && jumpToSection(tab.id)) {
             event.preventDefault();

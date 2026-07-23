@@ -117,7 +117,7 @@ function Section({
         {showCriteriaLinkSlot ? (
           <div
             id={listingCriteriaLinkSlotId(id)}
-            className="ml-auto flex shrink-0 justify-end empty:hidden"
+            className="ml-auto flex shrink-0 justify-end"
           />
         ) : null}
       </div>

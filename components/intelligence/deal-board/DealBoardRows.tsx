@@ -10,7 +10,7 @@ import {
   dealBoardYearBuiltLabel,
   DealBoardPrimaryPhoto,
   DealBoardScoreBadge,
-  DealBoardStatusBadge,
+  DealBoardStatusPills,
   DealBoardAddressWithInsight,
   DealBoardAdaptiveMetaLine,
   listingDetailHref,
@@ -75,9 +75,10 @@ export function DealBoardPhotoLedRow({
             value={l.score}
             onClick={() => onScoreClick(l)}
           />
-          <DealBoardStatusBadge
+          <DealBoardStatusPills
             status={l.status}
-            onClick={
+            contractStatus={l.contractStatus}
+            onStatusClick={
               isLive && onStatusClick ? () => onStatusClick(l) : undefined
             }
           />
@@ -146,10 +147,12 @@ export function DealBoardPhotoLedLineRow({
           withDealBoardReturn
           showPhotoCountBadge={false}
         />
-        <DealBoardStatusBadge
+        <DealBoardStatusPills
           status={l.status}
+          contractStatus={l.contractStatus}
           size="sm"
-          onClick={
+          className="flex flex-col items-center gap-0.5"
+          onStatusClick={
             isLive && onStatusClick ? () => onStatusClick(l) : undefined
           }
         />
@@ -282,11 +285,13 @@ export function DealBoardPhotoLedGridCard({
               className="absolute bottom-1.5 left-1.5 z-10"
               onClick={(e) => e.stopPropagation()}
             >
-              <DealBoardStatusBadge
+              <DealBoardStatusPills
                 status={l.status}
+                contractStatus={l.contractStatus}
                 size="sm"
                 surface="photo"
-                onClick={
+                className="flex flex-col items-start gap-0.5"
+                onStatusClick={
                   isLive && onStatusClick ? () => onStatusClick(l) : undefined
                 }
               />
@@ -382,9 +387,10 @@ export function DealBoardPhotoLedLargeCard({
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-2.5">
         <div className="flex items-center justify-between gap-2">
-          <DealBoardStatusBadge
+          <DealBoardStatusPills
             status={l.status}
-            onClick={
+            contractStatus={l.contractStatus}
+            onStatusClick={
               isLive && onStatusClick ? () => onStatusClick(l) : undefined
             }
           />

@@ -3,12 +3,11 @@
 import ListingPhotoScrollStack, {
   type ListingPhotoStackMapSlot,
 } from "@/components/listing/ListingPhotoScrollStack";
-import { useListingPhotosMode } from "@/components/listing/ListingPhotosModeContext";
 
 /**
  * Overview tab body: full-width hero stack.
  * Remarks: desktop side panel + mobile teaser/drawer in ListingHeroPanels.
- * Clicking the hero switches to the Photos tab (collapses the slide-up panel).
+ * Clicking a photo enters Photos mode (reveals Photos tab, collapses panel).
  */
 export function ListingOverviewPhotoDeck({
   mlsId,
@@ -38,7 +37,6 @@ export function ListingOverviewPhotoDeck({
   /** Frameless map in the 2nd stack slot (Overview). */
   mapSlot?: ListingPhotoStackMapSlot | null;
 }) {
-  const goToPhotos = useListingPhotosMode();
   const count = photoCount ?? 0;
   const showStack = showHero && !hideHero && (count > 0 || Boolean(mapSlot));
 
@@ -52,7 +50,6 @@ export function ListingOverviewPhotoDeck({
         altBase={heroAlt}
         obfuscatePhotoIndex={obfuscatePhotoIndex}
         mapSlot={mapSlot}
-        onPhotoActivate={goToPhotos ? () => goToPhotos() : undefined}
       />
     </div>
   );

@@ -32,7 +32,7 @@ export function listingRecentlyClosedPanelId(
     : LISTING_RECENTLY_SOLD_PANEL_ID;
 }
 
-/** Panel id to scroll to when clicking Sold / Rented in the listing subnav. */
+/** Panel id used by in-page jump links to Recently Sold / Recently Rented. */
 export function listingRecentlyClosedPanelIdForTab(
   tab: ListingScrollSectionTab | "photos" | "map",
 ): string | null {

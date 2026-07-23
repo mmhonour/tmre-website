@@ -721,7 +721,7 @@ export function ListingUagPageContent({
             {showCriteria ? (
               <div
                 id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)}
-                className="ml-auto flex shrink-0 justify-end empty:hidden"
+                className="ml-auto flex shrink-0 justify-end"
               />
             ) : null}
           </div>

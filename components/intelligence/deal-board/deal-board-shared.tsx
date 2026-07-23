@@ -331,18 +331,24 @@ export function DealBoardStatusBadge({
     Active: "bg-sky/10 text-sky border-sky/30",
     Reduced: "bg-coral/10 text-coral border-coral/30",
     Pending: "bg-charcoal/10 text-slate border-charcoal/20",
+    "Under Contract": "bg-gold/15 text-gold border-gold/35",
+    "Continue to Show": "bg-gold/15 text-gold border-gold/35",
   };
   const photoMap: Record<string, string> = {
     New: "bg-sage text-white border-sage/50 shadow-sm",
     Active: "bg-sky text-white border-sky/50 shadow-sm",
     Reduced: "bg-coral text-white border-coral/50 shadow-sm",
     Pending: "bg-charcoal text-white/90 border-charcoal/50 shadow-sm",
+    "Under Contract": "bg-gold text-navy border-gold/50 shadow-sm",
+    "Continue to Show": "bg-gold text-navy border-gold/50 shadow-sm",
   };
   const listingMap: Record<string, string> = {
     New: "bg-sage/20 text-sage border-sage/40",
     Active: "bg-sky/20 text-sky border-sky/40",
     Reduced: "bg-coral/20 text-coral border-coral/40",
     Pending: "bg-white/10 text-white/75 border-white/25",
+    "Under Contract": "bg-gold/20 text-gold border-gold/40",
+    "Continue to Show": "bg-gold/20 text-gold border-gold/40",
     "Coming Soon": "bg-gold/15 text-gold border-gold/35",
     Closed: "bg-white/10 text-white/60 border-white/20",
     Expired: "bg-coral/15 text-coral border-coral/30",
@@ -378,6 +384,41 @@ export function DealBoardStatusBadge({
     );
   }
   return <span className={className}>{label}</span>;
+}
+
+/** Board signal pill + optional under-contract MLS sub-status pill. */
+export function DealBoardStatusPills({
+  status,
+  contractStatus,
+  onStatusClick,
+  size = "default",
+  surface = "default",
+  className = "flex flex-wrap items-center gap-1",
+}: {
+  status: DealBoardRowStatus | string;
+  contractStatus?: string | null;
+  onStatusClick?: () => void;
+  size?: "default" | "sm";
+  surface?: "default" | "photo" | "listing";
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <DealBoardStatusBadge
+        status={status}
+        size={size}
+        surface={surface}
+        onClick={onStatusClick}
+      />
+      {contractStatus ? (
+        <DealBoardStatusBadge
+          status={contractStatus}
+          size={size}
+          surface={surface}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export function DealBoardPrimaryPhoto({
