@@ -2,6 +2,7 @@
 
 import DealBoardMiddleTierToggle from "@/components/intelligence/deal-board/DealBoardMiddleTierToggle";
 import DealBoardSortBar from "@/components/intelligence/deal-board/DealBoardSortBar";
+import DealBoardStatusFilterPills from "@/components/intelligence/deal-board/DealBoardStatusFilterPills";
 import {
   DealBoardPhotoLedGridCard,
   DealBoardPhotoLedLargeCard,
@@ -102,7 +103,7 @@ export default function DealBoardList({
     rows.map((l) => <DealBoardPhotoLedLineRow key={l.key} {...rowProps(l)} />);
 
   const renderGrid = (rows: DealBoardListing[]) => (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11.5rem),1fr))] gap-3 p-3 sm:gap-3.5 sm:p-4">
+    <div className="grid grid-cols-2 gap-0 sm:grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))]">
       {rows.map((l) => (
         <DealBoardPhotoLedGridCard key={l.key} {...rowProps(l)} />
       ))}
@@ -110,7 +111,7 @@ export default function DealBoardList({
   );
 
   const renderLarge = (rows: DealBoardListing[]) => (
-    <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-0 md:grid-cols-2">
       {rows.map((l) => (
         <DealBoardPhotoLedLargeCard key={l.key} {...rowProps(l)} />
       ))}
@@ -186,7 +187,15 @@ export default function DealBoardList({
   const resultsToolbar = (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
       {resultsSummary}
-      <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
+      <div className="flex flex-wrap items-center justify-end gap-2.5">
+        {onBoardStatusFilterChange ? (
+          <DealBoardStatusFilterPills
+            value={boardStatusFilter}
+            onChange={onBoardStatusFilterChange}
+          />
+        ) : null}
+        <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
+      </div>
     </div>
   );
 
@@ -213,9 +222,6 @@ export default function DealBoardList({
                 onSort={onSort}
                 showTown={showTown}
                 scoreInfoButton={scoreInfoButton}
-                showStatusFilters={Boolean(onBoardStatusFilterChange)}
-                statusFilter={boardStatusFilter}
-                onStatusFilterChange={onBoardStatusFilterChange}
               />
             </div>
             <div>

@@ -26,7 +26,7 @@ import {
   type TmreTown,
 } from '@/lib/tmre-towns'
 
-export const INTELLIGENCE_DEAL_BOARD_CACHE_KEY = 'intelligence-deal-board:v4'
+export const INTELLIGENCE_DEAL_BOARD_CACHE_KEY = 'intelligence-deal-board:v5'
 /** Per-town cap for the board payload. Keep at/above Active inventory depth. */
 export const INTELLIGENCE_DEAL_BOARD_LIMIT = 2000
 

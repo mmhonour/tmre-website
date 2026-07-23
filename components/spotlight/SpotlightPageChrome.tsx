@@ -97,6 +97,7 @@ export function SpotlightPageChrome({
           baths: display.baths,
           sqft: display.sqft,
           yearBuilt: display.yearBuilt,
+          price: display.price,
           bedBathSearchHref,
           heroSlot: effectiveHeroSlot,
           ...listingHeaderScoreProps({

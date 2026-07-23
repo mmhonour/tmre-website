@@ -190,6 +190,7 @@ function ListingSplitTestInner() {
     baths: display.baths,
     sqft: display.sqft,
     yearBuilt: display.yearBuilt,
+    price: display.price,
     bedBathSearchHref,
     privacyMode: presentation.privacyMode,
     hideMarketMeta: true,

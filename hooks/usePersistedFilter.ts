@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import { useEffect, useState } from "react";
 import { readClientPref, writeClientPref } from "@/lib/client-prefs";
 import {
@@ -14,6 +12,8 @@ export function usePersistedFilter<T extends string>(
   defaultValue: T,
   validValues: readonly T[],
   preferVisitorTown = false,
+  /** When no stored pref, call this (client-only) instead of `defaultValue`. */
+  resolveDefault?: () => T,
 ): [T, (value: T) => void] {
   const [value, setValue] = useState<T>(defaultValue);
   const [hydrated, setHydrated] = useState(false);
@@ -28,6 +28,7 @@ export function usePersistedFilter<T extends string>(
     }
 
     if (!preferVisitorTown) {
+      setValue(resolveDefault ? resolveDefault() : defaultValue);
       setHydrated(true);
       return;
     }
@@ -36,15 +37,16 @@ export function usePersistedFilter<T extends string>(
       if (cancelled) return;
       const match = matchVisitorTownToOptions(loc.town, validValues);
       if (match) setValue(match);
+      else if (resolveDefault) setValue(resolveDefault());
       setHydrated(true);
     });
 
     return () => {
       cancelled = true;
     };
-    // validValues is a stable module-level constant
+    // validValues / resolveDefault are stable module-level or call-site constants
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, preferVisitorTown]);
+  }, [key, preferVisitorTown, defaultValue]);
 
   useEffect(() => {
     if (hydrated) writeClientPref(key, value);

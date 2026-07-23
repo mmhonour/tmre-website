@@ -224,6 +224,7 @@ export default function ListingPhotosClient({
           baths: listing.baths,
           sqft: listing.sqft,
           yearBuilt: listing.yearBuilt,
+          price: listing.price,
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
           ...listingHeaderScoreProps({
             goldilocksScore: data.goldilocksScore,

@@ -23,6 +23,7 @@ import {
   DEAL_BOARD_VIEW_DEFAULT,
   DEAL_BOARD_VIEW_PREF_KEY,
   DEAL_BOARD_VIEW_VALUES,
+  dealBoardViewDefaultForViewport,
   type DealBoardView,
 } from "@/lib/deal-board-view";
 import {
@@ -129,6 +130,24 @@ const MIN_BATH_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
 const SALE_PROPERTY_VALUES = ["all", "homes", "multi", "condos"] as const;
 const NEW_CONSTRUCTION_VALUES = ["all", "new"] as const;
 const FURNISHED_FILTER_VALUES = ["all", ...LISTING_FURNISHED_VALUES] as const;
+const FURNISHED_SLIDER_MAX = FURNISHED_FILTER_VALUES.length - 1;
+
+function furnishedFilterIndex(value: FurnishedFilter): number {
+  const index = FURNISHED_FILTER_VALUES.indexOf(value);
+  return index >= 0 ? index : 0;
+}
+
+function furnishedFilterFromIndex(index: number): FurnishedFilter {
+  return (
+    FURNISHED_FILTER_VALUES[
+      Math.max(0, Math.min(FURNISHED_SLIDER_MAX, Math.round(index)))
+    ] ?? "all"
+  );
+}
+
+function formatFurnishedFilterLabel(value: FurnishedFilter): string {
+  return value === "all" ? "Any furnish" : value;
+}
 const STATS_EXPANDED_PREF = "tmre_intel_stats_expanded_towns";
 const FILTERS_EXPANDED_VALUES = ["true", "false"] as const;
 type FiltersExpandedPref = (typeof FILTERS_EXPANDED_VALUES)[number];
@@ -191,7 +210,7 @@ function intelFilterDescriptorParts({
     else if (saleProperty === "condos") parts.push({ kind: "tx", label: "Condos" });
   }
 
-  if (tx === "rental" && furnishedFilter !== "all") {
+  if (furnishedFilter !== "all") {
     parts.push({ kind: "plain", label: furnishedFilter });
   }
 
@@ -332,7 +351,7 @@ const BED_BATH_MAX = 6;
 const INTEL_SLIDER_WIDTH_CLASS = "w-[7.5rem]";
 /** Keep slider descriptors enlarged this long after thumb release or descriptor click. */
 const DESCRIPTOR_ENLARGE_HOLD_MS = 10_000;
-type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft";
+type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft" | "furnished";
 
 type SetHeldSliderActive = (
   active: boolean,
@@ -746,7 +765,8 @@ function filterBoardListings(
     }
     if (
       furnishedFilter !== "all" &&
-      (!l.isRental || l.furnished !== furnishedFilter)
+      l.isRental &&
+      l.furnished !== furnishedFilter
     ) {
       return false;
     }
@@ -1529,6 +1549,7 @@ export default function IntelligenceClient() {
   const [minSqftIndex, setMinSqftIndex] = useState(0);
   const [maxSqftIndex, setMaxSqftIndex] = useState(INTEL_SQFT_MAX_INDEX);
   const [sqftSliderActive, setSqftSliderActive] = useHeldSliderActive();
+  const [furnishedSliderActive, setFurnishedSliderActive] = useHeldSliderActive();
   const sqftRangeCustomizedRef = useRef(false);
   const [collapsedSlidersOpen, setCollapsedSlidersOpen] = useState(false);
   const priceRangeCustomizedRef = useRef(false);
@@ -1619,6 +1640,8 @@ export default function IntelligenceClient() {
     DEAL_BOARD_VIEW_PREF_KEY,
     DEAL_BOARD_VIEW_DEFAULT,
     DEAL_BOARD_VIEW_VALUES,
+    false,
+    dealBoardViewDefaultForViewport,
   );
 
   // Persist unique filter combinations into the visitor search-history cookie
@@ -2104,7 +2127,7 @@ export default function IntelligenceClient() {
   }, [tx, saleProperty, setSaleProperty]);
 
   useEffect(() => {
-    if (tx !== "rental" && furnishedFilter !== "all") setFurnishedFilter("all");
+    if (tx === "sale" && furnishedFilter !== "all") setFurnishedFilter("all");
   }, [tx, furnishedFilter, setFurnishedFilter]);
 
   useEffect(() => {
@@ -2735,12 +2758,14 @@ export default function IntelligenceClient() {
     setBathSliderActive(true);
     setVintageSliderActive(true);
     setSqftSliderActive(true);
+    setFurnishedSliderActive(true);
     // Release without `immediate` so each label stays enlarged for DESCRIPTOR_ENLARGE_HOLD_MS.
     setPriceSliderActive(false);
     setBedSliderActive(false);
     setBathSliderActive(false);
     setVintageSliderActive(false);
     setSqftSliderActive(false);
+    setFurnishedSliderActive(false);
   }
 
   function handleDescriptorSliderClick(_kind: IntelSliderKind) {
@@ -2757,9 +2782,11 @@ export default function IntelligenceClient() {
     setBathSliderActive(false, { immediate: true });
     setVintageSliderActive(false, { immediate: true });
     setSqftSliderActive(false, { immediate: true });
+    setFurnishedSliderActive(false, { immediate: true });
   }
 
   const showSliderFooter = filtersExpanded || collapsedSlidersOpen;
+  const showFurnishedSlider = tx !== "sale";
 
   const activeTownMonthsSupply = useMemo(() => {
     if (active === "All") return null;
@@ -3083,6 +3110,9 @@ export default function IntelligenceClient() {
     <IntelSliderDescriptorLabels
       showPriceFilter={showPriceFilter}
       cls={cls}
+      showFurnished={showFurnishedSlider}
+      furnishedFilter={furnishedFilter}
+      furnishedSliderActive={furnishedSliderActive}
       onDescriptorClick={handleDescriptorSliderClick}
       boardPriceSteps={boardPriceSteps}
       minPriceIndex={minPriceIndex}
@@ -3108,6 +3138,9 @@ export default function IntelligenceClient() {
     <IntelSliderDescriptorLabels
       showPriceFilter={showPriceFilter}
       cls={cls}
+      showFurnished={showFurnishedSlider}
+      furnishedFilter={furnishedFilter}
+      furnishedSliderActive={furnishedSliderActive}
       onDescriptorClick={handleDescriptorSliderClick}
       boardPriceSteps={boardPriceSteps}
       minPriceIndex={minPriceIndex}
@@ -3247,7 +3280,7 @@ export default function IntelligenceClient() {
                   heroIntroDismissed ? "mt-0" : "mt-1"
                 }`}
               >
-                <div className="flex flex-wrap items-center gap-2 min-w-0 w-full self-start">
+                <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start">
                   <FilterGroup
                     label=""
                     value={cls}
@@ -3261,7 +3294,7 @@ export default function IntelligenceClient() {
                   <button
                     type="button"
                     onClick={toggleFilterChrome}
-                    className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center text-white/70 hover:text-gold transition-colors"
+                    className="inline-flex h-12 w-12 shrink-0 items-center justify-center text-white/70 hover:text-gold transition-colors"
                     aria-expanded={!filterChromeCollapsed}
                     aria-label={
                       filterChromeCollapsed
@@ -3276,7 +3309,7 @@ export default function IntelligenceClient() {
                   >
                     <svg
                       viewBox="0 0 12 12"
-                      className="h-3 w-3"
+                      className="h-12 w-12"
                       fill="currentColor"
                       aria-hidden
                     >
@@ -3424,6 +3457,28 @@ export default function IntelligenceClient() {
                   </div>
                 ) : null}
 
+              {/* Slider range labels sit above All / For Sale / Rentals. */}
+              {showSliderChrome &&
+              !showSliderFooter &&
+              collapsedSliderDescriptors ? (
+                <p
+                  className="flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide mt-0.5"
+                  data-intel-slider-context-blurb
+                >
+                  {collapsedSliderDescriptors}
+                </p>
+              ) : null}
+              {showSliderChrome &&
+              showSliderFooter &&
+              sliderDescriptorFooterLabels ? (
+                <p
+                  className="flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide mt-0.5"
+                  data-intel-slider-context-blurb
+                >
+                  {sliderDescriptorFooterLabels}
+                </p>
+              ) : null}
+
                 {showTxChrome ? (
                   <div className="flex flex-wrap items-center gap-2 min-w-0 self-start w-full">
                     <FilterGroup
@@ -3455,26 +3510,6 @@ export default function IntelligenceClient() {
                         />
                       </>
                     ) : null}
-                    {!filterChromeCollapsed && tx === "rental" ? (
-                      <>
-                        <div
-                          className={`hidden sm:block ${filterPillSeparatorClass("compact")}`}
-                          aria-hidden
-                        />
-                        <FilterGroup
-                          label=""
-                          value={furnishedFilter}
-                          onChange={setFurnishedFilter}
-                          options={[
-                            { value: "all", label: "Any furnish" },
-                            { value: "Furnished", label: "Furnished" },
-                            { value: "Unfurnished", label: "Unfurnished" },
-                            { value: "Partially", label: "Partially" },
-                            { value: "Negotiable", label: "Negotiable" },
-                          ]}
-                        />
-                      </>
-                    ) : null}
                     {!filterChromeCollapsed ? (
                       <>
                         <div
@@ -3501,31 +3536,7 @@ export default function IntelligenceClient() {
                 ) : null}
               </div>
 
-              {/* Price/slider filter chrome first; town context blurb always stays below. */}
-              {showSliderChrome &&
-              !showSliderFooter &&
-              collapsedSliderDescriptors ? (
-                <p
-                  className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide ${
-                    filtersExpanded ? "mt-1.5" : "mt-1"
-                  }`}
-                  data-intel-slider-context-blurb
-                >
-                  {collapsedSliderDescriptors}
-                </p>
-              ) : null}
-              {showSliderChrome &&
-              showSliderFooter &&
-              sliderDescriptorFooterLabels ? (
-                <p
-                  className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide ${
-                    filtersExpanded ? "mt-1.5" : "mt-1"
-                  }`}
-                  data-intel-slider-context-blurb
-                >
-                  {sliderDescriptorFooterLabels}
-                </p>
-              ) : null}
+              {/* Price/slider filter chrome; town context descriptors render above tx pills. */}
               {showSliderChrome ? (
                 <IntelFilterControlsRow
                   filtersExpanded={filtersExpanded}
@@ -3588,6 +3599,11 @@ export default function IntelligenceClient() {
                   bathSliderActive={bathSliderActive}
                   vintageSliderActive={vintageSliderActive}
                   sqftSliderActive={sqftSliderActive}
+                  showFurnished={showFurnishedSlider}
+                  furnishedFilter={furnishedFilter}
+                  onFurnishedFilterChange={setFurnishedFilter}
+                  onFurnishedSliderActiveChange={setFurnishedSliderActive}
+                  furnishedSliderActive={furnishedSliderActive}
                   onResetSliders={resetSliders}
                   slidersCustomized={slidersCustomized}
                 />
@@ -4102,6 +4118,7 @@ function BedBathVintageSqftRow({
   onBathSliderActiveChange,
   onVintageSliderActiveChange,
   onSqftSliderActiveChange,
+  onFurnishedSliderActiveChange,
   minBedrooms,
   maxBedrooms,
   onMinBedroomsChange,
@@ -4119,11 +4136,15 @@ function BedBathVintageSqftRow({
   maxSqftIndex,
   onMinSqftIndexChange,
   onMaxSqftIndexChange,
+  showFurnished,
+  furnishedFilter,
+  onFurnishedFilterChange,
 }: {
   onBedSliderActiveChange: (active: boolean) => void;
   onBathSliderActiveChange: (active: boolean) => void;
   onVintageSliderActiveChange: (active: boolean) => void;
   onSqftSliderActiveChange: (active: boolean) => void;
+  onFurnishedSliderActiveChange: (active: boolean) => void;
   minBedrooms: number;
   maxBedrooms: number;
   onMinBedroomsChange: (value: number) => void;
@@ -4141,6 +4162,9 @@ function BedBathVintageSqftRow({
   maxSqftIndex: number;
   onMinSqftIndexChange: (index: number) => void;
   onMaxSqftIndexChange: (index: number) => void;
+  showFurnished: boolean;
+  furnishedFilter: FurnishedFilter;
+  onFurnishedFilterChange: (value: FurnishedFilter) => void;
 }) {
   return (
     <>
@@ -4168,18 +4192,34 @@ function BedBathVintageSqftRow({
           maxAriaLabel="Maximum bathrooms"
         />
       </div>
-      <div className="flex items-center gap-1 shrink-0 w-fit">
-        <IntelDualSlider
-          label="Yr built"
-          maxIndex={VINTAGE_FILTER_MAX}
-          minValue={minVintage}
-          maxValue={maxVintage}
-          onMinChange={onMinVintageChange}
-          onMaxChange={onMaxVintageChange}
-          onActiveChange={onVintageSliderActiveChange}
-          minAriaLabel="Minimum vintage era"
-          maxAriaLabel="Maximum vintage era"
-        />
+      <div className="flex items-start gap-1 shrink-0 w-fit">
+        <div className="flex flex-col gap-1">
+          <IntelDualSlider
+            label="Yr built"
+            maxIndex={VINTAGE_FILTER_MAX}
+            minValue={minVintage}
+            maxValue={maxVintage}
+            onMinChange={onMinVintageChange}
+            onMaxChange={onMaxVintageChange}
+            onActiveChange={onVintageSliderActiveChange}
+            minAriaLabel="Minimum vintage era"
+            maxAriaLabel="Maximum vintage era"
+          />
+          {showFurnished ? (
+            <IntelDiscreteSlider
+              label="Furnish"
+              maxIndex={FURNISHED_SLIDER_MAX}
+              value={furnishedFilterIndex(furnishedFilter)}
+              onChange={(index) =>
+                onFurnishedFilterChange(furnishedFilterFromIndex(index))
+              }
+              onActiveChange={onFurnishedSliderActiveChange}
+              ariaLabel="Furnished filter"
+              valueText={formatFurnishedFilterLabel(furnishedFilter)}
+              showCenterLabelWhen={(index) => index === 0}
+            />
+          ) : null}
+        </div>
         <SqftRangeSlider
           label="Sq feet"
           steps={boardSqftSteps}
@@ -4380,9 +4420,36 @@ function IntelFilterDescriptorDot() {
   );
 }
 
+function FurnishedLabel({
+  value,
+  active,
+  onClick,
+}: {
+  value: FurnishedFilter;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  const interactive = onClick != null;
+  const className = descriptorLabelClass(active, interactive);
+  const label = formatFurnishedFilterLabel(value);
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {label}
+      </button>
+    );
+  }
+
+  return <span className={className}>{label}</span>;
+}
+
 type IntelSliderDescriptorLabelsProps = {
   showPriceFilter: boolean;
   cls: ClsFilter;
+  showFurnished?: boolean;
+  furnishedFilter?: FurnishedFilter;
+  furnishedSliderActive?: boolean;
   onDescriptorClick: (kind: IntelSliderKind) => void;
   boardPriceSteps: readonly number[];
   minPriceIndex: number;
@@ -4407,6 +4474,9 @@ type IntelSliderDescriptorLabelsProps = {
 function IntelSliderDescriptorLabels({
   showPriceFilter,
   cls,
+  showFurnished = false,
+  furnishedFilter = "all",
+  furnishedSliderActive = false,
   onDescriptorClick,
   boardPriceSteps,
   minPriceIndex,
@@ -4427,9 +4497,10 @@ function IntelSliderDescriptorLabels({
   sqftSliderActive,
   withLeadingSeparator = false,
 }: IntelSliderDescriptorLabelsProps) {
-  if (!showPriceFilter && cls === "commercial") return null;
+  if (!showPriceFilter && cls === "commercial" && !showFurnished) return null;
 
   const leadingDot = withLeadingSeparator;
+  const showResidentialSliders = cls !== "commercial";
 
   return (
     <>
@@ -4443,7 +4514,7 @@ function IntelSliderDescriptorLabels({
             onClick={() => onDescriptorClick("price")}
           />
       ) : null}
-      {cls !== "commercial" ? (
+      {showResidentialSliders ? (
         <>
           {showPriceFilter ? <IntelFilterDescriptorDot /> : null}
           <BedroomLabel
@@ -4473,6 +4544,18 @@ function IntelSliderDescriptorLabels({
             maxIndex={maxSqftIndex}
             active={sqftSliderActive}
             onClick={() => onDescriptorClick("sqft")}
+          />
+        </>
+      ) : null}
+      {showFurnished ? (
+        <>
+          {showPriceFilter || showResidentialSliders ? (
+            <IntelFilterDescriptorDot />
+          ) : null}
+          <FurnishedLabel
+            value={furnishedFilter}
+            active={furnishedSliderActive}
+            onClick={() => onDescriptorClick("furnished")}
           />
         </>
       ) : null}
@@ -4517,6 +4600,11 @@ function IntelFilterControlsRow({
   bathSliderActive,
   vintageSliderActive,
   sqftSliderActive,
+  showFurnished,
+  furnishedFilter,
+  onFurnishedFilterChange,
+  onFurnishedSliderActiveChange,
+  furnishedSliderActive,
   onResetSliders,
   slidersCustomized,
 }: {
@@ -4556,10 +4644,15 @@ function IntelFilterControlsRow({
   bathSliderActive: boolean;
   vintageSliderActive: boolean;
   sqftSliderActive: boolean;
+  showFurnished: boolean;
+  furnishedFilter: FurnishedFilter;
+  onFurnishedFilterChange: (value: FurnishedFilter) => void;
+  onFurnishedSliderActiveChange: (active: boolean) => void;
+  furnishedSliderActive: boolean;
   onResetSliders: () => void;
   slidersCustomized: boolean;
 }) {
-  if (!showPriceFilter && cls === "commercial") return null;
+  if (!showPriceFilter && cls === "commercial" && !showFurnished) return null;
 
   const rowClass = `flex flex-wrap items-start gap-2 w-full min-w-0 self-start font-mono text-xs tracking-wide ${
     filtersExpanded ? "mt-1.5" : "mt-1"
@@ -4618,6 +4711,7 @@ function IntelFilterControlsRow({
           onBathSliderActiveChange={onBathSliderActiveChange}
           onVintageSliderActiveChange={onVintageSliderActiveChange}
           onSqftSliderActiveChange={onSqftSliderActiveChange}
+          onFurnishedSliderActiveChange={onFurnishedSliderActiveChange}
           minBedrooms={minBedrooms}
           maxBedrooms={maxBedrooms}
           onMinBedroomsChange={onMinBedroomsChange}
@@ -4635,6 +4729,22 @@ function IntelFilterControlsRow({
           maxSqftIndex={maxSqftIndex}
           onMinSqftIndexChange={onMinSqftIndexChange}
           onMaxSqftIndexChange={onMaxSqftIndexChange}
+          showFurnished={showFurnished}
+          furnishedFilter={furnishedFilter}
+          onFurnishedFilterChange={onFurnishedFilterChange}
+        />
+      ) : showFurnished ? (
+        <IntelDiscreteSlider
+          label="Furnish"
+          maxIndex={FURNISHED_SLIDER_MAX}
+          value={furnishedFilterIndex(furnishedFilter)}
+          onChange={(index) =>
+            onFurnishedFilterChange(furnishedFilterFromIndex(index))
+          }
+          onActiveChange={onFurnishedSliderActiveChange}
+          ariaLabel="Furnished filter"
+          valueText={formatFurnishedFilterLabel(furnishedFilter)}
+          showCenterLabelWhen={(index) => index === 0}
         />
       ) : null}
     </div>
@@ -4754,6 +4864,92 @@ function IntelDualSlider({
           aria-valuemin={0}
           aria-valuemax={maxIndex}
           aria-valuenow={hi}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Single-thumb discrete slider (e.g. Furnished filter steps). */
+function IntelDiscreteSlider({
+  label,
+  maxIndex,
+  value,
+  onChange,
+  onActiveChange,
+  ariaLabel,
+  valueText,
+  showCenterLabelWhen,
+  widthClass = INTEL_SLIDER_WIDTH_CLASS,
+}: {
+  label?: string;
+  maxIndex: number;
+  value: number;
+  onChange: (value: number) => void;
+  onActiveChange: (active: boolean) => void;
+  ariaLabel: string;
+  valueText?: string;
+  showCenterLabelWhen?: (value: number) => boolean;
+  widthClass?: string;
+}) {
+  const [active, setActive] = useState(false);
+  const clamped = Math.max(0, Math.min(maxIndex, value));
+  const disabled = maxIndex <= 0;
+  const showLabel =
+    Boolean(label) &&
+    (showCenterLabelWhen ? showCenterLabelWhen(clamped) : clamped === 0);
+
+  const setSliderActive = (next: boolean) => {
+    setActive(next);
+    onActiveChange(next);
+  };
+
+  useEffect(() => {
+    if (!active) return;
+    const stop = () => setSliderActive(false);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("keyup", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("keyup", stop);
+    };
+  }, [active]);
+
+  return (
+    <div className="flex items-center shrink-0">
+      <div className={`relative h-6 ${widthClass} shrink-0`}>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/20"
+        />
+        {showLabel ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-mono text-[10px] font-medium leading-none tracking-[0.14em] uppercase text-white/75"
+          >
+            {label}
+          </span>
+        ) : null}
+        <input
+          type="range"
+          min={0}
+          max={maxIndex}
+          step={1}
+          value={clamped}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            if (next !== clamped) setSliderActive(true);
+            onChange(next);
+          }}
+          className="intel-price-range absolute inset-0 z-20 h-6 w-full cursor-pointer appearance-none bg-transparent accent-[#C8A951] disabled:opacity-40"
+          aria-label={ariaLabel}
+          aria-valuemin={0}
+          aria-valuemax={maxIndex}
+          aria-valuenow={clamped}
+          aria-valuetext={valueText}
         />
       </div>
     </div>

@@ -6,6 +6,7 @@ import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal"
 import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
+import { formatListingHeaderPrice } from "@/lib/listing-header-price";
 import { abbreviateUsState } from "@/lib/us-states";
 
 type ListingHeaderProps = {
@@ -24,6 +25,8 @@ type ListingHeaderProps = {
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
+  /** List / ask price shown bold to the right of street + town. */
+  price?: number | null;
   bedBathSearchHref?: string | null;
   hideMarketMeta?: boolean;
   /** Spotlight: hide street/city address line (title-only header). MLS status renders on the panel label row. */
@@ -84,6 +87,7 @@ export default function ListingHeader({
   baths,
   sqft,
   yearBuilt,
+  price = null,
   bedBathSearchHref,
   hideMarketMeta = false,
   privacyMode = false,
@@ -122,6 +126,8 @@ export default function ListingHeader({
 
   const title = address.street || address.full;
   const showScore = goldilocksScore != null && goldilocksScore > 0;
+  const priceLabel =
+    price != null && price > 0 ? formatListingHeaderPrice(price) : null;
 
   const metaSecondary = joinMetaSegments([
     style,
@@ -143,34 +149,55 @@ export default function ListingHeader({
             }
           />
         ) : null}
-        <div className="min-w-0 flex-1">
-          <h1
-            className={`font-serif text-white leading-tight min-w-0 ${
-              compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
-            }`}
-          >
-            {title}
-          </h1>
-          {(!privacyMode && (address.city || address.postalCode)) ||
-          !hideMeta ? (
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              {!privacyMode && (address.city || address.postalCode) ? (
-                <span className="font-mono text-[11px] sm:text-xs tracking-[0.12em] uppercase text-white/65">
-                  {[
-                    address.city,
-                    abbreviateUsState(address.state),
-                    address.postalCode,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
+        <div className="flex min-w-0 flex-1 items-stretch gap-x-3">
+          <div className="min-w-0 flex-1">
+            <h1
+              className={`font-serif text-white leading-tight min-w-0 ${
+                compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
+              }`}
+            >
+              {title}
+            </h1>
+            {(!privacyMode && (address.city || address.postalCode)) ||
+            !hideMeta ? (
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                {!privacyMode && (address.city || address.postalCode) ? (
+                  <span className="font-mono text-[11px] sm:text-xs tracking-[0.12em] uppercase text-white/65">
+                    {[
+                      address.city,
+                      abbreviateUsState(address.state),
+                      address.postalCode,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </span>
+                ) : null}
+                {!hideMeta ? (
+                  <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap">
+                    #{mlsId}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          {priceLabel ? (
+            <span
+              className={`flex shrink-0 items-center font-serif font-bold tabular-nums leading-none text-white ${
+                compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
+              }`}
+              aria-label={
+                isRental
+                  ? `Monthly rent ${priceLabel}`
+                  : `List price ${priceLabel}`
+              }
+            >
+              {priceLabel}
+              {isRental ? (
+                <span className="ml-0.5 self-end pb-0.5 font-mono text-[10px] font-normal tracking-[0.08em] uppercase text-white/55">
+                  /mo
                 </span>
               ) : null}
-              {!hideMeta ? (
-                <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap">
-                  #{mlsId}
-                </span>
-              ) : null}
-            </div>
+            </span>
           ) : null}
         </div>
       </div>

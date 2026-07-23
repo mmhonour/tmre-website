@@ -230,6 +230,7 @@ export default function ListingDetailClient({
           baths: l.baths,
           sqft: l.sqft,
           yearBuilt: l.yearBuilt,
+          price: l.price,
           bedBathSearchHref: intelligenceSearchHrefFromListing(l),
           heroSlot,
           ...listingHeaderScoreProps({

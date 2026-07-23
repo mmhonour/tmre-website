@@ -59,7 +59,8 @@ function renderSentenceWithMedianLink(
         href={medianHref}
         className="text-gold underline decoration-gold/40 underline-offset-2 hover:text-gold-light hover:decoration-gold/70"
         onClick={(event) => {
-          // Analysis flash is handled in ListingDetailsSchoolsPanel; keep viewport still.
+          // Keep viewport still; parent collapses remarks + opens Analysis.
+          // Analysis flash is handled in ListingDetailsSchoolsPanel (capture).
           event.preventDefault();
           onMedianClick?.();
         }}
@@ -81,7 +82,7 @@ export function ListingInsightCopy({
   className?: string;
   /** When set (listing / Spotlight only), links the median `$…/sqft` to Analysis. */
   medianHref?: string | null;
-  /** Mobile: open Analysis pop-out when the median link is tapped. */
+  /** Listing / Spotlight: collapse remarks + open/highlight Analysis. */
   onMedianClick?: () => void;
 }) {
   const sentences = splitSentences(text);

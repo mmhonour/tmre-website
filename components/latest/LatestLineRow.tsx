@@ -26,19 +26,6 @@ function formatUpdatedAt(iso: string | null): string {
   }).format(new Date(t));
 }
 
-/** Millions only, nearest $100k — $500K → $.5M, $1.45M → $1.5M */
-function formatPriceMillions(price: number): string {
-  const tenths = Math.round(price / 100_000);
-  const millions = tenths / 10;
-  if (millions <= 0) return "$0M";
-  if (millions < 1) {
-    return `$${String(millions).replace(/^0/, "")}M`;
-  }
-  const label =
-    Number.isInteger(millions) ? String(millions) : millions.toFixed(1);
-  return `$${label}M`;
-}
-
 const STATUS_DOT_CLASS: Record<string, string> = {
   New: "bg-sage",
   Active: "bg-sky",
@@ -80,6 +67,15 @@ function LatestLineRow({
       : null;
   const statusDotClass = STATUS_DOT_CLASS[l.status] ?? "bg-slate";
 
+  const bedBath = bedBathLabel(l.beds, l.baths);
+  const acres = dealBoardAcresLabel(l.lotAcres);
+  const specsLabel = [bedBath, ppsf, acres].filter(Boolean).join(" · ");
+  const priceLabel = `$${l.price.toLocaleString()}`;
+
+  /** Invisible borders keep columns aligned like a table without showing grid lines. */
+  const metaColClass =
+    "box-border border border-transparent px-1.5 min-w-0 text-left";
+
   return (
     <div
       {...listingHoverHandlers(isLive ? l.key : null)}
@@ -87,49 +83,46 @@ function LatestLineRow({
         isNew ? "bg-sage/[0.06] animate-[fadeIn_0.4s_ease-out]" : ""
       }`}
     >
-      <span
-        className="box-border flex items-center justify-start w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] sm:w-[3.75rem] sm:min-w-[3.75rem] sm:max-w-[3.75rem] shrink-0 grow-0 overflow-hidden leading-tight pt-0.5 sm:pt-0"
-        title={`MLS updated ${updatedLabel} (your local time)`}
-      >
-        <span className="font-mono text-[11px] sm:text-[12px] tabular-nums text-navy whitespace-nowrap">
-          {updatedLabel}
-        </span>
-      </span>
-      <DealBoardPrimaryPhoto
-        listing={l}
-        isLive={isLive}
-        width={53}
-        height={36}
-        priority
-        surface="light"
-        className="rounded-md shrink-0 mt-0.5 sm:mt-0"
-        showPhotoCountBadge={false}
-      />
-      <ClickableGoldilocksScore
-        score={l.score}
-        breakdown={l.scoreBreakdown}
-        title={l.address}
-        subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
-        listingHref={detailHref}
-        isRental={l.isRental}
-        className="shrink-0 text-[13px] mt-0.5 sm:mt-0"
-      />
+      <div className="flex shrink-0 items-stretch gap-1.5 sm:gap-2">
+        <div
+          className="box-border flex w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] sm:w-[3.75rem] sm:min-w-[3.75rem] sm:max-w-[3.75rem] shrink-0 grow-0 flex-col justify-between overflow-hidden py-px"
+          title={`MLS updated ${updatedLabel} (your local time)`}
+        >
+          <span className="font-mono text-[11px] sm:text-[12px] tabular-nums leading-none text-navy whitespace-nowrap">
+            {updatedLabel}
+          </span>
+          <ClickableGoldilocksScore
+            score={l.score}
+            breakdown={l.scoreBreakdown}
+            title={l.address}
+            subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
+            listingHref={detailHref}
+            isRental={l.isRental}
+            className="shrink-0 self-start text-[13px] leading-none"
+          />
+        </div>
+        <DealBoardPrimaryPhoto
+          listing={l}
+          isLive={isLive}
+          width={53}
+          height={36}
+          priority
+          surface="light"
+          className="rounded-md shrink-0"
+          showPhotoCountBadge={false}
+        />
+      </div>
       {town ? (
         <LatestTownMapHover
           townName={town}
           className="shrink-0 font-mono text-[11px] tracking-[0.08em] uppercase text-gold font-semibold mt-0.5 sm:mt-0"
         />
       ) : null}
-      <span className="text-charcoal/25 shrink-0 mt-0.5 sm:mt-0" aria-hidden>
-        ·
-      </span>
 
-      {/* Address: wrap on narrow; price in $M sits left of address on mobile */}
-      <span className="flex min-w-0 flex-1 sm:flex-none sm:max-w-[42%] items-start gap-1.5">
-        <span className="font-mono text-[11px] tabular-nums text-gold shrink-0 mt-0.5 sm:hidden">
-          {formatPriceMillions(l.price)}
-        </span>
-        <span className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+      <div className="flex min-w-0 flex-1 items-start sm:items-center">
+        <div
+          className={`${metaColClass} flex min-w-0 flex-[1.35] basis-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5`}
+        >
           <LatestAddressMetaHover
             listing={l}
             href={detailHref}
@@ -145,22 +138,19 @@ function LatestLineRow({
               className="shrink-0 font-mono text-[11px] tabular-nums text-slate/70"
             />
           ) : null}
-        </span>
-      </span>
-
-      <span className="text-charcoal/25 shrink-0 hidden sm:inline" aria-hidden>
-        ·
-      </span>
-      <span className="min-w-0 flex-1 truncate text-center font-mono text-slate tabular-nums hidden sm:inline">
-        {[
-          `$${l.price.toLocaleString()}`,
-          bedBathLabel(l.beds, l.baths),
-          ppsf,
-          dealBoardAcresLabel(l.lotAcres),
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </span>
+        </div>
+        <div
+          className={`${metaColClass} w-[6.75rem] shrink-0 font-mono text-[12px] sm:text-[13px] tabular-nums text-navy`}
+        >
+          {priceLabel}
+        </div>
+        <div
+          className={`${metaColClass} min-w-0 flex-1 basis-0 truncate font-mono text-[12px] sm:text-[13px] tabular-nums text-slate`}
+          title={specsLabel || undefined}
+        >
+          {specsLabel || "—"}
+        </div>
+      </div>
 
       {/* Narrow: colored status dot (group-header pills are the legend). Wider: full badge. */}
       <span

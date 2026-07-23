@@ -158,9 +158,10 @@ export default function ListingHeroPanels({
     collapse: collapseRemarks,
   } = useListingRemarksExpand();
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
-  const openAnalysisInDetails = useCallback(() => {
+  /** Insight median $/sqft → collapse remarks + open/highlight Analysis. */
+  const activateAnalysisFromMedian = useCallback(() => {
+    collapseRemarks();
     setMapVisible(false);
-    setMobileDrawer("details");
     const loc = new URL(window.location.href);
     if (loc.hash.replace(/^#/, "") !== LISTING_ANALYSIS_ID) {
       window.history.replaceState(
@@ -169,7 +170,23 @@ export default function ListingHeroPanels({
         `${loc.pathname}${loc.search}#${LISTING_ANALYSIS_ID}`,
       );
     }
-  }, []);
+    if (isDesktopLayout) {
+      setMobileDrawer((prev) =>
+        prev === "remarks" || prev === "insight" ? null : prev,
+      );
+      // After remarks collapse, bring Analysis into view in the right column.
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          document.getElementById(LISTING_ANALYSIS_ID)?.scrollIntoView({
+            block: "nearest",
+            behavior: "smooth",
+          });
+        }, 80);
+      });
+      return;
+    }
+    setMobileDrawer("details");
+  }, [collapseRemarks, isDesktopLayout]);
   const toggleMap = useCallback(() => {
     setMapVisible((prev) => {
       const next = !prev;
@@ -326,6 +343,7 @@ export default function ListingHeroPanels({
       text={overviewInsight}
       className="text-left text-[10px] sm:text-[11px] leading-snug text-white/70 break-words"
       medianHref={`#${LISTING_ANALYSIS_ID}`}
+      onMedianClick={activateAnalysisFromMedian}
     />
   ) : null;
 
@@ -777,7 +795,7 @@ export default function ListingHeroPanels({
               text={overviewInsight}
               className="text-left text-sm leading-relaxed text-white/80 break-words"
               medianHref={`#${LISTING_ANALYSIS_ID}`}
-              onMedianClick={openAnalysisInDetails}
+              onMedianClick={activateAnalysisFromMedian}
             />
           ) : null}
         </div>

@@ -177,6 +177,7 @@ export default function ListingComparablesClient({
           baths: listing.baths,
           sqft: listing.sqft,
           yearBuilt: listing.yearBuilt,
+          price: listing.price,
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
           heroSlot,
           ...listingHeaderScoreProps({

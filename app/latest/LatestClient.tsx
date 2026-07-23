@@ -906,30 +906,26 @@ export default function LatestClient({
                                   );
                                 })}
                               </span>
-                              <span className="text-charcoal/45 shrink-0">
-                                <span className="tabular-nums">{filteredRows.length}</span>
-                                {activeStatus ? ` ${activeStatus}` : ""} Listings
+                              <span className="flex shrink-0 items-center gap-2">
+                                {canShowMore ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleGroupExpanded(group.label)}
+                                    aria-expanded={expanded}
+                                    className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors"
+                                  >
+                                    {expanded
+                                      ? "Show less"
+                                      : `Show ${filteredRows.length - TOWN_PREVIEW_LIMIT} more`}
+                                  </button>
+                                ) : null}
+                                <span className="text-charcoal/45">
+                                  <span className="tabular-nums">{filteredRows.length}</span>
+                                  {activeStatus ? ` ${activeStatus}` : ""} Listings
+                                </span>
                               </span>
                             </div>
-                            {!collapsed ? (
-                              <>
-                                {renderNested()}
-                                {canShowMore ? (
-                                  <div className="flex justify-center border-t border-charcoal/[0.06] bg-cream/30 py-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleGroupExpanded(group.label)}
-                                      aria-expanded={expanded}
-                                      className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors border border-charcoal/15 hover:border-gold rounded-full px-3 py-1"
-                                    >
-                                      {expanded
-                                        ? "Show less"
-                                        : `Show ${filteredRows.length - TOWN_PREVIEW_LIMIT} more`}
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </>
-                            ) : null}
+                            {!collapsed ? renderNested() : null}
                           </div>
                         );
                       })

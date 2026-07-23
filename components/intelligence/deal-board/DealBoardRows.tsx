@@ -231,7 +231,7 @@ export function DealBoardPhotoLedGridCard({
     <div
       {...dealBoardRowAnchorProps(l.key)}
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white transition-colors hover:border-gold/25 hover:bg-gold/[0.03]"
+      className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-none border border-charcoal/[0.08] bg-white -mb-px -mr-px transition-colors hover:border-gold/25 hover:bg-gold/[0.03] hover:z-10"
     >
       <div className="relative">
         <span
@@ -346,7 +346,7 @@ export function DealBoardPhotoLedLargeCard({
     <div
       {...dealBoardRowAnchorProps(l.key)}
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white transition-colors hover:border-gold/25 hover:bg-gold/[0.03]"
+      className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-none border border-charcoal/[0.08] bg-white -mb-px -mr-px transition-colors hover:border-gold/25 hover:bg-gold/[0.03] hover:z-10"
     >
       <div className="relative">
         <span
