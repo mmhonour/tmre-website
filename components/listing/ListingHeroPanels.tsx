@@ -421,7 +421,7 @@ export default function ListingHeroPanels({
         <div
           ref={panelScrollRef}
           id={LISTING_SECTION_IDS.overview}
-          className="listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-2 pb-4 lg:pb-4"
+          className="listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-2 pb-4 max-lg:px-0 lg:pb-4"
         >
           <div
             className={`min-w-0 ${panelTab === "overview" ? "block" : "hidden"}`}
@@ -429,7 +429,7 @@ export default function ListingHeroPanels({
             {belowTabs}
           </div>
           <div
-            className={`min-w-0 px-4 ${
+            className={`min-w-0 max-lg:px-0 lg:px-4 ${
               panelTab && panelTab !== "overview" ? "block" : "hidden"
             }`}
           >
@@ -466,15 +466,15 @@ export default function ListingHeroPanels({
   }, [remarksSurfaceActive, collapseRemarks]);
 
   const propertyPanel = (
-    <div className="min-w-0">
+    <div className="min-w-0 max-lg:w-full">
       {/* Meta + section tabs stay pinned under the site nav while photos/content scroll. */}
       <div
         ref={stickyChromeRef}
-        className={`sticky ${STICKY_TOP_CLASS} z-30 overflow-visible pt-1 pb-3 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
+        className={`sticky ${STICKY_TOP_CLASS} z-30 overflow-visible pt-1 pb-3 max-lg:px-3 ${stickySurfaceClass} shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)]`}
       >
         {/* Status top-aligned with Spotlight Properties / ← Back to … */}
         {topLeft || statusBadge ? (
-          <div className="mb-1.5 flex items-start justify-between gap-3 max-lg:pr-[min(12rem,48vw)]">
+          <div className="mb-1.5 flex items-start justify-between gap-3">
             <div className="min-w-0">{topLeft}</div>
             {statusBadge ? (
               <div className="shrink-0 self-start">{statusBadge}</div>
@@ -482,7 +482,7 @@ export default function ListingHeroPanels({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-3 max-lg:pr-[min(12rem,48vw)] sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
             <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
               Property Details
@@ -623,10 +623,10 @@ export default function ListingHeroPanels({
     ) : null;
 
   const edgeTabClass = (active: boolean) =>
-    `inline-flex shrink-0 items-center justify-center rounded-full border px-3 py-2 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+    `pointer-events-auto shrink-0 py-0.5 text-right font-mono text-[9px] uppercase tracking-[0.14em] underline underline-offset-2 transition-colors ${
       active
-        ? "border-gold/50 bg-gold text-navy"
-        : "border-white/15 bg-[#1B2A4A]/95 text-gold backdrop-blur-md hover:border-gold/40 hover:text-gold-light"
+        ? "text-gold decoration-gold"
+        : "text-white/70 decoration-white/35 hover:text-gold hover:decoration-gold/50"
     }`;
 
   const openMobileDrawer = (id: Exclude<MobileDrawerId, null>) => {
@@ -671,16 +671,19 @@ export default function ListingHeroPanels({
         ) : null}
       </div>
       {belowHero ? (
-        <div className="mt-6 border-t border-white/10 pt-6 lg:mt-8 lg:pt-8">
+        <div className="mt-6 border-t border-white/10 pt-6 max-lg:px-0 lg:mt-8 lg:pt-8">
           {belowHero}
         </div>
       ) : null}
 
-      {/* Mobile: horizontal pop-out tabs, fixed upper-right */}
+      {/*
+        Mobile: horizontal-label pills stacked one-per-row, fixed upper-right,
+        floating over the Property Details sticky panel (not in document flow).
+      */}
       <div
-        className="fixed right-2 z-[60] flex max-w-[calc(100vw-1rem)] flex-row flex-wrap items-center justify-end gap-1.5 lg:hidden"
+        className="pointer-events-none fixed right-2 z-[60] flex max-w-[min(11rem,46vw)] flex-col items-end gap-1 lg:hidden"
         style={{
-          top: "max(4.75rem, calc(env(safe-area-inset-top, 0px) + 3.75rem))",
+          top: "max(5.25rem, calc(env(safe-area-inset-top, 0px) + 4.25rem))",
         }}
         role="group"
         aria-label="Listing side panels"

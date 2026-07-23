@@ -68,9 +68,11 @@ function joinMetaSegments(segments: ReactNode[]): ReactNode {
   ));
 }
 
-/** Phone: break out to viewport width. Desktop: bleed to panel edges (cancel p-4). */
-const HERO_BLEED_CLASS =
-  "max-lg:relative max-lg:left-1/2 max-lg:right-1/2 max-lg:-ml-[50vw] max-lg:-mr-[50vw] max-lg:w-screen max-lg:max-w-[100vw] lg:-mx-4";
+/**
+ * Phone: shell is already full-bleed (`px-0`), so the hero just spans the
+ * content width. Desktop: bleed to panel edges (cancel inner padding).
+ */
+const HERO_BLEED_CLASS = "max-lg:w-full lg:-mx-4";
 
 export default function ListingHeader({
   mlsId,

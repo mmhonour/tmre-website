@@ -97,10 +97,10 @@ function Section({
       <div
         className={
           dualColumnTitle
-            ? `grid grid-cols-1 items-center gap-1 lg:grid-cols-2 ${
+            ? `grid grid-cols-1 items-center gap-1 max-lg:px-3 lg:grid-cols-2 lg:px-0 ${
                 compact ? "mb-2" : "mb-3"
               }`
-            : `flex items-center justify-between gap-3 ${
+            : `flex items-center justify-between gap-3 max-lg:px-3 lg:px-0 ${
                 compact ? "mb-2" : "mb-3"
               }`
         }
@@ -117,9 +117,7 @@ function Section({
         {showCriteriaLinkSlot ? (
           <div
             id={listingCriteriaLinkSlotId(id)}
-            className={`shrink-0 empty:hidden ${
-              dualColumnTitle ? "flex justify-end" : ""
-            }`}
+            className="ml-auto flex shrink-0 justify-end empty:hidden"
           />
         ) : null}
       </div>

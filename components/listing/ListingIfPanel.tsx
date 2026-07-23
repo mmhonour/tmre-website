@@ -1025,7 +1025,7 @@ export default function ListingIfPanel({
       }
     >
       {isPage && !suppressPageChrome ? (
-        <div className="grid grid-cols-1 items-start gap-1 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-1 max-lg:px-3 lg:grid-cols-2 lg:px-0">
           <div className="min-w-0 text-left">
             <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
               If...
@@ -1038,7 +1038,7 @@ export default function ListingIfPanel({
           {criteriaInSidePanel ? (
             <div
               id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
-              className="flex shrink-0 justify-end empty:hidden"
+              className="ml-auto flex shrink-0 justify-end empty:hidden"
             />
           ) : null}
         </div>

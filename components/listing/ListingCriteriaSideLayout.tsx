@@ -18,7 +18,7 @@ export function listingCriteriaLinkSlotId(sectionId: string): string {
  * the criteria panel always portals above Location in the right column when open.
  * Visibility is shared across analysis tabs when wrapped in
  * ListingCriteriaVisibilityProvider.
- * Mobile: Criteria edge tab → right slide-over (same shared open state).
+ * Mobile: same top-right title link → right slide-over (no fixed edge tab).
  */
 export default function ListingCriteriaSideLayout({
   criteria,
@@ -109,22 +109,17 @@ export default function ListingCriteriaSideLayout({
     return <>{children}</>;
   }
 
-  const edgeTabClass = (active: boolean) =>
-    `flex items-center justify-center rounded-l-lg border border-r-0 px-1.5 py-3 shadow-[-4px_0_16px_-8px_rgba(0,0,0,0.55)] transition-colors ${
-      active
-        ? "border-gold/50 bg-gold text-navy"
-        : "border-white/15 bg-[#1B2A4A]/95 text-gold backdrop-blur-md hover:border-gold/40 hover:text-gold-light"
-    }`;
-
   const toggleLinkClass =
     "shrink-0 font-mono text-[10px] tracking-[0.18em] uppercase text-gold/80 underline decoration-gold/35 underline-offset-2 transition-colors hover:text-gold whitespace-nowrap";
 
-  const desktopToggle = (
+  const criteriaToggle = (
     <button
       type="button"
       className={toggleLinkClass}
       aria-expanded={open}
-      aria-controls={LISTING_CRITERIA_SLOT_ID}
+      aria-controls={
+        isDesktop ? LISTING_CRITERIA_SLOT_ID : "listing-criteria-drawer"
+      }
       onClick={toggle}
     >
       {open ? "Hide criteria" : "Criteria"}
@@ -144,18 +139,21 @@ export default function ListingCriteriaSideLayout({
   const showDesktopPanel =
     isDesktop && open && desktopSlot && sectionVisible;
 
-  const showTitleLink = isDesktop && linkSlot && sectionVisible;
+  const showTitleLink = Boolean(linkSlot && sectionVisible);
 
   return (
     <>
-      {isDesktop && !linkSlot ? (
-        <div className="mb-3 flex justify-end">{desktopToggle}</div>
+      {/* Fallback when the section title has no Criteria mount point. */}
+      {!linkSlot && sectionVisible ? (
+        <div className="mb-3 flex justify-end max-lg:px-3 lg:px-0">
+          {criteriaToggle}
+        </div>
       ) : null}
 
       <div className="min-w-0 space-y-6">{children}</div>
 
       {showTitleLink && linkSlot
-        ? createPortal(desktopToggle, linkSlot)
+        ? createPortal(criteriaToggle, linkSlot)
         : null}
 
       {showDesktopPanel
@@ -168,32 +166,13 @@ export default function ListingCriteriaSideLayout({
         : null}
 
       {!isDesktop && sectionVisible ? (
-        <>
-          <div
-            className="fixed right-0 top-[28%] z-[55] flex -translate-y-1/2 flex-col gap-2"
-            role="group"
-            aria-label="Criteria panel"
-          >
-            <button
-              type="button"
-              className={edgeTabClass(open)}
-              aria-expanded={open}
-              aria-controls="listing-criteria-drawer"
-              onClick={toggle}
-            >
-              <span className="font-mono text-[10px] tracking-[0.18em] uppercase [writing-mode:vertical-rl] rotate-180">
-                Criteria
-              </span>
-            </button>
-          </div>
-          <ListingSideDrawer
-            open={open}
-            onClose={() => setOpen(false)}
-            title={headingLabel}
-          >
-            <div id="listing-criteria-drawer">{criteria}</div>
-          </ListingSideDrawer>
-        </>
+        <ListingSideDrawer
+          open={open}
+          onClose={() => setOpen(false)}
+          title={headingLabel}
+        >
+          <div id="listing-criteria-drawer">{criteria}</div>
+        </ListingSideDrawer>
       ) : null}
     </>
   );

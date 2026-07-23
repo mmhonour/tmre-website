@@ -353,7 +353,7 @@ function UagColumn({
   const canShowMore = visibleCount < cap && comps.length > visibleCount;
 
   return (
-    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:py-4">
       <div className="relative mb-1 pr-[4.5rem]">
         <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
           {label}
@@ -714,10 +714,18 @@ export function ListingUagPageContent({
     <div className="w-full min-w-0 space-y-6">
       {!suppressPageChrome ? (
         <>
-          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-            Under Agreement
-          </p>
-          <p className="text-white/50 text-sm">
+          <div className="mb-1 flex items-center justify-between gap-3 max-lg:px-3 lg:px-0">
+            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+              Under Agreement
+            </p>
+            {showCriteria ? (
+              <div
+                id={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)}
+                className="ml-auto flex shrink-0 justify-end empty:hidden"
+              />
+            ) : null}
+          </div>
+          <p className="text-white/50 text-sm max-lg:px-3 lg:px-0">
             Homes currently under contract (Under Contract and Under Contract –
             Continue to Show), matched with the same thresholds as Comparables:
             same zip, beds within ±1, baths within ±1, living area within ±30%,

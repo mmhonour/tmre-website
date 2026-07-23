@@ -1190,12 +1190,26 @@ export default function ListingComparablesPanel({
       </div>
     ) : null;
 
+  const criteriaLinkSlotId = listingCriteriaLinkSlotId(
+    isRental
+      ? LISTING_SECTION_IDS["comparable-rentals"]
+      : LISTING_SECTION_IDS.comparables,
+  );
+
   const pageChrome = (
     <>
       {isPage && !suppressPageChrome && (
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-          {panelTitle}
-        </p>
+        <div className="mb-1 flex items-center justify-between gap-3 max-lg:px-3 lg:px-0">
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+            {panelTitle}
+          </p>
+          {criteriaInSidePanel ? (
+            <div
+              id={criteriaLinkSlotId}
+              className="ml-auto flex shrink-0 justify-end empty:hidden"
+            />
+          ) : null}
+        </div>
       )}
 
       {!isPage && !isModal && (
@@ -1208,7 +1222,7 @@ export default function ListingComparablesPanel({
       )}
 
       {isPage && !suppressPageChrome && (
-        <p className="text-white/50 text-sm">{pageIntro}</p>
+        <p className="text-white/50 text-sm max-lg:px-3 lg:px-0">{pageIntro}</p>
       )}
 
       {isModal && (
@@ -1305,10 +1319,10 @@ export default function ListingComparablesPanel({
           id={soldPanelId}
           className={
             isPage
-              ? "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+              ? "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:py-4"
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
-                : "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0"
+                : "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 max-lg:px-3"
           }
         >
           <div className="relative mb-3 pr-[4.5rem]">
@@ -1406,10 +1420,10 @@ export default function ListingComparablesPanel({
           id={onMarketPanelId}
           className={
             isPage
-              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:py-4"
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
-                : "scroll-mt-24 min-w-0"
+                : "scroll-mt-24 min-w-0 max-lg:px-3"
           }
         >
           <div className="relative mb-3 pr-[4.5rem]">
@@ -1482,11 +1496,7 @@ export default function ListingComparablesPanel({
         <ListingCriteriaSideLayout
           criteria={criteriaBlock}
           heading={isRental ? "Rented criteria" : "Sold criteria"}
-          linkSlotId={listingCriteriaLinkSlotId(
-            isRental
-              ? LISTING_SECTION_IDS["comparable-rentals"]
-              : LISTING_SECTION_IDS.comparables,
-          )}
+          linkSlotId={criteriaLinkSlotId}
         >
           {mainColumn}
         </ListingCriteriaSideLayout>

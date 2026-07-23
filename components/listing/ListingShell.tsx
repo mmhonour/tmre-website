@@ -60,7 +60,7 @@ export function ListingShell({
   return (
     <section className="navy-gradient text-white pt-20 pb-20 lg:pt-24 lg:pb-28 min-h-screen relative">
       <div className="absolute inset-0 hero-grid opacity-30" aria-hidden />
-      <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
+      <div className="relative mx-auto max-w-7xl px-0 lg:px-10">
         {children}
       </div>
     </section>
