@@ -45,7 +45,7 @@ import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation / payload shape changes so stale caches are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 9
+export const IF_ESTIMATES_ALGO_VERSION = 11
 
 const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
 

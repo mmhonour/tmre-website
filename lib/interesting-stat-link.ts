@@ -26,6 +26,7 @@ export type InterestingStatKind =
 /** Matches `StatsChartPrintFrame` `chartId` / `#stats-chart-{id}`. */
 export type InterestingStatChartId =
   | 'sales-trend'
+  | 'months-supply'
   | 'active-by-month'
   | 'sales-by-vintage'
   | 'sales-by-price'
@@ -36,8 +37,8 @@ export type InterestingStatChartId =
 const CHART_BY_KIND: Record<InterestingStatKind, InterestingStatChartId> = {
   'closed-this-week': 'sales-trend',
   'closed-zip': 'sales-trend',
-  'months-supply': 'sales-trend',
-  'tightest-supply': 'sales-trend',
+  'months-supply': 'months-supply',
+  'tightest-supply': 'months-supply',
   'sales-yoy': 'sales-trend',
   'sales-mom': 'sales-trend',
   'active-count': 'active-by-month',
@@ -56,6 +57,7 @@ const CHART_BY_KIND: Record<InterestingStatKind, InterestingStatChartId> = {
 
 export const INTERESTING_STAT_CHART_IDS: readonly InterestingStatChartId[] = [
   'sales-trend',
+  'months-supply',
   'active-by-month',
   'sales-by-vintage',
   'sales-by-price',
@@ -111,6 +113,12 @@ export function interestingStatWarmUrls(
       urls.push(
         `/api/sales-by-month?${cityQs}&kind=sale`,
         `/api/months-supply?${cityQs}&kind=sale&property=homes`,
+      )
+      break
+    case 'months-supply':
+      urls.push(
+        `/api/months-supply-by-month?${cityQs}&kind=sale`,
+        `/api/months-supply?${cityQs}&kind=sale&property=all`,
       )
       break
     case 'active-by-month':

@@ -24,6 +24,7 @@ import MedianPriceListingsTable, {
 } from "./MedianPriceListingsTable";
 import StatsChartPrintFrame from "./StatsChartPrintFrame";
 import SalesTrendDataTable from "./SalesTrendDataTable";
+import MonthsSupplyByMonthDataTable from "./MonthsSupplyByMonthDataTable";
 import ActiveByMonthDataTable from "./ActiveByMonthDataTable";
 import ActiveByMonthView from "./ActiveByMonthView";
 import ActiveByTownDataTable from "./ActiveByTownDataTable";
@@ -39,10 +40,14 @@ import {
   statsByMonthTownTitle,
   statsByPriceTitle,
   statsByVintageTitle,
+  statsMonthsSupplyByMonthTitle,
 } from "./stats-labels";
 import "./stats-print.css";
 
 const SalesTrendChart = dynamic(() => import("./SalesTrendChart"), { ssr: false });
+const MonthsSupplyByMonthChart = dynamic(() => import("./MonthsSupplyByMonthChart"), {
+  ssr: false,
+});
 const ActiveByMonthChart = dynamic(() => import("./ActiveByMonthChart"), { ssr: false });
 const ActiveByTownChart = dynamic(() => import("./ActiveByTownChart"), { ssr: false });
 const SalesByTownChart = dynamic(() => import("./SalesByTownChart"), { ssr: false });
@@ -527,6 +532,10 @@ export default function StatsClient() {
     const items: { id: string; label: string }[] = [
       { id: "stats-chart-active-by-month", label: statsActiveByMonthTitle(statsKind) },
       { id: "stats-chart-sales-trend", label: statsByMonthTitle(statsKind) },
+      {
+        id: "stats-chart-months-supply",
+        label: statsMonthsSupplyByMonthTitle(statsKind),
+      },
     ];
     if (selectedCity === "All") {
       items.push(
@@ -790,6 +799,24 @@ export default function StatsClient() {
                     (urlProperty as "all" | "homes" | "multi" | "condos" | null) ??
                     "all"
                   }
+                />
+              </StatsChartPrintFrame>
+
+              <StatsChartPrintFrame
+                chartId="months-supply"
+                dataPanel={
+                  <MonthsSupplyByMonthDataTable
+                    key={`months-supply-data-${statsKind}-${selectedCity}${chartVersionSuffix}`}
+                    city={selectedCity}
+                    kind={statsKind}
+                  />
+                }
+              >
+                <MonthsSupplyByMonthChart
+                  key={`months-supply-${statsKind}-${selectedCity}${chartVersionSuffix}`}
+                  city={selectedCity}
+                  kind={statsKind}
+                  headerActiveCount={chartHeaderActiveCount}
                 />
               </StatsChartPrintFrame>
 

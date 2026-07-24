@@ -179,6 +179,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'months-supply:' },
   },
   {
+    id: 'months-supply-by-month',
+    name: 'Months supply by month',
+    category: 'market',
+    medium: 'postgres',
+    location: 'derived · /api/months-supply-by-month',
+    keyPattern: 'from active-by-month + sales-by-month',
+    owner: 'lib/months-supply-by-month.ts',
+    notes:
+      'Historical months supply series for Stats (default 2025 vs 2026). Per month: reconstructed end-of-month active ÷ trailing 3-month avg closings ending that month. Computed on read from existing month caches — not a separate stats_cache key.',
+    live: { kind: 'none' },
+  },
+  {
     id: 'active-by-month',
     name: 'Active by month',
     category: 'market',

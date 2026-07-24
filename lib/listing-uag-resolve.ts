@@ -38,7 +38,7 @@ import { normalizeZip } from '@/lib/tmre-towns'
 // ---------------------------------------------------------------------------
 
 /** Bump to invalidate every cached UAG result after a matching-logic change. */
-const UAG_CACHE_VERSION = 5
+const UAG_CACHE_VERSION = 6
 
 /** How long a per-subject UAG result stays fresh before we re-query RETS. */
 const UAG_RESULT_TTL_MS = 12 * 60 * 60 * 1000

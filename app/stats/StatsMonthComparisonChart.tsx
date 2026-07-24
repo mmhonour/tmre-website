@@ -62,6 +62,10 @@ export type StatsMonthComparisonChartProps = {
   }) => ReactNode;
   /** Skip /api/market-stats when the parent already has active inventory. */
   headerActiveCount?: number | null;
+  /** Allow fractional Y values (e.g. months supply). */
+  allowYDecimals?: boolean;
+  /** Format tooltip metric values (defaults to raw number). */
+  formatMetricValue?: (value: number) => string;
 };
 
 export default function StatsMonthComparisonChart({
@@ -77,6 +81,8 @@ export default function StatsMonthComparisonChart({
   timelineModeEnabled = yearSelectionEnabled,
   headerMetric,
   headerActiveCount,
+  allowYDecimals = false,
+  formatMetricValue,
 }: StatsMonthComparisonChartProps) {
   const id = useId().replace(/:/g, "");
   const viewCtx = useStatsMonthComparisonViewOptional();
@@ -400,11 +406,11 @@ export default function StatsMonthComparisonChart({
                 height={continuousMode ? 52 : 30}
               />
               <YAxis
-                allowDecimals={false}
+                allowDecimals={allowYDecimals}
                 tick={{ fontFamily: "monospace", fontSize: 10, fill: "rgba(255,255,255,0.35)" }}
                 axisLine={false}
                 tickLine={false}
-                width={28}
+                width={allowYDecimals ? 36 : 28}
               />
               <Tooltip
                 contentStyle={{
@@ -427,11 +433,15 @@ export default function StatsMonthComparisonChart({
                   const slotLabel = payload?.[0]?.payload?.slotLabel;
                   return slotLabel != null ? String(slotLabel) : String(label);
                 }}
-                formatter={(value, name) =>
-                  value == null || !value
-                    ? ["—", String(name)]
-                    : [`${value} ${volumeNoun}`, String(name)]
-                }
+                formatter={(value, name) => {
+                  if (value == null || value === "") return ["—", String(name)];
+                  const n = typeof value === "number" ? value : Number(value);
+                  if (!Number.isFinite(n) || n === 0) return ["—", String(name)];
+                  const display = formatMetricValue
+                    ? formatMetricValue(n)
+                    : String(n);
+                  return [`${display} ${volumeNoun}`, String(name)];
+                }}
                 cursor={{ stroke: "rgba(255,255,255,0.08)", strokeWidth: 1 }}
               />
               {[...visibleYears].reverse().map((yr) => {

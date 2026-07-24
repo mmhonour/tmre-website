@@ -54,9 +54,11 @@ export type ListingDetailsSchoolsPanelProps = {
 export const LISTING_ANALYSIS_ID = "listing-analysis";
 
 /** Flash Analysis background after Insight median $/sqft deep-link. */
-const ANALYSIS_HIGHLIGHT_MS = 10_000;
+const ANALYSIS_HIGHLIGHT_MS = 30_000;
 const ANALYSIS_HIGHLIGHT_CLASS = "bg-[#2A3D6B]";
 const ANALYSIS_IDLE_CLASS = "bg-transparent";
+const PANEL_DIM_CLASS = "opacity-35";
+const PANEL_DIM_TRANSITION = "transition-opacity duration-700 ease-out";
 
 type PriorListing = {
   mlsId: string;
@@ -183,7 +185,7 @@ export default function ListingDetailsSchoolsPanel({
     });
   };
 
-  // Insight median link → #listing-analysis: lighten Analysis for 10s.
+  // Insight median link → #listing-analysis: emphasize Analysis for 30s.
   useEffect(() => {
     const hashTargetsAnalysis = () =>
       window.location.hash.replace(/^#/, "") === LISTING_ANALYSIS_ID;
@@ -366,9 +368,13 @@ export default function ListingDetailsSchoolsPanel({
     ? Math.round(((rentalPrice * 12) / saleClosedForCompare) * 1000) / 10
     : null;
 
+  const siblingDimClass = analysisHighlighted
+    ? PANEL_DIM_CLASS
+    : "opacity-100";
+
   return (
     <div className={`${panelClass} space-y-3`}>
-      <div>
+      <div className={`${PANEL_DIM_TRANSITION} ${siblingDimClass}`}>
         <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold mb-2">
           Details
         </p>
@@ -448,7 +454,13 @@ export default function ListingDetailsSchoolsPanel({
           }`}
         >
           <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold">
+            <p
+              className={`font-mono uppercase text-gold transition-all duration-700 ease-out ${
+                analysisHighlighted
+                  ? "text-[13px] font-bold tracking-[0.14em]"
+                  : "text-[9px] font-normal tracking-[0.18em]"
+              }`}
+            >
               Analysis
             </p>
             {showToggle ? (
@@ -585,7 +597,9 @@ export default function ListingDetailsSchoolsPanel({
       ) : null}
 
       {hasSchools ? (
-        <div className="border-t border-white/10 pt-3">
+        <div
+          className={`border-t border-white/10 pt-3 ${PANEL_DIM_TRANSITION} ${siblingDimClass}`}
+        >
           <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold mb-1.5">
             Schools
           </p>

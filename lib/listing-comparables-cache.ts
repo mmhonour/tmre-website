@@ -33,9 +33,20 @@ import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, townForZip, type TmreTown } from '@/lib/tmre-towns'
 
 const COMPS_EDGES_MATCH_FP_KEY = 'comps_edges_match_fp'
+const COMPS_EDGES_ALGO_SWITCHED_AT_KEY = 'comps_edges_algo_switched_at'
 
 /** Bump when matcher tolerances / ranking change so cached edges rebuild. */
-export const COMPS_EDGES_ALGO_VERSION = 5
+export const COMPS_EDGES_ALGO_VERSION = 6
+
+function markCompsEdgesAlgoVersion(): void {
+  const current = getSyncMeta('comps_edges_algo_version')
+  const next = String(COMPS_EDGES_ALGO_VERSION)
+  if (current === next) return
+  setSyncMeta('comps_edges_algo_version', next)
+  // Edges computed before this switch remain on disk but must not be treated
+  // as fresh once the global version meta is advanced by another subject.
+  setSyncMeta(COMPS_EDGES_ALGO_SWITCHED_AT_KEY, new Date().toISOString())
+}
 
 function relationsForKind(kind: ComparablesMatchMode): ListingRelationKind[] {
   return kind === 'rental'
@@ -189,12 +200,14 @@ function edgesAreFresh(
   }
   if (!edgesMatchPricingConfig(match)) return false
   if (rows.length === 0) return false
-  const lastFull = getSyncMeta('last_full_sync')
-  if (!lastFull) return true
   const computedAt = rows.reduce(
     (min, row) => (row.computedAt < min ? row.computedAt : min),
     rows[0]!.computedAt,
   )
+  const switchedAt = getSyncMeta(COMPS_EDGES_ALGO_SWITCHED_AT_KEY)
+  if (switchedAt && computedAt < switchedAt) return false
+  const lastFull = getSyncMeta('last_full_sync')
+  if (!lastFull) return true
   // Edges written before the latest full inventory rebuild are stale.
   return computedAt >= lastFull
 }
@@ -287,7 +300,7 @@ export async function computeAndPersistComparables(
     computedAt,
   )
   await replaceListingRelationsForSubject(subjectId, relationKinds, rows)
-  setSyncMeta('comps_edges_algo_version', String(COMPS_EDGES_ALGO_VERSION))
+  markCompsEdgesAlgoVersion()
   setSyncMeta(COMPS_EDGES_MATCH_FP_KEY, pricingMatchingConfigFingerprint(match))
 
   return {
@@ -327,6 +340,11 @@ export async function rebuildComparableEdges(options: {
   let subjects = 0
   let edges = 0
 
+  // Invalidate every prior edge row before rewriting subjects.
+  const rebuildStartedAt = new Date().toISOString()
+  setSyncMeta('comps_edges_algo_version', String(COMPS_EDGES_ALGO_VERSION))
+  setSyncMeta(COMPS_EDGES_ALGO_SWITCHED_AT_KEY, rebuildStartedAt)
+
   for (const town of TMRE_TOWNS) {
     const active = (await readListingsFromDb(town, 'Active')).slice(0, limitPerTown)
     if (active.length === 0) continue
@@ -356,7 +374,6 @@ export async function rebuildComparableEdges(options: {
   }
 
   const finishedAt = new Date().toISOString()
-  setSyncMeta('comps_edges_algo_version', String(COMPS_EDGES_ALGO_VERSION))
   setSyncMeta('last_comps_edges', finishedAt)
   const durationMs = Date.now() - t0
   console.info(

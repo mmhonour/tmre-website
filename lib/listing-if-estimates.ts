@@ -207,6 +207,8 @@ function compsInSubjectPriceTier(
 
 function soldCompPrice(comp: ComparableListing): number | null {
   if (comp.closePrice != null && comp.closePrice > 0) return comp.closePrice
+  // Closed rentals often omit ClosePrice; list/rent price is the lease amount.
+  if (comp.price != null && comp.price > 0) return comp.price
   return null
 }
 
