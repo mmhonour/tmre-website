@@ -113,6 +113,7 @@ export default function ListingSubnav({
   panelTab = null,
   onPanelOpen = null,
   onPanelClose = null,
+  onPhotosSelect = null,
   forceShowPhotos = false,
   mapVisible = false,
   onMapToggle = null,
@@ -140,6 +141,11 @@ export default function ListingSubnav({
   onPanelOpen?: ((tab: ListingScrollSectionTab) => void) | null;
   /** Collapse the slide-up panel (Photos tab while panel is open). */
   onPanelClose?: (() => void) | null;
+  /**
+   * Overview photos mode: stay on this page (no /photos navigation) and
+   * reveal the Photos tab / photo stack.
+   */
+  onPhotosSelect?: (() => void) | null;
   /** Force Photos tab visible (panel open). */
   forceShowPhotos?: boolean;
   /** Location panel is open (Map tab highlight). */
@@ -413,7 +419,12 @@ export default function ListingSubnav({
       tab.id === "map"
         ? mapVisible
         : panelMode
-          ? panelTab === tab.id
+          ? tab.id === "photos"
+            ? forceShowPhotos && panelTab == null
+            : panelTab === tab.id ||
+              (tab.id === "overview" &&
+                panelTab == null &&
+                !forceShowPhotos)
           : !onTabSelect && useHashJump && active === "overview" && scrollActive
             ? scrollActive === tab.id
             : active === tab.id;
@@ -438,12 +449,19 @@ export default function ListingSubnav({
             return;
           }
 
+          // Overview photos mode: never hard-navigate to /photos — that remounts
+          // the listing page. Stay here and enter/reveal photos in place.
+          if (tab.id === "photos" && onPhotosSelect) {
+            event.preventDefault();
+            onPhotosSelect();
+            return;
+          }
+
           if (panelMode && onPanelOpen && onPanelClose) {
             if (tab.id === "photos") {
-              if (panelTab != null) {
-                event.preventDefault();
-                onPanelClose();
-              }
+              // Fallback: close any open panel; never follow the /photos href.
+              event.preventDefault();
+              if (panelTab != null) onPanelClose();
               return;
             }
             if (PANEL_SECTION_TABS.has(tab.id)) {

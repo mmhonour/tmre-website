@@ -903,9 +903,17 @@ export function roundIfRentMidpoint(amount: number): number {
   return Math.round(amount / 100) * 100
 }
 
+/**
+ * Rent amounts on the If page — `$4.5K` (thousands, always one decimal).
+ * Pair with the range display: `$4.5K ←→ $5.2K`.
+ */
 export function fmtIfRentMoney(amount: number | null): string {
   if (amount == null) return '—'
-  return `$${amount.toLocaleString('en-US')}`
+  const thousands = amount / 1_000
+  return `$${thousands.toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}K`
 }
 
 export function fmtIfRentEstimateRange(
@@ -917,6 +925,9 @@ export function fmtIfRentEstimateRange(
   const roundedHigh = high != null ? roundIfRentHigh(high) : null
   const roundedMid =
     midpoint != null ? roundIfRentMidpoint(midpoint) : null
+  if (roundedLow != null && roundedHigh != null && roundedLow !== roundedHigh) {
+    return `${fmtIfRentMoney(roundedLow)} ←→ ${fmtIfRentMoney(roundedHigh)}/mo`
+  }
   const range = fmtIfEstimateRange(
     roundedLow,
     roundedHigh,

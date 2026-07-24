@@ -1,6 +1,14 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
@@ -20,7 +28,10 @@ import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingCriteriaVisibilityProvider } from "@/components/listing/ListingCriteriaVisibilityContext";
-import { ListingPhotosModeContext } from "@/components/listing/ListingPhotosModeContext";
+import {
+  ListingPhotosModeContext,
+  type ListingPhotosModeApi,
+} from "@/components/listing/ListingPhotosModeContext";
 import {
   firstListingRemarksLine,
   ListingRemarksContent,
@@ -150,6 +161,9 @@ export default function ListingHeroPanels({
    * (enters photos mode). Resets when the listing changes.
    */
   const [photosTabVisible, setPhotosTabVisible] = useState(false);
+  /** Hero index while Photos tab / photos mode is active. */
+  const [photosModeIndex, setPhotosModeIndex] = useState(0);
+  const photosModeCountRef = useRef(0);
   /** Location panel / map drawer — off by default; Map tab toggles it. */
   const [mapVisible, setMapVisible] = useState(false);
   /** Drawer is mobile-only; keep Location open when resizing up to desktop. */
@@ -263,16 +277,57 @@ export default function ListingHeroPanels({
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }, []);
 
-  /** Clicking an Overview photo: reveal Photos tab + collapse any slide panel. */
-  const enterPhotosMode = useCallback(() => {
+  /** Clicking an Overview photo / Photos tab: reveal Photos + collapse panel. */
+  const enterPhotosMode = useCallback((photoIndex?: number) => {
     setPhotosTabVisible(true);
     setPanelTab(null);
+    if (typeof photoIndex === "number" && Number.isFinite(photoIndex)) {
+      const count = photosModeCountRef.current;
+      const max = count > 0 ? count - 1 : 0;
+      setPhotosModeIndex(Math.min(Math.max(Math.trunc(photoIndex), 0), max));
+    }
     const url = new URL(window.location.href);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }, []);
 
+  const cyclePhotosMode = useCallback((delta: number) => {
+    const n = photosModeCountRef.current;
+    if (n <= 1) return;
+    setPhotosModeIndex((i) => (i + delta + n * 10) % n);
+  }, []);
+
+  const registerPhotosModeCount = useCallback((count: number) => {
+    photosModeCountRef.current = Math.max(0, count);
+    if (count > 0) {
+      setPhotosModeIndex((i) => Math.min(i, count - 1));
+    }
+  }, []);
+
+  const photosModeActive = useSlidePanel && photosTabVisible && panelTab == null;
+
+  const photosModeApi = useMemo<ListingPhotosModeApi | null>(() => {
+    if (!useSlidePanel) return null;
+    return {
+      enter: enterPhotosMode,
+      active: photosModeActive,
+      photoIndex: photosModeIndex,
+      setPhotoIndex: setPhotosModeIndex,
+      cycle: cyclePhotosMode,
+      registerPhotoCount: registerPhotosModeCount,
+    };
+  }, [
+    useSlidePanel,
+    enterPhotosMode,
+    photosModeActive,
+    photosModeIndex,
+    cyclePhotosMode,
+    registerPhotosModeCount,
+  ]);
+
   useEffect(() => {
     setPhotosTabVisible(false);
+    setPhotosModeIndex(0);
+    photosModeCountRef.current = 0;
   }, [subnav.mlsId]);
 
   // Deep-link: open panel from hash on overview mount / hash changes.
@@ -406,6 +461,7 @@ export default function ListingHeroPanels({
         panelTab={useSlidePanel ? panelTab : null}
         onPanelOpen={useSlidePanel ? openPanel : null}
         onPanelClose={useSlidePanel ? closePanel : null}
+        onPhotosSelect={useSlidePanel ? enterPhotosMode : null}
         forceShowPhotos={photosTabVisible}
         mapVisible={mapVisible}
         onMapToggle={toggleMap}
@@ -631,9 +687,7 @@ export default function ListingHeroPanels({
         ) : null}
       </div>
 
-      <ListingPhotosModeContext.Provider
-        value={useSlidePanel ? enterPhotosMode : null}
-      >
+      <ListingPhotosModeContext.Provider value={photosModeApi}>
         {heroStage}
       </ListingPhotosModeContext.Provider>
       {/*

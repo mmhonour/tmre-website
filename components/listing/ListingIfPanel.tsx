@@ -1033,7 +1033,6 @@ export default function ListingIfPanel({
                   : null
               }
               formatAmount={fmtIfRentMoney}
-              suffix="/mo"
             />
           }
           midpoint={

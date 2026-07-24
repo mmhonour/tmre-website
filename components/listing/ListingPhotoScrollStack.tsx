@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import type { MouseEvent } from "react";
+import { useEffect, type MouseEvent } from "react";
 import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
+import ListingPhotoCycleControls from "@/components/listing/ListingPhotoCycleControls";
 import { useListingPhotosMode } from "@/components/listing/ListingPhotosModeContext";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 
@@ -40,6 +41,7 @@ function buildSlots(
  * Photos are flush edge-to-edge (no gaps, borders, or radius between frames).
  * Each photo links to the Photos gallery at that index when `photoHref` is set,
  * or calls `onPhotoActivate` / Overview photos-mode context when provided.
+ * When Photos mode is active, collapses to a single hero with prev/next cycle.
  * When `mapSlot` is set, a frameless Location map sits in the 2nd stack position.
  */
 export default function ListingPhotoScrollStack({
@@ -67,7 +69,57 @@ export default function ListingPhotoScrollStack({
   mapSlot?: ListingPhotoStackMapSlot | null;
   emptyLabel?: string;
 }) {
-  const enterPhotosMode = useListingPhotosMode();
+  const photosMode = useListingPhotosMode();
+  const carouselActive = Boolean(photosMode?.active && photoCount > 0);
+  const activeIndex = carouselActive
+    ? Math.min(
+        Math.max(photosMode!.photoIndex, 0),
+        Math.max(photoCount - 1, 0),
+      )
+    : 0;
+
+  useEffect(() => {
+    photosMode?.registerPhotoCount(photoCount);
+  }, [photosMode, photoCount]);
+
+  useEffect(() => {
+    if (!carouselActive || !photosMode || photoCount <= 1) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        photosMode.cycle(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        photosMode.cycle(1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [carouselActive, photoCount, photosMode]);
+
+  if (carouselActive && photosMode) {
+    const canCycle = photoCount > 1;
+    return (
+      <div className="relative w-full">
+        <ListingHeroPhoto
+          url={listingPhotoProxyUrl(mlsId, activeIndex, { size: "full" })}
+          alt={`${altBase} · photo ${activeIndex + 1}`}
+          photoCount={photoCount}
+          photoIndex={activeIndex}
+          obfuscate={obfuscatePhotoIndex?.(activeIndex) ?? false}
+          priority
+          seamless
+        />
+        {canCycle ? (
+          <ListingPhotoCycleControls
+            onPrev={() => photosMode.cycle(-1)}
+            onNext={() => photosMode.cycle(1)}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
   const slots = buildSlots(photoCount, Boolean(mapSlot));
 
   if (slots.length === 0) {
@@ -128,8 +180,8 @@ export default function ListingPhotoScrollStack({
         const activate =
           onPhotoActivate != null
             ? () => onPhotoActivate(index)
-            : enterPhotosMode
-              ? () => enterPhotosMode()
+            : photosMode
+              ? () => photosMode.enter(index)
               : null;
 
         // Overview photos-mode (context or prop) wins over gallery links so a
