@@ -1590,8 +1590,9 @@ export default function IntelligenceClient() {
   const [filterChromePeek, setFilterChromePeek] = useState<"towns" | "tx" | null>(
     null,
   );
-  /** Phone: left slide-over for town Stats (desktop keeps the sidebar). */
+  /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
+  const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
   const [townLinksExpanded, setTownLinksExpanded] = useState(false);
   const [zipLinksExpanded, setZipLinksExpanded] = useState(false);
   const setFiltersExpanded = (expanded: boolean) =>
@@ -3221,67 +3222,96 @@ export default function IntelligenceClient() {
   ]);
 
   const closeTownStats = () => setTownStatsOpen(false);
+  const closeVintageStats = () => setVintageStatsOpen(false);
 
-  const townStatsPanels = (
-    <>
-      {liveSnapshots.map((snap) => {
-        const panelKey = snapshotPanelKey(snap);
-        const collapsible = active === "All";
-        const expanded =
-          !collapsible || expandedSnapshotKeys.has(panelKey);
-        return (
-          <TownSnapshotPanel
-            key={panelKey}
-            snapshot={snap}
-            tx={tx}
-            expanded={expanded}
-            collapsible={collapsible}
-            onToggleExpanded={() => toggleSnapshotExpanded(panelKey)}
-            onListingsClick={(town, zipFilter) => {
-              closeTownStats();
-              selectTownListings(town, "all", zipFilter);
-            }}
-            onSnapshotAction={(town, action, zipFilter) =>
-              intelligenceListingsHref({
-                city: town,
-                status: action,
-                zip: zipFilter,
+  const liveStatusLabel =
+    state === "ready"
+      ? sqliteRefresh.refreshing
+        ? "Live Refreshing"
+        : (() => {
+            const syncedAt = formatSqliteRefreshTime(
+              sqliteRefresh.lastFinishedAt,
+            );
+            return syncedAt ? `Live · synced ${syncedAt}` : "Live";
+          })()
+      : state === "fallback"
+        ? "Cached · feed offline"
+        : "Loading…";
+
+  const liveStatusDotClass =
+    state === "ready" && sqliteRefresh.refreshing
+      ? "bg-gold animate-pulse-dot"
+      : state === "ready"
+        ? "bg-sage animate-pulse-dot"
+        : state === "fallback"
+          ? "bg-coral"
+          : "bg-gold animate-pulse-dot";
+
+  const townSnapshotPanels = liveSnapshots.map((snap) => {
+    const panelKey = snapshotPanelKey(snap);
+    const collapsible = active === "All";
+    const expanded = !collapsible || expandedSnapshotKeys.has(panelKey);
+    return (
+      <TownSnapshotPanel
+        key={panelKey}
+        snapshot={snap}
+        tx={tx}
+        expanded={expanded}
+        collapsible={collapsible}
+        onToggleExpanded={() => toggleSnapshotExpanded(panelKey)}
+        onListingsClick={(town, zipFilter) => {
+          closeTownStats();
+          selectTownListings(town, "all", zipFilter);
+        }}
+        onSnapshotAction={(town, action, zipFilter) =>
+          intelligenceListingsHref({
+            city: town,
+            status: action,
+            zip: zipFilter,
+            tx,
+            cls,
+            saleProperty,
+          })
+        }
+        onMedianHref={(s) =>
+          s.metrics.some((m) => m.label === "Median price" && m.linkMedian)
+            ? statsMedianListingsHref({
+                city: s.town,
+                kind: tx === "rental" ? "rental" : "sale",
+                pool: "active",
+                zip: s.zip,
                 tx,
                 cls,
                 saleProperty,
               })
-            }
-            onMedianHref={(s) =>
-              s.metrics.some((m) => m.label === "Median price" && m.linkMedian)
-                ? statsMedianListingsHref({
-                    city: s.town,
-                    kind: tx === "rental" ? "rental" : "sale",
-                    pool: "active",
-                    zip: s.zip,
-                    tx,
-                    cls,
-                    saleProperty,
-                  })
-                : null
-            }
-          />
-        );
-      })}
-      {showVintageStats ? (
-        <IntelligenceVintageStats
-          title={vintageStatsTitle}
-          listings={vintageListingRows}
-          tx={tx}
-          city={active === "All" ? "All" : active}
-          collapsible
-          expandedKeys={expandedSnapshotKeys}
-          onToggleExpanded={toggleSnapshotExpanded}
-          onVintageListingsClick={(bucketId) => {
-            closeTownStats();
-            selectVintageListings(bucketId);
-          }}
-        />
-      ) : null}
+            : null
+        }
+      />
+    );
+  });
+
+  const vintageStatsPanel = showVintageStats ? (
+    <IntelligenceVintageStats
+      title={vintageStatsTitle}
+      listings={vintageListingRows}
+      tx={tx}
+      city={active === "All" ? "All" : active}
+      collapsible
+      expandedKeys={expandedSnapshotKeys}
+      onToggleExpanded={toggleSnapshotExpanded}
+      onVintageListingsClick={(bucketId) => {
+        closeTownStats();
+        closeVintageStats();
+        selectVintageListings(bucketId);
+      }}
+    />
+  ) : null;
+
+  /** Desktop sidebar: towns + vintages together. */
+  const townStatsPanels = (
+    <>
+      {townSnapshotPanels}
+      {vintageStatsPanel}
     </>
   );
 
@@ -3755,64 +3785,54 @@ export default function IntelligenceClient() {
         }`}
       >
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
-          <div className="mb-4 lg:mb-5 flex items-end justify-between gap-4">
-            <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5 min-w-0">
-              <h2 className="font-serif text-2xl sm:text-3xl lg:text-[2rem] text-navy leading-tight">
-                Your {filteredCount.toLocaleString()} of{" "}
-                {poolCount.toLocaleString()}{" "}
-                {poolCount === 1 ? "listing" : "listings"} in{" "}
-                {active === "All" ? "selected towns" : active},{" "}
-                <span className="italic">scored.</span>
-              </h2>
-              <div className="flex flex-wrap items-end gap-x-3 gap-y-1 pb-0.5 min-w-0">
-                <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+          <div className="mb-4 lg:mb-5 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5 min-w-0">
+                <h2 className="font-serif text-2xl sm:text-3xl lg:text-[2rem] text-navy leading-tight">
+                  Your {filteredCount.toLocaleString()} of{" "}
+                  {poolCount.toLocaleString()}{" "}
+                  {poolCount === 1 ? "listing" : "listings"} in{" "}
+                  {active === "All" ? "selected towns" : active},{" "}
+                  <span className="italic">scored.</span>
+                </h2>
+                <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
                   Intelligent Deals
                 </p>
-                {vintageChartListingRows.length > 0 ? (
-                  <IntelligenceVintageMedianMiniChart
-                    listings={vintageChartListingRows}
-                    kind={tx === "rental" ? "rental" : "sale"}
-                    activeBucketId={activeVintageChartBucketId}
-                    onBucketClick={(bucketId) => {
-                      selectVintageListings(bucketId);
-                    }}
-                  />
-                ) : null}
               </div>
+              {middleHidden ? (
+                <p className="mt-1.5 font-mono text-[11px] tracking-[0.08em] text-slate leading-snug">
+                  <span className="text-navy font-medium tabular-nums">
+                    {visibleCount.toLocaleString()}
+                  </span>
+                  {" of "}
+                  <span className="text-navy font-medium tabular-nums">
+                    {resultCount.toLocaleString()}
+                  </span>
+                  {" visible"}
+                  <span className="text-slate/55">
+                    {" · middle tier collapsed ("}
+                    {boardTiers.hideableCount.toLocaleString()}
+                    {" hidden)"}
+                  </span>
+                </p>
+              ) : null}
             </div>
-            <div className="flex flex-col items-end gap-1 shrink-0">
+            {/* Mobile: Live + separate Town stats / Vintages links. Desktop Live lives in the sidebar. */}
+            <div className="flex flex-col items-end gap-1.5 shrink-0 lg:hidden pt-0.5">
               <div className="flex items-center gap-2 font-mono text-xs">
                 <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    state === "ready" && sqliteRefresh.refreshing
-                      ? "bg-gold animate-pulse-dot"
-                      : state === "ready"
-                      ? "bg-sage animate-pulse-dot"
-                      : state === "fallback"
-                      ? "bg-coral"
-                      : "bg-gold animate-pulse-dot"
-                  }`}
+                  className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
                 />
-                <span className="text-slate">
-                  {state === "ready"
-                    ? sqliteRefresh.refreshing
-                      ? "Live Refreshing"
-                      : (() => {
-                          const syncedAt = formatSqliteRefreshTime(
-                            sqliteRefresh.lastFinishedAt,
-                          );
-                          return syncedAt ? `Live · synced ${syncedAt}` : "Live";
-                        })()
-                    : state === "fallback"
-                    ? "Cached · feed offline"
-                    : "Loading…"}
-                </span>
+                <span className="text-slate">{liveStatusLabel}</span>
               </div>
-              {(liveSnapshots.length > 0 || showVintageStats) ? (
+              {liveSnapshots.length > 0 ? (
                 <button
                   type="button"
-                  className="lg:hidden inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
-                  onClick={() => setTownStatsOpen(true)}
+                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                  onClick={() => {
+                    setVintageStatsOpen(false);
+                    setTownStatsOpen(true);
+                  }}
                   aria-expanded={townStatsOpen}
                   aria-controls="intel-town-stats-drawer"
                 >
@@ -3826,6 +3846,30 @@ export default function IntelligenceClient() {
                   </svg>
                   <span className="underline underline-offset-2 decoration-navy/35">
                     Town stats
+                  </span>
+                </button>
+              ) : null}
+              {showVintageStats ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                  onClick={() => {
+                    setTownStatsOpen(false);
+                    setVintageStatsOpen(true);
+                  }}
+                  aria-expanded={vintageStatsOpen}
+                  aria-controls="intel-vintage-stats-drawer"
+                >
+                  <svg
+                    viewBox="0 0 12 12"
+                    className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                  </svg>
+                  <span className="underline underline-offset-2 decoration-navy/35">
+                    Vintages
                   </span>
                 </button>
               ) : null}
@@ -3905,22 +3949,6 @@ export default function IntelligenceClient() {
                 <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
                   No results match your filters
                 </p>
-              ) : middleHidden ? (
-                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
-                  <span className="text-navy font-medium tabular-nums">
-                    {visibleCount.toLocaleString()}
-                  </span>
-                  {" of "}
-                  <span className="text-navy font-medium tabular-nums">
-                    {resultCount.toLocaleString()}
-                  </span>{" "}
-                  visible
-                  <span className="text-slate/55 normal-case tracking-normal">
-                    {" "}
-                    · middle tier collapsed (
-                    {boardTiers.hideableCount.toLocaleString()} hidden)
-                  </span>
-                </p>
               ) : showBoardPagination ? (
                 <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
                   <span className="text-slate/55 normal-case tracking-normal">
@@ -3961,15 +3989,33 @@ export default function IntelligenceClient() {
             </div>{/* end deal board */}
 
             <aside
-              className={`hidden lg:block mt-8 lg:mt-0 lg:shrink-0 ${
-                anySnapshotExpanded ? "space-y-4" : "space-y-2"
+              className={`hidden lg:flex lg:flex-col lg:mt-0 lg:w-[248px] lg:justify-self-end lg:shrink-0 lg:self-start ${
+                anySnapshotExpanded ? "gap-4" : "gap-2"
               }`}
             >
-              {liveSnapshots.length > 0 ? (
-                <div className="pb-1 shrink-0">
-                  <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+              <div className="shrink-0 space-y-1">
+                <div className="flex items-center justify-end gap-2 font-mono text-xs">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
+                  />
+                  <span className="text-slate">{liveStatusLabel}</span>
+                </div>
+                {(liveSnapshots.length > 0 || showVintageStats) ? (
+                  <p className="text-right font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
                     Stats
                   </p>
+                ) : null}
+              </div>
+              {vintageChartListingRows.length > 0 ? (
+                <div className="w-full shrink-0">
+                  <IntelligenceVintageMedianMiniChart
+                    listings={vintageChartListingRows}
+                    kind={tx === "rental" ? "rental" : "sale"}
+                    activeBucketId={activeVintageChartBucketId}
+                    onBucketClick={(bucketId) => {
+                      selectVintageListings(bucketId);
+                    }}
+                  />
                 </div>
               ) : null}
               <div
@@ -3983,9 +4029,24 @@ export default function IntelligenceClient() {
         </div>
       </section>
 
-      <IntelTownStatsDrawer open={townStatsOpen} onClose={closeTownStats}>
+      <IntelTownStatsDrawer
+        open={townStatsOpen}
+        onClose={closeTownStats}
+        title="Town stats"
+        ariaLabel="Town stats"
+      >
         <div id="intel-town-stats-drawer" className="space-y-3">
-          {townStatsPanels}
+          {townSnapshotPanels}
+        </div>
+      </IntelTownStatsDrawer>
+      <IntelTownStatsDrawer
+        open={vintageStatsOpen}
+        onClose={closeVintageStats}
+        title="Vintages"
+        ariaLabel="Vintages"
+      >
+        <div id="intel-vintage-stats-drawer" className="space-y-3">
+          {vintageStatsPanel}
         </div>
       </IntelTownStatsDrawer>
       {scoreBreakdownListing?.scoreBreakdown ? (

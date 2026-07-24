@@ -4,18 +4,21 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /**
- * Phone / narrow: right slide-over for Intelligence town Stats (same panels as the
- * desktop sidebar). Opened from the Live status control; closed with the
- * left-facing chevron or backdrop / Escape.
+ * Phone / narrow: right slide-over for Intelligence sidebar panels (town stats
+ * or vintages). Closed with the left-facing chevron or backdrop / Escape.
  */
 export default function IntelTownStatsDrawer({
   open,
   onClose,
   children,
+  title = "Stats",
+  ariaLabel = "Town stats",
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  title?: string;
+  ariaLabel?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -48,11 +51,16 @@ export default function IntelTownStatsDrawer({
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[180] lg:hidden" role="dialog" aria-modal aria-label="Town stats">
+    <div
+      className="fixed inset-0 z-[180] lg:hidden"
+      role="dialog"
+      aria-modal
+      aria-label={ariaLabel}
+    >
       <button
         type="button"
         className="absolute inset-0 bg-navy/50 backdrop-blur-[2px] animate-fade-in"
-        aria-label="Close town stats"
+        aria-label={`Close ${ariaLabel.toLowerCase()}`}
         onClick={onClose}
       />
       <aside
@@ -66,7 +74,7 @@ export default function IntelTownStatsDrawer({
             type="button"
             onClick={onClose}
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy/70 hover:text-navy hover:bg-navy/5 transition-colors"
-            aria-label="Hide town stats"
+            aria-label={`Hide ${ariaLabel.toLowerCase()}`}
           >
             <svg
               viewBox="0 0 12 12"
@@ -79,7 +87,7 @@ export default function IntelTownStatsDrawer({
             Hide
           </button>
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Stats
+            {title}
           </p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">

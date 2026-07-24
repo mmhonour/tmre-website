@@ -14,15 +14,27 @@ type ChartPoint = {
   medianPrice: number;
   x: number;
   y: number;
+  /** Short vintage label for axis callouts (1st / middle / last). */
+  callout?: boolean;
 };
 
-const WIDTH = 168;
-const HEIGHT = 40;
-const PAD_X = 8;
-const PAD_Y = 7;
+/** Panel column width — keep chart flush with the stats column below. */
+const WIDTH = 248;
+const HEIGHT = 72;
+const PAD_X = 14;
+const PAD_TOP = 22;
+const PAD_BOTTOM = 18;
+
+function shortVintageLabel(label: string): string {
+  // "Pre-1900" → "Pre-'00"; "1900–1940" → "1900"; "2020–present" → "2020"
+  if (/^pre/i.test(label)) return "Pre-1900";
+  const start = label.match(/^(\d{4})/);
+  if (start) return start[1];
+  return label;
+}
 
 /**
- * Mini median-price-by-vintage sparkline for the Intelligent Deals heading.
+ * Mini median-price-by-vintage sparkline for the Intelligence stats column.
  * Uses the same bucket medians as Sales/Rentals by vintage; dots set that
  * vintage filter (same as clicking Listings in the vintage pop-out).
  */
@@ -53,19 +65,28 @@ export default function IntelligenceVintageMedianMiniChart({
     const maxP = Math.max(...prices);
     const span = Math.max(maxP - minP, 1);
     const innerW = WIDTH - PAD_X * 2;
-    const innerH = HEIGHT - PAD_Y * 2;
+    const innerH = HEIGHT - PAD_TOP - PAD_BOTTOM;
     const n = snapshots.length;
+    const middleIdx = Math.floor((n - 1) / 2);
+    const calloutIdx = new Set(
+      n === 1
+        ? [0]
+        : n === 2
+          ? [0, 1]
+          : [0, middleIdx, n - 1],
+    );
 
     return snapshots.map((snap, i) => {
       const price = snap.medianPrice as number;
       const x = n === 1 ? WIDTH / 2 : PAD_X + (innerW * i) / (n - 1);
-      const y = PAD_Y + innerH * (1 - (price - minP) / span);
+      const y = PAD_TOP + innerH * (1 - (price - minP) / span);
       return {
         id: snap.id,
         label: snap.label,
         medianPrice: price,
         x,
         y,
+        callout: calloutIdx.has(i),
       };
     });
   }, [listings]);
@@ -77,13 +98,13 @@ export default function IntelligenceVintageMedianMiniChart({
     .join(" ");
 
   return (
-    <div className="flex flex-col items-start gap-0.5 min-w-0">
-      <p className="font-mono text-[8px] tracking-[0.14em] uppercase text-slate/50 leading-none">
+    <div className="flex w-full flex-col items-stretch gap-0.5">
+      <p className="font-mono text-[8px] tracking-[0.14em] uppercase text-slate/50 leading-none text-right">
         Median by vintage
       </p>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="h-9 w-[10.5rem] max-w-full overflow-visible"
+        className="h-[4.5rem] w-full overflow-visible"
         role="img"
         aria-label="Median price by vintage. Click a point to filter the deal board."
       >
@@ -96,14 +117,44 @@ export default function IntelligenceVintageMedianMiniChart({
           strokeLinecap="round"
           className="text-navy/35"
         />
-        {points.map((point) => {
+        {points.map((point, i) => {
           const active = activeBucketId === point.id;
           const priceLabel = formatVintageHeaderPrice(point.medianPrice, kind);
+          const isFirst = i === 0;
+          const isLast = i === points.length - 1;
+          const anchor =
+            isFirst ? "start" : isLast ? "end" : "middle";
+          // Price callout above the dot; vintage label below.
+          const priceY = Math.max(9, point.y - 9);
+          const vintageY = Math.min(HEIGHT - 3, point.y + 14);
+
           return (
             <g key={point.id}>
               <title>
                 {point.label} · {priceLabel}
               </title>
+              {point.callout ? (
+                <>
+                  <text
+                    x={point.x}
+                    y={priceY}
+                    textAnchor={anchor}
+                    className="fill-navy font-mono text-[8px] tabular-nums"
+                    style={{ fontSize: 8 }}
+                  >
+                    {priceLabel}
+                  </text>
+                  <text
+                    x={point.x}
+                    y={vintageY}
+                    textAnchor={anchor}
+                    className="fill-slate/55 font-mono text-[7px] uppercase"
+                    style={{ fontSize: 7, letterSpacing: "0.04em" }}
+                  >
+                    {shortVintageLabel(point.label)}
+                  </text>
+                </>
+              ) : null}
               {/* Larger hit target */}
               <circle
                 cx={point.x}
@@ -112,11 +163,7 @@ export default function IntelligenceVintageMedianMiniChart({
                 fill="transparent"
                 className="cursor-pointer"
                 onClick={() => onBucketClick(point.id)}
-              >
-                <title>
-                  {point.label} · {priceLabel}
-                </title>
-              </circle>
+              />
               <circle
                 cx={point.x}
                 cy={point.y}

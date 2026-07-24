@@ -195,18 +195,21 @@ export default function DealBoardList({
 
   const hasResults = resultCount > 0;
 
+  const sortControl = (
+    <DealBoardSortBar
+      sortKey={sortKey}
+      sortDir={sortDir}
+      onSort={onSort}
+      showTown={showTown}
+      scoreInfoButton={scoreInfoButton}
+      embedded
+    />
+  );
+
   const resultsToolbar = (
     <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5 border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
-      <div className="min-w-0 justify-self-start">{resultsSummary}</div>
-      <div className="justify-self-center">
-        {onBoardStatusFilterChange ? (
-          <DealBoardStatusFilterPills
-            value={boardStatusFilter}
-            onChange={onBoardStatusFilterChange}
-          />
-        ) : null}
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 justify-self-end">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 justify-self-start">
+        <div className="min-w-0">{resultsSummary}</div>
         <div className="flex items-center gap-x-2.5">
           <button
             type="button"
@@ -235,6 +238,15 @@ export default function DealBoardList({
           />
         ) : null}
       </div>
+      <div className="justify-self-center">
+        {onBoardStatusFilterChange ? (
+          <DealBoardStatusFilterPills
+            value={boardStatusFilter}
+            onChange={onBoardStatusFilterChange}
+          />
+        ) : null}
+      </div>
+      <div className="justify-self-end">{sortControl}</div>
     </div>
   );
 
@@ -255,13 +267,6 @@ export default function DealBoardList({
           <>
             <div className="sticky top-20 z-30 rounded-t-2xl bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)]">
               {resultsToolbar}
-              <DealBoardSortBar
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={onSort}
-                showTown={showTown}
-                scoreInfoButton={scoreInfoButton}
-              />
             </div>
             <div>
               {renderRows(topRows)}
