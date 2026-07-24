@@ -144,7 +144,7 @@ export default function DealBoardSortBar({
   if (embedded) {
     return (
       <>
-        <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
+        <div className="inline-flex items-center justify-start gap-1.5 shrink-0">
           {trigger}
           {scoreInfoButton}
         </div>

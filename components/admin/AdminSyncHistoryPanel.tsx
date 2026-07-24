@@ -55,8 +55,8 @@ function formatSyncTime(iso: string | null | undefined): string {
 
 /**
  * Durable log of every MLS town/bucket sync written to Postgres `sync_runs`
- * (admin, cron, overdue catch-up). Loads ≥1 week by default; display collapses
- * by sync type (Full / Incremental), then by status bucket.
+ * (admin, cron, overdue catch-up). Loads ≥1 year by default; display collapses
+ * by sync type (Full / Incremental / Cron), then by status bucket.
  */
 export default function AdminSyncHistoryPanel({
   initial,
@@ -263,7 +263,13 @@ export default function AdminSyncHistoryPanel({
 
   const windowLabel =
     since != null
-      ? `last ${ADMIN_SYNC_HISTORY_DEFAULT_DAYS} days`
+      ? (() => {
+          const days = Math.max(
+            1,
+            Math.round((Date.now() - Date.parse(since)) / (24 * 60 * 60 * 1000)),
+          );
+          return days >= 360 ? "last year" : `last ${days} days`;
+        })()
       : "all time";
 
   const overallLatestMs = syncTypeGroups[0]?.latestMs ?? 0;

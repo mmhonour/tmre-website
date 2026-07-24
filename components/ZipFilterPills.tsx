@@ -12,7 +12,8 @@ import { zipAreaNickname } from "@/lib/tmre-towns";
 type ZipFilterPillsProps = {
   zips: readonly string[];
   selected: string | null;
-  onSelect: (zip: string | null) => void;
+  /** Second arg is the clicked control — used to anchor the zip map on mobile tap. */
+  onSelect: (zip: string | null, el?: HTMLElement | null) => void;
   counts: ReadonlyMap<string, number> | Partial<Record<string, number>>;
   allCount: number;
   allLabel?: string;
@@ -119,7 +120,7 @@ export default function ZipFilterPills({
       <button
         key={zip}
         type="button"
-        onClick={() => onSelect(zip)}
+        onClick={(e) => onSelect(zip, e.currentTarget)}
         onMouseEnter={(e) => onZipMouseEnter?.(zip, e.currentTarget)}
         onMouseLeave={onZipMouseLeave}
         aria-pressed={active}
@@ -141,7 +142,7 @@ export default function ZipFilterPills({
           <>
             <button
               type="button"
-              onClick={() => onSelect(null)}
+              onClick={(e) => onSelect(null, e.currentTarget)}
               aria-pressed
               className={filterPillZipButtonClass(true, true)}
             >
@@ -154,7 +155,7 @@ export default function ZipFilterPills({
           <>
             <button
               type="button"
-              onClick={() => onSelect(selectedZip!)}
+              onClick={(e) => onSelect(selectedZip!, e.currentTarget)}
               onMouseEnter={(e) => onZipMouseEnter?.(selectedZip!, e.currentTarget)}
               onMouseLeave={onZipMouseLeave}
               aria-pressed
@@ -171,7 +172,7 @@ export default function ZipFilterPills({
             {!allActive ? (
               <button
                 type="button"
-                onClick={() => onSelect(null)}
+                onClick={(e) => onSelect(null, e.currentTarget)}
                 aria-pressed={false}
                 className={filterPillZipLinkClass(false)}
               >

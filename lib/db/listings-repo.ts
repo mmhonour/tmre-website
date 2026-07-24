@@ -53,7 +53,15 @@ export function listingRowId(listing: Pick<Listing, 'listingKey' | 'mlsId'>): st
 function listingMatchesStatusBucket(listing: Listing, statusBucket: string): boolean {
   const s = listing.status?.trim().toLowerCase()
   if (statusBucket === 'Active') {
-    return s === 'active' || s === 'a' || s === 'coming soon' || s === 'cs'
+    return (
+      s === 'active' ||
+      s === 'a' ||
+      s === 'coming soon' ||
+      s === 'cs' ||
+      s.includes('under contract') ||
+      s === 'pending' ||
+      s === 'p'
+    )
   }
   if (statusBucket === 'Closed') {
     return s === 'closed' || s === 'c'

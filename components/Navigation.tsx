@@ -1,10 +1,12 @@
 "use client";
 
 import ContactButton from "./ContactButton";
+import AdminBuildBadge from "./AdminBuildBadge";
 import { useSiteUnlockActions, useSiteUnlocked } from "./SiteUnlockProvider";
 import VisitorLocationBadge from "./VisitorLocationBadge";
 import PhoneCta from "./PhoneCta";
 import { AGENT_MLS_ID, DEFAULT_BROKERAGE_NAME } from "@/lib/business-info";
+import type { DeployBuildInfo } from "@/lib/deploy-build-info";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -448,15 +450,18 @@ export default function Navigation({
   siteUnlocked = false,
   phone,
   brokerageName = DEFAULT_BROKERAGE_NAME,
+  deployBuild = null,
 }: {
   siteUnlocked?: boolean;
   phone?: { tel: string; display: string };
   brokerageName?: string;
+  deployBuild?: DeployBuildInfo | null;
 }) {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const brokerage = brokerageName.trim() || DEFAULT_BROKERAGE_NAME;
+  const showBuildBadge = siteUnlocked && deployBuild != null;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -514,6 +519,9 @@ export default function Navigation({
           </div>
 
           <div className="hidden md:flex items-start gap-2 shrink-0">
+            {showBuildBadge && deployBuild ? (
+              <AdminBuildBadge build={deployBuild} className="mr-1 pt-0.5" />
+            ) : null}
             <VisitorLocationBadge />
             <ContactButton className={iconCtaButtonClass} />
             <PhoneCallWithLogout phone={phone} />
@@ -523,6 +531,9 @@ export default function Navigation({
           </div>
 
           <div className="md:hidden flex items-center gap-2 shrink-0">
+            {showBuildBadge && deployBuild ? (
+              <AdminBuildBadge build={deployBuild} className="mr-0.5" />
+            ) : null}
             <VisitorLocationBadge />
             <button
               type="button"

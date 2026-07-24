@@ -34,7 +34,7 @@ function shortVintageLabel(label: string): string {
 }
 
 /**
- * Mini median-price-by-vintage sparkline for the Intelligence stats column.
+ * Mini median-price-by-vintage sparkline above the Intelligence deal board.
  * Uses the same bucket medians as Sales/Rentals by vintage; dots set that
  * vintage filter (same as clicking Listings in the vintage pop-out).
  */

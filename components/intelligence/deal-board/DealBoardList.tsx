@@ -208,8 +208,19 @@ export default function DealBoardList({
 
   const resultsToolbar = (
     <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5 border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 justify-self-start">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 justify-self-start">
+        {sortControl}
         <div className="min-w-0">{resultsSummary}</div>
+      </div>
+      <div className="justify-self-center">
+        {onBoardStatusFilterChange ? (
+          <DealBoardStatusFilterPills
+            value={boardStatusFilter}
+            onChange={onBoardStatusFilterChange}
+          />
+        ) : null}
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2.5 gap-y-1 justify-self-end">
         <div className="flex items-center gap-x-2.5">
           <button
             type="button"
@@ -238,15 +249,6 @@ export default function DealBoardList({
           />
         ) : null}
       </div>
-      <div className="justify-self-center">
-        {onBoardStatusFilterChange ? (
-          <DealBoardStatusFilterPills
-            value={boardStatusFilter}
-            onChange={onBoardStatusFilterChange}
-          />
-        ) : null}
-      </div>
-      <div className="justify-self-end">{sortControl}</div>
     </div>
   );
 

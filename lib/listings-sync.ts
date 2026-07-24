@@ -7,7 +7,7 @@ import {
   upsertListingsIncremental,
   upsertTownListings,
 } from '@/lib/db/listings-repo'
-import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
+import { deleteSyncMeta, getSyncMeta, setSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-status'
 import {
   ACTIVE_LISTINGS_FETCH_LIMIT,
@@ -172,6 +172,15 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
   if (!isRetsConfigured()) {
     const now = new Date().toISOString()
     console.info('[listings-sync/incremental] skipped — RETS not configured')
+    await recordSyncRun({
+      startedAt: now,
+      finishedAt: now,
+      town: '(all)',
+      statusBucket: 'Active/incremental',
+      listingsCount: 0,
+      ok: false,
+      error: 'RETS not configured — incremental skipped',
+    })
     return {
       mode: 'incremental',
       modifiedAfter: incrementalWatermark(),
@@ -186,6 +195,15 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
   if (getSyncMeta('refresh_in_progress') === '1') {
     console.info('[listings-sync/incremental] skipped — refresh already in progress')
     const now = new Date().toISOString()
+    await recordSyncRun({
+      startedAt: now,
+      finishedAt: now,
+      town: '(all)',
+      statusBucket: 'Active/incremental',
+      listingsCount: 0,
+      ok: true,
+      error: 'skipped — refresh already in progress',
+    })
     return {
       mode: 'incremental',
       modifiedAfter: incrementalWatermark(),
@@ -199,7 +217,7 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
 
   const modifiedAfter = incrementalWatermark()
   const startedAt = new Date().toISOString()
-  setSyncMeta('last_incremental_sync_started', startedAt)
+  await setSyncMetaDurable('last_incremental_sync_started', startedAt)
   deleteSyncMeta('last_incremental_sync')
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
@@ -216,7 +234,8 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
     const totalUpserted = towns.reduce((sum, row) => sum + row.count, 0)
     const allOk = towns.every((row) => row.ok)
 
-    setSyncMeta('last_incremental_sync', finishedAt)
+    // Durable stamp — serverless freezes before fire-and-forget write-through.
+    await setSyncMetaDurable('last_incremental_sync', finishedAt)
     if (allOk) {
       // Town feeds for /latest — bounded hero thumbnails warm chained inside rebuild.
       try {

@@ -1603,9 +1603,13 @@ export default function IntelligenceClient() {
   const [hoveredTownEl, setHoveredTownEl] = useState<HTMLElement | null>(null);
   const townHoverClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const TOWN_MAP_FLASH_MS = 1_000;
+  const ZIP_MAP_FLASH_MS = 2_000;
   const [flashedTown, setFlashedTown] = useState<TmreTown | null>(null);
   const townFilterAnchorRef = useRef<HTMLDivElement>(null);
   const townMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [flashedZip, setFlashedZip] = useState<string | null>(null);
+  const zipFilterAnchorRef = useRef<HTMLDivElement>(null);
+  const zipMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTownMapFlashTimer = () => {
     if (townMapFlashTimerRef.current) {
@@ -1614,8 +1618,17 @@ export default function IntelligenceClient() {
     }
   };
 
+  const clearZipMapFlashTimer = () => {
+    if (zipMapFlashTimerRef.current) {
+      clearTimeout(zipMapFlashTimerRef.current);
+      zipMapFlashTimerRef.current = null;
+    }
+  };
+
   const flashTownMapOnSelect = (city: TmreTown | "All") => {
     clearTownMapFlashTimer();
+    clearZipMapFlashTimer();
+    setFlashedZip(null);
     if (city === "All") {
       setFlashedTown(null);
       return;
@@ -1626,6 +1639,31 @@ export default function IntelligenceClient() {
       setFlashedTown(null);
       townMapFlashTimerRef.current = null;
     }, TOWN_MAP_FLASH_MS);
+  };
+
+  const flashZipMapOnSelect = (nextZip: string | null) => {
+    clearZipMapFlashTimer();
+    clearTownMapFlashTimer();
+    setFlashedTown(null);
+    setHoveredTown(null);
+    setHoveredTownEl(null);
+    if (!nextZip) {
+      setFlashedZip(null);
+      setHoveredZip(null);
+      setHoveredZipEl(null);
+      return;
+    }
+    prefetchZipBoundaries([
+      nextZip,
+      ...availableZips.filter((z) => z !== nextZip),
+    ]);
+    setHoveredZip(null);
+    setHoveredZipEl(null);
+    setFlashedZip(nextZip);
+    zipMapFlashTimerRef.current = setTimeout(() => {
+      setFlashedZip(null);
+      zipMapFlashTimerRef.current = null;
+    }, ZIP_MAP_FLASH_MS);
   };
   const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
   const [scoreBreakdownListing, setScoreBreakdownListing] = useState<DisplayListing | null>(null);
@@ -1735,6 +1773,7 @@ export default function IntelligenceClient() {
   useEffect(() => {
     return () => {
       clearTownMapFlashTimer();
+      clearZipMapFlashTimer();
       if (townHoverClearTimer.current) clearTimeout(townHoverClearTimer.current);
     };
   }, []);
@@ -3462,6 +3501,8 @@ export default function IntelligenceClient() {
                               clearTimeout(townHoverClearTimer.current);
                               townHoverClearTimer.current = null;
                             }
+                            clearZipMapFlashTimer();
+                            setFlashedZip(null);
                             prefetchTownBoundaries(town);
                             setHoveredZip(null);
                             setHoveredZipEl(null);
@@ -3473,6 +3514,8 @@ export default function IntelligenceClient() {
                               clearTimeout(townHoverClearTimer.current);
                               townHoverClearTimer.current = null;
                             }
+                            clearZipMapFlashTimer();
+                            setFlashedZip(null);
                             prefetchAllTownBoundaries();
                             setHoveredZip(null);
                             setHoveredZipEl(null);
@@ -3502,12 +3545,55 @@ export default function IntelligenceClient() {
                       </div>
 
                       {inlineTownZip ? (
+                        <div ref={zipFilterAnchorRef} className="min-w-0 shrink-0">
+                          <ZipFilterPills
+                            zips={availableZips}
+                            selected={zip}
+                            onSelect={(next) => {
+                              setZip(next);
+                              setZipLinksExpanded(false);
+                              flashZipMapOnSelect(next);
+                            }}
+                            counts={zipCounts}
+                            allCount={zipAllCount}
+                            allLabel={`Search all zips for ${active}`}
+                            townName={active}
+                            zipLinksExpanded={zipLinksExpanded}
+                            onZipLinksExpandedChange={setZipLinksExpanded}
+                            onZipMouseEnter={(z, el) => {
+                              clearZipMapFlashTimer();
+                              setFlashedZip(null);
+                              clearTownMapFlashTimer();
+                              setFlashedTown(null);
+                              setHoveredTown(null);
+                              setHoveredTownEl(null);
+                              prefetchZipBoundaries([
+                                z,
+                                ...availableZips.filter((zipCode) => zipCode !== z),
+                              ]);
+                              setHoveredZip(z);
+                              setHoveredZipEl(el);
+                            }}
+                            onZipMouseLeave={() => {
+                              setHoveredZip(null);
+                              setHoveredZipEl(null);
+                            }}
+                            className="min-w-0"
+                            promotedInline
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {showZipFilters && !inlineTownZip ? (
+                      <div ref={zipFilterAnchorRef} className="self-start w-full min-w-0">
                         <ZipFilterPills
                           zips={availableZips}
                           selected={zip}
                           onSelect={(next) => {
                             setZip(next);
                             setZipLinksExpanded(false);
+                            flashZipMapOnSelect(next);
                           }}
                           counts={zipCounts}
                           allCount={zipAllCount}
@@ -3516,8 +3602,16 @@ export default function IntelligenceClient() {
                           zipLinksExpanded={zipLinksExpanded}
                           onZipLinksExpandedChange={setZipLinksExpanded}
                           onZipMouseEnter={(z, el) => {
+                            clearZipMapFlashTimer();
+                            setFlashedZip(null);
+                            clearTownMapFlashTimer();
+                            setFlashedTown(null);
                             setHoveredTown(null);
                             setHoveredTownEl(null);
+                            prefetchZipBoundaries([
+                              z,
+                              ...availableZips.filter((zipCode) => zipCode !== z),
+                            ]);
                             setHoveredZip(z);
                             setHoveredZipEl(el);
                           }}
@@ -3525,38 +3619,9 @@ export default function IntelligenceClient() {
                             setHoveredZip(null);
                             setHoveredZipEl(null);
                           }}
-                          className="min-w-0 shrink-0"
-                          promotedInline
+                          className="w-full min-w-0"
                         />
-                      ) : null}
-                    </div>
-
-                    {showZipFilters && !inlineTownZip ? (
-                      <ZipFilterPills
-                        zips={availableZips}
-                        selected={zip}
-                        onSelect={(next) => {
-                          setZip(next);
-                          setZipLinksExpanded(false);
-                        }}
-                        counts={zipCounts}
-                        allCount={zipAllCount}
-                        allLabel={`Search all zips for ${active}`}
-                        townName={active}
-                        zipLinksExpanded={zipLinksExpanded}
-                        onZipLinksExpandedChange={setZipLinksExpanded}
-                        onZipMouseEnter={(z, el) => {
-                          setHoveredTown(null);
-                          setHoveredTownEl(null);
-                          setHoveredZip(z);
-                          setHoveredZipEl(el);
-                        }}
-                        onZipMouseLeave={() => {
-                          setHoveredZip(null);
-                          setHoveredZipEl(null);
-                        }}
-                        className="self-start w-full min-w-0"
-                      />
+                      </div>
                     ) : null}
                   </div>
                 ) : null}
@@ -3817,9 +3882,9 @@ export default function IntelligenceClient() {
                 </p>
               ) : null}
             </div>
-            {/* Mobile: Live + separate Town stats / Vintages links. Desktop Live lives in the sidebar. */}
-            <div className="flex flex-col items-end gap-1.5 shrink-0 lg:hidden pt-0.5">
-              <div className="flex items-center gap-2 font-mono text-xs">
+            {/* Live top-aligned with the listings heading; Town stats / Vintages on mobile only. */}
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
+              <div className="flex items-center gap-2 font-mono text-xs leading-none">
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
                 />
@@ -3828,7 +3893,7 @@ export default function IntelligenceClient() {
               {liveSnapshots.length > 0 ? (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
                   onClick={() => {
                     setVintageStatsOpen(false);
                     setTownStatsOpen(true);
@@ -3852,7 +3917,7 @@ export default function IntelligenceClient() {
               {showVintageStats ? (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
                   onClick={() => {
                     setTownStatsOpen(false);
                     setVintageStatsOpen(true);
@@ -3880,6 +3945,20 @@ export default function IntelligenceClient() {
 
             {/* Deal board */}
             <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
+          {vintageChartListingRows.length > 0 ? (
+            <div className="mb-2 flex justify-end">
+              <div className="w-[248px] max-w-full shrink-0">
+                <IntelligenceVintageMedianMiniChart
+                  listings={vintageChartListingRows}
+                  kind={tx === "rental" ? "rental" : "sale"}
+                  activeBucketId={activeVintageChartBucketId}
+                  onBucketClick={(bucketId) => {
+                    selectVintageListings(bucketId);
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
           <DealBoardList
             topRows={boardTiers.top}
             middlePinnedRows={boardTiers.middlePinned}
@@ -3993,29 +4072,11 @@ export default function IntelligenceClient() {
                 anySnapshotExpanded ? "gap-4" : "gap-2"
               }`}
             >
-              <div className="shrink-0 space-y-1">
-                <div className="flex items-center justify-end gap-2 font-mono text-xs">
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
-                  />
-                  <span className="text-slate">{liveStatusLabel}</span>
-                </div>
-                {(liveSnapshots.length > 0 || showVintageStats) ? (
+              {(liveSnapshots.length > 0 || showVintageStats) ? (
+                <div className="shrink-0">
                   <p className="text-right font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
                     Stats
                   </p>
-                ) : null}
-              </div>
-              {vintageChartListingRows.length > 0 ? (
-                <div className="w-full shrink-0">
-                  <IntelligenceVintageMedianMiniChart
-                    listings={vintageChartListingRows}
-                    kind={tx === "rental" ? "rental" : "sale"}
-                    activeBucketId={activeVintageChartBucketId}
-                    onBucketClick={(bucketId) => {
-                      selectVintageListings(bucketId);
-                    }}
-                  />
                 </div>
               ) : null}
               <div
@@ -4170,13 +4231,19 @@ export default function IntelligenceClient() {
           anchorEl={townFilterAnchorRef.current}
         />
       ) : null}
-      {hoveredZip && (
+      {hoveredZip && hoveredZipEl ? (
         <ZipBoundaryPopover
           highlightZip={hoveredZip}
           contextZips={availableZips.filter((z) => z !== hoveredZip)}
           anchorEl={hoveredZipEl}
         />
-      )}
+      ) : flashedZip && zipFilterAnchorRef.current ? (
+        <ZipBoundaryPopover
+          highlightZip={flashedZip}
+          contextZips={availableZips.filter((z) => z !== flashedZip)}
+          anchorEl={zipFilterAnchorRef.current}
+        />
+      ) : null}
     </>
   );
 }

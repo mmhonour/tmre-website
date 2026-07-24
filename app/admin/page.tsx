@@ -16,6 +16,7 @@ import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
+import { readDeployBuildInfo } from "@/lib/deploy-build-info";
 import { emptyScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 import {
   ZIP_BOUNDARIES_LAST_SYNC_KEY,
@@ -680,23 +681,7 @@ export default async function AdminPage() {
 
   const serverPanel = <AdminServerFunctionsPanel />;
 
-  const deployId = process.env.DEPLOY_ID ?? null
-  const deployBuildTime: Date | null = (() => {
-    if (!deployId || deployId.length < 8) return null
-    const ts = parseInt(deployId.substring(0, 8), 16)
-    if (!Number.isFinite(ts) || ts <= 0) return null
-    return new Date(ts * 1000)
-  })()
-  const deployBuildTimeStr = deployBuildTime
-    ? new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZoneName: 'short',
-      }).format(deployBuildTime)
-    : null
+  const deployBuild = readDeployBuildInfo();
 
   return (
     <>
@@ -724,21 +709,22 @@ export default async function AdminPage() {
                 </p>
               ) : null}
             </div>
-            {deployId && (
+            {deployBuild ? (
               <div>
                 <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
                   Deploy
                 </p>
                 <p className="font-mono text-[10px] text-white/55 leading-none">
-                  {deployId.substring(0, 12)}&hellip;
+                  {deployBuild.shortId}
+                  {deployBuild.id.length > 12 ? <>&hellip;</> : null}
                 </p>
-                {deployBuildTimeStr && (
+                {deployBuild.builtAtLabel ? (
                   <p className="font-mono text-[9px] text-white/35 leading-none mt-0.5">
-                    {deployBuildTimeStr}
+                    {deployBuild.builtAtLabel}
                   </p>
-                )}
+                ) : null}
               </div>
-            )}
+            ) : null}
             {(lambdaInstanceId || lambdaFnName) && (
               <div>
                 <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/30 leading-none mb-0.5">

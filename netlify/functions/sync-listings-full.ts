@@ -1,4 +1,5 @@
 import type { Config } from '@netlify/functions'
+import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { getSyncStatus, syncAllTownListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
@@ -13,6 +14,7 @@ export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
 
   try {
+    await hydrateSyncMetaStore()
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings-full' })
     if (await isScheduledSyncJobPausedFresh('full-resync')) {
       return new Response(

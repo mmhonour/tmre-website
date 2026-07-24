@@ -1,8 +1,11 @@
-/** Default window for Admin Database sync history. */
-export const ADMIN_SYNC_HISTORY_DEFAULT_DAYS = 7
+/** Default window for Admin Database sync history (1 year of durable logs). */
+export const ADMIN_SYNC_HISTORY_DEFAULT_DAYS = 365
 
-/** Cap for a single history page (week windows can be large). */
-export const ADMIN_SYNC_HISTORY_MAX_LIMIT = 5000
+/**
+ * Cap for a single history page. ~7 towns × 48 incremental ticks/day ≈ 336
+ * town-rows/day; a year is ~120k. Pagination + glom keep the UI usable.
+ */
+export const ADMIN_SYNC_HISTORY_MAX_LIMIT = 20_000
 
 /** Strip suffixes like "Active/incremental" → "Active". */
 export function normalizeSyncStatusBucket(bucket: string | null | undefined): string {
@@ -14,11 +17,13 @@ export function normalizeSyncStatusBucket(bucket: string | null | undefined): st
 /**
  * Sync mode from status_bucket suffixes, e.g. "Active/incremental" → "Incremental".
  * Plain Active / Closed / Expired (full town/bucket pulls) → "Full".
+ * Cron heartbeat rows use "cron/incremental" → "Cron".
  */
 export function normalizeSyncType(bucket: string | null | undefined): string {
   const raw = (bucket ?? '').trim()
   const suffix = raw.includes('/') ? raw.split('/').slice(1).join('/').trim() : ''
   if (!suffix) return 'Full'
+  if (raw.toLowerCase().startsWith('cron/')) return 'Cron'
   return suffix.charAt(0).toUpperCase() + suffix.slice(1).toLowerCase()
 }
 
@@ -61,7 +66,7 @@ export type SyncHistoryGlomRow = {
 /** Towns synced within this gap of each other count as one incremental/full batch. */
 const BATCH_GAP_MS = 20 * 60 * 1000
 
-const BUCKET_ORDER = ['Active', 'Closed', 'Expired']
+const BUCKET_ORDER = ['Active', 'Closed', 'Expired', 'cron']
 
 function parseMs(iso: string | null | undefined): number {
   if (!iso) return NaN
