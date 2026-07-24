@@ -1,9 +1,13 @@
 import type { Config } from '@netlify/functions'
 import { recordSyncRun } from '../../lib/db/listings-repo'
-import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
+import { hydrateSyncMetaStore, setSyncMetaDurable } from '../../lib/db/sync-meta-store'
 import { getSyncStatus, syncIncrementalListings } from '../../lib/listings-sync'
+import { healStaleRefreshLock } from '../../lib/sqlite-refresh-status'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
+
+/** Durable stamp so Admin can tell cron fired even when the pull was skipped. */
+export const LAST_INCREMENTAL_CRON_TICK_KEY = 'last_incremental_cron_tick'
 
 /**
  * Record every Netlify cron tick to Postgres `sync_runs` so Admin can see
@@ -41,6 +45,11 @@ export default async function handler() {
   try {
     // Cron Lambdas are cold — hydrate sync_meta before watermark / pause / lock reads.
     await hydrateSyncMetaStore()
+    // Stuck refresh_in_progress blocks every incremental skip-path; heal before work.
+    if (healStaleRefreshLock()) {
+      console.info('[netlify/sync-listings] cleared stale refresh lock before tick')
+    }
+    await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
 
     const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-listings' })
     if (await isScheduledSyncJobPausedFresh('incremental')) {

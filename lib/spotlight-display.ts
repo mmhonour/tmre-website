@@ -117,6 +117,8 @@ export type SpotlightMlsListing = {
   photoCount?: number | null;
   propertyTax?: number | null;
   propertyTaxYear?: string | null;
+  /** Synced AssessedValue from Postgres when MLS subject is DB-backed. */
+  assessedValue?: number | null;
   lotAcres?: number | null;
   remarks?: string | null;
   schools?: SpotlightListingConfig["schools"];

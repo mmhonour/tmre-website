@@ -11,9 +11,9 @@ import {
 } from "@/lib/listing-furnished";
 import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
 import {
-  assessedValueFromRaw,
   formatPropertyTaxLabel,
   propertyTaxFromRaw,
+  resolveAssessedValue,
 } from "@/lib/listing-property-tax";
 import { listingPhotosHref } from "@/lib/listing-url";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
@@ -41,6 +41,8 @@ type ListingForDetailsPanel = {
   photoCount?: number | null;
   propertyTax?: number | null;
   propertyTaxYear?: string | null;
+  /** Synced AssessedValue from Postgres — not live RETS. */
+  assessedValue?: number | null;
   furnished?: ListingFurnished | null;
   schools?: ListingOverviewSchools;
   raw?: Record<string, string>;
@@ -71,6 +73,7 @@ type SpotlightMlsEnrichment = {
   raw?: Record<string, string>;
   propertyTax?: number | null;
   propertyTaxYear?: string | null;
+  assessedValue?: number | null;
   lotAcres?: number | null;
 } | null;
 
@@ -101,6 +104,7 @@ export function buildSpotlightDetailsPanelProps(
       photoCount: display.photoCount,
       propertyTax: mlsListing?.propertyTax ?? null,
       propertyTaxYear: mlsListing?.propertyTaxYear ?? null,
+      assessedValue: mlsListing?.assessedValue ?? null,
       schools: display.schools,
       raw: mlsListing?.raw,
     },
@@ -150,7 +154,8 @@ export function buildListingDetailsPanelProps(
     listing.propertyTax ?? taxFromRaw.annualAmount;
   const propertyTaxYear =
     listing.propertyTaxYear ?? taxFromRaw.yearLabel;
-  const assessedMarketValue = assessedValueFromRaw(listing.raw);
+  // Postgres-hydrated listing only (sync wrote AssessedValue into data/raw).
+  const assessedMarketValue = resolveAssessedValue(listing);
   const routeBase = opts?.routeBase ?? "listing";
   const street =
     listing.address?.street?.trim() ||

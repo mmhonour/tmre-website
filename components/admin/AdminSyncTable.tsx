@@ -519,6 +519,8 @@ export type PanelStatus = {
   lastRefreshFinished: string | null;
   lastRefreshStarted: string | null;
   latestListingUpdate: string | null;
+  /** Last Netlify sync-listings cron tick (even when work was skipped). */
+  lastIncrementalCronTick?: string | null;
   propertyAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
@@ -930,6 +932,22 @@ function parseIsoMs(iso: string | null | undefined): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+/** Compact age for End/Updated (e.g. `12m ago`, `27h ago`, `2d ago`). */
+function formatAgeAgo(iso: string | null | undefined, nowMs = Date.now()): string | null {
+  const ms = parseIsoMs(iso);
+  if (ms == null) return null;
+  const delta = Math.max(0, nowMs - ms);
+  if (delta < 60_000) return "just now";
+  if (delta < 60 * 60_000) return `${Math.round(delta / 60_000)}m ago`;
+  if (delta < 48 * 60 * 60_000) {
+    const hours = Math.floor(delta / (60 * 60_000));
+    const mins = Math.round((delta % (60 * 60_000)) / 60_000);
+    return mins > 0 && hours < 10 ? `${hours}h ${mins}m ago` : `${hours}h ago`;
+  }
+  const days = Math.floor(delta / (24 * 60 * 60_000));
+  return `${days}d ago`;
+}
+
 function isTimingInProgress(timing: SyncTiming, nowMs: number): boolean {
   const startedMs = parseIsoMs(timing.started);
   if (startedMs == null) return false;
@@ -970,7 +988,17 @@ function resolveSyncRowVisualStatus(options: {
   error?: string;
   nowMs: number;
 }): SyncRowVisualStatus {
-  const { row, timing, status, isRunning, syncAllRunning, fullResyncInProgress, error, nowMs } = options;
+  const {
+    row,
+    timing,
+    nextRunAt,
+    status,
+    isRunning,
+    syncAllRunning,
+    fullResyncInProgress,
+    error,
+    nowMs,
+  } = options;
 
   // During a full resync the full-resync row (Step 1) is the single source of
   // truth for the pulsing yellow. The "refresh-finished" row watches the global
@@ -1014,9 +1042,13 @@ function resolveSyncRowVisualStatus(options: {
   // action of its own so it should never turn green regardless of its timestamp.
   if (row.id === "latest-mls") return "idle";
 
-  // Successful End → green row. Schedule breach is font-only in the Next
-  // label (rose "Overdue") — never paints the whole row red.
-  if (timing.finished) return "ok";
+  // Successful End → green when still on schedule. Once Next is overdue, paint
+  // the row rose so a stalled cadence (e.g. incremental silent for a day) is
+  // obvious — not just a tiny "Overdue" on the Next label.
+  if (timing.finished) {
+    if (isScheduleBreached(nextRunAt, timing.finished, nowMs)) return "alert";
+    return "ok";
+  }
 
   return "idle";
 }
@@ -2315,23 +2347,48 @@ export default function AdminSyncTable({
                   </td>
                   <td className={TD}>
                     <p className="text-sm leading-snug text-slate">
-                      {row.detail ?? ""}
+                      {row.id === "incremental"
+                        ? `Modified-since RETS pull (every 30 minutes)${
+                            status?.lastIncrementalCronTick
+                              ? ` · Cron last fired ${
+                                  formatAgeAgo(
+                                    status.lastIncrementalCronTick,
+                                    nowMs,
+                                  ) ?? formatTimestamp(status.lastIncrementalCronTick)
+                                }`
+                              : " · Cron last fired: never (no tick stamp yet)"
+                          }`
+                        : (row.detail ?? "")}
                     </p>
                   </td>
                   <td className={TD}>
                     <StatusCell
-                      text={
-                        isWaiting
-                          ? (descriptions[row.id] ??
+                      text={(() => {
+                        if (isWaiting) {
+                          return (
+                            descriptions[row.id] ??
                             formatWaitingStatus(
                               runningLabelRef.current ?? "current sync",
-                            ))
-                          : isRunning || syncAllRunning
-                            ? (descriptions[row.id] ?? "Running…")
-                            : (descriptions[row.id] ??
-                              finalStatuses[row.id] ??
-                              statusTextFromRunLog(row, runSnapshot))
-                      }
+                            )
+                          );
+                        }
+                        if (isRunning || syncAllRunning) {
+                          return descriptions[row.id] ?? "Running…";
+                        }
+                        const prior =
+                          descriptions[row.id] ??
+                          finalStatuses[row.id] ??
+                          statusTextFromRunLog(row, runSnapshot);
+                        if (scheduleBreached && timing.finished) {
+                          const age =
+                            formatAgeAgo(timing.finished, nowMs) ??
+                            formatDateShort(timing.finished);
+                          return prior
+                            ? `Last refresh ${age} — overdue. Prior: ${prior}`
+                            : `Last refresh ${age} — overdue (expected run missed)`;
+                        }
+                        return prior;
+                      })()}
                       isRunning={isRunning || syncAllRunning}
                       isWaiting={isWaiting}
                     />
@@ -2409,10 +2466,21 @@ export default function AdminSyncTable({
                             </div>
                           ) : null}
                           {showSingleTimestamp ? (
-                            <SyncTimestamp
+                            <SyncTimingRow
                               label="Updated"
-                              value={timing.finished}
-                              timeOnly
+                              value={(() => {
+                                if (!timing.finished) return "—";
+                                const age = formatAgeAgo(timing.finished, nowMs);
+                                const time = formatTimeOnly(timing.finished);
+                                return age && age !== "just now"
+                                  ? `${time} · ${age}`
+                                  : time;
+                              })()}
+                              valueClassName={
+                                scheduleBreached
+                                  ? "text-rose-700 font-semibold"
+                                  : "text-navy font-semibold"
+                              }
                             />
                           ) : (
                             <>
@@ -2421,10 +2489,21 @@ export default function AdminSyncTable({
                                 value={timing.started}
                                 timeOnly
                               />
-                              <SyncTimestamp
+                              <SyncTimingRow
                                 label="End"
-                                value={timing.finished}
-                                timeOnly
+                                value={(() => {
+                                  if (!timing.finished) return "—";
+                                  const age = formatAgeAgo(timing.finished, nowMs);
+                                  const time = formatTimeOnly(timing.finished);
+                                  return age && age !== "just now"
+                                    ? `${time} · ${age}`
+                                    : time;
+                                })()}
+                                valueClassName={
+                                  scheduleBreached
+                                    ? "text-rose-700 font-semibold"
+                                    : "text-navy font-semibold"
+                                }
                               />
                               <SyncTimingRow
                                 label="Elapsed"

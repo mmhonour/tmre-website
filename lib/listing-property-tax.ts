@@ -2,6 +2,8 @@ type ListingWithPropertyTax = {
   raw?: Record<string, string>;
   propertyTax?: number | null;
   propertyTaxYear?: string | null;
+  /** Town assessment — set at sync ingest; hydrated from Postgres `data`/`raw`. */
+  assessedValue?: number | null;
 };
 
 function parseTaxAmount(value: string | undefined): number | null {
@@ -11,8 +13,10 @@ function parseTaxAmount(value: string | undefined): number | null {
 }
 
 /**
- * SmartMLS `AssessedValue` (town assessment). Rejects the Matrix TBD
- * sentinel (nine 9s) used when assessment is not yet available.
+ * SmartMLS `AssessedValue` (town assessment) from a synced RETS raw record.
+ * Rejects the Matrix TBD sentinel (nine 9s) used when assessment is not yet
+ * available. Callers must pass Postgres-hydrated `raw` (or sync-time RETS
+ * ingest) — listing UI must not live-query RETS for this field.
  */
 export function assessedValueFromRaw(
   raw?: Record<string, string>,
@@ -22,6 +26,15 @@ export function assessedValueFromRaw(
   if (n == null) return null;
   if (n >= 999_999_999) return null;
   return n;
+}
+
+/** Prefer denormalized sync field, else Postgres-stored raw.AssessedValue. */
+export function resolveAssessedValue(listing: ListingWithPropertyTax): number | null {
+  if (listing.assessedValue != null && Number.isFinite(listing.assessedValue)) {
+    const n = listing.assessedValue;
+    if (n > 0 && n < 999_999_999) return n;
+  }
+  return assessedValueFromRaw(listing.raw);
 }
 
 /** Annual property tax + fiscal year label from RETS raw fields. */
@@ -55,17 +68,20 @@ export function propertyTaxDbFields(listing: ListingWithPropertyTax): {
 }
 
 /**
- * Normalize property tax on a listing and ensure raw RETS fields are populated
- * so cached SQLite JSON and UI helpers stay in sync.
+ * Normalize property tax + assessed value on a listing and ensure raw fields
+ * are populated so Postgres `data`/`raw` jsonb and UI helpers stay in sync.
+ * Intended for sync upsert and DB hydration — not live RETS reads in the UI.
  */
 export function applyListingPropertyTax<T extends ListingWithPropertyTax>(
   listing: T,
 ): T & {
   propertyTax: number | null;
   propertyTaxYear: string | null;
+  assessedValue: number | null;
   raw: Record<string, string>;
 } {
   const { property_tax, property_tax_year } = propertyTaxDbFields(listing);
+  const assessedValue = resolveAssessedValue(listing);
   const raw = { ...(listing.raw ?? {}) };
 
   if (property_tax != null && !parseTaxAmount(raw.PropertyTax)) {
@@ -74,12 +90,16 @@ export function applyListingPropertyTax<T extends ListingWithPropertyTax>(
   if (property_tax_year && !raw.TaxYear?.trim()) {
     raw.TaxYear = property_tax_year;
   }
+  if (assessedValue != null && !parseTaxAmount(raw.AssessedValue)) {
+    raw.AssessedValue = String(Math.round(assessedValue));
+  }
 
   return {
     ...listing,
     raw,
     propertyTax: property_tax,
     propertyTaxYear: property_tax_year,
+    assessedValue,
   };
 }
 

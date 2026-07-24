@@ -15,6 +15,7 @@ import AdminBrokeragePanel from "@/components/admin/AdminBrokeragePanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminMarketDigestPanel from "@/components/admin/AdminMarketDigestPanel";
+import AdminDeployNotifyPanel from "@/components/admin/AdminDeployNotifyPanel";
 import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
@@ -42,6 +43,7 @@ import {
   DEFAULT_CONTACT_NOTIFY_EMAIL,
 } from "@/lib/contact-notify-config";
 import { getMarketDigestConfigFresh } from "@/lib/market-digest-config";
+import { getDeployNotifyConfigFresh } from "@/lib/deploy-notify-config";
 import { getSocialProfilesFresh } from "@/lib/social-profiles-config";
 import {
   getBrokerageNameFresh,
@@ -211,7 +213,8 @@ export default async function AdminPage() {
   );
 
   const stats = await readListingsDbStats();
-  const { refresh, nextRuns, scheduleHints } = await readAdminSyncPanelStatus();
+  const { refresh, nextRuns, scheduleHints, lastIncrementalCronTick } =
+    await readAdminSyncPanelStatus();
   const latestListingUpdate = await safe(
     "latest-mls-timestamp",
     () => readLatestListingModificationTimestamp(),
@@ -297,7 +300,9 @@ export default async function AdminPage() {
         stats.lastIncrementalSync,
       ),
       sortMs: timestampSortMs(stats.lastIncrementalSync),
-      detail: `Modified-since RETS pull (every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} minutes)`,
+      detail: lastIncrementalCronTick
+        ? `Modified-since RETS pull (every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} minutes) · Cron last fired ${formatTimestamp(lastIncrementalCronTick)}`
+        : `Modified-since RETS pull (every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} minutes) · Cron last fired: never (no tick stamp yet)`,
       actionId: "incremental",
       nextRunAt: nextRuns.incremental,
     },
@@ -388,6 +393,7 @@ export default async function AdminPage() {
     lastRefreshFinished: refreshFinishedAt,
     lastRefreshStarted: lastRefreshStarted,
     latestListingUpdate: latestListingUpdate,
+    lastIncrementalCronTick: lastIncrementalCronTick ?? null,
     propertyAddressesSyncedAt: propertyAddressesSyncedAt,
     zipBoundariesSyncedAt,
     zipBoundariesSyncStartedAt,
@@ -443,6 +449,11 @@ export default async function AdminPage() {
       lastWeekKey: null,
       defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
     },
+  )
+  const deployNotify = await safe(
+    "deploy-notify",
+    () => getDeployNotifyConfigFresh(),
+    null,
   )
   const socialProfiles = await safe(
     "social-profiles",
@@ -678,6 +689,8 @@ export default async function AdminPage() {
       </div>
 
       <AdminMarketDigestPanel initial={marketDigest} />
+
+      <AdminDeployNotifyPanel initial={deployNotify ?? undefined} />
 
       <AdminSocialProfilesPanel
         initial={socialProfiles ?? undefined}

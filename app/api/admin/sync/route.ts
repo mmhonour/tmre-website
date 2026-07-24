@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
     lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
     lastRefreshStarted,
     latestListingUpdate: await readLatestListingModificationTimestamp(),
+    lastIncrementalCronTick: getSyncMeta('last_incremental_cron_tick'),
     propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
     zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),
     zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),

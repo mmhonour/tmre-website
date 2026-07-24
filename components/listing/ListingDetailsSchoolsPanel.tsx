@@ -34,7 +34,7 @@ export type ListingDetailsSchoolsPanelProps = {
   dom: number | null;
   ppsf: number | null;
   lotAcres: number | null;
-  /** Town assessment from SmartMLS `AssessedValue`. */
+  /** Town assessment from synced Postgres `AssessedValue` (not live RETS). */
   assessedMarketValue: number | null;
   annualPropertyTax: number | null;
   propertyTaxLabel: string;

@@ -6,7 +6,10 @@ import {
   parseFurnishedFromRaw,
   type ListingFurnished,
 } from '@/lib/listing-furnished'
-import { propertyTaxFromRaw } from '@/lib/listing-property-tax'
+import {
+  assessedValueFromRaw,
+  propertyTaxFromRaw,
+} from '@/lib/listing-property-tax'
 import { coalesceListingStatus } from '@/lib/listing-history'
 import { getRetsCredentials } from '@/lib/rets-credentials'
 
@@ -82,10 +85,16 @@ export type Listing = {
   photoCount: number | null
   ownerName: string | null
   remarks: string | null
-  /** Annual property tax from MLS (cached in SQLite). */
+  /** Annual property tax from MLS (cached in Postgres via sync). */
   propertyTax?: number | null
-  /** Tax fiscal year label from MLS (cached in SQLite). */
+  /** Tax fiscal year label from MLS (cached in Postgres via sync). */
   propertyTaxYear?: string | null
+  /**
+   * Town assessed market value from SmartMLS `AssessedValue`.
+   * Written only during incremental/full RETS→Postgres sync; listing UI reads
+   * from Postgres (`data` / `raw`), never live RETS.
+   */
+  assessedValue?: number | null
   schools: Schools
   raw: RawRetsRecord
 }
@@ -246,6 +255,7 @@ export function refreshListingFurnished(listing: Listing): Listing {
 function mapListing(r: RawRetsRecord): Listing {
   const { annualAmount: propertyTax, yearLabel: propertyTaxYear } =
     propertyTaxFromRaw(r)
+  const assessedValue = assessedValueFromRaw(r)
   return {
     mlsId: str(r.ListingId),
     listingKey: str(r.ListingKey),
@@ -283,6 +293,7 @@ function mapListing(r: RawRetsRecord): Listing {
     remarks: pickField(r, ['PublicRemarks', 'Remarks', 'MarketingRemarks']),
     propertyTax,
     propertyTaxYear,
+    assessedValue,
     schools: buildSchools(r),
     raw: r,
   }

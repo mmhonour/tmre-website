@@ -651,5 +651,6 @@ export async function readAdminSyncPanelStatus() {
     lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
   })
   const scheduleHints = buildAdminSyncScheduleHints()
-  return { stats, refresh, nextRuns, scheduleHints }
+  const lastIncrementalCronTick = getSyncMeta('last_incremental_cron_tick')
+  return { stats, refresh, nextRuns, scheduleHints, lastIncrementalCronTick }
 }

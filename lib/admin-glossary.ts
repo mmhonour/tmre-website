@@ -176,6 +176,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Configure recipient on Admin → Site; social graphic posting comes later.',
   },
   {
+    term: 'Deploy notifications',
+    category: 'sync-admin',
+    definition:
+      'Admin → Site: email (Resend) and/or SMS (Twilio) when Netlify finishes a main/production deploy. Netlify outgoing webhook POSTs to /api/webhooks/netlify-deploy with DEPLOY_NOTIFY_WEBHOOK_SECRET. Separate from the public Contact phone CTA.',
+  },
+  {
     term: 'Social media profiles',
     category: 'product',
     definition:
@@ -223,7 +229,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Incremental sync',
     category: 'sync-admin',
     definition:
-      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Cadence is about every 30 minutes on the Latest path.',
+      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Cadence is about every 30 minutes via Netlify sync-listings. Admin shows End age, paints the row rose when Next is overdue, and stamps last_incremental_cron_tick so you can tell cron fired even when the pull was skipped (pause / refresh lock).',
   },
   {
     term: 'Smart sync',

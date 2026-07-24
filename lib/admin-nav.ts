@@ -126,6 +126,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-contact-email", label: "Contact form email", tab: "site" },
   { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
   { id: "admin-market-digest", label: "Monday market brief", tab: "site" },
+  { id: "admin-deploy-notify", label: "Deploy notifications", tab: "site" },
   { id: "admin-social-profiles", label: "Social media profiles", tab: "site" },
   { id: "admin-spotlight", label: "Spotlight properties", tab: "spotlight" },
   { id: "admin-goldilocks", label: "Goldilocks scoring", tab: "goldilocks" },
@@ -252,6 +253,14 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   },
 ];
 
+/** Documented in Admin → Server / Site — Netlify → webhook, not a cron function. */
+export const ADMIN_DEPLOY_NOTIFY_HOOK = {
+  label: "POST /api/webhooks/netlify-deploy",
+  detail:
+    "Netlify outbound webhook → email (Resend) and/or SMS (Twilio) for main production deploys",
+  href: "/api/webhooks/netlify-deploy",
+};
+
 export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[] }[] = [
   {
     title: "Listings & search",
@@ -294,6 +303,16 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       { label: "GET /api/admin/price-buckets", detail: "Sales by price band definitions", href: "/api/admin/price-buckets" },
       { label: "GET /api/admin/pricing-matching-config", detail: "Sales / Rentals / What if match parameters", href: "/api/admin/pricing-matching-config" },
       { label: "POST /api/sync/listings/incremental", detail: "Manual incremental sync hook", href: "/api/sync/listings/incremental" },
+      {
+        label: ADMIN_DEPLOY_NOTIFY_HOOK.label,
+        detail: ADMIN_DEPLOY_NOTIFY_HOOK.detail,
+        href: ADMIN_DEPLOY_NOTIFY_HOOK.href,
+      },
+      {
+        label: "GET/PATCH/POST /api/admin/deploy-notify",
+        detail: "Deploy notify preferences + Send test (Admin → Site)",
+        href: "/api/admin/deploy-notify",
+      },
     ],
   },
 ];
