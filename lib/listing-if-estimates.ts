@@ -6,6 +6,7 @@ import {
   COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
   lookbackLabel,
 } from '@/lib/listing-comparables-shared'
+import type { ListingFurnished } from '@/lib/listing-furnished'
 import {
   formatLocationPremiumLabels,
   type LocationPremiumFactors,
@@ -510,6 +511,8 @@ export type IfMatchParams = {
   vintageEdgeFraction: number
   lookbackMonths: number
   lookbackLabel: string
+  /** Present when the subject is furnished / partial / negotiable. */
+  furnished?: ListingFurnished
 }
 
 /** One comparable that contributed to the estimate (hyperlinkable). */
@@ -528,6 +531,7 @@ export type IfCompRow = {
   closeDate: string | null
   sqft: number | null
   vintageLabel: string
+  furnished: ListingFurnished | null
   pricePerSqft: number | null
   adjustedPricePerSqft: number | null
   /** Comp $/sqft (adjusted) × subject sqft, or adjusted price when no sqft. */
@@ -589,6 +593,7 @@ export function buildIfMatchParams(
     vintageEdgeFraction: match.vintageEdgeFraction,
     lookbackMonths,
     lookbackLabel: lookbackLabel(lookbackMonths),
+    ...(criteria?.furnished ? { furnished: criteria.furnished } : {}),
   }
 }
 
@@ -656,6 +661,7 @@ function buildCompRows(
       closeDate: role === 'sold' ? comp.closeDate : null,
       sqft: comp.sqft,
       vintageLabel: comp.vintageLabel,
+      furnished: comp.furnished ?? null,
       pricePerSqft: validPpsf(comp.pricePerSqft) ? comp.pricePerSqft : null,
       adjustedPricePerSqft: adjPpsf,
       impliedSubjectAmount: implied,

@@ -87,6 +87,7 @@ async function resolveWideComparablesPool(
     soldLimit: COMPARABLES_SOLD_SUPERSET_LIMIT,
     match: wide,
     relaxVintage: true,
+    relaxFurnished: true,
   })
   const result: ComparablesResult = {
     sold: ranked.sold.map((row) => row.listing),

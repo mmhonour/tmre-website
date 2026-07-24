@@ -165,3 +165,28 @@ export function formatFurnishedDetailLabel(
   if (value === "Partially") return "Partially furnished";
   return null;
 }
+
+/**
+ * Criteria ± row: subject counts as “furnished” when not Unfurnished / unknown.
+ * Default match is exact status; expand to any includes Unfurnished.
+ */
+export function subjectHasFurnishedCriteria(
+  value: ListingFurnished | null | undefined,
+): value is ListingFurnished {
+  return (
+    value === "Furnished" ||
+    value === "Partially" ||
+    value === "Negotiable"
+  );
+}
+
+/** Short label for Matching Criteria value column. */
+export function formatFurnishedCriteriaLabel(
+  value: ListingFurnished | null | undefined,
+): string {
+  if (value === "Furnished") return "Furnished";
+  if (value === "Partially") return "Partially";
+  if (value === "Negotiable") return "Negotiable";
+  if (value === "Unfurnished") return "Unfurnished";
+  return "—";
+}

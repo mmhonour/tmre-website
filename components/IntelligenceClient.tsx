@@ -149,7 +149,7 @@ function furnishedFilterFromIndex(index: number): FurnishedFilter {
 }
 
 function formatFurnishedFilterLabel(value: FurnishedFilter): string {
-  return value === "all" ? "Any furnish" : value;
+  return value === "all" ? "Any Furnished" : value;
 }
 const STATS_EXPANDED_PREF = "tmre_intel_stats_expanded_towns";
 const FILTERS_EXPANDED_VALUES = ["true", "false"] as const;
@@ -4537,7 +4537,9 @@ function DescriptorSearchControl({
       onClick={onClick}
       aria-label="Open filter sliders"
       className={`inline-flex shrink-0 self-center text-gold drop-shadow-sm transition-all duration-300 ease-out ${
-        active ? "opacity-100 scale-110" : "opacity-95 scale-100"
+        active
+          ? "ml-5 sm:ml-6 opacity-100 scale-110"
+          : "ml-3 sm:ml-4 opacity-95 scale-100"
       } cursor-pointer hover:text-gold-light`}
     >
       <DescriptorSearchIcon className={active ? "h-5 w-5" : "h-4 w-4"} />
@@ -4707,7 +4709,7 @@ function IntelSliderDescriptorLabels({
           />
         </>
       ) : null}
-      {/* Always trailing — right of whatever descriptors are showing. */}
+      {/* Trailing search — extra margin clears blown-up descriptor scale. */}
       <DescriptorSearchControl active={searchActive} onClick={openViaSearch} />
     </>
   );

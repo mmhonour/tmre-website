@@ -104,6 +104,35 @@ function listingMatchesAddress(listing: Listing, input: AddressLookupInput): boo
   return true
 }
 
+function listingLooksOffMarket(listing: Listing | null | undefined): boolean {
+  if (!listing) return true
+  const s = (listing.status ?? '').toLowerCase()
+  return (
+    s.includes('closed') ||
+    s.includes('expired') ||
+    s.includes('withdrawn') ||
+    s.includes('cancelled') ||
+    s.includes('canceled')
+  )
+}
+
+/** Prefer current market rows (Active / CS / UC / Pending), then newest mod time. */
+function listingCurrentRank(listing: Listing): number {
+  if (listingLooksOffMarket(listing)) return 100
+  const s = (listing.status ?? '').toLowerCase()
+  if (s.includes('under contract') || s.includes('pending')) return 0
+  if (s.includes('active')) return 1
+  if (s.includes('coming soon')) return 2
+  return 3
+}
+
+function listingModTs(listing: Listing): number {
+  const raw = listing.modificationTimestamp?.trim()
+  if (!raw) return 0
+  const t = Date.parse(raw)
+  return Number.isNaN(t) ? 0 : t
+}
+
 function pickBestListingMatch(
   listings: Listing[],
   input: AddressLookupInput,
@@ -112,14 +141,18 @@ function pickBestListingMatch(
   if (matches.length === 0) return null
 
   const inputNorm = normalizeStreetLine(input.street)
-  const exact = matches.find((listing) => {
+  const exact = matches.filter((listing) => {
     const street = listing.address.street || listing.address.full || ''
     return normalizeStreetLine(street) === inputNorm
   })
-  if (exact) return exact
+  const pool = exact.length > 0 ? exact : matches
 
-  const active = matches.find((listing) => /active|coming soon/i.test(listing.status ?? ''))
-  return active ?? matches[0]
+  pool.sort((a, b) => {
+    const rank = listingCurrentRank(a) - listingCurrentRank(b)
+    if (rank !== 0) return rank
+    return listingModTs(b) - listingModTs(a)
+  })
+  return pool[0] ?? null
 }
 
 function resultFromListing(
@@ -165,24 +198,14 @@ async function lookupDirectoryMlsId(input: AddressLookupInput): Promise<string |
   return null
 }
 
-function listingLooksOffMarket(listing: Listing | null | undefined): boolean {
-  if (!listing) return true
-  const s = (listing.status ?? '').toLowerCase()
-  return (
-    s.includes('closed') ||
-    s.includes('expired') ||
-    s.includes('withdrawn') ||
-    s.includes('cancelled') ||
-    s.includes('canceled')
-  )
-}
-
 /**
  * Resolve a TMRE town address to an MLS id.
  * Order: property-address directory → listings DB → SmartMLS (optional).
  * Successful matches are persisted for future lookups.
  * Directory hits that point at Closed/Expired rows are skipped so Spotlight
- * can find the live Active listing at the same address.
+ * can find the live listing (Active / Coming Soon / Under Contract) at the
+ * same address. Current directory rows are candidates only — street search
+ * may prefer a newer Under Contract rental over a stale Coming Soon sale id.
  */
 export async function resolveMlsIdByAddress(
   input: AddressLookupInput,
@@ -212,23 +235,19 @@ export async function resolveMlsIdByAddress(
 
   const statusBuckets = options.statusBuckets ?? ['Active', 'Closed', 'Expired']
 
+  const candidates: Listing[] = []
+
   const directoryMlsId = await lookupDirectoryMlsId(normalized)
   if (directoryMlsId) {
-    const dbHits = await searchListingsInDbByQuery(directoryMlsId, {
+    const dirHits = await searchListingsInDbByQuery(directoryMlsId, {
       limit: 1,
       statusBuckets,
     })
-    const listing = dbHits[0] ?? null
-    // Stale directory rows often still point at a prior Closed sale at this
-    // address — keep searching for the current Active listing instead.
-    if (listing && !listingLooksOffMarket(listing)) {
-      return {
-        mlsId: directoryMlsId,
-        listingKey: listing.listingKey?.trim() || null,
-        listing,
-        source: 'directory',
-        address: normalized,
-      }
+    const dirListing = dirHits[0] ?? null
+    // Keep current directory rows as candidates only — a stale Coming Soon /
+    // Active sale id must not block a newer Under Contract rental at the address.
+    if (dirListing && !listingLooksOffMarket(dirListing)) {
+      candidates.push(dirListing)
     }
   }
 
@@ -236,13 +255,20 @@ export async function resolveMlsIdByAddress(
     limit: 24,
     statusBuckets,
   })
-  const dbMatch = pickBestListingMatch(dbHits, normalized)
-  if (dbMatch?.mlsId?.trim()) {
-    if (persist) await persistAddressResolution(dbMatch, normalized)
-    return resultFromListing(dbMatch, normalized, 'db')
+  for (const hit of dbHits) {
+    if (!listingLooksOffMarket(hit)) candidates.push(hit)
   }
 
+  const dbMatch = pickBestListingMatch(
+    candidates.length > 0 ? candidates : dbHits,
+    normalized,
+  )
+
   if (!allowRets) {
+    if (dbMatch?.mlsId?.trim()) {
+      if (persist) await persistAddressResolution(dbMatch, normalized)
+      return resultFromListing(dbMatch, normalized, 'db')
+    }
     return {
       mlsId: null,
       listingKey: null,
@@ -252,6 +278,9 @@ export async function resolveMlsIdByAddress(
     }
   }
 
+  // Always consult RETS when enabled — Postgres Active sync historically omitted
+  // Under Contract, so a stale Coming Soon sale in DB must not hide a live UC
+  // rental that RETS still returns for this address.
   try {
     const retsHits = await searchListings({
       county: 'fairfield',
@@ -259,25 +288,37 @@ export async function resolveMlsIdByAddress(
       city,
       limit: 24,
     })
-    const retsMatch = pickBestListingMatch(retsHits, normalized)
-    if (retsMatch?.mlsId?.trim()) {
-      if (persist) await persistAddressResolution(retsMatch, normalized)
-      return resultFromListing(retsMatch, normalized, 'rets')
+    const pool = [
+      ...(dbMatch ? [dbMatch] : []),
+      ...candidates,
+      ...retsHits,
+    ]
+    const best = pickBestListingMatch(pool, normalized)
+    if (best?.mlsId?.trim()) {
+      if (persist) await persistAddressResolution(best, normalized)
+      const fromRets = retsHits.some(
+        (l) => (l.mlsId?.trim() || '') === (best.mlsId?.trim() || ''),
+      )
+      return resultFromListing(best, normalized, fromRets ? 'rets' : 'db')
     }
   } catch (err) {
     console.warn('[address-mls-resolve] RETS lookup failed', err)
+    if (dbMatch?.mlsId?.trim()) {
+      if (persist) await persistAddressResolution(dbMatch, normalized)
+      return resultFromListing(dbMatch, normalized, 'db')
+    }
   }
 
   // Last resort: directory Closed id if nothing on-market was found.
   if (directoryMlsId) {
-    const dbHits = await searchListingsInDbByQuery(directoryMlsId, {
+    const closedHits = await searchListingsInDbByQuery(directoryMlsId, {
       limit: 1,
       statusBuckets,
     })
     return {
       mlsId: directoryMlsId,
-      listingKey: dbHits[0]?.listingKey?.trim() || null,
-      listing: dbHits[0] ?? null,
+      listingKey: closedHits[0]?.listingKey?.trim() || null,
+      listing: closedHits[0] ?? null,
       source: 'directory',
       address: normalized,
     }

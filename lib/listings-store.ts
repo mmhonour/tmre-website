@@ -46,6 +46,10 @@ export type ListingsSource = 'db' | 'rets'
 /** MLS status used for all non-Stats inventory (deal board, search, etc.). */
 export const ACTIVE_MLS_STATUS = 'Active'
 export const COMING_SOON_MLS_STATUS = 'Coming Soon'
+/** SmartMLS under-agreement statuses (stored in the Active status_bucket). */
+export const UNDER_CONTRACT_MLS_STATUS = 'Under Contract'
+export const UNDER_CONTRACT_CTS_MLS_STATUS =
+  'Under Contract - Continue to Show'
 
 /** Closed sales pulled from RETS for stats/charts since this date. */
 export const CLOSED_LISTINGS_SINCE = '2019-01-01'
@@ -55,9 +59,11 @@ export const ACTIVE_LISTINGS_FETCH_LIMIT = 2000
 export const CLOSED_LISTINGS_FETCH_LIMIT = 5000
 export const EXPIRED_LISTINGS_FETCH_LIMIT = 500
 
-/** True for on-market MLS rows: Active and Coming Soon (excludes pending, closed, withdrawn). */
+/** True for Active-bucket MLS rows: Active, Coming Soon, and Under Contract / CTS. */
 export function isMarketListing(l: Listing): boolean {
   const s = l.status?.trim().toLowerCase()
+  if (!s) return false
+  if (isUnderContractStatus(l.status)) return true
   return s === 'active' || s === 'a' || s === 'coming soon' || s === 'cs'
 }
 

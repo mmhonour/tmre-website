@@ -9,6 +9,7 @@ import {
 } from "@/components/listing/CompExactMatchMeta";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
+  useListingDesktopLayout,
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import MatchingCriteriaSummary, {
@@ -437,6 +438,9 @@ export function ListingUagPageContent({
   const [widePoolLoading, setWidePoolLoading] = useState(false);
   const [criteriaStepFeedback, setCriteriaStepFeedback] =
     useState<CriteriaStepFeedback | null>(null);
+  const isDesktop = useListingDesktopLayout();
+  /** Mobile in-panel Criteria mount; desktop uses the section title slot. */
+  const showMobileCriteriaLinkSlot = isDesktop === false;
   const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -707,7 +711,7 @@ export function ListingUagPageContent({
             subjectBaths={criteria?.baths ?? null}
             foundCountEmphasized={Boolean(criteriaStepFeedback)}
             criteriaLinkSlotId={
-              showCriteria
+              showCriteria && showMobileCriteriaLinkSlot
                 ? listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)
                 : null
             }

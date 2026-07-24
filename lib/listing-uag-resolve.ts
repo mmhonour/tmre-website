@@ -38,7 +38,7 @@ import { normalizeZip } from '@/lib/tmre-towns'
 // ---------------------------------------------------------------------------
 
 /** Bump to invalidate every cached UAG result after a matching-logic change. */
-const UAG_CACHE_VERSION = 4
+const UAG_CACHE_VERSION = 5
 
 /** How long a per-subject UAG result stays fresh before we re-query RETS. */
 const UAG_RESULT_TTL_MS = 12 * 60 * 60 * 1000
@@ -139,7 +139,10 @@ async function resolveWideUagPool(
   const zip = normalizeZip(subject.address.postalCode)
   const pool = zip ? await fetchUnderContractPoolForZip(zip) : []
   const wide = widePricingMatchingConfig(match)
-  const ranked = findUagRanked(subject, pool, wide)
+  const ranked = findUagRanked(subject, pool, wide, {
+    relaxVintage: true,
+    relaxFurnished: true,
+  })
   const result: UagResult = {
     sale: ranked.sale.map((r) => r.listing),
     rental: ranked.rental.map((r) => r.listing),

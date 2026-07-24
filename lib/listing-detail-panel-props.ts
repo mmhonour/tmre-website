@@ -88,7 +88,7 @@ export function buildSpotlightDetailsPanelProps(
   return buildListingDetailsPanelProps(
     {
       mlsId: mlsListing?.mlsId?.trim() || display.mlsId,
-      propertyTitle: display.config.displayTitle,
+      propertyTitle: display.headerAddress.street || display.config.displayTitle,
       townHint: presentation?.townHint ?? display.headerAddress.city,
       status: display.status,
       propertyType: display.propertyType,

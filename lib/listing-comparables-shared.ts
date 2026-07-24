@@ -1,3 +1,4 @@
+import type { ListingFurnished } from '@/lib/listing-furnished'
 import { VINTAGE_BUCKETS, type VintageBucketId } from '@/lib/vintage-buckets'
 
 export type ComparableListing = {
@@ -16,6 +17,8 @@ export type ComparableListing = {
   vintageBucket: VintageBucketId
   vintageLabel: string
   yearBuilt: number | null
+  /** Normalized furnish status when disclosed (for criteria ±). */
+  furnished: ListingFurnished | null
   pricePerSqft: number | null
   dom: number | null
   photoCount: number | null
@@ -52,6 +55,11 @@ export type ComparablesCriteria = {
   vintageLabel: string
   /** Bordering vintage label(s) pulled in by the edge rule, when any. */
   vintageEdgeLabels?: string[]
+  /**
+   * When set (subject is furnished / partial / negotiable), comps default to
+   * the same furnish status unless the session expands to any.
+   */
+  furnished?: ListingFurnished
 }
 
 /**

@@ -13,13 +13,26 @@ export function listingCriteriaLinkSlotId(sectionId: string): string {
   return `${sectionId}-criteria-link`;
 }
 
+/** Tailwind `lg` — desktop Criteria title placement vs mobile in-panel. */
+export function useListingDesktopLayout(): boolean | null {
+  const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isDesktop;
+}
+
 /**
- * Desktop: "Criteria" / "Hide criteria" portals into the panel slot above
- * "N found" (beside Green = exact match); the criteria panel always portals
- * above Location in the right column when open.
+ * Desktop: "Criteria" / "Hide criteria" portals beside the section title
+ * (What if / Sold / Rented / Under agreement); the criteria panel always
+ * portals above Location in the right column when open.
  * Visibility is shared across analysis tabs when wrapped in
  * ListingCriteriaVisibilityProvider.
- * Mobile: same in-panel link → right slide-over (no fixed edge tab).
+ * Mobile: in-panel link (Sold / Rented / UAG) or title link (What if) → drawer.
  */
 export default function ListingCriteriaSideLayout({
   criteria,
@@ -45,20 +58,12 @@ export default function ListingCriteriaSideLayout({
     ? shared.toggle
     : () => setLocalOpen((v) => !v);
 
-  const [isDesktop, setIsDesktop] = useState(false);
+  const isDesktop = useListingDesktopLayout() === true;
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
   const [linkSlot, setLinkSlot] = useState<HTMLElement | null>(null);
   const [sectionVisible, setSectionVisible] = useState(true);
 
   const headingLabel = heading.trim().toUpperCase();
-
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const update = () => setIsDesktop(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
 
   useEffect(() => {
     if (!criteria) {
@@ -127,7 +132,7 @@ export default function ListingCriteriaSideLayout({
   );
 
   const criteriaPanel = (
-    <div className="min-w-0 w-full rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left">
+    <div className="min-w-0 w-full rounded-2xl border border-white/10 bg-[#152238] p-4 text-left shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)]">
       <p className="mb-3 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
         {headingLabel}
       </p>

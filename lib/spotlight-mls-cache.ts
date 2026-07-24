@@ -3,6 +3,7 @@ import 'server-only'
 import { resolveMlsIdByAddress } from '@/lib/address-mls-resolve'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
+import { isUnderContractStatus } from '@/lib/listing-status'
 import {
   spotlightTabForConfigId,
   type SpotlightListingConfig,
@@ -42,8 +43,26 @@ export function writeSpotlightResolvedMlsId(configId: string, mlsId: string): vo
   setSyncMeta(SPOTLIGHT_RESOLVED_MLS_SYNC_KEY, JSON.stringify(map))
 }
 
-function listingLooksOnMarket(status: string | null | undefined): boolean {
-  return /active|coming\s*soon/i.test(status ?? '')
+/**
+ * True when a listing is still the "current" market record for an address —
+ * Active, Coming Soon, Under Contract / CTS, or Pending. Closed / expired /
+ * withdrawn are not current (a new rental UC must win over a stale CS sale id).
+ */
+export function listingLooksCurrent(status: string | null | undefined): boolean {
+  const s = (status ?? '').trim()
+  if (!s) return false
+  const lower = s.toLowerCase()
+  if (
+    lower.includes('closed') ||
+    lower.includes('expired') ||
+    lower.includes('withdrawn') ||
+    lower.includes('cancelled') ||
+    lower.includes('canceled')
+  ) {
+    return false
+  }
+  if (isUnderContractStatus(s)) return true
+  return /active|coming\s*soon|pending|temp\s*off|hold/i.test(s)
 }
 
 /**
@@ -66,9 +85,11 @@ export function spotlightConfigMlsId(
 
 /**
  * Resolve the MLS id Spotlight should show for a property tab.
- * Admin override wins. Otherwise prefer the live on-market listing at the
- * configured address (so a prior Closed sale like 170610470 cannot stick).
- * Hardcoded config.mlsId / sync_meta cache are fallbacks only.
+ * Admin override wins. Otherwise prefer the live current listing at the
+ * configured address (Active / Coming Soon / Under Contract / Pending) so a
+ * prior Closed — or a stale hardcoded Coming Soon sale id — cannot stick when
+ * the home is now for rent under contract. Hardcoded config.mlsId / sync_meta
+ * cache are fallbacks only.
  */
 export async function resolveSpotlightMlsId(
   config: SpotlightListingConfig,
@@ -94,16 +115,21 @@ export async function resolveSpotlightMlsId(
         postalCode: config.address.postalCode,
       })
       const liveId = resolved.mlsId?.trim() ?? null
-      if (liveId && listingLooksOnMarket(resolved.listing?.status)) {
+      const liveCurrent = listingLooksCurrent(resolved.listing?.status)
+
+      // Address hit a current row (incl. Under Contract / rental) — always prefer
+      // it over a hardcoded config id that may still say Coming Soon / Active.
+      if (liveId && liveCurrent) {
         writeSpotlightResolvedMlsId(config.id, liveId)
         return liveId
       }
+
       // Address hit an off-market row — if config has a different fixed id that
-      // is still Active in DB, prefer that over the closed sale.
+      // is still current in DB, prefer that over the closed sale.
       const fixed = config.mlsId?.trim() || null
       if (fixed && fixed !== liveId) {
         const { listing } = await readListingFromDbByMlsId(fixed)
-        if (listingLooksOnMarket(listing?.status)) {
+        if (listingLooksCurrent(listing?.status)) {
           writeSpotlightResolvedMlsId(config.id, fixed)
           return fixed
         }

@@ -1,8 +1,11 @@
 import {
+  coalesceListingStatus,
+  formatMlsStatus,
+} from "@/lib/listing-history";
+import {
   SPOTLIGHT_LISTING,
   type SpotlightListingConfig,
 } from "@/lib/spotlight-listing";
-import { formatMlsStatus } from "@/lib/listing-history";
 
 const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
 
@@ -18,9 +21,19 @@ export function spotlightAllowsInterest(display: { status: string }): boolean {
  */
 export function spotlightEffectiveStatus(
   config: SpotlightListingConfig,
-  mls: { status?: string | null } | null | undefined,
+  mls:
+    | {
+        status?: string | null;
+        raw?: Record<string, string> | null;
+      }
+    | null
+    | undefined,
 ): string {
-  const mlsStatus = mls?.status?.trim();
+  const coalesced = coalesceListingStatus(
+    mls?.status ?? mls?.raw?.MLSStatus,
+    mls?.raw?.StandardStatus,
+  )
+  const mlsStatus = coalesced?.trim() || mls?.status?.trim();
   return mlsStatus || config.status;
 }
 

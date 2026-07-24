@@ -1,6 +1,10 @@
 import 'server-only'
 
 import { parseLotAcres } from '@/lib/fixer-listings'
+import {
+  listingFurnished,
+  subjectHasFurnishedCriteria,
+} from '@/lib/listing-furnished'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
 import { isRentalListing } from '@/lib/listing-kind'
 import {
@@ -70,6 +74,11 @@ export type ComparablesRankOptions = {
    * vintage set). Used for the interactive wide pool only.
    */
   relaxVintage?: boolean
+  /**
+   * When true, skip furnish-status matching (client filters exact vs any).
+   * Used for the interactive wide pool only.
+   */
+  relaxFurnished?: boolean
 }
 
 export type {
@@ -213,6 +222,7 @@ export function buildComparableListing(l: Listing): ComparableListing {
     vintageBucket,
     vintageLabel: vintageLabel(vintageBucket),
     yearBuilt: l.yearBuilt,
+    furnished: listingFurnished(l),
     pricePerSqft,
     dom: l.dom,
     photoCount: l.photoCount,
@@ -245,6 +255,8 @@ export function subjectComparablesCriteria(
     match.vintageEdgeFraction,
   ).map((id) => vintageLabel(id))
 
+  const subjectFurnished = listingFurnished(subject)
+
   return {
     criteria: {
       zip: zip!,
@@ -255,6 +267,9 @@ export function subjectComparablesCriteria(
       vintageBucket,
       vintageLabel: vintageLabel(vintageBucket),
       ...(vintageEdgeLabels.length > 0 ? { vintageEdgeLabels } : {}),
+      ...(subjectHasFurnishedCriteria(subjectFurnished)
+        ? { furnished: subjectFurnished }
+        : {}),
     },
     missingCriteria: [],
   }
@@ -276,7 +291,7 @@ function matchesComparableCriteria(
   subject: Listing,
   criteria: ComparablesCriteria,
   match: PricingMatchingConfig,
-  options?: Pick<ComparablesRankOptions, 'relaxVintage'>,
+  options?: Pick<ComparablesRankOptions, 'relaxVintage' | 'relaxFurnished'>,
 ): boolean {
   if (isSameListing(comp, subject)) return false
 
@@ -312,6 +327,14 @@ function matchesComparableCriteria(
 
   if (criteria.sqft != null && criteria.sqft > 0) {
     if (!sqftWithinTolerance(criteria.sqft, comp.sqft, match)) return false
+  }
+
+  if (criteria.furnished && !options?.relaxFurnished) {
+    const compFurnished = listingFurnished(comp)
+    // Unknown furnish status passes until disclosed; disclosed mismatches fail.
+    if (compFurnished != null && compFurnished !== criteria.furnished) {
+      return false
+    }
   }
 
   return true
@@ -589,6 +612,7 @@ export function findUagRanked(
   subject: Listing,
   underContractPool: Listing[],
   match: PricingMatchingConfig = DEFAULT_PRICING_MATCHING_CONFIG,
+  options?: Pick<ComparablesRankOptions, 'relaxVintage' | 'relaxFurnished'>,
 ): RankedUagResult {
   const { criteria, missingCriteria } = subjectComparablesCriteria(
     subject,
@@ -600,7 +624,7 @@ export function findUagRanked(
   }
 
   const matches = underContractPool.filter((l) =>
-    matchesComparableCriteria(l, subject, criteria, match),
+    matchesComparableCriteria(l, subject, criteria, match, options),
   )
   const rentals = matches.filter((l) => isRentalListing(l))
   const sales = matches.filter((l) => !isRentalListing(l))

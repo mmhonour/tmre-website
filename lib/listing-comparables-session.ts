@@ -19,6 +19,11 @@ export type SessionMatchOverrides = {
   lotTolerancePct: number
   /** Predefined vintage labels currently allowed (oldest → newest). */
   allowedVintageLabels: string[]
+  /**
+   * When subject is furnished: exact = same status; any = all furnish types
+   * (including Unfurnished). Omitted when the criterion does not apply.
+   */
+  furnishedScope?: 'exact' | 'any'
 }
 
 export const SESSION_BED_TOLERANCE_MAX = 5
@@ -51,6 +56,7 @@ export function sessionOverridesFromPricingConfig(
     sqftTolerancePct: percentFromFraction(match.sqftTolerance),
     lotTolerancePct: percentFromFraction(match.lotAcreTolerance),
     allowedVintageLabels: labels.length > 0 ? labels : [criteria.vintageLabel],
+    ...(criteria.furnished ? { furnishedScope: 'exact' as const } : {}),
   }
 }
 
@@ -69,6 +75,7 @@ export function sessionMatchOverridesEqual(
   if (a.bathTolerance !== b.bathTolerance) return false
   if (a.sqftTolerancePct !== b.sqftTolerancePct) return false
   if (a.lotTolerancePct !== b.lotTolerancePct) return false
+  if ((a.furnishedScope ?? null) !== (b.furnishedScope ?? null)) return false
   const aa = sortVintageLabels(a.allowedVintageLabels)
   const bb = sortVintageLabels(b.allowedVintageLabels)
   if (aa.length !== bb.length) return false
@@ -85,6 +92,12 @@ export function sessionOverridesNeedWidePool(
   if (session.sqftTolerancePct > baseline.sqftTolerancePct) return true
   if (session.lotTolerancePct > baseline.lotTolerancePct) return true
   if (session.allowedVintageLabels.length > baseline.allowedVintageLabels.length) {
+    return true
+  }
+  if (
+    session.furnishedScope === 'any' &&
+    baseline.furnishedScope === 'exact'
+  ) {
     return true
   }
   return false
@@ -201,6 +214,13 @@ export function comparableListingMatchesSession(
     const min = criteria.lotAcres * (1 - frac)
     const max = criteria.lotAcres * (1 + frac)
     if (comp.lotAcres < min || comp.lotAcres > max) return false
+  }
+
+  if (criteria.furnished && (session.furnishedScope ?? 'exact') === 'exact') {
+    // Unknown furnish status passes until disclosed; disclosed mismatches fail.
+    if (comp.furnished != null && comp.furnished !== criteria.furnished) {
+      return false
+    }
   }
 
   return true

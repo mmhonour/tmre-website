@@ -36,6 +36,7 @@ import {
 import { listingRecentlyClosedPanelId } from "@/components/listing/listing-section-ids";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
+  useListingDesktopLayout,
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 
@@ -692,6 +693,9 @@ export default function ListingComparablesPanel({
   const [widePoolLoading, setWidePoolLoading] = useState(false);
   const [criteriaStepFeedback, setCriteriaStepFeedback] =
     useState<CriteriaStepFeedback | null>(null);
+  const isDesktop = useListingDesktopLayout();
+  /** Mobile in-panel Criteria mount; desktop uses the section title slot. */
+  const showMobileCriteriaLinkSlot = isDesktop === false;
   const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -1349,7 +1353,7 @@ export default function ListingComparablesPanel({
                 />
               ) : null}
             </div>
-            {criteriaInSidePanel ? (
+            {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
               <div
                 id={criteriaLinkSlotId}
                 className="mt-2 flex justify-end"
@@ -1450,7 +1454,9 @@ export default function ListingComparablesPanel({
                 />
               ) : null}
             </div>
-            {criteriaInSidePanel && !showSoldColumn ? (
+            {criteriaInSidePanel &&
+            !showSoldColumn &&
+            showMobileCriteriaLinkSlot ? (
               <div
                 id={criteriaLinkSlotId}
                 className="mt-2 flex justify-end"

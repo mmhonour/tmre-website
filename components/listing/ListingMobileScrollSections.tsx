@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
-import { listingCriteriaLinkSlotId } from "@/components/listing/ListingCriteriaSideLayout";
+import { listingCriteriaLinkSlotId, useListingDesktopLayout } from "@/components/listing/ListingCriteriaSideLayout";
 import {
   LISTING_SECTION_IDS,
   type ListingScrollSectionTab,
@@ -72,6 +72,11 @@ function Section({
   compact = false,
   /** Portal mount for Criteria / Hide criteria (top-aligned with title). */
   criteriaLinkSlotId = null,
+  /**
+   * When true, the title-row Criteria mount is desktop-only — Sold / Rented /
+   * UAG keep an in-panel mount on mobile. What if keeps the title mount always.
+   */
+  criteriaLinkDesktopOnly = false,
 }: {
   id: string;
   title: string;
@@ -80,14 +85,22 @@ function Section({
   /** Panel mode: no divider / top margin under the tab row. */
   compact?: boolean;
   criteriaLinkSlotId?: string | null;
+  criteriaLinkDesktopOnly?: boolean;
 }) {
+  const isDesktop = useListingDesktopLayout();
+  const showTitleCriteriaSlot =
+    Boolean(criteriaLinkSlotId) &&
+    (criteriaLinkDesktopOnly ? isDesktop === true : true);
+
   return (
     <section
       id={id}
       hidden={hidden}
       className={
         compact
-          ? "scroll-mt-[var(--listing-sticky-offset,6rem)]"
+          ? // Panel mode scrolls inside the overlay (already below sticky chrome).
+            // scroll-margin here would push the section label out of view.
+            undefined
           : "scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-5 mt-6 first:mt-0 first:border-t-0 first:pt-0"
       }
     >
@@ -105,9 +118,9 @@ function Section({
         >
           {title}
         </h2>
-        {criteriaLinkSlotId ? (
+        {showTitleCriteriaSlot ? (
           <div
-            id={criteriaLinkSlotId}
+            id={criteriaLinkSlotId!}
             className="flex shrink-0 items-start justify-end min-h-[1em]"
           />
         ) : null}
@@ -214,6 +227,10 @@ export function ListingMobileScrollSections({
         title="Sold"
         hidden={!show("comparables")}
         compact={isPanel}
+        criteriaLinkSlotId={listingCriteriaLinkSlotId(
+          LISTING_SECTION_IDS.comparables,
+        )}
+        criteriaLinkDesktopOnly
       >
         <ListingComparablesPageContent
           mlsId={mlsId}
@@ -228,6 +245,10 @@ export function ListingMobileScrollSections({
         title="Rented"
         hidden={!show("comparable-rentals")}
         compact={isPanel}
+        criteriaLinkSlotId={listingCriteriaLinkSlotId(
+          LISTING_SECTION_IDS["comparable-rentals"],
+        )}
+        criteriaLinkDesktopOnly
       >
         <ListingComparablesPageContent
           mlsId={mlsId}
@@ -242,6 +263,8 @@ export function ListingMobileScrollSections({
         title="Under agreement"
         hidden={!show("uag")}
         compact={isPanel}
+        criteriaLinkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)}
+        criteriaLinkDesktopOnly
       >
         <ListingUagPageContent
           mlsId={mlsId}

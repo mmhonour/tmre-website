@@ -57,6 +57,7 @@ function sessionFromIfParams(params: IfMatchParams): SessionMatchOverrides {
         : params.vintageLabel
           ? [params.vintageLabel]
           : [],
+    ...(params.furnished ? { furnishedScope: "exact" as const } : {}),
   };
 }
 
@@ -82,6 +83,7 @@ function ifCompMatchesSession(
       vintageBucket: "unknown",
       vintageLabel: comp.vintageLabel,
       yearBuilt: null,
+      furnished: comp.furnished ?? null,
       pricePerSqft: comp.pricePerSqft,
       dom: null,
       photoCount: null,
@@ -267,6 +269,7 @@ function criteriaFromIfParams(
     ...(params.vintageEdgeLabels.length > 0
       ? { vintageEdgeLabels: params.vintageEdgeLabels }
       : {}),
+    ...(params.furnished ? { furnished: params.furnished } : {}),
   };
 }
 
@@ -1067,7 +1070,7 @@ export default function ListingIfPanel({
         <div className="max-lg:px-3 lg:px-0">
           <div className="min-w-0 text-left">
             <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-              If...
+              What if
             </p>
             <p className="text-white/50 text-sm leading-relaxed">
               Based on matching criteria, we estimate a sale and rent range for

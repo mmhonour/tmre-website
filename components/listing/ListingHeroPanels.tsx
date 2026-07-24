@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
@@ -246,15 +246,15 @@ export default function ListingHeroPanels({
     setPanelTab(tab);
     const hash = hashForPanelTab(tab);
     const url = new URL(window.location.href);
+    // Preserve window scroll — assigning a hash that matches a newly shown
+    // section id can make the browser scroll the page past the section label.
+    const windowScrollY = window.scrollY;
     window.history.replaceState(
       null,
       "",
       `${url.pathname}${url.search}#${hash}`,
     );
-    // Scroll panel content to top when switching tabs.
-    requestAnimationFrame(() => {
-      panelScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    });
+    window.scrollTo(0, windowScrollY);
   }, []);
 
   const closePanel = useCallback(() => {
@@ -308,13 +308,17 @@ export default function ListingHeroPanels({
     return () => window.removeEventListener("hashchange", applyHash);
   }, [useSlidePanel, subnav.mlsId]);
 
-  // Publish sticky chrome height so scroll-to-section targets clear the pinned tabs.
+  // Publish sticky chrome clearance (site nav top + chrome height) so the
+  // mobile slide-up panel and scroll-margin targets clear the pinned tabs.
   useEffect(() => {
     const publish = () => {
-      const height = stickyChromeRef.current?.offsetHeight ?? 0;
+      const el = stickyChromeRef.current;
+      if (!el) return;
+      const stickyTop = parseFloat(getComputedStyle(el).top) || 0;
+      const height = el.offsetHeight;
       document.documentElement.style.setProperty(
         "--listing-sticky-offset",
-        `${height + 12}px`,
+        `${stickyTop + height + 12}px`,
       );
     };
     publish();
@@ -409,26 +413,54 @@ export default function ListingHeroPanels({
     </Suspense>
   );
 
-  const stickySurfaceClass =
-    "bg-[#1B2A4A]/95 backdrop-blur-md";
-
   const panelOpen = useSlidePanel && panelTab != null;
+  /** Sold / What if / UAG / … — hide Overview hero+map underlay so it can't bleed through. */
+  const analysisPanelOpen =
+    panelOpen && panelTab != null && panelTab !== "overview";
 
-  // Android: lock document scroll while the slide-up tab panel is open so
-  // touch pans hit the panel scrollport instead of the page behind it.
-  useEffect(() => {
-    if (!panelOpen || isDesktopLayout) return;
+  const stickySurfaceClass = panelOpen
+    ? "bg-[#1B2A4A]"
+    : "bg-[#1B2A4A]/95 backdrop-blur-md";
+
+  // Before locking document scroll: pin panel to the section label and seat the
+  // sticky listing chrome so What if / Sold / … land under the tabs (not mid-page).
+  useLayoutEffect(() => {
+    if (!panelOpen) return;
+
+    const pinToSectionLabel = () => {
+      if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
+      const chrome = stickyChromeRef.current;
+      if (!chrome) return;
+      const stickyTop = parseFloat(getComputedStyle(chrome).top) || 0;
+      const delta = chrome.getBoundingClientRect().top - stickyTop;
+      if (Math.abs(delta) > 1) {
+        window.scrollBy(0, delta);
+      }
+    };
+    pinToSectionLabel();
+
     const html = document.documentElement;
     const body = document.body;
     const prevHtml = html.style.overflow;
     const prevBody = body.style.overflow;
     html.style.overflow = "hidden";
     body.style.overflow = "hidden";
+
+    // Lazy section bodies (What if) mount after first paint — re-pin panel only
+    // (window scroll is locked once overflow is hidden).
+    const pinPanelOnly = () => {
+      if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
+    };
+    const t0 = window.setTimeout(pinPanelOnly, 50);
+    const t1 = window.setTimeout(pinPanelOnly, 250);
+
     return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
       html.style.overflow = prevHtml;
       body.style.overflow = prevBody;
     };
-  }, [panelOpen, isDesktopLayout]);
+  }, [panelOpen, panelTab]);
 
   const panelSections =
     useSlidePanel && isValidElement(sections)
@@ -445,13 +477,17 @@ export default function ListingHeroPanels({
         )
       : sections;
 
-  // Mobile: fixed scrollport under sticky chrome (Android Chrome often won't
-  // scroll an absolute panel that also has transform). Desktop: absolute over hero.
+  // Mobile: fixed scrollport under sticky chrome. Desktop: absolute over hero.
+  // Analysis tabs fill the stage so photo/map underlay cannot peek below 68vh.
   const slidePanel = useSlidePanel ? (
     <div
       className={
         panelOpen
-          ? "z-20 flex flex-col border-0 bg-[#1B2A4A] shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.55)] max-lg:fixed max-lg:inset-x-0 max-lg:top-[var(--listing-sticky-offset,6rem)] max-lg:bottom-0 lg:absolute lg:inset-x-0 lg:top-0 lg:h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
+          ? `z-20 flex flex-col border-0 bg-[#1B2A4A] shadow-[0_-12px_40px_-16px_rgba(0,0,0,0.55)] max-lg:fixed max-lg:inset-x-0 max-lg:top-[var(--listing-sticky-offset,6rem)] max-lg:bottom-0 lg:absolute lg:inset-x-0 lg:top-0 ${
+              analysisPanelOpen
+                ? "lg:bottom-0 lg:h-full lg:min-h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
+                : "lg:h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
+            }`
           : "pointer-events-none invisible absolute inset-x-0 top-0 z-20 h-0 max-h-0 translate-y-full overflow-hidden"
       }
       aria-hidden={!panelOpen}
@@ -482,9 +518,14 @@ export default function ListingHeroPanels({
   const heroStage = useSlidePanel ? (
     <div
       ref={stageRef}
-      className="relative mt-0 overflow-x-hidden overflow-y-visible"
+      className={`relative mt-0 overflow-x-hidden ${
+        analysisPanelOpen
+          ? "overflow-hidden bg-[#1B2A4A] min-h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
+          : "overflow-y-visible"
+      }`}
     >
-      {heroOnly}
+      {/* Keep Overview photo/map underlay only when not on an analysis tab. */}
+      {analysisPanelOpen ? null : heroOnly}
       {slidePanel}
     </div>
   ) : (

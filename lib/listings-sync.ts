@@ -20,6 +20,8 @@ import {
   searchExpiredListingsForTown,
   searchMarketListingsForTown,
   setSyncedActiveCount,
+  UNDER_CONTRACT_CTS_MLS_STATUS,
+  UNDER_CONTRACT_MLS_STATUS,
 } from '@/lib/listings-store'
 import { searchListings, type Listing, type SearchParams } from '@/lib/rets'
 import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
@@ -85,13 +87,28 @@ export async function syncTownListingsIncremental(
 
   try {
     const limit = ACTIVE_LISTINGS_FETCH_LIMIT
-    const [active, comingSoon] = await Promise.all([
-      searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter }),
-      searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit, {
-        modifiedAfter,
-      }).catch(() => [] as Listing[]),
-    ])
-    const listings = mergeSyncListings(active, comingSoon)
+    const [active, comingSoon, underContract, underContractCts] =
+      await Promise.all([
+        searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter }),
+        searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit, {
+          modifiedAfter,
+        }).catch(() => [] as Listing[]),
+        searchMarketListingsForTown(town, UNDER_CONTRACT_MLS_STATUS, limit, {
+          modifiedAfter,
+        }).catch(() => [] as Listing[]),
+        searchMarketListingsForTown(
+          town,
+          UNDER_CONTRACT_CTS_MLS_STATUS,
+          limit,
+          { modifiedAfter },
+        ).catch(() => [] as Listing[]),
+      ])
+    const listings = mergeSyncListings(
+      active,
+      comingSoon,
+      underContract,
+      underContractCts,
+    )
     const { count, priceChangedIds } = await upsertListingsIncremental(
       town,
       'Active',
@@ -340,14 +357,16 @@ async function warmActiveListingPhotosDeferred(): Promise<void> {
   }
 }
 
-function mergeSyncListings(a: Listing[], b: Listing[]): Listing[] {
+function mergeSyncListings(...groups: Listing[][]): Listing[] {
   const seen = new Set<string>()
   const merged: Listing[] = []
-  for (const l of [...a, ...b]) {
-    const key = l.listingKey || l.mlsId
-    if (!key || seen.has(key)) continue
-    seen.add(key)
-    merged.push(l)
+  for (const group of groups) {
+    for (const l of group) {
+      const key = l.listingKey || l.mlsId
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      merged.push(l)
+    }
   }
   return merged
 }
@@ -413,13 +432,29 @@ export async function syncTownListings(
     let listings: Listing[]
     if (statusBucket === 'Active') {
       const limit = params.limit ?? 500
-      const [active, comingSoon] = await Promise.all([
-        searchMarketListingsForTown(town, 'Active', limit),
-        searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit).catch(
-          () => [] as Listing[],
-        ),
-      ])
-      listings = mergeSyncListings(active, comingSoon)
+      const [active, comingSoon, underContract, underContractCts] =
+        await Promise.all([
+          searchMarketListingsForTown(town, 'Active', limit),
+          searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit).catch(
+            () => [] as Listing[],
+          ),
+          searchMarketListingsForTown(
+            town,
+            UNDER_CONTRACT_MLS_STATUS,
+            limit,
+          ).catch(() => [] as Listing[]),
+          searchMarketListingsForTown(
+            town,
+            UNDER_CONTRACT_CTS_MLS_STATUS,
+            limit,
+          ).catch(() => [] as Listing[]),
+        ])
+      listings = mergeSyncListings(
+        active,
+        comingSoon,
+        underContract,
+        underContractCts,
+      )
     } else if (statusBucket === 'Expired') {
       listings = await searchExpiredListingsForTown(town, EXPIRED_LISTINGS_FETCH_LIMIT)
       listings = listings.filter(isExpiredListing)

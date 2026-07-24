@@ -35,7 +35,7 @@ import { TMRE_TOWNS, townForZip, type TmreTown } from '@/lib/tmre-towns'
 const COMPS_EDGES_MATCH_FP_KEY = 'comps_edges_match_fp'
 
 /** Bump when matcher tolerances / ranking change so cached edges rebuild. */
-export const COMPS_EDGES_ALGO_VERSION = 4
+export const COMPS_EDGES_ALGO_VERSION = 5
 
 function relationsForKind(kind: ComparablesMatchMode): ListingRelationKind[] {
   return kind === 'rental'

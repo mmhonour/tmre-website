@@ -19,9 +19,16 @@ import {
   shrinkVintageLabels,
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
+import { formatFurnishedCriteriaLabel } from "@/lib/listing-furnished";
 import { VINTAGE_BUCKETS } from "@/lib/vintage-buckets";
 
-export type CriteriaStepKey = "bed" | "bath" | "vintage" | "sqft" | "lot";
+export type CriteriaStepKey =
+  | "bed"
+  | "bath"
+  | "vintage"
+  | "sqft"
+  | "lot"
+  | "furnish";
 
 export type CriteriaStepFeedback = {
   key: CriteriaStepKey;
@@ -81,7 +88,7 @@ export type MatchCriteriaTolerances = {
 
 type CriteriaBound = {
   key: CriteriaStepKey;
-  /** Left column label: Beds, Baths, Vintage, SQFT, Acres. */
+  /** Left column label: Beds, Baths, Vintage, SQFT, Acres, Furnish. */
   rowLabel: string;
   /** Subject value shown after the label (`n` / `n.n`). */
   value: string;
@@ -111,7 +118,7 @@ function criteriaBounds(
       rowLabel: "Beds",
       value: String(criteria.beds),
       token: `±${bedTol}`,
-      expanded: `${Math.max(0, criteria.beds - bedTol)}–${criteria.beds + bedTol}`,
+      expanded: `${Math.max(0, criteria.beds - bedTol)}–${criteria.beds + bedTol} Beds`,
       canDecrement: bedTol > 0,
       canIncrement: bedTol < SESSION_BED_TOLERANCE_MAX,
     },
@@ -120,19 +127,20 @@ function criteriaBounds(
       rowLabel: "Baths",
       value: String(criteria.baths),
       token: `±${bathTol}`,
-      expanded: `${Math.max(0, criteria.baths - bathTol)}–${criteria.baths + bathTol}`,
+      expanded: `${Math.max(0, criteria.baths - bathTol)}–${criteria.baths + bathTol} Baths`,
       canDecrement: bathTol > 0,
       canIncrement: bathTol < SESSION_BATH_TOLERANCE_MAX,
     },
   ];
 
   if (vintageLabels.length > 0) {
+    const span = vintageExpandedSpan(vintageLabels);
     bounds.push({
       key: "vintage",
       rowLabel: "Vintage",
       value: criteria.vintageLabel,
       token: vintageLabels.join(", "),
-      expanded: vintageExpandedSpan(vintageLabels),
+      expanded: span ? `Years ${span}` : "",
       canDecrement: canShrinkVintage(vintageLabels, criteria.vintageLabel),
       canIncrement: canExpandVintage(vintageLabels),
     });
@@ -146,7 +154,7 @@ function criteriaBounds(
       token: `±${sqftPct}%`,
       expanded: `${formatSqftValue(Math.round(criteria.sqft * (1 - sqftFrac)))}–${formatSqftValue(
         Math.round(criteria.sqft * (1 + sqftFrac)),
-      )}`,
+      )} sqft`,
       canDecrement: sqftPct > 0,
       canIncrement: sqftPct < 100,
     });
@@ -160,9 +168,26 @@ function criteriaBounds(
       token: `±${lotPct}%`,
       expanded: `${acresValue(criteria.lotAcres * (1 - lotFrac))}–${acresValue(
         criteria.lotAcres * (1 + lotFrac),
-      )}`,
+      )} acres`,
       canDecrement: lotPct > 0,
       canIncrement: lotPct < 100,
+    });
+  }
+
+  if (criteria.furnished) {
+    const label = formatFurnishedCriteriaLabel(criteria.furnished);
+    const scope = session.furnishedScope ?? "exact";
+    const isAny = scope === "any";
+    bounds.push({
+      key: "furnish",
+      rowLabel: "Furnish",
+      value: label,
+      token: isAny ? "Any" : "exact",
+      expanded: isAny
+        ? "Any furnish (incl. Unfurnished)"
+        : `${label} only`,
+      canDecrement: isAny,
+      canIncrement: !isAny,
     });
   }
 
@@ -207,7 +232,7 @@ function RaisedStepButton({
   );
 }
 
-/** How long ± steppers keep the expanded bounds visible (not vintage). */
+/** How long ± steppers keep the expanded bounds visible. */
 const AUTO_REVEAL_MS = 10_000;
 
 /**
@@ -218,6 +243,7 @@ const AUTO_REVEAL_MS = 10_000;
  *   Vintage  n [v1, v2, …]    (−)(+)
  *   SQFT     n [±n%]          (−)(+)
  *   Acres    n.n [±n%]        (−)(+)
+ *   Furnish  Furnished [exact](−)(+)  — only when subject is furnished
  *
  * Click the bracket to toggle the encapsulated range. When manipulation is
  * enabled, ± buttons sit right-aligned on each row.
@@ -269,8 +295,6 @@ export default function MatchingCriteriaSummary({
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const flashExpanded = (key: CriteriaStepKey) => {
-    // Vintage bracket already lists the buckets — no temporary expand.
-    if (key === "vintage") return;
     setAutoRevealKey(key);
     if (autoRevealTimerRef.current != null) {
       clearTimeout(autoRevealTimerRef.current);
@@ -300,6 +324,7 @@ export default function MatchingCriteriaSummary({
     allowedVintageLabels: vintageCriteriaList(criteria)
       .split(" | ")
       .filter(Boolean),
+    ...(criteria.furnished ? { furnishedScope: "exact" as const } : {}),
   };
 
   const editable = Boolean(session && onSessionChange);
@@ -333,6 +358,10 @@ export default function MatchingCriteriaSummary({
           delta > 0
             ? expandVintageLabels(next.allowedVintageLabels)
             : shrinkVintageLabels(next.allowedVintageLabels, criteria.vintageLabel);
+        break;
+      case "furnish":
+        if (!criteria.furnished) break;
+        next.furnishedScope = delta > 0 ? "any" : "exact";
         break;
     }
     onSessionChange(next, { key });
