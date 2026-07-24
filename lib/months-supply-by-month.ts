@@ -91,3 +91,28 @@ export function computeMonthsSupplyByMonth(
 
   return { city, kind, data }
 }
+
+export type MonthsSupplyByMonthByTownPayload = {
+  kind: ListingKind
+  towns: Record<string, MonthlyCount[]>
+}
+
+/**
+ * Per-town months supply series from per-town active + closings month rows.
+ * Used when Stats “All Towns” is selected (one line per town).
+ */
+export function computeMonthsSupplyByMonthByTown(
+  activeByTown: Readonly<Record<string, readonly MonthlyCount[]>>,
+  salesByTown: Readonly<Record<string, readonly MonthlyCount[]>>,
+  kind: ListingKind,
+  townKeys: readonly string[],
+  now: Date = new Date(),
+): MonthsSupplyByMonthByTownPayload {
+  const towns: Record<string, MonthlyCount[]> = {}
+  for (const town of townKeys) {
+    const active = activeByTown[town] ?? []
+    const sales = salesByTown[town] ?? []
+    towns[town] = computeMonthsSupplyByMonth(active, sales, town, kind, now).data
+  }
+  return { kind, towns }
+}

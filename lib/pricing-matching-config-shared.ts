@@ -7,14 +7,13 @@ import {
 /**
  * Shared match rules for Sales / Rentals comparables, UAG, and What if.
  * Editable from Admin → Pricing; defaults match the historical hard-coded values.
+ * Lot acreage is intentionally not a match criterion.
  */
 export type PricingMatchingConfig = {
   /** Adjacent bed counts allowed (±N). */
   bedTolerance: number
   /** Adjacent bath counts allowed (±N). */
   bathTolerance: number
-  /** Lot acreage band as a fraction (0.4 = ±40%). */
-  lotAcreTolerance: number
   /** Living-area band as a fraction (0.3 = ±30%). */
   sqftTolerance: number
   /** Fraction of a vintage bucket's year span for the edge rule (0.3 = 30%). */
@@ -26,7 +25,6 @@ export type PricingMatchingConfig = {
 export const DEFAULT_PRICING_MATCHING_CONFIG: PricingMatchingConfig = {
   bedTolerance: 1,
   bathTolerance: 1,
-  lotAcreTolerance: 0.4,
   sqftTolerance: 0.3,
   vintageEdgeFraction: 0.3,
   defaultLookbackMonths: COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
@@ -49,12 +47,6 @@ export const PRICING_MATCHING_FIELD_META: {
     label: 'Bath tolerance',
     hint: 'Adjacent bathroom counts allowed (±N).',
     kind: 'int',
-  },
-  {
-    key: 'lotAcreTolerance',
-    label: 'Lot size band',
-    hint: 'Percent of subject acreage (±%).',
-    kind: 'percent',
   },
   {
     key: 'sqftTolerance',
@@ -97,7 +89,6 @@ export function pricingMatchingConfigFingerprint(
   return [
     config.bedTolerance,
     config.bathTolerance,
-    config.lotAcreTolerance,
     config.sqftTolerance,
     config.vintageEdgeFraction,
     config.defaultLookbackMonths,
@@ -125,6 +116,7 @@ function clampFraction(n: number, min: number, max: number): number {
 /**
  * Coerce/validate an admin payload into a full matching config.
  * Percent fields may be sent as fractions (0.4) or whole percents (40).
+ * Legacy `lotAcreTolerance` in stored JSON is ignored.
  */
 export function normalizePricingMatchingConfig(input: unknown):
   | { ok: true; config: PricingMatchingConfig }
@@ -135,14 +127,12 @@ export function normalizePricingMatchingConfig(input: unknown):
   const raw = input as Record<string, unknown>
   const bed = asNumber(raw.bedTolerance)
   const bath = asNumber(raw.bathTolerance)
-  let lot = asNumber(raw.lotAcreTolerance)
   let sqft = asNumber(raw.sqftTolerance)
   let edge = asNumber(raw.vintageEdgeFraction)
   const lookback = asNumber(raw.defaultLookbackMonths)
 
   if (bed == null) return { ok: false, error: 'Bed tolerance is required' }
   if (bath == null) return { ok: false, error: 'Bath tolerance is required' }
-  if (lot == null) return { ok: false, error: 'Lot size band is required' }
   if (sqft == null) return { ok: false, error: 'Living area band is required' }
   if (edge == null) return { ok: false, error: 'Vintage edge is required' }
   if (lookback == null) {
@@ -150,7 +140,6 @@ export function normalizePricingMatchingConfig(input: unknown):
   }
 
   // Accept whole percents from the admin form (e.g. 40 → 0.4).
-  if (lot > 1) lot = lot / 100
   if (sqft > 1) sqft = sqft / 100
   if (edge > 1) edge = edge / 100
 
@@ -169,7 +158,6 @@ export function normalizePricingMatchingConfig(input: unknown):
     config: {
       bedTolerance: clampInt(bed, 0, 5),
       bathTolerance: clampInt(bath, 0, 5),
-      lotAcreTolerance: clampFraction(lot, 0.05, 1),
       sqftTolerance: clampFraction(sqft, 0.05, 1),
       vintageEdgeFraction: clampFraction(edge, 0.05, 1),
       defaultLookbackMonths: lookbackMonths,

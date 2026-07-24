@@ -20,13 +20,18 @@ export default function StatsChartNav({ items }: { items: StatsChartNavItem[] })
       <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-slate mb-2.5">
         Jump to chart
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:gap-2">
         {items.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => scrollTo(item.id)}
-            className="font-mono text-[10px] tracking-[0.08em] uppercase text-navy hover:text-gold border border-charcoal/10 hover:border-gold/40 rounded-full px-3 py-1.5 transition-colors bg-cream/60 text-left"
+            className={
+              "font-mono text-[10px] tracking-[0.08em] uppercase text-navy hover:text-gold text-left transition-colors " +
+              // Mobile: plain links. Desktop/tablet: pill chips.
+              "underline underline-offset-2 decoration-navy/25 hover:decoration-gold " +
+              "sm:no-underline sm:border sm:border-charcoal/10 sm:hover:border-gold/40 sm:rounded-full sm:px-3 sm:py-1.5 sm:bg-cream/60"
+            }
           >
             {item.label}
           </button>

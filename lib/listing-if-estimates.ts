@@ -506,7 +506,6 @@ export type IfMatchParams = {
   sqft: number | null
   bedTolerance: number
   bathTolerance: number
-  lotTolerancePct: number
   sqftTolerancePct: number
   vintageLabel: string | null
   vintageEdgeLabels: string[]
@@ -584,11 +583,10 @@ export function buildIfMatchParams(
     zip: criteria?.zip ?? null,
     beds: criteria?.beds ?? null,
     baths: criteria?.baths ?? null,
-    lotAcres: criteria?.lotAcres ?? null,
+    lotAcres: null,
     sqft: criteria?.sqft ?? null,
     bedTolerance: match.bedTolerance,
     bathTolerance: match.bathTolerance,
-    lotTolerancePct: Math.round(match.lotAcreTolerance * 100),
     sqftTolerancePct: Math.round(match.sqftTolerance * 100),
     vintageLabel: criteria?.vintageLabel ?? null,
     vintageEdgeLabels: criteria?.vintageEdgeLabels ?? [],
@@ -841,7 +839,7 @@ export function ifCompBasisText(
   const premiumNote = formatLocationPremiumLabels(locationPremiumLabels ?? [])
   const premiumSuffix = premiumNote ? `. Location premium: ${premiumNote}` : ''
 
-  return `Based on ${parts.join(' and ')} ${where} with similar beds, baths, and lot size${vintageNote} — weighted to this property's price tier and location profile${premiumSuffix}.`
+  return `Based on ${parts.join(' and ')} ${where} with similar beds, baths, and living area${vintageNote} — weighted to this property's price tier and location profile${premiumSuffix}.`
 }
 
 /** Resolve subject vintage bucket id from year built. */

@@ -36,7 +36,7 @@ const COMPS_EDGES_MATCH_FP_KEY = 'comps_edges_match_fp'
 const COMPS_EDGES_ALGO_SWITCHED_AT_KEY = 'comps_edges_algo_switched_at'
 
 /** Bump when matcher tolerances / ranking change so cached edges rebuild. */
-export const COMPS_EDGES_ALGO_VERSION = 6
+export const COMPS_EDGES_ALGO_VERSION = 7
 
 function markCompsEdgesAlgoVersion(): void {
   const current = getSyncMeta('comps_edges_algo_version')

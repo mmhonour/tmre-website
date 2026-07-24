@@ -27,20 +27,12 @@ export type CriteriaStepKey =
   | "bath"
   | "vintage"
   | "sqft"
-  | "lot"
   | "furnish";
 
 export type CriteriaStepFeedback = {
   key: CriteriaStepKey;
   text: string;
 };
-
-/** Acres value without the unit suffix, for ranges like "0.22–0.52". */
-function acresValue(acres: number): string {
-  if (acres < 0.01) return "<0.01";
-  if (acres < 10) return acres.toFixed(2);
-  return acres.toFixed(1);
-}
 
 function formatSqftValue(sqft: number): string {
   return sqft.toLocaleString("en-US");
@@ -82,13 +74,11 @@ export type MatchCriteriaTolerances = {
   bathTolerance?: number;
   /** Whole percent, e.g. 30 for ±30%. */
   sqftTolerancePct?: number;
-  /** Whole percent, e.g. 40 for ±40%. */
-  lotTolerancePct?: number;
 };
 
 type CriteriaBound = {
   key: CriteriaStepKey;
-  /** Left column label: Beds, Baths, Vintage, SQFT, Acres, Furnish. */
+  /** Left column label: Beds, Baths, Vintage, SQFT, Furnish. */
   rowLabel: string;
   /** Subject value shown after the label (`n` / `n.n`). */
   value: string;
@@ -107,9 +97,7 @@ function criteriaBounds(
   const bedTol = session.bedTolerance;
   const bathTol = session.bathTolerance;
   const sqftPct = session.sqftTolerancePct;
-  const lotPct = session.lotTolerancePct;
   const sqftFrac = sqftPct / 100;
-  const lotFrac = lotPct / 100;
   const vintageLabels = session.allowedVintageLabels;
 
   const bounds: CriteriaBound[] = [
@@ -157,20 +145,6 @@ function criteriaBounds(
       )} sqft`,
       canDecrement: sqftPct > 0,
       canIncrement: sqftPct < 100,
-    });
-  }
-
-  if (criteria.lotAcres != null) {
-    bounds.push({
-      key: "lot",
-      rowLabel: "Acres",
-      value: acresValue(criteria.lotAcres),
-      token: `±${lotPct}%`,
-      expanded: `${acresValue(criteria.lotAcres * (1 - lotFrac))}–${acresValue(
-        criteria.lotAcres * (1 + lotFrac),
-      )} acres`,
-      canDecrement: lotPct > 0,
-      canIncrement: lotPct < 100,
     });
   }
 
@@ -320,7 +294,6 @@ export default function MatchingCriteriaSummary({
     bedTolerance: tolerances?.bedTolerance ?? 1,
     bathTolerance: tolerances?.bathTolerance ?? 1,
     sqftTolerancePct: tolerances?.sqftTolerancePct ?? 30,
-    lotTolerancePct: tolerances?.lotTolerancePct ?? 40,
     allowedVintageLabels: vintageCriteriaList(criteria)
       .split(" | ")
       .filter(Boolean),
@@ -349,9 +322,6 @@ export default function MatchingCriteriaSummary({
         break;
       case "sqft":
         next.sqftTolerancePct = bumpPercentTolerance(next.sqftTolerancePct, delta);
-        break;
-      case "lot":
-        next.lotTolerancePct = bumpPercentTolerance(next.lotTolerancePct, delta);
         break;
       case "vintage":
         next.allowedVintageLabels =

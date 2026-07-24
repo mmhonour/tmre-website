@@ -50,7 +50,6 @@ function sessionFromIfParams(params: IfMatchParams): SessionMatchOverrides {
     bedTolerance: params.bedTolerance,
     bathTolerance: params.bathTolerance,
     sqftTolerancePct: params.sqftTolerancePct,
-    lotTolerancePct: params.lotTolerancePct,
     allowedVintageLabels:
       allowedVintageLabels.length > 0
         ? allowedVintageLabels
@@ -228,7 +227,6 @@ function emptyScenario(): IfScenario {
       sqft: null,
       bedTolerance: 1,
       bathTolerance: 1,
-      lotTolerancePct: 40,
       sqftTolerancePct: 30,
       vintageLabel: null,
       vintageEdgeLabels: [],
@@ -262,7 +260,7 @@ function criteriaFromIfParams(
     zip: params.zip,
     beds: params.beds,
     baths: params.baths,
-    lotAcres: params.lotAcres,
+    lotAcres: null,
     sqft: params.sqft,
     vintageBucket: "unknown",
     vintageLabel: params.vintageLabel ?? "",
@@ -972,7 +970,6 @@ export default function ListingIfPanel({
             bedTolerance: saleEstimate.params.bedTolerance,
             bathTolerance: saleEstimate.params.bathTolerance,
             sqftTolerancePct: saleEstimate.params.sqftTolerancePct,
-            lotTolerancePct: saleEstimate.params.lotTolerancePct,
           }}
         />
       </div>

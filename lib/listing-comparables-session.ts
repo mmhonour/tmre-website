@@ -15,8 +15,6 @@ export type SessionMatchOverrides = {
   bathTolerance: number
   /** Whole percent 0–100. */
   sqftTolerancePct: number
-  /** Whole percent 0–100. */
-  lotTolerancePct: number
   /** Predefined vintage labels currently allowed (oldest → newest). */
   allowedVintageLabels: string[]
   /**
@@ -54,7 +52,6 @@ export function sessionOverridesFromPricingConfig(
     bedTolerance: clampInt(match.bedTolerance, 0, SESSION_BED_TOLERANCE_MAX),
     bathTolerance: clampInt(match.bathTolerance, 0, SESSION_BATH_TOLERANCE_MAX),
     sqftTolerancePct: percentFromFraction(match.sqftTolerance),
-    lotTolerancePct: percentFromFraction(match.lotAcreTolerance),
     allowedVintageLabels: labels.length > 0 ? labels : [criteria.vintageLabel],
     ...(criteria.furnished ? { furnishedScope: 'exact' as const } : {}),
   }
@@ -74,7 +71,6 @@ export function sessionMatchOverridesEqual(
   if (a.bedTolerance !== b.bedTolerance) return false
   if (a.bathTolerance !== b.bathTolerance) return false
   if (a.sqftTolerancePct !== b.sqftTolerancePct) return false
-  if (a.lotTolerancePct !== b.lotTolerancePct) return false
   if ((a.furnishedScope ?? null) !== (b.furnishedScope ?? null)) return false
   const aa = sortVintageLabels(a.allowedVintageLabels)
   const bb = sortVintageLabels(b.allowedVintageLabels)
@@ -90,7 +86,6 @@ export function sessionOverridesNeedWidePool(
   if (session.bedTolerance > baseline.bedTolerance) return true
   if (session.bathTolerance > baseline.bathTolerance) return true
   if (session.sqftTolerancePct > baseline.sqftTolerancePct) return true
-  if (session.lotTolerancePct > baseline.lotTolerancePct) return true
   if (session.allowedVintageLabels.length > baseline.allowedVintageLabels.length) {
     return true
   }
@@ -208,14 +203,6 @@ export function comparableListingMatchesSession(
     if (comp.sqft < min || comp.sqft > max) return false
   }
 
-  if (criteria.lotAcres != null && criteria.lotAcres > 0) {
-    if (comp.lotAcres == null || comp.lotAcres <= 0) return false
-    const frac = session.lotTolerancePct / 100
-    const min = criteria.lotAcres * (1 - frac)
-    const max = criteria.lotAcres * (1 + frac)
-    if (comp.lotAcres < min || comp.lotAcres > max) return false
-  }
-
   if (criteria.furnished && (session.furnishedScope ?? 'exact') === 'exact') {
     // Unknown furnish status passes until disclosed; disclosed mismatches fail.
     if (comp.furnished != null && comp.furnished !== criteria.furnished) {
@@ -234,7 +221,6 @@ export function widePricingMatchingConfig(
     ...baseline,
     bedTolerance: SESSION_BED_TOLERANCE_MAX,
     bathTolerance: SESSION_BATH_TOLERANCE_MAX,
-    lotAcreTolerance: 1,
     sqftTolerance: 1,
     // Pull bordering eras aggressively so session vintage +/- has headroom.
     vintageEdgeFraction: 1,

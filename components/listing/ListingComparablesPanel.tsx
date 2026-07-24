@@ -1283,7 +1283,7 @@ export default function ListingComparablesPanel({
               isModal ? "text-slate text-xs mt-2" : "text-white/40 text-xs mt-2"
             }
           >
-            We match same zip, beds within ±1, baths within ±1, living area within ±30%, similar vintage (same era, plus the bordering era when the home sits near a vintage edge), and lot size when available.
+            We match same zip, beds within ±1, baths within ±1, living area within ±30%, and similar vintage (same era, plus the bordering era when the home sits near a vintage edge).
           </p>
         </div>
       )}
@@ -1309,8 +1309,7 @@ export default function ListingComparablesPanel({
             }
           >
             Matches require the same zip, beds within ±1, baths within ±1, same vintage era (plus the bordering era near an edge)
-            {criteria?.sqft != null ? ", living area within ±30%" : ""}
-            {criteria?.lotAcres != null ? ", and similar lot size" : ""}.
+            {criteria?.sqft != null ? ", living area within ±30%" : ""}.
           </p>
         </div>
       )}

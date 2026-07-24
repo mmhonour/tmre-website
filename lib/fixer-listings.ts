@@ -1,5 +1,4 @@
 import type { Listing } from './rets'
-import { isRentalListing } from './listing-kind'
 import { isMarketListing } from './listings-store'
 import { parseLotAcresFromRaw } from './listing-lot-acres'
 
@@ -156,18 +155,6 @@ export function parseLotAcres(l: Listing): number | null {
     parseLotAcresFromRaw(l.raw) ??
     (l.lotAcres != null && l.lotAcres > 0 ? l.lotAcres : null)
   if (acres == null || acres <= 0) return null
-
-  // SmartMLS often puts complex / common land in bare `Acres` for rentals
-  // (e.g. "2" on a 1,200 sqft unit). That acreage is not the unit's lot and
-  // would wipe out Rented / UAG / What if comps if used as a match gate.
-  if (
-    isRentalListing(l) &&
-    acres >= 1 &&
-    (l.sqft == null || l.sqft < 2500)
-  ) {
-    return null
-  }
-
   return acres
 }
 

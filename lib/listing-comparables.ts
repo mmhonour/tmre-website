@@ -121,20 +121,6 @@ function priceDistance(a: number | null, b: number | null): number {
   return Math.abs(a - b)
 }
 
-/** Lot acreage tolerance when matching comparables (±40% by default). */
-export const COMPARABLES_LOT_ACRE_TOLERANCE =
-  DEFAULT_PRICING_MATCHING_CONFIG.lotAcreTolerance
-
-function acreageWithinTolerance(
-  subjectAcres: number,
-  compAcres: number,
-  match: PricingMatchingConfig,
-): boolean {
-  const min = subjectAcres * (1 - match.lotAcreTolerance)
-  const max = subjectAcres * (1 + match.lotAcreTolerance)
-  return compAcres >= min && compAcres <= max
-}
-
 /** Living-area tolerance when matching comparables (±30% by default). */
 export const COMPARABLES_SQFT_TOLERANCE =
   DEFAULT_PRICING_MATCHING_CONFIG.sqftTolerance
@@ -247,7 +233,6 @@ export function subjectComparablesCriteria(
     return { criteria: null, missingCriteria }
   }
 
-  const subjectAcres = parseLotAcres(subject)
   const vintageBucket = classifyYearBuilt(subject.yearBuilt)
   const vintageEdgeLabels = vintageEdgeBuckets(
     subject.yearBuilt,
@@ -262,7 +247,8 @@ export function subjectComparablesCriteria(
       zip: zip!,
       beds: subject.beds!,
       baths: subject.baths!,
-      lotAcres: subjectAcres != null && subjectAcres > 0 ? subjectAcres : null,
+      // Lot acreage is display-only — never a match gate (filters out too many comps).
+      lotAcres: null,
       sqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
       vintageBucket,
       vintageLabel: vintageLabel(vintageBucket),
@@ -317,14 +303,6 @@ function matchesComparableCriteria(
     return false
   }
 
-  if (criteria.lotAcres != null && criteria.lotAcres > 0) {
-    const compAcres = parseLotAcres(comp)
-    if (compAcres == null || compAcres <= 0) return false
-    if (!acreageWithinTolerance(criteria.lotAcres, compAcres, match)) {
-      return false
-    }
-  }
-
   if (criteria.sqft != null && criteria.sqft > 0) {
     if (!sqftWithinTolerance(criteria.sqft, comp.sqft, match)) return false
   }
@@ -365,16 +343,6 @@ function comparableFitDistance(
 
   if (subject.yearBuilt != null && comp.yearBuilt != null) {
     score += Math.abs(comp.yearBuilt - subject.yearBuilt) * 0.25
-  }
-
-  if (criteria.lotAcres != null && criteria.lotAcres > 0) {
-    const compAcres = parseLotAcres(comp)
-    if (compAcres != null && compAcres > 0) {
-      score +=
-        (Math.abs(compAcres - criteria.lotAcres) / criteria.lotAcres) * 40
-    } else {
-      score += 40
-    }
   }
 
   if (criteria.sqft != null && criteria.sqft > 0) {

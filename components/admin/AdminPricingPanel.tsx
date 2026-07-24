@@ -27,7 +27,6 @@ function pctDisplay(fraction: number): string {
 type Draft = {
   bedTolerance: string;
   bathTolerance: string;
-  lotTolerancePct: string;
   sqftTolerancePct: string;
   vintageEdgePct: string;
   defaultLookbackMonths: number;
@@ -37,7 +36,6 @@ function configToDraft(config: PricingMatchingConfig): Draft {
   return {
     bedTolerance: String(config.bedTolerance),
     bathTolerance: String(config.bathTolerance),
-    lotTolerancePct: pctDisplay(config.lotAcreTolerance),
     sqftTolerancePct: pctDisplay(config.sqftTolerance),
     vintageEdgePct: pctDisplay(config.vintageEdgeFraction),
     defaultLookbackMonths: config.defaultLookbackMonths,
@@ -48,7 +46,6 @@ function draftToConfig(draft: Draft): PricingMatchingConfig {
   return {
     bedTolerance: Number(draft.bedTolerance),
     bathTolerance: Number(draft.bathTolerance),
-    lotAcreTolerance: Number(draft.lotTolerancePct) / 100,
     sqftTolerance: Number(draft.sqftTolerancePct) / 100,
     vintageEdgeFraction: Number(draft.vintageEdgePct) / 100,
     defaultLookbackMonths: draft.defaultLookbackMonths as PricingMatchingConfig["defaultLookbackMonths"],
@@ -203,29 +200,6 @@ export default function AdminPricingPanel({
             />
             <span className="text-xs text-charcoal/45">
               Adjacent bathroom counts allowed.
-            </span>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-              Lot size band (±%)
-            </span>
-            <input
-              type="number"
-              min={5}
-              max={100}
-              step={1}
-              value={draft.lotTolerancePct}
-              onChange={(e) =>
-                setDraft((d) =>
-                  d ? { ...d, lotTolerancePct: e.target.value } : d,
-                )
-              }
-              className="rounded-lg border border-charcoal/15 bg-white px-3 py-2 text-sm text-charcoal"
-            />
-            <span className="text-xs text-charcoal/45">
-              Default {pctDisplay(DEFAULT_PRICING_MATCHING_CONFIG.lotAcreTolerance)}
-              %.
             </span>
           </label>
 
