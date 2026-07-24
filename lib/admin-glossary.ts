@@ -170,6 +170,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Public sponsoring-brokerage display string (default Berkshire Hathaway Home Services NE). Editable in Admin → Site without redeploy; stored in sync_meta key brokerage_name (lib/brokerage-config.ts).',
   },
   {
+    term: 'Monday market brief',
+    category: 'product',
+    definition:
+      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Configure recipient on Admin → Site; social graphic posting comes later.',
+  },
+  {
+    term: 'Social media profiles',
+    category: 'product',
+    definition:
+      'Admin → Site text slots for Instagram / LinkedIn (or other) handles and URLs. Stored in sync_meta for future auto-posting of the market brief / Deal of the Week graphic; posting APIs not connected yet.',
+  },
+  {
     term: 'Saved search / listing alert',
     category: 'product',
     definition:

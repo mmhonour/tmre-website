@@ -38,3 +38,6 @@
 
 [functions."sync-zip-boundaries"]
   included_files = []
+
+[functions."market-digest"]
+  included_files = []

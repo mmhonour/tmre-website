@@ -390,7 +390,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-zip-boundaries monthly (1st ~10:00 UTC).`,
+          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC).`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -409,6 +409,23 @@ export function describeStartupProcess(): {
         timing: "1st of month ~10:00 UTC",
         detail:
           "syncAllTmreZipBoundaries() / Netlify sync-zip-boundaries. Skips when Pause is checked on Zip boundary maps (Database tab). Maps read GET /api/zip-boundaries.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
+
+  lanes.push({
+    id: "market-digest",
+    title: "Monday market brief",
+    subtitle: "Months supply + inventory email (Netlify cron)",
+    steps: [
+      {
+        id: "market-digest-cron",
+        title: "Send Monday market digest",
+        timing: "Mon ~8am ET (12:00 UTC)",
+        detail:
+          "netlify/functions/market-digest → sendMarketDigestEmail(): months supply, inventory by town, formula explanation, Deal of the Week text. Recipient/enable on Admin → Site. Social graphic posting comes later.",
         status: "scheduled",
         statusLabel: "Cron",
       },

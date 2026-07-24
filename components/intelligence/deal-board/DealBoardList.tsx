@@ -206,48 +206,76 @@ export default function DealBoardList({
     />
   );
 
+  const statusPills = onBoardStatusFilterChange ? (
+    <DealBoardStatusFilterPills
+      value={boardStatusFilter}
+      onChange={onBoardStatusFilterChange}
+    />
+  ) : null;
+
+  const moreDataInsights = (
+    <div className="flex shrink-0 flex-nowrap items-center gap-x-2.5">
+      <button
+        type="button"
+        onClick={() => setShowGridMeta((v) => !v)}
+        aria-pressed={showGridMeta}
+        className="whitespace-nowrap font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline underline-offset-2 decoration-navy/70 hover:text-navy/80 hover:decoration-navy transition-colors"
+      >
+        {showGridMeta ? "less data" : "more data"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowGridInsights((v) => !v)}
+        aria-pressed={showGridInsights}
+        className="whitespace-nowrap font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline underline-offset-2 decoration-navy/70 hover:text-navy/80 hover:decoration-navy transition-colors"
+      >
+        insights
+      </button>
+    </div>
+  );
+
+  const viewAndReset = (
+    <div className="flex shrink-0 items-center gap-x-2.5">
+      <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
+      {onResetSliders ? (
+        <FilterResetButton
+          onClick={onResetSliders}
+          disabled={!slidersCustomized}
+          label="Reset sliders"
+          tone="onLight"
+        />
+      ) : null}
+    </div>
+  );
+
   const resultsToolbar = (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5 border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 justify-self-start">
-        {sortControl}
-        <div className="min-w-0">{resultsSummary}</div>
-      </div>
-      <div className="justify-self-center">
-        {onBoardStatusFilterChange ? (
-          <DealBoardStatusFilterPills
-            value={boardStatusFilter}
-            onChange={onBoardStatusFilterChange}
-          />
-        ) : null}
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2.5 gap-y-1 justify-self-end">
-        <div className="flex items-center gap-x-2.5">
-          <button
-            type="button"
-            onClick={() => setShowGridMeta((v) => !v)}
-            aria-pressed={showGridMeta}
-            className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline underline-offset-2 decoration-navy/70 hover:text-navy/80 hover:decoration-navy transition-colors"
-          >
-            {showGridMeta ? "less data" : "more data"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowGridInsights((v) => !v)}
-            aria-pressed={showGridInsights}
-            className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline underline-offset-2 decoration-navy/70 hover:text-navy/80 hover:decoration-navy transition-colors"
-          >
-            insights
-          </button>
+    <div className="border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
+      {/* Mobile: Sort | More data/Insights; status pills below Sort; views+Reset bottom-right. */}
+      <div className="flex flex-col gap-y-1.5 lg:hidden">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 shrink">{sortControl}</div>
+          {moreDataInsights}
         </div>
-        <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
-        {onResetSliders ? (
-          <FilterResetButton
-            onClick={onResetSliders}
-            disabled={!slidersCustomized}
-            label="Reset sliders"
-            tone="onLight"
-          />
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 overflow-x-auto">{statusPills}</div>
+          {viewAndReset}
+        </div>
+        {resultsSummary ? (
+          <div className="min-w-0">{resultsSummary}</div>
         ) : null}
+      </div>
+
+      {/* Desktop: sort+summary | status pills | data/insights + views + reset */}
+      <div className="hidden lg:grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 justify-self-start">
+          {sortControl}
+          <div className="min-w-0">{resultsSummary}</div>
+        </div>
+        <div className="justify-self-center">{statusPills}</div>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2.5 gap-y-1 justify-self-end">
+          {moreDataInsights}
+          {viewAndReset}
+        </div>
       </div>
     </div>
   );

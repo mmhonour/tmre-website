@@ -14,6 +14,8 @@ import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
 import AdminBrokeragePanel from "@/components/admin/AdminBrokeragePanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
+import AdminMarketDigestPanel from "@/components/admin/AdminMarketDigestPanel";
+import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
@@ -39,6 +41,8 @@ import {
   getContactNotifyEmailFresh,
   DEFAULT_CONTACT_NOTIFY_EMAIL,
 } from "@/lib/contact-notify-config";
+import { getMarketDigestConfigFresh } from "@/lib/market-digest-config";
+import { getSocialProfilesFresh } from "@/lib/social-profiles-config";
 import {
   getBrokerageNameFresh,
   DEFAULT_BROKERAGE_NAME,
@@ -429,6 +433,22 @@ export default async function AdminPage() {
     () => getContactNotifyEmailFresh(),
     DEFAULT_CONTACT_NOTIFY_EMAIL,
   )
+  const marketDigest = await safe(
+    "market-digest",
+    () => getMarketDigestConfigFresh(),
+    {
+      email: contactNotifyEmail,
+      enabled: true,
+      lastSentAt: null,
+      lastWeekKey: null,
+      defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
+    },
+  )
+  const socialProfiles = await safe(
+    "social-profiles",
+    () => getSocialProfilesFresh(),
+    null,
+  )
   const brokerageName = await safe(
     "brokerage-name",
     () => getBrokerageNameFresh(),
@@ -656,6 +676,12 @@ export default async function AdminPage() {
           }}
         />
       </div>
+
+      <AdminMarketDigestPanel initial={marketDigest} />
+
+      <AdminSocialProfilesPanel
+        initial={socialProfiles ?? undefined}
+      />
     </>
   );
 

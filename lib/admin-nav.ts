@@ -52,7 +52,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "site",
     label: "Site controls",
-    subtitle: "Listing photos and contact details",
+    subtitle: "Photos, contact, Monday market brief, and social profiles",
   },
   {
     id: "spotlight",
@@ -125,6 +125,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-brokerage-name", label: "Brokerage name", tab: "site" },
   { id: "admin-contact-email", label: "Contact form email", tab: "site" },
   { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
+  { id: "admin-market-digest", label: "Monday market brief", tab: "site" },
+  { id: "admin-social-profiles", label: "Social media profiles", tab: "site" },
   { id: "admin-spotlight", label: "Spotlight properties", tab: "spotlight" },
   { id: "admin-goldilocks", label: "Goldilocks scoring", tab: "goldilocks" },
   { id: "admin-pricing", label: "Pricing match parameters", tab: "pricing" },
@@ -241,6 +243,12 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     detail:
       "Census TIGERweb ZCTA outer rings → Postgres zip_boundaries (Intelligence / Latest maps)",
     schedule: "Monthly 1st ~10:00 UTC",
+  },
+  {
+    label: "market-digest",
+    detail:
+      "Monday market brief email — months supply, inventory, formula notes, Deal of the Week",
+    schedule: "Weekly Mon ~8am ET",
   },
 ];
 

@@ -1577,7 +1577,7 @@ export default function IntelligenceClient() {
   );
   const [filtersExpandedPref, setFiltersExpandedPref] = usePersistedFilter<FiltersExpandedPref>(
     "tmre_intel_filters_expanded",
-    "true",
+    "false",
     FILTERS_EXPANDED_VALUES,
   );
   const filtersExpanded = filtersExpandedPref === "true";
@@ -3946,8 +3946,8 @@ export default function IntelligenceClient() {
             {/* Deal board */}
             <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
           {vintageChartListingRows.length > 0 ? (
-            <div className="mb-2 flex justify-end">
-              <div className="w-[248px] max-w-full shrink-0">
+            <div className="mb-2 flex justify-start">
+              <div className="w-full max-w-md shrink-0">
                 <IntelligenceVintageMedianMiniChart
                   listings={vintageChartListingRows}
                   kind={tx === "rental" ? "rental" : "sale"}
