@@ -13,6 +13,7 @@ import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import AllTownsDescriptor from "@/components/AllTownsDescriptor";
 import FilterResetButton from "@/components/FilterResetButton";
 import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
+import IntelligenceVintageMedianMiniChart from "@/components/IntelligenceVintageMedianMiniChart";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
 import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
@@ -112,6 +113,7 @@ import {
   VINTAGE_INDEX_VALUES,
   vintageBucketFilterIndex,
   vintageFilterActive,
+  vintageFilterIndexToBucketId,
   type VintageIndexFilter,
 } from "@/lib/intelligence-vintage-filter";
 import { readClientPref, writeClientPref } from "@/lib/client-prefs";
@@ -2821,6 +2823,56 @@ export default function IntelligenceClient() {
     () => toVintageListingRows(listings),
     [listings],
   );
+  // Chart keeps every vintage band visible (ignore current vintage slider) so
+  // clicking a dot can still switch bands — same metrics otherwise as the panel.
+  const vintageChartListingRows = useMemo(
+    () =>
+      toVintageListingRows(
+        filterBoardListings(
+          allListings,
+          tx,
+          cls,
+          zip,
+          boardStatusFilter,
+          saleProperty,
+          minBedrooms,
+          maxBedrooms,
+          minBathrooms,
+          maxBathrooms,
+          newConstructionOnly,
+          furnishedFilter,
+          false,
+          minPrice,
+          maxPrice,
+          0,
+          VINTAGE_FILTER_MAX,
+          minSqft,
+          maxSqft,
+        ),
+      ),
+    [
+      allListings,
+      tx,
+      cls,
+      zip,
+      boardStatusFilter,
+      saleProperty,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      newConstructionOnly,
+      furnishedFilter,
+      minPrice,
+      maxPrice,
+      minSqft,
+      maxSqft,
+    ],
+  );
+  const activeVintageChartBucketId =
+    vintageFilterActive(minVintage, maxVintage) && minVintage === maxVintage
+      ? vintageFilterIndexToBucketId(minVintage)
+      : null;
 
   const liveSnapshots = useMemo((): TownSnapshot[] => {
     const snapshotFilters: IntelligenceSnapshotFilters = {
@@ -3712,9 +3764,21 @@ export default function IntelligenceClient() {
                 {active === "All" ? "selected towns" : active},{" "}
                 <span className="italic">scored.</span>
               </h2>
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
-                Intelligent Deals
-              </p>
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-1 pb-0.5 min-w-0">
+                <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+                  Intelligent Deals
+                </p>
+                {vintageChartListingRows.length > 0 ? (
+                  <IntelligenceVintageMedianMiniChart
+                    listings={vintageChartListingRows}
+                    kind={tx === "rental" ? "rental" : "sale"}
+                    activeBucketId={activeVintageChartBucketId}
+                    onBucketClick={(bucketId) => {
+                      selectVintageListings(bucketId);
+                    }}
+                  />
+                ) : null}
+              </div>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
               <div className="flex items-center gap-2 font-mono text-xs">
@@ -3827,6 +3891,8 @@ export default function IntelligenceClient() {
               setBoardStatusFilter(value);
               setBoardPage(1);
             }}
+            onResetSliders={resetSliders}
+            slidersCustomized={slidersCustomized}
             scoreInfoButton={
               <ScoreInfoButton onInfoClick={() => setScoreInfoOpen(true)} />
             }

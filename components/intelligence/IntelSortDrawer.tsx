@@ -4,8 +4,8 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /**
- * Phone / narrow: right slide-over for deal-board sort fields (desktop keeps the
- * horizontal sort bar). Same chrome as the Town stats drawer.
+ * Right slide-over for deal-board sort fields (mobile + desktop).
+ * Same chrome as the Town stats drawer.
  */
 export default function IntelSortDrawer({
   open,
@@ -34,20 +34,11 @@ export default function IntelSortDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const onChange = () => {
-      if (mq.matches) onClose();
-    };
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, [onClose]);
-
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[180] lg:hidden"
+      className="fixed inset-0 z-[180]"
       role="dialog"
       aria-modal
       aria-label="Sort listings"

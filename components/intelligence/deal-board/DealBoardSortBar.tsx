@@ -10,44 +10,6 @@ import {
   type DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
 
-function SortControl({
-  label,
-  sortKey,
-  activeKey,
-  direction,
-  onSort,
-  align = "left",
-}: {
-  label: string;
-  sortKey: DealBoardSortKey;
-  activeKey: DealBoardSortKey;
-  direction: DealBoardSortDir;
-  onSort: (key: DealBoardSortKey) => void;
-  align?: "left" | "right";
-}) {
-  const active = activeKey === sortKey;
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
-      className={`inline-flex cursor-pointer items-center gap-1 font-mono text-[9px] tracking-[0.16em] uppercase transition-colors whitespace-nowrap ${
-        active ? "text-navy" : "text-slate hover:text-navy"
-      } ${align === "right" ? "ml-auto" : ""}`}
-    >
-      {label}
-      <span
-        className={`text-[11px] leading-none tabular-nums ${
-          active ? "font-bold text-black" : "text-slate/35"
-        }`}
-        aria-hidden
-      >
-        {active ? (direction === "asc" ? "↑" : "↓") : "↕"}
-      </span>
-    </button>
-  );
-}
-
 function SortDrawerOption({
   label,
   sortKey,
@@ -113,7 +75,6 @@ export default function DealBoardSortBar({
     // Second tap on the same field flips direction via parent; keep drawer open
     // so the arrow update is visible, then close shortly after a change settles.
     if (key === sortKey) {
-      // direction toggled — leave open briefly for feedback
       window.setTimeout(() => setDrawerOpen(false), 280);
     } else {
       window.setTimeout(() => setDrawerOpen(false), 220);
@@ -122,15 +83,16 @@ export default function DealBoardSortBar({
 
   return (
     <>
-      {/* Mobile: Sort control on its own row */}
-      <div className="border-b border-charcoal/[0.12] bg-cream lg:hidden">
-        <div className="flex items-center gap-2 px-4 py-2.5">
+      {/* Collapsed sort control (mobile + desktop) — opens the field picker. */}
+      <div className="border-b border-charcoal/[0.12] bg-cream">
+        <div className="flex items-center gap-2 px-4 py-2.5 lg:py-3">
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-full border border-navy/20 bg-white px-3.5 py-2 shadow-[0_2px_0_0_rgba(28,42,58,0.12)] active:translate-y-px active:shadow-none transition-[transform,box-shadow]"
+            className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-full border border-navy/20 bg-white px-3.5 py-2 shadow-[0_2px_0_0_rgba(28,42,58,0.12)] hover:border-navy/35 active:translate-y-px active:shadow-none transition-[transform,box-shadow,border-color] lg:max-w-xs"
             aria-expanded={drawerOpen}
             aria-controls="intel-sort-drawer"
+            aria-label={`Sort by ${activeLabel}`}
           >
             <svg
               viewBox="0 0 12 12"
@@ -151,56 +113,6 @@ export default function DealBoardSortBar({
             </span>
           </button>
           {scoreInfoButton}
-        </div>
-      </div>
-
-      {/* Desktop: full horizontal sort fields */}
-      <div className="hidden lg:block border-b border-charcoal/[0.12] bg-cream">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <div className="min-w-0 flex-1 overflow-x-auto">
-            <div
-              className="flex min-w-max items-center gap-x-6"
-              role="row"
-              aria-label="Sort listings"
-            >
-              {columns.map((col) => (
-                <div
-                  key={col.key}
-                  className={`shrink-0 ${col.align === "right" ? "text-right" : "text-left"}`}
-                  role="columnheader"
-                >
-                  {col.key === "score" ? (
-                    <span className="inline-flex items-center gap-1">
-                      <SortControl
-                        label={col.label}
-                        sortKey={col.key}
-                        activeKey={sortKey}
-                        direction={sortDir}
-                        onSort={onSort}
-                        align={col.align}
-                      />
-                      {scoreInfoButton}
-                      <Link
-                        href="/score"
-                        className="font-mono text-[8px] text-slate/45 hover:text-gold normal-case tracking-normal"
-                      >
-                        →
-                      </Link>
-                    </span>
-                  ) : (
-                    <SortControl
-                      label={col.label}
-                      sortKey={col.key}
-                      activeKey={sortKey}
-                      direction={sortDir}
-                      onSort={onSort}
-                      align={col.align}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 

@@ -9,6 +9,7 @@ import {
   DealBoardPhotoLedLineRow,
 } from "@/components/intelligence/deal-board/DealBoardRows";
 import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
+import FilterResetButton from "@/components/FilterResetButton";
 import type {
   DealBoardListing,
   DealBoardStatusFilter,
@@ -51,6 +52,9 @@ export type DealBoardListProps = {
   onBoardViewChange: (view: DealBoardView) => void;
   boardStatusFilter?: DealBoardStatusFilter;
   onBoardStatusFilterChange?: (value: DealBoardStatusFilter) => void;
+  /** Same handler as the Reset sliders control beside the filter sliders. */
+  onResetSliders?: () => void;
+  slidersCustomized?: boolean;
   scoreInfoButton: ReactNode;
   footer: ReactNode;
   resultsSummary: ReactNode;
@@ -84,6 +88,8 @@ export default function DealBoardList({
   onBoardViewChange,
   boardStatusFilter = "all",
   onBoardStatusFilterChange,
+  onResetSliders,
+  slidersCustomized = false,
   scoreInfoButton,
   footer,
   resultsSummary,
@@ -206,7 +212,7 @@ export default function DealBoardList({
             type="button"
             onClick={() => setShowGridMeta((v) => !v)}
             aria-pressed={showGridMeta}
-            className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy/55 hover:text-gold transition-colors"
+            className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline underline-offset-2 decoration-navy/70 hover:text-navy/80 hover:decoration-navy transition-colors"
           >
             {showGridMeta ? "less data" : "more data"}
           </button>
@@ -214,14 +220,20 @@ export default function DealBoardList({
             type="button"
             onClick={() => setShowGridInsights((v) => !v)}
             aria-pressed={showGridInsights}
-            className={`font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:text-gold ${
-              showGridInsights ? "text-gold" : "text-navy/55"
-            }`}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline underline-offset-2 decoration-navy/70 hover:text-navy/80 hover:decoration-navy transition-colors"
           >
             insights
           </button>
         </div>
         <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
+        {onResetSliders ? (
+          <FilterResetButton
+            onClick={onResetSliders}
+            disabled={!slidersCustomized}
+            label="Reset sliders"
+            tone="onLight"
+          />
+        ) : null}
       </div>
     </div>
   );
