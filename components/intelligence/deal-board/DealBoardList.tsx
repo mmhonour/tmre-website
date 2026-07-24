@@ -18,7 +18,7 @@ import type {
   DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
 import type { DealBoardView } from "@/lib/deal-board-view";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 export type DealBoardListProps = {
   topRows: DealBoardListing[];
@@ -88,6 +88,9 @@ export default function DealBoardList({
   footer,
   resultsSummary,
 }: DealBoardListProps) {
+  const [showGridMeta, setShowGridMeta] = useState(false);
+  const [showGridInsights, setShowGridInsights] = useState(false);
+
   const rowProps = (l: DealBoardListing) => ({
     listing: l,
     scoreRank: scoreRankByKey.get(l.key) ?? 0,
@@ -95,6 +98,8 @@ export default function DealBoardList({
     isLive,
     showTown,
     hideOwnershipType,
+    showGridMeta,
+    showGridInsights,
     onScoreClick,
     onStatusClick,
   });
@@ -195,7 +200,27 @@ export default function DealBoardList({
           />
         ) : null}
       </div>
-      <div className="justify-self-end">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 justify-self-end">
+        <div className="flex items-center gap-x-2.5">
+          <button
+            type="button"
+            onClick={() => setShowGridMeta((v) => !v)}
+            aria-pressed={showGridMeta}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy/55 hover:text-gold transition-colors"
+          >
+            {showGridMeta ? "less data" : "more data"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowGridInsights((v) => !v)}
+            aria-pressed={showGridInsights}
+            className={`font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:text-gold ${
+              showGridInsights ? "text-gold" : "text-navy/55"
+            }`}
+          >
+            insights
+          </button>
+        </div>
         <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
       </div>
     </div>

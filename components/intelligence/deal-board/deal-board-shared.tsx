@@ -449,7 +449,10 @@ export function DealBoardPrimaryPhoto({
   surface?: "dark" | "light";
   /** Absolutely positioned content inside the photo shell (e.g. grid status pill). */
   overlay?: ReactNode;
-  /** Append Intelligence return hash so Back lands on this row. */
+  /**
+   * Intelligence deal board: link to Overview (with return hash so Back lands
+   * on this row). Without this flag, live photos still open the Photos tab.
+   */
   withDealBoardReturn?: boolean;
 }) {
   const resolvedIndex =
@@ -457,13 +460,16 @@ export function DealBoardPrimaryPhoto({
     (listing.primaryPhotoIndex != null && listing.primaryPhotoIndex >= 0
       ? listing.primaryPhotoIndex
       : 0);
-  const photosHref = isLive
-    ? listingPhotosHref(listing.key, listing.address, listing.city, resolvedIndex)
+  const href = isLive
+    ? withDealBoardReturn
+      ? listingDetailHref(listing)
+      : listingPhotosHref(
+          listing.key,
+          listing.address,
+          listing.city,
+          resolvedIndex,
+        )
     : null;
-  const href =
-    photosHref && withDealBoardReturn
-      ? appendReturnToHref(photosHref, dealBoardReturnPath(listing.key))
-      : photosHref;
   const src = isLive ? listingPhotoProxyUrl(listing.key, resolvedIndex) : null;
 
   const image = src ? (
@@ -520,7 +526,11 @@ export function DealBoardPrimaryPhoto({
         href={href}
         onClick={(e) => e.stopPropagation()}
         className={`block ${fluid ? "w-full" : "shrink-0"}`}
-        aria-label={`View photos for ${listing.address}`}
+        aria-label={
+          withDealBoardReturn
+            ? `View listing for ${listing.address}`
+            : `View photos for ${listing.address}`
+        }
         {...listingHoverHandlers(listing.key)}
       >
         {shell}

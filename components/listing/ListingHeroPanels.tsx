@@ -595,6 +595,14 @@ export default function ListingHeroPanels({
       >
         {heroStage}
       </ListingPhotosModeContext.Provider>
+      {/*
+        Photos page: keep the gallery in this column, flush under the tab strip.
+        A separate grid row still picks up gap-y (and on mobile an empty right-column
+        track doubles it) — the Intelligence → /photos deep-link hit that gap.
+      */}
+      {subnav.active === "photos" && !useSlidePanel && belowTabs ? (
+        <div className="min-w-0">{belowTabs}</div>
+      ) : null}
     </div>
   );
 
@@ -668,18 +676,14 @@ export default function ListingHeroPanels({
 
   // Legacy: non-overview pages still put content in belowTabs page flow.
   // Overview + sections uses the slide-up panel only (no long page scroll).
-  // Photos: sit flush under the tab strip (Intelligence deep-links here).
+  // Photos: rendered inside propertyPanel (flush under tabs) — not this row.
   const belowTabsBlock =
-    !useSlidePanel && belowTabs ? (
+    !useSlidePanel && belowTabs && subnav.active !== "photos" ? (
       <div
         id={
           subnav.active === "overview" ? LISTING_SECTION_IDS.overview : undefined
         }
-        className={
-          subnav.active === "photos"
-            ? "min-w-0 scroll-mt-[var(--listing-sticky-offset,6rem)]"
-            : "mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
-        }
+        className="mt-3 scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-3"
       >
         {belowTabs}
       </div>

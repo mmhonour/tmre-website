@@ -220,6 +220,8 @@ export function DealBoardPhotoLedGridCard({
   rankTotal,
   isLive,
   showTown,
+  showGridMeta = false,
+  showGridInsights = false,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
@@ -312,20 +314,22 @@ export function DealBoardPhotoLedGridCard({
             </>
           ) : null}
         </p>
-        <DealBoardAdaptiveMetaLine
-          parts={[
-            ppsf,
-            dealBoardAcresLabel(l.lotAcres),
-            l.dom != null ? `${l.dom}d DOM` : null,
-            l.type || null,
-            dealBoardYearBuiltLabel(l.yearBuilt),
-          ]}
-          sqft={null}
-          yearBuilt={null}
-          lotAcres={null}
-          className="font-mono text-[10px] text-slate/80 tabular-nums truncate"
-        />
-        {l.headline ? (
+        {showGridMeta ? (
+          <DealBoardAdaptiveMetaLine
+            parts={[
+              ppsf,
+              dealBoardAcresLabel(l.lotAcres),
+              l.dom != null ? `${l.dom}d DOM` : null,
+              l.type || null,
+              dealBoardYearBuiltLabel(l.yearBuilt),
+            ]}
+            sqft={null}
+            yearBuilt={null}
+            lotAcres={null}
+            className="font-mono text-[10px] text-slate/80 tabular-nums truncate"
+          />
+        ) : null}
+        {showGridInsights && l.headline ? (
           <p className="text-xs text-charcoal/60 italic leading-snug line-clamp-2 pt-0.5">
             {l.headline}
           </p>

@@ -41,6 +41,10 @@ export type DealBoardRowProps = {
   showTown: boolean;
   /** When Sale or Rental filter is on, omit ownership/type from the meta line. */
   hideOwnershipType?: boolean;
+  /** Grid view: show the second metadata line (ppsf, acres, DOM, type, year). */
+  showGridMeta?: boolean;
+  /** Grid view: show the listing insight/headline. */
+  showGridInsights?: boolean;
   onScoreClick: (listing: DealBoardListing) => void;
   onStatusClick?: (listing: DealBoardListing) => void;
 };
