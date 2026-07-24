@@ -10,6 +10,20 @@ function parseTaxAmount(value: string | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/**
+ * SmartMLS `AssessedValue` (town assessment). Rejects the Matrix TBD
+ * sentinel (nine 9s) used when assessment is not yet available.
+ */
+export function assessedValueFromRaw(
+  raw?: Record<string, string>,
+): number | null {
+  if (!raw) return null;
+  const n = parseTaxAmount(raw.AssessedValue);
+  if (n == null) return null;
+  if (n >= 999_999_999) return null;
+  return n;
+}
+
 /** Annual property tax + fiscal year label from RETS raw fields. */
 export function propertyTaxFromRaw(raw?: Record<string, string>): {
   annualAmount: number | null;

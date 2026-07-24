@@ -11,6 +11,7 @@ import {
 } from "@/lib/listing-furnished";
 import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
 import {
+  assessedValueFromRaw,
   formatPropertyTaxLabel,
   propertyTaxFromRaw,
 } from "@/lib/listing-property-tax";
@@ -149,6 +150,7 @@ export function buildListingDetailsPanelProps(
     listing.propertyTax ?? taxFromRaw.annualAmount;
   const propertyTaxYear =
     listing.propertyTaxYear ?? taxFromRaw.yearLabel;
+  const assessedMarketValue = assessedValueFromRaw(listing.raw);
   const routeBase = opts?.routeBase ?? "listing";
   const street =
     listing.address?.street?.trim() ||
@@ -185,6 +187,7 @@ export function buildListingDetailsPanelProps(
     dom: listing.dom ?? null,
     ppsf,
     lotAcres,
+    assessedMarketValue,
     annualPropertyTax,
     propertyTaxLabel: formatPropertyTaxLabel(propertyTaxYear),
     photoCount: listing.photoCount ?? 0,

@@ -34,6 +34,8 @@ export type ListingDetailsSchoolsPanelProps = {
   dom: number | null;
   ppsf: number | null;
   lotAcres: number | null;
+  /** Town assessment from SmartMLS `AssessedValue`. */
+  assessedMarketValue: number | null;
   annualPropertyTax: number | null;
   propertyTaxLabel: string;
   photoCount: number;
@@ -127,6 +129,7 @@ export default function ListingDetailsSchoolsPanel({
   dom,
   ppsf,
   lotAcres,
+  assessedMarketValue,
   annualPropertyTax,
   propertyTaxLabel,
   photoCount,
@@ -427,6 +430,12 @@ export default function ListingDetailsSchoolsPanel({
           ) : null}
           {furnishedLabel ? (
             <Stat label="Furnishings" value={furnishedLabel} />
+          ) : null}
+          {!isRental && assessedMarketValue != null ? (
+            <Stat
+              label="Assessed market value"
+              value={fmtMoney(assessedMarketValue)}
+            />
           ) : null}
           {!isRental && annualPropertyTax != null && (
             <Stat
