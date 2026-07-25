@@ -8,6 +8,7 @@ import type { ComparableListing, ComparablesCriteria } from '@/lib/listing-compa
 import { vintageCriteriaList } from '@/lib/listing-comparables-shared'
 import type { PricingMatchingConfig } from '@/lib/pricing-matching-config-shared'
 import { DEFAULT_PRICING_MATCHING_CONFIG } from '@/lib/pricing-matching-config-shared'
+import { normalizeZip, townForZip, TOWN_ZIPS } from '@/lib/tmre-towns'
 import { VINTAGE_BUCKETS, type VintageBucketId } from '@/lib/vintage-buckets'
 
 export type SessionMatchOverrides = {
@@ -17,6 +18,11 @@ export type SessionMatchOverrides = {
   sqftTolerancePct: number
   /** Predefined vintage labels currently allowed (oldest → newest). */
   allowedVintageLabels: string[]
+  /**
+   * Subject zip plus any same-town zips the user has opened with ±.
+   * Always includes the subject's zip.
+   */
+  allowedZips: string[]
   /**
    * When subject is furnished: exact = same status; any = all furnish types
    * (including Unfurnished). Omitted when the criterion does not apply.
@@ -48,11 +54,13 @@ export function sessionOverridesFromPricingConfig(
     .split(' | ')
     .map((s) => s.trim())
     .filter(Boolean)
+  const subjectZip = normalizeZip(criteria.zip) ?? criteria.zip
   return {
     bedTolerance: clampInt(match.bedTolerance, 0, SESSION_BED_TOLERANCE_MAX),
     bathTolerance: clampInt(match.bathTolerance, 0, SESSION_BATH_TOLERANCE_MAX),
     sqftTolerancePct: percentFromFraction(match.sqftTolerance),
     allowedVintageLabels: labels.length > 0 ? labels : [criteria.vintageLabel],
+    allowedZips: subjectZip ? [subjectZip] : [],
     ...(criteria.furnished ? { furnishedScope: 'exact' as const } : {}),
   }
 }
@@ -64,6 +72,10 @@ export function defaultSessionOverrides(
 }
 
 /** True when session overrides match the seeded / original baseline. */
+function sortZips(zips: string[]): string[] {
+  return [...zips].map((z) => normalizeZip(z) ?? z).filter(Boolean).sort()
+}
+
 export function sessionMatchOverridesEqual(
   a: SessionMatchOverrides,
   b: SessionMatchOverrides,
@@ -72,6 +84,9 @@ export function sessionMatchOverridesEqual(
   if (a.bathTolerance !== b.bathTolerance) return false
   if (a.sqftTolerancePct !== b.sqftTolerancePct) return false
   if ((a.furnishedScope ?? null) !== (b.furnishedScope ?? null)) return false
+  const za = sortZips(a.allowedZips ?? [])
+  const zb = sortZips(b.allowedZips ?? [])
+  if (za.length !== zb.length || za.some((z, i) => z !== zb[i])) return false
   const aa = sortVintageLabels(a.allowedVintageLabels)
   const bb = sortVintageLabels(b.allowedVintageLabels)
   if (aa.length !== bb.length) return false
@@ -89,6 +104,9 @@ export function sessionOverridesNeedWidePool(
   if (session.allowedVintageLabels.length > baseline.allowedVintageLabels.length) {
     return true
   }
+  if ((session.allowedZips?.length ?? 0) > (baseline.allowedZips?.length ?? 0)) {
+    return true
+  }
   if (
     session.furnishedScope === 'any' &&
     baseline.furnishedScope === 'exact'
@@ -96,6 +114,82 @@ export function sessionOverridesNeedWidePool(
     return true
   }
   return false
+}
+
+/** Town zips the subject may expand into (same town only). */
+export function townZipsForSubject(
+  subjectZip: string,
+  townZips: readonly string[],
+): string[] {
+  const subject = normalizeZip(subjectZip)
+  const town = townForZip(subject)
+  const allowed = new Set(
+    (town ? TOWN_ZIPS[town] : []).filter(Boolean),
+  )
+  const fromCache: string[] = []
+  for (const raw of townZips) {
+    const z = normalizeZip(raw)
+    if (!z) continue
+    if (allowed.size > 0 && !allowed.has(z)) continue
+    fromCache.push(z)
+  }
+  const merged = new Set<string>(fromCache)
+  if (subject && (allowed.size === 0 || allowed.has(subject))) merged.add(subject)
+  return [...merged].sort()
+}
+
+export function canExpandZips(
+  allowed: string[],
+  subjectZip: string,
+  townZips: readonly string[],
+): boolean {
+  const pool = townZipsForSubject(subjectZip, townZips)
+  const have = new Set(sortZips(allowed))
+  return pool.some((z) => !have.has(z))
+}
+
+export function canShrinkZips(allowed: string[], subjectZip: string): boolean {
+  const subject = normalizeZip(subjectZip) ?? subjectZip
+  const sorted = sortZips(allowed)
+  return sorted.length > 1 && sorted.some((z) => z !== subject)
+}
+
+/** Add the next same-town zip (numeric order) not already allowed. */
+export function expandAllowedZips(
+  allowed: string[],
+  subjectZip: string,
+  townZips: readonly string[],
+): string[] {
+  const pool = townZipsForSubject(subjectZip, townZips)
+  const have = new Set(sortZips(allowed))
+  const next = pool.find((z) => !have.has(z))
+  if (!next) return sortZips(allowed)
+  const subject = normalizeZip(subjectZip) ?? subjectZip
+  return sortZips([...have, next, subject])
+}
+
+/** Drop the zip furthest from the subject (keep subject). */
+export function shrinkAllowedZips(
+  allowed: string[],
+  subjectZip: string,
+): string[] {
+  const subject = normalizeZip(subjectZip) ?? subjectZip
+  const sorted = sortZips(allowed)
+  if (sorted.length <= 1) return subject ? [subject] : sorted
+  const subjectNum = Number(subject)
+  let remove = sorted.find((z) => z !== subject) ?? sorted[sorted.length - 1]!
+  let bestDist = -1
+  for (const z of sorted) {
+    if (z === subject) continue
+    const dist = Math.abs(Number(z) - subjectNum)
+    if (dist >= bestDist) {
+      bestDist = dist
+      remove = z
+    }
+  }
+  const next = sorted.filter((z) => z !== remove)
+  if (!next.includes(subject)) next.push(subject)
+  return sortZips(next)
 }
 
 function vintageLabelIndex(label: string): number {
@@ -183,7 +277,9 @@ export function comparableListingMatchesSession(
   criteria: ComparablesCriteria,
   session: SessionMatchOverrides,
 ): boolean {
-  if (comp.zip !== criteria.zip) return false
+  const compZip = normalizeZip(comp.zip) ?? comp.zip
+  const allowedZips = sortZips(session.allowedZips?.length ? session.allowedZips : [criteria.zip])
+  if (!compZip || !allowedZips.includes(compZip)) return false
 
   if (comp.beds == null) return false
   if (Math.abs(comp.beds - criteria.beds) > session.bedTolerance) return false

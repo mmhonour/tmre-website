@@ -1,5 +1,6 @@
 import { closeFieldsFromListing, formatMlsStatus } from '@/lib/listing-history'
 import { filterListingsByKind, type ListingKind } from '@/lib/listing-kind'
+import { isUnderContractStatus } from '@/lib/listing-status'
 import {
   classifySalePrice,
   emptyPriceCounts,
@@ -70,6 +71,9 @@ export type SalesByMonthPayload = {
   data: { year: number; month: number; count: number }[]
   closedThisWeek: number
   closedThisWeekByZip: Record<string, number>
+  /** Active UC / UC-CTS whose StatusChangeTimestamp falls in the past 7 days (from Postgres, not RETS). */
+  wentToContractThisWeek: number
+  wentToContractThisWeekByZip: Record<string, number>
 }
 
 export type ActiveByMonthPayload = {
@@ -221,6 +225,32 @@ export function computeClosedThisWeekCounts(
   return { closedThisWeek, closedThisWeekByZip }
 }
 
+/**
+ * Count Active listings that went under contract in the past 7 days.
+ * Uses Postgres Active rows (mls status + StatusChangeTimestamp) — never RETS.
+ */
+export function computeWentToContractThisWeekCounts(
+  activeListings: Listing[],
+  kind: ListingKind,
+): Pick<SalesByMonthPayload, 'wentToContractThisWeek' | 'wentToContractThisWeekByZip'> {
+  const filtered = filterListingsByKind(activeListings, kind)
+  let wentToContractThisWeek = 0
+  const wentToContractThisWeekByZip: Record<string, number> = {}
+
+  for (const l of filtered) {
+    if (!isUnderContractStatus(l.status)) continue
+    if (!isClosedWithinDays(l.statusChangeTimestamp, CLOSED_THIS_WEEK_DAYS)) continue
+    wentToContractThisWeek += 1
+    const zip = listingZip(l)
+    if (zip) {
+      wentToContractThisWeekByZip[zip] =
+        (wentToContractThisWeekByZip[zip] ?? 0) + 1
+    }
+  }
+
+  return { wentToContractThisWeek, wentToContractThisWeekByZip }
+}
+
 export function computeSalesByMonth(
   listings: Listing[],
   city: string,
@@ -250,7 +280,14 @@ export function computeSalesByMonth(
     }
   }
 
-  return { city, kind, data, ...computeClosedThisWeekCounts(listings, kind) }
+  return {
+    city,
+    kind,
+    data,
+    ...computeClosedThisWeekCounts(listings, kind),
+    wentToContractThisWeek: 0,
+    wentToContractThisWeekByZip: {},
+  }
 }
 
 function parseTimestampMs(ts: string | null | undefined): number | null {

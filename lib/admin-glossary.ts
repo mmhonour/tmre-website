@@ -229,7 +229,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Incremental sync',
     category: 'sync-admin',
     definition:
-      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Netlify sync-listings (every 30m, not background) runs the pull in-process and stamps last_incremental_cron_tick. Avoid schedule+background on one function and avoid schedule→HTTP→worker hops (site password / missing URL). Admin Syncs shows the heartbeat; Database Next is only clock-slot math when overdue.',
+      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Netlify sync-listings (every 30m, not background) stamps last_incremental_cron_tick and queues sync-listings-worker (background ~15m). If the queue fails (site password / missing URL), it runs a lean RETS-only fallback in-process. Avoid schedule+background on one function. Admin Syncs shows the heartbeat; Database Next is only clock-slot math when overdue.',
   },
   {
     term: 'Next override (spinner)',

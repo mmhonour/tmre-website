@@ -164,6 +164,8 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     location: 'stats_cache',
     keyPattern: 'sales-by-month:{town}:{sale|rental}',
     owner: 'lib/stats-cache.ts',
+    notes:
+      'Also stores closedThisWeek (+ by zip) and wentToContractThisWeek (+ by zip) from Postgres Active/Closed rows — never a live RETS pull.',
     live: { kind: 'stats_cache_prefix', prefix: 'sales-by-month:' },
   },
   {
@@ -264,6 +266,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     owner: 'lib/stats-cache.ts',
     notes: 'Active scored listings; also refreshed after listing-scores rebuild.',
     live: { kind: 'stats_cache_prefix', prefix: 'avg-score-by-vintage:' },
+  },
+  {
+    id: 'town-zips',
+    name: 'Town ZIP roster',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'town-zips:All:all',
+    owner: 'lib/town-zips-cache.ts',
+    notes:
+      'Distinct Active/Closed postal codes per TMRE town from listings (never RETS). Powers criteria-panel ZIP ± (same-town only).',
+    live: { kind: 'stats_cache_prefix', prefix: 'town-zips:' },
   },
   {
     id: 'avg-score-by-vintage-by-town',

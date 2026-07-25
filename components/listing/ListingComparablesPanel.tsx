@@ -29,6 +29,7 @@ import MatchingCriteriaSummary, {
 import {
   comparableListingMatchesSession,
   defaultSessionOverrides,
+  sessionMatchOverridesEqual,
   sessionOverridesFromPricingConfig,
   sessionOverridesNeedWidePool,
   type SessionMatchOverrides,
@@ -983,11 +984,26 @@ export default function ListingComparablesPanel({
 
   const hasContent = sold.length > 0 || active.length > 0;
 
+  // After any Criteria ± change from baseline, show every match (no 12-cap).
+  const criteriaExpanded = Boolean(
+    sessionMatch &&
+      baselineMatch &&
+      !sessionMatchOverridesEqual(sessionMatch, baselineMatch),
+  );
+  const listCap = criteriaExpanded
+    ? Number.POSITIVE_INFINITY
+    : COMP_MAX_VISIBLE;
+
   // `sold` is the full 36-month fit-ranked (session-filtered) pool; filter it
   // to the selected look-back and keep the top matches by fit before sorting.
   const soldWindowed = useMemo(
-    () => soldWithinLookback(sold, lookbackMonths, COMP_MAX_VISIBLE),
-    [sold, lookbackMonths],
+    () =>
+      soldWithinLookback(
+        sold,
+        lookbackMonths,
+        criteriaExpanded ? sold.length : COMP_MAX_VISIBLE,
+      ),
+    [sold, lookbackMonths, criteriaExpanded],
   );
   const sortedSold = useMemo(
     () => sortSoldComparables(soldWindowed, soldSort.key, soldSort.dir),
@@ -1009,7 +1025,7 @@ export default function ListingComparablesPanel({
   // The sold baseline scales with the look-back (1yr→4, 18mo→6, 2yr→8, 30mo→10,
   // 3yr→12), so widening reveals two more comps per step rather than collapsing
   // back to 4. Any manual "show more" beyond the baseline is preserved (we never
-  // shrink the view).
+  // shrink the view). When criteria are expanded, show the full match set.
   const soldWindowBase =
     COMP_INITIAL_VISIBLE +
     LOOKBACK_VISIBLE_STEP *
@@ -1019,22 +1035,35 @@ export default function ListingComparablesPanel({
           lookbackMonths as ComparablesLookbackMonths,
         ),
       );
-  const effectiveSoldVisible = Math.max(soldVisibleCount, soldWindowBase);
+  const effectiveSoldVisible = criteriaExpanded
+    ? sortedSold.length
+    : Math.max(soldVisibleCount, soldWindowBase);
 
-  const soldCap = Math.min(sortedSold.length, COMP_MAX_VISIBLE);
-  const activeCap = Math.min(sortedActive.length, COMP_MAX_VISIBLE);
-  const visibleSold = sortedSold.slice(0, Math.min(effectiveSoldVisible, soldCap));
+  const soldCap = Math.min(sortedSold.length, listCap);
+  const activeCap = Math.min(sortedActive.length, listCap);
+  const visibleSold = sortedSold.slice(
+    0,
+    criteriaExpanded
+      ? sortedSold.length
+      : Math.min(effectiveSoldVisible, soldCap),
+  );
   // Regardless of the chosen sort, group the visible sold/rented comps by close
   // year (newest first) so older years are clearly separated by a divider.
   const soldGroups = useMemo(() => groupSoldByYear(visibleSold), [visibleSold]);
   const visibleActive = sortedActive.slice(
     0,
-    Math.min(activeVisibleCount, activeCap),
+    criteriaExpanded
+      ? sortedActive.length
+      : Math.min(activeVisibleCount, activeCap),
   );
   const canShowMoreSold =
-    effectiveSoldVisible < soldCap && sortedSold.length > effectiveSoldVisible;
+    !criteriaExpanded &&
+    effectiveSoldVisible < soldCap &&
+    sortedSold.length > effectiveSoldVisible;
   const canShowMoreActive =
-    activeVisibleCount < activeCap && sortedActive.length > activeVisibleCount;
+    !criteriaExpanded &&
+    activeVisibleCount < activeCap &&
+    sortedActive.length > activeVisibleCount;
 
   const wantClosed = columns === "both" || columns === "closed";
   const wantActive = columns === "both" || columns === "active";

@@ -10,10 +10,7 @@ import {
   type ComparablesMatchMode,
 } from '@/lib/listing-comparables'
 import type { ComparablesResult } from '@/lib/listing-comparables-shared'
-import {
-  COMPARABLES_MAX_LOOKBACK_MONTHS,
-  COMPARABLES_SOLD_SUPERSET_LIMIT,
-} from '@/lib/listing-comparables-shared'
+import { COMPARABLES_MAX_LOOKBACK_MONTHS } from '@/lib/listing-comparables-shared'
 import { widePricingMatchingConfig } from '@/lib/listing-comparables-session'
 import {
   readAllListingsFromDb,
@@ -84,10 +81,13 @@ async function resolveWideComparablesPool(
   const wide = widePricingMatchingConfig(match)
   const ranked = findComparablesRanked(subject, soldPool, activePool, kind, {
     soldLookbackMonths: COMPARABLES_MAX_LOOKBACK_MONTHS,
-    soldLimit: COMPARABLES_SOLD_SUPERSET_LIMIT,
+    // Interactive ± criteria: return every matching sold/rented + on-market row.
+    soldLimit: Number.POSITIVE_INFINITY,
+    activeLimit: Number.POSITIVE_INFINITY,
     match: wide,
     relaxVintage: true,
     relaxFurnished: true,
+    relaxZip: true,
   })
   const result: ComparablesResult = {
     sold: ranked.sold.map((row) => row.listing),

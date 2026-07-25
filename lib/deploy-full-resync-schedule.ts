@@ -132,9 +132,9 @@ export async function ensurePostDeployFullResyncScheduled(now = new Date()): Pro
   const queued = await queueNetlifyFullSync()
   setSyncMeta(TRIGGERED_AT_KEY, now.toISOString())
   console.info(
-    queued
+    queued.ok
       ? `[deploy-full-resync] queued background full warm for deploy ${deployId.slice(0, 8)}…`
-      : `[deploy-full-resync] background full warm queue failed — use admin step 1`,
+      : `[deploy-full-resync] background full warm queue failed (${queued.error ?? 'unknown'}) — use admin step 1`,
   )
 }
 

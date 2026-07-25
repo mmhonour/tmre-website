@@ -68,6 +68,6 @@ export async function POST(req: NextRequest) {
     heartbeat,
     worker: result.body,
     workerStatus,
-    note: 'Ran incremental work in this Admin request (scheduled cron uses the same lean path in-process)',
+    note: 'Ran incremental work in this Admin request; scheduled cron queues the background worker (lean in-process only if queue fails)',
   })
 }

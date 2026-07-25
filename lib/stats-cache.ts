@@ -25,6 +25,7 @@ import {
   computeSalesByMonth,
   computeSalesByPrice,
   computeSalesByVintage,
+  computeWentToContractThisWeekCounts,
   statsCacheKey,
   type ActiveByMonthByTownPayload,
   type AvgScoreByVintageByTownPayload,
@@ -38,6 +39,7 @@ import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { rebuildIntelligenceTownSnapshots } from '@/lib/intelligence-town-snapshot'
 import { refreshInterestingStat } from '@/lib/interesting-stat'
+import { rebuildTownZipsCache } from '@/lib/town-zips-cache'
 import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
 import type { PriceBucketDef } from '@/lib/price-buckets-shared'
 import {
@@ -162,6 +164,8 @@ export async function readAggregatedSalesByMonth(
     data: aggregateMonthCounts(rows, statsMonthChartYears()),
     closedThisWeek: 0,
     closedThisWeekByZip: {},
+    wentToContractThisWeek: 0,
+    wentToContractThisWeekByZip: {},
     generatedAt,
   }
 }
@@ -483,7 +487,10 @@ async function writeTownMarketStats(
     })
     written += 1
 
-    const monthPayload = computeSalesByMonth(closed, town, kind)
+    const monthPayload = {
+      ...computeSalesByMonth(closed, town, kind),
+      ...computeWentToContractThisWeekCounts(active, kind),
+    }
     await writeStatsCache('sales-by-month', town, kind, { ...monthPayload, generatedAt })
     if (bundles) bundles.salesByMonthByTown[kind][town] = monthPayload.data
     written += 1
@@ -704,6 +711,13 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     }
 
     try {
+      const tz = await rebuildTownZipsCache()
+      written += tz.written
+    } catch (err) {
+      console.error('[stats-cache] town-zips rebuild failed', err)
+    }
+
+    try {
       if (await refreshInterestingStat(generatedAt)) written += 1
     } catch (err) {
       console.error('[stats-cache] interesting-stat refresh failed', err)
@@ -789,6 +803,13 @@ export async function rebuildStatsCacheForTowns(
       written += snap.written
     } catch (err) {
       console.error('[stats-cache] town snapshot rebuild failed (per-town)', err)
+    }
+
+    try {
+      const tz = await rebuildTownZipsCache()
+      written += tz.written
+    } catch (err) {
+      console.error('[stats-cache] town-zips rebuild failed (per-town)', err)
     }
 
     try {

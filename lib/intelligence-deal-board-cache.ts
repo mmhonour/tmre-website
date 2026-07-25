@@ -68,6 +68,10 @@ export type IntelligenceDealBoardTownMeta = {
   closedThisWeekRental: number
   closedThisWeekByZipSale: Record<string, number>
   closedThisWeekByZipRental: Record<string, number>
+  wentToContractThisWeekSale: number
+  wentToContractThisWeekRental: number
+  wentToContractThisWeekByZipSale: Record<string, number>
+  wentToContractThisWeekByZipRental: Record<string, number>
 }
 
 export type IntelligenceDealBoardPayload = {
@@ -151,6 +155,10 @@ async function readTownSalesMeta(town: TmreTown): Promise<IntelligenceDealBoardT
     closedThisWeekRental: 0,
     closedThisWeekByZipSale: {},
     closedThisWeekByZipRental: {},
+    wentToContractThisWeekSale: 0,
+    wentToContractThisWeekRental: 0,
+    wentToContractThisWeekByZipSale: {},
+    wentToContractThisWeekByZipRental: {},
   }
   for (const kind of ['sale', 'rental'] as const) {
     const row = await readStatsCacheRow(statsCacheKey('sales-by-month', town, kind))
@@ -160,16 +168,24 @@ async function readTownSalesMeta(town: TmreTown): Promise<IntelligenceDealBoardT
         data?: { year: number; month: number; count: number }[]
         closedThisWeek?: number
         closedThisWeekByZip?: Record<string, number>
+        wentToContractThisWeek?: number
+        wentToContractThisWeekByZip?: Record<string, number>
       }
       const avg = avgMonthlySalesFromPayload(payload.data)
       if (kind === 'sale') {
         empty.avgMonthlySalesSale = avg
         empty.closedThisWeekSale = payload.closedThisWeek ?? 0
         empty.closedThisWeekByZipSale = payload.closedThisWeekByZip ?? {}
+        empty.wentToContractThisWeekSale = payload.wentToContractThisWeek ?? 0
+        empty.wentToContractThisWeekByZipSale =
+          payload.wentToContractThisWeekByZip ?? {}
       } else {
         empty.avgMonthlySalesRental = avg
         empty.closedThisWeekRental = payload.closedThisWeek ?? 0
         empty.closedThisWeekByZipRental = payload.closedThisWeekByZip ?? {}
+        empty.wentToContractThisWeekRental = payload.wentToContractThisWeek ?? 0
+        empty.wentToContractThisWeekByZipRental =
+          payload.wentToContractThisWeekByZip ?? {}
       }
     } catch {
       /* ignore bad cache row */
@@ -325,7 +341,13 @@ export async function readIntelligenceDealBoardCache(): Promise<IntelligenceDeal
   try {
     const parsed = JSON.parse(row.payload) as IntelligenceDealBoardPayload
     if (parsed?.version !== 1 || !parsed.towns) return null
-    return parsed
+    // Refresh closed / to-contract weekly counts from sales-by-month so they
+    // track the latest stats_cache rebuild without waiting for a full board rewrite.
+    const meta = {} as Record<TmreTown, IntelligenceDealBoardTownMeta>
+    for (const town of TMRE_TOWNS) {
+      meta[town] = await readTownSalesMeta(town)
+    }
+    return { ...parsed, meta }
   } catch {
     return null
   }

@@ -56,6 +56,7 @@ function sessionFromIfParams(params: IfMatchParams): SessionMatchOverrides {
         : params.vintageLabel
           ? [params.vintageLabel]
           : [],
+    allowedZips: params.zip ? [params.zip] : [],
     ...(params.furnished ? { furnishedScope: "exact" as const } : {}),
   };
 }

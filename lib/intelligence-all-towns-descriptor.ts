@@ -16,6 +16,7 @@ export type TownDescriptorStats = {
   newThisWeek: number;
   reduced: number;
   closedThisWeek: number;
+  wentToContractThisWeek: number;
   medianSqft: number | null;
 };
 

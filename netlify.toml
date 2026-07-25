@@ -24,7 +24,7 @@
   ]
 
 # Scheduled sync handlers — no listings.bundle.db (Postgres holds inventory).
-# sync-listings = thin scheduled trigger (schedule in code + here).
+# sync-listings = thin scheduled trigger (≤30s): heartbeat + queue worker + lean fallback.
 # sync-listings-worker = background body (do NOT put schedule on the worker).
 [functions."sync-listings"]
   included_files = []

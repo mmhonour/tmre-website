@@ -401,7 +401,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listings",
     detail:
-      "Scheduled every 30m — runs incremental RETS→Postgres in-process (no HTTP hop). Do not set background:true on this function.",
+      "Scheduled every 30m — stamps heartbeat, queues sync-listings-worker; lean RETS fallback if queue fails. Do not set background:true on this function.",
     schedule: "Every 30 min",
   },
   {

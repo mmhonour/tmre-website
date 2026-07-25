@@ -167,8 +167,19 @@ export async function syncTownListingsIncremental(
   }
 }
 
+export type SyncIncrementalOptions = {
+  /**
+   * When false, skip post-RETS board/stats warm work (for ≤30s scheduled fallback).
+   * Default true — full path used by background worker / Admin.
+   */
+  postHooks?: boolean
+}
+
 /** Incremental sync across all towns — no bucket deletions (use full sync for reconcile). */
-export async function syncIncrementalListings(): Promise<IncrementalSyncResult> {
+export async function syncIncrementalListings(
+  options: SyncIncrementalOptions = {},
+): Promise<IncrementalSyncResult> {
+  const postHooks = options.postHooks !== false
   if (!isRetsConfigured()) {
     const now = new Date().toISOString()
     console.info('[listings-sync/incremental] skipped — RETS not configured')
@@ -236,7 +247,7 @@ export async function syncIncrementalListings(): Promise<IncrementalSyncResult> 
 
     // Durable stamp — serverless freezes before fire-and-forget write-through.
     await setSyncMetaDurable('last_incremental_sync', finishedAt)
-    if (allOk) {
+    if (allOk && postHooks) {
       // Town feeds for /latest — bounded hero thumbnails warm chained inside rebuild.
       try {
         const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')

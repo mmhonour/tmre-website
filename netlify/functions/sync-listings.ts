@@ -1,32 +1,28 @@
 import type { Config } from '@netlify/functions'
 import {
   hydrateSyncMetaStore,
-  setSyncMetaDurable,
 } from '../../lib/db/sync-meta-store'
 import {
-  LAST_INCREMENTAL_CRON_TICK_KEY,
   recordIncrementalCronTick,
-  runIncrementalSyncListingsWork,
+  stampIncrementalCronHeartbeat,
 } from '../../lib/netlify-sync-listings-work'
+import { queueNetlifyIncrementalSync } from '../../lib/netlify-sync-trigger'
 import { healStaleRefreshLock } from '../../lib/sqlite-refresh-status'
 import { healStaleOverdueCatchupLock } from '../../lib/sync-overdue'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
-import { syncIncrementalListings, getSyncStatus } from '../../lib/listings-sync'
-import {
-  clearSyncNextOverrideAfterRun,
-  shouldDeferScheduledJob,
-} from '../../lib/sync-next-override'
+import { syncIncrementalListings } from '../../lib/listings-sync'
+import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
 
 /**
- * Scheduled incremental trigger (NO background flag).
+ * Scheduled incremental trigger (NO background flag) — must finish in ~30s.
  *
- * Runs the RETS pull in-process. A schedule→HTTP→background hop is fragile
- * (missing URL at runtime, site password, 404) and was the likely failure at
- * 8:30 after deploy — build was live, but the worker never got queued.
+ * Pattern:
+ *   1) Stamp heartbeat (proves the cron fired)
+ *   2) Queue sync-listings-worker (background, ~15m) for the real RETS pull
+ *   3) If queue fails → lean in-process RETS-only fallback (no board/stats)
  *
- * Keep this under Netlify's ~30s scheduled-function limit: incremental only,
- * no full-resync catch-up, no saved-search digests (those stay on the worker /
- * Admin "Run cron now").
+ * Do NOT put schedule+background on one function (silent no-op on Netlify).
+ * Do NOT rely on in-process full sync+board rebuild here — it exceeds 30s.
  */
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
@@ -40,7 +36,18 @@ export default async function handler() {
     if (healStaleOverdueCatchupLock()) {
       console.info('[netlify/sync-listings] cleared stale overdue catch-up lock')
     }
-    await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
+
+    const heartbeat = await stampIncrementalCronHeartbeat(startedAt)
+    if (!heartbeat.ok) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          mode: 'scheduled-queue',
+          error: heartbeat.error ?? 'heartbeat failed',
+        }),
+        { status: 500, headers: { 'content-type': 'application/json' } },
+      )
+    }
 
     if (await isScheduledSyncJobPausedFresh('incremental')) {
       await recordIncrementalCronTick({
@@ -52,7 +59,7 @@ export default async function handler() {
       return new Response(
         JSON.stringify({
           ok: true,
-          mode: 'scheduled-in-process',
+          mode: 'scheduled-queue',
           skipped: true,
           reason: 'incremental scheduled sync paused by admin',
         }),
@@ -70,7 +77,7 @@ export default async function handler() {
       return new Response(
         JSON.stringify({
           ok: true,
-          mode: 'scheduled-in-process',
+          mode: 'scheduled-queue',
           skipped: true,
           reason: 'Admin Next override — not due yet',
         }),
@@ -78,46 +85,56 @@ export default async function handler() {
       )
     }
 
-    // Lean path — sync only (typical ~10–20s). Spotlight/alerts via worker/Admin.
-    const result = await syncIncrementalListings()
+    const queued = await queueNetlifyIncrementalSync(startedAt)
+    if (queued.ok) {
+      console.info(
+        `[netlify/sync-listings] queued worker via ${queued.base} (HTTP ${queued.status})`,
+      )
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: 'queued-worker',
+          startedAt,
+          workerStatus: queued.status,
+          workerBase: queued.base,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    // Hop failed (missing URL, password gate, 404) — same class as 8:30/9:00 misses.
+    console.warn(
+      `[netlify/sync-listings] worker queue failed (${queued.error}) — lean in-process fallback`,
+    )
+    const result = await syncIncrementalListings({ postHooks: false })
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
     const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
+    const queueNote = `worker queue failed: ${queued.error ?? 'unknown'}`
     await recordIncrementalCronTick({
       startedAt: result.startedAt || startedAt,
       ok: okTowns,
       listingsCount: result.totalUpserted,
       skipped: skippedEmpty,
       error: skippedEmpty
-        ? 'no town work (RETS missing, refresh lock, or empty tick)'
+        ? `${queueNote}; lean fallback: no town work`
         : result.towns
             .filter((row) => !row.ok)
             .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
-            .join('; ') || null,
+            .join('; ') || `${queueNote}; lean fallback completed`,
     })
-    if (okTowns && !skippedEmpty) {
-      await clearSyncNextOverrideAfterRun('incremental')
-    }
 
-    // Best-effort spotlight status (bounded); do not block the schedule on digests.
-    try {
-      const { refreshSpotlightStatuses } = await import(
-        '../../lib/spotlight-status-sync'
-      )
-      await refreshSpotlightStatuses()
-    } catch (err) {
-      console.warn('[netlify/sync-listings] spotlight status refresh failed', err)
-    }
-
-    const ok = result.towns.length === 0 || result.towns.every((row) => row.ok)
     return new Response(
       JSON.stringify({
         ...result,
-        ok,
-        mode: 'scheduled-in-process',
-        stats: await getSyncStatus(),
+        ok: okTowns,
+        mode: 'lean-fallback',
+        startedAt,
+        queueError: queued.error ?? null,
+        workerStatus: queued.status,
+        workerBase: queued.base,
       }),
       {
-        status: ok ? 200 : 502,
+        status: okTowns ? 200 : 502,
         headers: { 'content-type': 'application/json' },
       },
     )
@@ -132,20 +149,10 @@ export default async function handler() {
     } catch {
       /* ignore */
     }
-    // Last resort: full worker path (same process) if lean path threw early.
-    try {
-      const fallback = await runIncrementalSyncListingsWork(startedAt)
-      return new Response(JSON.stringify({ mode: 'fallback-work', ...fallback.body }), {
-        status: fallback.status,
-        headers: { 'content-type': 'application/json' },
-      })
-    } catch {
-      /* ignore */
-    }
     return new Response(
       JSON.stringify({
         error: err instanceof Error ? err.message : String(err),
-        mode: 'scheduled-in-process',
+        mode: 'scheduled-queue',
       }),
       { status: 500, headers: { 'content-type': 'application/json' } },
     )

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import type { BoardPreviewListing, BoardPreviewStatus } from "@/components/intelligence/board-preview/types";
+import { formatExactCompactPrice } from "@/lib/format-exact-compact-price";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 
 export function boardPhotoUrl(listing: BoardPreviewListing): string | null {
@@ -13,7 +14,7 @@ export function boardPhotoUrl(listing: BoardPreviewListing): string | null {
 }
 
 export function formatPrice(n: number): string {
-  return `$${n.toLocaleString()}`;
+  return formatExactCompactPrice(n);
 }
 
 export function bedBathLabel(beds: number | null, baths: number | null): string {

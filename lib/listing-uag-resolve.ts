@@ -23,6 +23,7 @@ import {
 } from '@/lib/pricing-matching-config'
 import type { PricingMatchingConfig } from '@/lib/pricing-matching-config-shared'
 import { isRetsConfigured, searchListings, type Listing } from '@/lib/rets'
+import { readTownZipsForSubjectZip } from '@/lib/town-zips-cache'
 import { normalizeZip } from '@/lib/tmre-towns'
 
 // ---------------------------------------------------------------------------
@@ -137,11 +138,29 @@ async function resolveWideUagPool(
   match: PricingMatchingConfig,
 ): Promise<UagPayload> {
   const zip = normalizeZip(subject.address.postalCode)
-  const pool = zip ? await fetchUnderContractPoolForZip(zip) : []
+  // Zip list from Postgres town-zips cache; UC rows still come from RETS per zip.
+  const { zips } = zip
+    ? await readTownZipsForSubjectZip(zip)
+    : { zips: [] as string[] }
+  const zipList = zips.length > 0 ? zips : zip ? [zip] : []
+  const pools = await Promise.all(
+    zipList.map((z) => fetchUnderContractPoolForZip(z)),
+  )
+  const seen = new Set<string>()
+  const pool: Listing[] = []
+  for (const rows of pools) {
+    for (const row of rows) {
+      const id = row.listingKey || row.mlsId
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      pool.push(row)
+    }
+  }
   const wide = widePricingMatchingConfig(match)
   const ranked = findUagRanked(subject, pool, wide, {
     relaxVintage: true,
     relaxFurnished: true,
+    relaxZip: true,
   })
   const result: UagResult = {
     sale: ranked.sale.map((r) => r.listing),

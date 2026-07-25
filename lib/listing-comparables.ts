@@ -25,7 +25,7 @@ import {
   closedSalePrice,
   inStatsClosedPeriod,
 } from '@/lib/stats-listing-rows'
-import { normalizeZip } from '@/lib/tmre-towns'
+import { listingZipMatchesTown, normalizeZip, townForZip } from '@/lib/tmre-towns'
 import {
   classifyYearBuilt,
   VINTAGE_BUCKETS,
@@ -65,8 +65,10 @@ function inTrailingMonths(iso: string | null, months: number): boolean {
 export type ComparablesRankOptions = {
   /** Trailing months for the sold/rented window. */
   soldLookbackMonths?: number
-  /** Max sold/rented comps to keep. */
+  /** Max sold/rented comps to keep. Omit / Infinity = no cap (wide interactive pool). */
   soldLimit?: number
+  /** Max on-market comps to keep. Omit / Infinity = no cap (wide interactive pool). */
+  activeLimit?: number
   /** Admin Pricing match tolerances (beds/baths/lot/sqft/vintage edge). */
   match?: PricingMatchingConfig
   /**
@@ -79,6 +81,18 @@ export type ComparablesRankOptions = {
    * Used for the interactive wide pool only.
    */
   relaxFurnished?: boolean
+  /**
+   * When true, accept any zip in the subject's TMRE town (client filters the
+   * session allowed-zip set). Used for the interactive wide pool only.
+   */
+  relaxZip?: boolean
+}
+
+function applyRankLimit<T>(rows: T[], limit: number | undefined): T[] {
+  if (limit == null || !Number.isFinite(limit) || limit === Number.POSITIVE_INFINITY) {
+    return rows
+  }
+  return rows.slice(0, Math.max(0, Math.floor(limit)))
 }
 
 export type {
@@ -277,12 +291,24 @@ function matchesComparableCriteria(
   subject: Listing,
   criteria: ComparablesCriteria,
   match: PricingMatchingConfig,
-  options?: Pick<ComparablesRankOptions, 'relaxVintage' | 'relaxFurnished'>,
+  options?: Pick<
+    ComparablesRankOptions,
+    'relaxVintage' | 'relaxFurnished' | 'relaxZip'
+  >,
 ): boolean {
   if (isSameListing(comp, subject)) return false
 
   const compZip = normalizeZip(comp.address.postalCode)
-  if (compZip !== criteria.zip) return false
+  if (options?.relaxZip) {
+    const town = townForZip(criteria.zip)
+    if (town) {
+      if (!listingZipMatchesTown(compZip, town)) return false
+    } else if (compZip !== criteria.zip) {
+      return false
+    }
+  } else if (compZip !== criteria.zip) {
+    return false
+  }
   if (!bedsWithinTolerance(criteria.beds, comp.beds, match)) return false
   if (!bathsWithinTolerance(criteria.baths, comp.baths, match)) return false
 
@@ -382,7 +408,7 @@ function rankSoldComps(
         : inStatsClosedPeriod
   const limit = options?.soldLimit ?? COMPARABLES_MATCH_LIMIT
 
-  return matches
+  const ranked = matches
     .filter((l) => isClosedListing(l))
     .map((l) => ({
       listing: l,
@@ -401,22 +427,24 @@ function rankSoldComps(
       const priceB = closedSalePrice(b.listing)
       return priceDistance(refPrice, priceA) - priceDistance(refPrice, priceB)
     })
-    .slice(0, limit)
-    .map(({ listing, fitDistance }, index) => ({
-      listing: buildComparableListing(listing),
-      fitDistance,
-      rank: index + 1,
-    }))
+
+  return applyRankLimit(ranked, limit).map(({ listing, fitDistance }, index) => ({
+    listing: buildComparableListing(listing),
+    fitDistance,
+    rank: index + 1,
+  }))
 }
 
 function rankActiveComps(
   matches: Listing[],
   subject: Listing,
   criteria: ComparablesCriteria,
+  options?: ComparablesRankOptions,
 ): RankedComparable[] {
   const refPrice = subjectReferencePrice(subject)
+  const limit = options?.activeLimit ?? COMPARABLES_MATCH_LIMIT
 
-  return matches
+  const ranked = matches
     .filter((l) => isMarketListing(l))
     .map((l) => ({
       listing: l,
@@ -433,12 +461,12 @@ function rankActiveComps(
       const domB = b.listing.dom ?? Number.POSITIVE_INFINITY
       return domA - domB
     })
-    .slice(0, COMPARABLES_MATCH_LIMIT)
-    .map(({ listing, fitDistance }, index) => ({
-      listing: buildComparableListing(listing),
-      fitDistance,
-      rank: index + 1,
-    }))
+
+  return applyRankLimit(ranked, limit).map(({ listing, fitDistance }, index) => ({
+    listing: buildComparableListing(listing),
+    fitDistance,
+    rank: index + 1,
+  }))
 }
 
 export type RankedComparablesResult = {
@@ -479,7 +507,7 @@ export function findComparablesRanked(
 
   return {
     sold: rankSoldComps(matches, subject, criteria, mode, options),
-    active: rankActiveComps(matches, subject, criteria),
+    active: rankActiveComps(matches, subject, criteria, options),
     criteria,
     missingCriteria: [],
   }
@@ -580,7 +608,10 @@ export function findUagRanked(
   subject: Listing,
   underContractPool: Listing[],
   match: PricingMatchingConfig = DEFAULT_PRICING_MATCHING_CONFIG,
-  options?: Pick<ComparablesRankOptions, 'relaxVintage' | 'relaxFurnished'>,
+  options?: Pick<
+    ComparablesRankOptions,
+    'relaxVintage' | 'relaxFurnished' | 'relaxZip'
+  >,
 ): RankedUagResult {
   const { criteria, missingCriteria } = subjectComparablesCriteria(
     subject,

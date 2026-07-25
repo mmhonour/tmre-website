@@ -9,7 +9,12 @@ import type {
   SnapshotMetric,
   SnapshotValueSignal,
 } from '@/lib/intelligence-town-snapshot-types'
-import { computeSalesByMonth, statsCacheKey, type SalesByMonthPayload } from '@/lib/stats-compute'
+import {
+  computeSalesByMonth,
+  computeWentToContractThisWeekCounts,
+  statsCacheKey,
+  type SalesByMonthPayload,
+} from '@/lib/stats-compute'
 import { readMonthsSupplyCached } from '@/lib/months-supply-cache'
 import type { Listing } from '@/lib/rets'
 import { formatTownZipPlace, isTmreTown, TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
@@ -229,6 +234,7 @@ function buildTownSnapshot(
   monthlySales: Record<string, number>,
   benchmarks: SnapshotBenchmarks,
   closedThisWeekCount: number,
+  wentToContractThisWeekCount = 0,
 ): IntelligenceTownSnapshot {
   const prices = townListings.map((l) => l.price).filter((p): p is number => p > 0)
   const doms = townListings.map((l) => l.dom).filter((d): d is number => d != null && d >= 0)
@@ -290,6 +296,12 @@ function buildTownSnapshot(
       trend: closedThisWeekCount > 0 ? 'Past 7 days' : 'None this week',
       tone: closedThisWeekCount > 0 ? 'up' : 'flat',
       action: closedThisWeekCount > 0 ? 'closed' : undefined,
+    },
+    {
+      label: 'To contract this week',
+      value: String(wentToContractThisWeekCount),
+      trend: wentToContractThisWeekCount > 0 ? 'Past 7 days' : 'None this week',
+      tone: wentToContractThisWeekCount > 0 ? 'up' : 'flat',
     },
     {
       label: 'Median price',
@@ -362,6 +374,7 @@ function buildTownSnapshot(
       newThisWeek: newListings,
       reduced,
       closedThisWeek: closedThisWeekCount,
+      wentToContractThisWeek: wentToContractThisWeekCount,
       medianSqft: medSqft,
     },
   }
@@ -410,10 +423,12 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
   const allRows: IntelligenceDisplayListing[] = []
   const monthlySales: Record<string, number> = {}
   const closedThisWeekByTown: Record<string, number> = {}
+  const wentToContractThisWeekByTown: Record<string, number> = {}
 
   for (const town of TMRE_TOWNS) {
+    const activeDb = await readListingsFromDb(town, 'Active', 500)
     const rows = filterIntelligenceListings(
-      (await readListingsFromDb(town, 'Active', 500))
+      activeDb
         .map((listing) => listingToDisplayRow(listing, town))
         .filter((row): row is IntelligenceDisplayListing => row != null),
     )
@@ -431,6 +446,7 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
         if (avg != null) monthlySales[town] = avg
       }
       closedThisWeekByTown[town] = fromStats.closedThisWeek ?? 0
+      wentToContractThisWeekByTown[town] = fromStats.wentToContractThisWeek ?? 0
       continue
     }
 
@@ -442,8 +458,11 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
         if (avg != null) monthlySales[town] = avg
       }
       closedThisWeekByTown[town] = salesPayload.closedThisWeek
+      wentToContractThisWeekByTown[town] =
+        computeWentToContractThisWeekCounts(activeDb, 'sale').wentToContractThisWeek
     } catch {
       closedThisWeekByTown[town] = 0
+      wentToContractThisWeekByTown[town] = 0
     }
   }
 
@@ -460,6 +479,7 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
       monthlySales,
       benchmarks,
       closedThisWeekByTown[town] ?? 0,
+      wentToContractThisWeekByTown[town] ?? 0,
     )
     await writeStatsCacheRow(townSnapshotCacheKey(town), {
       snapshot,
@@ -539,10 +559,18 @@ export async function computeIntelligenceTownSnapshotLive(
   const allRows: IntelligenceDisplayListing[] = []
   const monthlySales: Record<string, number> = {}
   let closedThisWeekCount = 0
+  let wentToContractThisWeekCount = 0
 
   await Promise.all(
     TMRE_TOWNS.map(async (town) => {
-      const rows = filterIntelligenceListings(await loadTownDisplayListings(town))
+      const activeDb = await readListingsFromDb(town, 'Active', 500)
+      const rows = filterIntelligenceListings(
+        activeDb.length > 0
+          ? activeDb
+              .map((listing) => listingToDisplayRow(listing, town))
+              .filter((row): row is IntelligenceDisplayListing => row != null)
+          : await loadTownDisplayListings(town),
+      )
       allRows.push(...rows)
 
       try {
@@ -550,7 +578,10 @@ export async function computeIntelligenceTownSnapshotLive(
         if (fromStats) {
           const avg = avgMonthlySalesFromPayload(fromStats.data)
           if (avg != null) monthlySales[town] = avg
-          if (town === townInput) closedThisWeekCount = fromStats.closedThisWeek ?? 0
+          if (town === townInput) {
+            closedThisWeekCount = fromStats.closedThisWeek ?? 0
+            wentToContractThisWeekCount = fromStats.wentToContractThisWeek ?? 0
+          }
           return
         }
 
@@ -562,7 +593,12 @@ export async function computeIntelligenceTownSnapshotLive(
         const salesPayload = computeSalesByMonth(closed, town, 'sale')
         const avg = avgMonthlySalesFromPayload(salesPayload.data)
         if (avg != null) monthlySales[town] = avg
-        if (town === townInput) closedThisWeekCount = salesPayload.closedThisWeek
+        if (town === townInput) {
+          closedThisWeekCount = salesPayload.closedThisWeek
+          wentToContractThisWeekCount =
+            computeWentToContractThisWeekCounts(activeDb, 'sale')
+              .wentToContractThisWeek
+        }
       } catch {
         // keep defaults
       }
@@ -580,5 +616,6 @@ export async function computeIntelligenceTownSnapshotLive(
     monthlySales,
     benchmarks,
     closedThisWeekCount,
+    wentToContractThisWeekCount,
   )
 }

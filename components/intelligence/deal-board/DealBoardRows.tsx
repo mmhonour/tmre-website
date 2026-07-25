@@ -18,6 +18,7 @@ import {
 } from "@/components/intelligence/deal-board/deal-board-shared";
 import type { DealBoardRowProps } from "@/components/intelligence/deal-board/deal-board-types";
 import { dealBoardRowDomId } from "@/lib/deal-board-focus";
+import { formatExactCompactPrice } from "@/lib/format-exact-compact-price";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 
 function dealBoardRowAnchorProps(mlsId: string) {
@@ -34,6 +35,10 @@ function dealBoardPriceMeta(l: DealBoardRowProps["listing"]) {
       : null;
   const domType = dealBoardDomWithType(l.dom, l.type);
   return { ppsf, domType };
+}
+
+function dealBoardPriceLabel(price: number): string {
+  return formatExactCompactPrice(price);
 }
 
 export function DealBoardPhotoLedRow({
@@ -92,7 +97,7 @@ export function DealBoardPhotoLedRow({
         <p className="font-mono text-[11px] text-slate tabular-nums truncate">
           {bedBathLabel(l.beds, l.baths)}
           {" · "}
-          <span className="text-navy">${l.price.toLocaleString()}</span>
+          <span className="text-navy">{dealBoardPriceLabel(l.price)}</span>
           {ppsf ? ` · ${ppsf}` : null}
           {domType ? ` · ${domType}` : null}
         </p>
@@ -193,7 +198,7 @@ export function DealBoardPhotoLedLineRow({
           parts={[
             l.beds != null ? `${l.beds}bd` : "—bd",
             l.baths != null ? `${l.baths}ba` : "—ba",
-            `$${l.price.toLocaleString()}`,
+            dealBoardPriceLabel(l.price),
             dealBoardSqftLabel(l.sqft),
             ppsf,
             l.dom != null ? `${l.dom}d DOM` : null,
@@ -306,7 +311,7 @@ export function DealBoardPhotoLedGridCard({
         <p className="font-mono text-[10px] text-slate tabular-nums">
           {bedBathLabel(l.beds, l.baths)}
           {" · "}
-          <span className="text-navy">${l.price.toLocaleString()}</span>
+          <span className="text-navy">{dealBoardPriceLabel(l.price)}</span>
           {sqftLabel ? (
             <>
               {" · "}
@@ -413,7 +418,7 @@ export function DealBoardPhotoLedLargeCard({
         <p className="font-mono text-[10px] text-slate tabular-nums">
           {bedBathLabel(l.beds, l.baths)}
           {" · "}
-          <span className="text-navy">${l.price.toLocaleString()}</span>
+          <span className="text-navy">{dealBoardPriceLabel(l.price)}</span>
         </p>
         <DealBoardAdaptiveMetaLine
           parts={[ppsf, domType]}

@@ -713,6 +713,16 @@ function closedThisWeekForTown(
   return closedByTown[town] ?? 0;
 }
 
+function wentToContractThisWeekForTown(
+  town: string,
+  zip: string | null | undefined,
+  byTown: Record<string, number>,
+  byTownZip: Record<string, Record<string, number>>,
+): number {
+  if (zip) return byTownZip[town]?.[zip] ?? 0;
+  return byTown[town] ?? 0;
+}
+
 function salesByMonthKinds(tx: TxFilter): ("sale" | "rental")[] {
   if (tx === "rental") return ["rental"];
   if (tx === "sale") return ["sale"];
@@ -854,6 +864,7 @@ function buildTownSnapshot(
   benchmarks: SnapshotBenchmarks = { medianPrice: null, avgPpsf: null, medianSqft: null },
   closedThisWeekCount = 0,
   tx: TxFilter = "sale",
+  wentToContractThisWeekCount = 0,
 ): TownSnapshot {
   const prices = townListings.map((l) => l.price).filter((p): p is number => p > 0);
   const doms = townListings.map((l) => l.dom).filter((d): d is number => d != null && d >= 0);
@@ -914,6 +925,12 @@ function buildTownSnapshot(
       trend: closedThisWeekCount > 0 ? "Past 7 days" : "None this week",
       tone: closedThisWeekCount > 0 ? "up" : "flat",
       action: closedThisWeekCount > 0 ? "closed" : undefined,
+    },
+    {
+      label: "To contract this week",
+      value: String(wentToContractThisWeekCount),
+      trend: wentToContractThisWeekCount > 0 ? "Past 7 days" : "None this week",
+      tone: wentToContractThisWeekCount > 0 ? "up" : "flat",
     },
     {
       label: "Median price",
@@ -978,6 +995,7 @@ function buildTownSnapshot(
       newThisWeek: newListings,
       reduced,
       closedThisWeek: closedThisWeekCount,
+      wentToContractThisWeek: wentToContractThisWeekCount,
       medianSqft: medSqft,
     },
   };
@@ -1338,16 +1356,24 @@ function applyDealBoardSalesMeta(
     monthlySales: Record<string, number>;
     closedThisWeekByTown: Record<string, number>;
     closedThisWeekByTownZip: Record<string, Record<string, number>>;
+    wentToContractThisWeekByTown: Record<string, number>;
+    wentToContractThisWeekByTownZip: Record<string, Record<string, number>>;
   },
   setters: {
     setMonthlySales: (v: Record<string, number>) => void;
     setClosedThisWeekByTown: (v: Record<string, number>) => void;
     setClosedThisWeekByTownZip: (v: Record<string, Record<string, number>>) => void;
+    setWentToContractThisWeekByTown: (v: Record<string, number>) => void;
+    setWentToContractThisWeekByTownZip: (
+      v: Record<string, Record<string, number>>,
+    ) => void;
   },
 ) {
   setters.setMonthlySales(board.monthlySales);
   setters.setClosedThisWeekByTown(board.closedThisWeekByTown);
   setters.setClosedThisWeekByTownZip(board.closedThisWeekByTownZip);
+  setters.setWentToContractThisWeekByTown(board.wentToContractThisWeekByTown);
+  setters.setWentToContractThisWeekByTownZip(board.wentToContractThisWeekByTownZip);
 }
 
 type MonthsSupplyCacheEntry = {
@@ -1411,6 +1437,10 @@ type DealBoardApiTownMeta = {
   closedThisWeekRental?: number;
   closedThisWeekByZipSale?: Record<string, number>;
   closedThisWeekByZipRental?: Record<string, number>;
+  wentToContractThisWeekSale?: number;
+  wentToContractThisWeekRental?: number;
+  wentToContractThisWeekByZipSale?: Record<string, number>;
+  wentToContractThisWeekByZipRental?: Record<string, number>;
 };
 
 type DealBoardApiListing = {
@@ -1483,6 +1513,8 @@ async function fetchIntelligenceDealBoard(
   monthlySales: Record<string, number>;
   closedThisWeekByTown: Record<string, number>;
   closedThisWeekByTownZip: Record<string, Record<string, number>>;
+  wentToContractThisWeekByTown: Record<string, number>;
+  wentToContractThisWeekByTownZip: Record<string, Record<string, number>>;
 } | null> {
   const res = await fetch("/api/intelligence/deal-board", { cache: "no-store" });
   if (!res.ok) return null;
@@ -1500,6 +1532,11 @@ async function fetchIntelligenceDealBoard(
   const monthlySales: Record<string, number> = {};
   const closedThisWeekByTown: Record<string, number> = {};
   const closedThisWeekByTownZip: Record<string, Record<string, number>> = {};
+  const wentToContractThisWeekByTown: Record<string, number> = {};
+  const wentToContractThisWeekByTownZip: Record<
+    string,
+    Record<string, number>
+  > = {};
   for (const town of TMRE_TOWNS) {
     const meta = body.meta?.[town];
     monthlySales[town] = rental
@@ -1511,9 +1548,22 @@ async function fetchIntelligenceDealBoard(
     closedThisWeekByTownZip[town] = rental
       ? (meta?.closedThisWeekByZipRental ?? {})
       : (meta?.closedThisWeekByZipSale ?? {});
+    wentToContractThisWeekByTown[town] = rental
+      ? (meta?.wentToContractThisWeekRental ?? 0)
+      : (meta?.wentToContractThisWeekSale ?? 0);
+    wentToContractThisWeekByTownZip[town] = rental
+      ? (meta?.wentToContractThisWeekByZipRental ?? {})
+      : (meta?.wentToContractThisWeekByZipSale ?? {});
   }
 
-  return { byCity, monthlySales, closedThisWeekByTown, closedThisWeekByTownZip };
+  return {
+    byCity,
+    monthlySales,
+    closedThisWeekByTown,
+    closedThisWeekByTownZip,
+    wentToContractThisWeekByTown,
+    wentToContractThisWeekByTownZip,
+  };
 }
 
 type LoadState = "loading" | "ready" | "fallback";
@@ -1783,6 +1833,11 @@ export default function IntelligenceClient() {
   const [closedThisWeekByTownZip, setClosedThisWeekByTownZip] = useState<
     Record<string, Record<string, number>>
   >({});
+  const [wentToContractThisWeekByTown, setWentToContractThisWeekByTown] = useState<
+    Record<string, number>
+  >({});
+  const [wentToContractThisWeekByTownZip, setWentToContractThisWeekByTownZip] =
+    useState<Record<string, Record<string, number>>>({});
   const [monthlySalesLoaded, setMonthlySalesLoaded] = useState(false);
   /** Precomputed months-supply index (town × sale|rental × property class). */
   const [monthsSupplyEntries, setMonthsSupplyEntries] = useState<
@@ -1882,6 +1937,8 @@ export default function IntelligenceClient() {
                       setMonthlySales,
                       setClosedThisWeekByTown,
                       setClosedThisWeekByTownZip,
+                      setWentToContractThisWeekByTown,
+                      setWentToContractThisWeekByTownZip,
                     },
                   );
                   setMonthlySalesLoaded(true);
@@ -2019,6 +2076,8 @@ export default function IntelligenceClient() {
             setMonthlySales,
             setClosedThisWeekByTown,
             setClosedThisWeekByTownZip,
+            setWentToContractThisWeekByTown,
+            setWentToContractThisWeekByTownZip,
           },
         );
         setMonthlySalesLoaded(true);
@@ -2064,10 +2123,14 @@ export default function IntelligenceClient() {
       const sales: Record<string, number> = {};
       const closed: Record<string, number> = {};
       const closedByZip: Record<string, Record<string, number>> = {};
+      const toContract: Record<string, number> = {};
+      const toContractByZip: Record<string, Record<string, number>> = {};
       for (const city of TMRE_TOWNS) {
         sales[city] = 0;
         closed[city] = 0;
         closedByZip[city] = {};
+        toContract[city] = 0;
+        toContractByZip[city] = {};
       }
       for (const { city, d } of salesResults) {
         if (!d?.data) continue;
@@ -2098,6 +2161,20 @@ export default function IntelligenceClient() {
             closedByZip[city][zipCode] = (closedByZip[city][zipCode] ?? 0) + count;
           }
         }
+        if (typeof d.wentToContractThisWeek === "number") {
+          toContract[city] = (toContract[city] ?? 0) + d.wentToContractThisWeek;
+        }
+        if (
+          d.wentToContractThisWeekByZip &&
+          typeof d.wentToContractThisWeekByZip === "object"
+        ) {
+          for (const [zipCode, count] of Object.entries(
+            d.wentToContractThisWeekByZip as Record<string, number>,
+          )) {
+            toContractByZip[city][zipCode] =
+              (toContractByZip[city][zipCode] ?? 0) + count;
+          }
+        }
       }
 
       bumpIntelligenceSnapshotGeneration();
@@ -2112,6 +2189,8 @@ export default function IntelligenceClient() {
       setMonthlySales(fromCache ?? sales);
       setClosedThisWeekByTown(closed);
       setClosedThisWeekByTownZip(closedByZip);
+      setWentToContractThisWeekByTown(toContract);
+      setWentToContractThisWeekByTownZip(toContractByZip);
       setMonthlySalesLoaded(true);
       setState(anyLive ? "ready" : "fallback");
     })();
@@ -2854,6 +2933,15 @@ export default function IntelligenceClient() {
     pulseAllSliderDescriptors();
   }
 
+  /** Open the filter chrome/sliders that the descriptor line summarizes. */
+  function handleEditFilters() {
+    setFilterChromeCollapsed(false);
+    setFilterChromePeek(null);
+    setFiltersExpanded(true);
+    setCollapsedSlidersOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function hideCollapsedSliders() {
     setCollapsedSlidersOpen(false);
     setPriceSliderActive(false, { immediate: true });
@@ -3019,6 +3107,12 @@ export default function IntelligenceClient() {
                 closedThisWeekByTownZip,
               ),
               tx,
+              wentToContractThisWeekForTown(
+                city,
+                zip,
+                wentToContractThisWeekByTown,
+                wentToContractThisWeekByTownZip,
+              ),
             ),
         ),
       );
@@ -3042,6 +3136,12 @@ export default function IntelligenceClient() {
               closedThisWeekByTownZip,
             ),
             tx,
+            wentToContractThisWeekForTown(
+              active,
+              zip,
+              wentToContractThisWeekByTown,
+              wentToContractThisWeekByTownZip,
+            ),
           ),
       ),
     ];
@@ -3051,6 +3151,8 @@ export default function IntelligenceClient() {
     monthlySales,
     closedThisWeekByTown,
     closedThisWeekByTownZip,
+    wentToContractThisWeekByTown,
+    wentToContractThisWeekByTownZip,
     orderedCities,
     byCity,
     tx,
@@ -3243,6 +3345,7 @@ export default function IntelligenceClient() {
       furnishedFilter={furnishedFilter}
       furnishedSliderActive={furnishedSliderActive}
       onDescriptorClick={handleDescriptorSliderClick}
+      onEditFilters={handleEditFilters}
       boardPriceSteps={boardPriceSteps}
       minPriceIndex={minPriceIndex}
       maxPriceIndex={maxPriceIndex}
@@ -4636,23 +4739,40 @@ function DescriptorSearchIcon({ className }: { className?: string }) {
 function DescriptorSearchControl({
   active,
   onClick,
+  onEdit,
 }: {
   active: boolean;
   onClick: () => void;
+  onEdit?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Open filter sliders"
-      className={`inline-flex shrink-0 self-center text-gold drop-shadow-sm transition-all duration-300 ease-out ${
-        active
-          ? "ml-5 sm:ml-6 opacity-100 scale-110"
-          : "ml-3 sm:ml-4 opacity-95 scale-100"
-      } cursor-pointer hover:text-gold-light`}
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 self-center transition-[margin] duration-300 ease-out ${
+        active ? "ml-5 sm:ml-6" : "ml-3 sm:ml-4"
+      }`}
     >
-      <DescriptorSearchIcon className={active ? "h-5 w-5" : "h-4 w-4"} />
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Open filter sliders"
+        className={`inline-flex text-gold drop-shadow-sm transition-all duration-300 ease-out ${
+          active ? "opacity-100 scale-110" : "opacity-95 scale-100"
+        } cursor-pointer hover:text-gold-light`}
+      >
+        <DescriptorSearchIcon className={active ? "h-5 w-5" : "h-4 w-4"} />
+      </button>
+      {onEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label="Edit filters — scroll to top and show filter controls"
+          title="Edit filters"
+          className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold/85 hover:text-gold-light underline-offset-2 hover:underline transition-colors"
+        >
+          Edit
+        </button>
+      ) : null}
+    </span>
   );
 }
 
@@ -4695,6 +4815,8 @@ type IntelSliderDescriptorLabelsProps = {
   furnishedFilter?: FurnishedFilter;
   furnishedSliderActive?: boolean;
   onDescriptorClick: (kind: IntelSliderKind) => void;
+  /** Scroll to top and reveal town/tx/slider filter controls. */
+  onEditFilters?: () => void;
   boardPriceSteps: readonly number[];
   minPriceIndex: number;
   maxPriceIndex: number;
@@ -4722,6 +4844,7 @@ function IntelSliderDescriptorLabels({
   furnishedFilter = "all",
   furnishedSliderActive = false,
   onDescriptorClick,
+  onEditFilters,
   boardPriceSteps,
   minPriceIndex,
   maxPriceIndex,
@@ -4818,8 +4941,12 @@ function IntelSliderDescriptorLabels({
           />
         </>
       ) : null}
-      {/* Trailing search — extra margin clears blown-up descriptor scale. */}
-      <DescriptorSearchControl active={searchActive} onClick={openViaSearch} />
+      {/* Trailing search + Edit — extra margin clears blown-up descriptor scale. */}
+      <DescriptorSearchControl
+        active={searchActive}
+        onClick={openViaSearch}
+        onEdit={onEditFilters}
+      />
     </>
   );
 }

@@ -11,18 +11,24 @@ import {
   bumpBedTolerance,
   bumpPercentTolerance,
   canExpandVintage,
+  canExpandZips,
   canShrinkVintage,
+  canShrinkZips,
+  expandAllowedZips,
   expandVintageLabels,
   SESSION_BATH_TOLERANCE_MAX,
   SESSION_BED_TOLERANCE_MAX,
   sessionMatchOverridesEqual,
+  shrinkAllowedZips,
   shrinkVintageLabels,
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
 import { formatFurnishedCriteriaLabel } from "@/lib/listing-furnished";
+import { townForZip, zipAreaNickname } from "@/lib/tmre-towns";
 import { VINTAGE_BUCKETS } from "@/lib/vintage-buckets";
 
 export type CriteriaStepKey =
+  | "zip"
   | "bed"
   | "bath"
   | "vintage"
@@ -78,7 +84,7 @@ export type MatchCriteriaTolerances = {
 
 type CriteriaBound = {
   key: CriteriaStepKey;
-  /** Left column label: Beds, Baths, Vintage, SQFT, Furnish. */
+  /** Left column label: ZIP, Beds, Baths, Vintage, SQFT, Furnish. */
   rowLabel: string;
   /** Subject value shown after the label (`n` / `n.n`). */
   value: string;
@@ -93,14 +99,30 @@ type CriteriaBound = {
 function criteriaBounds(
   criteria: ComparablesCriteria,
   session: SessionMatchOverrides,
+  townZips: readonly string[],
 ): CriteriaBound[] {
   const bedTol = session.bedTolerance;
   const bathTol = session.bathTolerance;
   const sqftPct = session.sqftTolerancePct;
   const sqftFrac = sqftPct / 100;
   const vintageLabels = session.allowedVintageLabels;
+  const allowedZips =
+    session.allowedZips?.length > 0 ? session.allowedZips : [criteria.zip];
+  const town = townForZip(criteria.zip);
+  const nick = zipAreaNickname(criteria.zip);
 
   const bounds: CriteriaBound[] = [
+    {
+      key: "zip",
+      rowLabel: "ZIP",
+      value: criteria.zip,
+      token: allowedZips.join(", "),
+      expanded: town
+        ? `Zips in ${town}${nick ? ` · ${nick}` : ""}`
+        : `Zips: ${allowedZips.join(", ")}`,
+      canDecrement: canShrinkZips(allowedZips, criteria.zip),
+      canIncrement: canExpandZips(allowedZips, criteria.zip, townZips),
+    },
     {
       key: "bed",
       rowLabel: "Beds",
@@ -212,11 +234,11 @@ const AUTO_REVEAL_MS = 10_000;
 /**
  * Criteria panel rows for Sales, Rentals, What if, and UAG.
  *
+ *   ZIP      n [z1, z2, …]    (−)(+)  — same-town zips only (Postgres cache)
  *   Beds     n [±n]           (−)(+)
  *   Baths    n [±n]           (−)(+)
  *   Vintage  n [v1, v2, …]    (−)(+)
  *   SQFT     n [±n%]          (−)(+)
- *   Acres    n.n [±n%]        (−)(+)
  *   Furnish  Furnished [exact](−)(+)  — only when subject is furnished
  *
  * Click the bracket to toggle the encapsulated range. When manipulation is
@@ -256,6 +278,7 @@ export default function MatchingCriteriaSummary({
   );
   const autoRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [controlsOpen, setControlsOpen] = useState(defaultControlsOpen);
+  const [townZips, setTownZips] = useState<string[]>([criteria.zip]);
 
   useEffect(() => {
     return () => {
@@ -264,6 +287,36 @@ export default function MatchingCriteriaSummary({
       }
     };
   }, []);
+
+  // Same-town zips from Postgres stats_cache (never RETS).
+  useEffect(() => {
+    let cancelled = false;
+    const zip = criteria.zip?.trim();
+    if (!zip) {
+      setTownZips([]);
+      return;
+    }
+    void fetch(`/api/town-zips?zip=${encodeURIComponent(zip)}`, {
+      cache: "force-cache",
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as { zips?: string[] };
+      })
+      .then((body) => {
+        if (cancelled) return;
+        const zips = Array.isArray(body.zips)
+          ? body.zips.filter((z): z is string => typeof z === "string")
+          : [];
+        setTownZips(zips.length > 0 ? zips : [zip]);
+      })
+      .catch(() => {
+        if (!cancelled) setTownZips([zip]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [criteria.zip]);
 
   const toggle = (key: CriteriaStepKey) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -297,6 +350,7 @@ export default function MatchingCriteriaSummary({
     allowedVintageLabels: vintageCriteriaList(criteria)
       .split(" | ")
       .filter(Boolean),
+    allowedZips: [criteria.zip],
     ...(criteria.furnished ? { furnishedScope: "exact" as const } : {}),
   };
 
@@ -308,12 +362,25 @@ export default function MatchingCriteriaSummary({
       baseline &&
       !sessionMatchOverridesEqual(session, baseline),
   );
-  const bounds = criteriaBounds(criteria, effectiveSession);
+  const bounds = criteriaBounds(criteria, effectiveSession, townZips);
 
   const bump = (key: CriteriaBound["key"], delta: 1 | -1) => {
     if (!onSessionChange) return;
     const next = { ...effectiveSession };
     switch (key) {
+      case "zip":
+        next.allowedZips =
+          delta > 0
+            ? expandAllowedZips(
+                next.allowedZips ?? [criteria.zip],
+                criteria.zip,
+                townZips,
+              )
+            : shrinkAllowedZips(
+                next.allowedZips ?? [criteria.zip],
+                criteria.zip,
+              );
+        break;
       case "bed":
         next.bedTolerance = bumpBedTolerance(next.bedTolerance, delta);
         break;
@@ -376,10 +443,6 @@ export default function MatchingCriteriaSummary({
           ) : null}
         </div>
       ) : null}
-
-      <div className={`font-mono text-[10px] tracking-[0.12em] ${valueClass}`}>
-        {criteria.zip}
-      </div>
 
       {bounds.map((bound) => {
         const isOpen =

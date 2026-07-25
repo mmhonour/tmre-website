@@ -8,6 +8,7 @@ import {
   snapshotListingsTitle,
   type SnapshotListingsStatus,
 } from "@/lib/intelligence-url";
+import { formatExactCompactPrice } from "@/lib/format-exact-compact-price";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { fmtDate } from "@/lib/listing-history";
 import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
@@ -254,8 +255,7 @@ function filterListings(
 }
 
 function fmtMoney(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  return `$${n.toLocaleString()}`;
+  return formatExactCompactPrice(n);
 }
 
 export default function IntelligenceListingsClient() {
