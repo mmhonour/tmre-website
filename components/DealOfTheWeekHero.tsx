@@ -510,14 +510,16 @@ export default function DealOfTheWeekHero({
       "homes",
       DEAL_PROPERTY_CLASS_VALUES,
     );
+  // Seed persisted pills from URL once — do NOT lock on ?kind= / ?property=
+  // (locking made Homes / Multi / Condos pills appear non-op after deep links).
   useEffect(() => {
     if (isDay && pinnedKind) setTxFilter(pinnedKind);
   }, [isDay, pinnedKind, setTxFilter]);
   useEffect(() => {
     if (isDay && pinnedProperty) setPropertyClass(pinnedProperty);
   }, [isDay, pinnedProperty, setPropertyClass]);
-  const dayTxFilter = pinnedKind ?? txFilter;
-  const dayPropertyClass = pinnedProperty ?? propertyClass;
+  const dayTxFilter = txFilter;
+  const dayPropertyClass = propertyClass;
   const carousel = useDealOfTheDayCarousel({
     initialTown: city,
     rotate: isDay && !city && !listingParam,
@@ -565,6 +567,8 @@ export default function DealOfTheWeekHero({
   const dayShowing =
     isDay && carousel.currentDeal ? mapDayDealToApi(carousel.currentDeal) : null;
   const dayEmpty = isDay && !carousel.loading && !dayShowing;
+  // Day mode: never fall back to the hardcoded sample listing — that made
+  // Homes/Multi/Condos pills look broken while the matching cache slice loaded.
   const showing = isDay ? dayShowing : (data ?? FALLBACK);
   const loadingState = isDay ? carousel.loading : loading;
   const slideDir = carousel.slideDir;
@@ -576,14 +580,16 @@ export default function DealOfTheWeekHero({
     isDay && slideDir
       ? slideKey
       : isDay
-        ? "day-instant"
+        ? `day-${dayTxFilter}-${dayPropertyClass}`
         : "week";
   const animateDealContent = Boolean(isDay && slideDir);
   const dayInsight = dayEmpty
     ? dayTxFilter === "rental"
       ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental picks${city ? ` in ${city}` : " available"} right now.`
       : `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} for-sale picks${city ? ` in ${city}` : " available"} right now.`
-    : showing?.insight ?? "Scanning listings…";
+    : loadingState && isDay
+      ? `Loading ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} picks…`
+      : showing?.insight ?? "Scanning listings…";
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -591,18 +597,20 @@ export default function DealOfTheWeekHero({
   });
   const dayHeaderTown = city?.trim() || carousel.currentTown;
   const dayHeaderSubtitle = formatDealOfTheDayHeaderSubtitle(new Date(), dayHeaderTown);
-  const l = showing?.listing ?? FALLBACK.listing;
-  const typeLine = [
-    shortType(l.propertyType || "Home"),
-    l.beds && l.baths ? `${l.beds}BR/${l.baths}BA` : null,
-    l.sqft ? `${l.sqft.toLocaleString()} sqft` : null,
-    fmtLotAcres(showing?.lotAcres),
-    l.yearBuilt ? `Built ${l.yearBuilt}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const l = showing?.listing ?? null;
+  const typeLine = l
+    ? [
+        shortType(l.propertyType || "Home"),
+        l.beds && l.baths ? `${l.beds}BR/${l.baths}BA` : null,
+        l.sqft ? `${l.sqft.toLocaleString()} sqft` : null,
+        fmtLotAcres(showing?.lotAcres),
+        l.yearBuilt ? `Built ${l.yearBuilt}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   const reductionPct =
-    l.price && l.originalListPrice && l.originalListPrice > l.price
+    l?.price && l.originalListPrice && l.originalListPrice > l.price
       ? Math.round(((l.originalListPrice - l.price) / l.originalListPrice) * 100)
       : null;
   const ppsfDiscount =
@@ -614,7 +622,7 @@ export default function DealOfTheWeekHero({
         )
       : null;
   const detailHref =
-    l.mlsId && l.mlsId !== "—"
+    l?.mlsId && l.mlsId !== "—"
       ? listingDetailHref(
           l.mlsId,
           l.address.street || l.address.full,
@@ -622,7 +630,7 @@ export default function DealOfTheWeekHero({
         )
       : null;
   const photosHref =
-    isDay && detailHref
+    isDay && detailHref && l
       ? listingPhotosHref(
           l.mlsId,
           l.address.street || l.address.full,
@@ -701,7 +709,11 @@ export default function DealOfTheWeekHero({
                 <>
                   Today&apos;s{" "}
                   <span className="italic gold-shimmer">
-                    {(showing ?? FALLBACK).score.composite.toFixed(1)}.
+                    {showing
+                      ? `${showing.score.composite.toFixed(1)}.`
+                      : loadingState
+                        ? "…"
+                        : "—"}
                   </span>
                   <br />
                   <span className="italic text-white/85">One listing.</span>
@@ -726,19 +738,23 @@ export default function DealOfTheWeekHero({
                     : "animate-deal-copy-refresh"
                 }`}
               >
-                {dayEmpty ? (
+                {dayEmpty || (loadingState && !showing) ? (
                   <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark flex items-center justify-center px-6">
                     <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
-                      {dayTxFilter === "rental"
-                        ? city
-                          ? `No below-median rental pick in ${city} right now.`
-                          : "No below-median rental picks available right now."
-                        : city
-                          ? `No below-median for-sale pick in ${city} right now.`
-                          : "No below-median for-sale picks available right now."}
+                      {loadingState && !showing
+                        ? `Loading ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} ${
+                            dayTxFilter === "rental" ? "rental" : "for-sale"
+                          } picks…`
+                        : dayTxFilter === "rental"
+                          ? city
+                            ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental pick in ${city} right now.`
+                            : `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental picks available right now.`
+                          : city
+                            ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} for-sale pick in ${city} right now.`
+                            : `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} for-sale picks available right now.`}
                     </p>
                   </div>
-                ) : (
+                ) : l ? (
                   <>
                     <PhotoBanner
                       src={showing?.photoUrl ?? null}
@@ -766,7 +782,7 @@ export default function DealOfTheWeekHero({
                       />
                     ) : null}
                   </>
-                )}
+                ) : null}
               </div>
             ) : null}
             {isDay ? (
@@ -824,16 +840,16 @@ export default function DealOfTheWeekHero({
             <DealCard
               key={dealCardKey}
               slideDir={isDay ? slideDir : undefined}
-              detailHref={dayEmpty ? null : detailHref}
-              photosHref={dayEmpty ? null : photosHref}
-              mlsId={dayEmpty || l.mlsId === "—" ? null : l.mlsId}
-              photoCount={l.photoCount}
-              address={l.address.street || l.address.full}
-              city={l.address.city || l.address.state || ""}
+              detailHref={dayEmpty || !l ? null : detailHref}
+              photosHref={dayEmpty || !l ? null : photosHref}
+              mlsId={!l || dayEmpty || l.mlsId === "—" ? null : l.mlsId}
+              photoCount={l?.photoCount ?? null}
+              address={l ? l.address.street || l.address.full : ""}
+              city={l ? l.address.city || l.address.state || "" : ""}
               type={typeLine}
               kind={showing?.kind ?? dayTxFilter}
-              price={l.price}
-              originalPrice={l.originalListPrice}
+              price={l?.price ?? null}
+              originalPrice={l?.originalListPrice ?? null}
               reductionPct={reductionPct}
               cityMedianPrice={showing?.cityMedianPrice}
               valueDiscountPct={showing?.valueDiscountPct}
@@ -841,13 +857,13 @@ export default function DealOfTheWeekHero({
               cityMedianPpsf={showing?.cityMedianPricePerSqft ?? null}
               ppsfDiscount={ppsfDiscount}
               lotAcres={showing?.lotAcres ?? null}
-              dom={l.dom}
+              dom={l?.dom ?? null}
               photoUrl={showing?.photoUrl ?? null}
-              schools={l.schools}
+              schools={l?.schools ?? FALLBACK.listing.schools}
               score={showing?.score ?? FALLBACK.score}
               loading={loadingState}
-              empty={dayEmpty}
-              scoreExplains={!loadingState && !(isDay && dayEmpty)}
+              empty={dayEmpty || (isDay && !showing && !loadingState)}
+              scoreExplains={!loadingState && Boolean(showing) && !(isDay && dayEmpty)}
               valueDealMode={mode === "day"}
               townLabel={isDay ? carousel.currentTown : null}
               transactionFilter={isDay ? dayTxFilter : undefined}

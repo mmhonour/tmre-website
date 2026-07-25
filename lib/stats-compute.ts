@@ -581,6 +581,93 @@ export function computeSalesByPriceByTown(
   return { kind, period: String(year), year, towns }
 }
 
+/** Active (for-sale / for-rent) inventory counts by Admin price bands. */
+export type ActiveByPriceBucket = StatsBucketRow & {
+  min: number
+  max: number | null
+}
+
+export type ActiveByPricePayload = {
+  city: string
+  kind: ListingKind
+  totalActive: number
+  knownPrice: number
+  unknownPrice: number
+  buckets: ActiveByPriceBucket[]
+  topBucket: ActiveByPriceBucket | null
+}
+
+/**
+ * Bucket active listing list prices into sale (Admin) or rent (code) bands.
+ * Intended for stats_cache — not for live RETS / deal-board aggregation.
+ */
+export function computeActiveByPrice(
+  activeListings: Listing[],
+  city: string,
+  kind: ListingKind,
+  saleBuckets: readonly (typeof PRICE_BUCKETS)[number][] = PRICE_BUCKETS,
+): ActiveByPricePayload {
+  const filtered = filterListingsByKind(activeListings, kind)
+
+  if (kind === 'rental') {
+    const counts = emptyRentCounts()
+    let total = 0
+    for (const l of filtered) {
+      total += 1
+      counts[classifyRentPrice(l.price)] += 1
+    }
+    const knownTotal = total - counts.unknown
+    const buckets: ActiveByPriceBucket[] = RENT_BUCKETS.map((b) => ({
+      id: b.id,
+      label: b.label,
+      min: b.min,
+      max: b.max,
+      count: counts[b.id],
+      share: knownTotal > 0 ? counts[b.id] / knownTotal : 0,
+    }))
+    const ranked = [...buckets].sort((a, b) => b.count - a.count)
+    return {
+      city,
+      kind,
+      totalActive: total,
+      knownPrice: knownTotal,
+      unknownPrice: counts.unknown,
+      buckets,
+      topBucket: ranked[0]?.count ? ranked[0] : null,
+    }
+  }
+
+  const bandDefs = saleBuckets.length > 0 ? saleBuckets : PRICE_BUCKETS
+  const counts = emptyPriceCounts(bandDefs)
+  let total = 0
+  for (const l of filtered) {
+    total += 1
+    const id = classifySalePrice(l.price, bandDefs)
+    counts[id] = (counts[id] ?? 0) + 1
+  }
+
+  const knownTotal = total - (counts.unknown ?? 0)
+  const buckets: ActiveByPriceBucket[] = bandDefs.map((b) => ({
+    id: b.id,
+    label: b.label,
+    min: b.min,
+    max: b.max,
+    count: counts[b.id] ?? 0,
+    share: knownTotal > 0 ? (counts[b.id] ?? 0) / knownTotal : 0,
+  }))
+  const ranked = [...buckets].sort((a, b) => b.count - a.count)
+
+  return {
+    city,
+    kind,
+    totalActive: total,
+    knownPrice: knownTotal,
+    unknownPrice: counts.unknown ?? 0,
+    buckets,
+    topBucket: ranked[0]?.count ? ranked[0] : null,
+  }
+}
+
 export type StatsCacheScope =
   | 'market-stats'
   | 'market-stats-listings'
@@ -590,6 +677,7 @@ export type StatsCacheScope =
   | 'sales-by-month-by-town'
   | 'sales-by-vintage'
   | 'sales-by-price'
+  | 'active-by-price'
   | 'avg-score-by-vintage'
   | 'avg-score-by-vintage-by-town'
 

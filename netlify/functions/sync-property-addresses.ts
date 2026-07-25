@@ -1,58 +1,34 @@
 import type { Config } from '@netlify/functions'
-import { syncPropertyAddresses } from '../../lib/property-address-sync'
-import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
+import { queueNetlifyPropertyAddressSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
+import {
+  thinCronError,
+  thinCronResponse,
+  thinCronSkipped,
+} from '../../lib/netlify-thin-cron'
 
 /**
- * Weekly property-address directory verify + enrich.
- * Cron is 06:00 UTC Monday = 01:00 America/New_York (EST). During EDT this is 2:00am local.
+ * Thin weekly property-address trigger (NO background).
+ * Queues sync-property-addresses-worker.
  */
 export default async function handler() {
   try {
-    const catchup = await runOverdueSyncCatchup({ reason: 'netlify/sync-property-addresses' })
     if (await isScheduledSyncJobPausedFresh('property-addresses')) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          skipped: true,
-          reason: 'property-addresses scheduled sync paused by admin',
-          overdueCatchup: catchup.skipped
-            ? { skipped: true, reason: catchup.reason }
-            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
+      return thinCronSkipped('property-addresses scheduled sync paused by admin')
+    }
+    const queued = await queueNetlifyPropertyAddressSync()
+    if (!queued.ok) {
+      console.warn(
+        `[netlify/sync-property-addresses] worker queue failed: ${queued.error}`,
       )
     }
-    const ranAddresses =
-      !catchup.skipped && catchup.steps.some((step) => step.job === 'property-addresses')
-    const result = ranAddresses ? null : await syncPropertyAddresses()
-    return new Response(
-      JSON.stringify(
-        result ?? {
-          ok: true,
-          skippedScheduled: true,
-          overdueCatchup: catchup.skipped
-            ? { skipped: true, reason: catchup.reason }
-            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
-        },
-      ),
-      {
-        status: result?.ok === false ? 502 : 200,
-        headers: { 'content-type': 'application/json' },
-      },
-    )
+    return thinCronResponse(queued)
   } catch (err) {
-    console.error('[netlify/sync-property-addresses]', err)
-    return new Response(
-      JSON.stringify({
-        error: err instanceof Error ? err.message : String(err),
-      }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    )
+    return thinCronError('netlify/sync-property-addresses', err)
   }
 }
 
 export const config: Config = {
+  // 1:00 AM Eastern Standard Time on Mondays (UTC-5). During EDT this is 2:00am local.
   schedule: '0 6 * * 1',
-  background: true,
 }

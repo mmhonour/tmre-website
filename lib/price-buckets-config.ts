@@ -8,6 +8,7 @@ import {
   DEFAULT_PRICE_BUCKETS_CONFIG,
   isDefaultPriceBucketsConfig,
   normalizePriceBucketsConfig,
+  visiblePriceBuckets,
   type PriceBucketDef,
   type PriceBucketsConfig,
 } from '@/lib/price-buckets-shared'
@@ -19,6 +20,7 @@ export {
   DEFAULT_PRICE_BUCKETS_CONFIG,
   isDefaultPriceBucketsConfig,
   clonePriceBucketsConfig,
+  visiblePriceBuckets,
   type PriceBucketDef,
   type PriceBucketsConfig,
 }
@@ -38,11 +40,12 @@ export function getPriceBucketsConfig(): PriceBucketsConfig {
   return parseConfig(getSyncMeta(PRICE_BUCKETS_CONFIG_SYNC_KEY))
 }
 
+/** Visible bands for charts (hides Admin-hidden entries). */
 export function getPriceBuckets(): PriceBucketDef[] {
-  return getPriceBucketsConfig().sale
+  return visiblePriceBuckets(getPriceBucketsConfig().sale)
 }
 
-/** Authoritative Postgres read. */
+/** Authoritative Postgres read (full catalog, including hidden). */
 export async function getPriceBucketsConfigFresh(): Promise<PriceBucketsConfig> {
   try {
     return parseConfig(await getSyncMetaFresh(PRICE_BUCKETS_CONFIG_SYNC_KEY))
@@ -51,8 +54,9 @@ export async function getPriceBucketsConfigFresh(): Promise<PriceBucketsConfig> 
   }
 }
 
+/** Visible bands from Postgres — used by stats_cache rebuild / APIs. */
 export async function getPriceBucketsFresh(): Promise<PriceBucketDef[]> {
-  return (await getPriceBucketsConfigFresh()).sale
+  return visiblePriceBuckets((await getPriceBucketsConfigFresh()).sale)
 }
 
 export async function setPriceBucketsConfig(

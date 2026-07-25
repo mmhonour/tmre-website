@@ -165,7 +165,7 @@ async function cacheScopedKinds(
       const scoped = allListings.filter(
         (l) =>
           kindOf(l) === kind &&
-          listingMatchesPropertyClass(l.propertyType ?? '', propertyClass),
+          listingMatchesPropertyClass(l, propertyClass),
       )
       if (!scoped.length) continue
 

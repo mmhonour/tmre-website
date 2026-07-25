@@ -11,9 +11,15 @@ const NETLIFY_PAUSE_BY_FN: Record<string, (typeof SCHEDULED_SYNC_JOB_IDS)[number
   "sync-listings": "incremental",
   "sync-listings-worker": "incremental",
   "sync-listings-full": "full-resync",
+  "sync-listings-full-worker": "full-resync",
   "sync-property-addresses": "property-addresses",
+  "sync-property-addresses-worker": "property-addresses",
   "sync-listing-edge-scores": "listing-scores",
+  "sync-listing-edge-scores-worker": "listing-scores",
   "sync-zip-boundaries": "zip-boundaries",
+  "sync-zip-boundaries-worker": "zip-boundaries",
+  "market-digest": null,
+  "market-digest-worker": null,
 };
 
 type ZipInventory = {

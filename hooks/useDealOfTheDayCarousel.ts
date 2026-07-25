@@ -277,7 +277,9 @@ export function useDealOfTheDayCarousel(options?: {
         setLoading(false);
         setSlideDir(null);
       } else {
-        // Don't wipe — keep prior panel until the new filter's data arrives.
+        // Clear prior Homes/etc. deal so property pills don't look non-op while
+        // the new 7×2×3 cache slice (or live fill) loads.
+        setDealsByTown({});
         setLoading(true);
         setSlideDir(null);
       }

@@ -128,14 +128,19 @@ export default function AdminCronHealthPanel({
             Database → Incremental Next is only clock-slot math when overdue — not proof
             cron ran. <span className="font-mono text-[10px]">sync-listings</span> always
             runs a lean RETS pull (Active/CS/UC + recent Closed) in-process every 30m and stamps this heartbeat; the
-            worker hop is optional side work only.{" "}
+            worker hop is optional side work only. Weekly/monthly jobs use the same pattern:
+            thin schedule → <span className="font-mono text-[10px]">*-worker</span>{" "}
+            background (never schedule+background on one function — Netlify silent no-op).{" "}
             <span className="font-mono text-[10px]">Run cron now</span> runs the fuller
             path (board/stats + spotlight + saved-search).
           </p>
           {status && !status.hasSyncCronSecret ? (
             <p className="text-xs text-gold">
               Tip: set <span className="font-mono">SYNC_CRON_SECRET</span> in Netlify env
-              so only the scheduler/Admin can invoke the worker.
+              so only the scheduler/Admin can invoke workers. Also set{" "}
+              <span className="font-mono">URL</span> /{" "}
+              <span className="font-mono">SITE_NAME</span> so thin crons can POST to{" "}
+              <span className="font-mono">*.netlify.app</span> workers.
             </p>
           ) : null}
           {message ? (

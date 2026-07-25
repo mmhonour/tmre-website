@@ -1,22 +1,51 @@
 /**
  * Residential sale/rental property subtype used for months-supply cache keys
- * and Intelligence / Stats filters (All · Homes · Multi-family · Condos).
+ * and Intelligence / Stats / Deal of the Day filters (All · Homes · Multi · Condos).
  */
 
 export const LISTING_PROPERTY_CLASSES = ['all', 'homes', 'multi', 'condos'] as const
 
 export type ListingPropertyClass = (typeof LISTING_PROPERTY_CLASSES)[number]
 
+/** String PropertyType or a listing-like object (style + RETS raw subtypes). */
+export type PropertyClassListingInput =
+  | string
+  | {
+      propertyType?: string | null
+      style?: string | null
+      raw?: Record<string, string> | null
+    }
+
+/**
+ * SmartMLS often stores "Residential" on PropertyType with the real class in
+ * PropertySubType / style — haystack both so condo/multi pills match cache + live.
+ */
+export function propertyClassHaystack(input: PropertyClassListingInput): string {
+  if (typeof input === 'string') return input
+  return [
+    input.propertyType,
+    input.style,
+    input.raw?.PropertyType,
+    input.raw?.PropertySubType,
+    input.raw?.MRD_TYP,
+    input.raw?.ArchitecturalStyle,
+  ]
+    .filter((v): v is string => Boolean(v && String(v).trim()))
+    .join(' ')
+}
+
 export function isCommercialPropertyType(propertyType: string): boolean {
   return /commercial|industrial|business/i.test(propertyType)
 }
 
 export function isCondoPropertyType(propertyType: string): boolean {
-  return /condo|co-op/i.test(propertyType)
+  return /condo|condominium|co-?op|cooperative/i.test(propertyType)
 }
 
 export function isMultiFamilyPropertyType(propertyType: string): boolean {
-  return /multi|duplex|triplex|fourplex|2-family|3-family|4-family/i.test(propertyType)
+  return /multi|duplex|triplex|fourplex|2-family|3-family|4-family|two[\s-]?family|three[\s-]?family|four[\s-]?family|residential\s*income|income\s*property/i.test(
+    propertyType,
+  )
 }
 
 /** Single-family / homes residual (not commercial, condo, or multi). */
@@ -28,13 +57,14 @@ export function isHomePropertyType(propertyType: string): boolean {
 }
 
 export function listingMatchesPropertyClass(
-  propertyType: string,
+  listing: PropertyClassListingInput,
   propertyClass: ListingPropertyClass,
 ): boolean {
   if (propertyClass === 'all') return true
-  if (propertyClass === 'homes') return isHomePropertyType(propertyType)
-  if (propertyClass === 'multi') return isMultiFamilyPropertyType(propertyType)
-  if (propertyClass === 'condos') return isCondoPropertyType(propertyType)
+  const hay = propertyClassHaystack(listing)
+  if (propertyClass === 'homes') return isHomePropertyType(hay)
+  if (propertyClass === 'multi') return isMultiFamilyPropertyType(hay)
+  if (propertyClass === 'condos') return isCondoPropertyType(hay)
   return true
 }
 

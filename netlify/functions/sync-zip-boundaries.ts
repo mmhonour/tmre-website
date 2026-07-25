@@ -1,41 +1,34 @@
 import type { Config } from '@netlify/functions'
-import { syncAllTmreZipBoundaries } from '../../lib/zip-boundary-cache'
+import { queueNetlifyZipBoundariesSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
+import {
+  thinCronError,
+  thinCronResponse,
+  thinCronSkipped,
+} from '../../lib/netlify-thin-cron'
 
 /**
- * Monthly Census TIGERweb → Postgres `zip_boundaries` refresh.
- * Cron: 10:00 UTC on the 1st of each month.
+ * Thin monthly zip-boundary trigger (NO background).
+ * Queues sync-zip-boundaries-worker.
  */
 export default async function handler() {
   try {
     if (await isScheduledSyncJobPausedFresh('zip-boundaries')) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          skipped: true,
-          reason: 'zip-boundaries scheduled sync paused by admin',
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
+      return thinCronSkipped('zip-boundaries scheduled sync paused by admin')
+    }
+    const queued = await queueNetlifyZipBoundariesSync()
+    if (!queued.ok) {
+      console.warn(
+        `[netlify/sync-zip-boundaries] worker queue failed: ${queued.error}`,
       )
     }
-
-    const result = await syncAllTmreZipBoundaries()
-    return new Response(JSON.stringify(result), {
-      status: result.ok ? 200 : 502,
-      headers: { 'content-type': 'application/json' },
-    })
+    return thinCronResponse(queued)
   } catch (err) {
-    console.error('[netlify/sync-zip-boundaries]', err)
-    return new Response(
-      JSON.stringify({
-        error: err instanceof Error ? err.message : String(err),
-      }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    )
+    return thinCronError('netlify/sync-zip-boundaries', err)
   }
 }
 
 export const config: Config = {
+  // 10:00 UTC on the 1st of each month.
   schedule: '0 10 1 * *',
-  background: true,
 }

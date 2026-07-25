@@ -462,7 +462,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listings",
     detail:
-      "Scheduled every 30m — stamps heartbeat and always runs lean RETS in-process; optionally queues sync-listings-worker for side work. Do not set background:true on this function.",
+      "Thin schedule every 30m — stamps heartbeat + lean RETS in-process; optionally queues sync-listings-worker. Never background:true here (silent no-op with schedule).",
     schedule: "Every 30 min",
   },
   {
@@ -473,30 +473,58 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   },
   {
     label: "sync-listings-full",
-    detail: "Full town reload, scores, superlatives, and product caches",
+    detail:
+      "Thin weekly trigger — queues sync-listings-full-worker (full town reload). Schedule only; no background flag.",
     schedule: "Weekly Mon ~5am ET",
   },
   {
+    label: "sync-listings-full-worker",
+    detail: "Background full reload, scores, superlatives, and product caches",
+    schedule: "On invoke (background)",
+  },
+  {
     label: "sync-property-addresses",
-    detail: "MLS + assessor address directory for List With Me",
+    detail:
+      "Thin weekly trigger — queues sync-property-addresses-worker (MLS + assessor directory)",
     schedule: "Weekly Mon ~1am ET",
   },
   {
+    label: "sync-property-addresses-worker",
+    detail: "Background property-address directory verify + enrich",
+    schedule: "On invoke (background)",
+  },
+  {
     label: "sync-listing-edge-scores",
-    detail: "Comparable edge-score warm pass",
-    schedule: "On demand / scheduled",
+    detail:
+      "Thin weekly trigger — queues sync-listing-edge-scores-worker",
+    schedule: "Weekly Mon ~2am ET",
+  },
+  {
+    label: "sync-listing-edge-scores-worker",
+    detail: "Background comparable edge-score warm pass",
+    schedule: "On invoke (background)",
   },
   {
     label: "sync-zip-boundaries",
     detail:
-      "Census TIGERweb ZCTA outer rings → Postgres zip_boundaries (Intelligence / Latest maps)",
+      "Thin monthly trigger — queues sync-zip-boundaries-worker (Census TIGERweb → zip_boundaries)",
     schedule: "Monthly 1st ~10:00 UTC",
+  },
+  {
+    label: "sync-zip-boundaries-worker",
+    detail: "Background zip boundary refresh for Intelligence / Latest maps",
+    schedule: "On invoke (background)",
   },
   {
     label: "market-digest",
     detail:
-      "Monday market brief email — months supply, inventory, formula notes, Deal of the Week",
+      "Thin Monday trigger — queues market-digest-worker (months supply brief email)",
     schedule: "Weekly Mon ~8am ET",
+  },
+  {
+    label: "market-digest-worker",
+    detail: "Background Monday market brief email send",
+    schedule: "On invoke (background)",
   },
 ];
 

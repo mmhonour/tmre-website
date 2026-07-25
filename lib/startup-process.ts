@@ -390,7 +390,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min (incremental) + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC).`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC).`,
           status: "info",
           statusLabel: "Cron",
         },

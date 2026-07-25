@@ -245,6 +245,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'sales-by-price:' },
   },
   {
+    id: 'active-by-price',
+    name: 'Active inventory by price band',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'active-by-price:{town|All}:{sale|rental}',
+    owner: 'lib/stats-cache.ts',
+    notes:
+      'Active for-sale / for-rent counts using the same bands as Sales by price. Served to Intelligence mini chart via /api/active-by-price. Rebuild stats cache after band edits.',
+    live: { kind: 'stats_cache_prefix', prefix: 'active-by-price:' },
+  },
+  {
     id: 'sale-price-bucket-defs',
     name: 'Sale price band definitions',
     category: 'sync-control',

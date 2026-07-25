@@ -9,6 +9,11 @@ export type PriceBucketDef = {
   min: number
   /** Inclusive upper bound; null = open-ended (e.g. $10M+). */
   max: number | null
+  /**
+   * When true, band stays in the Admin catalog but is omitted from Stats /
+   * Intelligence charts until shown again.
+   */
+  hidden?: boolean
 }
 
 /** @deprecated Prefer PriceBucketDef — kept for existing imports. */
@@ -146,12 +151,27 @@ export function normalizePriceBucketsConfig(
       max = maxN
     }
 
-    sale.push({ id, label, min, max })
+    const hidden = r.hidden === true
+    sale.push(hidden ? { id, label, min, max, hidden: true } : { id, label, min, max })
+  }
+
+  if (!sale.some((b) => !b.hidden)) {
+    return {
+      ok: false,
+      error: 'At least one band must be visible (unhide or add a band)',
+    }
   }
 
   sale.sort((a, b) => a.min - b.min || a.id.localeCompare(b.id))
 
   return { ok: true, config: { sale } }
+}
+
+/** Bands that appear on Stats / Intelligence charts (excludes Admin-hidden). */
+export function visiblePriceBuckets(
+  buckets: readonly PriceBucketDef[],
+): PriceBucketDef[] {
+  return buckets.filter((b) => !b.hidden)
 }
 
 export function classifySalePrice(

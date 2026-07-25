@@ -12,6 +12,7 @@ export {
   normalizePriceBucketsConfig,
   suggestPriceBucketId,
   isDefaultPriceBucketsConfig,
+  visiblePriceBuckets,
   type PriceBucket,
   type PriceBucketDef,
   type PriceBucketId,

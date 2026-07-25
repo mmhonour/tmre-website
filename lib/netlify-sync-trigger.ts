@@ -98,7 +98,7 @@ function looksLikePasswordGate(status: number, text: string): boolean {
 }
 
 /** POST a Netlify background sync function (returns 202 when queued). */
-async function postNetlifyFunction(
+export async function queueNetlifyFunction(
   path: string,
   body: Record<string, unknown> = { source: 'netlify-sync-trigger' },
 ): Promise<NetlifyFunctionQueueResult> {
@@ -168,15 +168,40 @@ export function queueNetlifyIncrementalSync(
   startedAt?: string,
   options?: { sideWorkOnly?: boolean },
 ): Promise<NetlifyFunctionQueueResult> {
-  return postNetlifyFunction('/.netlify/functions/sync-listings-worker', {
+  return queueNetlifyFunction('/.netlify/functions/sync-listings-worker', {
     source: 'netlify-sync-trigger',
     startedAt: startedAt ?? new Date().toISOString(),
     ...(options?.sideWorkOnly ? { sideWorkOnly: true } : {}),
   })
 }
 
+/** Full reload worker (background). Never point this at the scheduled trigger. */
 export function queueNetlifyFullSync(): Promise<NetlifyFunctionQueueResult> {
-  return postNetlifyFunction('/.netlify/functions/sync-listings-full', {
+  return queueNetlifyFunction('/.netlify/functions/sync-listings-full-worker', {
+    source: 'netlify-sync-trigger',
+  })
+}
+
+export function queueNetlifyPropertyAddressSync(): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-property-addresses-worker', {
+    source: 'netlify-sync-trigger',
+  })
+}
+
+export function queueNetlifyListingEdgeScoreSync(): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-listing-edge-scores-worker', {
+    source: 'netlify-sync-trigger',
+  })
+}
+
+export function queueNetlifyZipBoundariesSync(): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-zip-boundaries-worker', {
+    source: 'netlify-sync-trigger',
+  })
+}
+
+export function queueNetlifyMarketDigest(): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/market-digest-worker', {
     source: 'netlify-sync-trigger',
   })
 }

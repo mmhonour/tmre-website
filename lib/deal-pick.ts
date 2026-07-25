@@ -456,7 +456,7 @@ export async function computeDealOfTheDay(
   }
   if (opts?.propertyClass) {
     scoped = scoped.filter((l) =>
-      listingMatchesPropertyClass(l.propertyType ?? '', opts.propertyClass!),
+      listingMatchesPropertyClass(l, opts.propertyClass!),
     )
   }
   if (!scoped.length) return null

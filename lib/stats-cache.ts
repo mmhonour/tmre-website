@@ -22,6 +22,7 @@ import {
   computeActiveByMonth,
   computeAvgScoreByVintage,
   computeMarketStats,
+  computeActiveByPrice,
   computeSalesByMonth,
   computeSalesByPrice,
   computeSalesByVintage,
@@ -515,6 +516,12 @@ async function writeTownMarketStats(
     })
     written += 1
 
+    await writeStatsCache('active-by-price', town, kind, {
+      ...computeActiveByPrice(active, town, kind, saleBuckets),
+      generatedAt,
+    })
+    written += 1
+
     const avgScorePayload = computeAvgScoreByVintage(scoredActive, town, kind)
     await writeStatsCache('avg-score-by-vintage', town, kind, {
       ...avgScorePayload,
@@ -620,11 +627,15 @@ async function writeAllAggregateStats(
       ...computeSalesByPrice(allClosed, 'All', kind, saleBuckets),
       generatedAt,
     })
+    await writeStatsCache('active-by-price', 'All', kind, {
+      ...computeActiveByPrice(allActive, 'All', kind, saleBuckets),
+      generatedAt,
+    })
     await writeStatsCache('avg-score-by-vintage', 'All', kind, {
       ...computeAvgScoreByVintage(allScoredActive, 'All', kind),
       generatedAt,
     })
-    written += 3
+    written += 4
   }
   return written
 }

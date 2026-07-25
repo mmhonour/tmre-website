@@ -187,135 +187,134 @@ export default function IntelligenceVintageMedianMiniChart({
     onBucketClick(point.id);
   };
 
-  const chartTitle = `Filters ${MEDIAN_BY_VINTAGE_LABEL}`;
+  const chartTitle = MEDIAN_BY_VINTAGE_LABEL;
 
   return (
-    <div className="flex w-full items-start justify-start gap-2.5">
-      <div className="shrink-0 max-w-[5.5rem] pt-1">
-        <p className="text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-slate/50">
-          {chartTitle}
-        </p>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5">
-        <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          className="h-[4.5rem] w-full max-w-[248px] overflow-visible"
-          role="img"
-          aria-label={`${chartTitle}. Click a point to filter the deal board.`}
-        >
-          <path
-            d={linePath}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            className="text-navy/35"
-          />
-          {points.map((point, i) => {
-            const active = activeBucketId === point.id;
-            const showCallout =
-              point.callout || extraCallouts.has(point.id);
-            const glowing = glowIds.has(point.id);
-            const priceLabel = formatVintageHeaderPrice(point.medianPrice, kind);
-            const isFirst = i === 0;
-            const isLast = i === points.length - 1;
-            const anchor = isFirst ? "start" : isLast ? "end" : "middle";
-            const priceY = Math.max(9, point.y - 9);
-            const vintageY = Math.min(HEIGHT - 3, point.y + 14);
+    <div className="flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
+      <p className="bg-transparent font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+        {chartTitle}
+      </p>
+      <div className="flex w-full items-center justify-start gap-2">
+        <div className="relative w-[4.75rem] shrink-0 self-center">
+          <p
+            className={`text-left italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out ${
+              showInteractiveHint
+                ? "animate-interactive-graph-hint"
+                : "pointer-events-none opacity-0"
+            }`}
+            aria-hidden={!showInteractiveHint}
+          >
+            interactive graph
+          </p>
+          {showOriginalViewFlash ? (
+            <p className="absolute inset-x-0 top-0 font-mono text-[9px] leading-snug tracking-[0.12em] uppercase text-navy/70">
+              Original view by {VIEW_BY_DIMENSION_LABEL}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5">
+          <svg
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            className="h-[4.5rem] w-full max-w-[248px] overflow-visible bg-transparent"
+            role="img"
+            aria-label={`${chartTitle}. Click a point to filter the deal board.`}
+          >
+            <path
+              d={linePath}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              className="text-navy/35"
+            />
+            {points.map((point, i) => {
+              const active = activeBucketId === point.id;
+              const showCallout =
+                point.callout || extraCallouts.has(point.id);
+              const glowing = glowIds.has(point.id);
+              const priceLabel = formatVintageHeaderPrice(point.medianPrice, kind);
+              const isFirst = i === 0;
+              const isLast = i === points.length - 1;
+              const anchor = isFirst ? "start" : isLast ? "end" : "middle";
+              const priceY = Math.max(9, point.y - 9);
+              const vintageY = Math.min(HEIGHT - 3, point.y + 14);
 
-            return (
-              <g key={point.id}>
-                <title>
-                  {point.label} · {priceLabel}
-                </title>
-                {showCallout ? (
-                  <>
-                    <text
-                      x={point.x}
-                      y={priceY}
-                      textAnchor={anchor}
-                      className="fill-navy font-mono text-[8px] tabular-nums"
-                      style={{ fontSize: 8 }}
-                    >
-                      {priceLabel}
-                    </text>
-                    <text
-                      x={point.x}
-                      y={vintageY}
-                      textAnchor={anchor}
-                      className="fill-slate/55 font-mono text-[7px] uppercase"
-                      style={{ fontSize: 7, letterSpacing: "0.04em" }}
-                    >
-                      {shortVintageLabel(point.label)}
-                    </text>
-                  </>
-                ) : null}
-                {glowing ? (
+              return (
+                <g key={point.id}>
+                  <title>
+                    {point.label} · {priceLabel}
+                  </title>
+                  {showCallout ? (
+                    <>
+                      <text
+                        x={point.x}
+                        y={priceY}
+                        textAnchor={anchor}
+                        className="fill-navy font-mono text-[8px] tabular-nums"
+                        style={{ fontSize: 8 }}
+                      >
+                        {priceLabel}
+                      </text>
+                      <text
+                        x={point.x}
+                        y={vintageY}
+                        textAnchor={anchor}
+                        className="fill-slate/55 font-mono text-[7px] uppercase"
+                        style={{ fontSize: 7, letterSpacing: "0.04em" }}
+                      >
+                        {shortVintageLabel(point.label)}
+                      </text>
+                    </>
+                  ) : null}
+                  {glowing ? (
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={8}
+                      className="fill-gold/25 animate-vintage-dot-glow pointer-events-none"
+                    />
+                  ) : null}
+                  {/* Larger hit target */}
                   <circle
                     cx={point.x}
                     cy={point.y}
-                    r={8}
-                    className="fill-gold/25 animate-vintage-dot-glow pointer-events-none"
+                    r={10}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onClick={() => handlePointClick(point)}
                   />
-                ) : null}
-                {/* Larger hit target */}
-                <circle
-                  cx={point.x}
-                  cy={point.y}
-                  r={10}
-                  fill="transparent"
-                  className="cursor-pointer"
-                  onClick={() => handlePointClick(point)}
-                />
-                <circle
-                  cx={point.x}
-                  cy={point.y}
-                  r={active ? 4.5 : glowing ? 4 : 3.25}
-                  className={
-                    active
-                      ? "fill-gold stroke-navy/40 stroke-[1] cursor-pointer"
-                      : glowing
-                        ? "fill-gold stroke-cream stroke-[1.5] cursor-pointer animate-vintage-dot-glow"
-                        : "fill-navy stroke-cream stroke-[1.5] cursor-pointer hover:fill-gold"
-                  }
-                  onClick={() => handlePointClick(point)}
-                />
-              </g>
-            );
-          })}
-        </svg>
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={active ? 4.5 : glowing ? 4 : 3.25}
+                    className={
+                      active
+                        ? "fill-gold stroke-navy/40 stroke-[1] cursor-pointer"
+                        : glowing
+                          ? "fill-gold stroke-cream stroke-[1.5] cursor-pointer animate-vintage-dot-glow"
+                          : "fill-navy stroke-cream stroke-[1.5] cursor-pointer hover:fill-gold"
+                    }
+                    onClick={() => handlePointClick(point)}
+                  />
+                </g>
+              );
+            })}
+          </svg>
 
-        {/* Right-aligned with the 248px mini-graph column */}
-        <div className="flex w-full max-w-[248px] flex-col items-end gap-0.5">
           {filterActive && onResetFilter ? (
-            <button
-              type="button"
-              onClick={onResetFilter}
-              className="text-right font-mono text-[9px] tracking-[0.12em] uppercase text-navy/70 underline decoration-navy/30 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
-              title="Reset vintage filter — show all timescales"
-              aria-label="All timescales — reset vintage filter"
-            >
-              All timescales
-            </button>
+            <div className="flex w-full max-w-[248px] justify-end">
+              <button
+                type="button"
+                onClick={onResetFilter}
+                className="text-right font-mono text-[9px] tracking-[0.12em] uppercase text-navy/70 underline decoration-navy/30 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
+                title="Reset vintage filter — show all timescales"
+                aria-label="All timescales — reset vintage filter"
+              >
+                All timescales
+              </button>
+            </div>
           ) : null}
-          <div className="relative min-h-[1rem] w-full text-right">
-            <p
-              className={`italic text-[10px] leading-none text-slate/55 transition-opacity duration-700 ease-in-out ${
-                showInteractiveHint
-                  ? "animate-interactive-graph-hint"
-                  : "pointer-events-none opacity-0"
-              }`}
-              aria-hidden={!showInteractiveHint}
-            >
-              interactive graph
-            </p>
-            {showOriginalViewFlash ? (
-              <p className="absolute inset-x-0 top-0 font-mono text-[9px] leading-none tracking-[0.12em] uppercase text-navy/70">
-                Original view by {VIEW_BY_DIMENSION_LABEL}
-              </p>
-            ) : null}
-          </div>
         </div>
       </div>
     </div>

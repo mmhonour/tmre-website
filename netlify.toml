@@ -23,9 +23,10 @@
     "node_modules/bindings/**",
   ]
 
-# Scheduled sync handlers — no listings.bundle.db (Postgres holds inventory).
-# sync-listings = thin scheduled trigger (≤30s): heartbeat + lean RETS always; optional side-work hop.
-# sync-listings-worker = background side work / Admin full path (do NOT put schedule on the worker).
+# Cron pattern (Netlify): schedule XOR background — never both on one function.
+# Thin scheduled triggers (≤30s) queue *-worker background functions (≤15m).
+# Putting schedule+background together is a silent no-op.
+
 [functions."sync-listings"]
   included_files = []
   schedule = "*/30 * * * *"
@@ -36,15 +37,40 @@
 
 [functions."sync-listings-full"]
   included_files = []
+  schedule = "0 9 * * 1"
+
+[functions."sync-listings-full-worker"]
+  included_files = []
+  background = true
 
 [functions."sync-property-addresses"]
   included_files = []
+  schedule = "0 6 * * 1"
+
+[functions."sync-property-addresses-worker"]
+  included_files = []
+  background = true
 
 [functions."sync-listing-edge-scores"]
   included_files = []
+  schedule = "0 7 * * 1"
+
+[functions."sync-listing-edge-scores-worker"]
+  included_files = []
+  background = true
 
 [functions."sync-zip-boundaries"]
   included_files = []
+  schedule = "0 10 1 * *"
+
+[functions."sync-zip-boundaries-worker"]
+  included_files = []
+  background = true
 
 [functions."market-digest"]
   included_files = []
+  schedule = "0 12 * * 1"
+
+[functions."market-digest-worker"]
+  included_files = []
+  background = true

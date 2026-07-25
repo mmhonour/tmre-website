@@ -14,6 +14,7 @@ import AllTownsDescriptor from "@/components/AllTownsDescriptor";
 import FilterResetButton from "@/components/FilterResetButton";
 import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
 import IntelligenceVintageMedianMiniChart from "@/components/IntelligenceVintageMedianMiniChart";
+import IntelligencePriceBandMiniChart from "@/components/IntelligencePriceBandMiniChart";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
 import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
@@ -1631,6 +1632,8 @@ export default function IntelligenceClient() {
   const showPriceFilter = cls !== "commercial";
   const [minPriceIndex, setMinPriceIndex] = useState(0);
   const [maxPriceIndex, setMaxPriceIndex] = useState(INTEL_PRICE_MAX_INDEX);
+  /** Price-band mini chart selection (stats_cache bands → board price filter). */
+  const [activePriceBandId, setActivePriceBandId] = useState<string | null>(null);
   const [priceSliderActive, setPriceSliderActive] = useHeldSliderActive();
   const [bedSliderActive, setBedSliderActive] = useHeldSliderActive();
   const [bathSliderActive, setBathSliderActive] = useHeldSliderActive();
@@ -2392,6 +2395,7 @@ export default function IntelligenceClient() {
   useEffect(() => {
     if (priceFilterContextRef.current !== priceFilterContextKey) {
       priceFilterContextRef.current = priceFilterContextKey;
+      setActivePriceBandId(null);
       priceRangeCustomizedRef.current = false;
     }
   }, [priceFilterContextKey]);
@@ -2904,6 +2908,7 @@ export default function IntelligenceClient() {
     priceRangeCustomizedRef.current = false;
     setMinPriceIndex(0);
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
+    setActivePriceBandId(null);
     setBoardStatusFilter("all");
     setFurnishedFilter("all");
     setBoardPage(1);
@@ -3848,10 +3853,12 @@ export default function IntelligenceClient() {
                   maxPriceIndex={maxPriceIndex}
                   onMinPriceIndexChange={(index) => {
                     priceRangeCustomizedRef.current = true;
+                    setActivePriceBandId(null);
                     setMinPriceIndex(index);
                   }}
                   onMaxPriceIndexChange={(index) => {
                     priceRangeCustomizedRef.current = true;
+                    setActivePriceBandId(null);
                     setMaxPriceIndex(index);
                   }}
                   onPriceSliderActiveChange={setPriceSliderActive}
@@ -4084,8 +4091,9 @@ export default function IntelligenceClient() {
 
             {/* Deal board */}
             <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
-          {vintageChartListingRows.length > 0 ? (
-            <div className="mb-2 flex justify-start">
+          {vintageChartListingRows.length > 0 || showPriceFilter ? (
+            <div className="mb-2 flex flex-col justify-start gap-2">
+              {vintageChartListingRows.length > 0 ? (
               <div className="w-full max-w-md shrink-0">
                 <IntelligenceVintageMedianMiniChart
                   listings={vintageChartListingRows}
@@ -4102,6 +4110,37 @@ export default function IntelligenceClient() {
                   }}
                 />
               </div>
+              ) : null}
+              {showPriceFilter ? (
+              <div className="w-full max-w-md shrink-0">
+                <IntelligencePriceBandMiniChart
+                  city={active === "All" ? "All" : active}
+                  kind={tx === "rental" ? "rental" : "sale"}
+                  activeBucketId={activePriceBandId}
+                  filterActive={priceFilterActive}
+                  onBucketClick={(bucket) => {
+                    priceRangeCustomizedRef.current = true;
+                    setActivePriceBandId(bucket.id);
+                    setMinPriceIndex(
+                      minPriceToStepIndex(bucket.min, boardPriceSteps),
+                    );
+                    setMaxPriceIndex(
+                      bucket.max == null
+                        ? boardPriceMaxIdx
+                        : maxPriceToStepIndex(bucket.max, boardPriceSteps),
+                    );
+                    setBoardPage(1);
+                  }}
+                  onResetFilter={() => {
+                    priceRangeCustomizedRef.current = false;
+                    setActivePriceBandId(null);
+                    setMinPriceIndex(0);
+                    setMaxPriceIndex(boardPriceMaxIdx);
+                    setBoardPage(1);
+                  }}
+                />
+              </div>
+              ) : null}
             </div>
           ) : null}
           <DealBoardList
