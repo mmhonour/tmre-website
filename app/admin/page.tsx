@@ -20,7 +20,9 @@ import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPane
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
 import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
+import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
+import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
 import { emptyScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 import {
@@ -532,47 +534,49 @@ export default async function AdminPage() {
   );
 
   const dbPanel = (
-    <>
-      <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
-
-      <div
-        id="admin-sync"
-        className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
-      >
-        <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex items-baseline justify-between gap-4">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Database sync
-          </p>
-          <p className="font-mono text-[10px] tracking-[0.08em] text-right leading-tight">
-            <span
-              className={
-                postgresTarget.isProductionStore
-                  ? "text-sage"
-                  : postgresTarget.kind === "local"
-                    ? "text-coral"
-                    : "text-charcoal/55"
-              }
-            >
-              {postgresTarget.shortLabel}
-            </span>
-            {(lambdaInstanceId || lambdaFnName) && (
-              <span className="block text-charcoal/30 mt-0.5">
-                Lambda up {lambdaUptimeStr}
-                {lambdaInstanceId ? ` · ${lambdaInstanceId}…` : ""}
+    <AdminDatabasePanel
+      retsConnection={
+        <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
+      }
+      sync={
+        <div
+          id="admin-sync"
+          className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+        >
+          <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex items-baseline justify-between gap-4">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+              Database sync
+            </p>
+            <p className="font-mono text-[10px] tracking-[0.08em] text-right leading-tight">
+              <span
+                className={
+                  postgresTarget.isProductionStore
+                    ? "text-sage"
+                    : postgresTarget.kind === "local"
+                      ? "text-coral"
+                      : "text-charcoal/55"
+                }
+              >
+                {postgresTarget.shortLabel}
               </span>
-            )}
-          </p>
+              {(lambdaInstanceId || lambdaFnName) && (
+                <span className="block text-charcoal/30 mt-0.5">
+                  Lambda up {lambdaUptimeStr}
+                  {lambdaInstanceId ? ` · ${lambdaInstanceId}…` : ""}
+                </span>
+              )}
+            </p>
+          </div>
+          <AdminSyncTable
+            rows={rows}
+            initialRefreshing={refresh.refreshing}
+            initialDatabaseStats={databaseStats}
+            initialStatus={initialStatus}
+            initialPausedJobs={scheduledSyncPausedJobs}
+          />
         </div>
-        <AdminSyncTable
-          rows={rows}
-          initialRefreshing={refresh.refreshing}
-          initialDatabaseStats={databaseStats}
-          initialStatus={initialStatus}
-          initialPausedJobs={scheduledSyncPausedJobs}
-        />
-      </div>
-
-      {Object.keys(stats.byTown).length > 0 ? (
+      }
+      townCounts={
         <div
           id="admin-town-counts"
           className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
@@ -582,42 +586,48 @@ export default async function AdminPage() {
               Active listings by town
             </p>
           </div>
-          <ul className="divide-y divide-charcoal/[0.08]">
-            {Object.entries(stats.byTown)
-              .sort((a, b) => b[1] - a[1])
-              .map(([town, count]) => (
-                <li
-                  key={town}
-                  className="flex items-baseline justify-between gap-4 px-5 sm:px-6 py-3"
-                >
-                  <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/55">
-                    {town}
-                  </span>
-                  <span className="font-mono tabular-nums text-navy font-semibold">
-                    {count.toLocaleString()}
-                  </span>
-                </li>
-              ))}
-          </ul>
+          {Object.keys(stats.byTown).length > 0 ? (
+            <ul className="divide-y divide-charcoal/[0.08]">
+              {Object.entries(stats.byTown)
+                .sort((a, b) => b[1] - a[1])
+                .map(([town, count]) => (
+                  <li
+                    key={town}
+                    className="flex items-baseline justify-between gap-4 px-5 sm:px-6 py-3"
+                  >
+                    <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/55">
+                      {town}
+                    </span>
+                    <span className="font-mono tabular-nums text-navy font-semibold">
+                      {count.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          ) : (
+            <p className="px-5 sm:px-6 py-6 text-sm text-charcoal/55">
+              No active listing counts yet — run a sync to populate town inventory.
+            </p>
+          )}
         </div>
-      ) : null}
-
-      <AdminDbTuningPanel
-        initial={{
-          chunkRows: getUpsertChunkRows(),
-          default: DB_UPSERT_CHUNK_ROWS_DEFAULT,
-          min: DB_UPSERT_CHUNK_ROWS_MIN,
-          max: DB_UPSERT_CHUNK_ROWS_MAX,
-        }}
-      />
-    </>
-  );
-
-  const syncLogPanel = (
-    <>
-      <AdminSyncHistoryPanel initial={syncRunHistory} />
-      <AdminSyncRunLog />
-    </>
+      }
+      syncHistory={
+        <>
+          <AdminSyncHistoryPanel initial={syncRunHistory} />
+          <AdminSyncRunLog />
+        </>
+      }
+      dbTuning={
+        <AdminDbTuningPanel
+          initial={{
+            chunkRows: getUpsertChunkRows(),
+            default: DB_UPSERT_CHUNK_ROWS_DEFAULT,
+            min: DB_UPSERT_CHUNK_ROWS_MIN,
+            max: DB_UPSERT_CHUNK_ROWS_MAX,
+          }}
+        />
+      }
+    />
   );
 
   const postgresPanel = (
@@ -928,9 +938,9 @@ export default async function AdminPage() {
 
       <AdminTabbedLayout
         db={dbPanel}
-        syncLog={syncLogPanel}
         stats={<AdminStatsInventoryPanel />}
         dataControls={dataControlsPanel}
+        architecture={<AdminSiteArchitecturePanel />}
         rets={retsPanel}
         postgres={postgresPanel}
         syncs={syncsPanel}

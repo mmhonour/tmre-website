@@ -2,88 +2,87 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ADMIN_DATA_CONTROLS_PANELS,
-  adminDataControlsPanelForSection,
-  isAdminDataControlsPanelId,
-  LEGACY_ADMIN_TAB_TO_DATA_CONTROLS,
-  type AdminDataControlsPanelId,
+  ADMIN_DATABASE_PANELS,
+  adminDatabasePanelForSection,
+  isAdminDatabasePanelId,
+  LEGACY_ADMIN_TAB_TO_DATABASE,
+  type AdminDatabasePanelId,
 } from "@/lib/admin-nav";
 
-const VALID_PANELS = new Set<string>(
-  ADMIN_DATA_CONTROLS_PANELS.map((p) => p.id),
-);
+const VALID_PANELS = new Set<string>(ADMIN_DATABASE_PANELS.map((p) => p.id));
 
-function panelFromLocation(): AdminDataControlsPanelId {
-  if (typeof window === "undefined") return "site";
+function panelFromLocation(): AdminDatabasePanelId {
+  if (typeof window === "undefined") return "rets-connection";
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  // Legacy top-level tabs: ?tab=site|spotlight|goldilocks|pricing
-  if (tab && LEGACY_ADMIN_TAB_TO_DATA_CONTROLS[tab]) {
-    return LEGACY_ADMIN_TAB_TO_DATA_CONTROLS[tab]!;
+  if (tab && LEGACY_ADMIN_TAB_TO_DATABASE[tab]) {
+    return LEGACY_ADMIN_TAB_TO_DATABASE[tab]!;
   }
-  if (tab && tab !== "data-controls") return "site";
+  if (tab && tab !== "db") {
+    return "rets-connection";
+  }
   const panel = params.get("panel");
-  if (panel && VALID_PANELS.has(panel) && isAdminDataControlsPanelId(panel)) {
+  if (panel && VALID_PANELS.has(panel) && isAdminDatabasePanelId(panel)) {
     return panel;
   }
   const hash = window.location.hash.replace(/^#/, "");
-  const fromSection = adminDataControlsPanelForSection(hash);
+  const fromSection = adminDatabasePanelForSection(hash);
   if (fromSection) return fromSection;
-  return "site";
+  return "rets-connection";
 }
 
-export default function AdminDataControlsPanel({
-  site,
-  spotlight,
-  goldilocks,
-  pricing,
-  vintages,
+export default function AdminDatabasePanel({
+  retsConnection,
+  sync,
+  syncHistory,
+  townCounts,
+  dbTuning,
 }: {
-  site: ReactNode;
-  spotlight: ReactNode;
-  goldilocks: ReactNode;
-  pricing: ReactNode;
-  vintages: ReactNode;
+  retsConnection: ReactNode;
+  sync: ReactNode;
+  syncHistory: ReactNode;
+  townCounts: ReactNode;
+  dbTuning: ReactNode;
 }) {
-  const [panel, setPanel] = useState<AdminDataControlsPanelId>("site");
+  const [panel, setPanel] = useState<AdminDatabasePanelId>("rets-connection");
 
   useEffect(() => {
-    const sync = () => setPanel(panelFromLocation());
-    sync();
-    window.addEventListener("hashchange", sync);
-    window.addEventListener("popstate", sync);
+    const syncFromLocation = () => setPanel(panelFromLocation());
+    syncFromLocation();
+    window.addEventListener("hashchange", syncFromLocation);
+    window.addEventListener("popstate", syncFromLocation);
     return () => {
-      window.removeEventListener("hashchange", sync);
-      window.removeEventListener("popstate", sync);
+      window.removeEventListener("hashchange", syncFromLocation);
+      window.removeEventListener("popstate", syncFromLocation);
     };
   }, []);
 
-  function selectPanel(next: AdminDataControlsPanelId) {
+  function selectPanel(next: AdminDatabasePanelId) {
     setPanel(next);
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", "data-controls");
+    url.searchParams.set("tab", "db");
     url.searchParams.set("panel", next);
     url.hash = "";
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminDataControlsPanelId, ReactNode> = {
-    site,
-    spotlight,
-    goldilocks,
-    pricing,
-    vintages,
+  const panels: Record<AdminDatabasePanelId, ReactNode> = {
+    "rets-connection": retsConnection,
+    sync,
+    "sync-history": syncHistory,
+    "town-counts": townCounts,
+    "db-tuning": dbTuning,
   };
-  const active = ADMIN_DATA_CONTROLS_PANELS.find((item) => item.id === panel);
+  const active = ADMIN_DATABASE_PANELS.find((item) => item.id === panel);
 
   return (
     <div className="space-y-6">
       <div
         role="tablist"
-        aria-label="Data controls"
+        aria-label="Database"
         className="flex flex-row flex-wrap items-stretch gap-1 border-b border-charcoal/[0.1]"
       >
-        {ADMIN_DATA_CONTROLS_PANELS.map((item) => {
+        {ADMIN_DATABASE_PANELS.map((item) => {
           const isActive = panel === item.id;
           return (
             <button
@@ -109,7 +108,7 @@ export default function AdminDataControlsPanel({
         </p>
       ) : null}
 
-      {ADMIN_DATA_CONTROLS_PANELS.map((item) => (
+      {ADMIN_DATABASE_PANELS.map((item) => (
         <div
           key={item.id}
           role="tabpanel"

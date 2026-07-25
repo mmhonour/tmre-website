@@ -5,9 +5,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ADMIN_TABS,
   adminDataControlsPanelForSection,
+  adminDatabasePanelForSection,
   adminTabForSection,
   isAdminDataControlsPanelId,
+  isAdminDatabasePanelId,
   LEGACY_ADMIN_TAB_TO_DATA_CONTROLS,
+  LEGACY_ADMIN_TAB_TO_DATABASE,
   type AdminTabId,
 } from "@/lib/admin-nav";
 
@@ -19,6 +22,9 @@ function tabFromLocation(): AdminTabId {
   const queryTab = params.get("tab");
   if (queryTab && LEGACY_ADMIN_TAB_TO_DATA_CONTROLS[queryTab]) {
     return "data-controls";
+  }
+  if (queryTab && LEGACY_ADMIN_TAB_TO_DATABASE[queryTab]) {
+    return "db";
   }
   if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
@@ -36,28 +42,47 @@ function tabFromLocation(): AdminTabId {
   return "db";
 }
 
-/** Rewrite legacy ?tab=site|spotlight|… to ?tab=data-controls&panel=… */
-function normalizeLegacyDataControlsUrl() {
+/** Rewrite legacy top-level tabs into nested ?tab=&panel= URLs. */
+function normalizeLegacyNestedTabUrls() {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   const queryTab = url.searchParams.get("tab");
   if (!queryTab) return;
-  const legacyPanel = LEGACY_ADMIN_TAB_TO_DATA_CONTROLS[queryTab];
-  if (!legacyPanel) return;
-  url.searchParams.set("tab", "data-controls");
-  url.searchParams.set("panel", legacyPanel);
-  window.history.replaceState(null, "", url);
+
+  const dataPanel = LEGACY_ADMIN_TAB_TO_DATA_CONTROLS[queryTab];
+  if (dataPanel) {
+    url.searchParams.set("tab", "data-controls");
+    url.searchParams.set("panel", dataPanel);
+    window.history.replaceState(null, "", url);
+    return;
+  }
+
+  const dbPanel = LEGACY_ADMIN_TAB_TO_DATABASE[queryTab];
+  if (dbPanel) {
+    url.searchParams.set("tab", "db");
+    url.searchParams.set("panel", dbPanel);
+    window.history.replaceState(null, "", url);
+  }
 }
 
-function ensureDataControlsPanelParam() {
+function ensureNestedPanelParam() {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  if (url.searchParams.get("tab") !== "data-controls") return;
-  if (isAdminDataControlsPanelId(url.searchParams.get("panel"))) return;
+  const tab = url.searchParams.get("tab");
   const hash = url.hash.replace(/^#/, "");
-  const fromSection = hash ? adminDataControlsPanelForSection(hash) : null;
-  url.searchParams.set("panel", fromSection ?? "site");
-  window.history.replaceState(null, "", url);
+  if (tab === "data-controls") {
+    if (isAdminDataControlsPanelId(url.searchParams.get("panel"))) return;
+    const fromSection = hash ? adminDataControlsPanelForSection(hash) : null;
+    url.searchParams.set("panel", fromSection ?? "site");
+    window.history.replaceState(null, "", url);
+    return;
+  }
+  if (tab === "db") {
+    if (isAdminDatabasePanelId(url.searchParams.get("panel"))) return;
+    const fromSection = hash ? adminDatabasePanelForSection(hash) : null;
+    url.searchParams.set("panel", fromSection ?? "rets-connection");
+    window.history.replaceState(null, "", url);
+  }
 }
 
 function scrollToSection(sectionId: string) {
@@ -68,9 +93,9 @@ function scrollToSection(sectionId: string) {
 
 export default function AdminTabbedLayout({
   db,
-  syncLog,
   stats,
   dataControls,
+  architecture,
   rets,
   postgres,
   syncs,
@@ -79,9 +104,9 @@ export default function AdminTabbedLayout({
   glossary,
 }: {
   db: ReactNode;
-  syncLog: ReactNode;
   stats: ReactNode;
   dataControls: ReactNode;
+  architecture: ReactNode;
   rets: ReactNode;
   postgres: ReactNode;
   syncs: ReactNode;
@@ -93,8 +118,8 @@ export default function AdminTabbedLayout({
 
   useEffect(() => {
     const syncFromLocation = () => {
-      normalizeLegacyDataControlsUrl();
-      ensureDataControlsPanelParam();
+      normalizeLegacyNestedTabUrls();
+      ensureNestedPanelParam();
       setTab(tabFromLocation());
     };
     syncFromLocation();
@@ -126,6 +151,10 @@ export default function AdminTabbedLayout({
       if (!isAdminDataControlsPanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "site");
       }
+    } else if (next === "db") {
+      if (!isAdminDatabasePanelId(url.searchParams.get("panel"))) {
+        url.searchParams.set("panel", "rets-connection");
+      }
     } else {
       url.searchParams.delete("panel");
     }
@@ -135,9 +164,9 @@ export default function AdminTabbedLayout({
 
   const panels: Record<AdminTabId, ReactNode> = {
     db,
-    "sync-log": syncLog,
     stats,
     "data-controls": dataControls,
+    architecture,
     rets,
     postgres,
     syncs,
