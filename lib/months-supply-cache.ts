@@ -2,6 +2,7 @@ import 'server-only'
 
 import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
+import { closeFieldsFromListing } from '@/lib/listing-history'
 import { filterListingsByKind, LISTING_KINDS, type ListingKind } from '@/lib/listing-kind'
 import {
   LISTING_PROPERTY_CLASSES,
@@ -77,7 +78,10 @@ export function avgMonthlyClosingsFromClosed(
 ): number | null {
   const counts = new Map<string, number>()
   for (const l of closed) {
-    const ym = getMonthFromTimestamp(l.statusChangeTimestamp ?? l.modificationTimestamp)
+    const { closeDate } = closeFieldsFromListing(l)
+    const ym = getMonthFromTimestamp(
+      closeDate ?? l.statusChangeTimestamp ?? l.modificationTimestamp,
+    )
     if (!ym) continue
     const key = `${ym.year}-${ym.month}`
     counts.set(key, (counts.get(key) ?? 0) + 1)
@@ -167,7 +171,8 @@ export async function rebuildMonthsSupplyCache(options?: {
     if (!byTown[town]) {
       const [active, closed] = await Promise.all([
         readListingsFromDb(town, 'Active', 500),
-        readListingsFromDb(town, 'Closed', 2500),
+        // Full closed set — price-DESC 2500 sample drops recent mid-market sales.
+        readListingsFromDb(town, 'Closed'),
       ])
       byTown[town] = { active, closed }
     }

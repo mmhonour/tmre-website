@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { readListingsFromDb } from '@/lib/db/listings-repo'
 import {
   fetchClosedListingsAcrossTowns,
   fetchClosedListingsForCity,
   listingCacheHeaders,
 } from '@/lib/listings-store'
-import { TMRE_TOWNS, isTmreTown } from '@/lib/tmre-towns'
+import { TMRE_TOWNS, isTmreTown, type TmreTown } from '@/lib/tmre-towns'
 import {
   emptyPriceCounts,
   PRICE_BUCKETS,
@@ -178,40 +179,66 @@ export async function GET(req: NextRequest) {
   }
 
   const kind = parseListingKindParam(searchParams.get('kind'))
+  const yearRaw = searchParams.get('year')
+  const yearParsed = yearRaw != null ? Number(yearRaw) : NaN
+  const year =
+    Number.isFinite(yearParsed) &&
+    yearParsed >= PERIOD_START &&
+    yearParsed <= CURRENT_YEAR
+      ? Math.trunc(yearParsed)
+      : null
 
   try {
-    const cached = await readStatsCache<
-      ReturnType<typeof computeSalesByPrice> & { generatedAt?: string }
-    >('sales-by-price', city, kind)
-    if (cached) {
-      return NextResponse.json(
-        {
-          ...cached,
-          source: 'db',
-          statsCache: true,
-          generatedAt: cached.generatedAt ?? new Date().toISOString(),
-        },
-        { headers: { ...listingCacheHeaders('db'), 'X-Stats-Cache': 'hit' } },
-      )
+    // Multi-year aggregate stays cacheable; a specific year is computed on read.
+    if (year == null) {
+      const cached = await readStatsCache<
+        ReturnType<typeof computeSalesByPrice> & { generatedAt?: string }
+      >('sales-by-price', city, kind)
+      if (cached) {
+        return NextResponse.json(
+          {
+            ...cached,
+            source: 'db',
+            statsCache: true,
+            generatedAt: cached.generatedAt ?? new Date().toISOString(),
+          },
+          { headers: { ...listingCacheHeaders('db'), 'X-Stats-Cache': 'hit' } },
+        )
+      }
     }
 
-    const { listings: raw, source } =
-      city === 'All'
-        ? await fetchClosedListingsAcrossTowns(TMRE_TOWNS, {
-            limit: 2500,
-          })
-        : await fetchClosedListingsForCity(city, 2500)
+    let raw: Awaited<ReturnType<typeof fetchClosedListingsForCity>>['listings']
+    let source: 'db' | 'rets' = 'db'
+
+    if (year != null && city !== 'All' && isTmreTown(city)) {
+      // Full closed set for year slices — avoid the 2500 price-DESC sample.
+      raw = await readListingsFromDb(city as TmreTown, 'Closed')
+      source = 'db'
+    } else if (year != null && city === 'All') {
+      const rows = await Promise.all(
+        TMRE_TOWNS.map((town) => readListingsFromDb(town, 'Closed')),
+      )
+      raw = rows.flat()
+      source = 'db'
+    } else {
+      const fetched =
+        city === 'All'
+          ? await fetchClosedListingsAcrossTowns(TMRE_TOWNS, { limit: 2500 })
+          : await fetchClosedListingsForCity(city, 2500)
+      raw = fetched.listings
+      source = fetched.source
+    }
 
     const saleBuckets = await getPriceBucketsFresh()
-    const payload = computeSalesByPrice(raw, city, kind, saleBuckets)
+    const payload = computeSalesByPrice(raw, city, kind, saleBuckets, year)
     const generatedAt = new Date().toISOString()
 
-    if (source === 'db') {
+    if (source === 'db' && year == null) {
       await writeStatsCache('sales-by-price', city, kind, { ...payload, generatedAt })
     }
 
     return NextResponse.json(
-      { ...payload, generatedAt, source, statsCache: false },
+      { ...payload, year, generatedAt, source, statsCache: false },
       { headers: listingCacheHeaders(source) },
     )
   } catch (err) {

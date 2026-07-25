@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ADMIN_TABS,
+  adminArchitecturePanelForSection,
   adminDataControlsPanelForSection,
   adminDatabasePanelForSection,
   adminTabForSection,
+  isAdminArchitecturePanelId,
   isAdminDataControlsPanelId,
   isAdminDatabasePanelId,
+  LEGACY_ADMIN_TAB_TO_ARCHITECTURE,
   LEGACY_ADMIN_TAB_TO_DATA_CONTROLS,
   LEGACY_ADMIN_TAB_TO_DATABASE,
   type AdminTabId,
@@ -25,6 +28,9 @@ function tabFromLocation(): AdminTabId {
   }
   if (queryTab && LEGACY_ADMIN_TAB_TO_DATABASE[queryTab]) {
     return "db";
+  }
+  if (queryTab && LEGACY_ADMIN_TAB_TO_ARCHITECTURE[queryTab]) {
+    return "architecture";
   }
   if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
@@ -62,6 +68,14 @@ function normalizeLegacyNestedTabUrls() {
     url.searchParams.set("tab", "db");
     url.searchParams.set("panel", dbPanel);
     window.history.replaceState(null, "", url);
+    return;
+  }
+
+  const archPanel = LEGACY_ADMIN_TAB_TO_ARCHITECTURE[queryTab];
+  if (archPanel) {
+    url.searchParams.set("tab", "architecture");
+    url.searchParams.set("panel", archPanel);
+    window.history.replaceState(null, "", url);
   }
 }
 
@@ -82,6 +96,13 @@ function ensureNestedPanelParam() {
     const fromSection = hash ? adminDatabasePanelForSection(hash) : null;
     url.searchParams.set("panel", fromSection ?? "rets-connection");
     window.history.replaceState(null, "", url);
+    return;
+  }
+  if (tab === "architecture") {
+    if (isAdminArchitecturePanelId(url.searchParams.get("panel"))) return;
+    const fromSection = hash ? adminArchitecturePanelForSection(hash) : null;
+    url.searchParams.set("panel", fromSection ?? "map");
+    window.history.replaceState(null, "", url);
   }
 }
 
@@ -100,7 +121,6 @@ export default function AdminTabbedLayout({
   postgres,
   syncs,
   server,
-  docs,
   glossary,
 }: {
   db: ReactNode;
@@ -111,7 +131,6 @@ export default function AdminTabbedLayout({
   postgres: ReactNode;
   syncs: ReactNode;
   server: ReactNode;
-  docs: ReactNode;
   glossary: ReactNode;
 }) {
   const [tab, setTab] = useState<AdminTabId>("db");
@@ -155,6 +174,10 @@ export default function AdminTabbedLayout({
       if (!isAdminDatabasePanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "rets-connection");
       }
+    } else if (next === "architecture") {
+      if (!isAdminArchitecturePanelId(url.searchParams.get("panel"))) {
+        url.searchParams.set("panel", "map");
+      }
     } else {
       url.searchParams.delete("panel");
     }
@@ -171,7 +194,6 @@ export default function AdminTabbedLayout({
     postgres,
     syncs,
     server,
-    docs,
     glossary,
   };
   const activeItem = ADMIN_TABS.find((item) => item.id === tab);

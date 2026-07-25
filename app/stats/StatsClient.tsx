@@ -32,6 +32,7 @@ import ActiveByTownDataTable from "./ActiveByTownDataTable";
 import ActiveByTownView from "./ActiveByTownView";
 import SalesByTownDataTable from "./SalesByTownDataTable";
 import VintageSalesDataTable from "./VintageSalesDataTable";
+import PriceSalesByTownDataTable from "./PriceSalesByTownDataTable";
 import StatsChartNav from "./StatsChartNav";
 import StatsChartLazyMount from "./StatsChartLazyMount";
 import {
@@ -40,6 +41,7 @@ import {
   statsByMonthTitle,
   statsByMonthTownTitle,
   statsByPriceTitle,
+  statsByPriceTownTitle,
   statsByVintageTitle,
   statsMonthsSupplyByMonthTitle,
   statsMonthsSupplyByMonthTownTitle,
@@ -58,6 +60,9 @@ const ActiveByTownChart = dynamic(() => import("./ActiveByTownChart"), { ssr: fa
 const SalesByTownChart = dynamic(() => import("./SalesByTownChart"), { ssr: false });
 const VintageSalesChart = dynamic(() => import("./VintageSalesChart"), { ssr: false });
 const PriceSalesChart = dynamic(() => import("./PriceSalesChart"), { ssr: false });
+const PriceSalesByTownChart = dynamic(() => import("./PriceSalesByTownChart"), {
+  ssr: false,
+});
 const MedianPriceBarChart = dynamic(() => import("./MedianPriceBarChart"), { ssr: false });
 const AvgDomLineChart = dynamic(() => import("./AvgDomLineChart"), { ssr: false });
 
@@ -554,7 +559,13 @@ export default function StatsClient() {
     }
     items.push(
       { id: "stats-chart-sales-by-vintage", label: statsByVintageTitle(statsKind) },
-      { id: "stats-chart-sales-by-price", label: statsByPriceTitle(statsKind) },
+      {
+        id: "stats-chart-sales-by-price",
+        label:
+          selectedCity === "All"
+            ? statsByPriceTownTitle(statsKind)
+            : statsByPriceTitle(statsKind),
+      },
     );
     if (selectedCity === "All") {
       items.push(
@@ -899,14 +910,31 @@ export default function StatsClient() {
               </StatsChartLazyMount>
 
               <StatsChartLazyMount>
-              <StatsChartPrintFrame chartId="sales-by-price">
-                <PriceSalesChart
-                  key={`price-${statsKind}-${selectedCity}${chartVersionSuffix}`}
-                  city={selectedCity}
-                  kind={statsKind}
-                  selectedBucketId={selectedPriceBucketId}
-                  onBucketClick={showPriceBandDetail}
-                />
+              <StatsChartPrintFrame
+                chartId="sales-by-price"
+                dataPanel={
+                  selectedCity === "All" ? (
+                    <PriceSalesByTownDataTable
+                      key={`price-town-data-${statsKind}${chartVersionSuffix}`}
+                      kind={statsKind}
+                    />
+                  ) : undefined
+                }
+              >
+                {selectedCity === "All" ? (
+                  <PriceSalesByTownChart
+                    key={`price-town-${statsKind}${chartVersionSuffix}`}
+                    kind={statsKind}
+                  />
+                ) : (
+                  <PriceSalesChart
+                    key={`price-${statsKind}-${selectedCity}${chartVersionSuffix}`}
+                    city={selectedCity}
+                    kind={statsKind}
+                    selectedBucketId={selectedPriceBucketId}
+                    onBucketClick={showPriceBandDetail}
+                  />
+                )}
               </StatsChartPrintFrame>
               </StatsChartLazyMount>
 

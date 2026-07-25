@@ -7,7 +7,6 @@ export type AdminTabId =
   | "postgres"
   | "syncs"
   | "server"
-  | "docs"
   | "glossary";
 
 /** Sub-panels under Admin → Data Controls. */
@@ -23,15 +22,22 @@ export type AdminDatabasePanelId =
   | "rets-connection"
   | "sync"
   | "sync-history"
+  | "inventory"
   | "town-counts"
   | "db-tuning";
+
+/** Sub-panels under Admin → Architecture. */
+export type AdminArchitecturePanelId = "map" | "docs";
 
 export type AdminSectionLink = {
   id: string;
   label: string;
   tab: AdminTabId;
-  /** Sub-panel when the tab has nested panels (Database / Data controls). */
-  panel?: AdminDataControlsPanelId | AdminDatabasePanelId;
+  /** Sub-panel when the tab has nested panels (Database / Data controls / Architecture). */
+  panel?:
+    | AdminDataControlsPanelId
+    | AdminDatabasePanelId
+    | AdminArchitecturePanelId;
 };
 
 /** Former top-level tabs now nested under Data Controls. */
@@ -51,6 +57,14 @@ export const LEGACY_ADMIN_TAB_TO_DATABASE: Record<string, AdminDatabasePanelId> 
     "sync-log": "sync-history",
   };
 
+/** Former top-level Product docs tab → Architecture sub-panel. */
+export const LEGACY_ADMIN_TAB_TO_ARCHITECTURE: Record<
+  string,
+  AdminArchitecturePanelId
+> = {
+  docs: "docs",
+};
+
 export const ADMIN_DATA_CONTROLS_PANELS: {
   id: AdminDataControlsPanelId;
   label: string;
@@ -69,7 +83,8 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   {
     id: "goldilocks",
     label: "Goldilocks",
-    subtitle: "Score weights, remark characteristics, and score rebuild",
+    subtitle:
+      "Factor weights, DOM bands, and remark characteristics — each as a sub-tab",
   },
   {
     id: "pricing",
@@ -104,6 +119,11 @@ export const ADMIN_DATABASE_PANELS: {
     subtitle: "Durable database sync history and latest in-browser sync steps",
   },
   {
+    id: "inventory",
+    label: "Database inventory",
+    subtitle: "Connected stores, paths/sizes, and row summaries",
+  },
+  {
     id: "town-counts",
     label: "Listings by town",
     subtitle: "Active listing counts from the current Postgres inventory",
@@ -112,6 +132,24 @@ export const ADMIN_DATABASE_PANELS: {
     id: "db-tuning",
     label: "DB write tuning",
     subtitle: "Upsert chunk size for listings sync writes",
+  },
+];
+
+export const ADMIN_ARCHITECTURE_PANELS: {
+  id: AdminArchitecturePanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "map",
+    label: "Site architecture",
+    subtitle:
+      "Visual map of Netlify, Neon, RETS, R2, DNS/CDN, Resend, and related services",
+  },
+  {
+    id: "docs",
+    label: "Product docs",
+    subtitle: "Live pages and repository reference files",
   },
 ];
 
@@ -134,7 +172,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "db",
     label: "Database",
     subtitle:
-      "RETS connection, sync status, sync history, town counts, and write tuning",
+      "RETS connection, sync status, sync history, inventory, town counts, and write tuning",
   },
   {
     id: "stats",
@@ -149,9 +187,8 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   },
   {
     id: "architecture",
-    label: "Site architecture",
-    subtitle:
-      "Visual map of Netlify, Neon, RETS, R2, DNS/CDN, Resend, and related services",
+    label: "Architecture",
+    subtitle: "Site architecture map and product docs",
   },
   {
     id: "rets",
@@ -174,11 +211,6 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "API routes and request handlers",
   },
   {
-    id: "docs",
-    label: "Product docs",
-    subtitle: "Live pages and repository reference files",
-  },
-  {
     id: "glossary",
     label: "Glossary",
     subtitle: "Acronyms and concepts from product chats on this PC",
@@ -197,6 +229,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Sync status / Pause",
     tab: "db",
     panel: "sync",
+  },
+  {
+    id: "admin-database-inventory",
+    label: "Database inventory",
+    tab: "db",
+    panel: "inventory",
   },
   {
     id: "admin-town-counts",
@@ -310,6 +348,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     id: "admin-site-architecture",
     label: "Site architecture",
     tab: "architecture",
+    panel: "map",
   },
   { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
   { id: "admin-sqlite-schemas", label: "Postgres schema", tab: "postgres" },
@@ -317,8 +356,18 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-netlify", label: "Netlify functions", tab: "syncs" },
   { id: "admin-zip-boundaries", label: "Zip boundary sync", tab: "syncs" },
   { id: "admin-api-routes", label: "API routes", tab: "server" },
-  { id: "admin-product-pages", label: "Product pages", tab: "docs" },
-  { id: "admin-repo-docs", label: "Repository docs", tab: "docs" },
+  {
+    id: "admin-product-pages",
+    label: "Product pages",
+    tab: "architecture",
+    panel: "docs",
+  },
+  {
+    id: "admin-repo-docs",
+    label: "Repository docs",
+    tab: "architecture",
+    panel: "docs",
+  },
   { id: "admin-glossary", label: "Glossary", tab: "glossary" },
 ];
 
@@ -521,6 +570,13 @@ export function adminDatabasePanelForSection(
   return isAdminDatabasePanelId(panel) ? panel : null;
 }
 
+export function adminArchitecturePanelForSection(
+  sectionId: string,
+): AdminArchitecturePanelId | null {
+  const panel = ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel;
+  return isAdminArchitecturePanelId(panel) ? panel : null;
+}
+
 export function isAdminDataControlsPanelId(
   value: string | null | undefined,
 ): value is AdminDataControlsPanelId {
@@ -540,20 +596,26 @@ export function isAdminDatabasePanelId(
     value === "rets-connection" ||
     value === "sync" ||
     value === "sync-history" ||
+    value === "inventory" ||
     value === "town-counts" ||
     value === "db-tuning"
   );
+}
+
+export function isAdminArchitecturePanelId(
+  value: string | null | undefined,
+): value is AdminArchitecturePanelId {
+  return value === "map" || value === "docs";
 }
 
 export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
   const link = ADMIN_SECTION_LINKS.find((row) => row.id === sectionId);
   const params = new URLSearchParams({ tab });
   if (
-    (tab === "data-controls" || tab === "db") &&
     link?.panel &&
-    (tab === "data-controls"
-      ? isAdminDataControlsPanelId(link.panel)
-      : isAdminDatabasePanelId(link.panel))
+    ((tab === "data-controls" && isAdminDataControlsPanelId(link.panel)) ||
+      (tab === "db" && isAdminDatabasePanelId(link.panel)) ||
+      (tab === "architecture" && isAdminArchitecturePanelId(link.panel)))
   ) {
     params.set("panel", link.panel);
   }
@@ -566,6 +628,10 @@ export function adminDataControlsHref(panel: AdminDataControlsPanelId): string {
 
 export function adminDatabaseHref(panel: AdminDatabasePanelId): string {
   return `/admin?tab=db&panel=${panel}`;
+}
+
+export function adminArchitectureHref(panel: AdminArchitecturePanelId): string {
+  return `/admin?tab=architecture&panel=${panel}`;
 }
 
 /** Anchor id for a table card on the Admin Postgres schema diagram. */

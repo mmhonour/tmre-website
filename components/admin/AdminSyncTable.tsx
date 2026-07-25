@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AdminSyncActionId, AdminDatabaseSyncStats, FullResyncFinalizeStepId } from "@/lib/admin-sync-types";
+import type { AdminSyncActionId, FullResyncFinalizeStepId } from "@/lib/admin-sync-types";
 import {
   ADMIN_SYNC_ACTIONS,
   ADMIN_SYNC_ALL_CLIENT_STEPS,
@@ -29,7 +29,6 @@ import {
   syncNextOverrideStepMs,
   type SyncNextOverrides,
 } from "@/lib/sync-next-override-shared";
-import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import {
@@ -548,7 +547,6 @@ export type PanelStatus = {
     finishedAt: string;
     startedAt: string;
   }[];
-  databaseStats?: AdminDatabaseSyncStats[];
 };
 
 function formatTimestamp(iso: string | null | undefined): string {
@@ -1185,18 +1183,15 @@ const TD =
 export default function AdminSyncTable({
   rows,
   initialRefreshing,
-  initialDatabaseStats,
   initialStatus,
   initialPausedJobs,
 }: {
   rows: AdminSyncRow[];
   initialRefreshing: boolean;
-  initialDatabaseStats: AdminDatabaseSyncStats[];
   initialStatus?: PanelStatus;
   initialPausedJobs?: ScheduledSyncPausedJobs;
 }) {
   const [status, setStatus] = useState<PanelStatus | null>(initialStatus ?? null);
-  const [databaseStats, setDatabaseStats] = useState(initialDatabaseStats);
   const [refreshing, setRefreshing] = useState(initialRefreshing);
   const [pausedJobs, setPausedJobs] = useState<ScheduledSyncPausedJobs>(
     () => initialPausedJobs ?? emptyPausedJobs(),
@@ -1469,7 +1464,6 @@ export default function AdminSyncTable({
     const body = (await res.json()) as PanelStatus;
     setStatus(body);
     setRefreshing(body.refreshing);
-    if (body.databaseStats) setDatabaseStats(body.databaseStats);
   }, []);
 
   useEffect(() => {
@@ -1678,7 +1672,6 @@ export default function AdminSyncTable({
         setErrors((prev) => ({ ...prev, [row.id]: undefined }));
         setStatus(body);
         setRefreshing(body.refreshing);
-        if (body.databaseStats) setDatabaseStats(body.databaseStats);
         const queued = Boolean(body.backgroundQueued);
         setRunTimings((prev) => ({
           ...prev,
@@ -2061,7 +2054,6 @@ export default function AdminSyncTable({
 
         setStatus(stepBody);
         setRefreshing(stepBody.refreshing);
-        if (stepBody.databaseStats) setDatabaseStats(stepBody.databaseStats);
 
         if (stepBody.backgroundQueued) {
           skipChainedAfterFull = true;
@@ -2205,59 +2197,6 @@ export default function AdminSyncTable({
           </p>
         </div>
       ) : null}
-      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-white">
-        <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-3">
-          Database inventory
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse">
-            <thead>
-              <tr>
-                <th className={`${TH} border-charcoal/[0.08]`}>Database</th>
-                <th className={`${TH} border-charcoal/[0.08]`}>Location</th>
-                <th className={`${TH} border-charcoal/[0.08] border-r-0`}>Rows</th>
-              </tr>
-            </thead>
-            <tbody>
-              {databaseStats.map((db, index) => (
-                <tr
-                  key={db.id}
-                  className={index % 2 === 1 ? "bg-cream/[0.18]" : "bg-white"}
-                >
-                  <td className={`${TD} border-charcoal/[0.06]`}>
-                    <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
-                      {db.label}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[10px] text-charcoal/45">
-                      {db.available ? "Connected" : "Unavailable"}
-                    </p>
-                  </td>
-                  <td className={`${TD} border-charcoal/[0.06]`}>
-                    <p
-                      className="font-mono text-[11px] text-slate break-all"
-                      title={db.path}
-                    >
-                      {db.path}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[10px] tabular-nums text-charcoal/45">
-                      {formatBytes(db.sizeBytes)}
-                      {db.exists ? "" : " · missing"}
-                    </p>
-                    {db.error ? (
-                      <p className="mt-1 font-mono text-[10px] text-coral leading-snug">
-                        {db.error}
-                      </p>
-                    ) : null}
-                  </td>
-                  <td className={`${TD} border-charcoal/[0.06] border-r-0`}>
-                    <p className="text-sm text-slate leading-snug">{db.summary}</p>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1120px] border-collapse table-fixed">
           <colgroup>

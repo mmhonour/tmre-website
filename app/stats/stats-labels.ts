@@ -21,6 +21,12 @@ export function statsByPriceTitle(kind: StatsKind): string {
   return kind === 'rental' ? 'Leases by rent' : 'Sales by price'
 }
 
+export function statsByPriceTownTitle(kind: StatsKind): string {
+  return kind === 'rental'
+    ? 'Leases by rent · by town'
+    : 'Sales by price · by town'
+}
+
 export function statsByVintageTitle(kind: StatsKind): string {
   return kind === 'rental' ? 'Leases by vintage' : 'Sales by vintage'
 }

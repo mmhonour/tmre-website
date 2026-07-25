@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { STATS_CLOSED_PERIOD_START } from "@/lib/stats-listing-rows";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 import type { StatsCity, StatsKind } from "./stats-towns";
 import { TOWN_LIST } from "./stats-towns";
@@ -21,7 +22,14 @@ import {
   statsPriceBandLabel,
   statsVolumeNoun,
 } from "./stats-labels";
+import { pillClass } from "./stats-month-chart-utils";
 import { useStatsChartReady } from "./stats-chart-frame-context";
+
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from(
+  { length: CURRENT_YEAR - STATS_CLOSED_PERIOD_START + 1 },
+  (_, i) => STATS_CLOSED_PERIOD_START + i,
+).reverse();
 
 type BucketRow = {
   id: string;
@@ -82,9 +90,10 @@ export default function PriceSalesChart({
   onBucketClick?: (bucket: { id: string; label: string }) => void;
 }) {
   const id = useId().replace(/:/g, "");
+  const [year, setYear] = useState(CURRENT_YEAR);
   const [cache, setCache] = useState<Partial<Record<string, ApiResponse>>>({});
   const [loading, setLoading] = useState(false);
-  const key = `${city}:${kind}`;
+  const key = `${city}:${kind}:${year}`;
 
   useEffect(() => {
     if (cache[key]) return;
@@ -92,8 +101,8 @@ export default function PriceSalesChart({
 
     const url =
       city === "All"
-        ? `/api/sales-by-price?city=All&kind=${kind}`
-        : `/api/sales-by-price?city=${encodeURIComponent(city)}&kind=${kind}`;
+        ? `/api/sales-by-price?city=All&kind=${kind}&year=${year}`
+        : `/api/sales-by-price?city=${encodeURIComponent(city)}&kind=${kind}&year=${year}`;
 
     void loadTabJson<ApiResponse>(url)
       .then((d) => {
@@ -105,7 +114,7 @@ export default function PriceSalesChart({
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [city, kind, key, cache]);
+  }, [city, kind, year, key, cache]);
 
   const payload = cache[key];
   const topId = payload?.topBucket?.id ?? null;
@@ -142,13 +151,9 @@ export default function PriceSalesChart({
             </p>
             <p className="font-serif text-xl text-white">
               {city === "All" ? "All Towns" : `${city}, CT`}
-              {payload?.period ? (
-                <>
-                  {" "}
-                  <span className="text-white/40">·</span>{" "}
-                  <span className="text-gold">{payload.period}</span> closed
-                </>
-              ) : null}
+              {" "}
+              <span className="text-white/40">·</span>{" "}
+              <span className="text-gold">tracking {year}</span>
             </p>
             {payload?.topBucket && (
               <p className="mt-2 font-mono text-[11px] text-white/50">
@@ -167,19 +172,34 @@ export default function PriceSalesChart({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 font-mono text-[10px] tracking-wide">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                loading
-                  ? "bg-gold animate-pulse-dot"
-                  : isFallback
-                    ? "bg-coral"
-                    : "bg-sage animate-pulse-dot"
-              }`}
-            />
-            <span className="text-white/40">
-              {loading ? "Loading…" : isFallback ? "Estimated" : "Live"}
-            </span>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {YEAR_OPTIONS.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => setYear(y)}
+                  className={pillClass(year === y)}
+                  aria-pressed={year === y}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 font-mono text-[10px] tracking-wide">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  loading
+                    ? "bg-gold animate-pulse-dot"
+                    : isFallback
+                      ? "bg-coral"
+                      : "bg-sage animate-pulse-dot"
+                }`}
+              />
+              <span className="text-white/40">
+                {loading ? "Loading…" : isFallback ? "Estimated" : "Live"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -432,7 +452,7 @@ export default function PriceSalesChart({
 
       <div className="bg-[#0a1020] px-6 py-3 flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[9px] tracking-wide text-white/20">
-          {statsClosePriceLabel(kind)} ·{" "}
+          {statsClosePriceLabel(kind)} · tracking {year} ·{" "}
           {payload?.totalSales?.toLocaleString() ?? "—"}{" "}
           {statsClosedLabel(kind)}
           {payload && payload.unknownPrice > 0
@@ -441,7 +461,7 @@ export default function PriceSalesChart({
         </p>
         {city === "All" && (
           <p className="font-mono text-[9px] tracking-wide text-white/20">
-            {TOWN_LIST.length} towns aggregated
+            {TOWN_LIST.length} towns aggregated · {year}
           </p>
         )}
       </div>

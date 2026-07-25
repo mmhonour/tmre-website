@@ -21,7 +21,9 @@ import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
 import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
+import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
+import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
 import { emptyScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
@@ -417,7 +419,6 @@ export default async function AdminPage() {
     nextRuns,
     nextOverrides,
     scheduleHints,
-    databaseStats,
   };
 
   // Which Postgres this admin process is editing (Neon vs local). Site controls
@@ -570,12 +571,12 @@ export default async function AdminPage() {
           <AdminSyncTable
             rows={rows}
             initialRefreshing={refresh.refreshing}
-            initialDatabaseStats={databaseStats}
             initialStatus={initialStatus}
             initialPausedJobs={scheduledSyncPausedJobs}
           />
         </div>
       }
+      inventory={<AdminDatabaseInventoryPanel initial={databaseStats} />}
       townCounts={
         <div
           id="admin-town-counts"
@@ -940,12 +941,16 @@ export default async function AdminPage() {
         db={dbPanel}
         stats={<AdminStatsInventoryPanel />}
         dataControls={dataControlsPanel}
-        architecture={<AdminSiteArchitecturePanel />}
+        architecture={
+          <AdminArchitecturePanel
+            map={<AdminSiteArchitecturePanel />}
+            docs={<AdminProductDocsPanel />}
+          />
+        }
         rets={retsPanel}
         postgres={postgresPanel}
         syncs={syncsPanel}
         server={serverPanel}
-        docs={<AdminProductDocsPanel />}
         glossary={<AdminGlossaryPanel />}
       />
     </>

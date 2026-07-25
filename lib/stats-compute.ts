@@ -260,7 +260,9 @@ export function computeSalesByMonth(
   const counts = new Map<string, number>()
 
   for (const l of filtered) {
-    const ts = l.statusChangeTimestamp ?? l.modificationTimestamp
+    // CloseDate first — StatusChangeTimestamp is often the pending/UC flip,
+    // which under-counts true closings and blows up months-supply.
+    const ts = closedListingTimestamp(l)
     const ym = getMonthFromTimestamp(ts)
     if (!ym) continue
     if (!SALES_BY_MONTH_YEARS.includes(ym.year)) continue
@@ -464,21 +466,39 @@ export function computeAvgScoreByVintage(
   }
 }
 
+function closedMatchesPricePeriod(
+  ts: string | null,
+  year: number | null | undefined,
+): boolean {
+  if (!ts) return false
+  if (year == null || !Number.isFinite(year)) return inStatsClosedPeriod(ts)
+  const d = new Date(ts)
+  return !Number.isNaN(d.getTime()) && d.getFullYear() === year
+}
+
+function salesByPricePeriodLabel(year: number | null | undefined): string {
+  if (year != null && Number.isFinite(year)) return String(year)
+  return `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`
+}
+
 export function computeSalesByPrice(
   listings: Listing[],
   city: string,
   kind: ListingKind,
   /** Admin-configured sale bands; defaults to shipped PRICE_BUCKETS. */
   saleBuckets: readonly (typeof PRICE_BUCKETS)[number][] = PRICE_BUCKETS,
+  /** When set, only count closings in that calendar year. */
+  year: number | null = null,
 ): SalesByPricePayload {
   const filtered = filterListingsByKind(listings, kind)
+  const period = salesByPricePeriodLabel(year)
 
   if (kind === 'rental') {
     const counts = emptyRentCounts()
     let total = 0
     for (const l of filtered) {
       const ts = closedListingTimestamp(l)
-      if (!inStatsClosedPeriod(ts)) continue
+      if (!closedMatchesPricePeriod(ts, year)) continue
       total += 1
       counts[classifyRentPrice(closedKindPrice(l, kind))] += 1
     }
@@ -493,7 +513,7 @@ export function computeSalesByPrice(
     return {
       city,
       kind,
-      period: `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`,
+      period,
       totalSales: total,
       knownPrice: knownTotal,
       unknownPrice: counts.unknown,
@@ -507,7 +527,7 @@ export function computeSalesByPrice(
   let total = 0
   for (const l of filtered) {
     const ts = closedListingTimestamp(l)
-    if (!inStatsClosedPeriod(ts)) continue
+    if (!closedMatchesPricePeriod(ts, year)) continue
     total += 1
     const id = classifySalePrice(closedSalePrice(l), bandDefs)
     counts[id] = (counts[id] ?? 0) + 1
@@ -525,13 +545,40 @@ export function computeSalesByPrice(
   return {
     city,
     kind,
-    period: `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`,
+    period,
     totalSales: total,
     knownPrice: knownTotal,
     unknownPrice: counts.unknown ?? 0,
     buckets,
     topBucket: ranked[0]?.count ? ranked[0] : null,
   }
+}
+
+export type SalesByPriceByTownPayload = {
+  kind: ListingKind
+  period: string
+  year: number
+  towns: Record<string, SalesByPricePayload>
+}
+
+export function computeSalesByPriceByTown(
+  byTownClosed: Readonly<Record<string, readonly Listing[]>>,
+  kind: ListingKind,
+  townKeys: readonly string[],
+  saleBuckets: readonly (typeof PRICE_BUCKETS)[number][] = PRICE_BUCKETS,
+  year: number = CURRENT_YEAR,
+): SalesByPriceByTownPayload {
+  const towns: Record<string, SalesByPricePayload> = {}
+  for (const town of townKeys) {
+    towns[town] = computeSalesByPrice(
+      [...(byTownClosed[town] ?? [])],
+      town,
+      kind,
+      saleBuckets,
+      year,
+    )
+  }
+  return { kind, period: String(year), year, towns }
 }
 
 export type StatsCacheScope =

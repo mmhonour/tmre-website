@@ -1,5 +1,5 @@
 /**
- * Visual inventory for Admin → Site architecture.
+ * Visual inventory for Admin → Architecture → Site architecture.
  * Evidence-based roles — GoDaddy/Cloudflare DNS are edge assumptions outside app code.
  */
 

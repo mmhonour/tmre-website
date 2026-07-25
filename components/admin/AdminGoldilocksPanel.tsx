@@ -70,11 +70,46 @@ function pctInputValue(weight: number): string {
   return String(Math.round(weight * 1000) / 10);
 }
 
+type GoldilocksSubPanelId = "weights" | "dom" | "characteristics";
+
+const GOLDILOCKS_SUB_PANELS: {
+  id: GoldilocksSubPanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "weights",
+    label: "Factor weights",
+    subtitle: "Composite % weights for age, condition, finishes, PPSF, layout, schools, and DOM",
+  },
+  {
+    id: "dom",
+    label: "DOM bands",
+    subtitle: "Days-on-market score tiers — first matching range wins",
+  },
+  {
+    id: "characteristics",
+    label: "Characteristics",
+    subtitle: "Remark phrases that drive condition, finishes, layout, and disqualification",
+  },
+];
+
+function goldilocksSubFromLocation(): GoldilocksSubPanelId {
+  if (typeof window === "undefined") return "weights";
+  const sub = new URLSearchParams(window.location.search).get("sub");
+  if (sub === "dom" || sub === "characteristics" || sub === "weights") {
+    return sub;
+  }
+  return "weights";
+}
+
 export default function AdminGoldilocksPanel({
   initial,
 }: {
   initial?: ApiPayload;
 }) {
+  const [subPanel, setSubPanel] =
+    useState<GoldilocksSubPanelId>("weights");
   const [saved, setSaved] = useState<GoldilocksScoringConfig | null>(
     initial?.config ?? null,
   );
@@ -115,6 +150,23 @@ export default function AdminGoldilocksPanel({
   const [rebuilding, setRebuilding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sync = () => setSubPanel(goldilocksSubFromLocation());
+    sync();
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
+  function selectSubPanel(next: GoldilocksSubPanelId) {
+    setSubPanel(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", "data-controls");
+    url.searchParams.set("panel", "goldilocks");
+    url.searchParams.set("sub", next);
+    url.hash = "";
+    window.history.replaceState(null, "", url);
+  }
 
   const applyPayload = useCallback((body: ApiPayload) => {
     setSaved(body.config);
@@ -399,6 +451,10 @@ export default function AdminGoldilocksPanel({
     replaceDomTiers(draft!.domTiers.filter((_, i) => i !== tierIndex));
   }
 
+  const activeSub =
+    GOLDILOCKS_SUB_PANELS.find((item) => item.id === subPanel) ??
+    GOLDILOCKS_SUB_PANELS[0]!;
+
   if (loading || !draft) {
     return (
       <div
@@ -412,6 +468,43 @@ export default function AdminGoldilocksPanel({
     );
   }
 
+  const actionsBar = (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        onClick={() => void save()}
+        disabled={saving || !dirty || !weightsValid}
+        className="rounded-full border border-navy/30 bg-cream/40 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:bg-cream disabled:pointer-events-none disabled:opacity-40"
+      >
+        {saving ? "Saving…" : "Save to Postgres"}
+      </button>
+      <button
+        type="button"
+        onClick={resetDefaults}
+        className="rounded-full border border-charcoal/15 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/60 transition-colors hover:border-charcoal/30 hover:text-navy"
+      >
+        Reset draft to defaults
+      </button>
+      <button
+        type="button"
+        onClick={() => void rebuildScores()}
+        disabled={rebuilding || !canRebuild}
+        title={rebuildDisabledReason}
+        className="rounded-full border border-navy/30 bg-navy px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-white transition-colors hover:bg-navy/90 disabled:pointer-events-none disabled:opacity-40"
+      >
+        {rebuilding
+          ? "Rebuilding scores…"
+          : ADMIN_SYNC_ACTIONS["listing-scores"].label}
+      </button>
+      {message ? (
+        <p className="font-mono text-[10px] text-sage">{message}</p>
+      ) : null}
+      {error ? (
+        <p className="font-mono text-[10px] text-coral">{error}</p>
+      ) : null}
+    </div>
+  );
+
   return (
     <div id="admin-goldilocks" className="scroll-mt-24 space-y-6">
       <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
@@ -422,10 +515,9 @@ export default function AdminGoldilocksPanel({
                 Goldilocks scoring
               </p>
               <p className="mt-1 max-w-2xl text-sm text-charcoal/65">
-                Composite % weights and remark characteristics used by
-                Intelligence, Deal of the Day, and listing score badges. Values
-                persist in Postgres. Stored listing scores update only when you
-                run a Goldilocks score rebuild.
+                Composite scoring used by Intelligence, Deal of the Day, and
+                listing score badges. Values persist in Postgres; stored scores
+                update only after a Goldilocks score rebuild.
               </p>
             </div>
             <button
@@ -451,342 +543,369 @@ export default function AdminGoldilocksPanel({
             </p>
           ) : (
             <p className="mt-2 font-mono text-[10px] text-charcoal/45">
-              Stored scores match the saved config. Change property
-              characteristics (or weights / DOM), save, then rebuild.
+              Stored scores match the saved config. Change a sub-tab, save, then
+              rebuild.
             </p>
           )}
         </div>
+      </div>
 
-        <div className="px-5 py-5 sm:px-6">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-navy">
-              Factor weights
-            </p>
-            <p
-              className={`font-mono text-[11px] ${
-                weightsValid ? "text-sage" : "text-coral"
+      <div
+        role="tablist"
+        aria-label="Goldilocks"
+        className="flex flex-row flex-wrap items-stretch gap-1 border-b border-charcoal/[0.1]"
+      >
+        {GOLDILOCKS_SUB_PANELS.map((item) => {
+          const isActive = subPanel === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => selectSubPanel(item.id)}
+              className={`shrink-0 -mb-px border-b-2 px-3 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase whitespace-nowrap transition-colors ${
+                isActive
+                  ? "border-gold text-navy"
+                  : "border-transparent text-charcoal/50 hover:border-charcoal/15 hover:text-navy"
               }`}
             >
-              Sum {weightSumPct}%{weightsValid ? "" : " — must be 100%"}
-            </p>
-          </div>
-
-          <div className="overflow-x-auto rounded-xl border border-charcoal/[0.08]">
-            <table className="w-full min-w-[36rem] text-left">
-              <thead>
-                <tr className="border-b border-charcoal/[0.08] bg-cream/30 font-mono text-[10px] uppercase tracking-[0.14em] text-charcoal/50">
-                  <th className="px-4 py-3 font-medium">Factor</th>
-                  <th className="px-4 py-3 font-medium w-28">Weight %</th>
-                  <th className="px-4 py-3 font-medium">What it measures</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-charcoal/[0.06]">
-                {factors.map((factor) => (
-                  <tr key={factor.key}>
-                    <td className="px-4 py-3 text-sm font-medium text-charcoal">
-                      {factor.label}
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        value={pctInputValue(draft.weights[factor.key])}
-                        onChange={(e) =>
-                          setWeightPct(factor.key, e.target.value)
-                        }
-                        className="w-24 rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-sm text-navy focus:border-navy focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-xs leading-snug text-charcoal/60">
-                      {factor.description}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              {item.label}
+            </button>
+          );
+        })}
       </div>
+      <p className="-mt-3 text-xs leading-snug text-charcoal/55">
+        {activeSub.subtitle}
+      </p>
 
-      <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-        <div className="border-b border-charcoal/[0.08] bg-cream/40 px-5 py-4 sm:px-6">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Days on market (DOM) bands
-          </p>
-          <p className="mt-1 max-w-2xl text-sm text-charcoal/65">
-            First matching tier wins. Leave Max empty for open-ended (e.g. 251+).
-            Missing DOM on a listing uses the neutral score below.
-          </p>
-        </div>
-        <div className="space-y-4 px-5 py-5 sm:px-6">
-          <label className="inline-flex flex-wrap items-center gap-2 text-sm text-charcoal">
-            <span className="font-medium">Missing DOM score</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={draft.domMissingScore}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (!Number.isFinite(n)) return;
-                setDraft((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        domMissingScore: Math.max(0, Math.min(100, n)),
-                      }
-                    : prev,
-                );
-              }}
-              className="w-20 rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-sm text-navy focus:border-navy focus:outline-none"
-            />
-            <span className="text-xs text-charcoal/55">0–100</span>
-          </label>
-
-          {draft.domTiers.map((tier, tierIndex) => (
-            <div
-              key={tier.id}
-              className="rounded-xl border border-charcoal/[0.08] px-4 py-3 space-y-3"
-            >
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex flex-col gap-1 min-w-[10rem] flex-1">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/50">
-                    Tier label
-                  </span>
-                  <input
-                    type="text"
-                    value={tier.label}
-                    onChange={(e) =>
-                      updateDomTier(tierIndex, { label: e.target.value })
-                    }
-                    className="rounded-lg border border-charcoal/15 px-2.5 py-1.5 text-sm text-navy focus:border-navy focus:outline-none"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 w-24">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/50">
-                    Score
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={tier.score}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      if (!Number.isFinite(n)) return;
-                      updateDomTier(tierIndex, {
-                        score: Math.max(0, Math.min(100, n)),
-                      });
-                    }}
-                    className="rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-sm text-navy focus:border-navy focus:outline-none"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => removeDomTier(tierIndex)}
-                  disabled={draft.domTiers.length <= 1}
-                  className="rounded-full border border-charcoal/15 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/55 hover:border-coral/40 hover:text-coral disabled:opacity-30"
-                >
-                  Remove tier
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/45">
-                  Day ranges (inclusive)
-                </p>
-                {tier.ranges.map((range, rangeIndex) => (
-                  <div
-                    key={`${tier.id}-r${rangeIndex}`}
-                    className="flex flex-wrap items-center gap-2"
-                  >
-                    <label className="inline-flex items-center gap-1.5 text-xs text-charcoal/70">
-                      Min
-                      <input
-                        type="number"
-                        min={0}
-                        value={range.minDays}
-                        onChange={(e) => {
-                          const n = Number(e.target.value);
-                          if (!Number.isFinite(n)) return;
-                          updateDomRange(tierIndex, rangeIndex, {
-                            minDays: Math.max(0, Math.round(n)),
-                          });
-                        }}
-                        className="w-20 rounded-lg border border-charcoal/15 px-2 py-1 font-mono text-sm text-navy focus:border-navy focus:outline-none"
-                      />
-                    </label>
-                    <label className="inline-flex items-center gap-1.5 text-xs text-charcoal/70">
-                      Max
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="∞"
-                        value={range.maxDays ?? ""}
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          if (raw === "") {
-                            updateDomRange(tierIndex, rangeIndex, {
-                              maxDays: null,
-                            });
-                            return;
-                          }
-                          const n = Number(raw);
-                          if (!Number.isFinite(n)) return;
-                          updateDomRange(tierIndex, rangeIndex, {
-                            maxDays: Math.max(0, Math.round(n)),
-                          });
-                        }}
-                        className="w-20 rounded-lg border border-charcoal/15 px-2 py-1 font-mono text-sm text-navy focus:border-navy focus:outline-none"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeDomRange(tierIndex, rangeIndex)}
-                      disabled={tier.ranges.length <= 1}
-                      className="font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/40 hover:text-coral disabled:opacity-30"
-                    >
-                      Remove range
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => addDomRange(tierIndex)}
-                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-navy/70 hover:text-navy"
-                >
-                  + Add range
-                </button>
-              </div>
-            </div>
-          ))}
-
-          <button
-            type="button"
-            onClick={addDomTier}
-            className="rounded-full border border-charcoal/15 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/60 transition-colors hover:border-charcoal/30 hover:text-navy"
-          >
-            + Add DOM tier
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-        <div className="border-b border-charcoal/[0.08] bg-cream/40 px-5 py-4 sm:px-6">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Property characteristics
-          </p>
-          <p className="mt-1 max-w-2xl text-sm text-charcoal/65">
-            Remark phrases the scorer matches as whole words / phrases
-            (case-insensitive — “dated” will not match inside “updated”). Add or
-            remove phrases per group. These drive condition, finishes, layout,
-            and board disqualification.
-          </p>
-        </div>
-        <div className="grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-2">
-          {keywordGroups.map((group) => {
-            const phrases = keywordLists[group.id] ?? [];
-            const savedCount = normalizeKeywordList(phrases).length;
-            return (
-              <div
-                key={group.id}
-                className="flex flex-col gap-2 rounded-xl border border-charcoal/[0.08] px-4 py-3"
+      <div
+        role="tabpanel"
+        hidden={subPanel !== "weights"}
+        className={
+          subPanel === "weights"
+            ? "overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+            : undefined
+        }
+      >
+        {subPanel === "weights" ? (
+          <div className="px-5 py-5 sm:px-6">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-navy">
+                Factor weights
+              </p>
+              <p
+                className={`font-mono text-[11px] ${
+                  weightsValid ? "text-sage" : "text-coral"
+                }`}
               >
-                <div>
-                  <p className="text-sm font-medium text-charcoal">
-                    {group.label}
-                  </p>
-                  <p className="mt-0.5 text-xs text-charcoal/55">{group.hint}</p>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  {phrases.length === 0 ? (
-                    <p className="font-mono text-[10px] text-charcoal/40">
-                      No phrases — add one below.
-                    </p>
-                  ) : (
-                    phrases.map((phrase, index) => (
-                      <div
-                        key={`${group.id}-${index}`}
-                        className="flex items-center gap-2"
-                      >
+                Sum {weightSumPct}%{weightsValid ? "" : " — must be 100%"}
+              </p>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-charcoal/[0.08]">
+              <table className="w-full min-w-[36rem] text-left">
+                <thead>
+                  <tr className="border-b border-charcoal/[0.08] bg-cream/30 font-mono text-[10px] uppercase tracking-[0.14em] text-charcoal/50">
+                    <th className="px-4 py-3 font-medium">Factor</th>
+                    <th className="px-4 py-3 font-medium w-28">Weight %</th>
+                    <th className="px-4 py-3 font-medium">What it measures</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-charcoal/[0.06]">
+                  {factors.map((factor) => (
+                    <tr key={factor.key}>
+                      <td className="px-4 py-3 text-sm font-medium text-charcoal">
+                        {factor.label}
+                      </td>
+                      <td className="px-4 py-3">
                         <input
-                          type="text"
-                          value={phrase}
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={pctInputValue(draft.weights[factor.key])}
                           onChange={(e) =>
-                            updateKeywordPhrase(group.id, index, e.target.value)
+                            setWeightPct(factor.key, e.target.value)
                           }
-                          spellCheck={false}
-                          aria-label={`${group.label} phrase ${index + 1}`}
-                          className="min-w-0 flex-1 rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-xs text-navy focus:border-navy focus:outline-none"
-                          placeholder="e.g. renovated"
+                          className="w-24 rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-sm text-navy focus:border-navy focus:outline-none"
                         />
-                        <button
-                          type="button"
-                          onClick={() => removeKeywordPhrase(group.id, index)}
-                          className="shrink-0 font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/40 hover:text-coral"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                      </td>
+                      <td className="px-4 py-3 text-xs leading-snug text-charcoal/60">
+                        {factor.description}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div
+        role="tabpanel"
+        hidden={subPanel !== "dom"}
+        className={
+          subPanel === "dom"
+            ? "overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+            : undefined
+        }
+      >
+        {subPanel === "dom" ? (
+          <div className="space-y-4 px-5 py-5 sm:px-6">
+            <p className="text-sm text-charcoal/65">
+              First matching tier wins. Leave Max empty for open-ended (e.g.
+              251+). Missing DOM on a listing uses the neutral score below.
+            </p>
+            <label className="inline-flex flex-wrap items-center gap-2 text-sm text-charcoal">
+              <span className="font-medium">Missing DOM score</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={draft.domMissingScore}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (!Number.isFinite(n)) return;
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          domMissingScore: Math.max(0, Math.min(100, n)),
+                        }
+                      : prev,
+                  );
+                }}
+                className="w-20 rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-sm text-navy focus:border-navy focus:outline-none"
+              />
+              <span className="text-xs text-charcoal/55">0–100</span>
+            </label>
+
+            {draft.domTiers.map((tier, tierIndex) => (
+              <div
+                key={tier.id}
+                className="rounded-xl border border-charcoal/[0.08] px-4 py-3 space-y-3"
+              >
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="flex flex-col gap-1 min-w-[10rem] flex-1">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/50">
+                      Tier label
+                    </span>
+                    <input
+                      type="text"
+                      value={tier.label}
+                      onChange={(e) =>
+                        updateDomTier(tierIndex, { label: e.target.value })
+                      }
+                      className="rounded-lg border border-charcoal/15 px-2.5 py-1.5 text-sm text-navy focus:border-navy focus:outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 w-24">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/50">
+                      Score
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={tier.score}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        if (!Number.isFinite(n)) return;
+                        updateDomTier(tierIndex, {
+                          score: Math.max(0, Math.min(100, n)),
+                        });
+                      }}
+                      className="rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-sm text-navy focus:border-navy focus:outline-none"
+                    />
+                  </label>
                   <button
                     type="button"
-                    onClick={() => addKeywordPhrase(group.id)}
+                    onClick={() => removeDomTier(tierIndex)}
+                    disabled={draft.domTiers.length <= 1}
+                    className="rounded-full border border-charcoal/15 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/55 hover:border-coral/40 hover:text-coral disabled:opacity-30"
+                  >
+                    Remove tier
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/45">
+                    Day ranges (inclusive)
+                  </p>
+                  {tier.ranges.map((range, rangeIndex) => (
+                    <div
+                      key={`${tier.id}-r${rangeIndex}`}
+                      className="flex flex-wrap items-center gap-2"
+                    >
+                      <label className="inline-flex items-center gap-1.5 text-xs text-charcoal/70">
+                        Min
+                        <input
+                          type="number"
+                          min={0}
+                          value={range.minDays}
+                          onChange={(e) => {
+                            const n = Number(e.target.value);
+                            if (!Number.isFinite(n)) return;
+                            updateDomRange(tierIndex, rangeIndex, {
+                              minDays: Math.max(0, Math.round(n)),
+                            });
+                          }}
+                          className="w-20 rounded-lg border border-charcoal/15 px-2 py-1 font-mono text-sm text-navy focus:border-navy focus:outline-none"
+                        />
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-xs text-charcoal/70">
+                        Max
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="∞"
+                          value={range.maxDays ?? ""}
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            if (raw === "") {
+                              updateDomRange(tierIndex, rangeIndex, {
+                                maxDays: null,
+                              });
+                              return;
+                            }
+                            const n = Number(raw);
+                            if (!Number.isFinite(n)) return;
+                            updateDomRange(tierIndex, rangeIndex, {
+                              maxDays: Math.max(0, Math.round(n)),
+                            });
+                          }}
+                          className="w-20 rounded-lg border border-charcoal/15 px-2 py-1 font-mono text-sm text-navy focus:border-navy focus:outline-none"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeDomRange(tierIndex, rangeIndex)}
+                        disabled={tier.ranges.length <= 1}
+                        className="font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/40 hover:text-coral disabled:opacity-30"
+                      >
+                        Remove range
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addDomRange(tierIndex)}
                     className="font-mono text-[10px] uppercase tracking-[0.12em] text-navy/70 hover:text-navy"
                   >
-                    + Add phrase
+                    + Add range
                   </button>
-                  <span className="font-mono text-[10px] text-charcoal/40">
-                    {savedCount} phrase{savedCount === 1 ? "" : "s"}
-                  </span>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={addDomTier}
+              className="rounded-full border border-charcoal/15 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/60 transition-colors hover:border-charcoal/30 hover:text-navy"
+            >
+              + Add DOM tier
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={saving || !dirty || !weightsValid}
-          className="rounded-full border border-navy/30 bg-cream/40 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:bg-cream disabled:pointer-events-none disabled:opacity-40"
-        >
-          {saving ? "Saving…" : "Save to Postgres"}
-        </button>
-        <button
-          type="button"
-          onClick={resetDefaults}
-          className="rounded-full border border-charcoal/15 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/60 transition-colors hover:border-charcoal/30 hover:text-navy"
-        >
-          Reset draft to defaults
-        </button>
-        <button
-          type="button"
-          onClick={() => void rebuildScores()}
-          disabled={rebuilding || !canRebuild}
-          title={rebuildDisabledReason}
-          className="rounded-full border border-navy/30 bg-navy px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-white transition-colors hover:bg-navy/90 disabled:pointer-events-none disabled:opacity-40"
-        >
-          {rebuilding
-            ? "Rebuilding scores…"
-            : ADMIN_SYNC_ACTIONS["listing-scores"].label}
-        </button>
-        {message ? (
-          <p className="font-mono text-[10px] text-sage">{message}</p>
-        ) : null}
-        {error ? (
-          <p className="font-mono text-[10px] text-coral">{error}</p>
+      <div
+        role="tabpanel"
+        hidden={subPanel !== "characteristics"}
+        className={
+          subPanel === "characteristics"
+            ? "overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+            : undefined
+        }
+      >
+        {subPanel === "characteristics" ? (
+          <div className="px-5 py-5 sm:px-6">
+            <p className="mb-4 max-w-2xl text-sm text-charcoal/65">
+              Remark phrases the scorer matches as whole words / phrases
+              (case-insensitive — “dated” will not match inside “updated”). Add
+              or remove phrases per group.
+            </p>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {keywordGroups.map((group) => {
+                const phrases = keywordLists[group.id] ?? [];
+                const savedCount = normalizeKeywordList(phrases).length;
+                return (
+                  <div
+                    key={group.id}
+                    className="flex flex-col gap-2 rounded-xl border border-charcoal/[0.08] px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-charcoal">
+                        {group.label}
+                      </p>
+                      <p className="mt-0.5 text-xs text-charcoal/55">
+                        {group.hint}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {phrases.length === 0 ? (
+                        <p className="font-mono text-[10px] text-charcoal/40">
+                          No phrases — add one below.
+                        </p>
+                      ) : (
+                        phrases.map((phrase, index) => (
+                          <div
+                            key={`${group.id}-${index}`}
+                            className="flex items-center gap-2"
+                          >
+                            <input
+                              type="text"
+                              value={phrase}
+                              onChange={(e) =>
+                                updateKeywordPhrase(
+                                  group.id,
+                                  index,
+                                  e.target.value,
+                                )
+                              }
+                              spellCheck={false}
+                              aria-label={`${group.label} phrase ${index + 1}`}
+                              className="min-w-0 flex-1 rounded-lg border border-charcoal/15 px-2.5 py-1.5 font-mono text-xs text-navy focus:border-navy focus:outline-none"
+                              placeholder="e.g. renovated"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeKeywordPhrase(group.id, index)
+                              }
+                              className="shrink-0 font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/40 hover:text-coral"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => addKeywordPhrase(group.id)}
+                        className="font-mono text-[10px] uppercase tracking-[0.12em] text-navy/70 hover:text-navy"
+                      >
+                        + Add phrase
+                      </button>
+                      <span className="font-mono text-[10px] text-charcoal/40">
+                        {savedCount} phrase{savedCount === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         ) : null}
       </div>
+
+      {actionsBar}
     </div>
   );
 }

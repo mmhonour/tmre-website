@@ -63,6 +63,13 @@ export default function AdminDataControlsPanel({
     const url = new URL(window.location.href);
     url.searchParams.set("tab", "data-controls");
     url.searchParams.set("panel", next);
+    if (next === "goldilocks") {
+      if (!url.searchParams.get("sub")) {
+        url.searchParams.set("sub", "weights");
+      }
+    } else {
+      url.searchParams.delete("sub");
+    }
     url.hash = "";
     window.history.replaceState(null, "", url);
   }

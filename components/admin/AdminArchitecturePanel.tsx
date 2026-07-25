@@ -2,90 +2,78 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ADMIN_DATABASE_PANELS,
-  adminDatabasePanelForSection,
-  isAdminDatabasePanelId,
-  LEGACY_ADMIN_TAB_TO_DATABASE,
-  type AdminDatabasePanelId,
+  ADMIN_ARCHITECTURE_PANELS,
+  adminArchitecturePanelForSection,
+  isAdminArchitecturePanelId,
+  LEGACY_ADMIN_TAB_TO_ARCHITECTURE,
+  type AdminArchitecturePanelId,
 } from "@/lib/admin-nav";
 
-const VALID_PANELS = new Set<string>(ADMIN_DATABASE_PANELS.map((p) => p.id));
+const VALID_PANELS = new Set<string>(
+  ADMIN_ARCHITECTURE_PANELS.map((p) => p.id),
+);
 
-function panelFromLocation(): AdminDatabasePanelId {
-  if (typeof window === "undefined") return "rets-connection";
+function panelFromLocation(): AdminArchitecturePanelId {
+  if (typeof window === "undefined") return "map";
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab && LEGACY_ADMIN_TAB_TO_DATABASE[tab]) {
-    return LEGACY_ADMIN_TAB_TO_DATABASE[tab]!;
+  if (tab && LEGACY_ADMIN_TAB_TO_ARCHITECTURE[tab]) {
+    return LEGACY_ADMIN_TAB_TO_ARCHITECTURE[tab]!;
   }
-  if (tab && tab !== "db") {
-    return "rets-connection";
-  }
+  if (tab && tab !== "architecture") return "map";
   const panel = params.get("panel");
-  if (panel && VALID_PANELS.has(panel) && isAdminDatabasePanelId(panel)) {
+  if (panel && VALID_PANELS.has(panel) && isAdminArchitecturePanelId(panel)) {
     return panel;
   }
   const hash = window.location.hash.replace(/^#/, "");
-  const fromSection = adminDatabasePanelForSection(hash);
+  const fromSection = adminArchitecturePanelForSection(hash);
   if (fromSection) return fromSection;
-  return "rets-connection";
+  return "map";
 }
 
-export default function AdminDatabasePanel({
-  retsConnection,
-  sync,
-  syncHistory,
-  inventory,
-  townCounts,
-  dbTuning,
+export default function AdminArchitecturePanel({
+  map,
+  docs,
 }: {
-  retsConnection: ReactNode;
-  sync: ReactNode;
-  syncHistory: ReactNode;
-  inventory: ReactNode;
-  townCounts: ReactNode;
-  dbTuning: ReactNode;
+  map: ReactNode;
+  docs: ReactNode;
 }) {
-  const [panel, setPanel] = useState<AdminDatabasePanelId>("rets-connection");
+  const [panel, setPanel] = useState<AdminArchitecturePanelId>("map");
 
   useEffect(() => {
-    const syncFromLocation = () => setPanel(panelFromLocation());
-    syncFromLocation();
-    window.addEventListener("hashchange", syncFromLocation);
-    window.addEventListener("popstate", syncFromLocation);
+    const sync = () => setPanel(panelFromLocation());
+    sync();
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
     return () => {
-      window.removeEventListener("hashchange", syncFromLocation);
-      window.removeEventListener("popstate", syncFromLocation);
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
     };
   }, []);
 
-  function selectPanel(next: AdminDatabasePanelId) {
+  function selectPanel(next: AdminArchitecturePanelId) {
     setPanel(next);
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", "db");
+    url.searchParams.set("tab", "architecture");
     url.searchParams.set("panel", next);
     url.hash = "";
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminDatabasePanelId, ReactNode> = {
-    "rets-connection": retsConnection,
-    sync,
-    "sync-history": syncHistory,
-    inventory,
-    "town-counts": townCounts,
-    "db-tuning": dbTuning,
+  const panels: Record<AdminArchitecturePanelId, ReactNode> = {
+    map,
+    docs,
   };
-  const active = ADMIN_DATABASE_PANELS.find((item) => item.id === panel);
+  const active = ADMIN_ARCHITECTURE_PANELS.find((item) => item.id === panel);
 
   return (
     <div className="space-y-6">
       <div
         role="tablist"
-        aria-label="Database"
+        aria-label="Architecture"
         className="flex flex-row flex-wrap items-stretch gap-1 border-b border-charcoal/[0.1]"
       >
-        {ADMIN_DATABASE_PANELS.map((item) => {
+        {ADMIN_ARCHITECTURE_PANELS.map((item) => {
           const isActive = panel === item.id;
           return (
             <button
@@ -111,7 +99,7 @@ export default function AdminDatabasePanel({
         </p>
       ) : null}
 
-      {ADMIN_DATABASE_PANELS.map((item) => (
+      {ADMIN_ARCHITECTURE_PANELS.map((item) => (
         <div
           key={item.id}
           role="tabpanel"

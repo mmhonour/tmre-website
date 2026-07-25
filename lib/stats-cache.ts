@@ -664,9 +664,12 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     const townListingsForMonthsSupply = {} as TownListingsMap
 
     for (const town of TMRE_TOWNS) {
+      // Closed: no price-DESC cap. Norwalk alone has ~5k closed; a 2500
+      // high-price sample dropped nearly all recent mid-market closings and
+      // inflated months-supply (e.g. June 2026 ≈ 174).
       const [active, closed] = await Promise.all([
         readListingsFromDb(town, 'Active', 500),
-        readListingsFromDb(town, 'Closed', 2500),
+        readListingsFromDb(town, 'Closed'),
       ])
       townListingsForMonthsSupply[town] = { active, closed }
       written += await writeTownMarketStats(
@@ -769,7 +772,7 @@ export async function rebuildStatsCacheForTowns(
     for (const town of unique) {
       const [active, closed] = await Promise.all([
         readListingsFromDb(town, 'Active', 500),
-        readListingsFromDb(town, 'Closed', 2500),
+        readListingsFromDb(town, 'Closed'),
       ])
       townListingsForMonthsSupply[town] = { active, closed }
       written += await writeTownMarketStats(
