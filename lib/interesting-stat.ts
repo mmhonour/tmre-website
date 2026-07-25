@@ -20,9 +20,9 @@ import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 export type { InterestingStatKind } from '@/lib/interesting-stat-link'
 
 /** Featured slot written on each rebuild (newest insight). Homepage may rotate across history. */
-export const INTERESTING_STAT_CACHE_KEY = 'interesting-stat:home:v1'
+export const INTERESTING_STAT_CACHE_KEY = 'interesting-stat:home:v2'
 /** Ring of recent insights — recycle/rotate during the day; browsable on Admin → Stats. */
-export const INTERESTING_STAT_HISTORY_KEY = 'interesting-stat:history:v1'
+export const INTERESTING_STAT_HISTORY_KEY = 'interesting-stat:history:v2'
 
 export const INTERESTING_STAT_HISTORY_CAP = 24
 /** Homepage rotates among recent insights on this interval. */
@@ -270,9 +270,8 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
   if (best?.avgScore != null && best.count >= 3) {
     pushCandidate(candidates, {
       kind: 'best-vintage',
-      // Call out the era — the score number alone reads as jargon.
-      value: best.label,
-      detail: `${town}'s highest-scoring homes on market · avg ${best.avgScore.toFixed(1)}`,
+      value: best.avgScore.toFixed(1),
+      detail: `${town} active ${best.label} homes lead on score (avg)`,
       href: hrefFor('best-vintage'),
       town,
       weight: best.avgScore,
@@ -287,10 +286,11 @@ function addTownCandidates(candidates: Candidate[], slice: TownSlice): void {
       const bottom = sorted[sorted.length - 1]!
       const gap = (top.avgScore ?? 0) - (bottom.avgScore ?? 0)
       if (gap >= 0.8) {
+        // Score gap on *active* inventory — not closed-sales volume by era.
         pushCandidate(candidates, {
           kind: 'vintage-gap',
-          value: gap.toFixed(1),
-          detail: `${town} era score spread · ${top.label} vs ${bottom.label}`,
+          value: `${gap.toFixed(1)} pts`,
+          detail: `${town} actives · ${top.label} score ${top.avgScore!.toFixed(1)} vs ${bottom.label} ${bottom.avgScore!.toFixed(1)}`,
           href: hrefFor('vintage-gap'),
           town,
           weight: gap * 2,

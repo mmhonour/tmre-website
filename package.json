@@ -9,7 +9,7 @@
     "predev:webpack": "npm run ensure:db",
     "dev:webpack": "next dev --webpack --hostname 0.0.0.0 --port 3000",
     "build": "next build",
-    "build:netlify": "node scripts/rebuild-native-modules.cjs && node scripts/verify-native-prebuilds.cjs && tsx --require ./scripts/stub-server-only.cjs scripts/prepare-netlify-bundle.ts && next build && node scripts/verify-netlify-tracing.mjs",
+    "build:netlify": "node scripts/rebuild-native-modules.cjs && node scripts/verify-native-prebuilds.cjs && tsx --require ./scripts/stub-server-only.cjs scripts/prepare-netlify-bundle.ts && node scripts/bake-deploy-env.mjs && next build && node scripts/verify-netlify-tracing.mjs",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "node --env-file=.env.local scripts/run-migrations.mjs",

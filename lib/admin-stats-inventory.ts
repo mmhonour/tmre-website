@@ -129,10 +129,10 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'market',
     medium: 'postgres',
     location: 'stats_cache',
-    keyPattern: 'interesting-stat:home:v1 · interesting-stat:history:v1',
+    keyPattern: 'interesting-stat:home:v2 · interesting-stat:history:v2',
     owner: 'lib/interesting-stat.ts',
     notes:
-      'Deep market highlight appended on each stats_cache rebuild (history ring, cap 24). Homepage rotates among recent entries ~every 45m. Browse pool on Admin → Stats.',
+      'Deep market highlight appended on each stats_cache rebuild (history ring, cap 24). Homepage rotates among recent entries ~every 45m. Score-by-era insights (best-vintage / vintage-gap) deep-link to /score — not Sales by vintage. Browse pool on Admin → Stats.',
     live: { kind: 'stats_cache_prefix', prefix: 'interesting-stat:' },
   },
   {

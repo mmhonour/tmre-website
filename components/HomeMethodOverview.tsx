@@ -420,16 +420,21 @@ export default function HomeMethodOverview() {
                         prefetchTabJson(url);
                       }
                     }}
-                    className="mt-3 flex w-full min-w-0 flex-wrap items-baseline justify-start gap-x-2.5 gap-y-1 rounded-sm border border-transparent px-0 py-1 text-left cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent sm:mt-4 sm:ml-auto sm:justify-end sm:text-right"
-                    title="Open this chart on Statistics"
+                    className="mt-3 block w-full min-w-0 rounded-sm border border-transparent px-0 py-1 text-left cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent sm:mt-4 sm:ml-auto sm:text-right"
+                    title={
+                      interestingStat.kind === "best-vintage" ||
+                      interestingStat.kind === "vintage-gap"
+                        ? "Learn how scoring works"
+                        : "Open this chart on Statistics"
+                    }
                   >
-                    <span className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                    <span className="block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
                       {interestingStat.eyebrow}
                     </span>
-                    <span className="shrink-0 font-serif italic text-2xl leading-none text-white underline decoration-gold/35 underline-offset-4 sm:text-3xl">
+                    <span className="mt-1 block break-words font-serif italic text-2xl leading-tight text-white underline decoration-gold/35 underline-offset-4 sm:text-3xl">
                       {interestingStat.value}
                     </span>
-                    <span className="min-w-0 basis-full break-words text-xs leading-snug text-white/60 sm:basis-auto sm:max-w-[14rem]">
+                    <span className="mt-1.5 block w-full max-w-none break-words text-xs leading-snug text-white/60 sm:ml-auto sm:max-w-sm">
                       {interestingStat.detail}
                     </span>
                   </Link>

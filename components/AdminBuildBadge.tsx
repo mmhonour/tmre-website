@@ -21,16 +21,16 @@ export default function AdminBuildBadge({
       title={title}
       aria-label={title}
     >
-      <p className="font-mono text-[8px] tracking-[0.16em] uppercase text-white/40 mb-0.5">
+      <p className="font-mono text-[8px] tracking-[0.16em] uppercase text-gold/70 mb-0.5">
         Build
       </p>
       {build.builtAtLabel ? (
-        <p className="font-mono text-[9px] text-white/70 whitespace-nowrap">
+        <p className="font-mono text-[9px] text-white/80 whitespace-nowrap">
           {build.builtAtLabel}
         </p>
       ) : null}
-      <p className="font-mono text-[9px] text-gold/75 mt-0.5 whitespace-nowrap">
-        {build.shortId}
+      <p className="font-mono text-[9px] text-white/55 mt-0.5 whitespace-nowrap">
+        #{build.shortId}
         {build.id.length > 12 ? "…" : ""}
       </p>
     </div>

@@ -745,7 +745,8 @@ export default async function AdminPage() {
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
-        <div className="absolute top-5 right-6 lg:top-8 lg:right-10 text-right select-none space-y-2 max-w-[16rem]">
+        {/* Clear fixed site nav (pt-20 / lg:pt-24) — top-5 sat under the header. */}
+        <div className="absolute top-24 right-6 z-10 lg:top-28 lg:right-10 text-right select-none space-y-2.5 max-w-[16rem]">
             <div>
               <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold/80 leading-none mb-1">
                 Database
@@ -769,20 +770,29 @@ export default async function AdminPage() {
             </div>
             {deployBuild ? (
               <div>
-                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
-                  Deploy
-                </p>
-                <p className="font-mono text-[10px] text-white/55 leading-none">
-                  {deployBuild.shortId}
-                  {deployBuild.id.length > 12 ? <>&hellip;</> : null}
+                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold/70 leading-none mb-0.5">
+                  Build
                 </p>
                 {deployBuild.builtAtLabel ? (
-                  <p className="font-mono text-[9px] text-white/35 leading-none mt-0.5">
+                  <p className="font-mono text-[10px] text-white/80 leading-none">
                     {deployBuild.builtAtLabel}
                   </p>
                 ) : null}
+                <p className="font-mono text-[10px] text-white/55 leading-none mt-0.5">
+                  #{deployBuild.shortId}
+                  {deployBuild.id.length > 12 ? <>&hellip;</> : null}
+                </p>
               </div>
-            ) : null}
+            ) : (
+              <div>
+                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
+                  Build
+                </p>
+                <p className="font-mono text-[10px] text-white/40 leading-none">
+                  unavailable · next Netlify deploy stamps it
+                </p>
+              </div>
+            )}
             {(lambdaInstanceId || lambdaFnName) && (
               <div>
                 <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/30 leading-none mb-0.5">

@@ -81,11 +81,18 @@ export function parseInterestingStatChartId(
     : null
 }
 
-/** Stats page deep link for a given insight (city + chart target). */
+/**
+ * Deep link for a given insight.
+ * Score-by-era insights are about active Goldilocks scores — not closed-sales
+ * vintage mix — so they go to /score instead of Sales by vintage.
+ */
 export function interestingStatHref(
   kind: InterestingStatKind,
   town: string | null,
 ): string {
+  if (kind === 'best-vintage' || kind === 'vintage-gap') {
+    return '/score'
+  }
   const params = new URLSearchParams()
   if (town) params.set('city', town)
   params.set('kind', 'sale')
@@ -107,6 +114,11 @@ export function interestingStatWarmUrls(
     city === 'All' ? 'city=All' : `city=${encodeURIComponent(city)}`
   const chart = interestingStatChartId(kind)
   const urls: string[] = [`/api/stats/page?kind=sale`]
+
+  // Score-by-era insights deep-link to /score — no Stats chart warm needed.
+  if (kind === 'best-vintage' || kind === 'vintage-gap') {
+    return urls
+  }
 
   switch (chart) {
     case 'sales-trend':
