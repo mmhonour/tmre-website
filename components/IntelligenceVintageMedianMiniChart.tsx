@@ -191,23 +191,12 @@ export default function IntelligenceVintageMedianMiniChart({
 
   return (
     <div className="flex w-full items-start justify-start gap-2.5">
-      <div className="shrink-0 pt-1 max-w-[5.5rem] flex flex-col gap-1">
-        <p className="text-left font-mono text-[8px] tracking-[0.14em] uppercase text-slate/50 leading-snug">
+      <div className="shrink-0 max-w-[5.5rem] pt-1">
+        <p className="text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-slate/50">
           {chartTitle}
         </p>
-        {filterActive && onResetFilter ? (
-          <button
-            type="button"
-            onClick={onResetFilter}
-            className="text-left font-mono text-[9px] tracking-[0.12em] uppercase text-navy/70 underline underline-offset-2 decoration-navy/30 hover:text-navy hover:decoration-gold transition-colors"
-            title="Reset vintage filter — show all timescales"
-            aria-label="All timescales — reset vintage filter"
-          >
-            All timescales
-          </button>
-        ) : null}
       </div>
-      <div className="min-w-0 flex-1 flex flex-col items-stretch gap-0.5">
+      <div className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5">
         <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           className="h-[4.5rem] w-full max-w-[248px] overflow-visible"
@@ -296,17 +285,37 @@ export default function IntelligenceVintageMedianMiniChart({
             );
           })}
         </svg>
-        <div className="min-h-[1rem] max-w-[248px]">
-          {showInteractiveHint ? (
-            <p className="italic text-[10px] text-slate/55 leading-none">
+
+        {/* Right-aligned with the 248px mini-graph column */}
+        <div className="flex w-full max-w-[248px] flex-col items-end gap-0.5">
+          {filterActive && onResetFilter ? (
+            <button
+              type="button"
+              onClick={onResetFilter}
+              className="text-right font-mono text-[9px] tracking-[0.12em] uppercase text-navy/70 underline decoration-navy/30 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
+              title="Reset vintage filter — show all timescales"
+              aria-label="All timescales — reset vintage filter"
+            >
+              All timescales
+            </button>
+          ) : null}
+          <div className="relative min-h-[1rem] w-full text-right">
+            <p
+              className={`italic text-[10px] leading-none text-slate/55 transition-opacity duration-700 ease-in-out ${
+                showInteractiveHint
+                  ? "animate-interactive-graph-hint"
+                  : "pointer-events-none opacity-0"
+              }`}
+              aria-hidden={!showInteractiveHint}
+            >
               interactive graph
             </p>
-          ) : null}
-          {showOriginalViewFlash ? (
-            <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/70 leading-none">
-              Original view by {VIEW_BY_DIMENSION_LABEL}
-            </p>
-          ) : null}
+            {showOriginalViewFlash ? (
+              <p className="absolute inset-x-0 top-0 font-mono text-[9px] leading-none tracking-[0.12em] uppercase text-navy/70">
+                Original view by {VIEW_BY_DIMENSION_LABEL}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

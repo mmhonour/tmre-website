@@ -301,7 +301,7 @@ export default function HomeMethodOverview() {
   const live = samples[sampleIndex] ?? samples[0] ?? null;
 
   return (
-    <section className="relative overflow-x-hidden text-white pt-[5.5rem] pb-8 sm:pt-20 sm:pb-12 lg:pt-24 lg:pb-14">
+    <section className="relative overflow-x-hidden text-white pt-[5.5rem] pb-6 sm:pt-20 sm:pb-12 lg:pt-24 lg:pb-14">
       {/* Atmosphere: this week’s listing photo */}
       <div className="absolute inset-0" aria-hidden>
         {photoUrl ? (
@@ -321,120 +321,127 @@ export default function HomeMethodOverview() {
         <div className="absolute inset-0 hero-grid opacity-30" />
       </div>
 
-      <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-6 sm:gap-10 lg:gap-8 items-start">
-          {/* Copy column */}
-          <div className="lg:col-span-6 min-w-0">
-            <h1 className="font-serif text-[2.15rem] leading-[1.08] sm:text-5xl lg:text-[3.35rem] sm:leading-[1.05] text-white animate-fade-up">
-              Cut through the noise.{" "}
-              <span className="italic text-gold-light">One clear score.</span>
-            </h1>
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
+        {/*
+          Mobile: translucent panel gives the copy/score a real containing box
+          so lines wrap inside a readable width (photo atmosphere stays behind).
+          sm+: panel chrome drops away; desktop two-column layout unchanged.
+        */}
+        <div className="min-w-0 rounded-2xl border border-white/12 bg-navy-dark/55 px-4 py-4 shadow-lg shadow-black/25 backdrop-blur-md sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:backdrop-blur-none">
+          <div className="grid min-w-0 items-start gap-4 sm:gap-10 lg:grid-cols-12 lg:gap-8">
+            {/* Copy column */}
+            <div className="min-w-0 lg:col-span-6">
+              <h1 className="animate-fade-up break-words font-serif text-[1.85rem] leading-[1.12] text-white sm:text-5xl sm:leading-[1.05] lg:text-[3.35rem]">
+                Cut through the noise.{" "}
+                <span className="italic text-gold-light">One clear score.</span>
+              </h1>
 
-            <p className="mt-4 sm:mt-5 text-[0.95rem] sm:text-base lg:text-lg text-white/75 leading-relaxed max-w-xl animate-fade-up-delay-1">
-              Listings shout. Headlines contradict. We give buyers and sellers a
-              single, town-calibrated measure — so you walk into Intelligence,
-              Spotlight, Statistics, and What if already knowing how to read the
-              room.
-            </p>
+              <p className="mt-3 max-w-xl animate-fade-up-delay-1 text-[0.92rem] leading-relaxed text-white/75 sm:mt-5 sm:text-base lg:text-lg">
+                Listings shout. Headlines contradict. We give buyers and sellers
+                a single, town-calibrated measure — so you walk into
+                Intelligence, Spotlight, Statistics, and What if already knowing
+                how to read the room.
+              </p>
 
-            <p className="mt-3 sm:mt-4 text-sm text-white/55 leading-relaxed max-w-xl animate-fade-up-delay-1 hidden sm:block">
-              High means the home clears the bar against what&rsquo;s active
-              nearby. Softer means dig deeper — or price with eyes open if you
-              are selling. Same yardstick everywhere on the site.
-            </p>
+              <p className="mt-3 hidden max-w-xl animate-fade-up-delay-1 text-sm leading-relaxed text-white/55 sm:mt-4 sm:block">
+                High means the home clears the bar against what&rsquo;s active
+                nearby. Softer means dig deeper — or price with eyes open if you
+                are selling. Same yardstick everywhere on the site.
+              </p>
 
-            <div className="mt-5 sm:mt-7 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2">
-              <Link
-                href="/score"
-                className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark hover:bg-gold-light transition-colors"
-              >
-                How scoring works
-              </Link>
-              <Link
-                href="/intelligence"
-                className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 hover:text-gold transition-colors"
-              >
-                Open Intelligence →
-              </Link>
+              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2 sm:mt-7">
+                <Link
+                  href="/score"
+                  className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark transition-colors hover:bg-gold-light"
+                >
+                  How scoring works
+                </Link>
+                <Link
+                  href="/intelligence"
+                  className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 transition-colors hover:text-gold"
+                >
+                  Open Intelligence →
+                </Link>
+              </div>
             </div>
-          </div>
 
-          {/* Deal of the Day score — gold shimmer over section atmosphere only. */}
-          <div className="lg:col-span-6 flex flex-col items-end text-right animate-fade-up-delay-1">
-            <div className="w-full max-w-md lg:max-w-lg ml-auto">
-              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 mb-1 sm:mb-2">
-                Actual home · rotating towns
-              </p>
-              {live ? (
-                <Link
-                  href={dealOfTheDayHref(live.town, {
-                    mlsId: live.mlsId,
-                    listingKey: live.listingKey,
-                    kind: "sale",
-                    propertyClass: "homes",
-                  })}
-                  className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark rounded-sm"
-                  aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
-                >
-                  <p
-                    key={`${live.town}-${live.score}-${live.mlsId}`}
-                    className="font-serif italic gold-shimmer leading-none tracking-tight home-score-swap text-[4.25rem] sm:text-[7rem] lg:text-[8.5rem] transition-opacity group-hover:opacity-90"
+            {/* Deal of the Day score */}
+            <div className="flex min-w-0 flex-col items-stretch text-left animate-fade-up-delay-1 sm:items-end sm:text-right lg:col-span-6">
+              <div className="w-full min-w-0 max-w-md lg:max-w-lg sm:ml-auto">
+                <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2">
+                  Actual home · rotating towns
+                </p>
+                {live ? (
+                  <Link
+                    href={dealOfTheDayHref(live.town, {
+                      mlsId: live.mlsId,
+                      listingKey: live.listingKey,
+                      kind: "sale",
+                      propertyClass: "homes",
+                    })}
+                    className="group block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
+                    aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
                   >
-                    {live.score.toFixed(1)}.
-                  </p>
-                  <p className="mt-1 sm:mt-2 font-serif italic text-xl sm:text-3xl text-white/90 group-hover:text-gold transition-colors">
-                    {live.town}
-                  </p>
-                </Link>
-              ) : (
-                <>
-                  <p className="font-serif italic text-white/40 leading-none tracking-tight text-[4.25rem] sm:text-[7rem] lg:text-[8.5rem]">
-                    —.—
-                  </p>
-                  <p className="mt-1 sm:mt-2 font-serif italic text-xl sm:text-3xl text-white/90">
-                    Scanning markets…
-                  </p>
-                </>
-              )}
+                    <p
+                      key={`${live.town}-${live.score}-${live.mlsId}`}
+                      className="home-score-swap font-serif italic gold-shimmer text-[3.75rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[7rem] lg:text-[8.5rem]"
+                    >
+                      {live.score.toFixed(1)}.
+                    </p>
+                    <p className="mt-1 font-serif italic text-xl text-white/90 transition-colors group-hover:text-gold sm:mt-2 sm:text-3xl">
+                      {live.town}
+                    </p>
+                  </Link>
+                ) : (
+                  <>
+                    <p className="font-serif italic text-[3.75rem] leading-none tracking-tight text-white/40 sm:text-[7rem] lg:text-[8.5rem]">
+                      —.—
+                    </p>
+                    <p className="mt-1 font-serif italic text-xl text-white/90 sm:mt-2 sm:text-3xl">
+                      Scanning markets…
+                    </p>
+                  </>
+                )}
 
-              <p className="mt-2 sm:mt-3 text-xs text-white/45 max-w-sm ml-auto leading-relaxed">
-                Today&apos;s pick in each town — tap the score to open that deal.
-                Same yardstick as Deal of the Week.
-              </p>
+                <p className="mt-2 max-w-sm text-xs leading-relaxed text-white/45 sm:mt-3 sm:ml-auto">
+                  Today&apos;s pick in each town — tap the score to open that
+                  deal. Same yardstick as Deal of the Week.
+                </p>
 
-              {interestingStat ? (
-                <Link
-                  href={interestingStat.href}
-                  onMouseEnter={() => {
-                    if (!interestingStat.kind) return;
-                    for (const url of interestingStatWarmUrls(
-                      interestingStat.kind,
-                      interestingStat.town ?? null,
-                    )) {
-                      prefetchTabJson(url);
-                    }
-                  }}
-                  className="mt-4 ml-auto flex w-full flex-nowrap items-baseline justify-end gap-x-2.5 border border-transparent px-0 py-1 text-right cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent rounded-sm"
-                  title="Open this chart on Statistics"
-                >
-                  <span className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-                    {interestingStat.eyebrow}
-                  </span>
-                  <span className="shrink-0 font-serif italic text-2xl sm:text-3xl text-white leading-none underline decoration-gold/35 underline-offset-4">
-                    {interestingStat.value}
-                  </span>
-                  <span className="min-w-0 truncate text-xs text-white/60 leading-none">
-                    {interestingStat.detail}
-                  </span>
-                </Link>
-              ) : null}
+                {interestingStat ? (
+                  <Link
+                    href={interestingStat.href}
+                    onMouseEnter={() => {
+                      if (!interestingStat.kind) return;
+                      for (const url of interestingStatWarmUrls(
+                        interestingStat.kind,
+                        interestingStat.town ?? null,
+                      )) {
+                        prefetchTabJson(url);
+                      }
+                    }}
+                    className="mt-3 flex w-full min-w-0 flex-wrap items-baseline justify-start gap-x-2.5 gap-y-1 rounded-sm border border-transparent px-0 py-1 text-left cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent sm:mt-4 sm:ml-auto sm:justify-end sm:text-right"
+                    title="Open this chart on Statistics"
+                  >
+                    <span className="shrink-0 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                      {interestingStat.eyebrow}
+                    </span>
+                    <span className="shrink-0 font-serif italic text-2xl leading-none text-white underline decoration-gold/35 underline-offset-4 sm:text-3xl">
+                      {interestingStat.value}
+                    </span>
+                    <span className="min-w-0 basis-full break-words text-xs leading-snug text-white/60 sm:basis-auto sm:max-w-[14rem]">
+                      {interestingStat.detail}
+                    </span>
+                  </Link>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Rotating surface previews + objective pills */}
-        <div className="mt-8 sm:mt-12 lg:mt-16 relative animate-fade-up-delay-2">
-          <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 mb-3 sm:mb-4">
+        {/* Surface previews are tall — keep them off the first mobile screen. */}
+        <div className="relative mt-6 hidden animate-fade-up-delay-2 sm:mt-12 sm:block lg:mt-16">
+          <p className="mb-3 font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 sm:mb-4">
             Same measure · different rooms of the site
           </p>
 
@@ -442,13 +449,18 @@ export default function HomeMethodOverview() {
           <HomeObjectivePills />
         </div>
 
-        <div className="mt-8 sm:mt-10 lg:mt-12 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-t border-white/10 pt-5 sm:pt-6">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            This week&rsquo;s one listing
-          </p>
-          <p className="text-sm text-white/55 max-w-md sm:text-right leading-relaxed">
-            The home that cleared the bar — photo above is from that pick.
-          </p>
+        <div className="mt-4 rounded-2xl border border-white/10 bg-navy-dark/45 px-4 py-3 backdrop-blur-md sm:mt-10 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none lg:mt-12">
+          <div className="sm:hidden">
+            <HomeObjectivePills />
+          </div>
+          <div className="mt-3 flex flex-col gap-1.5 border-t border-white/10 pt-3 sm:mt-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:border-t sm:border-white/10 sm:pt-6">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+              This week&rsquo;s one listing
+            </p>
+            <p className="max-w-md text-sm leading-relaxed text-white/55 sm:text-right">
+              The home that cleared the bar — photo above is from that pick.
+            </p>
+          </div>
         </div>
       </div>
     </section>
