@@ -32,6 +32,9 @@ import {
   ListingPhotosModeContext,
   type ListingPhotosModeApi,
 } from "@/components/listing/ListingPhotosModeContext";
+import { ListingDetailsRemarksSwapContext } from "@/components/listing/ListingDetailsRemarksSwapContext";
+import { ListingHistoryDetailsSwapContext } from "@/components/listing/ListingHistoryDetailsSwapContext";
+import ListingHistorySidePanel from "@/components/listing/ListingHistorySidePanel";
 import {
   firstListingRemarksLine,
   ListingRemarksContent,
@@ -43,8 +46,9 @@ import { ListingBackLink } from "@/components/listing/ListingShell";
 import { LISTING_ANALYSIS_ID } from "@/components/listing/ListingDetailsSchoolsPanel";
 import { formatMlsStatus } from "@/lib/listing-history";
 import { isRentalListing } from "@/lib/listing-kind";
-import { listingShareHref } from "@/lib/listing-url";
-import { SPOTLIGHT_SHARE_URL } from "@/lib/spotlight-url";
+import { listingSectionHref, listingShareHref } from "@/lib/listing-url";
+import { SPOTLIGHT_SHARE_URL, spotlightSectionHref } from "@/lib/spotlight-url";
+import { useRouter } from "next/navigation";
 import {
   cloneElement,
   isValidElement,
@@ -53,7 +57,9 @@ import {
   type ReactNode,
 } from "react";
 
-type MobileDrawerId = "more" | "remarks" | "insight" | "details" | null;
+type MobileDrawerId = "remarks" | "insight" | "details" | null;
+
+type MobileEdgePillId = "insight" | "details" | "history" | "if" | "map";
 
 /** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
@@ -143,6 +149,7 @@ export default function ListingHeroPanels({
   footer,
   interest = null,
 }: ListingHeroPanelsProps) {
+  const router = useRouter();
   const isSpotlight = variant === "spotlight";
   const frameClass = listingPanelCompactClass;
   const compactHero = Boolean(
@@ -174,7 +181,77 @@ export default function ListingHeroPanels({
     expand: expandRemarks,
     collapse: collapseRemarks,
   } = useListingRemarksExpand();
+  /** Desktop: Details slides up under Listing remarks header. */
+  const [detailsElevated, setDetailsElevated] = useState(false);
+  /** Desktop: History slides up under Details header. */
+  const [historyElevated, setHistoryElevated] = useState(false);
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
+
+  const openMobileDrawer = useCallback((id: Exclude<MobileDrawerId, null>) => {
+    setMapVisible(false);
+    setPanelTab(null);
+    setMobileDrawer(id);
+  }, []);
+
+  const openMobileMap = useCallback(() => {
+    setMobileDrawer(null);
+    setPanelTab(null);
+    setMapVisible(true);
+    const url = new URL(window.location.href);
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}#listing-location`,
+    );
+  }, []);
+
+  /** History / What if — slide-up on Overview; route navigate elsewhere. */
+  const openMobileSectionPill = useCallback(
+    (tab: "history" | "if") => {
+      setMapVisible(false);
+      setMobileDrawer(null);
+      if (useSlidePanel) {
+        setPanelTab((prev) => {
+          if (prev === tab) {
+            const url = new URL(window.location.href);
+            window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+            return null;
+          }
+          const hash = hashForPanelTab(tab);
+          const url = new URL(window.location.href);
+          const windowScrollY = window.scrollY;
+          window.history.replaceState(
+            null,
+            "",
+            `${url.pathname}${url.search}#${hash}`,
+          );
+          window.scrollTo(0, windowScrollY);
+          return tab;
+        });
+        setHistoryElevated(false);
+        return;
+      }
+      const href =
+        subnav.routeBase === "spotlight"
+          ? spotlightSectionHref(tab)
+          : listingSectionHref(
+              subnav.mlsId,
+              tab,
+              subnav.addressHint,
+              subnav.townHint,
+            );
+      router.push(href);
+    },
+    [
+      useSlidePanel,
+      subnav.routeBase,
+      subnav.mlsId,
+      subnav.addressHint,
+      subnav.townHint,
+      router,
+    ],
+  );
+
   /** Insight median $/sqft → collapse remarks + open/highlight Analysis. */
   const activateAnalysisFromMedian = useCallback(() => {
     collapseRemarks();
@@ -257,12 +334,12 @@ export default function ListingHeroPanels({
     };
   }, [mobileDrawer, isDesktopLayout]);
 
-  const openPanel = useCallback((tab: ListingScrollSectionTab) => {
-    setPanelTab(tab);
-    const hash = hashForPanelTab(tab);
+  const elevateHistoryPanel = useCallback(() => {
+    setHistoryElevated(true);
+    setDetailsElevated(false);
+    setPanelTab(null);
+    const hash = hashForPanelTab("history");
     const url = new URL(window.location.href);
-    // Preserve window scroll — assigning a hash that matches a newly shown
-    // section id can make the browser scroll the page past the section label.
     const windowScrollY = window.scrollY;
     window.history.replaceState(
       null,
@@ -271,6 +348,57 @@ export default function ListingHeroPanels({
     );
     window.scrollTo(0, windowScrollY);
   }, []);
+
+  const toggleHistoryPanel = useCallback(() => {
+    setHistoryElevated((prev) => {
+      const next = !prev;
+      if (next) {
+        setDetailsElevated(false);
+        setPanelTab(null);
+        const hash = hashForPanelTab("history");
+        const url = new URL(window.location.href);
+        const windowScrollY = window.scrollY;
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}#${hash}`,
+        );
+        window.scrollTo(0, windowScrollY);
+      } else {
+        const url = new URL(window.location.href);
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      }
+      return next;
+    });
+  }, []);
+
+  const openPanel = useCallback(
+    (tab: ListingScrollSectionTab) => {
+      // Desktop Overview: History lives under Details — elevate instead of slide-up.
+      if (
+        tab === "history" &&
+        typeof window !== "undefined" &&
+        window.matchMedia("(min-width: 1024px)").matches
+      ) {
+        elevateHistoryPanel();
+        return;
+      }
+      setHistoryElevated(false);
+      setPanelTab(tab);
+      const hash = hashForPanelTab(tab);
+      const url = new URL(window.location.href);
+      // Preserve window scroll — assigning a hash that matches a newly shown
+      // section id can make the browser scroll the page past the section label.
+      const windowScrollY = window.scrollY;
+      window.history.replaceState(
+        null,
+        "",
+        `${url.pathname}${url.search}#${hash}`,
+      );
+      window.scrollTo(0, windowScrollY);
+    },
+    [elevateHistoryPanel],
+  );
 
   const closePanel = useCallback(() => {
     setPanelTab(null);
@@ -344,12 +472,22 @@ export default function ListingHeroPanels({
         return;
       }
       const tab = tabFromLocationHash();
-      if (tab) setPanelTab(tab);
+      if (
+        tab === "history" &&
+        window.matchMedia("(min-width: 1024px)").matches
+      ) {
+        elevateHistoryPanel();
+        return;
+      }
+      if (tab) {
+        setHistoryElevated(false);
+        setPanelTab(tab);
+      }
     };
     applyHash();
     window.addEventListener("hashchange", applyHash);
     return () => window.removeEventListener("hashchange", applyHash);
-  }, [useSlidePanel, subnav.mlsId]);
+  }, [useSlidePanel, subnav.mlsId, elevateHistoryPanel]);
 
   // Non-panel pages: still honor #listing-location for the Map tab.
   useEffect(() => {
@@ -470,6 +608,11 @@ export default function ListingHeroPanels({
         forceShowPhotos={photosTabVisible}
         mapVisible={mapVisible}
         onMapToggle={toggleMap}
+        historyElevated={historyElevated}
+        onHistoryToggle={
+          useSlidePanel && isDesktopLayout ? toggleHistoryPanel : null
+        }
+        hideMobileEdgeTabs
       />
     </Suspense>
   );
@@ -601,10 +744,64 @@ export default function ListingHeroPanels({
     (!useSlidePanel || panelTab === null || panelTab === "overview");
   const showRemarksTeaser =
     remarksSurfaceActive && Boolean(remarksTeaserLine);
+  const detailsRemarksSwapAvailable =
+    isDesktopLayout && remarksSurfaceActive && Boolean(sidebar);
+  const historyDetailsSwapAvailable = detailsRemarksSwapAvailable;
+
+  const toggleDetailsRemarksSwap = useCallback(() => {
+    setDetailsElevated((prev) => {
+      const next = !prev;
+      if (next) {
+        collapseRemarks();
+        setHistoryElevated(false);
+      }
+      return next;
+    });
+  }, [collapseRemarks]);
+
+  const toggleHistoryDetailsSwap = useCallback(() => {
+    setHistoryElevated((prev) => {
+      const next = !prev;
+      if (next) setDetailsElevated(false);
+      return next;
+    });
+  }, []);
+
+  const detailsRemarksSwapApi = useMemo(
+    () =>
+      detailsRemarksSwapAvailable
+        ? { detailsElevated, toggle: toggleDetailsRemarksSwap }
+        : null,
+    [
+      detailsRemarksSwapAvailable,
+      detailsElevated,
+      toggleDetailsRemarksSwap,
+    ],
+  );
+
+  const historyDetailsSwapApi = useMemo(
+    () =>
+      historyDetailsSwapAvailable
+        ? { historyElevated, toggle: toggleHistoryDetailsSwap }
+        : null,
+    [
+      historyDetailsSwapAvailable,
+      historyElevated,
+      toggleHistoryDetailsSwap,
+    ],
+  );
 
   useEffect(() => {
     if (!remarksSurfaceActive) collapseRemarks();
   }, [remarksSurfaceActive, collapseRemarks]);
+
+  useEffect(() => {
+    if (!detailsRemarksSwapAvailable) setDetailsElevated(false);
+  }, [detailsRemarksSwapAvailable]);
+
+  useEffect(() => {
+    if (!historyDetailsSwapAvailable) setHistoryElevated(false);
+  }, [historyDetailsSwapAvailable]);
 
   const propertyPanel = (
     <div className="min-w-0 max-lg:w-full">
@@ -633,25 +830,102 @@ export default function ListingHeroPanels({
           {insightColumn}
         </div>
 
-        {/* Tabs + mobile More half-pill (right edge, over the Overview row). */}
+        {/*
+          Tabs + mobile edge pills. MAP is anchored on the Overview/tabs row
+          center (former MORE slot); Insight → Details → History → What if
+          stack upward. What if / History / Map are hidden from the tab strip
+          on mobile (see ListingSubnav hideMobileEdgeTabs).
+        */}
         <div className="relative mt-2">
-          <div className="min-w-0 max-lg:pr-14">{tabsNav}</div>
-          <button
-            type="button"
-            className={`lg:hidden absolute right-0 top-1/2 z-10 max-lg:-mr-3 -translate-y-1/2 inline-flex items-center rounded-l-full rounded-r-none border border-r-0 pl-3.5 pr-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] shadow-[-4px_2px_12px_-4px_rgba(0,0,0,0.55)] transition-colors ${
-              mobileDrawer === "more"
-                ? "border-gold bg-navy text-gold"
-                : "border-gold/45 bg-[#121c2e]/95 text-gold/90 hover:border-gold hover:bg-navy hover:text-gold"
-            }`}
-            aria-expanded={mobileDrawer === "more"}
-            aria-controls="listing-more-drawer"
-            onClick={() => {
-              setMapVisible(false);
-              setMobileDrawer((prev) => (prev === "more" ? null : "more"));
-            }}
+          <div className="min-w-0 max-lg:pr-[4.5rem]">{tabsNav}</div>
+          <div
+            className="lg:hidden absolute right-0 top-1/2 z-10 max-lg:-mr-3 flex flex-col items-stretch gap-1 -translate-y-[calc(100%-0.875rem)]"
+            role="toolbar"
+            aria-label="Listing panels"
           >
-            More
-          </button>
+            {(
+              [
+                {
+                  id: "insight" as const,
+                  label: "Insight",
+                  active: mobileDrawer === "insight",
+                  controls: "listing-insight-drawer",
+                  onClick: () => {
+                    if (mobileDrawer === "insight") {
+                      closeMobileDrawer();
+                      return;
+                    }
+                    openMobileDrawer("insight");
+                  },
+                },
+                {
+                  id: "details" as const,
+                  label: "Details",
+                  active: mobileDrawer === "details",
+                  controls: "listing-details-drawer",
+                  onClick: () => {
+                    if (mobileDrawer === "details") {
+                      closeMobileDrawer();
+                      return;
+                    }
+                    openMobileDrawer("details");
+                  },
+                },
+                {
+                  id: "history" as const,
+                  label: "History",
+                  active:
+                    panelTab === "history" ||
+                    (!useSlidePanel && subnav.active === "history"),
+                  controls: LISTING_SECTION_IDS.history,
+                  onClick: () => openMobileSectionPill("history"),
+                },
+                {
+                  id: "if" as const,
+                  label: "What if",
+                  active:
+                    panelTab === "if" ||
+                    (!useSlidePanel && subnav.active === "if"),
+                  controls: LISTING_SECTION_IDS.if,
+                  onClick: () => openMobileSectionPill("if"),
+                },
+                {
+                  id: "map" as const,
+                  label: "Map",
+                  active: mapVisible,
+                  controls: "listing-map-drawer",
+                  onClick: () => {
+                    if (mapVisible) {
+                      closeMap();
+                      return;
+                    }
+                    openMobileMap();
+                  },
+                },
+              ] satisfies {
+                id: MobileEdgePillId;
+                label: string;
+                active: boolean;
+                controls: string;
+                onClick: () => void;
+              }[]
+            ).map((pill) => (
+              <button
+                key={pill.id}
+                type="button"
+                className={`inline-flex items-center justify-end rounded-l-full rounded-r-none border border-r-0 pl-3.5 pr-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] shadow-[-4px_2px_12px_-4px_rgba(0,0,0,0.55)] transition-colors ${
+                  pill.active
+                    ? "border-gold bg-navy text-gold"
+                    : "border-gold/45 bg-[#121c2e]/95 text-gold/90 hover:border-gold hover:bg-navy hover:text-gold"
+                }`}
+                aria-pressed={pill.active}
+                aria-controls={pill.controls}
+                onClick={pill.onClick}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/*
@@ -754,6 +1028,7 @@ export default function ListingHeroPanels({
       expanded={remarksExpanded}
       onExpand={expandRemarks}
       onCollapse={collapseRemarks}
+      bodyCollapsed={detailsElevated}
     />
   ) : null;
 
@@ -771,6 +1046,15 @@ export default function ListingHeroPanels({
       {/* Mount Details only on desktop so Analysis id isn't duplicated vs the mobile drawer. */}
       {isDesktopLayout && sidebar ? (
         <div className="shrink-0">{sidebar}</div>
+      ) : null}
+      {isDesktopLayout && remarksSurfaceActive && sidebar ? (
+        <div className="shrink-0">
+          <ListingHistorySidePanel
+            mlsId={subnav.mlsId}
+            townHint={subnav.townHint}
+            frameClass={frameClass}
+          />
+        </div>
       ) : null}
       {mapVisible ? mapBlock("aspect-square", true) : null}
     </div>
@@ -791,27 +1075,10 @@ export default function ListingHeroPanels({
       </div>
     ) : null;
 
-  const moreMenuLinkClass =
-    "w-full text-left font-mono text-[11px] uppercase tracking-[0.16em] text-gold/90 underline decoration-gold/35 underline-offset-2 transition-colors hover:text-gold py-2";
-
-  const openMobileDrawer = (id: Exclude<MobileDrawerId, null>) => {
-    setMapVisible(false);
-    setMobileDrawer(id);
-  };
-
-  const openMobileMap = () => {
-    setMobileDrawer(null);
-    setMapVisible(true);
-    const url = new URL(window.location.href);
-    window.history.replaceState(
-      null,
-      "",
-      `${url.pathname}${url.search}#listing-location`,
-    );
-  };
-
   return (
     <ListingCriteriaVisibilityProvider>
+      <ListingDetailsRemarksSwapContext.Provider value={detailsRemarksSwapApi}>
+      <ListingHistoryDetailsSwapContext.Provider value={historyDetailsSwapApi}>
       <div
         className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
           compactHero ? "" : "mb-6"
@@ -847,45 +1114,7 @@ export default function ListingHeroPanels({
         </div>
       ) : null}
 
-      {/* Mobile: MORE menu → Insight / Details / Map; remarks via teaser only. */}
-      <ListingSideDrawer
-        open={mobileDrawer === "more" && !isDesktopLayout}
-        onClose={closeMobileDrawer}
-        title="More"
-      >
-        <nav
-          id="listing-more-drawer"
-          className="flex flex-col divide-y divide-white/10"
-          aria-label="More listing panels"
-        >
-          {overviewInsight ? (
-            <button
-              type="button"
-              className={moreMenuLinkClass}
-              onClick={() => openMobileDrawer("insight")}
-            >
-              Insight
-            </button>
-          ) : null}
-          {sidebar || interest ? (
-            <button
-              type="button"
-              className={moreMenuLinkClass}
-              onClick={() => openMobileDrawer("details")}
-            >
-              Details
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={moreMenuLinkClass}
-            onClick={openMobileMap}
-          >
-            Map
-          </button>
-        </nav>
-      </ListingSideDrawer>
-
+      {/* Mobile edge pills open Insight / Details / Map drawers; remarks via teaser. */}
       <ListingSideDrawer
         open={mobileDrawer === "remarks" && !isDesktopLayout}
         onClose={closeMobileDrawer}
@@ -935,6 +1164,8 @@ export default function ListingHeroPanels({
       >
         <div id="listing-details-drawer">{detailsBlock}</div>
       </ListingSideDrawer>
+      </ListingHistoryDetailsSwapContext.Provider>
+      </ListingDetailsRemarksSwapContext.Provider>
     </ListingCriteriaVisibilityProvider>
   );
 }

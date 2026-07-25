@@ -39,6 +39,7 @@ export default function AdminDataControlsPanel({
   pricing,
   vintages,
   rets,
+  cookies,
 }: {
   site: ReactNode;
   spotlight: ReactNode;
@@ -46,6 +47,7 @@ export default function AdminDataControlsPanel({
   pricing: ReactNode;
   vintages: ReactNode;
   rets: ReactNode;
+  cookies: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDataControlsPanelId>("site");
 
@@ -83,6 +85,7 @@ export default function AdminDataControlsPanel({
     pricing,
     vintages,
     rets,
+    cookies,
   };
   const active = ADMIN_DATA_CONTROLS_PANELS.find((item) => item.id === panel);
 

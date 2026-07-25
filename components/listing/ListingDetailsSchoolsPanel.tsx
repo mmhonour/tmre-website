@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import PropertyTaxHistoryModal from "@/components/PropertyTaxHistoryModal";
 import {
   listingFrameCompactClass,
   listingPanelCompactClass,
 } from "@/components/listing/listing-frame";
+import { useListingDetailsRemarksSwap } from "@/components/listing/ListingDetailsRemarksSwapContext";
+import { useListingHistoryDetailsSwap } from "@/components/listing/ListingHistoryDetailsSwapContext";
 import { fmtAcres } from "@/lib/listing-comparables-shared";
 import { closedVsLastListPct } from "@/lib/listing-history";
 import { formatInsightMedianPpsf } from "@/lib/insight-median-ppsf";
@@ -374,13 +376,86 @@ export default function ListingDetailsSchoolsPanel({
   const siblingDimClass = analysisHighlighted
     ? PANEL_DIM_CLASS
     : "opacity-100";
+  const remarksSwap = useListingDetailsRemarksSwap();
+  const historySwap = useListingHistoryDetailsSwap();
+  const bodyCollapsed = Boolean(historySwap?.historyElevated);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [bodyHeight, setBodyHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => setBodyHeight(el.scrollHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [
+    isClosed,
+    isRental,
+    soldPrice,
+    price,
+    closeDate,
+    originalListPrice,
+    reductionPct,
+    dom,
+    ppsf,
+    lotAcres,
+    furnishedLabel,
+    assessedMarketValue,
+    annualPropertyTax,
+    photoCount,
+    showAnalysis,
+    hasSchools,
+    analysisKind,
+    analysisHighlighted,
+  ]);
 
   return (
     <div className={`${panelClass} space-y-3`}>
-      <div className={`${PANEL_DIM_TRANSITION} ${siblingDimClass}`}>
-        <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold mb-2">
+      <div className="mb-0 flex items-start justify-between gap-2">
+        <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold">
           Details
         </p>
+        {remarksSwap ? (
+          <button
+            type="button"
+            onClick={remarksSwap.toggle}
+            className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[9px] tracking-[0.12em] uppercase text-gold/85 transition-colors hover:text-gold"
+            aria-expanded={remarksSwap.detailsElevated}
+            aria-label={
+              remarksSwap.detailsElevated
+                ? "See listing remarks"
+                : "See more details"
+            }
+          >
+            <span className="underline decoration-gold/35 underline-offset-2">
+              {remarksSwap.detailsElevated
+                ? "SEE LISTING REMARKS"
+                : "see more details"}
+            </span>
+            <span
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-white/30 bg-white/10 text-[10px] leading-none text-white shadow-sm transition-colors hover:border-gold/50 hover:bg-white/15 hover:text-gold"
+              aria-hidden
+            >
+              {remarksSwap.detailsElevated ? "▼" : "▲"}
+            </span>
+          </button>
+        ) : null}
+      </div>
+
+      <div
+        className="overflow-hidden transition-[max-height] duration-300 ease-out"
+        style={{
+          maxHeight: bodyCollapsed
+            ? 0
+            : bodyHeight > 0
+              ? bodyHeight
+              : undefined,
+        }}
+      >
+        <div ref={bodyRef} className="space-y-3">
+      <div className={`${PANEL_DIM_TRANSITION} ${siblingDimClass}`}>
         <div className="space-y-1.5">
           {isClosed ? (
             <>
@@ -628,6 +703,8 @@ export default function ListingDetailsSchoolsPanel({
           </ul>
         </div>
       ) : null}
+        </div>
+      </div>
 
       <PropertyTaxHistoryModal
         open={taxModalOpen}

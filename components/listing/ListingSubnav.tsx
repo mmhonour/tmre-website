@@ -44,6 +44,8 @@ type TabDef = { id: ListingTab; label: string; href: string };
  * Sold / Rented / Under Agreement stay collapsed behind the Transactions control
  * until that control is opened (or one of those tabs is already active).
  * Clicking Transactions also opens Sold (sale) or Rented (rental).
+ * On mobile (hideMobileEdgeTabs), What if / History / Map leave the strip for
+ * the right-edge pill stack — so the last stacked row is omitted.
  */
 const TAB_ORDER: ListingTab[] = [
   "overview",
@@ -69,6 +71,9 @@ const TRANSACTION_TABS = new Set<ListingTab>([
   "uag",
 ]);
 
+/** Moved to the mobile edge pill stack (Insight / Details / History / What if / Map). */
+const MOBILE_EDGE_PILL_TABS = new Set<ListingTab>(["if", "history", "map"]);
+
 const HASH_JUMP_TABS = new Set<ListingTab>([
   "overview",
   "history",
@@ -92,11 +97,14 @@ function tabVisible(
   tabId: ListingTab,
   alwaysShowPhotos: boolean,
   showTransactionTabs: boolean,
+  hideMobileEdgeTabs: boolean,
 ): boolean {
   // Photos tab only after the user clicks a photo on Overview (photos mode),
   // while on the dedicated photos page, or on local mockups that always show it.
   if (tabId === "photos") return alwaysShowPhotos || active === "photos";
   if (TRANSACTION_TABS.has(tabId)) return showTransactionTabs;
+  // Mobile: What if / History / Map live on the right-edge pill stack instead.
+  if (hideMobileEdgeTabs && MOBILE_EDGE_PILL_TABS.has(tabId)) return false;
   return true;
 }
 
@@ -119,6 +127,10 @@ export default function ListingSubnav({
   forceShowPhotos = false,
   mapVisible = false,
   onMapToggle = null,
+  historyElevated = false,
+  onHistoryToggle = null,
+  /** Hide What if / History / Map below `lg` (edge pills in ListingHeroPanels). */
+  hideMobileEdgeTabs = false,
 }: {
   mlsId: string;
   active: ListingTab;
@@ -156,6 +168,12 @@ export default function ListingSubnav({
   mapVisible?: boolean;
   /** Toggle Location panel without opening slide content. */
   onMapToggle?: (() => void) | null;
+  /** Desktop: History side panel elevated under Details. */
+  historyElevated?: boolean;
+  /** Desktop Overview: toggle History elevate instead of slide-up. */
+  onHistoryToggle?: (() => void) | null;
+  /** Hide What if / History / Map below `lg` (edge pills in ListingHeroPanels). */
+  hideMobileEdgeTabs?: boolean;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -165,6 +183,16 @@ export default function ListingSubnav({
   const [scrollActive, setScrollActive] = useState<ListingTab | null>(null);
   /** Reveals Sold / Rented / Under Agreement; hides the Transactions control. */
   const [transactionsOpen, setTransactionsOpen] = useState(false);
+  /** Match Tailwind `lg` — edge pills replace the last tab row on small screens. */
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsMobileLayout(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  const suppressEdgeTabs = hideMobileEdgeTabs && isMobileLayout;
 
   const panelMode = Boolean(onPanelOpen && onPanelClose);
   /**
@@ -252,7 +280,13 @@ export default function ListingSubnav({
   const tabsById = new Map(
     allTabs
       .filter((tab) =>
-        tabVisible(active, tab.id, showPhotosTab, showTransactionTabs),
+        tabVisible(
+          active,
+          tab.id,
+          showPhotosTab,
+          showTransactionTabs,
+          suppressEdgeTabs,
+        ),
       )
       .map((tab) => [tab.id, tab]),
   );
@@ -453,16 +487,19 @@ export default function ListingSubnav({
     const highlighted =
       tab.id === "map"
         ? mapVisible
-        : panelMode
-          ? tab.id === "photos"
-            ? forceShowPhotos && panelTab == null
-            : panelTab === tab.id ||
-              (tab.id === "overview" &&
-                panelTab == null &&
-                !forceShowPhotos)
-          : !onTabSelect && useHashJump && active === "overview" && scrollActive
-            ? scrollActive === tab.id
-            : active === tab.id;
+        : tab.id === "history" && onHistoryToggle
+          ? historyElevated
+          : panelMode
+            ? tab.id === "photos"
+              ? forceShowPhotos && panelTab == null
+              : panelTab === tab.id ||
+                (tab.id === "overview" &&
+                  panelTab == null &&
+                  !forceShowPhotos &&
+                  !historyElevated)
+            : !onTabSelect && useHashJump && active === "overview" && scrollActive
+              ? scrollActive === tab.id
+              : active === tab.id;
     return (
       <Link
         key={`${keyPrefix}${tab.id}`}
@@ -475,6 +512,12 @@ export default function ListingSubnav({
           if (tab.id === "map") {
             event.preventDefault();
             onMapToggle?.();
+            return;
+          }
+
+          if (tab.id === "history" && onHistoryToggle) {
+            event.preventDefault();
+            onHistoryToggle();
             return;
           }
 
@@ -606,7 +649,7 @@ export default function ListingSubnav({
                     ? "Listing sections"
                     : isTransactionRow
                       ? "Sold, rented, and under agreement"
-                      : "What if, history, and map"
+                      : "Listing analysis sections"
                 }
               >
                 {renderOrderedTabs(rowIds)}

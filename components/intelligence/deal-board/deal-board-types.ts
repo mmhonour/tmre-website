@@ -41,10 +41,15 @@ export type DealBoardRowProps = {
   showTown: boolean;
   /** When Sale or Rental filter is on, omit ownership/type from the meta line. */
   hideOwnershipType?: boolean;
-  /** Grid view: show the second metadata line (ppsf, acres, DOM, type, year). */
+  /** Grid view: show meta under beds/price — line1 through DOM, line2 year + insight. */
   showGridMeta?: boolean;
-  /** Grid view: show the listing insight/headline. */
+  /** Grid view: show the listing insight/headline when "more data" is off. */
   showGridInsights?: boolean;
+  /**
+   * When set, overrides score-rank photo eager-loading.
+   * Used when the board batches rows (100+ results → first 20 photos first).
+   */
+  photoPriority?: boolean;
   onScoreClick: (listing: DealBoardListing) => void;
   onStatusClick?: (listing: DealBoardListing) => void;
 };

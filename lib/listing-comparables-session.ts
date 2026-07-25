@@ -323,6 +323,86 @@ export function widePricingMatchingConfig(
   }
 }
 
+function sessionPoolMatchCount(
+  sold: readonly ComparableListing[],
+  active: readonly ComparableListing[],
+  criteria: ComparablesCriteria,
+  session: SessionMatchOverrides,
+): number {
+  let n = 0
+  for (const row of sold) {
+    if (comparableListingMatchesSession(row, criteria, session)) n += 1
+  }
+  for (const row of active) {
+    if (comparableListingMatchesSession(row, criteria, session)) n += 1
+  }
+  return n
+}
+
+/**
+ * When Admin defaults (±1 bed/bath, ±30% sqft) yield zero comps — common for
+ * extreme luxury (e.g. 9bd/14ba) — widen session tolerances against the wide
+ * pool until at least one match appears (or the interactive caps are hit).
+ */
+export function widenSessionUntilPoolMatches(
+  sold: readonly ComparableListing[],
+  active: readonly ComparableListing[],
+  criteria: ComparablesCriteria,
+  seed: SessionMatchOverrides,
+  townZips: readonly string[] = [],
+): SessionMatchOverrides {
+  let session: SessionMatchOverrides = {
+    ...seed,
+    allowedVintageLabels: [...seed.allowedVintageLabels],
+    allowedZips: [...(seed.allowedZips ?? [criteria.zip])],
+  }
+  if (sessionPoolMatchCount(sold, active, criteria, session) > 0) {
+    return session
+  }
+
+  for (let step = 0; step < 24; step += 1) {
+    let grew = false
+    const nextBed = bumpBedTolerance(session.bedTolerance, 1)
+    if (nextBed !== session.bedTolerance) {
+      session = { ...session, bedTolerance: nextBed }
+      grew = true
+    }
+    const nextBath = bumpBathTolerance(session.bathTolerance, 1)
+    if (nextBath !== session.bathTolerance) {
+      session = { ...session, bathTolerance: nextBath }
+      grew = true
+    }
+    const nextSqft = bumpPercentTolerance(session.sqftTolerancePct, 1)
+    if (nextSqft !== session.sqftTolerancePct) {
+      session = { ...session, sqftTolerancePct: nextSqft }
+      grew = true
+    }
+    if (canExpandVintage(session.allowedVintageLabels)) {
+      session = {
+        ...session,
+        allowedVintageLabels: expandVintageLabels(session.allowedVintageLabels),
+      }
+      grew = true
+    }
+    if (townZips.length > 0) {
+      const nextZips = expandAllowedZips(
+        session.allowedZips,
+        criteria.zip,
+        townZips,
+      )
+      if (nextZips.length > session.allowedZips.length) {
+        session = { ...session, allowedZips: nextZips }
+        grew = true
+      }
+    }
+    if (sessionPoolMatchCount(sold, active, criteria, session) > 0) {
+      return session
+    }
+    if (!grew) break
+  }
+  return session
+}
+
 export function vintageIdsFromLabels(labels: string[]): VintageBucketId[] {
   const out: VintageBucketId[] = []
   for (const label of labels) {

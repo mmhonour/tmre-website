@@ -196,6 +196,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
 
   // —— Sync / admin ——
   {
+    term: 'Browser cookies (Admin)',
+    category: 'sync-admin',
+    definition:
+      'Admin → Data controls → Browser cookies: view and delete cookies for your browser only (filter prefs, tmre_vid visitor id, tmre_site_pass unlock). HttpOnly cookies are listed/cleared via /api/admin/browser-cookies; clearing unlock logs you out.',
+  },
+  {
     term: 'Postgres / Neon',
     category: 'sync-admin',
     definition:
@@ -277,7 +283,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'WAITING (Admin sync queue)',
     category: 'sync-admin',
     definition:
-      'Status when you click Sync now while another job is running. Jobs queue in click order; status reads “Waiting for {name} to finish.”',
+      'Status when you click Sync now while another job is running (or still in its retry window). Jobs queue in click order; status reads “Waiting for {name} to finish.” The blocker keeps the slot until success or its last retry — queued jobs do not start during the 60s retry delay.',
   },
   {
     term: 'FIFO',
@@ -296,6 +302,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'sync-admin',
     definition:
       'Host for the Next.js app and serverless functions. Not the same as photo storage (R2) or the Postgres host (Neon).',
+  },
+  {
+    term: 'Thin schedule → *-worker (thin worker pattern)',
+    category: 'sync-admin',
+    definition:
+      'Netlify cron split: a thin scheduled function (≤~30s, schedule only — no background flag) does almost nothing except queue a matching *-worker background function (≤~15m, background = true — no schedule). Example: market-digest → market-digest-worker; sync-listings-full → sync-listings-full-worker. Reason: Netlify forbids schedule + background on the same function (silent no-op / Day-1 failure). The thin half is the alarm clock; the worker does the real RETS/stats/digest work. sync-listings is a special case: the thin cron also runs a lean in-process RETS pull so inventory freshness does not depend on the worker hop succeeding.',
+  },
+  {
+    term: 'Background worker (*-worker)',
+    category: 'sync-admin',
+    definition:
+      'A Netlify function with background = true and no schedule. Invoked by its thin scheduled twin (or Admin Run). Has up to ~15 minutes for heavy work (full sync, address geocode, edge scores, zip boundaries, market digest, board/stats warm). Not the same as the Admin Syncs client FIFO queue.',
   },
   {
     term: 'Lambda / serverless function',

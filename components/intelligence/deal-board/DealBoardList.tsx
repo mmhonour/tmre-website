@@ -19,7 +19,16 @@ import type {
   DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
 import type { DealBoardView } from "@/lib/deal-board-view";
-import { useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+/** When 100+ filtered results, mount/eager-load photos in batches of this size. */
+export const DEAL_BOARD_PHOTO_BATCH = 20;
 
 export type DealBoardListProps = {
   topRows: DealBoardListing[];
@@ -58,6 +67,11 @@ export type DealBoardListProps = {
   scoreInfoButton: ReactNode;
   footer: ReactNode;
   resultsSummary: ReactNode;
+  /**
+   * When true (filtered result set > 100), mount rows in batches of 20 and
+   * only eager-load photos for the first batch so images don't storm the network.
+   */
+  progressivePhotoBatches?: boolean;
 };
 
 export default function DealBoardList({
@@ -93,9 +107,65 @@ export default function DealBoardList({
   scoreInfoButton,
   footer,
   resultsSummary,
+  progressivePhotoBatches = false,
 }: DealBoardListProps) {
   const [showGridMeta, setShowGridMeta] = useState(false);
   const [showGridInsights, setShowGridInsights] = useState(false);
+  const [mountedLimit, setMountedLimit] = useState(DEAL_BOARD_PHOTO_BATCH);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  const orderedVisible = useMemo(
+    () => [
+      ...topRows,
+      ...middlePinnedRows,
+      ...(middleTierExpanded ? middleRows : []),
+      ...bottomRows,
+    ],
+    [topRows, middlePinnedRows, middleRows, bottomRows, middleTierExpanded],
+  );
+
+  const orderedKey = orderedVisible.map((l) => l.key).join("|");
+  const batching =
+    progressivePhotoBatches && orderedVisible.length > DEAL_BOARD_PHOTO_BATCH;
+
+  useEffect(() => {
+    setMountedLimit(DEAL_BOARD_PHOTO_BATCH);
+  }, [orderedKey, progressivePhotoBatches]);
+
+  useEffect(() => {
+    if (!batching || mountedLimit >= orderedVisible.length) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        setMountedLimit((n) =>
+          Math.min(n + DEAL_BOARD_PHOTO_BATCH, orderedVisible.length),
+        );
+      },
+      { rootMargin: "280px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [batching, mountedLimit, orderedVisible.length]);
+
+  const mountedKeys = useMemo(() => {
+    if (!batching) return null;
+    return new Set(
+      orderedVisible.slice(0, mountedLimit).map((l) => l.key),
+    );
+  }, [batching, orderedVisible, mountedLimit]);
+
+  /** Eager-load only the first batch's photos (not the whole page of 100). */
+  const eagerPhotoKeys = useMemo(() => {
+    if (!progressivePhotoBatches) return null;
+    return new Set(
+      orderedVisible.slice(0, DEAL_BOARD_PHOTO_BATCH).map((l) => l.key),
+    );
+  }, [progressivePhotoBatches, orderedVisible]);
+
+  const takeRows = (rows: DealBoardListing[]) =>
+    mountedKeys ? rows.filter((l) => mountedKeys.has(l.key)) : rows;
 
   const rowProps = (l: DealBoardListing) => ({
     listing: l,
@@ -106,28 +176,39 @@ export default function DealBoardList({
     hideOwnershipType,
     showGridMeta,
     showGridInsights,
+    photoPriority: eagerPhotoKeys ? eagerPhotoKeys.has(l.key) : undefined,
     onScoreClick,
     onStatusClick,
   });
 
   const renderLine = (rows: DealBoardListing[]) =>
-    rows.map((l) => <DealBoardPhotoLedLineRow key={l.key} {...rowProps(l)} />);
+    takeRows(rows).map((l) => (
+      <DealBoardPhotoLedLineRow key={l.key} {...rowProps(l)} />
+    ));
 
-  const renderGrid = (rows: DealBoardListing[]) => (
-    <div className="grid grid-cols-2 gap-0 sm:grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))]">
-      {rows.map((l) => (
-        <DealBoardPhotoLedGridCard key={l.key} {...rowProps(l)} />
-      ))}
-    </div>
-  );
+  const renderGrid = (rows: DealBoardListing[]) => {
+    const visible = takeRows(rows);
+    if (visible.length === 0) return null;
+    return (
+      <div className="grid grid-cols-2 gap-0 sm:grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))]">
+        {visible.map((l) => (
+          <DealBoardPhotoLedGridCard key={l.key} {...rowProps(l)} />
+        ))}
+      </div>
+    );
+  };
 
-  const renderLarge = (rows: DealBoardListing[]) => (
-    <div className="grid grid-cols-1 gap-0 md:grid-cols-2">
-      {rows.map((l) => (
-        <DealBoardPhotoLedLargeCard key={l.key} {...rowProps(l)} />
-      ))}
-    </div>
-  );
+  const renderLarge = (rows: DealBoardListing[]) => {
+    const visible = takeRows(rows);
+    if (visible.length === 0) return null;
+    return (
+      <div className="grid grid-cols-1 gap-0 md:grid-cols-2">
+        {visible.map((l) => (
+          <DealBoardPhotoLedLargeCard key={l.key} {...rowProps(l)} />
+        ))}
+      </div>
+    );
+  };
 
   const renderRows = (rows: DealBoardListing[]) => {
     switch (boardView) {
@@ -194,6 +275,9 @@ export default function DealBoardList({
     ) : null;
 
   const hasResults = resultCount > 0;
+  const remaining = batching
+    ? Math.max(0, orderedVisible.length - mountedLimit)
+    : 0;
 
   const sortControl = (
     <DealBoardSortBar
@@ -305,6 +389,18 @@ export default function DealBoardList({
               {middleTierExpanded ? renderRows(middleRows) : null}
               {hideMiddleControl}
               {renderRows(bottomRows)}
+              {batching && remaining > 0 ? (
+                <div
+                  ref={loadMoreRef}
+                  className="flex items-center justify-center gap-2 border-t border-charcoal/[0.06] px-4 py-3"
+                  aria-hidden
+                >
+                  <span className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.12em] uppercase text-slate/55">
+                    <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-gold/80" />
+                    Loading next {Math.min(DEAL_BOARD_PHOTO_BATCH, remaining)}…
+                  </span>
+                </div>
+              ) : null}
             </div>
           </>
         )}

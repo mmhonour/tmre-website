@@ -37,7 +37,8 @@ export default function ListingHistoryPanel({
 }: {
   mlsId: string;
   townHint?: string | null;
-  variant?: "panel" | "page" | "modal";
+  /** `side` — desktop right-column body (chrome provided by ListingHistorySidePanel). */
+  variant?: "panel" | "page" | "modal" | "side";
 }) {
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +82,7 @@ export default function ListingHistoryPanel({
   const hasContent = events.length > 0 || prior.length > 0;
   const isPage = variant === "page";
   const isModal = variant === "modal";
+  const isSide = variant === "side";
 
   if (loading) {
     return (
@@ -88,12 +90,12 @@ export default function ListingHistoryPanel({
         className={
           isPage
             ? "max-w-2xl"
-            : isModal
+            : isModal || isSide
               ? ""
               : "rounded-2xl border border-white/10 bg-white/[0.04] p-6"
         }
       >
-        {!isPage && !isModal && (
+        {!isPage && !isModal && !isSide && (
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-3">
             Listing history
           </p>
@@ -109,26 +111,35 @@ export default function ListingHistoryPanel({
     );
   }
 
-  if (!hasContent && !isPage && !isModal) return null;
+  if (!hasContent && !isPage && !isModal && !isSide) return null;
 
   const wrapperClass = isPage
     ? "max-w-2xl space-y-6"
     : isModal
       ? "space-y-5"
-      : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5";
+      : isSide
+        ? "space-y-3"
+        : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5";
 
   const dateClass = isModal
     ? "font-mono text-[10px] text-slate shrink-0 w-24 pt-0.5"
-    : "font-mono text-[10px] text-white/40 shrink-0 w-24 pt-0.5";
+    : isSide
+      ? "font-mono text-[9px] text-white/40 shrink-0 w-20 pt-0.5"
+      : "font-mono text-[10px] text-white/40 shrink-0 w-24 pt-0.5";
   const labelClass = isModal ? "text-charcoal" : "text-white/85";
-  const detailClass = isModal ? "block text-slate text-xs mt-0.5" : "block text-white/55 text-xs mt-0.5";
+  const detailClass = isModal
+    ? "block text-slate text-xs mt-0.5"
+    : isSide
+      ? "block text-white/55 text-[11px] mt-0.5"
+      : "block text-white/55 text-xs mt-0.5";
   const sectionTitleClass = isModal
     ? "font-mono text-[10px] tracking-[0.15em] uppercase text-slate mb-3"
     : "font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 mb-3";
+  const rowTextClass = isSide ? "text-[12px]" : "text-sm";
 
   return (
     <div className={wrapperClass}>
-      {!isPage && !isModal && (
+      {!isPage && !isModal && !isSide && (
         <div>
           <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
             Listing history
@@ -149,18 +160,36 @@ export default function ListingHistoryPanel({
         </p>
       )}
 
-      {!hasContent && (isPage || isModal) && (
+      {!hasContent && (isPage || isModal || isSide) && (
         <div
           className={
             isModal
               ? "rounded-2xl border border-charcoal/[0.08] bg-cream/60 p-6 text-center"
-              : "rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center"
+              : isSide
+                ? "py-1"
+                : "rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center"
           }
         >
-          <p className={isModal ? "text-charcoal text-sm" : "text-white/60 text-sm"}>
+          <p
+            className={
+              isModal
+                ? "text-charcoal text-sm"
+                : isSide
+                  ? "text-white/60 text-[12px] leading-relaxed"
+                  : "text-white/60 text-sm"
+            }
+          >
             No listing history on record yet for this property.
           </p>
-          <p className={isModal ? "text-slate text-xs mt-2" : "text-white/40 text-xs mt-2"}>
+          <p
+            className={
+              isModal
+                ? "text-slate text-xs mt-2"
+                : isSide
+                  ? "text-white/40 text-[11px] mt-1.5 leading-relaxed"
+                  : "text-white/40 text-xs mt-2"
+            }
+          >
             History builds from MLS feed data and prior listings in the local cache.
           </p>
         </div>
@@ -179,9 +208,9 @@ export default function ListingHistoryPanel({
           {(isPage || isModal) && (
             <p className={sectionTitleClass}>This listing</p>
           )}
-          <ul className="space-y-3">
+          <ul className={isSide ? "space-y-2" : "space-y-3"}>
             {events.map((ev, i) => (
-              <li key={i} className="flex gap-3 text-sm">
+              <li key={i} className={`flex gap-3 ${rowTextClass}`}>
                 <span className={dateClass}>{fmtDate(ev.date) ?? "—"}</span>
                 <span className={labelClass}>
                   {ev.label}
@@ -200,7 +229,9 @@ export default function ListingHistoryPanel({
               ? "rounded-2xl border border-white/10 bg-white/[0.04] p-6"
               : isModal
                 ? "rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
-                : "border-t border-white/10 pt-5"
+                : isSide
+                  ? "border-t border-white/10 pt-3"
+                  : "border-t border-white/10 pt-5"
           }
         >
           <p className={sectionTitleClass}>Previous listings at this address</p>

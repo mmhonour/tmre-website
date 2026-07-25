@@ -7,6 +7,13 @@ import {
   PRICE_BUCKETS,
 } from '@/lib/price-buckets'
 import {
+  classifyLuxuryPrice,
+  emptyLuxuryPriceCounts,
+  LUXURY_PRICE_BUCKETS,
+  LUXURY_PRICE_FLOOR,
+  topLuxurySaleBands,
+} from '@/lib/luxury-price-buckets'
+import {
   classifyRentPrice,
   emptyRentCounts,
   RENT_BUCKETS,
@@ -668,6 +675,83 @@ export function computeActiveByPrice(
   }
 }
 
+/** Active for-sale luxury inventory — fine $1M / $5M buckets + top Admin bands. */
+export type ActiveByLuxuryPricePayload = ActiveByPricePayload & {
+  /** Top 3 Admin sale bands (by price) this chart is keyed to. */
+  luxuryBands: Array<{
+    id: string
+    label: string
+    min: number
+    max: number | null
+  }>
+  /** Actives at or above the luxury floor ($4M). */
+  luxuryActive: number
+  /** Actives below $4M (excluded from luxury bars). */
+  belowLuxury: number
+}
+
+/**
+ * Bucket active sale list prices into luxury fine bands ($4–10M @ $1M,
+ * $10M+ @ $5M). Sale-only. Uses Postgres-hydrated listings, never RETS.
+ */
+export function computeActiveByLuxuryPrice(
+  activeListings: Listing[],
+  city: string,
+  saleBuckets: readonly (typeof PRICE_BUCKETS)[number][] = PRICE_BUCKETS,
+): ActiveByLuxuryPricePayload {
+  const filtered = filterListingsByKind(activeListings, 'sale')
+  const counts = emptyLuxuryPriceCounts()
+  let total = 0
+  let belowLuxury = 0
+  let luxuryActive = 0
+
+  for (const l of filtered) {
+    total += 1
+    const price = l.price
+    if (price == null || !Number.isFinite(price) || price <= 0) {
+      counts.unknown = (counts.unknown ?? 0) + 1
+      continue
+    }
+    if (price < LUXURY_PRICE_FLOOR) {
+      belowLuxury += 1
+      continue
+    }
+    luxuryActive += 1
+    const id = classifyLuxuryPrice(price)
+    counts[id] = (counts[id] ?? 0) + 1
+  }
+
+  const knownLuxury = luxuryActive
+  const buckets: ActiveByPriceBucket[] = LUXURY_PRICE_BUCKETS.map((b) => ({
+    id: b.id,
+    label: b.label,
+    min: b.min,
+    max: b.max,
+    count: counts[b.id] ?? 0,
+    share: knownLuxury > 0 ? (counts[b.id] ?? 0) / knownLuxury : 0,
+  }))
+  const ranked = [...buckets].sort((a, b) => b.count - a.count)
+  const luxuryBands = topLuxurySaleBands(saleBuckets, 3).map((b) => ({
+    id: b.id,
+    label: b.label,
+    min: b.min,
+    max: b.max,
+  }))
+
+  return {
+    city,
+    kind: 'sale',
+    totalActive: total,
+    knownPrice: knownLuxury,
+    unknownPrice: counts.unknown ?? 0,
+    belowLuxury,
+    luxuryActive,
+    buckets,
+    topBucket: ranked[0]?.count ? ranked[0] : null,
+    luxuryBands,
+  }
+}
+
 export type StatsCacheScope =
   | 'market-stats'
   | 'market-stats-listings'
@@ -678,6 +762,7 @@ export type StatsCacheScope =
   | 'sales-by-vintage'
   | 'sales-by-price'
   | 'active-by-price'
+  | 'active-by-luxury-price'
   | 'avg-score-by-vintage'
   | 'avg-score-by-vintage-by-town'
 

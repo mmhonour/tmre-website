@@ -17,6 +17,7 @@ import ListingThumbImage from "@/components/ListingThumbImage";
 import { prefetchMlsPhotoThumbs } from "@/lib/prefetch-listing-images";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
+import type { DealCarouselDealsByTown } from "@/lib/deal-of-the-day-carousel-types";
 
 const FIXER_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
 const FIXER_CATEGORY_VALUES = ["all", "projects", "land"] as const;
@@ -138,7 +139,11 @@ const FALLBACK: FixerListing[] = [
   },
 ];
 
-export default function FixerUppersClient() {
+export default function FixerUppersClient({
+  initialDotdDealsByTown = null,
+}: {
+  initialDotdDealsByTown?: DealCarouselDealsByTown | null;
+} = {}) {
   const [allListings, setAllListings] = useState<FixerListing[]>([]);
   const [totalScanned, setTotalScanned] = useState(0);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -232,7 +237,11 @@ export default function FixerUppersClient() {
               </h1>
             </div>
             <div className="animate-fade-up-delay-1 lg:pt-6">
-              <DealOfTheDayFrame />
+              <DealOfTheDayFrame
+                initialDealsByTown={initialDotdDealsByTown}
+                initialKind="sale"
+                initialPropertyClass="homes"
+              />
             </div>
           </div>
 

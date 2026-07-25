@@ -416,6 +416,9 @@ export default function DealOfTheDayFrame({
   transactionFilter = "sale",
   propertyClass = "homes",
   className,
+  initialDealsByTown = null,
+  initialKind = "sale",
+  initialPropertyClass = "homes",
 }: {
   city?: string;
   theme?: "hero" | "light";
@@ -426,6 +429,9 @@ export default function DealOfTheDayFrame({
   /** Homes / multi / condos — defaults to single-family. */
   propertyClass?: DealPropertyClassFilter;
   className?: string;
+  initialDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
+  initialKind?: "sale" | "rental";
+  initialPropertyClass?: DealPropertyClassFilter;
 }) {
   const {
     loading,
@@ -444,6 +450,9 @@ export default function DealOfTheDayFrame({
     rotate: rotateTowns,
     transactionFilter,
     propertyClass,
+    initialDealsByTown,
+    initialKind,
+    initialPropertyClass,
   });
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);

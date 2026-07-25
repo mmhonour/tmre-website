@@ -23,6 +23,7 @@ import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
+import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
@@ -721,6 +722,7 @@ export default async function AdminPage() {
       pricing={<AdminPricingPanel initial={pricingInitial} />}
       vintages={<AdminVintagesPanel />}
       rets={retsPanel}
+      cookies={<AdminBrowserCookiesPanel />}
     />
   );
 

@@ -15,6 +15,7 @@ import FilterResetButton from "@/components/FilterResetButton";
 import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
 import IntelligenceVintageMedianMiniChart from "@/components/IntelligenceVintageMedianMiniChart";
 import IntelligencePriceBandMiniChart from "@/components/IntelligencePriceBandMiniChart";
+import IntelligenceLuxuryPriceBandMiniChart from "@/components/IntelligenceLuxuryPriceBandMiniChart";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
 import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
@@ -349,8 +350,11 @@ const STATUS_SORT_ORDER: Record<RowStatus, number> = {
 };
 
 const BOARD_LISTING_LIMIT = 100;
-/** Primary photos for listings at or above this score rank load eagerly (0 = best). */
-const PHOTO_PRIORITY_RANK_COUNT = 12;
+/**
+ * When filtered results exceed one board page (100), only the first N photos
+ * are eager-loaded / prefetched per page — more mount as you scroll.
+ */
+const PHOTO_BATCH_WHEN_PAGED = 20;
 const BED_BATH_MAX = 6;
 const INTEL_SLIDER_WIDTH_CLASS = "w-[7.5rem]";
 
@@ -1569,7 +1573,12 @@ async function fetchIntelligenceDealBoard(
 
 type LoadState = "loading" | "ready" | "fallback";
 
-export default function IntelligenceClient() {
+export default function IntelligenceClient({
+  initialDotdDealsByTown = null,
+}: {
+  /** FSSR seed for Deal of the Day frame (sale/homes by default). */
+  initialDotdDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
+} = {}) {
   const searchParams = useSearchParams();
   const urlSearch = useMemo(
     () => parseIntelligenceSearchParams(searchParams),
@@ -1634,6 +1643,9 @@ export default function IntelligenceClient() {
   const [maxPriceIndex, setMaxPriceIndex] = useState(INTEL_PRICE_MAX_INDEX);
   /** Price-band mini chart selection (stats_cache bands → board price filter). */
   const [activePriceBandId, setActivePriceBandId] = useState<string | null>(null);
+  const [activeLuxuryPriceBandId, setActiveLuxuryPriceBandId] = useState<
+    string | null
+  >(null);
   const [priceSliderActive, setPriceSliderActive] = useHeldSliderActive();
   const [bedSliderActive, setBedSliderActive] = useHeldSliderActive();
   const [bathSliderActive, setBathSliderActive] = useHeldSliderActive();
@@ -2396,6 +2408,7 @@ export default function IntelligenceClient() {
     if (priceFilterContextRef.current !== priceFilterContextKey) {
       priceFilterContextRef.current = priceFilterContextKey;
       setActivePriceBandId(null);
+      setActiveLuxuryPriceBandId(null);
       priceRangeCustomizedRef.current = false;
     }
   }, [priceFilterContextKey]);
@@ -2605,19 +2618,9 @@ export default function IntelligenceClient() {
   }, [boardSortedListings, boardPage]);
 
   const boardPrefetchIds = useMemo(() => {
-    const start = (boardPage - 1) * BOARD_LISTING_LIMIT;
-    return rankedListings.slice(start, start + BOARD_LISTING_LIMIT).map((l) => l.key);
-  }, [rankedListings, boardPage]);
-
-  useEffect(() => {
-    if (state !== "ready" || boardPrefetchIds.length === 0) return;
-    // Grid/large cards load their own photos — skip stack prefetch to avoid RETS storms.
-    if (boardView === "grid" || boardView === "large") return;
-    return prefetchMlsPhotoThumbsOrdered(boardPrefetchIds, {
-      stackPhotosForTop: PHOTO_PRIORITY_RANK_COUNT,
-      stackPhotoCount: 1,
-    });
-  }, [boardPrefetchIds, state, boardView]);
+    // Display order for the current page so prefetch matches what the user sees.
+    return boardListings.map((l) => l.key);
+  }, [boardListings]);
 
   const boardTiers = useMemo(() => {
     const rows = boardListings;
@@ -2664,6 +2667,18 @@ export default function IntelligenceClient() {
     filteredCount === 0 ? 0 : (boardPage - 1) * BOARD_LISTING_LIMIT + 1;
   const boardPageEnd = Math.min(boardPage * BOARD_LISTING_LIMIT, filteredCount);
   const showBoardPagination = filteredCount > BOARD_LISTING_LIMIT;
+
+  useEffect(() => {
+    if (state !== "ready" || boardPrefetchIds.length === 0) return;
+    // Grid/large cards load their own photos — skip stack prefetch to avoid RETS storms.
+    if (boardView === "grid" || boardView === "large") return;
+    return prefetchMlsPhotoThumbsOrdered(boardPrefetchIds, {
+      stackPhotosForTop: PHOTO_BATCH_WHEN_PAGED,
+      stackPhotoCount: 1,
+      // 100+ results: only warm the first batch so photos don't contend.
+      maxPrefetch: showBoardPagination ? PHOTO_BATCH_WHEN_PAGED : undefined,
+    });
+  }, [boardPrefetchIds, state, boardView, showBoardPagination]);
 
   const effectiveMiddleTierExpanded =
     middleTierExpanded || !boardTiers.canCollapse;
@@ -2909,6 +2924,7 @@ export default function IntelligenceClient() {
     setMinPriceIndex(0);
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
     setActivePriceBandId(null);
+    setActiveLuxuryPriceBandId(null);
     setBoardStatusFilter("all");
     setFurnishedFilter("all");
     setBoardPage(1);
@@ -3854,11 +3870,13 @@ export default function IntelligenceClient() {
                   onMinPriceIndexChange={(index) => {
                     priceRangeCustomizedRef.current = true;
                     setActivePriceBandId(null);
+                    setActiveLuxuryPriceBandId(null);
                     setMinPriceIndex(index);
                   }}
                   onMaxPriceIndexChange={(index) => {
                     priceRangeCustomizedRef.current = true;
                     setActivePriceBandId(null);
+                    setActiveLuxuryPriceBandId(null);
                     setMaxPriceIndex(index);
                   }}
                   onPriceSliderActiveChange={setPriceSliderActive}
@@ -3983,6 +4001,9 @@ export default function IntelligenceClient() {
                     ? saleProperty
                     : "homes"
                 }
+                initialDealsByTown={initialDotdDealsByTown}
+                initialKind="sale"
+                initialPropertyClass="homes"
                 className="w-full"
               />
             </div>
@@ -4117,10 +4138,11 @@ export default function IntelligenceClient() {
                   city={active === "All" ? "All" : active}
                   kind={tx === "rental" ? "rental" : "sale"}
                   activeBucketId={activePriceBandId}
-                  filterActive={priceFilterActive}
+                  filterActive={priceFilterActive && !activeLuxuryPriceBandId}
                   onBucketClick={(bucket) => {
                     priceRangeCustomizedRef.current = true;
                     setActivePriceBandId(bucket.id);
+                    setActiveLuxuryPriceBandId(null);
                     setMinPriceIndex(
                       minPriceToStepIndex(bucket.min, boardPriceSteps),
                     );
@@ -4133,6 +4155,38 @@ export default function IntelligenceClient() {
                   }}
                   onResetFilter={() => {
                     priceRangeCustomizedRef.current = false;
+                    setActivePriceBandId(null);
+                    setActiveLuxuryPriceBandId(null);
+                    setMinPriceIndex(0);
+                    setMaxPriceIndex(boardPriceMaxIdx);
+                    setBoardPage(1);
+                  }}
+                />
+              </div>
+              ) : null}
+              {showPriceFilter && tx !== "rental" ? (
+              <div className="w-full max-w-md shrink-0">
+                <IntelligenceLuxuryPriceBandMiniChart
+                  city={active === "All" ? "All" : active}
+                  activeBucketId={activeLuxuryPriceBandId}
+                  filterActive={priceFilterActive && Boolean(activeLuxuryPriceBandId)}
+                  onBucketClick={(bucket) => {
+                    priceRangeCustomizedRef.current = true;
+                    setActiveLuxuryPriceBandId(bucket.id);
+                    setActivePriceBandId(null);
+                    setMinPriceIndex(
+                      minPriceToStepIndex(bucket.min, boardPriceSteps),
+                    );
+                    setMaxPriceIndex(
+                      bucket.max == null
+                        ? boardPriceMaxIdx
+                        : maxPriceToStepIndex(bucket.max, boardPriceSteps),
+                    );
+                    setBoardPage(1);
+                  }}
+                  onResetFilter={() => {
+                    priceRangeCustomizedRef.current = false;
+                    setActiveLuxuryPriceBandId(null);
                     setActivePriceBandId(null);
                     setMinPriceIndex(0);
                     setMaxPriceIndex(boardPriceMaxIdx);
@@ -4158,6 +4212,7 @@ export default function IntelligenceClient() {
             isLive={state === "ready"}
             showTown={active === "All"}
             hideOwnershipType={tx === "sale" || tx === "rental"}
+            progressivePhotoBatches={showBoardPagination}
             loading={state === "loading" && liveListings === null}
             loadingLabel={`Loading ${active}…`}
             emptyLabel={`No ${active === "All" ? "" : `${active} `}${

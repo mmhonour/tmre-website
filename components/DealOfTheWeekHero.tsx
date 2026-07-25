@@ -473,9 +473,16 @@ export default function DealOfTheWeekHero({
   mode = "week",
   /** When true, nav padding is already handled by HomeMethodOverview above. */
   afterOverview = false,
+  /** Server-seeded sale/homes (or matching) carousel so first paint skips client API wait. */
+  initialDealsByTown = null,
+  initialKind = "sale",
+  initialPropertyClass = "homes",
 }: {
   mode?: "week" | "day";
   afterOverview?: boolean;
+  initialDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
+  initialKind?: "sale" | "rental";
+  initialPropertyClass?: DealPropertyClassFilter;
 }) {
   const searchParams = useSearchParams();
   const city = searchParams.get("city");
@@ -527,6 +534,9 @@ export default function DealOfTheWeekHero({
     transactionFilter: dayTxFilter,
     propertyClass: dayPropertyClass,
     pinnedListingId: listingParam,
+    initialDealsByTown: isDay ? initialDealsByTown : null,
+    initialKind,
+    initialPropertyClass,
   });
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);

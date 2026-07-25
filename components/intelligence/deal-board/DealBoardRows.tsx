@@ -47,6 +47,7 @@ export function DealBoardPhotoLedRow({
   rankTotal,
   isLive,
   showTown,
+  photoPriority,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
@@ -71,7 +72,7 @@ export function DealBoardPhotoLedRow({
         isLive={isLive}
         width={128}
         height={84}
-        priority={scoreRank < 8}
+        priority={photoPriority ?? scoreRank < 8}
         withDealBoardReturn
       />
       <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
@@ -113,6 +114,7 @@ export function DealBoardPhotoLedLineRow({
   isLive,
   showTown,
   hideOwnershipType = false,
+  photoPriority,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
@@ -147,7 +149,7 @@ export function DealBoardPhotoLedLineRow({
           isLive={isLive}
           width={48}
           height={32}
-          priority={scoreRank < 8}
+          priority={photoPriority ?? scoreRank < 8}
           className="rounded-md"
           withDealBoardReturn
           showPhotoCountBadge={false}
@@ -227,6 +229,7 @@ export function DealBoardPhotoLedGridCard({
   showTown,
   showGridMeta = false,
   showGridInsights = false,
+  photoPriority,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
@@ -286,7 +289,7 @@ export function DealBoardPhotoLedGridCard({
           height={2}
           fluid
           className="rounded-none"
-          priority={scoreRank < 4}
+          priority={photoPriority ?? scoreRank < 4}
           withDealBoardReturn
           overlay={
             <div
@@ -320,21 +323,38 @@ export function DealBoardPhotoLedGridCard({
           ) : null}
         </p>
         {showGridMeta ? (
-          <DealBoardAdaptiveMetaLine
-            parts={[
-              ppsf,
-              dealBoardAcresLabel(l.lotAcres),
-              l.dom != null ? `${l.dom}d DOM` : null,
-              l.type || null,
-              dealBoardYearBuiltLabel(l.yearBuilt),
-            ]}
-            sqft={null}
-            yearBuilt={null}
-            lotAcres={null}
-            className="font-mono text-[10px] text-slate/80 tabular-nums truncate"
-          />
-        ) : null}
-        {showGridInsights && l.headline ? (
+          <div className="min-w-0 space-y-0.5">
+            {/* Line 1 ends at DOM so SF / type isn’t truncated. */}
+            <p className="font-mono text-[10px] text-slate/80 tabular-nums">
+              {[
+                ppsf,
+                dealBoardAcresLabel(l.lotAcres),
+                l.dom != null ? `${l.dom}d DOM` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+            {/* Line 2: year built, then insight (type rides with year when present). */}
+            {l.yearBuilt != null || l.type || l.headline ? (
+              <p className="min-w-0 text-[10px] leading-snug">
+                <span className="font-mono text-slate/80 tabular-nums">
+                  {[
+                    dealBoardYearBuiltLabel(l.yearBuilt),
+                    l.type || null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                {l.headline ? (
+                  <span className="text-charcoal/60 italic">
+                    {l.yearBuilt != null || l.type ? " · " : null}
+                    {l.headline}
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
+          </div>
+        ) : showGridInsights && l.headline ? (
           <p className="text-xs text-charcoal/60 italic leading-snug line-clamp-2 pt-0.5">
             {l.headline}
           </p>
@@ -350,6 +370,7 @@ export function DealBoardPhotoLedLargeCard({
   rankTotal,
   isLive,
   showTown,
+  photoPriority,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
@@ -396,7 +417,7 @@ export function DealBoardPhotoLedLargeCard({
           height={10}
           fluid
           className="rounded-none"
-          priority={scoreRank < 4}
+          priority={photoPriority ?? scoreRank < 4}
           withDealBoardReturn
         />
       </div>

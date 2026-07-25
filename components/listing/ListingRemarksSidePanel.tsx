@@ -16,12 +16,15 @@ export default function ListingRemarksSidePanel({
   expanded,
   onExpand,
   onCollapse,
+  /** Desktop: collapse body so Details can sit just under this header. */
+  bodyCollapsed = false,
 }: {
   remarks: string | null;
   frameClass: string;
   expanded: boolean;
   onExpand: () => void;
   onCollapse: () => void;
+  bodyCollapsed?: boolean;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState(0);
@@ -37,9 +40,11 @@ export default function ListingRemarksSidePanel({
   }, [remarks]);
 
   const halfHeight = contentHeight > 0 ? Math.round(contentHeight * 0.5) : 0;
-  const canToggle = contentHeight > 72 && halfHeight > 0;
-  const maxHeight =
-    contentHeight <= 0
+  const canToggle =
+    !bodyCollapsed && contentHeight > 72 && halfHeight > 0;
+  const maxHeight = bodyCollapsed
+    ? 0
+    : contentHeight <= 0
       ? undefined
       : expanded
         ? contentHeight
@@ -51,9 +56,14 @@ export default function ListingRemarksSidePanel({
         <p className="font-mono text-[8px] tracking-[0.2em] uppercase text-gold mb-2">
           Listing remarks
         </p>
-        <p className="text-white/50 text-[12px] leading-relaxed">
-          No public remarks for this listing.
-        </p>
+        <div
+          className="overflow-hidden transition-[max-height] duration-300 ease-out"
+          style={{ maxHeight: bodyCollapsed ? 0 : undefined }}
+        >
+          <p className="text-white/50 text-[12px] leading-relaxed">
+            No public remarks for this listing.
+          </p>
+        </div>
       </div>
     );
   }

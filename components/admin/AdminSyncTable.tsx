@@ -1207,9 +1207,6 @@ export default function AdminSyncTable({
   >({});
   const pendingRetryTimersRef = useRef<Partial<Record<string, number>>>({});
   const syncAttemptCountRef = useRef<Partial<Record<string, number>>>({});
-  const runSyncRef = useRef<
-    (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => Promise<void>
-  >(async () => {});
   const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
     null,
   );
@@ -1418,46 +1415,6 @@ export default function AdminSyncTable({
     return () => window.clearInterval(id);
   }, [refreshing, runningId, hasPendingRetries]);
 
-  /** After a sync failure: schedule up to 2 automatic retries (60s apart), or finalize. */
-  const handleSyncFailure = useCallback(
-    (row: AdminSyncRow, baseError: string) => {
-      const prior = syncAttemptCountRef.current[row.id] ?? 0;
-      const attemptNumber = prior + 1;
-      syncAttemptCountRef.current[row.id] = attemptNumber;
-      const attemptsLeft = SYNC_MAX_ATTEMPTS - attemptNumber;
-
-      if (attemptsLeft <= 0) {
-        clearPendingRetry(row.id);
-        setErrors((prev) => ({ ...prev, [row.id]: baseError }));
-        return;
-      }
-
-      const retryAtMs = Date.now() + SYNC_RETRY_DELAY_MS;
-      clearPendingRetry(row.id);
-      setPendingRetries((prev) => ({
-        ...prev,
-        [row.id]: { baseError, retryAtMs, attemptsLeft },
-      }));
-      setErrors((prev) => ({
-        ...prev,
-        [row.id]: formatErrorWithRetry(baseError, retryAtMs, attemptsLeft),
-      }));
-
-      const timerId = window.setTimeout(() => {
-        delete pendingRetryTimersRef.current[row.id];
-        setPendingRetries((prev) => {
-          if (!prev[row.id]) return prev;
-          const next = { ...prev };
-          delete next[row.id];
-          return next;
-        });
-        void runSyncRef.current(row, { autoRetry: true });
-      }, SYNC_RETRY_DELAY_MS);
-      pendingRetryTimersRef.current[row.id] = timerId;
-    },
-    [clearPendingRetry],
-  );
-
   const refreshStatus = useCallback(async () => {
     const res = await fetch("/api/admin/sync", { cache: "no-store" });
     if (!res.ok) return;
@@ -1571,48 +1528,82 @@ export default function AdminSyncTable({
   }, [setRunningJob, refreshStatus]);
 
   const executeSync = useCallback(
-    async (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => {
+    async (row: AdminSyncRow) => {
       const actionId = row.actionId;
       if (!actionId) return;
 
-      if (!opts?.autoRetry) {
-        clearPendingRetry(row.id);
-        syncAttemptCountRef.current[row.id] = 0;
-      }
+      clearPendingRetry(row.id);
+      syncAttemptCountRef.current[row.id] = 0;
 
       const actionLabel = ADMIN_SYNC_ACTIONS[actionId]?.label ?? row.label;
+
+      /** Hold the running slot through retries so FIFO waiters stay blocked. */
+      const markRetryWait = (baseError: string, attempt: number) => {
+        const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
+        const retryAtMs = Date.now() + SYNC_RETRY_DELAY_MS;
+        setPendingRetries((prev) => ({
+          ...prev,
+          [row.id]: { baseError, retryAtMs, attemptsLeft },
+        }));
+        setErrors((prev) => ({
+          ...prev,
+          [row.id]: formatErrorWithRetry(baseError, retryAtMs, attemptsLeft),
+        }));
+        refreshWaitingStatuses(actionLabel);
+      };
 
       if (actionId === "full-resync") {
         beginRunLog("Full resync");
         setRunningJob("full-resync", actionLabel);
         refreshWaitingStatuses(actionLabel);
+        let fullOk = false;
+        let lastFullErr = "Full resync failed";
         try {
-          const result = await runFullResyncChunked(row, {
-            setRunningId: (id) => {
-              // Keep label in sync when the chunked helper clears/sets the id.
-              if (id == null) {
-                runningIdRef.current = null;
-                setRunningId(null);
-              } else {
-                setRunningJob(id, actionLabel);
-              }
-            },
-            setDescriptions,
-            setMessages,
-            setErrors,
-            setRunTimings,
-            setStatus,
-            setRefreshing,
-            refreshStatus,
-            runningId: null,
-            persistFinalStatus,
-            appendRunLog,
-          });
-          if (result.ok) {
+          for (let attempt = 1; attempt <= SYNC_MAX_ATTEMPTS; attempt++) {
+            syncAttemptCountRef.current[row.id] = attempt;
+            if (attempt > 1) {
+              clearPendingRetry(row.id);
+              setRunningJob("full-resync", actionLabel);
+              setErrors((prev) => ({ ...prev, [row.id]: undefined }));
+            }
+            const result = await runFullResyncChunked(row, {
+              setRunningId: (id) => {
+                // Keep label in sync when the chunked helper clears/sets the id.
+                if (id == null) {
+                  // Do not clear the queue slot mid-retry — Sync now still owns it.
+                  setRunningJob("full-resync", actionLabel);
+                } else {
+                  setRunningJob(id, actionLabel);
+                }
+              },
+              setDescriptions,
+              setMessages,
+              setErrors,
+              setRunTimings,
+              setStatus,
+              setRefreshing,
+              refreshStatus,
+              runningId: null,
+              persistFinalStatus,
+              appendRunLog,
+            });
+            setRunningJob("full-resync", actionLabel);
+            if (result.ok) {
+              fullOk = true;
+              clearPendingRetry(row.id);
+              syncAttemptCountRef.current[row.id] = 0;
+              break;
+            }
+            lastFullErr = result.error ?? lastFullErr;
+            const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
+            if (attemptsLeft <= 0) break;
+            markRetryWait(lastFullErr, attempt);
+            await sleepMs(SYNC_RETRY_DELAY_MS);
+          }
+          if (!fullOk) {
             clearPendingRetry(row.id);
             syncAttemptCountRef.current[row.id] = 0;
-          } else {
-            handleSyncFailure(row, result.error ?? "Full resync failed");
+            setErrors((prev) => ({ ...prev, [row.id]: lastFullErr }));
           }
         } finally {
           commitRunLog();
@@ -1621,8 +1612,6 @@ export default function AdminSyncTable({
         return;
       }
 
-      const startedAt = new Date().toISOString();
-      const actionT0 = Date.now();
       beginRunLog(`Sync now · ${actionLabel}`);
       setRunningJob(actionId, actionLabel);
       refreshWaitingStatuses(actionLabel);
@@ -1632,104 +1621,142 @@ export default function AdminSyncTable({
         ...prev,
         [row.id]: `${ADMIN_SYNC_ACTIONS[actionId]?.description ?? row.label}…`,
       }));
-      setRunTimings((prev) => ({
-        ...prev,
-        [row.id]: { started: startedAt, finished: null },
-      }));
+
+      let succeeded = false;
+      let lastError = "Sync failed";
 
       try {
-        const res = await fetch("/api/admin/sync", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: actionId }),
-        });
-        const body = await readAdminSyncPostResponse(res);
+        for (let attempt = 1; attempt <= SYNC_MAX_ATTEMPTS; attempt++) {
+          syncAttemptCountRef.current[row.id] = attempt;
+          if (attempt > 1) {
+            clearPendingRetry(row.id);
+            setRunningJob(actionId, actionLabel);
+            setErrors((prev) => ({ ...prev, [row.id]: undefined }));
+            setDescriptions((prev) => ({
+              ...prev,
+              [row.id]: `${ADMIN_SYNC_ACTIONS[actionId]?.description ?? row.label}… (retry ${attempt}/${SYNC_MAX_ATTEMPTS})`,
+            }));
+          }
 
-        if (!res.ok || body.ok === false) {
-          const errText = formatSyncError(res, body, row.label);
-          appendRunLog({
-            id: `${row.id}-${actionT0}`,
-            label: actionLabel,
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            durationMs: Date.now() - actionT0,
-            status: errText,
-            error: errText,
-          });
+          const startedAt = new Date().toISOString();
+          const actionT0 = Date.now();
           setRunTimings((prev) => ({
             ...prev,
-            [row.id]: {
-              started: body.startedAt ?? startedAt,
-              finished: body.finishedAt ?? new Date().toISOString(),
-            },
+            [row.id]: { started: startedAt, finished: null },
           }));
-          handleSyncFailure(row, errText);
-          return;
+
+          try {
+            const res = await fetch("/api/admin/sync", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ action: actionId }),
+            });
+            const body = await readAdminSyncPostResponse(res);
+
+            if (!res.ok || body.ok === false) {
+              const errText = formatSyncError(res, body, row.label);
+              lastError = errText;
+              appendRunLog({
+                id: `${row.id}-${actionT0}-a${attempt}`,
+                label: actionLabel,
+                startedAt,
+                finishedAt: new Date().toISOString(),
+                durationMs: Date.now() - actionT0,
+                status: errText,
+                error: errText,
+              });
+              setRunTimings((prev) => ({
+                ...prev,
+                [row.id]: {
+                  started: body.startedAt ?? startedAt,
+                  finished: body.finishedAt ?? new Date().toISOString(),
+                },
+              }));
+              const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
+              if (attemptsLeft <= 0) break;
+              markRetryWait(errText, attempt);
+              await sleepMs(SYNC_RETRY_DELAY_MS);
+              continue;
+            }
+
+            succeeded = true;
+            clearPendingRetry(row.id);
+            syncAttemptCountRef.current[row.id] = 0;
+            setErrors((prev) => ({ ...prev, [row.id]: undefined }));
+            setStatus(body);
+            setRefreshing(body.refreshing);
+            const queued = Boolean(body.backgroundQueued);
+            setRunTimings((prev) => ({
+              ...prev,
+              [row.id]: {
+                started: body.startedAt ?? startedAt,
+                finished: queued ? null : (body.finishedAt ?? new Date().toISOString()),
+              },
+            }));
+            setMessages((prev) => ({
+              ...prev,
+              [row.id]: body.message ?? "Complete",
+            }));
+            const finalText =
+              formatSyncDescription(body.message, body.detail) ??
+              body.message ??
+              row.detail ??
+              "";
+            setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
+            if (finalText) persistFinalStatus(row.id, finalText);
+            const finishedAt = body.finishedAt ?? new Date().toISOString();
+            const durationMs = Date.now() - actionT0;
+            if (body.townResults && body.townResults.length > 0) {
+              appendTownResultsByBucket(appendRunLog, {
+                rowId: row.id,
+                townResults: body.townResults,
+                startedAt: body.startedAt ?? startedAt,
+                finishedAt,
+                durationMs,
+                ok: true,
+              });
+            } else {
+              appendRunLog({
+                id: `${row.id}-${actionT0}-a${attempt}`,
+                label: actionLabel,
+                startedAt,
+                finishedAt,
+                durationMs,
+                status: finalText || (body.message ?? "Complete"),
+              });
+            }
+            break;
+          } catch (err) {
+            const errText = err instanceof Error ? err.message : "Sync failed";
+            lastError = errText;
+            appendRunLog({
+              id: `${row.id}-${actionT0}-a${attempt}`,
+              label: actionLabel,
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              durationMs: Date.now() - actionT0,
+              status: errText,
+              error: errText,
+            });
+            setRunTimings((prev) => ({
+              ...prev,
+              [row.id]: { started: startedAt, finished: new Date().toISOString() },
+            }));
+            const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
+            if (attemptsLeft <= 0) break;
+            markRetryWait(errText, attempt);
+            await sleepMs(SYNC_RETRY_DELAY_MS);
+          }
         }
 
-        clearPendingRetry(row.id);
-        syncAttemptCountRef.current[row.id] = 0;
-        setErrors((prev) => ({ ...prev, [row.id]: undefined }));
-        setStatus(body);
-        setRefreshing(body.refreshing);
-        const queued = Boolean(body.backgroundQueued);
-        setRunTimings((prev) => ({
-          ...prev,
-          [row.id]: {
-            started: body.startedAt ?? startedAt,
-            finished: queued ? null : (body.finishedAt ?? new Date().toISOString()),
-          },
-        }));
-        setMessages((prev) => ({
-          ...prev,
-          [row.id]: body.message ?? "Complete",
-        }));
-        const finalText =
-          formatSyncDescription(body.message, body.detail) ??
-          body.message ??
-          row.detail ??
-          "";
-        setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
-        if (finalText) persistFinalStatus(row.id, finalText);
-        const finishedAt = body.finishedAt ?? new Date().toISOString();
-        const durationMs = Date.now() - actionT0;
-        if (body.townResults && body.townResults.length > 0) {
-          appendTownResultsByBucket(appendRunLog, {
-            rowId: row.id,
-            townResults: body.townResults,
-            startedAt: body.startedAt ?? startedAt,
-            finishedAt,
-            durationMs,
-            ok: true,
-          });
-        } else {
-          appendRunLog({
-            id: `${row.id}-${actionT0}`,
-            label: actionLabel,
-            startedAt,
-            finishedAt,
-            durationMs,
-            status: finalText || (body.message ?? "Complete"),
-          });
+        if (!succeeded) {
+          clearPendingRetry(row.id);
+          syncAttemptCountRef.current[row.id] = 0;
+          setErrors((prev) => ({ ...prev, [row.id]: lastError }));
         }
-      } catch (err) {
-        const errText = err instanceof Error ? err.message : "Sync failed";
-        appendRunLog({
-          id: `${row.id}-${actionT0}`,
-          label: actionLabel,
-          startedAt,
-          finishedAt: new Date().toISOString(),
-          durationMs: Date.now() - actionT0,
-          status: errText,
-          error: errText,
-        });
-        setRunTimings((prev) => ({
-          ...prev,
-          [row.id]: { started: startedAt, finished: new Date().toISOString() },
-        }));
-        handleSyncFailure(row, errText);
       } finally {
         commitRunLog();
+        // Release the queue only after success or the final failed attempt.
         finishRunningJob();
       }
     },
@@ -1740,7 +1767,6 @@ export default function AdminSyncTable({
       appendRunLog,
       commitRunLog,
       clearPendingRetry,
-      handleSyncFailure,
       setRunningJob,
       refreshWaitingStatuses,
       finishRunningJob,
@@ -1748,7 +1774,7 @@ export default function AdminSyncTable({
   );
 
   const runSync = useCallback(
-    async (row: AdminSyncRow, opts?: { autoRetry?: boolean }) => {
+    async (row: AdminSyncRow) => {
       const actionId = row.actionId;
       if (!actionId) return;
 
@@ -1764,10 +1790,8 @@ export default function AdminSyncTable({
       if (alreadyQueued) return;
 
       if (runningIdRef.current != null) {
-        if (!opts?.autoRetry) {
-          clearPendingRetry(row.id);
-          syncAttemptCountRef.current[row.id] = 0;
-        }
+        clearPendingRetry(row.id);
+        syncAttemptCountRef.current[row.id] = 0;
         const blocker = runningLabelRef.current ?? "current sync";
         replaceSyncQueue((prev) => [
           ...prev,
@@ -1781,12 +1805,10 @@ export default function AdminSyncTable({
         return;
       }
 
-      await executeSync(row, opts);
+      await executeSync(row);
     },
     [executeSync, replaceSyncQueue, clearPendingRetry],
   );
-
-  runSyncRef.current = runSync;
 
   const executeSyncAll = useCallback(async () => {
 

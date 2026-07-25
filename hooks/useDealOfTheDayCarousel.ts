@@ -4,70 +4,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { prefetchDealCarouselImages, prefetchListingImages } from "@/lib/prefetch-listing-images";
+import type {
+  DealCarouselDealsByTown,
+  DealCarouselPayload,
+  DealPropertyClassFilter,
+  DealTransactionFilter,
+} from "@/lib/deal-of-the-day-carousel-types";
 
 export const DEAL_CAROUSEL_MS = 15_000;
 
-export type DealCarouselListing = {
-  mlsId: string;
-  listingKey?: string;
-  propertyType?: string;
-  style?: string;
-  address: { street: string; city: string; state?: string; full: string };
-  price: number | null;
-  originalListPrice?: number | null;
-  beds: number | null;
-  baths: number | null;
-  sqft?: number | null;
-  yearBuilt?: number | null;
-  dom: number | null;
-  listDate?: string | null;
-  photoCount?: number | null;
-  schools?: {
-    elementary: string | null;
-    middle: string | null;
-    high: string | null;
-    district: string | null;
-  };
-};
-
-export type DealCarouselScore = {
-  age: number;
-  condition: number;
-  finishesQuality: number;
-  pricePerSqftFit: number;
-  layoutQuality: number;
-  schoolRating: number;
-  composite: number;
-  weights: {
-    age: number;
-    condition: number;
-    finishes: number;
-    ppsf: number;
-    layout: number;
-    schools: number;
-  };
-};
-
-export type DealCarouselPayload = {
-  score: DealCarouselScore;
-  photoUrl: string | null;
-  listing: DealCarouselListing;
-  insight?: string;
-  totalReviewed?: number;
-  qualifiedCount?: number;
-  kind?: "sale" | "rental";
-  pricePerSqft?: number | null;
-  cityMedianPricePerSqft?: number | null;
-  cityMedianPrice?: number | null;
-  valueDiscountPct?: number | null;
-  lotAcres?: number | null;
-  superlatives?: string[];
-};
+export type {
+  DealCarouselListing,
+  DealCarouselScore,
+  DealCarouselPayload,
+  DealCarouselDealsByTown,
+  DealPropertyClassFilter,
+  DealTransactionFilter,
+} from "@/lib/deal-of-the-day-carousel-types";
 
 /** null = no book-flip (filter/town pill / first paint). */
 export type SlideDirection = "next" | "prev" | null;
 
-type DealsByTown = Partial<Record<TmreTown, DealCarouselPayload | null>>;
+type DealsByTown = DealCarouselDealsByTown;
 
 function hasListing(deal: DealCarouselPayload | null | undefined): deal is DealCarouselPayload {
   return Boolean(deal?.listing?.mlsId || deal?.listing?.listingKey);
@@ -79,9 +37,6 @@ function filterCacheKey(
 ): string {
   return `${kind}:${propertyClass}`;
 }
-
-export type DealTransactionFilter = "all" | "sale" | "rental";
-export type DealPropertyClassFilter = "homes" | "multi" | "condos";
 
 const ALL_FILTER_COMBOS: ReadonlyArray<{
   kind: "sale" | "rental";

@@ -14,7 +14,8 @@ export type AdminDataControlsPanelId =
   | "goldilocks"
   | "pricing"
   | "vintages"
-  | "rets";
+  | "rets"
+  | "cookies";
 
 /** Sub-panels under Admin → Database. */
 export type AdminDatabasePanelId =
@@ -102,6 +103,11 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     id: "rets",
     label: "RETS",
     subtitle: "SmartMLS credentials and connection health",
+  },
+  {
+    id: "cookies",
+    label: "Browser cookies",
+    subtitle: "See and delete cookies for this browser (prefs, visitor id, unlock)",
   },
 ];
 
@@ -357,6 +363,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "RETS credentials",
     tab: "data-controls",
     panel: "rets",
+  },
+  {
+    id: "admin-browser-cookies",
+    label: "Browser cookies",
+    tab: "data-controls",
+    panel: "cookies",
   },
   {
     id: "admin-sqlite-schemas",

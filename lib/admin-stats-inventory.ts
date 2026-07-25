@@ -257,6 +257,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'active-by-price:' },
   },
   {
+    id: 'active-by-luxury-price',
+    name: 'Active luxury inventory by price',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'active-by-luxury-price:{town|All}:sale',
+    owner: 'lib/stats-cache.ts',
+    notes:
+      'Sale-only. Fine buckets $4–10M @ $1M and $10M+ @ $5M (lib/luxury-price-buckets.ts). Keyed to the top 3 Admin Sales by price bands. Served via /api/active-by-luxury-price. Rebuild stats cache after band edits.',
+    live: { kind: 'stats_cache_prefix', prefix: 'active-by-luxury-price:' },
+  },
+  {
     id: 'sale-price-bucket-defs',
     name: 'Sale price band definitions',
     category: 'sync-control',

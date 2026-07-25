@@ -225,8 +225,12 @@ export default function AdminPriceBucketsPanel() {
             <span className="font-medium text-navy">Sales by price</span> chart
             and Intelligence{" "}
             <span className="font-medium text-navy">inventory by price</span>{" "}
-            mini chart (sale mode). Hide a band to keep it without showing it on
-            charts, or delete it. Rent bands stay in{" "}
+            mini chart (sale mode). The Intelligence{" "}
+            <span className="font-medium text-navy">luxury inventory</span>{" "}
+            mini chart keys off the top 3 visible bands by price and counts
+            actives in $1M steps ($4–10M) and $5M steps ($10M+). Hide a band to
+            keep it without showing it on charts, or delete it. Rent bands stay
+            in{" "}
             <span className="font-mono text-[11px]">lib/rent-buckets.ts</span>.
             After saving, run{" "}
             <span className="font-mono text-[11px]">stats cache</span> rebuild

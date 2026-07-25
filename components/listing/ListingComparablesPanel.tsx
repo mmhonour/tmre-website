@@ -32,6 +32,7 @@ import {
   sessionMatchOverridesEqual,
   sessionOverridesFromPricingConfig,
   sessionOverridesNeedWidePool,
+  widenSessionUntilPoolMatches,
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
 import { listingRecentlyClosedPanelId } from "@/components/listing/listing-section-ids";
@@ -40,6 +41,7 @@ import ListingCriteriaSideLayout, {
   useListingDesktopLayout,
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
+import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
 
 /** How long the ± criteria find/no-find note stays visible. */
 const CRITERIA_STEP_FEEDBACK_MS = 10_000;
@@ -701,6 +703,8 @@ export default function ListingComparablesPanel({
     null,
   );
   const pendingWideFeedbackKeyRef = useRef<CriteriaStepKey | null>(null);
+  /** Auto-widen session once per listing/tab when default tolerances yield 0 comps. */
+  const autoWidenDoneRef = useRef<string | null>(null);
   const tabKey = `${mlsId}:${kind}`;
 
   const isRental = kind === "rental";
@@ -734,6 +738,7 @@ export default function ListingComparablesPanel({
     setWidePoolLoading(false);
     setCriteriaStepFeedback(null);
     pendingWideFeedbackKeyRef.current = null;
+    autoWidenDoneRef.current = null;
     if (criteriaFeedbackTimerRef.current != null) {
       clearTimeout(criteriaFeedbackTimerRef.current);
       criteriaFeedbackTimerRef.current = null;
@@ -948,6 +953,31 @@ export default function ListingComparablesPanel({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when wide pool lands
   }, [wideData]);
+
+  // Extreme bed/bath counts (e.g. 9bd/14ba) often match nothing at Admin ±1.
+  // Once the wide pool is warm, auto-widen session tolerances until comps appear.
+  useEffect(() => {
+    if (!wideData || !criteria || !sessionMatch || !baselineMatch) return;
+    if (autoWidenDoneRef.current === tabKey) return;
+    if (!sessionMatchOverridesEqual(sessionMatch, baselineMatch)) {
+      // User already adjusted Criteria — don't override.
+      autoWidenDoneRef.current = tabKey;
+      return;
+    }
+    const town = townForZip(criteria.zip);
+    const townZips = town ? TOWN_ZIPS[town] ?? [] : [];
+    const widened = widenSessionUntilPoolMatches(
+      wideData.sold ?? [],
+      wideData.active ?? [],
+      criteria,
+      sessionMatch,
+      townZips,
+    );
+    autoWidenDoneRef.current = tabKey;
+    if (!sessionMatchOverridesEqual(widened, sessionMatch)) {
+      setSessionMatch(widened);
+    }
+  }, [wideData, criteria, sessionMatch, baselineMatch, tabKey]);
 
   const handleSoldSort = (key: SoldSortKey) => {
     setSoldSort((prev) =>
@@ -1317,11 +1347,7 @@ export default function ListingComparablesPanel({
         </div>
       )}
 
-      {missing.length === 0 &&
-        !hasContent &&
-        !loadError &&
-        (isPage || isModal) &&
-        !suppressPageChrome && (
+      {missing.length === 0 && !hasContent && !loadError && !widePoolLoading && (
         <div
           className={
             isModal
@@ -1330,15 +1356,17 @@ export default function ListingComparablesPanel({
           }
         >
           <p className={isModal ? "text-charcoal text-sm" : "text-white/60 text-sm"}>
-            No comparable {listingWord} found in the local cache yet.
+            No comparable {listingWord} matched current Criteria.
           </p>
           <p
             className={
               isModal ? "text-slate text-xs mt-2" : "text-white/40 text-xs mt-2"
             }
           >
-            Matches require the same zip, beds within ±1, baths within ±1, same vintage era (plus the bordering era near an edge)
-            {criteria?.sqft != null ? ", living area within ±30%" : ""}.
+            Default match is same zip, beds ±1, baths ±1
+            {criteria?.sqft != null ? ", living area ±30%" : ""}, and similar
+            vintage. Use Criteria ± to widen beds, baths, or sqft — rare
+            bed/bath counts (luxury estates) often need a wider band.
           </p>
         </div>
       )}

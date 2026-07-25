@@ -49,6 +49,8 @@ type PrefetchMlsPhotoThumbsOrderedOptions = {
   stackPhotosForTop?: number;
   /** How many stacked thumbs to prefetch per top listing (default 3). */
   stackPhotoCount?: number;
+  /** Cap how many listing IDs enter the prefetch queue (default: all). */
+  maxPrefetch?: number;
 };
 
 /**
@@ -61,12 +63,16 @@ export function prefetchMlsPhotoThumbsOrdered(
 ): () => void {
   const stackPhotosForTop = opts.stackPhotosForTop ?? 12;
   const stackPhotoCount = opts.stackPhotoCount ?? 3;
+  const cappedIds =
+    opts.maxPrefetch != null && opts.maxPrefetch >= 0
+      ? mlsIds.slice(0, opts.maxPrefetch)
+      : mlsIds;
   let cancelled = false;
   let index = 0;
 
   const step = () => {
-    if (cancelled || index >= mlsIds.length) return;
-    const id = mlsIds[index]!.trim();
+    if (cancelled || index >= cappedIds.length) return;
+    const id = cappedIds[index]!.trim();
     index += 1;
     if (id) {
       if (index <= stackPhotosForTop) {
@@ -77,7 +83,7 @@ export function prefetchMlsPhotoThumbsOrdered(
         prefetchImage(listingPhotoThumbUrls(id, null, 1, 0)[0] ?? "");
       }
     }
-    if (index < mlsIds.length) {
+    if (index < cappedIds.length) {
       setTimeout(step, 32);
     }
   };
