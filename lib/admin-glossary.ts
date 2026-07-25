@@ -229,7 +229,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Incremental sync',
     category: 'sync-admin',
     definition:
-      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Cadence is about every 30 minutes via Netlify sync-listings. Admin shows End age, paints the row rose when Next is overdue, and stamps last_incremental_cron_tick so you can tell cron fired even when the pull was skipped (pause / refresh lock).',
+      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Netlify: thin sync-listings schedule (every 30m) heartbeats then POSTs sync-listings-worker (background). Combining schedule+background on one function can deploy but never auto-fire. Admin Syncs shows the real heartbeat; Database Next is only clock-slot math when overdue.',
   },
   {
     term: 'Smart sync',

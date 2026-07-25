@@ -43,6 +43,24 @@ const CATCHUP_LOCK_KEY = 'overdue_sync_catchup_in_progress'
 const CATCHUP_STARTED_AT_KEY = 'overdue_sync_catchup_started_at'
 const CATCHUP_FINISHED_AT_KEY = 'overdue_sync_catchup_finished_at'
 
+/** Serverless catch-up must not hold a lock past background-function limits. */
+const CATCHUP_LOCK_MAX_MS_SERVERLESS = 15 * 60 * 1000
+const CATCHUP_LOCK_MAX_MS_LONG_LIVED = 2 * 60 * 60 * 1000
+
+/** Clear a leaked overdue catch-up lock (Lambda killed mid-catch-up). */
+export function healStaleOverdueCatchupLock(now = Date.now()): boolean {
+  if (getSyncMeta(CATCHUP_LOCK_KEY) !== '1') return false
+  const startedMs = parseIsoMs(getSyncMeta(CATCHUP_STARTED_AT_KEY))
+  const limitMs = isServerlessRuntime()
+    ? CATCHUP_LOCK_MAX_MS_SERVERLESS
+    : CATCHUP_LOCK_MAX_MS_LONG_LIVED
+  if (startedMs == null || now - startedMs > limitMs) {
+    deleteSyncMeta(CATCHUP_LOCK_KEY)
+    return true
+  }
+  return false
+}
+
 function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
   switch (job) {
     case 'full-resync':
@@ -220,6 +238,8 @@ export function isAnySyncOverdue(now = new Date()): boolean {
 /** Run missed sync jobs serially — one pass per job type, not every missed interval. */
 export async function runOverdueSyncCatchup(options?: {
   reason?: string
+  /** When set, only these jobs may run (e.g. never full-resync on the 30m cron). */
+  onlyJobs?: OverdueSyncJob[]
 }): Promise<OverdueSyncCatchupResult> {
   if (!overdueCatchupEnabled()) {
     return { skipped: true, reason: 'disabled', plan: [], steps: [] }
@@ -228,6 +248,8 @@ export async function runOverdueSyncCatchup(options?: {
   if (await isScheduledSyncPausedFresh()) {
     return { skipped: true, reason: 'scheduled sync paused by admin', plan: [], steps: [] }
   }
+
+  healStaleOverdueCatchupLock()
 
   if (getSyncMeta('refresh_in_progress') === '1') {
     return { skipped: true, reason: 'refresh in progress', plan: [], steps: [] }
@@ -238,7 +260,9 @@ export async function runOverdueSyncCatchup(options?: {
   }
 
   const pausedJobs = await getScheduledSyncPausedJobsFresh()
+  const allow = options?.onlyJobs?.length ? new Set(options.onlyJobs) : null
   const plan = buildOverdueSyncPlan().filter((job) => {
+    if (allow && !allow.has(job)) return false
     const pauseKey = overdueJobPauseKey(job)
     return pauseKey == null || !pausedJobs[pauseKey]
   })

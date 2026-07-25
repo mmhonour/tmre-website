@@ -1,3 +1,4 @@
+import AdminCronHealthPanel from "@/components/admin/AdminCronHealthPanel";
 import AdminNumberedPanel from "@/components/admin/AdminNumberedPanel";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminZipBoundariesSyncPanel from "@/components/admin/AdminZipBoundariesSyncPanel";
@@ -8,6 +9,7 @@ import { SCHEDULED_SYNC_JOB_IDS } from "@/lib/scheduled-sync-jobs-shared";
 
 const NETLIFY_PAUSE_BY_FN: Record<string, (typeof SCHEDULED_SYNC_JOB_IDS)[number] | null> = {
   "sync-listings": "incremental",
+  "sync-listings-worker": "incremental",
   "sync-listings-full": "full-resync",
   "sync-property-addresses": "property-addresses",
   "sync-listing-edge-scores": "listing-scores",
@@ -30,6 +32,7 @@ export default function AdminSyncsOverviewPanel({
   zipLastSyncAt,
   zipLastSyncStartedAt,
   zipNextRunAt,
+  lastIncrementalCronTick,
 }: {
   startupLanes: StartupFlowLane[];
   startupContext: {
@@ -43,6 +46,7 @@ export default function AdminSyncsOverviewPanel({
   zipLastSyncAt: string | null;
   zipLastSyncStartedAt: string | null;
   zipNextRunAt: string | null;
+  lastIncrementalCronTick?: string | null;
 }) {
   const anyNetlifyPaused = ADMIN_NETLIFY_FUNCTIONS.some((fn) => {
     const job = NETLIFY_PAUSE_BY_FN[fn.label];
@@ -77,10 +81,13 @@ export default function AdminSyncsOverviewPanel({
         number={2}
         id="admin-netlify"
         title="Netlify scheduled functions"
-        subtitle="Background workers in netlify/functions/ — pause flags come from the Database tab"
+        subtitle="Thin scheduled triggers queue background workers — pause flags come from the Database tab"
         paused={anyNetlifyPaused}
         pauseLabel="One or more crons paused on Database tab"
       >
+        <div className="px-5 sm:px-6 pb-4">
+          <AdminCronHealthPanel initialTick={lastIncrementalCronTick ?? null} />
+        </div>
         <ul className="divide-y divide-charcoal/[0.08] -mx-5 sm:-mx-6">
           {ADMIN_NETLIFY_FUNCTIONS.map((fn) => {
             const job = NETLIFY_PAUSE_BY_FN[fn.label];

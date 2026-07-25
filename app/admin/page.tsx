@@ -715,6 +715,7 @@ export default async function AdminPage() {
       zipLastSyncAt={zipBoundariesSyncedAt}
       zipLastSyncStartedAt={zipBoundariesSyncStartedAt}
       zipNextRunAt={nextRuns["zip-boundaries"]}
+      lastIncrementalCronTick={lastIncrementalCronTick ?? null}
     />
   );
 

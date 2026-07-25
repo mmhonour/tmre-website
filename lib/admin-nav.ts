@@ -221,8 +221,14 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listings",
     detail:
-      "Incremental MLS → Postgres (modified-since RETS pull) + saved-search email alerts",
+      "Thin scheduled trigger (every 30m) — heartbeats sync_runs then POSTs sync-listings-worker. Do not combine schedule+background on one function.",
     schedule: "Every 30 min",
+  },
+  {
+    label: "sync-listings-worker",
+    detail:
+      "Background incremental RETS → Postgres + spotlight status + saved-search alerts (queued by sync-listings or Admin Run cron)",
+    schedule: "On invoke (background)",
   },
   {
     label: "sync-listings-full",
