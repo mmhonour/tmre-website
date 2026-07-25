@@ -161,20 +161,66 @@ export function useDealOfTheDayCarousel(options?: {
   propertyClass?: DealPropertyClassFilter;
   /** When set, fetch this exact listing instead of the town's auto-pick. */
   pinnedListingId?: string | null;
+  /**
+   * Server-seeded deals (FSSR) for the matching kind/propertyClass so the first
+   * slide paints without waiting on the client `/api/deal-of-the-day` round-trip.
+   */
+  initialDealsByTown?: DealsByTown | null;
+  /** Filter key that `initialDealsByTown` was built for (defaults to sale/homes). */
+  initialKind?: "sale" | "rental";
+  initialPropertyClass?: DealPropertyClassFilter;
 }) {
   const rotate = options?.rotate !== false;
   const enabled = options?.enabled !== false;
   const orderedTowns = usePersonalizedTowns(TMRE_TOWNS);
-  const [dealsByTown, setDealsByTown] = useState<DealsByTown>({});
-  const [loading, setLoading] = useState(true);
+
+  const seededDeals = useMemo((): DealsByTown | null => {
+    const raw = options?.initialDealsByTown;
+    if (!raw) return null;
+    const next: DealsByTown = {};
+    let any = false;
+    for (const town of TMRE_TOWNS) {
+      const deal = raw[town];
+      if (hasListing(deal)) {
+        next[town] = deal;
+        any = true;
+      }
+    }
+    return any ? next : null;
+  }, [options?.initialDealsByTown]);
+
+  const seedFilterKey = filterCacheKey(
+    options?.initialKind === "rental" ? "rental" : "sale",
+    options?.initialPropertyClass === "multi" ||
+      options?.initialPropertyClass === "condos"
+      ? options.initialPropertyClass
+      : "homes",
+  );
+
+  const [dealsByTown, setDealsByTown] = useState<DealsByTown>(() => seededDeals ?? {});
+  const [loading, setLoading] = useState(() => !seededDeals);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [slideDir, setSlideDir] = useState<SlideDirection>(null);
   /** Manual town pin from pill click — cleared when filters change or rotate stops. */
   const [selectedTown, setSelectedTown] = useState<TmreTown | null>(null);
 
-  const filterCacheRef = useRef<Map<string, DealsByTown>>(new Map());
+  const filterCacheRef = useRef<Map<string, DealsByTown>>(
+    (() => {
+      const map = new Map<string, DealsByTown>();
+      if (seededDeals) map.set(seedFilterKey, seededDeals);
+      return map;
+    })(),
+  );
   const prefetchStartedRef = useRef(false);
+
+  // Keep filter cache warm if a late seed arrives (shouldn't for FSSR, but safe).
+  useEffect(() => {
+    if (!seededDeals) return;
+    if (!filterCacheRef.current.has(seedFilterKey)) {
+      filterCacheRef.current.set(seedFilterKey, seededDeals);
+    }
+  }, [seededDeals, seedFilterKey]);
 
   const townsToFetch = useMemo(() => {
     if (!rotate && options?.initialTown && options.initialTown !== "All") {
@@ -218,14 +264,18 @@ export function useDealOfTheDayCarousel(options?: {
         ? TMRE_TOWNS.find((t) => t.toLowerCase() === options.initialTown!.toLowerCase())
         : null;
 
-    // Instant filter switch when this combo was already loaded.
+    // Instant paint from FSSR seed / prior filter cache — still refresh below.
     if (!pinnedListingId && !pinnedTownForFetch) {
       const cached = filterCacheRef.current.get(activeFilterKey);
       if (cached && Object.values(cached).some(hasListing)) {
         setDealsByTown(cached);
         setLoading(false);
         setSlideDir(null);
-        // Still refresh in background below.
+      } else if (seededDeals && activeFilterKey === seedFilterKey) {
+        filterCacheRef.current.set(activeFilterKey, seededDeals);
+        setDealsByTown(seededDeals);
+        setLoading(false);
+        setSlideDir(null);
       } else {
         // Don't wipe — keep prior panel until the new filter's data arrives.
         setLoading(true);
@@ -314,6 +364,8 @@ export function useDealOfTheDayCarousel(options?: {
     rotate,
     options?.initialTown,
     activeFilterKey,
+    seededDeals,
+    seedFilterKey,
   ]);
 
   // Warm other filter bundles so pills swap instantly (no admin sync required for UX).

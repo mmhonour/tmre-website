@@ -152,6 +152,10 @@ export default function ListingHeroPanels({
   const stickyChromeRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const panelScrollRef = useRef<HTMLDivElement>(null);
+  const detailsPanelRef = useRef<HTMLDivElement>(null);
+  const [detailsAlignHeight, setDetailsAlignHeight] = useState<number | null>(
+    null,
+  );
   const [mobileDrawer, setMobileDrawer] = useState<MobileDrawerId>(null);
   const [panelTab, setPanelTab] = useState<ListingScrollSectionTab | null>(
     null,
@@ -739,7 +743,31 @@ export default function ListingHeroPanels({
     </div>
   );
 
-  // Desktop remarks above Location — only while Overview (not Sold / History / …).
+  // Match remarks panel height to Details so the two cards bottom-align as a pair.
+  useLayoutEffect(() => {
+    if (!isDesktopLayout || !remarksSurfaceActive) {
+      setDetailsAlignHeight(null);
+      return;
+    }
+    const el = detailsPanelRef.current;
+    if (!el) {
+      setDetailsAlignHeight(null);
+      return;
+    }
+    const measure = () => {
+      const h = Math.round(el.getBoundingClientRect().height);
+      // Cap so remarks + Details both fit under the sticky top on desktop.
+      const cap = Math.round(window.innerHeight * 0.38);
+      setDetailsAlignHeight(h > 0 ? Math.min(h, Math.max(140, cap)) : null);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isDesktopLayout, remarksSurfaceActive, sidebar, mapVisible]);
+
+  // Desktop remarks — only while Overview (not Sold / History / …).
+  // Fixed-height + in-panel More/Less so Details/Analysis/Schools stay in view.
   const remarksPanel = remarksSurfaceActive ? (
     <ListingRemarksSidePanel
       remarks={remarks}
@@ -747,6 +775,7 @@ export default function ListingHeroPanels({
       expanded={remarksExpanded}
       onExpand={expandRemarks}
       onCollapse={collapseRemarks}
+      alignHeightPx={detailsAlignHeight}
     />
   ) : null;
 
@@ -760,12 +789,18 @@ export default function ListingHeroPanels({
         id={LISTING_CRITERIA_SLOT_ID}
         className="min-w-0 w-full text-left empty:hidden"
       />
+      {/*
+        Details first so page scroll keeps Details/Analysis/Schools visible.
+        Remarks below matches that panel’s height (capped), bottom-aligns copy,
+        and pages with in-panel More/Less instead of growing the column.
+      */}
+      {isDesktopLayout && sidebar ? (
+        <div ref={detailsPanelRef} className="shrink-0">
+          {sidebar}
+        </div>
+      ) : null}
       {remarksPanel}
       {mapVisible ? mapBlock("aspect-square", true) : null}
-      {/* Mount Details only on desktop so Analysis id isn't duplicated vs the mobile drawer. */}
-      {isDesktopLayout && sidebar ? (
-        <div className="shrink-0">{sidebar}</div>
-      ) : null}
     </div>
   );
 
