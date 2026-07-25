@@ -8,7 +8,8 @@ import {
   LAST_INCREMENTAL_CRON_TICK_KEY,
   stampIncrementalCronHeartbeat,
 } from '@/lib/netlify-sync-listings-work'
-import { getSyncMeta } from '@/lib/db/sync-meta-store'
+import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
+import { hydrateSyncMetaStore } from '@/lib/db/sync-meta-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,8 +20,12 @@ export async function GET(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  await hydrateSyncMetaStore()
+  const lastIncrementalCronTick = await getSyncMetaFresh(
+    LAST_INCREMENTAL_CRON_TICK_KEY,
+  )
   return NextResponse.json({
-    lastIncrementalCronTick: getSyncMeta(LAST_INCREMENTAL_CRON_TICK_KEY),
+    lastIncrementalCronTick,
     hasSyncCronSecret: Boolean(syncCronSecret()),
     siteBaseUrl: netlifySiteBaseUrl(),
   })

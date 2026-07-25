@@ -4114,86 +4114,95 @@ export default function IntelligenceClient({
             <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
           {vintageChartListingRows.length > 0 || showPriceFilter ? (
             <div className="mb-2 flex flex-col justify-start gap-2">
-              {vintageChartListingRows.length > 0 ? (
-              <div className="w-full max-w-md shrink-0">
-                <IntelligenceVintageMedianMiniChart
-                  listings={vintageChartListingRows}
-                  kind={tx === "rental" ? "rental" : "sale"}
-                  activeBucketId={activeVintageChartBucketId}
-                  filterActive={vintageFilterActive(minVintage, maxVintage)}
-                  onBucketClick={(bucketId) => {
-                    selectVintageListings(bucketId);
-                  }}
-                  onResetFilter={() => {
-                    setMinVintageFilter("0");
-                    setMaxVintageFilter(String(VINTAGE_FILTER_MAX) as VintageIndexFilter);
-                    setBoardPage(1);
-                  }}
-                />
+              {/* Median vintage | Inventory by price — side by side when both present */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+                {vintageChartListingRows.length > 0 ? (
+                  <div className="w-full max-w-md shrink-0 sm:flex-1">
+                    <IntelligenceVintageMedianMiniChart
+                      listings={vintageChartListingRows}
+                      kind={tx === "rental" ? "rental" : "sale"}
+                      activeBucketId={activeVintageChartBucketId}
+                      filterActive={vintageFilterActive(minVintage, maxVintage)}
+                      onBucketClick={(bucketId) => {
+                        selectVintageListings(bucketId);
+                      }}
+                      onResetFilter={() => {
+                        setMinVintageFilter("0");
+                        setMaxVintageFilter(
+                          String(VINTAGE_FILTER_MAX) as VintageIndexFilter,
+                        );
+                        setBoardPage(1);
+                      }}
+                    />
+                  </div>
+                ) : null}
+                {showPriceFilter ? (
+                  <div className="w-full max-w-md shrink-0 sm:flex-1">
+                    <IntelligencePriceBandMiniChart
+                      city={active === "All" ? "All" : active}
+                      kind={tx === "rental" ? "rental" : "sale"}
+                      activeBucketId={activePriceBandId}
+                      filterActive={
+                        priceFilterActive && !activeLuxuryPriceBandId
+                      }
+                      onBucketClick={(bucket) => {
+                        priceRangeCustomizedRef.current = true;
+                        setActivePriceBandId(bucket.id);
+                        setActiveLuxuryPriceBandId(null);
+                        setMinPriceIndex(
+                          minPriceToStepIndex(bucket.min, boardPriceSteps),
+                        );
+                        setMaxPriceIndex(
+                          bucket.max == null
+                            ? boardPriceMaxIdx
+                            : maxPriceToStepIndex(bucket.max, boardPriceSteps),
+                        );
+                        setBoardPage(1);
+                      }}
+                      onResetFilter={() => {
+                        priceRangeCustomizedRef.current = false;
+                        setActivePriceBandId(null);
+                        setActiveLuxuryPriceBandId(null);
+                        setMinPriceIndex(0);
+                        setMaxPriceIndex(boardPriceMaxIdx);
+                        setBoardPage(1);
+                      }}
+                    />
+                  </div>
+                ) : null}
               </div>
-              ) : null}
-              {showPriceFilter ? (
-              <div className="w-full max-w-md shrink-0">
-                <IntelligencePriceBandMiniChart
-                  city={active === "All" ? "All" : active}
-                  kind={tx === "rental" ? "rental" : "sale"}
-                  activeBucketId={activePriceBandId}
-                  filterActive={priceFilterActive && !activeLuxuryPriceBandId}
-                  onBucketClick={(bucket) => {
-                    priceRangeCustomizedRef.current = true;
-                    setActivePriceBandId(bucket.id);
-                    setActiveLuxuryPriceBandId(null);
-                    setMinPriceIndex(
-                      minPriceToStepIndex(bucket.min, boardPriceSteps),
-                    );
-                    setMaxPriceIndex(
-                      bucket.max == null
-                        ? boardPriceMaxIdx
-                        : maxPriceToStepIndex(bucket.max, boardPriceSteps),
-                    );
-                    setBoardPage(1);
-                  }}
-                  onResetFilter={() => {
-                    priceRangeCustomizedRef.current = false;
-                    setActivePriceBandId(null);
-                    setActiveLuxuryPriceBandId(null);
-                    setMinPriceIndex(0);
-                    setMaxPriceIndex(boardPriceMaxIdx);
-                    setBoardPage(1);
-                  }}
-                />
-              </div>
-              ) : null}
               {showPriceFilter && tx !== "rental" ? (
-              <div className="w-full max-w-md shrink-0">
-                <IntelligenceLuxuryPriceBandMiniChart
-                  city={active === "All" ? "All" : active}
-                  activeBucketId={activeLuxuryPriceBandId}
-                  filterActive={priceFilterActive && Boolean(activeLuxuryPriceBandId)}
-                  onBucketClick={(bucket) => {
-                    priceRangeCustomizedRef.current = true;
-                    setActiveLuxuryPriceBandId(bucket.id);
-                    setActivePriceBandId(null);
-                    setMinPriceIndex(
-                      minPriceToStepIndex(bucket.min, boardPriceSteps),
-                    );
-                    setMaxPriceIndex(
-                      bucket.max == null
-                        ? boardPriceMaxIdx
-                        : maxPriceToStepIndex(bucket.max, boardPriceSteps),
-                    );
-                    setBoardPage(1);
-                  }}
-                  onResetFilter={() => {
-                    priceRangeCustomizedRef.current = false;
-                    setActiveLuxuryPriceBandId(null);
-                    setActivePriceBandId(null);
-                    setMinPriceIndex(0);
-                    setMaxPriceIndex(boardPriceMaxIdx);
-                    setBoardPage(1);
-                  }}
-                />
-              </div>
+                <div className="w-full max-w-md shrink-0">
+                  <IntelligenceLuxuryPriceBandMiniChart
+                    city={active === "All" ? "All" : active}
+                    activeBucketId={activeLuxuryPriceBandId}
+                    filterActive={
+                      priceFilterActive && Boolean(activeLuxuryPriceBandId)
+                    }
+                    onBucketClick={(bucket) => {
+                      priceRangeCustomizedRef.current = true;
+                      setActiveLuxuryPriceBandId(bucket.id);
+                      setActivePriceBandId(null);
+                      setMinPriceIndex(
+                        minPriceToStepIndex(bucket.min, boardPriceSteps),
+                      );
+                      setMaxPriceIndex(
+                        bucket.max == null
+                          ? boardPriceMaxIdx
+                          : maxPriceToStepIndex(bucket.max, boardPriceSteps),
+                      );
+                      setBoardPage(1);
+                    }}
+                    onResetFilter={() => {
+                      priceRangeCustomizedRef.current = false;
+                      setActiveLuxuryPriceBandId(null);
+                      setActivePriceBandId(null);
+                      setMinPriceIndex(0);
+                      setMaxPriceIndex(boardPriceMaxIdx);
+                      setBoardPage(1);
+                    }}
+                  />
+                </div>
               ) : null}
             </div>
           ) : null}

@@ -5,6 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 /** Phrase after “Filters …” — swap later without rewriting the chrome. */
 export const ACTIVE_BY_PRICE_LABEL = "Inventory by price";
 
+/** Dimension word in “Original view by …” flash. */
+export const VIEW_BY_PRICE_DIMENSION_LABEL = "Price";
+
 type BandPoint = {
   id: string;
   label: string;
@@ -13,7 +16,7 @@ type BandPoint = {
   min: number;
   max: number | null;
   x: number;
-  barH: number;
+  y: number;
   callout: boolean;
 };
 
@@ -33,12 +36,12 @@ type ApiPayload = {
 
 const WIDTH = 248;
 const HEIGHT = 72;
-const PAD_X = 10;
-const PAD_TOP = 16;
-const PAD_BOTTOM = 16;
-const BAR_GAP = 3;
+const PAD_X = 14;
+const PAD_TOP = 22;
+const PAD_BOTTOM = 18;
 
 const INTERACTIVE_HINT_MS = 10_000;
+const ORIGINAL_VIEW_FLASH_MS = 5_000;
 const INTRO_GLOW_MS = 4_500;
 
 function shortBandLabel(label: string, kind: "sale" | "rental"): string {
@@ -70,10 +73,24 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function pickRandomGlowIds(ids: string[], count: number): Set<string> {
+  if (ids.length === 0) return new Set();
+  const shuffled = [...ids];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = shuffled[i]!;
+    shuffled[i] = shuffled[j]!;
+    shuffled[j] = tmp;
+  }
+  const n = Math.min(count, shuffled.length);
+  return new Set(shuffled.slice(0, n));
+}
+
 /**
- * Mini active-inventory-by-price chart above the Intelligence deal board.
+ * Mini active-inventory-by-price sparkline above the Intelligence deal board.
  * Reads precomputed stats_cache via /api/active-by-price (same bands as
- * Admin → Sales by price bands / rent buckets). Bars set the price filter.
+ * Admin → Sales by price bands / rent buckets). Dots set the price filter —
+ * same interactive pattern as Median by vintage.
  */
 export default function IntelligencePriceBandMiniChart({
   city,
@@ -94,8 +111,12 @@ export default function IntelligencePriceBandMiniChart({
   const [buckets, setBuckets] = useState<ApiBucket[]>([]);
   const [glowIds, setGlowIds] = useState<Set<string>>(() => new Set());
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
+  const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(() => new Set());
   const introStartedRef = useRef(false);
+  const originalFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -136,15 +157,17 @@ export default function IntelligencePriceBandMiniChart({
 
   const points = useMemo((): BandPoint[] => {
     if (buckets.length === 0) return [];
-    const maxCount = Math.max(...buckets.map((b) => b.count), 1);
+    const counts = buckets.map((b) => b.count);
+    const minC = Math.min(...counts);
+    const maxC = Math.max(...counts);
+    const span = Math.max(maxC - minC, 1);
     const innerW = WIDTH - PAD_X * 2;
     const innerH = HEIGHT - PAD_TOP - PAD_BOTTOM;
     const n = buckets.length;
-    const barW = Math.max(4, (innerW - BAR_GAP * (n - 1)) / n);
 
     return buckets.map((b, i) => {
-      const x = PAD_X + i * (barW + BAR_GAP) + barW / 2;
-      const barH = b.count > 0 ? Math.max(3, (innerH * b.count) / maxCount) : 1;
+      const x = n === 1 ? WIDTH / 2 : PAD_X + (innerW * i) / (n - 1);
+      const y = PAD_TOP + innerH * (1 - (b.count - minC) / span);
       return {
         id: b.id,
         label: b.label,
@@ -153,28 +176,22 @@ export default function IntelligencePriceBandMiniChart({
         min: b.min,
         max: b.max,
         x,
-        barH,
+        y,
         callout: i % 2 === 0,
       };
     });
   }, [buckets, kind]);
 
   const pointIdsKey = points.map((p) => p.id).join("|");
-  const barW =
-    points.length > 0
-      ? Math.max(
-          4,
-          (WIDTH - PAD_X * 2 - BAR_GAP * (points.length - 1)) / points.length,
-        )
-      : 8;
 
   useEffect(() => {
     if (points.length === 0 || introStartedRef.current) return;
     introStartedRef.current = true;
 
-    const ranked = [...points].sort((a, b) => b.count - a.count);
-    const glowCount = Math.min(3, Math.max(1, Math.ceil(points.length / 3)));
-    setGlowIds(new Set(ranked.slice(0, glowCount).map((p) => p.id)));
+    const withCount = points.filter((p) => p.count > 0).map((p) => p.id);
+    const glowSource = withCount.length > 0 ? withCount : points.map((p) => p.id);
+    const glowCount = Math.min(3, Math.max(1, Math.ceil(glowSource.length / 3)));
+    setGlowIds(pickRandomGlowIds(glowSource, glowCount));
     setShowInteractiveHint(true);
 
     const glowTimer = window.setTimeout(() => setGlowIds(new Set()), INTRO_GLOW_MS);
@@ -189,12 +206,22 @@ export default function IntelligencePriceBandMiniChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intro only
   }, [pointIdsKey]);
 
+  useEffect(() => {
+    return () => {
+      if (originalFlashTimerRef.current != null) {
+        clearTimeout(originalFlashTimerRef.current);
+      }
+    };
+  }, []);
+
   if (points.length === 0) return null;
 
   const chartTitle = ACTIVE_BY_PRICE_LABEL;
-  const baseline = HEIGHT - PAD_BOTTOM;
+  const linePath = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+    .join(" ");
 
-  const handleBarClick = (point: BandPoint) => {
+  const handlePointClick = (point: BandPoint) => {
     if (!point.callout) {
       setExtraCallouts((prev) => {
         if (prev.has(point.id)) return prev;
@@ -203,6 +230,18 @@ export default function IntelligencePriceBandMiniChart({
         return next;
       });
     }
+
+    if (activeBucketId != null && activeBucketId !== point.id) {
+      setShowOriginalViewFlash(true);
+      if (originalFlashTimerRef.current != null) {
+        clearTimeout(originalFlashTimerRef.current);
+      }
+      originalFlashTimerRef.current = setTimeout(() => {
+        originalFlashTimerRef.current = null;
+        setShowOriginalViewFlash(false);
+      }, ORIGINAL_VIEW_FLASH_MS);
+    }
+
     onBucketClick({ id: point.id, min: point.min, max: point.max });
   };
 
@@ -223,21 +262,38 @@ export default function IntelligencePriceBandMiniChart({
           >
             interactive graph
           </p>
+          {showOriginalViewFlash ? (
+            <p className="absolute inset-x-0 top-0 font-mono text-[9px] leading-snug tracking-[0.12em] uppercase text-navy/70">
+              Original view by {VIEW_BY_PRICE_DIMENSION_LABEL}
+            </p>
+          ) : null}
         </div>
         <div className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5">
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="h-[4.5rem] w-full max-w-[248px] overflow-visible bg-transparent"
             role="img"
-            aria-label={`${chartTitle}. Click a bar to filter the deal board by price.`}
+            aria-label={`${chartTitle}. Click a point to filter the deal board by price.`}
           >
-            {points.map((point) => {
+            <path
+              d={linePath}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              className="text-navy/35"
+            />
+            {points.map((point, i) => {
               const active = activeBucketId === point.id;
               const glowing = glowIds.has(point.id);
               const showCallout = point.callout || extraCallouts.has(point.id);
-              const barX = point.x - barW / 2;
-              const barY = baseline - point.barH;
-              const countY = Math.max(9, barY - 4);
+              const countLabel = formatCount(point.count);
+              const isFirst = i === 0;
+              const isLast = i === points.length - 1;
+              const anchor = isFirst ? "start" : isLast ? "end" : "middle";
+              const countY = Math.max(9, point.y - 9);
+              const bandY = Math.min(HEIGHT - 3, point.y + 14);
 
               return (
                 <g key={point.id}>
@@ -245,63 +301,57 @@ export default function IntelligencePriceBandMiniChart({
                     {point.label} · {point.count}{" "}
                     {kind === "rental" ? "for rent" : "for sale"}
                   </title>
-                  {glowing ? (
-                    <rect
-                      x={barX - 1}
-                      y={barY - 1}
-                      width={barW + 2}
-                      height={point.barH + 2}
-                      rx={1.5}
-                      className="fill-gold/20 animate-vintage-dot-glow pointer-events-none"
-                    />
-                  ) : null}
-                  <rect
-                    x={barX}
-                    y={barY}
-                    width={barW}
-                    height={point.barH}
-                    rx={1}
-                    className={
-                      active
-                        ? "fill-gold cursor-pointer"
-                        : glowing
-                          ? "fill-gold/80 cursor-pointer animate-vintage-dot-glow"
-                          : "fill-navy/55 cursor-pointer hover:fill-gold"
-                    }
-                    onClick={() => handleBarClick(point)}
-                  />
-                  {/* Hit target */}
-                  <rect
-                    x={barX - 1}
-                    y={PAD_TOP}
-                    width={barW + 2}
-                    height={HEIGHT - PAD_TOP - 2}
-                    fill="transparent"
-                    className="cursor-pointer"
-                    onClick={() => handleBarClick(point)}
-                  />
                   {showCallout ? (
                     <>
                       <text
                         x={point.x}
                         y={countY}
-                        textAnchor="middle"
+                        textAnchor={anchor}
                         className="fill-navy font-mono text-[8px] tabular-nums"
                         style={{ fontSize: 8 }}
                       >
-                        {formatCount(point.count)}
+                        {countLabel}
                       </text>
                       <text
                         x={point.x}
-                        y={Math.min(HEIGHT - 2, baseline + 10)}
-                        textAnchor="middle"
+                        y={bandY}
+                        textAnchor={anchor}
                         className="fill-slate/55 font-mono text-[7px] uppercase"
-                        style={{ fontSize: 7, letterSpacing: "0.02em" }}
+                        style={{ fontSize: 7, letterSpacing: "0.04em" }}
                       >
                         {point.shortLabel}
                       </text>
                     </>
                   ) : null}
+                  {glowing ? (
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={8}
+                      className="fill-gold/25 animate-vintage-dot-glow pointer-events-none"
+                    />
+                  ) : null}
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={10}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onClick={() => handlePointClick(point)}
+                  />
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={active ? 4.5 : glowing ? 4 : 3.25}
+                    className={
+                      active
+                        ? "fill-gold stroke-navy/40 stroke-[1] cursor-pointer"
+                        : glowing
+                          ? "fill-gold stroke-cream stroke-[1.5] cursor-pointer animate-vintage-dot-glow"
+                          : "fill-navy stroke-cream stroke-[1.5] cursor-pointer hover:fill-gold"
+                    }
+                    onClick={() => handlePointClick(point)}
+                  />
                 </g>
               );
             })}

@@ -2438,7 +2438,7 @@ export default function AdminSyncTable({
                                     nowMs,
                                   ) ?? formatTimestamp(status.lastIncrementalCronTick)
                                 }`
-                              : " · Cron last fired: never (no tick stamp yet)"
+                              : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
                           }`
                         : (row.detail ?? "")}
                     </p>

@@ -33,8 +33,14 @@ export async function GET(req: NextRequest) {
   await ensureAdminListingPhotosReady()
   await ensurePostDeployFullResyncScheduled()
 
-  const { stats, refresh, nextRuns, scheduleHints, nextOverrides } =
-    await readAdminSyncPanelStatus()
+  const {
+    stats,
+    refresh,
+    nextRuns,
+    scheduleHints,
+    nextOverrides,
+    lastIncrementalCronTick,
+  } = await readAdminSyncPanelStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
 
@@ -50,7 +56,7 @@ export async function GET(req: NextRequest) {
     lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
     lastRefreshStarted,
     latestListingUpdate: await readLatestListingModificationTimestamp(),
-    lastIncrementalCronTick: getSyncMeta('last_incremental_cron_tick'),
+    lastIncrementalCronTick,
     propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
     zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),
     zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),

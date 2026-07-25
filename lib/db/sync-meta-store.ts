@@ -33,9 +33,12 @@ import {
 // ADMIN / SITE-CONTROL KEYS must NOT rely on this cache for truth. Contact
 // email/phone, photo TTL, spotlight MLS/privacy overrides, and scheduled-sync
 // pause all have *Fresh helpers that read Postgres (Neon in production) live
-// so every Lambda sees the same row Admin just wrote. Keep this Map for
-// operational timestamps (last_full_sync, etc.) that tolerate eventual
-// consistency.
+// so every Lambda sees the same row Admin just wrote.
+//
+// Admin Syncs panel also re-hydrates (and Fresh-reads last_incremental_cron_tick)
+// before status — otherwise a Netlify */30 tick stamped on another Lambda stays
+// "never" on a warm Next instance. Other operational timestamps still tolerate
+// eventual consistency outside that Admin path.
 // ---------------------------------------------------------------------------
 
 const cache = new Map<string, string>()

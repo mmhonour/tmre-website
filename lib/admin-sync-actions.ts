@@ -7,7 +7,12 @@ import {
   countListingsByBucket,
   readListingsDbStats,
 } from '@/lib/db/listings-repo'
-import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
+import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
+import {
+  getSyncMeta,
+  hydrateSyncMetaStore,
+  setSyncMeta,
+} from '@/lib/db/sync-meta-store'
 import {
   clearChunkedFullResyncProgress,
   readChunkedFullResyncProgress,
@@ -648,6 +653,11 @@ async function runAdminSyncAllExtraCaches(): Promise<AdminSyncActionResult[]> {
 }
 
 export async function readAdminSyncPanelStatus() {
+  // Cron / worker Lambdas stamp sync_meta on other instances. Re-hydrate so
+  // Admin "Cron last fired", Start/End, and Next are not stuck on a stale
+  // per-process cache (would show "never" after a real Netlify */30 tick).
+  await hydrateSyncMetaStore()
+
   const stats = await readListingsDbStats()
   const refresh = readSqliteRefreshStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
@@ -667,7 +677,10 @@ export async function readAdminSyncPanelStatus() {
     lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
   })
   const scheduleHints = buildAdminSyncScheduleHints()
-  const lastIncrementalCronTick = getSyncMeta('last_incremental_cron_tick')
+  // Tick is Admin-truth — Fresh covers any race after hydrate.
+  const lastIncrementalCronTick =
+    (await getSyncMetaFresh('last_incremental_cron_tick')) ??
+    getSyncMeta('last_incremental_cron_tick')
   const nextOverrides = readSyncNextOverrides()
   return {
     stats,

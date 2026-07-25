@@ -97,7 +97,6 @@ import {
   readAdminSyncRunHistory,
   readInventorySnapshot,
   readLatestListingModificationTimestamp,
-  readListingsDbStats,
   type InventorySnapshot,
 } from "@/lib/db/listings-repo";
 import { getSyncMeta } from "@/lib/db/sync-meta-store";
@@ -219,9 +218,14 @@ export default async function AdminPage() {
     null,
   );
 
-  const stats = await readListingsDbStats();
-  const { refresh, nextRuns, scheduleHints, lastIncrementalCronTick, nextOverrides } =
-    await readAdminSyncPanelStatus();
+  const {
+    stats,
+    refresh,
+    nextRuns,
+    scheduleHints,
+    lastIncrementalCronTick,
+    nextOverrides,
+  } = await readAdminSyncPanelStatus();
   const latestListingUpdate = await safe(
     "latest-mls-timestamp",
     () => readLatestListingModificationTimestamp(),
@@ -309,7 +313,7 @@ export default async function AdminPage() {
       sortMs: timestampSortMs(stats.lastIncrementalSync),
       detail: lastIncrementalCronTick
         ? `Modified-since RETS pull (every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} minutes) · Cron last fired ${formatTimestamp(lastIncrementalCronTick)}`
-        : `Modified-since RETS pull (every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} minutes) · Cron last fired: never (no tick stamp yet)`,
+        : `Modified-since RETS pull (every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} minutes) · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)`,
       actionId: "incremental",
       nextRunAt: nextRuns.incremental,
     },
