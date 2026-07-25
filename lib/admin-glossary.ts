@@ -229,7 +229,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Incremental sync',
     category: 'sync-admin',
     definition:
-      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Netlify sync-listings (every 30m, not background) always runs a lean RETS-only pull in-process, stamps last_incremental_cron_tick, and optionally queues sync-listings-worker for board/stats warm + spotlight/alerts. Inventory freshness must never depend on that hop. Avoid schedule+background on one function. Admin Syncs shows the heartbeat; Database Next is only clock-slot math when overdue.',
+      '“Modified since” RETS pull using ModificationTimestamp — Active/CS/UC plus recently modified Closed (upserted into the Closed bucket so just-sold comps appear without a full Closed sync). Netlify sync-listings (every 30m, not background) always runs a lean RETS-only pull in-process, stamps last_incremental_cron_tick, and optionally queues sync-listings-worker for board/stats warm + spotlight/alerts. Inventory freshness must never depend on that hop. Avoid schedule+background on one function. Admin Syncs shows the heartbeat; Database Next is only clock-slot math when overdue.',
   },
   {
     term: 'Next override (spinner)',

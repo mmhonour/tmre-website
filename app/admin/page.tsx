@@ -768,31 +768,6 @@ export default async function AdminPage() {
                 </p>
               ) : null}
             </div>
-            {deployBuild ? (
-              <div>
-                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold/70 leading-none mb-0.5">
-                  Build
-                </p>
-                {deployBuild.builtAtLabel ? (
-                  <p className="font-mono text-[10px] text-white/80 leading-none">
-                    {deployBuild.builtAtLabel}
-                  </p>
-                ) : null}
-                <p className="font-mono text-[10px] text-white/55 leading-none mt-0.5">
-                  #{deployBuild.shortId}
-                  {deployBuild.id.length > 12 ? <>&hellip;</> : null}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/35 leading-none mb-0.5">
-                  Build
-                </p>
-                <p className="font-mono text-[10px] text-white/40 leading-none">
-                  unavailable · next Netlify deploy stamps it
-                </p>
-              </div>
-            )}
             {(lambdaInstanceId || lambdaFnName) && (
               <div>
                 <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/30 leading-none mb-0.5">
@@ -962,6 +937,7 @@ export default async function AdminPage() {
         syncs={syncsPanel}
         server={serverPanel}
         glossary={<AdminGlossaryPanel />}
+        deployBuild={deployBuild}
       />
     </>
   );

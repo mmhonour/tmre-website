@@ -237,7 +237,7 @@ export async function syncTownIncrementalPg(
 ): Promise<{ count: number; priceChangedIds: string[] }> {
   if (statusBucket === 'Active') {
     const limit = ACTIVE_LISTINGS_FETCH_LIMIT
-    const [active, comingSoon, underContract, underContractCts] =
+    const [active, comingSoon, underContract, underContractCts, closed] =
       await Promise.all([
         searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter }),
         searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit, {
@@ -252,6 +252,15 @@ export async function syncTownIncrementalPg(
           limit,
           { modifiedAfter },
         ).catch(() => [] as Listing[]),
+        searchListings({
+          city: town,
+          status: 'Closed',
+          modifiedAfter,
+          closedAfter: CLOSED_SINCE,
+          limit,
+        })
+          .then((rows) => rows.filter(isClosedListing))
+          .catch(() => [] as Listing[]),
       ])
     const listings = mergeSyncListings(
       active,
@@ -259,7 +268,14 @@ export async function syncTownIncrementalPg(
       underContract,
       underContractCts,
     )
-    return upsertListingsIncremental(town, 'Active', listings)
+    const [market, closedUpsert] = await Promise.all([
+      upsertListingsIncremental(town, 'Active', listings),
+      upsertListingsIncremental(town, 'Closed', closed),
+    ])
+    return {
+      count: market.count + closedUpsert.count,
+      priceChangedIds: market.priceChangedIds,
+    }
   }
 
   const params: SearchParams = {

@@ -197,7 +197,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "On Netlify: sync-listings (*/30 * * * *, not background) stamps last_incremental_cron_tick and always runs lean RETS-only in-process; optionally queues sync-listings-worker for board/stats + digests (hop failure must not drop inventory). Admin Run cron runs the fuller path in-request. Local Node: setInterval with the same cadence. Skips when Pause is checked on Incremental, or when Admin Next override is still in the future.",
+            "On Netlify: sync-listings (*/30 * * * *, not background) stamps last_incremental_cron_tick and always runs lean RETS-only in-process (Active/CS/UC + recently modified Closed); optionally queues sync-listings-worker for board/stats + digests (hop failure must not drop inventory). Admin Run cron runs the fuller path in-request. Local Node: setInterval with the same cadence. Skips when Pause is checked on Incremental, or when Admin Next override is still in the future.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },

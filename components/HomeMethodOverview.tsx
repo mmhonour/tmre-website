@@ -323,11 +323,10 @@ export default function HomeMethodOverview() {
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
         {/*
-          Mobile: translucent panel gives the copy/score a real containing box
-          so lines wrap inside a readable width (photo atmosphere stays behind).
-          sm+: panel chrome drops away; desktop two-column layout unchanged.
+          No frosted card on mobile — copy/score sit on the photo atmosphere
+          (same open treatment as desktop). min-w-0 keeps long lines wrapping.
         */}
-        <div className="min-w-0 rounded-2xl border border-white/12 bg-navy-dark/55 px-4 py-4 shadow-lg shadow-black/25 backdrop-blur-md sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:backdrop-blur-none">
+        <div className="min-w-0">
           <div className="grid min-w-0 items-start gap-4 sm:gap-10 lg:grid-cols-12 lg:gap-8">
             {/* Copy column */}
             <div className="min-w-0 lg:col-span-6">

@@ -77,6 +77,25 @@ function incrementalWatermark(): string {
   return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 }
 
+/**
+ * Recently modified Closed sales for one town (SmartMLS needs a StatusChange
+ * window — MLSStatus=|C alone throws NO_RECORDS_FOUND).
+ */
+async function fetchClosedListingsIncremental(
+  town: TmreTown,
+  modifiedAfter: string,
+): Promise<Listing[]> {
+  const rows = await searchListings({
+    city: town,
+    status: 'Closed',
+    modifiedAfter,
+    // Date window required by SmartMLS; ModificationTimestamp keeps the hit set small.
+    closedAfter: CLOSED_LISTINGS_SINCE,
+    limit: ACTIVE_LISTINGS_FETCH_LIMIT,
+  })
+  return rows.filter(isClosedListing)
+}
+
 /** Pull only listings modified since the last incremental watermark. */
 export async function syncTownListingsIncremental(
   town: TmreTown,
@@ -84,10 +103,11 @@ export async function syncTownListingsIncremental(
 ): Promise<TownSyncResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
+  const statusBucket = 'Active+Closed/incremental'
 
   try {
     const limit = ACTIVE_LISTINGS_FETCH_LIMIT
-    const [active, comingSoon, underContract, underContractCts] =
+    const [active, comingSoon, underContract, underContractCts, closed] =
       await Promise.all([
         searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter }),
         searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit, {
@@ -102,18 +122,26 @@ export async function syncTownListingsIncremental(
           limit,
           { modifiedAfter },
         ).catch(() => [] as Listing[]),
+        fetchClosedListingsIncremental(town, modifiedAfter).catch((err) => {
+          console.warn(
+            `[listings-sync/incremental] ${town} Closed pull failed (non-fatal)`,
+            err instanceof Error ? err.message : err,
+          )
+          return [] as Listing[]
+        }),
       ])
-    const listings = mergeSyncListings(
+    const marketListings = mergeSyncListings(
       active,
       comingSoon,
       underContract,
       underContractCts,
     )
-    const { count, priceChangedIds } = await upsertListingsIncremental(
-      town,
-      'Active',
-      listings,
-    )
+    const [{ count: marketCount, priceChangedIds }, { count: closedCount }] =
+      await Promise.all([
+        upsertListingsIncremental(town, 'Active', marketListings),
+        upsertListingsIncremental(town, 'Closed', closed),
+      ])
+    const count = marketCount + closedCount
 
     if (priceChangedIds.length > 0) {
       try {
@@ -129,13 +157,13 @@ export async function syncTownListingsIncremental(
       startedAt,
       finishedAt,
       town,
-      statusBucket: 'Active/incremental',
+      statusBucket,
       listingsCount: count,
       ok: true,
     })
     return {
       town,
-      statusBucket: 'Active/incremental',
+      statusBucket,
       count,
       ok: true,
       durationMs: Date.now() - t0,
@@ -147,7 +175,7 @@ export async function syncTownListingsIncremental(
       startedAt,
       finishedAt,
       town,
-      statusBucket: 'Active/incremental',
+      statusBucket,
       listingsCount: 0,
       ok: false,
       error: message,
@@ -158,7 +186,7 @@ export async function syncTownListingsIncremental(
     )
     return {
       town,
-      statusBucket: 'Active/incremental',
+      statusBucket,
       count: 0,
       ok: false,
       error: message,
