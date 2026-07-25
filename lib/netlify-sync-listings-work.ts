@@ -9,10 +9,14 @@ import {
   runOverdueSyncCatchup,
 } from '@/lib/sync-overdue'
 import { isScheduledSyncJobPausedFresh } from '@/lib/scheduled-sync-toggle'
+import {
+  clearSyncNextOverrideAfterRun,
+  shouldDeferScheduledJob,
+} from '@/lib/sync-next-override'
 
 export const LAST_INCREMENTAL_CRON_TICK_KEY = 'last_incremental_cron_tick'
 
-async function recordIncrementalCronTick(input: {
+export async function recordIncrementalCronTick(input: {
   startedAt: string
   ok: boolean
   listingsCount?: number
@@ -105,11 +109,32 @@ export async function runIncrementalSyncListingsWork(startedAt = new Date().toIS
       }
     }
 
+    if (shouldDeferScheduledJob('incremental')) {
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: true,
+        skipped: true,
+        error: 'deferred — Admin Next override is still in the future',
+      })
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          skipped: true,
+          reason: 'Admin Next override — not due yet',
+          overdueCatchup: catchup.skipped
+            ? { skipped: true, reason: catchup.reason }
+            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
+        },
+      }
+    }
+
     const result = await syncIncrementalListings()
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
+    const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
     await recordIncrementalCronTick({
       startedAt: result.startedAt || startedAt,
-      ok: skippedEmpty ? true : result.towns.every((row) => row.ok),
+      ok: okTowns,
       listingsCount: result.totalUpserted,
       skipped: skippedEmpty,
       error: skippedEmpty
@@ -137,6 +162,9 @@ export async function runIncrementalSyncListingsWork(startedAt = new Date().toIS
     }
 
     const ok = result.towns.length === 0 || result.towns.every((row) => row.ok)
+    if (ok && !skippedEmpty) {
+      await clearSyncNextOverrideAfterRun('incremental')
+    }
     return {
       status: ok ? 200 : 502,
       body: {

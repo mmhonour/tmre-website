@@ -1,5 +1,6 @@
 import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
 import HomeMethodOverview from "@/components/HomeMethodOverview";
+import HomeScrollReset from "@/components/HomeScrollReset";
 import LeadForm from "@/components/LeadForm";
 import { TMRE_CORE_TOWNS_LABEL, TMRE_PROPERTIES_TOWNS_LABEL, TMRE_TOWNS } from "@/lib/tmre-towns";
 import Image from "next/image";
@@ -86,6 +87,7 @@ const audiences = [
 export default function Home() {
   return (
     <>
+      <HomeScrollReset />
       <HomeMethodOverview />
       <Suspense fallback={null}>
         <DealOfTheWeekHero afterOverview />

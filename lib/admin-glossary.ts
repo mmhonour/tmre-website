@@ -143,7 +143,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Vintage',
     category: 'mls-data',
     definition:
-      'Year-built era buckets (e.g. Pre-1900, 1900–1940, 1941–1970) used in Stats, Intelligence filters, and comps matching.',
+      'Year-built era buckets (e.g. Pre-1900, 1900–1940, 1941–1970) from lib/vintage-buckets.ts — used in Stats, Intelligence filters, and comps matching. Read-only summary in Admin → Data controls → Vintages.',
   },
   {
     term: 'CTS',
@@ -229,7 +229,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Incremental sync',
     category: 'sync-admin',
     definition:
-      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Netlify: thin sync-listings schedule (every 30m) heartbeats then POSTs sync-listings-worker (background). Combining schedule+background on one function can deploy but never auto-fire. Admin Syncs shows the real heartbeat; Database Next is only clock-slot math when overdue.',
+      '“Modified since” RETS pull using ModificationTimestamp — only changed listings upserted. Netlify sync-listings (every 30m, not background) runs the pull in-process and stamps last_incremental_cron_tick. Avoid schedule+background on one function and avoid schedule→HTTP→worker hops (site password / missing URL). Admin Syncs shows the heartbeat; Database Next is only clock-slot math when overdue.',
+  },
+  {
+    term: 'Next override (spinner)',
+    category: 'sync-admin',
+    definition:
+      'Admin Syncs ▲/▼ beside Next writes sync_next_override_<job> in sync_meta, replacing the natural next time. Future = defer automatic cron/catch-up; past/now = due. Cleared after a successful run (or ×). Step size: 5m incremental/stats, 30m scores/DOTD/addresses, 1h full, 1d zip.',
   },
   {
     term: 'Smart sync',
@@ -369,7 +375,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Goldilocks score',
     category: 'scoring',
     definition:
-      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools, DOM) — “not too cheap, not overpriced.” Persisted on listings and read by pages. DOM bands are editable in Admin → Goldilocks.',
+      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools, DOM) — “not too cheap, not overpriced.” Persisted on listings and read by pages. DOM bands are editable in Admin → Data controls → Goldilocks.',
   },
   {
     term: 'PPSF',
@@ -523,7 +529,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Spotlight',
     category: 'ui-tabs',
     definition:
-      'Curated property slots (#1–#3) with privacy controls (hide address/photos/map) managed in the Admin Spotlight tab.',
+      'Curated property slots (#1–#3) with privacy controls (hide address/photos/map) managed in Admin → Data controls → Spotlight.',
   },
   {
     term: 'Deal of the Day / Week',

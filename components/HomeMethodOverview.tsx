@@ -301,7 +301,7 @@ export default function HomeMethodOverview() {
   const live = samples[sampleIndex] ?? samples[0] ?? null;
 
   return (
-    <section className="relative overflow-hidden text-white pt-20 pb-12 lg:pt-24 lg:pb-14">
+    <section className="relative overflow-x-hidden text-white pt-[5.5rem] pb-8 sm:pt-20 sm:pb-12 lg:pt-24 lg:pb-14">
       {/* Atmosphere: this week’s listing photo */}
       <div className="absolute inset-0" aria-hidden>
         {photoUrl ? (
@@ -322,28 +322,28 @@ export default function HomeMethodOverview() {
       </div>
 
       <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-10 lg:gap-8 items-start">
+        <div className="grid lg:grid-cols-12 gap-6 sm:gap-10 lg:gap-8 items-start">
           {/* Copy column */}
           <div className="lg:col-span-6 min-w-0">
-            <h1 className="font-serif text-4xl sm:text-5xl lg:text-[3.35rem] text-white leading-[1.05] animate-fade-up">
+            <h1 className="font-serif text-[2.15rem] leading-[1.08] sm:text-5xl lg:text-[3.35rem] sm:leading-[1.05] text-white animate-fade-up">
               Cut through the noise.{" "}
               <span className="italic text-gold-light">One clear score.</span>
             </h1>
 
-            <p className="mt-5 text-base lg:text-lg text-white/75 leading-relaxed max-w-xl animate-fade-up-delay-1">
+            <p className="mt-4 sm:mt-5 text-[0.95rem] sm:text-base lg:text-lg text-white/75 leading-relaxed max-w-xl animate-fade-up-delay-1">
               Listings shout. Headlines contradict. We give buyers and sellers a
               single, town-calibrated measure — so you walk into Intelligence,
               Spotlight, Statistics, and What if already knowing how to read the
               room.
             </p>
 
-            <p className="mt-4 text-sm text-white/55 leading-relaxed max-w-xl animate-fade-up-delay-1">
+            <p className="mt-3 sm:mt-4 text-sm text-white/55 leading-relaxed max-w-xl animate-fade-up-delay-1 hidden sm:block">
               High means the home clears the bar against what&rsquo;s active
               nearby. Softer means dig deeper — or price with eyes open if you
               are selling. Same yardstick everywhere on the site.
             </p>
 
-            <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2">
+            <div className="mt-5 sm:mt-7 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2">
               <Link
                 href="/score"
                 className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark hover:bg-gold-light transition-colors"
@@ -362,7 +362,7 @@ export default function HomeMethodOverview() {
           {/* Deal of the Day score — gold shimmer over section atmosphere only. */}
           <div className="lg:col-span-6 flex flex-col items-end text-right animate-fade-up-delay-1">
             <div className="w-full max-w-md lg:max-w-lg ml-auto">
-              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 mb-2">
+              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 mb-1 sm:mb-2">
                 Actual home · rotating towns
               </p>
               {live ? (
@@ -378,26 +378,26 @@ export default function HomeMethodOverview() {
                 >
                   <p
                     key={`${live.town}-${live.score}-${live.mlsId}`}
-                    className="font-serif italic gold-shimmer leading-[1.05] tracking-tight home-score-swap text-[5.5rem] sm:text-[7rem] lg:text-[8.5rem] transition-opacity group-hover:opacity-90"
+                    className="font-serif italic gold-shimmer leading-none tracking-tight home-score-swap text-[4.25rem] sm:text-[7rem] lg:text-[8.5rem] transition-opacity group-hover:opacity-90"
                   >
                     {live.score.toFixed(1)}.
                   </p>
-                  <p className="mt-2 font-serif italic text-2xl sm:text-3xl text-white/90 group-hover:text-gold transition-colors">
+                  <p className="mt-1 sm:mt-2 font-serif italic text-xl sm:text-3xl text-white/90 group-hover:text-gold transition-colors">
                     {live.town}
                   </p>
                 </Link>
               ) : (
                 <>
-                  <p className="font-serif italic text-white/40 leading-[1.05] tracking-tight text-[5.5rem] sm:text-[7rem] lg:text-[8.5rem]">
+                  <p className="font-serif italic text-white/40 leading-none tracking-tight text-[4.25rem] sm:text-[7rem] lg:text-[8.5rem]">
                     —.—
                   </p>
-                  <p className="mt-2 font-serif italic text-2xl sm:text-3xl text-white/90">
+                  <p className="mt-1 sm:mt-2 font-serif italic text-xl sm:text-3xl text-white/90">
                     Scanning markets…
                   </p>
                 </>
               )}
 
-              <p className="mt-3 text-xs text-white/45 max-w-sm ml-auto leading-relaxed">
+              <p className="mt-2 sm:mt-3 text-xs text-white/45 max-w-sm ml-auto leading-relaxed">
                 Today&apos;s pick in each town — tap the score to open that deal.
                 Same yardstick as Deal of the Week.
               </p>
@@ -433,8 +433,8 @@ export default function HomeMethodOverview() {
         </div>
 
         {/* Rotating surface previews + objective pills */}
-        <div className="mt-12 lg:mt-16 relative animate-fade-up-delay-2">
-          <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 mb-4">
+        <div className="mt-8 sm:mt-12 lg:mt-16 relative animate-fade-up-delay-2">
+          <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 mb-3 sm:mb-4">
             Same measure · different rooms of the site
           </p>
 
@@ -442,7 +442,7 @@ export default function HomeMethodOverview() {
           <HomeObjectivePills />
         </div>
 
-        <div className="mt-10 lg:mt-12 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-t border-white/10 pt-6">
+        <div className="mt-8 sm:mt-10 lg:mt-12 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-t border-white/10 pt-5 sm:pt-6">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             This week&rsquo;s one listing
           </p>

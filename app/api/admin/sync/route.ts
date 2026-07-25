@@ -10,6 +10,7 @@ import { buildAdminSyncNextRuns, buildAdminSyncScheduleHints } from '@/lib/admin
 import { ensurePostDeployFullResyncScheduled } from '@/lib/deploy-full-resync-schedule'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { getSyncMeta } from '@/lib/db/sync-meta-store'
+import { readSyncNextOverrides } from '@/lib/sync-next-override'
 import { ensureAdminListingPhotosReady } from '@/lib/listing-photos-db-persist'
 import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
 import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'
@@ -32,7 +33,8 @@ export async function GET(req: NextRequest) {
   await ensureAdminListingPhotosReady()
   await ensurePostDeployFullResyncScheduled()
 
-  const { stats, refresh, nextRuns, scheduleHints } = await readAdminSyncPanelStatus()
+  const { stats, refresh, nextRuns, scheduleHints, nextOverrides } =
+    await readAdminSyncPanelStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
 
@@ -54,6 +56,7 @@ export async function GET(req: NextRequest) {
     zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),
     stats,
     nextRuns,
+    nextOverrides,
     scheduleHints,
     rets,
     syncFailures: await readRecentSyncFailures(8),
@@ -128,10 +131,12 @@ export async function POST(req: NextRequest) {
       lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
     })
     const scheduleHints = buildAdminSyncScheduleHints()
+    const nextOverrides = readSyncNextOverrides()
     return NextResponse.json({
       ...result,
       stats,
       nextRuns,
+      nextOverrides,
       scheduleHints,
       latestListingUpdate: await readLatestListingModificationTimestamp(),
       propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),

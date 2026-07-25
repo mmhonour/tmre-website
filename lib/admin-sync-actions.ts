@@ -33,6 +33,11 @@ import {
 import { rebuildStatsCache } from '@/lib/stats-cache'
 import { readSqliteRefreshStatus, healStaleRefreshLock } from '@/lib/sqlite-refresh-status'
 import { buildAdminSyncNextRuns, buildAdminSyncScheduleHints } from '@/lib/admin-sync-schedule'
+import {
+  clearSyncNextOverrideAfterRun,
+  isSyncNextOverrideJobId,
+  readSyncNextOverrides,
+} from '@/lib/sync-next-override'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import {
   collectWriteDatabaseTableStats,
@@ -100,6 +105,17 @@ export type AdminSyncActionOptions = {
 }
 
 export async function runAdminSyncAction(
+  action: AdminSyncActionId,
+  options: AdminSyncActionOptions = {},
+): Promise<AdminSyncActionResult> {
+  const result = await runAdminSyncActionImpl(action, options)
+  if (result.ok && isSyncNextOverrideJobId(result.action)) {
+    await clearSyncNextOverrideAfterRun(result.action)
+  }
+  return result
+}
+
+async function runAdminSyncActionImpl(
   action: AdminSyncActionId,
   options: AdminSyncActionOptions = {},
 ): Promise<AdminSyncActionResult> {
@@ -652,5 +668,13 @@ export async function readAdminSyncPanelStatus() {
   })
   const scheduleHints = buildAdminSyncScheduleHints()
   const lastIncrementalCronTick = getSyncMeta('last_incremental_cron_tick')
-  return { stats, refresh, nextRuns, scheduleHints, lastIncrementalCronTick }
+  const nextOverrides = readSyncNextOverrides()
+  return {
+    stats,
+    refresh,
+    nextRuns,
+    scheduleHints,
+    lastIncrementalCronTick,
+    nextOverrides,
+  }
 }

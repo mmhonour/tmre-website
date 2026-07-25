@@ -25,6 +25,10 @@ import {
   type ScheduledSyncJobId,
   type ScheduledSyncPausedJobs,
 } from "@/lib/scheduled-sync-jobs-shared";
+import {
+  syncNextOverrideStepMs,
+  type SyncNextOverrides,
+} from "@/lib/sync-next-override-shared";
 import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
@@ -526,6 +530,8 @@ export type PanelStatus = {
   zipBoundariesSyncStartedAt?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
+  /** Admin-set Next times that preempt the natural schedule. */
+  nextOverrides?: SyncNextOverrides;
   scheduleHints?: AdminSyncScheduleHints;
   rets?: {
     configured: boolean;
@@ -836,14 +842,18 @@ function SyncTimingRow({
   label,
   value,
   valueClassName = "text-navy font-semibold",
+  labelClassName = "text-charcoal/45",
 }: {
   label: ReactNode;
   value: ReactNode;
   valueClassName?: string;
+  labelClassName?: string;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-x-2 items-baseline w-full min-w-0">
-      <span className="text-right font-mono text-[10px] tracking-wide text-charcoal/45 uppercase whitespace-nowrap">
+    <div className="grid grid-cols-2 gap-x-2 items-center w-full min-w-0">
+      <span
+        className={`text-right font-mono text-[10px] tracking-wide uppercase whitespace-nowrap ${labelClassName}`}
+      >
         {label}
       </span>
       <span
@@ -852,6 +862,70 @@ function SyncTimingRow({
         {value}
       </span>
     </div>
+  );
+}
+
+function formatNextStepLabel(jobId: ScheduledSyncJobId): string {
+  const ms = syncNextOverrideStepMs(jobId);
+  if (ms >= 24 * 60 * 60_000) return `${Math.round(ms / (24 * 60 * 60_000))}d`;
+  if (ms >= 60 * 60_000) return `${Math.round(ms / (60 * 60_000))}h`;
+  return `${Math.round(ms / 60_000)}m`;
+}
+
+/** Compact ▲/▼ next to NEXT — nudges Admin override earlier/later. */
+function NextOverrideSpinner({
+  jobId,
+  busy,
+  hasOverride,
+  onNudge,
+  onClear,
+}: {
+  jobId: ScheduledSyncJobId;
+  busy: boolean;
+  hasOverride: boolean;
+  onNudge: (steps: number) => void;
+  onClear: () => void;
+}) {
+  const step = formatNextStepLabel(jobId);
+  const btn =
+    "leading-none px-0.5 text-[9px] text-charcoal/40 hover:text-navy disabled:opacity-30 disabled:pointer-events-none";
+  return (
+    <span className="inline-flex items-center gap-0.5 normal-case tracking-normal">
+      <span className="inline-flex flex-col -my-0.5" role="group" aria-label={`Adjust next run (±${step})`}>
+        <button
+          type="button"
+          className={btn}
+          title={`Later (+${step})`}
+          aria-label={`Push next run later by ${step}`}
+          disabled={busy}
+          onClick={() => onNudge(1)}
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          className={btn}
+          title={`Sooner (−${step})`}
+          aria-label={`Pull next run sooner by ${step}`}
+          disabled={busy}
+          onClick={() => onNudge(-1)}
+        >
+          ▼
+        </button>
+      </span>
+      {hasOverride ? (
+        <button
+          type="button"
+          className={`${btn} text-gold hover:text-navy`}
+          title="Clear override — resume natural schedule"
+          aria-label="Clear next-run override"
+          disabled={busy}
+          onClick={onClear}
+        >
+          ×
+        </button>
+      ) : null}
+    </span>
   );
 }
 
@@ -1128,6 +1202,9 @@ export default function AdminSyncTable({
     () => initialPausedJobs ?? emptyPausedJobs(),
   );
   const [pauseSavingJob, setPauseSavingJob] = useState<ScheduledSyncJobId | null>(
+    null,
+  );
+  const [nextSavingJob, setNextSavingJob] = useState<ScheduledSyncJobId | null>(
     null,
   );
   const [pendingRetries, setPendingRetries] = useState<
@@ -1437,6 +1514,50 @@ export default function AdminSyncTable({
       }
     },
     [pausedJobs],
+  );
+
+  const patchNextOverride = useCallback(
+    async (
+      jobId: ScheduledSyncJobId,
+      body:
+        | { steps: number; baseNextAt: string | null }
+        | { nextAt: string | null }
+        | { due: true },
+    ) => {
+      setNextSavingJob(jobId);
+      try {
+        const res = await fetch("/api/admin/sync-next", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jobId, ...body }),
+        });
+        const payload = (await res.json()) as {
+          nextRuns?: PanelStatus["nextRuns"];
+          nextOverrides?: SyncNextOverrides;
+          error?: string;
+        };
+        if (!res.ok) {
+          console.warn("[admin sync-next]", payload.error ?? res.status);
+          return;
+        }
+        setStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...(payload.nextRuns ? { nextRuns: payload.nextRuns } : {}),
+                ...(payload.nextOverrides
+                  ? { nextOverrides: payload.nextOverrides }
+                  : {}),
+              }
+            : prev,
+        );
+      } catch (err) {
+        console.warn("[admin sync-next]", err);
+      } finally {
+        setNextSavingJob(null);
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -2440,19 +2561,53 @@ export default function AdminSyncTable({
                         : nextSameDay
                           ? formatTimeOnly(nextRunAt)
                           : formatAdminNextSyncAt(nextRunAt, now);
+                      const nextJobId = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+                      const hasNextOverride = Boolean(
+                        nextJobId && status?.nextOverrides?.[nextJobId],
+                      );
                       const nextTimeClass =
-                        scheduleBreached || hungNext ? "text-rose-700" : "text-navy";
+                        scheduleBreached || hungNext
+                          ? "text-rose-700"
+                          : hasNextOverride
+                            ? "text-gold"
+                            : "text-navy";
 
                       const nextLabel = (
-                        <>
-                          Next
-                          {nextStatusText ? (
-                            <span className={`normal-case tracking-wide ${nextStatusClass}`}>
-                              {" "}
-                              ({nextStatusText})
-                            </span>
+                        <span className="inline-flex items-center justify-end gap-1">
+                          <span>
+                            Next
+                            {hasNextOverride && !nextStatusText ? (
+                              <span className="normal-case tracking-wide text-gold">
+                                {" "}
+                                (set)
+                              </span>
+                            ) : null}
+                            {nextStatusText ? (
+                              <span
+                                className={`normal-case tracking-wide ${nextStatusClass}`}
+                              >
+                                {" "}
+                                ({nextStatusText})
+                              </span>
+                            ) : null}
+                          </span>
+                          {nextJobId && !isPostDeployNext ? (
+                            <NextOverrideSpinner
+                              jobId={nextJobId}
+                              busy={nextSavingJob === nextJobId}
+                              hasOverride={hasNextOverride}
+                              onNudge={(steps) =>
+                                void patchNextOverride(nextJobId, {
+                                  steps,
+                                  baseNextAt: nextRunAt,
+                                })
+                              }
+                              onClear={() =>
+                                void patchNextOverride(nextJobId, { nextAt: null })
+                              }
+                            />
                           ) : null}
-                        </>
+                        </span>
                       );
 
                       return (
@@ -2511,11 +2666,14 @@ export default function AdminSyncTable({
                               />
                             </>
                           )}
-                          {nextRunAt != null ? (
+                          {nextRunAt != null || nextJobId ? (
                             <SyncTimingRow
                               label={nextLabel}
-                              value={nextTimeText}
+                              value={nextRunAt != null ? nextTimeText : "—"}
                               valueClassName={`font-semibold ${nextTimeClass}`}
+                              labelClassName={
+                                hasNextOverride ? "text-gold/80" : "text-charcoal/45"
+                              }
                             />
                           ) : null}
                         </div>

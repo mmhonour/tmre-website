@@ -197,7 +197,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "On Netlify: sync-listings is a thin scheduled trigger (*/30 * * * *, not background) that stamps last_incremental_cron_tick + sync_runs, then POSTs sync-listings-worker (background) to run syncIncrementalListings(). Local Node: setInterval with the same cadence. Skips when Pause is checked on Incremental.",
+            "On Netlify: sync-listings (*/30 * * * *, not background) runs syncIncrementalListings() in-process and stamps last_incremental_cron_tick + sync_runs. Admin Run cron can invoke sync-listings-worker for the fuller path. Local Node: setInterval with the same cadence. Skips when Pause is checked on Incremental, or when Admin Next override is still in the future.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },

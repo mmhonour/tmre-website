@@ -2,10 +2,7 @@ export type AdminTabId =
   | "db"
   | "sync-log"
   | "stats"
-  | "site"
-  | "spotlight"
-  | "goldilocks"
-  | "pricing"
+  | "data-controls"
   | "rets"
   | "postgres"
   | "syncs"
@@ -13,11 +10,64 @@ export type AdminTabId =
   | "docs"
   | "glossary";
 
+/** Sub-panels under Admin → Data Controls. */
+export type AdminDataControlsPanelId =
+  | "site"
+  | "spotlight"
+  | "goldilocks"
+  | "pricing"
+  | "vintages";
+
 export type AdminSectionLink = {
   id: string;
   label: string;
   tab: AdminTabId;
+  /** When tab is data-controls, which sub-panel to open. */
+  panel?: AdminDataControlsPanelId;
 };
+
+/** Former top-level tabs now nested under Data Controls. */
+export const LEGACY_ADMIN_TAB_TO_DATA_CONTROLS: Record<
+  string,
+  AdminDataControlsPanelId
+> = {
+  site: "site",
+  spotlight: "spotlight",
+  goldilocks: "goldilocks",
+  pricing: "pricing",
+};
+
+export const ADMIN_DATA_CONTROLS_PANELS: {
+  id: AdminDataControlsPanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "site",
+    label: "Site controls",
+    subtitle: "Photos, contact, Monday market brief, and social profiles",
+  },
+  {
+    id: "spotlight",
+    label: "Spotlight",
+    subtitle: "Curated homepage slots (#1–#3) and privacy",
+  },
+  {
+    id: "goldilocks",
+    label: "Goldilocks",
+    subtitle: "Score weights, remark characteristics, and score rebuild",
+  },
+  {
+    id: "pricing",
+    label: "Pricing",
+    subtitle: "Sales, Rentals, and What if match parameters",
+  },
+  {
+    id: "vintages",
+    label: "Vintages",
+    subtitle: "Read-only year-built buckets used across stats and matching",
+  },
+];
 
 export type AdminDocLink = {
   label: string;
@@ -50,24 +100,10 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "Where stats and caches live — Postgres, memory, files, R2",
   },
   {
-    id: "site",
-    label: "Site controls",
-    subtitle: "Photos, contact, Monday market brief, and social profiles",
-  },
-  {
-    id: "spotlight",
-    label: "Spotlight",
-    subtitle: "Curated homepage slots (#1–#3) and privacy",
-  },
-  {
-    id: "goldilocks",
-    label: "Goldilocks",
-    subtitle: "Score weights, remark characteristics, and score rebuild",
-  },
-  {
-    id: "pricing",
-    label: "Pricing",
-    subtitle: "Sales, Rentals, and What if match parameters",
+    id: "data-controls",
+    label: "Data controls",
+    subtitle:
+      "Site, Spotlight, Goldilocks, Pricing, and read-only Vintages",
   },
   {
     id: "rets",
@@ -120,17 +156,78 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-stats-sync-control", label: "Sync control & config", tab: "stats" },
   { id: "admin-stats-site-data", label: "Site form / visitor data", tab: "stats" },
   { id: "admin-stats-ephemeral", label: "Ephemeral caches", tab: "stats" },
-  { id: "admin-photo-health", label: "Listing photo health", tab: "site" },
-  { id: "admin-photo-ttl", label: "Listing photo TTL", tab: "site" },
-  { id: "admin-brokerage-name", label: "Brokerage name", tab: "site" },
-  { id: "admin-contact-email", label: "Contact form email", tab: "site" },
-  { id: "admin-contact-phone", label: "Contact phone", tab: "site" },
-  { id: "admin-market-digest", label: "Monday market brief", tab: "site" },
-  { id: "admin-deploy-notify", label: "Deploy notifications", tab: "site" },
-  { id: "admin-social-profiles", label: "Social media profiles", tab: "site" },
-  { id: "admin-spotlight", label: "Spotlight properties", tab: "spotlight" },
-  { id: "admin-goldilocks", label: "Goldilocks scoring", tab: "goldilocks" },
-  { id: "admin-pricing", label: "Pricing match parameters", tab: "pricing" },
+  {
+    id: "admin-photo-health",
+    label: "Listing photo health",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-photo-ttl",
+    label: "Listing photo TTL",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-brokerage-name",
+    label: "Brokerage name",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-contact-email",
+    label: "Contact form email",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-contact-phone",
+    label: "Contact phone",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-market-digest",
+    label: "Monday market brief",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-deploy-notify",
+    label: "Deploy notifications",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-social-profiles",
+    label: "Social media profiles",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-spotlight",
+    label: "Spotlight properties",
+    tab: "data-controls",
+    panel: "spotlight",
+  },
+  {
+    id: "admin-goldilocks",
+    label: "Goldilocks scoring",
+    tab: "data-controls",
+    panel: "goldilocks",
+  },
+  {
+    id: "admin-pricing",
+    label: "Pricing match parameters",
+    tab: "data-controls",
+    panel: "pricing",
+  },
+  {
+    id: "admin-vintages",
+    label: "Vintage buckets",
+    tab: "data-controls",
+    panel: "vintages",
+  },
   { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
   { id: "admin-sqlite-schemas", label: "Postgres schema", tab: "postgres" },
   { id: "admin-startup", label: "Startup schedule", tab: "syncs" },
@@ -221,13 +318,13 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listings",
     detail:
-      "Thin scheduled trigger (every 30m) — heartbeats sync_runs then POSTs sync-listings-worker. Do not combine schedule+background on one function.",
+      "Scheduled every 30m — runs incremental RETS→Postgres in-process (no HTTP hop). Do not set background:true on this function.",
     schedule: "Every 30 min",
   },
   {
     label: "sync-listings-worker",
     detail:
-      "Background incremental RETS → Postgres + spotlight status + saved-search alerts (queued by sync-listings or Admin Run cron)",
+      "Background worker for Admin Run cron / extras (spotlight + saved-search). Not on the schedule itself.",
     schedule: "On invoke (background)",
   },
   {
@@ -327,8 +424,37 @@ export function adminTabForSection(sectionId: string): AdminTabId | null {
   return ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.tab ?? null;
 }
 
+export function adminDataControlsPanelForSection(
+  sectionId: string,
+): AdminDataControlsPanelId | null {
+  return (
+    ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel ?? null
+  );
+}
+
+export function isAdminDataControlsPanelId(
+  value: string | null | undefined,
+): value is AdminDataControlsPanelId {
+  return (
+    value === "site" ||
+    value === "spotlight" ||
+    value === "goldilocks" ||
+    value === "pricing" ||
+    value === "vintages"
+  );
+}
+
 export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
-  return `/admin?tab=${tab}#${sectionId}`;
+  const link = ADMIN_SECTION_LINKS.find((row) => row.id === sectionId);
+  const params = new URLSearchParams({ tab });
+  if (tab === "data-controls" && link?.panel) {
+    params.set("panel", link.panel);
+  }
+  return `/admin?${params.toString()}#${sectionId}`;
+}
+
+export function adminDataControlsHref(panel: AdminDataControlsPanelId): string {
+  return `/admin?tab=data-controls&panel=${panel}`;
 }
 
 /** Anchor id for a table card on the Admin Postgres schema diagram. */

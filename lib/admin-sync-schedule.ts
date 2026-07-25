@@ -5,6 +5,8 @@ import { readPostDeployFullResyncStatus } from '@/lib/deploy-full-resync-schedul
 import { nextMonday1amEt } from '@/lib/property-address-schedule'
 import { STATS_CACHE_TTL_MS } from '@/lib/stats-cache'
 import type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
+import { applySyncNextOverride } from '@/lib/sync-next-override'
+import { SCHEDULED_SYNC_JOB_BY_ROW } from '@/lib/scheduled-sync-jobs'
 
 export type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 export { formatAdminNextSyncAt } from '@/lib/admin-sync-schedule-format'
@@ -290,22 +292,55 @@ export function buildAdminSyncNextRuns(input: BuildNextRunsInput, now = new Date
     postDeploy.nextAt && postDeploy.source === 'post-deploy'
       ? new Date(postDeploy.nextAt)
       : nextFullResyncWeekly
-  const nextIncremental = nextIntervalStart(input.lastIncrementalSync, incrementalIntervalMs, now)
-  const nextStatsCache = nextIntervalStart(input.lastStatsCache, statsIntervalMs, now)
-  const nextRefresh = earliestDate(nextIncremental, nextFullResync)
-  const nextPropertyAddresses = nextMonday1amEt(now)
-  const nextZipBoundaries = nextMonthDayUtc(1, 10, now)
+  const nextIncrementalNatural = nextIntervalStart(
+    input.lastIncrementalSync,
+    incrementalIntervalMs,
+    now,
+  )
+  const nextStatsCacheNatural = nextIntervalStart(input.lastStatsCache, statsIntervalMs, now)
+  const nextFullResyncIso = applySyncNextOverride(
+    nextFullResync.toISOString(),
+    SCHEDULED_SYNC_JOB_BY_ROW['full-resync'],
+  )
+  const nextIncrementalIso = applySyncNextOverride(
+    nextIncrementalNatural.toISOString(),
+    SCHEDULED_SYNC_JOB_BY_ROW.incremental,
+  )
+  const nextStatsCacheIso = applySyncNextOverride(
+    nextStatsCacheNatural.toISOString(),
+    SCHEDULED_SYNC_JOB_BY_ROW['stats-cache'],
+  )
+  const nextListingScoresIso = applySyncNextOverride(
+    nextFullResync.toISOString(),
+    SCHEDULED_SYNC_JOB_BY_ROW['listing-scores'],
+  )
+  const nextDealOfTheDayIso = applySyncNextOverride(
+    nextFullResync.toISOString(),
+    SCHEDULED_SYNC_JOB_BY_ROW['deal-of-the-day'],
+  )
+  const nextPropertyAddressesIso = applySyncNextOverride(
+    nextMonday1amEt(now).toISOString(),
+    SCHEDULED_SYNC_JOB_BY_ROW['property-addresses'],
+  )
+  const nextZipBoundariesIso = applySyncNextOverride(
+    nextMonthDayUtc(1, 10, now).toISOString(),
+    SCHEDULED_SYNC_JOB_BY_ROW['zip-boundaries'],
+  )
+
+  const nextIncrementalDate = nextIncrementalIso ? new Date(nextIncrementalIso) : null
+  const nextFullResyncDate = nextFullResyncIso ? new Date(nextFullResyncIso) : null
+  const nextRefresh = earliestDate(nextIncrementalDate, nextFullResyncDate)
 
   return {
-    'full-resync': nextFullResync.toISOString(),
-    incremental: nextIncremental.toISOString(),
-    'latest-mls': nextIncremental.toISOString(),
-    'listing-scores': nextFullResync.toISOString(),
+    'full-resync': nextFullResyncIso,
+    incremental: nextIncrementalIso,
+    'latest-mls': nextIncrementalIso,
+    'listing-scores': nextListingScoresIso,
     'refresh-finished': nextRefresh?.toISOString() ?? null,
-    'stats-cache': nextStatsCache.toISOString(),
-    'deal-of-the-day': nextFullResync.toISOString(),
-    'property-addresses': nextPropertyAddresses.toISOString(),
-    'zip-boundaries': nextZipBoundaries.toISOString(),
+    'stats-cache': nextStatsCacheIso,
+    'deal-of-the-day': nextDealOfTheDayIso,
+    'property-addresses': nextPropertyAddressesIso,
+    'zip-boundaries': nextZipBoundariesIso,
   }
 }
 

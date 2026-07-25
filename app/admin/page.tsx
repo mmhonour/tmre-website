@@ -19,6 +19,8 @@ import AdminDeployNotifyPanel from "@/components/admin/AdminDeployNotifyPanel";
 import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
+import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
+import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
 import { emptyScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 import {
@@ -213,7 +215,7 @@ export default async function AdminPage() {
   );
 
   const stats = await readListingsDbStats();
-  const { refresh, nextRuns, scheduleHints, lastIncrementalCronTick } =
+  const { refresh, nextRuns, scheduleHints, lastIncrementalCronTick, nextOverrides } =
     await readAdminSyncPanelStatus();
   const latestListingUpdate = await safe(
     "latest-mls-timestamp",
@@ -411,6 +413,7 @@ export default async function AdminPage() {
       lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
     },
     nextRuns,
+    nextOverrides,
     scheduleHints,
     databaseStats,
   };
@@ -698,13 +701,15 @@ export default async function AdminPage() {
     </>
   );
 
-  const spotlightPanel = <AdminSpotlightSitePanel />;
-
-  const goldilocksPanel = (
-    <AdminGoldilocksPanel initial={goldilocksInitial} />
+  const dataControlsPanel = (
+    <AdminDataControlsPanel
+      site={sitePanel}
+      spotlight={<AdminSpotlightSitePanel />}
+      goldilocks={<AdminGoldilocksPanel initial={goldilocksInitial} />}
+      pricing={<AdminPricingPanel initial={pricingInitial} />}
+      vintages={<AdminVintagesPanel />}
+    />
   );
-
-  const pricingPanel = <AdminPricingPanel initial={pricingInitial} />;
 
   const syncsPanel = (
     <AdminSyncsOverviewPanel
@@ -925,10 +930,7 @@ export default async function AdminPage() {
         db={dbPanel}
         syncLog={syncLogPanel}
         stats={<AdminStatsInventoryPanel />}
-        site={sitePanel}
-        spotlight={spotlightPanel}
-        goldilocks={goldilocksPanel}
-        pricing={pricingPanel}
+        dataControls={dataControlsPanel}
         rets={retsPanel}
         postgres={postgresPanel}
         syncs={syncsPanel}

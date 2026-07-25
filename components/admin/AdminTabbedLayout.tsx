@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ADMIN_TABS,
+  adminDataControlsPanelForSection,
   adminTabForSection,
+  isAdminDataControlsPanelId,
+  LEGACY_ADMIN_TAB_TO_DATA_CONTROLS,
   type AdminTabId,
 } from "@/lib/admin-nav";
 
@@ -14,6 +17,9 @@ function tabFromLocation(): AdminTabId {
   if (typeof window === "undefined") return "db";
   const params = new URLSearchParams(window.location.search);
   const queryTab = params.get("tab");
+  if (queryTab && LEGACY_ADMIN_TAB_TO_DATA_CONTROLS[queryTab]) {
+    return "data-controls";
+  }
   if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
   if (VALID_TABS.has(hash)) return hash as AdminTabId;
@@ -30,6 +36,30 @@ function tabFromLocation(): AdminTabId {
   return "db";
 }
 
+/** Rewrite legacy ?tab=site|spotlight|… to ?tab=data-controls&panel=… */
+function normalizeLegacyDataControlsUrl() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  const queryTab = url.searchParams.get("tab");
+  if (!queryTab) return;
+  const legacyPanel = LEGACY_ADMIN_TAB_TO_DATA_CONTROLS[queryTab];
+  if (!legacyPanel) return;
+  url.searchParams.set("tab", "data-controls");
+  url.searchParams.set("panel", legacyPanel);
+  window.history.replaceState(null, "", url);
+}
+
+function ensureDataControlsPanelParam() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("tab") !== "data-controls") return;
+  if (isAdminDataControlsPanelId(url.searchParams.get("panel"))) return;
+  const hash = url.hash.replace(/^#/, "");
+  const fromSection = hash ? adminDataControlsPanelForSection(hash) : null;
+  url.searchParams.set("panel", fromSection ?? "site");
+  window.history.replaceState(null, "", url);
+}
+
 function scrollToSection(sectionId: string) {
   requestAnimationFrame(() => {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -40,10 +70,7 @@ export default function AdminTabbedLayout({
   db,
   syncLog,
   stats,
-  site,
-  spotlight,
-  goldilocks,
-  pricing,
+  dataControls,
   rets,
   postgres,
   syncs,
@@ -54,10 +81,7 @@ export default function AdminTabbedLayout({
   db: ReactNode;
   syncLog: ReactNode;
   stats: ReactNode;
-  site: ReactNode;
-  spotlight: ReactNode;
-  goldilocks: ReactNode;
-  pricing: ReactNode;
+  dataControls: ReactNode;
   rets: ReactNode;
   postgres: ReactNode;
   syncs: ReactNode;
@@ -69,8 +93,9 @@ export default function AdminTabbedLayout({
 
   useEffect(() => {
     const syncFromLocation = () => {
-      const nextTab = tabFromLocation();
-      setTab(nextTab);
+      normalizeLegacyDataControlsUrl();
+      ensureDataControlsPanelParam();
+      setTab(tabFromLocation());
     };
     syncFromLocation();
     window.addEventListener("hashchange", syncFromLocation);
@@ -97,6 +122,13 @@ export default function AdminTabbedLayout({
     setTab(next);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", next);
+    if (next === "data-controls") {
+      if (!isAdminDataControlsPanelId(url.searchParams.get("panel"))) {
+        url.searchParams.set("panel", "site");
+      }
+    } else {
+      url.searchParams.delete("panel");
+    }
     url.hash = "";
     window.history.replaceState(null, "", url);
   }
@@ -105,10 +137,7 @@ export default function AdminTabbedLayout({
     db,
     "sync-log": syncLog,
     stats,
-    site,
-    spotlight,
-    goldilocks,
-    pricing,
+    "data-controls": dataControls,
     rets,
     postgres,
     syncs,

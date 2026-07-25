@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { prefetchDealCarouselImages, prefetchListingImages } from "@/lib/prefetch-listing-images";
@@ -64,14 +64,89 @@ export type DealCarouselPayload = {
   superlatives?: string[];
 };
 
-type SlideDirection = "next" | "prev";
+/** null = no book-flip (filter/town pill / first paint). */
+export type SlideDirection = "next" | "prev" | null;
+
+type DealsByTown = Partial<Record<TmreTown, DealCarouselPayload | null>>;
 
 function hasListing(deal: DealCarouselPayload | null | undefined): deal is DealCarouselPayload {
   return Boolean(deal?.listing?.mlsId || deal?.listing?.listingKey);
 }
 
+function filterCacheKey(
+  kind: "sale" | "rental",
+  propertyClass: DealPropertyClassFilter,
+): string {
+  return `${kind}:${propertyClass}`;
+}
+
 export type DealTransactionFilter = "all" | "sale" | "rental";
 export type DealPropertyClassFilter = "homes" | "multi" | "condos";
+
+const ALL_FILTER_COMBOS: ReadonlyArray<{
+  kind: "sale" | "rental";
+  property: DealPropertyClassFilter;
+}> = [
+  { kind: "sale", property: "homes" },
+  { kind: "sale", property: "multi" },
+  { kind: "sale", property: "condos" },
+  { kind: "rental", property: "homes" },
+  { kind: "rental", property: "multi" },
+  { kind: "rental", property: "condos" },
+];
+
+async function fetchDealBundle(
+  kind: "sale" | "rental",
+  property: DealPropertyClassFilter,
+  towns: readonly TmreTown[],
+): Promise<DealsByTown> {
+  const fromBundle: DealsByTown = {};
+  try {
+    const qs = new URLSearchParams({
+      bundle: "1",
+      kind,
+      property,
+    });
+    const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
+    if (r.ok) {
+      const body = (await r.json()) as {
+        deals?: Partial<Record<TmreTown, DealCarouselPayload>>;
+      };
+      for (const town of towns) {
+        const deal = body.deals?.[town];
+        fromBundle[town] = deal && hasListing(deal) ? deal : null;
+        if (fromBundle[town]) prefetchListingImages(fromBundle[town]!);
+      }
+    }
+  } catch {
+    // fall through — caller fills missing towns
+  }
+  return fromBundle;
+}
+
+async function fetchTownDeal(
+  town: TmreTown,
+  kind: "sale" | "rental",
+  property: DealPropertyClassFilter,
+  pinnedListingId?: string | null,
+): Promise<DealCarouselPayload | null> {
+  try {
+    const qs = new URLSearchParams({
+      city: town,
+      kind,
+      property,
+    });
+    if (pinnedListingId) qs.set("listing", pinnedListingId);
+    const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
+    if (!r.ok) return null;
+    const body = (await r.json()) as DealCarouselPayload;
+    const deal = hasListing(body) ? body : null;
+    if (deal) prefetchListingImages(deal);
+    return deal;
+  } catch {
+    return null;
+  }
+}
 
 export function useDealOfTheDayCarousel(options?: {
   /** Start the carousel on this town when available. */
@@ -90,13 +165,16 @@ export function useDealOfTheDayCarousel(options?: {
   const rotate = options?.rotate !== false;
   const enabled = options?.enabled !== false;
   const orderedTowns = usePersonalizedTowns(TMRE_TOWNS);
-  const [dealsByTown, setDealsByTown] = useState<
-    Partial<Record<TmreTown, DealCarouselPayload | null>>
-  >({});
+  const [dealsByTown, setDealsByTown] = useState<DealsByTown>({});
   const [loading, setLoading] = useState(true);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [slideDir, setSlideDir] = useState<SlideDirection>("next");
+  const [slideDir, setSlideDir] = useState<SlideDirection>(null);
+  /** Manual town pin from pill click — cleared when filters change or rotate stops. */
+  const [selectedTown, setSelectedTown] = useState<TmreTown | null>(null);
+
+  const filterCacheRef = useRef<Map<string, DealsByTown>>(new Map());
+  const prefetchStartedRef = useRef(false);
 
   const townsToFetch = useMemo(() => {
     if (!rotate && options?.initialTown && options.initialTown !== "All") {
@@ -119,6 +197,13 @@ export function useDealOfTheDayCarousel(options?: {
       ? options.propertyClass
       : "homes";
   const pinnedListingId = options?.pinnedListingId?.trim() || null;
+  const activeFilterKey = filterCacheKey(kindParam, propertyClassParam);
+
+  // URL/city pin takes priority over in-page town pill selection.
+  useEffect(() => {
+    setSelectedTown(null);
+    setSlideDir(null);
+  }, [kindParam, propertyClassParam, pinnedListingId, options?.initialTown, rotate]);
 
   useEffect(() => {
     if (!enabled) {
@@ -126,7 +211,6 @@ export function useDealOfTheDayCarousel(options?: {
       return;
     }
     let cancelled = false;
-    let keepSpinner = true;
     const pinnedTownForFetch =
       !rotate &&
       options?.initialTown &&
@@ -134,116 +218,89 @@ export function useDealOfTheDayCarousel(options?: {
         ? TMRE_TOWNS.find((t) => t.toLowerCase() === options.initialTown!.toLowerCase())
         : null;
 
-    setDealsByTown((prev) => {
-      if (pinnedTownForFetch) {
-        const existing = prev[pinnedTownForFetch];
-        if (hasListing(existing)) keepSpinner = false;
-        return { [pinnedTownForFetch]: existing };
+    // Instant filter switch when this combo was already loaded.
+    if (!pinnedListingId && !pinnedTownForFetch) {
+      const cached = filterCacheRef.current.get(activeFilterKey);
+      if (cached && Object.values(cached).some(hasListing)) {
+        setDealsByTown(cached);
+        setLoading(false);
+        setSlideDir(null);
+        // Still refresh in background below.
+      } else {
+        // Don't wipe — keep prior panel until the new filter's data arrives.
+        setLoading(true);
+        setSlideDir(null);
       }
-      return {};
-    });
-    setLoading(keepSpinner);
+    } else {
+      setDealsByTown((prev) => {
+        if (pinnedTownForFetch) {
+          const existing = prev[pinnedTownForFetch];
+          return { [pinnedTownForFetch]: existing };
+        }
+        return {};
+      });
+      setLoading(true);
+      setSlideDir(null);
+    }
 
     if (townsToFetch.length === 0) {
       setLoading(false);
       return;
     }
 
-    // Progressive: paint as soon as the first town returns; fill the rest in background.
     const useBundle =
       rotate &&
       townsToFetch.length > 1 &&
       !pinnedListingId &&
       !pinnedTownForFetch;
 
-    if (useBundle) {
-      void (async () => {
-        const fromBundle: Partial<Record<TmreTown, DealCarouselPayload | null>> =
-          {};
-        try {
-          const qs = new URLSearchParams({
-            bundle: "1",
-            kind: kindParam,
-            property: propertyClassParam,
-          });
-          const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
-          if (r.ok) {
-            const body = (await r.json()) as {
-              deals?: Partial<Record<TmreTown, DealCarouselPayload>>;
-            };
-            let any = false;
-            for (const town of townsToFetch) {
-              const deal = body.deals?.[town];
-              fromBundle[town] = deal && hasListing(deal) ? deal : null;
-              if (fromBundle[town]) {
-                any = true;
-                prefetchListingImages(fromBundle[town]!);
-              }
-            }
-            if (any && !cancelled) {
-              setDealsByTown(fromBundle);
-              setLoading(false);
-            }
-          }
-        } catch {
-          // fall through to per-town fetch
-        }
+    void (async () => {
+      let next: DealsByTown = {};
+
+      if (useBundle) {
+        next = await fetchDealBundle(kindParam, propertyClassParam, townsToFetch);
         if (cancelled) return;
-        const missing = townsToFetch.filter(
-          (town) => !hasListing(fromBundle[town]),
-        );
-        if (missing.length === 0) return;
-        for (const town of missing) {
-          void (async () => {
-            let deal: DealCarouselPayload | null = null;
-            try {
-              const qs = new URLSearchParams({
-                city: town,
-                kind: kindParam,
-                property: propertyClassParam,
-              });
-              const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
-              if (r.ok) {
-                const body = (await r.json()) as DealCarouselPayload;
-                deal = hasListing(body) ? body : null;
-                if (deal) prefetchListingImages(deal);
-              }
-            } catch {
-              deal = null;
-            }
-            if (cancelled) return;
-            setDealsByTown((prev) => ({ ...prev, [town]: deal }));
-            setLoading(false);
-          })();
-        }
-      })();
-    } else {
-      for (const town of townsToFetch) {
-        void (async () => {
-          let deal: DealCarouselPayload | null = null;
-          try {
-            const qs = new URLSearchParams({
-              city: town,
-              kind: kindParam,
-              property: propertyClassParam,
-            });
-            if (pinnedListingId) qs.set("listing", pinnedListingId);
-            const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
-            if (r.ok) {
-              const body = (await r.json()) as DealCarouselPayload;
-              deal = hasListing(body) ? body : null;
-              if (deal) prefetchListingImages(deal);
-            }
-          } catch {
-            deal = null;
-          }
-          if (cancelled) return;
-          setDealsByTown((prev) => ({ ...prev, [town]: deal }));
-          // Stop the hero spinner as soon as any town can paint.
+        if (Object.values(next).some(hasListing)) {
+          filterCacheRef.current.set(activeFilterKey, next);
+          setDealsByTown(next);
           setLoading(false);
-        })();
+        }
+        const missing = townsToFetch.filter((town) => !hasListing(next[town]));
+        await Promise.all(
+          missing.map(async (town) => {
+            const deal = await fetchTownDeal(town, kindParam, propertyClassParam);
+            if (cancelled) return;
+            next = { ...next, [town]: deal };
+            filterCacheRef.current.set(activeFilterKey, { ...next });
+            setDealsByTown({ ...next });
+            setLoading(false);
+          }),
+        );
+        if (!cancelled && !Object.values(next).some(hasListing)) {
+          setDealsByTown({});
+          setLoading(false);
+        }
+      } else {
+        const merged: DealsByTown = {};
+        await Promise.all(
+          townsToFetch.map(async (town) => {
+            const deal = await fetchTownDeal(
+              town,
+              kindParam,
+              propertyClassParam,
+              pinnedListingId,
+            );
+            if (cancelled) return;
+            merged[town] = deal;
+            if (!pinnedListingId) {
+              filterCacheRef.current.set(activeFilterKey, { ...merged });
+            }
+            setDealsByTown({ ...merged });
+            setLoading(false);
+          }),
+        );
       }
-    }
+    })();
 
     return () => {
       cancelled = true;
@@ -256,7 +313,26 @@ export function useDealOfTheDayCarousel(options?: {
     pinnedListingId,
     rotate,
     options?.initialTown,
+    activeFilterKey,
   ]);
+
+  // Warm other filter bundles so pills swap instantly (no admin sync required for UX).
+  useEffect(() => {
+    if (!enabled || !rotate || pinnedListingId || prefetchStartedRef.current) return;
+    if (!Object.values(dealsByTown).some(hasListing)) return;
+    prefetchStartedRef.current = true;
+    const towns = [...townsToFetch];
+    void (async () => {
+      for (const combo of ALL_FILTER_COMBOS) {
+        const key = filterCacheKey(combo.kind, combo.property);
+        if (filterCacheRef.current.has(key)) continue;
+        const bundled = await fetchDealBundle(combo.kind, combo.property, towns);
+        if (Object.values(bundled).some(hasListing)) {
+          filterCacheRef.current.set(key, bundled);
+        }
+      }
+    })();
+  }, [enabled, rotate, pinnedListingId, dealsByTown, townsToFetch]);
 
   const carouselTowns = useMemo(
     () => townsToFetch.filter((town) => hasListing(dealsByTown[town])),
@@ -273,21 +349,30 @@ export function useDealOfTheDayCarousel(options?: {
 
   useEffect(() => {
     setIndex(0);
+    setSlideDir(null);
   }, [rotate, options?.initialTown, kindParam, propertyClassParam, pinnedListingId]);
 
   useEffect(() => {
-    if (pinnedTown || carouselTowns.length === 0) return;
+    if (pinnedTown || selectedTown || carouselTowns.length === 0) return;
     const initial = options?.initialTown;
     if (!initial || initial === "All") return;
     const idx = carouselTowns.findIndex(
       (t) => t.toLowerCase() === initial.toLowerCase(),
     );
     if (idx >= 0) setIndex(idx);
-  }, [pinnedTown, options?.initialTown, carouselTowns]);
+  }, [pinnedTown, selectedTown, options?.initialTown, carouselTowns]);
+
+  // Keep selectedTown index in sync once that town's deal arrives.
+  useEffect(() => {
+    if (!selectedTown || carouselTowns.length === 0) return;
+    const idx = carouselTowns.findIndex((t) => t === selectedTown);
+    if (idx >= 0) setIndex(idx);
+  }, [selectedTown, carouselTowns]);
 
   const safeIndex =
     carouselTowns.length > 0 ? index % carouselTowns.length : 0;
-  const currentTown = pinnedTown ?? carouselTowns[safeIndex] ?? null;
+  const currentTown =
+    pinnedTown ?? selectedTown ?? carouselTowns[safeIndex] ?? null;
   const currentDeal = currentTown ? dealsByTown[currentTown] ?? null : null;
 
   useEffect(() => {
@@ -297,12 +382,14 @@ export function useDealOfTheDayCarousel(options?: {
 
   const goNext = useCallback(() => {
     if (carouselTowns.length <= 1) return;
+    setSelectedTown(null);
     setSlideDir("next");
     setIndex((i) => (i + 1) % carouselTowns.length);
   }, [carouselTowns.length]);
 
   const goPrev = useCallback(() => {
     if (carouselTowns.length <= 1) return;
+    setSelectedTown(null);
     setSlideDir("prev");
     setIndex((i) => (i - 1 + carouselTowns.length) % carouselTowns.length);
   }, [carouselTowns.length]);
@@ -310,6 +397,20 @@ export function useDealOfTheDayCarousel(options?: {
   const togglePause = useCallback(() => {
     setPaused((p) => !p);
   }, []);
+
+  /** Instant town pick from the header list — no book-flip. */
+  const selectTown = useCallback(
+    (town: string) => {
+      const match = TMRE_TOWNS.find((t) => t.toLowerCase() === town.trim().toLowerCase());
+      if (!match) return;
+      setSlideDir(null);
+      setPaused(true);
+      setSelectedTown(match);
+      const idx = carouselTowns.findIndex((t) => t === match);
+      if (idx >= 0) setIndex(idx);
+    },
+    [carouselTowns],
+  );
 
   useEffect(() => {
     if (!rotate || paused || carouselTowns.length <= 1) return;
@@ -323,6 +424,7 @@ export function useDealOfTheDayCarousel(options?: {
     togglePause,
     goNext,
     goPrev,
+    selectTown,
     slideDir,
     currentTown,
     currentDeal,

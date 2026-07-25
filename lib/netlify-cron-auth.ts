@@ -31,6 +31,9 @@ export function netlifySiteBaseUrl(): string | null {
     process.env.URL?.trim() ||
     process.env.DEPLOY_PRIME_URL?.trim() ||
     process.env.DEPLOY_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SITE_URL?.trim()
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    (process.env.SITE_NAME?.trim()
+      ? `https://${process.env.SITE_NAME.trim()}.netlify.app`
+      : '')
   return base ? base.replace(/\/$/, '') : null
 }

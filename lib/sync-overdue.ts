@@ -18,6 +18,11 @@ import {
   isScheduledSyncPausedFresh,
   type ScheduledSyncJobId,
 } from '@/lib/scheduled-sync-toggle'
+import {
+  isSyncNextOverrideDue,
+  shouldDeferScheduledJob,
+  type SyncNextOverrideJobId,
+} from '@/lib/sync-next-override'
 
 export type OverdueSyncJob = AdminSyncActionId | 'edge-scores'
 
@@ -129,9 +134,12 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
   const statsIntervalMs = statsRefreshIntervalMs()
 
   const overdue = new Set<OverdueSyncJob>()
+  const notDeferred = (job: SyncNextOverrideJobId) => !shouldDeferScheduledJob(job, now)
 
   if (
-    isWeeklyMondaySyncOverdue(stats.lastFullSync, 5, 0, now) &&
+    notDeferred('full-resync') &&
+    (isSyncNextOverrideDue('full-resync', now) ||
+      isWeeklyMondaySyncOverdue(stats.lastFullSync, 5, 0, now)) &&
     isRetsConfigured()
   ) {
     overdue.add('full-resync')
@@ -139,45 +147,75 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
 
   if (
     !overdue.has('full-resync') &&
-    isIntervalSyncOverdue(
-      incrementalBaselineIso(stats.lastIncrementalSync, stats.lastFullSync),
-      incrementalIntervalMs,
-      now,
-    ) &&
+    notDeferred('incremental') &&
+    (isSyncNextOverrideDue('incremental', now) ||
+      isIntervalSyncOverdue(
+        incrementalBaselineIso(stats.lastIncrementalSync, stats.lastFullSync),
+        incrementalIntervalMs,
+        now,
+      )) &&
     isRetsConfigured()
   ) {
     overdue.add('incremental')
   }
 
-  if (!overdue.has('full-resync') && isWeeklyMondaySyncOverdue(stats.lastListingScores, 5, 0, now)) {
+  if (
+    !overdue.has('full-resync') &&
+    notDeferred('listing-scores') &&
+    (isSyncNextOverrideDue('listing-scores', now) ||
+      isWeeklyMondaySyncOverdue(stats.lastListingScores, 5, 0, now))
+  ) {
     overdue.add('listing-scores')
   }
 
-  if (!overdue.has('full-resync') && isIntervalSyncOverdue(stats.lastStatsCache, statsIntervalMs, now)) {
+  if (
+    !overdue.has('full-resync') &&
+    notDeferred('stats-cache') &&
+    (isSyncNextOverrideDue('stats-cache', now) ||
+      isIntervalSyncOverdue(stats.lastStatsCache, statsIntervalMs, now))
+  ) {
     overdue.add('stats-cache')
   }
 
-  if (!overdue.has('full-resync') && isWeeklyMondaySyncOverdue(stats.lastDealOfTheDayCache, 5, 0, now)) {
+  if (
+    !overdue.has('full-resync') &&
+    notDeferred('deal-of-the-day') &&
+    (isSyncNextOverrideDue('deal-of-the-day', now) ||
+      isWeeklyMondaySyncOverdue(stats.lastDealOfTheDayCache, 5, 0, now))
+  ) {
     overdue.add('deal-of-the-day')
   }
 
   const refreshBaseline = incrementalBaselineIso(stats.lastIncrementalSync, stats.lastFullSync)
   const refreshDue =
     (isWeeklyMondaySyncOverdue(stats.lastFullSync, 5, 0, now) ||
-      isIntervalSyncOverdue(refreshBaseline, incrementalIntervalMs, now)) &&
+      isIntervalSyncOverdue(refreshBaseline, incrementalIntervalMs, now) ||
+      isSyncNextOverrideDue('incremental', now) ||
+      isSyncNextOverrideDue('full-resync', now)) &&
     isRetsConfigured()
-  if (refreshDue && isIntervalSyncOverdue(lastRefreshFinished, incrementalIntervalMs, now)) {
+  if (
+    refreshDue &&
+    notDeferred('incremental') &&
+    isIntervalSyncOverdue(lastRefreshFinished, incrementalIntervalMs, now)
+  ) {
     overdue.add('publish-snapshot')
   }
 
-  if (isWeeklyMondaySyncOverdue(propertyAddressesSyncedAt, 1, 0, now) && isRetsConfigured()) {
+  if (
+    notDeferred('property-addresses') &&
+    (isSyncNextOverrideDue('property-addresses', now) ||
+      isWeeklyMondaySyncOverdue(propertyAddressesSyncedAt, 1, 0, now)) &&
+    isRetsConfigured()
+  ) {
     overdue.add('property-addresses')
   }
 
   const lastZipBoundaries = getSyncMeta('last_zip_boundaries_sync')
   if (
-    lastZipBoundaries == null ||
-    isIntervalSyncOverdue(lastZipBoundaries, ZIP_BOUNDARIES_TTL_MS, now)
+    notDeferred('zip-boundaries') &&
+    (isSyncNextOverrideDue('zip-boundaries', now) ||
+      lastZipBoundaries == null ||
+      isIntervalSyncOverdue(lastZipBoundaries, ZIP_BOUNDARIES_TTL_MS, now))
   ) {
     overdue.add('zip-boundaries')
   }

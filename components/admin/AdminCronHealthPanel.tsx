@@ -77,9 +77,8 @@ export default function AdminCronHealthPanel({
         setMessage(body.error ?? body.note ?? `Failed (${res.status})`);
       } else {
         setMessage(
-          body.mode === "queued-worker"
-            ? `Worker queued (HTTP ${body.workerStatus ?? "—"}) — Start/End update when it finishes`
-            : body.note ?? `Ran (${body.mode ?? "ok"})`,
+          body.note ??
+            `Incremental finished (${body.mode ?? "ok"}) — check Start/End on Database tab`,
         );
       }
       await refresh();
@@ -126,11 +125,11 @@ export default function AdminCronHealthPanel({
             </span>
           </p>
           <p className="text-xs text-charcoal/60 leading-relaxed max-w-xl">
-            Database → Incremental Next time only shows the next :00/:30 clock slot when
-            overdue — it is not proof cron ran. This heartbeat is written by{" "}
-            <span className="font-mono text-[10px]">sync-listings</span> every 30m, then
-            work runs in{" "}
-            <span className="font-mono text-[10px]">sync-listings-worker</span>.
+            Database → Incremental Next is only clock-slot math when overdue — not proof
+            cron ran. <span className="font-mono text-[10px]">sync-listings</span> runs
+            the RETS pull in-process every 30m and stamps this heartbeat.{" "}
+            <span className="font-mono text-[10px]">Run cron now</span> uses the
+            background worker (spotlight + saved-search extras).
           </p>
           {status && !status.hasSyncCronSecret ? (
             <p className="text-xs text-gold">

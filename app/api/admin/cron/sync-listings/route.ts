@@ -27,8 +27,8 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST — stamp heartbeat + queue Netlify background worker (same path as cron).
- * Use when the scheduled function is silent so Admin can force a tick.
+ * POST — run the fuller incremental path in this Admin request (reliable),
+ * and also try to queue the background worker when a site URL is available.
  */
 export async function POST(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
@@ -38,57 +38,36 @@ export async function POST(req: NextRequest) {
   const startedAt = new Date().toISOString()
   const heartbeat = await stampIncrementalCronHeartbeat(startedAt)
 
+  const { runIncrementalSyncListingsWork } = await import(
+    '@/lib/netlify-sync-listings-work'
+  )
+  const result = await runIncrementalSyncListingsWork(startedAt)
+
   const base = netlifySiteBaseUrl()
-  if (!base) {
-    // Fall back to running work in-process on this Lambda (admin-triggered).
-    const { runIncrementalSyncListingsWork } = await import(
-      '@/lib/netlify-sync-listings-work'
-    )
-    const result = await runIncrementalSyncListingsWork(startedAt)
-    return NextResponse.json({
-      ok: result.status < 400,
-      mode: 'in-process',
-      heartbeat,
-      worker: result.body,
-      note: 'No URL/DEPLOY_URL — ran incremental work in this Admin request',
-    })
-  }
-
-  const secret = syncCronSecret()
-  const workerUrl = `${base}/.netlify/functions/sync-listings-worker`
-  const headers: Record<string, string> = { 'content-type': 'application/json' }
-  if (secret) headers.authorization = `Bearer ${secret}`
-
-  try {
-    const res = await fetch(workerUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ startedAt, source: 'admin-cron-sync-listings' }),
-    })
-    const text = await res.text()
-    let body: unknown = text
+  let workerStatus: number | null = null
+  if (base) {
+    const secret = syncCronSecret()
+    const workerUrl = `${base}/.netlify/functions/sync-listings-worker`
+    const headers: Record<string, string> = { 'content-type': 'application/json' }
+    if (secret) headers.authorization = `Bearer ${secret}`
     try {
-      body = JSON.parse(text) as unknown
+      const res = await fetch(workerUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ startedAt, source: 'admin-cron-sync-listings' }),
+      })
+      workerStatus = res.status
     } catch {
-      /* keep text */
+      /* in-process result is authoritative */
     }
-    return NextResponse.json({
-      ok: res.status === 202 || res.ok,
-      mode: 'queued-worker',
-      heartbeat,
-      workerStatus: res.status,
-      workerUrl,
-      workerBody: body,
-    })
-  } catch (err) {
-    return NextResponse.json(
-      {
-        ok: false,
-        mode: 'queue-failed',
-        heartbeat,
-        error: err instanceof Error ? err.message : String(err),
-      },
-      { status: 502 },
-    )
   }
+
+  return NextResponse.json({
+    ok: result.status < 400,
+    mode: 'in-process',
+    heartbeat,
+    worker: result.body,
+    workerStatus,
+    note: 'Ran incremental work in this Admin request (scheduled cron uses the same lean path in-process)',
+  })
 }

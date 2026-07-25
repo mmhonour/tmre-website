@@ -27,6 +27,7 @@ export async function register() {
     const { hasLocalListingsCache } = await import('./lib/listings-store')
     const { getSyncMeta } = await import('./lib/db/sync-meta-store')
     const { isScheduledSyncJobPaused } = await import('./lib/scheduled-sync-toggle')
+    const { shouldDeferScheduledJob } = await import('./lib/sync-next-override')
     const { isRetsConfigured } = await import('./lib/rets')
 
     const retsConfigured = isRetsConfigured()
@@ -99,6 +100,7 @@ export async function register() {
       const runLatestSync = () => {
         if (latestSyncRunning) return
         if (isScheduledSyncJobPaused('incremental')) return
+        if (shouldDeferScheduledJob('incremental')) return
         latestSyncRunning = true
         Promise.resolve()
           .then(() => syncIncrementalListings())
@@ -107,6 +109,8 @@ export async function register() {
             // states the Active-only incremental never revisits) into Postgres.
             const { refreshSpotlightStatuses } = await import('./lib/spotlight-status-sync')
             await refreshSpotlightStatuses()
+            const { clearSyncNextOverrideAfterRun } = await import('./lib/sync-next-override')
+            await clearSyncNextOverrideAfterRun('incremental')
           })
           .catch((err) => console.error('[latest-sync/instrumentation]', err))
           .finally(() => {
@@ -143,6 +147,11 @@ export async function register() {
             scheduleNextFullReload()
             return
           }
+          if (shouldDeferScheduledJob('full-resync')) {
+            console.info('[listings-sync] weekly full reload deferred — Admin Next override')
+            scheduleNextFullReload()
+            return
+          }
           syncAllTownListings()
             .catch((err) => console.error('[listings-sync/weekly-full]', err))
             .finally(() => scheduleNextFullReload())
@@ -154,6 +163,7 @@ export async function register() {
     if (allowListingsSync) {
       const runListingsSync = () => {
         if (isScheduledSyncJobPaused('incremental')) return
+        if (shouldDeferScheduledJob('incremental')) return
         syncListingsSmart().catch((err) => {
           console.error('[listings-sync/instrumentation]', err)
         })
@@ -191,6 +201,7 @@ export async function register() {
     if (Number.isFinite(statsRefreshMs) && statsRefreshMs >= 60_000) {
       const refreshStats = async () => {
         if (isScheduledSyncJobPaused('stats-cache')) return
+        if (shouldDeferScheduledJob('stats-cache')) return
         if (!(await hasLocalListingsCache())) return
         if (getSyncMeta('refresh_in_progress') === '1') {
           console.info('[stats-cache] skipped — listings refresh in progress')
@@ -259,6 +270,13 @@ export async function register() {
             schedulePropertyAddressSync()
             return
           }
+          if (shouldDeferScheduledJob('property-addresses')) {
+            console.info(
+              '[property-address-sync] weekly verify deferred — Admin Next override',
+            )
+            schedulePropertyAddressSync()
+            return
+          }
           if (propertyAddressSyncRunning) {
             schedulePropertyAddressSync()
             return
@@ -290,6 +308,13 @@ export async function register() {
           if (isScheduledSyncJobPaused('listing-scores')) {
             console.info(
               '[listing-edge-scores] weekly rebuild skipped — listing-scores paused by admin',
+            )
+            scheduleEdgeScoreRebuild()
+            return
+          }
+          if (shouldDeferScheduledJob('listing-scores')) {
+            console.info(
+              '[listing-edge-scores] weekly rebuild deferred — Admin Next override',
             )
             scheduleEdgeScoreRebuild()
             return

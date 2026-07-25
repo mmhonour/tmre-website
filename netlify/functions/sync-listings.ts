@@ -1,87 +1,158 @@
 import type { Config } from '@netlify/functions'
 import {
-  netlifySiteBaseUrl,
-  syncCronSecret,
-} from '../../lib/netlify-cron-auth'
-import { stampIncrementalCronHeartbeat } from '../../lib/netlify-sync-listings-work'
+  hydrateSyncMetaStore,
+  setSyncMetaDurable,
+} from '../../lib/db/sync-meta-store'
+import {
+  LAST_INCREMENTAL_CRON_TICK_KEY,
+  recordIncrementalCronTick,
+  runIncrementalSyncListingsWork,
+} from '../../lib/netlify-sync-listings-work'
+import { healStaleRefreshLock } from '../../lib/sqlite-refresh-status'
+import { healStaleOverdueCatchupLock } from '../../lib/sync-overdue'
+import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
+import { syncIncrementalListings, getSyncStatus } from '../../lib/listings-sync'
+import {
+  clearSyncNextOverrideAfterRun,
+  shouldDeferScheduledJob,
+} from '../../lib/sync-next-override'
 
 /**
- * Thin SCHEDULED trigger (no background).
+ * Scheduled incremental trigger (NO background flag).
  *
- * Netlify docs: long work must run in a separate background function invoked
- * from a standard scheduled function. Combining `schedule` + `background: true`
- * on one function can deploy with a schedule badge but never auto-invoke.
+ * Runs the RETS pull in-process. A schedule→HTTP→background hop is fragile
+ * (missing URL at runtime, site password, 404) and was the likely failure at
+ * 8:30 after deploy — build was live, but the worker never got queued.
  *
- * This handler must finish well under the 30s scheduled-function limit:
- * 1) stamp cron heartbeat → sync_runs + last_incremental_cron_tick
- * 2) POST the background worker
+ * Keep this under Netlify's ~30s scheduled-function limit: incremental only,
+ * no full-resync catch-up, no saved-search digests (those stay on the worker /
+ * Admin "Run cron now").
  */
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
   const startedAt = new Date().toISOString()
 
-  const heartbeat = await stampIncrementalCronHeartbeat(startedAt)
+  try {
+    await hydrateSyncMetaStore()
+    if (healStaleRefreshLock()) {
+      console.info('[netlify/sync-listings] cleared stale refresh lock')
+    }
+    if (healStaleOverdueCatchupLock()) {
+      console.info('[netlify/sync-listings] cleared stale overdue catch-up lock')
+    }
+    await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
 
-  const base = netlifySiteBaseUrl()
-  if (!base) {
-    console.error('[netlify/sync-listings] no URL/DEPLOY_* base — cannot queue worker')
+    if (await isScheduledSyncJobPausedFresh('incremental')) {
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: true,
+        skipped: true,
+        error: 'incremental scheduled sync paused by admin',
+      })
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: 'scheduled-in-process',
+          skipped: true,
+          reason: 'incremental scheduled sync paused by admin',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    if (shouldDeferScheduledJob('incremental')) {
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: true,
+        skipped: true,
+        error: 'deferred — Admin Next override is still in the future',
+      })
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: 'scheduled-in-process',
+          skipped: true,
+          reason: 'Admin Next override — not due yet',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    // Lean path — sync only (typical ~10–20s). Spotlight/alerts via worker/Admin.
+    const result = await syncIncrementalListings()
+    const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
+    const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
+    await recordIncrementalCronTick({
+      startedAt: result.startedAt || startedAt,
+      ok: okTowns,
+      listingsCount: result.totalUpserted,
+      skipped: skippedEmpty,
+      error: skippedEmpty
+        ? 'no town work (RETS missing, refresh lock, or empty tick)'
+        : result.towns
+            .filter((row) => !row.ok)
+            .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
+            .join('; ') || null,
+    })
+    if (okTowns && !skippedEmpty) {
+      await clearSyncNextOverrideAfterRun('incremental')
+    }
+
+    // Best-effort spotlight status (bounded); do not block the schedule on digests.
+    try {
+      const { refreshSpotlightStatuses } = await import(
+        '../../lib/spotlight-status-sync'
+      )
+      await refreshSpotlightStatuses()
+    } catch (err) {
+      console.warn('[netlify/sync-listings] spotlight status refresh failed', err)
+    }
+
+    const ok = result.towns.length === 0 || result.towns.every((row) => row.ok)
     return new Response(
       JSON.stringify({
+        ...result,
+        ok,
+        mode: 'scheduled-in-process',
+        stats: await getSyncStatus(),
+      }),
+      {
+        status: ok ? 200 : 502,
+        headers: { 'content-type': 'application/json' },
+      },
+    )
+  } catch (err) {
+    console.error('[netlify/sync-listings]', err)
+    try {
+      await recordIncrementalCronTick({
+        startedAt,
         ok: false,
-        heartbeat,
-        error: 'Missing URL/DEPLOY_URL — background worker not queued',
+        error: err instanceof Error ? err.message : String(err),
+      })
+    } catch {
+      /* ignore */
+    }
+    // Last resort: full worker path (same process) if lean path threw early.
+    try {
+      const fallback = await runIncrementalSyncListingsWork(startedAt)
+      return new Response(JSON.stringify({ mode: 'fallback-work', ...fallback.body }), {
+        status: fallback.status,
+        headers: { 'content-type': 'application/json' },
+      })
+    } catch {
+      /* ignore */
+    }
+    return new Response(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : String(err),
+        mode: 'scheduled-in-process',
       }),
       { status: 500, headers: { 'content-type': 'application/json' } },
     )
   }
-
-  const secret = syncCronSecret()
-  const workerUrl = `${base}/.netlify/functions/sync-listings-worker`
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-  }
-  if (secret) headers.authorization = `Bearer ${secret}`
-
-  let workerStatus: number | null = null
-  let workerQueued = false
-  try {
-    const res = await fetch(workerUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ startedAt, source: 'scheduled-sync-listings' }),
-    })
-    workerStatus = res.status
-    // Background functions acknowledge with 202; sync also accepts 200.
-    workerQueued = res.status === 202 || res.ok
-    if (!workerQueued) {
-      const text = await res.text().catch(() => '')
-      console.error(
-        `[netlify/sync-listings] worker invoke failed status=${res.status}`,
-        text.slice(0, 400),
-      )
-    }
-  } catch (err) {
-    console.error('[netlify/sync-listings] worker invoke error', err)
-  }
-
-  return new Response(
-    JSON.stringify({
-      ok: heartbeat.ok && workerQueued,
-      mode: 'scheduler',
-      heartbeat,
-      workerQueued,
-      workerStatus,
-      workerUrl,
-    }),
-    {
-      status: heartbeat.ok && workerQueued ? 200 : 502,
-      headers: { 'content-type': 'application/json' },
-    },
-  )
 }
 
 export const config: Config = {
-  // Literal cron — Netlify schedule detection is unreliable with template literals.
-  // Do NOT set background: true here (see file comment).
+  // Literal cron. Do NOT set background: true on this function.
   schedule: '*/30 * * * *',
 }

@@ -192,7 +192,7 @@ const townCarouselBtnClass =
 const DEAL_TOWN_TRANSITION_MS = 520;
 
 const townLinkClass = (active: boolean) =>
-  `transition-colors duration-300 underline-offset-2 hover:underline ${
+  `bg-transparent p-0 m-0 border-0 cursor-pointer font-inherit tracking-[0.15em] uppercase transition-colors duration-300 underline-offset-2 hover:underline ${
     active
       ? "text-gold font-bold hover:text-gold-light"
       : "text-white/45 font-normal hover:text-white/70"
@@ -204,7 +204,14 @@ function DealDayTownListTagline() {
   );
 }
 
-function DealDayTownListDesktop({ activeTown }: { activeTown: string | null }) {
+function DealDayTownListDesktop({
+  activeTown,
+  onSelectTown,
+}: {
+  activeTown: string | null;
+  /** When set, town clicks jump in-place (no navigation / flip). */
+  onSelectTown?: (town: string) => void;
+}) {
   const towns = usePersonalizedTowns(TMRE_TOWNS);
   const activeKey = activeTown?.trim().toLowerCase() ?? null;
 
@@ -220,13 +227,24 @@ function DealDayTownListDesktop({ activeTown }: { activeTown: string | null }) {
               {separator ? (
                 <span className="text-white/45">{separator}</span>
               ) : null}
-              <Link
-                href={dealOfTheDayHref(town)}
-                aria-current={isActive ? "page" : undefined}
-                className={townLinkClass(isActive)}
-              >
-                {town}
-              </Link>
+              {onSelectTown ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectTown(town)}
+                  aria-current={isActive ? "true" : undefined}
+                  className={townLinkClass(isActive)}
+                >
+                  {town}
+                </button>
+              ) : (
+                <Link
+                  href={dealOfTheDayHref(town)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={townLinkClass(isActive)}
+                >
+                  {town}
+                </Link>
+              )}
             </span>
           );
         })}
@@ -238,10 +256,11 @@ function DealDayTownListDesktop({ activeTown }: { activeTown: string | null }) {
 
 function DealDayTownListMobile({
   activeTown,
-  slideDir = "next",
+  slideDir = null,
 }: {
   activeTown: string | null;
-  slideDir?: "next" | "prev";
+  /** null = instant (pill / filter); next/prev = carousel slide. */
+  slideDir?: "next" | "prev" | null;
 }) {
   const prevTownRef = useRef<string | null>(activeTown);
   const [exitingTown, setExitingTown] = useState<string | null>(null);
@@ -252,6 +271,13 @@ function DealDayTownListMobile({
 
     if (!next) {
       prevTownRef.current = null;
+      setExitingTown(null);
+      return;
+    }
+
+    // Instant town/filter picks — no exit/enter dance.
+    if (!slideDir) {
+      prevTownRef.current = next;
       setExitingTown(null);
       return;
     }
@@ -270,7 +296,7 @@ function DealDayTownListMobile({
     }, DEAL_TOWN_TRANSITION_MS);
 
     return () => window.clearTimeout(id);
-  }, [activeTown]);
+  }, [activeTown, slideDir]);
 
   const town = activeTown?.trim() || null;
   const exitAnimClass =
@@ -291,16 +317,14 @@ function DealDayTownListMobile({
                 <span className="text-white/45">, </span>
               </span>
             ) : null}
-            <Link
+            <span
               key={town}
-              href={dealOfTheDayHref(town)}
-              aria-current="page"
               className={`${townLinkClass(true)} ${
                 exitingTown ? "animate-deal-town-enter" : ""
               }`}
             >
               {town}
-            </Link>
+            </span>
           </>
         ) : null}
       </p>
@@ -312,13 +336,18 @@ function DealDayTownListMobile({
 function DealDayTownList({
   activeTown,
   slideDir,
+  onSelectTown,
 }: {
   activeTown: string | null;
-  slideDir?: "next" | "prev";
+  slideDir?: "next" | "prev" | null;
+  onSelectTown?: (town: string) => void;
 }) {
   return (
     <>
-      <DealDayTownListDesktop activeTown={activeTown} />
+      <DealDayTownListDesktop
+        activeTown={activeTown}
+        onSelectTown={onSelectTown}
+      />
       <DealDayTownListMobile activeTown={activeTown} slideDir={slideDir} />
     </>
   );
@@ -542,6 +571,14 @@ export default function DealOfTheWeekHero({
   const slideKey = isDay
     ? `${dayTxFilter}-${dayPropertyClass}-${listingParam ?? "auto"}-${carousel.currentTown ?? "none"}-${carousel.carouselIndex}`
     : "static";
+  // Remount+flip only for ‹/› / auto-rotate. Filter & town pills update in place.
+  const dealCardKey =
+    isDay && slideDir
+      ? slideKey
+      : isDay
+        ? "day-instant"
+        : "week";
+  const animateDealContent = Boolean(isDay && slideDir);
   const dayInsight = dayEmpty
     ? dayTxFilter === "rental"
       ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental picks${city ? ` in ${city}` : " available"} right now.`
@@ -654,6 +691,9 @@ export default function DealOfTheWeekHero({
               <DealDayTownList
                 activeTown={city ?? carousel.currentTown}
                 slideDir={carousel.slideDir}
+                onSelectTown={
+                  !city && !listingParam ? carousel.selectTown : undefined
+                }
               />
             )}
             <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
@@ -679,9 +719,11 @@ export default function DealOfTheWeekHero({
             </h1>
             {isDay ? (
               <div
-                key={`photo-${slideKey}`}
+                key={animateDealContent ? `photo-${slideKey}` : "photo-instant"}
                 className={`max-w-xl relative rounded-2xl overflow-hidden border border-white/10 shadow-xl shadow-black/30 ${
-                  dayEmpty ? "" : "animate-deal-copy-refresh"
+                  dayEmpty || !animateDealContent
+                    ? ""
+                    : "animate-deal-copy-refresh"
                 }`}
               >
                 {dayEmpty ? (
@@ -728,11 +770,18 @@ export default function DealOfTheWeekHero({
               </div>
             ) : null}
             {isDay ? (
-              <div key={`insight-${slideKey}`} className="max-w-xl space-y-4">
+              <div
+                key={animateDealContent ? `insight-${slideKey}` : "insight-instant"}
+                className="max-w-xl space-y-4"
+              >
                 <DealInsightCopy
                   text={dayInsight}
-                  paragraphKey={`insight-${slideKey}`}
-                  className={`${dealInsightCopyClass} animate-deal-copy-refresh`}
+                  paragraphKey={
+                    animateDealContent ? `insight-${slideKey}` : "insight-instant"
+                  }
+                  className={`${dealInsightCopyClass}${
+                    animateDealContent ? " animate-deal-copy-refresh" : ""
+                  }`}
                 />
                 {!dayEmpty && superlatives.length > 0 ? (
                   <DealSuperlatives words={superlatives} />
@@ -773,7 +822,7 @@ export default function DealOfTheWeekHero({
             }`}
           >
             <DealCard
-              key={isDay ? slideKey : "week"}
+              key={dealCardKey}
               slideDir={isDay ? slideDir : undefined}
               detailHref={dayEmpty ? null : detailHref}
               photosHref={dayEmpty ? null : photosHref}
@@ -953,6 +1002,7 @@ function DealCard({
   scoreExplains?: boolean;
   valueDealMode?: boolean;
   townLabel?: string | null;
+  /** null/undefined = instant update (no book-flip). */
   slideDir?: "next" | "prev" | null;
   carouselControls?: {
     paused: boolean;
@@ -985,11 +1035,12 @@ function DealCard({
     : isRental
       ? "vs rent median"
       : "vs city median";
-  const showcaseAnimClass = slideDir
-    ? slideDir === "next"
+  const showcaseAnimClass =
+    slideDir === "next"
       ? "animate-deal-book-flip-next"
-      : "animate-deal-book-flip-prev"
-    : "animate-fade-up-delay-2";
+      : slideDir === "prev"
+        ? "animate-deal-book-flip-prev"
+        : "";
   const showFilterBar =
     Boolean(townLabel) ||
     Boolean(transactionFilter && onTransactionFilterChange) ||

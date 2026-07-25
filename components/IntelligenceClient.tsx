@@ -352,6 +352,42 @@ const BOARD_LISTING_LIMIT = 100;
 const PHOTO_PRIORITY_RANK_COUNT = 12;
 const BED_BATH_MAX = 6;
 const INTEL_SLIDER_WIDTH_CLASS = "w-[7.5rem]";
+
+/** Keep dual-range thumbs from stacking — always ≥1 step between them when possible. */
+const INTEL_DUAL_SLIDER_MIN_GAP = 1;
+
+function clampDualSliderMin(
+  next: number,
+  hi: number,
+  maxIndex: number,
+): number {
+  const gap = maxIndex >= INTEL_DUAL_SLIDER_MIN_GAP ? INTEL_DUAL_SLIDER_MIN_GAP : 0;
+  return Math.max(0, Math.min(next, hi - gap));
+}
+
+function clampDualSliderMax(
+  next: number,
+  lo: number,
+  maxIndex: number,
+): number {
+  const gap = maxIndex >= INTEL_DUAL_SLIDER_MIN_GAP ? INTEL_DUAL_SLIDER_MIN_GAP : 0;
+  return Math.min(maxIndex, Math.max(next, lo + gap));
+}
+
+/** Visual thumb positions when state bounds are equal — keep a 1-step gap. */
+function dualSliderThumbValues(
+  lo: number,
+  hi: number,
+  maxIndex: number,
+): { thumbLo: number; thumbHi: number } {
+  if (lo !== hi || maxIndex < INTEL_DUAL_SLIDER_MIN_GAP) {
+    return { thumbLo: lo, thumbHi: hi };
+  }
+  if (lo >= maxIndex) {
+    return { thumbLo: maxIndex - INTEL_DUAL_SLIDER_MIN_GAP, thumbHi: maxIndex };
+  }
+  return { thumbLo: lo, thumbHi: lo + INTEL_DUAL_SLIDER_MIN_GAP };
+}
 /** Keep slider descriptors enlarged this long after thumb release or descriptor click. */
 const DESCRIPTOR_ENLARGE_HOLD_MS = 10_000;
 type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft" | "furnished";
@@ -3952,8 +3988,14 @@ export default function IntelligenceClient() {
                   listings={vintageChartListingRows}
                   kind={tx === "rental" ? "rental" : "sale"}
                   activeBucketId={activeVintageChartBucketId}
+                  filterActive={vintageFilterActive(minVintage, maxVintage)}
                   onBucketClick={(bucketId) => {
                     selectVintageListings(bucketId);
+                  }}
+                  onResetFilter={() => {
+                    setMinVintageFilter("0");
+                    setMaxVintageFilter(String(VINTAGE_FILTER_MAX) as VintageIndexFilter);
+                    setBoardPage(1);
                   }}
                 />
               </div>
@@ -5014,6 +5056,7 @@ function IntelDualSlider({
   // Show the category label on the bar only while the range spans its full
   // extent (i.e. untouched / just reset). Any inward drag hides it.
   const atFullRange = lo <= 0 && hi >= maxIndex;
+  const { thumbLo, thumbHi } = dualSliderThumbValues(lo, hi, maxIndex);
   return (
     <div className="flex items-center shrink-0">
       <div className={`relative h-6 ${widthClass} shrink-0`}>
@@ -5034,11 +5077,18 @@ function IntelDualSlider({
           min={0}
           max={maxIndex}
           step={1}
-          value={lo}
+          value={thumbLo}
           disabled={disabled}
           onChange={(e) => {
             const next = Number(e.target.value);
-            const clamped = Math.min(next, hi);
+            // Stacked / equal bounds: upper input sits on top — route a left drag to min.
+            if (lo === hi && next < lo) {
+              const clamped = clampDualSliderMin(next, hi, maxIndex);
+              if (clamped !== lo) setSliderActive(true);
+              onMinChange(clamped);
+              return;
+            }
+            const clamped = clampDualSliderMin(next, hi, maxIndex);
             if (clamped !== lo) setSliderActive(true);
             onMinChange(clamped);
           }}
@@ -5053,11 +5103,17 @@ function IntelDualSlider({
           min={0}
           max={maxIndex}
           step={1}
-          value={hi}
+          value={thumbHi}
           disabled={disabled}
           onChange={(e) => {
             const next = Number(e.target.value);
-            const clamped = Math.max(next, lo);
+            if (lo === hi && next < lo) {
+              const clamped = clampDualSliderMin(next, hi, maxIndex);
+              if (clamped !== lo) setSliderActive(true);
+              onMinChange(clamped);
+              return;
+            }
+            const clamped = clampDualSliderMax(next, lo, maxIndex);
             if (clamped !== hi) setSliderActive(true);
             onMaxChange(clamped);
           }}
@@ -5202,6 +5258,7 @@ function PriceRangeSlider({
   // Label shows only while the price range spans its full extent (untouched /
   // just reset); dragging either thumb inward hides it.
   const atFullRange = lo <= 0 && hi >= maxStepIndex;
+  const { thumbLo, thumbHi } = dualSliderThumbValues(lo, hi, maxStepIndex);
   return (
     <div className="flex flex-col items-stretch shrink-0">
       <div className={`relative h-6 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
@@ -5222,11 +5279,17 @@ function PriceRangeSlider({
           min={0}
           max={maxStepIndex}
           step={1}
-          value={lo}
+          value={thumbLo}
           disabled={disabled}
           onChange={(e) => {
             const next = Number(e.target.value);
-            const clamped = Math.min(next, hi);
+            if (lo === hi && next < lo) {
+              const clamped = clampDualSliderMin(next, hi, maxStepIndex);
+              if (clamped !== lo) setSliderActive(true);
+              onMinIndexChange(clamped);
+              return;
+            }
+            const clamped = clampDualSliderMin(next, hi, maxStepIndex);
             if (clamped !== lo) setSliderActive(true);
             onMinIndexChange(clamped);
           }}
@@ -5241,11 +5304,17 @@ function PriceRangeSlider({
           min={0}
           max={maxStepIndex}
           step={1}
-          value={hi}
+          value={thumbHi}
           disabled={disabled}
           onChange={(e) => {
             const next = Number(e.target.value);
-            const clamped = Math.max(next, lo);
+            if (lo === hi && next < lo) {
+              const clamped = clampDualSliderMin(next, hi, maxStepIndex);
+              if (clamped !== lo) setSliderActive(true);
+              onMinIndexChange(clamped);
+              return;
+            }
+            const clamped = clampDualSliderMax(next, lo, maxStepIndex);
             if (clamped !== hi) setSliderActive(true);
             onMaxIndexChange(clamped);
           }}
@@ -5302,6 +5371,7 @@ function SqftRangeSlider({
   }, [active]);
 
   const atFullRange = lo <= 0 && hi >= maxStepIndex;
+  const { thumbLo, thumbHi } = dualSliderThumbValues(lo, hi, maxStepIndex);
   return (
     <div className="flex flex-col items-stretch shrink-0">
       <div className={`relative h-6 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
@@ -5322,11 +5392,17 @@ function SqftRangeSlider({
           min={0}
           max={maxStepIndex}
           step={1}
-          value={lo}
+          value={thumbLo}
           disabled={disabled}
           onChange={(e) => {
             const next = Number(e.target.value);
-            const clamped = Math.min(next, hi);
+            if (lo === hi && next < lo) {
+              const clamped = clampDualSliderMin(next, hi, maxStepIndex);
+              if (clamped !== lo) setSliderActive(true);
+              onMinIndexChange(clamped);
+              return;
+            }
+            const clamped = clampDualSliderMin(next, hi, maxStepIndex);
             if (clamped !== lo) setSliderActive(true);
             onMinIndexChange(clamped);
           }}
@@ -5341,11 +5417,17 @@ function SqftRangeSlider({
           min={0}
           max={maxStepIndex}
           step={1}
-          value={hi}
+          value={thumbHi}
           disabled={disabled}
           onChange={(e) => {
             const next = Number(e.target.value);
-            const clamped = Math.max(next, lo);
+            if (lo === hi && next < lo) {
+              const clamped = clampDualSliderMin(next, hi, maxStepIndex);
+              if (clamped !== lo) setSliderActive(true);
+              onMinIndexChange(clamped);
+              return;
+            }
+            const clamped = clampDualSliderMax(next, lo, maxStepIndex);
             if (clamped !== hi) setSliderActive(true);
             onMaxIndexChange(clamped);
           }}
@@ -5360,17 +5442,30 @@ function SqftRangeSlider({
   );
 }
 
-/** Keep number-pad friendly drafts; allow optional trailing K/M (desktop / paste). */
+/**
+ * Digits + one decimal; optional trailing k/m only (never first / mid-string).
+ * Other letters are stripped.
+ */
 function sanitizeIntelPriceDraft(raw: string): string {
   const cleaned = raw.replace(/[^0-9.kKmM]/g, "");
-  const suffix = /[kKmM]$/.test(cleaned) ? cleaned.slice(-1) : "";
-  const body = (suffix ? cleaned.slice(0, -1) : cleaned).replace(/[kKmM]/g, "");
+  const hasTrailingSuffix = /[kKmM]$/.test(cleaned);
+  const suffixChar = hasTrailingSuffix ? cleaned.slice(-1) : "";
+  let body = hasTrailingSuffix ? cleaned.slice(0, -1) : cleaned;
+  body = body.replace(/[kKmM]/g, "");
   const dot = body.indexOf(".");
   const normalized =
     dot === -1
       ? body
       : `${body.slice(0, dot + 1)}${body.slice(dot + 1).replace(/\./g, "")}`;
-  return `${normalized}${suffix}`;
+  // k/m cannot be the first character — require a numeric body.
+  if (suffixChar && normalized.length > 0) {
+    return `${normalized}${suffixChar}`;
+  }
+  return normalized;
+}
+
+function intelPriceDraftHasSuffix(raw: string): boolean {
+  return /[kKmM]$/.test(raw.trim()) && raw.trim().length > 1;
 }
 
 function PriceRangeInputs({
@@ -5393,6 +5488,10 @@ function PriceRangeInputs({
   const [focusedBound, setFocusedBound] = useState<"min" | "max" | null>(null);
   const [boundNote, setBoundNote] = useState<string | null>(null);
   const boundNoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const minInputRef = useRef<HTMLInputElement>(null);
+  const maxInputRef = useRef<HTMLInputElement>(null);
+  /** Skip the blur commit that follows an Enter / trailing K·M commit. */
+  const skipBlurCommitRef = useRef<"min" | "max" | null>(null);
   const maxStepIndex = boardPriceMaxIndex(steps);
   const lo = Math.min(minIndex, maxIndex);
   const hi = Math.max(minIndex, maxIndex);
@@ -5424,15 +5523,25 @@ function PriceRangeInputs({
     onActiveChange(next);
   };
 
-  const commitMinPrice = (raw: string) => {
+  const blurBound = (bound: "min" | "max") => {
+    skipBlurCommitRef.current = bound;
+    const el = bound === "min" ? minInputRef.current : maxInputRef.current;
+    el?.blur();
+  };
+
+  const commitMinPrice = (raw: string, opts?: { blur?: boolean }) => {
     setMinDraft(null);
     const trimmed = raw.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      if (opts?.blur !== false) blurBound("min");
+      return;
+    }
     const parsed = parseIntelPriceInput(raw);
     if (parsed == null) {
       showBoundNote(
         "Lower price isn’t valid — use dollars, or a number with K/M (e.g. 750k or 1.2m).",
       );
+      blurBound("min");
       return;
     }
     const upperCap = steps[hi] ?? parsed;
@@ -5457,17 +5566,22 @@ function PriceRangeInputs({
     const finalIndex = Math.min(index, hi);
     if (finalIndex !== lo) setSliderActive(true);
     onMinIndexChange(finalIndex);
+    if (opts?.blur !== false) blurBound("min");
   };
 
-  const commitMaxPrice = (raw: string) => {
+  const commitMaxPrice = (raw: string, opts?: { blur?: boolean }) => {
     setMaxDraft(null);
     const trimmed = raw.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      if (opts?.blur !== false) blurBound("max");
+      return;
+    }
     const parsed = parseIntelPriceInput(raw);
     if (parsed == null) {
       showBoundNote(
         "Upper price isn’t valid — use dollars, or a number with K/M (e.g. 750k or 1.2m).",
       );
+      blurBound("max");
       return;
     }
     const lowerCap = steps[lo] ?? parsed;
@@ -5492,34 +5606,7 @@ function PriceRangeInputs({
     const finalIndex = Math.max(index, lo);
     if (finalIndex !== hi) setSliderActive(true);
     onMaxIndexChange(finalIndex);
-  };
-
-  /** Mobile number pad has no letters — K/M buttons multiply the typed coefficient (e.g. 750→K→$750K). */
-  const applyPriceSuffix = (bound: "min" | "max", suffix: "k" | "m") => {
-    if (disabled) return;
-    const draft = bound === "min" ? minDraft : maxDraft;
-    if (draft == null || !draft.trim()) {
-      showBoundNote(
-        `Type a number in the ${bound === "min" ? "lower" : "upper"} price box before tapping ${suffix.toUpperCase()}.`,
-      );
-      return;
-    }
-    const baseRaw = draft.replace(/[kKmM]+$/g, "");
-    const coefficient = Number(baseRaw.replace(/[^0-9.]/g, ""));
-    if (!Number.isFinite(coefficient) || coefficient < 0) {
-      showBoundNote(
-        `${bound === "min" ? "Lower" : "Upper"} price isn’t valid — type a number first, then ${suffix.toUpperCase()}.`,
-      );
-      return;
-    }
-    const dollars = Math.round(coefficient * (suffix === "m" ? 1_000_000 : 1_000));
-    if (bound === "min") {
-      commitMinPrice(String(dollars));
-      setMinDraft("");
-    } else {
-      commitMaxPrice(String(dollars));
-      setMaxDraft("");
-    }
+    if (opts?.blur !== false) blurBound("max");
   };
 
   const applyMinWheel = (deltaY: number) => {
@@ -5559,100 +5646,91 @@ function PriceRangeInputs({
       : "px-1 py-0.5 text-[9px]",
   ].join(" ");
 
-  const suffixBtnClass =
-    "rounded border border-gold/40 bg-gold/15 px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-gold active:bg-gold/25";
-
   return (
     <div className={`flex flex-col gap-0.5 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
       <div className="flex gap-1">
         <input
+          ref={minInputRef}
           type="text"
           inputMode="decimal"
           disabled={disabled}
           value={minDraft ?? formatIntelPriceStep(minPrice)}
           placeholder={formatIntelPriceStep(minPrice)}
-          onChange={(e) => setMinDraft(sanitizeIntelPriceDraft(e.target.value))}
+          onChange={(e) => {
+            const next = sanitizeIntelPriceDraft(e.target.value);
+            setMinDraft(next);
+            if (intelPriceDraftHasSuffix(next)) {
+              commitMinPrice(next);
+            }
+          }}
           onFocus={() => {
             setFocusedBound("min");
-            // Clear so number-pad entry + K/M means “750 then K”, not “1500000×K”.
+            // Clear so typing 750k isn’t “$1.5M” + edits.
             setMinDraft("");
           }}
           onBlur={(e) => {
             setFocusedBound((prev) => (prev === "min" ? null : prev));
-            commitMinPrice(e.target.value);
+            if (skipBlurCommitRef.current === "min") {
+              skipBlurCommitRef.current = null;
+              return;
+            }
+            commitMinPrice(e.target.value, { blur: false });
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
               commitMinPrice((e.target as HTMLInputElement).value);
-              (e.target as HTMLInputElement).blur();
             }
           }}
           onWheel={(e) => {
             e.preventDefault();
             applyMinWheel(e.deltaY);
           }}
-          title="Type a number, then K (thousands) or M (millions) — or full dollars. Scroll: $500K steps ($1M above $4M)."
+          title="Type dollars, or a number ending in K/M (e.g. 750k, 1.2m). Enter or K/M commits. Scroll: $500K steps ($1M above $4M)."
           aria-label="Minimum price amount"
           className={priceInputClass}
         />
         <input
+          ref={maxInputRef}
           type="text"
           inputMode="decimal"
           disabled={disabled}
           value={maxDraft ?? formatIntelPriceStep(maxPrice)}
           placeholder={formatIntelPriceStep(maxPrice)}
-          onChange={(e) => setMaxDraft(sanitizeIntelPriceDraft(e.target.value))}
+          onChange={(e) => {
+            const next = sanitizeIntelPriceDraft(e.target.value);
+            setMaxDraft(next);
+            if (intelPriceDraftHasSuffix(next)) {
+              commitMaxPrice(next);
+            }
+          }}
           onFocus={() => {
             setFocusedBound("max");
             setMaxDraft("");
           }}
           onBlur={(e) => {
             setFocusedBound((prev) => (prev === "max" ? null : prev));
-            commitMaxPrice(e.target.value);
+            if (skipBlurCommitRef.current === "max") {
+              skipBlurCommitRef.current = null;
+              return;
+            }
+            commitMaxPrice(e.target.value, { blur: false });
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
               commitMaxPrice((e.target as HTMLInputElement).value);
-              (e.target as HTMLInputElement).blur();
             }
           }}
           onWheel={(e) => {
             e.preventDefault();
             applyMaxWheel(e.deltaY);
           }}
-          title="Type a number, then K (thousands) or M (millions) — or full dollars. Scroll: $500K steps ($1M above $4M)."
+          title="Type dollars, or a number ending in K/M (e.g. 750k, 1.2m). Enter or K/M commits. Scroll: $500K steps ($1M above $4M)."
           aria-label="Maximum price amount"
           className={priceInputClass}
         />
       </div>
-      {focusedBound && !disabled ? (
-        <div className="flex items-center justify-end gap-1">
-          <span className="mr-auto font-mono text-[8px] tracking-wide text-white/40">
-            type 750 → K
-          </span>
-          <button
-            type="button"
-            className={suffixBtnClass}
-            // Keep focus on the input so blur/commit does not race the tap.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => applyPriceSuffix(focusedBound, "k")}
-            aria-label="Multiply by one thousand (K)"
-          >
-            K
-          </button>
-          <button
-            type="button"
-            className={suffixBtnClass}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => applyPriceSuffix(focusedBound, "m")}
-            aria-label="Multiply by one million (M)"
-          >
-            M
-          </button>
-        </div>
-      ) : null}
       {boundNote ? (
         <p
           role="status"

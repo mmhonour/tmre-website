@@ -323,7 +323,7 @@ function DealContent({
   onOpenBreakdown,
 }: {
   deal: DealCarouselPayload;
-  slideDir: "next" | "prev";
+  slideDir: "next" | "prev" | null;
   slideKey: string;
   isHero: boolean;
   onOpenBreakdown: () => void;
@@ -336,14 +336,18 @@ function DealContent({
   ].filter(Boolean);
 
   const photoLayout = isHero ? "top-right" : "left";
+  const slideAnim =
+    slideDir === "next"
+      ? "animate-deal-carousel-next"
+      : slideDir === "prev"
+        ? "animate-deal-carousel-prev"
+        : "";
 
   return (
     <div
       key={slideKey}
       {...listingHoverHandlers(l.mlsId || l.listingKey || null)}
-      className={`${isHero ? "relative p-3" : "p-4 flex gap-2.5"} ${
-        slideDir === "next" ? "animate-deal-carousel-next" : "animate-deal-carousel-prev"
-      }`}
+      className={`${isHero ? "relative p-3" : "p-4 flex gap-2.5"} ${slideAnim}`}
       style={{ transformStyle: "preserve-3d" }}
     >
       {photoLayout === "left" ? (

@@ -65,13 +65,19 @@ export default function IntelligenceVintageMedianMiniChart({
   listings,
   kind,
   activeBucketId = null,
+  filterActive = false,
   onBucketClick,
+  onResetFilter,
 }: {
   listings: VintageListingRow[];
   kind: "sale" | "rental";
   /** Highlight when min/max vintage collapse to a single bucket. */
   activeBucketId?: VintageBucketId | null;
+  /** True when the vintage / timescale filter is narrowed. */
+  filterActive?: boolean;
   onBucketClick: (bucketId: VintageBucketId) => void;
+  /** Clear vintage filter back to all buckets. */
+  onResetFilter?: () => void;
 }) {
   const [extraCallouts, setExtraCallouts] = useState<Set<VintageBucketId>>(
     () => new Set(),
@@ -185,9 +191,22 @@ export default function IntelligenceVintageMedianMiniChart({
 
   return (
     <div className="flex w-full items-start justify-start gap-2.5">
-      <p className="shrink-0 pt-1 text-left font-mono text-[8px] tracking-[0.14em] uppercase text-slate/50 leading-snug max-w-[5.5rem]">
-        {chartTitle}
-      </p>
+      <div className="shrink-0 pt-1 max-w-[5.5rem] flex flex-col gap-1">
+        <p className="text-left font-mono text-[8px] tracking-[0.14em] uppercase text-slate/50 leading-snug">
+          {chartTitle}
+        </p>
+        {filterActive && onResetFilter ? (
+          <button
+            type="button"
+            onClick={onResetFilter}
+            className="text-left font-mono text-[9px] tracking-[0.12em] uppercase text-navy/70 underline underline-offset-2 decoration-navy/30 hover:text-navy hover:decoration-gold transition-colors"
+            title="Reset vintage filter — show all timescales"
+            aria-label="All timescales — reset vintage filter"
+          >
+            All timescales
+          </button>
+        ) : null}
+      </div>
       <div className="min-w-0 flex-1 flex flex-col items-stretch gap-0.5">
         <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
