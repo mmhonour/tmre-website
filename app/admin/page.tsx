@@ -534,6 +534,39 @@ export default async function AdminPage() {
     </div>
   );
 
+  const postgresPanel = (
+    <div id="admin-sqlite-schemas" className="scroll-mt-24">
+      {showListingsDbRuntime ? (
+        <div className="mb-4 rounded-2xl border border-gold/25 bg-gold/[0.06] px-5 sm:px-6 py-4">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2 text-gold">
+            Postgres listings inventory
+          </p>
+          <p className="text-sm text-slate leading-snug mb-3">
+            Neon Postgres has <strong>{stats.total.toLocaleString()}</strong> listings. Run{" "}
+            <strong>step 1 Full resync</strong>
+            {scheduleHints.fullResyncSource === "post-deploy" && nextRuns["full-resync"] ? (
+              <>
+                {" "}
+                or wait for the post-deploy warm in{" "}
+                <strong>
+                  {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
+                </strong>
+              </>
+            ) : (
+              <> or wait for the startup / scheduled sync</>
+            )}{" "}
+            to pull MLS data.
+          </p>
+        </div>
+      ) : null}
+      <AdminSqliteDiagrams
+        databases={sqliteDiagrams}
+        blobRuntime={photosOnR2 ? undefined : blobRuntime}
+        inventorySnapshot={inventorySnapshot}
+      />
+    </div>
+  );
+
   const dbPanel = (
     <AdminDatabasePanel
       retsConnection={
@@ -628,40 +661,8 @@ export default async function AdminPage() {
           }}
         />
       }
+      postgres={postgresPanel}
     />
-  );
-
-  const postgresPanel = (
-    <div id="admin-sqlite-schemas" className="scroll-mt-24">
-      {showListingsDbRuntime ? (
-        <div className="mb-4 rounded-2xl border border-gold/25 bg-gold/[0.06] px-5 sm:px-6 py-4">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2 text-gold">
-            Postgres listings inventory
-          </p>
-          <p className="text-sm text-slate leading-snug mb-3">
-            Neon Postgres has <strong>{stats.total.toLocaleString()}</strong> listings. Run{" "}
-            <strong>step 1 Full resync</strong>
-            {scheduleHints.fullResyncSource === "post-deploy" && nextRuns["full-resync"] ? (
-              <>
-                {" "}
-                or wait for the post-deploy warm in{" "}
-                <strong>
-                  {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
-                </strong>
-              </>
-            ) : (
-              <> or wait for the startup / scheduled sync</>
-            )}{" "}
-            to pull MLS data.
-          </p>
-        </div>
-      ) : null}
-      <AdminSqliteDiagrams
-        databases={sqliteDiagrams}
-        blobRuntime={photosOnR2 ? undefined : blobRuntime}
-        inventorySnapshot={inventorySnapshot}
-      />
-    </div>
   );
 
   const sitePanel = (
@@ -719,6 +720,7 @@ export default async function AdminPage() {
       goldilocks={<AdminGoldilocksPanel initial={goldilocksInitial} />}
       pricing={<AdminPricingPanel initial={pricingInitial} />}
       vintages={<AdminVintagesPanel />}
+      rets={retsPanel}
     />
   );
 
@@ -947,8 +949,6 @@ export default async function AdminPage() {
             docs={<AdminProductDocsPanel />}
           />
         }
-        rets={retsPanel}
-        postgres={postgresPanel}
         syncs={syncsPanel}
         server={serverPanel}
         glossary={<AdminGlossaryPanel />}

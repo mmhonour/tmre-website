@@ -5,6 +5,7 @@ import {
   ADMIN_DATABASE_PANELS,
   adminDatabasePanelForSection,
   isAdminDatabasePanelId,
+  isAdminPostgresSchemaHash,
   LEGACY_ADMIN_TAB_TO_DATABASE,
   type AdminDatabasePanelId,
 } from "@/lib/admin-nav";
@@ -26,6 +27,7 @@ function panelFromLocation(): AdminDatabasePanelId {
     return panel;
   }
   const hash = window.location.hash.replace(/^#/, "");
+  if (isAdminPostgresSchemaHash(hash)) return "postgres";
   const fromSection = adminDatabasePanelForSection(hash);
   if (fromSection) return fromSection;
   return "rets-connection";
@@ -38,6 +40,7 @@ export default function AdminDatabasePanel({
   inventory,
   townCounts,
   dbTuning,
+  postgres,
 }: {
   retsConnection: ReactNode;
   sync: ReactNode;
@@ -45,6 +48,7 @@ export default function AdminDatabasePanel({
   inventory: ReactNode;
   townCounts: ReactNode;
   dbTuning: ReactNode;
+  postgres: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDatabasePanelId>("rets-connection");
 
@@ -75,6 +79,7 @@ export default function AdminDatabasePanel({
     inventory,
     "town-counts": townCounts,
     "db-tuning": dbTuning,
+    postgres,
   };
   const active = ADMIN_DATABASE_PANELS.find((item) => item.id === panel);
 

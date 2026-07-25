@@ -164,10 +164,14 @@ async function postNetlifyFunction(
   return last
 }
 
-export function queueNetlifyIncrementalSync(startedAt?: string): Promise<NetlifyFunctionQueueResult> {
+export function queueNetlifyIncrementalSync(
+  startedAt?: string,
+  options?: { sideWorkOnly?: boolean },
+): Promise<NetlifyFunctionQueueResult> {
   return postNetlifyFunction('/.netlify/functions/sync-listings-worker', {
     source: 'netlify-sync-trigger',
     startedAt: startedAt ?? new Date().toISOString(),
+    ...(options?.sideWorkOnly ? { sideWorkOnly: true } : {}),
   })
 }
 

@@ -26,6 +26,7 @@ import StatsChartPrintFrame from "./StatsChartPrintFrame";
 import SalesTrendDataTable from "./SalesTrendDataTable";
 import MonthsSupplyByMonthDataTable from "./MonthsSupplyByMonthDataTable";
 import MonthsSupplyByTownDataTable from "./MonthsSupplyByTownDataTable";
+import MonthsSupplyMathExplainer from "./MonthsSupplyMathExplainer";
 import ActiveByMonthDataTable from "./ActiveByMonthDataTable";
 import ActiveByMonthView from "./ActiveByMonthView";
 import ActiveByTownDataTable from "./ActiveByTownDataTable";
@@ -830,37 +831,44 @@ export default function StatsClient() {
                 />
               </StatsChartPrintFrame>
 
-              <StatsChartPrintFrame
-                chartId="months-supply"
-                dataPanel={
-                  selectedCity === "All" ? (
-                    <MonthsSupplyByTownDataTable
-                      key={`months-supply-town-data-${statsKind}${chartVersionSuffix}`}
+              <div>
+                <StatsChartPrintFrame
+                  chartId="months-supply"
+                  dataPanel={
+                    selectedCity === "All" ? (
+                      <MonthsSupplyByTownDataTable
+                        key={`months-supply-town-data-${statsKind}${chartVersionSuffix}`}
+                        kind={statsKind}
+                      />
+                    ) : (
+                      <MonthsSupplyByMonthDataTable
+                        key={`months-supply-data-${statsKind}-${selectedCity}${chartVersionSuffix}`}
+                        city={selectedCity}
+                        kind={statsKind}
+                      />
+                    )
+                  }
+                >
+                  {selectedCity === "All" ? (
+                    <MonthsSupplyByTownChart
+                      key={`months-supply-town-${statsKind}${chartVersionSuffix}`}
                       kind={statsKind}
                     />
                   ) : (
-                    <MonthsSupplyByMonthDataTable
-                      key={`months-supply-data-${statsKind}-${selectedCity}${chartVersionSuffix}`}
+                    <MonthsSupplyByMonthChart
+                      key={`months-supply-${statsKind}-${selectedCity}${chartVersionSuffix}`}
                       city={selectedCity}
                       kind={statsKind}
+                      headerActiveCount={chartHeaderActiveCount}
                     />
-                  )
-                }
-              >
-                {selectedCity === "All" ? (
-                  <MonthsSupplyByTownChart
-                    key={`months-supply-town-${statsKind}${chartVersionSuffix}`}
-                    kind={statsKind}
-                  />
-                ) : (
-                  <MonthsSupplyByMonthChart
-                    key={`months-supply-${statsKind}-${selectedCity}${chartVersionSuffix}`}
-                    city={selectedCity}
-                    kind={statsKind}
-                    headerActiveCount={chartHeaderActiveCount}
-                  />
-                )}
-              </StatsChartPrintFrame>
+                  )}
+                </StatsChartPrintFrame>
+                <MonthsSupplyMathExplainer
+                  key={`months-supply-math-${statsKind}-${selectedCity}${chartVersionSuffix}`}
+                  city={selectedCity}
+                  kind={statsKind}
+                />
+              </div>
 
               {selectedCity === "All" && (
                 <StatsChartLazyMount>

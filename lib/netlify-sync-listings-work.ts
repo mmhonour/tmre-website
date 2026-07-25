@@ -40,8 +40,9 @@ export async function recordIncrementalCronTick(input: {
 }
 
 /**
- * Heartbeat only — safe for the thin scheduled function (<30s).
- * Proves Netlify's scheduler fired even when the background worker never runs.
+ * Heartbeat only — stamps sync_meta so Admin can prove the scheduler fired.
+ * Does not write a skipped sync_runs row; the thin cron records the real tick
+ * after the lean RETS pull.
  */
 export async function stampIncrementalCronHeartbeat(startedAt = new Date().toISOString()): Promise<{
   ok: boolean
@@ -51,12 +52,6 @@ export async function stampIncrementalCronHeartbeat(startedAt = new Date().toISO
   try {
     await hydrateSyncMetaStore()
     await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
-    await recordIncrementalCronTick({
-      startedAt,
-      ok: true,
-      skipped: true,
-      error: 'scheduler heartbeat (worker queued separately)',
-    })
     return { ok: true, startedAt }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
@@ -65,12 +60,72 @@ export async function stampIncrementalCronHeartbeat(startedAt = new Date().toISO
   }
 }
 
+export type IncrementalSyncWorkOptions = {
+  /**
+   * When true, skip RETS / catch-up incremental — thin cron already pulled.
+   * Worker only does spotlight, saved-search alerts, and board/stats warm.
+   */
+  sideWorkOnly?: boolean
+}
+
+async function runSpotlightAndAlerts(): Promise<{
+  savedSearchAlerts: { checked: number; sent: number; listings: number } | null
+}> {
+  try {
+    const { refreshSpotlightStatuses } = await import('@/lib/spotlight-status-sync')
+    await refreshSpotlightStatuses()
+  } catch (err) {
+    console.warn('[sync-listings-work] spotlight status refresh failed', err)
+  }
+
+  let savedSearchAlerts: { checked: number; sent: number; listings: number } | null =
+    null
+  try {
+    const { processDueSavedSearchAlerts } = await import('@/lib/saved-search-alerts')
+    savedSearchAlerts = await processDueSavedSearchAlerts()
+  } catch (err) {
+    console.warn('[sync-listings-work] saved-search alerts failed', err)
+  }
+  return { savedSearchAlerts }
+}
+
+/** Board/stats warm + digests — used when thin cron already did lean RETS. */
+async function runIncrementalSideWork(): Promise<{
+  savedSearchAlerts: { checked: number; sent: number; listings: number } | null
+}> {
+  try {
+    const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')
+    warmLatestTownFeedsDeferred()
+  } catch (err) {
+    console.warn('[sync-listings-work] town feed warm schedule failed', err)
+  }
+  try {
+    const { rebuildIntelligenceDealBoardCache } = await import(
+      '@/lib/intelligence-deal-board-cache'
+    )
+    await rebuildIntelligenceDealBoardCache()
+  } catch (err) {
+    console.warn('[sync-listings-work] intelligence board rebuild failed', err)
+  }
+  try {
+    const { rebuildStatsCache } = await import('@/lib/stats-cache')
+    await rebuildStatsCache({ trackRefresh: false })
+  } catch (err) {
+    console.warn('[sync-listings-work] stats cache rebuild failed', err)
+  }
+  return runSpotlightAndAlerts()
+}
+
 /** Full incremental path — runs in the background worker (up to ~15 min). */
-export async function runIncrementalSyncListingsWork(startedAt = new Date().toISOString()): Promise<{
+export async function runIncrementalSyncListingsWork(
+  startedAt = new Date().toISOString(),
+  options: IncrementalSyncWorkOptions = {},
+): Promise<{
   status: number
   body: Record<string, unknown>
 }> {
   process.env.NETLIFY_SYNC_HANDLER = '1'
+  const sideWorkOnly = options.sideWorkOnly === true
 
   try {
     await hydrateSyncMetaStore()
@@ -83,10 +138,13 @@ export async function runIncrementalSyncListingsWork(startedAt = new Date().toIS
     await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
 
     // Only light catch-up here — never chain a weekly full-resync on the 30m path.
-    // Full reload stays on sync-listings-full.
+    // Full reload stays on sync-listings-full. When thin cron already pulled RETS,
+    // skip 'incremental' so we don't double-hit MLS.
     const catchup = await runOverdueSyncCatchup({
       reason: 'netlify/sync-listings-worker',
-      onlyJobs: ['incremental', 'stats-cache', 'publish-snapshot'],
+      onlyJobs: sideWorkOnly
+        ? ['stats-cache', 'publish-snapshot']
+        : ['incremental', 'stats-cache', 'publish-snapshot'],
     })
 
     if (await isScheduledSyncJobPausedFresh('incremental')) {
@@ -102,6 +160,7 @@ export async function runIncrementalSyncListingsWork(startedAt = new Date().toIS
           ok: true,
           skipped: true,
           reason: 'incremental scheduled sync paused by admin',
+          sideWorkOnly,
           overdueCatchup: catchup.skipped
             ? { skipped: true, reason: catchup.reason }
             : { skipped: false, plan: catchup.plan, steps: catchup.steps },
@@ -122,6 +181,30 @@ export async function runIncrementalSyncListingsWork(startedAt = new Date().toIS
           ok: true,
           skipped: true,
           reason: 'Admin Next override — not due yet',
+          sideWorkOnly,
+          overdueCatchup: catchup.skipped
+            ? { skipped: true, reason: catchup.reason }
+            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
+        },
+      }
+    }
+
+    if (sideWorkOnly) {
+      const { savedSearchAlerts } = await runIncrementalSideWork()
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: true,
+        listingsCount: 0,
+        skipped: true,
+        error: 'side-work only (RETS already completed by thin cron)',
+      })
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          sideWorkOnly: true,
+          savedSearchAlerts,
+          stats: await getSyncStatus(),
           overdueCatchup: catchup.skipped
             ? { skipped: true, reason: catchup.reason }
             : { skipped: false, plan: catchup.plan, steps: catchup.steps },
@@ -145,21 +228,8 @@ export async function runIncrementalSyncListingsWork(startedAt = new Date().toIS
             .join('; ') || null,
     })
 
-    try {
-      const { refreshSpotlightStatuses } = await import('@/lib/spotlight-status-sync')
-      await refreshSpotlightStatuses()
-    } catch (err) {
-      console.warn('[sync-listings-work] spotlight status refresh failed', err)
-    }
-
-    let savedSearchAlerts: { checked: number; sent: number; listings: number } | null =
-      null
-    try {
-      const { processDueSavedSearchAlerts } = await import('@/lib/saved-search-alerts')
-      savedSearchAlerts = await processDueSavedSearchAlerts()
-    } catch (err) {
-      console.warn('[sync-listings-work] saved-search alerts failed', err)
-    }
+    // RETS path already ran postHooks (board/stats); only digests remain.
+    const { savedSearchAlerts } = await runSpotlightAndAlerts()
 
     const ok = result.towns.length === 0 || result.towns.every((row) => row.ok)
     if (ok && !skippedEmpty) {
@@ -170,6 +240,7 @@ export async function runIncrementalSyncListingsWork(startedAt = new Date().toIS
       body: {
         ok,
         ...result,
+        sideWorkOnly: false,
         savedSearchAlerts,
         stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped

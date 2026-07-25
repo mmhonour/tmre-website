@@ -11,18 +11,21 @@ import { healStaleRefreshLock } from '../../lib/sqlite-refresh-status'
 import { healStaleOverdueCatchupLock } from '../../lib/sync-overdue'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { syncIncrementalListings } from '../../lib/listings-sync'
-import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
+import {
+  clearSyncNextOverrideAfterRun,
+  shouldDeferScheduledJob,
+} from '../../lib/sync-next-override'
 
 /**
  * Scheduled incremental trigger (NO background flag) — must finish in ~30s.
  *
- * Pattern:
+ * Pattern (data-first — never depend on the HTTP hop for MLS freshness):
  *   1) Stamp heartbeat (proves the cron fired)
- *   2) Queue sync-listings-worker (background, ~15m) for the real RETS pull
- *   3) If queue fails → lean in-process RETS-only fallback (no board/stats)
+ *   2) ALWAYS lean in-process RETS pull (no board/stats — stays under 30s)
+ *   3) Optionally queue sync-listings-worker for side work (spotlight / alerts /
+ *      board warm). Hop failure must not drop inventory.
  *
  * Do NOT put schedule+background on one function (silent no-op on Netlify).
- * Do NOT rely on in-process full sync+board rebuild here — it exceeds 30s.
  */
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'
@@ -42,7 +45,7 @@ export default async function handler() {
       return new Response(
         JSON.stringify({
           ok: false,
-          mode: 'scheduled-queue',
+          mode: 'scheduled-in-process',
           error: heartbeat.error ?? 'heartbeat failed',
         }),
         { status: 500, headers: { 'content-type': 'application/json' } },
@@ -59,7 +62,7 @@ export default async function handler() {
       return new Response(
         JSON.stringify({
           ok: true,
-          mode: 'scheduled-queue',
+          mode: 'scheduled-in-process',
           skipped: true,
           reason: 'incremental scheduled sync paused by admin',
         }),
@@ -77,7 +80,7 @@ export default async function handler() {
       return new Response(
         JSON.stringify({
           ok: true,
-          mode: 'scheduled-queue',
+          mode: 'scheduled-in-process',
           skipped: true,
           reason: 'Admin Next override — not due yet',
         }),
@@ -85,53 +88,69 @@ export default async function handler() {
       )
     }
 
-    const queued = await queueNetlifyIncrementalSync(startedAt)
-    if (queued.ok) {
-      console.info(
-        `[netlify/sync-listings] queued worker via ${queued.base} (HTTP ${queued.status})`,
-      )
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          mode: 'queued-worker',
-          startedAt,
-          workerStatus: queued.status,
-          workerBase: queued.base,
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }
-
-    // Hop failed (missing URL, password gate, 404) — same class as 8:30/9:00 misses.
-    console.warn(
-      `[netlify/sync-listings] worker queue failed (${queued.error}) — lean in-process fallback`,
-    )
+    // ★ Data path — always. Hop must never be required for MLS upserts.
     const result = await syncIncrementalListings({ postHooks: false })
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
     const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
-    const queueNote = `worker queue failed: ${queued.error ?? 'unknown'}`
     await recordIncrementalCronTick({
       startedAt: result.startedAt || startedAt,
       ok: okTowns,
       listingsCount: result.totalUpserted,
       skipped: skippedEmpty,
       error: skippedEmpty
-        ? `${queueNote}; lean fallback: no town work`
+        ? 'no town work (RETS missing, refresh lock, or empty tick)'
         : result.towns
             .filter((row) => !row.ok)
             .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
-            .join('; ') || `${queueNote}; lean fallback completed`,
+            .join('; ') || null,
     })
+    if (okTowns && !skippedEmpty) {
+      await clearSyncNextOverrideAfterRun('incremental')
+    }
+
+    // Optional side work — fire-and-forget. Failure does not fail this tick.
+    let workerQueued: {
+      ok: boolean
+      status: number | null
+      base: string | null
+      error?: string | null
+    } | null = null
+    try {
+      const queued = await queueNetlifyIncrementalSync(startedAt, {
+        sideWorkOnly: true,
+      })
+      workerQueued = {
+        ok: queued.ok,
+        status: queued.status,
+        base: queued.base,
+        error: queued.error ?? null,
+      }
+      if (queued.ok) {
+        console.info(
+          `[netlify/sync-listings] lean RETS done; side-work worker via ${queued.base} (HTTP ${queued.status})`,
+        )
+      } else {
+        console.warn(
+          `[netlify/sync-listings] lean RETS done; side-work queue failed (${queued.error}) — inventory still updated`,
+        )
+      }
+    } catch (err) {
+      console.warn('[netlify/sync-listings] side-work queue threw', err)
+      workerQueued = {
+        ok: false,
+        status: null,
+        base: null,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
 
     return new Response(
       JSON.stringify({
         ...result,
         ok: okTowns,
-        mode: 'lean-fallback',
+        mode: 'scheduled-in-process',
         startedAt,
-        queueError: queued.error ?? null,
-        workerStatus: queued.status,
-        workerBase: queued.base,
+        workerQueued,
       }),
       {
         status: okTowns ? 200 : 502,
@@ -152,7 +171,7 @@ export default async function handler() {
     return new Response(
       JSON.stringify({
         error: err instanceof Error ? err.message : String(err),
-        mode: 'scheduled-queue',
+        mode: 'scheduled-in-process',
       }),
       { status: 500, headers: { 'content-type': 'application/json' } },
     )

@@ -126,10 +126,11 @@ export default function AdminCronHealthPanel({
           </p>
           <p className="text-xs text-charcoal/60 leading-relaxed max-w-xl">
             Database → Incremental Next is only clock-slot math when overdue — not proof
-            cron ran. <span className="font-mono text-[10px]">sync-listings</span> runs
-            the RETS pull in-process every 30m and stamps this heartbeat.{" "}
-            <span className="font-mono text-[10px]">Run cron now</span> uses the
-            background worker (spotlight + saved-search extras).
+            cron ran. <span className="font-mono text-[10px]">sync-listings</span> always
+            runs a lean RETS pull in-process every 30m and stamps this heartbeat; the
+            worker hop is optional side work only.{" "}
+            <span className="font-mono text-[10px]">Run cron now</span> runs the fuller
+            path (board/stats + spotlight + saved-search).
           </p>
           {status && !status.hasSyncCronSecret ? (
             <p className="text-xs text-gold">

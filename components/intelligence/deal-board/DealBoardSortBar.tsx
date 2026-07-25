@@ -82,37 +82,59 @@ export default function DealBoardSortBar({
     }
   };
 
+  const flipDir = () => {
+    // Same-key select already toggles asc/desc in IntelligenceClient.handleSort.
+    onSort(sortKey);
+  };
+  const nextDirLabel = sortDir === "asc" ? "descending" : "ascending";
+
+  const chipShell = embedded
+    ? "inline-flex max-w-[12.5rem] min-w-0 items-stretch rounded-full border border-navy/20 bg-white shadow-[0_1px_0_0_rgba(28,42,58,0.1)] hover:border-navy/35 transition-[box-shadow,border-color]"
+    : "inline-flex min-w-0 flex-1 items-stretch rounded-full border border-navy/20 bg-white shadow-[0_2px_0_0_rgba(28,42,58,0.12)] hover:border-navy/35 transition-[box-shadow,border-color] lg:max-w-xs";
+
   const trigger = (
-    <button
-      type="button"
-      onClick={() => setDrawerOpen(true)}
-      className={
-        embedded
-          ? "inline-flex max-w-[11rem] min-w-0 items-center gap-1.5 rounded-full border border-navy/20 bg-white px-2.5 py-1 shadow-[0_1px_0_0_rgba(28,42,58,0.1)] hover:border-navy/35 active:translate-y-px active:shadow-none transition-[transform,box-shadow,border-color]"
-          : "inline-flex min-w-0 flex-1 items-center gap-2 rounded-full border border-navy/20 bg-white px-3.5 py-2 shadow-[0_2px_0_0_rgba(28,42,58,0.12)] hover:border-navy/35 active:translate-y-px active:shadow-none transition-[transform,box-shadow,border-color] lg:max-w-xs"
-      }
-      aria-expanded={drawerOpen}
-      aria-controls="intel-sort-drawer"
-      aria-label={`Sort by ${activeLabel}`}
-    >
-      <svg
-        viewBox="0 0 12 12"
-        className="h-2.5 w-2.5 shrink-0 text-navy/70"
-        fill="currentColor"
-        aria-hidden
+    <div className={chipShell} role="group" aria-label={`Sort by ${activeLabel}`}>
+      <button
+        type="button"
+        onClick={() => setDrawerOpen(true)}
+        className={
+          embedded
+            ? "inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-l-full px-2.5 py-1 active:translate-y-px transition-transform"
+            : "inline-flex min-w-0 flex-1 items-center gap-2 rounded-l-full px-3.5 py-2 active:translate-y-px transition-transform"
+        }
+        aria-expanded={drawerOpen}
+        aria-controls="intel-sort-drawer"
+        aria-label={`Choose sort field — currently ${activeLabel}`}
       >
-        <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-      </svg>
-      <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
-        Sort
-      </span>
-      <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy truncate">
-        {activeLabel}
-      </span>
-      <span className="ml-0.5 font-mono text-[11px] text-navy tabular-nums shrink-0">
+        <svg
+          viewBox="0 0 12 12"
+          className="h-2.5 w-2.5 shrink-0 text-navy/70"
+          fill="currentColor"
+          aria-hidden
+        >
+          <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+        </svg>
+        <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
+          Sort
+        </span>
+        <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy truncate">
+          {activeLabel}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={flipDir}
+        className={
+          embedded
+            ? "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2 py-1 font-mono text-[11px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]"
+            : "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2.5 py-2 font-mono text-[12px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]"
+        }
+        title={`Flip to ${nextDirLabel}`}
+        aria-label={`Flip sort order to ${nextDirLabel}`}
+      >
         {dirMark}
-      </span>
-    </button>
+      </button>
+    </div>
   );
 
   const drawer = (

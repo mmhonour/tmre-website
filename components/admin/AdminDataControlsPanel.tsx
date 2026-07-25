@@ -38,12 +38,14 @@ export default function AdminDataControlsPanel({
   goldilocks,
   pricing,
   vintages,
+  rets,
 }: {
   site: ReactNode;
   spotlight: ReactNode;
   goldilocks: ReactNode;
   pricing: ReactNode;
   vintages: ReactNode;
+  rets: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDataControlsPanelId>("site");
 
@@ -80,6 +82,7 @@ export default function AdminDataControlsPanel({
     goldilocks,
     pricing,
     vintages,
+    rets,
   };
   const active = ADMIN_DATA_CONTROLS_PANELS.find((item) => item.id === panel);
 

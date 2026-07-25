@@ -34,6 +34,7 @@ import {
   listingHeaderScoreProps,
 } from "@/lib/listing-header-score-props";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
+import { isRentalListing } from "@/lib/listing-kind";
 import {
   listingPhotoProxyUrl,
   listingPhotoProxyUrlAsFull,
@@ -467,6 +468,9 @@ function ListingSplitTestInner() {
             addressHint={presentation.addressHint}
             townHint={presentation.townHint}
             routeBase="spotlight"
+            isRental={isRentalListing({
+              propertyType: display.propertyType,
+            })}
             embedded
             compact
             onTabSelect={setTab}

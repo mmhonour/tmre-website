@@ -62,7 +62,7 @@ export default function AdminRetsConnectionPanel({
           RETS
         </p>
         <Link
-          href="/admin?tab=rets"
+          href="/admin?tab=data-controls&panel=rets"
           className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45 hover:text-navy hover:underline underline-offset-2"
         >
           Credentials

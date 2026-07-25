@@ -11,6 +11,7 @@ import {
   isAdminArchitecturePanelId,
   isAdminDataControlsPanelId,
   isAdminDatabasePanelId,
+  isAdminPostgresSchemaHash,
   LEGACY_ADMIN_TAB_TO_ARCHITECTURE,
   LEGACY_ADMIN_TAB_TO_DATA_CONTROLS,
   LEGACY_ADMIN_TAB_TO_DATABASE,
@@ -35,13 +36,9 @@ function tabFromLocation(): AdminTabId {
   if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
   if (VALID_TABS.has(hash)) return hash as AdminTabId;
-  // Deep-links into Postgres schema table cards
-  if (
-    hash.startsWith("schema-table-") ||
-    hash === "admin-sqlite-schemas" ||
-    hash === "postgres-listings"
-  ) {
-    return "postgres";
+  // Deep-links into Postgres schema table cards → Database → Postgres
+  if (isAdminPostgresSchemaHash(hash)) {
+    return "db";
   }
   const sectionTab = adminTabForSection(hash);
   if (sectionTab) return sectionTab;
@@ -93,7 +90,11 @@ function ensureNestedPanelParam() {
   }
   if (tab === "db") {
     if (isAdminDatabasePanelId(url.searchParams.get("panel"))) return;
-    const fromSection = hash ? adminDatabasePanelForSection(hash) : null;
+    const fromSection = hash
+      ? isAdminPostgresSchemaHash(hash)
+        ? "postgres"
+        : adminDatabasePanelForSection(hash)
+      : null;
     url.searchParams.set("panel", fromSection ?? "rets-connection");
     window.history.replaceState(null, "", url);
     return;
@@ -117,8 +118,6 @@ export default function AdminTabbedLayout({
   stats,
   dataControls,
   architecture,
-  rets,
-  postgres,
   syncs,
   server,
   glossary,
@@ -127,8 +126,6 @@ export default function AdminTabbedLayout({
   stats: ReactNode;
   dataControls: ReactNode;
   architecture: ReactNode;
-  rets: ReactNode;
-  postgres: ReactNode;
   syncs: ReactNode;
   server: ReactNode;
   glossary: ReactNode;
@@ -190,8 +187,6 @@ export default function AdminTabbedLayout({
     stats,
     "data-controls": dataControls,
     architecture,
-    rets,
-    postgres,
     syncs,
     server,
     glossary,

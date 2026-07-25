@@ -4,7 +4,9 @@ import { runIncrementalSyncListingsWork } from '../../lib/netlify-sync-listings-
 
 /**
  * Background MLS incremental worker (up to ~15 minutes).
- * Invoked by the thin `sync-listings` scheduled function (or Admin "Run cron").
+ * - Admin "Run cron": full RETS + digests
+ * - Thin `sync-listings` schedule: sideWorkOnly (board/stats + digests; RETS
+ *   already completed in-process by the thin cron)
  * Not scheduled itself — pairing schedule+background on one function was silent.
  */
 export default async function handler(req: Request, _context: Context) {
@@ -16,16 +18,21 @@ export default async function handler(req: Request, _context: Context) {
   }
 
   let startedAt = new Date().toISOString()
+  let sideWorkOnly = false
   try {
-    const body = (await req.json().catch(() => null)) as { startedAt?: string } | null
+    const body = (await req.json().catch(() => null)) as {
+      startedAt?: string
+      sideWorkOnly?: boolean
+    } | null
     if (body?.startedAt && !Number.isNaN(Date.parse(body.startedAt))) {
       startedAt = body.startedAt
     }
+    if (body?.sideWorkOnly === true) sideWorkOnly = true
   } catch {
     /* ignore body parse */
   }
 
-  const result = await runIncrementalSyncListingsWork(startedAt)
+  const result = await runIncrementalSyncListingsWork(startedAt, { sideWorkOnly })
   return new Response(JSON.stringify(result.body), {
     status: result.status,
     headers: { 'content-type': 'application/json' },

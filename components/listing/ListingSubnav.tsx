@@ -43,6 +43,7 @@ type TabDef = { id: ListingTab; label: string; href: string };
  * Overview → Photos → (Transactions) → Sold → Rented → Under Agreement → What if → History → Map
  * Sold / Rented / Under Agreement stay collapsed behind the Transactions control
  * until that control is opened (or one of those tabs is already active).
+ * Clicking Transactions also opens Sold (sale) or Rented (rental).
  */
 const TAB_ORDER: ListingTab[] = [
   "overview",
@@ -109,6 +110,7 @@ export default function ListingSubnav({
   embedded = false,
   bare = false,
   compact = false,
+  isRental = false,
   onTabSelect = null,
   panelTab = null,
   onPanelOpen = null,
@@ -127,6 +129,8 @@ export default function ListingSubnav({
   embedded?: boolean;
   bare?: boolean;
   compact?: boolean;
+  /** Sale → open Sold; rental → open Rented when Transactions is clicked. */
+  isRental?: boolean;
   /**
    * When set, tab clicks stay on the current page and call this instead of
    * navigating to listing/spotlight routes (used by `/test` split mockup).
@@ -401,6 +405,32 @@ export default function ListingSubnav({
     if (!TRANSACTION_TABS.has(tabId)) setTransactionsOpen(false);
   };
 
+  /** Sale listings land on Sold; rentals land on Rented. */
+  const defaultTransactionTab: ListingTab = isRental
+    ? "comparable-rentals"
+    : "comparables";
+
+  const openDefaultTransactionTab = () => {
+    setTransactionsOpen(true);
+    const tab = defaultTransactionTab;
+
+    if (onTabSelect) {
+      onTabSelect(tab);
+      return;
+    }
+
+    if (panelMode && onPanelOpen && PANEL_SECTION_TABS.has(tab)) {
+      onPanelOpen(tab as ListingScrollSectionTab);
+      return;
+    }
+
+    if (useHashJump && active === "overview" && jumpToSection(tab)) {
+      return;
+    }
+
+    router.push(sectionHref(tab));
+  };
+
   const renderTransactionsControl = (keyPrefix = "") => (
     <button
       key={`${keyPrefix}transactions`}
@@ -408,7 +438,12 @@ export default function ListingSubnav({
       className={tabLinkClass(false)}
       aria-expanded={false}
       aria-controls="listing-transaction-tabs"
-      onClick={() => setTransactionsOpen(true)}
+      aria-label={
+        isRental
+          ? "Transactions — open Rented"
+          : "Transactions — open Sold"
+      }
+      onClick={openDefaultTransactionTab}
     >
       Transactions
     </button>

@@ -3,8 +3,6 @@ export type AdminTabId =
   | "stats"
   | "data-controls"
   | "architecture"
-  | "rets"
-  | "postgres"
   | "syncs"
   | "server"
   | "glossary";
@@ -15,7 +13,8 @@ export type AdminDataControlsPanelId =
   | "spotlight"
   | "goldilocks"
   | "pricing"
-  | "vintages";
+  | "vintages"
+  | "rets";
 
 /** Sub-panels under Admin → Database. */
 export type AdminDatabasePanelId =
@@ -24,7 +23,8 @@ export type AdminDatabasePanelId =
   | "sync-history"
   | "inventory"
   | "town-counts"
-  | "db-tuning";
+  | "db-tuning"
+  | "postgres";
 
 /** Sub-panels under Admin → Architecture. */
 export type AdminArchitecturePanelId = "map" | "docs";
@@ -49,12 +49,14 @@ export const LEGACY_ADMIN_TAB_TO_DATA_CONTROLS: Record<
   spotlight: "spotlight",
   goldilocks: "goldilocks",
   pricing: "pricing",
+  rets: "rets",
 };
 
-/** Former top-level Sync history tab → Database sub-panel. */
+/** Former top-level Sync history / Postgres tabs → Database sub-panel. */
 export const LEGACY_ADMIN_TAB_TO_DATABASE: Record<string, AdminDatabasePanelId> =
   {
     "sync-log": "sync-history",
+    postgres: "postgres",
   };
 
 /** Former top-level Product docs tab → Architecture sub-panel. */
@@ -96,6 +98,11 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     label: "Vintages",
     subtitle: "Read-only year-built buckets used across stats and matching",
   },
+  {
+    id: "rets",
+    label: "RETS",
+    subtitle: "SmartMLS credentials and connection health",
+  },
 ];
 
 export const ADMIN_DATABASE_PANELS: {
@@ -132,6 +139,11 @@ export const ADMIN_DATABASE_PANELS: {
     id: "db-tuning",
     label: "DB write tuning",
     subtitle: "Upsert chunk size for listings sync writes",
+  },
+  {
+    id: "postgres",
+    label: "Postgres",
+    subtitle: "Live Postgres schema and inventory comparison",
   },
 ];
 
@@ -172,7 +184,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "db",
     label: "Database",
     subtitle:
-      "RETS connection, sync status, sync history, inventory, town counts, and write tuning",
+      "RETS connection, sync, sync history, inventory, town counts, write tuning, and Postgres schema",
   },
   {
     id: "stats",
@@ -183,22 +195,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "data-controls",
     label: "Data controls",
     subtitle:
-      "Site, Spotlight, Goldilocks, Pricing, and read-only Vintages",
+      "Site, Spotlight, Goldilocks, Pricing, Vintages, and RETS credentials",
   },
   {
     id: "architecture",
     label: "Architecture",
     subtitle: "Site architecture map and product docs",
-  },
-  {
-    id: "rets",
-    label: "RETS",
-    subtitle: "SmartMLS credentials and connection health",
-  },
-  {
-    id: "postgres",
-    label: "Postgres",
-    subtitle: "Live Postgres schema and inventory comparison",
   },
   {
     id: "syncs",
@@ -350,8 +352,18 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     tab: "architecture",
     panel: "map",
   },
-  { id: "admin-rets-credentials", label: "RETS credentials", tab: "rets" },
-  { id: "admin-sqlite-schemas", label: "Postgres schema", tab: "postgres" },
+  {
+    id: "admin-rets-credentials",
+    label: "RETS credentials",
+    tab: "data-controls",
+    panel: "rets",
+  },
+  {
+    id: "admin-sqlite-schemas",
+    label: "Postgres schema",
+    tab: "db",
+    panel: "postgres",
+  },
   { id: "admin-startup", label: "Startup schedule", tab: "syncs" },
   { id: "admin-netlify", label: "Netlify functions", tab: "syncs" },
   { id: "admin-zip-boundaries", label: "Zip boundary sync", tab: "syncs" },
@@ -450,13 +462,13 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listings",
     detail:
-      "Scheduled every 30m — stamps heartbeat, queues sync-listings-worker; lean RETS fallback if queue fails. Do not set background:true on this function.",
+      "Scheduled every 30m — stamps heartbeat and always runs lean RETS in-process; optionally queues sync-listings-worker for side work. Do not set background:true on this function.",
     schedule: "Every 30 min",
   },
   {
     label: "sync-listings-worker",
     detail:
-      "Background worker for Admin Run cron / extras (spotlight + saved-search). Not on the schedule itself.",
+      "Background worker for Admin Run cron (full RETS) or thin-cron side work (board/stats + digests). Not on the schedule itself.",
     schedule: "On invoke (background)",
   },
   {
@@ -585,7 +597,8 @@ export function isAdminDataControlsPanelId(
     value === "spotlight" ||
     value === "goldilocks" ||
     value === "pricing" ||
-    value === "vintages"
+    value === "vintages" ||
+    value === "rets"
   );
 }
 
@@ -598,7 +611,17 @@ export function isAdminDatabasePanelId(
     value === "sync-history" ||
     value === "inventory" ||
     value === "town-counts" ||
-    value === "db-tuning"
+    value === "db-tuning" ||
+    value === "postgres"
+  );
+}
+
+/** Schema diagram deep-links under Database → Postgres. */
+export function isAdminPostgresSchemaHash(hash: string): boolean {
+  return (
+    hash.startsWith("schema-table-") ||
+    hash === "admin-sqlite-schemas" ||
+    hash === "postgres-listings"
   );
 }
 
@@ -639,7 +662,7 @@ export function adminPostgresSchemaTableAnchor(table: string): string {
   return `schema-table-${table}`;
 }
 
-/** Deep-link to a table on the Admin Postgres tab. */
+/** Deep-link to a table on Admin → Database → Postgres. */
 export function adminPostgresTableHref(table: string): string {
-  return adminSectionHref(adminPostgresSchemaTableAnchor(table), "postgres");
+  return `/admin?tab=db&panel=postgres#${adminPostgresSchemaTableAnchor(table)}`;
 }
