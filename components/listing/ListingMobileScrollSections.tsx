@@ -247,6 +247,7 @@ export function ListingMobileScrollSections({
         title="Sold"
         hidden={!show("comparables")}
         compact={isPanel}
+        hideTitleOnMobile
         criteriaLinkSlotId={listingCriteriaLinkSlotId(
           LISTING_SECTION_IDS.comparables,
         )}
@@ -267,6 +268,7 @@ export function ListingMobileScrollSections({
         title="Rented"
         hidden={!show("comparable-rentals")}
         compact={isPanel}
+        hideTitleOnMobile
         criteriaLinkSlotId={listingCriteriaLinkSlotId(
           LISTING_SECTION_IDS["comparable-rentals"],
         )}

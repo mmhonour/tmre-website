@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  createContext,
+  useContext,
   useEffect,
   useMemo,
   useState,
@@ -17,6 +19,24 @@ export type IntelligenceMiniGraphSlot = {
   node: ReactNode;
 };
 
+export type MiniGraphsCarouselApi = {
+  paused: boolean;
+  /** True when the mobile one-at-a-time carousel is active. */
+  isCarousel: boolean;
+  pause: () => void;
+  resume: () => void;
+  toggle: () => void;
+};
+
+const MiniGraphsCarouselContext = createContext<MiniGraphsCarouselApi | null>(
+  null,
+);
+
+/** Pause / play the mobile mini-graph carousel (used by the tri-inventory chart). */
+export function useMiniGraphsCarousel(): MiniGraphsCarouselApi | null {
+  return useContext(MiniGraphsCarouselContext);
+}
+
 /**
  * Desktop: Median | Inventory by price | Luxury inventory by price in one row.
  * Mobile: one chart at a time; slides left through 1→2→3, then continues as
@@ -32,7 +52,7 @@ export default function IntelligenceMiniGraphsStrip({
   desktopHideToggleOnly = false,
 }: {
   slots: IntelligenceMiniGraphSlot[];
-  /** Parent assigns () => pause carousel when a chart point is clicked. */
+  /** Parent assigns pause() when a chart point is clicked. */
   onInteractRef: MutableRefObject<(() => void) | null>;
   /** Controlled hide (when Hide graphs sits under Vintages on mobile). */
   hidden?: boolean;
@@ -55,6 +75,17 @@ export default function IntelligenceMiniGraphsStrip({
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
+
+  const carouselApi = useMemo<MiniGraphsCarouselApi>(
+    () => ({
+      paused,
+      isCarousel: isNarrow && items.length > 1,
+      pause: () => setPaused(true),
+      resume: () => setPaused(false),
+      toggle: () => setPaused((p) => !p),
+    }),
+    [paused, isNarrow, items.length],
+  );
 
   useEffect(() => {
     if (!controlled) {
@@ -135,13 +166,18 @@ export default function IntelligenceMiniGraphsStrip({
   const pauseToggle = (
     <button
       type="button"
-      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-navy/20 bg-white font-mono text-[11px] text-navy shadow-sm transition-colors hover:border-navy/40 hover:bg-navy/[0.04]"
+      className={`inline-flex h-6 items-center justify-center gap-1 rounded-full border px-2 font-mono text-[9px] tracking-[0.12em] uppercase shadow-sm transition-colors ${
+        paused
+          ? "border-gold/50 bg-gold/15 text-navy hover:bg-gold/25"
+          : "border-navy/20 bg-white text-navy hover:border-navy/40 hover:bg-navy/[0.04]"
+      }`}
       onClick={() => setPaused((p) => !p)}
       aria-pressed={paused}
       aria-label={paused ? "Resume graph rotation" : "Pause graph rotation"}
-      title={paused ? "Play" : "Pause"}
+      title={paused ? "Play carousel" : "Pause carousel"}
     >
-      {paused ? "▶" : "⏸"}
+      <span aria-hidden>{paused ? "▶" : "⏸"}</span>
+      {paused ? "Play" : "Pause"}
     </button>
   );
 
@@ -157,90 +193,96 @@ export default function IntelligenceMiniGraphsStrip({
   );
 
   return (
-    <div className="mb-2 flex flex-col gap-1 items-stretch">
-      {showHideToggle ? (
-        <div
-          className={`flex justify-end ${desktopHideToggleOnly ? "hidden lg:flex" : ""}`}
-        >
-          <button
-            type="button"
-            className={toggleClass}
-            onClick={() => setHiddenPref(!hidden)}
-            aria-pressed={hidden}
-          >
-            {hidden ? "Show graphs" : "Hide graphs"}
-          </button>
-        </div>
-      ) : null}
-
-      {!hidden ? (
-        <div className="w-full">
+    <MiniGraphsCarouselContext.Provider value={carouselApi}>
+      <div className="mb-2 flex flex-col gap-1 items-stretch">
+        {showHideToggle ? (
           <div
-            className={
-              isNarrow ? "relative w-full overflow-hidden" : "w-full"
-            }
+            className={`flex justify-end ${desktopHideToggleOnly ? "hidden lg:flex" : ""}`}
           >
+            <button
+              type="button"
+              className={toggleClass}
+              onClick={() => setHiddenPref(!hidden)}
+              aria-pressed={hidden}
+            >
+              {hidden ? "Show graphs" : "Hide graphs"}
+            </button>
+          </div>
+        ) : null}
+
+        {!hidden ? (
+          <div className="w-full">
             <div
               className={
-                isNarrow
-                  ? "flex transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-                  : "flex flex-row items-start gap-4"
-              }
-              style={
-                isNarrow
-                  ? { transform: `translateX(-${activeIndex * 100}%)` }
-                  : undefined
+                isNarrow ? "relative w-full overflow-hidden" : "w-full"
               }
             >
-              {items.map((item, i) => (
-                <div
-                  key={item.key}
-                  className={
-                    isNarrow
-                      ? "w-full min-w-full shrink-0 flex justify-start"
-                      : "w-full min-w-0 max-w-md flex-1"
-                  }
-                  aria-hidden={isNarrow ? i !== activeIndex : undefined}
-                >
-                  {item.node}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {isNarrow ? (
-            <div className="mt-1.5 flex items-center justify-start gap-2">
-              {items.length > 1 ? (
-                <>
+              <div
+                className={
+                  isNarrow
+                    ? "flex transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+                    : "flex flex-row items-start gap-4"
+                }
+                style={
+                  isNarrow
+                    ? { transform: `translateX(-${activeIndex * 100}%)` }
+                    : undefined
+                }
+              >
+                {items.map((item, i) => (
                   <div
-                    className="flex items-center gap-1.5"
-                    role="tablist"
-                    aria-label="Mini graphs"
+                    key={item.key}
+                    className={
+                      isNarrow
+                        ? "w-full min-w-full shrink-0 flex justify-start"
+                        : "w-full min-w-0 max-w-md flex-1"
+                    }
+                    aria-hidden={isNarrow ? i !== activeIndex : undefined}
                   >
-                    {items.map((item, i) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        role="tab"
-                        aria-selected={i === activeIndex}
-                        aria-label={`Show graph ${i + 1} of ${items.length}`}
-                        className={`h-1.5 rounded-full transition-all ${
-                          i === activeIndex
-                            ? "w-4 bg-navy"
-                            : "w-1.5 bg-navy/25 hover:bg-navy/45"
-                        }`}
-                        onClick={() => setActiveIndex(i)}
-                      />
-                    ))}
+                    {item.node}
                   </div>
-                  {pauseToggle}
-                </>
-              ) : null}
-              {interactiveHint}
+                ))}
+              </div>
             </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+
+            {isNarrow ? (
+              <div className="mt-1.5 flex flex-wrap items-center justify-start gap-2">
+                {items.length > 1 ? (
+                  <>
+                    <div
+                      className="flex items-center gap-1.5"
+                      role="tablist"
+                      aria-label="Mini graphs"
+                    >
+                      {items.map((item, i) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          role="tab"
+                          aria-selected={i === activeIndex}
+                          aria-label={`Show graph ${i + 1} of ${items.length}`}
+                          className={`h-1.5 rounded-full transition-all ${
+                            i === activeIndex
+                              ? "w-4 bg-navy"
+                              : "w-1.5 bg-navy/25 hover:bg-navy/45"
+                          }`}
+                          onClick={() => {
+                            setActiveIndex(i);
+                            // Stay on the chosen graph while working with it.
+                            setPaused(true);
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {pauseToggle}
+                  </>
+                ) : null}
+                {interactiveHint}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </MiniGraphsCarouselContext.Provider>
   );
 }

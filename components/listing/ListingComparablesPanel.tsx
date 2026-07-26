@@ -1146,9 +1146,17 @@ export default function ListingComparablesPanel({
   const showActiveColumn =
     wantActive &&
     (active.length > 0 || showDualColumnsOnPage || (isPage && columns === "active"));
-  /** Both panels present — jump links only while stacked (below sm on page, md otherwise). */
+  /**
+   * Desktop / tablet jump links while stacked. On mobile page, Sold(#) is
+   * removed and ON MARKET(#) lives in the Recently sold/rented header.
+   */
+  const isMobilePage = isPage && isDesktop === false;
   const showStackedPanelJumpLinks =
-    columns === "both" && showSoldColumn && showActiveColumn && showCompsGrid;
+    columns === "both" &&
+    showSoldColumn &&
+    showActiveColumn &&
+    showCompsGrid &&
+    !isMobilePage;
   const soldPanelId = listingRecentlyClosedPanelId(kind);
   const onMarketPanelId = `comparables-on-market-${kind}`;
 
@@ -1237,13 +1245,15 @@ export default function ListingComparablesPanel({
     isModal ? "text-slate/70" : "text-white/40"
   } ${foundCountEmphasized ? "scale-150" : "scale-100"}`;
 
-  const activeColumnTitle = isRental
-    ? isPage
-      ? "FOR RENT ON MARKET"
-      : "For rent on market"
-    : isPage
-      ? "FOR SALE ON MARKET"
-      : "For sale on market";
+  const activeColumnTitle = isMobilePage
+    ? "ON MARKET"
+    : isRental
+      ? isPage
+        ? "FOR RENT ON MARKET"
+        : "For rent on market"
+      : isPage
+        ? "FOR SALE ON MARKET"
+        : "For sale on market";
 
   const showCriteria =
     Boolean(criteria && sessionMatch) && (isPage || isModal || hasContent);
@@ -1412,37 +1422,78 @@ export default function ListingComparablesPanel({
           id={soldPanelId}
           className={
             isPage
-              ? "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:py-4"
+              ? "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pt-1 max-lg:pb-3"
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
                 : "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 max-lg:px-3"
           }
         >
-          <div className="mb-3">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
-                <LookbackSpinner
-                  months={lookbackMonths}
-                  onChange={setLookbackMonths}
-                  theme={sortTheme}
-                />
+          <div className={isMobilePage ? "mb-2" : "mb-3"}>
+            {isMobilePage ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    <p className={sectionTitleClass}>
+                      {recentlyClosedLabel} ({sortedSold.length})
+                    </p>
+                    <LookbackSpinner
+                      months={lookbackMonths}
+                      onChange={setLookbackMonths}
+                      theme={sortTheme}
+                    />
+                  </div>
+                  {showActiveColumn ? (
+                    <a
+                      href={`#${onMarketPanelId}`}
+                      className={`${stackedJumpLinkClass} shrink-0`}
+                    >
+                      ON MARKET({sortedActive.length})
+                    </a>
+                  ) : null}
+                </div>
+                {sortedSold.length > 0 ? (
+                  <div className="mt-2">
+                    <CompSortLinks
+                      options={[
+                        { key: "score", label: "Edge" },
+                        { key: "closeDate", label: "CLOSED" },
+                        { key: "price", label: "Price" },
+                      ]}
+                      activeKey={soldSort.key}
+                      activeDir={soldSort.dir}
+                      onSort={handleSoldSort}
+                      theme={sortTheme}
+                      ariaLabel={`${recentlyClosedLabel} sort`}
+                    />
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
+                  <LookbackSpinner
+                    months={lookbackMonths}
+                    onChange={setLookbackMonths}
+                    theme={sortTheme}
+                  />
+                </div>
+                {sortedSold.length > 0 ? (
+                  <CompSortLinks
+                    options={[
+                      { key: "score", label: "Edge" },
+                      { key: "closeDate", label: "CLOSED" },
+                      { key: "price", label: "Price" },
+                    ]}
+                    activeKey={soldSort.key}
+                    activeDir={soldSort.dir}
+                    onSort={handleSoldSort}
+                    theme={sortTheme}
+                    ariaLabel={`${recentlyClosedLabel} sort`}
+                  />
+                ) : null}
               </div>
-              {sortedSold.length > 0 ? (
-                <CompSortLinks
-                  options={[
-                    { key: "score", label: "Edge" },
-                    { key: "closeDate", label: "CLOSED" },
-                    { key: "price", label: "Price" },
-                  ]}
-                  activeKey={soldSort.key}
-                  activeDir={soldSort.dir}
-                  onSort={handleSoldSort}
-                  theme={sortTheme}
-                  ariaLabel={`${recentlyClosedLabel} sort`}
-                />
-              ) : null}
-            </div>
+            )}
             {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
               <div
                 id={criteriaLinkSlotId}
@@ -1454,6 +1505,7 @@ export default function ListingComparablesPanel({
             theme={isModal ? "light" : "dark"}
             foundCount={sortedSold.length}
             foundCountClass={foundCountClass}
+            hideFoundCount={isMobilePage}
           />
           {sortedSold.length > 0 ? (
             <>
@@ -1520,15 +1572,19 @@ export default function ListingComparablesPanel({
           id={onMarketPanelId}
           className={
             isPage
-              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:py-4"
+              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pt-1 max-lg:pb-3"
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
                 : "scroll-mt-24 min-w-0 max-lg:px-3"
           }
         >
-          <div className="mb-3">
+          <div className={isMobilePage ? "mb-2" : "mb-3"}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <p className={sectionTitleClass}>{activeColumnTitle}</p>
+              <p className={sectionTitleClass}>
+                {isMobilePage
+                  ? `${activeColumnTitle} (${sortedActive.length})`
+                  : activeColumnTitle}
+              </p>
               {sortedActive.length > 0 ? (
                 <CompSortLinks
                   options={[
@@ -1557,6 +1613,7 @@ export default function ListingComparablesPanel({
             theme={isModal ? "light" : "dark"}
             foundCount={sortedActive.length}
             foundCountClass={foundCountClass}
+            hideFoundCount={isMobilePage}
           />
           {active.length > 0 ? (
             <>

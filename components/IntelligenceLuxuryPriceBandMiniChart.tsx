@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useMiniGraphsCarousel } from "@/components/IntelligenceMiniGraphsStrip";
 import type { InventorySegmentId } from "@/lib/inventory-segment-bands-shared";
 import type { InventorySegmentChartSeed } from "@/lib/intelligence-inventory-segment-fssr";
 
@@ -114,9 +115,10 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     max: number | null;
   }) => void;
   onResetFilter?: () => void;
-  /** Fired when a graph point is clicked (e.g. pause mobile carousel). */
+  /** Fired when a graph point / segment tab is used (e.g. pause mobile carousel). */
   onInteract?: () => void;
 }) {
+  const carousel = useMiniGraphsCarousel();
   const seedCity = initialSeed?.city ?? null;
   const [segment, setSegment] = useState<InventorySegmentId>("luxury");
   const [bySegment, setBySegment] = useState<
@@ -303,43 +305,70 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
               interactive graph
             </p>
           </div>
-          <div
-            role="tablist"
-            aria-label="Inventory segment"
-            className="flex w-full max-w-[248px] flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5"
-          >
-            {SEGMENT_ORDER.map((id) => {
-              const active = segment === id;
-              const label = labels[id] ?? SEGMENT_TAB_LABEL[id];
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => {
-                    setSegment(id);
-                    introStartedRef.current = false;
-                    setExtraCallouts(new Set());
-                  }}
-                  className={`font-mono text-[8px] tracking-[0.12em] uppercase transition-colors ${
-                    id === "luxury"
-                      ? active
-                        ? "text-navy underline decoration-gold underline-offset-2"
-                        : "text-navy/55 hover:text-navy"
-                      : id === "value"
+          <div className="flex w-full max-w-[248px] flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <div
+              role="tablist"
+              aria-label="Inventory segment"
+              className="flex min-w-0 flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5"
+            >
+              {SEGMENT_ORDER.map((id) => {
+                const active = segment === id;
+                const label = labels[id] ?? SEGMENT_TAB_LABEL[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      // Stay on this slide while switching Luxury / Mid / Value.
+                      onInteract?.();
+                      setSegment(id);
+                      introStartedRef.current = false;
+                      setExtraCallouts(new Set());
+                    }}
+                    className={`font-mono text-[8px] tracking-[0.12em] uppercase transition-colors ${
+                      id === "luxury"
                         ? active
-                          ? "text-sage underline decoration-gold underline-offset-2"
-                          : "text-sage/60 hover:text-sage"
-                        : active
-                          ? "text-black underline decoration-gold underline-offset-2"
-                          : "text-black/45 hover:text-black"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
+                          ? "text-navy underline decoration-gold underline-offset-2"
+                          : "text-navy/55 hover:text-navy"
+                        : id === "value"
+                          ? active
+                            ? "text-sage underline decoration-gold underline-offset-2"
+                            : "text-sage/60 hover:text-sage"
+                          : active
+                            ? "text-black underline decoration-gold underline-offset-2"
+                            : "text-black/45 hover:text-black"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {carousel?.isCarousel ? (
+              <button
+                type="button"
+                onClick={() => carousel.toggle()}
+                aria-pressed={carousel.paused}
+                aria-label={
+                  carousel.paused
+                    ? "Resume graph carousel"
+                    : "Pause graph carousel"
+                }
+                title={
+                  carousel.paused ? "Play graph carousel" : "Pause graph carousel"
+                }
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[8px] tracking-[0.12em] uppercase transition-colors ${
+                  carousel.paused
+                    ? "border-gold/50 bg-gold/15 text-navy"
+                    : "border-navy/20 bg-white text-navy/70 hover:border-navy/40 hover:text-navy"
+                }`}
+              >
+                <span aria-hidden>{carousel.paused ? "▶" : "⏸"}</span>
+                {carousel.paused ? "Play" : "Pause"}
+              </button>
+            ) : null}
           </div>
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
