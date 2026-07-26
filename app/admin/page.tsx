@@ -750,76 +750,96 @@ export default async function AdminPage() {
 
   const deployBuild = readDeployBuildInfo();
 
+  const statusBar = (
+    <div
+      className={`rounded-xl border px-4 py-3 sm:px-5 ${
+        postgresTarget.isProductionStore
+          ? "border-sage/25 bg-sage/[0.08]"
+          : postgresTarget.kind === "local"
+            ? "border-coral/25 bg-coral/[0.08]"
+            : "border-charcoal/[0.1] bg-white"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 min-w-0">
+          <div className="min-w-0">
+            <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
+              Database
+            </p>
+            <p
+              className={`font-mono text-[11px] leading-snug ${
+                postgresTarget.isProductionStore
+                  ? "text-sage"
+                  : postgresTarget.kind === "local"
+                    ? "text-coral"
+                    : "text-charcoal/80"
+              }`}
+            >
+              {postgresTarget.editingLabel}
+            </p>
+            {postgresTarget.host ? (
+              <p className="font-mono text-[9px] text-charcoal/40 leading-none mt-1 truncate max-w-[16rem]">
+                {postgresTarget.host}
+              </p>
+            ) : null}
+          </div>
+          {(lambdaInstanceId || lambdaFnName) && (
+            <div className="min-w-0">
+              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
+                Lambda
+              </p>
+              {lambdaInstanceId ? (
+                <p className="font-mono text-[10px] text-charcoal/55 leading-snug">
+                  {lambdaInstanceId}&hellip;
+                </p>
+              ) : null}
+              <p className="font-mono text-[10px] text-charcoal/45 leading-snug mt-0.5">
+                up {lambdaUptimeStr}
+                {lambdaFnName ? ` · ${lambdaFnName}` : ""}
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="text-right select-none shrink-0 ml-auto">
+          <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
+            Build
+          </p>
+          {deployBuild ? (
+            <>
+              {deployBuild.builtAtUtcLabel ? (
+                <p className="font-mono text-[10px] text-charcoal/75 leading-snug whitespace-nowrap">
+                  {deployBuild.builtAtUtcLabel}
+                </p>
+              ) : null}
+              {deployBuild.builtAtEtLabel ? (
+                <p className="font-mono text-[10px] text-charcoal/55 leading-snug mt-0.5 whitespace-nowrap">
+                  {deployBuild.builtAtEtLabel}
+                </p>
+              ) : null}
+              <p className="font-mono text-[9px] text-charcoal/40 leading-none mt-1">
+                #{deployBuild.shortId}
+                {deployBuild.id.length > 12 ? "…" : ""}
+              </p>
+            </>
+          ) : (
+            <p className="font-mono text-[10px] text-charcoal/40 leading-snug">
+              unavailable · next Netlify deploy stamps it
+            </p>
+          )}
+        </div>
+      </div>
+      {postgresTarget.detail ? (
+        <p className="mt-2 text-xs text-charcoal/55 leading-snug max-w-3xl">
+          {postgresTarget.detail}
+        </p>
+      ) : null}
+    </div>
+  );
+
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
-        {/* Clear fixed site nav (pt-20 / lg:pt-24) — top-5 sat under the header. */}
-        <div className="absolute top-24 right-6 z-10 lg:top-28 lg:right-10 text-right select-none space-y-2.5 max-w-[16rem]">
-            <div>
-              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold/80 leading-none mb-1">
-                Database
-              </p>
-              <p
-                className={`font-mono text-[11px] leading-snug ${
-                  postgresTarget.isProductionStore
-                    ? "text-sage"
-                    : postgresTarget.kind === "local"
-                      ? "text-coral"
-                      : "text-white/80"
-                }`}
-              >
-                {postgresTarget.editingLabel}
-              </p>
-              {postgresTarget.host ? (
-                <p className="font-mono text-[9px] text-white/40 leading-none mt-1 truncate">
-                  {postgresTarget.host}
-                </p>
-              ) : null}
-            </div>
-            {(lambdaInstanceId || lambdaFnName) && (
-              <div>
-                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-white/30 leading-none mb-0.5">
-                  Lambda
-                </p>
-                {lambdaInstanceId && (
-                  <p className="font-mono text-[9px] text-white/40 leading-none">
-                    {lambdaInstanceId}&hellip;
-                  </p>
-                )}
-                <p className="font-mono text-[9px] text-white/30 leading-none mt-0.5">
-                  up {lambdaUptimeStr}
-                </p>
-              </div>
-            )}
-            <div>
-              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold/80 leading-none mb-1">
-                Build
-              </p>
-              {deployBuild ? (
-                <>
-                  {deployBuild.builtAtUtcLabel ? (
-                    <p className="font-mono text-[10px] text-white/80 leading-snug whitespace-nowrap">
-                      {deployBuild.builtAtUtcLabel}
-                    </p>
-                  ) : null}
-                  {deployBuild.builtAtEtLabel ? (
-                    <p className="font-mono text-[10px] text-white/65 leading-snug mt-0.5 whitespace-nowrap">
-                      {deployBuild.builtAtEtLabel}
-                    </p>
-                  ) : null}
-                  <p className="font-mono text-[9px] text-white/40 leading-none mt-1">
-                    #{deployBuild.shortId}
-                    {deployBuild.id.length > 12 ? "…" : ""}
-                  </p>
-                </>
-              ) : (
-                <p className="font-mono text-[10px] text-white/40 leading-snug">
-                  unavailable · next Netlify deploy stamps it
-                </p>
-              )}
-            </div>
-          </div>
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Explore
@@ -858,33 +878,6 @@ export default async function AdminPage() {
           </div>
         </div>
       </section>
-
-      <div
-        className={`border-b px-6 py-3 ${
-          postgresTarget.isProductionStore
-            ? "border-sage/25 bg-sage/[0.08]"
-            : postgresTarget.kind === "local"
-              ? "border-coral/25 bg-coral/[0.08]"
-              : "border-charcoal/10 bg-cream"
-        }`}
-      >
-        <div className="mx-auto max-w-7xl lg:px-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
-          <p
-            className={`font-mono text-[11px] tracking-[0.16em] uppercase font-semibold ${
-              postgresTarget.isProductionStore
-                ? "text-sage"
-                : postgresTarget.kind === "local"
-                  ? "text-coral"
-                  : "text-charcoal/70"
-            }`}
-          >
-            {postgresTarget.editingLabel}
-          </p>
-          <p className="text-xs text-charcoal/60 leading-snug max-w-2xl sm:text-right">
-            {postgresTarget.detail}
-          </p>
-        </div>
-      </div>
 
       {loadErrors.length > 0 && (
         <div className="border-b border-coral/30 bg-coral/[0.09] px-6 py-4">
@@ -961,6 +954,7 @@ export default async function AdminPage() {
       )}
 
       <AdminTabbedLayout
+        statusBar={statusBar}
         db={dbPanel}
         stats={<AdminStatsInventoryPanel />}
         dataControls={dataControlsPanel}

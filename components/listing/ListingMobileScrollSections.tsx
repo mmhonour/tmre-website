@@ -193,6 +193,11 @@ export function ListingMobileScrollSections({
   const show = (tab: ListingScrollSectionTab) =>
     !isPanel || activeTab === tab;
 
+  // Panel mode: only mount the active section body. Mounting History / What if /
+  // Sold / Rented / UAG together stampedes APIs and leaves Criteria stuck behind
+  // "Loading comps…" while sibling tabs compete for the same server.
+  const mount = (tab: ListingScrollSectionTab) => show(tab);
+
   return (
     <div className={isPanel ? "space-y-0" : "mt-8 space-y-0"}>
       <Section
@@ -201,11 +206,13 @@ export function ListingMobileScrollSections({
         hidden={!show("history")}
         compact={isPanel}
       >
-        <ListingHistoryPanel
-          mlsId={mlsId}
-          townHint={townHint}
-          variant="page"
-        />
+        {mount("history") ? (
+          <ListingHistoryPanel
+            mlsId={mlsId}
+            townHint={townHint}
+            variant="page"
+          />
+        ) : null}
       </Section>
       <Section
         id={LISTING_SECTION_IDS.if}
@@ -214,13 +221,15 @@ export function ListingMobileScrollSections({
         criteriaLinkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
         compact={isPanel}
       >
-        <ListingIfPageContent
-          mlsId={mlsId}
-          addressHint={addressHint}
-          townHint={townHint}
-          routeBase={routeBase}
-          suppressPageChrome={isPanel}
-        />
+        {mount("if") ? (
+          <ListingIfPageContent
+            mlsId={mlsId}
+            addressHint={addressHint}
+            townHint={townHint}
+            routeBase={routeBase}
+            suppressPageChrome={isPanel}
+          />
+        ) : null}
       </Section>
       <Section
         id={LISTING_SECTION_IDS.comparables}
@@ -232,13 +241,15 @@ export function ListingMobileScrollSections({
         )}
         criteriaLinkDesktopOnly
       >
-        <ListingComparablesPageContent
-          mlsId={mlsId}
-          townHint={townHint}
-          kind="sale"
-          fetchUrl={salesFetchUrl}
-          suppressPageChrome={isPanel}
-        />
+        {mount("comparables") ? (
+          <ListingComparablesPageContent
+            mlsId={mlsId}
+            townHint={townHint}
+            kind="sale"
+            fetchUrl={salesFetchUrl}
+            suppressPageChrome={isPanel}
+          />
+        ) : null}
       </Section>
       <Section
         id={LISTING_SECTION_IDS["comparable-rentals"]}
@@ -250,13 +261,15 @@ export function ListingMobileScrollSections({
         )}
         criteriaLinkDesktopOnly
       >
-        <ListingComparablesPageContent
-          mlsId={mlsId}
-          townHint={townHint}
-          kind="rental"
-          fetchUrl={rentalsFetchUrl}
-          suppressPageChrome={isPanel}
-        />
+        {mount("comparable-rentals") ? (
+          <ListingComparablesPageContent
+            mlsId={mlsId}
+            townHint={townHint}
+            kind="rental"
+            fetchUrl={rentalsFetchUrl}
+            suppressPageChrome={isPanel}
+          />
+        ) : null}
       </Section>
       <Section
         id={LISTING_SECTION_IDS.uag}
@@ -266,12 +279,14 @@ export function ListingMobileScrollSections({
         criteriaLinkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)}
         criteriaLinkDesktopOnly
       >
-        <ListingUagPageContent
-          mlsId={mlsId}
-          townHint={townHint}
-          fetchUrl={uagFetchUrl}
-          suppressPageChrome={isPanel}
-        />
+        {mount("uag") ? (
+          <ListingUagPageContent
+            mlsId={mlsId}
+            townHint={townHint}
+            fetchUrl={uagFetchUrl}
+            suppressPageChrome={isPanel}
+          />
+        ) : null}
       </Section>
     </div>
   );

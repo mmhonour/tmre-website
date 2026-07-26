@@ -30,15 +30,16 @@ export const DEAL_OF_THE_DAY_CACHE_PREFIX = 'deal-of-the-day:v6'
 
 export type DealOfTheDayScope = TmreTown
 export type DealOfTheDayKind = 'sale' | 'rental'
-/** Cached subtypes only — no "all" (that would reintroduce condo mix). */
-export type DealOfTheDayPropertyClass = Exclude<ListingPropertyClass, 'all'>
+/**
+ * Subtype slices are homes/multi/condos. `all` is composed from those slices
+ * (or live-computed) — used when Rentals hide subtype pills.
+ */
+export type DealOfTheDayPropertyClass = ListingPropertyClass
+export type DealOfTheDayPropertyClassSlice = Exclude<ListingPropertyClass, 'all'>
 
 export const DEAL_OF_THE_DAY_KINDS: readonly DealOfTheDayKind[] = ['sale', 'rental']
-export const DEAL_OF_THE_DAY_PROPERTY_CLASSES: readonly DealOfTheDayPropertyClass[] = [
-  'homes',
-  'multi',
-  'condos',
-]
+export const DEAL_OF_THE_DAY_PROPERTY_CLASSES: readonly DealOfTheDayPropertyClassSlice[] =
+  ['homes', 'multi', 'condos']
 
 export type DealOfTheDayResponse = DealPickPayload & {
   scope: {
@@ -93,7 +94,7 @@ export function buildDealOfTheDayResponse(
   }
 }
 
-export async function readDealOfTheDayCache(
+async function readDealOfTheDayCacheRow(
   scope: DealOfTheDayScope,
   kind: DealOfTheDayKind,
   propertyClass: DealOfTheDayPropertyClass,
@@ -105,6 +106,40 @@ export async function readDealOfTheDayCache(
     return JSON.parse(row.payload) as DealOfTheDayResponse
   } catch {
     return null
+  }
+}
+
+/**
+ * Prefer a dedicated `all` row; otherwise pick the highest-score homes/multi/condos
+ * slice so Rentals (no subtype pills) still hit the warm cache.
+ */
+export async function readDealOfTheDayCache(
+  scope: DealOfTheDayScope,
+  kind: DealOfTheDayKind,
+  propertyClass: DealOfTheDayPropertyClass,
+): Promise<DealOfTheDayResponse | null> {
+  if (propertyClass !== 'all') {
+    return readDealOfTheDayCacheRow(scope, kind, propertyClass)
+  }
+
+  const dedicated = await readDealOfTheDayCacheRow(scope, kind, 'all')
+  if (dedicated) return dedicated
+
+  let best: DealOfTheDayResponse | null = null
+  for (const slice of DEAL_OF_THE_DAY_PROPERTY_CLASSES) {
+    const cached = await readDealOfTheDayCacheRow(scope, kind, slice)
+    if (!cached) continue
+    if (!best || cached.score.composite > best.score.composite) {
+      best = cached
+    }
+  }
+  if (!best) return null
+  return {
+    ...best,
+    scope: {
+      ...best.scope,
+      propertyClass: 'all',
+    },
   }
 }
 

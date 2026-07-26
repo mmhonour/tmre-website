@@ -32,6 +32,7 @@ type ListingForDetailsPanel = {
   townHint?: string | null;
   propertyTitle?: string | null;
   status: string;
+  statusChangeTimestamp?: string | null;
   propertyType?: string | null;
   price: number | null;
   originalListPrice?: number | null;
@@ -132,6 +133,7 @@ export function buildListingDetailsPanelProps(
   const { closePrice, closeDate } = closeFieldsFromListing({
     status: listing.status,
     price: listing.price,
+    statusChangeTimestamp: listing.statusChangeTimestamp,
     raw: listing.raw,
   });
   const soldPrice = closePrice ?? (isClosed ? listing.price : null);

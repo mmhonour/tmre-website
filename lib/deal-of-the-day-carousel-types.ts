@@ -64,5 +64,6 @@ export type DealCarouselDealsByTown = Partial<
   Record<TmreTown, DealCarouselPayload | null>
 >
 
-export type DealPropertyClassFilter = 'homes' | 'multi' | 'condos'
+/** `all` = any subtype (used for Rentals on DOTD when subtype pills are hidden). */
+export type DealPropertyClassFilter = 'homes' | 'multi' | 'condos' | 'all'
 export type DealTransactionFilter = 'all' | 'sale' | 'rental'

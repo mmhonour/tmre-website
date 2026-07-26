@@ -35,6 +35,7 @@ import { formatDealOfTheDayHeaderSubtitle } from "@/lib/deal-of-the-day-header";
 import { listingPropertyClassLabel } from "@/lib/listing-property-class";
 
 const DEAL_PROPERTY_CLASS_VALUES = ["homes", "multi", "condos"] as const;
+type DealSalePropertyClass = (typeof DEAL_PROPERTY_CLASS_VALUES)[number];
 
 type ListingKind = "sale" | "rental";
 
@@ -491,7 +492,7 @@ export default function DealOfTheWeekHero({
   const propertyParam = searchParams.get("property");
   const pinnedKind =
     kindParam === "sale" || kindParam === "rental" ? kindParam : null;
-  const pinnedProperty: DealPropertyClassFilter | null =
+  const pinnedProperty: DealSalePropertyClass | null =
     propertyParam === "homes" ||
     propertyParam === "multi" ||
     propertyParam === "condos"
@@ -512,7 +513,7 @@ export default function DealOfTheWeekHero({
     ["sale", "rental"],
   );
   const [propertyClass, setPropertyClass] =
-    usePersistedFilter<DealPropertyClassFilter>(
+    usePersistedFilter<DealSalePropertyClass>(
       "deal-of-the-day-property",
       "homes",
       DEAL_PROPERTY_CLASS_VALUES,
@@ -593,12 +594,18 @@ export default function DealOfTheWeekHero({
         ? `day-${dayTxFilter}-${dayPropertyClass}`
         : "week";
   const animateDealContent = Boolean(isDay && slideDir);
+  const dayClassLabel =
+    dayTxFilter === "rental"
+      ? ""
+      : `${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} `;
   const dayInsight = dayEmpty
     ? dayTxFilter === "rental"
-      ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental picks${city ? ` in ${city}` : " available"} right now.`
-      : `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} for-sale picks${city ? ` in ${city}` : " available"} right now.`
+      ? `No below-median rental picks${city ? ` in ${city}` : " available"} right now.`
+      : `No below-median ${dayClassLabel}for-sale picks${city ? ` in ${city}` : " available"} right now.`
     : loadingState && isDay
-      ? `Loading ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} picks…`
+      ? dayTxFilter === "rental"
+        ? "Loading rental picks…"
+        : `Loading ${dayClassLabel}picks…`
       : showing?.insight ?? "Scanning listings…";
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -741,7 +748,7 @@ export default function DealOfTheWeekHero({
             </h1>
             {isDay ? (
               <div
-                key={animateDealContent ? `photo-${slideKey}` : "photo-instant"}
+                key={`photo-${slideKey}`}
                 className={`max-w-xl relative rounded-2xl overflow-hidden border border-white/10 shadow-xl shadow-black/30 ${
                   dayEmpty || !animateDealContent
                     ? ""
@@ -752,16 +759,16 @@ export default function DealOfTheWeekHero({
                   <div className="relative w-full aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark flex items-center justify-center px-6">
                     <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
                       {loadingState && !showing
-                        ? `Loading ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} ${
-                            dayTxFilter === "rental" ? "rental" : "for-sale"
-                          } picks…`
+                        ? dayTxFilter === "rental"
+                          ? "Loading rental picks…"
+                          : `Loading ${dayClassLabel}for-sale picks…`
                         : dayTxFilter === "rental"
                           ? city
-                            ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental pick in ${city} right now.`
-                            : `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} rental picks available right now.`
+                            ? `No below-median rental pick in ${city} right now.`
+                            : "No below-median rental picks available right now."
                           : city
-                            ? `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} for-sale pick in ${city} right now.`
-                            : `No below-median ${listingPropertyClassLabel(dayPropertyClass).toLowerCase()} for-sale picks available right now.`}
+                            ? `No below-median ${dayClassLabel}for-sale pick in ${city} right now.`
+                            : `No below-median ${dayClassLabel}for-sale picks available right now.`}
                     </p>
                   </div>
                 ) : l ? (
@@ -878,8 +885,12 @@ export default function DealOfTheWeekHero({
               townLabel={isDay ? carousel.currentTown : null}
               transactionFilter={isDay ? dayTxFilter : undefined}
               onTransactionFilterChange={isDay ? setTxFilter : undefined}
-              propertyClass={isDay ? dayPropertyClass : undefined}
-              onPropertyClassChange={isDay ? setPropertyClass : undefined}
+              propertyClass={
+                isDay && dayTxFilter === "sale" ? dayPropertyClass : undefined
+              }
+              onPropertyClassChange={
+                isDay && dayTxFilter === "sale" ? setPropertyClass : undefined
+              }
               carouselControls={
                 isDay && !city && carousel.carouselTowns.length > 0
                   ? {
@@ -912,7 +923,7 @@ function DealTransactionFilterPills({
 }) {
   const options = [
     { value: "sale" as const, label: "For Sale" },
-    { value: "rental" as const, label: "Rental" },
+    { value: "rental" as const, label: "Rentals" },
   ];
   return (
     <div
@@ -939,10 +950,10 @@ function DealPropertyClassFilterPills({
   value,
   onChange,
 }: {
-  value: DealPropertyClassFilter;
-  onChange: (value: DealPropertyClassFilter) => void;
+  value: DealSalePropertyClass;
+  onChange: (value: DealSalePropertyClass) => void;
 }) {
-  const options: { value: DealPropertyClassFilter; label: string }[] = [
+  const options: { value: DealSalePropertyClass; label: string }[] = [
     { value: "homes", label: "Homes" },
     { value: "multi", label: "Multi" },
     { value: "condos", label: "Condos" },
@@ -1042,8 +1053,8 @@ function DealCard({
   } | null;
   transactionFilter?: "sale" | "rental";
   onTransactionFilterChange?: (value: "sale" | "rental") => void;
-  propertyClass?: DealPropertyClassFilter;
-  onPropertyClassChange?: (value: DealPropertyClassFilter) => void;
+  propertyClass?: DealSalePropertyClass;
+  onPropertyClassChange?: (value: DealSalePropertyClass) => void;
   empty?: boolean;
   hidePhoto?: boolean;
 }) {
@@ -1142,16 +1153,16 @@ function DealCard({
             {(transactionFilter && onTransactionFilterChange) ||
             (propertyClass && onPropertyClassChange) ? (
               <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
-                {propertyClass && onPropertyClassChange ? (
-                  <DealPropertyClassFilterPills
-                    value={propertyClass}
-                    onChange={onPropertyClassChange}
-                  />
-                ) : null}
                 {transactionFilter && onTransactionFilterChange ? (
                   <DealTransactionFilterPills
                     value={transactionFilter}
                     onChange={onTransactionFilterChange}
+                  />
+                ) : null}
+                {propertyClass && onPropertyClassChange ? (
+                  <DealPropertyClassFilterPills
+                    value={propertyClass}
+                    onChange={onPropertyClassChange}
                   />
                 ) : null}
               </div>
@@ -1165,8 +1176,8 @@ function DealCard({
                 <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
                   {transactionFilter === "rental"
                     ? townLabel
-                      ? `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}rental pick in ${townLabel} right now.`
-                      : `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}rental picks available right now.`
+                      ? `No below-median rental pick in ${townLabel} right now.`
+                      : "No below-median rental picks available right now."
                     : townLabel
                       ? `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}for-sale pick in ${townLabel} right now.`
                       : `No below-median ${propertyClass ? listingPropertyClassLabel(propertyClass).toLowerCase() + " " : ""}for-sale picks available right now.`}

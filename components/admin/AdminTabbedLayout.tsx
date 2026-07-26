@@ -132,6 +132,7 @@ export default function AdminTabbedLayout({
   syncs,
   server,
   glossary,
+  statusBar = null,
 }: {
   db: ReactNode;
   stats: ReactNode;
@@ -141,6 +142,8 @@ export default function AdminTabbedLayout({
   syncs: ReactNode;
   server: ReactNode;
   glossary: ReactNode;
+  /** Database / Lambda / Build strip rendered above the tab list. */
+  statusBar?: ReactNode;
 }) {
   const [tab, setTab] = useState<AdminTabId>("db");
 
@@ -209,6 +212,7 @@ export default function AdminTabbedLayout({
   return (
     <section className="bg-cream py-10 lg:py-14">
       <div className="mx-auto max-w-7xl px-6 lg:px-10">
+        {statusBar ? <div className="mb-4">{statusBar}</div> : null}
         {/* Underline tab bar — uniform height, active tab marked by a bottom border. */}
         <div
           role="tablist"

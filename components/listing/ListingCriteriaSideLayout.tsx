@@ -81,9 +81,11 @@ export default function ListingCriteriaSideLayout({
       setSectionVisible(!section || !section.hasAttribute("hidden"));
     };
     sync();
-    // Dynamic Sold/Rented/UAG panels mount after the title slot — keep trying briefly.
+    // Dynamic Sold/Rented/UAG bodies mount after the title slot (and after
+    // panel-mode lazy mount). Keep syncing longer so Criteria doesn't miss
+    // the portal target on a cold tab open.
     const interval = window.setInterval(sync, 100);
-    const stop = window.setTimeout(() => window.clearInterval(interval), 2500);
+    const stop = window.setTimeout(() => window.clearInterval(interval), 8000);
     return () => {
       window.clearInterval(interval);
       window.clearTimeout(stop);

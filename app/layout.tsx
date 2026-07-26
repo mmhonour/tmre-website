@@ -10,7 +10,6 @@ import ListingReturnNavTracker from "@/components/listing/ListingReturnNavTracke
 import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 import { SiteUnlockProvider } from "@/components/SiteUnlockProvider";
-import { readDeployBuildInfo } from "@/lib/deploy-build-info";
 import {
   BRAND_NAME,
   BRAND_TAGLINE,
@@ -118,7 +117,6 @@ export default async function RootLayout({
   const siteUnlocked = jar.get(SITE_PASSWORD_COOKIE)?.value === "1";
   const phone = await getContactPhoneFresh();
   const brokerageName = await getBrokerageNameFresh();
-  const deployBuild = siteUnlocked ? readDeployBuildInfo() : null;
 
   return (
     <html
@@ -147,7 +145,6 @@ export default async function RootLayout({
             siteUnlocked={siteUnlocked}
             phone={phone}
             brokerageName={brokerageName}
-            deployBuild={deployBuild}
           />
           <main className="flex-1">{children}</main>
           <Footer brokerageName={brokerageName} />

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { prefetchDealCarouselImages, prefetchListingImages } from "@/lib/prefetch-listing-images";
+import { listingMatchesPropertyClass } from "@/lib/listing-property-class";
 import type {
   DealCarouselDealsByTown,
   DealCarouselPayload,
@@ -38,6 +39,41 @@ function filterCacheKey(
   return `${kind}:${propertyClass}`;
 }
 
+function dealLooksLikeRental(deal: DealCarouselPayload): boolean {
+  if (deal.kind === "rental") return true;
+  if (deal.kind === "sale") return false;
+  const hay = `${deal.listing.propertyType ?? ""} ${deal.listing.style ?? ""}`;
+  return /rental|lease|for rent/i.test(hay);
+}
+
+function dealMatchesFilter(
+  deal: DealCarouselPayload | null | undefined,
+  kind: "sale" | "rental",
+  propertyClass: DealPropertyClassFilter,
+): deal is DealCarouselPayload {
+  if (!hasListing(deal)) return false;
+  if (kind === "rental" ? !dealLooksLikeRental(deal) : dealLooksLikeRental(deal)) {
+    return false;
+  }
+  if (propertyClass !== "all" && deal.listing) {
+    return listingMatchesPropertyClass(deal.listing, propertyClass);
+  }
+  return true;
+}
+
+function filterDealsByTown(
+  deals: DealsByTown,
+  kind: "sale" | "rental",
+  propertyClass: DealPropertyClassFilter,
+): DealsByTown {
+  const next: DealsByTown = {};
+  for (const town of TMRE_TOWNS) {
+    const deal = deals[town];
+    next[town] = dealMatchesFilter(deal, kind, propertyClass) ? deal : null;
+  }
+  return next;
+}
+
 const ALL_FILTER_COMBOS: ReadonlyArray<{
   kind: "sale" | "rental";
   property: DealPropertyClassFilter;
@@ -45,9 +81,7 @@ const ALL_FILTER_COMBOS: ReadonlyArray<{
   { kind: "sale", property: "homes" },
   { kind: "sale", property: "multi" },
   { kind: "sale", property: "condos" },
-  { kind: "rental", property: "homes" },
-  { kind: "rental", property: "multi" },
-  { kind: "rental", property: "condos" },
+  { kind: "rental", property: "all" },
 ];
 
 async function fetchDealBundle(
@@ -69,7 +103,7 @@ async function fetchDealBundle(
       };
       for (const town of towns) {
         const deal = body.deals?.[town];
-        fromBundle[town] = deal && hasListing(deal) ? deal : null;
+        fromBundle[town] = dealMatchesFilter(deal, kind, property) ? deal : null;
         if (fromBundle[town]) prefetchListingImages(fromBundle[town]!);
       }
     }
@@ -95,7 +129,7 @@ async function fetchTownDeal(
     const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
     if (!r.ok) return null;
     const body = (await r.json()) as DealCarouselPayload;
-    const deal = hasListing(body) ? body : null;
+    const deal = dealMatchesFilter(body, kind, property) ? body : null;
     if (deal) prefetchListingImages(deal);
     return deal;
   } catch {
@@ -112,7 +146,7 @@ export function useDealOfTheDayCarousel(options?: {
   enabled?: boolean;
   /** Match Intelligence tx filter — sale/rental only, or all property types. */
   transactionFilter?: DealTransactionFilter;
-  /** Single-family / multi / condo — defaults to homes. */
+  /** Single-family / multi / condo / all — defaults to homes. */
   propertyClass?: DealPropertyClassFilter;
   /** When set, fetch this exact listing instead of the town's auto-pick. */
   pinnedListingId?: string | null;
@@ -147,7 +181,8 @@ export function useDealOfTheDayCarousel(options?: {
   const seedFilterKey = filterCacheKey(
     options?.initialKind === "rental" ? "rental" : "sale",
     options?.initialPropertyClass === "multi" ||
-      options?.initialPropertyClass === "condos"
+      options?.initialPropertyClass === "condos" ||
+      options?.initialPropertyClass === "all"
       ? options.initialPropertyClass
       : "homes",
   );
@@ -168,6 +203,7 @@ export function useDealOfTheDayCarousel(options?: {
     })(),
   );
   const prefetchStartedRef = useRef(false);
+  const fetchGenRef = useRef(0);
 
   // Keep filter cache warm if a late seed arrives (shouldn't for FSSR, but safe).
   useEffect(() => {
@@ -193,10 +229,13 @@ export function useDealOfTheDayCarousel(options?: {
       : options?.transactionFilter === "rental"
         ? "rental"
         : "sale";
+  // Rentals hide subtype pills — always fetch across property types.
   const propertyClassParam: DealPropertyClassFilter =
-    options?.propertyClass === "multi" || options?.propertyClass === "condos"
-      ? options.propertyClass
-      : "homes";
+    kindParam === "rental"
+      ? "all"
+      : options?.propertyClass === "multi" || options?.propertyClass === "condos"
+        ? options.propertyClass
+        : "homes";
   const pinnedListingId = options?.pinnedListingId?.trim() || null;
   const activeFilterKey = filterCacheKey(kindParam, propertyClassParam);
 
@@ -211,7 +250,10 @@ export function useDealOfTheDayCarousel(options?: {
       setLoading(false);
       return;
     }
+    const gen = ++fetchGenRef.current;
     let cancelled = false;
+    const stillActive = () => !cancelled && fetchGenRef.current === gen;
+
     const pinnedTownForFetch =
       !rotate &&
       options?.initialTown &&
@@ -220,29 +262,37 @@ export function useDealOfTheDayCarousel(options?: {
         : null;
 
     // Instant paint from FSSR seed / prior filter cache — still refresh below.
+    // Never keep a prior filter's deals on screen (that made Rentals/Condos look stuck).
     if (!pinnedListingId && !pinnedTownForFetch) {
       const cached = filterCacheRef.current.get(activeFilterKey);
-      if (cached && Object.values(cached).some(hasListing)) {
-        setDealsByTown(cached);
+      const matchedCache =
+        cached && Object.values(cached).some((d) => dealMatchesFilter(d, kindParam, propertyClassParam))
+          ? filterDealsByTown(cached, kindParam, propertyClassParam)
+          : null;
+      if (matchedCache && Object.values(matchedCache).some(hasListing)) {
+        setDealsByTown(matchedCache);
         setLoading(false);
         setSlideDir(null);
       } else if (seededDeals && activeFilterKey === seedFilterKey) {
-        filterCacheRef.current.set(activeFilterKey, seededDeals);
-        setDealsByTown(seededDeals);
+        const matchedSeed = filterDealsByTown(seededDeals, kindParam, propertyClassParam);
+        filterCacheRef.current.set(activeFilterKey, matchedSeed);
+        setDealsByTown(matchedSeed);
         setLoading(false);
         setSlideDir(null);
       } else {
-        // Clear prior Homes/etc. deal so property pills don't look non-op while
-        // the new 7×2×3 cache slice (or live fill) loads.
         setDealsByTown({});
         setLoading(true);
         setSlideDir(null);
       }
     } else {
+      // City/listing pin: clear other towns and drop a mismatched prior deal.
       setDealsByTown((prev) => {
         if (pinnedTownForFetch) {
           const existing = prev[pinnedTownForFetch];
-          return { [pinnedTownForFetch]: existing };
+          if (dealMatchesFilter(existing, kindParam, propertyClassParam)) {
+            return { [pinnedTownForFetch]: existing };
+          }
+          return {};
         }
         return {};
       });
@@ -266,7 +316,7 @@ export function useDealOfTheDayCarousel(options?: {
 
       if (useBundle) {
         next = await fetchDealBundle(kindParam, propertyClassParam, townsToFetch);
-        if (cancelled) return;
+        if (!stillActive()) return;
         if (Object.values(next).some(hasListing)) {
           filterCacheRef.current.set(activeFilterKey, next);
           setDealsByTown(next);
@@ -276,14 +326,14 @@ export function useDealOfTheDayCarousel(options?: {
         await Promise.all(
           missing.map(async (town) => {
             const deal = await fetchTownDeal(town, kindParam, propertyClassParam);
-            if (cancelled) return;
+            if (!stillActive()) return;
             next = { ...next, [town]: deal };
             filterCacheRef.current.set(activeFilterKey, { ...next });
             setDealsByTown({ ...next });
             setLoading(false);
           }),
         );
-        if (!cancelled && !Object.values(next).some(hasListing)) {
+        if (stillActive() && !Object.values(next).some(hasListing)) {
           setDealsByTown({});
           setLoading(false);
         }
@@ -297,7 +347,7 @@ export function useDealOfTheDayCarousel(options?: {
               propertyClassParam,
               pinnedListingId,
             );
-            if (cancelled) return;
+            if (!stillActive()) return;
             merged[town] = deal;
             if (!pinnedListingId) {
               filterCacheRef.current.set(activeFilterKey, { ...merged });
@@ -306,6 +356,10 @@ export function useDealOfTheDayCarousel(options?: {
             setLoading(false);
           }),
         );
+        if (stillActive() && !Object.values(merged).some(hasListing)) {
+          setDealsByTown({});
+          setLoading(false);
+        }
       }
     })();
 
@@ -343,9 +397,14 @@ export function useDealOfTheDayCarousel(options?: {
     })();
   }, [enabled, rotate, pinnedListingId, dealsByTown, townsToFetch]);
 
+  const filteredDealsByTown = useMemo(
+    () => filterDealsByTown(dealsByTown, kindParam, propertyClassParam),
+    [dealsByTown, kindParam, propertyClassParam],
+  );
+
   const carouselTowns = useMemo(
-    () => townsToFetch.filter((town) => hasListing(dealsByTown[town])),
-    [townsToFetch, dealsByTown],
+    () => townsToFetch.filter((town) => hasListing(filteredDealsByTown[town])),
+    [townsToFetch, filteredDealsByTown],
   );
 
   const pinnedTown = useMemo((): TmreTown | null => {
@@ -382,12 +441,19 @@ export function useDealOfTheDayCarousel(options?: {
     carouselTowns.length > 0 ? index % carouselTowns.length : 0;
   const currentTown =
     pinnedTown ?? selectedTown ?? carouselTowns[safeIndex] ?? null;
-  const currentDeal = currentTown ? dealsByTown[currentTown] ?? null : null;
+  const currentDeal = currentTown ? filteredDealsByTown[currentTown] ?? null : null;
+
+  // If state still holds a prior filter's deals, keep the loading chrome up
+  // (don't paint a sale/homes listing under a Rentals or Condos selection).
+  const hasMatchingDeal = Object.values(filteredDealsByTown).some(hasListing);
+  const hasStaleDeal =
+    Object.values(dealsByTown).some(hasListing) && !hasMatchingDeal;
+  const displayLoading = loading || hasStaleDeal;
 
   useEffect(() => {
-    if (!enabled || loading || carouselTowns.length === 0) return;
-    prefetchDealCarouselImages(carouselTowns, dealsByTown, safeIndex);
-  }, [enabled, loading, carouselTowns, dealsByTown, safeIndex]);
+    if (!enabled || displayLoading || carouselTowns.length === 0) return;
+    prefetchDealCarouselImages(carouselTowns, filteredDealsByTown, safeIndex);
+  }, [enabled, displayLoading, carouselTowns, filteredDealsByTown, safeIndex]);
 
   const goNext = useCallback(() => {
     if (carouselTowns.length <= 1) return;
@@ -428,7 +494,7 @@ export function useDealOfTheDayCarousel(options?: {
   }, [rotate, paused, carouselTowns.length, goNext, safeIndex]);
 
   return {
-    loading,
+    loading: displayLoading,
     paused,
     togglePause,
     goNext,

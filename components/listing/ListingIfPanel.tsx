@@ -33,8 +33,12 @@ import {
 import { renderCompBedBathMeta } from "@/components/listing/CompExactMatchMeta";
 import {
   comparableListingMatchesSession,
+  sessionMatchOverridesEqual,
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
+import CriteriaMatchPreviewList, {
+  criteriaPreviewRowFromIfComp,
+} from "@/components/listing/CriteriaMatchPreviewList";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 
@@ -939,6 +943,32 @@ export default function ListingIfPanel({
     );
   }, [rentEstimate.comps, matchCriteria, sessionMatch]);
 
+  const criteriaExpanded = Boolean(
+    sessionMatch &&
+      baselineMatch &&
+      !sessionMatchOverridesEqual(sessionMatch, baselineMatch),
+  );
+
+  const criteriaPreviewRows = useMemo(() => {
+    if (!criteriaExpanded) return [];
+    return [
+      ...saleComps.map((comp) =>
+        criteriaPreviewRowFromIfComp(comp, {
+          isRental: false,
+          tag: comp.role === "sold" ? "Sold" : "Active",
+          townHint,
+        }),
+      ),
+      ...rentComps.map((comp) =>
+        criteriaPreviewRowFromIfComp(comp, {
+          isRental: true,
+          tag: comp.role === "sold" ? "Rented" : "For rent",
+          townHint,
+        }),
+      ),
+    ];
+  }, [criteriaExpanded, saleComps, rentComps, townHint]);
+
   const foundCountEmphasized = Boolean(criteriaStepFeedback);
 
   if (loading) {
@@ -974,9 +1004,15 @@ export default function ListingIfPanel({
           baseline={baselineMatch}
           onReset={() => {
             if (baselineMatch) setSessionMatch(baselineMatch);
+            setCriteriaStepFeedback(null);
           }}
           stepFeedback={criteriaStepFeedback}
           defaultControlsOpen={criteriaInSidePanel}
+        />
+        <CriteriaMatchPreviewList
+          pageLabel="What If"
+          rows={criteriaPreviewRows}
+          visible={criteriaExpanded}
         />
       </div>
     ) : matchCriteria ? (

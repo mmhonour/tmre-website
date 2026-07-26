@@ -42,6 +42,7 @@ function resolveKindParam(raw: string | null): DealOfTheDayKind {
 
 function resolvePropertyClassParam(raw: string | null): DealOfTheDayPropertyClass {
   const key = raw?.trim().toLowerCase()
+  if (key === 'all') return 'all'
   if (
     key &&
     (DEAL_OF_THE_DAY_PROPERTY_CLASSES as readonly string[]).includes(key)
@@ -177,7 +178,7 @@ export async function GET(req: NextRequest) {
     const payload = await computeDealOfTheDay(listings, {
       peerListings,
       kind,
-      propertyClass,
+      ...(propertyClass === 'all' ? {} : { propertyClass }),
       ...(listingId ? { listingId } : {}),
     })
     if (!payload) {

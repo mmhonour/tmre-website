@@ -26,6 +26,9 @@ import MatchingCriteriaSummary, {
   type CriteriaStepFeedback,
   type CriteriaStepKey,
 } from "@/components/listing/MatchingCriteriaSummary";
+import CriteriaMatchPreviewList, {
+  criteriaPreviewRowFromComparable,
+} from "@/components/listing/CriteriaMatchPreviewList";
 import {
   comparableListingMatchesSession,
   defaultSessionOverrides,
@@ -1095,6 +1098,30 @@ export default function ListingComparablesPanel({
     activeVisibleCount < activeCap &&
     sortedActive.length > activeVisibleCount;
 
+  const criteriaPreviewRows = useMemo(() => {
+    if (!criteriaExpanded) return [];
+    const closedTag = isRental ? "Rented" : "Sold";
+    const activeTag = isRental ? "For rent" : "For sale";
+    return [
+      ...sortedSold.map((comp) =>
+        criteriaPreviewRowFromComparable(comp, {
+          closed: true,
+          isRental,
+          tag: closedTag,
+          townHint: town,
+        }),
+      ),
+      ...sortedActive.map((comp) =>
+        criteriaPreviewRowFromComparable(comp, {
+          closed: false,
+          isRental,
+          tag: activeTag,
+          townHint: town,
+        }),
+      ),
+    ];
+  }, [criteriaExpanded, sortedSold, sortedActive, isRental, town]);
+
   const wantClosed = columns === "both" || columns === "closed";
   const wantActive = columns === "both" || columns === "active";
   const showCompsGrid =
@@ -1239,6 +1266,7 @@ export default function ListingComparablesPanel({
           baseline={baselineMatch}
           onReset={() => {
             if (baselineMatch) setSessionMatch(baselineMatch);
+            setCriteriaStepFeedback(null);
           }}
           stepFeedback={criteriaStepFeedback}
           isModal={isModal}
@@ -1255,6 +1283,12 @@ export default function ListingComparablesPanel({
             loading wider match pool…
           </span>
         ) : null}
+        <CriteriaMatchPreviewList
+          pageLabel={isRental ? "RENTED" : "Sold"}
+          rows={criteriaPreviewRows}
+          visible={criteriaExpanded}
+          isModal={isModal}
+        />
       </div>
     ) : null;
 

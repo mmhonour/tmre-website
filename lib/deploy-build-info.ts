@@ -3,7 +3,7 @@
  *
  * DEPLOY_ID / BUILD_ID exist at Netlify *build* time but are not injected into
  * Next.js function runtime. Bake them via NEXT_PUBLIC_* in `build:netlify`
- * (see package.json) so SSR + the nav badge can read them after deploy.
+ * (see package.json) so SSR (Admin status strip) can read them after deploy.
  *
  * Deploy ids are hex; the first 8 chars encode a unix timestamp (seconds).
  */
@@ -20,7 +20,7 @@ export type DeployBuildInfo = {
   /** Built time in America/New_York (EST/EDT). */
   builtAtEtLabel: string | null;
   /**
-   * Combined UTC · ET label for compact surfaces (nav badge, titles).
+   * Combined UTC · ET label for compact surfaces (titles, tooltips).
    * Null when builtAt could not be parsed.
    */
   builtAtLabel: string | null;

@@ -445,7 +445,7 @@ export async function computeDealOfTheDay(
   listings: Listing[],
   opts?: {
     kind?: 'sale' | 'rental'
-    propertyClass?: 'homes' | 'multi' | 'condos'
+    propertyClass?: 'homes' | 'multi' | 'condos' | 'all'
     peerListings?: Listing[]
     listingId?: string
   },
@@ -454,7 +454,7 @@ export async function computeDealOfTheDay(
   if (opts?.kind) {
     scoped = scoped.filter((l) => kindOf(l) === opts.kind)
   }
-  if (opts?.propertyClass) {
+  if (opts?.propertyClass && opts.propertyClass !== 'all') {
     scoped = scoped.filter((l) =>
       listingMatchesPropertyClass(l, opts.propertyClass!),
     )

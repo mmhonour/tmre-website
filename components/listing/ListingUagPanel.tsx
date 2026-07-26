@@ -16,6 +16,9 @@ import MatchingCriteriaSummary, {
   type CriteriaStepFeedback,
   type CriteriaStepKey,
 } from "@/components/listing/MatchingCriteriaSummary";
+import CriteriaMatchPreviewList, {
+  criteriaPreviewRowFromComparable,
+} from "@/components/listing/CriteriaMatchPreviewList";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   fmtAcres,
@@ -29,6 +32,7 @@ import {
 import {
   comparableListingMatchesSession,
   defaultSessionOverrides,
+  sessionMatchOverridesEqual,
   sessionOverridesFromPricingConfig,
   sessionOverridesNeedWidePool,
   type SessionMatchOverrides,
@@ -324,6 +328,7 @@ function UagColumn({
   subjectBaths = null,
   foundCountEmphasized = false,
   criteriaLinkSlotId = null,
+  criteriaExpanded = false,
 }: {
   label: string;
   emptyLabel: string;
@@ -336,25 +341,38 @@ function UagColumn({
   foundCountEmphasized?: boolean;
   /** Optional Criteria toggle mount (first column only). */
   criteriaLinkSlotId?: string | null;
+  /** When Criteria leave baseline, show every match (no 4/8 cap). */
+  criteriaExpanded?: boolean;
 }) {
   const [visibleCount, setVisibleCount] = useState(UAG_INITIAL_VISIBLE);
 
   useEffect(() => {
-    setVisibleCount(UAG_INITIAL_VISIBLE);
-  }, [comps]);
+    if (!criteriaExpanded) setVisibleCount(UAG_INITIAL_VISIBLE);
+  }, [comps, criteriaExpanded]);
 
   // Soft-prefetch history for visible rows into the session tab cache.
   useEffect(() => {
-    const visible = comps.slice(0, Math.min(visibleCount, UAG_MAX_VISIBLE));
+    const prefetchCap = criteriaExpanded
+      ? comps.length
+      : Math.min(visibleCount, UAG_MAX_VISIBLE);
+    const visible = comps.slice(0, prefetchCap);
     for (const comp of visible) {
       const historyId = comp.listingKey?.trim() || comp.mlsId;
       prefetchTabJson(historyUrl(historyId, town || comp.city));
     }
-  }, [comps, visibleCount, town]);
+  }, [comps, visibleCount, town, criteriaExpanded]);
 
-  const cap = Math.min(comps.length, UAG_MAX_VISIBLE);
-  const visible = comps.slice(0, Math.min(visibleCount, cap));
-  const canShowMore = visibleCount < cap && comps.length > visibleCount;
+  const cap = criteriaExpanded
+    ? comps.length
+    : Math.min(comps.length, UAG_MAX_VISIBLE);
+  const visible = comps.slice(
+    0,
+    criteriaExpanded ? comps.length : Math.min(visibleCount, cap),
+  );
+  const canShowMore =
+    !criteriaExpanded &&
+    visibleCount < cap &&
+    comps.length > visibleCount;
 
   return (
     <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:py-4">
@@ -652,6 +670,34 @@ export function ListingUagPageContent({
     );
   }, [pool?.rental, criteria, sessionMatch]);
 
+  const criteriaExpanded = Boolean(
+    sessionMatch &&
+      baselineMatch &&
+      !sessionMatchOverridesEqual(sessionMatch, baselineMatch),
+  );
+
+  const criteriaPreviewRows = useMemo(() => {
+    if (!criteriaExpanded) return [];
+    return [
+      ...sale.map((comp) =>
+        criteriaPreviewRowFromComparable(comp, {
+          closed: false,
+          isRental: false,
+          tag: "Sale UAG",
+          townHint: town,
+        }),
+      ),
+      ...rental.map((comp) =>
+        criteriaPreviewRowFromComparable(comp, {
+          closed: false,
+          isRental: true,
+          tag: "Rental UAG",
+          townHint: town,
+        }),
+      ),
+    ];
+  }, [criteriaExpanded, sale, rental, town]);
+
   const showCriteria = Boolean(criteria && sessionMatch) && !loading;
 
   const criteriaBlock =
@@ -664,6 +710,7 @@ export function ListingUagPageContent({
           baseline={baselineMatch}
           onReset={() => {
             if (baselineMatch) setSessionMatch(baselineMatch);
+            setCriteriaStepFeedback(null);
           }}
           stepFeedback={criteriaStepFeedback}
           defaultControlsOpen
@@ -673,6 +720,11 @@ export function ListingUagPageContent({
             loading wider match pool…
           </span>
         ) : null}
+        <CriteriaMatchPreviewList
+          pageLabel="UAG"
+          rows={criteriaPreviewRows}
+          visible={criteriaExpanded}
+        />
       </div>
     ) : null;
 
@@ -710,6 +762,7 @@ export function ListingUagPageContent({
             subjectBeds={criteria?.beds ?? null}
             subjectBaths={criteria?.baths ?? null}
             foundCountEmphasized={Boolean(criteriaStepFeedback)}
+            criteriaExpanded={criteriaExpanded}
             criteriaLinkSlotId={
               showCriteria && showMobileCriteriaLinkSlot
                 ? listingCriteriaLinkSlotId(LISTING_SECTION_IDS.uag)
@@ -725,6 +778,7 @@ export function ListingUagPageContent({
             subjectBeds={criteria?.beds ?? null}
             subjectBaths={criteria?.baths ?? null}
             foundCountEmphasized={Boolean(criteriaStepFeedback)}
+            criteriaExpanded={criteriaExpanded}
           />
         </div>
       )}

@@ -195,7 +195,7 @@ export function dealOfTheDayHref(
     mlsId?: string | null;
     listingKey?: string | null;
     kind?: "sale" | "rental" | null;
-    propertyClass?: "homes" | "multi" | "condos" | null;
+    propertyClass?: "homes" | "multi" | "condos" | "all" | null;
   },
 ): string {
   const params = new URLSearchParams();

@@ -151,25 +151,32 @@ export function streetsMatch(a: string, b: string): boolean {
 }
 
 export function closeFieldsFromListing(
-  listing: Pick<Listing, 'status' | 'price'> & { raw?: Listing['raw'] | null },
+  listing: Pick<Listing, 'status' | 'price'> & {
+    statusChangeTimestamp?: string | null
+    raw?: Listing['raw'] | null
+  },
 ): {
   closeDate: string | null
   closePrice: number | null
 } {
   const raw =
     listing?.raw && typeof listing.raw === 'object' ? listing.raw : {}
+  const isClosed = formatMlsStatus(listing?.status) === 'Closed'
+  // Only treat StatusChangeTimestamp as a close date when the listing is
+  // actually Closed — for Active/UC rows it is a status flip, not a sale.
+  const closeDate =
+    pickField(raw, ['CloseDate', 'ClosedDate', 'SettlementDate']) ??
+    (isClosed
+      ? pickField(raw, ['StatusChangeTimestamp']) ??
+        (listing.statusChangeTimestamp?.trim() || null)
+      : null)
   return {
-    closeDate: pickField(raw, [
-      'CloseDate',
-      'ClosedDate',
-      'SettlementDate',
-      'StatusChangeTimestamp',
-    ]),
+    closeDate,
     closePrice:
       num(raw.ClosePrice) ??
       num(raw.SoldPrice) ??
       num(raw.SalePrice) ??
-      (formatMlsStatus(listing?.status) === 'Closed' ? listing.price : null),
+      (isClosed ? listing.price : null),
   }
 }
 
