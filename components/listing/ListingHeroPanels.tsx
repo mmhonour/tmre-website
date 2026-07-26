@@ -701,7 +701,7 @@ export default function ListingHeroPanels({
         <div
           ref={panelScrollRef}
           id={LISTING_SECTION_IDS.overview}
-          className="listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-2 pb-4 max-lg:px-0 lg:pb-4"
+          className="listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-0 pb-4 max-lg:px-0 lg:pt-2 lg:pb-4"
         >
           <div
             className={`min-w-0 ${panelTab === "overview" ? "block" : "hidden"}`}

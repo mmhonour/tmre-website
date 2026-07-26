@@ -32,12 +32,13 @@ export function useListingDesktopLayout(): boolean | null {
  * portals above Location in the right column when open.
  * Visibility is shared across analysis tabs when wrapped in
  * ListingCriteriaVisibilityProvider.
- * Mobile: in-panel link (Sold / Rented / UAG) or title link (What if) → drawer.
+ * Mobile: in-panel link (Sold / Rented / UAG) or What if sell/rent header → drawer.
  */
 export default function ListingCriteriaSideLayout({
   criteria,
   heading,
   linkSlotId,
+  linkSlotIds,
   children,
 }: {
   /** When null, children render full-width with no side chrome. */
@@ -48,6 +49,8 @@ export default function ListingCriteriaSideLayout({
   heading: string;
   /** Optional portal target beside the section H2 (panel / stack titles). */
   linkSlotId?: string | null;
+  /** Extra portal targets (e.g. What if sell + rent panel headers on mobile). */
+  linkSlotIds?: readonly string[] | null;
   children: ReactNode;
 }) {
   const shared = useListingCriteriaVisibility();
@@ -60,24 +63,30 @@ export default function ListingCriteriaSideLayout({
 
   const isDesktop = useListingDesktopLayout() === true;
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
-  const [linkSlot, setLinkSlot] = useState<HTMLElement | null>(null);
+  const [linkSlots, setLinkSlots] = useState<HTMLElement[]>([]);
   const [sectionVisible, setSectionVisible] = useState(true);
 
   const headingLabel = heading.trim().toUpperCase();
+  const allLinkSlotIds = [
+    ...(linkSlotId ? [linkSlotId] : []),
+    ...(linkSlotIds ?? []),
+  ];
 
   useEffect(() => {
     if (!criteria) {
       setDesktopSlot(null);
-      setLinkSlot(null);
+      setLinkSlots([]);
       return;
     }
     const sync = () => {
       setDesktopSlot(document.getElementById(LISTING_CRITERIA_SLOT_ID));
-      const link = linkSlotId
-        ? document.getElementById(linkSlotId)
-        : null;
-      setLinkSlot(link);
-      const section = link?.closest("section");
+      const found = allLinkSlotIds
+        .map((id) => document.getElementById(id))
+        .filter((el): el is HTMLElement => Boolean(el));
+      setLinkSlots(found);
+      const section =
+        found[0]?.closest("section") ??
+        document.getElementById(allLinkSlotIds[0] ?? "")?.closest("section");
       setSectionVisible(!section || !section.hasAttribute("hidden"));
     };
     sync();
@@ -90,15 +99,17 @@ export default function ListingCriteriaSideLayout({
       window.clearInterval(interval);
       window.clearTimeout(stop);
     };
-  }, [criteria, linkSlotId, open, isDesktop]);
+    // allLinkSlotIds joined — stable enough for sync dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [criteria, linkSlotId, linkSlotIds?.join("|"), open, isDesktop]);
 
   // Follow section show/hide when switching analysis tabs (shared open stays).
   useEffect(() => {
-    if (!linkSlotId) {
+    if (allLinkSlotIds.length === 0) {
       setSectionVisible(true);
       return;
     }
-    const link = document.getElementById(linkSlotId);
+    const link = document.getElementById(allLinkSlotIds[0]!);
     const section = link?.closest("section");
     if (!section) {
       setSectionVisible(true);
@@ -110,7 +121,8 @@ export default function ListingCriteriaSideLayout({
     const mo = new MutationObserver(update);
     mo.observe(section, { attributes: true, attributeFilter: ["hidden"] });
     return () => mo.disconnect();
-  }, [linkSlotId, criteria]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allLinkSlotIds.join("|"), criteria]);
 
   if (!criteria) {
     return <>{children}</>;
@@ -119,8 +131,9 @@ export default function ListingCriteriaSideLayout({
   const toggleLinkClass =
     "shrink-0 font-mono text-[10px] tracking-[0.18em] uppercase text-gold/80 underline decoration-gold/35 underline-offset-2 transition-colors hover:text-gold whitespace-nowrap";
 
-  const criteriaToggle = (
+  const renderCriteriaToggle = (key?: string) => (
     <button
+      key={key}
       type="button"
       className={toggleLinkClass}
       aria-expanded={open}
@@ -146,23 +159,25 @@ export default function ListingCriteriaSideLayout({
   const showDesktopPanel =
     isDesktop && open && desktopSlot && sectionVisible;
 
-  const showTitleLink = Boolean(linkSlot && sectionVisible);
+  const showTitleLink = linkSlots.length > 0 && sectionVisible;
   // Mobile fallback when the title slot isn't ready yet (dynamic panel mount).
   const showMobileFallback = !isDesktop && sectionVisible && !showTitleLink;
-  const showDesktopFallback = isDesktop && !linkSlot && sectionVisible;
+  const showDesktopFallback = isDesktop && linkSlots.length === 0 && sectionVisible;
 
   return (
     <>
       {showMobileFallback || showDesktopFallback ? (
         <div className="mb-3 flex justify-end max-lg:px-3 lg:px-0">
-          {criteriaToggle}
+          {renderCriteriaToggle()}
         </div>
       ) : null}
 
-      <div className="min-w-0 space-y-6">{children}</div>
+      <div className="min-w-0 space-y-2 lg:space-y-6">{children}</div>
 
-      {showTitleLink && linkSlot
-        ? createPortal(criteriaToggle, linkSlot)
+      {showTitleLink
+        ? linkSlots.map((slot, i) =>
+            createPortal(renderCriteriaToggle(`criteria-link-${i}`), slot),
+          )
         : null}
 
       {showDesktopPanel

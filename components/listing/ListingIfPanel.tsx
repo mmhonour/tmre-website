@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeftRightIcon } from "@/components/icons";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
+  useListingDesktopLayout,
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import MatchingCriteriaSummary, {
@@ -645,6 +646,9 @@ const IF_SCENARIO_PANEL_IDS = {
   rent: "if-you-rent",
 } as const;
 
+const IF_SCENARIO_LINK_CLASS =
+  "font-mono text-[10px] tracking-[0.2em] uppercase underline underline-offset-2 decoration-gold/40 transition-colors hover:text-gold hover:decoration-gold";
+
 function ScenarioPanel({
   title,
   headline,
@@ -657,7 +661,9 @@ function ScenarioPanel({
   amountLabel,
   midpointLabel,
   foundCountEmphasized = false,
-  onCrossLink,
+  onSelectScenario,
+  activeScenario,
+  criteriaSlotId = null,
   className,
 }: {
   title: string;
@@ -671,8 +677,11 @@ function ScenarioPanel({
   amountLabel: string;
   midpointLabel: string;
   foundCountEmphasized?: boolean;
-  /** Mobile: swap sell/rent panel order instead of scrolling. */
-  onCrossLink?: () => void;
+  /** Mobile: which scenario is leading; both titles act as underlined links. */
+  onSelectScenario?: (next: "sale" | "rent") => void;
+  activeScenario?: "sale" | "rent";
+  /** Mobile Criteria portal mount (upper-right). */
+  criteriaSlotId?: string | null;
   className?: string;
 }) {
   const hasEstimate =
@@ -681,40 +690,57 @@ function ScenarioPanel({
     scenario.math.matchedSoldCount + scenario.math.matchedActiveCount > 0;
 
   const panelId = IF_SCENARIO_PANEL_IDS[kind];
-  const crossLink =
-    kind === "sale"
-      ? { href: `#${IF_SCENARIO_PANEL_IDS.rent}`, label: "If you rent" }
-      : { href: `#${IF_SCENARIO_PANEL_IDS.sale}`, label: "If you sell" };
+
+  const goToScenario = (next: "sale" | "rent") => {
+    if (onSelectScenario) {
+      onSelectScenario(next);
+      return;
+    }
+    const el = document.getElementById(IF_SCENARIO_PANEL_IDS[next]);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <article
       id={panelId}
-      className={`scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8 flex flex-col gap-6${
+      className={`scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.04] max-lg:p-4 max-lg:pt-3 max-lg:gap-4 p-6 sm:p-8 flex flex-col gap-6${
         className ? ` ${className}` : ""
       }`}
     >
       <div>
         <div className="flex items-start justify-between gap-3">
-          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          {/* Desktop: panel title only. Mobile: both scenarios as underlined links. */}
+          <p className="hidden lg:block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
             {title}
           </p>
-          <a
-            href={crossLink.href}
-            className="lg:hidden shrink-0 self-start text-right font-mono text-[10px] tracking-[0.2em] uppercase text-gold/70 hover:text-gold transition-colors"
-            onClick={(e) => {
-              e.preventDefault();
-              if (onCrossLink) {
-                onCrossLink();
-                return;
-              }
-              const id = crossLink.href.slice(1);
-              const el = document.getElementById(id);
-              if (!el) return;
-              el.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
-          >
-            {crossLink.label}
-          </a>
+          <div className="lg:hidden flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <button
+              type="button"
+              className={`${IF_SCENARIO_LINK_CLASS} ${
+                activeScenario === "sale" ? "text-gold" : "text-gold/65"
+              }`}
+              aria-current={activeScenario === "sale" ? "true" : undefined}
+              onClick={() => goToScenario("sale")}
+            >
+              If you sell
+            </button>
+            <button
+              type="button"
+              className={`${IF_SCENARIO_LINK_CLASS} ${
+                activeScenario === "rent" ? "text-gold" : "text-gold/65"
+              }`}
+              aria-current={activeScenario === "rent" ? "true" : undefined}
+              onClick={() => goToScenario("rent")}
+            >
+              If you rent
+            </button>
+          </div>
+          {criteriaSlotId ? (
+            <div
+              id={criteriaSlotId}
+              className="lg:hidden flex shrink-0 items-start justify-end min-h-[1em]"
+            />
+          ) : null}
         </div>
         <p className="mt-2 text-white/70 text-sm leading-relaxed">{headline}</p>
       </div>
@@ -819,6 +845,7 @@ export default function ListingIfPanel({
     null,
   );
   const isPage = variant === "page";
+  const isDesktop = useListingDesktopLayout() === true;
 
   useEffect(() => {
     setSessionMatch(null);
@@ -1034,8 +1061,8 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
-      {/* Sell / rent sit directly under the What if + Criteria title row.
-          On mobile, cross-links flip which panel is on top (CSS order only). */}
+      {/* Sell / rent sit under tabs (no What if label on mobile). Cross-links
+          flip which panel leads; Criteria mounts in each panel’s upper-right. */}
       <div className="grid gap-1 lg:grid-cols-2 items-start">
         <ScenarioPanel
           title="If you sell"
@@ -1045,7 +1072,11 @@ export default function ListingIfPanel({
           kind="sale"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
-          onCrossLink={() => setMobileScenarioLead("rent")}
+          activeScenario={mobileScenarioLead}
+          onSelectScenario={setMobileScenarioLead}
+          criteriaSlotId={listingCriteriaLinkSlotId(
+            `${LISTING_SECTION_IDS.if}-sale`,
+          )}
           className={
             mobileScenarioLead === "rent"
               ? "max-lg:order-2 lg:order-1"
@@ -1075,7 +1106,11 @@ export default function ListingIfPanel({
           kind="rent"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
-          onCrossLink={() => setMobileScenarioLead("sale")}
+          activeScenario={mobileScenarioLead}
+          onSelectScenario={setMobileScenarioLead}
+          criteriaSlotId={listingCriteriaLinkSlotId(
+            `${LISTING_SECTION_IDS.if}-rent`,
+          )}
           className={
             mobileScenarioLead === "rent"
               ? "max-lg:order-1 lg:order-2"
@@ -1146,7 +1181,19 @@ export default function ListingIfPanel({
         <ListingCriteriaSideLayout
           criteria={criteriaBlock}
           heading="What if criteria"
-          linkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
+          linkSlotId={
+            isDesktop
+              ? listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)
+              : null
+          }
+          linkSlotIds={
+            isDesktop
+              ? null
+              : [
+                  listingCriteriaLinkSlotId(`${LISTING_SECTION_IDS.if}-sale`),
+                  listingCriteriaLinkSlotId(`${LISTING_SECTION_IDS.if}-rent`),
+                ]
+          }
         >
           {mainColumn}
         </ListingCriteriaSideLayout>

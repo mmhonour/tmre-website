@@ -74,9 +74,11 @@ function Section({
   criteriaLinkSlotId = null,
   /**
    * When true, the title-row Criteria mount is desktop-only — Sold / Rented /
-   * UAG keep an in-panel mount on mobile. What if keeps the title mount always.
+   * UAG keep an in-panel mount on mobile. What if uses panel-header mounts.
    */
   criteriaLinkDesktopOnly = false,
+  /** Hide the section H2 below `lg` (What if — label lives in scenario panels). */
+  hideTitleOnMobile = false,
 }: {
   id: string;
   title: string;
@@ -86,11 +88,16 @@ function Section({
   compact?: boolean;
   criteriaLinkSlotId?: string | null;
   criteriaLinkDesktopOnly?: boolean;
+  hideTitleOnMobile?: boolean;
 }) {
   const isDesktop = useListingDesktopLayout();
   const showTitleCriteriaSlot =
     Boolean(criteriaLinkSlotId) &&
     (criteriaLinkDesktopOnly ? isDesktop === true : true);
+  // Treat unknown viewport as mobile so "What if" doesn't flash above panels.
+  const hideTitle = hideTitleOnMobile && isDesktop !== true;
+  const showTitleRow =
+    !hideTitle && (Boolean(title) || showTitleCriteriaSlot);
 
   return (
     <section
@@ -104,27 +111,29 @@ function Section({
           : "scroll-mt-[var(--listing-sticky-offset,6rem)] border-t border-white/10 pt-5 mt-6 first:mt-0 first:border-t-0 first:pt-0"
       }
     >
-      <div
-        className={`flex items-start justify-between gap-3 max-lg:px-3 lg:px-0 ${
-          compact ? "mb-1" : "mb-2"
-        }`}
-      >
-        <h2
-          className={
-            compact
-              ? "font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold text-left leading-none"
-              : "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 text-left leading-none"
-          }
+      {showTitleRow ? (
+        <div
+          className={`flex items-start justify-between gap-3 max-lg:px-3 lg:px-0 ${
+            compact ? "mb-1" : "mb-2"
+          } ${hideTitleOnMobile ? "max-lg:hidden" : ""}`}
         >
-          {title}
-        </h2>
-        {showTitleCriteriaSlot ? (
-          <div
-            id={criteriaLinkSlotId!}
-            className="flex shrink-0 items-start justify-end min-h-[1em]"
-          />
-        ) : null}
-      </div>
+          <h2
+            className={
+              compact
+                ? "font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold text-left leading-none"
+                : "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 text-left leading-none"
+            }
+          >
+            {title}
+          </h2>
+          {showTitleCriteriaSlot ? (
+            <div
+              id={criteriaLinkSlotId!}
+              className="flex shrink-0 items-start justify-end min-h-[1em]"
+            />
+          ) : null}
+        </div>
+      ) : null}
       {children}
     </section>
   );
@@ -219,6 +228,8 @@ export function ListingMobileScrollSections({
         title="What if"
         hidden={!show("if")}
         criteriaLinkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
+        criteriaLinkDesktopOnly
+        hideTitleOnMobile
         compact={isPanel}
       >
         {mount("if") ? (

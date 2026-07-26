@@ -19,6 +19,20 @@ type ApiPayload = {
   error?: string;
 };
 
+type EditorTab = "all" | InventorySegmentId;
+
+type FlatStepRow = {
+  stepId: string;
+  segmentId: InventorySegmentId;
+  step: PriceBucketDef;
+};
+
+const SEGMENT_TAB_LABEL: Record<InventorySegmentId, string> = {
+  value: "Value",
+  mid: "Mid-market",
+  luxury: "Luxury",
+};
+
 function fmtMoney(n: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -32,9 +46,29 @@ function bandRangeLabel(b: PriceBucketDef): string {
   return `${fmtMoney(b.min)} – ${fmtMoney(b.max)}`;
 }
 
+function syncSegmentExtents(segment: InventorySegmentDef): InventorySegmentDef {
+  if (segment.steps.length === 0) return segment;
+  const min = Math.min(...segment.steps.map((s) => s.min));
+  const hasOpen = segment.steps.some((s) => s.max == null);
+  const max = hasOpen
+    ? null
+    : Math.max(...segment.steps.map((s) => s.max as number));
+  return { ...segment, min, max };
+}
+
+function sortSteps(steps: PriceBucketDef[]): PriceBucketDef[] {
+  return [...steps].sort(
+    (a, b) =>
+      a.min - b.min ||
+      (a.max ?? Number.POSITIVE_INFINITY) -
+        (b.max ?? Number.POSITIVE_INFINITY) ||
+      a.id.localeCompare(b.id),
+  );
+}
+
 /**
  * Admin editor for Intelligence inventory segments (Value / Mid-market / Luxury)
- * stored in Postgres sync_meta. Luxury steps drive the Intelligence luxury chart.
+ * stored in Postgres sync_meta. All-bands tab assigns each step via pick list.
  */
 export default function AdminInventorySegmentBandsPanel() {
   const [saved, setSaved] = useState<InventorySegmentBandsConfig | null>(null);
@@ -47,8 +81,7 @@ export default function AdminInventorySegmentBandsPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [activeSegment, setActiveSegment] =
-    useState<InventorySegmentId>("luxury");
+  const [activeTab, setActiveTab] = useState<EditorTab>("all");
 
   const applyPayload = useCallback((body: ApiPayload) => {
     setSaved(cloneInventorySegmentBandsConfig(body.config));
@@ -86,10 +119,30 @@ export default function AdminInventorySegmentBandsPanel() {
     return JSON.stringify(draft) !== JSON.stringify(saved);
   }, [draft, saved]);
 
+  const activeSegmentId: InventorySegmentId | null =
+    activeTab === "all" ? null : activeTab;
+
   const segment: InventorySegmentDef | null = useMemo(() => {
-    if (!draft) return null;
-    return draft.segments.find((s) => s.id === activeSegment) ?? null;
-  }, [draft, activeSegment]);
+    if (!draft || !activeSegmentId) return null;
+    return draft.segments.find((s) => s.id === activeSegmentId) ?? null;
+  }, [draft, activeSegmentId]);
+
+  const allRows: FlatStepRow[] = useMemo(() => {
+    if (!draft) return [];
+    const rows: FlatStepRow[] = [];
+    for (const s of draft.segments) {
+      for (const step of s.steps) {
+        rows.push({ stepId: step.id, segmentId: s.id, step });
+      }
+    }
+    return rows.sort(
+      (a, b) =>
+        a.step.min - b.step.min ||
+        (a.step.max ?? Number.POSITIVE_INFINITY) -
+          (b.step.max ?? Number.POSITIVE_INFINITY) ||
+        a.stepId.localeCompare(b.stepId),
+    );
+  }, [draft]);
 
   function patchSegment(
     id: InventorySegmentId,
@@ -116,25 +169,48 @@ export default function AdminInventorySegmentBandsPanel() {
     });
   }
 
-  function patchStep(
-    segmentId: InventorySegmentId,
-    index: number,
-    patch: Partial<PriceBucketDef>,
-  ) {
+  function patchStepById(stepId: string, patch: Partial<PriceBucketDef>) {
     setDraft((prev) => {
       if (!prev) return prev;
       return {
-        segments: prev.segments.map((s) => {
-          if (s.id !== segmentId) return s;
-          const steps = s.steps.map((b, i) => {
-            if (i !== index) return b;
+        segments: prev.segments.map((s) => ({
+          ...s,
+          steps: s.steps.map((b) => {
+            if (b.id !== stepId) return b;
             const next = { ...b, ...patch };
             if (patch.hidden === false) delete next.hidden;
             return next;
-          });
-          return { ...s, steps };
-        }),
+          }),
+        })),
       };
+    });
+  }
+
+  function moveStepToSegment(stepId: string, toSegment: InventorySegmentId) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      let moving: PriceBucketDef | null = null;
+      const stripped = prev.segments.map((s) => {
+        const keep = s.steps.filter((b) => {
+          if (b.id !== stepId) return true;
+          moving = { ...b };
+          return false;
+        });
+        return { ...s, steps: keep };
+      });
+      if (!moving) return prev;
+
+      const nextSegments = stripped.map((s) => {
+        if (s.id !== toSegment) return syncSegmentExtents(s);
+        const steps = sortSteps([...s.steps, moving!]);
+        return syncSegmentExtents({ ...s, steps });
+      });
+
+      // Ensure every segment still has ≥1 step (validation requires it).
+      for (const s of nextSegments) {
+        if (s.steps.length === 0) return prev;
+      }
+      return { segments: nextSegments };
     });
   }
 
@@ -144,28 +220,36 @@ export default function AdminInventorySegmentBandsPanel() {
       return {
         segments: prev.segments.map((s) => {
           if (s.id !== segmentId) return s;
-          const used = new Set(s.steps.map((b) => b.id));
+          const used = new Set(
+            prev.segments.flatMap((seg) => seg.steps.map((b) => b.id)),
+          );
           const last = s.steps[s.steps.length - 1];
           const min =
             last?.max != null ? last.max + 1 : (last?.min ?? s.min) + 1_000_000;
           const label = `New step ${s.steps.length + 1}`;
           const id = suggestSegmentStepId(label, used);
-          return {
-            ...s,
-            steps: [...s.steps, { id, label, min, max: min + 999_999 }],
-          };
+          const steps = sortSteps([
+            ...s.steps,
+            { id, label, min, max: min + 999_999 },
+          ]);
+          return syncSegmentExtents({ ...s, steps });
         }),
       };
     });
   }
 
-  function removeStep(segmentId: InventorySegmentId, index: number) {
+  function removeStepById(stepId: string) {
     setDraft((prev) => {
       if (!prev) return prev;
+      const owner = prev.segments.find((s) =>
+        s.steps.some((b) => b.id === stepId),
+      );
+      if (!owner || owner.steps.length <= 1) return prev;
       return {
         segments: prev.segments.map((s) => {
-          if (s.id !== segmentId || s.steps.length <= 1) return s;
-          return { ...s, steps: s.steps.filter((_, i) => i !== index) };
+          if (s.id !== owner.id) return s;
+          const steps = s.steps.filter((b) => b.id !== stepId);
+          return syncSegmentExtents({ ...s, steps });
         }),
       };
     });
@@ -211,6 +295,17 @@ export default function AdminInventorySegmentBandsPanel() {
     setDraft(cloneInventorySegmentBandsConfig(defaults));
   }
 
+  const stepEditorRows: FlatStepRow[] =
+    activeTab === "all"
+      ? allRows
+      : segment
+        ? segment.steps.map((step) => ({
+            stepId: step.id,
+            segmentId: segment.id,
+            step,
+          }))
+        : [];
+
   return (
     <div
       id="admin-inventory-segment-bands"
@@ -222,8 +317,10 @@ export default function AdminInventorySegmentBandsPanel() {
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
           Value, Mid-market, and Luxury ranges plus fine steps for Intelligence
-          inventory charts. Luxury defaults: $1M steps ($4–10M), $5M steps
-          ($10M+). Stored in Postgres (
+          inventory charts. Use the <span className="font-medium text-navy">All
+          bands</span>{" "}
+          tab to see every step and assign Luxury / Mid-market / Value with the
+          pick list. Stored in Postgres (
           <span className="font-mono text-[11px]">
             intel_inventory_segment_bands
           </span>
@@ -235,30 +332,39 @@ export default function AdminInventorySegmentBandsPanel() {
         {loading ? (
           <p className="font-mono text-[11px] text-charcoal/45">Loading…</p>
         ) : null}
-        {error ? (
-          <p className="text-sm text-coral">{error}</p>
-        ) : null}
-        {notice ? (
-          <p className="text-sm text-sage">{notice}</p>
-        ) : null}
+        {error ? <p className="text-sm text-coral">{error}</p> : null}
+        {notice ? <p className="text-sm text-sage">{notice}</p> : null}
 
-        {draft && segment ? (
+        {draft ? (
           <>
             <div
               role="tablist"
-              aria-label="Inventory segments"
+              aria-label="Inventory segment bands"
               className="flex flex-wrap gap-1 border-b border-charcoal/[0.1]"
             >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "all"}
+                onClick={() => setActiveTab("all")}
+                className={`-mb-px border-b-2 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase ${
+                  activeTab === "all"
+                    ? "border-gold text-navy"
+                    : "border-transparent text-charcoal/50 hover:text-navy"
+                }`}
+              >
+                All bands
+              </button>
               {INVENTORY_SEGMENT_IDS.map((id) => {
                 const row = draft.segments.find((s) => s.id === id)!;
-                const active = activeSegment === id;
+                const active = activeTab === id;
                 return (
                   <button
                     key={id}
                     type="button"
                     role="tab"
                     aria-selected={active}
-                    onClick={() => setActiveSegment(id)}
+                    onClick={() => setActiveTab(id)}
                     className={`-mb-px border-b-2 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase ${
                       active
                         ? "border-gold text-navy"
@@ -266,134 +372,191 @@ export default function AdminInventorySegmentBandsPanel() {
                     }`}
                   >
                     {row.label}
+                    <span className="ml-1.5 tabular-nums text-charcoal/35">
+                      ({row.steps.length})
+                    </span>
                   </button>
                 );
               })}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <label className="block text-xs text-charcoal/60">
-                Label
-                <input
-                  type="text"
-                  value={segment.label}
-                  onChange={(e) =>
-                    patchSegment(activeSegment, { label: e.target.value })
-                  }
-                  className="mt-1 w-full rounded border border-charcoal/15 bg-cream/30 px-2 py-1.5 font-mono text-[12px] text-navy"
-                />
-              </label>
-              <label className="block text-xs text-charcoal/60">
-                Range min
-                <input
-                  type="number"
-                  value={segment.min}
-                  onChange={(e) =>
-                    patchSegment(activeSegment, {
-                      min: Number(e.target.value) || 0,
-                    })
-                  }
-                  className="mt-1 w-full rounded border border-charcoal/15 bg-cream/30 px-2 py-1.5 font-mono text-[12px] text-navy"
-                />
-              </label>
-              <label className="block text-xs text-charcoal/60">
-                Range max (blank = open)
-                <input
-                  type="number"
-                  value={segment.max ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value.trim();
-                    patchSegment(activeSegment, {
-                      max: v === "" ? null : Number(v) || 0,
-                    });
-                  }}
-                  className="mt-1 w-full rounded border border-charcoal/15 bg-cream/30 px-2 py-1.5 font-mono text-[12px] text-navy"
-                />
-              </label>
-            </div>
+            {activeTab === "all" ? (
+              <p className="text-xs text-charcoal/55 leading-snug max-w-3xl">
+                Every inventory step across segments. Change the{" "}
+                <span className="font-medium text-navy">Segment</span> pick list
+                to associate a band with Value, Mid-market, or Luxury — range
+                floors/ceilings update from the steps in each segment.
+              </p>
+            ) : segment ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-xs text-charcoal/60">
+                  Label
+                  <input
+                    type="text"
+                    value={segment.label}
+                    onChange={(e) =>
+                      patchSegment(segment.id, { label: e.target.value })
+                    }
+                    className="mt-1 w-full rounded border border-charcoal/15 bg-cream/30 px-2 py-1.5 font-mono text-[12px] text-navy"
+                  />
+                </label>
+                <label className="block text-xs text-charcoal/60">
+                  Range min
+                  <input
+                    type="number"
+                    value={segment.min}
+                    onChange={(e) =>
+                      patchSegment(segment.id, {
+                        min: Number(e.target.value) || 0,
+                      })
+                    }
+                    className="mt-1 w-full rounded border border-charcoal/15 bg-cream/30 px-2 py-1.5 font-mono text-[12px] text-navy"
+                  />
+                </label>
+                <label className="block text-xs text-charcoal/60">
+                  Range max (blank = open)
+                  <input
+                    type="number"
+                    value={segment.max ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value.trim();
+                      patchSegment(segment.id, {
+                        max: v === "" ? null : Number(v) || 0,
+                      });
+                    }}
+                    className="mt-1 w-full rounded border border-charcoal/15 bg-cream/30 px-2 py-1.5 font-mono text-[12px] text-navy"
+                  />
+                </label>
+              </div>
+            ) : null}
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-left">
+              <table className="w-full min-w-[720px] border-collapse text-left">
                 <thead>
                   <tr className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
                     <th className="py-2 pr-2">Label</th>
                     <th className="py-2 pr-2">Min</th>
                     <th className="py-2 pr-2">Max</th>
                     <th className="py-2 pr-2">Preview</th>
+                    <th className="py-2 pr-2">Segment</th>
                     <th className="py-2"> </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {segment.steps.map((step, index) => (
-                    <tr
-                      key={`${step.id}-${index}`}
-                      className="border-t border-charcoal/[0.06]"
-                    >
-                      <td className="py-2 pr-2">
-                        <input
-                          type="text"
-                          value={step.label}
-                          onChange={(e) =>
-                            patchStep(activeSegment, index, {
-                              label: e.target.value,
-                            })
-                          }
-                          className="w-full min-w-[7rem] rounded border border-charcoal/15 bg-cream/30 px-2 py-1 font-mono text-[11px]"
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          value={step.min}
-                          onChange={(e) =>
-                            patchStep(activeSegment, index, {
-                              min: Number(e.target.value) || 0,
-                            })
-                          }
-                          className="w-28 rounded border border-charcoal/15 bg-cream/30 px-2 py-1 font-mono text-[11px]"
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          value={step.max ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value.trim();
-                            patchStep(activeSegment, index, {
-                              max: v === "" ? null : Number(v) || 0,
-                            });
-                          }}
-                          className="w-28 rounded border border-charcoal/15 bg-cream/30 px-2 py-1 font-mono text-[11px]"
-                          placeholder="open"
-                        />
-                      </td>
-                      <td className="py-2 pr-2 font-mono text-[11px] text-charcoal/55 whitespace-nowrap">
-                        {bandRangeLabel(step)}
-                      </td>
-                      <td className="py-2">
-                        <button
-                          type="button"
-                          onClick={() => removeStep(activeSegment, index)}
-                          disabled={segment.steps.length <= 1}
-                          className="font-mono text-[10px] uppercase tracking-wide text-coral/80 hover:text-coral disabled:opacity-30"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {stepEditorRows.map((row) => {
+                    const owner = draft.segments.find(
+                      (s) => s.id === row.segmentId,
+                    );
+                    const canDelete = (owner?.steps.length ?? 0) > 1;
+                    return (
+                      <tr
+                        key={row.stepId}
+                        className="border-t border-charcoal/[0.06]"
+                      >
+                        <td className="py-2 pr-2">
+                          <input
+                            type="text"
+                            value={row.step.label}
+                            onChange={(e) =>
+                              patchStepById(row.stepId, {
+                                label: e.target.value,
+                              })
+                            }
+                            className="w-full min-w-[7rem] rounded border border-charcoal/15 bg-cream/30 px-2 py-1 font-mono text-[11px]"
+                          />
+                        </td>
+                        <td className="py-2 pr-2">
+                          <input
+                            type="number"
+                            value={row.step.min}
+                            onChange={(e) =>
+                              patchStepById(row.stepId, {
+                                min: Number(e.target.value) || 0,
+                              })
+                            }
+                            className="w-28 rounded border border-charcoal/15 bg-cream/30 px-2 py-1 font-mono text-[11px]"
+                          />
+                        </td>
+                        <td className="py-2 pr-2">
+                          <input
+                            type="number"
+                            value={row.step.max ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value.trim();
+                              patchStepById(row.stepId, {
+                                max: v === "" ? null : Number(v) || 0,
+                              });
+                            }}
+                            className="w-28 rounded border border-charcoal/15 bg-cream/30 px-2 py-1 font-mono text-[11px]"
+                            placeholder="open"
+                          />
+                        </td>
+                        <td className="py-2 pr-2 font-mono text-[11px] text-charcoal/55 whitespace-nowrap">
+                          {bandRangeLabel(row.step)}
+                        </td>
+                        <td className="py-2 pr-2">
+                          <select
+                            value={row.segmentId}
+                            onChange={(e) =>
+                              moveStepToSegment(
+                                row.stepId,
+                                e.target.value as InventorySegmentId,
+                              )
+                            }
+                            aria-label={`Segment for ${row.step.label}`}
+                            className="min-w-[8.5rem] rounded border border-charcoal/15 bg-cream/30 px-2 py-1 font-mono text-[11px] text-navy"
+                          >
+                            {INVENTORY_SEGMENT_IDS.map((id) => (
+                              <option key={id} value={id}>
+                                {draft.segments.find((s) => s.id === id)
+                                  ?.label ?? SEGMENT_TAB_LABEL[id]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2">
+                          <button
+                            type="button"
+                            onClick={() => removeStepById(row.stepId)}
+                            disabled={!canDelete}
+                            className="font-mono text-[10px] uppercase tracking-wide text-coral/80 hover:text-coral disabled:opacity-30"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => addStep(activeSegment)}
-                className="rounded-full border border-navy/20 bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy hover:bg-cream/80"
-              >
-                Add step
-              </button>
+              {activeTab === "all" ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wide text-charcoal/45">
+                    Add step to
+                  </span>
+                  {INVENTORY_SEGMENT_IDS.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => addStep(id)}
+                      className="rounded-full border border-navy/20 bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy hover:bg-cream/80"
+                    >
+                      {SEGMENT_TAB_LABEL[id]}
+                    </button>
+                  ))}
+                </div>
+              ) : activeSegmentId ? (
+                <button
+                  type="button"
+                  onClick={() => addStep(activeSegmentId)}
+                  className="rounded-full border border-navy/20 bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy hover:bg-cream/80"
+                >
+                  Add step
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void save()}
