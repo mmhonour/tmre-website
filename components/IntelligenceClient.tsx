@@ -4190,6 +4190,9 @@ export default function IntelligenceClient({
                         onInteract={pauseMiniGraphsRotation}
                         onBucketClick={(bucketId) => {
                           selectVintageListings(bucketId);
+                          // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
+                          setVintageSliderActive(true);
+                          setVintageSliderActive(false);
                         }}
                         onResetFilter={() => {
                           setMinVintageFilter("0");
@@ -4225,6 +4228,9 @@ export default function IntelligenceClient({
                             : maxPriceToStepIndex(bucket.max, boardPriceSteps),
                         );
                         setBoardPage(1);
+                        // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
+                        setPriceSliderActive(true);
+                        setPriceSliderActive(false);
                       }}
                       onResetFilter={() => {
                         priceRangeCustomizedRef.current = false;
@@ -4270,6 +4276,9 @@ export default function IntelligenceClient({
                                 ),
                           );
                           setBoardPage(1);
+                          // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
+                          setPriceSliderActive(true);
+                          setPriceSliderActive(false);
                         }}
                         onResetFilter={() => {
                           priceRangeCustomizedRef.current = false;
@@ -4948,7 +4957,7 @@ function DescriptorSearchControl({
           onClick={onEdit}
           aria-label="Edit filters — scroll to top and show filter controls"
           title="Edit filters"
-          className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold/85 hover:text-gold-light underline-offset-2 hover:underline transition-colors"
+          className="font-mono text-[10px] font-bold tracking-[0.14em] uppercase text-gold/85 hover:text-gold-light underline-offset-2 hover:underline transition-colors"
         >
           Edit
         </button>

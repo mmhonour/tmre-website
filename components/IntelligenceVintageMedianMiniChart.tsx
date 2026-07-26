@@ -43,17 +43,9 @@ function shortVintageLabel(label: string): string {
   return label;
 }
 
-function pickRandomGlowIds(ids: VintageBucketId[], count: number): Set<VintageBucketId> {
-  if (ids.length === 0) return new Set();
-  const shuffled = [...ids];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = shuffled[i]!;
-    shuffled[i] = shuffled[j]!;
-    shuffled[j] = tmp;
-  }
-  const n = Math.min(count, shuffled.length);
-  return new Set(shuffled.slice(0, n));
+/** Every other point, starting with the first (indices 0, 2, 4, …). */
+function everyOtherGlowIds(ids: VintageBucketId[]): Set<VintageBucketId> {
+  return new Set(ids.filter((_, i) => i % 2 === 0));
 }
 
 /**
@@ -133,8 +125,7 @@ export default function IntelligenceVintageMedianMiniChart({
     if (points.length === 0 || introStartedRef.current) return;
     introStartedRef.current = true;
 
-    const glowCount = Math.min(3, Math.max(1, Math.ceil(points.length / 3)));
-    setGlowIds(pickRandomGlowIds(points.map((p) => p.id), glowCount));
+    setGlowIds(everyOtherGlowIds(points.map((p) => p.id)));
     setShowInteractiveHint(true);
 
     const glowTimer = window.setTimeout(() => {
@@ -195,25 +186,28 @@ export default function IntelligenceVintageMedianMiniChart({
 
   return (
     <div className="relative flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
-      <p
-        className={`pointer-events-none absolute left-0 top-0 z-[1] max-w-[4.75rem] text-left italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out ${
-          showInteractiveHint
-            ? "animate-interactive-graph-hint"
-            : "opacity-0"
-        }`}
-        aria-hidden={!showInteractiveHint}
-      >
-        interactive graph
-      </p>
       {showOriginalViewFlash ? (
         <p className="pointer-events-none absolute left-0 top-0 z-[1] font-mono text-[9px] leading-snug tracking-[0.12em] uppercase text-navy/70">
           Original view by {VIEW_BY_DIMENSION_LABEL}
         </p>
       ) : null}
       <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
-          <p className="w-full max-w-[248px] bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
-            {chartTitle}
-          </p>
+          <div className="flex w-full max-w-[248px] items-baseline justify-between gap-2">
+            <p className="min-w-0 bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+              {chartTitle}
+            </p>
+            {/* Desktop: beside title. Mobile: strip shows this right of the carousel. */}
+            <p
+              className={`pointer-events-none hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
+                showInteractiveHint
+                  ? "animate-interactive-graph-hint"
+                  : "opacity-0"
+              }`}
+              aria-hidden={!showInteractiveHint}
+            >
+              interactive graph
+            </p>
+          </div>
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="h-[4.5rem] w-full max-w-[248px] overflow-visible bg-transparent"

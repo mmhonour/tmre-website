@@ -10,6 +10,7 @@ import {
 
 const HIDDEN_PREF_KEY = "tmre-intel-mini-graphs-hidden";
 const ROTATE_MS = 5_000;
+const INTERACTIVE_HINT_MS = 10_000;
 
 export type IntelligenceMiniGraphSlot = {
   key: string;
@@ -53,6 +54,7 @@ export default function IntelligenceMiniGraphsStrip({
   const [isNarrow, setIsNarrow] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [showInteractiveHint, setShowInteractiveHint] = useState(false);
 
   useEffect(() => {
     if (!controlled) {
@@ -100,6 +102,20 @@ export default function IntelligenceMiniGraphsStrip({
     return () => window.clearInterval(id);
   }, [prefReady, hidden, isNarrow, paused, items.length]);
 
+  // Mobile: "interactive graph" lives to the right of the carousel bar.
+  useEffect(() => {
+    if (!prefReady || hidden || !isNarrow || items.length === 0) {
+      setShowInteractiveHint(false);
+      return;
+    }
+    setShowInteractiveHint(true);
+    const id = window.setTimeout(
+      () => setShowInteractiveHint(false),
+      INTERACTIVE_HINT_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [prefReady, hidden, isNarrow, items.length]);
+
   const setHiddenPref = (next: boolean) => {
     if (controlled) onHiddenChange?.(next);
     else setHiddenInternal(next);
@@ -127,6 +143,17 @@ export default function IntelligenceMiniGraphsStrip({
     >
       {paused ? "▶" : "⏸"}
     </button>
+  );
+
+  const interactiveHint = (
+    <p
+      className={`pointer-events-none shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out ${
+        showInteractiveHint ? "animate-interactive-graph-hint" : "opacity-0"
+      }`}
+      aria-hidden={!showInteractiveHint}
+    >
+      interactive graph
+    </p>
   );
 
   return (
@@ -181,30 +208,35 @@ export default function IntelligenceMiniGraphsStrip({
             </div>
           </div>
 
-          {isNarrow && items.length > 1 ? (
+          {isNarrow ? (
             <div className="mt-1.5 flex items-center justify-start gap-2">
-              <div
-                className="flex items-center gap-1.5"
-                role="tablist"
-                aria-label="Mini graphs"
-              >
-                {items.map((item, i) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={i === activeIndex}
-                    aria-label={`Show graph ${i + 1} of ${items.length}`}
-                    className={`h-1.5 rounded-full transition-all ${
-                      i === activeIndex
-                        ? "w-4 bg-navy"
-                        : "w-1.5 bg-navy/25 hover:bg-navy/45"
-                    }`}
-                    onClick={() => setActiveIndex(i)}
-                  />
-                ))}
-              </div>
-              {pauseToggle}
+              {items.length > 1 ? (
+                <>
+                  <div
+                    className="flex items-center gap-1.5"
+                    role="tablist"
+                    aria-label="Mini graphs"
+                  >
+                    {items.map((item, i) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={i === activeIndex}
+                        aria-label={`Show graph ${i + 1} of ${items.length}`}
+                        className={`h-1.5 rounded-full transition-all ${
+                          i === activeIndex
+                            ? "w-4 bg-navy"
+                            : "w-1.5 bg-navy/25 hover:bg-navy/45"
+                        }`}
+                        onClick={() => setActiveIndex(i)}
+                      />
+                    ))}
+                  </div>
+                  {pauseToggle}
+                </>
+              ) : null}
+              {interactiveHint}
             </div>
           ) : null}
         </div>
