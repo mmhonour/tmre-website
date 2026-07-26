@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
 import ListingShareButton from "@/components/listing/ListingShareButton";
+import ListingPropertyFacts from "@/components/listing/ListingPropertyFacts";
 import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
@@ -61,21 +61,12 @@ type ListingHeaderProps = {
    * When set, shows Share/Copy that always uses this URL.
    */
   shareHref?: string | null;
+  /**
+   * Hide type / year / subtype / beds / sqft below the `lg` breakpoint
+   * (mobile Overview moves those into the lower meta dock).
+   */
+  hideFactsOnMobile?: boolean;
 };
-
-function joinMetaSegments(segments: ReactNode[]): ReactNode {
-  const filtered = segments.filter(
-    (segment) => segment != null && segment !== "",
-  );
-  if (filtered.length === 0) return null;
-
-  return filtered.map((segment, index) => (
-    <span key={index}>
-      {index > 0 ? " · " : null}
-      {segment}
-    </span>
-  ));
-}
 
 /**
  * Phone: shell is already full-bleed (`px-0`), so the hero just spans the
@@ -110,37 +101,15 @@ export default function ListingHeader({
   className = "",
   parts = "full",
   shareHref = null,
+  hideFactsOnMobile = false,
 }: ListingHeaderProps & { className?: string; compact?: boolean }) {
   const hideMeta = hideMarketMeta || privacyMode;
   const [scoreOpen, setScoreOpen] = useState(false);
-  const bedBathLabel =
-    beds != null && baths != null && beds > 0 && baths > 0
-      ? `${beds}BR/${baths}BA`
-      : null;
-
-  const bedBathSegment =
-    bedBathLabel && bedBathSearchHref ? (
-      <Link
-        href={bedBathSearchHref}
-        className="text-gold hover:text-gold-light transition-colors"
-        title="Search Intelligence for similar bed and bath counts in this area"
-      >
-        {bedBathLabel}
-      </Link>
-    ) : (
-      bedBathLabel
-    );
 
   const title = address.street || address.full;
   const showScore = goldilocksScore != null && goldilocksScore > 0;
   const priceLabel =
     price != null && price > 0 ? formatListingHeaderPrice(price) : null;
-
-  const metaSecondary = joinMetaSegments([
-    style,
-    bedBathSegment,
-    sqft ? `${sqft.toLocaleString()} sqft` : null,
-  ]);
 
   const titleAndMeta = (
     <>
@@ -214,21 +183,18 @@ export default function ListingHeader({
           ) : null}
         </div>
       </div>
-      <p
-        className={`font-mono text-[10px] tracking-[0.15em] uppercase text-white/45 ${
-          compact ? "mt-2" : "mt-3"
+      <ListingPropertyFacts
+        propertyType={propertyType}
+        style={style}
+        beds={beds}
+        baths={baths}
+        sqft={sqft}
+        yearBuilt={yearBuilt}
+        bedBathSearchHref={bedBathSearchHref}
+        className={`${compact ? "mt-2" : "mt-3"}${
+          hideFactsOnMobile ? " max-lg:hidden" : ""
         }`}
-      >
-        {joinMetaSegments([
-          propertyType?.replace(/ For Sale$/i, ""),
-          yearBuilt ? `Built ${yearBuilt}` : null,
-        ])}
-      </p>
-      {metaSecondary ? (
-        <p className="mt-1 font-mono text-[10px] tracking-[0.15em] uppercase text-white/45">
-          {metaSecondary}
-        </p>
-      ) : null}
+      />
     </>
   );
 

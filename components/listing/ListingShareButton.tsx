@@ -2,6 +2,43 @@
 
 import { useEffect, useRef, useState } from "react";
 
+/** iOS-style share glyph (box + upward arrow) — the common “Share” symbol. */
+function ShareIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3v11" />
+      <path d="M8 7l4-4 4 4" />
+      <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+    </svg>
+  );
+}
+
+function CopiedIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
 /**
  * Share / Copy control that always uses the short canonical URL
  * (`/listings/{mlsId}` or `/spotlight`), even when the address bar still
@@ -68,13 +105,17 @@ export default function ListingShareButton({
     <button
       type="button"
       onClick={() => void handleShare()}
-      className={`font-mono text-[10px] tracking-[0.14em] uppercase text-gold/80 underline decoration-gold/35 underline-offset-2 transition-colors hover:text-gold whitespace-nowrap ${className}`}
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gold/85 transition-colors hover:bg-white/10 hover:text-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold/50 ${className}`}
       aria-label={
         status === "copied" ? "Link copied" : "Share or copy short listing link"
       }
-      title="Share short link"
+      title={status === "copied" ? "Link copied" : "Share short link"}
     >
-      {status === "copied" ? "Copied" : "Share"}
+      {status === "copied" ? (
+        <CopiedIcon className="h-[15px] w-[15px]" />
+      ) : (
+        <ShareIcon className="h-[15px] w-[15px]" />
+      )}
     </button>
   );
 }

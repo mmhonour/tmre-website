@@ -24,6 +24,8 @@ import {
   type ListingScrollSectionTab,
 } from "@/components/listing/listing-section-ids";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
+import ListingShareButton from "@/components/listing/ListingShareButton";
+import ListingPropertyFacts from "@/components/listing/ListingPropertyFacts";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
@@ -165,6 +167,15 @@ export default function ListingHeroPanels({
   const [panelTab, setPanelTab] = useState<ListingScrollSectionTab | null>(
     null,
   );
+  /**
+   * Overview surface (not Sold / History / … panel). Mobile moves property
+   * facts into a bottom dock so sticky tabs + remarks can sit higher.
+   */
+  const remarksSurfaceActive =
+    isOverview &&
+    (!useSlidePanel || panelTab === null || panelTab === "overview");
+  /** CSS-gated: facts dock on small screens while Overview surface is active. */
+  const showMobileMetaDock = remarksSurfaceActive;
   /**
    * Photos tab stays hidden until the user clicks a photo on Overview
    * (enters photos mode). Resets when the listing changes.
@@ -532,6 +543,17 @@ export default function ListingHeroPanels({
 
   const statusLabel = formatMlsStatus(header.status);
 
+  const shareHref = isSpotlight
+    ? SPOTLIGHT_SHARE_URL
+    : listingShareHref(header.mlsId);
+
+  const shareButton = (
+    <ListingShareButton
+      href={shareHref}
+      title={header.address?.street || header.address?.full || null}
+    />
+  );
+
   const statusBadge =
     statusLabel && !hideStatusBadge ? (
       <span className="shrink-0">
@@ -582,10 +604,10 @@ export default function ListingHeroPanels({
     insight: null,
     className: "mb-0" as const,
     compact: true as const,
-    // Short share URL — never includes address/city query params.
-    shareHref: isSpotlight
-      ? SPOTLIGHT_SHARE_URL
-      : listingShareHref(header.mlsId),
+    // Share sits left of the status pill on the Back / Spotlight row.
+    shareHref: null,
+    // Mobile Overview: type / year / beds / sqft move to the lower meta dock.
+    hideFactsOnMobile: showMobileMetaDock,
   };
 
   const heroOnly = (
@@ -701,7 +723,11 @@ export default function ListingHeroPanels({
         <div
           ref={panelScrollRef}
           id={LISTING_SECTION_IDS.overview}
-          className="listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-0 pb-4 max-lg:px-0 lg:pt-2 lg:pb-4"
+          className={`listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-0 max-lg:px-0 lg:pt-2 lg:pb-4 ${
+            showMobileMetaDock
+              ? "pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-4"
+              : "pb-4"
+          }`}
         >
           <div
             className={`min-w-0 ${panelTab === "overview" ? "block" : "hidden"}`}
@@ -720,10 +746,14 @@ export default function ListingHeroPanels({
     </div>
   ) : null;
 
+  const heroStagePadClass = showMobileMetaDock
+    ? "max-lg:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]"
+    : "";
+
   const heroStage = useSlidePanel ? (
     <div
       ref={stageRef}
-      className={`relative mt-0 overflow-x-hidden ${
+      className={`relative mt-0 overflow-x-hidden ${heroStagePadClass} ${
         analysisPanelOpen
           ? "overflow-hidden bg-[#1B2A4A] min-h-[min(68vh,calc(100dvh-var(--listing-sticky-offset,6rem)-1rem))]"
           : "overflow-y-visible"
@@ -740,9 +770,6 @@ export default function ListingHeroPanels({
   // No card shell — rounded/frosted frames read as medium-blue borders on the
   // navy page and around slide-up tab content.
   const remarksTeaserLine = firstListingRemarksLine(remarks);
-  const remarksSurfaceActive =
-    isOverview &&
-    (!useSlidePanel || panelTab === null || panelTab === "overview");
   const showRemarksTeaser =
     remarksSurfaceActive && Boolean(remarksTeaserLine);
   const detailsRemarksSwapAvailable =
@@ -813,10 +840,11 @@ export default function ListingHeroPanels({
           subnav.active === "photos" ? "pb-0" : "pb-3"
         }`}
       >
-        {/* Status top-aligned with Spotlight Properties / ← Back to … */}
+        {/* Share + status top-aligned with Spotlight Properties / ← Back to … */}
         <div className="mb-1.5 flex items-start justify-between gap-3">
           <div className="min-w-0">{topLeft}</div>
-          <div className="flex shrink-0 flex-col items-end gap-1 self-start">
+          <div className="flex shrink-0 items-center gap-1.5 self-start">
+            {shareButton}
             {statusBadge}
           </div>
         </div>
@@ -1103,6 +1131,25 @@ export default function ListingHeroPanels({
       {belowHero ? (
         <div className="mt-6 border-t border-white/10 pt-6 max-lg:px-0 lg:mt-8 lg:pt-8">
           {belowHero}
+        </div>
+      ) : null}
+
+      {showMobileMetaDock ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-30 lg:hidden"
+          aria-label="Property facts"
+        >
+          <div className="pointer-events-auto border-t border-white/10 bg-[#1B2A4A]/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom,0px))] shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md">
+            <ListingPropertyFacts
+              propertyType={header.propertyType}
+              style={header.style}
+              beds={header.beds}
+              baths={header.baths}
+              sqft={header.sqft}
+              yearBuilt={header.yearBuilt}
+              bedBathSearchHref={header.bedBathSearchHref}
+            />
+          </div>
         </div>
       ) : null}
 
