@@ -17,8 +17,6 @@ import {
   LEGACY_ADMIN_TAB_TO_DATABASE,
   type AdminTabId,
 } from "@/lib/admin-nav";
-import type { DeployBuildInfo } from "@/lib/deploy-build-info";
-
 const VALID_TABS = new Set<string>(ADMIN_TABS.map((t) => t.id));
 
 function tabFromLocation(): AdminTabId {
@@ -74,6 +72,17 @@ function normalizeLegacyNestedTabUrls() {
     url.searchParams.set("tab", "architecture");
     url.searchParams.set("panel", archPanel);
     window.history.replaceState(null, "", url);
+    return;
+  }
+
+  // Former Data controls → Cookies nested panel is now a top-level tab.
+  if (
+    queryTab === "data-controls" &&
+    url.searchParams.get("panel") === "cookies"
+  ) {
+    url.searchParams.set("tab", "cookies");
+    url.searchParams.delete("panel");
+    window.history.replaceState(null, "", url);
   }
 }
 
@@ -118,21 +127,20 @@ export default function AdminTabbedLayout({
   db,
   stats,
   dataControls,
+  cookies,
   architecture,
   syncs,
   server,
   glossary,
-  deployBuild = null,
 }: {
   db: ReactNode;
   stats: ReactNode;
   dataControls: ReactNode;
+  cookies: ReactNode;
   architecture: ReactNode;
   syncs: ReactNode;
   server: ReactNode;
   glossary: ReactNode;
-  /** Build time + hex id — left-aligned above the tab bar. */
-  deployBuild?: DeployBuildInfo | null;
 }) {
   const [tab, setTab] = useState<AdminTabId>("db");
 
@@ -190,6 +198,7 @@ export default function AdminTabbedLayout({
     db,
     stats,
     "data-controls": dataControls,
+    cookies,
     architecture,
     syncs,
     server,
@@ -200,30 +209,6 @@ export default function AdminTabbedLayout({
   return (
     <section className="bg-cream py-10 lg:py-14">
       <div className="mx-auto max-w-7xl px-6 lg:px-10">
-        <div className="mb-4 text-left select-none">
-          <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
-            Build
-          </p>
-          {deployBuild ? (
-            <p className="font-mono text-[11px] text-charcoal/70 leading-snug">
-              {deployBuild.builtAtLabel ? (
-                <span className="text-navy">{deployBuild.builtAtLabel}</span>
-              ) : null}
-              {deployBuild.builtAtLabel ? (
-                <span className="text-charcoal/30"> · </span>
-              ) : null}
-              <span className="text-charcoal/55">
-                #{deployBuild.shortId}
-                {deployBuild.id.length > 12 ? "…" : ""}
-              </span>
-            </p>
-          ) : (
-            <p className="font-mono text-[11px] text-charcoal/40 leading-snug">
-              unavailable · next Netlify deploy stamps it
-            </p>
-          )}
-        </div>
-
         {/* Underline tab bar — uniform height, active tab marked by a bottom border. */}
         <div
           role="tablist"

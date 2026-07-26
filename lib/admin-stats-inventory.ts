@@ -265,7 +265,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'active-by-luxury-price:{town|All}:sale',
     owner: 'lib/stats-cache.ts',
     notes:
-      'Sale-only. Fine buckets $4–10M @ $1M and $10M+ @ $5M (lib/luxury-price-buckets.ts). Keyed to the top 3 Admin Sales by price bands. Served via /api/active-by-luxury-price. Rebuild stats cache after band edits.',
+      'Sale-only. Fine steps from Admin Intelligence inventory bands (Postgres intel_inventory_segment_bands; defaults $4–10M @ $1M, $10M+ @ $5M). Keyed to the top 3 Admin Sales by price bands. Served via /api/active-by-luxury-price. Rebuild stats cache after segment edits.',
     live: { kind: 'stats_cache_prefix', prefix: 'active-by-luxury-price:' },
   },
   {

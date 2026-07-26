@@ -2,6 +2,7 @@ export type AdminTabId =
   | "db"
   | "stats"
   | "data-controls"
+  | "cookies"
   | "architecture"
   | "syncs"
   | "server"
@@ -15,7 +16,7 @@ export type AdminDataControlsPanelId =
   | "pricing"
   | "vintages"
   | "rets"
-  | "cookies";
+  | "intel-inventory";
 
 /** Sub-panels under Admin → Database. */
 export type AdminDatabasePanelId =
@@ -105,9 +106,10 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     subtitle: "SmartMLS credentials and connection health",
   },
   {
-    id: "cookies",
-    label: "Browser cookies",
-    subtitle: "See and delete cookies for this browser (prefs, visitor id, unlock)",
+    id: "intel-inventory",
+    label: "Intelligence inventory",
+    subtitle:
+      "Value, Mid-market, and Luxury ranges/steps for Intelligence inventory charts",
   },
 ];
 
@@ -195,13 +197,20 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "stats",
     label: "Stats",
-    subtitle: "Where stats and caches live — Postgres, memory, files, R2",
+    subtitle:
+      "Sales by price, Intelligence inventory bands, and where caches live",
   },
   {
     id: "data-controls",
     label: "Data controls",
     subtitle:
-      "Site, Spotlight, Goldilocks, Pricing, Vintages, and RETS credentials",
+      "Site, Spotlight, Goldilocks, Pricing, Vintages, RETS, and Intelligence inventory",
+  },
+  {
+    id: "cookies",
+    label: "Cookies",
+    subtitle:
+      "See and delete cookies for this browser (prefs, visitor id, unlock)",
   },
   {
     id: "architecture",
@@ -367,8 +376,18 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-browser-cookies",
     label: "Browser cookies",
+    tab: "cookies",
+  },
+  {
+    id: "admin-inventory-segment-bands",
+    label: "Intelligence inventory bands",
+    tab: "stats",
+  },
+  {
+    id: "admin-intel-inventory",
+    label: "Intelligence inventory",
     tab: "data-controls",
-    panel: "cookies",
+    panel: "intel-inventory",
   },
   {
     id: "admin-sqlite-schemas",
@@ -638,7 +657,8 @@ export function isAdminDataControlsPanelId(
     value === "goldilocks" ||
     value === "pricing" ||
     value === "vintages" ||
-    value === "rets"
+    value === "rets" ||
+    value === "intel-inventory"
   );
 }
 

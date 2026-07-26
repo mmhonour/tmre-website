@@ -15,7 +15,14 @@ export type DeployBuildInfo = {
   shortId: string;
   /** Parsed from the deploy-id prefix when available. */
   builtAt: Date | null;
-  /** Formatted builtAt for display. */
+  /** Built time in UTC (e.g. "Jul 26, 2026, 3:12 PM UTC"). */
+  builtAtUtcLabel: string | null;
+  /** Built time in America/New_York (EST/EDT). */
+  builtAtEtLabel: string | null;
+  /**
+   * Combined UTC · ET label for compact surfaces (nav badge, titles).
+   * Null when builtAt could not be parsed.
+   */
   builtAtLabel: string | null;
 };
 
@@ -33,13 +40,14 @@ function parseDeployIdBuildTime(deployId: string): Date | null {
   return date;
 }
 
-function formatBuildTime(date: Date): string {
+function formatBuildTimeInZone(date: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone,
     timeZoneName: "short",
   }).format(date);
 }
@@ -68,10 +76,23 @@ export function readDeployBuildInfo(): DeployBuildInfo | null {
   if (!id) return null;
 
   const builtAt = parseDeployIdBuildTime(id);
+  const builtAtUtcLabel = builtAt
+    ? formatBuildTimeInZone(builtAt, "UTC")
+    : null;
+  const builtAtEtLabel = builtAt
+    ? formatBuildTimeInZone(builtAt, "America/New_York")
+    : null;
+  const builtAtLabel =
+    builtAtUtcLabel && builtAtEtLabel
+      ? `${builtAtUtcLabel} · ${builtAtEtLabel}`
+      : builtAtUtcLabel ?? builtAtEtLabel;
+
   return {
     id,
     shortId: id.length > 12 ? id.substring(0, 12) : id,
     builtAt,
-    builtAtLabel: builtAt ? formatBuildTime(builtAt) : null,
+    builtAtUtcLabel,
+    builtAtEtLabel,
+    builtAtLabel,
   };
 }

@@ -124,10 +124,7 @@ const exploreGroupsBase: ExploreGroup[] = [
   },
   {
     title: "System",
-    links: [
-      { href: "/admin", label: "Admin" },
-      { href: "/visitors", label: "Visitors", requiresUnlock: true },
-    ],
+    links: [{ href: "/visitors", label: "Visitors", requiresUnlock: true }],
   },
 ];
 

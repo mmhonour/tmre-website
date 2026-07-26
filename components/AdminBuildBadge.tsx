@@ -24,9 +24,14 @@ export default function AdminBuildBadge({
       <p className="font-mono text-[8px] tracking-[0.16em] uppercase text-gold/70 mb-0.5">
         Build
       </p>
-      {build.builtAtLabel ? (
+      {build.builtAtUtcLabel ? (
         <p className="font-mono text-[9px] text-white/80 whitespace-nowrap">
-          {build.builtAtLabel}
+          {build.builtAtUtcLabel}
+        </p>
+      ) : null}
+      {build.builtAtEtLabel ? (
+        <p className="font-mono text-[9px] text-white/65 mt-0.5 whitespace-nowrap">
+          {build.builtAtEtLabel}
         </p>
       ) : null}
       <p className="font-mono text-[9px] text-white/55 mt-0.5 whitespace-nowrap">

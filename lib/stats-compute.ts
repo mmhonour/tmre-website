@@ -691,16 +691,24 @@ export type ActiveByLuxuryPricePayload = ActiveByPricePayload & {
 }
 
 /**
- * Bucket active sale list prices into luxury fine bands ($4–10M @ $1M,
- * $10M+ @ $5M). Sale-only. Uses Postgres-hydrated listings, never RETS.
+ * Bucket active sale list prices into luxury fine bands (Admin/Postgres
+ * inventory segment steps; defaults $4–10M @ $1M, $10M+ @ $5M). Sale-only.
  */
 export function computeActiveByLuxuryPrice(
   activeListings: Listing[],
   city: string,
   saleBuckets: readonly (typeof PRICE_BUCKETS)[number][] = PRICE_BUCKETS,
+  options?: {
+    floor?: number
+    steps?: readonly (typeof PRICE_BUCKETS)[number][]
+  },
 ): ActiveByLuxuryPricePayload {
+  const floor = options?.floor ?? LUXURY_PRICE_FLOOR
+  const steps = options?.steps?.length
+    ? options.steps
+    : LUXURY_PRICE_BUCKETS
   const filtered = filterListingsByKind(activeListings, 'sale')
-  const counts = emptyLuxuryPriceCounts()
+  const counts = emptyLuxuryPriceCounts(steps)
   let total = 0
   let belowLuxury = 0
   let luxuryActive = 0
@@ -712,17 +720,17 @@ export function computeActiveByLuxuryPrice(
       counts.unknown = (counts.unknown ?? 0) + 1
       continue
     }
-    if (price < LUXURY_PRICE_FLOOR) {
+    if (price < floor) {
       belowLuxury += 1
       continue
     }
     luxuryActive += 1
-    const id = classifyLuxuryPrice(price)
+    const id = classifyLuxuryPrice(price, steps)
     counts[id] = (counts[id] ?? 0) + 1
   }
 
   const knownLuxury = luxuryActive
-  const buckets: ActiveByPriceBucket[] = LUXURY_PRICE_BUCKETS.map((b) => ({
+  const buckets: ActiveByPriceBucket[] = steps.map((b) => ({
     id: b.id,
     label: b.label,
     min: b.min,

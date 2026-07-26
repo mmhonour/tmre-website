@@ -39,7 +39,7 @@ export default function AdminDataControlsPanel({
   pricing,
   vintages,
   rets,
-  cookies,
+  intelInventory,
 }: {
   site: ReactNode;
   spotlight: ReactNode;
@@ -47,7 +47,7 @@ export default function AdminDataControlsPanel({
   pricing: ReactNode;
   vintages: ReactNode;
   rets: ReactNode;
-  cookies: ReactNode;
+  intelInventory: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDataControlsPanelId>("site");
 
@@ -85,7 +85,7 @@ export default function AdminDataControlsPanel({
     pricing,
     vintages,
     rets,
-    cookies,
+    "intel-inventory": intelInventory,
   };
   const active = ADMIN_DATA_CONTROLS_PANELS.find((item) => item.id === panel);
 
@@ -121,17 +121,7 @@ export default function AdminDataControlsPanel({
           {active.subtitle}
         </p>
       ) : null}
-
-      {ADMIN_DATA_CONTROLS_PANELS.map((item) => (
-        <div
-          key={item.id}
-          role="tabpanel"
-          hidden={panel !== item.id}
-          className={panel === item.id ? "space-y-6" : undefined}
-        >
-          {panels[item.id]}
-        </div>
-      ))}
+      <div>{panels[panel]}</div>
     </div>
   );
 }

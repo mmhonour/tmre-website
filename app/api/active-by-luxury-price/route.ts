@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
 import { listingCacheHeaders } from '@/lib/listings-store'
+import {
+  getInventorySegmentBandsConfigFresh,
+  luxuryFloorFromConfig,
+  luxuryStepsFromConfig,
+} from '@/lib/inventory-segment-bands-config'
 import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
 import {
   computeActiveByLuxuryPrice,
@@ -74,7 +79,11 @@ export async function GET(req: NextRequest) {
         : await readListingsFromDb(city, 'Active', 500)
 
     const saleBuckets = await getPriceBucketsFresh()
-    const payload = computeActiveByLuxuryPrice(active, city, saleBuckets)
+    const inventorySegments = await getInventorySegmentBandsConfigFresh()
+    const payload = computeActiveByLuxuryPrice(active, city, saleBuckets, {
+      floor: luxuryFloorFromConfig(inventorySegments),
+      steps: luxuryStepsFromConfig(inventorySegments),
+    })
     const generatedAt = new Date().toISOString()
     await writeStatsCache('active-by-luxury-price', city, 'sale', {
       ...payload,

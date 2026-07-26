@@ -199,7 +199,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Browser cookies (Admin)',
     category: 'sync-admin',
     definition:
-      'Admin → Data controls → Browser cookies: view and delete cookies for your browser only (filter prefs, tmre_vid visitor id, tmre_site_pass unlock). HttpOnly cookies are listed/cleared via /api/admin/browser-cookies; clearing unlock logs you out.',
+      'Admin → Cookies (top-level tab): view and delete cookies for your browser only (filter prefs, tmre_vid visitor id, tmre_site_pass unlock). HttpOnly cookies are listed/cleared via /api/admin/browser-cookies; clearing unlock logs you out.',
+  },
+  {
+    term: 'Intelligence inventory bands',
+    category: 'sync-admin',
+    definition:
+      'Postgres sync_meta key intel_inventory_segment_bands — editable Value, Mid-market, and Luxury ranges plus fine steps (Admin → Stats and Data controls → Intelligence inventory). Luxury steps drive the Intelligence luxury inventory chart; rebuild Stats cache after edits.',
   },
   {
     term: 'Postgres / Neon',

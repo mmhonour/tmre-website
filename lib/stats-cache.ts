@@ -43,6 +43,11 @@ import { rebuildIntelligenceTownSnapshots } from '@/lib/intelligence-town-snapsh
 import { refreshInterestingStat } from '@/lib/interesting-stat'
 import { rebuildTownZipsCache } from '@/lib/town-zips-cache'
 import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
+import {
+  getInventorySegmentBandsConfigFresh,
+  luxuryFloorFromConfig,
+  luxuryStepsFromConfig,
+} from '@/lib/inventory-segment-bands-config'
 import type { PriceBucketDef } from '@/lib/price-buckets-shared'
 import {
   MONTHS_SUPPLY_INDEX_KEY,
@@ -461,12 +466,18 @@ export function computeTownBundleFromListings(
 type TownListingsMap = Record<TmreTown, { active: Listing[]; closed: Listing[] }>
 
 /** Upsert market scopes for one town; optionally fill by-town bundle maps. */
+type LuxuryInventoryOpts = {
+  floor: number
+  steps: readonly PriceBucketDef[]
+}
+
 async function writeTownMarketStats(
   town: TmreTown,
   active: Listing[],
   closed: Listing[],
   generatedAt: string,
   saleBuckets: readonly PriceBucketDef[],
+  luxuryOpts: LuxuryInventoryOpts,
   bundles?: {
     salesByMonthByTown: KindTownMonthData
     activeByMonthByTown: KindTownActiveMonthData
@@ -525,7 +536,7 @@ async function writeTownMarketStats(
 
     if (kind === 'sale') {
       await writeStatsCache('active-by-luxury-price', town, 'sale', {
-        ...computeActiveByLuxuryPrice(active, town, saleBuckets),
+        ...computeActiveByLuxuryPrice(active, town, saleBuckets, luxuryOpts),
         generatedAt,
       })
       written += 1
@@ -620,6 +631,7 @@ async function refreshByTownBundlesFromTownCaches(generatedAt: string): Promise<
 async function writeAllAggregateStats(
   generatedAt: string,
   saleBuckets: readonly PriceBucketDef[],
+  luxuryOpts: LuxuryInventoryOpts,
 ): Promise<number> {
   let written = 0
   const [allClosed, allActive] = await Promise.all([
@@ -642,7 +654,7 @@ async function writeAllAggregateStats(
     })
     if (kind === 'sale') {
       await writeStatsCache('active-by-luxury-price', 'All', 'sale', {
-        ...computeActiveByLuxuryPrice(allActive, 'All', saleBuckets),
+        ...computeActiveByLuxuryPrice(allActive, 'All', saleBuckets, luxuryOpts),
         generatedAt,
       })
       written += 1
@@ -685,6 +697,11 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     let written = 0
     const generatedAt = new Date().toISOString()
     const saleBuckets = await getPriceBucketsFresh()
+    const inventorySegments = await getInventorySegmentBandsConfigFresh()
+    const luxuryOpts: LuxuryInventoryOpts = {
+      floor: luxuryFloorFromConfig(inventorySegments),
+      steps: luxuryStepsFromConfig(inventorySegments),
+    }
     const salesByMonthByTown = emptyKindTownMonthData()
     const activeByMonthByTown = emptyKindTownActiveMonthData()
     const avgScoreByVintageByTown = emptyKindTownAvgScoreData()
@@ -705,6 +722,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
         closed,
         generatedAt,
         saleBuckets,
+        luxuryOpts,
         {
           salesByMonthByTown,
           activeByMonthByTown,
@@ -719,7 +737,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
       avgScoreByVintageByTown,
       generatedAt,
     )
-    written += await writeAllAggregateStats(generatedAt, saleBuckets)
+    written += await writeAllAggregateStats(generatedAt, saleBuckets, luxuryOpts)
 
     try {
       const ms = await rebuildMonthsSupplyCache({
@@ -794,6 +812,11 @@ export async function rebuildStatsCacheForTowns(
     let written = 0
     const generatedAt = new Date().toISOString()
     const saleBuckets = await getPriceBucketsFresh()
+    const inventorySegments = await getInventorySegmentBandsConfigFresh()
+    const luxuryOpts: LuxuryInventoryOpts = {
+      floor: luxuryFloorFromConfig(inventorySegments),
+      steps: luxuryStepsFromConfig(inventorySegments),
+    }
     const townListingsForMonthsSupply = {} as TownListingsMap
 
     for (const town of unique) {
@@ -808,11 +831,12 @@ export async function rebuildStatsCacheForTowns(
         closed,
         generatedAt,
         saleBuckets,
+        luxuryOpts,
       )
     }
 
     written += await refreshByTownBundlesFromTownCaches(generatedAt)
-    written += await writeAllAggregateStats(generatedAt, saleBuckets)
+    written += await writeAllAggregateStats(generatedAt, saleBuckets, luxuryOpts)
 
     try {
       const ms = await rebuildMonthsSupplyCache({

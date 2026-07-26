@@ -24,6 +24,7 @@ import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
+import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
@@ -718,6 +719,8 @@ export default async function AdminPage() {
     </>
   );
 
+  const inventoryBandsPanel = <AdminInventorySegmentBandsPanel />;
+
   const dataControlsPanel = (
     <AdminDataControlsPanel
       site={sitePanel}
@@ -726,7 +729,7 @@ export default async function AdminPage() {
       pricing={<AdminPricingPanel initial={pricingInitial} />}
       vintages={<AdminVintagesPanel />}
       rets={retsPanel}
-      cookies={<AdminBrowserCookiesPanel />}
+      intelInventory={inventoryBandsPanel}
     />
   );
 
@@ -789,6 +792,33 @@ export default async function AdminPage() {
                 </p>
               </div>
             )}
+            <div>
+              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold/80 leading-none mb-1">
+                Build
+              </p>
+              {deployBuild ? (
+                <>
+                  {deployBuild.builtAtUtcLabel ? (
+                    <p className="font-mono text-[10px] text-white/80 leading-snug whitespace-nowrap">
+                      {deployBuild.builtAtUtcLabel}
+                    </p>
+                  ) : null}
+                  {deployBuild.builtAtEtLabel ? (
+                    <p className="font-mono text-[10px] text-white/65 leading-snug mt-0.5 whitespace-nowrap">
+                      {deployBuild.builtAtEtLabel}
+                    </p>
+                  ) : null}
+                  <p className="font-mono text-[9px] text-white/40 leading-none mt-1">
+                    #{deployBuild.shortId}
+                    {deployBuild.id.length > 12 ? "…" : ""}
+                  </p>
+                </>
+              ) : (
+                <p className="font-mono text-[10px] text-white/40 leading-snug">
+                  unavailable · next Netlify deploy stamps it
+                </p>
+              )}
+            </div>
           </div>
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
@@ -934,6 +964,7 @@ export default async function AdminPage() {
         db={dbPanel}
         stats={<AdminStatsInventoryPanel />}
         dataControls={dataControlsPanel}
+        cookies={<AdminBrowserCookiesPanel />}
         architecture={
           <AdminArchitecturePanel
             map={<AdminSiteArchitecturePanel />}
@@ -943,7 +974,6 @@ export default async function AdminPage() {
         syncs={syncsPanel}
         server={serverPanel}
         glossary={<AdminGlossaryPanel />}
-        deployBuild={deployBuild}
       />
     </>
   );
