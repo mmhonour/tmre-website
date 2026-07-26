@@ -334,27 +334,17 @@ export function DealBoardPhotoLedGridCard({
                 .filter(Boolean)
                 .join(" · ")}
             </p>
-            {/* Line 2: year built, then insight (type rides with year when present). */}
-            {l.yearBuilt != null || l.type || l.headline ? (
-              <p className="min-w-0 text-[10px] leading-snug">
-                <span className="font-mono text-slate/80 tabular-nums">
-                  {[
-                    dealBoardYearBuiltLabel(l.yearBuilt),
-                    l.type || null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-                {l.headline ? (
-                  <span className="text-charcoal/60 italic">
-                    {l.yearBuilt != null || l.type ? " · " : null}
-                    {l.headline}
-                  </span>
-                ) : null}
+            {/* Line 2: year + type only — insight is Insights toggle, not More data. */}
+            {l.yearBuilt != null || l.type ? (
+              <p className="min-w-0 font-mono text-[10px] leading-snug text-slate/80 tabular-nums">
+                {[dealBoardYearBuiltLabel(l.yearBuilt), l.type || null]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             ) : null}
           </div>
-        ) : showGridInsights && l.headline ? (
+        ) : null}
+        {showGridInsights && l.headline ? (
           <p className="text-xs text-charcoal/60 italic leading-snug line-clamp-2 pt-0.5">
             {l.headline}
           </p>

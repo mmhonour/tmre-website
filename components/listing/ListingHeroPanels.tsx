@@ -35,6 +35,7 @@ import {
 import { ListingDetailsRemarksSwapContext } from "@/components/listing/ListingDetailsRemarksSwapContext";
 import { ListingHistoryDetailsSwapContext } from "@/components/listing/ListingHistoryDetailsSwapContext";
 import ListingHistorySidePanel from "@/components/listing/ListingHistorySidePanel";
+import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import {
   firstListingRemarksLine,
   ListingRemarksContent,
@@ -59,7 +60,7 @@ import {
 
 type MobileDrawerId = "remarks" | "insight" | "details" | null;
 
-type MobileEdgePillId = "insight" | "details" | "history" | "if" | "map";
+type MobileEdgePillId = "insight" | "details" | "if" | "map";
 
 /** Clears the fixed site nav (`pt-20` / `lg:pt-24` on ListingShell). */
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
@@ -832,14 +833,14 @@ export default function ListingHeroPanels({
 
         {/*
           Tabs + mobile edge pills. MAP is anchored on the Overview/tabs row
-          center (former MORE slot); Insight → Details → History → What if
-          stack upward. What if / History / Map are hidden from the tab strip
-          on mobile (see ListingSubnav hideMobileEdgeTabs).
+          center; Insight → Details → What if stack tightly above (auto-sized,
+          right-aligned). History lives inside the Insight drawer on mobile.
+          What if / History / Map stay off the tab strip (hideMobileEdgeTabs).
         */}
         <div className="relative mt-2">
-          <div className="min-w-0 max-lg:pr-[4.5rem]">{tabsNav}</div>
+          <div className="min-w-0 max-lg:pr-16">{tabsNav}</div>
           <div
-            className="lg:hidden absolute right-0 top-1/2 z-10 max-lg:-mr-3 flex flex-col items-stretch gap-1 -translate-y-[calc(100%-0.875rem)]"
+            className="lg:hidden absolute right-0 top-1/2 z-10 max-lg:-mr-3 flex flex-col items-end gap-0 -translate-y-[calc(100%-0.875rem)]"
             role="toolbar"
             aria-label="Listing panels"
           >
@@ -870,15 +871,6 @@ export default function ListingHeroPanels({
                     }
                     openMobileDrawer("details");
                   },
-                },
-                {
-                  id: "history" as const,
-                  label: "History",
-                  active:
-                    panelTab === "history" ||
-                    (!useSlidePanel && subnav.active === "history"),
-                  controls: LISTING_SECTION_IDS.history,
-                  onClick: () => openMobileSectionPill("history"),
                 },
                 {
                   id: "if" as const,
@@ -913,7 +905,7 @@ export default function ListingHeroPanels({
               <button
                 key={pill.id}
                 type="button"
-                className={`inline-flex items-center justify-end rounded-l-full rounded-r-none border border-r-0 pl-3.5 pr-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] shadow-[-4px_2px_12px_-4px_rgba(0,0,0,0.55)] transition-colors ${
+                className={`inline-flex w-fit items-center justify-end rounded-l-full rounded-r-none border border-r-0 pl-3.5 pr-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] shadow-[-4px_2px_12px_-4px_rgba(0,0,0,0.55)] transition-colors ${
                   pill.active
                     ? "border-gold bg-navy text-gold"
                     : "border-gold/45 bg-[#121c2e]/95 text-gold/90 hover:border-gold hover:bg-navy hover:text-gold"
@@ -1130,7 +1122,7 @@ export default function ListingHeroPanels({
         onClose={closeMobileDrawer}
         title="Insight"
       >
-        <div id="listing-insight-drawer">
+        <div id="listing-insight-drawer" className="space-y-5">
           {overviewInsight ? (
             <ListingInsightCopy
               text={overviewInsight}
@@ -1139,6 +1131,19 @@ export default function ListingHeroPanels({
               onMedianClick={activateAnalysisFromMedian}
             />
           ) : null}
+          <section
+            className="space-y-3 border-t border-white/10 pt-4"
+            aria-label="History"
+          >
+            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+              History
+            </p>
+            <ListingHistoryPanel
+              mlsId={subnav.mlsId}
+              townHint={subnav.townHint}
+              variant="page"
+            />
+          </section>
         </div>
       </ListingSideDrawer>
 

@@ -99,6 +99,7 @@ export default function IntelligencePriceBandMiniChart({
   filterActive = false,
   onBucketClick,
   onResetFilter,
+  onInteract,
 }: {
   city: string;
   kind: "sale" | "rental";
@@ -107,6 +108,8 @@ export default function IntelligencePriceBandMiniChart({
   filterActive?: boolean;
   onBucketClick: (bucket: { id: string; min: number; max: number | null }) => void;
   onResetFilter?: () => void;
+  /** Fired when a graph point is clicked (e.g. pause mobile carousel). */
+  onInteract?: () => void;
 }) {
   const [buckets, setBuckets] = useState<ApiBucket[]>([]);
   const [glowIds, setGlowIds] = useState<Set<string>>(() => new Set());
@@ -222,6 +225,7 @@ export default function IntelligencePriceBandMiniChart({
     .join(" ");
 
   const handlePointClick = (point: BandPoint) => {
+    onInteract?.();
     if (!point.callout) {
       setExtraCallouts((prev) => {
         if (prev.has(point.id)) return prev;
@@ -247,10 +251,7 @@ export default function IntelligencePriceBandMiniChart({
 
   return (
     <div className="flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
-      <p className="bg-transparent font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
-        {chartTitle}
-      </p>
-      <div className="flex w-full items-center justify-start gap-2">
+      <div className="flex w-full items-start justify-start gap-2">
         <div className="relative w-[4.75rem] shrink-0 self-center">
           <p
             className={`text-left italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out ${
@@ -269,6 +270,9 @@ export default function IntelligencePriceBandMiniChart({
           ) : null}
         </div>
         <div className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5">
+          <p className="w-full max-w-[248px] bg-transparent text-center font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+            {chartTitle}
+          </p>
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="h-[4.5rem] w-full max-w-[248px] overflow-visible bg-transparent"

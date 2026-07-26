@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import IntelligenceClient from "@/components/IntelligenceClient";
 import { loadDealOfTheDayFssrSeed } from "@/lib/deal-of-the-day-fssr";
+import { loadInventorySegmentChartSeed } from "@/lib/intelligence-inventory-segment-fssr";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
 export const metadata = {
@@ -10,12 +11,16 @@ export const metadata = {
 };
 
 export default async function IntelligencePage() {
-  const seed = await loadDealOfTheDayFssrSeed("sale", "homes");
+  const [seed, inventorySeed] = await Promise.all([
+    loadDealOfTheDayFssrSeed("sale", "homes"),
+    loadInventorySegmentChartSeed("All"),
+  ]);
 
   return (
     <Suspense fallback={null}>
       <IntelligenceClient
         initialDotdDealsByTown={seed?.dealsByTown ?? null}
+        initialInventorySegmentChart={inventorySeed}
       />
     </Suspense>
   );

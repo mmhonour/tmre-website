@@ -265,8 +265,32 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'active-by-luxury-price:{town|All}:sale',
     owner: 'lib/stats-cache.ts',
     notes:
-      'Sale-only. Fine steps from Admin Intelligence inventory bands (Postgres intel_inventory_segment_bands; defaults $4–10M @ $1M, $10M+ @ $5M). Keyed to the top 3 Admin Sales by price bands. Served via /api/active-by-luxury-price. Rebuild stats cache after segment edits.',
+      'Sale-only Luxury segment. Fine steps from Admin Intelligence inventory bands. Sibling keys: active-by-mid-price / active-by-value-price. Bundle API: /api/active-by-segment-price?all=1. Rebuild stats cache after segment edits.',
     live: { kind: 'stats_cache_prefix', prefix: 'active-by-luxury-price:' },
+  },
+  {
+    id: 'active-by-mid-price',
+    name: 'Active mid-market inventory by price',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    owner: 'lib/stats-cache.ts',
+    keyPattern: 'active-by-mid-price:{town|All}:sale',
+    notes:
+      'Sale-only Mid-market segment steps from intel_inventory_segment_bands.',
+    live: { kind: 'stats_cache_prefix', prefix: 'active-by-mid-price:' },
+  },
+  {
+    id: 'active-by-value-price',
+    name: 'Active value inventory by price',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    owner: 'lib/stats-cache.ts',
+    keyPattern: 'active-by-value-price:{town|All}:sale',
+    notes:
+      'Sale-only Value segment steps from intel_inventory_segment_bands.',
+    live: { kind: 'stats_cache_prefix', prefix: 'active-by-value-price:' },
   },
   {
     id: 'sale-price-bucket-defs',

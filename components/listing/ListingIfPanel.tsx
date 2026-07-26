@@ -653,6 +653,8 @@ function ScenarioPanel({
   amountLabel,
   midpointLabel,
   foundCountEmphasized = false,
+  onCrossLink,
+  className,
 }: {
   title: string;
   headline: string;
@@ -665,6 +667,9 @@ function ScenarioPanel({
   amountLabel: string;
   midpointLabel: string;
   foundCountEmphasized?: boolean;
+  /** Mobile: swap sell/rent panel order instead of scrolling. */
+  onCrossLink?: () => void;
+  className?: string;
 }) {
   const hasEstimate =
     scenario.amount != null ||
@@ -680,7 +685,9 @@ function ScenarioPanel({
   return (
     <article
       id={panelId}
-      className="scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8 flex flex-col gap-6"
+      className={`scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8 flex flex-col gap-6${
+        className ? ` ${className}` : ""
+      }`}
     >
       <div>
         <div className="flex items-start justify-between gap-3">
@@ -691,10 +698,14 @@ function ScenarioPanel({
             href={crossLink.href}
             className="lg:hidden shrink-0 self-start text-right font-mono text-[10px] tracking-[0.2em] uppercase text-gold/70 hover:text-gold transition-colors"
             onClick={(e) => {
+              e.preventDefault();
+              if (onCrossLink) {
+                onCrossLink();
+                return;
+              }
               const id = crossLink.href.slice(1);
               const el = document.getElementById(id);
               if (!el) return;
-              e.preventDefault();
               el.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           >
@@ -796,6 +807,10 @@ export default function ListingIfPanel({
   const [sessionSeeded, setSessionSeeded] = useState(false);
   const [criteriaStepFeedback, setCriteriaStepFeedback] =
     useState<CriteriaStepFeedback | null>(null);
+  /** Mobile: which sell/rent scenario panel sits on top (cross-link flips). */
+  const [mobileScenarioLead, setMobileScenarioLead] = useState<"sale" | "rent">(
+    "sale",
+  );
   const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -806,6 +821,7 @@ export default function ListingIfPanel({
     setBaselineMatch(null);
     setSessionSeeded(false);
     setCriteriaStepFeedback(null);
+    setMobileScenarioLead("sale");
     if (criteriaFeedbackTimerRef.current != null) {
       clearTimeout(criteriaFeedbackTimerRef.current);
       criteriaFeedbackTimerRef.current = null;
@@ -982,7 +998,8 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
-      {/* Sell / rent sit directly under the What if + Criteria title row. */}
+      {/* Sell / rent sit directly under the What if + Criteria title row.
+          On mobile, cross-links flip which panel is on top (CSS order only). */}
       <div className="grid gap-1 lg:grid-cols-2 items-start">
         <ScenarioPanel
           title="If you sell"
@@ -992,6 +1009,12 @@ export default function ListingIfPanel({
           kind="sale"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
+          onCrossLink={() => setMobileScenarioLead("rent")}
+          className={
+            mobileScenarioLead === "rent"
+              ? "max-lg:order-2 lg:order-1"
+              : "max-lg:order-1 lg:order-1"
+          }
           range={
             <IfEstimateRangeDisplay
               low={saleEstimate.amountLow}
@@ -1016,6 +1039,12 @@ export default function ListingIfPanel({
           kind="rent"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
+          onCrossLink={() => setMobileScenarioLead("sale")}
+          className={
+            mobileScenarioLead === "rent"
+              ? "max-lg:order-1 lg:order-2"
+              : "max-lg:order-2 lg:order-2"
+          }
           range={
             <IfEstimateRangeDisplay
               low={

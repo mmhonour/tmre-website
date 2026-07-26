@@ -675,19 +675,111 @@ export function computeActiveByPrice(
   }
 }
 
-/** Active for-sale luxury inventory — fine $1M / $5M buckets + top Admin bands. */
-export type ActiveByLuxuryPricePayload = ActiveByPricePayload & {
-  /** Top 3 Admin sale bands (by price) this chart is keyed to. */
+/** Active for-sale inventory for one Admin segment (Value / Mid / Luxury). */
+export type ActiveBySegmentPricePayload = ActiveByPricePayload & {
+  segmentId: 'value' | 'mid' | 'luxury'
+  segmentLabel: string
+  /** Inclusive segment floor. */
+  segmentMin: number
+  /** Inclusive segment ceiling; null = open. */
+  segmentMax: number | null
+  /** Actives inside the segment price range. */
+  segmentActive: number
+  /** Actives with known price outside the segment range. */
+  outsideSegment: number
+  /** Legacy luxury fields (same as segmentActive / outsideSegment when luxury). */
+  luxuryActive: number
+  belowLuxury: number
+  /** Top 3 Admin sale bands — luxury metadata only. */
   luxuryBands: Array<{
     id: string
     label: string
     min: number
     max: number | null
   }>
-  /** Actives at or above the luxury floor ($4M). */
-  luxuryActive: number
-  /** Actives below $4M (excluded from luxury bars). */
-  belowLuxury: number
+}
+
+/** @deprecated Prefer ActiveBySegmentPricePayload. */
+export type ActiveByLuxuryPricePayload = ActiveBySegmentPricePayload
+
+/**
+ * Bucket active sale list prices into one inventory segment's fine steps
+ * (Admin/Postgres Value · Mid-market · Luxury). Sale-only.
+ */
+export function computeActiveBySegmentPrice(
+  activeListings: Listing[],
+  city: string,
+  segment: {
+    id: 'value' | 'mid' | 'luxury'
+    label: string
+    min: number
+    max: number | null
+    steps: readonly (typeof PRICE_BUCKETS)[number][]
+  },
+  saleBuckets: readonly (typeof PRICE_BUCKETS)[number][] = PRICE_BUCKETS,
+): ActiveBySegmentPricePayload {
+  const steps = segment.steps.length ? segment.steps : LUXURY_PRICE_BUCKETS
+  const filtered = filterListingsByKind(activeListings, 'sale')
+  const counts = emptyLuxuryPriceCounts(steps)
+  let total = 0
+  let outsideSegment = 0
+  let segmentActive = 0
+
+  for (const l of filtered) {
+    total += 1
+    const price = l.price
+    if (price == null || !Number.isFinite(price) || price <= 0) {
+      counts.unknown = (counts.unknown ?? 0) + 1
+      continue
+    }
+    const aboveMax = segment.max != null && price > segment.max
+    if (price < segment.min || aboveMax) {
+      outsideSegment += 1
+      continue
+    }
+    segmentActive += 1
+    const id = classifyLuxuryPrice(price, steps)
+    counts[id] = (counts[id] ?? 0) + 1
+  }
+
+  const knownInSegment = segmentActive
+  const buckets: ActiveByPriceBucket[] = steps.map((b) => ({
+    id: b.id,
+    label: b.label,
+    min: b.min,
+    max: b.max,
+    count: counts[b.id] ?? 0,
+    share: knownInSegment > 0 ? (counts[b.id] ?? 0) / knownInSegment : 0,
+  }))
+  const ranked = [...buckets].sort((a, b) => b.count - a.count)
+  const luxuryBands =
+    segment.id === 'luxury'
+      ? topLuxurySaleBands(saleBuckets, 3).map((b) => ({
+          id: b.id,
+          label: b.label,
+          min: b.min,
+          max: b.max,
+        }))
+      : []
+
+  return {
+    city,
+    kind: 'sale',
+    segmentId: segment.id,
+    segmentLabel: segment.label,
+    segmentMin: segment.min,
+    segmentMax: segment.max,
+    totalActive: total,
+    knownPrice: knownInSegment,
+    unknownPrice: counts.unknown ?? 0,
+    outsideSegment,
+    segmentActive,
+    belowLuxury: outsideSegment,
+    luxuryActive: segmentActive,
+    buckets,
+    topBucket: ranked[0]?.count ? ranked[0] : null,
+    luxuryBands,
+  }
 }
 
 /**
@@ -701,63 +793,22 @@ export function computeActiveByLuxuryPrice(
   options?: {
     floor?: number
     steps?: readonly (typeof PRICE_BUCKETS)[number][]
+    label?: string
+    max?: number | null
   },
 ): ActiveByLuxuryPricePayload {
-  const floor = options?.floor ?? LUXURY_PRICE_FLOOR
-  const steps = options?.steps?.length
-    ? options.steps
-    : LUXURY_PRICE_BUCKETS
-  const filtered = filterListingsByKind(activeListings, 'sale')
-  const counts = emptyLuxuryPriceCounts(steps)
-  let total = 0
-  let belowLuxury = 0
-  let luxuryActive = 0
-
-  for (const l of filtered) {
-    total += 1
-    const price = l.price
-    if (price == null || !Number.isFinite(price) || price <= 0) {
-      counts.unknown = (counts.unknown ?? 0) + 1
-      continue
-    }
-    if (price < floor) {
-      belowLuxury += 1
-      continue
-    }
-    luxuryActive += 1
-    const id = classifyLuxuryPrice(price, steps)
-    counts[id] = (counts[id] ?? 0) + 1
-  }
-
-  const knownLuxury = luxuryActive
-  const buckets: ActiveByPriceBucket[] = steps.map((b) => ({
-    id: b.id,
-    label: b.label,
-    min: b.min,
-    max: b.max,
-    count: counts[b.id] ?? 0,
-    share: knownLuxury > 0 ? (counts[b.id] ?? 0) / knownLuxury : 0,
-  }))
-  const ranked = [...buckets].sort((a, b) => b.count - a.count)
-  const luxuryBands = topLuxurySaleBands(saleBuckets, 3).map((b) => ({
-    id: b.id,
-    label: b.label,
-    min: b.min,
-    max: b.max,
-  }))
-
-  return {
+  return computeActiveBySegmentPrice(
+    activeListings,
     city,
-    kind: 'sale',
-    totalActive: total,
-    knownPrice: knownLuxury,
-    unknownPrice: counts.unknown ?? 0,
-    belowLuxury,
-    luxuryActive,
-    buckets,
-    topBucket: ranked[0]?.count ? ranked[0] : null,
-    luxuryBands,
-  }
+    {
+      id: 'luxury',
+      label: options?.label ?? 'Luxury',
+      min: options?.floor ?? LUXURY_PRICE_FLOOR,
+      max: options?.max ?? null,
+      steps: options?.steps?.length ? options.steps : LUXURY_PRICE_BUCKETS,
+    },
+    saleBuckets,
+  )
 }
 
 export type StatsCacheScope =
@@ -771,8 +822,18 @@ export type StatsCacheScope =
   | 'sales-by-price'
   | 'active-by-price'
   | 'active-by-luxury-price'
+  | 'active-by-mid-price'
+  | 'active-by-value-price'
   | 'avg-score-by-vintage'
   | 'avg-score-by-vintage-by-town'
+
+export function inventorySegmentStatsScope(
+  segmentId: 'value' | 'mid' | 'luxury',
+): StatsCacheScope {
+  if (segmentId === 'value') return 'active-by-value-price'
+  if (segmentId === 'mid') return 'active-by-mid-price'
+  return 'active-by-luxury-price'
+}
 
 export function statsCacheKey(scope: StatsCacheScope, city: string, kind: ListingKind): string {
   return `${scope}:${city}:${kind}`

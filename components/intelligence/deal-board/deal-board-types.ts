@@ -41,9 +41,9 @@ export type DealBoardRowProps = {
   showTown: boolean;
   /** When Sale or Rental filter is on, omit ownership/type from the meta line. */
   hideOwnershipType?: boolean;
-  /** Grid view: show meta under beds/price — line1 through DOM, line2 year + insight. */
+  /** Grid view: show meta under beds/price — line1 through DOM, line2 year + type (no insight). */
   showGridMeta?: boolean;
-  /** Grid view: show the listing insight/headline when "more data" is off. */
+  /** Grid view: show the listing insight/headline (independent of More data). */
   showGridInsights?: boolean;
   /**
    * When set, overrides score-rank photo eager-loading.

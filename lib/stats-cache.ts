@@ -23,7 +23,8 @@ import {
   computeAvgScoreByVintage,
   computeMarketStats,
   computeActiveByPrice,
-  computeActiveByLuxuryPrice,
+  computeActiveBySegmentPrice,
+  inventorySegmentStatsScope,
   computeSalesByMonth,
   computeSalesByPrice,
   computeSalesByVintage,
@@ -45,9 +46,8 @@ import { rebuildTownZipsCache } from '@/lib/town-zips-cache'
 import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
 import {
   getInventorySegmentBandsConfigFresh,
-  luxuryFloorFromConfig,
-  luxuryStepsFromConfig,
 } from '@/lib/inventory-segment-bands-config'
+import { INVENTORY_SEGMENT_IDS } from '@/lib/inventory-segment-bands-shared'
 import type { PriceBucketDef } from '@/lib/price-buckets-shared'
 import {
   MONTHS_SUPPLY_INDEX_KEY,
@@ -466,8 +466,11 @@ export function computeTownBundleFromListings(
 type TownListingsMap = Record<TmreTown, { active: Listing[]; closed: Listing[] }>
 
 /** Upsert market scopes for one town; optionally fill by-town bundle maps. */
-type LuxuryInventoryOpts = {
-  floor: number
+type InventorySegmentForCache = {
+  id: 'value' | 'mid' | 'luxury'
+  label: string
+  min: number
+  max: number | null
   steps: readonly PriceBucketDef[]
 }
 
@@ -477,7 +480,7 @@ async function writeTownMarketStats(
   closed: Listing[],
   generatedAt: string,
   saleBuckets: readonly PriceBucketDef[],
-  luxuryOpts: LuxuryInventoryOpts,
+  inventorySegments: readonly InventorySegmentForCache[],
   bundles?: {
     salesByMonthByTown: KindTownMonthData
     activeByMonthByTown: KindTownActiveMonthData
@@ -535,11 +538,13 @@ async function writeTownMarketStats(
     written += 1
 
     if (kind === 'sale') {
-      await writeStatsCache('active-by-luxury-price', town, 'sale', {
-        ...computeActiveByLuxuryPrice(active, town, saleBuckets, luxuryOpts),
-        generatedAt,
-      })
-      written += 1
+      for (const segment of inventorySegments) {
+        await writeStatsCache(inventorySegmentStatsScope(segment.id), town, 'sale', {
+          ...computeActiveBySegmentPrice(active, town, segment, saleBuckets),
+          generatedAt,
+        })
+        written += 1
+      }
     }
 
     const avgScorePayload = computeAvgScoreByVintage(scoredActive, town, kind)
@@ -631,7 +636,7 @@ async function refreshByTownBundlesFromTownCaches(generatedAt: string): Promise<
 async function writeAllAggregateStats(
   generatedAt: string,
   saleBuckets: readonly PriceBucketDef[],
-  luxuryOpts: LuxuryInventoryOpts,
+  inventorySegments: readonly InventorySegmentForCache[],
 ): Promise<number> {
   let written = 0
   const [allClosed, allActive] = await Promise.all([
@@ -653,11 +658,23 @@ async function writeAllAggregateStats(
       generatedAt,
     })
     if (kind === 'sale') {
-      await writeStatsCache('active-by-luxury-price', 'All', 'sale', {
-        ...computeActiveByLuxuryPrice(allActive, 'All', saleBuckets, luxuryOpts),
-        generatedAt,
-      })
-      written += 1
+      for (const segment of inventorySegments) {
+        await writeStatsCache(
+          inventorySegmentStatsScope(segment.id),
+          'All',
+          'sale',
+          {
+            ...computeActiveBySegmentPrice(
+              allActive,
+              'All',
+              segment,
+              saleBuckets,
+            ),
+            generatedAt,
+          },
+        )
+        written += 1
+      }
     }
     await writeStatsCache('avg-score-by-vintage', 'All', kind, {
       ...computeAvgScoreByVintage(allScoredActive, 'All', kind),
@@ -697,11 +714,18 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     let written = 0
     const generatedAt = new Date().toISOString()
     const saleBuckets = await getPriceBucketsFresh()
-    const inventorySegments = await getInventorySegmentBandsConfigFresh()
-    const luxuryOpts: LuxuryInventoryOpts = {
-      floor: luxuryFloorFromConfig(inventorySegments),
-      steps: luxuryStepsFromConfig(inventorySegments),
-    }
+    const inventoryConfig = await getInventorySegmentBandsConfigFresh()
+    const inventorySegments: InventorySegmentForCache[] =
+      INVENTORY_SEGMENT_IDS.map((id) => {
+        const s = inventoryConfig.segments.find((row) => row.id === id)!
+        return {
+          id: s.id,
+          label: s.label,
+          min: s.min,
+          max: s.max,
+          steps: s.steps.filter((b) => !b.hidden),
+        }
+      })
     const salesByMonthByTown = emptyKindTownMonthData()
     const activeByMonthByTown = emptyKindTownActiveMonthData()
     const avgScoreByVintageByTown = emptyKindTownAvgScoreData()
@@ -722,7 +746,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
         closed,
         generatedAt,
         saleBuckets,
-        luxuryOpts,
+        inventorySegments,
         {
           salesByMonthByTown,
           activeByMonthByTown,
@@ -737,7 +761,11 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
       avgScoreByVintageByTown,
       generatedAt,
     )
-    written += await writeAllAggregateStats(generatedAt, saleBuckets, luxuryOpts)
+    written += await writeAllAggregateStats(
+      generatedAt,
+      saleBuckets,
+      inventorySegments,
+    )
 
     try {
       const ms = await rebuildMonthsSupplyCache({
@@ -812,11 +840,18 @@ export async function rebuildStatsCacheForTowns(
     let written = 0
     const generatedAt = new Date().toISOString()
     const saleBuckets = await getPriceBucketsFresh()
-    const inventorySegments = await getInventorySegmentBandsConfigFresh()
-    const luxuryOpts: LuxuryInventoryOpts = {
-      floor: luxuryFloorFromConfig(inventorySegments),
-      steps: luxuryStepsFromConfig(inventorySegments),
-    }
+    const inventoryConfig = await getInventorySegmentBandsConfigFresh()
+    const inventorySegments: InventorySegmentForCache[] =
+      INVENTORY_SEGMENT_IDS.map((id) => {
+        const s = inventoryConfig.segments.find((row) => row.id === id)!
+        return {
+          id: s.id,
+          label: s.label,
+          min: s.min,
+          max: s.max,
+          steps: s.steps.filter((b) => !b.hidden),
+        }
+      })
     const townListingsForMonthsSupply = {} as TownListingsMap
 
     for (const town of unique) {
@@ -831,12 +866,16 @@ export async function rebuildStatsCacheForTowns(
         closed,
         generatedAt,
         saleBuckets,
-        luxuryOpts,
+        inventorySegments,
       )
     }
 
     written += await refreshByTownBundlesFromTownCaches(generatedAt)
-    written += await writeAllAggregateStats(generatedAt, saleBuckets, luxuryOpts)
+    written += await writeAllAggregateStats(
+      generatedAt,
+      saleBuckets,
+      inventorySegments,
+    )
 
     try {
       const ms = await rebuildMonthsSupplyCache({

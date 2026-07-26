@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
 import { listingCacheHeaders } from '@/lib/listings-store'
-import {
-  getInventorySegmentBandsConfigFresh,
-  luxuryFloorFromConfig,
-  luxuryStepsFromConfig,
-} from '@/lib/inventory-segment-bands-config'
+import { getInventorySegmentBandsConfigFresh } from '@/lib/inventory-segment-bands-config'
 import { getPriceBucketsFresh } from '@/lib/price-buckets-config'
 import {
-  computeActiveByLuxuryPrice,
+  computeActiveBySegmentPrice,
   type ActiveByLuxuryPricePayload,
 } from '@/lib/stats-compute'
 import {
@@ -79,11 +75,20 @@ export async function GET(req: NextRequest) {
         : await readListingsFromDb(city, 'Active', 500)
 
     const saleBuckets = await getPriceBucketsFresh()
-    const inventorySegments = await getInventorySegmentBandsConfigFresh()
-    const payload = computeActiveByLuxuryPrice(active, city, saleBuckets, {
-      floor: luxuryFloorFromConfig(inventorySegments),
-      steps: luxuryStepsFromConfig(inventorySegments),
-    })
+    const inventoryConfig = await getInventorySegmentBandsConfigFresh()
+    const luxury = inventoryConfig.segments.find((s) => s.id === 'luxury')!
+    const payload = computeActiveBySegmentPrice(
+      active,
+      city,
+      {
+        id: luxury.id,
+        label: luxury.label,
+        min: luxury.min,
+        max: luxury.max,
+        steps: luxury.steps.filter((b) => !b.hidden),
+      },
+      saleBuckets,
+    )
     const generatedAt = new Date().toISOString()
     await writeStatsCache('active-by-luxury-price', city, 'sale', {
       ...payload,

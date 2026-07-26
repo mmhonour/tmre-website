@@ -16,6 +16,7 @@ import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
 import IntelligenceVintageMedianMiniChart from "@/components/IntelligenceVintageMedianMiniChart";
 import IntelligencePriceBandMiniChart from "@/components/IntelligencePriceBandMiniChart";
 import IntelligenceLuxuryPriceBandMiniChart from "@/components/IntelligenceLuxuryPriceBandMiniChart";
+import IntelligenceMiniGraphsStrip from "@/components/IntelligenceMiniGraphsStrip";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
 import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
@@ -1575,9 +1576,12 @@ type LoadState = "loading" | "ready" | "fallback";
 
 export default function IntelligenceClient({
   initialDotdDealsByTown = null,
+  initialInventorySegmentChart = null,
 }: {
   /** FSSR seed for Deal of the Day frame (sale/homes by default). */
   initialDotdDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
+  /** SSR seed: Value / Mid / Luxury inventory charts for city All. */
+  initialInventorySegmentChart?: import("@/lib/intelligence-inventory-segment-fssr").InventorySegmentChartSeed | null;
 } = {}) {
   const searchParams = useSearchParams();
   const urlSearch = useMemo(
@@ -1834,6 +1838,10 @@ export default function IntelligenceClient({
   );
   const [expandedSnapshotsHydrated, setExpandedSnapshotsHydrated] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
+  const miniGraphsInteractRef = useRef<(() => void) | null>(null);
+  const pauseMiniGraphsRotation = () => {
+    miniGraphsInteractRef.current?.();
+  };
   const [heroIntroDismissed, setHeroIntroDismissed] = useState(false);
   const [sqliteRefresh, setSqliteRefresh] = useState<{
     refreshing: boolean;
@@ -4113,31 +4121,38 @@ export default function IntelligenceClient({
             {/* Deal board */}
             <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
           {vintageChartListingRows.length > 0 || showPriceFilter ? (
-            <div className="mb-2 flex flex-col justify-start gap-2">
-              {/* Median vintage | Inventory by price — side by side when both present */}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
-                {vintageChartListingRows.length > 0 ? (
-                  <div className="w-full max-w-md shrink-0 sm:flex-1">
-                    <IntelligenceVintageMedianMiniChart
-                      listings={vintageChartListingRows}
-                      kind={tx === "rental" ? "rental" : "sale"}
-                      activeBucketId={activeVintageChartBucketId}
-                      filterActive={vintageFilterActive(minVintage, maxVintage)}
-                      onBucketClick={(bucketId) => {
-                        selectVintageListings(bucketId);
-                      }}
-                      onResetFilter={() => {
-                        setMinVintageFilter("0");
-                        setMaxVintageFilter(
-                          String(VINTAGE_FILTER_MAX) as VintageIndexFilter,
-                        );
-                        setBoardPage(1);
-                      }}
-                    />
-                  </div>
-                ) : null}
-                {showPriceFilter ? (
-                  <div className="w-full max-w-md shrink-0 sm:flex-1">
+            <IntelligenceMiniGraphsStrip
+              onInteractRef={miniGraphsInteractRef}
+              slots={[
+                {
+                  key: "vintage",
+                  node:
+                    vintageChartListingRows.length > 0 ? (
+                      <IntelligenceVintageMedianMiniChart
+                        listings={vintageChartListingRows}
+                        kind={tx === "rental" ? "rental" : "sale"}
+                        activeBucketId={activeVintageChartBucketId}
+                        filterActive={vintageFilterActive(
+                          minVintage,
+                          maxVintage,
+                        )}
+                        onInteract={pauseMiniGraphsRotation}
+                        onBucketClick={(bucketId) => {
+                          selectVintageListings(bucketId);
+                        }}
+                        onResetFilter={() => {
+                          setMinVintageFilter("0");
+                          setMaxVintageFilter(
+                            String(VINTAGE_FILTER_MAX) as VintageIndexFilter,
+                          );
+                          setBoardPage(1);
+                        }}
+                      />
+                    ) : null,
+                },
+                {
+                  key: "inventory-price",
+                  node: showPriceFilter ? (
                     <IntelligencePriceBandMiniChart
                       city={active === "All" ? "All" : active}
                       kind={tx === "rental" ? "rental" : "sale"}
@@ -4145,6 +4160,7 @@ export default function IntelligenceClient({
                       filterActive={
                         priceFilterActive && !activeLuxuryPriceBandId
                       }
+                      onInteract={pauseMiniGraphsRotation}
                       onBucketClick={(bucket) => {
                         priceRangeCustomizedRef.current = true;
                         setActivePriceBandId(bucket.id);
@@ -4168,43 +4184,55 @@ export default function IntelligenceClient({
                         setBoardPage(1);
                       }}
                     />
-                  </div>
-                ) : null}
-              </div>
-              {showPriceFilter && tx !== "rental" ? (
-                <div className="w-full max-w-md shrink-0">
-                  <IntelligenceLuxuryPriceBandMiniChart
-                    city={active === "All" ? "All" : active}
-                    activeBucketId={activeLuxuryPriceBandId}
-                    filterActive={
-                      priceFilterActive && Boolean(activeLuxuryPriceBandId)
-                    }
-                    onBucketClick={(bucket) => {
-                      priceRangeCustomizedRef.current = true;
-                      setActiveLuxuryPriceBandId(bucket.id);
-                      setActivePriceBandId(null);
-                      setMinPriceIndex(
-                        minPriceToStepIndex(bucket.min, boardPriceSteps),
-                      );
-                      setMaxPriceIndex(
-                        bucket.max == null
-                          ? boardPriceMaxIdx
-                          : maxPriceToStepIndex(bucket.max, boardPriceSteps),
-                      );
-                      setBoardPage(1);
-                    }}
-                    onResetFilter={() => {
-                      priceRangeCustomizedRef.current = false;
-                      setActiveLuxuryPriceBandId(null);
-                      setActivePriceBandId(null);
-                      setMinPriceIndex(0);
-                      setMaxPriceIndex(boardPriceMaxIdx);
-                      setBoardPage(1);
-                    }}
-                  />
-                </div>
-              ) : null}
-            </div>
+                  ) : null,
+                },
+                {
+                  key: "luxury-inventory-price",
+                  node:
+                    showPriceFilter && tx !== "rental" ? (
+                      <IntelligenceLuxuryPriceBandMiniChart
+                        city={active === "All" ? "All" : active}
+                        initialSeed={
+                          (active === "All" || !active
+                            ? initialInventorySegmentChart
+                            : null) ?? null
+                        }
+                        activeBucketId={activeLuxuryPriceBandId}
+                        filterActive={
+                          priceFilterActive &&
+                          Boolean(activeLuxuryPriceBandId)
+                        }
+                        onInteract={pauseMiniGraphsRotation}
+                        onBucketClick={(bucket) => {
+                          priceRangeCustomizedRef.current = true;
+                          setActiveLuxuryPriceBandId(bucket.id);
+                          setActivePriceBandId(null);
+                          setMinPriceIndex(
+                            minPriceToStepIndex(bucket.min, boardPriceSteps),
+                          );
+                          setMaxPriceIndex(
+                            bucket.max == null
+                              ? boardPriceMaxIdx
+                              : maxPriceToStepIndex(
+                                  bucket.max,
+                                  boardPriceSteps,
+                                ),
+                          );
+                          setBoardPage(1);
+                        }}
+                        onResetFilter={() => {
+                          priceRangeCustomizedRef.current = false;
+                          setActiveLuxuryPriceBandId(null);
+                          setActivePriceBandId(null);
+                          setMinPriceIndex(0);
+                          setMaxPriceIndex(boardPriceMaxIdx);
+                          setBoardPage(1);
+                        }}
+                      />
+                    ) : null,
+                },
+              ]}
+            />
           ) : null}
           <DealBoardList
             topRows={boardTiers.top}
