@@ -58,6 +58,13 @@ export default function DealBoardSortBar({
   scoreInfoButton,
   /** Inline trigger for the status-pills toolbar row (no full-width bar). */
   embedded = false,
+  /**
+   * When false, toolbar is Sort + asc/desc only; field drawer is opened via
+   * `fieldDrawerOpen` / `onFieldDrawerOpenChange` (mobile: under Hide graphs).
+   */
+  fieldPickerInToolbar = true,
+  fieldDrawerOpen: fieldDrawerOpenProp,
+  onFieldDrawerOpenChange,
 }: {
   sortKey: DealBoardSortKey;
   sortDir: DealBoardSortDir;
@@ -65,8 +72,20 @@ export default function DealBoardSortBar({
   showTown: boolean;
   scoreInfoButton: ReactNode;
   embedded?: boolean;
+  fieldPickerInToolbar?: boolean;
+  fieldDrawerOpen?: boolean;
+  onFieldDrawerOpenChange?: (open: boolean) => void;
 }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const controlled = onFieldDrawerOpenChange != null;
+  const drawerOpen = controlled
+    ? Boolean(fieldDrawerOpenProp)
+    : uncontrolledOpen;
+  const setDrawerOpen = (open: boolean) => {
+    if (controlled) onFieldDrawerOpenChange?.(open);
+    else setUncontrolledOpen(open);
+  };
+
   const columns = DEAL_BOARD_SORT_COLUMNS.filter(
     (col) => !col.townOnly || showTown,
   );
@@ -92,43 +111,60 @@ export default function DealBoardSortBar({
     ? "inline-flex max-w-[12.5rem] min-w-0 items-stretch rounded-full border border-navy/20 bg-white shadow-[0_1px_0_0_rgba(28,42,58,0.1)] hover:border-navy/35 transition-[box-shadow,border-color]"
     : "inline-flex min-w-0 flex-1 items-stretch rounded-full border border-navy/20 bg-white shadow-[0_2px_0_0_rgba(28,42,58,0.12)] hover:border-navy/35 transition-[box-shadow,border-color] lg:max-w-xs";
 
+  const padL = embedded
+    ? "inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-l-full px-2.5 py-1"
+    : "inline-flex min-w-0 flex-1 items-center gap-2 rounded-l-full px-3.5 py-2";
+  const padDir = embedded
+    ? "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2 py-1 font-mono text-[11px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]"
+    : "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2.5 py-2 font-mono text-[12px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]";
+
+  // Mobile (+ external field picker): "Sort" + ↑/↓ only.
+  // Desktop (or fieldPickerInToolbar): full chip opens the field drawer.
+  const fieldInChip = fieldPickerInToolbar;
   const trigger = (
     <div className={chipShell} role="group" aria-label={`Sort by ${activeLabel}`}>
-      <button
-        type="button"
-        onClick={() => setDrawerOpen(true)}
-        className={
-          embedded
-            ? "inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-l-full px-2.5 py-1 active:translate-y-px transition-transform"
-            : "inline-flex min-w-0 flex-1 items-center gap-2 rounded-l-full px-3.5 py-2 active:translate-y-px transition-transform"
-        }
-        aria-expanded={drawerOpen}
-        aria-controls="intel-sort-drawer"
-        aria-label={`Choose sort field — currently ${activeLabel}`}
-      >
-        <svg
-          viewBox="0 0 12 12"
-          className="h-2.5 w-2.5 shrink-0 text-navy/70"
-          fill="currentColor"
-          aria-hidden
-        >
-          <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-        </svg>
-        <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
-          Sort
+      {fieldInChip ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className={`${padL} active:translate-y-px transition-transform hidden lg:inline-flex`}
+            aria-expanded={drawerOpen}
+            aria-controls="intel-sort-drawer"
+            aria-label={`Choose sort field — currently ${activeLabel}`}
+          >
+            <svg
+              viewBox="0 0 12 12"
+              className="h-2.5 w-2.5 shrink-0 text-navy/70"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+            </svg>
+            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
+              Sort
+            </span>
+            <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy truncate">
+              {activeLabel}
+            </span>
+          </button>
+          <span className={`${padL} lg:hidden`}>
+            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
+              Sort
+            </span>
+          </span>
+        </>
+      ) : (
+        <span className={padL}>
+          <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
+            Sort
+          </span>
         </span>
-        <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy truncate">
-          {activeLabel}
-        </span>
-      </button>
+      )}
       <button
         type="button"
         onClick={flipDir}
-        className={
-          embedded
-            ? "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2 py-1 font-mono text-[11px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]"
-            : "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2.5 py-2 font-mono text-[12px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]"
-        }
+        className={padDir}
         title={`Flip to ${nextDirLabel}`}
         aria-label={`Flip sort order to ${nextDirLabel}`}
       >
@@ -141,7 +177,8 @@ export default function DealBoardSortBar({
     <IntelSortDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
       <div id="intel-sort-drawer" className="space-y-2">
         <p className="px-1 pb-1 text-xs text-slate leading-relaxed">
-          Tap a field to sort. Tap again to flip ascending / descending.
+          Tap a field to sort. Use ↑ / ↓ on the board toolbar for ascending /
+          descending.
         </p>
         {columns.map((col) => (
           <SortDrawerOption

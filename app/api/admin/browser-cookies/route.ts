@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
+  cookieLocationFromCatalog,
   cookiePurpose,
   isKnownHttpOnlyCookie,
   previewCookieValue,
   SITE_VISITOR_COOKIE,
+  type CookieLocationInfo,
 } from '@/lib/browser-cookies-catalog'
 import { SITE_PASSWORD_COOKIE } from '@/lib/site-password'
 
@@ -17,9 +19,12 @@ type CookieRow = {
   name: string
   purpose: string
   httpOnly: boolean
-  /** Redacted for auth; preview for others. */
+  /** Redacted for auth; full value for others (Admin-only). */
+  value: string | null
+  /** Short preview always safe to render. */
   preview: string
   present: boolean
+  location: CookieLocationInfo
 }
 
 function clearCookieOnResponse(
@@ -36,6 +41,18 @@ function clearCookieOnResponse(
   })
 }
 
+function locationForKnown(name: string, secureHint: boolean | null): CookieLocationInfo {
+  const base = cookieLocationFromCatalog(name)
+  return {
+    ...base,
+    secure:
+      secureHint ??
+      (isKnownHttpOnlyCookie(name)
+        ? process.env.NODE_ENV === 'production'
+        : base.secure),
+  }
+}
+
 /**
  * GET — cookies on this request (includes HttpOnly the browser cannot show).
  * DELETE — clear named cookies (or all known + request cookies) for this browser.
@@ -47,33 +64,43 @@ export async function GET(req: NextRequest) {
 
   const rows: CookieRow[] = []
   const seen = new Set<string>()
+  const host = req.nextUrl.hostname
 
   for (const c of req.cookies.getAll()) {
     seen.add(c.name)
     const httpOnly = isKnownHttpOnlyCookie(c.name)
     const isAuth = c.name === SITE_PASSWORD_COOKIE
+    const location = locationForKnown(c.name, httpOnly ? process.env.NODE_ENV === 'production' : null)
+    if (!location.domain) location.domain = host
+
     rows.push({
       name: c.name,
       purpose: cookiePurpose(c.name),
       httpOnly,
+      value: isAuth ? null : c.value,
       preview: isAuth
         ? c.value === '1'
-          ? '(set)'
-          : '(set, unexpected value)'
+          ? '(set — value redacted)'
+          : '(set, unexpected value — redacted)'
         : previewCookieValue(c.value),
       present: true,
+      location,
     })
   }
 
   // Always surface known HttpOnly cookies even when absent.
   for (const name of HTTPONLY_NAMES) {
     if (seen.has(name)) continue
+    const location = locationForKnown(name, process.env.NODE_ENV === 'production')
+    if (!location.domain) location.domain = host
     rows.push({
       name,
       purpose: cookiePurpose(name),
       httpOnly: true,
+      value: null,
       preview: '(not set)',
       present: false,
+      location,
     })
   }
 
@@ -82,7 +109,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     cookies: rows,
     note:
-      'HttpOnly cookies are only visible via this API. Path/domain are not exposed by document.cookie.',
+      'Location shows Path / host / SameSite (from catalog or Cookie Store). Full values appear when Show values is on — unlock cookie value stays redacted.',
   })
 }
 

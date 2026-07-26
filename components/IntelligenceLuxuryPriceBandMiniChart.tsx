@@ -294,28 +294,25 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   };
 
   return (
-    <div className="flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
-      <div className="flex w-full items-start justify-start gap-2">
-        <div className="relative w-[4.75rem] shrink-0 self-center">
-          <p
-            className={`text-left italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out ${
-              showInteractiveHint
-                ? "animate-interactive-graph-hint"
-                : "pointer-events-none opacity-0"
-            }`}
-            aria-hidden={!showInteractiveHint}
-          >
-            interactive graph
-          </p>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5">
-          <p className="w-full max-w-[248px] bg-transparent text-center font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+    <div className="relative flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
+      <p
+        className={`pointer-events-none absolute left-0 top-0 z-[1] max-w-[4.75rem] text-left italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out ${
+          showInteractiveHint
+            ? "animate-interactive-graph-hint"
+            : "opacity-0"
+        }`}
+        aria-hidden={!showInteractiveHint}
+      >
+        interactive graph
+      </p>
+      <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
+          <p className="w-full max-w-[248px] bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
             {chartTitle}
           </p>
           <div
             role="tablist"
             aria-label="Inventory segment"
-            className="flex w-full max-w-[248px] flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5"
+            className="flex w-full max-w-[248px] flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5"
           >
             {SEGMENT_ORDER.map((id) => {
               const active = segment === id;
@@ -332,9 +329,17 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                     setExtraCallouts(new Set());
                   }}
                   className={`font-mono text-[8px] tracking-[0.12em] uppercase transition-colors ${
-                    active
-                      ? "text-navy underline decoration-gold underline-offset-2"
-                      : "text-charcoal/45 hover:text-navy"
+                    id === "luxury"
+                      ? active
+                        ? "text-navy underline decoration-gold underline-offset-2"
+                        : "text-navy/55 hover:text-navy"
+                      : id === "value"
+                        ? active
+                          ? "text-sage underline decoration-gold underline-offset-2"
+                          : "text-sage/60 hover:text-sage"
+                        : active
+                          ? "text-black underline decoration-gold underline-offset-2"
+                          : "text-black/45 hover:text-black"
                   }`}
                 >
                   {label}
@@ -378,8 +383,8 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                         x={point.x}
                         y={countY}
                         textAnchor={anchor}
-                        className="fill-navy font-mono text-[8px] tabular-nums"
-                        style={{ fontSize: 8 }}
+                        className="fill-black font-mono text-[9px] tabular-nums"
+                        style={{ fontSize: 9 }}
                       >
                         {formatCount(point.count)}
                       </text>
@@ -387,8 +392,8 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                         x={point.x}
                         y={bandY}
                         textAnchor={anchor}
-                        className="fill-slate/55 font-mono text-[7px] uppercase"
-                        style={{ fontSize: 7, letterSpacing: "0.04em" }}
+                        className="fill-black font-mono text-[8px] uppercase"
+                        style={{ fontSize: 8, letterSpacing: "0.04em" }}
                       >
                         {point.shortLabel}
                       </text>
@@ -441,7 +446,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
               </button>
             </div>
           ) : null}
-        </div>
       </div>
     </div>
   );

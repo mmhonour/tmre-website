@@ -23,6 +23,7 @@ import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
 import type { VintageBucketId } from "@/lib/vintage-buckets";
 import DealOfTheDayFrame from "./DealOfTheDayFrame";
 import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
+import { dealBoardSortLabel } from "@/components/intelligence/deal-board/deal-board-sort";
 import type { DealBoardStatusFilter } from "@/components/intelligence/deal-board/deal-board-types";
 import {
   DEAL_BOARD_VIEW_DEFAULT,
@@ -1689,8 +1690,9 @@ export default function IntelligenceClient({
   /**
    * Collapse town/tx pills + sliders/price boxes. Class pills (All/Residential/
    * Commercial) and the filter descriptor line always stay visible.
+   * Always start minimized on load / navigation so descriptors stay in view.
    */
-  const [filterChromeCollapsed, setFilterChromeCollapsed] = useState(false);
+  const [filterChromeCollapsed, setFilterChromeCollapsed] = useState(true);
   /** While collapsed, optionally peek one pill group via descriptor clicks. */
   const [filterChromePeek, setFilterChromePeek] = useState<"towns" | "tx" | null>(
     null,
@@ -1698,6 +1700,8 @@ export default function IntelligenceClient({
   /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
+  const [miniGraphsHidden, setMiniGraphsHidden] = useState(false);
+  const [sortFieldDrawerOpen, setSortFieldDrawerOpen] = useState(false);
   const [townLinksExpanded, setTownLinksExpanded] = useState(false);
   const [zipLinksExpanded, setZipLinksExpanded] = useState(false);
   const setFiltersExpanded = (expanded: boolean) =>
@@ -2270,6 +2274,18 @@ export default function IntelligenceClient({
   useEffect(() => {
     if (filtersExpanded) setCollapsedSlidersOpen(false);
   }, [filtersExpanded]);
+
+  // Fresh load / client navigation: keep class-pill chevron minimized so
+  // descriptors stay visible (same chrome as after scrolling + collapse).
+  useEffect(() => {
+    setFilterChromeCollapsed(true);
+    setFilterChromePeek(null);
+    try {
+      setMiniGraphsHidden(sessionStorage.getItem("tmre-intel-mini-graphs-hidden") === "1");
+    } catch {
+      /* private mode */
+    }
+  }, []);
 
   useEffect(() => {
     if (!collapsedSlidersOpen || filtersExpanded) return;
@@ -4028,10 +4044,9 @@ export default function IntelligenceClient({
           <div className="mb-4 lg:mb-5 flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5 min-w-0">
-                <h2 className="font-serif text-2xl sm:text-3xl lg:text-[2rem] text-navy leading-tight">
-                  Your {filteredCount.toLocaleString()} of{" "}
-                  {poolCount.toLocaleString()}{" "}
-                  {poolCount === 1 ? "listing" : "listings"} in{" "}
+                <h2 className="font-serif text-[22px] sm:text-[28px] lg:text-[30px] text-navy leading-tight">
+                  {filteredCount.toLocaleString()} of{" "}
+                  {poolCount.toLocaleString()} filtered in{" "}
                   {active === "All" ? "selected towns" : active},{" "}
                   <span className="italic">scored.</span>
                 </h2>
@@ -4039,25 +4054,8 @@ export default function IntelligenceClient({
                   Intelligent Deals
                 </p>
               </div>
-              {middleHidden ? (
-                <p className="mt-1.5 font-mono text-[11px] tracking-[0.08em] text-slate leading-snug">
-                  <span className="text-navy font-medium tabular-nums">
-                    {visibleCount.toLocaleString()}
-                  </span>
-                  {" of "}
-                  <span className="text-navy font-medium tabular-nums">
-                    {resultCount.toLocaleString()}
-                  </span>
-                  {" visible"}
-                  <span className="text-slate/55">
-                    {" · middle tier collapsed ("}
-                    {boardTiers.hideableCount.toLocaleString()}
-                    {" hidden)"}
-                  </span>
-                </p>
-              ) : null}
             </div>
-            {/* Live top-aligned with the listings heading; Town stats / Vintages on mobile only. */}
+            {/* Live + mobile Town stats / Vintages / Hide graphs / Sort field */}
             <div className="flex flex-col items-end gap-1.5 shrink-0">
               <div className="flex items-center gap-2 font-mono text-xs leading-none">
                 <span
@@ -4113,6 +4111,46 @@ export default function IntelligenceClient({
                   </span>
                 </button>
               ) : null}
+              {vintageChartListingRows.length > 0 || showPriceFilter ? (
+                <button
+                  type="button"
+                  className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold lg:hidden"
+                  onClick={() => {
+                    const next = !miniGraphsHidden;
+                    setMiniGraphsHidden(next);
+                    try {
+                      sessionStorage.setItem(
+                        "tmre-intel-mini-graphs-hidden",
+                        next ? "1" : "0",
+                      );
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  aria-pressed={miniGraphsHidden}
+                >
+                  {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
+                onClick={() => setSortFieldDrawerOpen(true)}
+                aria-expanded={sortFieldDrawerOpen}
+                aria-controls="intel-sort-drawer"
+              >
+                <svg
+                  viewBox="0 0 12 12"
+                  className="h-2.5 w-2.5 shrink-0"
+                  fill="currentColor"
+                  aria-hidden
+                >
+                  <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                </svg>
+                <span className="underline underline-offset-2 decoration-navy/35">
+                  {dealBoardSortLabel(sortKey)}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -4123,6 +4161,19 @@ export default function IntelligenceClient({
           {vintageChartListingRows.length > 0 || showPriceFilter ? (
             <IntelligenceMiniGraphsStrip
               onInteractRef={miniGraphsInteractRef}
+              desktopHideToggleOnly
+              hidden={miniGraphsHidden}
+              onHiddenChange={(next) => {
+                setMiniGraphsHidden(next);
+                try {
+                  sessionStorage.setItem(
+                    "tmre-intel-mini-graphs-hidden",
+                    next ? "1" : "0",
+                  );
+                } catch {
+                  /* ignore */
+                }
+              }}
               slots={[
                 {
                   key: "vintage",
@@ -4283,6 +4334,8 @@ export default function IntelligenceClient({
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={handleSort}
+            sortFieldDrawerOpen={sortFieldDrawerOpen}
+            onSortFieldDrawerOpenChange={setSortFieldDrawerOpen}
             boardView={boardView}
             onBoardViewChange={setBoardView}
             boardStatusFilter={boardStatusFilter}
@@ -4319,9 +4372,6 @@ export default function IntelligenceClient({
               <div className="border-t border-charcoal/[0.12] bg-cream/60 px-5 py-3 font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
                 {visibleCount.toLocaleString()} of {resultCount.toLocaleString()}{" "}
                 {resultCount === 1 ? "listing" : "listings"} in this view
-                {middleHidden
-                  ? ` · ${boardTiers.hideableCount} in middle tier hidden`
-                  : ""}
                 {showBoardPagination
                   ? ` · page ${boardPage}/${totalBoardPages} · ${boardPageStart.toLocaleString()}–${boardPageEnd.toLocaleString()} of ${filteredCount.toLocaleString()}`
                   : ""}

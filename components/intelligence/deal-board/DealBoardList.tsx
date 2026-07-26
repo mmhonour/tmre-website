@@ -72,6 +72,13 @@ export type DealBoardListProps = {
    * only eager-load photos for the first batch so images don't storm the network.
    */
   progressivePhotoBatches?: boolean;
+  /**
+   * Mobile: field picker lives under Hide graphs — toolbar keeps Sort + ↑/↓ only.
+   * Desktop keeps the full field+dir chip.
+   */
+  sortFieldPickerInToolbar?: boolean;
+  sortFieldDrawerOpen?: boolean;
+  onSortFieldDrawerOpenChange?: (open: boolean) => void;
 };
 
 export default function DealBoardList({
@@ -108,6 +115,9 @@ export default function DealBoardList({
   footer,
   resultsSummary,
   progressivePhotoBatches = false,
+  sortFieldPickerInToolbar = true,
+  sortFieldDrawerOpen,
+  onSortFieldDrawerOpenChange,
 }: DealBoardListProps) {
   const [showGridMeta, setShowGridMeta] = useState(false);
   const [showGridInsights, setShowGridInsights] = useState(false);
@@ -287,6 +297,9 @@ export default function DealBoardList({
       showTown={showTown}
       scoreInfoButton={scoreInfoButton}
       embedded
+      fieldPickerInToolbar={sortFieldPickerInToolbar}
+      fieldDrawerOpen={sortFieldDrawerOpen}
+      onFieldDrawerOpenChange={onSortFieldDrawerOpenChange}
     />
   );
 

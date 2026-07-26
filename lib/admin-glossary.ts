@@ -199,7 +199,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Browser cookies (Admin)',
     category: 'sync-admin',
     definition:
-      'Admin → Cookies (top-level tab): view and delete cookies for your browser only (filter prefs, tmre_vid visitor id, tmre_site_pass unlock). HttpOnly cookies are listed/cleared via /api/admin/browser-cookies; clearing unlock logs you out.',
+      'Admin → Cookies (top-level tab): view location (Path/host/SameSite + set-by), contents (Show values), and delete cookies for your browser only (filter prefs, tmre_vid visitor id, tmre_site_pass unlock). HttpOnly cookies are listed/cleared via /api/admin/browser-cookies; unlock value stays redacted; clearing unlock logs you out.',
   },
   {
     term: 'Intelligence inventory bands',

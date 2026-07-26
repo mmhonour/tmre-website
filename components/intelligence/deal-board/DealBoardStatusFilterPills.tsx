@@ -40,7 +40,7 @@ export default function DealBoardStatusFilterPills({
             type="button"
             onClick={() => onChange(selected ? "all" : opt.value)}
             aria-pressed={selected}
-            className={`inline-flex items-center font-mono text-[11px] tracking-[0.12em] uppercase border rounded-full px-2 py-0.5 transition-all cursor-pointer hover:opacity-90 ${
+            className={`inline-flex items-center font-mono text-[9px] tracking-[0.12em] uppercase border rounded-full px-2 py-0.5 transition-all cursor-pointer hover:opacity-90 ${
               STATUS_PILL_CLASS[opt.value]
             } ${
               selected
