@@ -40,10 +40,10 @@ type TabDef = { id: ListingTab; label: string; href: string };
 
 /**
  * Canonical tab order (listing + Spotlight).
- * Overview → Photos → (Transactions) → Sold → Rented → Under Agreement → What if → History → Map
- * Sold / Rented / Under Agreement stay collapsed behind the Transactions control
+ * Overview → Photos → (Comps) → Sold → Rented → Under Agreement → What if → History → Map
+ * Sold / Rented / Under Agreement stay collapsed behind the Comps control
  * until that control is opened (or one of those tabs is already active).
- * Clicking Transactions also opens Sold (sale) or Rented (rental).
+ * Clicking Comps also opens Sold (sale) or Rented (rental).
  * On mobile (hideMobileEdgeTabs), What if / History / Map leave the strip for
  * the right-edge pill stack — so the last stacked row is omitted.
  */
@@ -141,7 +141,7 @@ export default function ListingSubnav({
   embedded?: boolean;
   bare?: boolean;
   compact?: boolean;
-  /** Sale → open Sold; rental → open Rented when Transactions is clicked. */
+  /** Sale → open Sold; rental → open Rented when Comps is clicked. */
   isRental?: boolean;
   /**
    * When set, tab clicks stay on the current page and call this instead of
@@ -181,7 +181,7 @@ export default function ListingSubnav({
   const measureFullRef = useRef<HTMLDivElement>(null);
   const [stackRows, setStackRows] = useState(false);
   const [scrollActive, setScrollActive] = useState<ListingTab | null>(null);
-  /** Reveals Sold / Rented / Under Agreement; hides the Transactions control. */
+  /** Reveals Sold / Rented / Under Agreement; hides the Comps control. */
   const [transactionsOpen, setTransactionsOpen] = useState(false);
   /** Match Tailwind `lg` — edge pills replace the last tab row on small screens. */
   const [isMobileLayout, setIsMobileLayout] = useState(false);
@@ -473,13 +473,11 @@ export default function ListingSubnav({
       aria-expanded={false}
       aria-controls="listing-transaction-tabs"
       aria-label={
-        isRental
-          ? "Transactions — open Rented"
-          : "Transactions — open Sold"
+        isRental ? "Comps — open Rented" : "Comps — open Sold"
       }
       onClick={openDefaultTransactionTab}
     >
-      Transactions
+      Comps
     </button>
   );
 
@@ -574,7 +572,7 @@ export default function ListingSubnav({
   );
 
   /**
-   * Render tabs in order; insert Transactions after Photos when the Sold /
+   * Render tabs in order; insert Comps after Photos when the Sold /
    * Rented / Under Agreement group is collapsed; insert muted "or" between
    * Sold and Rented when that group is open.
    */
@@ -604,7 +602,7 @@ export default function ListingSubnav({
 
   const visibleStackRows = STACK_ROWS.map((rowIds) =>
     rowIds.filter((id) => {
-      // Keep the Photos slot so Transactions can still render after it when
+      // Keep the Photos slot so Comps can still render after it when
       // the Photos tab itself is hidden.
       if (id === "photos") return true;
       return tabsById.has(id);

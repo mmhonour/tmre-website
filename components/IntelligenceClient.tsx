@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  startTransition,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -2794,10 +2794,16 @@ export default function IntelligenceClient({
   );
 
   const rankedListings = useMemo(() => rankListingsByScore(listings), [listings]);
+  // Keep sort chrome (chip / drawer) on the urgent sortKey/sortDir; defer the
+  // heavy board reorder so tapping a column doesn't lock the main thread.
+  const boardSortKey = useDeferredValue(sortKey);
+  const boardSortDir = useDeferredValue(sortDir);
+  const boardSortPending =
+    boardSortKey !== sortKey || boardSortDir !== sortDir;
   const boardSortedListings = useMemo(() => {
-    if (sortKey === "score") return rankedListings;
-    return sortListings(listings, sortKey, sortDir);
-  }, [listings, rankedListings, sortKey, sortDir]);
+    if (boardSortKey === "score") return rankedListings;
+    return sortListings(listings, boardSortKey, boardSortDir);
+  }, [listings, rankedListings, boardSortKey, boardSortDir]);
   const boardListings = useMemo(() => {
     const start = (boardPage - 1) * BOARD_LISTING_LIMIT;
     return boardSortedListings.slice(start, start + BOARD_LISTING_LIMIT);
@@ -2813,8 +2819,8 @@ export default function IntelligenceClient({
     // Middle tier only makes sense in the default score ranking (high → low).
     // Any other sort (or score ascending) shows the flat list — no collapse band.
     if (
-      sortKey !== "score" ||
-      sortDir !== "desc" ||
+      boardSortKey !== "score" ||
+      boardSortDir !== "desc" ||
       vintageFilterActive(minVintage, maxVintage)
     ) {
       return {
@@ -2831,20 +2837,24 @@ export default function IntelligenceClient({
     const tiers = splitBoardByScoreTier(rows);
     const planned = planMiddleTierCollapse(tiers);
     return {
-      top: sortListings(planned.top, sortKey, sortDir),
+      top: sortListings(planned.top, boardSortKey, boardSortDir),
       middle: sortListings(
         [...planned.middlePinned, ...planned.middleCollapsible],
-        sortKey,
-        sortDir,
+        boardSortKey,
+        boardSortDir,
       ),
-      middlePinned: sortListings(planned.middlePinned, sortKey, sortDir),
-      middleCollapsible: sortListings(planned.middleCollapsible, sortKey, sortDir),
-      bottom: sortListings(planned.bottom, sortKey, sortDir),
+      middlePinned: sortListings(planned.middlePinned, boardSortKey, boardSortDir),
+      middleCollapsible: sortListings(
+        planned.middleCollapsible,
+        boardSortKey,
+        boardSortDir,
+      ),
+      bottom: sortListings(planned.bottom, boardSortKey, boardSortDir),
       canTier: tiers.canTier,
       canCollapse: planned.canCollapse,
       hideableCount: planned.hideableCount,
     };
-  }, [boardListings, sortKey, sortDir, minVintage, maxVintage]);
+  }, [boardListings, boardSortKey, boardSortDir, minVintage, maxVintage]);
 
   const filteredCount = listings.length;
   const resultCount = boardListings.length;
@@ -3077,19 +3087,16 @@ export default function IntelligenceClient({
     showZipFilters && !townLinksExpanded && !zipLinksExpanded;
 
   function handleSort(key: SortKey) {
-    // Keep the drawer/UI responsive while the board re-sorts.
-    startTransition(() => {
-      if (sortKey === key) {
-        setSortDir(sortDir === "asc" ? "desc" : "asc");
-        return;
-      }
-      setSortKey(key);
-      setSortDir(
-        key === "status" || key === "town" || key === "price"
-          ? "asc"
-          : "desc",
-      );
-    });
+    // Update sort state urgently so the chip/drawer respond immediately.
+    // Board rows follow via useDeferredValue(boardSortKey/Dir) above.
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortKey(key);
+    setSortDir(
+      key === "status" || key === "town" || key === "price" ? "asc" : "desc",
+    );
   }
 
   const slidersCustomized =
@@ -4339,7 +4346,14 @@ export default function IntelligenceClient({
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
 
             {/* Deal board */}
-            <div ref={boardRef} id="deal-board" className="min-w-0 scroll-mt-36">
+            <div
+              ref={boardRef}
+              id="deal-board"
+              className={`min-w-0 scroll-mt-36 transition-opacity duration-150 ${
+                boardSortPending ? "opacity-60" : "opacity-100"
+              }`}
+              aria-busy={boardSortPending || undefined}
+            >
           {vintageChartListingRows.length > 0 || showPriceFilter ? (
             <IntelligenceMiniGraphsStrip
               onInteractRef={miniGraphsInteractRef}

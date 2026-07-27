@@ -174,8 +174,6 @@ export default function ListingHeroPanels({
   const remarksSurfaceActive =
     isOverview &&
     (!useSlidePanel || panelTab === null || panelTab === "overview");
-  /** CSS-gated: facts dock on small screens while Overview surface is active. */
-  const showMobileMetaDock = remarksSurfaceActive;
   /**
    * Photos tab stays hidden until the user clicks a photo on Overview
    * (enters photos mode). Resets when the listing changes.
@@ -445,6 +443,11 @@ export default function ListingHeroPanels({
   }, []);
 
   const photosModeActive = useSlidePanel && photosTabVisible && panelTab == null;
+  /**
+   * Mobile facts dock: Overview content only — not Photos mode, not Sold /
+   * Comps / What if / etc. Under-address facts stay hidden on mobile always.
+   */
+  const showMobileMetaDock = remarksSurfaceActive && !photosModeActive;
 
   const photosModeApi = useMemo<ListingPhotosModeApi | null>(() => {
     if (!useSlidePanel) return null;
@@ -606,8 +609,9 @@ export default function ListingHeroPanels({
     compact: true as const,
     // Share sits left of the status pill on the Back / Spotlight row.
     shareHref: null,
-    // Mobile Overview: type / year / beds / sqft move to the lower meta dock.
-    hideFactsOnMobile: showMobileMetaDock,
+    // Mobile: deprecate under-address type / year / beds / sqft — Overview
+    // shows them in the lower floating dock only.
+    hideFactsOnMobile: true,
   };
 
   const heroOnly = (
@@ -849,26 +853,30 @@ export default function ListingHeroPanels({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-              Property Details
-            </p>
-            <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
-          </div>
-          {insightColumn}
-        </div>
-
         {/*
-          Tabs + mobile edge pills. MAP is anchored on the Overview/tabs row
-          center; Insight → Details → What if stack tightly above (auto-sized,
-          right-aligned). History lives inside the Insight drawer on mobile.
-          What if / History / Map stay off the tab strip (hideMobileEdgeTabs).
+          Meta + tabs share one positioning context for the mobile edge pills.
+          Insight is anchored just below the compact price; Details → What if →
+          Map stack tightly under it (price is the anchor — not Map on the tabs
+          row). History lives inside the Insight drawer on mobile. What if /
+          History / Map stay off the tab strip (hideMobileEdgeTabs).
         */}
-        <div className="relative mt-2">
-          <div className="min-w-0 max-lg:pr-16">{tabsNav}</div>
+        <div className="relative">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                Property Details
+              </p>
+              <ListingHeader {...headerShared} parts="meta" tabsSlot={null} />
+            </div>
+            {insightColumn}
+          </div>
+
+          <div className="relative mt-2">
+            <div className="min-w-0 max-lg:pr-16">{tabsNav}</div>
+          </div>
+
           <div
-            className="lg:hidden absolute right-0 top-1/2 z-10 max-lg:-mr-3 flex flex-col items-end gap-0 -translate-y-[calc(100%-0.875rem)]"
+            className="lg:hidden absolute right-0 top-[2.85rem] z-10 max-lg:-mr-3 flex flex-col items-end gap-0"
             role="toolbar"
             aria-label="Listing panels"
           >

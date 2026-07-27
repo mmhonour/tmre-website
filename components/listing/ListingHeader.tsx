@@ -161,9 +161,9 @@ export default function ListingHeader({
             ) : null}
           </div>
           {priceLabel ? (
-            <div className="flex min-w-0 flex-1 items-start justify-center">
+            <div className="flex min-w-0 flex-1 items-start justify-center max-lg:justify-end">
               <span
-                className={`inline-flex items-start font-serif font-bold tabular-nums leading-none text-gold ${
+                className={`inline-flex items-start font-serif font-bold tabular-nums leading-none text-gold max-lg:pr-1 ${
                   compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
                 }`}
                 aria-label={

@@ -1147,10 +1147,13 @@ export default function ListingComparablesPanel({
     wantActive &&
     (active.length > 0 || showDualColumnsOnPage || (isPage && columns === "active"));
   /**
-   * Desktop / tablet jump links while stacked. On mobile page, Sold(#) is
-   * removed and ON MARKET(#) lives in the Recently sold/rented header.
+   * Desktop / tablet jump links while stacked. On mobile page, Sold(#) /
+   * Rented(#) is removed and ON MARKET(#) lives beside Look-back above the
+   * closed panel.
    */
   const isMobilePage = isPage && isDesktop === false;
+  /** Mobile Sold / Rented: Look-back + Criteria above the panel; title/sort under legend. */
+  const mobileSoldChrome = isMobilePage;
   const showStackedPanelJumpLinks =
     columns === "both" &&
     showSoldColumn &&
@@ -1418,16 +1421,77 @@ export default function ListingComparablesPanel({
       {showCompsGrid && (
         <div className={compsGridClass}>
       {showSoldColumn && (
+        <div className="min-w-0">
+          {mobileSoldChrome ? (
+            <div className="mb-1 flex items-end justify-between gap-3 max-lg:px-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <LookbackSpinner
+                  months={lookbackMonths}
+                  onChange={setLookbackMonths}
+                  theme={sortTheme}
+                />
+                {showActiveColumn ? (
+                  <a
+                    href={`#${onMarketPanelId}`}
+                    className={`${stackedJumpLinkClass} shrink-0`}
+                  >
+                    ON MARKET({sortedActive.length})
+                  </a>
+                ) : null}
+              </div>
+              {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
+                <div
+                  id={criteriaLinkSlotId}
+                  className="flex shrink-0 items-end justify-end"
+                />
+              ) : null}
+            </div>
+          ) : null}
         <div
           id={soldPanelId}
           className={
             isPage
-              ? "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pt-1 max-lg:pb-3"
+              ? `scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pb-3 ${
+                  mobileSoldChrome ? "max-lg:pt-2" : "max-lg:pt-1"
+                }`
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
                 : "scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 max-lg:px-3"
           }
         >
+          {mobileSoldChrome ? (
+            <>
+              <CompFoundLegendRow
+                theme={isModal ? "light" : "dark"}
+                foundCount={sortedSold.length}
+                foundCountClass={foundCountClass}
+                hideFoundCount
+                className="mb-1"
+              />
+              <div className="mb-2 flex items-end justify-between gap-x-3 gap-y-1">
+                <p className={`${sectionTitleClass} min-w-0 leading-none`}>
+                  {recentlyClosedLabel} ({sortedSold.length})
+                </p>
+                {sortedSold.length > 0 ? (
+                  <div className="flex shrink-0 justify-end">
+                    <CompSortLinks
+                      options={[
+                        { key: "score", label: "Edge" },
+                        { key: "closeDate", label: "CLOSED" },
+                        { key: "price", label: "Price" },
+                      ]}
+                      activeKey={soldSort.key}
+                      activeDir={soldSort.dir}
+                      onSort={handleSoldSort}
+                      theme={sortTheme}
+                      ariaLabel={`${recentlyClosedLabel} sort`}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
           <div className={isMobilePage ? "mb-2" : "mb-3"}>
             {isMobilePage ? (
               <>
@@ -1507,6 +1571,8 @@ export default function ListingComparablesPanel({
             foundCountClass={foundCountClass}
             hideFoundCount={isMobilePage}
           />
+            </>
+          )}
           {sortedSold.length > 0 ? (
             <>
               <div className="space-y-3">
@@ -1564,6 +1630,7 @@ export default function ListingComparablesPanel({
                 : recentlyClosedEmptyLabel}
             </p>
           )}
+        </div>
         </div>
       )}
 

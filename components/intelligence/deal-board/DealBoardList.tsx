@@ -134,16 +134,29 @@ export default function DealBoardList({
     [topRows, middlePinnedRows, middleRows, bottomRows, middleTierExpanded],
   );
 
-  const orderedKey = orderedVisible.map((l) => l.key).join("|");
+  const orderedKey = useMemo(
+    () => orderedVisible.map((l) => l.key).join("|"),
+    [orderedVisible],
+  );
   const batching =
     progressivePhotoBatches && orderedVisible.length > DEAL_BOARD_PHOTO_BATCH;
 
-  useEffect(() => {
+  const [mountedForKey, setMountedForKey] = useState(orderedKey);
+  // Reset the batch window in the same render as an order change. A useEffect
+  // reset painted one frame with the old (often 100) limit after every sort,
+  // which reordered a full page of photo cards and felt like a freeze.
+  let effectiveMountedLimit = mountedLimit;
+  if (progressivePhotoBatches && orderedKey !== mountedForKey) {
+    setMountedForKey(orderedKey);
     setMountedLimit(DEAL_BOARD_PHOTO_BATCH);
-  }, [orderedKey, progressivePhotoBatches]);
+    effectiveMountedLimit = DEAL_BOARD_PHOTO_BATCH;
+  } else if (!progressivePhotoBatches && mountedForKey !== "") {
+    setMountedForKey("");
+    setMountedLimit(DEAL_BOARD_PHOTO_BATCH);
+  }
 
   useEffect(() => {
-    if (!batching || mountedLimit >= orderedVisible.length) return;
+    if (!batching || effectiveMountedLimit >= orderedVisible.length) return;
     const el = loadMoreRef.current;
     if (!el) return;
     const io = new IntersectionObserver(
@@ -157,14 +170,14 @@ export default function DealBoardList({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [batching, mountedLimit, orderedVisible.length]);
+  }, [batching, effectiveMountedLimit, orderedVisible.length]);
 
   const mountedKeys = useMemo(() => {
     if (!batching) return null;
     return new Set(
-      orderedVisible.slice(0, mountedLimit).map((l) => l.key),
+      orderedVisible.slice(0, effectiveMountedLimit).map((l) => l.key),
     );
-  }, [batching, orderedVisible, mountedLimit]);
+  }, [batching, orderedVisible, effectiveMountedLimit]);
 
   /** Eager-load only the first batch's photos (not the whole page of 100). */
   const eagerPhotoKeys = useMemo(() => {
@@ -286,7 +299,7 @@ export default function DealBoardList({
 
   const hasResults = resultCount > 0;
   const remaining = batching
-    ? Math.max(0, orderedVisible.length - mountedLimit)
+    ? Math.max(0, orderedVisible.length - effectiveMountedLimit)
     : 0;
 
   const sortControl = (

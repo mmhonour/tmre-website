@@ -88,18 +88,20 @@ export function CompFoundLegendRow({
   foundCount,
   foundCountClass,
   hideFoundCount = false,
+  className = "",
 }: {
   theme?: "dark" | "light";
   foundCount: number;
   foundCountClass: string;
   /** When count lives in the panel title (e.g. mobile Recently sold (N)). */
   hideFoundCount?: boolean;
+  className?: string;
 }) {
   return (
     <div
-      className={`mb-3 flex items-baseline gap-3 ${
+      className={`flex items-baseline gap-3 ${
         hideFoundCount ? "" : "justify-between"
-      }`}
+      } ${className || "mb-3"}`.trim()}
     >
       <CompExactMatchLegend theme={theme} className="min-w-0" />
       {!hideFoundCount ? (
