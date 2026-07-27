@@ -41,7 +41,11 @@ import CriteriaMatchPreviewList, {
   criteriaPreviewRowFromIfComp,
 } from "@/components/listing/CriteriaMatchPreviewList";
 import { listingDetailHref } from "@/lib/listing-url";
-import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+import {
+  loadTabJson,
+  loadTabJsonWithRetry,
+  peekTabJson,
+} from "@/lib/tab-data-prefetch";
 import {
   filterPillIndependentButtonClass,
   filterPillIndependentContainerClass,
@@ -834,7 +838,10 @@ export default function ListingIfPanel({
       setLoading(true);
     }
 
-    loadTabJson<ListingIfPayload>(url)
+    void loadTabJsonWithRetry<ListingIfPayload>(url, {
+      attempts: 3,
+      shouldContinue: () => !cancelled,
+    })
       .then((payload) => {
         if (!cancelled) {
           setData(payload);
@@ -968,9 +975,15 @@ export default function ListingIfPanel({
             If...
           </p>
         )}
-        <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/40">
-          Loading…
-        </p>
+        <div className="flex flex-col items-start gap-2">
+          <p className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-white/55">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold animate-pulse-dot" />
+            Loading What If estimates…
+          </p>
+          <p className="max-w-md text-xs leading-relaxed text-white/40">
+            First open can take a few seconds while comps resolve.
+          </p>
+        </div>
       </div>
     );
   }

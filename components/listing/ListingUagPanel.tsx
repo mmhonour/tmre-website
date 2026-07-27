@@ -42,6 +42,7 @@ import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import {
   loadTabJson,
+  loadTabJsonWithRetry,
   peekTabJson,
   prefetchTabJson,
 } from "@/lib/tab-data-prefetch";
@@ -502,12 +503,17 @@ export function ListingUagPageContent({
       setLoadError(null);
     }
 
-    loadTabJson<UagResponse>(uagUrl)
+    void loadTabJsonWithRetry<UagResponse>(uagUrl, {
+      attempts: 3,
+      shouldContinue: () => !cancelled,
+    })
       .then((d) => {
         if (cancelled) return;
         if (!d) {
           setData(null);
-          setLoadError("Couldn't load under-agreement comps.");
+          setLoadError(
+            "Under-agreement matches are still loading — tap Retry in a moment.",
+          );
           return;
         }
         setData(d);
@@ -519,7 +525,7 @@ export function ListingUagPageContent({
         setLoadError(
           err instanceof Error
             ? err.message
-            : "Couldn't load under-agreement comps.",
+            : "Under-agreement comps failed to load — tap Retry.",
         );
       })
       .finally(() => {
@@ -731,14 +737,49 @@ export function ListingUagPageContent({
   const mainColumn = (
     <>
       {loading && (
-        <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/40">
-          Loading…
-        </p>
+        <div className="flex flex-col items-start gap-2 py-6">
+          <p className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-white/55">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold animate-pulse-dot" />
+            Loading under-agreement comparables…
+          </p>
+          <p className="max-w-md text-xs leading-relaxed text-white/40">
+            Matches are fetched when you open this tab and can take a few
+            seconds on first visit — not the same as zero Criteria matches.
+          </p>
+        </div>
       )}
 
       {loadError && !loading && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center">
-          <p className="text-white/60 text-sm">{loadError}</p>
+          <p className="text-white/70 text-sm">{loadError}</p>
+          <p className="mt-2 text-xs leading-relaxed text-white/45">
+            A slow first fetch is not “no matches.” Tap Retry, or open Overview
+            and return to this tab.
+          </p>
+          <button
+            type="button"
+            className="mt-4 font-mono text-[10px] tracking-[0.14em] uppercase rounded-full border border-white/25 px-4 py-2 text-white/80 hover:bg-white/10"
+            onClick={() => {
+              setLoading(true);
+              setLoadError(null);
+              void loadTabJsonWithRetry<UagResponse>(uagUrl, {
+                attempts: 3,
+              }).then((d) => {
+                if (!d) {
+                  setLoadError(
+                    "Under-agreement matches are still loading — tap Retry in a moment.",
+                  );
+                  setLoading(false);
+                  return;
+                }
+                setData(d);
+                setLoadError(null);
+                setLoading(false);
+              });
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
 

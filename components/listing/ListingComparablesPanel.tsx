@@ -47,13 +47,17 @@ import ListingCriteriaSideLayout, {
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
 
-/** Mobile Sold / On the market sub-tabs — underline style, not filter pills. */
+/**
+ * Mobile Sold / On the market — classic folder tabs:
+ * active = rounded ceiling + side walls, open bottom into the panel (__|LABEL|___).
+ */
 function mobileCompSubTabClass(active: boolean): string {
-  return `shrink-0 whitespace-nowrap px-2.5 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors border-b-2 -mb-px ${
-    active
-      ? "text-gold border-gold"
-      : "text-white/50 border-transparent hover:text-white/80"
-  }`;
+  const base =
+    "relative shrink-0 whitespace-nowrap px-3.5 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors rounded-t-md border";
+  if (active) {
+    return `${base} z-[1] border-white/25 border-b-transparent bg-white/[0.04] text-gold`;
+  }
+  return `${base} border-transparent text-white/45 hover:text-white/75`;
 }
 
 type MobileCompPane = "closed" | "active";
@@ -86,7 +90,11 @@ function criteriaStepMatchNote(opts: {
 import type { PricingMatchingConfig } from "@/lib/pricing-matching-config-shared";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
-import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+import {
+  loadTabJson,
+  loadTabJsonWithRetry,
+  peekTabJson,
+} from "@/lib/tab-data-prefetch";
 
 type ComparablesResponse = {
   sold: ComparableListing[];
@@ -785,12 +793,19 @@ export default function ListingComparablesPanel({
       setLoadError(null);
     }
 
-    loadTabJson<ComparablesResponse>(comparablesUrl)
+    void loadTabJsonWithRetry<ComparablesResponse>(comparablesUrl, {
+      attempts: 3,
+      shouldContinue: () => !cancelled,
+    })
       .then((d) => {
         if (cancelled) return;
         if (!d) {
           setData(null);
-          setLoadError("Couldn't load comparables.");
+          setLoadError(
+            isRental
+              ? "Rental matches are still loading — tap Retry in a moment."
+              : "Sold matches are still loading — tap Retry in a moment.",
+          );
           return;
         }
         setData(d);
@@ -800,7 +815,9 @@ export default function ListingComparablesPanel({
         if (cancelled) return;
         setData(null);
         setLoadError(
-          err instanceof Error ? err.message : "Couldn't load comparables.",
+          err instanceof Error
+            ? err.message
+            : "Comparables failed to load — tap Retry.",
         );
       })
       .finally(() => {
@@ -810,7 +827,7 @@ export default function ListingComparablesPanel({
     return () => {
       cancelled = true;
     };
-  }, [mlsId, comparablesUrl]);
+  }, [mlsId, comparablesUrl, isRental]);
 
   // Seed session overrides from Admin Pricing defaults once per Sold/Rented tab.
   useEffect(() => {
@@ -1255,13 +1272,29 @@ export default function ListingComparablesPanel({
             {panelTitle}
           </p>
         )}
-        <p
-          className={`font-mono text-[10px] tracking-[0.15em] uppercase ${
-            isModal ? "text-slate" : "text-white/40"
+        <div
+          className={`flex flex-col items-start gap-2 ${
+            isPage || isModal ? "py-10" : ""
           }`}
         >
-          Loading…
-        </p>
+          <p
+            className={`inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase ${
+              isModal ? "text-slate" : "text-white/55"
+            }`}
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold animate-pulse-dot" />
+            Loading {isRental ? "rental" : "sold"} comparables…
+          </p>
+          <p
+            className={`max-w-md text-xs leading-relaxed ${
+              isModal ? "text-slate/70" : "text-white/40"
+            }`}
+          >
+            Matching comps are fetched when you open this tab (and may take a
+            few seconds on first visit). This is not an empty Criteria result —
+            hang tight.
+          </p>
+        </div>
       </div>
     );
   }
@@ -1404,9 +1437,51 @@ export default function ListingComparablesPanel({
               : "rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center"
           }
         >
-          <p className={isModal ? "text-charcoal text-sm" : "text-white/60 text-sm"}>
+          <p className={isModal ? "text-charcoal text-sm" : "text-white/70 text-sm"}>
             {loadError}
           </p>
+          <p
+            className={
+              isModal
+                ? "mt-2 text-xs leading-relaxed text-slate"
+                : "mt-2 text-xs leading-relaxed text-white/45"
+            }
+          >
+            Comparables load in the background the first time you open{" "}
+            {isRental ? "Rented" : "Sold"}. A slow or interrupted fetch is not
+            the same as “no matches” — use Criteria ± only after a successful
+            load shows zero results.
+          </p>
+          <button
+            type="button"
+            className={
+              isModal
+                ? "mt-4 font-mono text-[10px] tracking-[0.14em] uppercase rounded-full border border-navy/25 px-4 py-2 text-navy hover:bg-navy/[0.06]"
+                : "mt-4 font-mono text-[10px] tracking-[0.14em] uppercase rounded-full border border-white/25 px-4 py-2 text-white/80 hover:bg-white/10"
+            }
+            onClick={() => {
+              setLoading(true);
+              setLoadError(null);
+              void loadTabJsonWithRetry<ComparablesResponse>(comparablesUrl, {
+                attempts: 3,
+              }).then((d) => {
+                if (!d) {
+                  setLoadError(
+                    isRental
+                      ? "Rental matches are still loading — tap Retry in a moment."
+                      : "Sold matches are still loading — tap Retry in a moment.",
+                  );
+                  setLoading(false);
+                  return;
+                }
+                setData(d);
+                setLoadError(null);
+                setLoading(false);
+              });
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -1458,11 +1533,11 @@ export default function ListingComparablesPanel({
       {showCompsGrid && (
         <div className={compsGridClass}>
       {useMobileCompSubTabs ? (
-        <div className="mb-1 flex w-full items-end justify-between gap-3 max-lg:px-3 sm:col-span-2">
+        <div className="mb-0 flex w-full items-start justify-between gap-3 max-lg:px-3 sm:col-span-2">
           <div
             role="tablist"
             aria-label={isRental ? "Rented comps" : "Sold comps"}
-            className="flex min-w-0 flex-1 items-end gap-0 border-b border-white/15"
+            className="flex min-w-0 flex-1 items-start gap-1"
           >
             <button
               type="button"
@@ -1486,7 +1561,7 @@ export default function ListingComparablesPanel({
           {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
             <div
               id={criteriaLinkSlotId}
-              className="flex shrink-0 items-end justify-end"
+              className="flex shrink-0 items-start justify-end self-start pt-2"
             />
           ) : null}
         </div>
@@ -1515,7 +1590,11 @@ export default function ListingComparablesPanel({
           className={
             isPage
               ? `scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pb-3 ${
-                  mobileSoldChrome ? "max-lg:pt-2" : "max-lg:pt-1"
+                  useMobileCompSubTabs
+                    ? "max-lg:border-t-0 max-lg:pt-3"
+                    : mobileSoldChrome
+                      ? "max-lg:pt-2"
+                      : "max-lg:pt-1"
                 }`
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
@@ -1734,7 +1813,11 @@ export default function ListingComparablesPanel({
           id={onMarketPanelId}
           className={
             isPage
-              ? "scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pt-1 max-lg:pb-3"
+              ? `scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pb-3 ${
+                  useMobileCompSubTabs
+                    ? "max-lg:border-t-0 max-lg:pt-3"
+                    : "max-lg:pt-1"
+                }`
               : isModal
                 ? "scroll-mt-24 min-w-0 rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
                 : "scroll-mt-24 min-w-0 max-lg:px-3"

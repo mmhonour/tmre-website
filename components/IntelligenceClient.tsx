@@ -4522,7 +4522,7 @@ export default function IntelligenceClient({
             {/*
               Mobile board chrome (cream section, not hero header):
               Town stats · Vintages ········· Share (top-right)
-              Show graphs + Sorted by sit on the results column below.
+              Mobile: minigraphs above Show graphs + Sorted by on the results column.
             */}
             <div className="flex w-full items-center gap-x-3 gap-y-1 lg:hidden">
               {liveSnapshots.length > 0 ? (
@@ -4593,197 +4593,201 @@ export default function IntelligenceClient({
               aria-busy={boardSortPending || undefined}
             >
           {/*
-            Show/Hide graphs: left edge of results column, tight above graphs/board.
-            Mobile: Sorted by + ↑/↓ on the same row, right-aligned to the grid.
-            When graphs are unavailable, this row is mobile-only (sort control).
+            Mobile: minigraphs + labels first, then Show graphs + Sorted by.
+            Desktop: Show/Hide stays above the graphs strip.
+            When graphs are unavailable, the Sorted by row is mobile-only.
           */}
-          <div
-            className={`mb-0.5 flex items-center justify-between gap-3 ${
-              vintageChartListingRows.length > 0 || showPriceFilter
-                ? ""
-                : "lg:hidden"
-            }`}
-          >
-            {vintageChartListingRows.length > 0 || showPriceFilter ? (
-              <button
-                type="button"
-                className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
-                onClick={() => {
-                  if (miniGraphsHidden) {
-                    setMiniGraphsHiddenPref(false, {
-                      suspendAutoHide: true,
-                    });
-                  } else {
-                    setMiniGraphsHiddenPref(true);
+          <div className="flex flex-col">
+            <div
+              className={`mb-0.5 flex items-center justify-between gap-3 order-2 lg:order-1 ${
+                vintageChartListingRows.length > 0 || showPriceFilter
+                  ? ""
+                  : "lg:hidden"
+              }`}
+            >
+              {vintageChartListingRows.length > 0 || showPriceFilter ? (
+                <button
+                  type="button"
+                  className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
+                  onClick={() => {
+                    if (miniGraphsHidden) {
+                      setMiniGraphsHiddenPref(false, {
+                        suspendAutoHide: true,
+                      });
+                    } else {
+                      setMiniGraphsHiddenPref(true);
+                    }
+                  }}
+                  aria-pressed={miniGraphsHidden}
+                >
+                  {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="ml-auto inline-flex items-center gap-1.5 lg:hidden">
+                <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
+                  Sorted by:
+                </span>
+                <button
+                  type="button"
+                  className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
+                  onClick={() => setSortFieldDrawerOpen(true)}
+                  aria-expanded={sortFieldDrawerOpen}
+                  aria-controls="intel-sort-drawer"
+                >
+                  {dealBoardSortLabel(sortKey)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSort(sortKey)}
+                  className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
+                  title={
+                    sortDir === "asc" ? "Sort descending" : "Sort ascending"
                   }
-                }}
-                aria-pressed={miniGraphsHidden}
-              >
-                {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
-              </button>
-            ) : (
-              <span />
-            )}
-            <div className="ml-auto inline-flex items-center gap-1.5 lg:hidden">
-              <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
-                Sorted by:
-              </span>
-              <button
-                type="button"
-                className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
-                onClick={() => setSortFieldDrawerOpen(true)}
-                aria-expanded={sortFieldDrawerOpen}
-                aria-controls="intel-sort-drawer"
-              >
-                {dealBoardSortLabel(sortKey)}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSort(sortKey)}
-                className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
-                title={
-                  sortDir === "asc" ? "Sort descending" : "Sort ascending"
-                }
-                aria-label={
-                  sortDir === "asc"
-                    ? "Flip sort to descending"
-                    : "Flip sort to ascending"
-                }
-              >
-                {sortDir === "asc" ? "↑" : "↓"}
-              </button>
+                  aria-label={
+                    sortDir === "asc"
+                      ? "Flip sort to descending"
+                      : "Flip sort to ascending"
+                  }
+                >
+                  {sortDir === "asc" ? "↑" : "↓"}
+                </button>
+              </div>
             </div>
+            {vintageChartListingRows.length > 0 || showPriceFilter ? (
+              <div className="order-1 lg:order-2">
+                <IntelligenceMiniGraphsStrip
+                  onInteractRef={miniGraphsInteractRef}
+                  showHideToggle={false}
+                  hidden={miniGraphsHidden}
+                  onHiddenChange={(hidden) => setMiniGraphsHiddenPref(hidden)}
+                  autoHideSuspended={miniGraphsAutoHideSuspended}
+                  onAutoHideSuspendedChange={setMiniGraphsAutoHideSuspended}
+                  slots={[
+                    {
+                      key: "vintage",
+                      node:
+                        vintageChartListingRows.length > 0 ? (
+                          <IntelligenceVintageMedianMiniChart
+                            listings={vintageChartListingRows}
+                            kind={tx === "rental" ? "rental" : "sale"}
+                            activeBucketId={activeVintageChartBucketId}
+                            filterActive={vintageFilterActive(
+                              minVintage,
+                              maxVintage,
+                            )}
+                            onInteract={pauseMiniGraphsRotation}
+                            onBucketClick={(bucketId) => {
+                              selectVintageListings(bucketId);
+                              // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
+                              setVintageSliderActive(true);
+                              setVintageSliderActive(false);
+                            }}
+                            onResetFilter={() => {
+                              setMinVintageFilter("0");
+                              setMaxVintageFilter(
+                                String(VINTAGE_FILTER_MAX) as VintageIndexFilter,
+                              );
+                              setBoardPage(1);
+                            }}
+                          />
+                        ) : null,
+                    },
+                    {
+                      key: "inventory-price",
+                      node: showPriceFilter ? (
+                        <IntelligencePriceBandMiniChart
+                          city={active === "All" ? "All" : active}
+                          kind={tx === "rental" ? "rental" : "sale"}
+                          activeBucketId={activePriceBandId}
+                          filterActive={
+                            priceFilterActive && !activeLuxuryPriceBandId
+                          }
+                          onInteract={pauseMiniGraphsRotation}
+                          onBucketClick={(bucket) => {
+                            priceRangeCustomizedRef.current = true;
+                            setActivePriceBandId(bucket.id);
+                            setActiveLuxuryPriceBandId(null);
+                            setMinPriceIndex(
+                              minPriceToStepIndex(bucket.min, boardPriceSteps),
+                            );
+                            setMaxPriceIndex(
+                              bucket.max == null
+                                ? boardPriceMaxIdx
+                                : maxPriceToStepIndex(bucket.max, boardPriceSteps),
+                            );
+                            setBoardPage(1);
+                            // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
+                            setPriceSliderActive(true);
+                            setPriceSliderActive(false);
+                          }}
+                          onResetFilter={() => {
+                            priceRangeCustomizedRef.current = false;
+                            setActivePriceBandId(null);
+                            setActiveLuxuryPriceBandId(null);
+                            setMinPriceIndex(0);
+                            setMaxPriceIndex(boardPriceMaxIdx);
+                            setBoardPage(1);
+                          }}
+                        />
+                      ) : null,
+                    },
+                    {
+                      key: "luxury-inventory-price",
+                      // Mobile: hold this slide through Luxury → Mid → Value → Discount.
+                      carouselDwellSteps: 4,
+                      node:
+                        showPriceFilter && tx !== "rental" ? (
+                          <IntelligenceLuxuryPriceBandMiniChart
+                            city={active === "All" ? "All" : active}
+                            initialSeed={
+                              (active === "All" || !active
+                                ? initialInventorySegmentChart
+                                : null) ?? null
+                            }
+                            activeBucketId={activeLuxuryPriceBandId}
+                            filterActive={
+                              priceFilterActive &&
+                              Boolean(activeLuxuryPriceBandId)
+                            }
+                            onInteract={pauseMiniGraphsRotation}
+                            onBucketClick={(bucket) => {
+                              priceRangeCustomizedRef.current = true;
+                              setActiveLuxuryPriceBandId(bucket.id);
+                              setActivePriceBandId(null);
+                              setMinPriceIndex(
+                                minPriceToStepIndex(bucket.min, boardPriceSteps),
+                              );
+                              setMaxPriceIndex(
+                                bucket.max == null
+                                  ? boardPriceMaxIdx
+                                  : maxPriceToStepIndex(
+                                      bucket.max,
+                                      boardPriceSteps,
+                                    ),
+                              );
+                              setBoardPage(1);
+                              // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
+                              setPriceSliderActive(true);
+                              setPriceSliderActive(false);
+                            }}
+                            onResetFilter={() => {
+                              priceRangeCustomizedRef.current = false;
+                              setActiveLuxuryPriceBandId(null);
+                              setActivePriceBandId(null);
+                              setMinPriceIndex(0);
+                              setMaxPriceIndex(boardPriceMaxIdx);
+                              setBoardPage(1);
+                            }}
+                          />
+                        ) : null,
+                    },
+                  ]}
+                />
+              </div>
+            ) : null}
           </div>
-          {vintageChartListingRows.length > 0 || showPriceFilter ? (
-            <IntelligenceMiniGraphsStrip
-              onInteractRef={miniGraphsInteractRef}
-              showHideToggle={false}
-              hidden={miniGraphsHidden}
-              onHiddenChange={(hidden) => setMiniGraphsHiddenPref(hidden)}
-              autoHideSuspended={miniGraphsAutoHideSuspended}
-              onAutoHideSuspendedChange={setMiniGraphsAutoHideSuspended}
-              slots={[
-                {
-                  key: "vintage",
-                  node:
-                    vintageChartListingRows.length > 0 ? (
-                      <IntelligenceVintageMedianMiniChart
-                        listings={vintageChartListingRows}
-                        kind={tx === "rental" ? "rental" : "sale"}
-                        activeBucketId={activeVintageChartBucketId}
-                        filterActive={vintageFilterActive(
-                          minVintage,
-                          maxVintage,
-                        )}
-                        onInteract={pauseMiniGraphsRotation}
-                        onBucketClick={(bucketId) => {
-                          selectVintageListings(bucketId);
-                          // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
-                          setVintageSliderActive(true);
-                          setVintageSliderActive(false);
-                        }}
-                        onResetFilter={() => {
-                          setMinVintageFilter("0");
-                          setMaxVintageFilter(
-                            String(VINTAGE_FILTER_MAX) as VintageIndexFilter,
-                          );
-                          setBoardPage(1);
-                        }}
-                      />
-                    ) : null,
-                },
-                {
-                  key: "inventory-price",
-                  node: showPriceFilter ? (
-                    <IntelligencePriceBandMiniChart
-                      city={active === "All" ? "All" : active}
-                      kind={tx === "rental" ? "rental" : "sale"}
-                      activeBucketId={activePriceBandId}
-                      filterActive={
-                        priceFilterActive && !activeLuxuryPriceBandId
-                      }
-                      onInteract={pauseMiniGraphsRotation}
-                      onBucketClick={(bucket) => {
-                        priceRangeCustomizedRef.current = true;
-                        setActivePriceBandId(bucket.id);
-                        setActiveLuxuryPriceBandId(null);
-                        setMinPriceIndex(
-                          minPriceToStepIndex(bucket.min, boardPriceSteps),
-                        );
-                        setMaxPriceIndex(
-                          bucket.max == null
-                            ? boardPriceMaxIdx
-                            : maxPriceToStepIndex(bucket.max, boardPriceSteps),
-                        );
-                        setBoardPage(1);
-                        // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
-                        setPriceSliderActive(true);
-                        setPriceSliderActive(false);
-                      }}
-                      onResetFilter={() => {
-                        priceRangeCustomizedRef.current = false;
-                        setActivePriceBandId(null);
-                        setActiveLuxuryPriceBandId(null);
-                        setMinPriceIndex(0);
-                        setMaxPriceIndex(boardPriceMaxIdx);
-                        setBoardPage(1);
-                      }}
-                    />
-                  ) : null,
-                },
-                {
-                  key: "luxury-inventory-price",
-                  // Mobile: hold this slide through Luxury → Mid → Value → Discount.
-                  carouselDwellSteps: 4,
-                  node:
-                    showPriceFilter && tx !== "rental" ? (
-                      <IntelligenceLuxuryPriceBandMiniChart
-                        city={active === "All" ? "All" : active}
-                        initialSeed={
-                          (active === "All" || !active
-                            ? initialInventorySegmentChart
-                            : null) ?? null
-                        }
-                        activeBucketId={activeLuxuryPriceBandId}
-                        filterActive={
-                          priceFilterActive &&
-                          Boolean(activeLuxuryPriceBandId)
-                        }
-                        onInteract={pauseMiniGraphsRotation}
-                        onBucketClick={(bucket) => {
-                          priceRangeCustomizedRef.current = true;
-                          setActiveLuxuryPriceBandId(bucket.id);
-                          setActivePriceBandId(null);
-                          setMinPriceIndex(
-                            minPriceToStepIndex(bucket.min, boardPriceSteps),
-                          );
-                          setMaxPriceIndex(
-                            bucket.max == null
-                              ? boardPriceMaxIdx
-                              : maxPriceToStepIndex(
-                                  bucket.max,
-                                  boardPriceSteps,
-                                ),
-                          );
-                          setBoardPage(1);
-                          // Enlarge matching criteria descriptor (pinned + in-flow) for 10s.
-                          setPriceSliderActive(true);
-                          setPriceSliderActive(false);
-                        }}
-                        onResetFilter={() => {
-                          priceRangeCustomizedRef.current = false;
-                          setActiveLuxuryPriceBandId(null);
-                          setActivePriceBandId(null);
-                          setMinPriceIndex(0);
-                          setMaxPriceIndex(boardPriceMaxIdx);
-                          setBoardPage(1);
-                        }}
-                      />
-                    ) : null,
-                },
-              ]}
-            />
-          ) : null}
           <DealBoardList
             topRows={boardTiers.top}
             middlePinnedRows={boardTiers.middlePinned}
@@ -4901,7 +4905,7 @@ export default function IntelligenceClient({
             >
               {(liveSnapshots.length > 0 || showVintageStats) ? (
                 <div className="shrink-0">
-                  <p className="text-right font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+                  <p className="text-left font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
                     Stats
                   </p>
                 </div>

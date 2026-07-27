@@ -498,8 +498,37 @@ export type AdminSyncRow = {
   nextRunAt?: string | null;
 };
 
-/** Dashboard = run/status; Configure = pause, schedule text, Next overrides. */
+/** Dashboard = run/status; Configure = pause + fixed schedule (frequency / start). */
 export type AdminSyncTableMode = "dashboard" | "configure";
+
+/** Natural cadence for Configure — not live Next countdown. */
+function configureScheduleForRow(rowId: string): {
+  frequency: string;
+  start: string;
+} {
+  switch (rowId) {
+    case "full-resync":
+      return { frequency: "Weekly", start: "Mon 5:00 AM ET" };
+    case "incremental":
+      return { frequency: "Every 30 min", start: ":00 / :30" };
+    case "latest-mls":
+      return { frequency: "With incremental", start: "After each pull" };
+    case "listing-scores":
+      return { frequency: "With full resync", start: "After step 1" };
+    case "stats-cache":
+      return { frequency: "With full resync", start: "After step 2" };
+    case "deal-of-the-day":
+      return { frequency: "With full resync", start: "After step 3" };
+    case "refresh-finished":
+      return { frequency: "With MLS refresh", start: "End of sync" };
+    case "property-addresses":
+      return { frequency: "Weekly", start: "Mon 1:00 AM ET" };
+    case "zip-boundaries":
+      return { frequency: "Monthly", start: "1st · 10:00 UTC" };
+    default:
+      return { frequency: "—", start: "—" };
+  }
+}
 
 type SyncStats = {
   total: number;
@@ -2189,13 +2218,13 @@ export default function AdminSyncTable({
           ) : (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-2xl">
-                Pause skips Sync all and cron for that job. Description shows frequency /
-                purpose. Use ▲/▼ on Next to nudge the Admin override (time of day / when it
-                fires next).
+                Pause skips Sync all and cron for that job. Rows stay in Sync-all order
+                (1–5, then optional jobs). Frequency and Start show the natural schedule —
+                not live Next status.
               </p>
               <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-                Natural schedules stay on Netlify (e.g. Incremental every 30 min). Overrides
-                here only move the next due time — they do not change cron frequency.
+                Cadence is set by Netlify cron / Sync-all chaining. Live run status and Next
+                countdown stay on Dashboard.
               </p>
             </>
           )}
@@ -2250,7 +2279,9 @@ export default function AdminSyncTable({
             {isConfigure ? <col /> : null}
             {isDashboard ? <col /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
-            <col className={isDashboard ? "w-[11rem]" : "w-[13rem]"} />
+            {isConfigure ? <col className="w-[8rem]" /> : null}
+            {isConfigure ? <col className="w-[9rem]" /> : null}
+            {isDashboard ? <col className="w-[11rem]" /> : null}
             {isDashboard ? <col className="w-[9rem]" /> : null}
           </colgroup>
           <thead>
@@ -2272,12 +2303,14 @@ export default function AdminSyncTable({
               </th>
               {isDashboard ? <th className={TH}>Action</th> : null}
               <th className={TH}>Sync</th>
-              {isConfigure ? <th className={TH}>Description / frequency</th> : null}
+              {isConfigure ? <th className={TH}>Description</th> : null}
               {isDashboard ? <th className={TH}>Status</th> : null}
               {isConfigure ? <th className={TH}>Pages</th> : null}
-              <th className={isDashboard ? `${TH} border-r-0 md:border-r` : TH}>
-                {isConfigure ? "Next (time)" : "Start / End / Next"}
-              </th>
+              {isConfigure ? <th className={TH}>Frequency</th> : null}
+              {isConfigure ? <th className={TH}>Start</th> : null}
+              {isDashboard ? (
+                <th className={`${TH} border-r-0 md:border-r`}>Start / End / Next</th>
+              ) : null}
               {isDashboard ? (
                 <th className={`${TH} border-r-0 hidden md:table-cell`}>Errors</th>
               ) : null}
@@ -2331,6 +2364,12 @@ export default function AdminSyncTable({
 
               return [...rows]
               .sort((a, b) => {
+                if (isConfigure) {
+                  const aOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[a.id] ?? 999;
+                  const bOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[b.id] ?? 999;
+                  if (aOrder !== bOrder) return aOrder - bOrder;
+                  return a.label.localeCompare(b.label);
+                }
                 const aRunning = rowIsRunningForSort(a);
                 const bRunning = rowIsRunningForSort(b);
                 if (aRunning !== bRunning) return aRunning ? -1 : 1;
@@ -2364,17 +2403,20 @@ export default function AdminSyncTable({
                 row.id === "property-addresses" ||
                 row.id === "zip-boundaries";
               const nextRunAt = nextRunForRow(row, status);
-              const visual = resolveSyncRowVisualStatus({
-                row,
-                timing,
-                nextRunAt,
-                status,
-                isRunning: isRunning || isWaiting,
-                syncAllRunning,
-                fullResyncInProgress,
-                error: rowError,
-                nowMs,
-              });
+              // Configure is schedule/setup only — no live status colors.
+              const visual = isConfigure
+                ? ("idle" as const)
+                : resolveSyncRowVisualStatus({
+                    row,
+                    timing,
+                    nextRunAt,
+                    status,
+                    isRunning: isRunning || isWaiting,
+                    syncAllRunning,
+                    fullResyncInProgress,
+                    error: rowError,
+                    nowMs,
+                  });
               const scheduleBreached = isScheduleBreached(
                 nextRunAt,
                 timing.finished,
@@ -2382,6 +2424,7 @@ export default function AdminSyncTable({
               );
               const manualOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
               const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+              const configureSchedule = configureScheduleForRow(row.id);
               const stripe = index % 2 === 1;
               const stickyBg = stickyCellBg(visual, stripe);
 
@@ -2414,16 +2457,18 @@ export default function AdminSyncTable({
 
               const descriptionText =
                 row.id === "incremental"
-                  ? `Modified-since RETS pull (every 30 minutes)${
-                      status?.lastIncrementalCronTick
-                        ? ` · Cron last fired ${
-                            formatAgeAgo(
-                              status.lastIncrementalCronTick,
-                              nowMs,
-                            ) ?? formatTimestamp(status.lastIncrementalCronTick)
-                          }`
-                        : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
-                    }`
+                  ? isConfigure
+                    ? "Modified-since RETS pull across all towns"
+                    : `Modified-since RETS pull (every 30 minutes)${
+                        status?.lastIncrementalCronTick
+                          ? ` · Cron last fired ${
+                              formatAgeAgo(
+                                status.lastIncrementalCronTick,
+                                nowMs,
+                              ) ?? formatTimestamp(status.lastIncrementalCronTick)
+                            }`
+                          : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
+                      }`
                   : (row.detail ?? "");
 
               return (
@@ -2534,7 +2579,22 @@ export default function AdminSyncTable({
                       <SyncImpactedPages rowId={row.id} />
                     </td>
                   ) : null}
-                  <td className={`${TD} ${isDashboard ? "border-r-0 md:border-r" : ""}`}>
+                  {isConfigure ? (
+                    <td className={TD}>
+                      <p className="font-mono text-[11px] tracking-wide text-navy leading-snug">
+                        {configureSchedule.frequency}
+                      </p>
+                    </td>
+                  ) : null}
+                  {isConfigure ? (
+                    <td className={TD}>
+                      <p className="font-mono text-[11px] tracking-wide text-charcoal/70 leading-snug">
+                        {configureSchedule.start}
+                      </p>
+                    </td>
+                  ) : null}
+                  {isDashboard ? (
+                  <td className={`${TD} border-r-0 md:border-r`}>
                     {(() => {
                       // Date once above Start (from start, else finished). End/Updated are
                       // always time-only — midnight crossover is obvious from the clock.
@@ -2608,7 +2668,7 @@ export default function AdminSyncTable({
                               </span>
                             ) : null}
                           </span>
-                          {isConfigure && nextJobId && !isPostDeployNext ? (
+                          {nextJobId && !isPostDeployNext ? (
                             <NextOverrideSpinner
                               jobId={nextJobId}
                               busy={nextSavingJob === nextJobId}
@@ -2628,12 +2688,8 @@ export default function AdminSyncTable({
                       );
 
                       return (
-                        <div
-                          className={`flex flex-col gap-0.5 w-full ${
-                            isConfigure ? "min-w-[11rem]" : "min-w-[9rem]"
-                          }`}
-                        >
-                          {isDashboard && dateLabel ? (
+                        <div className="flex flex-col gap-0.5 w-full min-w-[9rem]">
+                          {dateLabel ? (
                             <div className="grid grid-cols-2 gap-x-2 w-full min-w-0 mb-0.5">
                               <span aria-hidden className="block" />
                               <p className="text-left font-mono text-[9px] tracking-wide text-charcoal/40 uppercase">
@@ -2641,16 +2697,7 @@ export default function AdminSyncTable({
                               </p>
                             </div>
                           ) : null}
-                          {isConfigure ? (
-                            <SyncTimingRow
-                              label={nextLabel}
-                              value={nextRunAt != null ? nextTimeText : "—"}
-                              valueClassName={`font-semibold ${nextTimeClass}`}
-                              labelClassName={
-                                hasNextOverride ? "text-gold/80" : "text-charcoal/45"
-                              }
-                            />
-                          ) : showSingleTimestamp ? (
+                          {showSingleTimestamp ? (
                             <SyncTimingRow
                               label="Updated"
                               value={(() => {
@@ -2696,7 +2743,7 @@ export default function AdminSyncTable({
                               />
                             </>
                           )}
-                          {isDashboard && (nextRunAt != null || nextJobId) ? (
+                          {nextRunAt != null || nextJobId ? (
                             <SyncTimingRow
                               label={nextLabel}
                               value={nextRunAt != null ? nextTimeText : "—"}
@@ -2710,6 +2757,7 @@ export default function AdminSyncTable({
                       );
                     })()}
                   </td>
+                  ) : null}
                   {isDashboard ? (
                     <td className={`${TD} border-r-0 hidden md:table-cell`}>
                       {rowError ? (

@@ -104,8 +104,9 @@ export default function CriteriaMatchPreviewList({
   if (!visible || rows.length === 0) return null;
 
   const noteClass = isModal
-    ? "font-mono text-[9px] leading-relaxed tracking-[0.06em] text-slate/70 normal-case"
-    : "font-mono text-[9px] leading-relaxed tracking-[0.06em] text-white/45 normal-case";
+    ? "font-mono text-[11px] leading-snug tracking-[0.1em] uppercase text-slate/75"
+    : "font-mono text-[11px] leading-snug tracking-[0.1em] uppercase text-white/55";
+  const pageName = pageLabel.trim().toUpperCase();
   const rowClass = isModal
     ? "flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-snug text-charcoal/85 normal-case tracking-normal"
     : "flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-snug text-white/80 normal-case tracking-normal";
@@ -126,8 +127,8 @@ export default function CriteriaMatchPreviewList({
       }
     >
       <p className={noteClass}>
-        Can be found in more detail on the corresponding {pageLabel} page all
-        results expanded
+        More detail can be found on the {pageName} page. All results expanded
+        on that page for your benefit!
       </p>
       <ul className="mt-2 max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
         {rows.map((row) => {

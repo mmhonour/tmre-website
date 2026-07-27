@@ -16,13 +16,15 @@ type OkEntry = {
   data: unknown
 }
 
-type ErrEntry = {
-  status: 'error'
-}
-
-type CacheEntry = PendingEntry | OkEntry | ErrEntry
+type CacheEntry = PendingEntry | OkEntry
 
 const cache = new Map<string, CacheEntry>()
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
 
 /** Start fetching `url` into the session cache (no-op if already started). */
 export function prefetchTabJson(url: string): void {
@@ -38,8 +40,15 @@ export function prefetchTabJson(url: string): void {
       cache.set(key, { status: 'ok', data })
       return data
     })
-    .catch(() => {
-      cache.set(key, { status: 'error' })
+    .catch((err) => {
+      // Do NOT poison the cache with a permanent error — a cold/timed-out
+      // Overview prefetch was causing Sold to show "Couldn't load" until the
+      // user left and came back (which retried). Clear and let the next load fetch.
+      const cur = cache.get(key)
+      if (cur?.status === 'pending' && cur.promise === promise) {
+        cache.delete(key)
+      }
+      console.warn('[tab-data-prefetch] fetch failed', key, err)
       return null
     })
 
@@ -75,10 +84,6 @@ export async function loadTabJson<T>(
     const data = await existing.promise
     return (data as T) ?? null
   }
-  if (existing?.status === 'error') {
-    // Allow a single retry after a prior failure.
-    cache.delete(key)
-  }
 
   prefetchTabJson(key)
   const entry = cache.get(key)
@@ -87,6 +92,30 @@ export async function loadTabJson<T>(
     return (data as T) ?? null
   }
   if (entry?.status === 'ok') return entry.data as T
+  return null
+}
+
+/**
+ * Load with short retries — first open of Sold/UAG often races a cold API or a
+ * failed Overview prefetch; hopping Overview→Sold used to "fix" it by retrying.
+ */
+export async function loadTabJsonWithRetry<T>(
+  url: string,
+  options?: {
+    attempts?: number
+    /** Called before each attempt (1-based). Return false to abort. */
+    shouldContinue?: () => boolean
+  },
+): Promise<T | null> {
+  const attempts = Math.max(1, options?.attempts ?? 3)
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (options?.shouldContinue && !options.shouldContinue()) return null
+    const data = await loadTabJson<T>(url, { force: attempt > 1 })
+    if (data != null) return data
+    if (attempt < attempts) {
+      await sleep(350 * attempt)
+    }
+  }
   return null
 }
 
