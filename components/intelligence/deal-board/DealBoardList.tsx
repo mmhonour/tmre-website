@@ -367,28 +367,23 @@ export default function DealBoardList({
         portals to body and stays usable from the header control.
       */}
       <div className="flex flex-col gap-y-1.5 lg:hidden">
-        <div
-          className={`flex items-center gap-2 ${
-            sortFieldPickerInToolbar ? "justify-between" : "justify-end"
-          }`}
-        >
-          {sortFieldPickerInToolbar ? sortControl : null}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 shrink">
+            {sortFieldPickerInToolbar ? sortControl : resultsSummary}
+          </div>
           {moreDataInsights}
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 overflow-x-auto">{statusPills}</div>
           {viewAndReset}
         </div>
-        {resultsSummary ? (
-          <div className="min-w-0">{resultsSummary}</div>
-        ) : null}
       </div>
 
-      {/* Desktop: sort+summary | status pills | data/insights + views + reset */}
+      {/* Desktop: summary (+ sort) | status pills | data/insights + views + reset */}
       <div className="hidden lg:grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 justify-self-start">
-          {sortControl}
           <div className="min-w-0">{resultsSummary}</div>
+          {sortControl}
         </div>
         <div className="justify-self-center">{statusPills}</div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2.5 gap-y-1 justify-self-end">

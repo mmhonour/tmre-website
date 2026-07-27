@@ -3639,6 +3639,10 @@ export default function IntelligenceClient({
         ? "Cached · feed offline"
         : "Loading…";
 
+  /** No sync timestamp — put Live / Town stats / Vintages / Share on one row. */
+  const liveStatusCompact =
+    state === "ready" && !liveStatusLabel.includes("synced");
+
   const liveStatusDotClass =
     state === "ready" && sqliteRefresh.refreshing
       ? "bg-gold animate-pulse-dot"
@@ -4219,134 +4223,253 @@ export default function IntelligenceClient({
         }`}
       >
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
-          <div className="mb-4 lg:mb-5 flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5 min-w-0">
+          <div className="mb-4 lg:mb-5 flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
                 <h2 className="font-serif text-[22px] sm:text-[28px] lg:text-[30px] text-navy leading-tight">
-                  {filteredCount.toLocaleString()} of{" "}
-                  {poolCount.toLocaleString()} filtered in{" "}
-                  {active === "All" ? "selected towns" : active},{" "}
-                  <span className="italic">scored.</span>
-                </h2>
-                <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
                   Intelligent Deals
-                </p>
+                </h2>
               </div>
+              {/* Timestamped Live (or non-ready): keep status + controls stacked right. */}
+              {!liveStatusCompact ? (
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <div className="flex items-center gap-2 font-mono text-xs leading-none">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
+                    />
+                    <span className="text-slate">{liveStatusLabel}</span>
+                  </div>
+                  {liveSnapshots.length > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
+                      onClick={() => {
+                        setVintageStatsOpen(false);
+                        setTownStatsOpen(true);
+                      }}
+                      aria-expanded={townStatsOpen}
+                      aria-controls="intel-town-stats-drawer"
+                    >
+                      <svg
+                        viewBox="0 0 12 12"
+                        className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                      </svg>
+                      <span className="underline underline-offset-2 decoration-navy/35">
+                        Town stats
+                      </span>
+                    </button>
+                  ) : null}
+                  {showVintageStats ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
+                      onClick={() => {
+                        setTownStatsOpen(false);
+                        setVintageStatsOpen(true);
+                      }}
+                      aria-expanded={vintageStatsOpen}
+                      aria-controls="intel-vintage-stats-drawer"
+                    >
+                      <svg
+                        viewBox="0 0 12 12"
+                        className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                      </svg>
+                      <span className="underline underline-offset-2 decoration-navy/35">
+                        Vintages
+                      </span>
+                    </button>
+                  ) : null}
+                  {vintageChartListingRows.length > 0 || showPriceFilter ? (
+                    <button
+                      type="button"
+                      className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold lg:hidden"
+                      onClick={() => {
+                        const next = !miniGraphsHidden;
+                        setMiniGraphsHidden(next);
+                        try {
+                          sessionStorage.setItem(
+                            "tmre-intel-mini-graphs-hidden",
+                            next ? "1" : "0",
+                          );
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      aria-pressed={miniGraphsHidden}
+                    >
+                      {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
+                    </button>
+                  ) : null}
+                  <div className="inline-flex items-center gap-1.5 lg:hidden">
+                    <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
+                      Sorted by:
+                    </span>
+                    <button
+                      type="button"
+                      className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
+                      onClick={() => setSortFieldDrawerOpen(true)}
+                      aria-expanded={sortFieldDrawerOpen}
+                      aria-controls="intel-sort-drawer"
+                    >
+                      {dealBoardSortLabel(sortKey)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSort(sortKey)}
+                      className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
+                      title={
+                        sortDir === "asc"
+                          ? "Sort descending"
+                          : "Sort ascending"
+                      }
+                      aria-label={
+                        sortDir === "asc"
+                          ? "Flip sort to descending"
+                          : "Flip sort to ascending"
+                      }
+                    >
+                      {sortDir === "asc" ? "↑" : "↓"}
+                    </button>
+                  </div>
+                  <ListingShareButton
+                    href={intelligenceShareHref}
+                    title="Share this Intelligence search"
+                    className="!h-6 !w-6 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
+                  />
+                </div>
+              ) : null}
             </div>
-            {/* Live + mobile Town stats / Vintages / Hide graphs / Sort field */}
-            <div className="flex flex-col items-end gap-1.5 shrink-0">
-              <div className="flex items-center gap-2 font-mono text-xs leading-none">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
-                />
-                <span className="text-slate">{liveStatusLabel}</span>
-              </div>
-              {liveSnapshots.length > 0 ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
-                  onClick={() => {
-                    setVintageStatsOpen(false);
-                    setTownStatsOpen(true);
-                  }}
-                  aria-expanded={townStatsOpen}
-                  aria-controls="intel-town-stats-drawer"
-                >
-                  <svg
-                    viewBox="0 0 12 12"
-                    className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                    fill="currentColor"
-                    aria-hidden
-                  >
-                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                  </svg>
-                  <span className="underline underline-offset-2 decoration-navy/35">
-                    Town stats
-                  </span>
-                </button>
-              ) : null}
-              {showVintageStats ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
-                  onClick={() => {
-                    setTownStatsOpen(false);
-                    setVintageStatsOpen(true);
-                  }}
-                  aria-expanded={vintageStatsOpen}
-                  aria-controls="intel-vintage-stats-drawer"
-                >
-                  <svg
-                    viewBox="0 0 12 12"
-                    className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                    fill="currentColor"
-                    aria-hidden
-                  >
-                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                  </svg>
-                  <span className="underline underline-offset-2 decoration-navy/35">
-                    Vintages
-                  </span>
-                </button>
-              ) : null}
-              {vintageChartListingRows.length > 0 || showPriceFilter ? (
-                <button
-                  type="button"
-                  className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold lg:hidden"
-                  onClick={() => {
-                    const next = !miniGraphsHidden;
-                    setMiniGraphsHidden(next);
-                    try {
-                      sessionStorage.setItem(
-                        "tmre-intel-mini-graphs-hidden",
-                        next ? "1" : "0",
-                      );
-                    } catch {
-                      /* ignore */
-                    }
-                  }}
-                  aria-pressed={miniGraphsHidden}
-                >
-                  {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
-                </button>
-              ) : null}
-              <div className="inline-flex items-center gap-1.5 lg:hidden">
-                <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
-                  Sorted by:
-                </span>
-                <button
-                  type="button"
-                  className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
-                  onClick={() => setSortFieldDrawerOpen(true)}
-                  aria-expanded={sortFieldDrawerOpen}
-                  aria-controls="intel-sort-drawer"
-                >
-                  {dealBoardSortLabel(sortKey)}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSort(sortKey)}
-                  className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
-                  title={
-                    sortDir === "asc"
-                      ? "Sort descending"
-                      : "Sort ascending"
-                  }
-                  aria-label={
-                    sortDir === "asc"
-                      ? "Flip sort to descending"
-                      : "Flip sort to ascending"
-                  }
-                >
-                  {sortDir === "asc" ? "↑" : "↓"}
-                </button>
-              </div>
-              <ListingShareButton
-                href={intelligenceShareHref}
-                title="Share this Intelligence search"
-                className="!h-6 !w-6 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
-              />
-            </div>
+
+            {/* Compact Live (no sync timestamp): one row — Live + links left, share right. */}
+            {liveStatusCompact ? (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="flex items-center gap-2 font-mono text-xs leading-none">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
+                      />
+                      <span className="text-slate">{liveStatusLabel}</span>
+                    </div>
+                    {liveSnapshots.length > 0 ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
+                        onClick={() => {
+                          setVintageStatsOpen(false);
+                          setTownStatsOpen(true);
+                        }}
+                        aria-expanded={townStatsOpen}
+                        aria-controls="intel-town-stats-drawer"
+                      >
+                        <svg
+                          viewBox="0 0 12 12"
+                          className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                          fill="currentColor"
+                          aria-hidden
+                        >
+                          <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                        </svg>
+                        <span className="underline underline-offset-2 decoration-navy/35">
+                          Town stats
+                        </span>
+                      </button>
+                    ) : null}
+                    {showVintageStats ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
+                        onClick={() => {
+                          setTownStatsOpen(false);
+                          setVintageStatsOpen(true);
+                        }}
+                        aria-expanded={vintageStatsOpen}
+                        aria-controls="intel-vintage-stats-drawer"
+                      >
+                        <svg
+                          viewBox="0 0 12 12"
+                          className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                          fill="currentColor"
+                          aria-hidden
+                        >
+                          <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                        </svg>
+                        <span className="underline underline-offset-2 decoration-navy/35">
+                          Vintages
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
+                  <ListingShareButton
+                    href={intelligenceShareHref}
+                    title="Share this Intelligence search"
+                    className="!h-6 !w-6 shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 lg:hidden">
+                  {vintageChartListingRows.length > 0 || showPriceFilter ? (
+                    <button
+                      type="button"
+                      className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
+                      onClick={() => {
+                        const next = !miniGraphsHidden;
+                        setMiniGraphsHidden(next);
+                        try {
+                          sessionStorage.setItem(
+                            "tmre-intel-mini-graphs-hidden",
+                            next ? "1" : "0",
+                          );
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      aria-pressed={miniGraphsHidden}
+                    >
+                      {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
+                    </button>
+                  ) : null}
+                  <div className="inline-flex items-center gap-1.5">
+                    <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
+                      Sorted by:
+                    </span>
+                    <button
+                      type="button"
+                      className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
+                      onClick={() => setSortFieldDrawerOpen(true)}
+                      aria-expanded={sortFieldDrawerOpen}
+                      aria-controls="intel-sort-drawer"
+                    >
+                      {dealBoardSortLabel(sortKey)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSort(sortKey)}
+                      className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
+                      title={
+                        sortDir === "asc"
+                          ? "Sort descending"
+                          : "Sort ascending"
+                      }
+                      aria-label={
+                        sortDir === "asc"
+                          ? "Flip sort to descending"
+                          : "Flip sort to ascending"
+                      }
+                    >
+                      {sortDir === "asc" ? "↑" : "↓"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
 
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
@@ -4569,16 +4692,17 @@ export default function IntelligenceClient({
                 <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
                   No results match your filters
                 </p>
-              ) : showBoardPagination ? (
+              ) : (
                 <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
-                  <span className="text-slate/55 normal-case tracking-normal">
-                    Page {boardPage} of {totalBoardPages} (
-                    {boardPageStart.toLocaleString()}–
-                    {boardPageEnd.toLocaleString()} of{" "}
-                    {filteredCount.toLocaleString()})
-                  </span>
+                  {filteredCount.toLocaleString()} of{" "}
+                  {poolCount.toLocaleString()}
+                  {sortKey === "score" ? (
+                    <span className="italic normal-case tracking-normal">
+                      , scored
+                    </span>
+                  ) : null}
                 </p>
-              ) : null
+              )
             }
             footer={
               <div className="border-t border-charcoal/[0.12] bg-cream/60 px-5 py-3 font-mono text-[10px] tracking-[0.12em] uppercase text-slate">

@@ -135,20 +135,20 @@ export function DealBoardPhotoLedLineRow({
     <div
       {...dealBoardRowAnchorProps(l.key)}
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className="scroll-mt-36 flex items-start gap-2 px-3 sm:px-4 py-2 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
+      className="scroll-mt-36 flex items-start gap-1.5 px-3 sm:px-4 py-2 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
     >
       <span
-        className="font-mono text-[10px] tabular-nums w-5 shrink-0 text-right font-semibold pt-1"
+        className="font-mono text-[10px] tabular-nums w-min shrink-0 text-right font-semibold pt-1"
         style={{ color: rankColor }}
       >
         {scoreRank + 1}
       </span>
-      <div className="flex w-12 shrink-0 flex-col items-center gap-1">
+      <div className="flex w-[72px] shrink-0 flex-col items-center gap-1">
         <DealBoardPrimaryPhoto
           listing={l}
           isLive={isLive}
-          width={48}
-          height={32}
+          width={72}
+          height={48}
           priority={photoPriority ?? scoreRank < 8}
           className="rounded-md"
           withDealBoardReturn
