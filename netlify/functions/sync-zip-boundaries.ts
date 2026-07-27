@@ -1,6 +1,8 @@
 import type { Config } from '@netlify/functions'
+import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { queueNetlifyZipBoundariesSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
+import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
 import {
   thinCronError,
   thinCronResponse,
@@ -13,8 +15,14 @@ import {
  */
 export default async function handler() {
   try {
+    await hydrateSyncMetaStore()
     if (await isScheduledSyncJobPausedFresh('zip-boundaries')) {
       return thinCronSkipped('zip-boundaries scheduled sync paused by admin')
+    }
+    if (shouldDeferScheduledJob('zip-boundaries')) {
+      return thinCronSkipped(
+        'deferred — Admin Next override is still in the future',
+      )
     }
     const queued = await queueNetlifyZipBoundariesSync()
     if (!queued.ok) {

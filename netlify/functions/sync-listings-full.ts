@@ -2,6 +2,7 @@ import type { Config } from '@netlify/functions'
 import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { queueNetlifyFullSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
+import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
 import {
   thinCronError,
   thinCronResponse,
@@ -21,6 +22,11 @@ export default async function handler() {
     await hydrateSyncMetaStore()
     if (await isScheduledSyncJobPausedFresh('full-resync')) {
       return thinCronSkipped('full-resync scheduled sync paused by admin')
+    }
+    if (shouldDeferScheduledJob('full-resync')) {
+      return thinCronSkipped(
+        'deferred — Admin Next override is still in the future',
+      )
     }
     const queued = await queueNetlifyFullSync()
     if (queued.ok) {

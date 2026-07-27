@@ -28,6 +28,7 @@ import {
   type ScheduledSyncPausedJobs,
 } from "@/lib/scheduled-sync-jobs-shared";
 import {
+  nextPracticalTakeHoldIso,
   syncNextOverrideStepMs,
   type SyncNextOverrides,
 } from "@/lib/sync-next-override-shared";
@@ -500,35 +501,35 @@ export type AdminSyncRow = {
   nextRunAt?: string | null;
 };
 
-/** Dashboard = run/status; Configure = pause + fixed schedule (frequency / start). */
+/** Dashboard = run/status; Configure = pause + next-start override. */
 export type AdminSyncTableMode = "dashboard" | "configure";
 
-/** Natural cadence for Configure — not live Next countdown. */
+/** Natural cadence labels for Configure Frequency (read-only). */
 function configureScheduleForRow(rowId: string): {
   frequency: string;
-  start: string;
+  wakeHint: string;
 } {
   switch (rowId) {
     case "full-resync":
-      return { frequency: "Weekly", start: "Mon 5:00 AM ET" };
+      return { frequency: "Weekly", wakeHint: "Cron wakes Mon ~5:00 AM ET" };
     case "incremental":
-      return { frequency: "Every 30 min", start: ":00 / :30" };
+      return { frequency: "Every 30 min", wakeHint: "Cron wakes :00 / :30" };
     case "latest-mls":
-      return { frequency: "With incremental", start: "After each pull" };
+      return { frequency: "With incremental", wakeHint: "Follows Incremental" };
     case "listing-scores":
-      return { frequency: "With full resync", start: "After step 1" };
+      return { frequency: "With full resync", wakeHint: "Follows Full resync" };
     case "stats-cache":
-      return { frequency: "With full resync", start: "After step 2" };
+      return { frequency: "With full resync", wakeHint: "Often with Incremental" };
     case "deal-of-the-day":
-      return { frequency: "With full resync", start: "After step 3" };
+      return { frequency: "With full resync", wakeHint: "Follows Full resync" };
     case "refresh-finished":
-      return { frequency: "With MLS refresh", start: "End of sync" };
+      return { frequency: "With MLS refresh", wakeHint: "End of sync" };
     case "property-addresses":
-      return { frequency: "Weekly", start: "Mon 1:00 AM ET" };
+      return { frequency: "Weekly", wakeHint: "Cron wakes Mon ~1:00 AM ET" };
     case "zip-boundaries":
-      return { frequency: "Monthly", start: "1st · 10:00 UTC" };
+      return { frequency: "Monthly", wakeHint: "Cron wakes 1st · 10:00 UTC" };
     default:
-      return { frequency: "—", start: "—" };
+      return { frequency: "—", wakeHint: "—" };
   }
 }
 
@@ -2240,13 +2241,14 @@ export default function AdminSyncTable({
           ) : (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-2xl">
-                Pause skips Sync all and cron for that job. Rows stay in Sync-all order
-                (1–5, then optional jobs). Frequency and Start show the natural schedule —
-                not live Next status.
+                Pause skips Sync all and cron for that job. Frequency is the natural
+                cadence (read-only). Use ▲/▼ on Next start to set when the job may run
+                next — one-time; clears after a successful run.
               </p>
               <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-                Cadence is set by Netlify cron / Sync-all chaining. Live run status and Next
-                countdown stay on Dashboard.
+                “Takes hold” is the next practical cron wake that can honor your Next
+                start (e.g. Incremental only at :00 / :30). Live run status stays on
+                Dashboard.
               </p>
             </>
           )}
@@ -2301,8 +2303,8 @@ export default function AdminSyncTable({
             {isConfigure ? <col /> : null}
             {isDashboard ? <col /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
-            {isConfigure ? <col className="w-[8rem]" /> : null}
-            {isConfigure ? <col className="w-[9rem]" /> : null}
+            {isConfigure ? <col className="w-[7.5rem]" /> : null}
+            {isConfigure ? <col className="w-[12rem]" /> : null}
             {isDashboard ? <col className="w-[11rem]" /> : null}
             {isDashboard ? <col className="w-[9rem]" /> : null}
           </colgroup>
@@ -2329,7 +2331,14 @@ export default function AdminSyncTable({
               {isDashboard ? <th className={TH}>Status</th> : null}
               {isConfigure ? <th className={TH}>Pages</th> : null}
               {isConfigure ? <th className={TH}>Frequency</th> : null}
-              {isConfigure ? <th className={TH}>Start</th> : null}
+              {isConfigure ? (
+                <th
+                  className={TH}
+                  title="Set the next allowed start; Takes hold = next cron wake that can run it"
+                >
+                  Next start
+                </th>
+              ) : null}
               {isDashboard ? (
                 <th className={`${TH} border-r-0 md:border-r`}>Start / End / Next</th>
               ) : null}
@@ -2618,13 +2627,99 @@ export default function AdminSyncTable({
                       <p className="font-mono text-[11px] tracking-wide text-navy leading-snug">
                         {configureSchedule.frequency}
                       </p>
+                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-charcoal/40 leading-snug">
+                        {configureSchedule.wakeHint}
+                      </p>
                     </td>
                   ) : null}
                   {isConfigure ? (
                     <td className={TD}>
-                      <p className="font-mono text-[11px] tracking-wide text-charcoal/70 leading-snug">
-                        {configureSchedule.start}
-                      </p>
+                      {(() => {
+                        const nextJobId =
+                          SCHEDULED_SYNC_JOB_BY_ROW[
+                            row.id as AdminSyncPanelRowId
+                          ];
+                        if (!nextJobId) {
+                          return (
+                            <p className="font-mono text-[11px] tracking-wide text-charcoal/45 leading-snug">
+                              {configureSchedule.wakeHint}
+                            </p>
+                          );
+                        }
+                        const hasNextOverride = Boolean(
+                          status?.nextOverrides?.[nextJobId],
+                        );
+                        const takeHoldIso = nextPracticalTakeHoldIso(
+                          nextJobId,
+                          nextRunAt,
+                          now,
+                        );
+                        const nextLabel = formatAdminNextSyncAt(nextRunAt, now);
+                        const takeHoldLabel = formatAdminNextSyncAt(
+                          takeHoldIso,
+                          now,
+                        );
+                        const nextMs = parseIsoMs(nextRunAt);
+                        const takeHoldMs = parseIsoMs(takeHoldIso);
+                        const sameSlot =
+                          nextMs != null &&
+                          takeHoldMs != null &&
+                          Math.abs(takeHoldMs - nextMs) < 60_000;
+
+                        return (
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <div className="inline-flex items-center gap-1 min-w-0">
+                              <span
+                                className={`font-mono text-[11px] tabular-nums leading-snug ${
+                                  hasNextOverride
+                                    ? "text-gold font-semibold"
+                                    : "text-navy font-semibold"
+                                }`}
+                              >
+                                {nextRunAt != null ? nextLabel : "—"}
+                              </span>
+                              <NextOverrideSpinner
+                                jobId={nextJobId}
+                                busy={nextSavingJob === nextJobId}
+                                hasOverride={hasNextOverride}
+                                onNudge={(steps) =>
+                                  void patchNextOverride(nextJobId, {
+                                    steps,
+                                    baseNextAt: nextRunAt,
+                                  })
+                                }
+                                onClear={() =>
+                                  void patchNextOverride(nextJobId, {
+                                    nextAt: null,
+                                  })
+                                }
+                              />
+                            </div>
+                            {takeHoldIso ? (
+                              <p
+                                className={`font-mono text-[9px] tracking-wide leading-snug ${
+                                  sameSlot
+                                    ? "text-charcoal/40"
+                                    : "text-gold/90"
+                                }`}
+                                title={
+                                  sameSlot
+                                    ? "Next start already lands on a cron wake"
+                                    : "Cron cannot fire between wakes — this is when it can actually run"
+                                }
+                              >
+                                Takes hold {takeHoldLabel}
+                                {!sameSlot ? " · next cron wake" : null}
+                              </p>
+                            ) : null}
+                            {hasNextOverride ? (
+                              <p className="font-mono text-[8px] tracking-wide text-gold/70 leading-snug">
+                                Override set · clears after a successful run
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </td>
                   ) : null}
                   {isDashboard ? (

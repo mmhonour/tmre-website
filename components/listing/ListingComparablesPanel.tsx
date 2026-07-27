@@ -54,7 +54,7 @@ import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
  */
 function mobileCompSubTabClass(active: boolean): string {
   const base =
-    "relative shrink-0 whitespace-nowrap px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors rounded-t-md border -mb-px";
+    "relative shrink-0 whitespace-nowrap px-3 py-1.5 font-mono text-[10px] font-bold tracking-[0.12em] uppercase transition-colors rounded-t-md border -mb-px";
   if (active) {
     // Selected: gold bg matching selected-text gold; navy label (not gold-on-gold).
     return `${base} z-[1] border-gold border-b-transparent bg-gold text-navy`;
@@ -300,19 +300,21 @@ function CompSortLinks<T extends string>({
   onSort,
   theme,
   ariaLabel,
+  className,
 }: {
-  options: { key: T; label: string }[];
+  options: { key: T; label: string; title?: string }[];
   activeKey: T;
   activeDir: SortDir;
   onSort: (key: T) => void;
   theme: CompSortTheme;
   ariaLabel: string;
+  className?: string;
 }) {
   const isLight = theme === "light";
 
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0"
+      className={`flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0 ${className ?? ""}`}
       role="group"
       aria-label={ariaLabel}
     >
@@ -331,6 +333,7 @@ function CompSortLinks<T extends string>({
             key={option.key}
             type="button"
             onClick={() => onSort(option.key)}
+            title={option.title}
             className={`inline-flex items-center gap-0.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors underline underline-offset-2 ${stateClass}`}
             aria-sort={
               active
@@ -1539,7 +1542,7 @@ export default function ListingComparablesPanel({
           <div
             role="tablist"
             aria-label={isRental ? "Rented comps" : "Sold comps"}
-            className="flex min-w-0 flex-1 items-end gap-0.5 border-b border-white/10"
+            className="flex shrink-0 items-end gap-0.5"
           >
             <button
               type="button"
@@ -1563,7 +1566,7 @@ export default function ListingComparablesPanel({
           {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
             <div
               id={criteriaLinkSlotId}
-              className="flex shrink-0 items-end justify-end self-end pb-0.5"
+              className="flex shrink-0 items-end justify-end self-end"
             />
           ) : null}
         </div>
@@ -1593,7 +1596,7 @@ export default function ListingComparablesPanel({
             isPage
               ? `scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pb-3 ${
                   useMobileCompSubTabs
-                    ? "max-lg:border-t-0 max-lg:pt-1.5"
+                    ? "max-lg:border-t-0 max-lg:pt-0"
                     : mobileSoldChrome
                       ? "max-lg:pt-2"
                       : "max-lg:pt-1"
@@ -1606,8 +1609,8 @@ export default function ListingComparablesPanel({
           {mobileSoldChrome ? (
             <>
               {useMobileCompSubTabs ? (
-                <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="mb-1 flex flex-col gap-y-0.5">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                     <LookbackSpinner
                       months={lookbackMonths}
                       onChange={setLookbackMonths}
@@ -1615,8 +1618,14 @@ export default function ListingComparablesPanel({
                     />
                     {sortedSold.length > 0 ? (
                       <CompSortLinks
+                        className="ml-auto justify-end"
                         options={[
-                          { key: "score", label: "Edge" },
+                          {
+                            key: "score",
+                            label: "Edge",
+                            title:
+                              "Edge score — how strong the deal looks vs similar listings (deal model)",
+                          },
                           { key: "closeDate", label: "CLOSED" },
                           { key: "price", label: "Price" },
                         ]}
@@ -1630,7 +1639,7 @@ export default function ListingComparablesPanel({
                   </div>
                   <CompExactMatchLegend
                     theme={isModal ? "light" : "dark"}
-                    className="shrink-0 text-right ml-auto"
+                    className="shrink-0 self-end text-right"
                   />
                 </div>
               ) : (
@@ -1817,7 +1826,7 @@ export default function ListingComparablesPanel({
             isPage
               ? `scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pb-3 ${
                   useMobileCompSubTabs
-                    ? "max-lg:border-t-0 max-lg:pt-1.5"
+                    ? "max-lg:border-t-0 max-lg:pt-0"
                     : "max-lg:pt-1"
                 }`
               : isModal
@@ -1827,26 +1836,32 @@ export default function ListingComparablesPanel({
         >
           <div className={isMobilePage ? (useMobileCompSubTabs ? "mb-1" : "mb-2") : "mb-3"}>
             {useMobileCompSubTabs ? (
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                {sortedActive.length > 0 ? (
-                  <CompSortLinks
-                    options={[
-                      { key: "default", label: "Match" },
-                      { key: "score", label: "Edge" },
-                      { key: "price", label: "Price" },
-                    ]}
-                    activeKey={activeSort.key}
-                    activeDir={activeSort.dir}
-                    onSort={handleActiveSort}
-                    theme={sortTheme}
-                    ariaLabel="On market sort"
-                  />
-                ) : (
-                  <span />
-                )}
+              <div className="flex flex-col gap-y-0.5">
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                  {sortedActive.length > 0 ? (
+                    <CompSortLinks
+                      className="justify-end"
+                      options={[
+                        { key: "default", label: "Match" },
+                        {
+                          key: "score",
+                          label: "Edge",
+                          title:
+                            "Edge score — how strong the deal looks vs similar listings (deal model)",
+                        },
+                        { key: "price", label: "Price" },
+                      ]}
+                      activeKey={activeSort.key}
+                      activeDir={activeSort.dir}
+                      onSort={handleActiveSort}
+                      theme={sortTheme}
+                      ariaLabel="On market sort"
+                    />
+                  ) : null}
+                </div>
                 <CompExactMatchLegend
                   theme={isModal ? "light" : "dark"}
-                  className="shrink-0 text-right ml-auto"
+                  className="shrink-0 self-end text-right"
                 />
               </div>
             ) : (
