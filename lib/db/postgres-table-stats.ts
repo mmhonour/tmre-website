@@ -1,21 +1,8 @@
 import 'server-only'
 
 import { query } from '@/lib/db/postgres'
+import { POSTGRES_PRIORITY_TABLES } from '@/lib/postgres-known-tables'
 import type { TableWriteStats } from '@/lib/sqlite-sync-stats'
-
-const PRIORITY_TABLES = [
-  'listings',
-  'stats_cache',
-  'sync_meta',
-  'listing_edge_scores',
-  'listing_superlatives',
-  'listing_relations',
-  'listing_if_estimates',
-  'listing_tax_history',
-  'town_property_addresses',
-  'zip_boundaries',
-  'sync_runs',
-]
 
 /** Row counts per Postgres table — admin sync inventory + table stats reports. */
 export async function collectPostgresTableStats(): Promise<TableWriteStats[]> {
@@ -39,15 +26,15 @@ export async function collectPostgresTableStats(): Promise<TableWriteStats[]> {
       })
     }
 
-    for (const name of PRIORITY_TABLES) {
+    for (const name of POSTGRES_PRIORITY_TABLES) {
       if (!byName.has(name)) {
         byName.set(name, { table: name, queried: 0, inserted: 0, updated: 0 })
       }
     }
 
     return [...byName.values()].sort((a, b) => {
-      const aPriority = PRIORITY_TABLES.indexOf(a.table)
-      const bPriority = PRIORITY_TABLES.indexOf(b.table)
+      const aPriority = POSTGRES_PRIORITY_TABLES.indexOf(a.table)
+      const bPriority = POSTGRES_PRIORITY_TABLES.indexOf(b.table)
       if (aPriority >= 0 || bPriority >= 0) {
         if (aPriority < 0) return 1
         if (bPriority < 0) return -1

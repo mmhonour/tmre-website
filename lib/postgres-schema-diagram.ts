@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { query } from '@/lib/db/postgres'
+import { POSTGRES_PRIORITY_TABLES } from '@/lib/postgres-known-tables'
 import type {
   SqliteColumnInfo,
   SqliteDatabaseDiagram,
@@ -44,25 +45,6 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
     to: { table: 'listing_price_history', column: 'listing_id' },
     source: 'documented',
   },
-]
-
-const PRIORITY_TABLES = [
-  'listings',
-  'sync_meta',
-  'stats_cache',
-  'listing_tax_history',
-  'listing_if_estimates',
-  'listing_relations',
-  'listing_edge_scores',
-  'listing_superlatives',
-  'listing_price_history',
-  'town_property_addresses',
-  'zip_boundaries',
-  'visitors',
-  'saved_search_alerts',
-  'saved_search_alert_deliveries',
-  'sync_runs',
-  'schema_migrations',
 ]
 
 /** Live Neon Postgres schema for Admin diagrams. */
@@ -117,8 +99,8 @@ export async function describePostgresDatabase(): Promise<SqliteDatabaseDiagram>
     }
 
     const tableNames = [...new Set(columns.map((row) => row.table_name))].sort((a, b) => {
-      const aPriority = PRIORITY_TABLES.indexOf(a)
-      const bPriority = PRIORITY_TABLES.indexOf(b)
+      const aPriority = POSTGRES_PRIORITY_TABLES.indexOf(a)
+      const bPriority = POSTGRES_PRIORITY_TABLES.indexOf(b)
       if (aPriority >= 0 || bPriority >= 0) {
         if (aPriority < 0) return 1
         if (bPriority < 0) return -1

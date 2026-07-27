@@ -66,6 +66,12 @@ export type IncrementalSyncWorkOptions = {
    * Worker only does spotlight, saved-search alerts, and board/stats warm.
    */
   sideWorkOnly?: boolean
+  /**
+   * Admin Syncs "Incremental" / manual queue — full RETS + digests in the
+   * background worker. Does not stamp the 30-minute cron heartbeat, and ignores
+   * schedule pause / Next-override defer (explicit admin intent).
+   */
+  source?: 'admin' | 'cron' | 'netlify-sync-trigger'
 }
 
 async function runSpotlightAndAlerts(): Promise<{
@@ -126,6 +132,7 @@ export async function runIncrementalSyncListingsWork(
 }> {
   process.env.NETLIFY_SYNC_HANDLER = '1'
   const sideWorkOnly = options.sideWorkOnly === true
+  const fromAdmin = options.source === 'admin'
 
   try {
     await hydrateSyncMetaStore()
@@ -135,19 +142,25 @@ export async function runIncrementalSyncListingsWork(
     if (healStaleOverdueCatchupLock()) {
       console.info('[sync-listings-work] cleared stale overdue catch-up lock')
     }
-    await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
+    // Cron heartbeat is for the */30 schedule only — Admin Sync must not stamp it.
+    if (!fromAdmin) {
+      await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
+    }
 
     // Only light catch-up here — never chain a weekly full-resync on the 30m path.
     // Full reload stays on sync-listings-full. When thin cron already pulled RETS,
-    // skip 'incremental' so we don't double-hit MLS.
-    const catchup = await runOverdueSyncCatchup({
-      reason: 'netlify/sync-listings-worker',
-      onlyJobs: sideWorkOnly
-        ? ['stats-cache', 'publish-snapshot']
-        : ['incremental', 'stats-cache', 'publish-snapshot'],
-    })
+    // skip 'incremental' so we don't double-hit MLS. Admin runs skip catch-up —
+    // the explicit job below is the whole point of the click.
+    const catchup = fromAdmin
+      ? { skipped: true as const, reason: 'admin-manual', plan: [] as const, steps: [] as const }
+      : await runOverdueSyncCatchup({
+          reason: 'netlify/sync-listings-worker',
+          onlyJobs: sideWorkOnly
+            ? ['stats-cache', 'publish-snapshot']
+            : ['incremental', 'stats-cache', 'publish-snapshot'],
+        })
 
-    if (await isScheduledSyncJobPausedFresh('incremental')) {
+    if (!fromAdmin && (await isScheduledSyncJobPausedFresh('incremental'))) {
       await recordIncrementalCronTick({
         startedAt,
         ok: true,
@@ -168,7 +181,7 @@ export async function runIncrementalSyncListingsWork(
       }
     }
 
-    if (shouldDeferScheduledJob('incremental')) {
+    if (!fromAdmin && shouldDeferScheduledJob('incremental')) {
       await recordIncrementalCronTick({
         startedAt,
         ok: true,
@@ -215,18 +228,20 @@ export async function runIncrementalSyncListingsWork(
     const result = await syncIncrementalListings()
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
     const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
-    await recordIncrementalCronTick({
-      startedAt: result.startedAt || startedAt,
-      ok: okTowns,
-      listingsCount: result.totalUpserted,
-      skipped: skippedEmpty,
-      error: skippedEmpty
-        ? 'no town work (RETS missing, refresh lock, or empty tick)'
-        : result.towns
-            .filter((row) => !row.ok)
-            .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
-            .join('; ') || null,
-    })
+    if (!fromAdmin) {
+      await recordIncrementalCronTick({
+        startedAt: result.startedAt || startedAt,
+        ok: okTowns,
+        listingsCount: result.totalUpserted,
+        skipped: skippedEmpty,
+        error: skippedEmpty
+          ? 'no town work (RETS missing, refresh lock, or empty tick)'
+          : result.towns
+              .filter((row) => !row.ok)
+              .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
+              .join('; ') || null,
+      })
+    }
 
     // RETS path already ran postHooks (board/stats); only digests remain.
     const { savedSearchAlerts } = await runSpotlightAndAlerts()
@@ -241,6 +256,7 @@ export async function runIncrementalSyncListingsWork(
         ok,
         ...result,
         sideWorkOnly: false,
+        source: fromAdmin ? 'admin' : options.source ?? 'cron',
         savedSearchAlerts,
         stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped
@@ -250,11 +266,13 @@ export async function runIncrementalSyncListingsWork(
     }
   } catch (err) {
     console.error('[sync-listings-work]', err)
-    await recordIncrementalCronTick({
-      startedAt,
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    })
+    if (!fromAdmin) {
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
     return {
       status: 500,
       body: { error: err instanceof Error ? err.message : String(err) },

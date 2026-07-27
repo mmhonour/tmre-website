@@ -17,7 +17,6 @@ import {
   LEGACY_ADMIN_PANEL_TO_SYNCS,
   LEGACY_ADMIN_TAB_TO_ARCHITECTURE,
   LEGACY_ADMIN_TAB_TO_DATA_CONTROLS,
-  LEGACY_ADMIN_TAB_TO_DATABASE,
   type AdminTabId,
 } from "@/lib/admin-nav";
 const VALID_TABS = new Set<string>(ADMIN_TABS.map((t) => t.id));
@@ -30,8 +29,9 @@ function tabFromLocation(): AdminTabId {
     return "data-controls";
   }
   if (queryTab === "sync-log") return "syncs";
-  if (queryTab && LEGACY_ADMIN_TAB_TO_DATABASE[queryTab]) {
-    return "db";
+  // Old Database → Postgres nested panel → top-level NEON Postgres.
+  if (queryTab === "db" && params.get("panel") === "postgres") {
+    return "postgres";
   }
   // Old Database → Sync status / Sync history deep-links.
   if (
@@ -47,9 +47,9 @@ function tabFromLocation(): AdminTabId {
   if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
   if (VALID_TABS.has(hash)) return hash as AdminTabId;
-  // Deep-links into Postgres schema table cards → Database → Postgres
+  // Deep-links into Postgres schema table cards → NEON Postgres
   if (isAdminPostgresSchemaHash(hash)) {
-    return "db";
+    return "postgres";
   }
   const sectionTab = adminTabForSection(hash);
   if (sectionTab) return sectionTab;
@@ -79,18 +79,18 @@ function normalizeLegacyNestedTabUrls() {
     return;
   }
 
-  // Former Database sync sub-panels → Syncs.
-  if (queryTab === "db" && panel && LEGACY_ADMIN_PANEL_TO_SYNCS[panel]) {
-    url.searchParams.set("tab", "syncs");
-    url.searchParams.set("panel", LEGACY_ADMIN_PANEL_TO_SYNCS[panel]!);
+  // Former Database → Postgres nested panel → top-level tab.
+  if (queryTab === "db" && panel === "postgres") {
+    url.searchParams.set("tab", "postgres");
+    url.searchParams.delete("panel");
     window.history.replaceState(null, "", url);
     return;
   }
 
-  const dbPanel = LEGACY_ADMIN_TAB_TO_DATABASE[queryTab];
-  if (dbPanel) {
-    url.searchParams.set("tab", "db");
-    url.searchParams.set("panel", dbPanel);
+  // Former Database sync sub-panels → Syncs.
+  if (queryTab === "db" && panel && LEGACY_ADMIN_PANEL_TO_SYNCS[panel]) {
+    url.searchParams.set("tab", "syncs");
+    url.searchParams.set("panel", LEGACY_ADMIN_PANEL_TO_SYNCS[panel]!);
     window.history.replaceState(null, "", url);
     return;
   }
@@ -135,11 +135,7 @@ function ensureNestedPanelParam() {
   }
   if (tab === "db") {
     if (isAdminDatabasePanelId(url.searchParams.get("panel"))) return;
-    const fromSection = hash
-      ? isAdminPostgresSchemaHash(hash)
-        ? "postgres"
-        : adminDatabasePanelForSection(hash)
-      : null;
+    const fromSection = hash ? adminDatabasePanelForSection(hash) : null;
     url.searchParams.set("panel", fromSection ?? "rets-connection");
     window.history.replaceState(null, "", url);
     return;
@@ -160,6 +156,7 @@ function scrollToSection(sectionId: string) {
 
 export default function AdminTabbedLayout({
   db,
+  postgres,
   stats,
   dataControls,
   cookies,
@@ -170,6 +167,7 @@ export default function AdminTabbedLayout({
   statusBar = null,
 }: {
   db: ReactNode;
+  postgres: ReactNode;
   stats: ReactNode;
   dataControls: ReactNode;
   cookies: ReactNode;
@@ -239,6 +237,7 @@ export default function AdminTabbedLayout({
   const panels: Record<AdminTabId, ReactNode> = {
     syncs,
     db,
+    postgres,
     stats,
     "data-controls": dataControls,
     cookies,

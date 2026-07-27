@@ -191,7 +191,7 @@ export default function AdminStatsInventoryPanel() {
                 <span className="font-medium text-navy">Table</span> — the
                 Postgres table that holds the state (click through to the{" "}
                 <Link
-                  href="/admin?tab=db&panel=postgres"
+                  href="/admin?tab=postgres"
                   className="text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
                 >
                   Postgres

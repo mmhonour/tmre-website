@@ -76,7 +76,7 @@ export type AdminSyncActionResult = {
   recordsFetched?: number
   /** Per-town RETS → SQLite results when applicable. */
   townResults?: TownSyncResult[]
-  /** True when full resync was handed off to a Netlify background function. */
+  /** True when work was handed off to a Netlify background function. */
   backgroundQueued?: boolean
   /** Human label when this step is not a primary panel action (sync-all extras). */
   stepLabel?: string
@@ -378,6 +378,43 @@ async function runAdminSyncActionImpl(
           message: 'Incremental blocked — another refresh is in progress',
           detail:
             'Clear the refresh lock on admin (Refresh lock panel) or wait ~8 minutes for auto-heal on serverless.',
+        }
+      }
+      // Production: never await 7-town RETS in the Next.js request — Netlify
+      // gateway returns HTML 504 before maxDuration. Same handoff as scheduled cron.
+      if (isServerlessRuntime()) {
+        const { queueNetlifyIncrementalSync } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const queued = await queueNetlifyIncrementalSync(startedAt, {
+          source: 'admin',
+        })
+        const finishedAt = new Date().toISOString()
+        if (queued.ok) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              'Incremental sync queued — running on Netlify background worker (up to ~15 min)',
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Watch Last / sync meta for completion; this page does not wait for RETS.`
+              : 'Queued on background worker. Watch Last / sync meta for completion.',
+          }
+        }
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: 'Could not queue background incremental sync',
+          detail:
+            queued.error ??
+            'No site URL or worker rejected the queue. Check SYNC_CRON_SECRET / URL env and Netlify function logs.',
         }
       }
       const result = await syncIncrementalListings()

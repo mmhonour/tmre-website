@@ -1,5 +1,6 @@
 export type AdminTabId =
   | "db"
+  | "postgres"
   | "stats"
   | "data-controls"
   | "cookies"
@@ -26,8 +27,7 @@ export type AdminDatabasePanelId =
   | "rets-connection"
   | "inventory"
   | "town-counts"
-  | "db-tuning"
-  | "postgres";
+  | "db-tuning";
 
 /** Sub-panels under Admin → Architecture. */
 export type AdminArchitecturePanelId = "map" | "docs";
@@ -55,12 +55,6 @@ export const LEGACY_ADMIN_TAB_TO_DATA_CONTROLS: Record<
   pricing: "pricing",
   rets: "rets",
 };
-
-/** Former top-level Postgres tab → Database sub-panel. */
-export const LEGACY_ADMIN_TAB_TO_DATABASE: Record<string, AdminDatabasePanelId> =
-  {
-    postgres: "postgres",
-  };
 
 /**
  * Former Database sync panels (and sync-log top-level) → Syncs sub-panel.
@@ -172,11 +166,6 @@ export const ADMIN_DATABASE_PANELS: {
     label: "DB write tuning",
     subtitle: "Upsert chunk size for listings sync writes",
   },
-  {
-    id: "postgres",
-    label: "Postgres",
-    subtitle: "Live Postgres schema and inventory comparison",
-  },
 ];
 
 export const ADMIN_ARCHITECTURE_PANELS: {
@@ -221,8 +210,13 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "db",
     label: "Database",
+    subtitle: "RETS connection, inventory, town counts, and write tuning",
+  },
+  {
+    id: "postgres",
+    label: "NEON Postgres",
     subtitle:
-      "RETS connection, inventory, town counts, write tuning, and Postgres schema",
+      "Live Neon schema diagram and listings inventory — all public tables since last migration",
   },
   {
     id: "stats",
@@ -416,9 +410,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   {
     id: "admin-sqlite-schemas",
-    label: "Postgres schema",
-    tab: "db",
-    panel: "postgres",
+    label: "NEON Postgres schema",
+    tab: "postgres",
   },
   {
     id: "admin-startup",
@@ -724,12 +717,11 @@ export function isAdminDatabasePanelId(
     value === "rets-connection" ||
     value === "inventory" ||
     value === "town-counts" ||
-    value === "db-tuning" ||
-    value === "postgres"
+    value === "db-tuning"
   );
 }
 
-/** Schema diagram deep-links under Database → Postgres. */
+/** Schema diagram deep-links under Admin → NEON Postgres. */
 export function isAdminPostgresSchemaHash(hash: string): boolean {
   return (
     hash.startsWith("schema-table-") ||
@@ -780,7 +772,7 @@ export function adminPostgresSchemaTableAnchor(table: string): string {
   return `schema-table-${table}`;
 }
 
-/** Deep-link to a table on Admin → Database → Postgres. */
+/** Deep-link to a table on Admin → NEON Postgres. */
 export function adminPostgresTableHref(table: string): string {
-  return `/admin?tab=db&panel=postgres#${adminPostgresSchemaTableAnchor(table)}`;
+  return `/admin?tab=postgres#${adminPostgresSchemaTableAnchor(table)}`;
 }

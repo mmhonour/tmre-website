@@ -166,10 +166,14 @@ export async function queueNetlifyFunction(
 
 export function queueNetlifyIncrementalSync(
   startedAt?: string,
-  options?: { sideWorkOnly?: boolean },
+  options?: {
+    sideWorkOnly?: boolean
+    /** Passed through to the worker (admin skips cron heartbeat / pause / defer). */
+    source?: 'admin' | 'cron' | 'netlify-sync-trigger'
+  },
 ): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/sync-listings-worker', {
-    source: 'netlify-sync-trigger',
+    source: options?.source ?? 'netlify-sync-trigger',
     startedAt: startedAt ?? new Date().toISOString(),
     ...(options?.sideWorkOnly ? { sideWorkOnly: true } : {}),
   })
