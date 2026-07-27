@@ -2,51 +2,46 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ADMIN_DATABASE_PANELS,
-  adminDatabasePanelForSection,
-  isAdminDatabasePanelId,
-  isAdminPostgresSchemaHash,
-  LEGACY_ADMIN_TAB_TO_DATABASE,
-  type AdminDatabasePanelId,
+  ADMIN_SYNCS_PANELS,
+  adminSyncsPanelForSection,
+  isAdminSyncsPanelId,
+  LEGACY_ADMIN_PANEL_TO_SYNCS,
+  type AdminSyncsPanelId,
 } from "@/lib/admin-nav";
 
-const VALID_PANELS = new Set<string>(ADMIN_DATABASE_PANELS.map((p) => p.id));
+const VALID_PANELS = new Set<string>(ADMIN_SYNCS_PANELS.map((p) => p.id));
 
-function panelFromLocation(): AdminDatabasePanelId {
-  if (typeof window === "undefined") return "rets-connection";
+function panelFromLocation(): AdminSyncsPanelId {
+  if (typeof window === "undefined") return "configure";
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab && LEGACY_ADMIN_TAB_TO_DATABASE[tab]) {
-    return LEGACY_ADMIN_TAB_TO_DATABASE[tab]!;
-  }
-  if (tab && tab !== "db") {
-    return "rets-connection";
-  }
   const panel = params.get("panel");
-  if (panel && VALID_PANELS.has(panel) && isAdminDatabasePanelId(panel)) {
+
+  // Legacy top-level sync-log, or old Database sync panels.
+  if (tab === "sync-log") return "history";
+  if (panel && LEGACY_ADMIN_PANEL_TO_SYNCS[panel]) {
+    return LEGACY_ADMIN_PANEL_TO_SYNCS[panel]!;
+  }
+  if (tab && tab !== "syncs") return "configure";
+  if (panel && VALID_PANELS.has(panel) && isAdminSyncsPanelId(panel)) {
     return panel;
   }
   const hash = window.location.hash.replace(/^#/, "");
-  if (isAdminPostgresSchemaHash(hash)) return "postgres";
-  const fromSection = adminDatabasePanelForSection(hash);
+  const fromSection = adminSyncsPanelForSection(hash);
   if (fromSection) return fromSection;
-  return "rets-connection";
+  return "configure";
 }
 
-export default function AdminDatabasePanel({
-  retsConnection,
-  inventory,
-  townCounts,
-  dbTuning,
-  postgres,
+export default function AdminSyncsPanel({
+  configure,
+  history,
+  overview,
 }: {
-  retsConnection: ReactNode;
-  inventory: ReactNode;
-  townCounts: ReactNode;
-  dbTuning: ReactNode;
-  postgres: ReactNode;
+  configure: ReactNode;
+  history: ReactNode;
+  overview: ReactNode;
 }) {
-  const [panel, setPanel] = useState<AdminDatabasePanelId>("rets-connection");
+  const [panel, setPanel] = useState<AdminSyncsPanelId>("configure");
 
   useEffect(() => {
     const syncFromLocation = () => setPanel(panelFromLocation());
@@ -59,32 +54,30 @@ export default function AdminDatabasePanel({
     };
   }, []);
 
-  function selectPanel(next: AdminDatabasePanelId) {
+  function selectPanel(next: AdminSyncsPanelId) {
     setPanel(next);
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", "db");
+    url.searchParams.set("tab", "syncs");
     url.searchParams.set("panel", next);
     url.hash = "";
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminDatabasePanelId, ReactNode> = {
-    "rets-connection": retsConnection,
-    inventory,
-    "town-counts": townCounts,
-    "db-tuning": dbTuning,
-    postgres,
+  const panels: Record<AdminSyncsPanelId, ReactNode> = {
+    configure,
+    history,
+    overview,
   };
-  const active = ADMIN_DATABASE_PANELS.find((item) => item.id === panel);
+  const active = ADMIN_SYNCS_PANELS.find((item) => item.id === panel);
 
   return (
     <div className="space-y-6">
       <div
         role="tablist"
-        aria-label="Database"
+        aria-label="Syncs"
         className="flex flex-row flex-wrap items-stretch gap-1 border-b border-charcoal/[0.1]"
       >
-        {ADMIN_DATABASE_PANELS.map((item) => {
+        {ADMIN_SYNCS_PANELS.map((item) => {
           const isActive = panel === item.id;
           return (
             <button
@@ -110,7 +103,7 @@ export default function AdminDatabasePanel({
         </p>
       ) : null}
 
-      {ADMIN_DATABASE_PANELS.map((item) => (
+      {ADMIN_SYNCS_PANELS.map((item) => (
         <div
           key={item.id}
           role="tabpanel"

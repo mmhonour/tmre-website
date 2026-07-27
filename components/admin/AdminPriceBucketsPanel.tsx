@@ -234,7 +234,7 @@ export default function AdminPriceBucketsPanel() {
             <span className="font-mono text-[11px]">lib/rent-buckets.ts</span>.
             After saving, run{" "}
             <span className="font-mono text-[11px]">stats cache</span> rebuild
-            on Database → Sync.
+            on Syncs → Sync configure.
           </p>
           <div className="mt-2">
             <button

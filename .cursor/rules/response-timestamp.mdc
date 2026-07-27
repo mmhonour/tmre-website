@@ -1,19 +1,26 @@
 ---
-description: End every finished reply with a short local date/time stamp
+description: Stamp local start time before work and end time when the reply finishes
 alwaysApply: true
 ---
 
-# Response timestamp
+# Response timestamps (start + end)
 
-When you finish a user request (final reply for that turn), end with a short timestamp on its own last line:
+Use the same short stamp format for both:
 
 `ddmmm hh:nn`
 
 Examples: `20Jul 15:54`, `03Jan 09:05`
 
-Rules:
+Rules for the stamp itself:
 - Use the current local time from the latest user/system timestamp when available; otherwise the best known clock for the session.
 - Month is a 3-letter English abbreviation with no period (Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec).
 - Day is zero-padded to 2 digits; hour and minute are 24-hour `hh:nn`, zero-padded.
 - No seconds, no timezone suffix, no extra label (just the stamp).
-- Do this on every completed reply going forward, including short answers.
+
+## Start (before work)
+
+When you begin handling a user request — before tool calls or substantive work — put the start stamp on its own first line of the reply (or as the first line of the first message in that turn). Do this on every new user request going forward, including short answers.
+
+## End (when finished)
+
+When you finish a user request (final reply for that turn), end with the end stamp on its own last line. Do this on every completed reply going forward, including short answers.

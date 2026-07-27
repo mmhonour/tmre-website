@@ -125,7 +125,7 @@ export default function AdminCronHealthPanel({
             </span>
           </p>
           <p className="text-xs text-charcoal/60 leading-relaxed max-w-xl">
-            Database → Incremental Next is only clock-slot math when overdue — not proof
+            Syncs → Incremental Next is only clock-slot math when overdue — not proof
             cron ran. <span className="font-mono text-[10px]">sync-listings</span> always
             runs a lean RETS pull (Active/CS/UC + recent Closed) in-process every 30m and stamps this heartbeat; the
             worker hop is optional side work only. Weekly/monthly jobs use the same pattern:

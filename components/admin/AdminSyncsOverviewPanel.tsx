@@ -64,10 +64,10 @@ export default function AdminSyncsOverviewPanel({
       <p className="text-sm text-charcoal/65 max-w-3xl leading-relaxed">
         Schedules, Netlify cron workers, and non-MLS data syncs. Pause toggles live on{" "}
         <a
-          href={adminSectionHref("admin-sync", "db")}
+          href={adminSectionHref("admin-sync", "syncs")}
           className="text-navy underline-offset-2 hover:underline"
         >
-          Database → Sync status
+          Syncs → Sync configure
         </a>
         ; paused jobs show a badge here.
       </p>
@@ -87,9 +87,9 @@ export default function AdminSyncsOverviewPanel({
         number={2}
         id="admin-netlify"
         title="Netlify scheduled functions"
-        subtitle="Thin scheduled triggers queue background workers — pause flags come from the Database tab"
+        subtitle="Thin scheduled triggers queue background workers — pause flags come from Sync configure"
         paused={anyNetlifyPaused}
-        pauseLabel="One or more crons paused on Database tab"
+        pauseLabel="One or more crons paused on Sync configure"
       >
         <div className="px-5 sm:px-6 pb-4">
           <AdminCronHealthPanel initialTick={lastIncrementalCronTick ?? null} />
@@ -107,7 +107,7 @@ export default function AdminSyncsOverviewPanel({
                     </p>
                     {paused ? (
                       <span className="inline-flex items-center rounded-full border border-coral/30 bg-coral/10 px-2 py-0.5 font-mono text-[9px] tracking-[0.14em] uppercase text-coral">
-                        Paused on Database tab
+                        Paused on Sync configure
                       </span>
                     ) : null}
                   </div>

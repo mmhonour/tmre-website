@@ -18,11 +18,12 @@ export type AdminDataControlsPanelId =
   | "rets"
   | "intel-inventory";
 
+/** Sub-panels under Admin → Syncs. */
+export type AdminSyncsPanelId = "configure" | "history" | "overview";
+
 /** Sub-panels under Admin → Database. */
 export type AdminDatabasePanelId =
   | "rets-connection"
-  | "sync"
-  | "sync-history"
   | "inventory"
   | "town-counts"
   | "db-tuning"
@@ -35,8 +36,9 @@ export type AdminSectionLink = {
   id: string;
   label: string;
   tab: AdminTabId;
-  /** Sub-panel when the tab has nested panels (Database / Data controls / Architecture). */
+  /** Sub-panel when the tab has nested panels (Syncs / Database / Data controls / Architecture). */
   panel?:
+    | AdminSyncsPanelId
     | AdminDataControlsPanelId
     | AdminDatabasePanelId
     | AdminArchitecturePanelId;
@@ -54,12 +56,21 @@ export const LEGACY_ADMIN_TAB_TO_DATA_CONTROLS: Record<
   rets: "rets",
 };
 
-/** Former top-level Sync history / Postgres tabs → Database sub-panel. */
+/** Former top-level Postgres tab → Database sub-panel. */
 export const LEGACY_ADMIN_TAB_TO_DATABASE: Record<string, AdminDatabasePanelId> =
   {
-    "sync-log": "sync-history",
     postgres: "postgres",
   };
+
+/**
+ * Former Database sync panels (and sync-log top-level) → Syncs sub-panel.
+ * Also maps old `?tab=db&panel=sync|sync-history` via normalize in the layout.
+ */
+export const LEGACY_ADMIN_PANEL_TO_SYNCS: Record<string, AdminSyncsPanelId> = {
+  sync: "configure",
+  "sync-history": "history",
+  "sync-log": "history",
+};
 
 /** Former top-level Product docs tab → Architecture sub-panel. */
 export const LEGACY_ADMIN_TAB_TO_ARCHITECTURE: Record<
@@ -113,6 +124,29 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   },
 ];
 
+export const ADMIN_SYNCS_PANELS: {
+  id: AdminSyncsPanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "configure",
+    label: "Sync configure",
+    subtitle:
+      "Enable/disable scheduled syncs, set Next overrides, and Run now",
+  },
+  {
+    id: "history",
+    label: "Sync history",
+    subtitle: "Durable database sync history and latest in-browser sync steps",
+  },
+  {
+    id: "overview",
+    label: "Schedules overview",
+    subtitle: "Startup schedule, Netlify crons, and Census zip-boundary sync",
+  },
+];
+
 export const ADMIN_DATABASE_PANELS: {
   id: AdminDatabasePanelId;
   label: string;
@@ -122,16 +156,6 @@ export const ADMIN_DATABASE_PANELS: {
     id: "rets-connection",
     label: "RETS connection",
     subtitle: "Live SmartMLS probe and stored connection health",
-  },
-  {
-    id: "sync",
-    label: "Sync status",
-    subtitle: "Sync table, pause toggles, Next overrides, and Run now",
-  },
-  {
-    id: "sync-history",
-    label: "Sync history",
-    subtitle: "Durable database sync history and latest in-browser sync steps",
   },
   {
     id: "inventory",
@@ -189,10 +213,16 @@ export type AdminServerEntry = {
 
 export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] = [
   {
+    id: "syncs",
+    label: "Syncs",
+    subtitle:
+      "Configure enablement and schedules, sync history, and startup/cron overview",
+  },
+  {
     id: "db",
     label: "Database",
     subtitle:
-      "RETS connection, sync, sync history, inventory, town counts, write tuning, and Postgres schema",
+      "RETS connection, inventory, town counts, write tuning, and Postgres schema",
   },
   {
     id: "stats",
@@ -218,11 +248,6 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "Site architecture map and product docs",
   },
   {
-    id: "syncs",
-    label: "Syncs overview",
-    subtitle: "Startup schedule, Netlify crons, and Census zip-boundary sync",
-  },
-  {
     id: "server",
     label: "Web server",
     subtitle: "API routes and request handlers",
@@ -243,9 +268,9 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   {
     id: "admin-sync",
-    label: "Sync status / Pause",
-    tab: "db",
-    panel: "sync",
+    label: "Sync configure",
+    tab: "syncs",
+    panel: "configure",
   },
   {
     id: "admin-database-inventory",
@@ -268,14 +293,14 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-sync-history",
     label: "DB sync history",
-    tab: "db",
-    panel: "sync-history",
+    tab: "syncs",
+    panel: "history",
   },
   {
     id: "admin-sync-log",
     label: "Latest sync steps",
-    tab: "db",
-    panel: "sync-history",
+    tab: "syncs",
+    panel: "history",
   },
   { id: "admin-stats-interesting", label: "Interesting stats", tab: "stats" },
   { id: "admin-stats-price-buckets", label: "Sales by price bands", tab: "stats" },
@@ -395,9 +420,24 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     tab: "db",
     panel: "postgres",
   },
-  { id: "admin-startup", label: "Startup schedule", tab: "syncs" },
-  { id: "admin-netlify", label: "Netlify functions", tab: "syncs" },
-  { id: "admin-zip-boundaries", label: "Zip boundary sync", tab: "syncs" },
+  {
+    id: "admin-startup",
+    label: "Startup schedule",
+    tab: "syncs",
+    panel: "overview",
+  },
+  {
+    id: "admin-netlify",
+    label: "Netlify functions",
+    tab: "syncs",
+    panel: "overview",
+  },
+  {
+    id: "admin-zip-boundaries",
+    label: "Zip boundary sync",
+    tab: "syncs",
+    panel: "overview",
+  },
   { id: "admin-api-routes", label: "API routes", tab: "server" },
   {
     id: "admin-product-pages",
@@ -634,6 +674,13 @@ export function adminDataControlsPanelForSection(
   return isAdminDataControlsPanelId(panel) ? panel : null;
 }
 
+export function adminSyncsPanelForSection(
+  sectionId: string,
+): AdminSyncsPanelId | null {
+  const panel = ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel;
+  return isAdminSyncsPanelId(panel) ? panel : null;
+}
+
 export function adminDatabasePanelForSection(
   sectionId: string,
 ): AdminDatabasePanelId | null {
@@ -662,13 +709,19 @@ export function isAdminDataControlsPanelId(
   );
 }
 
+export function isAdminSyncsPanelId(
+  value: string | null | undefined,
+): value is AdminSyncsPanelId {
+  return (
+    value === "configure" || value === "history" || value === "overview"
+  );
+}
+
 export function isAdminDatabasePanelId(
   value: string | null | undefined,
 ): value is AdminDatabasePanelId {
   return (
     value === "rets-connection" ||
-    value === "sync" ||
-    value === "sync-history" ||
     value === "inventory" ||
     value === "town-counts" ||
     value === "db-tuning" ||
@@ -696,7 +749,8 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
   const params = new URLSearchParams({ tab });
   if (
     link?.panel &&
-    ((tab === "data-controls" && isAdminDataControlsPanelId(link.panel)) ||
+    ((tab === "syncs" && isAdminSyncsPanelId(link.panel)) ||
+      (tab === "data-controls" && isAdminDataControlsPanelId(link.panel)) ||
       (tab === "db" && isAdminDatabasePanelId(link.panel)) ||
       (tab === "architecture" && isAdminArchitecturePanelId(link.panel)))
   ) {
@@ -707,6 +761,10 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
 
 export function adminDataControlsHref(panel: AdminDataControlsPanelId): string {
   return `/admin?tab=data-controls&panel=${panel}`;
+}
+
+export function adminSyncsHref(panel: AdminSyncsPanelId): string {
+  return `/admin?tab=syncs&panel=${panel}`;
 }
 
 export function adminDatabaseHref(panel: AdminDatabasePanelId): string {

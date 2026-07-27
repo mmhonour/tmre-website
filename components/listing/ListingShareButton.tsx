@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/** iOS-style share glyph (box + upward arrow) — the common “Share” symbol. */
+/**
+ * Share-nodes glyph: three dots at the corners of a left-pointing triangle,
+ * with the right edge open (no line between the two right nodes).
+ */
 function ShareIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -15,9 +18,11 @@ function ShareIcon({ className = "" }: { className?: string }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M12 3v11" />
-      <path d="M8 7l4-4 4 4" />
-      <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+      <circle cx="6" cy="12" r="2.25" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="6" r="2.25" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="18" r="2.25" fill="currentColor" stroke="none" />
+      <path d="M8.1 11.1 15.9 7.1" />
+      <path d="M8.1 12.9 15.9 16.9" />
     </svg>
   );
 }

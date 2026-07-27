@@ -21,6 +21,7 @@ import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
 import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
+import AdminSyncsPanel from "@/components/admin/AdminSyncsPanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
@@ -573,47 +574,48 @@ export default async function AdminPage() {
     </div>
   );
 
+  const syncConfigurePanel = (
+    <div
+      id="admin-sync"
+      className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+    >
+      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex items-baseline justify-between gap-4">
+        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+          Sync configure
+        </p>
+        <p className="font-mono text-[10px] tracking-[0.08em] text-right leading-tight">
+          <span
+            className={
+              postgresTarget.isProductionStore
+                ? "text-sage"
+                : postgresTarget.kind === "local"
+                  ? "text-coral"
+                  : "text-charcoal/55"
+            }
+          >
+            {postgresTarget.shortLabel}
+          </span>
+          {(lambdaInstanceId || lambdaFnName) && (
+            <span className="block text-charcoal/30 mt-0.5">
+              Lambda up {lambdaUptimeStr}
+              {lambdaInstanceId ? ` · ${lambdaInstanceId}…` : ""}
+            </span>
+          )}
+        </p>
+      </div>
+      <AdminSyncTable
+        rows={rows}
+        initialRefreshing={refresh.refreshing}
+        initialStatus={initialStatus}
+        initialPausedJobs={scheduledSyncPausedJobs}
+      />
+    </div>
+  );
+
   const dbPanel = (
     <AdminDatabasePanel
       retsConnection={
         <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
-      }
-      sync={
-        <div
-          id="admin-sync"
-          className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
-        >
-          <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex items-baseline justify-between gap-4">
-            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-              Database sync
-            </p>
-            <p className="font-mono text-[10px] tracking-[0.08em] text-right leading-tight">
-              <span
-                className={
-                  postgresTarget.isProductionStore
-                    ? "text-sage"
-                    : postgresTarget.kind === "local"
-                      ? "text-coral"
-                      : "text-charcoal/55"
-                }
-              >
-                {postgresTarget.shortLabel}
-              </span>
-              {(lambdaInstanceId || lambdaFnName) && (
-                <span className="block text-charcoal/30 mt-0.5">
-                  Lambda up {lambdaUptimeStr}
-                  {lambdaInstanceId ? ` · ${lambdaInstanceId}…` : ""}
-                </span>
-              )}
-            </p>
-          </div>
-          <AdminSyncTable
-            rows={rows}
-            initialRefreshing={refresh.refreshing}
-            initialStatus={initialStatus}
-            initialPausedJobs={scheduledSyncPausedJobs}
-          />
-        </div>
       }
       inventory={<AdminDatabaseInventoryPanel initial={databaseStats} />}
       townCounts={
@@ -650,12 +652,6 @@ export default async function AdminPage() {
             </p>
           )}
         </div>
-      }
-      syncHistory={
-        <>
-          <AdminSyncHistoryPanel initial={syncRunHistory} />
-          <AdminSyncRunLog />
-        </>
       }
       dbTuning={
         <AdminDbTuningPanel
@@ -734,15 +730,26 @@ export default async function AdminPage() {
   );
 
   const syncsPanel = (
-    <AdminSyncsOverviewPanel
-      startupLanes={startupProcess.lanes}
-      startupContext={startupProcess.context}
-      pausedJobs={scheduledSyncPausedJobs}
-      zipInventory={zipInventory}
-      zipLastSyncAt={zipBoundariesSyncedAt}
-      zipLastSyncStartedAt={zipBoundariesSyncStartedAt}
-      zipNextRunAt={nextRuns["zip-boundaries"]}
-      lastIncrementalCronTick={lastIncrementalCronTick ?? null}
+    <AdminSyncsPanel
+      configure={syncConfigurePanel}
+      history={
+        <>
+          <AdminSyncHistoryPanel initial={syncRunHistory} />
+          <AdminSyncRunLog />
+        </>
+      }
+      overview={
+        <AdminSyncsOverviewPanel
+          startupLanes={startupProcess.lanes}
+          startupContext={startupProcess.context}
+          pausedJobs={scheduledSyncPausedJobs}
+          zipInventory={zipInventory}
+          zipLastSyncAt={zipBoundariesSyncedAt}
+          zipLastSyncStartedAt={zipBoundariesSyncStartedAt}
+          zipNextRunAt={nextRuns["zip-boundaries"]}
+          lastIncrementalCronTick={lastIncrementalCronTick ?? null}
+        />
+      }
     />
   );
 
@@ -760,62 +767,23 @@ export default async function AdminPage() {
             : "border-charcoal/[0.1] bg-white"
       }`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 min-w-0">
-          <div className="min-w-0">
-            <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
-              Database
-            </p>
-            <p
-              className={`font-mono text-[11px] leading-snug ${
-                postgresTarget.isProductionStore
-                  ? "text-sage"
-                  : postgresTarget.kind === "local"
-                    ? "text-coral"
-                    : "text-charcoal/80"
-              }`}
-            >
-              {postgresTarget.editingLabel}
-            </p>
-            {postgresTarget.host ? (
-              <p className="font-mono text-[9px] text-charcoal/40 leading-none mt-1 truncate max-w-[16rem]">
-                {postgresTarget.host}
-              </p>
-            ) : null}
-          </div>
-          {(lambdaInstanceId || lambdaFnName) && (
-            <div className="min-w-0">
-              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
-                Lambda
-              </p>
-              {lambdaInstanceId ? (
-                <p className="font-mono text-[10px] text-charcoal/55 leading-snug">
-                  {lambdaInstanceId}&hellip;
-                </p>
-              ) : null}
-              <p className="font-mono text-[10px] text-charcoal/45 leading-snug mt-0.5">
-                up {lambdaUptimeStr}
-                {lambdaFnName ? ` · ${lambdaFnName}` : ""}
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="text-right select-none shrink-0 ml-auto">
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-3 min-w-0">
+        <div className="min-w-0 select-none">
           <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
-            Build
+            Build and host info
           </p>
           {deployBuild ? (
             <>
-              {deployBuild.builtAtUtcLabel ? (
-                <p className="font-mono text-[10px] text-charcoal/75 leading-snug whitespace-nowrap">
-                  {deployBuild.builtAtUtcLabel}
+              {deployBuild.builtAtDisplayLines.map((line, i) => (
+                <p
+                  key={line}
+                  className={`font-mono text-[10px] leading-snug whitespace-nowrap ${
+                    i === 0 ? "text-charcoal/75" : "text-charcoal/55 mt-0.5"
+                  }`}
+                >
+                  {line}
                 </p>
-              ) : null}
-              {deployBuild.builtAtEtLabel ? (
-                <p className="font-mono text-[10px] text-charcoal/55 leading-snug mt-0.5 whitespace-nowrap">
-                  {deployBuild.builtAtEtLabel}
-                </p>
-              ) : null}
+              ))}
               <p className="font-mono text-[9px] text-charcoal/40 leading-none mt-1">
                 #{deployBuild.shortId}
                 {deployBuild.id.length > 12 ? "…" : ""}
@@ -826,7 +794,44 @@ export default async function AdminPage() {
               unavailable · next Netlify deploy stamps it
             </p>
           )}
+          {postgresTarget.host ? (
+            <p className="font-mono text-[9px] text-charcoal/40 leading-none mt-1 truncate max-w-[18rem]">
+              {postgresTarget.host}
+            </p>
+          ) : null}
         </div>
+        <div className="min-w-0">
+          <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
+            Database
+          </p>
+          <p
+            className={`font-mono text-[11px] leading-snug ${
+              postgresTarget.isProductionStore
+                ? "text-sage"
+                : postgresTarget.kind === "local"
+                  ? "text-coral"
+                  : "text-charcoal/80"
+            }`}
+          >
+            {postgresTarget.editingLabel}
+          </p>
+        </div>
+        {(lambdaInstanceId || lambdaFnName) && (
+          <div className="min-w-0">
+            <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-charcoal/40 leading-none mb-1">
+              Lambda
+            </p>
+            {lambdaInstanceId ? (
+              <p className="font-mono text-[10px] text-charcoal/55 leading-snug">
+                {lambdaInstanceId}&hellip;
+              </p>
+            ) : null}
+            <p className="font-mono text-[10px] text-charcoal/45 leading-snug mt-0.5">
+              up {lambdaUptimeStr}
+              {lambdaFnName ? ` · ${lambdaFnName}` : ""}
+            </p>
+          </div>
+        )}
       </div>
       {postgresTarget.detail ? (
         <p className="mt-2 text-xs text-charcoal/55 leading-snug max-w-3xl">

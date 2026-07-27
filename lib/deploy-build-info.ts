@@ -24,6 +24,11 @@ export type DeployBuildInfo = {
    * Null when builtAt could not be parsed.
    */
   builtAtLabel: string | null;
+  /**
+   * One or two lines for Admin chrome. When UTC and ET share the same calendar
+   * date, that date is shown once with both times.
+   */
+  builtAtDisplayLines: string[];
 };
 
 function parseDeployIdBuildTime(deployId: string): Date | null {
@@ -50,6 +55,36 @@ function formatBuildTimeInZone(date: Date, timeZone: string): string {
     timeZone,
     timeZoneName: "short",
   }).format(date);
+}
+
+function formatBuildDateInZone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(date);
+}
+
+function formatBuildClockInZone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(date);
+}
+
+/** Prefer a single date when UTC and ET land on the same calendar day. */
+function buildDisplayLines(date: Date): string[] {
+  const utcDate = formatBuildDateInZone(date, "UTC");
+  const etDate = formatBuildDateInZone(date, "America/New_York");
+  const utcTime = formatBuildClockInZone(date, "UTC");
+  const etTime = formatBuildClockInZone(date, "America/New_York");
+  if (utcDate === etDate) {
+    return [`${utcDate} · ${utcTime} · ${etTime}`];
+  }
+  return [`${utcDate}, ${utcTime}`, `${etDate}, ${etTime}`];
 }
 
 function firstEnv(...keys: string[]): string | null {
@@ -82,9 +117,10 @@ export function readDeployBuildInfo(): DeployBuildInfo | null {
   const builtAtEtLabel = builtAt
     ? formatBuildTimeInZone(builtAt, "America/New_York")
     : null;
+  const builtAtDisplayLines = builtAt ? buildDisplayLines(builtAt) : [];
   const builtAtLabel =
-    builtAtUtcLabel && builtAtEtLabel
-      ? `${builtAtUtcLabel} · ${builtAtEtLabel}`
+    builtAtDisplayLines.length > 0
+      ? builtAtDisplayLines.join(" · ")
       : builtAtUtcLabel ?? builtAtEtLabel;
 
   return {
@@ -94,5 +130,6 @@ export function readDeployBuildInfo(): DeployBuildInfo | null {
     builtAtUtcLabel,
     builtAtEtLabel,
     builtAtLabel,
+    builtAtDisplayLines,
   };
 }
