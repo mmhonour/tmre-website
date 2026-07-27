@@ -4275,7 +4275,18 @@ export default function IntelligenceClient({
                   </div>
                 ) : null}
 
-              {/* Slider range labels sit above All / For Sale / Rentals; pin on scroll. */}
+              {/*
+                Desktop + filters minimized (triangle down): town context line
+                (For Sale|Rentals · tagline · months supply) above slider
+                descriptors. Expanded / mobile keep descriptors first.
+              */}
+              <div className="flex flex-col items-start min-w-0 w-full gap-1.5">
+              {/* Slider range labels; pin on scroll. */}
+              <div
+                className={`w-full min-w-0 ${
+                  filterChromeCollapsed ? "lg:order-2" : ""
+                }`}
+              >
               <div ref={descriptorSentinelRef} className="h-0 w-full" aria-hidden />
               <p
                 className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide mt-0.5 ${
@@ -4289,9 +4300,14 @@ export default function IntelligenceClient({
                 {descriptorSearchControl}
                 {sliderDescriptorLabels}
               </p>
+              </div>
 
                 {showTxChrome ? (
-                  <div className="flex flex-wrap items-center gap-2 min-w-0 self-start w-full">
+                  <div
+                    className={`flex flex-wrap items-center gap-2 min-w-0 self-start w-full ${
+                      filterChromeCollapsed ? "lg:order-3" : ""
+                    }`}
+                  >
                     <FilterGroup
                       label=""
                       value={tx}
@@ -4345,10 +4361,14 @@ export default function IntelligenceClient({
                     ) : null}
                   </div>
                 ) : null}
-              </div>
 
-              {/* Price/slider filter chrome; town context descriptors render above tx pills. */}
+              {/* Price/slider filter chrome */}
               {showSliderChrome ? (
+                <div
+                  className={`w-full min-w-0 ${
+                    filterChromeCollapsed ? "lg:order-4" : ""
+                  }`}
+                >
                 <IntelFilterControlsRow
                   filtersExpanded={filtersExpanded}
                   showPriceFilter={showPriceFilter}
@@ -4423,10 +4443,22 @@ export default function IntelligenceClient({
                   onResetSliders={resetSliders}
                   slidersCustomized={slidersCustomized}
                 />
+                </div>
               ) : null}
+              <div
+                className={`w-full min-w-0 ${
+                  filterChromeCollapsed ? "lg:order-1" : ""
+                }`}
+              >
               {active === "All" ? (
                 <AllTownsDescriptor
-                  className={filtersExpanded ? "mt-3" : "mt-1"}
+                  className={
+                    filterChromeCollapsed
+                      ? "mt-0"
+                      : filtersExpanded
+                        ? "mt-3"
+                        : "mt-1"
+                  }
                   towns={allTownsDescriptorStats}
                   aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
                   monthlySalesLoaded={monthlySalesLoaded}
@@ -4452,7 +4484,11 @@ export default function IntelligenceClient({
               ) : (
                 <p
                   className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide transition-[margin] duration-300 ease-out ${
-                    filtersExpanded ? "mt-3" : "mt-1"
+                    filterChromeCollapsed
+                      ? "mt-0"
+                      : filtersExpanded
+                        ? "mt-3"
+                        : "mt-1"
                   }`}
                 >
                   {filterDescriptorLeading}
@@ -4478,6 +4514,9 @@ export default function IntelligenceClient({
                   ) : null}
                 </p>
               )}
+              </div>
+              </div>
+              </div>
             </div>
             <DealOfTheDayFrame
               city={active}
@@ -4507,16 +4546,11 @@ export default function IntelligenceClient({
         {mobileLivePortal}
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="mb-2 lg:mb-3 flex flex-col gap-2">
-            {/* Desktop Live + share (tablet/desktop). Mobile Live is under hamburger. */}
-            <div className="hidden md:flex items-center justify-between gap-3">
+            {/* Desktop Live chip. Share sits on the Show graphs row above the board. */}
+            <div className="hidden md:flex items-center gap-3">
               <div className="flex items-center gap-2 font-mono text-xs leading-none text-slate">
                 {liveStatusChip}
               </div>
-              <ListingShareButton
-                href={intelligenceShareHref}
-                title="Share this Intelligence search"
-                className="!h-6 !w-6 shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
-              />
             </div>
 
             {/*
@@ -4594,15 +4628,16 @@ export default function IntelligenceClient({
             >
           {/*
             Mobile: minigraphs + labels first, then Show graphs + Sorted by.
-            Desktop: Show/Hide stays above the graphs strip.
-            When graphs are unavailable, the Sorted by row is mobile-only.
+            Desktop: Show/Hide left, share short link right (above board Reset).
+            When graphs are unavailable, keep the desktop share row; Sorted by
+            stays mobile-only.
           */}
           <div className="flex flex-col">
             <div
               className={`mb-0.5 flex items-center justify-between gap-3 order-2 lg:order-1 ${
                 vintageChartListingRows.length > 0 || showPriceFilter
                   ? ""
-                  : "lg:hidden"
+                  : "hidden lg:flex"
               }`}
             >
               {vintageChartListingRows.length > 0 || showPriceFilter ? (
@@ -4625,34 +4660,41 @@ export default function IntelligenceClient({
               ) : (
                 <span />
               )}
-              <div className="ml-auto inline-flex items-center gap-1.5 lg:hidden">
-                <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
-                  Sorted by:
-                </span>
-                <button
-                  type="button"
-                  className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
-                  onClick={() => setSortFieldDrawerOpen(true)}
-                  aria-expanded={sortFieldDrawerOpen}
-                  aria-controls="intel-sort-drawer"
-                >
-                  {dealBoardSortLabel(sortKey)}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSort(sortKey)}
-                  className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
-                  title={
-                    sortDir === "asc" ? "Sort descending" : "Sort ascending"
-                  }
-                  aria-label={
-                    sortDir === "asc"
-                      ? "Flip sort to descending"
-                      : "Flip sort to ascending"
-                  }
-                >
-                  {sortDir === "asc" ? "↑" : "↓"}
-                </button>
+              <div className="ml-auto inline-flex items-center gap-1.5">
+                <div className="inline-flex items-center gap-1.5 lg:hidden">
+                  <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
+                    Sorted by:
+                  </span>
+                  <button
+                    type="button"
+                    className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
+                    onClick={() => setSortFieldDrawerOpen(true)}
+                    aria-expanded={sortFieldDrawerOpen}
+                    aria-controls="intel-sort-drawer"
+                  >
+                    {dealBoardSortLabel(sortKey)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSort(sortKey)}
+                    className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
+                    title={
+                      sortDir === "asc" ? "Sort descending" : "Sort ascending"
+                    }
+                    aria-label={
+                      sortDir === "asc"
+                        ? "Flip sort to descending"
+                        : "Flip sort to ascending"
+                    }
+                  >
+                    {sortDir === "asc" ? "↑" : "↓"}
+                  </button>
+                </div>
+                <ListingShareButton
+                  href={intelligenceShareHref}
+                  title="Share this Intelligence search"
+                  className="!h-6 !w-6 hidden lg:inline-flex shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
+                />
               </div>
             </div>
             {vintageChartListingRows.length > 0 || showPriceFilter ? (

@@ -49,15 +49,15 @@ import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
 
 /**
  * Mobile Sold / On the market — classic folder tabs:
- * active = dark-gold label fill + open bottom into the panel (__|LABEL|___).
- * inactive = last-shipped quiet style (no fill, muted label).
+ * active = accent gold fill (same as selected tab text) + open bottom into panel.
+ * inactive = quiet muted label, no fill.
  */
 function mobileCompSubTabClass(active: boolean): string {
   const base =
-    "relative shrink-0 whitespace-nowrap px-3.5 py-2.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors rounded-t-md border -mb-px";
+    "relative shrink-0 whitespace-nowrap px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors rounded-t-md border -mb-px";
   if (active) {
-    // Very dark gold fill; cream text (not accent gold).
-    return `${base} z-[1] border-[#4a3a14] border-b-transparent bg-[#2a2110] text-cream`;
+    // Selected: gold bg matching selected-text gold; navy label (not gold-on-gold).
+    return `${base} z-[1] border-gold border-b-transparent bg-gold text-navy`;
   }
   return `${base} border-transparent text-white/45 hover:text-white/75`;
 }
@@ -1535,11 +1535,11 @@ export default function ListingComparablesPanel({
       {showCompsGrid && (
         <div className={compsGridClass}>
       {useMobileCompSubTabs ? (
-        <div className="mb-0 flex w-full items-start justify-between gap-3 max-lg:px-3 sm:col-span-2">
+        <div className="mb-0 flex w-full items-end justify-between gap-2 max-lg:px-3 sm:col-span-2">
           <div
             role="tablist"
             aria-label={isRental ? "Rented comps" : "Sold comps"}
-            className="flex min-w-0 flex-1 items-end gap-1 border-b border-white/10"
+            className="flex min-w-0 flex-1 items-end gap-0.5 border-b border-white/10"
           >
             <button
               type="button"
@@ -1563,7 +1563,7 @@ export default function ListingComparablesPanel({
           {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
             <div
               id={criteriaLinkSlotId}
-              className="flex shrink-0 items-start justify-end self-start pt-2"
+              className="flex shrink-0 items-end justify-end self-end pb-0.5"
             />
           ) : null}
         </div>
@@ -1593,7 +1593,7 @@ export default function ListingComparablesPanel({
             isPage
               ? `scroll-mt-[var(--listing-sticky-offset,6rem)] min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pb-3 ${
                   useMobileCompSubTabs
-                    ? "max-lg:border-t-0 max-lg:pt-3"
+                    ? "max-lg:border-t-0 max-lg:pt-1.5"
                     : mobileSoldChrome
                       ? "max-lg:pt-2"
                       : "max-lg:pt-1"
@@ -1606,7 +1606,7 @@ export default function ListingComparablesPanel({
           {mobileSoldChrome ? (
             <>
               {useMobileCompSubTabs ? (
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                     <LookbackSpinner
                       months={lookbackMonths}
@@ -1817,7 +1817,7 @@ export default function ListingComparablesPanel({
             isPage
               ? `scroll-mt-24 min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] p-6 max-lg:rounded-none max-lg:border-x-0 max-lg:px-3 max-lg:pb-3 ${
                   useMobileCompSubTabs
-                    ? "max-lg:border-t-0 max-lg:pt-3"
+                    ? "max-lg:border-t-0 max-lg:pt-1.5"
                     : "max-lg:pt-1"
                 }`
               : isModal
@@ -1825,7 +1825,7 @@ export default function ListingComparablesPanel({
                 : "scroll-mt-24 min-w-0 max-lg:px-3"
           }
         >
-          <div className={isMobilePage ? "mb-2" : "mb-3"}>
+          <div className={isMobilePage ? (useMobileCompSubTabs ? "mb-1" : "mb-2") : "mb-3"}>
             {useMobileCompSubTabs ? (
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 {sortedActive.length > 0 ? (
