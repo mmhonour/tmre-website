@@ -38,7 +38,7 @@ export function useMiniGraphsCarousel(): MiniGraphsCarouselApi | null {
 }
 
 /**
- * Desktop: Median | Inventory by price | Luxury inventory by price in one row.
+ * Desktop: Median | Inventory by price | Market-band inventory by price in one row.
  * Mobile: one chart at a time; slides left through 1→2→3, then continues as
  * 2→3→1, 3→1→2, … until paused. Hide toggle can live outside (under Vintages).
  */
@@ -166,7 +166,7 @@ export default function IntelligenceMiniGraphsStrip({
   const pauseToggle = (
     <button
       type="button"
-      className={`inline-flex h-6 items-center justify-center gap-1 rounded-full border px-2 font-mono text-[9px] tracking-[0.12em] uppercase shadow-sm transition-colors ${
+      className={`inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors ${
         paused
           ? "border-gold/50 bg-gold/15 text-navy hover:bg-gold/25"
           : "border-navy/20 bg-white text-navy hover:border-navy/40 hover:bg-navy/[0.04]"
@@ -176,8 +176,16 @@ export default function IntelligenceMiniGraphsStrip({
       aria-label={paused ? "Resume graph rotation" : "Pause graph rotation"}
       title={paused ? "Play carousel" : "Pause carousel"}
     >
-      <span aria-hidden>{paused ? "▶" : "⏸"}</span>
-      {paused ? "Play" : "Pause"}
+      {paused ? (
+        <svg viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor" aria-hidden>
+          <path d="M3.2 1.6v8.8l7.2-4.4z" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor" aria-hidden>
+          <rect x="2.4" y="1.8" width="2.2" height="8.4" rx="0.4" />
+          <rect x="7.4" y="1.8" width="2.2" height="8.4" rx="0.4" />
+        </svg>
+      )}
     </button>
   );
 

@@ -118,49 +118,46 @@ export default function DealBoardSortBar({
     ? "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2 py-1 font-mono text-[11px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]"
     : "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2.5 py-2 font-mono text-[12px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]";
 
-  // Mobile (+ external field picker): "Sort" + ↑/↓ only.
-  // Desktop (or fieldPickerInToolbar): full chip opens the field drawer.
-  const fieldInChip = fieldPickerInToolbar;
+  // Desktop: full chip opens the field drawer.
+  // Mobile with external field picker: chip hidden (Sorted by + bold ↑/↓ lives in the page header).
   const trigger = (
-    <div className={chipShell} role="group" aria-label={`Sort by ${activeLabel}`}>
-      {fieldInChip ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            className={`${padL} active:translate-y-px transition-transform hidden lg:inline-flex`}
-            aria-expanded={drawerOpen}
-            aria-controls="intel-sort-drawer"
-            aria-label={`Choose sort field — currently ${activeLabel}`}
-          >
-            <svg
-              viewBox="0 0 12 12"
-              className="h-2.5 w-2.5 shrink-0 text-navy/70"
-              fill="currentColor"
-              aria-hidden
-            >
-              <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-            </svg>
-            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
-              Sort
-            </span>
-            <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy truncate">
-              {activeLabel}
-            </span>
-          </button>
-          <span className={`${padL} lg:hidden`}>
-            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
-              Sort
-            </span>
-          </span>
-        </>
-      ) : (
-        <span className={padL}>
+    <div
+      className={`${chipShell}${fieldPickerInToolbar ? "" : " hidden lg:inline-flex"}`}
+      role="group"
+      aria-label={`Sort by ${activeLabel}`}
+    >
+      <button
+        type="button"
+        onClick={() => setDrawerOpen(true)}
+        className={`${padL} active:translate-y-px transition-transform ${
+          fieldPickerInToolbar ? "hidden lg:inline-flex" : ""
+        }`}
+        aria-expanded={drawerOpen}
+        aria-controls="intel-sort-drawer"
+        aria-label={`Choose sort field — currently ${activeLabel}`}
+      >
+        <svg
+          viewBox="0 0 12 12"
+          className="h-2.5 w-2.5 shrink-0 text-navy/70"
+          fill="currentColor"
+          aria-hidden
+        >
+          <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+        </svg>
+        <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
+          Sort
+        </span>
+        <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-navy truncate">
+          {activeLabel}
+        </span>
+      </button>
+      {fieldPickerInToolbar ? (
+        <span className={`${padL} lg:hidden`}>
           <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55 shrink-0">
             Sort
           </span>
         </span>
-      )}
+      ) : null}
       <button
         type="button"
         onClick={flipDir}
@@ -177,8 +174,9 @@ export default function DealBoardSortBar({
     <IntelSortDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
       <div id="intel-sort-drawer" className="space-y-2">
         <p className="px-1 pb-1 text-xs text-slate leading-relaxed">
-          Tap a field to sort. Use ↑ / ↓ on the board toolbar for ascending /
-          descending.
+          {fieldPickerInToolbar
+            ? "Tap a field to sort. Use ↑ / ↓ on the board toolbar for ascending / descending."
+            : "Tap a field to sort. Use the bold ↑ / ↓ next to Sorted by for ascending / descending."}
         </p>
         {columns.map((col) => (
           <SortDrawerOption

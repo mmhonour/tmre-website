@@ -73,8 +73,8 @@ export type DealBoardListProps = {
    */
   progressivePhotoBatches?: boolean;
   /**
-   * Mobile: field picker lives under Hide graphs — toolbar keeps Sort + ↑/↓ only.
-   * Desktop keeps the full field+dir chip.
+   * Mobile: field picker + bold ↑/↓ live under Hide graphs — toolbar hides the
+   * Sort chip. Desktop keeps the full field+dir chip.
    */
   sortFieldPickerInToolbar?: boolean;
   sortFieldDrawerOpen?: boolean;

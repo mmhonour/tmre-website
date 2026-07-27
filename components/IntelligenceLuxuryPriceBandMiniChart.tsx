@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMiniGraphsCarousel } from "@/components/IntelligenceMiniGraphsStrip";
 import type { InventorySegmentId } from "@/lib/inventory-segment-bands-shared";
 import type { InventorySegmentChartSeed } from "@/lib/intelligence-inventory-segment-fssr";
 
-/** Phrase after “Filters …” — segment inventory mini chart title. */
-export const LUXURY_BY_PRICE_LABEL = "Luxury inventory by price";
+/** Default phrase when the Luxury band is active. */
+export const LUXURY_BY_PRICE_LABEL = "LUXURY INVENTORY BY PRICE";
 
 const SEGMENT_ORDER: InventorySegmentId[] = [
   "luxury",
@@ -21,6 +20,8 @@ const SEGMENT_TAB_LABEL: Record<InventorySegmentId, string> = {
   value: "Value",
   discount: "Discount",
 };
+
+const BAND_ROTATE_MS = 5_000;
 
 type BandPoint = {
   id: string;
@@ -97,10 +98,31 @@ function bucketsFromSeed(
   );
 }
 
+function segmentInventoryByPriceLabel(segmentLabel: string): string {
+  return `${segmentLabel.trim().toUpperCase()} INVENTORY BY PRICE`;
+}
+
+function PausePlayIcon({ paused }: { paused: boolean }) {
+  if (paused) {
+    return (
+      <svg viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor" aria-hidden>
+        <path d="M3.2 1.6v8.8l7.2-4.4z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor" aria-hidden>
+      <rect x="2.4" y="1.8" width="2.2" height="8.4" rx="0.4" />
+      <rect x="7.4" y="1.8" width="2.2" height="8.4" rx="0.4" />
+    </svg>
+  );
+}
+
 /**
  * Intelligence inventory-by-price sparkline — Luxury / Mid-market / Value /
- * Discount (Admin Market Bands). One view at a time; default Luxury. Prefers
- * SSR seed + /api/active-by-segment-price?all=1 so all band caches are warm.
+ * Discount (Admin Market Bands). Auto-cycles all bands on mobile and desktop
+ * with a local pause/play control. Prefers SSR seed +
+ * /api/active-by-segment-price?all=1 so all band caches are warm.
  */
 export default function IntelligenceLuxuryPriceBandMiniChart({
   city,
@@ -124,9 +146,9 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   /** Fired when a graph point / segment tab is used (e.g. pause mobile carousel). */
   onInteract?: () => void;
 }) {
-  const carousel = useMiniGraphsCarousel();
   const seedCity = initialSeed?.city ?? null;
   const [segment, setSegment] = useState<InventorySegmentId>("luxury");
+  const [bandPaused, setBandPaused] = useState(false);
   const [bySegment, setBySegment] = useState<
     Partial<Record<InventorySegmentId, ApiBucket[]>>
   >(() => {
@@ -150,7 +172,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     Boolean(
       initialSeed &&
         initialSeed.city === city &&
-        SEGMENT_ORDER.every(
+        SEGMENT_ORDER.some(
           (id) => (initialSeed.bySegment?.[id]?.buckets?.length ?? 0) > 0,
         ),
     ),
@@ -168,6 +190,8 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     const ac = new AbortController();
     abortRef.current = ac;
     introStartedRef.current = false;
+    setBandPaused(false);
+    setSegment("luxury");
 
     if (initialSeed && seedCity === city) {
       setBySegment({
@@ -183,7 +207,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         discount: initialSeed.bySegment.discount?.segmentLabel,
       });
       setReady(
-        SEGMENT_ORDER.every(
+        SEGMENT_ORDER.some(
           (id) => (initialSeed.bySegment?.[id]?.buckets?.length ?? 0) > 0,
         ),
       );
@@ -217,7 +241,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         }
         setBySegment(next);
         setLabels((prev) => ({ ...prev, ...nextLabels }));
-        setReady(SEGMENT_ORDER.every((id) => (next[id]?.length ?? 0) > 0));
+        setReady(SEGMENT_ORDER.some((id) => (next[id]?.length ?? 0) > 0));
       })
       .catch(() => {
         /* aborted or network */
@@ -229,6 +253,23 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   }, [city, seedCity]);
 
   const buckets = bySegment[segment] ?? [];
+  const segmentDataKey = SEGMENT_ORDER.map(
+    (id) => `${id}:${bySegment[id]?.length ?? 0}`,
+  ).join("|");
+
+  // Cycle Luxury → Mid-Market → Value → Discount on mobile and desktop.
+  useEffect(() => {
+    if (bandPaused || !ready) return;
+    const timer = window.setInterval(() => {
+      setSegment((prev) => {
+        const idx = SEGMENT_ORDER.indexOf(prev);
+        return SEGMENT_ORDER[(idx + 1) % SEGMENT_ORDER.length]!;
+      });
+      introStartedRef.current = false;
+      setExtraCallouts(new Set());
+    }, BAND_ROTATE_MS);
+    return () => window.clearInterval(timer);
+  }, [bandPaused, ready, segmentDataKey]);
 
   const points = useMemo((): BandPoint[] => {
     if (buckets.length === 0) return [];
@@ -276,19 +317,21 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intro once per segment dataset
   }, [pointIdsKey]);
 
-  if (!ready && points.length === 0) return null;
-  if (points.length === 0) return null;
-  if (!points.some((p) => p.count > 0) && segment === "luxury") {
-    // Still show empty mid/value switches if luxury empty
-  }
+  if (!ready) return null;
 
-  const chartTitle = LUXURY_BY_PRICE_LABEL;
+  const segmentLabel = labels[segment] ?? SEGMENT_TAB_LABEL[segment];
+  const chartTitle = segmentInventoryByPriceLabel(segmentLabel);
   const linePath = points
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
     .join(" ");
 
-  const handlePointClick = (point: BandPoint) => {
+  const pauseBandRotation = () => {
+    setBandPaused(true);
     onInteract?.();
+  };
+
+  const handlePointClick = (point: BandPoint) => {
+    pauseBandRotation();
     if (!point.callout) {
       setExtraCallouts((prev) => {
         if (prev.has(point.id)) return prev;
@@ -335,8 +378,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                     role="tab"
                     aria-selected={active}
                     onClick={() => {
-                      // Stay on this slide while switching market bands.
-                      onInteract?.();
+                      pauseBandRotation();
                       setSegment(id);
                       introStartedRef.current = false;
                       setExtraCallouts(new Set());
@@ -364,35 +406,31 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                 );
               })}
             </div>
-            {carousel?.isCarousel ? (
-              <button
-                type="button"
-                onClick={() => carousel.toggle()}
-                aria-pressed={carousel.paused}
-                aria-label={
-                  carousel.paused
-                    ? "Resume graph carousel"
-                    : "Pause graph carousel"
-                }
-                title={
-                  carousel.paused ? "Play graph carousel" : "Pause graph carousel"
-                }
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[8px] tracking-[0.12em] uppercase transition-colors ${
-                  carousel.paused
-                    ? "border-gold/50 bg-gold/15 text-navy"
-                    : "border-navy/20 bg-white text-navy/70 hover:border-navy/40 hover:text-navy"
-                }`}
-              >
-                <span aria-hidden>{carousel.paused ? "▶" : "⏸"}</span>
-                {carousel.paused ? "Play" : "Pause"}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => setBandPaused((p) => !p)}
+              aria-pressed={bandPaused}
+              aria-label={
+                bandPaused
+                  ? "Resume market band rotation"
+                  : "Pause market band rotation"
+              }
+              title={bandPaused ? "Play band cycle" : "Pause band cycle"}
+              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                bandPaused
+                  ? "border-gold/50 bg-gold/15 text-navy"
+                  : "border-navy/20 bg-white text-navy/70 hover:border-navy/40 hover:text-navy"
+              }`}
+            >
+              <PausePlayIcon paused={bandPaused} />
+            </button>
           </div>
+          {points.length > 0 ? (
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="h-[4.5rem] w-full max-w-[248px] overflow-visible bg-transparent"
             role="img"
-            aria-label={`${chartTitle} · ${SEGMENT_TAB_LABEL[segment]}. Click a point to filter the deal board by price.`}
+            aria-label={`${chartTitle}. Click a point to filter the deal board by price.`}
           >
             <path
               d={linePath}
@@ -473,6 +511,13 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
               );
             })}
           </svg>
+          ) : (
+            <div className="flex h-[4.5rem] w-full max-w-[248px] items-center justify-center">
+              <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/45">
+                No inventory in this band
+              </p>
+            </div>
+          )}
 
           {filterActive && onResetFilter ? (
             <div className="flex w-full max-w-[248px] justify-end">

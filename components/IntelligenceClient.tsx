@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  startTransition,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import ZipBoundaryPopover, {
   prefetchAllTownBoundaries,
@@ -62,7 +70,11 @@ import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
 import { underContractStatusLabel } from "@/lib/listing-status";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
-import { parseIntelligenceSearchParams } from "@/lib/intelligence-search-url";
+import {
+  buildIntelligenceShareHref,
+  parseIntelligenceSearchParams,
+} from "@/lib/intelligence-search-url";
+import ListingShareButton from "@/components/listing/ListingShareButton";
 import {
   bumpIntelligenceSnapshotGeneration,
   getOrSetIntelligenceSnapshotCache,
@@ -2023,15 +2035,28 @@ export default function IntelligenceClient({
     if (!urlSearch || urlSearchAppliedRef.current) return;
     urlSearchAppliedRef.current = true;
 
-    setActive(urlSearch.city);
+    setActive(urlSearch.city as IntelCity);
     setZip(urlSearch.zip);
-    if (urlSearch.beds) {
-      setMinBedsFilter(urlSearch.beds as MinBedFilter);
-      if (urlSearch.exactBeds) {
-        setMaxBedsFilter(urlSearch.beds as MinBedFilter);
-      }
+    if (urlSearch.bedsMin != null) {
+      setMinBedsFilter(String(urlSearch.bedsMin) as MinBedFilter);
     }
-    if (urlSearch.baths) setMinBathsFilter(urlSearch.baths as MinBathFilter);
+    if (urlSearch.bedsMax != null) {
+      setMaxBedsFilter(String(urlSearch.bedsMax) as MinBedFilter);
+    } else if (urlSearch.exactBeds && urlSearch.bedsMin != null) {
+      setMaxBedsFilter(String(urlSearch.bedsMin) as MinBedFilter);
+    }
+    if (urlSearch.bathsMin != null) {
+      setMinBathsFilter(String(urlSearch.bathsMin) as MinBathFilter);
+    }
+    if (urlSearch.bathsMax != null) {
+      setMaxBathsFilter(String(urlSearch.bathsMax) as MinBathFilter);
+    }
+    if (urlSearch.vintageMin != null) {
+      setMinVintageFilter(String(urlSearch.vintageMin) as VintageIndexFilter);
+    }
+    if (urlSearch.vintageMax != null) {
+      setMaxVintageFilter(String(urlSearch.vintageMax) as VintageIndexFilter);
+    }
     if (urlSearch.tx) setTx(urlSearch.tx as TxFilter);
     if (urlSearch.cls) setCls(urlSearch.cls as ClsFilter);
     if (urlSearch.property) {
@@ -2040,8 +2065,43 @@ export default function IntelligenceClient({
       setSaleProperty("all");
     }
     setNewConstructionFilter(urlSearch.newConstruction ? "new" : "all");
-
-    window.history.replaceState(null, "", "/intelligence");
+    if (urlSearch.status) {
+      setBoardStatusFilter(urlSearch.status as BoardStatusFilter);
+    }
+    if (urlSearch.sort) {
+      setSortKey(urlSearch.sort as SortKey);
+    }
+    if (urlSearch.dir) setSortDir(urlSearch.dir);
+    if (urlSearch.furnished) {
+      setFurnishedFilter(urlSearch.furnished as FurnishedFilter);
+    }
+    // Keep a compact shareable URL in the address bar (no hex id).
+    window.history.replaceState(
+      null,
+      "",
+      buildIntelligenceShareHref({
+        city: urlSearch.city,
+        zip: urlSearch.zip,
+        tx: urlSearch.tx ?? undefined,
+        cls: urlSearch.cls ?? undefined,
+        property: urlSearch.property ?? undefined,
+        bedsMin: urlSearch.bedsMin ?? undefined,
+        bedsMax: urlSearch.bedsMax ?? undefined,
+        bathsMin: urlSearch.bathsMin ?? undefined,
+        bathsMax: urlSearch.bathsMax ?? undefined,
+        vintageMin: urlSearch.vintageMin ?? undefined,
+        vintageMax: urlSearch.vintageMax ?? undefined,
+        newConstruction: urlSearch.newConstruction,
+        status: urlSearch.status ?? undefined,
+        sort: urlSearch.sort ?? undefined,
+        dir: urlSearch.dir ?? undefined,
+        furnished: urlSearch.furnished,
+        minPrice: urlSearch.minPrice ?? undefined,
+        maxPrice: urlSearch.maxPrice ?? undefined,
+        minSqft: urlSearch.minSqft ?? undefined,
+        maxSqft: urlSearch.maxSqft ?? undefined,
+      }),
+    );
   }, [
     urlSearch,
     setActive,
@@ -2049,10 +2109,17 @@ export default function IntelligenceClient({
     setMinBedsFilter,
     setMaxBedsFilter,
     setMinBathsFilter,
+    setMaxBathsFilter,
+    setMinVintageFilter,
+    setMaxVintageFilter,
     setTx,
     setCls,
     setSaleProperty,
     setNewConstructionFilter,
+    setBoardStatusFilter,
+    setSortKey,
+    setSortDir,
+    setFurnishedFilter,
   ]);
 
   // Prefer cached months-supply avgs when property class / occupancy changes.
@@ -2600,10 +2667,105 @@ export default function IntelligenceClient({
     cls !== "commercial" &&
     intelSqftFilterActiveOnBoard(minSqftIndex, maxSqftIndex, boardSqftSteps);
 
+  const intelligenceShareHref = useMemo(
+    () =>
+      buildIntelligenceShareHref({
+        city: active,
+        zip,
+        tx,
+        cls,
+        property: saleProperty,
+        bedsMin: minBedrooms,
+        bedsMax: maxBedrooms,
+        bathsMin: minBathrooms,
+        bathsMax: maxBathrooms,
+        vintageMin: minVintage,
+        vintageMax: maxVintage,
+        newConstruction: newConstructionOnly,
+        status: boardStatusFilter,
+        sort: sortKey,
+        dir: sortDir,
+        furnished: furnishedFilter === "all" ? null : furnishedFilter,
+        minPrice: priceFilterActive ? minPrice : undefined,
+        maxPrice: priceFilterActive ? maxPrice : undefined,
+        minSqft: sqftFilterActive ? minSqft : undefined,
+        maxSqft: sqftFilterActive ? maxSqft : undefined,
+      }),
+    [
+      active,
+      zip,
+      tx,
+      cls,
+      saleProperty,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      minVintage,
+      maxVintage,
+      newConstructionOnly,
+      boardStatusFilter,
+      sortKey,
+      sortDir,
+      furnishedFilter,
+      priceFilterActive,
+      minPrice,
+      maxPrice,
+      sqftFilterActive,
+      minSqft,
+      maxSqft,
+    ],
+  );
+
+  // Apply price/sqft from the share URL once board step ladders are ready.
+  const urlPriceSqftAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!urlSearch || urlPriceSqftAppliedRef.current) return;
+    const wantsPrice =
+      urlSearch.minPrice != null || urlSearch.maxPrice != null;
+    const wantsSqft = urlSearch.minSqft != null || urlSearch.maxSqft != null;
+    if (!wantsPrice && !wantsSqft) {
+      urlPriceSqftAppliedRef.current = true;
+      return;
+    }
+    if (wantsPrice && boardPriceSteps.length === 0) return;
+    if (wantsSqft && boardSqftSteps.length === 0) return;
+
+    urlPriceSqftAppliedRef.current = true;
+    if (wantsPrice) {
+      priceRangeCustomizedRef.current = true;
+      if (urlSearch.minPrice != null) {
+        setMinPriceIndex(
+          minPriceToStepIndex(urlSearch.minPrice, boardPriceSteps),
+        );
+      }
+      if (urlSearch.maxPrice != null) {
+        setMaxPriceIndex(
+          maxPriceToStepIndex(urlSearch.maxPrice, boardPriceSteps),
+        );
+      }
+    }
+    if (wantsSqft) {
+      sqftRangeCustomizedRef.current = true;
+      if (urlSearch.minSqft != null) {
+        setMinSqftIndex(minSqftToStepIndex(urlSearch.minSqft, boardSqftSteps));
+      }
+      if (urlSearch.maxSqft != null) {
+        setMaxSqftIndex(maxSqftToStepIndex(urlSearch.maxSqft, boardSqftSteps));
+      }
+    }
+  }, [urlSearch, boardPriceSteps, boardSqftSteps]);
+
   useEffect(() => {
     setMiddleTierExpanded(false);
     setBoardPage(1);
-  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, furnishedFilter, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex, sortKey, sortDir]);
+  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, furnishedFilter, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex]);
+
+  // Sort changes only reset page — keep middle-tier state so we don't force a
+  // full remount of ~100 photo cards when leaving score/desc.
+  useEffect(() => {
+    setBoardPage(1);
+  }, [sortKey, sortDir]);
 
   const listings = useMemo(
     () =>
@@ -2915,16 +3077,19 @@ export default function IntelligenceClient({
     showZipFilters && !townLinksExpanded && !zipLinksExpanded;
 
   function handleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-      return;
-    }
-    setSortKey(key);
-    setSortDir(
-      key === "status" || key === "town" || key === "price"
-        ? "asc"
-        : "desc",
-    );
+    // Keep the drawer/UI responsive while the board re-sorts.
+    startTransition(() => {
+      if (sortKey === key) {
+        setSortDir(sortDir === "asc" ? "desc" : "asc");
+        return;
+      }
+      setSortKey(key);
+      setSortDir(
+        key === "status" || key === "town" || key === "price"
+          ? "asc"
+          : "desc",
+      );
+    });
   }
 
   const slidersCustomized =
@@ -4132,25 +4297,42 @@ export default function IntelligenceClient({
                   {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors lg:hidden"
-                onClick={() => setSortFieldDrawerOpen(true)}
-                aria-expanded={sortFieldDrawerOpen}
-                aria-controls="intel-sort-drawer"
-              >
-                <svg
-                  viewBox="0 0 12 12"
-                  className="h-2.5 w-2.5 shrink-0"
-                  fill="currentColor"
-                  aria-hidden
-                >
-                  <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                </svg>
-                <span className="underline underline-offset-2 decoration-navy/35">
-                  {dealBoardSortLabel(sortKey)}
+              <div className="inline-flex items-center gap-1.5 lg:hidden">
+                <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
+                  Sorted by:
                 </span>
-              </button>
+                <button
+                  type="button"
+                  className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
+                  onClick={() => setSortFieldDrawerOpen(true)}
+                  aria-expanded={sortFieldDrawerOpen}
+                  aria-controls="intel-sort-drawer"
+                >
+                  {dealBoardSortLabel(sortKey)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSort(sortKey)}
+                  className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
+                  title={
+                    sortDir === "asc"
+                      ? "Sort descending"
+                      : "Sort ascending"
+                  }
+                  aria-label={
+                    sortDir === "asc"
+                      ? "Flip sort to descending"
+                      : "Flip sort to ascending"
+                  }
+                >
+                  {sortDir === "asc" ? "↑" : "↓"}
+                </button>
+              </div>
+              <ListingShareButton
+                href={intelligenceShareHref}
+                title="Share this Intelligence search"
+                className="!h-6 !w-6 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
+              />
             </div>
           </div>
 
@@ -4309,7 +4491,7 @@ export default function IntelligenceClient({
             isLive={state === "ready"}
             showTown={active === "All"}
             hideOwnershipType={tx === "sale" || tx === "rental"}
-            progressivePhotoBatches={showBoardPagination}
+            progressivePhotoBatches
             loading={state === "loading" && liveListings === null}
             loadingLabel={`Loading ${active}…`}
             emptyLabel={`No ${active === "All" ? "" : `${active} `}${
@@ -4343,6 +4525,7 @@ export default function IntelligenceClient({
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={handleSort}
+            sortFieldPickerInToolbar={false}
             sortFieldDrawerOpen={sortFieldDrawerOpen}
             onSortFieldDrawerOpenChange={setSortFieldDrawerOpen}
             boardView={boardView}
