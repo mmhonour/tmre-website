@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useLayoutEffect,
@@ -280,9 +281,7 @@ function IntelDescriptorContext({
             ) : (
               <span className="text-white/45">{part.label}</span>
             )}
-            <span className="text-white/25" aria-hidden>
-              ·
-            </span>
+            <IntelFilterDescriptorDot />
           </span>
         );
       })}
@@ -1728,14 +1727,35 @@ export default function IntelligenceClient({
    * Always start minimized on load / navigation so descriptors stay in view.
    */
   const [filterChromeCollapsed, setFilterChromeCollapsed] = useState(true);
-  /** While collapsed, optionally peek one pill group via descriptor clicks. */
-  const [filterChromePeek, setFilterChromePeek] = useState<"towns" | "tx" | null>(
-    null,
-  );
+  /** While collapsed, optionally peek one pill group / sliders via descriptor clicks. */
+  const [filterChromePeek, setFilterChromePeek] = useState<
+    "towns" | "tx" | "sliders" | null
+  >(null);
   /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
   const [miniGraphsHidden, setMiniGraphsHidden] = useState(false);
+  const setMiniGraphsHiddenPref = useCallback((hidden: boolean) => {
+    setMiniGraphsHidden(hidden);
+    try {
+      sessionStorage.setItem(
+        "tmre-intel-mini-graphs-hidden",
+        hidden ? "1" : "0",
+      );
+    } catch {
+      /* private mode */
+    }
+  }, []);
+  /**
+   * Sync timestamp phrase currently shown in the Live chip (`synced today at…`).
+   * null = omit (animation finished or none). While animating, shrinks one
+   * letter at a time until empty.
+   */
+  const [syncPhraseDisplay, setSyncPhraseDisplay] = useState<string | null>(
+    null,
+  );
+  const syncPhraseAnimKeyRef = useRef<string | null>(null);
+  const syncPhraseAnimDoneRef = useRef<string | null>(null);
   const [sortFieldDrawerOpen, setSortFieldDrawerOpen] = useState(false);
   // Safety: never leave the sort drawer’s body scroll-lock stuck after close.
   useEffect(() => {
@@ -2882,6 +2902,20 @@ export default function IntelligenceClient({
     }
     const tiers = splitBoardByScoreTier(rows);
     const planned = planMiddleTierCollapse(tiers);
+    // Too few results to hide a middle band — keep one flat list so grid/large
+    // views don't restart columns in separate top/middle/bottom CSS grids.
+    if (!planned.canCollapse) {
+      return {
+        top: rows,
+        middle: [] as DisplayListing[],
+        bottom: [] as DisplayListing[],
+        canTier: false,
+        middlePinned: [] as DisplayListing[],
+        middleCollapsible: [] as DisplayListing[],
+        canCollapse: false,
+        hideableCount: 0,
+      };
+    }
     return {
       top: sortListings(planned.top, boardSortKey, boardSortDir),
       middle: sortListings(
@@ -3189,11 +3223,50 @@ export default function IntelligenceClient({
     setFurnishedSliderActive(false);
   }
 
-  function handleDescriptorSliderClick(_kind: IntelSliderKind) {
+  /** Enlarge one slider descriptor (matching the filter being exposed). */
+  function pulseSliderDescriptor(kind: IntelSliderKind) {
+    const pulse = (
+      setActive: (active: boolean, opts?: { immediate?: boolean }) => void,
+    ) => {
+      setActive(true);
+      setActive(false);
+    };
+    switch (kind) {
+      case "price":
+        pulse(setPriceSliderActive);
+        break;
+      case "bed":
+        pulse(setBedSliderActive);
+        break;
+      case "bath":
+        pulse(setBathSliderActive);
+        break;
+      case "vintage":
+        pulse(setVintageSliderActive);
+        break;
+      case "sqft":
+        pulse(setSqftSliderActive);
+        break;
+      case "furnished":
+        pulse(setFurnishedSliderActive);
+        break;
+    }
+  }
+
+  /** Reveal slider chrome and enlarge the descriptor that was clicked. */
+  function exposeSliderFilters(kind?: IntelSliderKind) {
+    if (filterChromeCollapsed) {
+      setFilterChromePeek("sliders");
+    }
     if (!filtersExpanded) {
       setCollapsedSlidersOpen(true);
     }
-    pulseAllSliderDescriptors();
+    if (kind) pulseSliderDescriptor(kind);
+    else pulseAllSliderDescriptors();
+  }
+
+  function handleDescriptorSliderClick(kind: IntelSliderKind) {
+    exposeSliderFilters(kind);
   }
 
   /** Open the filter chrome/sliders that the descriptor line summarizes. */
@@ -3207,6 +3280,7 @@ export default function IntelligenceClient({
 
   function hideCollapsedSliders() {
     setCollapsedSlidersOpen(false);
+    if (filterChromePeek === "sliders") setFilterChromePeek(null);
     setPriceSliderActive(false, { immediate: true });
     setBedSliderActive(false, { immediate: true });
     setBathSliderActive(false, { immediate: true });
@@ -3539,7 +3613,8 @@ export default function IntelligenceClient({
   const showTownChrome =
     !filterChromeCollapsed || filterChromePeek === "towns";
   const showTxChrome = !filterChromeCollapsed || filterChromePeek === "tx";
-  const showSliderChrome = !filterChromeCollapsed;
+  const showSliderChrome =
+    !filterChromeCollapsed || filterChromePeek === "sliders";
 
   const peekTownPills = () => {
     setFilterChromeCollapsed(true);
@@ -3599,6 +3674,23 @@ export default function IntelligenceClient({
     scrollToBoard();
   };
 
+  const descriptorSearchActive =
+    priceSliderActive ||
+    bedSliderActive ||
+    bathSliderActive ||
+    vintageSliderActive ||
+    sqftSliderActive ||
+    furnishedSliderActive;
+
+  /** Magnifying glass + Edit all — leftmost on the descriptor line. */
+  const descriptorSearchControl = (
+    <DescriptorSearchControl
+      active={descriptorSearchActive}
+      onClick={() => exposeSliderFilters()}
+      onEdit={handleEditFilters}
+    />
+  );
+
   /** Range labels — always available (including when pill chrome is minimized). */
   const sliderDescriptorLabels = (
     <IntelSliderDescriptorLabels
@@ -3608,7 +3700,6 @@ export default function IntelligenceClient({
       furnishedFilter={furnishedFilter}
       furnishedSliderActive={furnishedSliderActive}
       onDescriptorClick={handleDescriptorSliderClick}
-      onEditFilters={handleEditFilters}
       boardPriceSteps={boardPriceSteps}
       minPriceIndex={minPriceIndex}
       maxPriceIndex={maxPriceIndex}
@@ -3665,6 +3756,57 @@ export default function IntelligenceClient({
   const closeTownStats = () => setTownStatsOpen(false);
   const closeVintageStats = () => setVintageStatsOpen(false);
 
+  const liveSyncIso =
+    state === "ready" && !listingsRefresh.refreshing
+      ? listingsRefresh.lastFinishedAt
+      : null;
+  const liveSyncedAt = formatListingsRefreshTime(liveSyncIso);
+
+  // When "synced …" appears: hide graphs, delete the phrase one letter at a
+  // time, then show graphs again and flip the Show/Hide graphs control.
+  useEffect(() => {
+    if (!liveSyncIso || !liveSyncedAt) return;
+    if (syncPhraseAnimDoneRef.current === liveSyncIso) return;
+    if (syncPhraseAnimKeyRef.current === liveSyncIso) return;
+
+    syncPhraseAnimKeyRef.current = liveSyncIso;
+    const fullPhrase = `synced ${liveSyncedAt}`;
+    setSyncPhraseDisplay(fullPhrase);
+    setMiniGraphsHiddenPref(true);
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+    let charIndex = fullPhrase.length;
+
+    const holdId = window.setTimeout(() => {
+      if (cancelled) return;
+      intervalId = window.setInterval(() => {
+        if (cancelled) return;
+        charIndex -= 1;
+        if (charIndex <= 0) {
+          if (intervalId != null) window.clearInterval(intervalId);
+          intervalId = null;
+          setSyncPhraseDisplay(null);
+          syncPhraseAnimDoneRef.current = liveSyncIso;
+          syncPhraseAnimKeyRef.current = null;
+          setMiniGraphsHiddenPref(false);
+          return;
+        }
+        setSyncPhraseDisplay(fullPhrase.slice(0, charIndex));
+      }, 45);
+    }, 1_200);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(holdId);
+      if (intervalId != null) window.clearInterval(intervalId);
+      // Allow restart if this sync stamp is still current after unmount/remount.
+      if (syncPhraseAnimDoneRef.current !== liveSyncIso) {
+        syncPhraseAnimKeyRef.current = null;
+      }
+    };
+  }, [liveSyncIso, liveSyncedAt, setMiniGraphsHiddenPref]);
+
   const liveStatusLabel =
     state === "ready"
       ? listingsRefresh.refreshing
@@ -3675,16 +3817,23 @@ export default function IntelligenceClient({
             return kind ? `Live Refreshing · ${kind}` : "Live Refreshing";
           })()
         : (() => {
-            const syncedAt = formatListingsRefreshTime(
-              listingsRefresh.lastFinishedAt,
-            );
             const kind = siteUnlocked
               ? formatListingsRefreshKind(listingsRefresh.lastKind)
               : null;
-            if (syncedAt && kind) return `Live · synced ${syncedAt} · ${kind}`;
-            if (syncedAt) return `Live · synced ${syncedAt}`;
-            if (kind) return `Live · ${kind}`;
-            return "Live";
+            const syncSegment =
+              syncPhraseAnimDoneRef.current === liveSyncIso
+                ? null
+                : syncPhraseDisplay != null
+                  ? syncPhraseDisplay.length > 0
+                    ? syncPhraseDisplay
+                    : null
+                  : liveSyncedAt
+                    ? `synced ${liveSyncedAt}`
+                    : null;
+            const parts = ["Live"];
+            if (syncSegment) parts.push(syncSegment);
+            if (kind) parts.push(kind);
+            return parts.join(" · ");
           })()
       : state === "fallback"
         ? "Cached · feed offline"
@@ -3779,6 +3928,7 @@ export default function IntelligenceClient({
       >
         <div className="mx-auto max-w-7xl px-6 lg:px-10 py-2">
           <p className="flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide">
+            {descriptorSearchControl}
             {filterDescriptorLeading}
             {sliderDescriptorLabels}
           </p>
@@ -4054,6 +4204,7 @@ export default function IntelligenceClient({
                 data-intel-slider-context-blurb
                 aria-hidden={descriptorsPinned || undefined}
               >
+                {descriptorSearchControl}
                 {sliderDescriptorLabels}
               </p>
 
@@ -4223,9 +4374,7 @@ export default function IntelligenceClient({
                 >
                   {filterDescriptorLeading}
                   <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
-                  <span className="text-white/25" aria-hidden>
-                    ·
-                  </span>
+                  <IntelFilterDescriptorDot />
                   <IntelMonthsSupplyInline
                     monthsSupply={activeTownMonthsSupply}
                     monthlySalesLoaded={monthlySalesLoaded}
@@ -4247,23 +4396,22 @@ export default function IntelligenceClient({
                 </p>
               )}
             </div>
-            <div className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up">
-              <DealOfTheDayFrame
-                city={active}
-                theme="hero"
-                rotateTowns={active === "All"}
-                transactionFilter={tx === "all" ? "sale" : tx}
-                propertyClass={
-                  saleProperty === "multi" || saleProperty === "condos"
-                    ? saleProperty
-                    : "homes"
-                }
-                initialDealsByTown={initialDotdDealsByTown}
-                initialKind="sale"
-                initialPropertyClass="homes"
-                className="w-full"
-              />
-            </div>
+            <DealOfTheDayFrame
+              city={active}
+              theme="hero"
+              rotateTowns={active === "All"}
+              transactionFilter={tx === "all" ? "sale" : tx}
+              propertyClass={
+                saleProperty === "multi" || saleProperty === "condos"
+                  ? saleProperty
+                  : "homes"
+              }
+              initialDealsByTown={initialDotdDealsByTown}
+              initialKind="sale"
+              initialPropertyClass="homes"
+              hideUntilReady
+              className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
+            />
           </div>
         </div>
       </section>
@@ -4336,18 +4484,7 @@ export default function IntelligenceClient({
                     <button
                       type="button"
                       className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold lg:hidden"
-                      onClick={() => {
-                        const next = !miniGraphsHidden;
-                        setMiniGraphsHidden(next);
-                        try {
-                          sessionStorage.setItem(
-                            "tmre-intel-mini-graphs-hidden",
-                            next ? "1" : "0",
-                          );
-                        } catch {
-                          /* ignore */
-                        }
-                      }}
+                      onClick={() => setMiniGraphsHiddenPref(!miniGraphsHidden)}
                       aria-pressed={miniGraphsHidden}
                     >
                       {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
@@ -4463,18 +4600,7 @@ export default function IntelligenceClient({
                     <button
                       type="button"
                       className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
-                      onClick={() => {
-                        const next = !miniGraphsHidden;
-                        setMiniGraphsHidden(next);
-                        try {
-                          sessionStorage.setItem(
-                            "tmre-intel-mini-graphs-hidden",
-                            next ? "1" : "0",
-                          );
-                        } catch {
-                          /* ignore */
-                        }
-                      }}
+                      onClick={() => setMiniGraphsHiddenPref(!miniGraphsHidden)}
                       aria-pressed={miniGraphsHidden}
                     >
                       {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
@@ -4532,17 +4658,7 @@ export default function IntelligenceClient({
               onInteractRef={miniGraphsInteractRef}
               desktopHideToggleOnly
               hidden={miniGraphsHidden}
-              onHiddenChange={(next) => {
-                setMiniGraphsHidden(next);
-                try {
-                  sessionStorage.setItem(
-                    "tmre-intel-mini-graphs-hidden",
-                    next ? "1" : "0",
-                  );
-                } catch {
-                  /* ignore */
-                }
-              }}
+              onHiddenChange={setMiniGraphsHiddenPref}
               slots={[
                 {
                   key: "vintage",
@@ -5309,7 +5425,7 @@ function DescriptorSearchControl({
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1.5 self-center transition-[margin] duration-300 ease-out ${
-        active ? "ml-5 sm:ml-6" : "ml-3 sm:ml-4"
+        active ? "mr-3 sm:mr-4" : "mr-2 sm:mr-2.5"
       }`}
     >
       <button
@@ -5320,17 +5436,19 @@ function DescriptorSearchControl({
           active ? "opacity-100 scale-110" : "opacity-95 scale-100"
         } cursor-pointer hover:text-gold-light`}
       >
-        <DescriptorSearchIcon className={active ? "h-5 w-5" : "h-4 w-4"} />
+        <DescriptorSearchIcon className={active ? "h-5 w-5" : "h-3.5 w-3.5"} />
       </button>
       {onEdit ? (
         <button
           type="button"
           onClick={onEdit}
-          aria-label="Edit filters — scroll to top and show filter controls"
-          title="Edit filters"
-          className="font-mono text-[10px] font-bold tracking-[0.14em] uppercase text-gold/85 hover:text-gold-light underline-offset-2 hover:underline transition-colors"
+          aria-label="Edit all filters — scroll to top and show filter controls"
+          title="Edit all filters"
+          className={`font-mono font-bold tracking-[0.14em] uppercase text-gold leading-none origin-left transition-all duration-300 ease-out hover:text-gold-light underline-offset-2 hover:underline ${
+            active ? "text-lg scale-110" : "text-[9px] scale-100"
+          }`}
         >
-          Edit
+          Edit all
         </button>
       ) : null}
     </span>
@@ -5339,8 +5457,11 @@ function DescriptorSearchControl({
 
 function IntelFilterDescriptorDot() {
   return (
-    <span className="text-white/25" aria-hidden>
-      ·
+    <span
+      className="shrink-0 self-center font-mono text-[11px] font-bold leading-none text-gold/65"
+      aria-hidden
+    >
+      •
     </span>
   );
 }
@@ -5376,8 +5497,6 @@ type IntelSliderDescriptorLabelsProps = {
   furnishedFilter?: FurnishedFilter;
   furnishedSliderActive?: boolean;
   onDescriptorClick: (kind: IntelSliderKind) => void;
-  /** Scroll to top and reveal town/tx/slider filter controls. */
-  onEditFilters?: () => void;
   boardPriceSteps: readonly number[];
   minPriceIndex: number;
   maxPriceIndex: number;
@@ -5405,7 +5524,6 @@ function IntelSliderDescriptorLabels({
   furnishedFilter = "all",
   furnishedSliderActive = false,
   onDescriptorClick,
-  onEditFilters,
   boardPriceSteps,
   minPriceIndex,
   maxPriceIndex,
@@ -5429,21 +5547,6 @@ function IntelSliderDescriptorLabels({
 
   const leadingDot = withLeadingSeparator;
   const showResidentialSliders = cls !== "commercial";
-  const searchActive =
-    priceSliderActive ||
-    bedSliderActive ||
-    bathSliderActive ||
-    vintageSliderActive ||
-    sqftSliderActive ||
-    furnishedSliderActive;
-  const openViaSearch = () =>
-    onDescriptorClick(
-      showResidentialSliders
-        ? "sqft"
-        : showPriceFilter
-          ? "price"
-          : "furnished",
-    );
 
   return (
     <>
@@ -5502,12 +5605,6 @@ function IntelSliderDescriptorLabels({
           />
         </>
       ) : null}
-      {/* Trailing search + Edit — extra margin clears blown-up descriptor scale. */}
-      <DescriptorSearchControl
-        active={searchActive}
-        onClick={openViaSearch}
-        onEdit={onEditFilters}
-      />
     </>
   );
 }

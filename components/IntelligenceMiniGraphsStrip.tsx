@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -13,6 +14,8 @@ import {
 const HIDDEN_PREF_KEY = "tmre-intel-mini-graphs-hidden";
 const ROTATE_MS = 5_000;
 const INTERACTIVE_HINT_MS = 10_000;
+/** Hide the strip after this long with no pointer/chart interaction. */
+const AUTO_HIDE_IDLE_MS = 10_000;
 
 export type IntelligenceMiniGraphSlot = {
   key: string;
@@ -75,16 +78,45 @@ export default function IntelligenceMiniGraphsStrip({
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
+  /** Bumped on real user interaction so the idle auto-hide timer restarts. */
+  const [activityEpoch, setActivityEpoch] = useState(0);
+
+  const bumpActivity = useCallback(() => {
+    setActivityEpoch((n) => n + 1);
+  }, []);
+
+  const setHiddenPref = useCallback(
+    (next: boolean) => {
+      if (controlled) onHiddenChange?.(next);
+      else setHiddenInternal(next);
+      if (!next) setPaused(false);
+      try {
+        sessionStorage.setItem(HIDDEN_PREF_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+    },
+    [controlled, onHiddenChange],
+  );
 
   const carouselApi = useMemo<MiniGraphsCarouselApi>(
     () => ({
       paused,
       isCarousel: isNarrow && items.length > 1,
-      pause: () => setPaused(true),
-      resume: () => setPaused(false),
-      toggle: () => setPaused((p) => !p),
+      pause: () => {
+        setPaused(true);
+        bumpActivity();
+      },
+      resume: () => {
+        setPaused(false);
+        bumpActivity();
+      },
+      toggle: () => {
+        setPaused((p) => !p);
+        bumpActivity();
+      },
     }),
-    [paused, isNarrow, items.length],
+    [paused, isNarrow, items.length, bumpActivity],
   );
 
   useEffect(() => {
@@ -107,11 +139,14 @@ export default function IntelligenceMiniGraphsStrip({
   }, []);
 
   useEffect(() => {
-    onInteractRef.current = () => setPaused(true);
+    onInteractRef.current = () => {
+      setPaused(true);
+      bumpActivity();
+    };
     return () => {
       onInteractRef.current = null;
     };
-  }, [onInteractRef]);
+  }, [onInteractRef, bumpActivity]);
 
   useEffect(() => {
     if (activeIndex >= items.length) setActiveIndex(0);
@@ -147,16 +182,14 @@ export default function IntelligenceMiniGraphsStrip({
     return () => window.clearTimeout(id);
   }, [prefReady, hidden, isNarrow, items.length]);
 
-  const setHiddenPref = (next: boolean) => {
-    if (controlled) onHiddenChange?.(next);
-    else setHiddenInternal(next);
-    if (!next) setPaused(false);
-    try {
-      sessionStorage.setItem(HIDDEN_PREF_KEY, next ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  };
+  // Auto-hide after idle — flips controlled/external "Show graphs" link too.
+  useEffect(() => {
+    if (!prefReady || hidden || items.length === 0) return;
+    const id = window.setTimeout(() => {
+      setHiddenPref(true);
+    }, AUTO_HIDE_IDLE_MS);
+    return () => window.clearTimeout(id);
+  }, [prefReady, hidden, items.length, activityEpoch, setHiddenPref]);
 
   if (items.length === 0) return null;
 
@@ -171,7 +204,10 @@ export default function IntelligenceMiniGraphsStrip({
           ? "border-gold/50 bg-gold/15 text-navy hover:bg-gold/25"
           : "border-navy/20 bg-white text-navy hover:border-navy/40 hover:bg-navy/[0.04]"
       }`}
-      onClick={() => setPaused((p) => !p)}
+      onClick={() => {
+        bumpActivity();
+        setPaused((p) => !p);
+      }}
       aria-pressed={paused}
       aria-label={paused ? "Resume graph rotation" : "Pause graph rotation"}
       title={paused ? "Play carousel" : "Pause carousel"}
@@ -229,7 +265,10 @@ export default function IntelligenceMiniGraphsStrip({
         ) : null}
 
         {!hidden ? (
-          <div className="w-full">
+          <div
+            className="w-full"
+            onPointerDownCapture={bumpActivity}
+          >
             <div
               className={
                 isNarrow ? "relative w-full overflow-hidden" : "w-full"
@@ -284,6 +323,7 @@ export default function IntelligenceMiniGraphsStrip({
                           : "w-1.5 bg-navy/25 hover:bg-navy/45"
                       }`}
                       onClick={() => {
+                        bumpActivity();
                         setActiveIndex(i);
                         // Stay on the chosen graph while working with it.
                         setPaused(true);

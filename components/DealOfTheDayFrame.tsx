@@ -419,6 +419,12 @@ export default function DealOfTheDayFrame({
   initialDealsByTown = null,
   initialKind = "sale",
   initialPropertyClass = "homes",
+  /**
+   * When true, render nothing until a deal is in hand (no loading skeleton /
+   * empty “no pick” chrome). Used on Intelligence so a cold fetch doesn’t
+   * occupy the hero with a slow placeholder.
+   */
+  hideUntilReady = false,
 }: {
   city?: string;
   theme?: "hero" | "light";
@@ -432,6 +438,7 @@ export default function DealOfTheDayFrame({
   initialDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
   initialKind?: "sale" | "rental";
   initialPropertyClass?: DealPropertyClassFilter;
+  hideUntilReady?: boolean;
 }) {
   const {
     loading,
@@ -462,6 +469,11 @@ export default function DealOfTheDayFrame({
 
   const deal = currentDeal;
   const l = deal?.listing;
+  const hasDeal = Boolean(deal && l);
+
+  if (hideUntilReady && !hasDeal) {
+    return null;
+  }
   const score = deal?.score;
   const modalDeal = breakdownOpen ? breakdownDeal : null;
   const modalListing = modalDeal?.listing;

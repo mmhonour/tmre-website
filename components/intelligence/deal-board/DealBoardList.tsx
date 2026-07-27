@@ -413,12 +413,29 @@ export default function DealBoardList({
               {resultsToolbar}
             </div>
             <div>
-              {renderRows(topRows)}
-              {renderRows(middlePinnedRows)}
-              {tierBlock}
-              {middleTierExpanded ? renderRows(middleRows) : null}
-              {hideMiddleControl}
-              {renderRows(bottomRows)}
+              {/*
+                Render consecutive listings in one CSS grid. Splitting top /
+                middle / bottom into separate grids restarted columns (e.g. 10
+                results looked like 3–4 broken bands on desktop large/grid).
+                Only split when the middle-tier collapse panel sits between.
+              */}
+              {tierBlock ? (
+                <>
+                  {renderRows([...topRows, ...middlePinnedRows])}
+                  {tierBlock}
+                  {renderRows(bottomRows)}
+                </>
+              ) : (
+                <>
+                  {renderRows([
+                    ...topRows,
+                    ...middlePinnedRows,
+                    ...(middleTierExpanded ? middleRows : []),
+                    ...bottomRows,
+                  ])}
+                  {hideMiddleControl}
+                </>
+              )}
               {batching && remaining > 0 ? (
                 <div
                   ref={loadMoreRef}
