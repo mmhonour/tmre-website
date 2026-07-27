@@ -15,7 +15,7 @@ import {
   readStatsCacheRow,
   writeStatsCacheRow,
 } from '@/lib/db/stats-cache-repo'
-import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-status'
+import { beginListingsRefresh, endListingsRefresh } from '@/lib/listings-refresh-status'
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import { filterListingsByKind, LISTING_KINDS, type ListingKind } from '@/lib/listing-kind'
 import {
@@ -702,7 +702,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
     return { written: 0, durationMs: 0, skipped: true }
   }
 
-  if (trackRefresh) beginSqliteRefresh('stats-cache')
+  if (trackRefresh) beginListingsRefresh('stats-cache')
   const startedAt = new Date().toISOString()
   setSyncMeta('last_stats_cache_started', startedAt)
   const t0 = Date.now()
@@ -801,7 +801,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
 
     return { written, durationMs: Date.now() - t0 }
   } finally {
-    if (trackRefresh) endSqliteRefresh(new Date().toISOString())
+    if (trackRefresh) endListingsRefresh(new Date().toISOString())
     await releaseStatsCacheRebuildLock(lockToken)
   }
 }
@@ -828,7 +828,7 @@ export async function rebuildStatsCacheForTowns(
     return { written: 0, durationMs: 0, skipped: true }
   }
 
-  if (trackRefresh) beginSqliteRefresh('stats-cache')
+  if (trackRefresh) beginListingsRefresh('stats-cache')
   const startedAt = new Date().toISOString()
   setSyncMeta('last_stats_cache_started', startedAt)
   const t0 = Date.now()
@@ -913,7 +913,7 @@ export async function rebuildStatsCacheForTowns(
 
     return { written, durationMs: Date.now() - t0 }
   } finally {
-    if (trackRefresh) endSqliteRefresh(new Date().toISOString())
+    if (trackRefresh) endListingsRefresh(new Date().toISOString())
     await releaseStatsCacheRebuildLock(lockToken)
   }
 }

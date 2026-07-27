@@ -75,6 +75,7 @@ import {
   parseIntelligenceSearchParams,
 } from "@/lib/intelligence-search-url";
 import ListingShareButton from "@/components/listing/ListingShareButton";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import {
   bumpIntelligenceSnapshotGeneration,
   getOrSetIntelligenceSnapshotCache,
@@ -1302,7 +1303,7 @@ function deriveStatus(l: ApiListing): RowStatus {
   return "Active";
 }
 
-function formatSqliteRefreshTime(iso: string | null | undefined): string | null {
+function formatListingsRefreshTime(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -1329,6 +1330,27 @@ function formatSqliteRefreshTime(iso: string | null | undefined): string | null 
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/** Admin-only refresh kind labels for the Live status chip. */
+function formatListingsRefreshKind(
+  kind: string | null | undefined,
+): string | null {
+  if (!kind || kind === "unknown") return null;
+  switch (kind) {
+    case "incremental":
+      return "incremental";
+    case "full-sync":
+      return "full sync";
+    case "full-sync-chunked":
+      return "full sync (chunked)";
+    case "stats-cache":
+      return "stats cache";
+    case "refresh":
+      return "refresh";
+    default:
+      return kind.replace(/-/g, " ");
+  }
 }
 
 function mapListings(api: ApiListing[], townName?: TmreTown): DisplayListing[] {
@@ -1596,6 +1618,7 @@ export default function IntelligenceClient({
   /** SSR seed: Market Bands inventory charts (incl. Discount) for city All. */
   initialInventorySegmentChart?: import("@/lib/intelligence-inventory-segment-fssr").InventorySegmentChartSeed | null;
 } = {}) {
+  const siteUnlocked = useSiteUnlocked();
   const searchParams = useSearchParams();
   const urlSearch = useMemo(
     () => parseIntelligenceSearchParams(searchParams),
@@ -1865,11 +1888,18 @@ export default function IntelligenceClient({
     miniGraphsInteractRef.current?.();
   };
   const [heroIntroDismissed, setHeroIntroDismissed] = useState(false);
-  const [sqliteRefresh, setSqliteRefresh] = useState<{
+  const [listingsRefresh, setListingsRefresh] = useState<{
     refreshing: boolean;
     lastFinishedAt: string | null;
-  }>({ refreshing: false, lastFinishedAt: null });
-  const sqliteWasRefreshingRef = useRef(false);
+    lastKind: string | null;
+    refreshingKind: string | null;
+  }>({
+    refreshing: false,
+    lastFinishedAt: null,
+    lastKind: null,
+    refreshingKind: null,
+  });
+  const listingsWasRefreshingRef = useRef(false);
   const listingsSoftReloadRef = useRef(false);
   const listingsSoftReloadTimerRef = useRef<number | null>(null);
   // Monthly sales counts per city for months-of-supply calculation
@@ -1926,9 +1956,16 @@ export default function IntelligenceClient({
         const data = (await res.json()) as {
           refreshing: boolean;
           lastFinishedAt: string | null;
+          lastKind?: string | null;
+          refreshingKind?: string | null;
         };
-        setSqliteRefresh(data);
-        if (sqliteWasRefreshingRef.current && !data.refreshing) {
+        setListingsRefresh({
+          refreshing: data.refreshing,
+          lastFinishedAt: data.lastFinishedAt,
+          lastKind: data.lastKind ?? null,
+          refreshingKind: data.refreshingKind ?? null,
+        });
+        if (listingsWasRefreshingRef.current && !data.refreshing) {
           if (listingsSoftReloadTimerRef.current != null) {
             window.clearTimeout(listingsSoftReloadTimerRef.current);
           }
@@ -2006,14 +2043,17 @@ export default function IntelligenceClient({
             })();
           }, 1_500);
         }
-        sqliteWasRefreshingRef.current = data.refreshing;
+        listingsWasRefreshingRef.current = data.refreshing;
       } catch {
         /* ignore polling errors */
       }
     };
 
     pollRefreshStatus();
-    const id = window.setInterval(pollRefreshStatus, sqliteRefresh.refreshing ? 5_000 : 3_000);
+    const id = window.setInterval(
+      pollRefreshStatus,
+      listingsRefresh.refreshing ? 5_000 : 3_000,
+    );
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -2021,7 +2061,7 @@ export default function IntelligenceClient({
         window.clearTimeout(listingsSoftReloadTimerRef.current);
       }
     };
-  }, [sqliteRefresh.refreshing, tx]);
+  }, [listingsRefresh.refreshing, tx]);
 
   useEffect(() => {
     if (!expandedSnapshotsHydrated) return;
@@ -3627,13 +3667,24 @@ export default function IntelligenceClient({
 
   const liveStatusLabel =
     state === "ready"
-      ? sqliteRefresh.refreshing
-        ? "Live Refreshing"
+      ? listingsRefresh.refreshing
+        ? (() => {
+            const kind = siteUnlocked
+              ? formatListingsRefreshKind(listingsRefresh.refreshingKind)
+              : null;
+            return kind ? `Live Refreshing · ${kind}` : "Live Refreshing";
+          })()
         : (() => {
-            const syncedAt = formatSqliteRefreshTime(
-              sqliteRefresh.lastFinishedAt,
+            const syncedAt = formatListingsRefreshTime(
+              listingsRefresh.lastFinishedAt,
             );
-            return syncedAt ? `Live · synced ${syncedAt}` : "Live";
+            const kind = siteUnlocked
+              ? formatListingsRefreshKind(listingsRefresh.lastKind)
+              : null;
+            if (syncedAt && kind) return `Live · synced ${syncedAt} · ${kind}`;
+            if (syncedAt) return `Live · synced ${syncedAt}`;
+            if (kind) return `Live · ${kind}`;
+            return "Live";
           })()
       : state === "fallback"
         ? "Cached · feed offline"
@@ -3644,7 +3695,7 @@ export default function IntelligenceClient({
     state === "ready" && !liveStatusLabel.includes("synced");
 
   const liveStatusDotClass =
-    state === "ready" && sqliteRefresh.refreshing
+    state === "ready" && listingsRefresh.refreshing
       ? "bg-gold animate-pulse-dot"
       : state === "ready"
         ? "bg-sage animate-pulse-dot"
@@ -4224,15 +4275,9 @@ export default function IntelligenceClient({
       >
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="mb-4 lg:mb-5 flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h2 className="font-serif text-[22px] sm:text-[28px] lg:text-[30px] text-navy leading-tight">
-                  Intelligent Deals
-                </h2>
-              </div>
               {/* Timestamped Live (or non-ready): keep status + controls stacked right. */}
               {!liveStatusCompact ? (
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <div className="flex flex-col items-end gap-1.5 shrink-0 self-end">
                   <div className="flex items-center gap-2 font-mono text-xs leading-none">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
@@ -4346,7 +4391,6 @@ export default function IntelligenceClient({
                   />
                 </div>
               ) : null}
-            </div>
 
             {/* Compact Live (no sync timestamp): one row — Live + links left, share right. */}
             {liveStatusCompact ? (

@@ -283,7 +283,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'refresh_in_progress / refresh lock',
     category: 'sync-admin',
     definition:
-      'Global busy flag while a heavy sync or stats rebuild runs. Admin POSTs for most actions return 409 while the lock is held.',
+      'Global busy flag while a heavy sync or stats rebuild runs (tracked in lib/listings-refresh-status.ts — formerly sqlite-refresh-status). Sources include incremental, full-sync, full-sync-chunked, and stats-cache. Admin POSTs for most actions return 409 while the lock is held. On Intelligence, unlocked admins see the last/current kind next to Live.',
   },
   {
     term: 'WAITING (Admin sync queue)',

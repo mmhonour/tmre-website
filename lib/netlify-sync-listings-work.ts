@@ -3,7 +3,7 @@ import 'server-only'
 import { recordSyncRun } from '@/lib/db/listings-repo'
 import { hydrateSyncMetaStore, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import { getSyncStatus, syncIncrementalListings } from '@/lib/listings-sync'
-import { healStaleRefreshLock } from '@/lib/sqlite-refresh-status'
+import { healStaleRefreshLock } from '@/lib/listings-refresh-status'
 import {
   healStaleOverdueCatchupLock,
   runOverdueSyncCatchup,

@@ -36,7 +36,7 @@ import {
   formatTownSyncSummary,
 } from '@/lib/admin-sync-progress'
 import { rebuildStatsCache } from '@/lib/stats-cache'
-import { readSqliteRefreshStatus, healStaleRefreshLock } from '@/lib/sqlite-refresh-status'
+import { readListingsRefreshStatus, healStaleRefreshLock } from '@/lib/listings-refresh-status'
 import { buildAdminSyncNextRuns, buildAdminSyncScheduleHints } from '@/lib/admin-sync-schedule'
 import {
   clearSyncNextOverrideAfterRun,
@@ -659,7 +659,7 @@ export async function readAdminSyncPanelStatus() {
   await hydrateSyncMetaStore()
 
   const stats = await readListingsDbStats()
-  const refresh = readSqliteRefreshStatus()
+  const refresh = readListingsRefreshStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
   const nextRuns = buildAdminSyncNextRuns({

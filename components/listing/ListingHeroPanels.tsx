@@ -855,10 +855,11 @@ export default function ListingHeroPanels({
 
         {/*
           Meta + tabs share one positioning context for the mobile edge pills.
-          Insight is anchored just below the compact price; Details → What if →
-          Map stack tightly under it (price is the anchor — not Map on the tabs
-          row). History lives inside the Insight drawer on mobile. What if /
-          History / Map stay off the tab strip (hideMobileEdgeTabs).
+          Insight is anchored just below the compact price (with a little
+          clearance); Details → What if → Map move with it as one stack (price
+          is the anchor — not Map on the tabs row). History lives inside the
+          Insight drawer on mobile. What if / History / Map stay off the tab
+          strip (hideMobileEdgeTabs).
         */}
         <div className="relative">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
@@ -876,7 +877,7 @@ export default function ListingHeroPanels({
           </div>
 
           <div
-            className="lg:hidden absolute right-0 top-[2.85rem] z-10 max-lg:-mr-3 flex flex-col items-end gap-0"
+            className="lg:hidden absolute right-0 top-[3.5rem] z-10 max-lg:-mr-3 flex flex-col items-end gap-0"
             role="toolbar"
             aria-label="Listing panels"
           >

@@ -9,14 +9,14 @@ import {
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
 import { readListingsDbStats } from '@/lib/db/listings-repo'
 import { getSyncMeta } from '@/lib/db/sync-meta-store'
-import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
+import { readListingsRefreshStatus } from '@/lib/listings-refresh-status'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 async function nextRunsPayload() {
   const stats = await readListingsDbStats()
-  const refresh = readSqliteRefreshStatus()
+  const refresh = readListingsRefreshStatus()
   const nextRuns = buildAdminSyncNextRuns({
     lastFullSyncStarted: stats.lastFullSyncStarted,
     lastFullSync: stats.lastFullSync,

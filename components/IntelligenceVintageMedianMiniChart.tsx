@@ -191,14 +191,14 @@ export default function IntelligenceVintageMedianMiniChart({
           Original view by {VIEW_BY_DIMENSION_LABEL}
         </p>
       ) : null}
-      <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
-          <div className="flex w-full max-w-[248px] items-baseline justify-between gap-2">
-            <p className="min-w-0 bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+      <div className="flex w-full min-w-0 items-center gap-2">
+          <div className="flex w-[4.75rem] shrink-0 flex-col items-start justify-center gap-1 self-stretch">
+            <p className="bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
               {chartTitle}
             </p>
-            {/* Desktop: beside title. Mobile: strip shows this right of the carousel. */}
+            {/* Desktop hint; mobile carousel strip shows its own. */}
             <p
-              className={`pointer-events-none hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
+              className={`pointer-events-none hidden italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
                 showInteractiveHint
                   ? "animate-interactive-graph-hint"
                   : "opacity-0"
@@ -208,9 +208,10 @@ export default function IntelligenceVintageMedianMiniChart({
               interactive graph
             </p>
           </div>
+          <div className="flex min-w-0 max-w-[248px] flex-1 flex-col items-stretch gap-0.5">
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-            className="h-[4.5rem] w-full max-w-[248px] overflow-visible bg-transparent"
+            className="h-[4.5rem] w-full overflow-visible bg-transparent"
             role="img"
             aria-label={`${chartTitle}. Click a point to filter the deal board.`}
           >
@@ -298,7 +299,7 @@ export default function IntelligenceVintageMedianMiniChart({
           </svg>
 
           {filterActive && onResetFilter ? (
-            <div className="flex w-full max-w-[248px] justify-end">
+            <div className="flex w-full justify-end">
               <button
                 type="button"
                 onClick={onResetFilter}
@@ -310,6 +311,7 @@ export default function IntelligenceVintageMedianMiniChart({
               </button>
             </div>
           ) : null}
+          </div>
       </div>
     </div>
   );

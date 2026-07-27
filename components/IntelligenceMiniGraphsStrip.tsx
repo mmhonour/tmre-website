@@ -133,7 +133,7 @@ export default function IntelligenceMiniGraphsStrip({
     return () => window.clearInterval(id);
   }, [prefReady, hidden, isNarrow, paused, items.length]);
 
-  // Mobile: "interactive graph" lives to the right of the carousel bar.
+  // Mobile: "interactive graph" hint beside the carousel controls.
   useEffect(() => {
     if (!prefReady || hidden || !isNarrow || items.length === 0) {
       setShowInteractiveHint(false);
@@ -200,6 +200,16 @@ export default function IntelligenceMiniGraphsStrip({
     </p>
   );
 
+  const carouselCount =
+    items.length > 1 ? (
+      <span
+        className="font-mono text-[9px] tracking-[0.12em] uppercase tabular-nums text-navy/55"
+        aria-live="polite"
+      >
+        {activeIndex + 1} of {items.length}
+      </span>
+    ) : null;
+
   return (
     <MiniGraphsCarouselContext.Provider value={carouselApi}>
       <div className="mb-2 flex flex-col gap-1 items-stretch">
@@ -253,38 +263,35 @@ export default function IntelligenceMiniGraphsStrip({
               </div>
             </div>
 
-            {isNarrow ? (
+            {isNarrow && items.length > 1 ? (
               <div className="mt-1.5 flex flex-wrap items-center justify-start gap-2">
-                {items.length > 1 ? (
-                  <>
-                    <div
-                      className="flex items-center gap-1.5"
-                      role="tablist"
-                      aria-label="Mini graphs"
-                    >
-                      {items.map((item, i) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          role="tab"
-                          aria-selected={i === activeIndex}
-                          aria-label={`Show graph ${i + 1} of ${items.length}`}
-                          className={`h-1.5 rounded-full transition-all ${
-                            i === activeIndex
-                              ? "w-4 bg-navy"
-                              : "w-1.5 bg-navy/25 hover:bg-navy/45"
-                          }`}
-                          onClick={() => {
-                            setActiveIndex(i);
-                            // Stay on the chosen graph while working with it.
-                            setPaused(true);
-                          }}
-                        />
-                      ))}
-                    </div>
-                    {pauseToggle}
-                  </>
-                ) : null}
+                {carouselCount}
+                <div
+                  className="flex items-center gap-1.5"
+                  role="tablist"
+                  aria-label="Mini graphs"
+                >
+                  {items.map((item, i) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={i === activeIndex}
+                      aria-label={`Show graph ${i + 1} of ${items.length}`}
+                      className={`h-1.5 rounded-full transition-all ${
+                        i === activeIndex
+                          ? "w-4 bg-navy"
+                          : "w-1.5 bg-navy/25 hover:bg-navy/45"
+                      }`}
+                      onClick={() => {
+                        setActiveIndex(i);
+                        // Stay on the chosen graph while working with it.
+                        setPaused(true);
+                      }}
+                    />
+                  ))}
+                </div>
+                {pauseToggle}
                 {interactiveHint}
               </div>
             ) : null}

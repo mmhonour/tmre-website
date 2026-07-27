@@ -12,7 +12,7 @@ import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { getSyncMeta } from '@/lib/db/sync-meta-store'
 import { readSyncNextOverrides } from '@/lib/sync-next-override'
 import { ensureAdminListingPhotosReady } from '@/lib/listing-photos-db-persist'
-import { readSqliteRefreshStatus } from '@/lib/sqlite-refresh-status'
+import { readListingsRefreshStatus } from '@/lib/listings-refresh-status'
 import { probeRetsConnection, readStoredRetsHealth } from '@/lib/rets-health'
 import {
   readLatestListingModificationTimestamp,
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
   await ensureAdminListingPhotosReady()
   await ensurePostDeployFullResyncScheduled()
 
-  const refresh = readSqliteRefreshStatus()
+  const refresh = readListingsRefreshStatus()
   const chunkedFullResync =
     action === 'full-resync' && (Boolean(town) || finalize || Boolean(finalizeStep))
   if (
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
       propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
       zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),
       zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),
-      refreshing: readSqliteRefreshStatus().refreshing,
+      refreshing: readListingsRefreshStatus().refreshing,
       lastRefreshFinished: getSyncMeta('last_refresh_finished_at'),
       lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
       rets: await probeRetsConnection(true),

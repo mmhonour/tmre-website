@@ -8,7 +8,7 @@ import {
   upsertTownListings,
 } from '@/lib/db/listings-repo'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
-import { beginSqliteRefresh, endSqliteRefresh } from '@/lib/sqlite-refresh-status'
+import { beginListingsRefresh, endListingsRefresh } from '@/lib/listings-refresh-status'
 import {
   ACTIVE_LISTINGS_FETCH_LIMIT,
   CLOSED_LISTINGS_FETCH_LIMIT,
@@ -261,7 +261,7 @@ export async function syncIncrementalListings(
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
 
-  beginSqliteRefresh('incremental')
+  beginListingsRefresh('incremental')
 
   try {
     for (const town of TMRE_TOWNS) {
@@ -324,7 +324,7 @@ export async function syncIncrementalListings(
       totalUpserted,
     }
   } finally {
-    endSqliteRefresh(new Date().toISOString())
+    endListingsRefresh(new Date().toISOString())
   }
 }
 
@@ -667,7 +667,7 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
   markPostDeployFullResyncComplete()
   const totalListings = await countListings()
   await captureInventorySnapshot()
-  endSqliteRefresh(finishedAt)
+  endListingsRefresh(finishedAt)
   const { clearChunkedFullResyncProgress } = await import('@/lib/db/chunked-resync-progress')
   await clearChunkedFullResyncProgress()
   void warmActiveListingPhotosDeferred()
@@ -805,7 +805,7 @@ export async function syncFullResyncTown(town: TmreTown): Promise<TownSyncResult
     throw new Error(retsSyncBlockedMessage())
   }
   if (getSyncMeta('refresh_in_progress') !== '1') {
-    beginSqliteRefresh('full-sync-chunked')
+    beginListingsRefresh('full-sync-chunked')
     setSyncMeta('last_full_sync_started', new Date().toISOString())
     deleteSyncMeta('last_full_sync')
     const { clearChunkedFullResyncProgress } = await import('@/lib/db/chunked-resync-progress')
@@ -840,7 +840,7 @@ export async function finalizeChunkedFullResync(): Promise<FullSyncResult> {
       totalUpserted: total,
     }
   } finally {
-    endSqliteRefresh(finishedAt)
+    endListingsRefresh(finishedAt)
     void warmActiveListingPhotosDeferred()
   }
 }
@@ -877,7 +877,7 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
 
-  beginSqliteRefresh('full-sync')
+  beginListingsRefresh('full-sync')
 
   try {
   for (const town of TMRE_TOWNS) {
@@ -907,7 +907,7 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
     totalUpserted,
   }
   } finally {
-    endSqliteRefresh(new Date().toISOString())
+    endListingsRefresh(new Date().toISOString())
     void warmActiveListingPhotosDeferred()
   }
 }

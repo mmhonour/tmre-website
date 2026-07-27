@@ -7,7 +7,7 @@ import {
   stampIncrementalCronHeartbeat,
 } from '../../lib/netlify-sync-listings-work'
 import { queueNetlifyIncrementalSync } from '../../lib/netlify-sync-trigger'
-import { healStaleRefreshLock } from '../../lib/sqlite-refresh-status'
+import { healStaleRefreshLock } from '../../lib/listings-refresh-status'
 import { healStaleOverdueCatchupLock } from '../../lib/sync-overdue'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { syncIncrementalListings } from '../../lib/listings-sync'
