@@ -409,17 +409,27 @@ export function DealBoardPhotoLedLargeCard({
           className="rounded-none"
           priority={photoPriority ?? scoreRank < 4}
           withDealBoardReturn
+          overlay={
+            <div
+              className="absolute bottom-1.5 left-1.5 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <DealBoardStatusPills
+                status={l.status}
+                contractStatus={l.contractStatus}
+                size="sm"
+                surface="photo"
+                className="flex flex-col items-start gap-0.5"
+                onStatusClick={
+                  isLive && onStatusClick ? () => onStatusClick(l) : undefined
+                }
+              />
+            </div>
+          }
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <DealBoardStatusPills
-            status={l.status}
-            contractStatus={l.contractStatus}
-            onStatusClick={
-              isLive && onStatusClick ? () => onStatusClick(l) : undefined
-            }
-          />
+        <div className="flex items-center justify-end gap-2">
           <DealBoardScoreBadge
             value={l.score}
             variant="pill"

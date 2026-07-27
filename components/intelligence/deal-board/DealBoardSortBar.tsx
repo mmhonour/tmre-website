@@ -118,20 +118,22 @@ export default function DealBoardSortBar({
     ? "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2 py-1 font-mono text-[11px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]"
     : "inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-navy/15 px-2.5 py-2 font-mono text-[12px] tabular-nums text-navy hover:bg-navy/[0.04] active:translate-y-px transition-[transform,background-color]";
 
-  // Desktop: full chip opens the field drawer.
-  // Mobile with external field picker: chip hidden (Sorted by + bold ↑/↓ lives in the page header).
+  // When fieldPickerInToolbar is false, Sorted by + ↑/↓ live in the page header
+  // (mobile) — hide this chip below `lg` so it does not duplicate beside More data.
   const trigger = (
     <div
-      className={`${chipShell}${fieldPickerInToolbar ? "" : " hidden lg:inline-flex"}`}
+      className={
+        fieldPickerInToolbar
+          ? chipShell
+          : `${chipShell.replace(/^inline-flex/, "hidden lg:inline-flex")}`
+      }
       role="group"
       aria-label={`Sort by ${activeLabel}`}
     >
       <button
         type="button"
         onClick={() => setDrawerOpen(true)}
-        className={`${padL} active:translate-y-px transition-transform ${
-          fieldPickerInToolbar ? "hidden lg:inline-flex" : ""
-        }`}
+        className={`${padL} active:translate-y-px transition-transform`}
         aria-expanded={drawerOpen}
         aria-controls="intel-sort-drawer"
         aria-label={`Choose sort field — currently ${activeLabel}`}
@@ -201,7 +203,13 @@ export default function DealBoardSortBar({
   if (embedded) {
     return (
       <>
-        <div className="inline-flex items-center justify-start gap-1.5 shrink-0">
+        <div
+          className={
+            fieldPickerInToolbar
+              ? "inline-flex items-center justify-start gap-1.5 shrink-0"
+              : "hidden lg:inline-flex items-center justify-start gap-1.5 shrink-0"
+          }
+        >
           {trigger}
           {scoreInfoButton}
         </div>

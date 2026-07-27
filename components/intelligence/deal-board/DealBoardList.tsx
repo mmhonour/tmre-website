@@ -360,10 +360,19 @@ export default function DealBoardList({
 
   const resultsToolbar = (
     <div className="border-b border-charcoal/[0.08] bg-cream/95 px-4 py-2.5 backdrop-blur-sm">
-      {/* Mobile: Sort | More data/Insights; status pills below Sort; views+Reset bottom-right. */}
+      {/*
+        Mobile: no Sort pill here when the header owns Sorted by / ↑↓
+        (sortFieldPickerInToolbar=false). SortBar still mounts in the desktop
+        grid below — display:none on small screens, but the field drawer
+        portals to body and stays usable from the header control.
+      */}
       <div className="flex flex-col gap-y-1.5 lg:hidden">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 shrink">{sortControl}</div>
+        <div
+          className={`flex items-center gap-2 ${
+            sortFieldPickerInToolbar ? "justify-between" : "justify-end"
+          }`}
+        >
+          {sortFieldPickerInToolbar ? sortControl : null}
           {moreDataInsights}
         </div>
         <div className="flex items-center justify-between gap-2">
