@@ -978,7 +978,7 @@ export default function ListingHeroPanels({
                 prev === "remarks" ? null : "remarks",
               );
             }}
-            className="mt-2 w-full min-w-0 text-left text-[11px] leading-snug text-white/70 underline decoration-white/45 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 focus:outline-none focus-visible:text-gold"
+            className="mt-2 w-full min-w-0 max-lg:pr-28 text-left text-[11px] leading-snug text-white/70 underline decoration-white/45 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 focus:outline-none focus-visible:text-gold"
             aria-expanded={
               isDesktopLayout
                 ? !detailsElevated && remarksExpanded
@@ -992,9 +992,12 @@ export default function ListingHeroPanels({
                 : "Open listing remarks"
             }
           >
-            <span className="line-clamp-1">
+            {/*
+              Mobile: reserve space for the absolute What if / Map edge pills so
+              the teaser truncates with an ellipsis instead of running under them.
+            */}
+            <span className="block truncate">
               {remarksTeaserLine}
-              …
             </span>
           </button>
         ) : null}

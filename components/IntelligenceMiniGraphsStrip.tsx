@@ -20,12 +20,19 @@ const AUTO_HIDE_IDLE_MS = 10_000;
 export type IntelligenceMiniGraphSlot = {
   key: string;
   node: ReactNode;
+  /**
+   * Mobile carousel dwell as multiples of ROTATE_MS (default 1).
+   * Use 4 for the Luxury/Mid/Value/Discount layered inventory graph.
+   */
+  carouselDwellSteps?: number;
 };
 
 export type MiniGraphsCarouselApi = {
   paused: boolean;
   /** True when the mobile one-at-a-time carousel is active. */
   isCarousel: boolean;
+  /** Key of the currently visible slide (null when not in carousel mode). */
+  activeKey: string | null;
   pause: () => void;
   resume: () => void;
   toggle: () => void;
@@ -55,6 +62,8 @@ export default function IntelligenceMiniGraphsStrip({
   showHideToggle = true,
   /** Hide graphs lives under Vintages on mobile — keep strip toggle for desktop only. */
   desktopHideToggleOnly = false,
+  /** Right-aligned control on the mobile carousel row (e.g. share). */
+  carouselTrailing = null,
 }: {
   slots: IntelligenceMiniGraphSlot[];
   /** Parent assigns pause() when a chart point is clicked. */
@@ -71,6 +80,7 @@ export default function IntelligenceMiniGraphsStrip({
   /** When false, parent owns the Hide graphs control entirely. */
   showHideToggle?: boolean;
   desktopHideToggleOnly?: boolean;
+  carouselTrailing?: ReactNode;
 }) {
   const items = useMemo(
     () => slots.filter((s) => s.node != null),
@@ -123,10 +133,16 @@ export default function IntelligenceMiniGraphsStrip({
     [controlled, onHiddenChange, setAutoHideSuspended],
   );
 
+  const activeKey =
+    isNarrow && items.length > 0
+      ? (items[activeIndex]?.key ?? null)
+      : null;
+
   const carouselApi = useMemo<MiniGraphsCarouselApi>(
     () => ({
       paused,
       isCarousel: isNarrow && items.length > 1,
+      activeKey,
       pause: () => {
         setPaused(true);
         bumpActivity();
@@ -140,7 +156,7 @@ export default function IntelligenceMiniGraphsStrip({
         bumpActivity();
       },
     }),
-    [paused, isNarrow, items.length, bumpActivity],
+    [paused, isNarrow, items.length, activeKey, bumpActivity],
   );
 
   useEffect(() => {
@@ -186,11 +202,13 @@ export default function IntelligenceMiniGraphsStrip({
     ) {
       return;
     }
-    const id = window.setInterval(() => {
+    const steps = Math.max(1, items[activeIndex]?.carouselDwellSteps ?? 1);
+    const dwellMs = ROTATE_MS * steps;
+    const id = window.setTimeout(() => {
       setActiveIndex((prev) => (prev + 1) % items.length);
-    }, ROTATE_MS);
-    return () => window.clearInterval(id);
-  }, [prefReady, hidden, isNarrow, paused, items.length]);
+    }, dwellMs);
+    return () => window.clearTimeout(id);
+  }, [prefReady, hidden, isNarrow, paused, items, activeIndex]);
 
   // Mobile: "interactive graph" hint beside the carousel controls.
   useEffect(() => {
@@ -340,37 +358,46 @@ export default function IntelligenceMiniGraphsStrip({
               </div>
             </div>
 
-            {isNarrow && items.length > 1 ? (
-              <div className="mt-1.5 flex flex-wrap items-center justify-start gap-2">
-                {carouselCount}
-                <div
-                  className="flex items-center gap-1.5"
-                  role="tablist"
-                  aria-label="Mini graphs"
-                >
-                  {items.map((item, i) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={i === activeIndex}
-                      aria-label={`Show graph ${i + 1} of ${items.length}`}
-                      className={`h-1.5 rounded-full transition-all ${
-                        i === activeIndex
-                          ? "w-4 bg-navy"
-                          : "w-1.5 bg-navy/25 hover:bg-navy/45"
-                      }`}
-                      onClick={() => {
-                        bumpActivity();
-                        setActiveIndex(i);
-                        // Stay on the chosen graph while working with it.
-                        setPaused(true);
-                      }}
-                    />
-                  ))}
-                </div>
-                {pauseToggle}
-                {interactiveHint}
+            {isNarrow && (items.length > 1 || carouselTrailing) ? (
+              <div className="mt-1.5 flex items-center gap-2">
+                {items.length > 1 ? (
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2">
+                    {carouselCount}
+                    <div
+                      className="flex items-center gap-1.5"
+                      role="tablist"
+                      aria-label="Mini graphs"
+                    >
+                      {items.map((item, i) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          role="tab"
+                          aria-selected={i === activeIndex}
+                          aria-label={`Show graph ${i + 1} of ${items.length}`}
+                          className={`h-1.5 rounded-full transition-all ${
+                            i === activeIndex
+                              ? "w-4 bg-navy"
+                              : "w-1.5 bg-navy/25 hover:bg-navy/45"
+                          }`}
+                          onClick={() => {
+                            bumpActivity();
+                            setActiveIndex(i);
+                            // Stay on the chosen graph while working with it.
+                            setPaused(true);
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {pauseToggle}
+                    {interactiveHint}
+                  </div>
+                ) : (
+                  <div className="min-w-0 flex-1" />
+                )}
+                {carouselTrailing ? (
+                  <div className="ml-auto shrink-0">{carouselTrailing}</div>
+                ) : null}
               </div>
             ) : null}
           </div>

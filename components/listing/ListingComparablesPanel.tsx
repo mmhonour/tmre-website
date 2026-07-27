@@ -44,7 +44,13 @@ import ListingCriteriaSideLayout, {
   useListingDesktopLayout,
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
+import {
+  filterPillIndependentButtonClass,
+  filterPillIndependentContainerClass,
+} from "@/lib/filter-pill-styles";
 import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
+
+type MobileCompPane = "closed" | "active";
 
 /** How long the ± criteria find/no-find note stays visible. */
 const CRITERIA_STEP_FEEDBACK_MS = 10_000;
@@ -686,6 +692,8 @@ export default function ListingComparablesPanel({
   const [lookbackMonths, setLookbackMonths] = useState<number>(
     COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
   );
+  /** Mobile Sold/Rented: SOLD vs ON THE MARKET sub-tabs. */
+  const [mobileCompPane, setMobileCompPane] = useState<MobileCompPane>("closed");
   /** Session match overrides for the current Sold/Rented tab; reset on tab change. */
   const [sessionMatch, setSessionMatch] = useState<SessionMatchOverrides | null>(
     null,
@@ -748,6 +756,7 @@ export default function ListingComparablesPanel({
     }
     setSoldVisibleCount(COMP_INITIAL_VISIBLE);
     setActiveVisibleCount(COMP_INITIAL_VISIBLE);
+    setMobileCompPane("closed");
   }, [tabKey, comparablesUrl]);
 
   useEffect(() => {
@@ -1147,13 +1156,14 @@ export default function ListingComparablesPanel({
     wantActive &&
     (active.length > 0 || showDualColumnsOnPage || (isPage && columns === "active"));
   /**
-   * Desktop / tablet jump links while stacked. On mobile page, Sold(#) /
-   * Rented(#) is removed and ON MARKET(#) lives beside Look-back above the
-   * closed panel.
+   * Desktop / tablet jump links while stacked. On mobile page, SOLD /
+   * ON THE MARKET sub-tabs (with counts) replace jump links + section titles.
    */
   const isMobilePage = isPage && isDesktop === false;
   /** Mobile Sold / Rented: Look-back + Criteria above the panel; title/sort under legend. */
   const mobileSoldChrome = isMobilePage;
+  const useMobileCompSubTabs =
+    mobileSoldChrome && showSoldColumn && showActiveColumn && showCompsGrid;
   const showStackedPanelJumpLinks =
     columns === "both" &&
     showSoldColumn &&
@@ -1162,17 +1172,29 @@ export default function ListingComparablesPanel({
     !isMobilePage;
   const soldPanelId = listingRecentlyClosedPanelId(kind);
   const onMarketPanelId = `comparables-on-market-${kind}`;
+  const showMobileSoldPane =
+    showSoldColumn && (!useMobileCompSubTabs || mobileCompPane === "closed");
+  const showMobileActivePane =
+    showActiveColumn && (!useMobileCompSubTabs || mobileCompPane === "active");
 
   // Only auto-scroll when the hash explicitly targets this panel (in-page
   // jump links). Tab navigation uses the section id (SOLD / RENTED label).
   useEffect(() => {
-    if (!showSoldColumn) return;
+    if (!showSoldColumn && !showActiveColumn) return;
     const hash = window.location.hash.replace(/^#/, "");
-    if (hash !== soldPanelId) return;
+    if (hash === onMarketPanelId && showActiveColumn) {
+      if (useMobileCompSubTabs) setMobileCompPane("active");
+    } else if (hash === soldPanelId && showSoldColumn) {
+      if (useMobileCompSubTabs) setMobileCompPane("closed");
+    } else {
+      return;
+    }
     let cancelled = false;
+    const targetId =
+      hash === onMarketPanelId ? onMarketPanelId : soldPanelId;
     const scroll = () => {
       if (cancelled) return;
-      const el = document.getElementById(soldPanelId);
+      const el = document.getElementById(targetId);
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     };
@@ -1183,7 +1205,16 @@ export default function ListingComparablesPanel({
       window.clearTimeout(t0);
       window.clearTimeout(t1);
     };
-  }, [showSoldColumn, soldPanelId, mlsId, kind, loading]);
+  }, [
+    showSoldColumn,
+    showActiveColumn,
+    soldPanelId,
+    onMarketPanelId,
+    useMobileCompSubTabs,
+    mlsId,
+    kind,
+    loading,
+  ]);
   const stackedJumpLinkClass = isModal
     ? "font-mono text-[11px] tracking-[0.1em] uppercase text-navy underline decoration-navy/30 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors"
     : "font-mono text-[11px] tracking-[0.1em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:text-white hover:decoration-white/50 transition-colors";
@@ -1420,9 +1451,51 @@ export default function ListingComparablesPanel({
 
       {showCompsGrid && (
         <div className={compsGridClass}>
-      {showSoldColumn && (
+      {useMobileCompSubTabs ? (
+        <div className="mb-1 flex w-full items-end justify-between gap-3 max-lg:px-3 sm:col-span-2">
+          <div
+            role="tablist"
+            aria-label={isRental ? "Rented comps" : "Sold comps"}
+            className={`${filterPillIndependentContainerClass("compact")} min-w-0 flex-1`}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobileCompPane === "closed"}
+              className={`${filterPillIndependentButtonClass(
+                mobileCompPane === "closed",
+                "compact",
+                "dark",
+              )} font-mono text-[10px] tracking-[0.12em] uppercase`}
+              onClick={() => setMobileCompPane("closed")}
+            >
+              {isRental ? "Rented" : "Sold"} ({sortedSold.length})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobileCompPane === "active"}
+              className={`${filterPillIndependentButtonClass(
+                mobileCompPane === "active",
+                "compact",
+                "dark",
+              )} font-mono text-[10px] tracking-[0.12em] uppercase`}
+              onClick={() => setMobileCompPane("active")}
+            >
+              On the market ({sortedActive.length})
+            </button>
+          </div>
+          {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
+            <div
+              id={criteriaLinkSlotId}
+              className="flex shrink-0 items-end justify-end"
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {showMobileSoldPane && (
         <div className="min-w-0">
-          {mobileSoldChrome ? (
+          {mobileSoldChrome && !useMobileCompSubTabs ? (
             <div className="mb-1 flex items-end justify-between gap-3 max-lg:px-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <LookbackSpinner
@@ -1430,14 +1503,6 @@ export default function ListingComparablesPanel({
                   onChange={setLookbackMonths}
                   theme={sortTheme}
                 />
-                {showActiveColumn ? (
-                  <a
-                    href={`#${onMarketPanelId}`}
-                    className={`${stackedJumpLinkClass} shrink-0`}
-                  >
-                    ON MARKET({sortedActive.length})
-                  </a>
-                ) : null}
               </div>
               {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
                 <div
@@ -1461,6 +1526,29 @@ export default function ListingComparablesPanel({
         >
           {mobileSoldChrome ? (
             <>
+              {useMobileCompSubTabs ? (
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <LookbackSpinner
+                    months={lookbackMonths}
+                    onChange={setLookbackMonths}
+                    theme={sortTheme}
+                  />
+                  {sortedSold.length > 0 ? (
+                    <CompSortLinks
+                      options={[
+                        { key: "score", label: "Edge" },
+                        { key: "closeDate", label: "CLOSED" },
+                        { key: "price", label: "Price" },
+                      ]}
+                      activeKey={soldSort.key}
+                      activeDir={soldSort.dir}
+                      onSort={handleSoldSort}
+                      theme={sortTheme}
+                      ariaLabel={`${recentlyClosedLabel} sort`}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               <CompFoundLegendRow
                 theme={isModal ? "light" : "dark"}
                 foundCount={sortedSold.length}
@@ -1468,6 +1556,7 @@ export default function ListingComparablesPanel({
                 hideFoundCount
                 className="mb-1"
               />
+              {!useMobileCompSubTabs ? (
               <div className="mb-2 flex items-end justify-between gap-x-3 gap-y-1">
                 <p className={`${sectionTitleClass} min-w-0 leading-none`}>
                   {recentlyClosedLabel} ({sortedSold.length})
@@ -1489,6 +1578,9 @@ export default function ListingComparablesPanel({
                   </div>
                 ) : null}
               </div>
+              ) : (
+                <div className="mb-2" />
+              )}
             </>
           ) : (
             <>
@@ -1634,7 +1726,7 @@ export default function ListingComparablesPanel({
         </div>
       )}
 
-      {showActiveColumn && (
+      {showMobileActivePane && (
         <div
           id={onMarketPanelId}
           className={
@@ -1647,11 +1739,13 @@ export default function ListingComparablesPanel({
         >
           <div className={isMobilePage ? "mb-2" : "mb-3"}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <p className={sectionTitleClass}>
-                {isMobilePage
-                  ? `${activeColumnTitle} (${sortedActive.length})`
-                  : activeColumnTitle}
-              </p>
+              {!useMobileCompSubTabs ? (
+                <p className={sectionTitleClass}>
+                  {isMobilePage
+                    ? `${activeColumnTitle} (${sortedActive.length})`
+                    : activeColumnTitle}
+                </p>
+              ) : null}
               {sortedActive.length > 0 ? (
                 <CompSortLinks
                   options={[
@@ -1669,6 +1763,7 @@ export default function ListingComparablesPanel({
             </div>
             {criteriaInSidePanel &&
             !showSoldColumn &&
+            !useMobileCompSubTabs &&
             showMobileCriteriaLinkSlot ? (
               <div
                 id={criteriaLinkSlotId}

@@ -529,7 +529,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'For Sale On Market',
     category: 'ui-tabs',
     definition:
-      'Active / Coming Soon for-sale comps shown beside Recently Sold on the Sold tab. Mobile jump links use “For Sale On Market(n)”.',
+      'Active / Coming Soon for-sale comps shown beside Recently Sold on the Sold tab. On mobile, SOLD (n) / ON THE MARKET (n) sub-tabs switch panes; Criteria stays on the same row.',
   },
   {
     term: 'Criteria',

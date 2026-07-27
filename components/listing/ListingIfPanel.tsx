@@ -42,6 +42,10 @@ import CriteriaMatchPreviewList, {
 } from "@/components/listing/CriteriaMatchPreviewList";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+import {
+  filterPillIndependentButtonClass,
+  filterPillIndependentContainerClass,
+} from "@/lib/filter-pill-styles";
 
 const CRITERIA_STEP_FEEDBACK_MS = 10_000;
 
@@ -646,9 +650,6 @@ const IF_SCENARIO_PANEL_IDS = {
   rent: "if-you-rent",
 } as const;
 
-const IF_SCENARIO_LINK_CLASS =
-  "font-mono text-[10px] tracking-[0.2em] uppercase underline underline-offset-2 decoration-gold/40 transition-colors hover:text-gold hover:decoration-gold";
-
 function ScenarioPanel({
   title,
   headline,
@@ -661,9 +662,6 @@ function ScenarioPanel({
   amountLabel,
   midpointLabel,
   foundCountEmphasized = false,
-  onSelectScenario,
-  activeScenario,
-  criteriaSlotId = null,
   className,
 }: {
   title: string;
@@ -677,11 +675,6 @@ function ScenarioPanel({
   amountLabel: string;
   midpointLabel: string;
   foundCountEmphasized?: boolean;
-  /** Mobile: which scenario is leading; both titles act as underlined links. */
-  onSelectScenario?: (next: "sale" | "rent") => void;
-  activeScenario?: "sale" | "rent";
-  /** Mobile Criteria portal mount (upper-right). */
-  criteriaSlotId?: string | null;
   className?: string;
 }) {
   const hasEstimate =
@@ -691,15 +684,6 @@ function ScenarioPanel({
 
   const panelId = IF_SCENARIO_PANEL_IDS[kind];
 
-  const goToScenario = (next: "sale" | "rent") => {
-    if (onSelectScenario) {
-      onSelectScenario(next);
-      return;
-    }
-    const el = document.getElementById(IF_SCENARIO_PANEL_IDS[next]);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   return (
     <article
       id={panelId}
@@ -708,41 +692,10 @@ function ScenarioPanel({
       }`}
     >
       <div>
-        <div className="flex items-start justify-between gap-3">
-          {/* Desktop: panel title only. Mobile: both scenarios as underlined links. */}
-          <p className="hidden lg:block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-            {title}
-          </p>
-          <div className="lg:hidden flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <button
-              type="button"
-              className={`${IF_SCENARIO_LINK_CLASS} ${
-                activeScenario === "sale" ? "text-gold" : "text-gold/65"
-              }`}
-              aria-current={activeScenario === "sale" ? "true" : undefined}
-              onClick={() => goToScenario("sale")}
-            >
-              If you sell
-            </button>
-            <button
-              type="button"
-              className={`${IF_SCENARIO_LINK_CLASS} ${
-                activeScenario === "rent" ? "text-gold" : "text-gold/65"
-              }`}
-              aria-current={activeScenario === "rent" ? "true" : undefined}
-              onClick={() => goToScenario("rent")}
-            >
-              If you rent
-            </button>
-          </div>
-          {criteriaSlotId ? (
-            <div
-              id={criteriaSlotId}
-              className="lg:hidden flex shrink-0 items-start justify-end min-h-[1em]"
-            />
-          ) : null}
-        </div>
-        <p className="mt-2 text-white/70 text-sm leading-relaxed">{headline}</p>
+        <p className="hidden lg:block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          {title}
+        </p>
+        <p className="lg:mt-2 text-white/70 text-sm leading-relaxed">{headline}</p>
       </div>
 
       <div>
@@ -837,9 +790,12 @@ export default function ListingIfPanel({
   const [sessionSeeded, setSessionSeeded] = useState(false);
   const [criteriaStepFeedback, setCriteriaStepFeedback] =
     useState<CriteriaStepFeedback | null>(null);
-  /** Mobile: which sell/rent scenario panel sits on top (cross-link flips). */
+  /** Mobile: which sell/rent scenario tab is active. */
   const [mobileScenarioLead, setMobileScenarioLead] = useState<"sale" | "rent">(
     "sale",
+  );
+  const mobileIfCriteriaSlotId = listingCriteriaLinkSlotId(
+    LISTING_SECTION_IDS.if,
   );
   const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -1061,8 +1017,48 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
-      {/* Sell / rent sit under tabs (no What if label on mobile). Cross-links
-          flip which panel leads; Criteria mounts in each panel’s upper-right. */}
+      {/* Mobile: sell/rent as pill tabs + Criteria; desktop: side-by-side panels. */}
+      <div className="lg:hidden mb-1 flex items-end justify-between gap-3 max-lg:px-3">
+        <div
+          role="tablist"
+          aria-label="What if scenarios"
+          className={`${filterPillIndependentContainerClass("compact")} min-w-0 flex-1`}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileScenarioLead === "sale"}
+            className={`${filterPillIndependentButtonClass(
+              mobileScenarioLead === "sale",
+              "compact",
+              "dark",
+            )} font-mono text-[10px] tracking-[0.12em] uppercase`}
+            onClick={() => setMobileScenarioLead("sale")}
+          >
+            If you sell
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileScenarioLead === "rent"}
+            className={`${filterPillIndependentButtonClass(
+              mobileScenarioLead === "rent",
+              "compact",
+              "dark",
+            )} font-mono text-[10px] tracking-[0.12em] uppercase`}
+            onClick={() => setMobileScenarioLead("rent")}
+          >
+            If you rent
+          </button>
+        </div>
+        {criteriaInSidePanel ? (
+          <div
+            id={mobileIfCriteriaSlotId}
+            className="flex shrink-0 items-end justify-end min-h-[1em]"
+          />
+        ) : null}
+      </div>
+
       <div className="grid gap-1 lg:grid-cols-2 items-start">
         <ScenarioPanel
           title="If you sell"
@@ -1072,15 +1068,10 @@ export default function ListingIfPanel({
           kind="sale"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
-          activeScenario={mobileScenarioLead}
-          onSelectScenario={setMobileScenarioLead}
-          criteriaSlotId={listingCriteriaLinkSlotId(
-            `${LISTING_SECTION_IDS.if}-sale`,
-          )}
           className={
-            mobileScenarioLead === "rent"
-              ? "max-lg:order-2 lg:order-1"
-              : "max-lg:order-1 lg:order-1"
+            mobileScenarioLead === "sale"
+              ? "max-lg:block lg:block"
+              : "max-lg:hidden lg:block"
           }
           range={
             <IfEstimateRangeDisplay
@@ -1106,15 +1097,10 @@ export default function ListingIfPanel({
           kind="rent"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
-          activeScenario={mobileScenarioLead}
-          onSelectScenario={setMobileScenarioLead}
-          criteriaSlotId={listingCriteriaLinkSlotId(
-            `${LISTING_SECTION_IDS.if}-rent`,
-          )}
           className={
             mobileScenarioLead === "rent"
-              ? "max-lg:order-1 lg:order-2"
-              : "max-lg:order-2 lg:order-2"
+              ? "max-lg:block lg:block"
+              : "max-lg:hidden lg:block"
           }
           range={
             <IfEstimateRangeDisplay
@@ -1186,14 +1172,7 @@ export default function ListingIfPanel({
               ? listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)
               : null
           }
-          linkSlotIds={
-            isDesktop
-              ? null
-              : [
-                  listingCriteriaLinkSlotId(`${LISTING_SECTION_IDS.if}-sale`),
-                  listingCriteriaLinkSlotId(`${LISTING_SECTION_IDS.if}-rent`),
-                ]
-          }
+          linkSlotIds={isDesktop ? null : [mobileIfCriteriaSlotId]}
         >
           {mainColumn}
         </ListingCriteriaSideLayout>

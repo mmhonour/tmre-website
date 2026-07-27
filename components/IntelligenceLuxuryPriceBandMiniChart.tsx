@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useMiniGraphsCarousel } from "@/components/IntelligenceMiniGraphsStrip";
 import type { InventorySegmentId } from "@/lib/inventory-segment-bands-shared";
 import type { InventorySegmentChartSeed } from "@/lib/intelligence-inventory-segment-fssr";
+
+const LUXURY_CAROUSEL_SLOT_KEY = "luxury-inventory-price";
 
 /** Default phrase when the Luxury band is active. */
 export const LUXURY_BY_PRICE_LABEL = "LUXURY INVENTORY BY PRICE";
@@ -147,6 +150,11 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   onInteract?: () => void;
 }) {
   const seedCity = initialSeed?.city ?? null;
+  const miniCarousel = useMiniGraphsCarousel();
+  /** On mobile carousel, only cycle bands while this slide is showing. */
+  const isActiveCarouselSlide =
+    !miniCarousel?.isCarousel ||
+    miniCarousel.activeKey === LUXURY_CAROUSEL_SLOT_KEY;
   const [segment, setSegment] = useState<InventorySegmentId>("luxury");
   const [bandPaused, setBandPaused] = useState(false);
   const [bySegment, setBySegment] = useState<
@@ -257,9 +265,18 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     (id) => `${id}:${bySegment[id]?.length ?? 0}`,
   ).join("|");
 
-  // Cycle Luxury → Mid-Market → Value → Discount on mobile and desktop.
+  // When this slide becomes active on the mobile carousel, restart at Luxury
+  // so the parent’s 4× dwell shows all bands before advancing to #1.
   useEffect(() => {
-    if (bandPaused || !ready) return;
+    if (!isActiveCarouselSlide) return;
+    setSegment("luxury");
+    introStartedRef.current = false;
+    setExtraCallouts(new Set());
+  }, [isActiveCarouselSlide]);
+
+  // Cycle Luxury → Mid-Market → Value → Discount (pause while off-screen on mobile).
+  useEffect(() => {
+    if (bandPaused || !ready || !isActiveCarouselSlide) return;
     const timer = window.setInterval(() => {
       setSegment((prev) => {
         const idx = SEGMENT_ORDER.indexOf(prev);
@@ -269,7 +286,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
       setExtraCallouts(new Set());
     }, BAND_ROTATE_MS);
     return () => window.clearInterval(timer);
-  }, [bandPaused, ready, segmentDataKey]);
+  }, [bandPaused, ready, segmentDataKey, isActiveCarouselSlide]);
 
   const points = useMemo((): BandPoint[] => {
     if (buckets.length === 0) return [];
