@@ -18,10 +18,13 @@ export default function IntelSortDrawer({
 }) {
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
+    // Always clear on close — restoring a captured "hidden" (race / nested
+    // drawers / Strict Mode) permanently kills page scroll after sort.
+    document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = prev;
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
     };
   }, [open]);
 

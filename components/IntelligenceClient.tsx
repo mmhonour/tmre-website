@@ -1714,6 +1714,12 @@ export default function IntelligenceClient({
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
   const [miniGraphsHidden, setMiniGraphsHidden] = useState(false);
   const [sortFieldDrawerOpen, setSortFieldDrawerOpen] = useState(false);
+  // Safety: never leave the sort drawer’s body scroll-lock stuck after close.
+  useEffect(() => {
+    if (sortFieldDrawerOpen) return;
+    document.documentElement.style.overflow = "";
+    document.body.style.overflow = "";
+  }, [sortFieldDrawerOpen]);
   const [townLinksExpanded, setTownLinksExpanded] = useState(false);
   const [zipLinksExpanded, setZipLinksExpanded] = useState(false);
   const setFiltersExpanded = (expanded: boolean) =>

@@ -93,12 +93,12 @@ export default function DealBoardSortBar({
   const dirMark = sortDir === "asc" ? "↑" : "↓";
 
   const handleDrawerSort = (key: DealBoardSortKey) => {
-    onSort(key);
-    if (key === sortKey) {
-      window.setTimeout(() => setDrawerOpen(false), 280);
-    } else {
-      window.setTimeout(() => setDrawerOpen(false), 220);
-    }
+    // Unlock body scroll before the board re-sorts. Closing after onSort left
+    // overflow:hidden on during the heavy update — page couldn't scroll.
+    setDrawerOpen(false);
+    window.requestAnimationFrame(() => {
+      onSort(key);
+    });
   };
 
   const flipDir = () => {
