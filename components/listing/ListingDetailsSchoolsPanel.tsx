@@ -8,6 +8,7 @@ import {
   listingPanelCompactClass,
 } from "@/components/listing/listing-frame";
 import { useListingDetailsRemarksSwap } from "@/components/listing/ListingDetailsRemarksSwapContext";
+import ListingPanelElevateTriangle from "@/components/listing/ListingPanelElevateTriangle";
 import { useListingHistoryDetailsSwap } from "@/components/listing/ListingHistoryDetailsSwapContext";
 import { fmtAcres } from "@/lib/listing-comparables-shared";
 import { closedVsLastListPct } from "@/lib/listing-history";
@@ -434,12 +435,9 @@ export default function ListingDetailsSchoolsPanel({
                 ? "SEE LISTING REMARKS"
                 : "see more details"}
             </span>
-            <span
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-white/30 bg-white/10 text-[10px] leading-none text-white shadow-sm transition-colors hover:border-gold/50 hover:bg-white/15 hover:text-gold"
-              aria-hidden
-            >
-              {remarksSwap.detailsElevated ? "▼" : "▲"}
-            </span>
+            <ListingPanelElevateTriangle
+              pointing={remarksSwap.detailsElevated ? "down" : "up"}
+            />
           </button>
         ) : null}
       </div>

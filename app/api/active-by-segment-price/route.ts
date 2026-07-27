@@ -29,7 +29,14 @@ type CachedSegment = ActiveBySegmentPricePayload & { generatedAt?: string };
 function parseSegment(
   raw: string | null,
 ): InventorySegmentId | null {
-  if (raw === "value" || raw === "mid" || raw === "luxury") return raw;
+  if (
+    raw === "value" ||
+    raw === "mid" ||
+    raw === "luxury" ||
+    raw === "discount"
+  ) {
+    return raw;
+  }
   return null;
 }
 
@@ -76,9 +83,9 @@ async function loadSegmentPayload(
 }
 
 /**
- * Active inventory by Admin segment (value | mid | luxury).
+ * Active inventory by Admin market band (value | mid | luxury | discount).
  * GET ?city=All&segment=luxury
- * GET ?city=All&all=1 — all three segments (for Intelligence prefetch).
+ * GET ?city=All&all=1 — all market bands (for Intelligence prefetch).
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -100,7 +107,10 @@ export async function GET(req: NextRequest) {
   }
   if (!wantAll && !segmentParam) {
     return NextResponse.json(
-      { error: 'segment is required (value | mid | luxury), or pass all=1' },
+      {
+        error:
+          "segment is required (value | mid | luxury | discount), or pass all=1",
+      },
       { status: 400 },
     );
   }

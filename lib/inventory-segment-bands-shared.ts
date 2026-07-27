@@ -1,6 +1,7 @@
 /**
- * Client-safe Value / Mid-market / Luxury inventory segment bands.
+ * Client-safe market bands (Value / Mid-market / Luxury / Discount).
  * Luxury fine steps default to $1M ($4–10M) and $5M ($10M+).
+ * Discount ships with a stub step — configure ranges in Admin → Market Bands.
  */
 
 import {
@@ -10,7 +11,7 @@ import {
   visiblePriceBuckets,
 } from "@/lib/price-buckets-shared";
 
-export type InventorySegmentId = "value" | "mid" | "luxury";
+export type InventorySegmentId = "value" | "mid" | "luxury" | "discount";
 
 export type InventorySegmentDef = {
   id: InventorySegmentId;
@@ -31,6 +32,7 @@ export const INVENTORY_SEGMENT_IDS: InventorySegmentId[] = [
   "value",
   "mid",
   "luxury",
+  "discount",
 ];
 
 /** Default Value steps — sub-$1.25M inventory. */
@@ -79,6 +81,19 @@ export const DEFAULT_LUXURY_STEPS: PriceBucketDef[] = [
   { id: "lux-30m-plus", label: "$30M+", min: 30_000_000, max: null },
 ];
 
+/**
+ * Stub Discount step — replace min/max/label in Admin → Market Bands.
+ * Kept visible so normalization always has ≥1 step for the segment.
+ */
+export const DEFAULT_DISCOUNT_STEPS: PriceBucketDef[] = [
+  {
+    id: "disc-configure",
+    label: "Configure discount steps",
+    min: 0,
+    max: 99_999,
+  },
+];
+
 export const DEFAULT_INVENTORY_SEGMENT_BANDS: InventorySegmentBandsConfig = {
   segments: [
     {
@@ -101,6 +116,13 @@ export const DEFAULT_INVENTORY_SEGMENT_BANDS: InventorySegmentBandsConfig = {
       min: 4_000_000,
       max: null,
       steps: DEFAULT_LUXURY_STEPS,
+    },
+    {
+      id: "discount",
+      label: "Discount",
+      min: 0,
+      max: 99_999,
+      steps: DEFAULT_DISCOUNT_STEPS,
     },
   ],
 };

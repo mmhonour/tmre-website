@@ -675,9 +675,9 @@ export function computeActiveByPrice(
   }
 }
 
-/** Active for-sale inventory for one Admin segment (Value / Mid / Luxury). */
+/** Active for-sale inventory for one Admin market band (Value / Mid / Luxury / Discount). */
 export type ActiveBySegmentPricePayload = ActiveByPricePayload & {
-  segmentId: 'value' | 'mid' | 'luxury'
+  segmentId: 'value' | 'mid' | 'luxury' | 'discount'
   segmentLabel: string
   /** Inclusive segment floor. */
   segmentMin: number
@@ -703,14 +703,14 @@ export type ActiveBySegmentPricePayload = ActiveByPricePayload & {
 export type ActiveByLuxuryPricePayload = ActiveBySegmentPricePayload
 
 /**
- * Bucket active sale list prices into one inventory segment's fine steps
- * (Admin/Postgres Value · Mid-market · Luxury). Sale-only.
+ * Bucket active sale list prices into one market band's fine steps
+ * (Admin/Postgres Value · Mid-market · Luxury · Discount). Sale-only.
  */
 export function computeActiveBySegmentPrice(
   activeListings: Listing[],
   city: string,
   segment: {
-    id: 'value' | 'mid' | 'luxury'
+    id: 'value' | 'mid' | 'luxury' | 'discount'
     label: string
     min: number
     max: number | null
@@ -824,14 +824,16 @@ export type StatsCacheScope =
   | 'active-by-luxury-price'
   | 'active-by-mid-price'
   | 'active-by-value-price'
+  | 'active-by-discount-price'
   | 'avg-score-by-vintage'
   | 'avg-score-by-vintage-by-town'
 
 export function inventorySegmentStatsScope(
-  segmentId: 'value' | 'mid' | 'luxury',
+  segmentId: 'value' | 'mid' | 'luxury' | 'discount',
 ): StatsCacheScope {
   if (segmentId === 'value') return 'active-by-value-price'
   if (segmentId === 'mid') return 'active-by-mid-price'
+  if (segmentId === 'discount') return 'active-by-discount-price'
   return 'active-by-luxury-price'
 }
 

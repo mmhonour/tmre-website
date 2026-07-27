@@ -2,6 +2,7 @@
 
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import { useListingHistoryDetailsSwap } from "@/components/listing/ListingHistoryDetailsSwapContext";
+import ListingPanelElevateTriangle from "@/components/listing/ListingPanelElevateTriangle";
 
 /**
  * Desktop right-column History shell under Details — same elevate control
@@ -41,12 +42,9 @@ export default function ListingHistorySidePanel({
                 ? "SEE DETAILS"
                 : "see more history"}
             </span>
-            <span
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-white/30 bg-white/10 text-[10px] leading-none text-white shadow-sm transition-colors hover:border-gold/50 hover:bg-white/15 hover:text-gold"
-              aria-hidden
-            >
-              {historySwap.historyElevated ? "▼" : "▲"}
-            </span>
+            <ListingPanelElevateTriangle
+              pointing={historySwap.historyElevated ? "down" : "up"}
+            />
           </button>
         ) : null}
       </div>

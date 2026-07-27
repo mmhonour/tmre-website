@@ -958,6 +958,9 @@ export default function ListingHeroPanels({
             type="button"
             onClick={() => {
               if (isDesktopLayout) {
+                // Restore remarks if Details/History minimized them, then expand.
+                if (detailsElevated) setDetailsElevated(false);
+                if (historyElevated) setHistoryElevated(false);
                 expandRemarks();
                 return;
               }
@@ -969,12 +972,14 @@ export default function ListingHeroPanels({
             className="mt-2 w-full min-w-0 text-left text-[11px] leading-snug text-white/70 underline decoration-white/45 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 focus:outline-none focus-visible:text-gold"
             aria-expanded={
               isDesktopLayout
-                ? remarksExpanded
+                ? !detailsElevated && remarksExpanded
                 : mobileDrawer === "remarks"
             }
             title={
               isDesktopLayout
-                ? "Expand listing remarks"
+                ? detailsElevated
+                  ? "Show and expand listing remarks"
+                  : "Expand listing remarks"
                 : "Open listing remarks"
             }
           >

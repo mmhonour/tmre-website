@@ -1581,7 +1581,7 @@ export default function IntelligenceClient({
 }: {
   /** FSSR seed for Deal of the Day frame (sale/homes by default). */
   initialDotdDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
-  /** SSR seed: Value / Mid / Luxury inventory charts for city All. */
+  /** SSR seed: Market Bands inventory charts (incl. Discount) for city All. */
   initialInventorySegmentChart?: import("@/lib/intelligence-inventory-segment-fssr").InventorySegmentChartSeed | null;
 } = {}) {
   const searchParams = useSearchParams();

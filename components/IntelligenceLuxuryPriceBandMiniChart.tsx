@@ -8,12 +8,18 @@ import type { InventorySegmentChartSeed } from "@/lib/intelligence-inventory-seg
 /** Phrase after “Filters …” — segment inventory mini chart title. */
 export const LUXURY_BY_PRICE_LABEL = "Luxury inventory by price";
 
-const SEGMENT_ORDER: InventorySegmentId[] = ["luxury", "mid", "value"];
+const SEGMENT_ORDER: InventorySegmentId[] = [
+  "luxury",
+  "mid",
+  "value",
+  "discount",
+];
 
 const SEGMENT_TAB_LABEL: Record<InventorySegmentId, string> = {
   luxury: "Luxury",
   mid: "Mid-Market",
   value: "Value",
+  discount: "Discount",
 };
 
 type BandPoint = {
@@ -92,9 +98,9 @@ function bucketsFromSeed(
 }
 
 /**
- * Intelligence inventory-by-price sparkline — Luxury / Mid-market / Value
- * (Admin segment bands). One view at a time; default Luxury. Prefers SSR seed
- * + /api/active-by-segment-price?all=1 so all three caches are warm.
+ * Intelligence inventory-by-price sparkline — Luxury / Mid-market / Value /
+ * Discount (Admin Market Bands). One view at a time; default Luxury. Prefers
+ * SSR seed + /api/active-by-segment-price?all=1 so all band caches are warm.
  */
 export default function IntelligenceLuxuryPriceBandMiniChart({
   city,
@@ -129,6 +135,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
       luxury: bucketsFromSeed(initialSeed, "luxury"),
       mid: bucketsFromSeed(initialSeed, "mid"),
       value: bucketsFromSeed(initialSeed, "value"),
+      discount: bucketsFromSeed(initialSeed, "discount"),
     };
   });
   const [labels, setLabels] = useState<
@@ -137,6 +144,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     luxury: initialSeed?.bySegment.luxury?.segmentLabel,
     mid: initialSeed?.bySegment.mid?.segmentLabel,
     value: initialSeed?.bySegment.value?.segmentLabel,
+    discount: initialSeed?.bySegment.discount?.segmentLabel,
   }));
   const [ready, setReady] = useState(() =>
     Boolean(
@@ -166,13 +174,19 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         luxury: bucketsFromSeed(initialSeed, "luxury"),
         mid: bucketsFromSeed(initialSeed, "mid"),
         value: bucketsFromSeed(initialSeed, "value"),
+        discount: bucketsFromSeed(initialSeed, "discount"),
       });
       setLabels({
         luxury: initialSeed.bySegment.luxury?.segmentLabel,
         mid: initialSeed.bySegment.mid?.segmentLabel,
         value: initialSeed.bySegment.value?.segmentLabel,
+        discount: initialSeed.bySegment.discount?.segmentLabel,
       });
-      setReady(true);
+      setReady(
+        SEGMENT_ORDER.every(
+          (id) => (initialSeed.bySegment?.[id]?.buckets?.length ?? 0) > 0,
+        ),
+      );
     } else {
       setBySegment({});
       setReady(false);
@@ -321,7 +335,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                     role="tab"
                     aria-selected={active}
                     onClick={() => {
-                      // Stay on this slide while switching Luxury / Mid / Value.
+                      // Stay on this slide while switching market bands.
                       onInteract?.();
                       setSegment(id);
                       introStartedRef.current = false;
@@ -336,9 +350,13 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                           ? active
                             ? "text-sage underline decoration-gold underline-offset-2"
                             : "text-sage/60 hover:text-sage"
-                          : active
-                            ? "text-black underline decoration-gold underline-offset-2"
-                            : "text-black/45 hover:text-black"
+                          : id === "discount"
+                            ? active
+                              ? "text-coral underline decoration-gold underline-offset-2"
+                              : "text-coral/60 hover:text-coral"
+                            : active
+                              ? "text-black underline decoration-gold underline-offset-2"
+                              : "text-black/45 hover:text-black"
                     }`}
                   >
                     {label}

@@ -36,8 +36,8 @@ export type InventorySegmentChartSeed = {
 };
 
 /**
- * SSR seed for Intelligence inventory-by-price chart — all three Admin
- * segments for city "All", from stats_cache (seed on miss).
+ * SSR seed for Intelligence inventory-by-price chart — all Admin Market Bands
+ * for city "All", from stats_cache (seed on miss).
  */
 export async function loadInventorySegmentChartSeed(
   city = "All",

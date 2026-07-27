@@ -107,9 +107,9 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   },
   {
     id: "intel-inventory",
-    label: "Intelligence inventory",
+    label: "Market Bands",
     subtitle:
-      "Value, Mid-market, and Luxury ranges/steps for Intelligence inventory charts",
+      "Value, Mid-market, Luxury, and Discount ranges/steps for Intelligence charts",
   },
 ];
 
@@ -198,13 +198,13 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "stats",
     label: "Stats",
     subtitle:
-      "Sales by price, Intelligence inventory bands, and where caches live",
+      "Sales by price, Market Bands, and where caches live",
   },
   {
     id: "data-controls",
     label: "Data controls",
     subtitle:
-      "Site, Spotlight, Goldilocks, Pricing, Vintages, RETS, and Intelligence inventory",
+      "Site, Spotlight, Goldilocks, Pricing, Vintages, RETS, and Market Bands",
   },
   {
     id: "cookies",
@@ -380,12 +380,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   {
     id: "admin-inventory-segment-bands",
-    label: "Intelligence inventory bands",
+    label: "Market Bands",
     tab: "stats",
   },
   {
     id: "admin-intel-inventory",
-    label: "Intelligence inventory",
+    label: "Market Bands",
     tab: "data-controls",
     panel: "intel-inventory",
   },

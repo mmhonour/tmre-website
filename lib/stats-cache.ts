@@ -467,7 +467,7 @@ type TownListingsMap = Record<TmreTown, { active: Listing[]; closed: Listing[] }
 
 /** Upsert market scopes for one town; optionally fill by-town bundle maps. */
 type InventorySegmentForCache = {
-  id: 'value' | 'mid' | 'luxury'
+  id: 'value' | 'mid' | 'luxury' | 'discount'
   label: string
   min: number
   max: number | null

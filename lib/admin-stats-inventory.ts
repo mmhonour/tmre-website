@@ -265,7 +265,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'active-by-luxury-price:{town|All}:sale',
     owner: 'lib/stats-cache.ts',
     notes:
-      'Sale-only Luxury segment. Fine steps from Admin Intelligence inventory bands. Sibling keys: active-by-mid-price / active-by-value-price. Bundle API: /api/active-by-segment-price?all=1. Rebuild stats cache after segment edits.',
+      'Sale-only Luxury market band. Fine steps from Admin → Market Bands. Sibling keys: active-by-mid-price / active-by-value-price / active-by-discount-price. Bundle API: /api/active-by-segment-price?all=1. Rebuild stats cache after band edits.',
     live: { kind: 'stats_cache_prefix', prefix: 'active-by-luxury-price:' },
   },
   {
@@ -277,7 +277,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     owner: 'lib/stats-cache.ts',
     keyPattern: 'active-by-mid-price:{town|All}:sale',
     notes:
-      'Sale-only Mid-market segment steps from intel_inventory_segment_bands.',
+      'Sale-only Mid-market band steps from intel_inventory_segment_bands (Admin → Market Bands).',
     live: { kind: 'stats_cache_prefix', prefix: 'active-by-mid-price:' },
   },
   {
@@ -289,8 +289,20 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     owner: 'lib/stats-cache.ts',
     keyPattern: 'active-by-value-price:{town|All}:sale',
     notes:
-      'Sale-only Value segment steps from intel_inventory_segment_bands.',
+      'Sale-only Value band steps from intel_inventory_segment_bands (Admin → Market Bands).',
     live: { kind: 'stats_cache_prefix', prefix: 'active-by-value-price:' },
+  },
+  {
+    id: 'active-by-discount-price',
+    name: 'Active discount inventory by price',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    owner: 'lib/stats-cache.ts',
+    keyPattern: 'active-by-discount-price:{town|All}:sale',
+    notes:
+      'Sale-only Discount band steps from intel_inventory_segment_bands (Admin → Market Bands). Rebuild stats cache after band edits.',
+    live: { kind: 'stats_cache_prefix', prefix: 'active-by-discount-price:' },
   },
   {
     id: 'sale-price-bucket-defs',

@@ -31,6 +31,7 @@ const SEGMENT_TAB_LABEL: Record<InventorySegmentId, string> = {
   value: "Value",
   mid: "Mid-market",
   luxury: "Luxury",
+  discount: "Discount",
 };
 
 function fmtMoney(n: number): string {
@@ -67,7 +68,7 @@ function sortSteps(steps: PriceBucketDef[]): PriceBucketDef[] {
 }
 
 /**
- * Admin editor for Intelligence inventory segments (Value / Mid-market / Luxury)
+ * Admin editor for Market Bands (Value / Mid-market / Luxury / Discount)
  * stored in Postgres sync_meta. All-bands tab assigns each step via pick list.
  */
 export default function AdminInventorySegmentBandsPanel() {
@@ -287,7 +288,7 @@ export default function AdminInventorySegmentBandsPanel() {
     if (!defaults) return;
     if (
       !window.confirm(
-        "Reset Value, Mid-market, and Luxury ranges/steps to code defaults?",
+        "Reset Value, Mid-market, Luxury, and Discount ranges/steps to code defaults?",
       )
     ) {
       return;
@@ -313,14 +314,14 @@ export default function AdminInventorySegmentBandsPanel() {
     >
       <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/20">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Intelligence inventory bands
+          Market Bands
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
-          Value, Mid-market, and Luxury ranges plus fine steps for Intelligence
-          inventory charts. Use the <span className="font-medium text-navy">All
-          bands</span>{" "}
-          tab to see every step and assign Luxury / Mid-market / Value with the
-          pick list. Stored in Postgres (
+          Value, Mid-market, Luxury, and Discount ranges plus fine steps for
+          Intelligence inventory charts. Use the{" "}
+          <span className="font-medium text-navy">All bands</span> tab to see
+          every step and assign a band with the Segment pick list. Stored in
+          Postgres (
           <span className="font-mono text-[11px]">
             intel_inventory_segment_bands
           </span>
