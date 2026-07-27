@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import {
+  CompExactMatchLegend,
   CompFoundLegendRow,
   renderCompBedBathMeta,
 } from "@/components/listing/CompExactMatchMeta";
@@ -44,11 +45,16 @@ import ListingCriteriaSideLayout, {
   useListingDesktopLayout,
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
-import {
-  filterPillIndependentButtonClass,
-  filterPillIndependentContainerClass,
-} from "@/lib/filter-pill-styles";
 import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
+
+/** Mobile Sold / On the market sub-tabs — underline style, not filter pills. */
+function mobileCompSubTabClass(active: boolean): string {
+  return `shrink-0 whitespace-nowrap px-2.5 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors border-b-2 -mb-px ${
+    active
+      ? "text-gold border-gold"
+      : "text-white/50 border-transparent hover:text-white/80"
+  }`;
+}
 
 type MobileCompPane = "closed" | "active";
 
@@ -1456,17 +1462,13 @@ export default function ListingComparablesPanel({
           <div
             role="tablist"
             aria-label={isRental ? "Rented comps" : "Sold comps"}
-            className={`${filterPillIndependentContainerClass("compact")} min-w-0 flex-1`}
+            className="flex min-w-0 flex-1 items-end gap-0 border-b border-white/15"
           >
             <button
               type="button"
               role="tab"
               aria-selected={mobileCompPane === "closed"}
-              className={`${filterPillIndependentButtonClass(
-                mobileCompPane === "closed",
-                "compact",
-                "dark",
-              )} font-mono text-[10px] tracking-[0.12em] uppercase`}
+              className={mobileCompSubTabClass(mobileCompPane === "closed")}
               onClick={() => setMobileCompPane("closed")}
             >
               {isRental ? "Rented" : "Sold"} ({sortedSold.length})
@@ -1475,11 +1477,7 @@ export default function ListingComparablesPanel({
               type="button"
               role="tab"
               aria-selected={mobileCompPane === "active"}
-              className={`${filterPillIndependentButtonClass(
-                mobileCompPane === "active",
-                "compact",
-                "dark",
-              )} font-mono text-[10px] tracking-[0.12em] uppercase`}
+              className={mobileCompSubTabClass(mobileCompPane === "active")}
               onClick={() => setMobileCompPane("active")}
             >
               On the market ({sortedActive.length})
@@ -1527,35 +1525,42 @@ export default function ListingComparablesPanel({
           {mobileSoldChrome ? (
             <>
               {useMobileCompSubTabs ? (
-                <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  <LookbackSpinner
-                    months={lookbackMonths}
-                    onChange={setLookbackMonths}
-                    theme={sortTheme}
-                  />
-                  {sortedSold.length > 0 ? (
-                    <CompSortLinks
-                      options={[
-                        { key: "score", label: "Edge" },
-                        { key: "closeDate", label: "CLOSED" },
-                        { key: "price", label: "Price" },
-                      ]}
-                      activeKey={soldSort.key}
-                      activeDir={soldSort.dir}
-                      onSort={handleSoldSort}
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    <LookbackSpinner
+                      months={lookbackMonths}
+                      onChange={setLookbackMonths}
                       theme={sortTheme}
-                      ariaLabel={`${recentlyClosedLabel} sort`}
                     />
-                  ) : null}
+                    {sortedSold.length > 0 ? (
+                      <CompSortLinks
+                        options={[
+                          { key: "score", label: "Edge" },
+                          { key: "closeDate", label: "CLOSED" },
+                          { key: "price", label: "Price" },
+                        ]}
+                        activeKey={soldSort.key}
+                        activeDir={soldSort.dir}
+                        onSort={handleSoldSort}
+                        theme={sortTheme}
+                        ariaLabel={`${recentlyClosedLabel} sort`}
+                      />
+                    ) : null}
+                  </div>
+                  <CompExactMatchLegend
+                    theme={isModal ? "light" : "dark"}
+                    className="shrink-0 text-right ml-auto"
+                  />
                 </div>
-              ) : null}
-              <CompFoundLegendRow
-                theme={isModal ? "light" : "dark"}
-                foundCount={sortedSold.length}
-                foundCountClass={foundCountClass}
-                hideFoundCount
-                className="mb-1"
-              />
+              ) : (
+                <CompFoundLegendRow
+                  theme={isModal ? "light" : "dark"}
+                  foundCount={sortedSold.length}
+                  foundCountClass={foundCountClass}
+                  hideFoundCount
+                  className="mb-1"
+                />
+              )}
               {!useMobileCompSubTabs ? (
               <div className="mb-2 flex items-end justify-between gap-x-3 gap-y-1">
                 <p className={`${sectionTitleClass} min-w-0 leading-none`}>
@@ -1578,9 +1583,7 @@ export default function ListingComparablesPanel({
                   </div>
                 ) : null}
               </div>
-              ) : (
-                <div className="mb-2" />
-              )}
+              ) : null}
             </>
           ) : (
             <>
@@ -1738,45 +1741,71 @@ export default function ListingComparablesPanel({
           }
         >
           <div className={isMobilePage ? "mb-2" : "mb-3"}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              {!useMobileCompSubTabs ? (
-                <p className={sectionTitleClass}>
-                  {isMobilePage
-                    ? `${activeColumnTitle} (${sortedActive.length})`
-                    : activeColumnTitle}
-                </p>
-              ) : null}
-              {sortedActive.length > 0 ? (
-                <CompSortLinks
-                  options={[
-                    { key: "default", label: "Match" },
-                    { key: "score", label: "Edge" },
-                    { key: "price", label: "Price" },
-                  ]}
-                  activeKey={activeSort.key}
-                  activeDir={activeSort.dir}
-                  onSort={handleActiveSort}
-                  theme={sortTheme}
-                  ariaLabel="On market sort"
+            {useMobileCompSubTabs ? (
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                {sortedActive.length > 0 ? (
+                  <CompSortLinks
+                    options={[
+                      { key: "default", label: "Match" },
+                      { key: "score", label: "Edge" },
+                      { key: "price", label: "Price" },
+                    ]}
+                    activeKey={activeSort.key}
+                    activeDir={activeSort.dir}
+                    onSort={handleActiveSort}
+                    theme={sortTheme}
+                    ariaLabel="On market sort"
+                  />
+                ) : (
+                  <span />
+                )}
+                <CompExactMatchLegend
+                  theme={isModal ? "light" : "dark"}
+                  className="shrink-0 text-right ml-auto"
                 />
-              ) : null}
-            </div>
-            {criteriaInSidePanel &&
-            !showSoldColumn &&
-            !useMobileCompSubTabs &&
-            showMobileCriteriaLinkSlot ? (
-              <div
-                id={criteriaLinkSlotId}
-                className="mt-2 flex justify-end"
-              />
-            ) : null}
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <p className={sectionTitleClass}>
+                    {isMobilePage
+                      ? `${activeColumnTitle} (${sortedActive.length})`
+                      : activeColumnTitle}
+                  </p>
+                  {sortedActive.length > 0 ? (
+                    <CompSortLinks
+                      options={[
+                        { key: "default", label: "Match" },
+                        { key: "score", label: "Edge" },
+                        { key: "price", label: "Price" },
+                      ]}
+                      activeKey={activeSort.key}
+                      activeDir={activeSort.dir}
+                      onSort={handleActiveSort}
+                      theme={sortTheme}
+                      ariaLabel="On market sort"
+                    />
+                  ) : null}
+                </div>
+                {criteriaInSidePanel &&
+                !showSoldColumn &&
+                showMobileCriteriaLinkSlot ? (
+                  <div
+                    id={criteriaLinkSlotId}
+                    className="mt-2 flex justify-end"
+                  />
+                ) : null}
+              </>
+            )}
           </div>
-          <CompFoundLegendRow
-            theme={isModal ? "light" : "dark"}
-            foundCount={sortedActive.length}
-            foundCountClass={foundCountClass}
-            hideFoundCount={isMobilePage}
-          />
+          {!useMobileCompSubTabs ? (
+            <CompFoundLegendRow
+              theme={isModal ? "light" : "dark"}
+              foundCount={sortedActive.length}
+              foundCountClass={foundCountClass}
+              hideFoundCount={isMobilePage}
+            />
+          ) : null}
           {active.length > 0 ? (
             <>
               <ul className="space-y-3">

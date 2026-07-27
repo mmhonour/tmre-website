@@ -75,7 +75,14 @@ function parseTown(value: string | null): TmreTown | null {
 }
 
 function parseStatus(value: string | null): SnapshotListingsStatus | null {
-  if (value === "new" || value === "reduced" || value === "closed") return value;
+  if (
+    value === "new" ||
+    value === "reduced" ||
+    value === "closed" ||
+    value === "to-contract"
+  ) {
+    return value;
+  }
   return null;
 }
 
@@ -278,7 +285,9 @@ export default function IntelligenceListingsClient() {
   const activeSortDir = sortDirs[newSort];
 
   const sortedListings = useMemo(() => {
-    if (status === "closed") return sortClosedListings(listings);
+    if (status === "closed" || status === "to-contract") {
+      return sortClosedListings(listings);
+    }
     if (status === "new" || status === "reduced") {
       return sortNewListings(listings, newSort, activeSortDir);
     }
@@ -307,7 +316,9 @@ export default function IntelligenceListingsClient() {
     const apiUrl =
       status === "closed"
         ? `/api/intelligence/closed-listings?city=${encodeURIComponent(city)}&limit=250`
-        : `/api/listings?city=${encodeURIComponent(city)}&status=Active&limit=250`;
+        : status === "to-contract"
+          ? `/api/intelligence/to-contract-listings?city=${encodeURIComponent(city)}&limit=250`
+          : `/api/listings?city=${encodeURIComponent(city)}&status=Active&limit=250`;
     fetch(apiUrl)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -316,7 +327,7 @@ export default function IntelligenceListingsClient() {
       .then((body) => {
         if (cancelled) return;
         const mapped =
-          status === "closed"
+          status === "closed" || status === "to-contract"
             ? mapClosedListings(body.listings, city)
             : mapListings(body.listings, city);
         const filtered = filterListings(mapped, tx, cls, zip, status, saleProperty);
@@ -346,9 +357,11 @@ export default function IntelligenceListingsClient() {
       ? "Listed within the last 7 days on market"
       : status === "reduced"
         ? "Active listings with a recent price reduction"
-        : tx === "rental"
-          ? "Leased within the last 7 days"
-          : "Closed within the last 7 days";
+        : status === "to-contract"
+          ? "Went under contract within the last 7 days"
+          : tx === "rental"
+            ? "Leased within the last 7 days"
+            : "Closed within the last 7 days";
 
   return (
     <>
@@ -404,7 +417,7 @@ export default function IntelligenceListingsClient() {
                 Invalid link
               </p>
               <p className="text-charcoal/70 mb-6">
-                Choose a town snapshot on Intelligence and open new, reduced, or closed listings from there.
+                Choose a town snapshot on Intelligence and open new, reduced, closed, or to-contract listings from there.
               </p>
               <Link
                 href="/intelligence"
@@ -532,7 +545,11 @@ function ListingCard({
         ? l.closeDate && fmtDate(l.closeDate)
           ? `${closedLabel} ${fmtDate(l.closeDate)}`
           : closedLabel
-        : "Price reduced";
+        : status === "to-contract"
+          ? l.closeDate && fmtDate(l.closeDate)
+            ? `Under contract ${fmtDate(l.closeDate)}`
+            : "Under contract"
+          : "Price reduced";
 
   return (
     <article
@@ -548,7 +565,7 @@ function ListingCard({
         <div className="absolute top-3 left-3 font-mono text-[10px] tracking-[0.12em] uppercase bg-navy text-white px-2.5 py-1 rounded-full">
           {statusLabel}
         </div>
-        {status !== "closed" && l.score > 0 ? (
+        {status !== "closed" && status !== "to-contract" && l.score > 0 ? (
           <div className="absolute top-3 right-3 bg-white/95 px-2.5 py-1 rounded-full shadow-sm">
             <ClickableGoldilocksScore
               score={l.score}
@@ -596,10 +613,16 @@ function ListingCard({
           </div>
           <div className="text-right">
             <p className="font-mono text-[9px] tracking-[0.15em] uppercase text-slate mb-1">
-              {status === "closed" ? (l.isRental ? "Leased" : "Closed") : "DOM"}
+              {status === "closed"
+                ? l.isRental
+                  ? "Leased"
+                  : "Closed"
+                : status === "to-contract"
+                  ? "Contract"
+                  : "DOM"}
             </p>
             <p className="font-mono text-sm tabular-nums text-navy">
-              {status === "closed"
+              {status === "closed" || status === "to-contract"
                 ? fmtDate(l.closeDate) ?? "—"
                 : l.dom != null
                   ? `${l.dom}d`

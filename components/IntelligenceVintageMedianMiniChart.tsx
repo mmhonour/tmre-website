@@ -7,6 +7,7 @@ import {
   type VintageListingRow,
 } from "@/lib/intelligence-vintage-stats";
 import type { VintageBucketId } from "@/lib/vintage-buckets";
+import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
 
 /** Phrase after “Filters …” — swap later without rewriting the chrome. */
 export const MEDIAN_BY_VINTAGE_LABEL = "Median by vintage";
@@ -33,7 +34,6 @@ const PAD_BOTTOM = 18;
 
 const INTERACTIVE_HINT_MS = 10_000;
 const ORIGINAL_VIEW_FLASH_MS = 5_000;
-const INTRO_GLOW_MS = 4_500;
 
 function shortVintageLabel(label: string): string {
   // "Pre-1900" → "Pre-1900"; "1900–1940" → "1900"; "2020–present" → "2020"
@@ -41,11 +41,6 @@ function shortVintageLabel(label: string): string {
   const start = label.match(/^(\d{4})/);
   if (start) return start[1];
   return label;
-}
-
-/** Every other point, starting with the first (indices 0, 2, 4, …). */
-function everyOtherGlowIds(ids: VintageBucketId[]): Set<VintageBucketId> {
-  return new Set(ids.filter((_, i) => i % 2 === 0));
 }
 
 /**
@@ -77,7 +72,6 @@ export default function IntelligenceVintageMedianMiniChart({
   const [extraCallouts, setExtraCallouts] = useState<Set<VintageBucketId>>(
     () => new Set(),
   );
-  const [glowIds, setGlowIds] = useState<Set<VintageBucketId>>(() => new Set());
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const introStartedRef = useRef(false);
@@ -119,24 +113,17 @@ export default function IntelligenceVintageMedianMiniChart({
     });
   }, [listings]);
 
+  const glowIds = useRandomMiniGraphGlow(points.map((p) => p.id));
   const pointIdsKey = points.map((p) => p.id).join("|");
 
   useEffect(() => {
     if (points.length === 0 || introStartedRef.current) return;
     introStartedRef.current = true;
-
-    setGlowIds(everyOtherGlowIds(points.map((p) => p.id)));
     setShowInteractiveHint(true);
-
-    const glowTimer = window.setTimeout(() => {
-      setGlowIds(new Set());
-    }, INTRO_GLOW_MS);
     const hintTimer = window.setTimeout(() => {
       setShowInteractiveHint(false);
     }, INTERACTIVE_HINT_MS);
-
     return () => {
-      window.clearTimeout(glowTimer);
       window.clearTimeout(hintTimer);
     };
     // Run once when first non-empty points arrive.

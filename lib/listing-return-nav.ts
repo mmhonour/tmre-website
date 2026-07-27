@@ -45,6 +45,7 @@ function labelForIntelligenceListings(search: string): string {
   if (status === "closed") {
     return params.get("tx") === "rental" ? "Leased this week" : "Closed this week";
   }
+  if (status === "to-contract") return "To contract this week";
   return "Listings";
 }
 

@@ -657,7 +657,7 @@ type SnapshotMetric = {
   trend: string;
   tone: MetricTone;
   valueSignal?: SnapshotValueSignal;
-  action?: "new" | "reduced" | "closed";
+  action?: "new" | "reduced" | "closed" | "to-contract";
   linkMedian?: boolean;
 };
 
@@ -950,11 +950,19 @@ function buildTownSnapshot(
       value: String(wentToContractThisWeekCount),
       trend: wentToContractThisWeekCount > 0 ? "Past 7 days" : "None this week",
       tone: wentToContractThisWeekCount > 0 ? "up" : "flat",
+      action: wentToContractThisWeekCount > 0 ? "to-contract" : undefined,
     },
     {
       label: "Median price",
       value: formatSnapshotPrice(medPrice),
-      trend: medPrice ? `${formatSnapshotPrice(medPrice)} median` : "—",
+      trend:
+        medPrice != null && benchmarks.medianPrice != null
+          ? medPrice >= benchmarks.medianPrice
+            ? "Above market median"
+            : "Below market median"
+          : medPrice != null
+            ? "Active listings"
+            : "—",
       tone: "flat",
       valueSignal: priceSignal,
       linkMedian: medPrice != null && townListings.length > 0,
@@ -2461,14 +2469,20 @@ export default function IntelligenceClient({
   }, []);
 
   useEffect(() => {
-    if (!collapsedSlidersOpen || filtersExpanded) return;
+    // Full Edit-all (no peek) stays open on outside click. Descriptor / mag-glass
+    // peeks dismiss — including a single-slider peek over an Edit-all session.
+    if (filtersExpanded && exposedSliderKind == null) return;
+    if (!collapsedSlidersOpen && exposedSliderKind == null) return;
     const dismissCollapsedSliders = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest("[data-intel-slider-panel]")) return;
       if (target.closest("[data-intel-collapsed-slider-label]")) return;
+      if (target.closest("[data-intel-slider-context-blurb]")) return;
+      if (target.closest("[data-intel-slider-context-blurb-pinned]")) return;
       setCollapsedSlidersOpen(false);
       setExposedSliderKind(null);
+      if (filterChromePeek === "sliders") setFilterChromePeek(null);
       setPriceSliderActive(false, { immediate: true });
       setBedSliderActive(false, { immediate: true });
       setBathSliderActive(false, { immediate: true });
@@ -2478,7 +2492,7 @@ export default function IntelligenceClient({
     };
     window.addEventListener("pointerdown", dismissCollapsedSliders);
     return () => window.removeEventListener("pointerdown", dismissCollapsedSliders);
-  }, [collapsedSlidersOpen, filtersExpanded]);
+  }, [collapsedSlidersOpen, filtersExpanded, exposedSliderKind, filterChromePeek]);
 
   useEffect(() => {
     if (active !== "All" && availableZips.length <= 1) setZip(null);
@@ -3300,10 +3314,10 @@ export default function IntelligenceClient({
     if (filterChromeCollapsed) {
       setFilterChromePeek("sliders");
     }
-    if (!filtersExpanded) {
-      setCollapsedSlidersOpen(true);
-      setExposedSliderKind(kind ?? "all");
-    }
+    // Always set the peek kind — including when Edit-all is open, so a
+    // descriptor click can narrow the panel to that one slider.
+    setExposedSliderKind(kind ?? "all");
+    setCollapsedSlidersOpen(true);
     if (kind) pulseSliderDescriptor(kind);
     else pulseAllSliderDescriptors();
   }
@@ -3321,6 +3335,9 @@ export default function IntelligenceClient({
     setExposedSliderKind(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  const isSingleSliderPeek =
+    exposedSliderKind != null && exposedSliderKind !== "all";
 
   function hideCollapsedSliders() {
     setCollapsedSlidersOpen(false);
@@ -4418,7 +4435,7 @@ export default function IntelligenceClient({
                   trailing={
                     showSliderChrome &&
                     collapsedSlidersOpen &&
-                    !filtersExpanded ? (
+                    (!filtersExpanded || isSingleSliderPeek) ? (
                       <>
                         <IntelFilterDescriptorDot />
                         <button
@@ -4447,7 +4464,7 @@ export default function IntelligenceClient({
                   />
                   {showSliderChrome &&
                   collapsedSlidersOpen &&
-                  !filtersExpanded ? (
+                  (!filtersExpanded || isSingleSliderPeek) ? (
                     <>
                       <IntelFilterDescriptorDot />
                       <button
@@ -4489,7 +4506,7 @@ export default function IntelligenceClient({
       >
         {mobileLivePortal}
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
-          <div className="mb-4 lg:mb-5 flex flex-col gap-2">
+          <div className="mb-2 lg:mb-3 flex flex-col gap-2">
             {/* Desktop Live + share (tablet/desktop). Mobile Live is under hamburger. */}
             <div className="hidden md:flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 font-mono text-xs leading-none text-slate">
@@ -4503,126 +4520,64 @@ export default function IntelligenceClient({
             </div>
 
             {/*
-              Mobile board chrome:
-              Town stats · Vintages · Sorted by (same row)
-              Show graphs · Share when graphs hidden (Share joins carousel when shown)
+              Mobile board chrome (cream section, not hero header):
+              Town stats · Vintages ········· Share (top-right)
+              Show graphs + Sorted by sit on the results column below.
             */}
-            <div className="flex flex-col gap-1.5 w-full lg:hidden">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 w-full">
-                {liveSnapshots.length > 0 ? (
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
-                    onClick={() => {
-                      setVintageStatsOpen(false);
-                      setTownStatsOpen(true);
-                    }}
-                    aria-expanded={townStatsOpen}
-                    aria-controls="intel-town-stats-drawer"
+            <div className="flex w-full items-center gap-x-3 gap-y-1 lg:hidden">
+              {liveSnapshots.length > 0 ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                  onClick={() => {
+                    setVintageStatsOpen(false);
+                    setTownStatsOpen(true);
+                  }}
+                  aria-expanded={townStatsOpen}
+                  aria-controls="intel-town-stats-drawer"
+                >
+                  <svg
+                    viewBox="0 0 12 12"
+                    className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                    fill="currentColor"
+                    aria-hidden
                   >
-                    <svg
-                      viewBox="0 0 12 12"
-                      className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                      fill="currentColor"
-                      aria-hidden
-                    >
-                      <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                    </svg>
-                    <span className="underline underline-offset-2 decoration-navy/35">
-                      Town stats
-                    </span>
-                  </button>
-                ) : null}
-                {showVintageStats ? (
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
-                    onClick={() => {
-                      setTownStatsOpen(false);
-                      setVintageStatsOpen(true);
-                    }}
-                    aria-expanded={vintageStatsOpen}
-                    aria-controls="intel-vintage-stats-drawer"
-                  >
-                    <svg
-                      viewBox="0 0 12 12"
-                      className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                      fill="currentColor"
-                      aria-hidden
-                    >
-                      <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                    </svg>
-                    <span className="underline underline-offset-2 decoration-navy/35">
-                      Vintages
-                    </span>
-                  </button>
-                ) : null}
-                <div className="ml-auto inline-flex items-center gap-1.5">
-                  <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
-                    Sorted by:
+                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                  </svg>
+                  <span className="underline underline-offset-2 decoration-navy/35">
+                    Town stats
                   </span>
-                  <button
-                    type="button"
-                    className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
-                    onClick={() => setSortFieldDrawerOpen(true)}
-                    aria-expanded={sortFieldDrawerOpen}
-                    aria-controls="intel-sort-drawer"
-                  >
-                    {dealBoardSortLabel(sortKey)}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSort(sortKey)}
-                    className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
-                    title={
-                      sortDir === "asc" ? "Sort descending" : "Sort ascending"
-                    }
-                    aria-label={
-                      sortDir === "asc"
-                        ? "Flip sort to descending"
-                        : "Flip sort to ascending"
-                    }
-                  >
-                    {sortDir === "asc" ? "↑" : "↓"}
-                  </button>
-                </div>
-                {!(
-                  vintageChartListingRows.length > 0 || showPriceFilter
-                ) ? (
-                  <ListingShareButton
-                    href={intelligenceShareHref}
-                    title="Share this Intelligence search"
-                    className="!h-6 !w-6 shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
-                  />
-                ) : null}
-              </div>
-              {vintageChartListingRows.length > 0 || showPriceFilter ? (
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <button
-                    type="button"
-                    className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
-                    onClick={() => {
-                      if (miniGraphsHidden) {
-                        setMiniGraphsHiddenPref(false, {
-                          suspendAutoHide: true,
-                        });
-                      } else {
-                        setMiniGraphsHiddenPref(true);
-                      }
-                    }}
-                    aria-pressed={miniGraphsHidden}
-                  >
-                    {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
-                  </button>
-                  {miniGraphsHidden ? (
-                    <ListingShareButton
-                      href={intelligenceShareHref}
-                      title="Share this Intelligence search"
-                      className="!h-6 !w-6 shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
-                    />
-                  ) : null}
-                </div>
+                </button>
               ) : null}
+              {showVintageStats ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                  onClick={() => {
+                    setTownStatsOpen(false);
+                    setVintageStatsOpen(true);
+                  }}
+                  aria-expanded={vintageStatsOpen}
+                  aria-controls="intel-vintage-stats-drawer"
+                >
+                  <svg
+                    viewBox="0 0 12 12"
+                    className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                  </svg>
+                  <span className="underline underline-offset-2 decoration-navy/35">
+                    Vintages
+                  </span>
+                </button>
+              ) : null}
+              <ListingShareButton
+                href={intelligenceShareHref}
+                title="Share this Intelligence search"
+                className="!h-6 !w-6 ml-auto shrink-0 self-start text-navy/70 hover:text-navy hover:bg-navy/[0.06] md:hidden"
+              />
             </div>
           </div>
 
@@ -4637,21 +4592,76 @@ export default function IntelligenceClient({
               }`}
               aria-busy={boardSortPending || undefined}
             >
+          {/*
+            Show/Hide graphs: left edge of results column, tight above graphs/board.
+            Mobile: Sorted by + ↑/↓ on the same row, right-aligned to the grid.
+            When graphs are unavailable, this row is mobile-only (sort control).
+          */}
+          <div
+            className={`mb-0.5 flex items-center justify-between gap-3 ${
+              vintageChartListingRows.length > 0 || showPriceFilter
+                ? ""
+                : "lg:hidden"
+            }`}
+          >
+            {vintageChartListingRows.length > 0 || showPriceFilter ? (
+              <button
+                type="button"
+                className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
+                onClick={() => {
+                  if (miniGraphsHidden) {
+                    setMiniGraphsHiddenPref(false, {
+                      suspendAutoHide: true,
+                    });
+                  } else {
+                    setMiniGraphsHiddenPref(true);
+                  }
+                }}
+                aria-pressed={miniGraphsHidden}
+              >
+                {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="ml-auto inline-flex items-center gap-1.5 lg:hidden">
+              <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
+                Sorted by:
+              </span>
+              <button
+                type="button"
+                className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 underline underline-offset-2 decoration-navy/35 hover:text-navy transition-colors"
+                onClick={() => setSortFieldDrawerOpen(true)}
+                aria-expanded={sortFieldDrawerOpen}
+                aria-controls="intel-sort-drawer"
+              >
+                {dealBoardSortLabel(sortKey)}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSort(sortKey)}
+                className="inline-flex shrink-0 items-center justify-center font-mono text-[15px] font-bold leading-none text-navy hover:text-gold transition-colors"
+                title={
+                  sortDir === "asc" ? "Sort descending" : "Sort ascending"
+                }
+                aria-label={
+                  sortDir === "asc"
+                    ? "Flip sort to descending"
+                    : "Flip sort to ascending"
+                }
+              >
+                {sortDir === "asc" ? "↑" : "↓"}
+              </button>
+            </div>
+          </div>
           {vintageChartListingRows.length > 0 || showPriceFilter ? (
             <IntelligenceMiniGraphsStrip
               onInteractRef={miniGraphsInteractRef}
-              desktopHideToggleOnly
+              showHideToggle={false}
               hidden={miniGraphsHidden}
               onHiddenChange={(hidden) => setMiniGraphsHiddenPref(hidden)}
               autoHideSuspended={miniGraphsAutoHideSuspended}
               onAutoHideSuspendedChange={setMiniGraphsAutoHideSuspended}
-              carouselTrailing={
-                <ListingShareButton
-                  href={intelligenceShareHref}
-                  title="Share this Intelligence search"
-                  className="!h-6 !w-6 shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06] lg:hidden"
-                />
-              }
               slots={[
                 {
                   key: "vintage",
@@ -5726,10 +5736,12 @@ function IntelFilterControlsRow({
     filtersExpanded ? "mt-1.5" : "mt-1"
   }`;
 
-  const visibleKind: IntelSliderKind | "all" =
-    filtersExpanded || exposedSliderKind == null || exposedSliderKind === "all"
-      ? "all"
-      : exposedSliderKind;
+  // A specific descriptor peek always wins — even over Edit-all expanded.
+  const isSinglePeek =
+    exposedSliderKind != null && exposedSliderKind !== "all";
+  const visibleKind: IntelSliderKind | "all" = isSinglePeek
+    ? exposedSliderKind
+    : "all";
   const showKind = (kind: IntelSliderKind) =>
     visibleKind === "all" || visibleKind === kind;
   const showPriceControls = showPriceFilter && showKind("price");
@@ -5826,11 +5838,12 @@ function IntelFilterControlsRow({
     </div>
   );
 
-  if (filtersExpanded) {
+  // Edit-all shows the full set unless a descriptor peeks one slider.
+  if (filtersExpanded && !isSinglePeek) {
     return <div className={rowClass}>{sliderPanel}</div>;
   }
 
-  if (!collapsedSlidersOpen) return null;
+  if (!collapsedSlidersOpen && !isSinglePeek) return null;
 
   return (
     <div className={rowClass} data-intel-slider-panel>
@@ -6633,7 +6646,7 @@ function TownSnapshotPanel({
   onListingsClick?: (town: string, zip?: string | null) => void;
   onSnapshotAction?: (
     town: string,
-    action: "new" | "reduced" | "closed",
+    action: "new" | "reduced" | "closed" | "to-contract",
     zip?: string | null,
   ) => string;
   onMedianHref?: (snapshot: TownSnapshot) => string | null;
@@ -6752,7 +6765,7 @@ function SnapshotCardBody({
   onListingsClick?: (town: string, zip?: string | null) => void;
   onSnapshotAction?: (
     town: string,
-    action: "new" | "reduced" | "closed",
+    action: "new" | "reduced" | "closed" | "to-contract",
     zip?: string | null,
   ) => string;
   onMedianHref?: (snapshot: TownSnapshot) => string | null;
@@ -6813,7 +6826,9 @@ function SnapshotCardBody({
                     ? `View new ${place} listings this week`
                     : m.action === "reduced"
                       ? `View reduced ${place} listings`
-                      : `View ${tx === "rental" ? "leased" : "closed"} ${place} listings this week`
+                      : m.action === "to-contract"
+                        ? `View ${place} listings that went to contract this week`
+                        : `View ${tx === "rental" ? "leased" : "closed"} ${place} listings this week`
                 }
               >
                 {m.trend}

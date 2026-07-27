@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMiniGraphsCarousel } from "@/components/IntelligenceMiniGraphsStrip";
 import type { InventorySegmentId } from "@/lib/inventory-segment-bands-shared";
 import type { InventorySegmentChartSeed } from "@/lib/intelligence-inventory-segment-fssr";
+import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
 
 const LUXURY_CAROUSEL_SLOT_KEY = "luxury-inventory-price";
 
@@ -63,7 +64,6 @@ const PAD_TOP = 22;
 const PAD_BOTTOM = 18;
 
 const INTERACTIVE_HINT_MS = 10_000;
-const INTRO_GLOW_MS = 4_500;
 
 function shortBandLabel(label: string): string {
   const s = label.trim();
@@ -80,11 +80,6 @@ function shortBandLabel(label: string): string {
 function formatCount(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
   return String(n);
-}
-
-/** Every other point, starting with the first (indices 0, 2, 4, …). */
-function everyOtherGlowIds(ids: string[]): Set<string> {
-  return new Set(ids.filter((_, i) => i % 2 === 0));
 }
 
 function bucketsFromSeed(
@@ -185,7 +180,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         ),
     ),
   );
-  const [glowIds, setGlowIds] = useState<Set<string>>(() => new Set());
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(
     () => new Set(),
@@ -223,7 +217,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
       setBySegment({});
       setReady(false);
     }
-    setGlowIds(new Set());
     setExtraCallouts(new Set());
 
     const qs = new URLSearchParams({ city, all: "1" });
@@ -315,20 +308,23 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     });
   }, [buckets]);
 
+  const glowIds = useRandomMiniGraphGlow(
+    points.map((p) => p.id),
+    // Keep glowing on desktop always; on mobile carousel only while visible
+    // so off-screen slides don't burn timers — other graphs still glow on their own.
+    isActiveCarouselSlide,
+  );
   const pointIdsKey = `${segment}|${points.map((p) => p.id).join("|")}`;
 
   useEffect(() => {
     if (points.length === 0 || introStartedRef.current) return;
     introStartedRef.current = true;
-    setGlowIds(everyOtherGlowIds(points.map((p) => p.id)));
     setShowInteractiveHint(true);
-    const glowTimer = window.setTimeout(() => setGlowIds(new Set()), INTRO_GLOW_MS);
     const hintTimer = window.setTimeout(
       () => setShowInteractiveHint(false),
       INTERACTIVE_HINT_MS,
     );
     return () => {
-      window.clearTimeout(glowTimer);
       window.clearTimeout(hintTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intro once per segment dataset

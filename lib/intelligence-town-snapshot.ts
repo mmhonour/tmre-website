@@ -302,6 +302,7 @@ function buildTownSnapshot(
       value: String(wentToContractThisWeekCount),
       trend: wentToContractThisWeekCount > 0 ? 'Past 7 days' : 'None this week',
       tone: wentToContractThisWeekCount > 0 ? 'up' : 'flat',
+      action: wentToContractThisWeekCount > 0 ? 'to-contract' : undefined,
     },
     {
       label: 'Median price',

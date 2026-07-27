@@ -1,6 +1,10 @@
 import { formatTownZipPlace } from "@/lib/tmre-towns";
 
-export type SnapshotListingsStatus = "new" | "reduced" | "closed";
+export type SnapshotListingsStatus =
+  | "new"
+  | "reduced"
+  | "closed"
+  | "to-contract";
 
 export function intelligenceListingsHref(options: {
   city: string;
@@ -32,6 +36,9 @@ export function snapshotListingsTitle(
   const place = formatTownZipPlace(city, zip);
   if (status === "new") return `New listings this week · ${place}`;
   if (status === "reduced") return `Price-reduced listings · ${place}`;
+  if (status === "to-contract") {
+    return `To contract this week · ${place}`;
+  }
   return tx === "rental"
     ? `Leased this week · ${place}`
     : `Closed this week · ${place}`;

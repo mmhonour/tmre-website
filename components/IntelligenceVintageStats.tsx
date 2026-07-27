@@ -307,7 +307,7 @@ export default function IntelligenceVintageStats({
             onClick={() => toggleSort("score")}
           />
           <SortChip
-            label="Median $"
+            label="$ Median"
             active={sortKey === "price"}
             dir={sortDir}
             onClick={() => toggleSort("price")}

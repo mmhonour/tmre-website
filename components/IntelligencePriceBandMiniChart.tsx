@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
 
 /** Phrase after “Filters …” — swap later without rewriting the chrome. */
 export const ACTIVE_BY_PRICE_LABEL = "Inventory by price";
@@ -42,7 +43,6 @@ const PAD_BOTTOM = 18;
 
 const INTERACTIVE_HINT_MS = 10_000;
 const ORIGINAL_VIEW_FLASH_MS = 5_000;
-const INTRO_GLOW_MS = 4_500;
 
 function shortBandLabel(label: string, kind: "sale" | "rental"): string {
   const s = label.replace(/\/mo/gi, "").trim();
@@ -73,11 +73,6 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-/** Every other point, starting with the first (indices 0, 2, 4, …). */
-function everyOtherGlowIds(ids: string[]): Set<string> {
-  return new Set(ids.filter((_, i) => i % 2 === 0));
-}
-
 /**
  * Mini active-inventory-by-price sparkline above the Intelligence deal board.
  * Reads precomputed stats_cache via /api/active-by-price (same bands as
@@ -104,7 +99,6 @@ export default function IntelligencePriceBandMiniChart({
   onInteract?: () => void;
 }) {
   const [buckets, setBuckets] = useState<ApiBucket[]>([]);
-  const [glowIds, setGlowIds] = useState<Set<string>>(() => new Set());
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(() => new Set());
@@ -120,7 +114,6 @@ export default function IntelligencePriceBandMiniChart({
     abortRef.current = ac;
     introStartedRef.current = false;
     setBuckets([]);
-    setGlowIds(new Set());
     setExtraCallouts(new Set());
 
     const qs = new URLSearchParams({
@@ -172,27 +165,24 @@ export default function IntelligencePriceBandMiniChart({
         max: b.max,
         x,
         y,
-        callout: i % 2 === 0,
+        // Graph #2: label every inventory band.
+        callout: true,
       };
     });
   }, [buckets, kind]);
 
+  const glowIds = useRandomMiniGraphGlow(points.map((p) => p.id));
   const pointIdsKey = points.map((p) => p.id).join("|");
 
   useEffect(() => {
     if (points.length === 0 || introStartedRef.current) return;
     introStartedRef.current = true;
-
-    setGlowIds(everyOtherGlowIds(points.map((p) => p.id)));
     setShowInteractiveHint(true);
-
-    const glowTimer = window.setTimeout(() => setGlowIds(new Set()), INTRO_GLOW_MS);
     const hintTimer = window.setTimeout(
       () => setShowInteractiveHint(false),
       INTERACTIVE_HINT_MS,
     );
     return () => {
-      window.clearTimeout(glowTimer);
       window.clearTimeout(hintTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intro only

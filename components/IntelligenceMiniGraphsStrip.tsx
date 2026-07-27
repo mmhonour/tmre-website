@@ -50,7 +50,7 @@ export function useMiniGraphsCarousel(): MiniGraphsCarouselApi | null {
 /**
  * Desktop: Median | Inventory by price | Market-band inventory by price in one row.
  * Mobile: one chart at a time; slides left through 1→2→3, then continues as
- * 2→3→1, 3→1→2, … until paused. Hide toggle can live outside (under Vintages).
+ * 2→3→1, 3→1→2, … until paused. Hide toggle often lives outside (left of board).
  */
 export default function IntelligenceMiniGraphsStrip({
   slots,
@@ -60,15 +60,15 @@ export default function IntelligenceMiniGraphsStrip({
   autoHideSuspended: autoHideSuspendedProp,
   onAutoHideSuspendedChange,
   showHideToggle = true,
-  /** Hide graphs lives under Vintages on mobile — keep strip toggle for desktop only. */
+  /** When parent owns mobile toggle, keep strip toggle for desktop only. */
   desktopHideToggleOnly = false,
-  /** Right-aligned control on the mobile carousel row (e.g. share). */
+  /** Optional trailing control on the mobile carousel row. */
   carouselTrailing = null,
 }: {
   slots: IntelligenceMiniGraphSlot[];
   /** Parent assigns pause() when a chart point is clicked. */
   onInteractRef: MutableRefObject<(() => void) | null>;
-  /** Controlled hide (when Hide graphs sits under Vintages on mobile). */
+  /** Controlled hide (when Hide graphs sits outside the strip). */
   hidden?: boolean;
   onHiddenChange?: (hidden: boolean) => void;
   /**
@@ -297,10 +297,16 @@ export default function IntelligenceMiniGraphsStrip({
 
   return (
     <MiniGraphsCarouselContext.Provider value={carouselApi}>
-      <div className="mb-2 flex flex-col gap-1 items-stretch">
+      <div
+        className={
+          hidden && !showHideToggle
+            ? ""
+            : "mb-2 flex flex-col gap-1 items-stretch"
+        }
+      >
         {showHideToggle ? (
           <div
-            className={`flex justify-end ${desktopHideToggleOnly ? "hidden lg:flex" : ""}`}
+            className={`flex justify-start ${desktopHideToggleOnly ? "hidden lg:flex" : ""}`}
           >
             <button
               type="button"

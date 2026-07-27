@@ -8,7 +8,7 @@ export type SnapshotMetric = {
   trend: string
   tone: 'up' | 'down' | 'flat'
   valueSignal?: SnapshotValueSignal
-  action?: 'new' | 'reduced' | 'closed'
+  action?: 'new' | 'reduced' | 'closed' | 'to-contract'
   linkMedian?: boolean
 }
 
