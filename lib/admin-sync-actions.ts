@@ -405,6 +405,15 @@ async function runAdminSyncActionImpl(
           // Mark Start immediately — End stays on the prior success until the
           // worker finishes (instant HTTP response is expected, not a real sync).
           await setSyncMetaDurable('last_incremental_sync_started', startedAt)
+          const { stampIncrementalSyncLive } = await import(
+            '@/lib/incremental-sync-live'
+          )
+          await stampIncrementalSyncLive({
+            phase: 'queued',
+            town: null,
+            townIndex: null,
+            updatedAt: startedAt,
+          })
           return {
             ok: true,
             action,
@@ -415,8 +424,8 @@ async function runAdminSyncActionImpl(
             message:
               'Incremental queued (background worker) — this click returns in seconds; RETS can take several minutes',
             detail: queued.base
-              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Sync history should show a queue row now; town rows appear when the worker finishes RETS.`
-              : 'Queued on background worker. Sync history should show a queue row now.',
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Dashboard Status will show each town as the worker pulls MLS.`
+              : 'Queued on background worker. Dashboard Status will show each town as the worker pulls MLS.',
           }
         }
         const finishedAt = new Date().toISOString()
@@ -734,6 +743,10 @@ export async function readAdminSyncPanelStatus() {
     (await getSyncMetaFresh('last_incremental_cron_tick')) ??
     getSyncMeta('last_incremental_cron_tick')
   const nextOverrides = readSyncNextOverrides()
+  const { readIncrementalSyncLive, formatIncrementalSyncLiveStatus } = await import(
+    '@/lib/incremental-sync-live'
+  )
+  const incrementalLive = readIncrementalSyncLive()
   return {
     stats,
     refresh,
@@ -741,5 +754,7 @@ export async function readAdminSyncPanelStatus() {
     scheduleHints,
     lastIncrementalCronTick,
     nextOverrides,
+    incrementalLive,
+    incrementalLiveStatus: formatIncrementalSyncLiveStatus(incrementalLive),
   }
 }

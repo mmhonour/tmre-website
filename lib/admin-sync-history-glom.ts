@@ -18,6 +18,7 @@ export function normalizeSyncStatusBucket(bucket: string | null | undefined): st
  * Sync mode from status_bucket suffixes, e.g. "Active/incremental" → "Incremental".
  * Plain Active / Closed / Expired (full town/bucket pulls) → "Full".
  * Cron heartbeat rows use "cron/incremental" → "Cron".
+ * Queue/worker audits use "Queued/incremental" / "Worker/incremental".
  */
 export function normalizeSyncType(bucket: string | null | undefined): string {
   const raw = (bucket ?? '').trim()
@@ -25,6 +26,12 @@ export function normalizeSyncType(bucket: string | null | undefined): string {
   if (!suffix) return 'Full'
   if (raw.toLowerCase().startsWith('cron/')) return 'Cron'
   return suffix.charAt(0).toUpperCase() + suffix.slice(1).toLowerCase()
+}
+
+/** Synthetic all-town audit rows (queue ack, worker start) — keep OK detail text. */
+function isSyntheticAuditTown(town: string | null | undefined): boolean {
+  const t = (town ?? '').trim().toLowerCase()
+  return t === '(all)' || t === '(cron)'
 }
 
 /** "Westport (12), Norwalk (8)". */
@@ -66,7 +73,15 @@ export type SyncHistoryGlomRow = {
 /** Towns synced within this gap of each other count as one incremental/full batch. */
 const BATCH_GAP_MS = 20 * 60 * 1000
 
-const BUCKET_ORDER = ['Active', 'Closed', 'Expired', 'cron']
+const BUCKET_ORDER = [
+  'Queued',
+  'Worker',
+  'Active+Closed',
+  'Active',
+  'Closed',
+  'Expired',
+  'cron',
+]
 
 function parseMs(iso: string | null | undefined): number {
   if (!iso) return NaN
@@ -160,6 +175,11 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
       const errors = rows
         .filter((r) => !r.ok && r.error)
         .map((r) => `${r.town ?? '?'}: ${r.error}`)
+      // Queue/worker audits store the human note in `error` even when ok=true.
+      const okDetails = rows
+        .filter((r) => r.ok && r.error && isSyntheticAuditTown(r.town))
+        .map((r) => r.error!.trim())
+        .filter(Boolean)
       const listingsCount = towns.reduce((sum, t) => sum + t.count, 0)
 
       out.push({
@@ -175,7 +195,12 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
         townsLabel: formatTownCountsGlom(towns),
         listingsCount,
         ok,
-        error: errors.length > 0 ? errors.join('\n') : null,
+        error:
+          errors.length > 0
+            ? errors.join('\n')
+            : okDetails.length > 0
+              ? [...new Set(okDetails)].join('\n')
+              : null,
         durationMs:
           Number.isFinite(startedMs) && Number.isFinite(finishedMs) && finishedMs >= startedMs
             ? finishedMs - startedMs

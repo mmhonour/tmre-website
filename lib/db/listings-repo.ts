@@ -501,7 +501,9 @@ export async function recordIncrementalQueueAudit(input: {
       startedAt: input.startedAt,
       finishedAt: now,
       town: '(all)',
-      statusBucket: 'Active/incremental',
+      // Distinct from town RETS "Active+Closed/…" so History doesn't bury this
+      // under a collapsed Active sibling after refresh.
+      statusBucket: 'Queued/incremental',
       listingsCount: 0,
       ok: input.queued,
       error: input.queued

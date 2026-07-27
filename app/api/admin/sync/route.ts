@@ -40,6 +40,8 @@ export async function GET(req: NextRequest) {
     scheduleHints,
     nextOverrides,
     lastIncrementalCronTick,
+    incrementalLive,
+    incrementalLiveStatus,
   } = await readAdminSyncPanelStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
@@ -64,6 +66,8 @@ export async function GET(req: NextRequest) {
     nextRuns,
     nextOverrides,
     scheduleHints,
+    incrementalLive,
+    incrementalLiveStatus,
     rets,
     syncFailures: await readRecentSyncFailures(8),
     databaseStats: await collectAdminDatabaseSyncStats(),

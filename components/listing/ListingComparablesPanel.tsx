@@ -49,13 +49,15 @@ import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
 
 /**
  * Mobile Sold / On the market — classic folder tabs:
- * active = rounded ceiling + side walls, open bottom into the panel (__|LABEL|___).
+ * active = dark-gold label fill + open bottom into the panel (__|LABEL|___).
+ * inactive = last-shipped quiet style (no fill, muted label).
  */
 function mobileCompSubTabClass(active: boolean): string {
   const base =
-    "relative shrink-0 whitespace-nowrap px-3.5 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors rounded-t-md border";
+    "relative shrink-0 whitespace-nowrap px-3.5 py-2.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors rounded-t-md border -mb-px";
   if (active) {
-    return `${base} z-[1] border-white/25 border-b-transparent bg-white/[0.04] text-gold`;
+    // Very dark gold fill; cream text (not accent gold).
+    return `${base} z-[1] border-[#4a3a14] border-b-transparent bg-[#2a2110] text-cream`;
   }
   return `${base} border-transparent text-white/45 hover:text-white/75`;
 }
@@ -1537,7 +1539,7 @@ export default function ListingComparablesPanel({
           <div
             role="tablist"
             aria-label={isRental ? "Rented comps" : "Sold comps"}
-            className="flex min-w-0 flex-1 items-start gap-1"
+            className="flex min-w-0 flex-1 items-end gap-1 border-b border-white/10"
           >
             <button
               type="button"

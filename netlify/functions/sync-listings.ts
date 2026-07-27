@@ -115,6 +115,23 @@ export default async function handler() {
         } catch (err) {
           console.warn('[netlify/sync-listings] queue audit failed', err)
         }
+        try {
+          const { stampIncrementalSyncLive } = await import(
+            '../../lib/incremental-sync-live'
+          )
+          const { setSyncMetaDurable } = await import(
+            '../../lib/db/sync-meta-store'
+          )
+          await setSyncMetaDurable('last_incremental_sync_started', startedAt)
+          await stampIncrementalSyncLive({
+            phase: 'queued',
+            town: null,
+            townIndex: null,
+            updatedAt: startedAt,
+          })
+        } catch (err) {
+          console.warn('[netlify/sync-listings] live progress stamp failed', err)
+        }
         await recordIncrementalCronTick({
           startedAt,
           ok: true,

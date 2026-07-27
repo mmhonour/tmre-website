@@ -8,6 +8,10 @@ import {
   upsertTownListings,
 } from '@/lib/db/listings-repo'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
+import {
+  clearIncrementalSyncLive,
+  stampIncrementalSyncLive,
+} from '@/lib/incremental-sync-live'
 import { beginListingsRefresh, endListingsRefresh } from '@/lib/listings-refresh-status'
 import {
   ACTIVE_LISTINGS_FETCH_LIMIT,
@@ -264,7 +268,14 @@ export async function syncIncrementalListings(
   beginListingsRefresh('incremental')
 
   try {
-    for (const town of TMRE_TOWNS) {
+    for (let i = 0; i < TMRE_TOWNS.length; i++) {
+      const town = TMRE_TOWNS[i]
+      // Real in-flight town — Admin Dashboard polls this for Status text.
+      await stampIncrementalSyncLive({
+        phase: 'town',
+        town,
+        townIndex: i + 1,
+      })
       towns.push(await syncTownListingsIncremental(town, modifiedAfter))
       await yieldToEventLoop()
     }
@@ -276,6 +287,11 @@ export async function syncIncrementalListings(
     // Durable stamp — serverless freezes before fire-and-forget write-through.
     await setSyncMetaDurable('last_incremental_sync', finishedAt)
     if (allOk && postHooks) {
+      await stampIncrementalSyncLive({
+        phase: 'post-hooks',
+        town: null,
+        townIndex: null,
+      })
       // Town feeds for /latest — bounded hero thumbnails warm chained inside rebuild.
       try {
         const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')
@@ -324,6 +340,7 @@ export async function syncIncrementalListings(
       totalUpserted,
     }
   } finally {
+    await clearIncrementalSyncLive()
     endListingsRefresh(new Date().toISOString())
   }
 }

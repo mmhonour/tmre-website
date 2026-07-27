@@ -19,6 +19,8 @@ import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
 import { formatAdminNextSyncAt, formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import type { AdminSyncScheduleHints } from "@/lib/admin-sync-schedule";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
+import type { IncrementalSyncLiveProgress } from "@/lib/incremental-sync-live-shared";
+import { formatIncrementalSyncLiveStatus } from "@/lib/incremental-sync-live-shared";
 import { SCHEDULED_SYNC_JOB_BY_ROW } from "@/lib/scheduled-sync-jobs";
 import {
   emptyScheduledSyncPausedJobs,
@@ -564,6 +566,9 @@ export type PanelStatus = {
   /** Admin-set Next times that preempt the natural schedule. */
   nextOverrides?: SyncNextOverrides;
   scheduleHints?: AdminSyncScheduleHints;
+  /** Real worker town progress (stamped in sync_meta during incremental). */
+  incrementalLive?: IncrementalSyncLiveProgress | null;
+  incrementalLiveStatus?: string | null;
   rets?: {
     configured: boolean;
     status: string;
@@ -1457,6 +1462,13 @@ export default function AdminSyncTable({
     const body = (await res.json()) as PanelStatus;
     setStatus(body);
     setRefreshing(body.refreshing);
+    // Surface real worker town stamps into Status (not client-invented copy).
+    const liveText =
+      body.incrementalLiveStatus ??
+      formatIncrementalSyncLiveStatus(body.incrementalLive);
+    if (liveText) {
+      setDescriptions((prev) => ({ ...prev, incremental: liveText }));
+    }
   }, []);
 
   useEffect(() => {
@@ -1547,12 +1559,22 @@ export default function AdminSyncTable({
     [],
   );
 
+  const incrementalInFlight = (() => {
+    if (status?.incrementalLive) return true;
+    const startedMs = parseIsoMs(status?.stats?.lastIncrementalSyncStarted);
+    if (startedMs == null) return false;
+    const finishedMs = parseIsoMs(status?.stats?.lastIncrementalSync);
+    if (finishedMs != null && finishedMs >= startedMs) return false;
+    return Date.now() - startedMs < HANG_THRESHOLD_MS;
+  })();
+
   useEffect(() => {
     void refreshStatus();
-    const pollMs = refreshing || runningId != null ? 5_000 : 60_000;
+    const pollMs =
+      refreshing || runningId != null || incrementalInFlight ? 5_000 : 60_000;
     const id = window.setInterval(() => void refreshStatus(), pollMs);
     return () => window.clearInterval(id);
-  }, [refreshStatus, refreshing, runningId]);
+  }, [refreshStatus, refreshing, runningId, incrementalInFlight]);
 
   const drainSyncQueueRef = useRef<() => void>(() => {});
 
@@ -2428,6 +2450,11 @@ export default function AdminSyncTable({
               const stripe = index % 2 === 1;
               const stickyBg = stickyCellBg(visual, stripe);
 
+              const incrementalLiveNow =
+                row.id === "incremental" &&
+                Boolean(
+                  status?.incrementalLiveStatus || status?.incrementalLive,
+                );
               const statusText = (() => {
                 if (isWaiting) {
                   return (
@@ -2437,8 +2464,13 @@ export default function AdminSyncTable({
                     )
                   );
                 }
-                if (isRunning || syncAllRunning) {
-                  return descriptions[row.id] ?? "Running…";
+                if (isRunning || syncAllRunning || incrementalLiveNow) {
+                  return (
+                    descriptions[row.id] ??
+                    status?.incrementalLiveStatus ??
+                    formatIncrementalSyncLiveStatus(status?.incrementalLive) ??
+                    "Running…"
+                  );
                 }
                 const prior =
                   descriptions[row.id] ??
@@ -2569,7 +2601,9 @@ export default function AdminSyncTable({
                     <td className={TD}>
                       <StatusCell
                         text={statusText}
-                        isRunning={isRunning || syncAllRunning}
+                        isRunning={
+                          isRunning || syncAllRunning || incrementalLiveNow
+                        }
                         isWaiting={isWaiting}
                       />
                     </td>

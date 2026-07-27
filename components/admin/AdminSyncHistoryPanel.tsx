@@ -195,9 +195,10 @@ export default function AdminSyncHistoryPanel({
 
   const bucketKey = (syncType: string, bucket: string) => `${syncType}:${bucket}`;
 
-  // Keep sync-type (and bucket) groups collapsed by default as new types appear,
-  // but auto-expand the newest type + its newest bucket once so recent Incremental
-  // runs are visible without digging (Full stays paused and looks "stale").
+  // Keep sync-type groups collapsed by default as new types appear, but
+  // auto-expand the newest type and EVERY bucket under it once. Queue audits
+  // (Queued) and town RETS (Active+Closed) must both stay visible after refresh —
+  // expanding only the newest bucket made the 285ms queue ack look "deleted".
   useEffect(() => {
     if (syncTypeGroups.length === 0) return;
     setExpandedTypes((prev) => {
@@ -232,12 +233,13 @@ export default function AdminSyncHistoryPanel({
       }
       if (!didAutoExpandRef.current) {
         const newestType = syncTypeGroups[0];
-        const newestBucket = newestType?.buckets[0];
-        if (newestType && newestBucket) {
-          const key = bucketKey(newestType.syncType, newestBucket.bucket);
-          if (next[key] === false) {
-            next[key] = true;
-            touched = true;
+        if (newestType) {
+          for (const bucketGroup of newestType.buckets) {
+            const key = bucketKey(newestType.syncType, bucketGroup.bucket);
+            if (next[key] === false) {
+              next[key] = true;
+              touched = true;
+            }
           }
         }
       }
@@ -293,8 +295,8 @@ export default function AdminSyncHistoryPanel({
           <p className="mt-1 text-sm text-slate max-w-2xl">
             MLS syncs from Admin, cron, and overdue catch-up for the{" "}
             {windowLabel} — collapsed by sync type (Full, Incremental), then by
-            status bucket (Active, Closed, Expired). The newest type opens by
-            default
+            status bucket (Queued, Worker, Active+Closed, …). The newest type
+            opens with all of its buckets expanded by default
             {overallLatestLabel ? (
               <>
                 {" "}

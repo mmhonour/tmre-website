@@ -44,7 +44,7 @@ export default async function handler(req: Request, _context: Context) {
         startedAt,
         finishedAt: new Date().toISOString(),
         town: '(all)',
-        statusBucket: 'Active/incremental',
+        statusBucket: 'Worker/incremental',
         listingsCount: 0,
         ok: false,
         error: `background worker unauthorized (${source ?? 'unknown'}) — SYNC_CRON_SECRET mismatch`,
@@ -63,7 +63,7 @@ export default async function handler(req: Request, _context: Context) {
       startedAt,
       finishedAt: new Date().toISOString(),
       town: '(all)',
-      statusBucket: 'Active/incremental',
+      statusBucket: 'Worker/incremental',
       listingsCount: 0,
       ok: true,
       error: sideWorkOnly
