@@ -73,7 +73,7 @@ async function postOnce(
   path: string,
   body: Record<string, unknown>,
   cookie?: string | null,
-): Promise<{ status: number; text: string }> {
+): Promise<{ status: number; text: string; contentType: string }> {
   const headers: Record<string, string> = { 'content-type': 'application/json' }
   const secret = syncCronSecret()
   if (secret) headers.authorization = `Bearer ${secret}`
@@ -83,18 +83,61 @@ async function postOnce(
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    redirect: 'manual',
   })
   const text = await res.text().catch(() => '')
-  return { status: res.status, text }
+  return {
+    status: res.status,
+    text,
+    contentType: res.headers.get('content-type') ?? '',
+  }
 }
 
-function looksLikePasswordGate(status: number, text: string): boolean {
-  if (status === 401 || status === 403) return true
-  const sample = text.slice(0, 800).toLowerCase()
+function isHtmlBody(text: string, contentType: string): boolean {
+  if (contentType.toLowerCase().includes('text/html')) return true
+  const sample = text.trimStart().slice(0, 240).toLowerCase()
   return (
-    sample.includes('password') &&
-    (sample.includes('<form') || sample.includes('site protection') || sample.includes('netlify'))
+    sample.startsWith('<!doctype') ||
+    sample.startsWith('<html') ||
+    (sample.includes('<form') && sample.includes('password'))
   )
+}
+
+function looksLikePasswordGate(
+  status: number,
+  text: string,
+  contentType: string,
+): boolean {
+  if (isHtmlBody(text, contentType) && status >= 200 && status < 400) return true
+  if (status === 401 || status === 403) {
+    const sample = text.slice(0, 800).toLowerCase()
+    return (
+      sample.includes('password') ||
+      sample.includes('<form') ||
+      sample.includes('site protection') ||
+      sample.includes('netlify')
+    )
+  }
+  return false
+}
+
+/**
+ * Background workers must return 202. A 200 HTML login page used to count as
+ * “queued”, which left Sync history stuck at the prior real RETS run.
+ */
+function isAcceptedBackgroundQueue(
+  status: number,
+  text: string,
+  contentType: string,
+): boolean {
+  if (isHtmlBody(text, contentType)) return false
+  if (status === 202) return true
+  // Sync (non-background) local/dev handlers may finish with JSON 200.
+  if (status >= 200 && status < 300) {
+    const sample = text.trimStart()
+    return sample.startsWith('{') || sample.startsWith('[') || sample.length === 0
+  }
+  return false
 }
 
 /** POST a Netlify background sync function (returns 202 when queued). */
@@ -112,6 +155,7 @@ export async function queueNetlifyFunction(
     }
   }
 
+  const secret = syncCronSecret()
   let last: NetlifyFunctionQueueResult = {
     ok: false,
     status: null,
@@ -121,17 +165,28 @@ export async function queueNetlifyFunction(
 
   for (const base of bases) {
     try {
-      let { status, text } = await postOnce(base, path, body)
-      if (status === 202 || (status >= 200 && status < 300)) {
+      let { status, text, contentType } = await postOnce(base, path, body)
+      if (isAcceptedBackgroundQueue(status, text, contentType)) {
         return { ok: true, status, base }
       }
 
-      if (looksLikePasswordGate(status, text)) {
+      // Bearer was sent but rejected — do not confuse with visitor password gate.
+      if ((status === 401 || status === 403) && secret) {
+        last = {
+          ok: false,
+          status,
+          base,
+          error: `worker auth failed (HTTP ${status}) — SYNC_CRON_SECRET mismatch or missing on function`,
+        }
+        continue
+      }
+
+      if (looksLikePasswordGate(status, text, contentType)) {
         for (const password of visitorPasswordCandidates()) {
           const cookie = await unlockVisitorCookie(base, password)
           if (!cookie) continue
-          ;({ status, text } = await postOnce(base, path, body, cookie))
-          if (status === 202 || (status >= 200 && status < 300)) {
+          ;({ status, text, contentType } = await postOnce(base, path, body, cookie))
+          if (isAcceptedBackgroundQueue(status, text, contentType)) {
             return { ok: true, status, base }
           }
         }

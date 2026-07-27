@@ -20,7 +20,11 @@ export type AdminDataControlsPanelId =
   | "intel-inventory";
 
 /** Sub-panels under Admin → Syncs. */
-export type AdminSyncsPanelId = "configure" | "history" | "overview";
+export type AdminSyncsPanelId =
+  | "dashboard"
+  | "configure"
+  | "history"
+  | "overview";
 
 /** Sub-panels under Admin → Database. */
 export type AdminDatabasePanelId =
@@ -61,7 +65,8 @@ export const LEGACY_ADMIN_TAB_TO_DATA_CONTROLS: Record<
  * Also maps old `?tab=db&panel=sync|sync-history` via normalize in the layout.
  */
 export const LEGACY_ADMIN_PANEL_TO_SYNCS: Record<string, AdminSyncsPanelId> = {
-  sync: "configure",
+  /** Old “Sync configure” (run + settings) → Dashboard (quick run view). */
+  sync: "dashboard",
   "sync-history": "history",
   "sync-log": "history",
 };
@@ -124,10 +129,16 @@ export const ADMIN_SYNCS_PANELS: {
   subtitle: string;
 }[] = [
   {
-    id: "configure",
-    label: "Sync configure",
+    id: "dashboard",
+    label: "Dashboard",
     subtitle:
-      "Enable/disable scheduled syncs, set Next overrides, and Run now",
+      "Run syncs and scan status — compact view for phone and desktop",
+  },
+  {
+    id: "configure",
+    label: "Configure",
+    subtitle:
+      "Pause schedules, frequency / description, Next time overrides, and impacted pages",
   },
   {
     id: "history",
@@ -154,7 +165,8 @@ export const ADMIN_DATABASE_PANELS: {
   {
     id: "inventory",
     label: "Database inventory",
-    subtitle: "Connected stores, paths/sizes, and row summaries",
+    subtitle:
+      "Table row comparison vs last full-resync snapshot, plus connected-store summaries",
   },
   {
     id: "town-counts",
@@ -205,7 +217,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "syncs",
     label: "Syncs",
     subtitle:
-      "Configure enablement and schedules, sync history, and startup/cron overview",
+      "Dashboard to run syncs, Configure for schedules, plus history and cron overview",
   },
   {
     id: "db",
@@ -216,7 +228,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "postgres",
     label: "NEON Postgres",
     subtitle:
-      "Live Neon schema diagram and listings inventory — all public tables since last migration",
+      "Schema visualization — tables, columns, approximate counts, and relationships",
   },
   {
     id: "stats",
@@ -262,9 +274,21 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   {
     id: "admin-sync",
-    label: "Sync configure",
+    label: "Syncs dashboard",
+    tab: "syncs",
+    panel: "dashboard",
+  },
+  {
+    id: "admin-sync-configure",
+    label: "Syncs configure",
     tab: "syncs",
     panel: "configure",
+  },
+  {
+    id: "admin-inventory-comparison",
+    label: "Inventory comparison",
+    tab: "db",
+    panel: "inventory",
   },
   {
     id: "admin-database-inventory",
@@ -706,7 +730,10 @@ export function isAdminSyncsPanelId(
   value: string | null | undefined,
 ): value is AdminSyncsPanelId {
   return (
-    value === "configure" || value === "history" || value === "overview"
+    value === "dashboard" ||
+    value === "configure" ||
+    value === "history" ||
+    value === "overview"
   );
 }
 

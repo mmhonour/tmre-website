@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   SqliteDatabaseDiagram,
   SqliteRelationship,
   SqliteTableInfo,
 } from "@/lib/sqlite-schema-diagram-types";
 import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
-import type { InventorySnapshot } from "@/lib/db/listings-repo";
-
 type AnchorPoint = { x: number; y: number };
 type ConnectorPath = {
   key: string;
@@ -65,189 +63,6 @@ function BlobPersistRuntimeBanner({ runtime }: { runtime: BlobPersistRuntimeInfo
           <dd className="inline break-all">{formatBlobTimestamp(runtime.lastRestoreAt)}</dd>
         </div>
       </dl>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Inventory comparison panel
-// ---------------------------------------------------------------------------
-
-type RowStatus = "match" | "low" | "empty" | "missing" | "no-snapshot";
-
-function rowStatus(current: number, ref: number | undefined): RowStatus {
-  if (ref === undefined) return "no-snapshot";
-  if (current === 0 && ref > 0) return "empty";
-  if (ref === 0) return current === 0 ? "match" : "no-snapshot";
-  const ratio = current / ref;
-  if (ratio < 0.5) return "low";
-  if (ratio < 0.9) return "low";
-  return "match";
-}
-
-function statusDot(s: RowStatus) {
-  if (s === "match") return <span className="w-1.5 h-1.5 rounded-full bg-sage inline-block" />;
-  if (s === "low") return <span className="w-1.5 h-1.5 rounded-full bg-gold inline-block" />;
-  if (s === "empty") return <span className="w-1.5 h-1.5 rounded-full bg-coral animate-pulse inline-block" />;
-  return <span className="w-1.5 h-1.5 rounded-full bg-charcoal/20 inline-block" />;
-}
-
-function InventoryComparisonPanel({
-  snapshot,
-  liveDb,
-}: {
-  snapshot: InventorySnapshot | null;
-  liveDb: SqliteDatabaseDiagram | undefined;
-}) {
-  const [open, setOpen] = useState(true);
-
-  // Counts live in state so the panel can refresh itself on a ~30-minute cycle
-  // (see effect below) without a full admin-page reload. Seeded from SSR props.
-  const [liveCounts, setLiveCounts] = useState<Record<string, number>>(() => {
-    const m: Record<string, number> = {};
-    for (const t of liveDb?.tables ?? []) m[t.name] = t.rowCount;
-    return m;
-  });
-  const [snapshotCounts, setSnapshotCounts] = useState<Record<string, number>>(
-    snapshot?.counts ?? {},
-  );
-  const [capturedAt, setCapturedAt] = useState<string | null>(
-    snapshot?.capturedAt ?? null,
-  );
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const REFRESH_MS = 30 * 60 * 1000;
-    async function load() {
-      try {
-        const res = await fetch("/api/admin/inventory-snapshot", {
-          cache: "no-store",
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          snapshot: InventorySnapshot | null;
-          liveCounts: Record<string, number>;
-          at: string;
-        };
-        if (cancelled) return;
-        setLiveCounts(data.liveCounts ?? {});
-        setSnapshotCounts(data.snapshot?.counts ?? {});
-        setCapturedAt(data.snapshot?.capturedAt ?? null);
-        setLastRefreshedAt(data.at);
-      } catch {
-        // Keep last-known values on failure — this is a best-effort refresh.
-      }
-    }
-    const id = window.setInterval(load, REFRESH_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, []);
-
-  const hasSnapshot = capturedAt != null;
-
-  const allTables = Array.from(
-    new Set([...Object.keys(liveCounts), ...Object.keys(snapshotCounts)]),
-  ).sort();
-
-  const hasAnyMismatch = allTables.some((t) => {
-    const s = rowStatus(liveCounts[t] ?? 0, snapshotCounts[t]);
-    return s === "empty" || s === "low";
-  });
-
-  const overallDot = !hasSnapshot
-    ? <span className="w-1.5 h-1.5 rounded-full bg-charcoal/20 inline-block" />
-    : hasAnyMismatch
-    ? <span className="w-1.5 h-1.5 rounded-full bg-coral animate-pulse inline-block" />
-    : <span className="w-1.5 h-1.5 rounded-full bg-sage inline-block" />;
-
-  return (
-    <div className="rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04] overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-4 px-5 sm:px-6 py-4 text-left hover:bg-cream/30 transition-colors"
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          {overallDot}
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Inventory comparison
-          </p>
-          {hasSnapshot ? (
-            <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/40 border border-charcoal/15 rounded-full px-2 py-0.5 shrink-0">
-              snapshot {new Date(capturedAt as string).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-            </span>
-          ) : (
-            <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/30 border border-charcoal/10 rounded-full px-2 py-0.5 shrink-0">
-              no snapshot yet — run a full resync
-            </span>
-          )}
-        </div>
-        <span className="font-mono text-[10px] text-charcoal/40 shrink-0">{open ? "−" : "+"}</span>
-      </button>
-
-      {open && (
-        <div className="border-t border-charcoal/[0.06] overflow-x-auto">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="bg-cream/40">
-                <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 w-4">
-                </th>
-                <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40">
-                  Table
-                </th>
-                <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 text-right tabular-nums">
-                  Current
-                </th>
-                <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 text-right tabular-nums">
-                  Snapshot
-                </th>
-                <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 text-right tabular-nums">
-                  Δ
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-charcoal/[0.04]">
-              {allTables.map((table) => {
-                const current = liveCounts[table] ?? 0;
-                const ref = snapshotCounts[table];
-                const s = rowStatus(current, ref);
-                const delta = ref !== undefined ? current - ref : null;
-                return (
-                  <tr key={table} className={s === "empty" ? "bg-coral/[0.04]" : s === "low" ? "bg-gold/[0.04]" : ""}>
-                    <td className="pl-4 sm:pl-5 pr-2 py-2">{statusDot(s)}</td>
-                    <td className="px-4 sm:px-5 py-2 font-mono text-[11px] text-navy">
-                      {table}
-                    </td>
-                    <td className={`px-4 sm:px-5 py-2 font-mono text-[11px] tabular-nums text-right ${
-                      s === "empty" ? "text-coral font-semibold" : s === "low" ? "text-gold font-semibold" : "text-charcoal/70"
-                    }`}>
-                      {current.toLocaleString()}
-                    </td>
-                    <td className="px-4 sm:px-5 py-2 font-mono text-[11px] tabular-nums text-right text-charcoal/45">
-                      {ref !== undefined ? ref.toLocaleString() : "—"}
-                    </td>
-                    <td className={`px-4 sm:px-5 py-2 font-mono text-[11px] tabular-nums text-right ${
-                      delta === null ? "text-charcoal/25" : delta < 0 ? "text-coral" : delta > 0 ? "text-sage" : "text-charcoal/35"
-                    }`}>
-                      {delta === null ? "—" : delta === 0 ? "=" : delta > 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p className="px-5 sm:px-6 py-3 font-mono text-[9px] text-charcoal/35 border-t border-charcoal/[0.04]">
-            Snapshot captured after last successful full resync · Current = live
-            Lambda counts · Auto-refreshes every 30 min
-            {lastRefreshedAt
-              ? ` · updated ${new Date(lastRefreshedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
-              : ""}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -617,33 +432,25 @@ function DatabaseDiagramCard({ db }: { db: SqliteDatabaseDiagram }) {
 export default function AdminSqliteDiagrams({
   databases,
   blobRuntime,
-  inventorySnapshot,
 }: {
   databases: SqliteDatabaseDiagram[];
   blobRuntime?: BlobPersistRuntimeInfo;
-  inventorySnapshot?: InventorySnapshot | null;
 }) {
-  const writeDb = databases.find((db) => db.id === "listings");
   const hasPhotoSqlite = databases.some((db) => db.id === "listing-photos");
   return (
     <div className="mt-6 space-y-6">
       <div>
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2">
-          Databases
+          Schema diagram
         </p>
         <p className="text-sm text-slate max-w-3xl">
-          Live schema for the Neon Postgres database (MLS inventory + derived tables)
-          {hasPhotoSqlite ? " and the local listing-photos SQLite file" : ""} — storage
-          paths, tables, columns, approximate row counts, and PK→FK relationship lines
-          where tables join on{" "}
-          <span className="font-mono text-navy/80">listings.id</span>.
+          Visualization only — Neon Postgres tables, columns, approximate row
+          counts, and PK→FK relationship lines
+          {hasPhotoSqlite ? ", plus local listing-photos SQLite when present" : ""}
+          . Table health / snapshot compare lives under Database → Inventory.
         </p>
       </div>
       {blobRuntime ? <BlobPersistRuntimeBanner runtime={blobRuntime} /> : null}
-      <InventoryComparisonPanel
-        snapshot={inventorySnapshot ?? null}
-        liveDb={writeDb}
-      />
       {databases.map((db) => (
         <DatabaseDiagramCard key={db.id} db={db} />
       ))}

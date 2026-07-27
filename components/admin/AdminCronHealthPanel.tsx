@@ -78,7 +78,9 @@ export default function AdminCronHealthPanel({
       } else {
         setMessage(
           body.note ??
-            `Incremental finished (${body.mode ?? "ok"}) — check Start/End on Database tab`,
+            (body.mode === "background-queued" || body.mode === "scheduled-queue"
+              ? "Queued background worker — watch Syncs → Dashboard Start/End (not instant)"
+              : `Incremental finished (${body.mode ?? "ok"}) — check Start/End on Syncs → Dashboard`),
         );
       }
       await refresh();

@@ -122,7 +122,7 @@ function ensureNestedPanelParam() {
   if (tab === "syncs") {
     if (isAdminSyncsPanelId(url.searchParams.get("panel"))) return;
     const fromSection = hash ? adminSyncsPanelForSection(hash) : null;
-    url.searchParams.set("panel", fromSection ?? "configure");
+    url.searchParams.set("panel", fromSection ?? "dashboard");
     window.history.replaceState(null, "", url);
     return;
   }
@@ -213,7 +213,7 @@ export default function AdminTabbedLayout({
     url.searchParams.set("tab", next);
     if (next === "syncs") {
       if (!isAdminSyncsPanelId(url.searchParams.get("panel"))) {
-        url.searchParams.set("panel", "configure");
+        url.searchParams.set("panel", "dashboard");
       }
     } else if (next === "data-controls") {
       if (!isAdminDataControlsPanelId(url.searchParams.get("panel"))) {

@@ -485,6 +485,34 @@ export async function recordSyncRun(input: {
   )
 }
 
+/**
+ * Durable breadcrumb for Admin Sync history when Incremental is handed to the
+ * Netlify background worker (HTTP returns before any town RETS rows exist).
+ */
+export async function recordIncrementalQueueAudit(input: {
+  startedAt: string
+  source: 'admin' | 'cron' | 'netlify-sync-trigger' | string
+  queued: boolean
+  detail: string
+}): Promise<void> {
+  const now = new Date().toISOString()
+  try {
+    await recordSyncRun({
+      startedAt: input.startedAt,
+      finishedAt: now,
+      town: '(all)',
+      statusBucket: 'Active/incremental',
+      listingsCount: 0,
+      ok: input.queued,
+      error: input.queued
+        ? `queued background worker (${input.source}) — ${input.detail}`
+        : `queue failed (${input.source}) — ${input.detail}`,
+    })
+  } catch (err) {
+    console.warn('[listings-repo] recordIncrementalQueueAudit failed', err)
+  }
+}
+
 export type SyncRunFailure = {
   town: string
   statusBucket: string
@@ -640,23 +668,29 @@ export type InventorySnapshot = { capturedAt: string; counts: Record<string, num
 
 const INVENTORY_SNAPSHOT_META_KEY = 'db_inventory_snapshot'
 
+/** Exact COUNT(*) for every public table — used by snapshot capture and Admin compare. */
+export async function readLiveTableCounts(): Promise<Record<string, number>> {
+  const tables = await query<{ name: string }>(
+    `SELECT table_name AS name FROM information_schema.tables
+      WHERE table_schema = 'public' ORDER BY table_name`,
+  )
+  const counts: Record<string, number> = {}
+  for (const { name } of tables) {
+    try {
+      // table names come from the catalog, not user input — safe to interpolate quoted.
+      const row = await queryOne<{ n: number }>(`SELECT count(*)::int AS n FROM "${name}"`)
+      counts[name] = row?.n ?? -1
+    } catch {
+      counts[name] = -1
+    }
+  }
+  return counts
+}
+
 /** Count every public table and store the snapshot in sync_meta (diagnostics). */
 export async function captureInventorySnapshot(): Promise<void> {
   try {
-    const tables = await query<{ name: string }>(
-      `SELECT table_name AS name FROM information_schema.tables
-        WHERE table_schema = 'public' ORDER BY table_name`,
-    )
-    const counts: Record<string, number> = {}
-    for (const { name } of tables) {
-      try {
-        // table names come from the catalog, not user input — safe to interpolate quoted.
-        const row = await queryOne<{ n: number }>(`SELECT count(*)::int AS n FROM "${name}"`)
-        counts[name] = row?.n ?? -1
-      } catch {
-        counts[name] = -1
-      }
-    }
+    const counts = await readLiveTableCounts()
     const snapshot: InventorySnapshot = { capturedAt: new Date().toISOString(), counts }
     await setSyncMeta(INVENTORY_SNAPSHOT_META_KEY, JSON.stringify(snapshot))
   } catch (err) {

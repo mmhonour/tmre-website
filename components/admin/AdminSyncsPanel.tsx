@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import AdminSyncTable, {
+  type AdminSyncRow,
+  type AdminSyncTableMode,
+  type PanelStatus,
+} from "@/components/admin/AdminSyncTable";
 import {
   ADMIN_SYNCS_PANELS,
   adminSyncsPanelForSection,
@@ -8,11 +13,12 @@ import {
   LEGACY_ADMIN_PANEL_TO_SYNCS,
   type AdminSyncsPanelId,
 } from "@/lib/admin-nav";
+import type { ScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 
 const VALID_PANELS = new Set<string>(ADMIN_SYNCS_PANELS.map((p) => p.id));
 
 function panelFromLocation(): AdminSyncsPanelId {
-  if (typeof window === "undefined") return "configure";
+  if (typeof window === "undefined") return "dashboard";
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
   const panel = params.get("panel");
@@ -22,26 +28,42 @@ function panelFromLocation(): AdminSyncsPanelId {
   if (panel && LEGACY_ADMIN_PANEL_TO_SYNCS[panel]) {
     return LEGACY_ADMIN_PANEL_TO_SYNCS[panel]!;
   }
-  if (tab && tab !== "syncs") return "configure";
+  if (tab && tab !== "syncs") return "dashboard";
   if (panel && VALID_PANELS.has(panel) && isAdminSyncsPanelId(panel)) {
     return panel;
   }
   const hash = window.location.hash.replace(/^#/, "");
   const fromSection = adminSyncsPanelForSection(hash);
   if (fromSection) return fromSection;
-  return "configure";
+  return "dashboard";
+}
+
+function opsModeForPanel(panel: AdminSyncsPanelId): AdminSyncTableMode {
+  return panel === "configure" ? "configure" : "dashboard";
 }
 
 export default function AdminSyncsPanel({
-  configure,
+  syncRows,
+  initialRefreshing,
+  initialStatus,
+  initialPausedJobs,
   history,
   overview,
+  storeLabel,
+  storeLabelClassName,
+  lambdaLine,
 }: {
-  configure: ReactNode;
+  syncRows: AdminSyncRow[];
+  initialRefreshing: boolean;
+  initialStatus?: PanelStatus;
+  initialPausedJobs?: ScheduledSyncPausedJobs;
   history: ReactNode;
   overview: ReactNode;
+  storeLabel: string;
+  storeLabelClassName: string;
+  lambdaLine?: string | null;
 }) {
-  const [panel, setPanel] = useState<AdminSyncsPanelId>("configure");
+  const [panel, setPanel] = useState<AdminSyncsPanelId>("dashboard");
 
   useEffect(() => {
     const syncFromLocation = () => setPanel(panelFromLocation());
@@ -63,12 +85,9 @@ export default function AdminSyncsPanel({
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminSyncsPanelId, ReactNode> = {
-    configure,
-    history,
-    overview,
-  };
   const active = ADMIN_SYNCS_PANELS.find((item) => item.id === panel);
+  const showOps = panel === "dashboard" || panel === "configure";
+  const opsMode = opsModeForPanel(panel);
 
   return (
     <div className="space-y-6">
@@ -103,16 +122,50 @@ export default function AdminSyncsPanel({
         </p>
       ) : null}
 
-      {ADMIN_SYNCS_PANELS.map((item) => (
-        <div
-          key={item.id}
-          role="tabpanel"
-          hidden={panel !== item.id}
-          className={panel === item.id ? "space-y-6" : undefined}
-        >
-          {panels[item.id]}
+      {/* Keep one SyncTable mounted so run state survives Dashboard ↔ Configure. */}
+      <div
+        id="admin-sync"
+        hidden={!showOps}
+        className={
+          showOps
+            ? "scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+            : undefined
+        }
+      >
+        <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex items-baseline justify-between gap-4">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            {opsMode === "configure" ? "Sync configure" : "Syncs dashboard"}
+          </p>
+          <p className="font-mono text-[10px] tracking-[0.08em] text-right leading-tight">
+            <span className={storeLabelClassName}>{storeLabel}</span>
+            {lambdaLine ? (
+              <span className="block text-charcoal/30 mt-0.5">{lambdaLine}</span>
+            ) : null}
+          </p>
         </div>
-      ))}
+        <AdminSyncTable
+          mode={opsMode}
+          rows={syncRows}
+          initialRefreshing={initialRefreshing}
+          initialStatus={initialStatus}
+          initialPausedJobs={initialPausedJobs}
+        />
+      </div>
+
+      <div
+        role="tabpanel"
+        hidden={panel !== "history"}
+        className={panel === "history" ? "space-y-6" : undefined}
+      >
+        {history}
+      </div>
+      <div
+        role="tabpanel"
+        hidden={panel !== "overview"}
+        className={panel === "overview" ? "space-y-6" : undefined}
+      >
+        {overview}
+      </div>
     </div>
   );
 }

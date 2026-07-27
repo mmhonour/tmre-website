@@ -23,6 +23,7 @@ import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
 import AdminSyncsPanel from "@/components/admin/AdminSyncsPanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
+import AdminInventoryComparisonPanel from "@/components/admin/AdminInventoryComparisonPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
@@ -85,7 +86,7 @@ import {
   isDefaultPricingMatchingConfig,
   PRICING_MATCHING_FIELD_META,
 } from "@/lib/pricing-matching-config";
-import AdminSyncTable, { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
+import { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPanel";
 import AdminGlossaryPanel from "@/components/admin/AdminGlossaryPanel";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
@@ -108,7 +109,6 @@ import {
   ensureAdminListingPhotosReady,
 } from "@/lib/listing-photos-db-persist";
 import { ensurePostDeployFullResyncScheduled } from "@/lib/deploy-full-resync-schedule";
-import { formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
 import { mlsTimestampDate } from "@/lib/mls-time";
 import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
@@ -288,7 +288,6 @@ export default async function AdminPage() {
   const photosOnR2 = isR2PhotoStoreConfigured();
   const inventorySnapshot = await readInventorySnapshot();
   const listingsDbEmpty = stats.total === 0;
-  const showListingsDbRuntime = listingsDbEmpty;
   const startupProcess = describeStartupProcess();
 
   const rows: StatusRow[] = [
@@ -543,71 +542,9 @@ export default async function AdminPage() {
 
   const postgresPanel = (
     <div id="admin-sqlite-schemas" className="scroll-mt-24">
-      {showListingsDbRuntime ? (
-        <div className="mb-4 rounded-2xl border border-gold/25 bg-gold/[0.06] px-5 sm:px-6 py-4">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2 text-gold">
-            NEON Postgres listings inventory
-          </p>
-          <p className="text-sm text-slate leading-snug mb-3">
-            Neon Postgres has <strong>{stats.total.toLocaleString()}</strong> listings. Run{" "}
-            <strong>step 1 Full resync</strong>
-            {scheduleHints.fullResyncSource === "post-deploy" && nextRuns["full-resync"] ? (
-              <>
-                {" "}
-                or wait for the post-deploy warm in{" "}
-                <strong>
-                  {formatAdminNextSyncCountdown(nextRuns["full-resync"], new Date())}
-                </strong>
-              </>
-            ) : (
-              <> or wait for the startup / scheduled sync</>
-            )}{" "}
-            to pull MLS data.
-          </p>
-        </div>
-      ) : null}
       <AdminSqliteDiagrams
         databases={sqliteDiagrams}
         blobRuntime={photosOnR2 ? undefined : blobRuntime}
-        inventorySnapshot={inventorySnapshot}
-      />
-    </div>
-  );
-
-  const syncConfigurePanel = (
-    <div
-      id="admin-sync"
-      className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
-    >
-      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40 flex items-baseline justify-between gap-4">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Sync configure
-        </p>
-        <p className="font-mono text-[10px] tracking-[0.08em] text-right leading-tight">
-          <span
-            className={
-              postgresTarget.isProductionStore
-                ? "text-sage"
-                : postgresTarget.kind === "local"
-                  ? "text-coral"
-                  : "text-charcoal/55"
-            }
-          >
-            {postgresTarget.shortLabel}
-          </span>
-          {(lambdaInstanceId || lambdaFnName) && (
-            <span className="block text-charcoal/30 mt-0.5">
-              Lambda up {lambdaUptimeStr}
-              {lambdaInstanceId ? ` · ${lambdaInstanceId}…` : ""}
-            </span>
-          )}
-        </p>
-      </div>
-      <AdminSyncTable
-        rows={rows}
-        initialRefreshing={refresh.refreshing}
-        initialStatus={initialStatus}
-        initialPausedJobs={scheduledSyncPausedJobs}
       />
     </div>
   );
@@ -617,7 +554,14 @@ export default async function AdminPage() {
       retsConnection={
         <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
       }
-      inventory={<AdminDatabaseInventoryPanel initial={databaseStats} />}
+      inventory={
+        <>
+          <AdminInventoryComparisonPanel
+            initialSnapshot={inventorySnapshot}
+          />
+          <AdminDatabaseInventoryPanel initial={databaseStats} />
+        </>
+      }
       townCounts={
         <div
           id="admin-town-counts"
@@ -730,7 +674,25 @@ export default async function AdminPage() {
 
   const syncsPanel = (
     <AdminSyncsPanel
-      configure={syncConfigurePanel}
+      syncRows={rows}
+      initialRefreshing={refresh.refreshing}
+      initialStatus={initialStatus}
+      initialPausedJobs={scheduledSyncPausedJobs}
+      storeLabel={postgresTarget.shortLabel}
+      storeLabelClassName={
+        postgresTarget.isProductionStore
+          ? "text-sage"
+          : postgresTarget.kind === "local"
+            ? "text-coral"
+            : "text-charcoal/55"
+      }
+      lambdaLine={
+        lambdaInstanceId || lambdaFnName
+          ? `Lambda up ${lambdaUptimeStr}${
+              lambdaInstanceId ? ` · ${lambdaInstanceId}…` : ""
+            }`
+          : null
+      }
       history={
         <>
           <AdminSyncHistoryPanel initial={syncRunHistory} />

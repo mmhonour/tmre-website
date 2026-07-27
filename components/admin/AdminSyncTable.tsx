@@ -498,6 +498,9 @@ export type AdminSyncRow = {
   nextRunAt?: string | null;
 };
 
+/** Dashboard = run/status; Configure = pause, schedule text, Next overrides. */
+export type AdminSyncTableMode = "dashboard" | "configure";
+
 type SyncStats = {
   total: number;
   lastFullSync: string | null;
@@ -1181,16 +1184,20 @@ const TD =
   "px-4 py-3 align-top text-left border-r border-b border-transparent last:border-r-0";
 
 export default function AdminSyncTable({
+  mode = "dashboard",
   rows,
   initialRefreshing,
   initialStatus,
   initialPausedJobs,
 }: {
+  mode?: AdminSyncTableMode;
   rows: AdminSyncRow[];
   initialRefreshing: boolean;
   initialStatus?: PanelStatus;
   initialPausedJobs?: ScheduledSyncPausedJobs;
 }) {
+  const isDashboard = mode === "dashboard";
+  const isConfigure = mode === "configure";
   const [status, setStatus] = useState<PanelStatus | null>(initialStatus ?? null);
   const [refreshing, setRefreshing] = useState(initialRefreshing);
   const [pausedJobs, setPausedJobs] = useState<ScheduledSyncPausedJobs>(
@@ -2150,7 +2157,7 @@ export default function AdminSyncTable({
 
   return (
     <>
-      {showRetsAlert && syncFailures.length > 0 ? (
+      {isDashboard && showRetsAlert && syncFailures.length > 0 ? (
         <div className="px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-white">
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50 mb-2">
             Recent sync failures
@@ -2172,40 +2179,50 @@ export default function AdminSyncTable({
       ) : null}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 px-5 sm:px-6 py-3 border-b border-charcoal/[0.08] bg-cream/20">
         <div className="min-w-0 space-y-1">
-          <p className="text-xs text-slate leading-relaxed max-w-2xl">
-            Sync all runs steps 1→5 automatically, skipping any row with Pause checked. You can
-            press Sync now on as many rows as you want — if a sync is already running, the next
-            ones queue in click order with status Waiting for … to finish. Use Pause to skip that
-            row&apos;s Sync all step and automated / cron schedule.
-          </p>
-          <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-            The in-progress sync stays at the top; otherwise sorted by most-recent End time.
-            The Order badge shows the manual step number, which may differ from the row&apos;s
-            visual position. Steps 3–5 also run as part of a Full resync (step 1).
-            Step 2 (Incremental) runs on its own 30-min schedule and is not triggered by a full resync.
-          </p>
+          {isDashboard ? (
+            <>
+              <p className="text-xs text-slate leading-relaxed max-w-xl">
+                Tap Sync now (or Sync all). Running jobs stay on top. Pause and schedule
+                edits live under Configure.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-slate leading-relaxed max-w-2xl">
+                Pause skips Sync all and cron for that job. Description shows frequency /
+                purpose. Use ▲/▼ on Next to nudge the Admin override (time of day / when it
+                fires next).
+              </p>
+              <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
+                Natural schedules stay on Netlify (e.g. Incremental every 30 min). Overrides
+                here only move the next due time — they do not change cron frequency.
+              </p>
+            </>
+          )}
         </div>
-        <div className="shrink-0 self-start flex flex-col items-start gap-1.5 max-w-sm">
-          <button
-            type="button"
-            onClick={() => runSyncAll()}
-            disabled={syncAllRunning || syncAllQueued}
-            className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-gold/40 text-navy bg-gold/15 hover:bg-gold/25 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-          >
-            {syncAllRunning
-              ? "Syncing all…"
-              : syncAllQueued
-                ? "Queued…"
-                : "Sync all"}
-          </button>
-          {syncAllPlanNote ? (
-            <p className="text-left font-mono text-[10px] leading-snug text-charcoal/60 whitespace-pre-wrap">
-              {syncAllPlanNote}
-            </p>
-          ) : null}
-        </div>
+        {isDashboard ? (
+          <div className="shrink-0 self-start flex flex-col items-start gap-1.5 max-w-sm">
+            <button
+              type="button"
+              onClick={() => runSyncAll()}
+              disabled={syncAllRunning || syncAllQueued}
+              className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-gold/40 text-navy bg-gold/15 hover:bg-gold/25 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            >
+              {syncAllRunning
+                ? "Syncing all…"
+                : syncAllQueued
+                  ? "Queued…"
+                  : "Sync all"}
+            </button>
+            {syncAllPlanNote ? (
+              <p className="text-left font-mono text-[10px] leading-snug text-charcoal/60 whitespace-pre-wrap">
+                {syncAllPlanNote}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-      {syncAllSummary ? (
+      {isDashboard && syncAllSummary ? (
         <div className="px-5 sm:px-6 py-2 border-b border-charcoal/[0.08] bg-white">
           <p
             className={`font-mono text-[10px] tracking-wide ${
@@ -2220,38 +2237,50 @@ export default function AdminSyncTable({
         </div>
       ) : null}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px] border-collapse table-fixed">
+        <table
+          className={`w-full border-collapse table-fixed ${
+            isDashboard ? "min-w-[640px] md:min-w-[720px]" : "min-w-[880px]"
+          }`}
+        >
           <colgroup>
-            <col className="w-[3.25rem]" />
+            {isConfigure ? <col className="w-[3.25rem]" /> : null}
             <col className="w-[3rem]" />
-            <col className="w-[7.5rem]" />
-            <col className="w-[9.5rem]" />
-            <col />
-            <col className="w-[9rem]" />
-            <col className="w-[7rem]" />
-            <col className="w-[13rem]" />
-            <col className="w-[11rem]" />
+            {isDashboard ? <col className="w-[6.5rem]" /> : null}
+            <col className={isDashboard ? "w-[8rem]" : "w-[9rem]"} />
+            {isConfigure ? <col /> : null}
+            {isDashboard ? <col /> : null}
+            {isConfigure ? <col className="w-[7rem]" /> : null}
+            <col className={isDashboard ? "w-[11rem]" : "w-[13rem]"} />
+            {isDashboard ? <col className="w-[9rem]" /> : null}
           </colgroup>
           <thead>
             <tr>
+              {isConfigure ? (
+                <th
+                  className={`${TH} sticky left-0 z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                  title="Pause automated / cron sync for this row"
+                >
+                  Pause
+                </th>
+              ) : null}
               <th
-                className={`${TH} sticky left-0 z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
-                title="Pause automated / cron sync for this row"
-              >
-                Pause
-              </th>
-              <th
-                className={`${TH} sticky left-[3.25rem] z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                className={`${TH} sticky z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${
+                  isConfigure ? "left-[3.25rem]" : "left-0"
+                }`}
               >
                 Order
               </th>
-              <th className={TH}>Action</th>
+              {isDashboard ? <th className={TH}>Action</th> : null}
               <th className={TH}>Sync</th>
-              <th className={TH}>Description</th>
-              <th className={TH}>Status</th>
-              <th className={TH}>Pages</th>
-              <th className={TH}>Start / End / Next</th>
-              <th className={`${TH} border-r-0`}>Errors</th>
+              {isConfigure ? <th className={TH}>Description / frequency</th> : null}
+              {isDashboard ? <th className={TH}>Status</th> : null}
+              {isConfigure ? <th className={TH}>Pages</th> : null}
+              <th className={isDashboard ? `${TH} border-r-0 md:border-r` : TH}>
+                {isConfigure ? "Next (time)" : "Start / End / Next"}
+              </th>
+              {isDashboard ? (
+                <th className={`${TH} border-r-0 hidden md:table-cell`}>Errors</th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -2356,42 +2385,87 @@ export default function AdminSyncTable({
               const stripe = index % 2 === 1;
               const stickyBg = stickyCellBg(visual, stripe);
 
+              const statusText = (() => {
+                if (isWaiting) {
+                  return (
+                    descriptions[row.id] ??
+                    formatWaitingStatus(
+                      runningLabelRef.current ?? "current sync",
+                    )
+                  );
+                }
+                if (isRunning || syncAllRunning) {
+                  return descriptions[row.id] ?? "Running…";
+                }
+                const prior =
+                  descriptions[row.id] ??
+                  finalStatuses[row.id] ??
+                  statusTextFromRunLog(row, runSnapshot);
+                if (scheduleBreached && timing.finished) {
+                  const age =
+                    formatAgeAgo(timing.finished, nowMs) ??
+                    formatDateShort(timing.finished);
+                  return prior
+                    ? `Last refresh ${age} — overdue. Prior: ${prior}`
+                    : `Last refresh ${age} — overdue (expected run missed)`;
+                }
+                return prior;
+              })();
+
+              const descriptionText =
+                row.id === "incremental"
+                  ? `Modified-since RETS pull (every 30 minutes)${
+                      status?.lastIncrementalCronTick
+                        ? ` · Cron last fired ${
+                            formatAgeAgo(
+                              status.lastIncrementalCronTick,
+                              nowMs,
+                            ) ?? formatTimestamp(status.lastIncrementalCronTick)
+                          }`
+                        : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
+                    }`
+                  : (row.detail ?? "");
+
               return (
                 <tr
                   key={row.id}
                   className={`transition-colors duration-500 ${syncRowClassName(visual, stripe)}`}
                 >
-                  <td
-                    className={`${TD} sticky left-0 z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
-                  >
-                    {pauseJob ? (
-                      <label
-                        className="inline-flex items-center justify-center cursor-pointer"
-                        title={
-                          pausedJobs[pauseJob]
-                            ? "Paused — Sync all and automated syncs skip this job"
-                            : "Active — included in Sync all and automated schedules"
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          checked={pausedJobs[pauseJob]}
-                          disabled={pauseSavingJob === pauseJob}
-                          onChange={(e) =>
-                            void togglePausedJob(pauseJob, e.target.checked)
+                  {isConfigure ? (
+                    <td
+                      className={`${TD} sticky left-0 z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                    >
+                      {pauseJob ? (
+                        <label
+                          className="inline-flex items-center justify-center cursor-pointer"
+                          title={
+                            pausedJobs[pauseJob]
+                              ? "Paused — Sync all and automated syncs skip this job"
+                              : "Active — included in Sync all and automated schedules"
                           }
-                          className="h-4 w-4 rounded border-charcoal/30 text-navy focus:ring-navy/40 disabled:opacity-40"
-                          aria-label={`Pause scheduled sync for ${row.label}`}
-                        />
-                      </label>
-                    ) : (
-                      <span className="font-mono text-[10px] tracking-wide text-charcoal/30">
-                        —
-                      </span>
-                    )}
-                  </td>
+                        >
+                          <input
+                            type="checkbox"
+                            checked={pausedJobs[pauseJob]}
+                            disabled={pauseSavingJob === pauseJob}
+                            onChange={(e) =>
+                              void togglePausedJob(pauseJob, e.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-charcoal/30 text-navy focus:ring-navy/40 disabled:opacity-40"
+                            aria-label={`Pause scheduled sync for ${row.label}`}
+                          />
+                        </label>
+                      ) : (
+                        <span className="font-mono text-[10px] tracking-wide text-charcoal/30">
+                          —
+                        </span>
+                      )}
+                    </td>
+                  ) : null}
                   <td
-                    className={`${TD} sticky left-[3.25rem] z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                    className={`${TD} sticky z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${
+                      isConfigure ? "left-[3.25rem]" : "left-0"
+                    }`}
                   >
                     {manualOrder != null ? (
                       <span
@@ -2404,81 +2478,63 @@ export default function AdminSyncTable({
                       <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
                     )}
                   </td>
-                  <td className={TD}>
-                    {row.actionId ? (
-                      <button
-                        type="button"
-                        onClick={() => runSync(row)}
-                        disabled={disabled}
-                        className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
-                      >
-                        {isRunning
-                          ? "Syncing…"
-                          : isWaiting
-                            ? "Queued"
-                            : "Sync now"}
-                      </button>
-                    ) : (
-                      <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
-                    )}
-                  </td>
+                  {isDashboard ? (
+                    <td className={TD}>
+                      {row.actionId ? (
+                        <button
+                          type="button"
+                          onClick={() => runSync(row)}
+                          disabled={disabled}
+                          className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
+                        >
+                          {isRunning
+                            ? "Syncing…"
+                            : isWaiting
+                              ? "Queued"
+                              : "Sync now"}
+                        </button>
+                      ) : (
+                        <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
+                      )}
+                    </td>
+                  ) : null}
                   <td className={TD}>
                     <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/60 leading-snug">
                       {row.label}
                     </p>
+                    {isDashboard && pauseJob && pausedJobs[pauseJob] ? (
+                      <p className="mt-0.5 font-mono text-[9px] tracking-wide uppercase text-coral/80">
+                        Paused
+                      </p>
+                    ) : null}
+                    {isDashboard && rowError ? (
+                      <p className="mt-1 md:hidden font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
+                        {rowError}
+                      </p>
+                    ) : null}
                   </td>
-                  <td className={TD}>
-                    <p className="text-sm leading-snug text-slate">
-                      {row.id === "incremental"
-                        ? `Modified-since RETS pull (every 30 minutes)${
-                            status?.lastIncrementalCronTick
-                              ? ` · Cron last fired ${
-                                  formatAgeAgo(
-                                    status.lastIncrementalCronTick,
-                                    nowMs,
-                                  ) ?? formatTimestamp(status.lastIncrementalCronTick)
-                                }`
-                              : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
-                          }`
-                        : (row.detail ?? "")}
-                    </p>
-                  </td>
-                  <td className={TD}>
-                    <StatusCell
-                      text={(() => {
-                        if (isWaiting) {
-                          return (
-                            descriptions[row.id] ??
-                            formatWaitingStatus(
-                              runningLabelRef.current ?? "current sync",
-                            )
-                          );
-                        }
-                        if (isRunning || syncAllRunning) {
-                          return descriptions[row.id] ?? "Running…";
-                        }
-                        const prior =
-                          descriptions[row.id] ??
-                          finalStatuses[row.id] ??
-                          statusTextFromRunLog(row, runSnapshot);
-                        if (scheduleBreached && timing.finished) {
-                          const age =
-                            formatAgeAgo(timing.finished, nowMs) ??
-                            formatDateShort(timing.finished);
-                          return prior
-                            ? `Last refresh ${age} — overdue. Prior: ${prior}`
-                            : `Last refresh ${age} — overdue (expected run missed)`;
-                        }
-                        return prior;
-                      })()}
-                      isRunning={isRunning || syncAllRunning}
-                      isWaiting={isWaiting}
-                    />
-                  </td>
-                  <td className={TD}>
-                    <SyncImpactedPages rowId={row.id} />
-                  </td>
-                  <td className={TD}>
+                  {isConfigure ? (
+                    <td className={TD}>
+                      <p className="text-sm leading-snug text-slate">
+                        {descriptionText}
+                      </p>
+                    </td>
+                  ) : null}
+                  {isDashboard ? (
+                    <td className={TD}>
+                      <StatusCell
+                        text={statusText}
+                        isRunning={isRunning || syncAllRunning}
+                        isWaiting={isWaiting}
+                      />
+                    </td>
+                  ) : null}
+                  {isConfigure ? (
+                    <td className={TD}>
+                      <SyncImpactedPages rowId={row.id} />
+                    </td>
+                  ) : null}
+                  <td className={`${TD} ${isDashboard ? "border-r-0 md:border-r" : ""}`}>
                     {(() => {
                       // Date once above Start (from start, else finished). End/Updated are
                       // always time-only — midnight crossover is obvious from the clock.
@@ -2552,7 +2608,7 @@ export default function AdminSyncTable({
                               </span>
                             ) : null}
                           </span>
-                          {nextJobId && !isPostDeployNext ? (
+                          {isConfigure && nextJobId && !isPostDeployNext ? (
                             <NextOverrideSpinner
                               jobId={nextJobId}
                               busy={nextSavingJob === nextJobId}
@@ -2572,8 +2628,12 @@ export default function AdminSyncTable({
                       );
 
                       return (
-                        <div className="flex flex-col gap-0.5 w-full min-w-[11rem]">
-                          {dateLabel ? (
+                        <div
+                          className={`flex flex-col gap-0.5 w-full ${
+                            isConfigure ? "min-w-[11rem]" : "min-w-[9rem]"
+                          }`}
+                        >
+                          {isDashboard && dateLabel ? (
                             <div className="grid grid-cols-2 gap-x-2 w-full min-w-0 mb-0.5">
                               <span aria-hidden className="block" />
                               <p className="text-left font-mono text-[9px] tracking-wide text-charcoal/40 uppercase">
@@ -2581,7 +2641,16 @@ export default function AdminSyncTable({
                               </p>
                             </div>
                           ) : null}
-                          {showSingleTimestamp ? (
+                          {isConfigure ? (
+                            <SyncTimingRow
+                              label={nextLabel}
+                              value={nextRunAt != null ? nextTimeText : "—"}
+                              valueClassName={`font-semibold ${nextTimeClass}`}
+                              labelClassName={
+                                hasNextOverride ? "text-gold/80" : "text-charcoal/45"
+                              }
+                            />
+                          ) : showSingleTimestamp ? (
                             <SyncTimingRow
                               label="Updated"
                               value={(() => {
@@ -2627,7 +2696,7 @@ export default function AdminSyncTable({
                               />
                             </>
                           )}
-                          {nextRunAt != null || nextJobId ? (
+                          {isDashboard && (nextRunAt != null || nextJobId) ? (
                             <SyncTimingRow
                               label={nextLabel}
                               value={nextRunAt != null ? nextTimeText : "—"}
@@ -2641,27 +2710,29 @@ export default function AdminSyncTable({
                       );
                     })()}
                   </td>
-                  <td className={`${TD} border-r-0`}>
-                    {rowError ? (
-                      <div className="space-y-1.5">
-                        <p className="font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
-                          {rowError}
-                        </p>
-                        {row.actionId && !isRunning && !isWaiting && !syncAllRunning && (
-                          <button
-                            type="button"
-                            onClick={() => runSync(row)}
-                            disabled={false}
-                            className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                          >
-                            {pendingRetry ? "↺ Retry now" : "↺ Retry"}
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="font-mono text-[9px] text-charcoal/30">—</span>
-                    )}
-                  </td>
+                  {isDashboard ? (
+                    <td className={`${TD} border-r-0 hidden md:table-cell`}>
+                      {rowError ? (
+                        <div className="space-y-1.5">
+                          <p className="font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
+                            {rowError}
+                          </p>
+                          {row.actionId && !isRunning && !isWaiting && !syncAllRunning && (
+                            <button
+                              type="button"
+                              onClick={() => runSync(row)}
+                              disabled={false}
+                              className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                            >
+                              {pendingRetry ? "↺ Retry now" : "↺ Retry"}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="font-mono text-[9px] text-charcoal/30">—</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               );
             })

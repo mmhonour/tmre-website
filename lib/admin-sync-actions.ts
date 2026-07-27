@@ -6,12 +6,14 @@ import {
   countListings,
   countListingsByBucket,
   readListingsDbStats,
+  recordIncrementalQueueAudit,
 } from '@/lib/db/listings-repo'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import {
   getSyncMeta,
   hydrateSyncMetaStore,
   setSyncMeta,
+  setSyncMetaDurable,
 } from '@/lib/db/sync-meta-store'
 import {
   clearChunkedFullResyncProgress,
@@ -389,22 +391,35 @@ async function runAdminSyncActionImpl(
         const queued = await queueNetlifyIncrementalSync(startedAt, {
           source: 'admin',
         })
-        const finishedAt = new Date().toISOString()
+        // Always write Sync history — queue ack alone never created town sync_runs,
+        // which left "last run" stuck at the prior real RETS batch (e.g. 2:47pm).
+        await recordIncrementalQueueAudit({
+          startedAt,
+          source: 'admin',
+          queued: queued.ok,
+          detail: queued.ok
+            ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+            : queued.error ?? 'unknown queue error',
+        })
         if (queued.ok) {
+          // Mark Start immediately — End stays on the prior success until the
+          // worker finishes (instant HTTP response is expected, not a real sync).
+          await setSyncMetaDurable('last_incremental_sync_started', startedAt)
           return {
             ok: true,
             action,
             startedAt,
-            finishedAt,
+            finishedAt: startedAt,
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              'Incremental sync queued — running on Netlify background worker (up to ~15 min)',
+              'Incremental queued (background worker) — this click returns in seconds; RETS can take several minutes',
             detail: queued.base
-              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Watch Last / sync meta for completion; this page does not wait for RETS.`
-              : 'Queued on background worker. Watch Last / sync meta for completion.',
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Sync history should show a queue row now; town rows appear when the worker finishes RETS.`
+              : 'Queued on background worker. Sync history should show a queue row now.',
           }
         }
+        const finishedAt = new Date().toISOString()
         return {
           ok: false,
           action,
