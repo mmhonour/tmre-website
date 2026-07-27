@@ -154,15 +154,6 @@ export function DealBoardPhotoLedLineRow({
           withDealBoardReturn
           showPhotoCountBadge={false}
         />
-        <DealBoardStatusPills
-          status={l.status}
-          contractStatus={l.contractStatus}
-          size="sm"
-          className="flex flex-col items-center gap-0.5"
-          onStatusClick={
-            isLive && onStatusClick ? () => onStatusClick(l) : undefined
-          }
-        />
         <button
           type="button"
           onClick={() => onScoreClick(l)}
@@ -210,6 +201,15 @@ export function DealBoardPhotoLedLineRow({
           yearBuilt={l.yearBuilt}
           lotAcres={l.lotAcres}
           className="min-w-0 font-mono text-slate tabular-nums"
+        />
+        <DealBoardStatusPills
+          status={l.status}
+          contractStatus={l.contractStatus}
+          size="sm"
+          className="inline-flex shrink-0 flex-wrap items-center gap-1"
+          onStatusClick={
+            isLive && onStatusClick ? () => onStatusClick(l) : undefined
+          }
         />
         {l.headline ? (
           <span className="min-w-0 basis-full text-[10px] text-charcoal/60 italic sm:basis-auto sm:max-w-[38%] sm:ml-auto sm:text-right">
