@@ -25,7 +25,7 @@ export type DealSuperlativeInput = {
     }
   }
   valueDiscountPct?: number | null
-  pickMode?: 'below-median' | 'board-top'
+  pickMode?: 'below-median' | 'board-top' | 'value-aesthetic'
   lotAcres?: number | null
   peerStats?: ListingPeerStats | null
   styleKey?: string | null
@@ -414,6 +414,10 @@ function finalizeCandidates(
   if (pickMode === 'board-top') {
     fallbacks.push({ word: 'Top-tier', weight: score.composite - 5 })
   }
+  if (pickMode === 'value-aesthetic') {
+    fallbacks.push({ word: 'Well-priced', weight: score.finishesQuality })
+    fallbacks.push({ word: 'Polished', weight: score.finishesQuality - 2 })
+  }
 
   for (const c of fallbacks) {
     if (!byWord.has(c.word)) {
@@ -444,6 +448,7 @@ export function deriveDealSuperlatives(input: DealSuperlativeInput): string[] {
     candidates.push({ word: 'Undervalued', weight: 100 + valueDiscountPct })
   } else if (
     pickMode === 'below-median' ||
+    pickMode === 'value-aesthetic' ||
     (valueDiscountPct != null && valueDiscountPct >= 3) ||
     peerBottomTier(pricePct, 25)
   ) {

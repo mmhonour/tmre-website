@@ -1695,6 +1695,10 @@ export default function IntelligenceClient({
   const [furnishedSliderActive, setFurnishedSliderActive] = useHeldSliderActive();
   const sqftRangeCustomizedRef = useRef(false);
   const [collapsedSlidersOpen, setCollapsedSlidersOpen] = useState(false);
+  /** When collapsed chrome peeks sliders, which one(s) to show (`all` = mag glass). */
+  const [exposedSliderKind, setExposedSliderKind] = useState<
+    IntelSliderKind | "all" | null
+  >(null);
   const priceRangeCustomizedRef = useRef(false);
   const priceFilterContextRef = useRef("");
   const [newConstructionFilter, setNewConstructionFilter] =
@@ -1735,17 +1739,31 @@ export default function IntelligenceClient({
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
   const [miniGraphsHidden, setMiniGraphsHidden] = useState(false);
-  const setMiniGraphsHiddenPref = useCallback((hidden: boolean) => {
-    setMiniGraphsHidden(hidden);
-    try {
-      sessionStorage.setItem(
-        "tmre-intel-mini-graphs-hidden",
-        hidden ? "1" : "0",
-      );
-    } catch {
-      /* private mode */
-    }
-  }, []);
+  const [miniGraphsAutoHideSuspended, setMiniGraphsAutoHideSuspended] =
+    useState(false);
+  const setMiniGraphsHiddenPref = useCallback(
+    (hidden: boolean, opts?: { suspendAutoHide?: boolean }) => {
+      setMiniGraphsHidden(hidden);
+      if (hidden) {
+        setMiniGraphsAutoHideSuspended(false);
+      } else if (opts?.suspendAutoHide === true) {
+        setMiniGraphsAutoHideSuspended(true);
+      } else if (opts?.suspendAutoHide === false) {
+        // Explicit resume (e.g. sync phrase re-show) — idle auto-hide stays on.
+        setMiniGraphsAutoHideSuspended(false);
+      }
+      // Plain show (strip toggle after it set suspend) leaves suspend unchanged.
+      try {
+        sessionStorage.setItem(
+          "tmre-intel-mini-graphs-hidden",
+          hidden ? "1" : "0",
+        );
+      } catch {
+        /* private mode */
+      }
+    },
+    [],
+  );
   /**
    * Sync timestamp phrase currently shown in the Live chip (`synced today at…`).
    * null = omit (animation finished or none). While animating, shrinks one
@@ -1754,6 +1772,25 @@ export default function IntelligenceClient({
   const [syncPhraseDisplay, setSyncPhraseDisplay] = useState<string | null>(
     null,
   );
+  /** Nav mount under the mobile hamburger for Live status. */
+  const [mobileLiveRoot, setMobileLiveRoot] = useState<HTMLElement | null>(
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    const sync = () => {
+      if (cancelled) return;
+      setMobileLiveRoot(
+        document.getElementById("tmre-intel-mobile-live-root"),
+      );
+    };
+    sync();
+    const raf = window.requestAnimationFrame(sync);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+    };
+  }, []);
   const syncPhraseAnimKeyRef = useRef<string | null>(null);
   const syncPhraseAnimDoneRef = useRef<string | null>(null);
   const [sortFieldDrawerOpen, setSortFieldDrawerOpen] = useState(false);
@@ -2405,7 +2442,10 @@ export default function IntelligenceClient({
   }, [allListings, active]);
 
   useEffect(() => {
-    if (filtersExpanded) setCollapsedSlidersOpen(false);
+    if (filtersExpanded) {
+      setCollapsedSlidersOpen(false);
+      setExposedSliderKind(null);
+    }
   }, [filtersExpanded]);
 
   // Fresh load / client navigation: keep class-pill chevron minimized so
@@ -2428,11 +2468,13 @@ export default function IntelligenceClient({
       if (target.closest("[data-intel-slider-panel]")) return;
       if (target.closest("[data-intel-collapsed-slider-label]")) return;
       setCollapsedSlidersOpen(false);
+      setExposedSliderKind(null);
       setPriceSliderActive(false, { immediate: true });
       setBedSliderActive(false, { immediate: true });
       setBathSliderActive(false, { immediate: true });
       setVintageSliderActive(false, { immediate: true });
       setSqftSliderActive(false, { immediate: true });
+      setFurnishedSliderActive(false, { immediate: true });
     };
     window.addEventListener("pointerdown", dismissCollapsedSliders);
     return () => window.removeEventListener("pointerdown", dismissCollapsedSliders);
@@ -3253,13 +3295,14 @@ export default function IntelligenceClient({
     }
   }
 
-  /** Reveal slider chrome and enlarge the descriptor that was clicked. */
+  /** Reveal slider chrome — one descriptor's filter, or all (mag glass). */
   function exposeSliderFilters(kind?: IntelSliderKind) {
     if (filterChromeCollapsed) {
       setFilterChromePeek("sliders");
     }
     if (!filtersExpanded) {
       setCollapsedSlidersOpen(true);
+      setExposedSliderKind(kind ?? "all");
     }
     if (kind) pulseSliderDescriptor(kind);
     else pulseAllSliderDescriptors();
@@ -3275,11 +3318,13 @@ export default function IntelligenceClient({
     setFilterChromePeek(null);
     setFiltersExpanded(true);
     setCollapsedSlidersOpen(false);
+    setExposedSliderKind(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function hideCollapsedSliders() {
     setCollapsedSlidersOpen(false);
+    setExposedSliderKind(null);
     if (filterChromePeek === "sliders") setFilterChromePeek(null);
     setPriceSliderActive(false, { immediate: true });
     setBedSliderActive(false, { immediate: true });
@@ -3789,7 +3834,7 @@ export default function IntelligenceClient({
           setSyncPhraseDisplay(null);
           syncPhraseAnimDoneRef.current = liveSyncIso;
           syncPhraseAnimKeyRef.current = null;
-          setMiniGraphsHiddenPref(false);
+          setMiniGraphsHiddenPref(false, { suspendAutoHide: false });
           return;
         }
         setSyncPhraseDisplay(fullPhrase.slice(0, charIndex));
@@ -3851,6 +3896,26 @@ export default function IntelligenceClient({
         : state === "fallback"
           ? "bg-coral"
           : "bg-gold animate-pulse-dot";
+
+  const liveStatusChip = (
+    <div className="flex items-center gap-2 font-mono text-xs leading-none">
+      <span className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`} />
+      <span>{liveStatusLabel}</span>
+    </div>
+  );
+
+  const mobileLivePortal =
+    mobileLiveRoot != null
+      ? createPortal(
+          <div className="flex items-center justify-end gap-1.5 font-mono text-[10px] leading-tight tracking-[0.04em] text-white/80">
+            <span
+              className={`w-1.5 h-1.5 shrink-0 rounded-full ${liveStatusDotClass}`}
+            />
+            <span className="text-right">{liveStatusLabel}</span>
+          </div>,
+          mobileLiveRoot,
+        )
+      : null;
 
   const townSnapshotPanels = liveSnapshots.map((snap) => {
     const panelKey = snapshotPanelKey(snap);
@@ -4272,6 +4337,7 @@ export default function IntelligenceClient({
                   showPriceFilter={showPriceFilter}
                   cls={cls}
                   collapsedSlidersOpen={collapsedSlidersOpen}
+                  exposedSliderKind={exposedSliderKind}
                   boardPriceSteps={boardPriceSteps}
                   minPriceIndex={minPriceIndex}
                   maxPriceIndex={maxPriceIndex}
@@ -4421,16 +4487,14 @@ export default function IntelligenceClient({
           filtersExpanded ? "pt-4 lg:pt-5" : "pt-2 lg:pt-3"
         }`}
       >
+        {mobileLivePortal}
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="mb-4 lg:mb-5 flex flex-col gap-2">
-              {/* Timestamped Live (or non-ready): keep status + controls stacked right. */}
+              {/* Timestamped Live (desktop) / mobile controls stacked right. Live on phone sits under hamburger. */}
               {!liveStatusCompact ? (
-                <div className="flex flex-col items-end gap-1.5 shrink-0 self-end">
-                  <div className="flex items-center gap-2 font-mono text-xs leading-none">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
-                    />
-                    <span className="text-slate">{liveStatusLabel}</span>
+                <div className="flex flex-col items-end gap-1.5 shrink-0 self-end w-full">
+                  <div className="hidden md:flex items-center gap-2 font-mono text-xs leading-none text-slate">
+                    {liveStatusChip}
                   </div>
                   {liveSnapshots.length > 0 ? (
                     <button
@@ -4484,13 +4548,21 @@ export default function IntelligenceClient({
                     <button
                       type="button"
                       className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold lg:hidden"
-                      onClick={() => setMiniGraphsHiddenPref(!miniGraphsHidden)}
+                      onClick={() => {
+                        if (miniGraphsHidden) {
+                          setMiniGraphsHiddenPref(false, {
+                            suspendAutoHide: true,
+                          });
+                        } else {
+                          setMiniGraphsHiddenPref(true);
+                        }
+                      }}
                       aria-pressed={miniGraphsHidden}
                     >
                       {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
                     </button>
                   ) : null}
-                  <div className="inline-flex items-center gap-1.5 lg:hidden">
+                  <div className="inline-flex items-center justify-end gap-1.5 w-full lg:hidden">
                     <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
                       Sorted by:
                     </span>
@@ -4529,16 +4601,13 @@ export default function IntelligenceClient({
                 </div>
               ) : null}
 
-            {/* Compact Live (no sync timestamp): one row — Live + links left, share right. */}
+            {/* Compact Live (no sync timestamp): desktop Live left; mobile Live under hamburger. */}
             {liveStatusCompact ? (
               <>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                    <div className="flex items-center gap-2 font-mono text-xs leading-none">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${liveStatusDotClass}`}
-                      />
-                      <span className="text-slate">{liveStatusLabel}</span>
+                    <div className="hidden md:flex items-center gap-2 font-mono text-xs leading-none text-slate">
+                      {liveStatusChip}
                     </div>
                     {liveSnapshots.length > 0 ? (
                       <button
@@ -4595,12 +4664,20 @@ export default function IntelligenceClient({
                     className="!h-6 !w-6 shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
                   />
                 </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 lg:hidden">
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5 w-full lg:hidden">
                   {vintageChartListingRows.length > 0 || showPriceFilter ? (
                     <button
                       type="button"
-                      className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
-                      onClick={() => setMiniGraphsHiddenPref(!miniGraphsHidden)}
+                      className="mr-auto font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
+                      onClick={() => {
+                        if (miniGraphsHidden) {
+                          setMiniGraphsHiddenPref(false, {
+                            suspendAutoHide: true,
+                          });
+                        } else {
+                          setMiniGraphsHiddenPref(true);
+                        }
+                      }}
                       aria-pressed={miniGraphsHidden}
                     >
                       {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
@@ -4658,7 +4735,9 @@ export default function IntelligenceClient({
               onInteractRef={miniGraphsInteractRef}
               desktopHideToggleOnly
               hidden={miniGraphsHidden}
-              onHiddenChange={setMiniGraphsHiddenPref}
+              onHiddenChange={(hidden) => setMiniGraphsHiddenPref(hidden)}
+              autoHideSuspended={miniGraphsAutoHideSuspended}
+              onAutoHideSuspendedChange={setMiniGraphsAutoHideSuspended}
               slots={[
                 {
                   key: "vintage",
@@ -5160,6 +5239,7 @@ function BedBathVintageSqftRow({
   showFurnished,
   furnishedFilter,
   onFurnishedFilterChange,
+  visibleKind = "all",
 }: {
   onBedSliderActiveChange: (active: boolean) => void;
   onBathSliderActiveChange: (active: boolean) => void;
@@ -5186,10 +5266,24 @@ function BedBathVintageSqftRow({
   showFurnished: boolean;
   furnishedFilter: FurnishedFilter;
   onFurnishedFilterChange: (value: FurnishedFilter) => void;
+  visibleKind?: IntelSliderKind | "all";
 }) {
+  const show = (kind: IntelSliderKind) =>
+    visibleKind === "all" || visibleKind === kind;
+  const showBed = show("bed");
+  const showBath = show("bath");
+  const showVintage = show("vintage");
+  const showSqft = show("sqft");
+  const showFurnish = showFurnished && show("furnished");
+  if (!showBed && !showBath && !showVintage && !showSqft && !showFurnish) {
+    return null;
+  }
+
   return (
     <>
+      {showBed || showBath ? (
       <div className="flex items-center gap-1 shrink-0 w-fit">
+        {showBed ? (
         <IntelDualSlider
           label="Beds"
           maxIndex={BED_BATH_MAX}
@@ -5201,6 +5295,8 @@ function BedBathVintageSqftRow({
           minAriaLabel="Minimum bedrooms"
           maxAriaLabel="Maximum bedrooms"
         />
+        ) : null}
+        {showBath ? (
         <IntelDualSlider
           label="Baths"
           maxIndex={BED_BATH_MAX}
@@ -5212,9 +5308,13 @@ function BedBathVintageSqftRow({
           minAriaLabel="Minimum bathrooms"
           maxAriaLabel="Maximum bathrooms"
         />
+        ) : null}
       </div>
+      ) : null}
+      {showVintage || showSqft || showFurnish ? (
       <div className="flex items-start gap-1 shrink-0 w-fit">
         <div className="flex flex-col gap-1">
+          {showVintage ? (
           <IntelDualSlider
             label="Yr built"
             maxIndex={VINTAGE_FILTER_MAX}
@@ -5226,7 +5326,8 @@ function BedBathVintageSqftRow({
             minAriaLabel="Minimum vintage era"
             maxAriaLabel="Maximum vintage era"
           />
-          {showFurnished ? (
+          ) : null}
+          {showFurnish ? (
             <IntelDiscreteSlider
               label="Furnish"
               maxIndex={FURNISHED_SLIDER_MAX}
@@ -5241,16 +5342,19 @@ function BedBathVintageSqftRow({
             />
           ) : null}
         </div>
-        <SqftRangeSlider
-          label="Sq feet"
-          steps={boardSqftSteps}
-          minIndex={minSqftIndex}
-          maxIndex={maxSqftIndex}
-          onMinIndexChange={onMinSqftIndexChange}
-          onMaxIndexChange={onMaxSqftIndexChange}
-          onActiveChange={onSqftSliderActiveChange}
-        />
+        {showSqft ? (
+          <SqftRangeSlider
+            label="Sq feet"
+            steps={boardSqftSteps}
+            minIndex={minSqftIndex}
+            maxIndex={maxSqftIndex}
+            onMinIndexChange={onMinSqftIndexChange}
+            onMaxIndexChange={onMaxSqftIndexChange}
+            onActiveChange={onSqftSliderActiveChange}
+          />
+        ) : null}
       </div>
+      ) : null}
     </>
   );
 }
@@ -5614,6 +5718,7 @@ function IntelFilterControlsRow({
   showPriceFilter,
   cls,
   collapsedSlidersOpen,
+  exposedSliderKind,
   boardPriceSteps,
   minPriceIndex,
   maxPriceIndex,
@@ -5658,6 +5763,7 @@ function IntelFilterControlsRow({
   showPriceFilter: boolean;
   cls: ClsFilter;
   collapsedSlidersOpen: boolean;
+  exposedSliderKind: IntelSliderKind | "all" | null;
   boardPriceSteps: readonly number[];
   minPriceIndex: number;
   maxPriceIndex: number;
@@ -5704,10 +5810,31 @@ function IntelFilterControlsRow({
     filtersExpanded ? "mt-1.5" : "mt-1"
   }`;
 
+  const visibleKind: IntelSliderKind | "all" =
+    filtersExpanded || exposedSliderKind == null || exposedSliderKind === "all"
+      ? "all"
+      : exposedSliderKind;
+  const showKind = (kind: IntelSliderKind) =>
+    visibleKind === "all" || visibleKind === kind;
+  const showPriceControls = showPriceFilter && showKind("price");
+  const showResidentialRow =
+    cls !== "commercial" &&
+    (visibleKind === "all" ||
+      visibleKind === "bed" ||
+      visibleKind === "bath" ||
+      visibleKind === "vintage" ||
+      visibleKind === "sqft" ||
+      visibleKind === "furnished");
+  const showCommercialFurnished =
+    cls === "commercial" && showFurnished && showKind("furnished");
+  // Reset belongs with the full slider set (Edit all / mag glass), not a single peek.
+  const showReset = visibleKind === "all";
+
   const sliderPanel = (
     <div className="flex flex-col gap-y-1">
+      {showPriceControls || showReset ? (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {showPriceFilter ? (
+        {showPriceControls ? (
           <div className="flex items-center gap-1 shrink-0">
             <PriceRangeSlider
               label="Price"
@@ -5728,13 +5855,16 @@ function IntelFilterControlsRow({
             />
           </div>
         ) : null}
+        {showReset ? (
         <FilterResetButton
           onClick={onResetSliders}
           disabled={!slidersCustomized}
           label="Reset sliders"
         />
+        ) : null}
       </div>
-      {cls !== "commercial" ? (
+      ) : null}
+      {showResidentialRow ? (
         <BedBathVintageSqftRow
           onBedSliderActiveChange={onBedSliderActiveChange}
           onBathSliderActiveChange={onBathSliderActiveChange}
@@ -5761,8 +5891,9 @@ function IntelFilterControlsRow({
           showFurnished={showFurnished}
           furnishedFilter={furnishedFilter}
           onFurnishedFilterChange={onFurnishedFilterChange}
+          visibleKind={visibleKind}
         />
-      ) : showFurnished ? (
+      ) : showCommercialFurnished ? (
         <IntelDiscreteSlider
           label="Furnish"
           maxIndex={FURNISHED_SLIDER_MAX}

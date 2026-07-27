@@ -57,7 +57,7 @@ export type DealCarouselPayload = {
   valueDiscountPct?: number | null
   lotAcres?: number | null
   superlatives?: string[]
-  pickMode?: 'below-median' | 'board-top'
+  pickMode?: 'below-median' | 'board-top' | 'value-aesthetic'
 }
 
 export type DealCarouselDealsByTown = Partial<

@@ -134,10 +134,9 @@ export default function AdminMarketDigestPanel({
           Monday market brief
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
-          Weekly email every Monday morning (~8am Eastern): months supply,
-          inventory by town, an explanation of the months-supply formula, and
-          the current Deal of the Week (shareable graphic for social comes
-          next). Requires{" "}
+          Weekly HTML email every Monday morning (~8am Eastern): inventory and
+          months-supply bar charts by town, plus a Deal of the Week photo card
+          matching the site wording. Plain-text fallback included. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
         </p>
       </div>

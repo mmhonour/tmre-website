@@ -51,7 +51,7 @@ export async function sendMarketDigestEmail(opts?: {
   }
 
   const snapshot = await buildMarketDigestSnapshot()
-  const { subject, text } = formatMarketDigestEmail(snapshot)
+  const { subject, text, html } = formatMarketDigestEmail(snapshot)
   const from =
     process.env.CONTACT_FROM_EMAIL?.trim() ||
     'TMRE Market Brief <notifications@tmre-website.com>'
@@ -71,6 +71,7 @@ export async function sendMarketDigestEmail(opts?: {
         to: [config.email],
         subject: force ? `[Test] ${subject}` : subject,
         text,
+        html,
       }),
       signal: controller.signal,
     })

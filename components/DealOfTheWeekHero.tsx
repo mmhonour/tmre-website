@@ -68,6 +68,7 @@ type ApiResponse = {
   salesReviewed?: number;
   rentalsReviewed?: number;
   kind: ListingKind;
+  pickMode?: DealSuperlativeInput["pickMode"];
   insight: string;
   superlatives?: string[];
   score: {
@@ -663,7 +664,8 @@ export default function DealOfTheWeekHero({
   const superlatives = showing
     ? resolveSuperlatives({
         ...showing,
-        pickMode: isDay ? "below-median" : "board-top",
+        pickMode:
+          showing.pickMode ?? (isDay ? "below-median" : "board-top"),
       })
     : [];
 

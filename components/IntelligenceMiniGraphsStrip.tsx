@@ -50,6 +50,8 @@ export default function IntelligenceMiniGraphsStrip({
   onInteractRef,
   hidden: hiddenProp,
   onHiddenChange,
+  autoHideSuspended: autoHideSuspendedProp,
+  onAutoHideSuspendedChange,
   showHideToggle = true,
   /** Hide graphs lives under Vintages on mobile — keep strip toggle for desktop only. */
   desktopHideToggleOnly = false,
@@ -60,6 +62,12 @@ export default function IntelligenceMiniGraphsStrip({
   /** Controlled hide (when Hide graphs sits under Vintages on mobile). */
   hidden?: boolean;
   onHiddenChange?: (hidden: boolean) => void;
+  /**
+   * When true, skip the idle auto-hide timer (user clicked Show graphs).
+   * Controlled when `onAutoHideSuspendedChange` is provided.
+   */
+  autoHideSuspended?: boolean;
+  onAutoHideSuspendedChange?: (suspended: boolean) => void;
   /** When false, parent owns the Hide graphs control entirely. */
   showHideToggle?: boolean;
   desktopHideToggleOnly?: boolean;
@@ -72,6 +80,21 @@ export default function IntelligenceMiniGraphsStrip({
   const [hiddenInternal, setHiddenInternal] = useState(false);
   const controlled = onHiddenChange != null;
   const hidden = controlled ? Boolean(hiddenProp) : hiddenInternal;
+
+  const [autoHideSuspendedInternal, setAutoHideSuspendedInternal] =
+    useState(false);
+  const autoHideSuspendedControlled = onAutoHideSuspendedChange != null;
+  const autoHideSuspended = autoHideSuspendedControlled
+    ? Boolean(autoHideSuspendedProp)
+    : autoHideSuspendedInternal;
+
+  const setAutoHideSuspended = useCallback(
+    (next: boolean) => {
+      if (autoHideSuspendedControlled) onAutoHideSuspendedChange?.(next);
+      else setAutoHideSuspendedInternal(next);
+    },
+    [autoHideSuspendedControlled, onAutoHideSuspendedChange],
+  );
 
   const [prefReady, setPrefReady] = useState(false);
   const [isNarrow, setIsNarrow] = useState(false);
@@ -89,6 +112,7 @@ export default function IntelligenceMiniGraphsStrip({
     (next: boolean) => {
       if (controlled) onHiddenChange?.(next);
       else setHiddenInternal(next);
+      if (next) setAutoHideSuspended(false);
       if (!next) setPaused(false);
       try {
         sessionStorage.setItem(HIDDEN_PREF_KEY, next ? "1" : "0");
@@ -96,7 +120,7 @@ export default function IntelligenceMiniGraphsStrip({
         /* ignore */
       }
     },
-    [controlled, onHiddenChange],
+    [controlled, onHiddenChange, setAutoHideSuspended],
   );
 
   const carouselApi = useMemo<MiniGraphsCarouselApi>(
@@ -182,14 +206,21 @@ export default function IntelligenceMiniGraphsStrip({
     return () => window.clearTimeout(id);
   }, [prefReady, hidden, isNarrow, items.length]);
 
-  // Auto-hide after idle — flips controlled/external "Show graphs" link too.
+  // Auto-hide after idle — skipped when user explicitly clicked Show graphs.
   useEffect(() => {
-    if (!prefReady || hidden || items.length === 0) return;
+    if (!prefReady || hidden || items.length === 0 || autoHideSuspended) return;
     const id = window.setTimeout(() => {
       setHiddenPref(true);
     }, AUTO_HIDE_IDLE_MS);
     return () => window.clearTimeout(id);
-  }, [prefReady, hidden, items.length, activityEpoch, setHiddenPref]);
+  }, [
+    prefReady,
+    hidden,
+    items.length,
+    activityEpoch,
+    autoHideSuspended,
+    setHiddenPref,
+  ]);
 
   if (items.length === 0) return null;
 
@@ -256,7 +287,14 @@ export default function IntelligenceMiniGraphsStrip({
             <button
               type="button"
               className={toggleClass}
-              onClick={() => setHiddenPref(!hidden)}
+              onClick={() => {
+                if (hidden) {
+                  setAutoHideSuspended(true);
+                  setHiddenPref(false);
+                } else {
+                  setHiddenPref(true);
+                }
+              }}
               aria-pressed={hidden}
             >
               {hidden ? "Show graphs" : "Hide graphs"}

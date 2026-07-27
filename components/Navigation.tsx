@@ -519,31 +519,42 @@ export default function Navigation({
             ) : null}
           </div>
 
-          <div className="md:hidden flex items-center gap-2 shrink-0">
-            <VisitorLocationBadge />
-            <button
-              type="button"
-              onClick={() => setMobileOpen((v) => !v)}
-              aria-label="Toggle navigation"
-              aria-expanded={mobileOpen}
-              className="flex flex-col gap-1.5 p-2"
-            >
-            <span
-              className={`block w-6 h-px bg-white transition-transform ${
-                mobileOpen ? "translate-y-2 rotate-45" : ""
-              }`}
-            />
-            <span
-              className={`block w-6 h-px bg-white transition-opacity ${
-                mobileOpen ? "opacity-0" : ""
-              }`}
-            />
-            <span
-              className={`block w-6 h-px bg-white transition-transform ${
-                mobileOpen ? "-translate-y-2 -rotate-45" : ""
-              }`}
-            />
-            </button>
+          <div className="md:hidden flex flex-col items-end gap-0.5 shrink-0">
+            <div className="flex items-center gap-2">
+              <VisitorLocationBadge />
+              <button
+                type="button"
+                onClick={() => setMobileOpen((v) => !v)}
+                aria-label="Toggle navigation"
+                aria-expanded={mobileOpen}
+                className="flex flex-col gap-1.5 p-2"
+              >
+                <span
+                  className={`block w-6 h-px bg-white transition-transform ${
+                    mobileOpen ? "translate-y-2 rotate-45" : ""
+                  }`}
+                />
+                <span
+                  className={`block w-6 h-px bg-white transition-opacity ${
+                    mobileOpen ? "opacity-0" : ""
+                  }`}
+                />
+                <span
+                  className={`block w-6 h-px bg-white transition-transform ${
+                    mobileOpen ? "-translate-y-2 -rotate-45" : ""
+                  }`}
+                />
+              </button>
+            </div>
+            {/* Intelligence portals Live status here on mobile (under hamburger). */}
+            {pathname.startsWith("/intelligence") ? (
+              <div
+                id="tmre-intel-mobile-live-root"
+                className={`max-w-[12.5rem] pr-2 text-right ${
+                  mobileOpen ? "hidden" : ""
+                }`}
+              />
+            ) : null}
           </div>
         </div>
 

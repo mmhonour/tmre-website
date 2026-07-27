@@ -23,10 +23,11 @@ import type { Listing } from '@/lib/rets'
 import { filterListingsToTmreTowns, TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 /**
- * v6: 7 towns × sale/rental × homes/multi/condos = 42 cached picks.
- * Default page load is sale + homes (single-family homogenization).
+ * v7: 7 towns × sale/rental × homes/multi/condos = 42 cached picks.
+ * Rental fallback uses value-aesthetic (lower rent + finishes) when no
+ * below-median pool exists. Default page load is sale + homes.
  */
-export const DEAL_OF_THE_DAY_CACHE_PREFIX = 'deal-of-the-day:v6'
+export const DEAL_OF_THE_DAY_CACHE_PREFIX = 'deal-of-the-day:v7'
 
 export type DealOfTheDayScope = TmreTown
 export type DealOfTheDayKind = 'sale' | 'rental'

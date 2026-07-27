@@ -30,7 +30,7 @@ export type DealPickPayload = {
   salesReviewed: number
   rentalsReviewed: number
   kind: 'sale' | 'rental'
-  pickMode: 'below-median' | 'board-top'
+  pickMode: 'below-median' | 'board-top' | 'value-aesthetic'
   insight: string
   superlatives: string[]
   score: ScoredListing['score']
@@ -139,6 +139,43 @@ function valueDealRank(s: ScoredListing, medians: Map<string, number>): number {
   const discount = valueDiscountPct(s.listing, medians) ?? 0
   const ppsfBonus = s.score.pricePerSqftFit >= 75 ? 8 : s.score.pricePerSqftFit >= 65 ? 4 : 0
   return s.score.composite * 0.65 + Math.min(discount, 30) * 0.35 + ppsfBonus
+}
+
+/**
+ * Rental fallback when nothing clears the below-median bar: prefer lower rent
+ * with strong finishes/photos (aesthetics) and solid overall Goldilocks quality.
+ */
+function rentalValueAestheticRank(
+  s: ScoredListing,
+  rentMin: number,
+  rentMax: number,
+): number {
+  const price = s.listing.price ?? 0
+  const span = Math.max(1, rentMax - rentMin)
+  const affordability = 100 * (1 - (price - rentMin) / span)
+  const aesthetics = s.score.finishesQuality
+  const condition = s.score.condition
+  const layout = s.score.layoutQuality
+  const photoBoost =
+    (s.listing.photoCount ?? 0) >= 20
+      ? 8
+      : (s.listing.photoCount ?? 0) >= 10
+        ? 4
+        : 0
+  return (
+    affordability * 0.34 +
+    aesthetics * 0.28 +
+    condition * 0.14 +
+    layout * 0.1 +
+    s.score.composite * 0.14 +
+    photoBoost
+  )
+}
+
+function buildRentalValueAestheticInsight(s: ScoredListing): string {
+  const city = s.listing.address.city || 'the area'
+  const lead = `No below-median rental stood out in ${city} right now, so today's pick balances lower rent with strong presentation and finishes. `
+  return lead + buildInsight(s)
 }
 
 function selectPeerBucketForListing(
@@ -255,6 +292,17 @@ async function finalizePayload(
   const sorted = [...scored].sort((a, b) => {
     if (pickMode === 'below-median') {
       return valueDealRank(b, medians) - valueDealRank(a, medians)
+    }
+    if (pickMode === 'value-aesthetic') {
+      const rents = scored
+        .map((row) => row.listing.price ?? 0)
+        .filter((p) => p > 0)
+      const rentMin = rents.length ? Math.min(...rents) : 0
+      const rentMax = rents.length ? Math.max(...rents) : 1
+      return (
+        rentalValueAestheticRank(b, rentMin, rentMax) -
+        rentalValueAestheticRank(a, rentMin, rentMax)
+      )
     }
     return b.score.composite - a.score.composite
   })
@@ -426,6 +474,42 @@ export async function pickDealOfTheDayFromBoardScored(
     }
   }
 
+  // No below-median pool — for rentals, lazy-rank lower rent + aesthetics /
+  // finishes instead of bare top composite (sales keep board-top).
+  const rentalPool = scored.filter(
+    (s) =>
+      s.kind === 'rental' &&
+      !isRenderingOrProposedListing(s.listing) &&
+      (s.listing.price ?? 0) > 0 &&
+      (s.listing.photoCount ?? 0) > 0,
+  )
+  if (rentalPool.length) {
+    const rents = rentalPool.map((s) => s.listing.price!).filter((p) => p > 0)
+    const rentMin = Math.min(...rents)
+    const rentMax = Math.max(...rents)
+    const sorted = [...rentalPool].sort(
+      (a, b) =>
+        rentalValueAestheticRank(b, rentMin, rentMax) -
+        rentalValueAestheticRank(a, rentMin, rentMax),
+    )
+    // Soft aesthetic floor — prefer finished / well-photographed units when any clear it.
+    const aestheticPool = sorted.filter(
+      (s) =>
+        s.score.finishesQuality >= 30 || (s.listing.photoCount ?? 0) >= 4,
+    )
+    const pool = aestheticPool.length > 0 ? aestheticPool : sorted
+    const winner = pool[0]
+    return finalizePayload(
+      scoped,
+      pool,
+      0,
+      medians,
+      winner,
+      buildRentalValueAestheticInsight(winner),
+      'value-aesthetic',
+    )
+  }
+
   return finalizePayload(
     scoped,
     scored,
@@ -438,8 +522,9 @@ export async function pickDealOfTheDayFromBoardScored(
 }
 
 /**
- * Deal of the Day — below town median when available; otherwise the top
- * Goldilocks score from the Deal Table (same 0–100 composite as Intelligence).
+ * Deal of the Day — below town median when available; rentals otherwise fall
+ * back to a value+aesthetic rank (lower rent + finishes/photos). Sales fall
+ * back to top Goldilocks composite from the Deal Table.
  */
 export async function computeDealOfTheDay(
   listings: Listing[],
