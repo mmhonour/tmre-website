@@ -254,6 +254,62 @@ async function loadActiveAlerts(cadence?: AlertCadence): Promise<SavedSearchAler
   return rows.map(mapRow)
 }
 
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+
+export type AdminSavedSearchAlertRow = {
+  id: string
+  email: string | null
+  criteriaLabel: string
+  cadence: AlertCadence
+  cadenceLabel: string
+  channel: AlertChannel
+  active: boolean
+  lastNotifiedAt: string | null
+  createdAt: string
+}
+
+function cadenceLabelFor(row: SavedSearchAlert): string {
+  if (row.cadence === 'immediate') return 'Immediate'
+  if (row.cadence === 'daily') {
+    return row.dailyTimeEt ? `Daily ${row.dailyTimeEt} ET` : 'Daily'
+  }
+  const day =
+    row.weeklyDay != null && row.weeklyDay >= 0 && row.weeklyDay <= 6
+      ? WEEKDAY_SHORT[row.weeklyDay]
+      : null
+  if (day && row.weeklyTimeEt) return `Weekly ${day} ${row.weeklyTimeEt} ET`
+  if (day) return `Weekly ${day}`
+  return 'Weekly'
+}
+
+/** Newest end-user listing alerts for Admin → Communications. */
+export async function listSavedSearchAlertsForAdmin(
+  limit = 100,
+): Promise<AdminSavedSearchAlertRow[]> {
+  await ensureSavedSearchAlertTables()
+  const capped = Math.min(Math.max(1, Math.floor(limit)), 500)
+  const rows = await query<AlertRow>(
+    `SELECT * FROM saved_search_alerts
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [capped],
+  )
+  return rows.map((row) => {
+    const alert = mapRow(row)
+    return {
+      id: alert.id,
+      email: alert.email,
+      criteriaLabel: alert.criteriaLabel,
+      cadence: alert.cadence,
+      cadenceLabel: cadenceLabelFor(alert),
+      channel: alert.channel,
+      active: alert.active,
+      lastNotifiedAt: alert.lastNotifiedAt,
+      createdAt: alert.createdAt,
+    }
+  })
+}
+
 type ListingMatchRow = {
   id: string
   mls_id: string

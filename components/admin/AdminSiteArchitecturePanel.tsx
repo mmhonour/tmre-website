@@ -282,12 +282,13 @@ export default function AdminSiteArchitecturePanel() {
               <Box
                 id="neon"
                 x={48}
-                y={400}
-                w={200}
-                h={56}
+                y={392}
+                w={220}
+                h={72}
                 label="Neon"
-                role="Postgres inventory"
+                role="Postgres · Netlify + local"
                 kind="core"
+                title="Neon Postgres — shared by Netlify + local when DATABASE_URL points here. Listings, sync_meta, stats_cache, visitors, alerts."
               />
               <Box
                 id="rets"
@@ -391,7 +392,7 @@ export default function AdminSiteArchitecturePanel() {
               <Arrow x1={530} y1={212} x2={490} y2={264} label="HTTPS" />
               <Arrow x1={820} y1={212} x2={560} y2={264} dashed />
 
-              <Arrow x1={380} y1={324} x2={148} y2={400} label="SQL" />
+              <Arrow x1={380} y1={324} x2={158} y2={392} label="SQL" />
               <Arrow x1={490} y1={324} x2={380} y2={400} label="sync" />
               <Arrow x1={560} y1={324} x2={612} y2={400} label="photos" />
               <Arrow x1={620} y1={324} x2={830} y2={400} dashed />
@@ -408,7 +409,7 @@ export default function AdminSiteArchitecturePanel() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <NoteCard
               title="In your list"
-              body="Netlify (host + functions), Neon (Postgres), Cloudflare R2 (photos), Resend (email). GoDaddy / Cloudflare DNS are edge pieces outside the repo — shown dashed if you use them for the domain."
+              body="Netlify (host + functions), Neon (Postgres — shared by Netlify + local when DATABASE_URL points here), Cloudflare R2 (photos), Resend (email). GoDaddy / Cloudflare DNS are edge pieces outside the repo — shown dashed if you use them for the domain."
             />
             <NoteCard
               title="Also in production paths"

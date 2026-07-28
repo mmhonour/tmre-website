@@ -30,9 +30,11 @@ function panelFromLocation(): AdminCommunicationsPanelId {
 export default function AdminCommunicationsPanel({
   marketDigest,
   socialProfiles,
+  listingAlerts,
 }: {
   marketDigest: ReactNode;
   socialProfiles: ReactNode;
+  listingAlerts: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminCommunicationsPanelId>("market-digest");
 
@@ -59,6 +61,7 @@ export default function AdminCommunicationsPanel({
   const panels: Record<AdminCommunicationsPanelId, ReactNode> = {
     "market-digest": marketDigest,
     "social-profiles": socialProfiles,
+    "listing-alerts": listingAlerts,
   };
   const active = ADMIN_COMMUNICATIONS_PANELS.find((item) => item.id === panel);
 

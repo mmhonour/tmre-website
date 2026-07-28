@@ -15,6 +15,7 @@ import AdminBrokeragePanel from "@/components/admin/AdminBrokeragePanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminCommunicationsPanel from "@/components/admin/AdminCommunicationsPanel";
+import AdminListingAlertsPanel from "@/components/admin/AdminListingAlertsPanel";
 import AdminMarketDigestPanel from "@/components/admin/AdminMarketDigestPanel";
 import AdminDeployNotifyPanel from "@/components/admin/AdminDeployNotifyPanel";
 import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
@@ -63,6 +64,7 @@ import {
 } from "@/lib/contact-notify-config";
 import { getMarketDigestConfigFresh } from "@/lib/market-digest-config";
 import { getDeployNotifyConfigFresh } from "@/lib/deploy-notify-config";
+import { listSavedSearchAlertsForAdmin } from "@/lib/saved-search-alerts";
 import { getSocialProfilesFresh } from "@/lib/social-profiles-config";
 import {
   getBrokerageNameFresh,
@@ -481,6 +483,11 @@ export default async function AdminPage() {
     () => getSocialProfilesFresh(),
     null,
   )
+  const listingAlerts = await safe(
+    "listing-alerts",
+    () => listSavedSearchAlertsForAdmin(100),
+    [],
+  )
   const brokerageName = await safe(
     "brokerage-name",
     () => getBrokerageNameFresh(),
@@ -673,6 +680,9 @@ export default async function AdminPage() {
       marketDigest={<AdminMarketDigestPanel initial={marketDigest} />}
       socialProfiles={
         <AdminSocialProfilesPanel initial={socialProfiles ?? undefined} />
+      }
+      listingAlerts={
+        <AdminListingAlertsPanel initial={listingAlerts ?? undefined} />
       }
     />
   );

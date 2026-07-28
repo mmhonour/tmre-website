@@ -52,6 +52,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     label: "Neon Postgres",
     role: "Listings, sync_meta, stats_cache, visitors, alerts",
     kind: "core",
+    note: "Shared by Netlify + local when DATABASE_URL points here",
   },
   {
     id: "rets",

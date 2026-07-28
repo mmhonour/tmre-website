@@ -141,6 +141,30 @@ export async function upsertPropertyAddress(
   )
 }
 
+let propertyAddressSearchIndexesEnsured = false
+
+async function ensurePropertyAddressSearchIndexes(): Promise<void> {
+  if (propertyAddressSearchIndexesEnsured) return
+  try {
+    await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_tpa_street_trgm
+        ON town_property_addresses USING gin (lower(street) gin_trgm_ops)
+    `)
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_tpa_address_full_trgm
+        ON town_property_addresses USING gin (lower(address_full) gin_trgm_ops)
+    `)
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_tpa_address_norm_trgm
+        ON town_property_addresses USING gin (lower(address_norm) gin_trgm_ops)
+    `)
+    propertyAddressSearchIndexesEnsured = true
+  } catch (err) {
+    console.warn('[property-address-repo] ensure search indexes skipped', err)
+  }
+}
+
 export async function searchPropertyAddressesInDb(
   queryText: string,
   options: { limit?: number; town?: string } = {},
@@ -149,9 +173,13 @@ export async function searchPropertyAddressesInDb(
   if (q.length < 2) return []
 
   const limit = Math.min(Math.max(options.limit ?? 8, 1), 50)
-  const pattern = `%${q.replace(/[%_]/g, '')}%`
-  const prefix = `${q}%`
+  const safe = q.replace(/[%_]/g, '')
+  if (safe.length < 2) return []
+  const pattern = `%${safe}%`
+  const prefix = `${safe}%`
   const town = options.town?.trim()
+
+  await ensurePropertyAddressSearchIndexes()
 
   const rows = town
     ? await query<DbRow>(
@@ -166,7 +194,7 @@ export async function searchPropertyAddressesInDb(
              OR lower(COALESCE(mls_id, '')) LIKE $2
            )
          ORDER BY
-           CASE WHEN lower(street) LIKE $3 THEN 0 WHEN lower(address_full) LIKE $2 THEN 1 ELSE 2 END,
+           CASE WHEN lower(street) LIKE $3 THEN 0 WHEN lower(address_full) LIKE $3 THEN 1 ELSE 2 END,
            address_full
          LIMIT $4`,
         [town, pattern, prefix, limit],
@@ -180,7 +208,7 @@ export async function searchPropertyAddressesInDb(
             OR lower(COALESCE(parcel_number, '')) LIKE $1
             OR lower(COALESCE(mls_id, '')) LIKE $1
          ORDER BY
-           CASE WHEN lower(street) LIKE $2 THEN 0 WHEN lower(address_full) LIKE $1 THEN 1 ELSE 2 END,
+           CASE WHEN lower(street) LIKE $2 THEN 0 WHEN lower(address_full) LIKE $2 THEN 1 ELSE 2 END,
            town,
            address_full
          LIMIT $3`,

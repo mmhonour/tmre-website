@@ -774,6 +774,20 @@ export default function StatsClient() {
               </span>
             </div>
           </div>
+
+          {/* Same column split as the charts grid — jump sits on the charts’ right edge. */}
+          <div
+            className={`mt-3.5 grid items-center ${
+              selectedCity === "All"
+                ? "lg:grid-cols-[minmax(0,1fr)_272px] lg:gap-6"
+                : "lg:grid-cols-[minmax(0,1fr)_256px] lg:gap-6"
+            }`}
+          >
+            <div className="flex justify-end">
+              <StatsChartNav items={chartNavItems} />
+            </div>
+            <div className="hidden lg:block" aria-hidden />
+          </div>
         </div>
       </section>
 
@@ -1101,22 +1115,19 @@ export default function StatsClient() {
               </div>
             </div>
 
-            <aside className="relative mb-10 lg:mb-0 lg:sticky lg:top-24 lg:self-start lg:shrink-0 stats-sidebar stats-print-screen-only">
-              <StatsChartNav items={chartNavItems} />
-              <div className="space-y-4">
-                {visibleTowns.map((city) => (
-                  <CityCard
-                    key={city}
-                    city={city}
-                    data={stats[city]}
-                    topVintage={topVintageByTown[city]}
-                    loading={loadState === "loading"}
-                    vintageLoading={vintageLoadState === "loading"}
-                    onMedianClick={() => showMedianDetail(city)}
-                    kind={statsKind}
-                  />
-                ))}
-              </div>
+            <aside className="mb-10 lg:mb-0 lg:sticky lg:top-24 lg:self-start lg:shrink-0 space-y-4 stats-sidebar stats-print-screen-only">
+              {visibleTowns.map((city) => (
+                <CityCard
+                  key={city}
+                  city={city}
+                  data={stats[city]}
+                  topVintage={topVintageByTown[city]}
+                  loading={loadState === "loading"}
+                  vintageLoading={vintageLoadState === "loading"}
+                  onMedianClick={() => showMedianDetail(city)}
+                  kind={statsKind}
+                />
+              ))}
             </aside>
           </div>
         </div>

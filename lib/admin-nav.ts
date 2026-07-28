@@ -38,7 +38,10 @@ export type AdminDatabasePanelId =
 export type AdminArchitecturePanelId = "map" | "docs";
 
 /** Sub-panels under Admin → Communications. */
-export type AdminCommunicationsPanelId = "market-digest" | "social-profiles";
+export type AdminCommunicationsPanelId =
+  | "market-digest"
+  | "social-profiles"
+  | "listing-alerts";
 
 export type AdminSectionLink = {
   id: string;
@@ -222,6 +225,12 @@ export const ADMIN_COMMUNICATIONS_PANELS: {
     subtitle:
       "Account handles and profile URLs for future market-brief / Deal of the Week posting",
   },
+  {
+    id: "listing-alerts",
+    label: "Listing alerts",
+    subtitle:
+      "End-user alerts from Latest — email, search criteria, cadence, and delivery status",
+  },
 ];
 
 export type AdminDocLink = {
@@ -271,7 +280,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "communications",
     label: "Communications",
-    subtitle: "Monday market brief and social media profiles",
+    subtitle: "Monday market brief, social profiles, and listing alerts",
   },
   {
     id: "cookies",
@@ -410,6 +419,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Social media profiles",
     tab: "communications",
     panel: "social-profiles",
+  },
+  {
+    id: "admin-listing-alerts",
+    label: "Listing alerts",
+    tab: "communications",
+    panel: "listing-alerts",
   },
   {
     id: "admin-spotlight",
@@ -660,7 +675,12 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
     title: "Listings & search",
     routes: [
       { label: "GET /api/listings", detail: "Active board inventory by town", href: "/api/listings?city=Westport" },
-      { label: "GET /api/listings/find", detail: "Address / MLS text search", href: "/api/listings/find?q=treadwell" },
+      {
+        label: "GET /api/listings/find",
+        detail:
+          "Address / MLS text search (rets=0 for DB-only typeahead; indexed search_text)",
+        href: "/api/listings/find?q=treadwell&rets=0",
+      },
       { label: "GET /api/addresses/search", detail: "Property directory autocomplete", href: "/api/addresses/search?q=kings" },
       { label: "GET /api/addresses/resolve", detail: "Single address → MLS id (persists)", href: "/api/addresses/resolve?q=87+Kings+Highway+South,+Westport" },
       { label: "GET /api/listings/[mlsId]", detail: "Listing detail payload", href: "/api/listings/24152517" },
@@ -689,6 +709,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
   {
     title: "Admin & sync",
     routes: [
+      {
+        label: "GET /api/admin/saved-search-alerts",
+        detail: "List end-user listing alerts (Admin → Communications)",
+        href: "/api/admin/saved-search-alerts",
+      },
       { label: "GET /api/admin/rets-credentials", detail: "RETS credentials + optional probe", href: "/api/admin/rets-credentials" },
       { label: "POST /api/admin/rets-credentials", detail: "Save RETS credentials and probe login" },
       { label: "GET /api/admin/sync", detail: "Trigger sync actions", href: "/api/admin/sync" },
@@ -804,7 +829,11 @@ export function isAdminArchitecturePanelId(
 export function isAdminCommunicationsPanelId(
   value: string | null | undefined,
 ): value is AdminCommunicationsPanelId {
-  return value === "market-digest" || value === "social-profiles";
+  return (
+    value === "market-digest" ||
+    value === "social-profiles" ||
+    value === "listing-alerts"
+  );
 }
 
 export function adminSectionHref(sectionId: string, tab: AdminTabId): string {

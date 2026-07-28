@@ -66,7 +66,7 @@ import {
   filterPillContainerClass,
   filterPillSeparatorClass,
 } from "@/lib/filter-pill-styles";
-import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
+import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
 import { underContractStatusLabel } from "@/lib/listing-status";
@@ -1832,6 +1832,11 @@ export default function IntelligenceClient({
   }, [sortFieldDrawerOpen]);
   const [townLinksExpanded, setTownLinksExpanded] = useState(false);
   const [zipLinksExpanded, setZipLinksExpanded] = useState(false);
+  /** Phone: after town (+ zip when multi-zip) is chosen, collapse location pills. */
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [mobileZipConfirmed, setMobileZipConfirmed] = useState(false);
+  /** Phone: town market tagline fades out 10s after a town is selected. */
+  const [showMobileTownTagline, setShowMobileTownTagline] = useState(true);
   const setFiltersExpanded = (expanded: boolean) =>
     setFiltersExpandedPref(expanded ? "true" : "false");
   const [hoveredZip, setHoveredZip] = useState<string | null>(null);
@@ -2521,14 +2526,74 @@ export default function IntelligenceClient({
   }, [active, availableZips.length, setZip]);
 
   useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsMobileViewport(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    setMobileZipConfirmed(false);
+  }, [active]);
+
+  // Persisted / deep-linked zip means the location choice is already settled.
+  useEffect(() => {
+    if (zip != null) setMobileZipConfirmed(true);
+  }, [zip]);
+
+  useEffect(() => {
     setZipLinksExpanded(false);
   }, [active]);
+
+  // Multi-zip towns on phone: expand zip choices until All / a zip is tapped.
+  useEffect(() => {
+    if (
+      isMobileViewport &&
+      active !== "All" &&
+      townHasMultipleZips(active) &&
+      availableZips.length > 1 &&
+      !mobileZipConfirmed
+    ) {
+      setZipLinksExpanded(true);
+    }
+  }, [isMobileViewport, active, availableZips.length, mobileZipConfirmed]);
 
   useEffect(() => {
     if (active !== "All" && availableZips.length > 1) {
       prefetchZipBoundaries(availableZips);
     }
   }, [active, availableZips]);
+
+  // Phone: hide market tagline 10s after a specific town is selected.
+  useEffect(() => {
+    if (!isMobileViewport || active === "All") {
+      setShowMobileTownTagline(true);
+      return;
+    }
+    setShowMobileTownTagline(true);
+    const timer = window.setTimeout(() => setShowMobileTownTagline(false), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [active, isMobileViewport]);
+
+  // Phone: keep location chrome peeked while a multi-zip town still needs All/zip.
+  useEffect(() => {
+    if (
+      !isMobileViewport ||
+      active === "All" ||
+      mobileZipConfirmed ||
+      !townHasMultipleZips(active) ||
+      availableZips.length <= 1
+    ) {
+      return;
+    }
+    setFilterChromePeek((prev) => (prev === "towns" ? prev : "towns"));
+  }, [
+    isMobileViewport,
+    active,
+    mobileZipConfirmed,
+    availableZips.length,
+  ]);
 
   useEffect(() => {
     if (tx === "rental" && saleProperty !== "all") setSaleProperty("all");
@@ -3241,6 +3306,25 @@ export default function IntelligenceClient({
     boardStatusFilter !== "all" ||
     priceFilterActive;
   const showZipFilters = active !== "All" && availableZips.length > 1;
+  const townNeedsMobileZipPick =
+    isMobileViewport &&
+    active !== "All" &&
+    townHasMultipleZips(active) &&
+    showZipFilters &&
+    !mobileZipConfirmed;
+  /**
+   * Phone: hide town pills after a town is chosen, unless that town still needs
+   * a zip (All / specific). Hide zip pills once All or a zip is confirmed.
+   * Expanding filters or peeking towns via the descriptor reveals them again.
+   */
+  const mobileLocationChromeHidden =
+    isMobileViewport &&
+    active !== "All" &&
+    !townNeedsMobileZipPick &&
+    filterChromeCollapsed &&
+    filterChromePeek !== "towns";
+  const showMobileTownPills = !mobileLocationChromeHidden;
+  const showMobileZipPills = !mobileLocationChromeHidden;
   const inlineTownZip =
     showZipFilters && !townLinksExpanded && !zipLinksExpanded;
 
@@ -4216,7 +4300,7 @@ export default function IntelligenceClient({
                   </button>
                 </div>
 
-                {showTownChrome ? (
+                {showTownChrome && (showMobileTownPills || showMobileZipPills) ? (
                   <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
                     <div
                       className={
@@ -4225,6 +4309,7 @@ export default function IntelligenceClient({
                           : "w-full min-w-0"
                       }
                     >
+                      {showMobileTownPills ? (
                       <div
                         ref={townFilterAnchorRef}
                         className={
@@ -4239,11 +4324,23 @@ export default function IntelligenceClient({
                           onSelect={(city) => {
                             setActive(city);
                             setZip(null);
+                            setMobileZipConfirmed(false);
                             setBoardStatusFilter("all");
                             setTownLinksExpanded(false);
                             setZipLinksExpanded(false);
                             if (city === "All") {
                               setExpandedSnapshotKeys(new Set());
+                            }
+                            // Phone: single-zip towns settle immediately; multi-zip
+                            // stays open (peek) until All zips / a zip is tapped.
+                            if (isMobileViewport && city !== "All") {
+                              if (townHasMultipleZips(city)) {
+                                setFilterChromeCollapsed(true);
+                                setFilterChromePeek("towns");
+                              } else {
+                                setFilterChromeCollapsed(true);
+                                setFilterChromePeek(null);
+                              }
                             }
                             flashTownMapOnSelect(city);
                           }}
@@ -4294,15 +4391,21 @@ export default function IntelligenceClient({
                           promotedInline={inlineTownZip}
                         />
                       </div>
+                      ) : null}
 
-                      {inlineTownZip ? (
+                      {showMobileZipPills && inlineTownZip ? (
                         <div ref={zipFilterAnchorRef} className="min-w-0 shrink-0">
                           <ZipFilterPills
                             zips={availableZips}
                             selected={zip}
                             onSelect={(next) => {
                               setZip(next);
+                              setMobileZipConfirmed(true);
                               setZipLinksExpanded(false);
+                              if (isMobileViewport) {
+                                setFilterChromeCollapsed(true);
+                                setFilterChromePeek(null);
+                              }
                               flashZipMapOnSelect(next);
                             }}
                             counts={zipCounts}
@@ -4336,14 +4439,19 @@ export default function IntelligenceClient({
                       ) : null}
                     </div>
 
-                    {showZipFilters && !inlineTownZip ? (
+                    {showMobileZipPills && showZipFilters && !inlineTownZip ? (
                       <div ref={zipFilterAnchorRef} className="self-start w-full min-w-0">
                         <ZipFilterPills
                           zips={availableZips}
                           selected={zip}
                           onSelect={(next) => {
                             setZip(next);
+                            setMobileZipConfirmed(true);
                             setZipLinksExpanded(false);
+                            if (isMobileViewport) {
+                              setFilterChromeCollapsed(true);
+                              setFilterChromePeek(null);
+                            }
                             flashZipMapOnSelect(next);
                           }}
                           counts={zipCounts}
@@ -4596,7 +4704,10 @@ export default function IntelligenceClient({
                   }`}
                 >
                   {filterDescriptorLeading}
-                  <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
+                  {(!isMobileViewport || showMobileTownTagline) &&
+                  TOWN_TAGLINES[active] ? (
+                    <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
+                  ) : null}
                   <IntelFilterDescriptorDot />
                   <IntelMonthsSupplyInline
                     monthsSupply={activeTownMonthsSupply}
@@ -4659,11 +4770,41 @@ export default function IntelligenceClient({
             </div>
 
             {/*
+              Desktop results intro (cream section — not the navy hero).
+              Recovered after a denser board chrome pass removed this headline.
+            */}
+            <div className="hidden lg:flex flex-wrap items-end gap-x-4 gap-y-1 min-w-0">
+              <h2 className="font-serif text-[22px] sm:text-[28px] lg:text-[30px] text-navy leading-tight">
+                {state === "loading" && liveListings === null ? (
+                  <>Loading your listings…</>
+                ) : resultCount === 0 ? (
+                  <>No listings match your filters</>
+                ) : (
+                  <>
+                    {filteredCount.toLocaleString()} of{" "}
+                    {poolCount.toLocaleString()} of your listings
+                    {active === "All" ? "" : ` in ${active}`}
+                    {sortKey === "score" ? (
+                      <>
+                        , <span className="italic">scored.</span>
+                      </>
+                    ) : (
+                      "."
+                    )}
+                  </>
+                )}
+              </h2>
+              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
+                Intelligence
+              </p>
+            </div>
+
+            {/*
               Mobile board chrome (cream section, not hero header):
               Town stats · Vintages
               Share lives on the Show graphs / Sorted by row below.
             */}
-            <div className="flex w-full items-center gap-x-3 gap-y-1 lg:hidden">
+            <div className="flex w-full items-center justify-end gap-x-3 gap-y-1 lg:hidden">
               {liveSnapshots.length > 0 ? (
                 <button
                   type="button"

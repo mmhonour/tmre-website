@@ -191,7 +191,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Saved search / listing alert',
     category: 'product',
     definition:
-      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries.',
+      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries. Browse signups in Admin → Communications → Listing alerts.',
   },
 
   // —— Sync / admin ——
@@ -211,7 +211,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Postgres / Neon',
     category: 'sync-admin',
     definition:
-      'Primary listings database: Postgres hosted on Neon (DATABASE_URL). Can also run against local Postgres in development.',
+      'Primary listings database: Postgres hosted on Neon (DATABASE_URL). Shared by Netlify production and local next dev when DATABASE_URL points at Neon; a localhost DATABASE_URL is a separate non-prod store.',
   },
   {
     term: 'SQLite',

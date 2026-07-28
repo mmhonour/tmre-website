@@ -922,6 +922,51 @@ export async function readRecentlyUpdatedListings(options: {
   })
 }
 
+let listingSearchIndexesEnsured = false
+
+/**
+ * Ensure pg_trgm + listings.search_text (migration 0007). Idempotent; safe on
+ * warm Lambdas. Failures are logged — search still works via column ILIKE.
+ */
+export async function ensureListingAddressSearchIndexes(): Promise<void> {
+  if (listingSearchIndexesEnsured) return
+  try {
+    await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
+    await query(`
+      ALTER TABLE listings
+        ADD COLUMN IF NOT EXISTS search_text text
+        GENERATED ALWAYS AS (
+          lower(
+            trim(
+              both FROM
+                coalesce(mls_id, '') || ' ' ||
+                coalesce(address_street, '') || ' ' ||
+                coalesce(address_full, '') || ' ' ||
+                coalesce(address_city, '') || ' ' ||
+                coalesce(postal_code, '') || ' ' ||
+                coalesce(property_type, '')
+            )
+          )
+        ) STORED
+    `)
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_listings_search_text_trgm
+        ON listings USING gin (search_text gin_trgm_ops)
+    `)
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_listings_status_search_text
+        ON listings (status_bucket, search_text)
+    `)
+    listingSearchIndexesEnsured = true
+  } catch (err) {
+    console.warn('[listings-repo] ensure listing search indexes skipped', err)
+  }
+}
+
+/**
+ * Fast Find / typeahead against promoted address columns (+ search_text when
+ * migration 0007 is present). Prefer indexed `search_text LIKE` over jsonb ILIKE.
+ */
 export async function searchListingsInDbByQuery(
   queryText: string,
   options: { limit?: number; statusBuckets?: string[] } = {},
@@ -933,44 +978,73 @@ export async function searchListingsInDbByQuery(
   const buckets = options.statusBuckets ?? ['Active', 'Closed', 'Expired']
   if (buckets.length === 0) return []
 
-  const pattern = `%${q.replace(/[%_]/g, '')}%`
-  const rows = await query<{ data: unknown; raw: unknown; status_bucket: string }>(
-    `SELECT data, raw, status_bucket
-       FROM listings
-      WHERE status_bucket = ANY($1::text[])
-        AND (
-          mls_id ILIKE $2
-          OR (data->'address'->>'full') ILIKE $2
-          OR (data->'address'->>'street') ILIKE $2
-          OR (data->'address'->>'city') ILIKE $2
-          OR (data->'address'->>'postalCode') ILIKE $2
-          OR (data->>'propertyType') ILIKE $2
-        )
-      ORDER BY modification_timestamp DESC NULLS LAST
-      LIMIT $3`,
-    [buckets, pattern, limit * 3],
-  )
+  const safe = q.replace(/[%_]/g, '')
+  if (safe.length < 2) return []
+  const pattern = `%${safe}%`
+  const prefix = `${safe}%`
+
+  await ensureListingAddressSearchIndexes()
+
+  type SearchRow = {
+    data: unknown
+    raw: unknown
+    status_bucket: string
+    mls_id: string | null
+    address_street: string | null
+    address_full: string | null
+  }
+
+  let rows: SearchRow[] = []
+  try {
+    rows = await query<SearchRow>(
+      `SELECT data, raw, status_bucket, mls_id, address_street, address_full
+         FROM listings
+        WHERE status_bucket = ANY($1::text[])
+          AND search_text LIKE $2
+        ORDER BY
+          CASE
+            WHEN lower(mls_id) = $3 THEN 0
+            WHEN lower(coalesce(address_street, '')) LIKE $4 THEN 1
+            WHEN lower(coalesce(address_full, '')) LIKE $4 THEN 2
+            ELSE 3
+          END,
+          modification_timestamp DESC NULLS LAST
+        LIMIT $5`,
+      [buckets, pattern, safe, prefix, Math.min(limit * 4, 80)],
+    )
+  } catch (err) {
+    // Pre-migration DBs without search_text — fall back to promoted columns.
+    console.warn('[listings-repo] search_text query failed; using column ILIKE', err)
+    rows = await query<SearchRow>(
+      `SELECT data, raw, status_bucket, mls_id, address_street, address_full
+         FROM listings
+        WHERE status_bucket = ANY($1::text[])
+          AND (
+            lower(mls_id) LIKE $2
+            OR lower(coalesce(address_street, '')) LIKE $2
+            OR lower(coalesce(address_full, '')) LIKE $2
+            OR lower(coalesce(address_city, '')) LIKE $2
+            OR lower(coalesce(postal_code, '')) LIKE $2
+            OR lower(coalesce(property_type, '')) LIKE $2
+          )
+        ORDER BY modification_timestamp DESC NULLS LAST
+        LIMIT $3`,
+      [buckets, pattern, Math.min(limit * 4, 80)],
+    )
+  }
 
   const scored: { listing: Listing; score: number }[] = []
   for (const row of rows) {
     const listing = rowToListing(row)
-    const hay = [
-      listing.mlsId,
-      listing.address.full,
-      listing.address.street,
-      listing.address.city,
-      listing.address.postalCode,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    if (!hay.includes(q)) continue
+    const street = (row.address_street ?? listing.address.street ?? '').toLowerCase()
+    const full = (row.address_full ?? listing.address.full ?? '').toLowerCase()
+    const mls = (row.mls_id ?? listing.mlsId ?? '').toLowerCase()
     let score = LISTING_SEARCH_STATUS_ORDER[row.status_bucket] ?? 9
-    const street = listing.address.street?.toLowerCase() ?? ''
-    const full = listing.address.full?.toLowerCase() ?? ''
-    if (listing.mlsId.toLowerCase() === q) score -= 30
-    else if (street.startsWith(q) || full.startsWith(q)) score -= 20
-    else if (street.includes(q) || full.includes(q)) score -= 10
+    if (mls === safe) score -= 30
+    else if (street.startsWith(safe) || full.startsWith(safe)) score -= 20
+    else if (street.includes(safe) || full.includes(safe) || mls.includes(safe)) {
+      score -= 10
+    }
     scored.push({ listing, score })
   }
 

@@ -100,7 +100,8 @@ export default function FindClient() {
     const timer = setTimeout(async () => {
       setSuggestLoading(true);
       try {
-        const params = new URLSearchParams({ q, limit: "8" });
+        // DB-only — never wait on RETS for every keystroke.
+        const params = new URLSearchParams({ q, limit: "8", rets: "0" });
         if (townFilter !== "All") params.set("city", townFilter);
         const res = await fetch(`/api/listings/find?${params}`, {
           signal: ac.signal,

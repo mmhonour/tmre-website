@@ -66,6 +66,9 @@ export async function GET(req: NextRequest) {
   const q = (searchParams.get('q') ?? '').trim()
   const city = (searchParams.get('city') ?? '').trim()
   const scope = (searchParams.get('scope') ?? 'active').trim().toLowerCase()
+  // Typeahead should stay DB-only — RETS supplement is for explicit submit.
+  const allowRets =
+    searchParams.get('rets') !== '0' && searchParams.get('dbOnly') !== '1'
   const limitRaw = Number(searchParams.get('limit') ?? '100')
   const resultLimit = Number.isFinite(limitRaw)
     ? Math.min(Math.max(Math.floor(limitRaw), 1), 100)
@@ -87,7 +90,7 @@ export async function GET(req: NextRequest) {
       scope === 'all' ? ['Active', 'Closed', 'Expired'] : ['Active']
 
     let listings = await searchListingsInDbByQuery(q, { limit: resultLimit, statusBuckets })
-    let source: 'db' | 'rets' | 'db+rets' = listings.length > 0 ? 'db' : 'db'
+    let source: 'db' | 'rets' | 'db+rets' = 'db'
 
     if (city) {
       const cityLower = city.toLowerCase()
@@ -96,10 +99,12 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    if (listings.length < resultLimit) {
+    if (allowRets && listings.length < resultLimit) {
       const before = listings.length
       listings = await supplementFromRets(q, resultLimit, listings)
-      if (listings.length > before) source = listings.length > 0 && before > 0 ? 'db+rets' : 'rets'
+      if (listings.length > before) {
+        source = before > 0 ? 'db+rets' : 'rets'
+      }
     }
 
     const results = listings.slice(0, resultLimit).map(enrich)

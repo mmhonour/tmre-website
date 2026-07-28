@@ -8,8 +8,8 @@ export type StatsChartNavItem = {
 };
 
 /**
- * Collapsed “Jump to chart” control — opens a compact pop-out over the sidebar
- * so the first town card stays top-aligned with the first graph.
+ * Collapsed “Jump to chart” control for the Stats hero — right-aligned with
+ * the charts column; opens a compact pop-out list.
  */
 export default function StatsChartNav({ items }: { items: StatsChartNavItem[] }) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -39,16 +39,13 @@ export default function StatsChartNav({ items }: { items: StatsChartNavItem[] })
   };
 
   return (
-    <div
-      ref={rootRef}
-      className="stats-chart-nav stats-print-screen-only absolute top-2.5 right-2.5 z-30"
-    >
+    <div ref={rootRef} className="stats-chart-nav stats-print-screen-only relative z-30">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="stats-chart-jump-panel"
-        className="rounded-md border border-charcoal/15 bg-white/95 px-2.5 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-navy shadow-sm backdrop-blur-sm transition-colors hover:border-gold/40 hover:text-gold"
+        className="bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-white/85 underline decoration-white/35 underline-offset-2 hover:text-gold hover:decoration-gold/55 transition-colors"
       >
         Jump to chart{open ? " · close" : ""}
       </button>
@@ -57,7 +54,7 @@ export default function StatsChartNav({ items }: { items: StatsChartNavItem[] })
         <nav
           id="stats-chart-jump-panel"
           aria-label="Chart sections"
-          className="absolute right-0 top-full mt-1.5 w-[min(16.5rem,calc(100vw-2.5rem))] rounded-xl border border-charcoal/15 bg-cream shadow-[0_12px_28px_rgba(28,42,58,0.16)]"
+          className="absolute right-0 top-full mt-1.5 w-[min(16.5rem,calc(100vw-2.5rem))] rounded-xl border border-white/15 bg-navy shadow-[0_12px_28px_rgba(0,0,0,0.35)]"
         >
           <ul className="max-h-[min(22rem,55vh)] overflow-y-auto py-1.5">
             {items.map((item) => (
@@ -65,7 +62,7 @@ export default function StatsChartNav({ items }: { items: StatsChartNavItem[] })
                 <button
                   type="button"
                   onClick={() => scrollTo(item.id)}
-                  className="w-full px-3 py-1.5 text-left font-mono text-[10px] tracking-[0.08em] uppercase text-navy transition-colors hover:bg-white hover:text-gold"
+                  className="w-full px-3 py-1.5 text-left font-mono text-[10px] tracking-[0.08em] uppercase text-white/85 transition-colors hover:bg-white/10 hover:text-gold"
                 >
                   {item.label}
                 </button>
