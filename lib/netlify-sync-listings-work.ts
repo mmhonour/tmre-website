@@ -228,19 +228,36 @@ export async function runIncrementalSyncListingsWork(
     const result = await syncIncrementalListings()
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
     const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
+    const townErrors = skippedEmpty
+      ? 'no town work (RETS missing, refresh lock, or empty tick)'
+      : result.towns
+          .filter((row) => !row.ok)
+          .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
+          .join('; ') || null
     if (!fromAdmin) {
       await recordIncrementalCronTick({
         startedAt: result.startedAt || startedAt,
         ok: okTowns,
         listingsCount: result.totalUpserted,
         skipped: skippedEmpty,
-        error: skippedEmpty
-          ? 'no town work (RETS missing, refresh lock, or empty tick)'
-          : result.towns
-              .filter((row) => !row.ok)
-              .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
-              .join('; ') || null,
+        error: townErrors,
       })
+    }
+
+    // Queued/Worker audits always write listings_count=0. This Done roll-up is
+    // the job-level finish line with total upserted across towns.
+    try {
+      await recordSyncRun({
+        startedAt: result.startedAt || startedAt,
+        finishedAt: new Date().toISOString(),
+        town: '(all)',
+        statusBucket: 'Done/incremental',
+        listingsCount: result.totalUpserted,
+        ok: okTowns,
+        error: townErrors,
+      })
+    } catch (err) {
+      console.warn('[sync-listings-work] Done/incremental audit failed', err)
     }
 
     // RETS path already ran postHooks (board/stats); only digests remain.
@@ -266,16 +283,30 @@ export async function runIncrementalSyncListingsWork(
     }
   } catch (err) {
     console.error('[sync-listings-work]', err)
+    const message = err instanceof Error ? err.message : String(err)
     if (!fromAdmin) {
       await recordIncrementalCronTick({
         startedAt,
         ok: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
       })
+    }
+    try {
+      await recordSyncRun({
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        town: '(all)',
+        statusBucket: 'Done/incremental',
+        listingsCount: 0,
+        ok: false,
+        error: message,
+      })
+    } catch {
+      /* ignore */
     }
     return {
       status: 500,
-      body: { error: err instanceof Error ? err.message : String(err) },
+      body: { error: message },
     }
   }
 }

@@ -51,6 +51,16 @@ const rows = [
     ok: true,
     error: null,
   },
+  {
+    id: 4,
+    startedAt: started,
+    finishedAt: '2026-07-27T20:35:12.000Z',
+    town: '(all)',
+    statusBucket: 'Done/incremental',
+    listingsCount: 8,
+    ok: true,
+    error: null,
+  },
 ]
 
 const glommed = glomSyncHistoryRuns(rows)
@@ -60,12 +70,18 @@ assert.ok(
   buckets.has('Active+Closed'),
   `expected Active+Closed bucket, got ${[...buckets]}`,
 )
+assert.ok(buckets.has('Done'), `expected Done bucket, got ${[...buckets]}`)
 
 const queued = glommed.find((r) => r.bucket === 'Queued')
 assert.ok(queued, 'queued glom row missing')
 assert.equal(queued.ok, true)
 assert.match(queued.error ?? '', /queued background worker/)
 assert.equal(queued.syncType, 'Incremental')
+
+const done = glommed.find((r) => r.bucket === 'Done')
+assert.ok(done, 'done glom row missing')
+assert.equal(done.listingsCount, 8)
+assert.equal(done.syncType, 'Incremental')
 
 // Legacy mislabeled queue ack (Active/incremental) must still glom separately
 // from Active+Closed town rows — expand-all-buckets is the UI safety net.

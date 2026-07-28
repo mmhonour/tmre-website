@@ -113,7 +113,7 @@ async function fetchDealBundle(
   return fromBundle;
 }
 
-async function fetchTownDeal(
+async function fetchTownDealOnce(
   town: TmreTown,
   kind: "sale" | "rental",
   property: DealPropertyClassFilter,
@@ -123,18 +123,50 @@ async function fetchTownDeal(
     const qs = new URLSearchParams({
       city: town,
       kind,
-      property,
+      // Pinned deep links ignore subtype on the server; send "all" so a stale
+      // Multi/Condos cookie cannot 404 a homes listing Intelligence just showed.
+      property: pinnedListingId ? "all" : property,
     });
     if (pinnedListingId) qs.set("listing", pinnedListingId);
     const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
     if (!r.ok) return null;
     const body = (await r.json()) as DealCarouselPayload;
-    const deal = dealMatchesFilter(body, kind, property) ? body : null;
+    // Pinned deep links must show the listing even if subtype pills disagree.
+    const matchProperty: DealPropertyClassFilter = pinnedListingId
+      ? "all"
+      : property;
+    const deal = dealMatchesFilter(body, kind, matchProperty) ? body : null;
     if (deal) prefetchListingImages(deal);
     return deal;
   } catch {
     return null;
   }
+}
+
+async function fetchTownDeal(
+  town: TmreTown,
+  kind: "sale" | "rental",
+  property: DealPropertyClassFilter,
+  pinnedListingId?: string | null,
+): Promise<DealCarouselPayload | null> {
+  if (pinnedListingId) {
+    const pinned = await fetchTownDealOnce(
+      town,
+      kind,
+      property,
+      pinnedListingId,
+    );
+    if (pinned) return pinned;
+    // Pin miss (peer cap / stale id) — fall back to the town's auto pick so the
+    // DOTD page isn't empty when Intelligence just showed a card for this town.
+    const auto = await fetchTownDealOnce(town, kind, property, null);
+    if (auto) return auto;
+    if (kind === "sale" && property !== "homes") {
+      return fetchTownDealOnce(town, kind, "homes", null);
+    }
+    return null;
+  }
+  return fetchTownDealOnce(town, kind, property, null);
 }
 
 export function useDealOfTheDayCarousel(options?: {
@@ -286,10 +318,15 @@ export function useDealOfTheDayCarousel(options?: {
       }
     } else {
       // City/listing pin: clear other towns and drop a mismatched prior deal.
+      // Pinned listing deep links keep any subtype — cookie Multi/Condos must
+      // not wipe an FSSR homes seed before the pin fetch lands.
+      const keepProperty: DealPropertyClassFilter = pinnedListingId
+        ? "all"
+        : propertyClassParam;
       setDealsByTown((prev) => {
         if (pinnedTownForFetch) {
           const existing = prev[pinnedTownForFetch];
-          if (dealMatchesFilter(existing, kindParam, propertyClassParam)) {
+          if (dealMatchesFilter(existing, kindParam, keepProperty)) {
             return { [pinnedTownForFetch]: existing };
           }
           return {};
@@ -338,28 +375,47 @@ export function useDealOfTheDayCarousel(options?: {
           setLoading(false);
         }
       } else {
-        const merged: DealsByTown = {};
+        const fetched: DealsByTown = {};
         await Promise.all(
           townsToFetch.map(async (town) => {
-            const deal = await fetchTownDeal(
+            fetched[town] = await fetchTownDeal(
               town,
               kindParam,
               propertyClassParam,
               pinnedListingId,
             );
-            if (!stillActive()) return;
-            merged[town] = deal;
-            if (!pinnedListingId) {
-              filterCacheRef.current.set(activeFilterKey, { ...merged });
-            }
-            setDealsByTown({ ...merged });
-            setLoading(false);
           }),
         );
-        if (stillActive() && !Object.values(merged).some(hasListing)) {
-          setDealsByTown({});
-          setLoading(false);
-        }
+        if (!stillActive()) return;
+
+        setDealsByTown((prev) => {
+          const next: DealsByTown = {};
+          let any = false;
+          const keepProperty: DealPropertyClassFilter = pinnedListingId
+            ? "all"
+            : propertyClassParam;
+          for (const town of townsToFetch) {
+            const row = fetched[town];
+            if (hasListing(row)) {
+              next[town] = row;
+              any = true;
+              continue;
+            }
+            // Keep seed/cache when refresh miss — don't paint empty over a good card.
+            const keep = prev[town];
+            if (dealMatchesFilter(keep, kindParam, keepProperty)) {
+              next[town] = keep;
+              any = true;
+            } else {
+              next[town] = null;
+            }
+          }
+          if (!pinnedListingId && any) {
+            filterCacheRef.current.set(activeFilterKey, { ...next });
+          }
+          return any ? next : {};
+        });
+        setLoading(false);
       }
     })();
 

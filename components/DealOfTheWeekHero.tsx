@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import GoldilocksScoreExplainModal, {
   type ScoreExplainTopic,
@@ -519,16 +519,40 @@ export default function DealOfTheWeekHero({
       "homes",
       DEAL_PROPERTY_CLASS_VALUES,
     );
-  // Seed persisted pills from URL once — do NOT lock on ?kind= / ?property=
-  // (locking made Homes / Multi / Condos pills appear non-op after deep links).
+  // Seed persisted pills from URL. Deep links without ?property= must not keep a
+  // stale Multi/Condos cookie (Intelligence often omits property=homes).
   useEffect(() => {
     if (isDay && pinnedKind) setTxFilter(pinnedKind);
   }, [isDay, pinnedKind, setTxFilter]);
   useEffect(() => {
-    if (isDay && pinnedProperty) setPropertyClass(pinnedProperty);
-  }, [isDay, pinnedProperty, setPropertyClass]);
+    if (!isDay) return;
+    if (pinnedProperty) {
+      setPropertyClass(pinnedProperty);
+      return;
+    }
+    if (listingParam || city || pinnedKind) {
+      setPropertyClass("homes");
+    }
+  }, [isDay, pinnedProperty, listingParam, city, pinnedKind, setPropertyClass]);
   const dayTxFilter = txFilter;
-  const dayPropertyClass = propertyClass;
+  // Prefer URL synchronously so a cookie hydrate to Multi/Condos cannot race
+  // the first carousel fetch on an Intelligence → DOTD deep link. Manual pill
+  // changes (below) set `propertyClassTouched` so Homes/Multi/Condos still work.
+  const [propertyClassTouched, setPropertyClassTouched] = useState(false);
+  useEffect(() => {
+    setPropertyClassTouched(false);
+  }, [listingParam, pinnedProperty, city]);
+  const dayPropertyClass: DealSalePropertyClass =
+    propertyClassTouched
+      ? propertyClass
+      : (pinnedProperty ?? (listingParam ? "homes" : propertyClass));
+  const setDayPropertyClass = useCallback(
+    (next: DealSalePropertyClass) => {
+      setPropertyClassTouched(true);
+      setPropertyClass(next);
+    },
+    [setPropertyClass],
+  );
   const carousel = useDealOfTheDayCarousel({
     initialTown: city,
     rotate: isDay && !city && !listingParam,
@@ -891,7 +915,7 @@ export default function DealOfTheWeekHero({
                 isDay && dayTxFilter === "sale" ? dayPropertyClass : undefined
               }
               onPropertyClassChange={
-                isDay && dayTxFilter === "sale" ? setPropertyClass : undefined
+                isDay && dayTxFilter === "sale" ? setDayPropertyClass : undefined
               }
               carouselControls={
                 isDay && !city && carousel.carouselTowns.length > 0

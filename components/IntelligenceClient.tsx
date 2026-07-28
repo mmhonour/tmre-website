@@ -410,6 +410,26 @@ function dualSliderThumbValues(
 /** Keep slider descriptors enlarged this long after thumb release or descriptor click. */
 const DESCRIPTOR_ENLARGE_HOLD_MS = 10_000;
 type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft" | "furnished";
+/** Descriptor peeks: accumulate kinds, or `"all"` (mag glass / every kind exposed). */
+type ExposedIntelSliders = "all" | IntelSliderKind[] | null;
+
+function availableIntelSliderKinds(opts: {
+  showPriceFilter: boolean;
+  cls: ClsFilter;
+  showFurnished: boolean;
+}): IntelSliderKind[] {
+  const kinds: IntelSliderKind[] = [];
+  if (opts.showPriceFilter) kinds.push("price");
+  if (opts.cls !== "commercial") {
+    kinds.push("bed", "bath", "vintage", "sqft");
+  }
+  if (opts.showFurnished) kinds.push("furnished");
+  return kinds;
+}
+
+function isPartialSliderPeek(exposed: ExposedIntelSliders): boolean {
+  return Array.isArray(exposed) && exposed.length > 0;
+}
 
 type SetHeldSliderActive = (
   active: boolean,
@@ -1703,10 +1723,12 @@ export default function IntelligenceClient({
   const [furnishedSliderActive, setFurnishedSliderActive] = useHeldSliderActive();
   const sqftRangeCustomizedRef = useRef(false);
   const [collapsedSlidersOpen, setCollapsedSlidersOpen] = useState(false);
-  /** When collapsed chrome peeks sliders, which one(s) to show (`all` = mag glass). */
-  const [exposedSliderKind, setExposedSliderKind] = useState<
-    IntelSliderKind | "all" | null
-  >(null);
+  /**
+   * When collapsed chrome peeks sliders: which kinds are visible.
+   * Descriptor clicks accumulate; mag glass / full set → `"all"`.
+   */
+  const [exposedSliders, setExposedSliders] =
+    useState<ExposedIntelSliders>(null);
   const priceRangeCustomizedRef = useRef(false);
   const priceFilterContextRef = useRef("");
   const [newConstructionFilter, setNewConstructionFilter] =
@@ -2452,7 +2474,7 @@ export default function IntelligenceClient({
   useEffect(() => {
     if (filtersExpanded) {
       setCollapsedSlidersOpen(false);
-      setExposedSliderKind(null);
+      setExposedSliders(null);
     }
   }, [filtersExpanded]);
 
@@ -2470,9 +2492,9 @@ export default function IntelligenceClient({
 
   useEffect(() => {
     // Full Edit-all (no peek) stays open on outside click. Descriptor / mag-glass
-    // peeks dismiss — including a single-slider peek over an Edit-all session.
-    if (filtersExpanded && exposedSliderKind == null) return;
-    if (!collapsedSlidersOpen && exposedSliderKind == null) return;
+    // peeks dismiss — including a partial peek over an Edit-all session.
+    if (filtersExpanded && exposedSliders == null) return;
+    if (!collapsedSlidersOpen && exposedSliders == null) return;
     const dismissCollapsedSliders = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -2481,7 +2503,7 @@ export default function IntelligenceClient({
       if (target.closest("[data-intel-slider-context-blurb]")) return;
       if (target.closest("[data-intel-slider-context-blurb-pinned]")) return;
       setCollapsedSlidersOpen(false);
-      setExposedSliderKind(null);
+      setExposedSliders(null);
       if (filterChromePeek === "sliders") setFilterChromePeek(null);
       setPriceSliderActive(false, { immediate: true });
       setBedSliderActive(false, { immediate: true });
@@ -2492,7 +2514,7 @@ export default function IntelligenceClient({
     };
     window.addEventListener("pointerdown", dismissCollapsedSliders);
     return () => window.removeEventListener("pointerdown", dismissCollapsedSliders);
-  }, [collapsedSlidersOpen, filtersExpanded, exposedSliderKind, filterChromePeek]);
+  }, [collapsedSlidersOpen, filtersExpanded, exposedSliders, filterChromePeek]);
 
   useEffect(() => {
     if (active !== "All" && availableZips.length <= 1) setZip(null);
@@ -3240,7 +3262,62 @@ export default function IntelligenceClient({
     bedBathFilterActive(minBathrooms, maxBathrooms) ||
     vintageFilterActive(minVintage, maxVintage) ||
     sqftFilterActive ||
-    priceFilterActive;
+    priceFilterActive ||
+    furnishedFilter !== "all";
+
+  function isSliderKindCustomized(kind: IntelSliderKind): boolean {
+    switch (kind) {
+      case "price":
+        return priceFilterActive;
+      case "bed":
+        return bedBathFilterActive(minBedrooms, maxBedrooms);
+      case "bath":
+        return bedBathFilterActive(minBathrooms, maxBathrooms);
+      case "vintage":
+        return vintageFilterActive(minVintage, maxVintage);
+      case "sqft":
+        return sqftFilterActive;
+      case "furnished":
+        return furnishedFilter !== "all";
+    }
+  }
+
+  function resetSliderKind(kind: IntelSliderKind) {
+    switch (kind) {
+      case "price":
+        priceRangeCustomizedRef.current = false;
+        setMinPriceIndex(0);
+        setMaxPriceIndex(
+          showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX,
+        );
+        setActivePriceBandId(null);
+        setActiveLuxuryPriceBandId(null);
+        break;
+      case "bed":
+        setMinBedsFilter("0");
+        setMaxBedsFilter("6");
+        break;
+      case "bath":
+        setMinBathsFilter("0");
+        setMaxBathsFilter("6");
+        break;
+      case "vintage":
+        setMinVintageFilter("0");
+        setMaxVintageFilter("6");
+        break;
+      case "sqft":
+        sqftRangeCustomizedRef.current = false;
+        setMinSqftIndex(0);
+        setMaxSqftIndex(
+          cls === "commercial" ? INTEL_SQFT_MAX_INDEX : boardSqftMaxIdx,
+        );
+        break;
+      case "furnished":
+        setFurnishedFilter("all");
+        break;
+    }
+    setBoardPage(1);
+  }
 
   function resetSliders() {
     setMinBedsFilter("0");
@@ -3309,17 +3386,34 @@ export default function IntelligenceClient({
     }
   }
 
-  /** Reveal slider chrome — one descriptor's filter, or all (mag glass). */
+  /**
+   * Reveal slider chrome — one descriptor (accumulating), or all (mag glass).
+   * Once every available descriptor is exposed, promote to `"all"`.
+   */
   function exposeSliderFilters(kind?: IntelSliderKind) {
     if (filterChromeCollapsed) {
       setFilterChromePeek("sliders");
     }
-    // Always set the peek kind — including when Edit-all is open, so a
-    // descriptor click can narrow the panel to that one slider.
-    setExposedSliderKind(kind ?? "all");
     setCollapsedSlidersOpen(true);
-    if (kind) pulseSliderDescriptor(kind);
-    else pulseAllSliderDescriptors();
+    if (kind == null) {
+      setExposedSliders("all");
+      pulseAllSliderDescriptors();
+      return;
+    }
+    const available = availableIntelSliderKinds({
+      showPriceFilter,
+      cls,
+      showFurnished: tx !== "sale",
+    });
+    setExposedSliders((prev) => {
+      if (prev === "all") return "all";
+      const next = prev == null ? [kind] : prev.includes(kind) ? prev : [...prev, kind];
+      if (available.length > 0 && available.every((k) => next.includes(k))) {
+        return "all";
+      }
+      return next;
+    });
+    pulseSliderDescriptor(kind);
   }
 
   function handleDescriptorSliderClick(kind: IntelSliderKind) {
@@ -3332,16 +3426,15 @@ export default function IntelligenceClient({
     setFilterChromePeek(null);
     setFiltersExpanded(true);
     setCollapsedSlidersOpen(false);
-    setExposedSliderKind(null);
+    setExposedSliders(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  const isSingleSliderPeek =
-    exposedSliderKind != null && exposedSliderKind !== "all";
+  const isPartialDescriptorPeek = isPartialSliderPeek(exposedSliders);
 
   function hideCollapsedSliders() {
     setCollapsedSlidersOpen(false);
-    setExposedSliderKind(null);
+    setExposedSliders(null);
     if (filterChromePeek === "sliders") setFilterChromePeek(null);
     setPriceSliderActive(false, { immediate: true });
     setBedSliderActive(false, { immediate: true });
@@ -3677,6 +3770,15 @@ export default function IntelligenceClient({
   const showTxChrome = !filterChromeCollapsed || filterChromePeek === "tx";
   const showSliderChrome =
     !filterChromeCollapsed || filterChromePeek === "sliders";
+
+  /** DOTD follows Intelligence town + Sale/Rental (All tx → sale picks). */
+  const dotdKind = tx === "rental" ? "rental" : "sale";
+  const dotdPropertyClass =
+    dotdKind === "rental"
+      ? "all"
+      : saleProperty === "multi" || saleProperty === "condos"
+        ? saleProperty
+        : "homes";
 
   const peekTownPills = () => {
     setFilterChromeCollapsed(true);
@@ -4374,7 +4476,7 @@ export default function IntelligenceClient({
                   showPriceFilter={showPriceFilter}
                   cls={cls}
                   collapsedSlidersOpen={collapsedSlidersOpen}
-                  exposedSliderKind={exposedSliderKind}
+                  exposedSliders={exposedSliders}
                   boardPriceSteps={boardPriceSteps}
                   minPriceIndex={minPriceIndex}
                   maxPriceIndex={maxPriceIndex}
@@ -4441,6 +4543,8 @@ export default function IntelligenceClient({
                   onFurnishedSliderActiveChange={setFurnishedSliderActive}
                   furnishedSliderActive={furnishedSliderActive}
                   onResetSliders={resetSliders}
+                  onResetSliderKind={resetSliderKind}
+                  isSliderKindCustomized={isSliderKindCustomized}
                   slidersCustomized={slidersCustomized}
                 />
                 </div>
@@ -4467,7 +4571,7 @@ export default function IntelligenceClient({
                   trailing={
                     showSliderChrome &&
                     collapsedSlidersOpen &&
-                    (!filtersExpanded || isSingleSliderPeek) ? (
+                    (!filtersExpanded || isPartialDescriptorPeek) ? (
                       <>
                         <IntelFilterDescriptorDot />
                         <button
@@ -4500,7 +4604,7 @@ export default function IntelligenceClient({
                   />
                   {showSliderChrome &&
                   collapsedSlidersOpen &&
-                  (!filtersExpanded || isSingleSliderPeek) ? (
+                  (!filtersExpanded || isPartialDescriptorPeek) ? (
                     <>
                       <IntelFilterDescriptorDot />
                       <button
@@ -4519,18 +4623,19 @@ export default function IntelligenceClient({
               </div>
             </div>
             <DealOfTheDayFrame
+              key={`intel-dotd-${active}-${dotdKind}-${dotdPropertyClass}`}
               city={active}
               theme="hero"
               rotateTowns={active === "All"}
-              transactionFilter={tx === "all" ? "sale" : tx}
-              propertyClass={
-                saleProperty === "multi" || saleProperty === "condos"
-                  ? saleProperty
-                  : "homes"
+              transactionFilter={dotdKind}
+              propertyClass={dotdPropertyClass}
+              initialDealsByTown={
+                dotdKind === "sale" && dotdPropertyClass === "homes"
+                  ? initialDotdDealsByTown
+                  : null
               }
-              initialDealsByTown={initialDotdDealsByTown}
-              initialKind="sale"
-              initialPropertyClass="homes"
+              initialKind={dotdKind}
+              initialPropertyClass={dotdPropertyClass}
               hideUntilReady
               className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
             />
@@ -4555,8 +4660,8 @@ export default function IntelligenceClient({
 
             {/*
               Mobile board chrome (cream section, not hero header):
-              Town stats · Vintages ········· Share (top-right)
-              Mobile: minigraphs above Show graphs + Sorted by on the results column.
+              Town stats · Vintages
+              Share lives on the Show graphs / Sorted by row below.
             */}
             <div className="flex w-full items-center gap-x-3 gap-y-1 lg:hidden">
               {liveSnapshots.length > 0 ? (
@@ -4607,11 +4712,6 @@ export default function IntelligenceClient({
                   </span>
                 </button>
               ) : null}
-              <ListingShareButton
-                href={intelligenceShareHref}
-                title="Share this Intelligence search"
-                className="!h-6 !w-6 ml-auto shrink-0 self-start text-navy/70 hover:text-navy hover:bg-navy/[0.06] md:hidden"
-              />
             </div>
           </div>
 
@@ -4627,19 +4727,13 @@ export default function IntelligenceClient({
               aria-busy={boardSortPending || undefined}
             >
           {/*
-            Mobile: minigraphs + labels first, then Show graphs + Sorted by.
+            Mobile: minigraphs + labels first, then Show graphs + Sorted by + Share.
             Desktop: Show/Hide left, share short link right (above board Reset).
-            When graphs are unavailable, keep the desktop share row; Sorted by
-            stays mobile-only.
+            When graphs are unavailable, keep the share row; Sorted by stays
+            mobile-only.
           */}
           <div className="flex flex-col">
-            <div
-              className={`mb-0.5 flex items-center justify-between gap-3 order-2 lg:order-1 ${
-                vintageChartListingRows.length > 0 || showPriceFilter
-                  ? ""
-                  : "hidden lg:flex"
-              }`}
-            >
+            <div className="mb-0.5 flex items-center justify-between gap-3 order-2 lg:order-1">
               {vintageChartListingRows.length > 0 || showPriceFilter ? (
                 <button
                   type="button"
@@ -4693,7 +4787,7 @@ export default function IntelligenceClient({
                 <ListingShareButton
                   href={intelligenceShareHref}
                   title="Share this Intelligence search"
-                  className="!h-6 !w-6 hidden lg:inline-flex shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
+                  className="!h-6 !w-6 inline-flex shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
                 />
               </div>
             </div>
@@ -5185,6 +5279,26 @@ function ScoreInfoButton({ onInfoClick }: { onInfoClick: () => void }) {
 }
 
 // Beds + Yr built in the left column; Baths + Sq feet share the right column.
+function SliderKindResetButton({
+  kind,
+  onReset,
+  customized,
+  label,
+}: {
+  kind: IntelSliderKind;
+  onReset: (kind: IntelSliderKind) => void;
+  customized: boolean;
+  label: string;
+}) {
+  return (
+    <FilterResetButton
+      onClick={() => onReset(kind)}
+      disabled={!customized}
+      label={label}
+    />
+  );
+}
+
 function BedBathVintageSqftRow({
   onBedSliderActiveChange,
   onBathSliderActiveChange,
@@ -5211,7 +5325,10 @@ function BedBathVintageSqftRow({
   showFurnished,
   furnishedFilter,
   onFurnishedFilterChange,
-  visibleKind = "all",
+  visibleKinds = "all",
+  showPerKindReset = false,
+  onResetSliderKind,
+  isSliderKindCustomized,
 }: {
   onBedSliderActiveChange: (active: boolean) => void;
   onBathSliderActiveChange: (active: boolean) => void;
@@ -5238,15 +5355,27 @@ function BedBathVintageSqftRow({
   showFurnished: boolean;
   furnishedFilter: FurnishedFilter;
   onFurnishedFilterChange: (value: FurnishedFilter) => void;
-  visibleKind?: IntelSliderKind | "all";
+  visibleKinds?: "all" | readonly IntelSliderKind[];
+  showPerKindReset?: boolean;
+  onResetSliderKind?: (kind: IntelSliderKind) => void;
+  isSliderKindCustomized?: (kind: IntelSliderKind) => boolean;
 }) {
   const show = (kind: IntelSliderKind) =>
-    visibleKind === "all" || visibleKind === kind;
+    visibleKinds === "all" || visibleKinds.includes(kind);
   const showBed = show("bed");
   const showBath = show("bath");
   const showVintage = show("vintage");
   const showSqft = show("sqft");
   const showFurnish = showFurnished && show("furnished");
+  const kindReset = (kind: IntelSliderKind, label: string) =>
+    showPerKindReset && onResetSliderKind && isSliderKindCustomized ? (
+      <SliderKindResetButton
+        kind={kind}
+        onReset={onResetSliderKind}
+        customized={isSliderKindCustomized(kind)}
+        label={label}
+      />
+    ) : null;
   if (!showBed && !showBath && !showVintage && !showSqft && !showFurnish) {
     return null;
   }
@@ -5256,6 +5385,7 @@ function BedBathVintageSqftRow({
       {showBed || showBath ? (
       <div className="flex items-center gap-1 shrink-0 w-fit">
         {showBed ? (
+        <>
         <IntelDualSlider
           label="Beds"
           maxIndex={BED_BATH_MAX}
@@ -5267,8 +5397,11 @@ function BedBathVintageSqftRow({
           minAriaLabel="Minimum bedrooms"
           maxAriaLabel="Maximum bedrooms"
         />
+        {kindReset("bed", "Reset beds")}
+        </>
         ) : null}
         {showBath ? (
+        <>
         <IntelDualSlider
           label="Baths"
           maxIndex={BED_BATH_MAX}
@@ -5280,6 +5413,8 @@ function BedBathVintageSqftRow({
           minAriaLabel="Minimum bathrooms"
           maxAriaLabel="Maximum bathrooms"
         />
+        {kindReset("bath", "Reset baths")}
+        </>
         ) : null}
       </div>
       ) : null}
@@ -5287,6 +5422,7 @@ function BedBathVintageSqftRow({
       <div className="flex items-start gap-1 shrink-0 w-fit">
         <div className="flex flex-col gap-1">
           {showVintage ? (
+          <div className="flex items-center gap-1">
           <IntelDualSlider
             label="Yr built"
             maxIndex={VINTAGE_FILTER_MAX}
@@ -5298,8 +5434,11 @@ function BedBathVintageSqftRow({
             minAriaLabel="Minimum vintage era"
             maxAriaLabel="Maximum vintage era"
           />
+          {kindReset("vintage", "Reset year built")}
+          </div>
           ) : null}
           {showFurnish ? (
+            <div className="flex items-center gap-1">
             <IntelDiscreteSlider
               label="Furnish"
               maxIndex={FURNISHED_SLIDER_MAX}
@@ -5312,9 +5451,12 @@ function BedBathVintageSqftRow({
               valueText={formatFurnishedFilterLabel(furnishedFilter)}
               showCenterLabelWhen={(index) => index === 0}
             />
+            {kindReset("furnished", "Reset furnished")}
+            </div>
           ) : null}
         </div>
         {showSqft ? (
+          <div className="flex items-center gap-1">
           <SqftRangeSlider
             label="Sq feet"
             steps={boardSqftSteps}
@@ -5324,6 +5466,8 @@ function BedBathVintageSqftRow({
             onMaxIndexChange={onMaxSqftIndexChange}
             onActiveChange={onSqftSliderActiveChange}
           />
+          {kindReset("sqft", "Reset square feet")}
+          </div>
         ) : null}
       </div>
       ) : null}
@@ -5690,7 +5834,7 @@ function IntelFilterControlsRow({
   showPriceFilter,
   cls,
   collapsedSlidersOpen,
-  exposedSliderKind,
+  exposedSliders,
   boardPriceSteps,
   minPriceIndex,
   maxPriceIndex,
@@ -5729,13 +5873,15 @@ function IntelFilterControlsRow({
   onFurnishedSliderActiveChange,
   furnishedSliderActive,
   onResetSliders,
+  onResetSliderKind,
+  isSliderKindCustomized,
   slidersCustomized,
 }: {
   filtersExpanded: boolean;
   showPriceFilter: boolean;
   cls: ClsFilter;
   collapsedSlidersOpen: boolean;
-  exposedSliderKind: IntelSliderKind | "all" | null;
+  exposedSliders: ExposedIntelSliders;
   boardPriceSteps: readonly number[];
   minPriceIndex: number;
   maxPriceIndex: number;
@@ -5774,6 +5920,8 @@ function IntelFilterControlsRow({
   onFurnishedSliderActiveChange: (active: boolean) => void;
   furnishedSliderActive: boolean;
   onResetSliders: () => void;
+  onResetSliderKind: (kind: IntelSliderKind) => void;
+  isSliderKindCustomized: (kind: IntelSliderKind) => boolean;
   slidersCustomized: boolean;
 }) {
   if (!showPriceFilter && cls === "commercial" && !showFurnished) return null;
@@ -5782,31 +5930,34 @@ function IntelFilterControlsRow({
     filtersExpanded ? "mt-1.5" : "mt-1"
   }`;
 
-  // A specific descriptor peek always wins — even over Edit-all expanded.
-  const isSinglePeek =
-    exposedSliderKind != null && exposedSliderKind !== "all";
-  const visibleKind: IntelSliderKind | "all" = isSinglePeek
-    ? exposedSliderKind
-    : "all";
+  // Accumulated descriptor peeks win over Edit-all expanded.
+  const isPartialPeek = isPartialSliderPeek(exposedSliders);
+  const visibleKinds: "all" | readonly IntelSliderKind[] =
+    Array.isArray(exposedSliders) && exposedSliders.length > 0
+      ? exposedSliders
+      : "all";
   const showKind = (kind: IntelSliderKind) =>
-    visibleKind === "all" || visibleKind === kind;
+    visibleKinds === "all" || visibleKinds.includes(kind);
   const showPriceControls = showPriceFilter && showKind("price");
   const showResidentialRow =
     cls !== "commercial" &&
-    (visibleKind === "all" ||
-      visibleKind === "bed" ||
-      visibleKind === "bath" ||
-      visibleKind === "vintage" ||
-      visibleKind === "sqft" ||
-      visibleKind === "furnished");
+    (visibleKinds === "all" ||
+      visibleKinds.some((k) =>
+        k === "bed" ||
+        k === "bath" ||
+        k === "vintage" ||
+        k === "sqft" ||
+        k === "furnished",
+      ));
   const showCommercialFurnished =
     cls === "commercial" && showFurnished && showKind("furnished");
-  // Reset belongs with the full slider set (Edit all / mag glass), not a single peek.
-  const showReset = visibleKind === "all";
+  // Full set (mag glass / every descriptor) → one reset; partial peeks → per kind.
+  const showConsolidatedReset = visibleKinds === "all";
+  const showPerKindReset = isPartialPeek;
 
   const sliderPanel = (
     <div className="flex flex-col gap-y-1">
-      {showPriceControls || showReset ? (
+      {showPriceControls || showConsolidatedReset ? (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         {showPriceControls ? (
           <div className="flex items-center gap-1 shrink-0">
@@ -5827,9 +5978,17 @@ function IntelFilterControlsRow({
               onMaxIndexChange={onMaxPriceIndexChange}
               onActiveChange={onPriceSliderActiveChange}
             />
+            {showPerKindReset ? (
+              <SliderKindResetButton
+                kind="price"
+                onReset={onResetSliderKind}
+                customized={isSliderKindCustomized("price")}
+                label="Reset price"
+              />
+            ) : null}
           </div>
         ) : null}
-        {showReset ? (
+        {showConsolidatedReset ? (
         <FilterResetButton
           onClick={onResetSliders}
           disabled={!slidersCustomized}
@@ -5865,9 +6024,13 @@ function IntelFilterControlsRow({
           showFurnished={showFurnished}
           furnishedFilter={furnishedFilter}
           onFurnishedFilterChange={onFurnishedFilterChange}
-          visibleKind={visibleKind}
+          visibleKinds={visibleKinds}
+          showPerKindReset={showPerKindReset}
+          onResetSliderKind={onResetSliderKind}
+          isSliderKindCustomized={isSliderKindCustomized}
         />
       ) : showCommercialFurnished ? (
+        <div className="flex items-center gap-1">
         <IntelDiscreteSlider
           label="Furnish"
           maxIndex={FURNISHED_SLIDER_MAX}
@@ -5880,16 +6043,25 @@ function IntelFilterControlsRow({
           valueText={formatFurnishedFilterLabel(furnishedFilter)}
           showCenterLabelWhen={(index) => index === 0}
         />
+        {showPerKindReset ? (
+          <SliderKindResetButton
+            kind="furnished"
+            onReset={onResetSliderKind}
+            customized={isSliderKindCustomized("furnished")}
+            label="Reset furnished"
+          />
+        ) : null}
+        </div>
       ) : null}
     </div>
   );
 
-  // Edit-all shows the full set unless a descriptor peeks one slider.
-  if (filtersExpanded && !isSinglePeek) {
+  // Edit-all shows the full set unless descriptors are peeking a subset.
+  if (filtersExpanded && !isPartialPeek) {
     return <div className={rowClass}>{sliderPanel}</div>;
   }
 
-  if (!collapsedSlidersOpen && !isSinglePeek) return null;
+  if (!collapsedSlidersOpen && !isPartialPeek) return null;
 
   return (
     <div className={rowClass} data-intel-slider-panel>

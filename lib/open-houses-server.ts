@@ -25,21 +25,41 @@ function isRetsNoRecordsError(err: unknown): boolean {
   return code === '20201' || tag === 'NO_RECORDS_FOUND'
 }
 
+/** SmartMLS YN fields may return 1 / Y / true. Empty = unknown (don't reject). */
+function isTruthyYn(v: string): boolean {
+  const s = v.trim().toLowerCase()
+  return s === '1' || s === 'y' || s === 'yes' || s === 'true'
+}
+
+/** SmartMLS returns LongValue ("Active") or lookup code ("A"). */
+function isActiveOpenHouseStatus(v: string): boolean {
+  const s = v.trim().toLowerCase()
+  return !s || s === 'active' || s === 'a'
+}
+
+/** SmartMLS Public = lookup code "O" (Broker tours are "T"). */
+function isPublicOpenHouseType(v: string): boolean {
+  const s = v.trim().toLowerCase()
+  return !s || s === 'public' || s === 'o'
+}
+
 function mapOpenHouse(r: RawOpenHouse): OpenHouseEvent | null {
   const date = str(r.OHDate)
   if (!date) return null
   if (str(r.IsDeleted) === '1') return null
-  if (str(r.OHActiveYN) !== '1') return null
-  if (str(r.OpenHouseStatus).toLowerCase() !== 'active') return null
+
+  const activeYn = str(r.OHActiveYN)
+  if (activeYn && !isTruthyYn(activeYn)) return null
+  if (!isActiveOpenHouseStatus(str(r.OpenHouseStatus))) return null
   const type = str(r.OHType)
-  if (type && type.toLowerCase() !== 'public') return null
+  if (!isPublicOpenHouseType(type)) return null
 
   const listingKey = str(r.OHListingKey)
   const listingId = str(r.OHListingId)
   if (!listingKey && !listingId) return null
 
   return {
-    id: str(r.OHKey) || str(r.OHID),
+    id: str(r.OHKey) || str(r.OHID) || `${listingKey || listingId}:${date}`,
     listingKey,
     listingId,
     date,
@@ -58,6 +78,48 @@ function sortOpenHouseEvents(events: OpenHouseEvent[]): OpenHouseEvent[] {
   })
 }
 
+/**
+ * SmartMLS OpenHouse lookups (probed): OpenHouseStatus A=Active, OHType O=Public.
+ * Bare words / wrong codes → NO_RECORDS_FOUND. Fall back to date+ActiveYN and
+ * filter Public/Active in {@link mapOpenHouse}.
+ */
+function openHouseDmqlCandidates(window: {
+  start: string
+  end: string
+}): string[] {
+  const date = `(OHDate=${window.start}-${window.end})`
+  return [
+    `${date},(OHActiveYN=1),(OpenHouseStatus=|A),(OHType=|O)`,
+    `${date},(OHActiveYN=1)`,
+    date,
+  ]
+}
+
+async function searchOpenHouse(
+  client: {
+    search: {
+      query: (
+        resource: string,
+        className: string,
+        dmql: string,
+        opts: { limit: number; offset: number },
+      ) => Promise<{ results?: RawOpenHouse[] }>
+    }
+  },
+  dmql: string,
+): Promise<RawOpenHouse[]> {
+  try {
+    const result = await client.search.query('OpenHouse', 'OpenHouse', dmql, {
+      limit: 2500,
+      offset: 1,
+    })
+    return (result?.results ?? []) as RawOpenHouse[]
+  } catch (err) {
+    if (isRetsNoRecordsError(err)) return []
+    throw err
+  }
+}
+
 /** Public active open houses with OHDate in the inclusive ET calendar window. */
 export async function fetchUpcomingOpenHouses(
   window = openHouseDateWindow(),
@@ -66,25 +128,32 @@ export async function fetchUpcomingOpenHouses(
   const hit = cache.get(cacheKey)
   if (hit && hit.expiresAt > Date.now()) return hit.value
 
-  const dmql = `(OHDate=${window.start}-${window.end}),(OHActiveYN=1),(OpenHouseStatus=Active),(OHType=Public)`
-
   let records: RawOpenHouse[] = []
+  let usedDmql: string | null = null
   try {
     records = await withRetsClient(async (client) => {
-      try {
-        const result = await client.search.query('OpenHouse', 'OpenHouse', dmql, {
-          limit: 2500,
-          offset: 1,
-        })
-        return (result?.results ?? []) as RawOpenHouse[]
-      } catch (err) {
-        if (isRetsNoRecordsError(err)) return []
-        throw err
+      for (const dmql of openHouseDmqlCandidates(window)) {
+        const rows = await searchOpenHouse(client, dmql)
+        if (rows.length > 0) {
+          usedDmql = dmql
+          return rows
+        }
       }
+      return []
     })
   } catch (err) {
     console.error('[open-houses] RETS OpenHouse query failed', err)
     return []
+  }
+
+  if (usedDmql) {
+    console.info(
+      `[open-houses] RETS OpenHouse ok via ${usedDmql} → ${records.length} raw row(s)`,
+    )
+  } else {
+    console.warn(
+      `[open-houses] RETS OpenHouse returned 0 rows for ${window.start}–${window.end} (all DMQL variants)`,
+    )
   }
 
   const events = sortOpenHouseEvents(

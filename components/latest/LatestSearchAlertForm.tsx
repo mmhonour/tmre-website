@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   listUniqueVisitorSearches,
   type VisitorSearchProfileEntry,
@@ -19,14 +19,18 @@ const WEEKDAYS = [
   { value: 6, label: "Saturday" },
 ] as const;
 
+const LINK_BTN =
+  "shrink-0 bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors";
+
 /**
  * Create a listing alert from unique searches stored in the visitor's filter
  * cookies / search-history cookie. Email works now; SMS is disabled pending
  * Twilio + A2P (see search-alerts whiteboard).
  *
- * Collapsed by default as a raised pill; expands into the full form panel.
+ * Compact inlaid pop-out — trigger is a flat link; the form floats over the feed.
  */
 export default function LatestSearchAlertForm() {
+  const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [searches, setSearches] = useState<VisitorSearchProfileEntry[]>([]);
   const [fingerprint, setFingerprint] = useState("");
@@ -41,11 +45,33 @@ export default function LatestSearchAlertForm() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadSearches = () => {
     const list = listUniqueVisitorSearches();
     setSearches(list);
+    // Default to the most common search (list is frequency-sorted).
     if (list[0]) setFingerprint(list[0].fingerprint);
+  };
+
+  useEffect(() => {
+    loadSearches();
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    loadSearches();
+    const onPointer = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   const selected = useMemo(
     () => searches.find((s) => s.fingerprint === fingerprint) ?? null,
@@ -108,44 +134,33 @@ export default function LatestSearchAlertForm() {
   };
 
   return (
-    <section id="latest-alerts" className="flex flex-col items-start gap-3">
+    <div id="latest-alerts" ref={rootRef} className="relative inline-flex">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="latest-alerts-panel"
-        className={[
-          "inline-flex items-center gap-2 rounded-full border px-5 py-2.5",
-          "font-mono text-[11px] tracking-[0.16em] uppercase font-bold",
-          "transition-[transform,box-shadow,background] select-none",
-          open
-            ? "border-navy/35 bg-gradient-to-b from-cream to-white text-navy shadow-[0_1px_0_0_rgba(28,42,58,0.18)] translate-y-px"
-            : "border-charcoal/20 bg-gradient-to-b from-white to-cream text-navy shadow-[0_3px_0_0_rgba(28,42,58,0.22),0_4px_10px_rgba(28,42,58,0.12)] hover:from-cream hover:to-white active:translate-y-px active:shadow-[0_1px_0_0_rgba(28,42,58,0.2)]",
-        ].join(" ")}
+        className={LINK_BTN}
       >
-        <span>Listing alerts</span>
-        <span className="text-[10px] font-normal opacity-70" aria-hidden>
-          {open ? "▲" : "▼"}
-        </span>
+        Listing alerts{open ? " · close" : ""}
       </button>
 
       {open ? (
         <div
           id="latest-alerts-panel"
-          className="w-full rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm overflow-hidden"
+          role="dialog"
+          aria-label="Listing alerts"
+          className="absolute left-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2.5rem))] rounded-xl border border-charcoal/15 bg-cream shadow-[0_12px_32px_rgba(28,42,58,0.18)]"
         >
-          <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
-            <p className="text-sm text-slate max-w-2xl">
-              Build an alert from searches you&rsquo;ve already run on the site
-              (stored in your browser). When a new home matches, we can email you —
-              text is coming later.
+          <div className="px-3.5 py-3 space-y-3">
+            <p className="text-xs text-slate leading-snug">
+              Alert from a search you&rsquo;ve already run. Email when a new home
+              matches — text coming later.
             </p>
-          </div>
 
-          <div className="px-5 sm:px-6 py-5 space-y-4">
             {searches.length === 0 ? (
-              <p className="text-sm text-slate">
-                No unique searches yet. Set filters on{" "}
+              <p className="text-xs text-slate leading-snug">
+                No searches yet. Filter on{" "}
                 <a
                   href="/intelligence"
                   className="text-navy underline underline-offset-2"
@@ -156,40 +171,41 @@ export default function LatestSearchAlertForm() {
                 <a href="/find" className="text-navy underline underline-offset-2">
                   Find
                 </a>
-                , then return here — your criteria will show up automatically.
+                , then return.
               </p>
             ) : (
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-                  Your search
+                  Your most common search
                 </span>
                 <select
                   value={fingerprint}
                   onChange={(e) => setFingerprint(e.target.value)}
-                  className="w-full rounded-lg border border-charcoal/15 px-3 py-2 text-sm text-navy focus:border-navy focus:outline-none bg-white"
+                  className="w-full rounded-md border border-charcoal/15 px-2.5 py-1.5 text-xs text-navy focus:border-navy focus:outline-none bg-white"
                 >
-                  {searches.map((s) => (
+                  {searches.map((s, i) => (
                     <option key={s.fingerprint} value={s.fingerprint}>
                       {s.label}
-                      {s.useCount > 1 ? ` · used ${s.useCount}×` : ""}
+                      {i === 0 ? " · most used" : ""}
+                      {s.useCount > 1 ? ` · ${s.useCount}×` : ""}
                     </option>
                   ))}
                 </select>
               </label>
             )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <fieldset className="space-y-2">
+            <div className="grid gap-3">
+              <fieldset className="space-y-1.5">
                 <legend className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
                   Notify by
                 </legend>
-                <div className="flex flex-wrap gap-2">
-                  <ChannelPill
+                <div className="flex flex-wrap gap-1.5">
+                  <ChannelChip
                     active={channel === "email"}
                     onClick={() => setChannel("email")}
                     label="Email"
                   />
-                  <ChannelPill
+                  <ChannelChip
                     active={channel === "sms"}
                     onClick={() => setChannel("sms")}
                     label="Text"
@@ -197,27 +213,25 @@ export default function LatestSearchAlertForm() {
                   />
                 </div>
                 {channel === "sms" ? (
-                  <p className="text-xs text-coral/90">
-                    Texting isn&rsquo;t wired yet (no SMS provider). Use email, or
-                    ask for the Twilio + A2P plan when you&rsquo;re ready to enable
-                    it.
+                  <p className="text-[11px] text-coral/90 leading-snug">
+                    Texting isn&rsquo;t wired yet. Use email for now.
                   </p>
                 ) : null}
               </fieldset>
 
-              <fieldset className="space-y-2">
+              <fieldset className="space-y-1.5">
                 <legend className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
                   When
                 </legend>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {(
                     [
-                      ["immediate", "As new matches appear"],
-                      ["daily", "Once a day"],
-                      ["weekly", "Once a week"],
+                      ["immediate", "As matches appear"],
+                      ["daily", "Daily"],
+                      ["weekly", "Weekly"],
                     ] as const
                   ).map(([value, label]) => (
-                    <ChannelPill
+                    <ChannelChip
                       key={value}
                       active={cadence === value}
                       onClick={() => setCadence(value)}
@@ -229,29 +243,29 @@ export default function LatestSearchAlertForm() {
             </div>
 
             {cadence === "daily" ? (
-              <label className="flex flex-col gap-1 max-w-[12rem]">
+              <label className="flex flex-col gap-1 max-w-[10rem]">
                 <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-                  Time (Eastern)
+                  Time (ET)
                 </span>
                 <input
                   type="time"
                   value={dailyTime}
                   onChange={(e) => setDailyTime(e.target.value)}
-                  className="rounded-lg border border-charcoal/15 px-3 py-2 text-sm text-navy focus:border-navy focus:outline-none"
+                  className="rounded-md border border-charcoal/15 px-2.5 py-1.5 text-xs text-navy focus:border-navy focus:outline-none bg-white"
                 />
               </label>
             ) : null}
 
             {cadence === "weekly" ? (
-              <div className="flex flex-wrap gap-3">
-                <label className="flex flex-col gap-1">
+              <div className="flex flex-wrap gap-2">
+                <label className="flex flex-col gap-1 min-w-[7rem] flex-1">
                   <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
                     Day
                   </span>
                   <select
                     value={weeklyDay}
                     onChange={(e) => setWeeklyDay(Number(e.target.value))}
-                    className="rounded-lg border border-charcoal/15 px-3 py-2 text-sm text-navy focus:border-navy focus:outline-none bg-white"
+                    className="rounded-md border border-charcoal/15 px-2.5 py-1.5 text-xs text-navy focus:border-navy focus:outline-none bg-white"
                   >
                     {WEEKDAYS.map((d) => (
                       <option key={d.value} value={d.value}>
@@ -260,22 +274,22 @@ export default function LatestSearchAlertForm() {
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1">
+                <label className="flex flex-col gap-1 max-w-[8rem]">
                   <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-                    Time (Eastern)
+                    Time (ET)
                   </span>
                   <input
                     type="time"
                     value={weeklyTime}
                     onChange={(e) => setWeeklyTime(e.target.value)}
-                    className="rounded-lg border border-charcoal/15 px-3 py-2 text-sm text-navy focus:border-navy focus:outline-none"
+                    className="rounded-md border border-charcoal/15 px-2.5 py-1.5 text-xs text-navy focus:border-navy focus:outline-none bg-white"
                   />
                 </label>
               </div>
             ) : null}
 
             {channel === "email" ? (
-              <label className="flex flex-col gap-1 max-w-md">
+              <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
                   Email
                 </span>
@@ -285,13 +299,13 @@ export default function LatestSearchAlertForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="rounded-lg border border-charcoal/15 px-3 py-2 text-sm text-navy focus:border-navy focus:outline-none"
+                  className="rounded-md border border-charcoal/15 px-2.5 py-1.5 text-xs text-navy focus:border-navy focus:outline-none bg-white"
                 />
               </label>
             ) : (
-              <label className="flex flex-col gap-1 max-w-md">
+              <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-                  Mobile (for later)
+                  Mobile (later)
                 </span>
                 <input
                   type="tel"
@@ -299,33 +313,35 @@ export default function LatestSearchAlertForm() {
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="(203) 555-0100"
                   disabled
-                  className="rounded-lg border border-charcoal/15 px-3 py-2 text-sm text-navy/40 bg-cream/50 cursor-not-allowed"
+                  className="rounded-md border border-charcoal/15 px-2.5 py-1.5 text-xs text-navy/40 bg-white/60 cursor-not-allowed"
                 />
               </label>
             )}
 
-            <div className="flex flex-wrap items-center gap-3 pt-1">
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
               <button
                 type="button"
                 onClick={() => void submit()}
                 disabled={saving || searches.length === 0 || channel === "sms"}
-                className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-5 py-2.5 border border-navy/30 text-navy bg-cream/40 hover:bg-cream disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-md px-3 py-1.5 border border-navy/30 text-navy bg-white hover:border-navy disabled:opacity-40 disabled:pointer-events-none transition-colors"
               >
                 {saving ? "Saving…" : "Save alert"}
               </button>
               {message ? (
-                <p className="text-sm text-sage">{message}</p>
+                <p className="text-[11px] text-sage leading-snug">{message}</p>
               ) : null}
-              {error ? <p className="text-sm text-coral">{error}</p> : null}
+              {error ? (
+                <p className="text-[11px] text-coral leading-snug">{error}</p>
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }
 
-function ChannelPill({
+function ChannelChip({
   active,
   onClick,
   label,
@@ -341,12 +357,12 @@ function ChannelPill({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border transition-colors ${
+      className={`font-mono text-[10px] tracking-[0.12em] uppercase rounded-md px-2 py-1 border transition-colors ${
         active
           ? "border-navy bg-navy text-white"
           : muted
             ? "border-charcoal/15 text-charcoal/40 hover:border-charcoal/25"
-            : "border-charcoal/20 text-navy/80 hover:border-navy/40"
+            : "border-charcoal/20 text-navy/80 hover:border-navy/40 bg-white"
       }`}
     >
       {label}

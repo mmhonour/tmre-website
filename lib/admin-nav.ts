@@ -24,14 +24,14 @@ export type AdminSyncsPanelId =
   | "dashboard"
   | "configure"
   | "history"
-  | "overview";
+  | "overview"
+  | "db-tuning";
 
 /** Sub-panels under Admin → Database. */
 export type AdminDatabasePanelId =
   | "rets-connection"
   | "inventory"
-  | "town-counts"
-  | "db-tuning";
+  | "town-counts";
 
 /** Sub-panels under Admin → Architecture. */
 export type AdminArchitecturePanelId = "map" | "docs";
@@ -69,6 +69,8 @@ export const LEGACY_ADMIN_PANEL_TO_SYNCS: Record<string, AdminSyncsPanelId> = {
   sync: "dashboard",
   "sync-history": "history",
   "sync-log": "history",
+  /** Former Database → DB write tuning. */
+  "db-tuning": "db-tuning",
 };
 
 /** Former top-level Product docs tab → Architecture sub-panel. */
@@ -150,6 +152,11 @@ export const ADMIN_SYNCS_PANELS: {
     label: "Schedules overview",
     subtitle: "Startup schedule, Netlify crons, and Census zip-boundary sync",
   },
+  {
+    id: "db-tuning",
+    label: "DB write tuning",
+    subtitle: "Upsert chunk size and RETS Active fetch limit",
+  },
 ];
 
 export const ADMIN_DATABASE_PANELS: {
@@ -172,11 +179,6 @@ export const ADMIN_DATABASE_PANELS: {
     id: "town-counts",
     label: "Listings by town",
     subtitle: "Active listing counts from the current Postgres inventory",
-  },
-  {
-    id: "db-tuning",
-    label: "DB write tuning",
-    subtitle: "Upsert chunk size for listings sync writes",
   },
 ];
 
@@ -305,7 +307,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-db-tuning",
     label: "DB write tuning",
-    tab: "db",
+    tab: "syncs",
     panel: "db-tuning",
   },
   {
@@ -733,7 +735,8 @@ export function isAdminSyncsPanelId(
     value === "dashboard" ||
     value === "configure" ||
     value === "history" ||
-    value === "overview"
+    value === "overview" ||
+    value === "db-tuning"
   );
 }
 
@@ -743,8 +746,7 @@ export function isAdminDatabasePanelId(
   return (
     value === "rets-connection" ||
     value === "inventory" ||
-    value === "town-counts" ||
-    value === "db-tuning"
+    value === "town-counts"
   );
 }
 

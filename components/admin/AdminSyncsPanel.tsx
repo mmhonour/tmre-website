@@ -49,6 +49,7 @@ export default function AdminSyncsPanel({
   initialPausedJobs,
   history,
   overview,
+  dbTuning,
   storeLabel,
   storeLabelClassName,
   lambdaLine,
@@ -59,6 +60,7 @@ export default function AdminSyncsPanel({
   initialPausedJobs?: ScheduledSyncPausedJobs;
   history: ReactNode;
   overview: ReactNode;
+  dbTuning: ReactNode;
   storeLabel: string;
   storeLabelClassName: string;
   lambdaLine?: string | null;
@@ -165,6 +167,13 @@ export default function AdminSyncsPanel({
         className={panel === "overview" ? "space-y-6" : undefined}
       >
         {overview}
+      </div>
+      <div
+        role="tabpanel"
+        hidden={panel !== "db-tuning"}
+        className={panel === "db-tuning" ? "space-y-6" : undefined}
+      >
+        {dbTuning}
       </div>
     </div>
   );

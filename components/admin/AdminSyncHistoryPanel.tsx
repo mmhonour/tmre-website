@@ -295,8 +295,9 @@ export default function AdminSyncHistoryPanel({
           <p className="mt-1 text-sm text-slate max-w-2xl">
             MLS syncs from Admin, cron, and overdue catch-up for the{" "}
             {windowLabel} — collapsed by sync type (Full, Incremental), then by
-            status bucket (Queued, Worker, Active+Closed, …). The newest type
-            opens with all of its buckets expanded by default
+            status bucket (Queued, Worker, Active+Closed, Done, …). Queued /
+            Worker are ack lines (count 0); Done carries the job total upserted.
+            The newest type opens with all of its buckets expanded by default
             {overallLatestLabel ? (
               <>
                 {" "}

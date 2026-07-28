@@ -14,7 +14,11 @@ import {
   readListingByIdFromDb,
   readListingsFromDb,
 } from '@/lib/db/listings-repo'
-import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
+import {
+  getSyncMeta,
+  setSyncMeta,
+  setSyncMetaDurable,
+} from '@/lib/db/sync-meta-store'
 import {
   getListingByMlsId,
   refreshListingSchools,
@@ -54,10 +58,43 @@ export const UNDER_CONTRACT_CTS_MLS_STATUS =
 /** Closed sales pulled from RETS for stats/charts since this date. */
 export const CLOSED_LISTINGS_SINCE = '2019-01-01'
 
-/** Max listings pulled per town during sync and broad fetches. */
+/**
+ * Code default for max Active/market listings pulled per town (RETS + broad
+ * fetches). Admin can override via sync_meta — see getActiveListingsFetchLimit.
+ */
 export const ACTIVE_LISTINGS_FETCH_LIMIT = 2000
 export const CLOSED_LISTINGS_FETCH_LIMIT = 5000
 export const EXPIRED_LISTINGS_FETCH_LIMIT = 500
+
+export const ACTIVE_LISTINGS_FETCH_LIMIT_KEY = 'active_listings_fetch_limit'
+export const ACTIVE_LISTINGS_FETCH_LIMIT_MIN = 100
+export const ACTIVE_LISTINGS_FETCH_LIMIT_MAX = 10_000
+
+export function clampActiveListingsFetchLimit(value: number): number {
+  if (!Number.isFinite(value)) return ACTIVE_LISTINGS_FETCH_LIMIT
+  return Math.max(
+    ACTIVE_LISTINGS_FETCH_LIMIT_MIN,
+    Math.min(ACTIVE_LISTINGS_FETCH_LIMIT_MAX, Math.round(value)),
+  )
+}
+
+/** Admin-tunable RETS/Active pull limit per town (sync_meta, else code default). */
+export function getActiveListingsFetchLimit(): number {
+  const raw = getSyncMeta(ACTIVE_LISTINGS_FETCH_LIMIT_KEY)
+  if (raw == null) return ACTIVE_LISTINGS_FETCH_LIMIT
+  const parsed = Number(raw)
+  return Number.isFinite(parsed)
+    ? clampActiveListingsFetchLimit(parsed)
+    : ACTIVE_LISTINGS_FETCH_LIMIT
+}
+
+export async function setActiveListingsFetchLimit(
+  value: number,
+): Promise<number> {
+  const clamped = clampActiveListingsFetchLimit(value)
+  await setSyncMetaDurable(ACTIVE_LISTINGS_FETCH_LIMIT_KEY, String(clamped))
+  return clamped
+}
 
 /** True for Active-bucket MLS rows: Active, Coming Soon, and Under Contract / CTS. */
 export function isMarketListing(l: Listing): boolean {
@@ -506,7 +543,7 @@ export async function fetchAllActiveListings(): Promise<{
   source: ListingsSource
 }> {
   return fetchActiveListingsAcrossTowns(TMRE_TOWNS, {
-    limit: ACTIVE_LISTINGS_FETCH_LIMIT,
+    limit: getActiveListingsFetchLimit(),
   })
 }
 

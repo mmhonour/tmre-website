@@ -43,6 +43,14 @@ import {
   getUpsertChunkRows,
 } from "@/lib/db/db-write-tuning";
 import {
+  ACTIVE_LISTINGS_FETCH_LIMIT,
+  ACTIVE_LISTINGS_FETCH_LIMIT_MAX,
+  ACTIVE_LISTINGS_FETCH_LIMIT_MIN,
+  CLOSED_LISTINGS_FETCH_LIMIT,
+  EXPIRED_LISTINGS_FETCH_LIMIT,
+  getActiveListingsFetchLimit,
+} from "@/lib/listings-store";
+import {
   getListingPhotoTtlMinutesFresh,
   LISTING_PHOTO_TTL_MINUTES_DEFAULT,
   LISTING_PHOTO_TTL_MINUTES_MAX,
@@ -597,16 +605,23 @@ export default async function AdminPage() {
           )}
         </div>
       }
-      dbTuning={
-        <AdminDbTuningPanel
-          initial={{
-            chunkRows: getUpsertChunkRows(),
-            default: DB_UPSERT_CHUNK_ROWS_DEFAULT,
-            min: DB_UPSERT_CHUNK_ROWS_MIN,
-            max: DB_UPSERT_CHUNK_ROWS_MAX,
-          }}
-        />
-      }
+    />
+  );
+
+  const dbTuningPanel = (
+    <AdminDbTuningPanel
+      initial={{
+        chunkRows: getUpsertChunkRows(),
+        default: DB_UPSERT_CHUNK_ROWS_DEFAULT,
+        min: DB_UPSERT_CHUNK_ROWS_MIN,
+        max: DB_UPSERT_CHUNK_ROWS_MAX,
+        activeFetchLimit: getActiveListingsFetchLimit(),
+        activeFetchDefault: ACTIVE_LISTINGS_FETCH_LIMIT,
+        activeFetchMin: ACTIVE_LISTINGS_FETCH_LIMIT_MIN,
+        activeFetchMax: ACTIVE_LISTINGS_FETCH_LIMIT_MAX,
+        closedFetchLimit: CLOSED_LISTINGS_FETCH_LIMIT,
+        expiredFetchLimit: EXPIRED_LISTINGS_FETCH_LIMIT,
+      }}
     />
   );
 
@@ -711,6 +726,7 @@ export default async function AdminPage() {
           lastIncrementalCronTick={lastIncrementalCronTick ?? null}
         />
       }
+      dbTuning={dbTuningPanel}
     />
   );
 

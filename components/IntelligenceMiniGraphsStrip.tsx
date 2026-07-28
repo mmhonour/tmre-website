@@ -82,7 +82,21 @@ export default function IntelligenceMiniGraphsStrip({
   desktopHideToggleOnly?: boolean;
   carouselTrailing?: ReactNode;
 }) {
+  // Parent passes a fresh `slots` array every render — derive a stable presence
+  // key so carousel timers are not cleared on every Intelligence re-render.
+  const slotPresenceKey = slots
+    .map(
+      (s) =>
+        `${s.key}:${s.node != null ? "1" : "0"}:${s.carouselDwellSteps ?? 1}`,
+    )
+    .join("|");
   const items = useMemo(
+    () => slots.filter((s) => s.node != null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by slotPresenceKey
+    [slotPresenceKey],
+  );
+  // Always render the latest nodes (scores/filters) even when presence is stable.
+  const renderItems = useMemo(
     () => slots.filter((s) => s.node != null),
     [slots],
   );
@@ -113,6 +127,12 @@ export default function IntelligenceMiniGraphsStrip({
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   /** Bumped on real user interaction so the idle auto-hide timer restarts. */
   const [activityEpoch, setActivityEpoch] = useState(0);
+
+  // Fresh visit / remount after navigating away — always start rotating.
+  useEffect(() => {
+    setPaused(false);
+    setActiveIndex(0);
+  }, []);
 
   const bumpActivity = useCallback(() => {
     setActivityEpoch((n) => n + 1);
@@ -192,23 +212,31 @@ export default function IntelligenceMiniGraphsStrip({
     if (activeIndex >= items.length) setActiveIndex(0);
   }, [items.length, activeIndex]);
 
+  const itemCount = items.length;
+  const activeDwellSteps = Math.max(
+    1,
+    items[activeIndex]?.carouselDwellSteps ?? 1,
+  );
+
   useEffect(() => {
-    if (
-      !prefReady ||
-      hidden ||
-      !isNarrow ||
-      paused ||
-      items.length <= 1
-    ) {
+    if (!prefReady || hidden || !isNarrow || paused || itemCount <= 1) {
       return;
     }
-    const steps = Math.max(1, items[activeIndex]?.carouselDwellSteps ?? 1);
-    const dwellMs = ROTATE_MS * steps;
+    const dwellMs = ROTATE_MS * activeDwellSteps;
     const id = window.setTimeout(() => {
-      setActiveIndex((prev) => (prev + 1) % items.length);
+      setActiveIndex((prev) => (prev + 1) % itemCount);
     }, dwellMs);
     return () => window.clearTimeout(id);
-  }, [prefReady, hidden, isNarrow, paused, items, activeIndex]);
+    // Deliberately omit `items` — parent re-renders must not reset the dwell timer.
+  }, [
+    prefReady,
+    hidden,
+    isNarrow,
+    paused,
+    itemCount,
+    activeIndex,
+    activeDwellSteps,
+  ]);
 
   // Mobile: "interactive graph" hint beside the carousel controls.
   useEffect(() => {
@@ -240,7 +268,7 @@ export default function IntelligenceMiniGraphsStrip({
     setHiddenPref,
   ]);
 
-  if (items.length === 0) return null;
+  if (renderItems.length === 0) return null;
 
   const toggleClass =
     "font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold";
@@ -286,12 +314,12 @@ export default function IntelligenceMiniGraphsStrip({
   );
 
   const carouselCount =
-    items.length > 1 ? (
+    renderItems.length > 1 ? (
       <span
         className="font-mono text-[9px] tracking-[0.12em] uppercase tabular-nums text-navy/55"
         aria-live="polite"
       >
-        {activeIndex + 1} of {items.length}
+        {activeIndex + 1} of {renderItems.length}
       </span>
     ) : null;
 
@@ -348,7 +376,7 @@ export default function IntelligenceMiniGraphsStrip({
                     : undefined
                 }
               >
-                {items.map((item, i) => (
+                {renderItems.map((item, i) => (
                   <div
                     key={item.key}
                     className={
@@ -364,9 +392,9 @@ export default function IntelligenceMiniGraphsStrip({
               </div>
             </div>
 
-            {isNarrow && (items.length > 1 || carouselTrailing) ? (
+            {isNarrow && (renderItems.length > 1 || carouselTrailing) ? (
               <div className="mt-1.5 flex items-center gap-2">
-                {items.length > 1 ? (
+                {renderItems.length > 1 ? (
                   <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2">
                     {carouselCount}
                     <div
@@ -374,13 +402,13 @@ export default function IntelligenceMiniGraphsStrip({
                       role="tablist"
                       aria-label="Mini graphs"
                     >
-                      {items.map((item, i) => (
+                      {renderItems.map((item, i) => (
                         <button
                           key={item.key}
                           type="button"
                           role="tab"
                           aria-selected={i === activeIndex}
-                          aria-label={`Show graph ${i + 1} of ${items.length}`}
+                          aria-label={`Show graph ${i + 1} of ${renderItems.length}`}
                           className={`h-1.5 rounded-full transition-all ${
                             i === activeIndex
                               ? "w-4 bg-navy"

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isUnderContractStatus } from "@/lib/listing-status";
 import {
-  ACTIVE_LISTINGS_FETCH_LIMIT,
   fetchActiveListingsForCity,
+  getActiveListingsFetchLimit,
   listingCacheHeaders,
 } from "@/lib/listings-store";
 import {
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     // before the this-week filter (same source as the Town Stats count).
     const { listings: raw, source } = await fetchActiveListingsForCity(
       city,
-      ACTIVE_LISTINGS_FETCH_LIMIT,
+      getActiveListingsFetchLimit(),
     );
     const listings = raw
       .filter((l) => {

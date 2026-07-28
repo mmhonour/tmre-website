@@ -6,11 +6,11 @@ import {
   upsertTownListings,
 } from '@/lib/db/listings-repo'
 import {
-  ACTIVE_LISTINGS_FETCH_LIMIT,
   CLOSED_LISTINGS_FETCH_LIMIT,
   CLOSED_LISTINGS_SINCE,
   COMING_SOON_MLS_STATUS,
   EXPIRED_LISTINGS_FETCH_LIMIT,
+  getActiveListingsFetchLimit,
   isClosedListing,
   isExpiredListing,
   searchExpiredListingsForTown,
@@ -105,7 +105,7 @@ async function fetchClosedListingsForTown(town: TmreTown, limit: number): Promis
 /** Fetch one town/bucket from RETS (identical pull logic to the SQLite path). */
 async function fetchTownBucket(town: TmreTown, statusBucket: StatusBucket): Promise<Listing[]> {
   if (statusBucket === 'Active') {
-    const limit = ACTIVE_LISTINGS_FETCH_LIMIT
+    const limit = getActiveListingsFetchLimit()
     const [active, comingSoon, underContract, underContractCts] =
       await Promise.all([
         searchMarketListingsForTown(town, 'Active', limit),
@@ -236,7 +236,7 @@ export async function syncTownIncrementalPg(
   modifiedAfter: string,
 ): Promise<{ count: number; priceChangedIds: string[] }> {
   if (statusBucket === 'Active') {
-    const limit = ACTIVE_LISTINGS_FETCH_LIMIT
+    const limit = getActiveListingsFetchLimit()
     const [active, comingSoon, underContract, underContractCts, closed] =
       await Promise.all([
         searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter }),
@@ -287,7 +287,7 @@ export async function syncTownIncrementalPg(
         ? CLOSED_LISTINGS_FETCH_LIMIT
         : statusBucket === 'Expired'
           ? EXPIRED_LISTINGS_FETCH_LIMIT
-          : ACTIVE_LISTINGS_FETCH_LIMIT,
+          : getActiveListingsFetchLimit(),
   }
   if (statusBucket === 'Closed') params.closedAfter = CLOSED_SINCE
   const listings = await searchListings(params)

@@ -200,12 +200,14 @@ export function dealOfTheDayHref(
 ): string {
   const params = new URLSearchParams();
   if (city && city !== "All") params.set("city", city);
-  const listingId = opts?.listingKey?.trim() || opts?.mlsId?.trim();
+  // Prefer MLS id — listingKey is a long Matrix key and is easy to mishandle in
+  // peer-limited live picks; both still resolve server-side.
+  const listingId = opts?.mlsId?.trim() || opts?.listingKey?.trim();
   if (listingId) params.set("listing", listingId);
   if (opts?.kind) params.set("kind", opts.kind);
-  if (opts?.propertyClass && opts.propertyClass !== "homes") {
-    params.set("property", opts.propertyClass);
-  }
+  // Always emit property (including homes) so a stale Multi/Condos cookie on
+  // /deal-of-the-day cannot override an Intelligence deep link.
+  if (opts?.propertyClass) params.set("property", opts.propertyClass);
   const qs = params.toString();
   return qs ? `/deal-of-the-day?${qs}` : "/deal-of-the-day";
 }

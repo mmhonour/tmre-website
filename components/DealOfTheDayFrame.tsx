@@ -471,7 +471,9 @@ export default function DealOfTheDayFrame({
   const l = deal?.listing;
   const hasDeal = Boolean(deal && l);
 
-  if (hideUntilReady && !hasDeal) {
+  // Hide only while a matching pick is still loading — never swallow the empty
+  // state for a pinned town / rental filter (that looked like DOTD “ignored” search).
+  if (hideUntilReady && !hasDeal && loading) {
     return null;
   }
   const score = deal?.score;

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchActiveListingsForCity, listingCacheHeaders, type ListingsSource } from '@/lib/listings-store'
+import {
+  fetchActiveListingsForCity,
+  fetchListingByMlsId,
+  listingCacheHeaders,
+  type ListingsSource,
+} from '@/lib/listings-store'
 import { computeDealOfTheDay, type DealPickPayload } from '@/lib/deal-pick'
 import { SCORE_PEER_LIMIT } from '@/lib/goldilocks'
 import {
@@ -171,6 +176,22 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    // Pinned deep links often target a listing outside the peer-cap window —
+    // resolve it explicitly so Intelligence → DOTD doesn't 404.
+    if (listingId) {
+      const already = listings.some(
+        (l) =>
+          l.mlsId?.trim().toLowerCase() === listingId.toLowerCase() ||
+          l.listingKey?.trim().toLowerCase() === listingId.toLowerCase(),
+      )
+      if (!already) {
+        const { listing: pinned } = await fetchListingByMlsId(listingId)
+        if (pinned) {
+          listings = [pinned, ...listings]
+        }
+      }
+    }
+
     const peerListings = town
       ? (batches[0]?.listings ?? [])
       : batches.flatMap((b) => b.listings)
@@ -178,7 +199,9 @@ export async function GET(req: NextRequest) {
     const payload = await computeDealOfTheDay(listings, {
       peerListings,
       kind,
-      ...(propertyClass === 'all' ? {} : { propertyClass }),
+      // Pinned listing views ignore subtype so a homes deep-link still works
+      // even if the client cookie said Multi/Condos.
+      ...(listingId || propertyClass === 'all' ? {} : { propertyClass }),
       ...(listingId ? { listingId } : {}),
     })
     if (!payload) {

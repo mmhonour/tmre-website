@@ -673,16 +673,42 @@ export default function LatestClient({
         </div>
       </section>
 
-      <section className="bg-cream pt-4 pb-0 lg:pt-5">
-        <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          <LatestSearchAlertForm />
-        </div>
-      </section>
-
       <section className="bg-cream pt-4 pb-10 lg:pt-5 lg:pb-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
             <div className="min-w-0">
+              <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 font-mono text-[11px] tracking-[0.12em] uppercase">
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="text-charcoal/45">
+                    {groupByTown && groupByZip
+                      ? "Grouped By Town · Zip"
+                      : groupByTown
+                        ? "Grouped By Town"
+                        : "By Updated Timestamp"}
+                  </span>
+                  <LatestSearchAlertForm />
+                </div>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <button
+                    type="button"
+                    onClick={activateGroupByTown}
+                    className="shrink-0 bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors"
+                    aria-pressed={groupByTown}
+                  >
+                    {groupByTown ? "Sort by latest timestamp" : "Group by town"}
+                  </button>
+                  {groupByTown ? (
+                    <button
+                      type="button"
+                      onClick={activateGroupByZip}
+                      className="shrink-0 bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors"
+                      aria-pressed={groupByZip}
+                    >
+                      {groupByZip ? "Ungroup zip" : "Group by zip"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
               <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
               {loading || (selectedTown && townLoading && visibleListings.length === 0) ? (
                 <div className="px-5 py-16 text-center text-slate">
@@ -701,41 +727,6 @@ export default function LatestClient({
                 </div>
               ) : (
                 <div>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 sm:px-4 py-2 border-b border-charcoal/[0.08] bg-cream/40 font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/45">
-                    {groupByTown && groupByZip ? (
-                      <span className="min-w-0 basis-full sm:basis-auto sm:flex-1 text-left">
-                        Grouped By Town · Zip
-                      </span>
-                    ) : groupByTown ? (
-                      <span className="min-w-0 basis-full sm:basis-auto sm:flex-1 text-left">
-                        Grouped By Town
-                      </span>
-                    ) : (
-                      <span className="min-w-0 basis-full sm:basis-auto sm:flex-1 text-left">
-                        By Updated Timestamp
-                      </span>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={activateGroupByTown}
-                        className="shrink-0 font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors border border-charcoal/15 hover:border-gold rounded-full px-2.5 py-1"
-                        aria-pressed={groupByTown}
-                      >
-                        {groupByTown ? "SORT BY LATEST TIMESTAMP" : "Group by town"}
-                      </button>
-                      {groupByTown ? (
-                        <button
-                          type="button"
-                          onClick={activateGroupByZip}
-                          className="shrink-0 font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors border border-charcoal/15 hover:border-gold rounded-full px-2.5 py-1"
-                          aria-pressed={groupByZip}
-                        >
-                          {groupByZip ? "UNGROUP ZIP" : "Group by zip"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
                   {isGrouped
                     ? feedGroups.map((group) => {
                         const collapsed = collapsedGroups.has(group.label);

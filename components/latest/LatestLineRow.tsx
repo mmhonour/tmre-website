@@ -96,21 +96,12 @@ function LatestLineRow({
     >
       <div className="flex shrink-0 items-stretch gap-1.5 sm:gap-2">
         <div
-          className="box-border flex w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] sm:w-[3.75rem] sm:min-w-[3.75rem] sm:max-w-[3.75rem] shrink-0 grow-0 flex-col justify-between overflow-hidden py-px"
+          className="box-border flex w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] sm:w-[3.75rem] sm:min-w-[3.75rem] sm:max-w-[3.75rem] shrink-0 grow-0 items-center overflow-hidden py-px"
           title={`MLS updated ${updatedLabel} (your local time)`}
         >
           <span className="font-mono text-[11px] sm:text-[12px] tabular-nums leading-none text-navy whitespace-nowrap">
             {updatedLabel}
           </span>
-          <ClickableGoldilocksScore
-            score={l.score}
-            breakdown={l.scoreBreakdown}
-            title={l.address}
-            subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
-            listingHref={detailHref}
-            isRental={l.isRental}
-            className="shrink-0 self-start text-[13px] leading-none"
-          />
         </div>
         <DealBoardPrimaryPhoto
           listing={l}
@@ -151,6 +142,15 @@ function LatestLineRow({
             />
           ) : null}
         </div>
+        <ClickableGoldilocksScore
+          score={l.score}
+          breakdown={l.scoreBreakdown}
+          title={l.address}
+          subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
+          listingHref={detailHref}
+          isRental={l.isRental}
+          className="inline-flex w-[2.75rem] shrink-0 justify-end self-center text-[13px] leading-none"
+        />
         <div
           className={`${metaColClass} w-[7.5rem] shrink-0 font-mono text-[12px] sm:text-[13px] tabular-nums text-navy`}
         >

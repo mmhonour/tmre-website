@@ -19,6 +19,7 @@ export function normalizeSyncStatusBucket(bucket: string | null | undefined): st
  * Plain Active / Closed / Expired (full town/bucket pulls) → "Full".
  * Cron heartbeat rows use "cron/incremental" → "Cron".
  * Queue/worker audits use "Queued/incremental" / "Worker/incremental".
+ * Job roll-up uses "Done/incremental" with total upserted across towns.
  */
 export function normalizeSyncType(bucket: string | null | undefined): string {
   const raw = (bucket ?? '').trim()
@@ -80,6 +81,7 @@ const BUCKET_ORDER = [
   'Active',
   'Closed',
   'Expired',
+  'Done',
   'cron',
 ]
 

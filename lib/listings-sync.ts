@@ -14,11 +14,11 @@ import {
 } from '@/lib/incremental-sync-live'
 import { beginListingsRefresh, endListingsRefresh } from '@/lib/listings-refresh-status'
 import {
-  ACTIVE_LISTINGS_FETCH_LIMIT,
   CLOSED_LISTINGS_FETCH_LIMIT,
   CLOSED_LISTINGS_SINCE,
   COMING_SOON_MLS_STATUS,
   EXPIRED_LISTINGS_FETCH_LIMIT,
+  getActiveListingsFetchLimit,
   isClosedListing,
   isExpiredListing,
   searchExpiredListingsForTown,
@@ -95,7 +95,7 @@ async function fetchClosedListingsIncremental(
     modifiedAfter,
     // Date window required by SmartMLS; ModificationTimestamp keeps the hit set small.
     closedAfter: CLOSED_LISTINGS_SINCE,
-    limit: ACTIVE_LISTINGS_FETCH_LIMIT,
+    limit: getActiveListingsFetchLimit(),
   })
   return rows.filter(isClosedListing)
 }
@@ -110,7 +110,7 @@ export async function syncTownListingsIncremental(
   const statusBucket = 'Active+Closed/incremental'
 
   try {
-    const limit = ACTIVE_LISTINGS_FETCH_LIMIT
+    const limit = getActiveListingsFetchLimit()
     const [active, comingSoon, underContract, underContractCts, closed] =
       await Promise.all([
         searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter }),
@@ -401,7 +401,7 @@ export async function warmActiveListingPhotos(options: {
   try {
     const { syncListingPhotosForListings } = await import('@/lib/listing-photos-sync')
     for (const town of TMRE_TOWNS) {
-      const listings = await readListingsFromDb(town, 'Active', ACTIVE_LISTINGS_FETCH_LIMIT)
+      const listings = await readListingsFromDb(town, 'Active', getActiveListingsFetchLimit())
       if (listings.length === 0) continue
       const res = await syncListingPhotosForListings(listings, {
         concurrency,
@@ -497,7 +497,7 @@ export async function syncTownListings(
         ? CLOSED_LISTINGS_FETCH_LIMIT
         : statusBucket === 'Expired'
           ? EXPIRED_LISTINGS_FETCH_LIMIT
-          : ACTIVE_LISTINGS_FETCH_LIMIT,
+          : getActiveListingsFetchLimit(),
   }
   if (statusBucket === 'Closed') {
     params.closedAfter = CLOSED_SINCE

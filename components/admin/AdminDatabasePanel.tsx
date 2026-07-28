@@ -31,12 +31,10 @@ export default function AdminDatabasePanel({
   retsConnection,
   inventory,
   townCounts,
-  dbTuning,
 }: {
   retsConnection: ReactNode;
   inventory: ReactNode;
   townCounts: ReactNode;
-  dbTuning: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDatabasePanelId>("rets-connection");
 
@@ -64,7 +62,6 @@ export default function AdminDatabasePanel({
     "rets-connection": retsConnection,
     inventory,
     "town-counts": townCounts,
-    "db-tuning": dbTuning,
   };
   const active = ADMIN_DATABASE_PANELS.find((item) => item.id === panel);
 

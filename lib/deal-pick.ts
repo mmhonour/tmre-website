@@ -402,8 +402,16 @@ export async function pickDealOfTheDayFromBoardScored(
   const active = scoped.filter(isMarketListing)
   if (!active.length) return null
 
-  const activeIds = new Set(active.map((l) => l.mlsId))
-  const scored = boardScored.filter((s) => activeIds.has(s.listing.mlsId))
+  const activeIds = new Set(
+    active.flatMap((l) =>
+      [l.mlsId, l.listingKey].filter((id): id is string => Boolean(id?.trim())),
+    ),
+  )
+  const scored = boardScored.filter(
+    (s) =>
+      (s.listing.mlsId && activeIds.has(s.listing.mlsId)) ||
+      (s.listing.listingKey && activeIds.has(s.listing.listingKey)),
+  )
   if (!scored.length) return null
 
   if (opts?.listingId?.trim()) {

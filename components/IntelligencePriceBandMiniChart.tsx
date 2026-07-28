@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
+import {
+  INTEL_MINI_GRAPH_WIDTH,
+  miniGraphPointX,
+  selectMiniGraphBucketsForLayout,
+} from "@/lib/intel-mini-graph-layout";
 
 /** Phrase after “Filters …” — swap later without rewriting the chrome. */
 export const ACTIVE_BY_PRICE_LABEL = "Inventory by price";
@@ -35,9 +40,8 @@ type ApiPayload = {
   statsCache?: boolean;
 };
 
-const WIDTH = 248;
+const WIDTH = INTEL_MINI_GRAPH_WIDTH;
 const HEIGHT = 72;
-const PAD_X = 14;
 const PAD_TOP = 22;
 const PAD_BOTTOM = 18;
 
@@ -145,16 +149,18 @@ export default function IntelligencePriceBandMiniChart({
 
   const points = useMemo((): BandPoint[] => {
     if (buckets.length === 0) return [];
-    const counts = buckets.map((b) => b.count);
+    // ≤3 non-empty bands → drop empty slots and spread the real points.
+    const plot = selectMiniGraphBucketsForLayout(buckets);
+    if (plot.length === 0) return [];
+    const counts = plot.map((b) => b.count);
     const minC = Math.min(...counts);
     const maxC = Math.max(...counts);
     const span = Math.max(maxC - minC, 1);
-    const innerW = WIDTH - PAD_X * 2;
     const innerH = HEIGHT - PAD_TOP - PAD_BOTTOM;
-    const n = buckets.length;
+    const n = plot.length;
 
-    return buckets.map((b, i) => {
-      const x = n === 1 ? WIDTH / 2 : PAD_X + (innerW * i) / (n - 1);
+    return plot.map((b, i) => {
+      const x = miniGraphPointX(i, n, WIDTH);
       const y = PAD_TOP + innerH * (1 - (b.count - minC) / span);
       return {
         id: b.id,

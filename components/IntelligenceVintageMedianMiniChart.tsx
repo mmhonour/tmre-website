@@ -8,6 +8,10 @@ import {
 } from "@/lib/intelligence-vintage-stats";
 import type { VintageBucketId } from "@/lib/vintage-buckets";
 import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
+import {
+  INTEL_MINI_GRAPH_WIDTH,
+  miniGraphPointX,
+} from "@/lib/intel-mini-graph-layout";
 
 /** Phrase after “Filters …” — swap later without rewriting the chrome. */
 export const MEDIAN_BY_VINTAGE_LABEL = "Median by vintage";
@@ -26,9 +30,8 @@ type ChartPoint = {
 };
 
 /** Panel column width — keep chart flush with the stats column below. */
-const WIDTH = 248;
+const WIDTH = INTEL_MINI_GRAPH_WIDTH;
 const HEIGHT = 72;
-const PAD_X = 14;
 const PAD_TOP = 22;
 const PAD_BOTTOM = 18;
 
@@ -93,13 +96,14 @@ export default function IntelligenceVintageMedianMiniChart({
     const minP = Math.min(...prices);
     const maxP = Math.max(...prices);
     const span = Math.max(maxP - minP, 1);
-    const innerW = WIDTH - PAD_X * 2;
     const innerH = HEIGHT - PAD_TOP - PAD_BOTTOM;
     const n = snapshots.length;
+    // Sparse vintage sets (≤3 eras): label every point; one stays centered.
+    const labelAll = n <= 3;
 
     return snapshots.map((snap, i) => {
       const price = snap.medianPrice as number;
-      const x = n === 1 ? WIDTH / 2 : PAD_X + (innerW * i) / (n - 1);
+      const x = miniGraphPointX(i, n, WIDTH);
       const y = PAD_TOP + innerH * (1 - (price - minP) / span);
       return {
         id: snap.id,
@@ -107,8 +111,8 @@ export default function IntelligenceVintageMedianMiniChart({
         medianPrice: price,
         x,
         y,
-        // Every other point, starting with the first (0, 2, 4, …).
-        callout: i % 2 === 0,
+        // Dense: every other point; sparse (≤3): every point.
+        callout: labelAll || i % 2 === 0,
       };
     });
   }, [listings]);

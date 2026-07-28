@@ -197,18 +197,34 @@ export function recordVisitorSearch(criteria: VisitorSearchCriteria): void {
   writeHistory(next)
 }
 
+/** Most-used first; ties break to most recently used. */
+export function sortVisitorSearchesByFrequency(
+  entries: VisitorSearchProfileEntry[],
+): VisitorSearchProfileEntry[] {
+  return [...entries].sort((a, b) => {
+    const byCount = (b.useCount || 0) - (a.useCount || 0)
+    if (byCount !== 0) return byCount
+    return (b.lastUsedAt || '').localeCompare(a.lastUsedAt || '')
+  })
+}
+
 /**
  * Unique searches for the Latest alert form: history cookie first, then the
  * current cookie filter snapshot if it isn't already listed.
+ * Ordered by frequency (most common search first).
  */
 export function listUniqueVisitorSearches(): VisitorSearchProfileEntry[] {
   if (typeof document === 'undefined') return []
   const history = readHistoryRaw()
   const current = readCurrentSearchFromCookies()
-  if (!isMeaningfulCriteria(current)) return history
+  if (!isMeaningfulCriteria(current)) {
+    return sortVisitorSearchesByFrequency(history)
+  }
   const fp = fingerprintCriteria(current)
-  if (history.some((e) => e.fingerprint === fp)) return history
-  return [
+  if (history.some((e) => e.fingerprint === fp)) {
+    return sortVisitorSearchesByFrequency(history)
+  }
+  return sortVisitorSearchesByFrequency([
     {
       fingerprint: fp,
       label: labelCriteria(current),
@@ -217,7 +233,7 @@ export function listUniqueVisitorSearches(): VisitorSearchProfileEntry[] {
       useCount: 1,
     },
     ...history,
-  ]
+  ])
 }
 
 export function clearVisitorSearchHistory(): void {
