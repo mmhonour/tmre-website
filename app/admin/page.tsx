@@ -14,6 +14,7 @@ import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
 import AdminBrokeragePanel from "@/components/admin/AdminBrokeragePanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
+import AdminCommunicationsPanel from "@/components/admin/AdminCommunicationsPanel";
 import AdminMarketDigestPanel from "@/components/admin/AdminMarketDigestPanel";
 import AdminDeployNotifyPanel from "@/components/admin/AdminDeployNotifyPanel";
 import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
@@ -663,14 +664,17 @@ export default async function AdminPage() {
         />
       </div>
 
-      <AdminMarketDigestPanel initial={marketDigest} />
-
       <AdminDeployNotifyPanel initial={deployNotify ?? undefined} />
-
-      <AdminSocialProfilesPanel
-        initial={socialProfiles ?? undefined}
-      />
     </>
+  );
+
+  const communicationsPanel = (
+    <AdminCommunicationsPanel
+      marketDigest={<AdminMarketDigestPanel initial={marketDigest} />}
+      socialProfiles={
+        <AdminSocialProfilesPanel initial={socialProfiles ?? undefined} />
+      }
+    />
   );
 
   const inventoryBandsPanel = <AdminInventorySegmentBandsPanel />;
@@ -941,6 +945,7 @@ export default async function AdminPage() {
         postgres={postgresPanel}
         stats={<AdminStatsInventoryPanel />}
         dataControls={dataControlsPanel}
+        communications={communicationsPanel}
         cookies={<AdminBrowserCookiesPanel />}
         architecture={
           <AdminArchitecturePanel

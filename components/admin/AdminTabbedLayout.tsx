@@ -5,11 +5,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ADMIN_TABS,
   adminArchitecturePanelForSection,
+  adminCommunicationsPanelForSection,
   adminDataControlsPanelForSection,
   adminDatabasePanelForSection,
   adminSyncsPanelForSection,
   adminTabForSection,
   isAdminArchitecturePanelId,
+  isAdminCommunicationsPanelId,
   isAdminDataControlsPanelId,
   isAdminDatabasePanelId,
   isAdminPostgresSchemaHash,
@@ -145,6 +147,15 @@ function ensureNestedPanelParam() {
     const fromSection = hash ? adminArchitecturePanelForSection(hash) : null;
     url.searchParams.set("panel", fromSection ?? "map");
     window.history.replaceState(null, "", url);
+    return;
+  }
+  if (tab === "communications") {
+    if (isAdminCommunicationsPanelId(url.searchParams.get("panel"))) return;
+    const fromSection = hash
+      ? adminCommunicationsPanelForSection(hash)
+      : null;
+    url.searchParams.set("panel", fromSection ?? "market-digest");
+    window.history.replaceState(null, "", url);
   }
 }
 
@@ -159,6 +170,7 @@ export default function AdminTabbedLayout({
   postgres,
   stats,
   dataControls,
+  communications,
   cookies,
   architecture,
   syncs,
@@ -170,6 +182,7 @@ export default function AdminTabbedLayout({
   postgres: ReactNode;
   stats: ReactNode;
   dataControls: ReactNode;
+  communications: ReactNode;
   cookies: ReactNode;
   architecture: ReactNode;
   syncs: ReactNode;
@@ -227,6 +240,10 @@ export default function AdminTabbedLayout({
       if (!isAdminArchitecturePanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "map");
       }
+    } else if (next === "communications") {
+      if (!isAdminCommunicationsPanelId(url.searchParams.get("panel"))) {
+        url.searchParams.set("panel", "market-digest");
+      }
     } else {
       url.searchParams.delete("panel");
     }
@@ -240,6 +257,7 @@ export default function AdminTabbedLayout({
     postgres,
     stats,
     "data-controls": dataControls,
+    communications,
     cookies,
     architecture,
     server,

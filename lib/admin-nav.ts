@@ -3,6 +3,7 @@ export type AdminTabId =
   | "postgres"
   | "stats"
   | "data-controls"
+  | "communications"
   | "cookies"
   | "architecture"
   | "syncs"
@@ -36,16 +37,20 @@ export type AdminDatabasePanelId =
 /** Sub-panels under Admin → Architecture. */
 export type AdminArchitecturePanelId = "map" | "docs";
 
+/** Sub-panels under Admin → Communications. */
+export type AdminCommunicationsPanelId = "market-digest" | "social-profiles";
+
 export type AdminSectionLink = {
   id: string;
   label: string;
   tab: AdminTabId;
-  /** Sub-panel when the tab has nested panels (Syncs / Database / Data controls / Architecture). */
+  /** Sub-panel when the tab has nested panels (Syncs / Database / Data controls / Architecture / Communications). */
   panel?:
     | AdminSyncsPanelId
     | AdminDataControlsPanelId
     | AdminDatabasePanelId
-    | AdminArchitecturePanelId;
+    | AdminArchitecturePanelId
+    | AdminCommunicationsPanelId;
 };
 
 /** Former top-level tabs now nested under Data Controls. */
@@ -89,7 +94,7 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   {
     id: "site",
     label: "Site controls",
-    subtitle: "Photos, contact, Monday market brief, and social profiles",
+    subtitle: "Photos, contact, brokerage, and deploy notifications",
   },
   {
     id: "spotlight",
@@ -200,6 +205,25 @@ export const ADMIN_ARCHITECTURE_PANELS: {
   },
 ];
 
+export const ADMIN_COMMUNICATIONS_PANELS: {
+  id: AdminCommunicationsPanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "market-digest",
+    label: "Monday market brief",
+    subtitle:
+      "Weekly inventory / months-supply email (~8am Eastern) and Deal of the Week note",
+  },
+  {
+    id: "social-profiles",
+    label: "Social media profiles",
+    subtitle:
+      "Account handles and profile URLs for future market-brief / Deal of the Week posting",
+  },
+];
+
 export type AdminDocLink = {
   label: string;
   href: string;
@@ -243,6 +267,11 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     label: "Data controls",
     subtitle:
       "Site, Spotlight, Goldilocks, Pricing, Vintages, RETS, and Market Bands",
+  },
+  {
+    id: "communications",
+    label: "Communications",
+    subtitle: "Monday market brief and social media profiles",
   },
   {
     id: "cookies",
@@ -367,8 +396,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-market-digest",
     label: "Monday market brief",
-    tab: "data-controls",
-    panel: "site",
+    tab: "communications",
+    panel: "market-digest",
   },
   {
     id: "admin-deploy-notify",
@@ -379,8 +408,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-social-profiles",
     label: "Social media profiles",
-    tab: "data-controls",
-    panel: "site",
+    tab: "communications",
+    panel: "social-profiles",
   },
   {
     id: "admin-spotlight",
@@ -714,6 +743,13 @@ export function adminArchitecturePanelForSection(
   return isAdminArchitecturePanelId(panel) ? panel : null;
 }
 
+export function adminCommunicationsPanelForSection(
+  sectionId: string,
+): AdminCommunicationsPanelId | null {
+  const panel = ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel;
+  return isAdminCommunicationsPanelId(panel) ? panel : null;
+}
+
 export function isAdminDataControlsPanelId(
   value: string | null | undefined,
 ): value is AdminDataControlsPanelId {
@@ -765,6 +801,12 @@ export function isAdminArchitecturePanelId(
   return value === "map" || value === "docs";
 }
 
+export function isAdminCommunicationsPanelId(
+  value: string | null | undefined,
+): value is AdminCommunicationsPanelId {
+  return value === "market-digest" || value === "social-profiles";
+}
+
 export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
   const link = ADMIN_SECTION_LINKS.find((row) => row.id === sectionId);
   const params = new URLSearchParams({ tab });
@@ -773,7 +815,8 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
     ((tab === "syncs" && isAdminSyncsPanelId(link.panel)) ||
       (tab === "data-controls" && isAdminDataControlsPanelId(link.panel)) ||
       (tab === "db" && isAdminDatabasePanelId(link.panel)) ||
-      (tab === "architecture" && isAdminArchitecturePanelId(link.panel)))
+      (tab === "architecture" && isAdminArchitecturePanelId(link.panel)) ||
+      (tab === "communications" && isAdminCommunicationsPanelId(link.panel)))
   ) {
     params.set("panel", link.panel);
   }
@@ -794,6 +837,12 @@ export function adminDatabaseHref(panel: AdminDatabasePanelId): string {
 
 export function adminArchitectureHref(panel: AdminArchitecturePanelId): string {
   return `/admin?tab=architecture&panel=${panel}`;
+}
+
+export function adminCommunicationsHref(
+  panel: AdminCommunicationsPanelId,
+): string {
+  return `/admin?tab=communications&panel=${panel}`;
 }
 
 /** Anchor id for a table card on the Admin Postgres schema diagram. */

@@ -12,11 +12,12 @@ type StatsChartPrintFrameProps = {
   className?: string;
 };
 
-const toolbarBtnClass =
-  "font-mono text-[10px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors border border-charcoal/15 hover:border-gold rounded-full px-3 py-1 bg-white/80 backdrop-blur-sm disabled:opacity-40 disabled:pointer-events-none disabled:hover:text-navy disabled:hover:border-charcoal/15";
+/** Flat link controls — sit just over the top edge of each graph. */
+const overlayLinkClass =
+  "bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors disabled:opacity-35 disabled:pointer-events-none disabled:no-underline";
 
-const checkboxLabelClass =
-  "inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.1em] uppercase text-slate cursor-pointer select-none";
+const overlayLinkMutedClass =
+  "bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/40 underline decoration-charcoal/15 underline-offset-2 hover:text-navy hover:decoration-navy/30 transition-colors";
 
 function resolvePrintMode(
   printChart: boolean,
@@ -52,7 +53,7 @@ function StatsPrintControls({
       <button
         type="button"
         onClick={() => printStatsChart(chartId, "chart")}
-        className={toolbarBtnClass}
+        className={overlayLinkClass}
         aria-label={title ? `Print ${title}` : "Print chart"}
       >
         Print
@@ -61,37 +62,33 @@ function StatsPrintControls({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <label className={checkboxLabelClass}>
-          <input
-            type="checkbox"
-            checked={printChart}
-            onChange={(e) => setPrintChart(e.target.checked)}
-            className="h-3 w-3 rounded border-charcoal/25 text-gold focus:ring-gold/40"
-          />
-          Chart
-        </label>
-        <label className={checkboxLabelClass}>
-          <input
-            type="checkbox"
-            checked={printData}
-            onChange={(e) => setPrintData(e.target.checked)}
-            className="h-3 w-3 rounded border-charcoal/25 text-gold focus:ring-gold/40"
-          />
-          Data
-        </label>
-      </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setPrintChart((v) => !v)}
+        aria-pressed={printChart}
+        className={printChart ? overlayLinkClass : overlayLinkMutedClass}
+      >
+        Chart{printChart ? " ✓" : ""}
+      </button>
+      <button
+        type="button"
+        onClick={() => setPrintData((v) => !v)}
+        aria-pressed={printData}
+        className={printData ? overlayLinkClass : overlayLinkMutedClass}
+      >
+        Data{printData ? " ✓" : ""}
+      </button>
       <button
         type="button"
         onClick={handlePrint}
         disabled={printMode == null}
-        className={toolbarBtnClass}
+        className={overlayLinkClass}
         aria-label={title ? `Print ${title}` : "Print selected"}
       >
         Print
       </button>
-    </div>
+    </>
   );
 }
 
@@ -117,38 +114,34 @@ export default function StatsChartPrintFrame({
       data-stats-data-open={dataPanel && dataOpen ? "true" : undefined}
     >
       {chartReady && title ? (
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-4 stats-print-screen-only">
+        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-2 stats-print-screen-only">
           {title}
         </p>
       ) : null}
-      {chartReady ? (
-        <div
-          className={`stats-print-screen-only flex flex-wrap items-center gap-2 mb-2 -mt-1${
-            dataPanel ? "" : " justify-end"
-          }`}
-        >
-          {dataPanel ? (
-            <button
-              type="button"
-              onClick={() => setDataOpen((open) => !open)}
-              aria-expanded={dataOpen}
-              className={toolbarBtnClass}
-            >
-              {dataOpen ? "Hide data" : "Show data"}
-            </button>
-          ) : null}
-          <div className={`flex flex-wrap gap-2${dataPanel ? " ml-auto" : ""}`}>
+      <div className="relative">
+        {chartReady ? (
+          <div className="stats-print-screen-only absolute right-3 -top-2.5 z-20 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:right-4">
+            {dataPanel ? (
+              <button
+                type="button"
+                onClick={() => setDataOpen((open) => !open)}
+                aria-expanded={dataOpen}
+                className={overlayLinkClass}
+              >
+                {dataOpen ? "Hide data" : "Show data"}
+              </button>
+            ) : null}
             <StatsPrintControls
               chartId={chartId}
               title={title}
               hasData={dataPanel != null}
             />
           </div>
-        </div>
-      ) : null}
-      <StatsChartFrameProvider setChartReady={setChartReady}>
-        <div data-stats-print-chart>{children}</div>
-      </StatsChartFrameProvider>
+        ) : null}
+        <StatsChartFrameProvider setChartReady={setChartReady}>
+          <div data-stats-print-chart>{children}</div>
+        </StatsChartFrameProvider>
+      </div>
       {chartReady && dataPanel ? (
         <div
           className={dataOpen ? "mt-4" : "hidden"}

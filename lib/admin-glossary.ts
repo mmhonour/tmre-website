@@ -173,7 +173,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Configure recipient on Admin → Site; social graphic posting comes later.',
+      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Configure recipient on Admin → Communications → Monday market brief; social graphic posting comes later.',
   },
   {
     term: 'Deploy notifications',
@@ -185,7 +185,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Social media profiles',
     category: 'product',
     definition:
-      'Admin → Site text slots for Instagram / LinkedIn (or other) handles and URLs. Stored in sync_meta for future auto-posting of the market brief / Deal of the Week graphic; posting APIs not connected yet.',
+      'Admin → Communications → Social media profiles text slots for Instagram / LinkedIn (or other) handles and URLs. Stored in sync_meta for future auto-posting of the market brief / Deal of the Week graphic; posting APIs not connected yet.',
   },
   {
     term: 'Saved search / listing alert',

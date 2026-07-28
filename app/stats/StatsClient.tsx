@@ -659,22 +659,24 @@ export default function StatsClient() {
         </h2>
       </div>
 
-      <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden stats-print-screen-only stats-hero-section">
+      <section className="navy-gradient text-white pt-16 pb-4 lg:pt-20 lg:pb-5 relative overflow-hidden stats-print-screen-only stats-hero-section">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
-            Market Statistics
-          </p>
-          <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
-            Numbers, <span className="italic gold-shimmer">live!</span>
-          </h1>
-          <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            {selectedCity === "All"
-              ? `Real-time ${isRental ? "rental" : "for-sale"} stats across ${formatTownList(TOWN_LIST)} — pre-computed locally and refreshed every 30 minutes.`
-              : `Live ${isRental ? "rental" : "for-sale"} stats for ${selectedCity}, CT — pre-computed locally and refreshed every 30 minutes.`}
-          </p>
+          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 animate-fade-up">
+            <h1 className="font-serif text-3xl sm:text-4xl lg:text-[2.75rem] text-white leading-[1.05] max-w-3xl">
+              <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold block mb-1 not-italic">
+                Market Statistics
+              </span>
+              Numbers, <span className="italic gold-shimmer">live!</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-white/65 max-w-md leading-snug pb-0.5 animate-fade-up-delay-1">
+              {selectedCity === "All"
+                ? `${isRental ? "Rental" : "For-sale"} stats across ${formatTownList(TOWN_LIST)} — refreshed every 30 minutes.`
+                : `${selectedCity}, CT ${isRental ? "rental" : "for-sale"} stats — refreshed every 30 minutes.`}
+            </p>
+          </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-3 animate-fade-up-delay-2">
+          <div className="mt-3.5 flex flex-wrap items-center gap-2.5 animate-fade-up-delay-2">
             <div className={filterPillContainerClass("default", { wrap: false })}>
               {STATS_KINDS.map((kind) => (
                 <button
@@ -704,7 +706,7 @@ export default function StatsClient() {
             />
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-6 font-mono text-sm animate-fade-up-delay-2">
+          <div className="mt-3.5 flex flex-wrap gap-x-5 gap-y-2 font-mono text-sm animate-fade-up-delay-2">
             <div>
               <span className="text-white/40 text-[10px] tracking-[0.2em] uppercase block mb-0.5">
                 {selectedCity === "All" ? `Total ${isRental ? "rentals" : "active"}` : activeLabel}
@@ -775,16 +777,14 @@ export default function StatsClient() {
         </div>
       </section>
 
-      <section className="bg-cream py-10 lg:py-16 stats-charts-section">
+      <section className="bg-cream py-5 lg:py-7 stats-charts-section">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           <div
-            className={`lg:grid lg:gap-8 lg:items-start ${
+            className={`lg:grid lg:gap-6 lg:items-start ${
               selectedCity === "All" ? "lg:grid-cols-[1fr_272px]" : "lg:grid-cols-[1fr_256px]"
             }`}
           >
-            <div className="space-y-10 min-w-0">
-              <StatsChartNav items={chartNavItems} />
-
+            <div className="space-y-7 min-w-0">
               <ActiveByMonthView
                 key={`active-month-view-${statsKind}-${selectedCity}${chartVersionSuffix}`}
                 city={selectedCity}
@@ -1101,21 +1101,22 @@ export default function StatsClient() {
               </div>
             </div>
 
-            <aside
-              className="mb-10 lg:mb-0 lg:sticky lg:top-24 lg:self-start lg:shrink-0 space-y-4 stats-sidebar stats-print-screen-only"
-            >
-              {visibleTowns.map((city) => (
-                <CityCard
-                  key={city}
-                  city={city}
-                  data={stats[city]}
-                  topVintage={topVintageByTown[city]}
-                  loading={loadState === "loading"}
-                  vintageLoading={vintageLoadState === "loading"}
-                  onMedianClick={() => showMedianDetail(city)}
-                  kind={statsKind}
-                />
-              ))}
+            <aside className="relative mb-10 lg:mb-0 lg:sticky lg:top-24 lg:self-start lg:shrink-0 stats-sidebar stats-print-screen-only">
+              <StatsChartNav items={chartNavItems} />
+              <div className="space-y-4">
+                {visibleTowns.map((city) => (
+                  <CityCard
+                    key={city}
+                    city={city}
+                    data={stats[city]}
+                    topVintage={topVintageByTown[city]}
+                    loading={loadState === "loading"}
+                    vintageLoading={vintageLoadState === "loading"}
+                    onMedianClick={() => showMedianDetail(city)}
+                    kind={statsKind}
+                  />
+                ))}
+              </div>
             </aside>
           </div>
         </div>
