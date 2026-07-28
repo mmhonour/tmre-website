@@ -2202,7 +2202,9 @@ export default function AdminSyncTable({
             <>
               <p className="text-xs text-slate leading-relaxed max-w-xl">
                 Tap Sync now (or Sync all). Running jobs stay on top. Pause and schedule
-                edits live under Configure.
+                edits live under Configure. For Incremental: End is the last finished
+                RETS pull — while Queued it shows as Prior; Latest deal ages are MLS
+                modification times (can look older than End after an empty pull).
               </p>
             </>
           ) : (
@@ -2424,15 +2426,30 @@ export default function AdminSyncTable({
               );
               const manualOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
               const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+              const rowPaused = Boolean(pauseJob && pausedJobs[pauseJob]);
               const configureSchedule = configureScheduleForRow(row.id);
               const stripe = index % 2 === 1;
-              const stickyBg = stickyCellBg(visual, stripe);
+              // Paused jobs read as disabled — mute status colors to idle grey.
+              const displayVisual =
+                rowPaused && !isRunning && !isWaiting ? ("idle" as const) : visual;
+              const stickyBg = stickyCellBg(displayVisual, stripe);
 
               const incrementalLiveNow =
                 row.id === "incremental" &&
                 Boolean(
                   status?.incrementalLiveStatus || status?.incrementalLive,
                 );
+              // Queue stamps Start but leaves prior End — don't present that End
+              // as if this run finished. Same when Start is newer than End.
+              const incrementalPriorEnd =
+                row.id === "incremental" &&
+                Boolean(timing.finished) &&
+                (incrementalLiveNow ||
+                  (() => {
+                    const s = parseIsoMs(timing.started);
+                    const e = parseIsoMs(timing.finished);
+                    return s != null && (e == null || s > e);
+                  })());
               const statusText = (() => {
                 if (isWaiting) {
                   return (
@@ -2495,7 +2512,10 @@ export default function AdminSyncTable({
               return (
                 <tr
                   key={row.id}
-                  className={`transition-colors duration-500 ${syncRowClassName(visual, stripe)}`}
+                  className={`transition-colors duration-500 ${syncRowClassName(displayVisual, stripe)}${
+                    rowPaused ? " opacity-40" : ""
+                  }`}
+                  aria-disabled={rowPaused || undefined}
                 >
                   {isConfigure ? (
                     <td
@@ -2761,41 +2781,60 @@ export default function AdminSyncTable({
                           if (!timing.finished) return "—";
                           const age = formatAgeAgo(timing.finished, nowMs);
                           const time = formatTimeOnly(timing.finished);
-                          return age && age !== "just now"
-                            ? `${time} · ${age}`
-                            : time;
+                          const base =
+                            age && age !== "just now"
+                              ? `${time} · ${age}`
+                              : time;
+                          // Queued / in-flight: this End is the last finished pull,
+                          // not the current hop (Latest deal ages are MLS mod times).
+                          return incrementalPriorEnd ? `Prior ${base}` : base;
                         })();
                         const endTitle = [
+                          incrementalPriorEnd
+                            ? "Last finished pull (current hop not done yet)"
+                            : null,
                           dateLabel,
-                          !showSingleTimestamp && elapsedMs != null
+                          !showSingleTimestamp &&
+                          elapsedMs != null &&
+                          !incrementalPriorEnd
                             ? `Elapsed ${formatElapsed(elapsedMs)}`
                             : null,
                         ]
                           .filter(Boolean)
                           .join(" · ");
 
+                        const startValue = (() => {
+                          if (showSingleTimestamp || !timing.started) return "—";
+                          const time = formatTimeOnly(timing.started);
+                          if (row.id !== "incremental") return time;
+                          const age = formatAgeAgo(timing.started, nowMs);
+                          return age && age !== "just now"
+                            ? `${time} · ${age}`
+                            : time;
+                        })();
+
                         return (
                           <>
                             <td className={cellPad}>
                               <span
-                                className="font-mono text-[10px] tabular-nums whitespace-nowrap text-navy font-semibold"
+                                className="block min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words text-navy font-semibold"
                                 title={
                                   timing.started
-                                    ? `${dateLabel ?? ""} ${formatTimeOnly(timing.started)}`.trim()
+                                    ? `${dateLabel ?? ""} ${formatTimeOnly(timing.started)}${
+                                        incrementalLiveNow
+                                          ? " · queue/start (End updates when worker finishes)"
+                                          : ""
+                                      }`.trim()
                                     : undefined
                                 }
                               >
-                                {showSingleTimestamp
-                                  ? "—"
-                                  : timing.started
-                                    ? formatTimeOnly(timing.started)
-                                    : "—"}
+                                {startValue}
                               </span>
                             </td>
                             <td className={cellPad}>
                               <span
-                                className={`font-mono text-[10px] tabular-nums whitespace-nowrap font-semibold ${
-                                  scheduleBreached
+                                className={`block min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words font-semibold ${
+                                  scheduleBreached || incrementalPriorEnd
                                     ? "text-rose-700"
                                     : "text-navy"
                                 }`}
@@ -2805,9 +2844,9 @@ export default function AdminSyncTable({
                               </span>
                             </td>
                             <td className={cellPad}>
-                              <div className="inline-flex items-center gap-1 min-w-0 max-w-full">
+                              <div className="flex min-w-0 max-w-full flex-wrap items-start gap-x-1 gap-y-0.5">
                                 <span
-                                  className={`font-mono text-[10px] tabular-nums whitespace-nowrap font-semibold truncate ${nextTimeClass}`}
+                                  className={`min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words font-semibold ${nextTimeClass}`}
                                   title={
                                     nextStatusText
                                       ? `${nextTimeText} (${nextStatusText})`

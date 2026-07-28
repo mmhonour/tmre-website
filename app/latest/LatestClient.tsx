@@ -476,6 +476,7 @@ export default function LatestClient({
   }, [loading, listings, selectedTown, townLoading, visibleListings]);
 
   const syncLabel = formatSync(lastSync);
+  const newestMlsLabel = formatSync(newestModification(visibleListings));
 
   const isGrouped = groupByTown;
 
@@ -664,9 +665,20 @@ export default function LatestClient({
               />
               <span className="text-white/50">{summary}</span>
             </span>
+            {newestMlsLabel ? (
+              <span
+                className="text-white/40 tracking-[0.08em] uppercase"
+                title="Newest modificationTimestamp among listings in this feed (MLS clock — not Admin Incremental End)"
+              >
+                Newest MLS update {newestMlsLabel}
+              </span>
+            ) : null}
             {syncLabel ? (
-              <span className="text-white/40 tracking-[0.08em] uppercase">
-                Synced {syncLabel}
+              <span
+                className="text-white/35 tracking-[0.08em] uppercase"
+                title="When the last Incremental RETS pull finished writing last_incremental_sync — can advance even if MLS had no new mods"
+              >
+                Last pull {syncLabel}
               </span>
             ) : null}
           </div>

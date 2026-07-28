@@ -4921,64 +4921,66 @@ export default function IntelligenceClient({
 
               {/*
                 Mobile board chrome (cream section, not hero header):
-                Share · Town stats · Vintages — left-aligned on one row.
+                Share left; Town stats · Vintages right — same row.
               */}
-              <div className="flex w-full items-center justify-start gap-x-3 gap-y-1 lg:hidden">
+              <div className="flex w-full items-center justify-between gap-x-3 gap-y-1 lg:hidden">
                 <ListingShareButton
                   href={intelligenceShareHref}
                   title="Share this Intelligence search"
-                  className="!h-7 !w-7 -ml-1 shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
-                  iconClassName="h-3.5 w-3.5"
+                  className="!h-12 !w-12 shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
+                  iconClassName="h-7 w-7"
                   strokeWidth={1.25}
                 />
-                {liveSnapshots.length > 0 ? (
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
-                    onClick={() => {
-                      setVintageStatsOpen(false);
-                      setTownStatsOpen(true);
-                    }}
-                    aria-expanded={townStatsOpen}
-                    aria-controls="intel-town-stats-drawer"
-                  >
-                    <svg
-                      viewBox="0 0 12 12"
-                      className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                      fill="currentColor"
-                      aria-hidden
+                <div className="inline-flex items-center gap-x-3">
+                  {liveSnapshots.length > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                      onClick={() => {
+                        setVintageStatsOpen(false);
+                        setTownStatsOpen(true);
+                      }}
+                      aria-expanded={townStatsOpen}
+                      aria-controls="intel-town-stats-drawer"
                     >
-                      <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                    </svg>
-                    <span className="underline underline-offset-2 decoration-navy/35">
-                      Town stats
-                    </span>
-                  </button>
-                ) : null}
-                {showVintageStats ? (
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
-                    onClick={() => {
-                      setTownStatsOpen(false);
-                      setVintageStatsOpen(true);
-                    }}
-                    aria-expanded={vintageStatsOpen}
-                    aria-controls="intel-vintage-stats-drawer"
-                  >
-                    <svg
-                      viewBox="0 0 12 12"
-                      className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                      fill="currentColor"
-                      aria-hidden
+                      <svg
+                        viewBox="0 0 12 12"
+                        className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                      </svg>
+                      <span className="underline underline-offset-2 decoration-navy/35">
+                        Town stats
+                      </span>
+                    </button>
+                  ) : null}
+                  {showVintageStats ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                      onClick={() => {
+                        setTownStatsOpen(false);
+                        setVintageStatsOpen(true);
+                      }}
+                      aria-expanded={vintageStatsOpen}
+                      aria-controls="intel-vintage-stats-drawer"
                     >
-                      <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                    </svg>
-                    <span className="underline underline-offset-2 decoration-navy/35">
-                      Vintages
-                    </span>
-                  </button>
-                ) : null}
+                      <svg
+                        viewBox="0 0 12 12"
+                        className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                      </svg>
+                      <span className="underline underline-offset-2 decoration-navy/35">
+                        Vintages
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
             {/* Sidebar column spacer — keeps Live/share aligned to the board edge. */}

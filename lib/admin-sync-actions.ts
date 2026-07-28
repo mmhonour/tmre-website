@@ -743,10 +743,13 @@ export async function readAdminSyncPanelStatus() {
     (await getSyncMetaFresh('last_incremental_cron_tick')) ??
     getSyncMeta('last_incremental_cron_tick')
   const nextOverrides = readSyncNextOverrides()
-  const { readIncrementalSyncLive, formatIncrementalSyncLiveStatus } = await import(
-    '@/lib/incremental-sync-live'
-  )
-  const incrementalLive = readIncrementalSyncLive()
+  const {
+    clearIncrementalSyncLiveIfStale,
+    formatIncrementalSyncLiveStatus,
+  } = await import('@/lib/incremental-sync-live')
+  // Drop dead Queued breadcrumbs so Status cannot claim a worker is starting
+  // hours after the hop died (End is still the last finished pull).
+  const incrementalLive = await clearIncrementalSyncLiveIfStale()
   return {
     stats,
     refresh,

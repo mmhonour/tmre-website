@@ -134,6 +134,21 @@ export async function runIncrementalSyncWatchdog(
     source: 'watchdog',
   })
 
+  if (queued.ok) {
+    // Same Start + live breadcrumb as cron/admin queue — otherwise Dashboard
+    // keeps the prior End and never shows Queued for watchdog-driven hops.
+    await setSyncMetaDurable('last_incremental_sync_started', startedAt)
+    const { stampIncrementalSyncLive } = await import(
+      '@/lib/incremental-sync-live'
+    )
+    await stampIncrementalSyncLive({
+      phase: 'queued',
+      town: null,
+      townIndex: null,
+      updatedAt: startedAt,
+    })
+  }
+
   try {
     await recordSyncRun({
       startedAt,

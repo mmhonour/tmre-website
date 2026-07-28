@@ -99,7 +99,11 @@ export default function AdminSyncsOverviewPanel({
             const job = NETLIFY_PAUSE_BY_FN[fn.label];
             const paused = job != null && pausedJobs[job];
             return (
-              <li key={fn.label} className="px-5 py-4 sm:px-6">
+              <li
+                key={fn.label}
+                className={`px-5 py-4 sm:px-6 ${paused ? "opacity-40" : ""}`}
+                aria-disabled={paused || undefined}
+              >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">

@@ -9,6 +9,7 @@ import { TMRE_TOWNS } from '@/lib/tmre-towns'
 import {
   formatIncrementalSyncLiveStatus,
   INCREMENTAL_SYNC_LIVE_KEY,
+  isIncrementalSyncLiveStale,
   parseIncrementalSyncLive,
   type IncrementalSyncLiveProgress,
 } from '@/lib/incremental-sync-live-shared'
@@ -17,11 +18,26 @@ export type { IncrementalSyncLiveProgress }
 export {
   formatIncrementalSyncLiveStatus,
   INCREMENTAL_SYNC_LIVE_KEY,
+  isIncrementalSyncLiveStale,
   parseIncrementalSyncLive,
 }
 
 export function readIncrementalSyncLive(): IncrementalSyncLiveProgress | null {
   return parseIncrementalSyncLive(getSyncMeta(INCREMENTAL_SYNC_LIVE_KEY))
+}
+
+/**
+ * Drop dead "Queued…" breadcrumbs so Dashboard Status cannot claim a worker is
+ * starting when live.updatedAt is older than the worker budget.
+ */
+export async function clearIncrementalSyncLiveIfStale(
+  nowMs = Date.now(),
+): Promise<IncrementalSyncLiveProgress | null> {
+  const live = readIncrementalSyncLive()
+  if (!live) return null
+  if (!isIncrementalSyncLiveStale(live, nowMs)) return live
+  await clearIncrementalSyncLive()
+  return null
 }
 
 export async function stampIncrementalSyncLive(
