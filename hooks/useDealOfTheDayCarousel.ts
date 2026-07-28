@@ -84,6 +84,21 @@ const ALL_FILTER_COMBOS: ReadonlyArray<{
   { kind: "rental", property: "all" },
 ];
 
+function unwrapTownDealPayload(
+  body: unknown,
+  town: TmreTown,
+): DealCarouselPayload | null {
+  if (!body || typeof body !== "object") return null;
+  const row = body as {
+    listing?: DealCarouselPayload["listing"] | null;
+    deals?: Partial<Record<TmreTown, DealCarouselPayload | null>>;
+  };
+  // CDN (or a mistaken bundle response) may return `{ deals }` for a town URL.
+  if (hasListing(row as DealCarouselPayload)) return row as DealCarouselPayload;
+  const nested = row.deals?.[town];
+  return hasListing(nested) ? nested : null;
+}
+
 async function fetchDealBundle(
   kind: "sale" | "rental",
   property: DealPropertyClassFilter,
@@ -99,8 +114,20 @@ async function fetchDealBundle(
     const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
     if (r.ok) {
       const body = (await r.json()) as {
+        kind?: string;
+        propertyClass?: string;
         deals?: Partial<Record<TmreTown, DealCarouselPayload>>;
       };
+      // Reject CDN-poisoned sale/homes responses when we asked for rentals.
+      if (body.kind != null && body.kind !== kind) return fromBundle;
+      if (
+        property !== "all" &&
+        body.propertyClass != null &&
+        body.propertyClass !== property &&
+        body.propertyClass !== "all"
+      ) {
+        return fromBundle;
+      }
       for (const town of towns) {
         const deal = body.deals?.[town];
         fromBundle[town] = dealMatchesFilter(deal, kind, property) ? deal : null;
@@ -130,7 +157,14 @@ async function fetchTownDealOnce(
     if (pinnedListingId) qs.set("listing", pinnedListingId);
     const r = await fetch(`/api/deal-of-the-day?${qs.toString()}`);
     if (!r.ok) return null;
-    const body = (await r.json()) as DealCarouselPayload;
+    const raw = (await r.json()) as DealCarouselPayload & {
+      kind?: string;
+      propertyClass?: string;
+      deals?: Partial<Record<TmreTown, DealCarouselPayload>>;
+    };
+    if (raw.kind != null && raw.kind !== kind && !raw.deals) return null;
+    const body = unwrapTownDealPayload(raw, town);
+    if (!body) return null;
     // Pinned deep links must show the listing even if subtype pills disagree.
     const matchProperty: DealPropertyClassFilter = pinnedListingId
       ? "all"

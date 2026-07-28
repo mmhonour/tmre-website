@@ -57,12 +57,37 @@ function resolvePropertyClassParam(raw: string | null): DealOfTheDayPropertyClas
   return 'homes'
 }
 
-function cacheHitHeaders(): HeadersInit {
+/**
+ * Netlify CDN ignores query strings unless `Netlify-Vary` lists them — without
+ * that, `/api/deal-of-the-day?kind=rental` reuses the sale/homes bundle and
+ * Intelligence shows “No below-median rental pick…” (or hides DOTD entirely).
+ * Same trap as Spotlight — see `spotlightApiCacheHeaders`.
+ */
+function dealOfTheDayCacheHeaders(hit: boolean): HeadersInit {
   return {
     ...listingCacheHeaders('db'),
-    'X-Deal-Cache': 'hit',
-    'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+    'X-Deal-Cache': hit ? 'hit' : 'miss',
+    // Prefer private so a stale CDN entry cannot outlive this deploy; SQLite
+    // already caches picks. Vary so any future public caching is query-safe.
+    'Cache-Control': 'private, no-store',
+    'Netlify-Vary': 'query=city|kind|property|propertyClass|bundle|listing',
   }
+}
+
+function cachePayloadMatchesRequest(
+  body: {
+    kind?: string
+    propertyClass?: string
+    scope?: { propertyClass?: string }
+  },
+  kind: DealOfTheDayKind,
+  propertyClass: DealOfTheDayPropertyClass,
+): boolean {
+  if (body.kind != null && body.kind !== kind) return false
+  const bodyClass = body.propertyClass ?? body.scope?.propertyClass
+  if (bodyClass == null) return true
+  if (propertyClass === 'all') return true
+  return bodyClass === propertyClass || bodyClass === 'all'
 }
 
 function maybeWarmPhotosInBackground(payload: DealPickPayload | DealOfTheDayResponse): void {
@@ -95,11 +120,13 @@ export async function GET(req: NextRequest) {
   if (!listingId) {
     if (bundle && !town) {
       const bundled = await readDealOfTheDayBundle(kind, propertyClass)
-      if (bundled) {
+      if (bundled && cachePayloadMatchesRequest(bundled, kind, propertyClass)) {
         for (const deal of Object.values(bundled.deals)) {
           if (deal) maybeWarmPhotosInBackground(deal)
         }
-        return NextResponse.json(bundled, { headers: cacheHitHeaders() })
+        return NextResponse.json(bundled, {
+          headers: dealOfTheDayCacheHeaders(true),
+        })
       }
       // Home / carousel expect `{ deals }` — never fall through to a single-payload
       // live pick (wrong shape + multi-town recompute that leaves the hero blank).
@@ -112,38 +139,35 @@ export async function GET(req: NextRequest) {
           source: 'db',
           dealCache: true,
         } satisfies DealOfTheDayBundleResponse,
-        {
-          headers: {
-            ...listingCacheHeaders('db'),
-            'X-Deal-Cache': 'miss',
-            'Cache-Control': 'no-store',
-          },
-        },
+        { headers: dealOfTheDayCacheHeaders(false) },
       )
     }
 
     if (town) {
       const cached = await readDealOfTheDayCache(town, kind, propertyClass)
-      if (cached) {
+      if (cached && cachePayloadMatchesRequest(cached, kind, propertyClass)) {
         maybeWarmPhotosInBackground(cached)
         return NextResponse.json(
           { ...cached, source: 'db', dealCache: true },
-          { headers: cacheHitHeaders() },
+          { headers: dealOfTheDayCacheHeaders(true) },
         )
       }
     } else {
       // No city → prefer bundle composition; if missing, fall through to live pick
       // for a single synthetic "first town" isn't useful — recompute below across towns.
       const bundled = await readDealOfTheDayBundle(kind, propertyClass)
-      if (bundled) {
+      if (bundled && cachePayloadMatchesRequest(bundled, kind, propertyClass)) {
         // Return first available deal as a single-payload convenience, matching prior "All" shape.
         const firstTown = TMRE_TOWNS.find((t) => bundled.deals[t])
         const first = firstTown ? bundled.deals[firstTown] : null
-        if (first) {
+        if (
+          first &&
+          cachePayloadMatchesRequest(first, kind, propertyClass)
+        ) {
           maybeWarmPhotosInBackground(first)
           return NextResponse.json(
             { ...first, source: 'db', dealCache: true },
-            { headers: cacheHitHeaders() },
+            { headers: dealOfTheDayCacheHeaders(true) },
           )
         }
       }
@@ -234,7 +258,12 @@ export async function GET(req: NextRequest) {
 
     maybeWarmPhotosInBackground(response)
 
-    return NextResponse.json(response, { headers: listingCacheHeaders(source) })
+    return NextResponse.json(response, {
+      headers: {
+        ...dealOfTheDayCacheHeaders(false),
+        'X-Listings-Source': source,
+      },
+    })
   } catch (err) {
     console.error('[/api/deal-of-the-day] error', err)
     return NextResponse.json(

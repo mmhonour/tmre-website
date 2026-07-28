@@ -13,6 +13,8 @@ function ShareIcon({
   className?: string;
   strokeWidth?: number;
 }) {
+  // Scale node size with stroke so thick mobile placements don't look chunky.
+  const nodeR = Math.max(1.35, Math.min(2.1, strokeWidth * 0.95 + 0.55));
   return (
     <svg
       viewBox="0 0 24 24"
@@ -24,9 +26,9 @@ function ShareIcon({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <circle cx="6" cy="12" r="2.25" fill="currentColor" stroke="none" />
-      <circle cx="18" cy="6" r="2.25" fill="currentColor" stroke="none" />
-      <circle cx="18" cy="18" r="2.25" fill="currentColor" stroke="none" />
+      <circle cx="6" cy="12" r={nodeR} fill="currentColor" stroke="none" />
+      <circle cx="18" cy="6" r={nodeR} fill="currentColor" stroke="none" />
+      <circle cx="18" cy="18" r={nodeR} fill="currentColor" stroke="none" />
       <path d="M8.1 11.1 15.9 7.1" />
       <path d="M8.1 12.9 15.9 16.9" />
     </svg>

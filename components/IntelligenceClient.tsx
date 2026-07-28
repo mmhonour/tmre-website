@@ -4921,10 +4921,16 @@ export default function IntelligenceClient({
 
               {/*
                 Mobile board chrome (cream section, not hero header):
-                Town stats · Vintages
-                Share lives on the Show graphs / Sorted by row below.
+                Share · Town stats · Vintages — left-aligned on one row.
               */}
-              <div className="flex w-full items-center justify-end gap-x-3 gap-y-1 lg:hidden">
+              <div className="flex w-full items-center justify-start gap-x-3 gap-y-1 lg:hidden">
+                <ListingShareButton
+                  href={intelligenceShareHref}
+                  title="Share this Intelligence search"
+                  className="!h-7 !w-7 -ml-1 shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
+                  iconClassName="h-3.5 w-3.5"
+                  strokeWidth={1.25}
+                />
                 {liveSnapshots.length > 0 ? (
                   <button
                     type="button"
@@ -4991,10 +4997,11 @@ export default function IntelligenceClient({
               aria-busy={boardSortPending || undefined}
             >
           {/*
-            Mobile: minigraphs + labels first, then Show graphs + Sorted by + Share.
-            Desktop: Show/Hide left, share short link right (above board Reset).
-            When graphs are unavailable, keep the share row; Sorted by stays
-            mobile-only.
+            Mobile: minigraphs + labels first, then Show graphs + Sorted by.
+            Share sits with Town stats / Vintages above (mobile) or right here
+            (desktop, above board Reset).
+            When graphs are unavailable, keep the Sorted by / share row;
+            Sorted by stays mobile-only.
           */}
           <div className="flex flex-col">
             <div className="mb-0.5 flex items-center justify-between gap-3 order-2 lg:order-1">
@@ -5051,9 +5058,9 @@ export default function IntelligenceClient({
                 <ListingShareButton
                   href={intelligenceShareHref}
                   title="Share this Intelligence search"
-                  className="!h-12 !w-12 inline-flex shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
-                  iconClassName="h-7 w-7"
-                  strokeWidth={2.75}
+                  className="!hidden lg:!inline-flex !h-8 !w-8 shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
+                  iconClassName="h-4 w-4"
+                  strokeWidth={1.5}
                 />
               </div>
             </div>
