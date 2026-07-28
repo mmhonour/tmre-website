@@ -173,7 +173,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Configure recipient on Admin → Communications → Monday market brief; social graphic posting comes later.',
+      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Same snapshot powers the public /weekly-brief page. Configure recipient on Admin → Communications → Monday market brief; social graphic posting comes later.',
   },
   {
     term: 'Deploy notifications',
@@ -572,6 +572,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'ui-tabs',
     definition:
       'Market / deal board with filters, town snapshots, scored listings, and Deal of the Day.',
+  },
+  {
+    term: 'Intelligence middle tier',
+    category: 'ui-tabs',
+    definition:
+      'Collapsible middle ~60% of the current deal-board page when sorted by Score descending (vintage filter off). Top/bottom ~20% each; collapsed board keeps ≥10 rows. Rules in Admin → Data controls → Deal board (lib/intelligence-deal-board-tiers.ts).',
   },
   {
     term: 'Visitors log',

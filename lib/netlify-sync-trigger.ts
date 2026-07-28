@@ -9,6 +9,11 @@ export type NetlifyFunctionQueueResult = {
   error?: string
 }
 
+/** Max bases to try — hanging fetches must not burn the 30s scheduled budget. */
+const MAX_QUEUE_BASES = 3
+/** Per-attempt HTTP timeout for function→function queue. */
+const QUEUE_FETCH_TIMEOUT_MS = 6_000
+
 /** Prefer *.netlify.app so custom-domain / Cloudflare quirks don't block function→function. */
 function candidateBases(): string[] {
   const siteName = process.env.SITE_NAME?.trim()
@@ -29,6 +34,7 @@ function candidateBases(): string[] {
     if (seen.has(base)) continue
     seen.add(base)
     out.push(base)
+    if (out.length >= MAX_QUEUE_BASES) break
   }
   return out
 }
@@ -56,6 +62,7 @@ async function unlockVisitorCookie(
       redirect: 'manual',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ password }).toString(),
+      signal: AbortSignal.timeout(QUEUE_FETCH_TIMEOUT_MS),
     })
     const setCookie = res.headers.getSetCookie?.() ?? []
     const legacy = res.headers.get('set-cookie')
@@ -84,6 +91,7 @@ async function postOnce(
     headers,
     body: JSON.stringify(body),
     redirect: 'manual',
+    signal: AbortSignal.timeout(QUEUE_FETCH_TIMEOUT_MS),
   })
   const text = await res.text().catch(() => '')
   return {
@@ -219,12 +227,21 @@ export async function queueNetlifyFunction(
   return last
 }
 
+export type IncrementalQueueSource =
+  | 'admin'
+  | 'cron'
+  | 'netlify-sync-trigger'
+  | 'watchdog'
+
 export function queueNetlifyIncrementalSync(
   startedAt?: string,
   options?: {
     sideWorkOnly?: boolean
-    /** Passed through to the worker (admin skips cron heartbeat / pause / defer). */
-    source?: 'admin' | 'cron' | 'netlify-sync-trigger'
+    /**
+     * Passed through to the worker.
+     * admin / watchdog skip cron heartbeat + pause/defer gates.
+     */
+    source?: IncrementalQueueSource
   },
 ): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/sync-listings-worker', {

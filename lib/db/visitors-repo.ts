@@ -242,3 +242,24 @@ export async function attachLeadFieldsToVisitor(
     [id, lead.email, lead.zip, lead.name, lead.audienceType, lead.leadId],
   )
 }
+
+/** Attach email/name from alert or I'm interested without a lead id. */
+export async function attachProfileFieldsToVisitor(
+  vid: string,
+  profile: { email?: string | null; name?: string | null },
+): Promise<void> {
+  await ensureVisitorsTable()
+  const id = vid.trim()
+  if (!id) return
+  const email = profile.email?.trim().toLowerCase() || null
+  const name = profile.name?.trim() || null
+  if (!email && !name) return
+  await query(
+    `UPDATE visitors SET
+       email = COALESCE($2, email),
+       name = COALESCE($3, name),
+       updated_at = now()
+     WHERE vid = $1`,
+    [id, email, name],
+  )
+}

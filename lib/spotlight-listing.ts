@@ -68,11 +68,12 @@ export const SPOTLIGHT_LISTING: SpotlightListingConfig = {
     state: "Connecticut",
     postalCode: "06880",
   },
-  /** Resolved live via address → MLS; prior closed sale at this address was 170610470. */
+  /** Current UC rental; prior closed sale at this address was 170610470. */
   mlsId: "24192179",
   listingKey: null,
-  status: "Active",
-  propertyType: "Single Family For Sale",
+  /** Fallback only — live badge uses RETS/Postgres (Under Contract as of Jul 2026). */
+  status: "Under Contract",
+  propertyType: "Residential Rental",
   style: "",
   price: null,
   originalListPrice: null,

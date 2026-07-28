@@ -313,7 +313,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'stats_sale_price_buckets',
     owner: 'lib/price-buckets-config.ts',
     notes:
-      'Editable on Admin → Stats → Sales by price bands. Defaults from lib/price-buckets-shared.ts. Rebuild stats cache after changes.',
+      'Editable on Admin → Data controls → Sales by price bands. Defaults from lib/price-buckets-shared.ts. Rebuild stats cache after changes.',
     live: { kind: 'none' },
   },
   {

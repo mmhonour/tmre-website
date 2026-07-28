@@ -175,7 +175,10 @@ export async function searchPropertyAddressesInDb(
   const limit = Math.min(Math.max(options.limit ?? 8, 1), 50)
   const safe = q.replace(/[%_]/g, '')
   if (safe.length < 2) return []
-  const pattern = `%${safe}%`
+  const tokens = safe.split(/\s+/).filter((t) => t.length > 0)
+  if (tokens.length === 0) return []
+  const phrasePattern = `%${safe}%`
+  const tokenPattern = `%${tokens.join('%')}%`
   const prefix = `${safe}%`
   const town = options.town?.trim()
 
@@ -190,14 +193,17 @@ export async function searchPropertyAddressesInDb(
              lower(address_full) LIKE $2
              OR lower(street) LIKE $2
              OR lower(address_norm) LIKE $2
+             OR lower(address_full) LIKE $3
+             OR lower(street) LIKE $3
+             OR lower(address_norm) LIKE $3
              OR lower(COALESCE(parcel_number, '')) LIKE $2
              OR lower(COALESCE(mls_id, '')) LIKE $2
            )
          ORDER BY
-           CASE WHEN lower(street) LIKE $3 THEN 0 WHEN lower(address_full) LIKE $3 THEN 1 ELSE 2 END,
+           CASE WHEN lower(street) LIKE $4 THEN 0 WHEN lower(address_full) LIKE $4 THEN 1 ELSE 2 END,
            address_full
-         LIMIT $4`,
-        [town, pattern, prefix, limit],
+         LIMIT $5`,
+        [town, phrasePattern, tokenPattern, prefix, limit],
       )
     : await query<DbRow>(
         `SELECT ${SELECT_COLUMNS}
@@ -205,14 +211,17 @@ export async function searchPropertyAddressesInDb(
          WHERE lower(address_full) LIKE $1
             OR lower(street) LIKE $1
             OR lower(address_norm) LIKE $1
+            OR lower(address_full) LIKE $2
+            OR lower(street) LIKE $2
+            OR lower(address_norm) LIKE $2
             OR lower(COALESCE(parcel_number, '')) LIKE $1
             OR lower(COALESCE(mls_id, '')) LIKE $1
          ORDER BY
-           CASE WHEN lower(street) LIKE $2 THEN 0 WHEN lower(address_full) LIKE $2 THEN 1 ELSE 2 END,
+           CASE WHEN lower(street) LIKE $3 THEN 0 WHEN lower(address_full) LIKE $3 THEN 1 ELSE 2 END,
            town,
            address_full
-         LIMIT $3`,
-        [pattern, prefix, limit],
+         LIMIT $4`,
+        [phrasePattern, tokenPattern, prefix, limit],
       )
 
   return rows.map(rowToModel)

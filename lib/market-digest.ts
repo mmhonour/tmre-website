@@ -236,6 +236,7 @@ export function formatMarketDigestEmail(snapshot: MarketDigestSnapshot): {
   const text = [
     'TMRE Monday market brief',
     etDate,
+    `Web: ${SITE_URL}/weekly-brief`,
     `Stats: ${SITE_URL}/stats`,
     '',
     ...kpiLines,

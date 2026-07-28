@@ -67,11 +67,11 @@ export type IncrementalSyncWorkOptions = {
    */
   sideWorkOnly?: boolean
   /**
-   * Admin Syncs "Incremental" / manual queue — full RETS + digests in the
-   * background worker. Does not stamp the 30-minute cron heartbeat, and ignores
-   * schedule pause / Next-override defer (explicit admin intent).
+   * Admin Syncs "Incremental" / watchdog / manual queue — full RETS + digests.
+   * Does not stamp the 30-minute cron heartbeat, and ignores schedule pause /
+   * Next-override defer (explicit heal / admin intent).
    */
-  source?: 'admin' | 'cron' | 'netlify-sync-trigger'
+  source?: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog'
 }
 
 async function runSpotlightAndAlerts(): Promise<{
@@ -132,7 +132,9 @@ export async function runIncrementalSyncListingsWork(
 }> {
   process.env.NETLIFY_SYNC_HANDLER = '1'
   const sideWorkOnly = options.sideWorkOnly === true
-  const fromAdmin = options.source === 'admin'
+  /** Admin click or stale-sync watchdog — bypass pause/defer; don't stamp cron tick. */
+  const fromAdmin =
+    options.source === 'admin' || options.source === 'watchdog'
 
   try {
     await hydrateSyncMetaStore()
@@ -142,15 +144,53 @@ export async function runIncrementalSyncListingsWork(
     if (healStaleOverdueCatchupLock()) {
       console.info('[sync-listings-work] cleared stale overdue catch-up lock')
     }
-    // Cron heartbeat is for the */30 schedule only — Admin Sync must not stamp it.
+
+    // Pause / defer BEFORE catch-up so a paused schedule cannot spawn more work.
+    if (!fromAdmin && (await isScheduledSyncJobPausedFresh('incremental'))) {
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: false,
+        skipped: true,
+        error: 'incremental scheduled sync paused by admin',
+      })
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          skipped: true,
+          reason: 'incremental scheduled sync paused by admin',
+          sideWorkOnly,
+        },
+      }
+    }
+
+    if (!fromAdmin && shouldDeferScheduledJob('incremental')) {
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: false,
+        skipped: true,
+        error: 'deferred — Admin Next override is still in the future',
+      })
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          skipped: true,
+          reason: 'Admin Next override — not due yet',
+          sideWorkOnly,
+        },
+      }
+    }
+
+    // Cron heartbeat is for the */30 schedule only — Admin/watchdog must not stamp it.
     if (!fromAdmin) {
       await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
     }
 
     // Only light catch-up here — never chain a weekly full-resync on the 30m path.
     // Full reload stays on sync-listings-full. When thin cron already pulled RETS,
-    // skip 'incremental' so we don't double-hit MLS. Admin runs skip catch-up —
-    // the explicit job below is the whole point of the click.
+    // skip 'incremental' so we don't double-hit MLS. Admin/watchdog skip catch-up —
+    // the explicit job below is the whole point of the click/heal.
     const catchup = fromAdmin
       ? { skipped: true as const, reason: 'admin-manual', plan: [] as const, steps: [] as const }
       : await runOverdueSyncCatchup({
@@ -159,48 +199,6 @@ export async function runIncrementalSyncListingsWork(
             ? ['stats-cache', 'publish-snapshot']
             : ['incremental', 'stats-cache', 'publish-snapshot'],
         })
-
-    if (!fromAdmin && (await isScheduledSyncJobPausedFresh('incremental'))) {
-      await recordIncrementalCronTick({
-        startedAt,
-        ok: true,
-        skipped: true,
-        error: 'incremental scheduled sync paused by admin',
-      })
-      return {
-        status: 200,
-        body: {
-          ok: true,
-          skipped: true,
-          reason: 'incremental scheduled sync paused by admin',
-          sideWorkOnly,
-          overdueCatchup: catchup.skipped
-            ? { skipped: true, reason: catchup.reason }
-            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
-        },
-      }
-    }
-
-    if (!fromAdmin && shouldDeferScheduledJob('incremental')) {
-      await recordIncrementalCronTick({
-        startedAt,
-        ok: true,
-        skipped: true,
-        error: 'deferred — Admin Next override is still in the future',
-      })
-      return {
-        status: 200,
-        body: {
-          ok: true,
-          skipped: true,
-          reason: 'Admin Next override — not due yet',
-          sideWorkOnly,
-          overdueCatchup: catchup.skipped
-            ? { skipped: true, reason: catchup.reason }
-            : { skipped: false, plan: catchup.plan, steps: catchup.steps },
-        },
-      }
-    }
 
     if (sideWorkOnly) {
       const { savedSearchAlerts } = await runIncrementalSideWork()

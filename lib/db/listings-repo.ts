@@ -966,6 +966,9 @@ export async function ensureListingAddressSearchIndexes(): Promise<void> {
 /**
  * Fast Find / typeahead against promoted address columns (+ search_text when
  * migration 0007 is present). Prefer indexed `search_text LIKE` over jsonb ILIKE.
+ *
+ * Multi-word queries use token AND matching (same idea as RETS
+ * `*42*treadwell*`) so "42 treadwell" hits "42 Treadwell Avenue".
  */
 export async function searchListingsInDbByQuery(
   queryText: string,
@@ -980,8 +983,14 @@ export async function searchListingsInDbByQuery(
 
   const safe = q.replace(/[%_]/g, '')
   if (safe.length < 2) return []
-  const pattern = `%${safe}%`
+  const tokens = safe.split(/\s+/).filter((t) => t.length > 0)
+  if (tokens.length === 0) return []
+  /** Contiguous phrase: `%42 treadwell%`. */
+  const phrasePattern = `%${safe}%`
+  /** Token flex: `%42%treadwell%` (matches avenue/st between tokens). */
+  const tokenPattern = `%${tokens.join('%')}%`
   const prefix = `${safe}%`
+  const tokenPatterns = tokens.map((t) => `%${t}%`)
 
   await ensureListingAddressSearchIndexes()
 
@@ -1000,17 +1009,30 @@ export async function searchListingsInDbByQuery(
       `SELECT data, raw, status_bucket, mls_id, address_street, address_full
          FROM listings
         WHERE status_bucket = ANY($1::text[])
-          AND search_text LIKE $2
+          AND (
+            search_text LIKE $2
+            OR search_text LIKE $3
+            OR search_text LIKE ALL($4::text[])
+          )
         ORDER BY
           CASE
-            WHEN lower(mls_id) = $3 THEN 0
-            WHEN lower(coalesce(address_street, '')) LIKE $4 THEN 1
-            WHEN lower(coalesce(address_full, '')) LIKE $4 THEN 2
-            ELSE 3
+            WHEN lower(mls_id) = $5 THEN 0
+            WHEN lower(coalesce(address_street, '')) LIKE $6 THEN 1
+            WHEN lower(coalesce(address_full, '')) LIKE $6 THEN 2
+            WHEN lower(coalesce(address_street, '')) LIKE $3 THEN 3
+            ELSE 4
           END,
           modification_timestamp DESC NULLS LAST
-        LIMIT $5`,
-      [buckets, pattern, safe, prefix, Math.min(limit * 4, 80)],
+        LIMIT $7`,
+      [
+        buckets,
+        phrasePattern,
+        tokenPattern,
+        tokenPatterns,
+        safe,
+        prefix,
+        Math.min(limit * 4, 80),
+      ],
     )
   } catch (err) {
     // Pre-migration DBs without search_text — fall back to promoted columns.
@@ -1023,13 +1045,15 @@ export async function searchListingsInDbByQuery(
             lower(mls_id) LIKE $2
             OR lower(coalesce(address_street, '')) LIKE $2
             OR lower(coalesce(address_full, '')) LIKE $2
+            OR lower(coalesce(address_street, '')) LIKE $3
+            OR lower(coalesce(address_full, '')) LIKE $3
             OR lower(coalesce(address_city, '')) LIKE $2
             OR lower(coalesce(postal_code, '')) LIKE $2
             OR lower(coalesce(property_type, '')) LIKE $2
           )
         ORDER BY modification_timestamp DESC NULLS LAST
-        LIMIT $3`,
-      [buckets, pattern, Math.min(limit * 4, 80)],
+        LIMIT $4`,
+      [buckets, phrasePattern, tokenPattern, Math.min(limit * 4, 80)],
     )
   }
 
@@ -1039,11 +1063,14 @@ export async function searchListingsInDbByQuery(
     const street = (row.address_street ?? listing.address.street ?? '').toLowerCase()
     const full = (row.address_full ?? listing.address.full ?? '').toLowerCase()
     const mls = (row.mls_id ?? listing.mlsId ?? '').toLowerCase()
+    const hay = `${mls} ${street} ${full}`
     let score = LISTING_SEARCH_STATUS_ORDER[row.status_bucket] ?? 9
     if (mls === safe) score -= 30
     else if (street.startsWith(safe) || full.startsWith(safe)) score -= 20
     else if (street.includes(safe) || full.includes(safe) || mls.includes(safe)) {
       score -= 10
+    } else if (tokens.every((t) => hay.includes(t))) {
+      score -= 8
     }
     scored.push({ listing, score })
   }

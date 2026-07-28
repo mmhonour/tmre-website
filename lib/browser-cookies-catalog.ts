@@ -37,6 +37,13 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
     sameSite: "Lax",
     setBy: "POST /api/visitor/log",
   },
+  tmre_user_session: {
+    purpose: "Passwordless end-user session (magic-link login)",
+    httpOnly: true,
+    path: "/",
+    sameSite: "Lax",
+    setBy: "GET /api/auth/verify",
+  },
   tmre_intel_city: { purpose: "Intelligence town filter", ...PREF },
   tmre_tx: { purpose: "Sale / rental transaction filter", ...PREF },
   tmre_cls: { purpose: "Property class filter", ...PREF },

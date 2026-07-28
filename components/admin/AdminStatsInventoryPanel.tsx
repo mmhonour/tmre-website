@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminInterestingStatsPanel from "@/components/admin/AdminInterestingStatsPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
-import AdminPriceBucketsPanel from "@/components/admin/AdminPriceBucketsPanel";
 import { adminPostgresTableHref } from "@/lib/admin-nav";
 import type {
   StatsInventoryCategory,
@@ -154,8 +153,6 @@ export default function AdminStatsInventoryPanel() {
       className="scroll-mt-24 space-y-6"
     >
       <AdminInterestingStatsPanel />
-
-      <AdminPriceBucketsPanel />
 
       <AdminInventorySegmentBandsPanel />
 

@@ -30,7 +30,7 @@ function bandRangeLabel(b: PriceBucketDef): string {
 }
 
 /**
- * Admin editor for Stats → Sales by price bands (lib/price-buckets defaults +
+ * Admin editor for Data controls → Sales by price bands (lib/price-buckets defaults +
  * Postgres sync_meta overrides). Bands can be hidden from charts or deleted.
  */
 export default function AdminPriceBucketsPanel() {

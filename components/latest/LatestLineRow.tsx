@@ -17,13 +17,70 @@ import LatestAddressMetaHover from "@/components/latest/LatestAddressMetaHover";
 import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
 
-function formatUpdatedAt(iso: string | null): string {
+function ordinalSuffix(day: number): string {
+  const mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) return "th";
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+type UpdatedAtParts = {
+  time: string;
+  /** When not today: weekday + month + day with ordinal suffix (suffix rendered in <sup>). */
+  dateDay: number | null;
+  datePrefix: string | null;
+  dateSuffix: string | null;
+  title: string;
+};
+
+function formatUpdatedAt(iso: string | null): UpdatedAtParts {
   const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) return "—";
-  return new Intl.DateTimeFormat(undefined, {
+  if (Number.isNaN(t)) {
+    return { time: "—", dateDay: null, datePrefix: null, dateSuffix: null, title: "MLS updated —" };
+  }
+  const date = new Date(t);
+  const time = new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(t));
+  }).format(date);
+  const today = new Date();
+  if (isSameLocalDay(date, today)) {
+    return {
+      time,
+      dateDay: null,
+      datePrefix: null,
+      dateSuffix: null,
+      title: `MLS updated ${time} (your local time)`,
+    };
+  }
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
+  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
+  const day = date.getDate();
+  const suffix = ordinalSuffix(day);
+  const dateLabel = `${weekday} ${month} ${day}${suffix}`;
+  return {
+    time,
+    dateDay: day,
+    datePrefix: `${weekday} ${month} `,
+    dateSuffix: suffix,
+    title: `MLS updated ${dateLabel} ${time} (your local time)`,
+  };
 }
 
 const STATUS_DOT_CLASS: Record<string, string> = {
@@ -66,7 +123,7 @@ function LatestLineRow({
   const showZip =
     Boolean(l.zip) && (showZipMap || townHasMultipleZips(listingTownName));
   const detailHref = listingDetailHref(l);
-  const updatedLabel = formatUpdatedAt(l.modificationTimestamp);
+  const updatedAt = formatUpdatedAt(l.modificationTimestamp);
   const ppsf =
     !l.isRental && l.pricePerSqft != null
       ? `$${Math.round(l.pricePerSqft)}/sf`
@@ -96,12 +153,23 @@ function LatestLineRow({
     >
       <div className="flex shrink-0 items-stretch gap-1.5 sm:gap-2">
         <div
-          className="box-border flex w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] sm:w-[3.75rem] sm:min-w-[3.75rem] sm:max-w-[3.75rem] shrink-0 grow-0 items-center overflow-hidden py-px"
-          title={`MLS updated ${updatedLabel} (your local time)`}
+          className="box-border flex w-[5.75rem] min-w-[5.75rem] max-w-[5.75rem] sm:w-[6.5rem] sm:min-w-[6.5rem] sm:max-w-[6.5rem] shrink-0 grow-0 flex-col justify-center overflow-hidden py-px"
+          title={updatedAt.title}
         >
           <span className="font-mono text-[11px] sm:text-[12px] tabular-nums leading-none text-navy whitespace-nowrap">
-            {updatedLabel}
+            {updatedAt.time}
           </span>
+          {updatedAt.dateDay != null &&
+          updatedAt.datePrefix != null &&
+          updatedAt.dateSuffix != null ? (
+            <span className="mt-0.5 font-mono text-[9px] sm:text-[10px] leading-none text-slate whitespace-nowrap">
+              {updatedAt.datePrefix}
+              {updatedAt.dateDay}
+              <sup className="text-[7px] sm:text-[8px] leading-none">
+                {updatedAt.dateSuffix}
+              </sup>
+            </span>
+          ) : null}
         </div>
         <DealBoardPrimaryPhoto
           listing={l}
@@ -123,34 +191,36 @@ function LatestLineRow({
 
       <div className="flex min-w-0 flex-1 items-start sm:items-center">
         <div
-          className={`${metaColClass} flex shrink-0 items-baseline gap-x-1.5 overflow-hidden`}
+          className={`${metaColClass} flex shrink-0 flex-col gap-0.5 overflow-hidden`}
           style={addressColStyle}
         >
-          <LatestAddressMetaHover
-            listing={l}
-            href={detailHref}
-            isLive={isLive}
-            className="min-w-0 flex-1 truncate font-medium text-navy hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold whitespace-nowrap"
-          >
-            {l.address}
-          </LatestAddressMetaHover>
-          {showZip && l.zip ? (
-            <LatestZipMapHover
-              zip={l.zip}
-              townName={listingTownName}
-              className="shrink-0 font-mono text-[11px] tabular-nums text-slate/70"
-            />
-          ) : null}
+          <div className="flex min-w-0 items-baseline gap-x-1.5 overflow-hidden">
+            <LatestAddressMetaHover
+              listing={l}
+              href={detailHref}
+              isLive={isLive}
+              className="min-w-0 flex-1 truncate font-medium text-navy hover:text-gold transition-colors underline decoration-charcoal/15 underline-offset-2 hover:decoration-gold whitespace-nowrap"
+            >
+              {l.address}
+            </LatestAddressMetaHover>
+            {showZip && l.zip ? (
+              <LatestZipMapHover
+                zip={l.zip}
+                townName={listingTownName}
+                className="shrink-0 font-mono text-[11px] tabular-nums text-slate/70"
+              />
+            ) : null}
+          </div>
+          <ClickableGoldilocksScore
+            score={l.score}
+            breakdown={l.scoreBreakdown}
+            title={l.address}
+            subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
+            listingHref={detailHref}
+            isRental={l.isRental}
+            className="inline-flex w-fit justify-start text-[12px] sm:text-[13px] leading-none"
+          />
         </div>
-        <ClickableGoldilocksScore
-          score={l.score}
-          breakdown={l.scoreBreakdown}
-          title={l.address}
-          subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
-          listingHref={detailHref}
-          isRental={l.isRental}
-          className="inline-flex w-[2.75rem] shrink-0 justify-end self-center text-[13px] leading-none"
-        />
         <div
           className={`${metaColClass} w-[7.5rem] shrink-0 font-mono text-[12px] sm:text-[13px] tabular-nums text-navy`}
         >

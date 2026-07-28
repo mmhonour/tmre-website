@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { SITE_VISITOR_COOKIE } from '@/lib/browser-cookies-catalog'
 import { notifyContactByEmail } from '@/lib/contact-notify'
 import { validateContactFields } from '@/lib/contact-form-validation'
+import { notifyInterestConfirmation } from '@/lib/interest-notify'
+import {
+  getSessionUserFromCookies,
+  requestMagicLink,
+  upsertSiteUserByEmail,
+} from '@/lib/site-user-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -84,10 +91,36 @@ export async function POST(req: NextRequest) {
   contacts.push(contact)
   await fs.writeFile(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8')
 
+  const visitorId = req.cookies.get(SITE_VISITOR_COOKIE)?.value?.trim() || null
+  const sessionUser = await getSessionUserFromCookies()
+  let profileLinked = false
+  let magicLinkOffered = false
+
+  try {
+    await upsertSiteUserByEmail({
+      email: contact.email,
+      name: contact.name,
+      visitorId: visitorId || sessionUser?.visitorId || null,
+    })
+    profileLinked = true
+    if (visitorId) {
+      const { attachProfileFieldsToVisitor } = await import(
+        '@/lib/db/visitors-repo'
+      )
+      await attachProfileFieldsToVisitor(visitorId, {
+        email: contact.email,
+        name: contact.name,
+      })
+    }
+  } catch (err) {
+    console.warn('[/api/contact] profile link failed', err)
+  }
+
   // Email is best-effort: the contact is already persisted, so a mail failure
   // must never block or error the user's submission (that produced the hang /
   // false error). Log it server-side and surface a soft `emailed` flag.
   let emailed = false
+  let visitorEmailed = false
   try {
     emailed = await notifyContactByEmail({
       name: contact.name,
@@ -101,5 +134,42 @@ export async function POST(req: NextRequest) {
     console.error('[/api/contact] email notify failed', err)
   }
 
-  return NextResponse.json({ ok: true, emailed }, { status: 201 })
+  if (contact.source === 'listing-interest') {
+    try {
+      visitorEmailed = await notifyInterestConfirmation({
+        to: contact.email,
+        name: contact.name,
+        listingInfo: contact.listingInfo,
+      })
+    } catch (err) {
+      console.warn('[/api/contact] interest confirmation failed', err)
+    }
+
+    // No session yet → offer passwordless login so next I'm interested prefills.
+    if (!sessionUser) {
+      try {
+        const link = await requestMagicLink({
+          email: contact.email,
+          name: contact.name,
+          visitorId,
+          nextPath: '/latest',
+        })
+        magicLinkOffered = link.emailed
+      } catch (err) {
+        console.warn('[/api/contact] magic link offer failed', err)
+      }
+    }
+  }
+
+  return NextResponse.json(
+    {
+      ok: true,
+      emailed,
+      visitorEmailed,
+      profileLinked,
+      authenticated: Boolean(sessionUser),
+      magicLinkOffered,
+    },
+    { status: 201 },
+  )
 }

@@ -56,6 +56,18 @@ export default function LatestSearchAlertForm() {
     loadSearches();
   }, []);
 
+  // Prefill email from passwordless session when available.
+  useEffect(() => {
+    void fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((body: { authenticated?: boolean; user?: { email?: string } }) => {
+        if (body.authenticated && body.user?.email) {
+          setEmail((prev) => prev || body.user!.email!);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     loadSearches();
@@ -120,11 +132,12 @@ export default function LatestSearchAlertForm() {
         return;
       }
       setMessage(
-        cadence === "immediate"
+        (cadence === "immediate"
           ? "Alert saved — we'll email you when a new listing matches (checked every ~30 minutes)."
           : cadence === "daily"
             ? `Alert saved — daily digest at ${dailyTime} ET when there are new matches.`
-            : `Alert saved — weekly digest ${WEEKDAYS.find((d) => d.value === weeklyDay)?.label} at ${weeklyTime} ET when there are new matches.`,
+            : `Alert saved — weekly digest ${WEEKDAYS.find((d) => d.value === weeklyDay)?.label} at ${weeklyTime} ET when there are new matches.`) +
+          " Confirmation emailed to you; Timothy was notified too.",
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save alert");

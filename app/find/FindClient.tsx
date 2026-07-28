@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import {
@@ -55,7 +56,16 @@ function fmtMoney(n: number | null): string {
   return `$${n.toLocaleString()}`;
 }
 
+function listingHref(l: FindListing): string {
+  return listingDetailHref(
+    l.mlsId,
+    l.address.street || l.address.full,
+    resolveListingTown(l.address.city) || l.address.city,
+  );
+}
+
 export default function FindClient() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [townFilter, setTownFilter] = usePersistedFilter<TownFilter>(
@@ -70,6 +80,7 @@ export default function FindClient() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
+  const [includedClosed, setIncludedClosed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestRef = useRef<HTMLUListElement>(null);
   const orderedTowns = usePersonalizedTowns(TMRE_TOWNS);
@@ -86,6 +97,17 @@ export default function FindClient() {
     return countListingsByTown(results);
   }, [results, loadState]);
 
+  const hiddenByTown =
+    loadState === "ready" &&
+    townFilter !== "All" &&
+    filtered.length === 0 &&
+    results.length > 0;
+
+  /**
+   * Live typeahead + results — no Search click required.
+   * Always query all towns; town pills only filter the result cards so a
+   * persisted town can't blank out a match like "42 Treadwell" in Westport.
+   */
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
@@ -93,77 +115,95 @@ export default function FindClient() {
       setSuggestOpen(false);
       setSuggestLoading(false);
       setHighlightIndex(-1);
+      setResults([]);
+      setSubmittedQuery("");
+      setIncludedClosed(false);
+      setLoadState("idle");
+      setError(null);
       return;
     }
 
     const ac = new AbortController();
     const timer = setTimeout(async () => {
       setSuggestLoading(true);
+      setLoadState((prev) => (prev === "ready" ? "ready" : "loading"));
+      setError(null);
       try {
-        // DB-only — never wait on RETS for every keystroke.
-        const params = new URLSearchParams({ q, limit: "8", rets: "0" });
-        if (townFilter !== "All") params.set("city", townFilter);
-        const res = await fetch(`/api/listings/find?${params}`, {
+        const params = new URLSearchParams({
+          q,
+          limit: "24",
+          rets: "0",
+          scope: "active",
+        });
+        let res = await fetch(`/api/listings/find?${params}`, {
           signal: ac.signal,
         });
-        const data = (await res.json()) as ApiResponse;
+        let data = (await res.json()) as ApiResponse;
         if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-        setSuggestions(data.listings);
+
+        let closedFallback = false;
+        if (data.listings.length === 0) {
+          const allParams = new URLSearchParams({
+            q,
+            limit: "24",
+            rets: "0",
+            scope: "all",
+          });
+          res = await fetch(`/api/listings/find?${allParams}`, {
+            signal: ac.signal,
+          });
+          data = (await res.json()) as ApiResponse;
+          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+          closedFallback = data.listings.length > 0;
+        }
+
+        setSuggestions(data.listings.slice(0, 8));
         setSuggestOpen(data.listings.length > 0);
         setHighlightIndex(-1);
+        setResults(data.listings);
+        setSubmittedQuery(q);
+        setIncludedClosed(closedFallback);
+        setLoadState("ready");
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setSuggestions([]);
         setSuggestOpen(false);
+        setResults([]);
+        setIncludedClosed(false);
+        setError(err instanceof Error ? err.message : "Search failed");
+        setLoadState("error");
       } finally {
         if (!ac.signal.aborted) setSuggestLoading(false);
       }
-    }, 300);
+    }, 280);
 
     return () => {
       clearTimeout(timer);
       ac.abort();
     };
-  }, [query, townFilter]);
-
-  async function runSearch(searchQuery?: string, e?: React.FormEvent) {
-    e?.preventDefault();
-    const q = (searchQuery ?? query).trim();
-    if (q.length < 2) {
-      setError("Enter at least 2 characters to search.");
-      setLoadState("error");
-      return;
-    }
-
-    setSuggestOpen(false);
-    setLoadState("loading");
-    setError(null);
-    setSubmittedQuery(q);
-    if (searchQuery) setQuery(searchQuery);
-
-    try {
-      const params = new URLSearchParams({ q });
-      if (townFilter !== "All") params.set("city", townFilter);
-      const res = await fetch(`/api/listings/find?${params}`);
-      const data = (await res.json()) as ApiResponse;
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setResults(data.listings);
-      setLoadState("ready");
-    } catch (err) {
-      setResults([]);
-      setError(err instanceof Error ? err.message : "Search failed");
-      setLoadState("error");
-    }
-  }
+  }, [query]);
 
   function pickSuggestion(listing: FindListing) {
-    const label = listing.address.street || listing.address.full;
-    void runSearch(label);
+    setSuggestOpen(false);
     inputRef.current?.blur();
+    router.push(listingHref(listing));
   }
 
   function onInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!suggestOpen || suggestions.length === 0) return;
+    if (e.key === "Escape") {
+      setSuggestOpen(false);
+      setHighlightIndex(-1);
+      return;
+    }
+
+    if (!suggestOpen || suggestions.length === 0) {
+      // Enter with a single live match → open it (no Search button needed).
+      if (e.key === "Enter" && filtered.length === 1) {
+        e.preventDefault();
+        pickSuggestion(filtered[0]!);
+      }
+      return;
+    }
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -171,12 +211,16 @@ export default function FindClient() {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlightIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
-    } else if (e.key === "Enter" && highlightIndex >= 0) {
+    } else if (e.key === "Enter") {
       e.preventDefault();
-      pickSuggestion(suggestions[highlightIndex]);
-    } else if (e.key === "Escape") {
-      setSuggestOpen(false);
-      setHighlightIndex(-1);
+      if (highlightIndex >= 0) {
+        pickSuggestion(suggestions[highlightIndex]!);
+      } else if (suggestions.length === 1) {
+        pickSuggestion(suggestions[0]!);
+      } else {
+        setSuggestOpen(false);
+        inputRef.current?.blur();
+      }
     }
   }
 
@@ -193,14 +237,11 @@ export default function FindClient() {
             <span className="italic gold-shimmer">listings.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Look up an address, street, MLS number, or zip across{" "}
-            {formatTownList(TMRE_TOWNS)}.
+            Type an address, street, MLS number, or zip across{" "}
+            {formatTownList(TMRE_TOWNS)}. Matches appear as you type.
           </p>
 
-          <form
-            onSubmit={(e) => runSearch(undefined, e)}
-            className="relative z-30 mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl animate-fade-up-delay-2"
-          >
+          <div className="relative z-30 mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl animate-fade-up-delay-2">
             <div className="relative z-30 flex-1 min-w-0">
               <input
                 ref={inputRef}
@@ -219,7 +260,9 @@ export default function FindClient() {
                 aria-autocomplete="list"
                 aria-controls="find-suggestions"
                 aria-activedescendant={
-                  highlightIndex >= 0 ? `find-suggestion-${highlightIndex}` : undefined
+                  highlightIndex >= 0
+                    ? `find-suggestion-${highlightIndex}`
+                    : undefined
                 }
                 placeholder="Address, street, MLS #, zip…"
                 autoComplete="off"
@@ -239,7 +282,9 @@ export default function FindClient() {
                   )}
                   {suggestions.map((l, i) => {
                     const line = l.address.street || l.address.full;
-                    const meta = [l.address.city, l.address.postalCode].filter(Boolean).join(" ");
+                    const meta = [l.address.city, l.address.postalCode, l.status]
+                      .filter(Boolean)
+                      .join(" · ");
                     return (
                       <li key={l.mlsId} role="presentation">
                         <button
@@ -254,13 +299,19 @@ export default function FindClient() {
                             warmListingCache(l.mlsId);
                           }}
                           className={`w-full px-4 py-3 text-left transition-colors ${
-                            highlightIndex === i ? "bg-gold/15" : "hover:bg-white/5"
+                            highlightIndex === i
+                              ? "bg-gold/15"
+                              : "hover:bg-white/5"
                           }`}
                         >
-                          <span className="block text-sm font-medium text-white">{line}</span>
+                          <span className="block text-sm font-medium text-white">
+                            {line}
+                          </span>
                           <span className="mt-0.5 flex items-center justify-between gap-3 font-mono text-[10px] text-white/45">
                             <span>{meta}</span>
-                            <span className="text-gold tabular-nums shrink-0">{fmtMoney(l.price)}</span>
+                            <span className="text-gold tabular-nums shrink-0">
+                              {fmtMoney(l.price)}
+                            </span>
                           </span>
                         </button>
                       </li>
@@ -269,14 +320,7 @@ export default function FindClient() {
                 </ul>
               )}
             </div>
-            <button
-              type="submit"
-              disabled={loadState === "loading"}
-              className="rounded-full bg-gold px-7 py-3 text-sm font-medium text-navy whitespace-nowrap transition-all hover:bg-gold-light disabled:opacity-60"
-            >
-              {loadState === "loading" ? "Searching…" : "Search →"}
-            </button>
-          </form>
+          </div>
 
           <div className="relative z-10 mt-5 flex flex-wrap items-center gap-3 animate-fade-up-delay-2">
             <TownFilterPills
@@ -292,8 +336,23 @@ export default function FindClient() {
               {filtered.length} result{filtered.length === 1 ? "" : "s"}
               {submittedQuery ? ` for “${submittedQuery}”` : ""}
               {townFilter !== "All" ? ` in ${townFilter}` : ""}
+              {includedClosed ? " · including closed / expired" : ""}
+              {suggestLoading ? " · updating…" : ""}
             </p>
           )}
+          {hiddenByTown ? (
+            <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-gold/80">
+              {results.length} match
+              {results.length === 1 ? "" : "es"} outside {townFilter}.{" "}
+              <button
+                type="button"
+                onClick={() => setTownFilter("All")}
+                className="underline underline-offset-2 hover:text-gold"
+              >
+                Show all towns
+              </button>
+            </p>
+          ) : null}
         </div>
       </section>
 
@@ -301,17 +360,22 @@ export default function FindClient() {
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           {loadState === "idle" && (
             <p className="text-charcoal/60 font-mono text-sm">
-              Enter an address or MLS number above to search active inventory.
+              Start typing an address or MLS number — suggestions and results
+              update as you type.
             </p>
+          )}
+
+          {loadState === "loading" && results.length === 0 && (
+            <p className="text-charcoal/60 font-mono text-sm">Searching…</p>
           )}
 
           {loadState === "error" && error && (
             <p className="text-coral font-mono text-sm">{error}</p>
           )}
 
-          {loadState === "ready" && filtered.length === 0 && (
+          {loadState === "ready" && filtered.length === 0 && !hiddenByTown && (
             <p className="text-charcoal/60 font-mono text-sm">
-              No active listings matched
+              No listings matched
               {submittedQuery ? ` “${submittedQuery}”` : " your search"}
               {townFilter !== "All" ? ` in ${townFilter}` : ""}.
             </p>
@@ -335,6 +399,7 @@ function FindCard({ listing: l }: { listing: FindListing }) {
     l.propertyType.replace(/ For (Sale|Lease)$/i, ""),
     l.beds && l.baths ? `${l.beds}BR/${l.baths}BA` : null,
     l.sqft ? `${l.sqft.toLocaleString()} sqft` : null,
+    l.status && l.status !== "Active" ? l.status : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -345,25 +410,27 @@ function FindCard({ listing: l }: { listing: FindListing }) {
       className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 transition-all hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5"
     >
       <Link
-        href={listingDetailHref(
-          l.mlsId,
-          l.address.street || l.address.full,
-          resolveListingTown(l.address.city) || l.address.city,
-        )}
+        href={listingHref(l)}
         className="font-medium text-navy text-base leading-tight hover:text-gold transition-colors block"
       >
         {l.address.street || l.address.full}
       </Link>
       <p className="text-sm text-slate mt-1">
-        {[l.address.city, l.address.state, l.address.postalCode].filter(Boolean).join(" ")}
+        {[l.address.city, l.address.state, l.address.postalCode]
+          .filter(Boolean)
+          .join(" ")}
       </p>
       <p className="font-mono text-[10px] tracking-[0.1em] uppercase text-slate/60 mt-2">
         {typeLine}
       </p>
       <div className="flex items-baseline justify-between gap-3 mt-4 pt-4 border-t border-charcoal/[0.06]">
-        <span className="font-mono text-lg text-gold tabular-nums">{fmtMoney(l.price)}</span>
+        <span className="font-mono text-lg text-gold tabular-nums">
+          {fmtMoney(l.price)}
+        </span>
         {l.dom != null && (
-          <span className="font-mono text-[10px] text-slate/60">{l.dom}d on market</span>
+          <span className="font-mono text-[10px] text-slate/60">
+            {l.dom}d on market
+          </span>
         )}
       </div>
     </article>

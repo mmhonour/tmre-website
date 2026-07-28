@@ -8,12 +8,17 @@ import { LAST_INCREMENTAL_CRON_TICK_KEY } from '@/lib/netlify-sync-listings-work
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import { hydrateSyncMetaStore } from '@/lib/db/sync-meta-store'
 import { isServerlessRuntime } from '@/lib/runtime-host'
+import {
+  INCREMENTAL_SYNC_STALE_MS,
+  runIncrementalSyncWatchdog,
+} from '@/lib/incremental-sync-watchdog'
+import { isScheduledSyncJobPausedFresh } from '@/lib/scheduled-sync-toggle'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-/** GET — last cron heartbeat stamp (does not invoke Netlify). */
+/** GET — cron heartbeat + last successful sync; also runs stale watchdog once. */
 export async function GET(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,10 +27,35 @@ export async function GET(req: NextRequest) {
   const lastIncrementalCronTick = await getSyncMetaFresh(
     LAST_INCREMENTAL_CRON_TICK_KEY,
   )
+  const lastIncrementalSync = await getSyncMetaFresh('last_incremental_sync')
+  const paused = await isScheduledSyncJobPausedFresh('incremental')
+
+  // Visiting Admin heals a stuck site without a button click.
+  let watchdog: Awaited<ReturnType<typeof runIncrementalSyncWatchdog>> | null =
+    null
+  try {
+    watchdog = await runIncrementalSyncWatchdog()
+  } catch (err) {
+    console.warn('[api/admin/cron/sync-listings] watchdog failed', err)
+  }
+
+  const syncAgeMs = lastIncrementalSync
+    ? Math.max(0, Date.now() - Date.parse(lastIncrementalSync))
+    : null
+  const syncStale =
+    syncAgeMs == null ||
+    Number.isNaN(syncAgeMs) ||
+    syncAgeMs > INCREMENTAL_SYNC_STALE_MS
+
   return NextResponse.json({
     lastIncrementalCronTick,
+    lastIncrementalSync,
+    syncStale,
+    syncAgeMs,
+    paused,
     hasSyncCronSecret: Boolean(syncCronSecret()),
     siteBaseUrl: netlifySiteBaseUrl(),
+    watchdog,
   })
 }
 
@@ -45,7 +75,7 @@ export async function POST(req: NextRequest) {
       '@/lib/netlify-sync-trigger'
     )
     const queued = await queueNetlifyIncrementalSync(startedAt, {
-      source: 'cron',
+      source: 'admin',
     })
     return NextResponse.json({
       ok: queued.ok,
@@ -56,7 +86,7 @@ export async function POST(req: NextRequest) {
       base: queued.base,
       error: queued.ok ? undefined : queued.error,
       note: queued.ok
-        ? 'Queued sync-listings-worker (full RETS + digests). Heartbeat stamps when the worker runs.'
+        ? 'Queued sync-listings-worker (full RETS + digests). Watch Syncs → Dashboard Start/End.'
         : 'Queue failed — check SYNC_CRON_SECRET / site URL / Netlify function logs.',
     })
   }
@@ -65,7 +95,7 @@ export async function POST(req: NextRequest) {
     '@/lib/netlify-sync-listings-work'
   )
   const result = await runIncrementalSyncListingsWork(startedAt, {
-    source: 'cron',
+    source: 'admin',
   })
 
   return NextResponse.json({

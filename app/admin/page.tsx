@@ -21,12 +21,14 @@ import AdminDeployNotifyPanel from "@/components/admin/AdminDeployNotifyPanel";
 import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
+import AdminPriceBucketsPanel from "@/components/admin/AdminPriceBucketsPanel";
 import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
 import AdminSyncsPanel from "@/components/admin/AdminSyncsPanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
 import AdminInventoryComparisonPanel from "@/components/admin/AdminInventoryComparisonPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
+import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenceDealBoardPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
@@ -695,9 +697,11 @@ export default async function AdminPage() {
       spotlight={<AdminSpotlightSitePanel />}
       goldilocks={<AdminGoldilocksPanel initial={goldilocksInitial} />}
       pricing={<AdminPricingPanel initial={pricingInitial} />}
+      priceBands={<AdminPriceBucketsPanel />}
       vintages={<AdminVintagesPanel />}
       rets={retsPanel}
       intelInventory={inventoryBandsPanel}
+      intelDealBoard={<AdminIntelligenceDealBoardPanel />}
     />
   );
 

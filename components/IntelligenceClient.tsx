@@ -135,6 +135,12 @@ import {
   type VintageIndexFilter,
 } from "@/lib/intelligence-vintage-filter";
 import { readClientPref, writeClientPref } from "@/lib/client-prefs";
+import {
+  BOARD_LISTING_LIMIT,
+  intelligenceMiddleTierEligible,
+  planMiddleTierCollapse,
+  splitBoardByScoreTier,
+} from "@/lib/intelligence-deal-board-tiers";
 
 type TxFilter = "all" | "sale" | "rental";
 type ClsFilter = "all" | "residential" | "commercial";
@@ -363,7 +369,6 @@ const STATUS_SORT_ORDER: Record<RowStatus, number> = {
   Pending: 3,
 };
 
-const BOARD_LISTING_LIMIT = 100;
 /**
  * When filtered results exceed one board page (100), only the first N photos
  * are eager-loaded / prefetched per page — more mount as you scroll.
@@ -565,70 +570,6 @@ function sortListings(
     return sortDir === "asc" ? cmp : -cmp;
   });
   return sorted;
-}
-
-type BoardScoreTiers = {
-  top: DisplayListing[];
-  middle: DisplayListing[];
-  bottom: DisplayListing[];
-  canTier: boolean;
-};
-
-/** Split listings into top 20%, middle 60%, and bottom 20% by Goldilocks score. */
-function splitBoardByScoreTier(listings: DisplayListing[]): BoardScoreTiers {
-  const n = listings.length;
-  if (n === 0) return { top: [], middle: [], bottom: [], canTier: false };
-
-  const byScore = [...listings].sort((a, b) => b.score - a.score);
-  const topCount = Math.max(1, Math.round(n * 0.2));
-  const bottomCount = Math.max(1, Math.round(n * 0.2));
-  const topEnd = topCount;
-  const bottomStart = n - bottomCount;
-
-  if (bottomStart <= topEnd) {
-    return { top: byScore, middle: [], bottom: [], canTier: false };
-  }
-
-  return {
-    top: byScore.slice(0, topEnd),
-    middle: byScore.slice(topEnd, bottomStart),
-    bottom: byScore.slice(bottomStart),
-    canTier: true,
-  };
-}
-
-/** Always keep at least this many rows visible when the middle tier is collapsed. */
-const BOARD_MIN_VISIBLE = 10;
-
-type BoardMiddleCollapsePlan = {
-  top: DisplayListing[];
-  /** Middle rows that stay visible even when collapsed (to hit the min). */
-  middlePinned: DisplayListing[];
-  /** Middle rows the toggle may hide. */
-  middleCollapsible: DisplayListing[];
-  bottom: DisplayListing[];
-  canCollapse: boolean;
-  hideableCount: number;
-};
-
-/**
- * Middle tier may hide at most `total − BOARD_MIN_VISIBLE` listings so the
- * collapsed board never dips below 10 (or the full set when smaller).
- */
-function planMiddleTierCollapse(tiers: BoardScoreTiers): BoardMiddleCollapsePlan {
-  const { top, middle, bottom, canTier } = tiers;
-  const total = top.length + middle.length + bottom.length;
-  const maxHide = Math.max(0, total - BOARD_MIN_VISIBLE);
-  const hideableCount = canTier ? Math.min(middle.length, maxHide) : 0;
-  const pinCount = middle.length - hideableCount;
-  return {
-    top,
-    middlePinned: middle.slice(0, pinCount),
-    middleCollapsible: middle.slice(pinCount),
-    bottom,
-    canCollapse: hideableCount > 0,
-    hideableCount,
-  };
 }
 
 function buildScoreRankMap(listings: DisplayListing[]): Map<string, number> {
@@ -1837,6 +1778,14 @@ export default function IntelligenceClient({
   const [mobileZipConfirmed, setMobileZipConfirmed] = useState(false);
   /** Phone: town market tagline fades out 10s after a town is selected. */
   const [showMobileTownTagline, setShowMobileTownTagline] = useState(true);
+  /**
+   * Desktop listings blurb erase: once erasing, freeze the sentence and drop
+   * characters from the front (~2/sec). null = show the live JSX blurb.
+   */
+  const [listingsBlurbFrozen, setListingsBlurbFrozen] = useState<string | null>(
+    null,
+  );
+  const [listingsBlurbCharsRemoved, setListingsBlurbCharsRemoved] = useState(0);
   const setFiltersExpanded = (expanded: boolean) =>
     setFiltersExpandedPref(expanded ? "true" : "false");
   const [hoveredZip, setHoveredZip] = useState<string | null>(null);
@@ -2577,6 +2526,7 @@ export default function IntelligenceClient({
   }, [active, isMobileViewport]);
 
   // Phone: keep location chrome peeked while a multi-zip town still needs All/zip.
+  // Do not steal an intentional For Sale/Rentals (tx) or slider peek.
   useEffect(() => {
     if (
       !isMobileViewport ||
@@ -2587,7 +2537,10 @@ export default function IntelligenceClient({
     ) {
       return;
     }
-    setFilterChromePeek((prev) => (prev === "towns" ? prev : "towns"));
+    setFilterChromePeek((prev) => {
+      if (prev === "tx" || prev === "sliders") return prev;
+      return "towns";
+    });
   }, [
     isMobileViewport,
     active,
@@ -3028,9 +2981,11 @@ export default function IntelligenceClient({
     // Middle tier only makes sense in the default score ranking (high → low).
     // Any other sort (or score ascending) shows the flat list — no collapse band.
     if (
-      boardSortKey !== "score" ||
-      boardSortDir !== "desc" ||
-      vintageFilterActive(minVintage, maxVintage)
+      !intelligenceMiddleTierEligible({
+        sortKey: boardSortKey,
+        sortDir: boardSortDir,
+        vintageFilterActive: vintageFilterActive(minVintage, maxVintage),
+      })
     ) {
       return {
         top: rows,
@@ -3114,6 +3069,81 @@ export default function IntelligenceClient({
     ? resultCount - boardTiers.hideableCount
     : resultCount;
   const poolCount = allListings.length;
+
+  const listingsBlurbLive =
+    state === "loading" && liveListings === null
+      ? null
+      : resultCount === 0
+        ? null
+        : `${filteredCount.toLocaleString()} of ${poolCount.toLocaleString()} of your listings${
+            active === "All" ? "" : ` in ${active}`
+          }${sortKey === "score" ? ", scored." : "."}`;
+
+  /** Filter identity — new search (or first results) reinstates the blurb erase. */
+  const listingsBlurbSearchKey = [
+    active,
+    zip ?? "",
+    tx,
+    cls,
+    saleProperty,
+    sortKey,
+    boardStatusFilter,
+    String(minBedrooms),
+    String(maxBedrooms),
+    String(minBathrooms),
+    String(maxBathrooms),
+    String(minVintage),
+    String(maxVintage),
+    String(minPriceIndex),
+    String(maxPriceIndex),
+    String(minSqftIndex),
+    String(maxSqftIndex),
+    newConstructionFilter,
+    furnishedFilter,
+    listingsBlurbLive ? "has-blurb" : "no-blurb",
+  ].join("|");
+
+  const listingsBlurbLiveRef = useRef(listingsBlurbLive);
+  listingsBlurbLiveRef.current = listingsBlurbLive;
+
+  // Desktop: after 10s, erase the listings blurb from the first letter (~2/sec).
+  // Reinstate whenever the user issues a new search (filter key changes).
+  useEffect(() => {
+    setListingsBlurbFrozen(null);
+    setListingsBlurbCharsRemoved(0);
+
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 1024px)").matches) return;
+    if (!listingsBlurbLiveRef.current) return;
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+
+    const holdId = window.setTimeout(() => {
+      if (cancelled) return;
+      const frozen = listingsBlurbLiveRef.current;
+      if (!frozen) return;
+      setListingsBlurbFrozen(frozen);
+      let removed = 0;
+      intervalId = window.setInterval(() => {
+        if (cancelled) return;
+        removed += 1;
+        if (removed >= frozen.length) {
+          if (intervalId != null) window.clearInterval(intervalId);
+          intervalId = null;
+          setListingsBlurbCharsRemoved(frozen.length);
+          return;
+        }
+        setListingsBlurbCharsRemoved(removed);
+      }, 500);
+    }, 10_000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(holdId);
+      if (intervalId != null) window.clearInterval(intervalId);
+    };
+  }, [listingsBlurbSearchKey]);
 
   // Leaving a listing from the board: stamp #deal-… so browser Back + “Back to
   // deal board” can restore the exact row (page + middle tier if needed).
@@ -3472,18 +3502,70 @@ export default function IntelligenceClient({
 
   /**
    * Reveal slider chrome — one descriptor (accumulating), or all (mag glass).
-   * Once every available descriptor is exposed, promote to `"all"`.
+   * Second click on the same control hides it. Once every available descriptor
+   * is exposed, promote to `"all"`.
    */
+  function hideCollapsedSliders() {
+    setCollapsedSlidersOpen(false);
+    setExposedSliders(null);
+    if (filterChromePeek === "sliders") setFilterChromePeek(null);
+    setPriceSliderActive(false, { immediate: true });
+    setBedSliderActive(false, { immediate: true });
+    setBathSliderActive(false, { immediate: true });
+    setVintageSliderActive(false, { immediate: true });
+    setSqftSliderActive(false, { immediate: true });
+    setFurnishedSliderActive(false, { immediate: true });
+  }
+
   function exposeSliderFilters(kind?: IntelSliderKind) {
-    if (filterChromeCollapsed) {
-      setFilterChromePeek("sliders");
-    }
-    setCollapsedSlidersOpen(true);
+    // Mag glass: toggle all sliders off if already fully exposed.
     if (kind == null) {
+      if (collapsedSlidersOpen && exposedSliders === "all") {
+        hideCollapsedSliders();
+        return;
+      }
+      if (filterChromeCollapsed) {
+        setFilterChromePeek("sliders");
+      }
+      setCollapsedSlidersOpen(true);
       setExposedSliders("all");
       pulseAllSliderDescriptors();
       return;
     }
+
+    // Same descriptor again while that slider is showing → hide it.
+    const kindAlreadyShown =
+      collapsedSlidersOpen &&
+      (exposedSliders === "all" ||
+        (Array.isArray(exposedSliders) && exposedSliders.includes(kind)));
+    if (kindAlreadyShown) {
+      if (exposedSliders === "all") {
+        const available = availableIntelSliderKinds({
+          showPriceFilter,
+          cls,
+          showFurnished: tx !== "sale",
+        });
+        const rest = available.filter((k) => k !== kind);
+        if (rest.length === 0) {
+          hideCollapsedSliders();
+          return;
+        }
+        setExposedSliders(rest);
+        return;
+      }
+      const rest = (exposedSliders as IntelSliderKind[]).filter((k) => k !== kind);
+      if (rest.length === 0) {
+        hideCollapsedSliders();
+        return;
+      }
+      setExposedSliders(rest);
+      return;
+    }
+
+    if (filterChromeCollapsed) {
+      setFilterChromePeek("sliders");
+    }
+    setCollapsedSlidersOpen(true);
     const available = availableIntelSliderKinds({
       showPriceFilter,
       cls,
@@ -3515,18 +3597,6 @@ export default function IntelligenceClient({
   }
 
   const isPartialDescriptorPeek = isPartialSliderPeek(exposedSliders);
-
-  function hideCollapsedSliders() {
-    setCollapsedSlidersOpen(false);
-    setExposedSliders(null);
-    if (filterChromePeek === "sliders") setFilterChromePeek(null);
-    setPriceSliderActive(false, { immediate: true });
-    setBedSliderActive(false, { immediate: true });
-    setBathSliderActive(false, { immediate: true });
-    setVintageSliderActive(false, { immediate: true });
-    setSqftSliderActive(false, { immediate: true });
-    setFurnishedSliderActive(false, { immediate: true });
-  }
 
   const showFurnishedSlider = tx !== "sale";
 
@@ -3865,10 +3935,31 @@ export default function IntelligenceClient({
         : "homes";
 
   const peekTownPills = () => {
+    // Already showing (full chrome or town peek) → hide. Otherwise peek towns.
+    if (!filterChromeCollapsed || filterChromePeek === "towns") {
+      setFilterChromeCollapsed(true);
+      setFilterChromePeek(null);
+      return;
+    }
     setFilterChromeCollapsed(true);
     setFilterChromePeek("towns");
   };
   const peekTxPills = () => {
+    // Already showing (full chrome or tx peek) → hide. Otherwise peek tx row
+    // (All / For Sale / Rentals, plus Homes… when not on rentals).
+    if (!filterChromeCollapsed || filterChromePeek === "tx") {
+      setFilterChromeCollapsed(true);
+      setFilterChromePeek(
+        isMobileViewport &&
+          active !== "All" &&
+          townHasMultipleZips(active) &&
+          showZipFilters &&
+          !mobileZipConfirmed
+          ? "towns"
+          : null,
+      );
+      return;
+    }
     setFilterChromeCollapsed(true);
     setFilterChromePeek("tx");
   };
@@ -4514,6 +4605,7 @@ export default function IntelligenceClient({
 
                 {showTxChrome ? (
                   <div
+                    data-intel-tx-filter-chrome
                     className={`flex flex-wrap items-center gap-2 min-w-0 self-start w-full ${
                       filterChromeCollapsed ? "lg:order-3" : ""
                     }`}
@@ -4528,7 +4620,12 @@ export default function IntelligenceClient({
                         { value: "rental", label: "Rentals" },
                       ]}
                     />
-                    {!filterChromeCollapsed && tx !== "rental" ? (
+                    {/*
+                      Show property-type pills whenever tx chrome is open —
+                      including descriptor peek (collapsed) — so Homes / Rentals
+                      descriptor clicks actually reveal their filter group.
+                    */}
+                    {tx !== "rental" ? (
                       <>
                         <div
                           className={`hidden sm:block ${filterPillSeparatorClass("compact")}`}
@@ -4748,6 +4845,7 @@ export default function IntelligenceClient({
               initialKind={dotdKind}
               initialPropertyClass={dotdPropertyClass}
               hideUntilReady
+              surfaceAnyPick
               className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
             />
           </div>
@@ -4761,99 +4859,124 @@ export default function IntelligenceClient({
       >
         {mobileLivePortal}
         <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
-          <div className="mb-2 lg:mb-3 flex flex-col gap-2">
-            {/* Desktop Live chip. Share sits on the Show graphs row above the board. */}
-            <div className="hidden md:flex items-center gap-3">
-              <div className="flex items-center gap-2 font-mono text-xs leading-none text-slate">
-                {liveStatusChip}
+          {/*
+            Match board + sidebar columns so Live/share share the same right edge
+            (board column), not the full page including the town-stats rail.
+          */}
+          <div className="mb-2 lg:mb-3 lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
+            <div className="flex flex-col gap-2 min-w-0">
+              {/*
+                Desktop: listings headline left, Live top-right (aligns with Share).
+              */}
+              <div className="hidden lg:flex items-start justify-between gap-x-4 gap-y-1 min-w-0">
+                <div className="flex flex-wrap items-end gap-x-4 gap-y-1 min-w-0">
+                  {(() => {
+                    const erasing = listingsBlurbFrozen != null;
+                    const erased =
+                      erasing &&
+                      listingsBlurbCharsRemoved >= listingsBlurbFrozen.length;
+                    if (erased) return null;
+                    const erasingText =
+                      erasing && listingsBlurbFrozen
+                        ? listingsBlurbFrozen.slice(listingsBlurbCharsRemoved)
+                        : null;
+                    return (
+                      <h2 className="font-serif text-[22px] sm:text-[28px] lg:text-[30px] text-navy leading-tight">
+                        {erasingText != null ? (
+                          erasingText
+                        ) : state === "loading" && liveListings === null ? (
+                          <>Loading your listings…</>
+                        ) : resultCount === 0 ? (
+                          <>No listings match your filters</>
+                        ) : (
+                          <>
+                            {filteredCount.toLocaleString()} of{" "}
+                            {poolCount.toLocaleString()} of your listings
+                            {active === "All" ? "" : ` in ${active}`}
+                            {sortKey === "score" ? (
+                              <>
+                                , <span className="italic">scored.</span>
+                              </>
+                            ) : (
+                              "."
+                            )}
+                          </>
+                        )}
+                      </h2>
+                    );
+                  })()}
+                  <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
+                    Intelligence
+                  </p>
+                </div>
+                <div className="shrink-0 pt-1 text-right text-slate">
+                  {liveStatusChip}
+                </div>
+              </div>
+
+              {/* md-only Live (no desktop headline on this breakpoint). */}
+              <div className="hidden md:flex lg:hidden items-center justify-end">
+                <div className="text-slate">{liveStatusChip}</div>
+              </div>
+
+              {/*
+                Mobile board chrome (cream section, not hero header):
+                Town stats · Vintages
+                Share lives on the Show graphs / Sorted by row below.
+              */}
+              <div className="flex w-full items-center justify-end gap-x-3 gap-y-1 lg:hidden">
+                {liveSnapshots.length > 0 ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                    onClick={() => {
+                      setVintageStatsOpen(false);
+                      setTownStatsOpen(true);
+                    }}
+                    aria-expanded={townStatsOpen}
+                    aria-controls="intel-town-stats-drawer"
+                  >
+                    <svg
+                      viewBox="0 0 12 12"
+                      className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                      fill="currentColor"
+                      aria-hidden
+                    >
+                      <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                    </svg>
+                    <span className="underline underline-offset-2 decoration-navy/35">
+                      Town stats
+                    </span>
+                  </button>
+                ) : null}
+                {showVintageStats ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
+                    onClick={() => {
+                      setTownStatsOpen(false);
+                      setVintageStatsOpen(true);
+                    }}
+                    aria-expanded={vintageStatsOpen}
+                    aria-controls="intel-vintage-stats-drawer"
+                  >
+                    <svg
+                      viewBox="0 0 12 12"
+                      className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
+                      fill="currentColor"
+                      aria-hidden
+                    >
+                      <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
+                    </svg>
+                    <span className="underline underline-offset-2 decoration-navy/35">
+                      Vintages
+                    </span>
+                  </button>
+                ) : null}
               </div>
             </div>
-
-            {/*
-              Desktop results intro (cream section — not the navy hero).
-              Recovered after a denser board chrome pass removed this headline.
-            */}
-            <div className="hidden lg:flex flex-wrap items-end gap-x-4 gap-y-1 min-w-0">
-              <h2 className="font-serif text-[22px] sm:text-[28px] lg:text-[30px] text-navy leading-tight">
-                {state === "loading" && liveListings === null ? (
-                  <>Loading your listings…</>
-                ) : resultCount === 0 ? (
-                  <>No listings match your filters</>
-                ) : (
-                  <>
-                    {filteredCount.toLocaleString()} of{" "}
-                    {poolCount.toLocaleString()} of your listings
-                    {active === "All" ? "" : ` in ${active}`}
-                    {sortKey === "score" ? (
-                      <>
-                        , <span className="italic">scored.</span>
-                      </>
-                    ) : (
-                      "."
-                    )}
-                  </>
-                )}
-              </h2>
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold pb-0.5">
-                Intelligence
-              </p>
-            </div>
-
-            {/*
-              Mobile board chrome (cream section, not hero header):
-              Town stats · Vintages
-              Share lives on the Show graphs / Sorted by row below.
-            */}
-            <div className="flex w-full items-center justify-end gap-x-3 gap-y-1 lg:hidden">
-              {liveSnapshots.length > 0 ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
-                  onClick={() => {
-                    setVintageStatsOpen(false);
-                    setTownStatsOpen(true);
-                  }}
-                  aria-expanded={townStatsOpen}
-                  aria-controls="intel-town-stats-drawer"
-                >
-                  <svg
-                    viewBox="0 0 12 12"
-                    className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                    fill="currentColor"
-                    aria-hidden
-                  >
-                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                  </svg>
-                  <span className="underline underline-offset-2 decoration-navy/35">
-                    Town stats
-                  </span>
-                </button>
-              ) : null}
-              {showVintageStats ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/65 hover:text-navy transition-colors"
-                  onClick={() => {
-                    setTownStatsOpen(false);
-                    setVintageStatsOpen(true);
-                  }}
-                  aria-expanded={vintageStatsOpen}
-                  aria-controls="intel-vintage-stats-drawer"
-                >
-                  <svg
-                    viewBox="0 0 12 12"
-                    className="h-2.5 w-2.5 shrink-0 animate-intel-town-stats-tri"
-                    fill="currentColor"
-                    aria-hidden
-                  >
-                    <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
-                  </svg>
-                  <span className="underline underline-offset-2 decoration-navy/35">
-                    Vintages
-                  </span>
-                </button>
-              ) : null}
-            </div>
+            {/* Sidebar column spacer — keeps Live/share aligned to the board edge. */}
+            <div className="hidden lg:block" aria-hidden />
           </div>
 
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
@@ -4928,7 +5051,9 @@ export default function IntelligenceClient({
                 <ListingShareButton
                   href={intelligenceShareHref}
                   title="Share this Intelligence search"
-                  className="!h-6 !w-6 inline-flex shrink-0 text-navy/70 hover:text-navy hover:bg-navy/[0.06]"
+                  className="!h-12 !w-12 inline-flex shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
+                  iconClassName="h-7 w-7"
+                  strokeWidth={2.75}
                 />
               </div>
             </div>

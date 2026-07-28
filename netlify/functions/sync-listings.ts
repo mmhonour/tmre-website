@@ -46,6 +46,16 @@ export default async function handler() {
 
     const heartbeat = await stampIncrementalCronHeartbeat(startedAt)
     if (!heartbeat.ok) {
+      // Still audit — otherwise Admin shows "never" with no failure row.
+      try {
+        await recordIncrementalCronTick({
+          startedAt,
+          ok: false,
+          error: heartbeat.error ?? 'heartbeat failed (DATABASE_URL?)',
+        })
+      } catch {
+        /* ignore */
+      }
       return new Response(
         JSON.stringify({
           ok: false,
@@ -59,13 +69,13 @@ export default async function handler() {
     if (await isScheduledSyncJobPausedFresh('incremental')) {
       await recordIncrementalCronTick({
         startedAt,
-        ok: true,
+        ok: false,
         skipped: true,
         error: 'incremental scheduled sync paused by admin',
       })
       return new Response(
         JSON.stringify({
-          ok: true,
+          ok: false,
           mode: 'scheduled-queue',
           skipped: true,
           reason: 'incremental scheduled sync paused by admin',
@@ -77,13 +87,22 @@ export default async function handler() {
     if (shouldDeferScheduledJob('incremental')) {
       await recordIncrementalCronTick({
         startedAt,
-        ok: true,
+        ok: false,
         skipped: true,
         error: 'deferred — Admin Next override is still in the future',
       })
+      // Heal stuck overrides: if inventory is already stale, watchdog may queue.
+      try {
+        const { runIncrementalSyncWatchdog } = await import(
+          '../../lib/incremental-sync-watchdog'
+        )
+        await runIncrementalSyncWatchdog()
+      } catch (err) {
+        console.warn('[netlify/sync-listings] watchdog after defer failed', err)
+      }
       return new Response(
         JSON.stringify({
-          ok: true,
+          ok: false,
           mode: 'scheduled-queue',
           skipped: true,
           reason: 'Admin Next override — not due yet',
@@ -139,6 +158,15 @@ export default async function handler() {
           listingsCount: 0,
           error: null,
         })
+        // Closed loop: if a prior worker died, watchdog will re-queue once stale.
+        try {
+          const { runIncrementalSyncWatchdog } = await import(
+            '../../lib/incremental-sync-watchdog'
+          )
+          await runIncrementalSyncWatchdog()
+        } catch (err) {
+          console.warn('[netlify/sync-listings] post-queue watchdog failed', err)
+        }
         return new Response(
           JSON.stringify({
             ok: true,

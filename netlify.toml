@@ -35,6 +35,11 @@
   included_files = []
   background = true
 
+# Heals when heartbeat is fresh but last_incremental_sync is stale (dead worker / hung hop).
+[functions."sync-listings-watchdog"]
+  included_files = []
+  schedule = "*/15 * * * *"
+
 [functions."sync-listings-full"]
   included_files = []
   schedule = "0 9 * * 1"

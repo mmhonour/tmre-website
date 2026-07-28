@@ -6,7 +6,13 @@ import { useEffect, useRef, useState } from "react";
  * Share-nodes glyph: three dots at the corners of a left-pointing triangle,
  * with the right edge open (no line between the two right nodes).
  */
-function ShareIcon({ className = "" }: { className?: string }) {
+function ShareIcon({
+  className = "",
+  strokeWidth = 1.75,
+}: {
+  className?: string;
+  strokeWidth?: number;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -14,7 +20,7 @@ function ShareIcon({ className = "" }: { className?: string }) {
       aria-hidden
       className={className}
       stroke="currentColor"
-      strokeWidth="1.75"
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -27,7 +33,13 @@ function ShareIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function CopiedIcon({ className = "" }: { className?: string }) {
+function CopiedIcon({
+  className = "",
+  strokeWidth = 2,
+}: {
+  className?: string;
+  strokeWidth?: number;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -35,7 +47,7 @@ function CopiedIcon({ className = "" }: { className?: string }) {
       aria-hidden
       className={className}
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -53,11 +65,17 @@ export default function ListingShareButton({
   href,
   title,
   className = "",
+  iconClassName = "h-[15px] w-[15px]",
+  strokeWidth,
 }: {
   /** Site-relative path or absolute URL. */
   href: string;
   title?: string | null;
   className?: string;
+  /** Override glyph size (defaults to the compact listing-header size). */
+  iconClassName?: string;
+  /** Heavier stroke for larger / emphasis placements. */
+  strokeWidth?: number;
 }) {
   const [status, setStatus] = useState<"idle" | "copied">("idle");
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,9 +135,15 @@ export default function ListingShareButton({
       title={status === "copied" ? "Link copied" : "Share short link"}
     >
       {status === "copied" ? (
-        <CopiedIcon className="h-[15px] w-[15px]" />
+        <CopiedIcon
+          className={iconClassName}
+          strokeWidth={strokeWidth ?? 2}
+        />
       ) : (
-        <ShareIcon className="h-[15px] w-[15px]" />
+        <ShareIcon
+          className={iconClassName}
+          strokeWidth={strokeWidth ?? 1.75}
+        />
       )}
     </button>
   );

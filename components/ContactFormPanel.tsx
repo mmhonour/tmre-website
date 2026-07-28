@@ -97,6 +97,8 @@ export default function ContactFormPanel({
   const [captcha, setCaptcha] = useState(newChallenge);
   const [captchaVal, setCaptchaVal] = useState("");
   const [formState, setFormState] = useState<FormState>("idle");
+  const [doneExtra, setDoneExtra] = useState<string | null>(null);
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
 
   const refreshCaptcha = useCallback(() => {
     setCaptcha(newChallenge());
@@ -107,7 +109,32 @@ export default function ContactFormPanel({
     refreshCaptcha();
     setFormState("idle");
     setFieldErrors({});
+    setDoneExtra(null);
   }, [listingInfo, refreshCaptcha]);
+
+  // Prefill from passwordless session when the visitor is signed in.
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then(
+        (body: {
+          authenticated?: boolean;
+          user?: { email?: string; name?: string | null };
+        }) => {
+          if (cancelled || !body.authenticated || !body.user?.email) return;
+          setSignedInEmail(body.user.email);
+          setEmail((prev) => prev || body.user!.email!);
+          if (body.user.name?.trim()) {
+            setName((prev) => prev || body.user!.name!.trim());
+          }
+        },
+      )
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!showAddress) return;
@@ -213,6 +240,24 @@ export default function ContactFormPanel({
         }),
       });
       if (!res.ok) throw new Error();
+      const body = (await res.json().catch(() => ({}))) as {
+        magicLinkOffered?: boolean;
+        visitorEmailed?: boolean;
+        authenticated?: boolean;
+      };
+      if (source === "listing-interest") {
+        const bits: string[] = ["Check your email for a confirmation."];
+        if (body.magicLinkOffered) {
+          bits.push(
+            "We also sent a passwordless sign-in link so we can recognize you next time.",
+          );
+        } else if (body.authenticated || signedInEmail) {
+          bits.push("You're signed in — we'll remember you on I'm interested.");
+        }
+        setDoneExtra(bits.join(" "));
+      } else {
+        setDoneExtra(null);
+      }
       setFormState("done");
       onDone?.();
     } catch {
@@ -237,6 +282,11 @@ export default function ContactFormPanel({
           Sent
         </p>
         <p className="text-white/70 text-xs">I&apos;ll be in touch soon.</p>
+        {doneExtra ? (
+          <p className="mt-2 text-white/50 text-[11px] leading-relaxed px-1">
+            {doneExtra}
+          </p>
+        ) : null}
       </div>
     );
   }

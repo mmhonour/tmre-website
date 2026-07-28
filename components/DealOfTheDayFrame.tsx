@@ -422,9 +422,15 @@ export default function DealOfTheDayFrame({
   /**
    * When true, render nothing until a deal is in hand (no loading skeleton /
    * empty “no pick” chrome). Used on Intelligence so a cold fetch doesn’t
-   * occupy the hero with a slow placeholder.
+   * occupy the hero with a slow placeholder — and so towns with no matching
+   * rental/sale never show “No below-median… pick” copy.
    */
   hideUntilReady = false,
+  /**
+   * Fall back across sale ↔ rental (and sale subtypes) so Intelligence always
+   * surfaces one Deal of the Day card when any pick exists.
+   */
+  surfaceAnyPick = false,
 }: {
   city?: string;
   theme?: "hero" | "light";
@@ -439,6 +445,7 @@ export default function DealOfTheDayFrame({
   initialKind?: "sale" | "rental";
   initialPropertyClass?: DealPropertyClassFilter;
   hideUntilReady?: boolean;
+  surfaceAnyPick?: boolean;
 }) {
   const {
     loading,
@@ -460,6 +467,7 @@ export default function DealOfTheDayFrame({
     initialDealsByTown,
     initialKind,
     initialPropertyClass,
+    surfaceAnyPick,
   });
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -471,9 +479,8 @@ export default function DealOfTheDayFrame({
   const l = deal?.listing;
   const hasDeal = Boolean(deal && l);
 
-  // Hide only while a matching pick is still loading — never swallow the empty
-  // state for a pinned town / rental filter (that looked like DOTD “ignored” search).
-  if (hideUntilReady && !hasDeal && loading) {
+  // Intelligence: never show loading/empty “no pick” chrome — only a real card.
+  if (hideUntilReady && !hasDeal) {
     return null;
   }
   const score = deal?.score;

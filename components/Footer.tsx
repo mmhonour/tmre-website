@@ -22,7 +22,7 @@ const columns = [
       { href: "/stats", label: "Market Intelligence" },
       { href: "/new-construction", label: "Active Projects" },
       { href: "/investors", label: "For Investors" },
-      { href: "#", label: "Weekly Brief" },
+      { href: "/weekly-brief", label: "Weekly Brief" },
     ],
   },
   {
@@ -32,6 +32,7 @@ const columns = [
       { href: "/about", label: "Methodology" },
       { href: "/contact", label: "Contact" },
       { href: "/list-with-me", label: "List with me" },
+      { href: "/login", label: "Sign in" },
     ],
   },
 ];

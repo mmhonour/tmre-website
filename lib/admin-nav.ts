@@ -16,9 +16,11 @@ export type AdminDataControlsPanelId =
   | "spotlight"
   | "goldilocks"
   | "pricing"
+  | "price-bands"
   | "vintages"
   | "rets"
-  | "intel-inventory";
+  | "intel-inventory"
+  | "intel-deal-board";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -116,6 +118,11 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     subtitle: "Sales, Rentals, and What if match parameters",
   },
   {
+    id: "price-bands",
+    label: "Sales by price bands",
+    subtitle: "Bucket edges for Stats → Sales by price charts",
+  },
+  {
     id: "vintages",
     label: "Vintages",
     subtitle: "Read-only year-built buckets used across stats and matching",
@@ -130,6 +137,12 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     label: "Market Bands",
     subtitle:
       "Value, Mid-market, Luxury, and Discount ranges/steps for Intelligence charts",
+  },
+  {
+    id: "intel-deal-board",
+    label: "Deal board",
+    subtitle:
+      "Read-only middle-tier rules when Intelligence is sorted by score",
   },
 ];
 
@@ -268,14 +281,13 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "stats",
     label: "Stats",
-    subtitle:
-      "Sales by price, Market Bands, and where caches live",
+    subtitle: "Interesting stats, Market Bands, and where caches live",
   },
   {
     id: "data-controls",
     label: "Data controls",
     subtitle:
-      "Site, Spotlight, Goldilocks, Pricing, Vintages, RETS, and Market Bands",
+      "Site, Spotlight, Goldilocks, Pricing, Sales by price bands, Vintages, RETS, and Market Bands",
   },
   {
     id: "communications",
@@ -361,7 +373,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "history",
   },
   { id: "admin-stats-interesting", label: "Interesting stats", tab: "stats" },
-  { id: "admin-stats-price-buckets", label: "Sales by price bands", tab: "stats" },
+  {
+    id: "admin-stats-price-buckets",
+    label: "Sales by price bands",
+    tab: "data-controls",
+    panel: "price-bands",
+  },
   { id: "admin-stats-inventory", label: "Stats storage map", tab: "stats" },
   { id: "admin-stats-market", label: "Market & town stats", tab: "stats" },
   { id: "admin-stats-feeds", label: "Latest feeds", tab: "stats" },
@@ -477,6 +494,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Market Bands",
     tab: "data-controls",
     panel: "intel-inventory",
+  },
+  {
+    id: "admin-intel-deal-board",
+    label: "Deal board middle tier",
+    tab: "data-controls",
+    panel: "intel-deal-board",
   },
   {
     id: "admin-sqlite-schemas",
@@ -783,9 +806,11 @@ export function isAdminDataControlsPanelId(
     value === "spotlight" ||
     value === "goldilocks" ||
     value === "pricing" ||
+    value === "price-bands" ||
     value === "vintages" ||
     value === "rets" ||
-    value === "intel-inventory"
+    value === "intel-inventory" ||
+    value === "intel-deal-board"
   );
 }
 

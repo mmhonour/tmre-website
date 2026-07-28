@@ -128,9 +128,65 @@ export async function notifySavedSearchConfirmation(opts: {
           `When: ${opts.cadenceLabel}`,
           '',
           `Latest feed: ${SITE_URL}/latest`,
+          `Optional sign-in (passwordless): ${SITE_URL}/login`,
           '',
           '— TMRE listing alerts',
         ].join('\n'),
+      }),
+      signal: controller.signal,
+    })
+    return res.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Notify the agent that a visitor just created a listing alert. */
+export async function notifySavedSearchCreatedAdmin(opts: {
+  visitorEmail: string
+  criteriaLabel: string
+  cadenceLabel: string
+  visitorId?: string | null
+}): Promise<boolean> {
+  const { getContactNotifyEmailFresh } = await import(
+    '@/lib/contact-notify-config'
+  )
+  const to = await getContactNotifyEmailFresh()
+  const apiKey = process.env.RESEND_API_KEY?.trim()
+  if (!apiKey) return false
+  const from =
+    process.env.CONTACT_FROM_EMAIL?.trim() ||
+    'TMRE Alerts <notifications@tmre-website.com>'
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        reply_to: opts.visitorEmail,
+        subject: `New listing alert — ${opts.criteriaLabel}`,
+        text: [
+          'A visitor created a listing alert on Latest.',
+          '',
+          `Email: ${opts.visitorEmail}`,
+          `Search: ${opts.criteriaLabel}`,
+          `When: ${opts.cadenceLabel}`,
+          opts.visitorId ? `Visitor id: ${opts.visitorId}` : null,
+          '',
+          `Admin alerts: ${SITE_URL}/admin?tab=communications`,
+          '',
+          '— tmre-website saved search',
+        ]
+          .filter(Boolean)
+          .join('\n'),
       }),
       signal: controller.signal,
     })

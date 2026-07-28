@@ -197,7 +197,16 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "On Netlify: sync-listings (*/30 * * * *, not background) stamps last_incremental_cron_tick and always runs lean RETS-only in-process (Active/CS/UC + recently modified Closed); optionally queues sync-listings-worker for board/stats + digests (hop failure must not drop inventory). Admin Run cron runs the fuller path in-request. Local Node: setInterval with the same cadence. Skips when Pause is checked on Incremental, or when Admin Next override is still in the future.",
+            "On Netlify: sync-listings (*/30) stamps last_incremental_cron_tick and queue-firsts sync-listings-worker for full RETS (≤15m); lean in-process RETS only if the hop fails. sync-listings-watchdog (*/15) re-queues when last_incremental_sync is older than ~70m. Pause on Incremental (not Latest MLS) or a future Admin Next override can skip a tick — skips now write ok:false in Sync history. Local Node: setInterval with the same cadence.",
+          status: latestSyncEnabled ? "active" : "skipped",
+          statusLabel: latestSyncEnabled ? "Running" : "Disabled",
+        },
+        {
+          id: "incremental-watchdog",
+          title: "Stale incremental watchdog",
+          timing: "every 15 min + Admin open",
+          detail:
+            "If last_incremental_sync is stale and Incremental is not paused, queues sync-listings-worker with source=watchdog (bypasses Next-override defer). Closes the loop when a cron heartbeat succeeds but the worker never finishes.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },

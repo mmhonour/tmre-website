@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest) {
       ok: true,
       ...(await payload()),
       config: applied,
-      note: 'Rebuild Stats cache (Admin → Sync → stats cache) so Sales by price charts pick up the new bands.',
+      note: 'Rebuild Stats cache (Admin → Syncs) so Sales by price charts pick up the new bands.',
     })
   } catch (err) {
     return NextResponse.json(

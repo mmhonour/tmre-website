@@ -37,17 +37,21 @@ export default function AdminDataControlsPanel({
   spotlight,
   goldilocks,
   pricing,
+  priceBands,
   vintages,
   rets,
   intelInventory,
+  intelDealBoard,
 }: {
   site: ReactNode;
   spotlight: ReactNode;
   goldilocks: ReactNode;
   pricing: ReactNode;
+  priceBands: ReactNode;
   vintages: ReactNode;
   rets: ReactNode;
   intelInventory: ReactNode;
+  intelDealBoard: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDataControlsPanelId>("site");
 
@@ -83,9 +87,11 @@ export default function AdminDataControlsPanel({
     spotlight,
     goldilocks,
     pricing,
+    "price-bands": priceBands,
     vintages,
     rets,
     "intel-inventory": intelInventory,
+    "intel-deal-board": intelDealBoard,
   };
   const active = ADMIN_DATA_CONTROLS_PANELS.find((item) => item.id === panel);
 

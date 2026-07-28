@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import type { AdminSyncActionId, FullResyncFinalizeStepId } from "@/lib/admin-sync-types";
 import {
@@ -817,10 +816,13 @@ function StatusCell({
   text,
   isRunning,
   isWaiting = false,
+  /** When false, clamp to a single line; when true, allow wrap (row auto-expanded). */
+  allowWrap = false,
 }: {
   text: string | undefined;
   isRunning: boolean;
   isWaiting?: boolean;
+  allowWrap?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -829,8 +831,9 @@ function StatusCell({
     return <span className="font-mono text-[9px] text-charcoal/30">—</span>;
   }
 
-  const isLong = text.length > 72;
+  const isLong = text.length > 72 || text.includes("\n");
   const emphasize = isRunning || isWaiting;
+  const showFull = allowWrap || expanded;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -840,63 +843,42 @@ function StatusCell({
   };
 
   return (
-    <div>
+    <div className="min-w-0">
       <p
-        className={`text-[9px] leading-snug break-words ${
+        className={`text-[9px] leading-snug ${
           emphasize
             ? "font-mono text-gold uppercase tracking-wide"
             : "text-slate/80"
-        } ${isLong && !expanded ? "line-clamp-3" : ""}`}
+        } ${
+          showFull
+            ? "break-words whitespace-pre-line"
+            : "truncate whitespace-nowrap"
+        }`}
+        title={!showFull ? text : undefined}
       >
         {text}
       </p>
-      <div className="flex items-center gap-2 mt-0.5">
-        {isLong && (
+      {allowWrap || isLong ? (
+        <div className="flex items-center gap-2 mt-0.5">
+          {isLong && !allowWrap ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="font-mono text-[8px] text-navy/40 hover:text-navy hover:underline underline-offset-1"
+            >
+              {expanded ? "less" : "more"}
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="font-mono text-[8px] text-navy/40 hover:text-navy hover:underline underline-offset-1"
+            onClick={handleCopy}
+            className="font-mono text-[8px] text-charcoal/30 hover:text-navy"
+            title="Copy full status to clipboard"
           >
-            {expanded ? "less" : "more"}
+            {copied ? "✓ copied" : "copy"}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="font-mono text-[8px] text-charcoal/30 hover:text-navy"
-          title="Copy full status to clipboard"
-        >
-          {copied ? "✓ copied" : "copy"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** One Start/End/Next row: equal columns, label right-aligned, value left-aligned. */
-function SyncTimingRow({
-  label,
-  value,
-  valueClassName = "text-navy font-semibold",
-  labelClassName = "text-charcoal/45",
-}: {
-  label: ReactNode;
-  value: ReactNode;
-  valueClassName?: string;
-  labelClassName?: string;
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-x-2 items-center w-full min-w-0">
-      <span
-        className={`text-right font-mono text-[10px] tracking-wide uppercase whitespace-nowrap ${labelClassName}`}
-      >
-        {label}
-      </span>
-      <span
-        className={`text-left font-mono text-[10px] tabular-nums whitespace-nowrap min-w-0 ${valueClassName}`}
-      >
-        {value}
-      </span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -962,23 +944,6 @@ function NextOverrideSpinner({
         </button>
       ) : null}
     </span>
-  );
-}
-
-function SyncTimestamp({
-  label,
-  value,
-  timeOnly = false,
-}: {
-  label: string;
-  value: string | null;
-  timeOnly?: boolean;
-}) {
-  return (
-    <SyncTimingRow
-      label={label}
-      value={timeOnly ? formatTimeOnly(value) : formatTimestamp(value)}
-    />
   );
 }
 
@@ -1214,9 +1179,11 @@ function SyncImpactedPages({ rowId }: { rowId: string }) {
 }
 
 const TH =
-  "px-4 py-2.5 text-left font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40 border-r border-b border-transparent bg-cream/30 whitespace-nowrap";
+  "px-3 py-2 text-left font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40 border-r border-b border-transparent bg-cream/30 whitespace-nowrap";
 const TD =
-  "px-4 py-3 align-top text-left border-r border-b border-transparent last:border-r-0";
+  "px-3 py-2 align-middle text-left border-r border-b border-transparent last:border-r-0";
+const TD_EXPAND =
+  "px-3 py-2 align-top text-left border-r border-b border-transparent last:border-r-0";
 
 export default function AdminSyncTable({
   mode = "dashboard",
@@ -2292,21 +2259,23 @@ export default function AdminSyncTable({
       <div className="overflow-x-auto">
         <table
           className={`w-full border-collapse table-fixed ${
-            isDashboard ? "min-w-[640px] md:min-w-[720px]" : "min-w-[880px]"
+            isDashboard ? "min-w-[760px] md:min-w-[920px]" : "min-w-[880px]"
           }`}
         >
           <colgroup>
             {isConfigure ? <col className="w-[3.25rem]" /> : null}
             <col className="w-[3rem]" />
-            {isDashboard ? <col className="w-[6.5rem]" /> : null}
-            <col className={isDashboard ? "w-[8rem]" : "w-[9rem]"} />
+            {isDashboard ? <col className="w-[6.25rem]" /> : null}
+            <col className={isDashboard ? "w-[7.5rem]" : "w-[9rem]"} />
             {isConfigure ? <col /> : null}
-            {isDashboard ? <col /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
             {isConfigure ? <col className="w-[7.5rem]" /> : null}
             {isConfigure ? <col className="w-[12rem]" /> : null}
-            {isDashboard ? <col className="w-[11rem]" /> : null}
-            {isDashboard ? <col className="w-[9rem]" /> : null}
+            {isDashboard ? <col className="w-[5.5rem]" /> : null}
+            {isDashboard ? <col className="w-[6.5rem]" /> : null}
+            {isDashboard ? <col className="w-[7.5rem]" /> : null}
+            {isDashboard ? <col /> : null}
+            {isDashboard ? <col className="w-[8rem]" /> : null}
           </colgroup>
           <thead>
             <tr>
@@ -2328,7 +2297,6 @@ export default function AdminSyncTable({
               {isDashboard ? <th className={TH}>Action</th> : null}
               <th className={TH}>Sync</th>
               {isConfigure ? <th className={TH}>Description</th> : null}
-              {isDashboard ? <th className={TH}>Status</th> : null}
               {isConfigure ? <th className={TH}>Pages</th> : null}
               {isConfigure ? <th className={TH}>Frequency</th> : null}
               {isConfigure ? (
@@ -2339,9 +2307,10 @@ export default function AdminSyncTable({
                   Next start
                 </th>
               ) : null}
-              {isDashboard ? (
-                <th className={`${TH} border-r-0 md:border-r`}>Start / End / Next</th>
-              ) : null}
+              {isDashboard ? <th className={TH}>Start</th> : null}
+              {isDashboard ? <th className={TH}>End</th> : null}
+              {isDashboard ? <th className={TH}>Next</th> : null}
+              {isDashboard ? <th className={TH}>Status</th> : null}
               {isDashboard ? (
                 <th className={`${TH} border-r-0 hidden md:table-cell`}>Errors</th>
               ) : null}
@@ -2512,6 +2481,17 @@ export default function AdminSyncTable({
                       }`
                   : (row.detail ?? "");
 
+              // Compact single-line rows unless status/error needs room to wrap.
+              const rowExpands =
+                isDashboard &&
+                (Boolean(rowError) ||
+                  isRunning ||
+                  isWaiting ||
+                  incrementalLiveNow ||
+                  scheduleBreached ||
+                  Boolean(statusText && statusText.length > 56));
+              const cellPad = rowExpands ? TD_EXPAND : TD;
+
               return (
                 <tr
                   key={row.id}
@@ -2519,7 +2499,7 @@ export default function AdminSyncTable({
                 >
                   {isConfigure ? (
                     <td
-                      className={`${TD} sticky left-0 z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
+                      className={`${cellPad} sticky left-0 z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]`}
                     >
                       {pauseJob ? (
                         <label
@@ -2549,7 +2529,7 @@ export default function AdminSyncTable({
                     </td>
                   ) : null}
                   <td
-                    className={`${TD} sticky z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${
+                    className={`${cellPad} sticky z-20 ${stickyBg} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${
                       isConfigure ? "left-[3.25rem]" : "left-0"
                     }`}
                   >
@@ -2565,7 +2545,7 @@ export default function AdminSyncTable({
                     )}
                   </td>
                   {isDashboard ? (
-                    <td className={TD}>
+                    <td className={cellPad}>
                       {row.actionId ? (
                         <button
                           type="button"
@@ -2584,46 +2564,40 @@ export default function AdminSyncTable({
                       )}
                     </td>
                   ) : null}
-                  <td className={TD}>
-                    <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/60 leading-snug">
+                  <td className={cellPad}>
+                    <p
+                      className={`font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/60 ${
+                        rowExpands ? "leading-snug" : "leading-none truncate"
+                      }`}
+                      title={row.label}
+                    >
                       {row.label}
+                      {isDashboard && pauseJob && pausedJobs[pauseJob] ? (
+                        <span className="ml-1.5 normal-case tracking-wide text-coral/80">
+                          · Paused
+                        </span>
+                      ) : null}
                     </p>
-                    {isDashboard && pauseJob && pausedJobs[pauseJob] ? (
-                      <p className="mt-0.5 font-mono text-[9px] tracking-wide uppercase text-coral/80">
-                        Paused
-                      </p>
-                    ) : null}
-                    {isDashboard && rowError ? (
+                    {isDashboard && rowError && rowExpands ? (
                       <p className="mt-1 md:hidden font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
                         {rowError}
                       </p>
                     ) : null}
                   </td>
                   {isConfigure ? (
-                    <td className={TD}>
+                    <td className={TD_EXPAND}>
                       <p className="text-sm leading-snug text-slate">
                         {descriptionText}
                       </p>
                     </td>
                   ) : null}
-                  {isDashboard ? (
-                    <td className={TD}>
-                      <StatusCell
-                        text={statusText}
-                        isRunning={
-                          isRunning || syncAllRunning || incrementalLiveNow
-                        }
-                        isWaiting={isWaiting}
-                      />
-                    </td>
-                  ) : null}
                   {isConfigure ? (
-                    <td className={TD}>
+                    <td className={TD_EXPAND}>
                       <SyncImpactedPages rowId={row.id} />
                     </td>
                   ) : null}
                   {isConfigure ? (
-                    <td className={TD}>
+                    <td className={TD_EXPAND}>
                       <p className="font-mono text-[11px] tracking-wide text-navy leading-snug">
                         {configureSchedule.frequency}
                       </p>
@@ -2633,7 +2607,7 @@ export default function AdminSyncTable({
                     </td>
                   ) : null}
                   {isConfigure ? (
-                    <td className={TD}>
+                    <td className={TD_EXPAND}>
                       {(() => {
                         const nextJobId =
                           SCHEDULED_SYNC_JOB_BY_ROW[
@@ -2723,192 +2697,205 @@ export default function AdminSyncTable({
                     </td>
                   ) : null}
                   {isDashboard ? (
-                  <td className={`${TD} border-r-0 md:border-r`}>
-                    {(() => {
-                      // Date once above Start (from start, else finished). End/Updated are
-                      // always time-only — midnight crossover is obvious from the clock.
-                      const anchorIso = timing.started ?? timing.finished;
-                      const dateLabel = anchorIso ? formatDateShort(anchorIso) : null;
-                      const anchorCal = isoCalendarDate(anchorIso);
-                      const nextSameDay =
-                        nextRunAt != null &&
-                        anchorCal != null &&
-                        isoCalendarDate(nextRunAt) === anchorCal;
-
-                      const startMs = parseIsoMs(timing.started);
-                      const endMs = parseIsoMs(timing.finished);
-                      const elapsedMs =
-                        startMs != null && endMs != null && endMs >= startMs
-                          ? endMs - startMs
+                    <>
+                      {(() => {
+                        const anchorIso = timing.started ?? timing.finished;
+                        const dateLabel = anchorIso
+                          ? formatDateShort(anchorIso)
                           : null;
+                        const anchorCal = isoCalendarDate(anchorIso);
+                        const nextSameDay =
+                          nextRunAt != null &&
+                          anchorCal != null &&
+                          isoCalendarDate(nextRunAt) === anchorCal;
 
-                      const isPostDeployNext =
-                        row.id === "full-resync" &&
-                        status?.scheduleHints?.fullResyncSource === "post-deploy";
-                      const hungNext =
-                        isTimingHung(timing, nowMs) ||
-                        (row.id === "refresh-finished" && status?.refreshing);
-                      let nextStatusText: string | null = null;
-                      let nextStatusClass = "text-sage/80";
-                      if (isPostDeployNext) {
-                        nextStatusText = "Post-deploy warm";
-                        nextStatusClass = "text-gold";
-                      } else if (hungNext) {
-                        nextStatusText = "Hung";
-                        nextStatusClass = "text-rose-600/80";
-                      } else if (scheduleBreached) {
-                        // Font only — row color stays green/idle for a completed run.
-                        nextStatusText = "Overdue";
-                        nextStatusClass = "text-rose-600/80";
-                      }
-                      // Idle / on-schedule: label stays plain "NEXT" (no status suffix).
-                      const nextTimeText = isPostDeployNext
-                        ? formatAdminNextSyncCountdown(nextRunAt, now)
-                        : nextSameDay
-                          ? formatTimeOnly(nextRunAt)
-                          : formatAdminNextSyncAt(nextRunAt, now);
-                      const nextJobId = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
-                      const hasNextOverride = Boolean(
-                        nextJobId && status?.nextOverrides?.[nextJobId],
-                      );
-                      const nextTimeClass =
-                        scheduleBreached || hungNext
-                          ? "text-rose-700"
-                          : hasNextOverride
-                            ? "text-gold"
-                            : "text-navy";
+                        const startMs = parseIsoMs(timing.started);
+                        const endMs = parseIsoMs(timing.finished);
+                        const elapsedMs =
+                          startMs != null &&
+                          endMs != null &&
+                          endMs >= startMs
+                            ? endMs - startMs
+                            : null;
 
-                      const nextLabel = (
-                        <span className="inline-flex items-center justify-end gap-1">
-                          <span>
-                            Next
-                            {hasNextOverride && !nextStatusText ? (
-                              <span className="normal-case tracking-wide text-gold">
-                                {" "}
-                                (set)
-                              </span>
-                            ) : null}
-                            {nextStatusText ? (
+                        const isPostDeployNext =
+                          row.id === "full-resync" &&
+                          status?.scheduleHints?.fullResyncSource ===
+                            "post-deploy";
+                        const hungNext =
+                          isTimingHung(timing, nowMs) ||
+                          (row.id === "refresh-finished" &&
+                            status?.refreshing);
+                        let nextStatusText: string | null = null;
+                        let nextStatusClass = "text-sage/80";
+                        if (isPostDeployNext) {
+                          nextStatusText = "Post-deploy";
+                          nextStatusClass = "text-gold";
+                        } else if (hungNext) {
+                          nextStatusText = "Hung";
+                          nextStatusClass = "text-rose-600/80";
+                        } else if (scheduleBreached) {
+                          nextStatusText = "Overdue";
+                          nextStatusClass = "text-rose-600/80";
+                        }
+                        const nextTimeText = isPostDeployNext
+                          ? formatAdminNextSyncCountdown(nextRunAt, now)
+                          : nextSameDay
+                            ? formatTimeOnly(nextRunAt)
+                            : formatAdminNextSyncAt(nextRunAt, now);
+                        const nextJobId =
+                          SCHEDULED_SYNC_JOB_BY_ROW[
+                            row.id as AdminSyncPanelRowId
+                          ];
+                        const hasNextOverride = Boolean(
+                          nextJobId && status?.nextOverrides?.[nextJobId],
+                        );
+                        const nextTimeClass =
+                          scheduleBreached || hungNext
+                            ? "text-rose-700"
+                            : hasNextOverride
+                              ? "text-gold"
+                              : "text-navy";
+
+                        const endValue = (() => {
+                          if (!timing.finished) return "—";
+                          const age = formatAgeAgo(timing.finished, nowMs);
+                          const time = formatTimeOnly(timing.finished);
+                          return age && age !== "just now"
+                            ? `${time} · ${age}`
+                            : time;
+                        })();
+                        const endTitle = [
+                          dateLabel,
+                          !showSingleTimestamp && elapsedMs != null
+                            ? `Elapsed ${formatElapsed(elapsedMs)}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ");
+
+                        return (
+                          <>
+                            <td className={cellPad}>
                               <span
-                                className={`normal-case tracking-wide ${nextStatusClass}`}
-                              >
-                                {" "}
-                                ({nextStatusText})
-                              </span>
-                            ) : null}
-                          </span>
-                          {nextJobId && !isPostDeployNext ? (
-                            <NextOverrideSpinner
-                              jobId={nextJobId}
-                              busy={nextSavingJob === nextJobId}
-                              hasOverride={hasNextOverride}
-                              onNudge={(steps) =>
-                                void patchNextOverride(nextJobId, {
-                                  steps,
-                                  baseNextAt: nextRunAt,
-                                })
-                              }
-                              onClear={() =>
-                                void patchNextOverride(nextJobId, { nextAt: null })
-                              }
-                            />
-                          ) : null}
-                        </span>
-                      );
-
-                      return (
-                        <div className="flex flex-col gap-0.5 w-full min-w-[9rem]">
-                          {dateLabel ? (
-                            <div className="grid grid-cols-2 gap-x-2 w-full min-w-0 mb-0.5">
-                              <span aria-hidden className="block" />
-                              <p className="text-left font-mono text-[9px] tracking-wide text-charcoal/40 uppercase">
-                                {dateLabel}
-                              </p>
-                            </div>
-                          ) : null}
-                          {showSingleTimestamp ? (
-                            <SyncTimingRow
-                              label="Updated"
-                              value={(() => {
-                                if (!timing.finished) return "—";
-                                const age = formatAgeAgo(timing.finished, nowMs);
-                                const time = formatTimeOnly(timing.finished);
-                                return age && age !== "just now"
-                                  ? `${time} · ${age}`
-                                  : time;
-                              })()}
-                              valueClassName={
-                                scheduleBreached
-                                  ? "text-rose-700 font-semibold"
-                                  : "text-navy font-semibold"
-                              }
-                            />
-                          ) : (
-                            <>
-                              <SyncTimestamp
-                                label="Start"
-                                value={timing.started}
-                                timeOnly
-                              />
-                              <SyncTimingRow
-                                label="End"
-                                value={(() => {
-                                  if (!timing.finished) return "—";
-                                  const age = formatAgeAgo(timing.finished, nowMs);
-                                  const time = formatTimeOnly(timing.finished);
-                                  return age && age !== "just now"
-                                    ? `${time} · ${age}`
-                                    : time;
-                                })()}
-                                valueClassName={
-                                  scheduleBreached
-                                    ? "text-rose-700 font-semibold"
-                                    : "text-navy font-semibold"
+                                className="font-mono text-[10px] tabular-nums whitespace-nowrap text-navy font-semibold"
+                                title={
+                                  timing.started
+                                    ? `${dateLabel ?? ""} ${formatTimeOnly(timing.started)}`.trim()
+                                    : undefined
                                 }
-                              />
-                              <SyncTimingRow
-                                label="Elapsed"
-                                value={formatElapsed(elapsedMs)}
-                              />
-                            </>
-                          )}
-                          {nextRunAt != null || nextJobId ? (
-                            <SyncTimingRow
-                              label={nextLabel}
-                              value={nextRunAt != null ? nextTimeText : "—"}
-                              valueClassName={`font-semibold ${nextTimeClass}`}
-                              labelClassName={
-                                hasNextOverride ? "text-gold/80" : "text-charcoal/45"
-                              }
-                            />
-                          ) : null}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  ) : null}
-                  {isDashboard ? (
-                    <td className={`${TD} border-r-0 hidden md:table-cell`}>
-                      {rowError ? (
-                        <div className="space-y-1.5">
-                          <p className="font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
-                            {rowError}
-                          </p>
-                          {row.actionId && !isRunning && !isWaiting && !syncAllRunning && (
-                            <button
-                              type="button"
-                              onClick={() => runSync(row)}
-                              disabled={false}
-                              className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                              >
+                                {showSingleTimestamp
+                                  ? "—"
+                                  : timing.started
+                                    ? formatTimeOnly(timing.started)
+                                    : "—"}
+                              </span>
+                            </td>
+                            <td className={cellPad}>
+                              <span
+                                className={`font-mono text-[10px] tabular-nums whitespace-nowrap font-semibold ${
+                                  scheduleBreached
+                                    ? "text-rose-700"
+                                    : "text-navy"
+                                }`}
+                                title={endTitle || undefined}
+                              >
+                                {endValue}
+                              </span>
+                            </td>
+                            <td className={cellPad}>
+                              <div className="inline-flex items-center gap-1 min-w-0 max-w-full">
+                                <span
+                                  className={`font-mono text-[10px] tabular-nums whitespace-nowrap font-semibold truncate ${nextTimeClass}`}
+                                  title={
+                                    nextStatusText
+                                      ? `${nextTimeText} (${nextStatusText})`
+                                      : nextTimeText
+                                  }
+                                >
+                                  {nextRunAt != null ? nextTimeText : "—"}
+                                  {nextStatusText ? (
+                                    <span
+                                      className={`ml-1 font-normal ${nextStatusClass}`}
+                                    >
+                                      {nextStatusText}
+                                    </span>
+                                  ) : hasNextOverride ? (
+                                    <span className="ml-1 font-normal text-gold">
+                                      set
+                                    </span>
+                                  ) : null}
+                                </span>
+                                {nextJobId && !isPostDeployNext ? (
+                                  <NextOverrideSpinner
+                                    jobId={nextJobId}
+                                    busy={nextSavingJob === nextJobId}
+                                    hasOverride={hasNextOverride}
+                                    onNudge={(steps) =>
+                                      void patchNextOverride(nextJobId, {
+                                        steps,
+                                        baseNextAt: nextRunAt,
+                                      })
+                                    }
+                                    onClear={() =>
+                                      void patchNextOverride(nextJobId, {
+                                        nextAt: null,
+                                      })
+                                    }
+                                  />
+                                ) : null}
+                              </div>
+                            </td>
+                          </>
+                        );
+                      })()}
+                      <td className={cellPad}>
+                        <StatusCell
+                          text={statusText}
+                          isRunning={
+                            isRunning || syncAllRunning || incrementalLiveNow
+                          }
+                          isWaiting={isWaiting}
+                          allowWrap={rowExpands}
+                        />
+                      </td>
+                      <td
+                        className={`${cellPad} border-r-0 hidden md:table-cell`}
+                      >
+                        {rowError ? (
+                          <div className="space-y-1 min-w-0">
+                            <p
+                              className={`font-mono text-[9px] text-coral ${
+                                rowExpands
+                                  ? "leading-snug break-words whitespace-pre-line"
+                                  : "truncate whitespace-nowrap"
+                              }`}
+                              title={rowError}
                             >
-                              {pendingRetry ? "↺ Retry now" : "↺ Retry"}
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="font-mono text-[9px] text-charcoal/30">—</span>
-                      )}
-                    </td>
+                              {rowError}
+                            </p>
+                            {row.actionId &&
+                            !isRunning &&
+                            !isWaiting &&
+                            !syncAllRunning ? (
+                              <button
+                                type="button"
+                                onClick={() => runSync(row)}
+                                disabled={false}
+                                className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                              >
+                                {pendingRetry ? "↺ Retry now" : "↺ Retry"}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="font-mono text-[9px] text-charcoal/30">
+                            —
+                          </span>
+                        )}
+                      </td>
+                    </>
                   ) : null}
                 </tr>
               );

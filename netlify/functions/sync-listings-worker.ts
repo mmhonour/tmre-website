@@ -16,7 +16,7 @@ import { recordSyncRun } from '../../lib/db/listings-repo'
 export default async function handler(req: Request, _context: Context) {
   let startedAt = new Date().toISOString()
   let sideWorkOnly = false
-  let source: 'admin' | 'cron' | 'netlify-sync-trigger' | undefined
+  let source: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog' | undefined
   try {
     const body = (await req.json().catch(() => null)) as {
       startedAt?: string
@@ -30,7 +30,8 @@ export default async function handler(req: Request, _context: Context) {
     if (
       body?.source === 'admin' ||
       body?.source === 'cron' ||
-      body?.source === 'netlify-sync-trigger'
+      body?.source === 'netlify-sync-trigger' ||
+      body?.source === 'watchdog'
     ) {
       source = body.source
     }

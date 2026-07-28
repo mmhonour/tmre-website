@@ -288,28 +288,66 @@ export async function resolveMlsIdByAddress(
       city,
       limit: 24,
     })
+    // Explicit on-market passes — unfiltered address search often surfaces the
+    // prior Closed sale first and can miss Under Contract / Active rentals.
+    const onMarketRets = (
+      await Promise.all(
+        [
+          'Active',
+          'Coming Soon',
+          'Under Contract',
+          'Under Contract - Continue to Show',
+          'Pending',
+        ].map((status) =>
+          searchListings({
+            county: 'fairfield',
+            addressContains: street,
+            city,
+            status,
+            limit: 12,
+          }).catch(() => [] as Listing[]),
+        ),
+      )
+    ).flat()
+
     const pool = [
       ...(dbMatch ? [dbMatch] : []),
       ...candidates,
       ...retsHits,
+      ...onMarketRets,
     ]
     const best = pickBestListingMatch(pool, normalized)
-    if (best?.mlsId?.trim()) {
+    if (best?.mlsId?.trim() && !listingLooksOffMarket(best)) {
       if (persist) await persistAddressResolution(best, normalized)
-      const fromRets = retsHits.some(
-        (l) => (l.mlsId?.trim() || '') === (best.mlsId?.trim() || ''),
-      )
+      const fromRets =
+        retsHits.some(
+          (l) => (l.mlsId?.trim() || '') === (best.mlsId?.trim() || ''),
+        ) ||
+        onMarketRets.some(
+          (l) => (l.mlsId?.trim() || '') === (best.mlsId?.trim() || ''),
+        )
       return resultFromListing(best, normalized, fromRets ? 'rets' : 'db')
+    }
+    // Prefer any on-market pool row even if street match was fuzzy.
+    const onMarketBest = pickBestListingMatch(
+      pool.filter((l) => !listingLooksOffMarket(l)),
+      normalized,
+    )
+    if (onMarketBest?.mlsId?.trim()) {
+      if (persist) await persistAddressResolution(onMarketBest, normalized)
+      return resultFromListing(onMarketBest, normalized, 'rets')
     }
   } catch (err) {
     console.warn('[address-mls-resolve] RETS lookup failed', err)
-    if (dbMatch?.mlsId?.trim()) {
+    if (dbMatch?.mlsId?.trim() && !listingLooksOffMarket(dbMatch)) {
       if (persist) await persistAddressResolution(dbMatch, normalized)
       return resultFromListing(dbMatch, normalized, 'db')
     }
   }
 
   // Last resort: directory Closed id if nothing on-market was found.
+  // Callers that need a *current* listing (Spotlight) must treat this as
+  // off-market and keep looking — do not promote Closed over a known UC id.
   if (directoryMlsId) {
     const closedHits = await searchListingsInDbByQuery(directoryMlsId, {
       limit: 1,

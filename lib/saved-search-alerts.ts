@@ -14,6 +14,7 @@ import {
 import {
   notifySavedSearchByEmail,
   notifySavedSearchConfirmation,
+  notifySavedSearchCreatedAdmin,
   type SavedSearchMatchListing,
 } from '@/lib/saved-search-notify'
 
@@ -177,6 +178,32 @@ export async function createSavedSearchAlert(
   }).catch((err) => {
     console.warn('[saved-search-alerts] confirmation email failed', err)
   })
+
+  void notifySavedSearchCreatedAdmin({
+    visitorEmail: email,
+    criteriaLabel: label,
+    cadenceLabel,
+    visitorId: input.visitorId?.trim() || null,
+  }).catch((err) => {
+    console.warn('[saved-search-alerts] admin alert email failed', err)
+  })
+
+  // Soft profile: attach email to visitor cookie + upsert passwordless user.
+  void (async () => {
+    try {
+      const vid = input.visitorId?.trim()
+      if (vid) {
+        const { attachProfileFieldsToVisitor } = await import(
+          '@/lib/db/visitors-repo'
+        )
+        await attachProfileFieldsToVisitor(vid, { email })
+      }
+      const { upsertSiteUserByEmail } = await import('@/lib/site-user-auth')
+      await upsertSiteUserByEmail({ email, visitorId: vid || null })
+    } catch (err) {
+      console.warn('[saved-search-alerts] profile link failed', err)
+    }
+  })()
 
   return {
     id,

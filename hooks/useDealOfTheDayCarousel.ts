@@ -169,6 +169,35 @@ async function fetchTownDeal(
   return fetchTownDealOnce(town, kind, property, null);
 }
 
+/**
+ * Prefer the requested kind/class, then broaden so Intelligence always has
+ * something to show (sale ↔ rental, homes if multi/condos empty).
+ */
+async function fetchTownDealSurfaced(
+  town: TmreTown,
+  kind: "sale" | "rental",
+  property: DealPropertyClassFilter,
+  pinnedListingId?: string | null,
+): Promise<DealCarouselPayload | null> {
+  const primary = await fetchTownDeal(town, kind, property, pinnedListingId);
+  if (primary) return primary;
+  if (pinnedListingId) return null;
+
+  if (kind === "sale" && property !== "homes") {
+    const homes = await fetchTownDealOnce(town, "sale", "homes", null);
+    if (homes) return homes;
+  }
+  if (kind === "sale" && property !== "all") {
+    const anySale = await fetchTownDealOnce(town, "sale", "all", null);
+    if (anySale) return anySale;
+  }
+
+  const otherKind: "sale" | "rental" = kind === "rental" ? "sale" : "rental";
+  const otherProperty: DealPropertyClassFilter =
+    otherKind === "rental" ? "all" : "homes";
+  return fetchTownDealOnce(town, otherKind, otherProperty, null);
+}
+
 export function useDealOfTheDayCarousel(options?: {
   /** Start the carousel on this town when available. */
   initialTown?: string | null;
@@ -190,9 +219,16 @@ export function useDealOfTheDayCarousel(options?: {
   /** Filter key that `initialDealsByTown` was built for (defaults to sale/homes). */
   initialKind?: "sale" | "rental";
   initialPropertyClass?: DealPropertyClassFilter;
+  /**
+   * When the requested sale/rental (or subtype) has no pick, fall back across
+   * kind/class so the UI can always surface one Deal of the Day card.
+   * Used on Intelligence — never leave an empty “no pick in Town” slot.
+   */
+  surfaceAnyPick?: boolean;
 }) {
   const rotate = options?.rotate !== false;
   const enabled = options?.enabled !== false;
+  const surfaceAnyPick = options?.surfaceAnyPick === true;
   const orderedTowns = usePersonalizedTowns(TMRE_TOWNS);
 
   const seededDeals = useMemo((): DealsByTown | null => {
@@ -362,7 +398,9 @@ export function useDealOfTheDayCarousel(options?: {
         const missing = townsToFetch.filter((town) => !hasListing(next[town]));
         await Promise.all(
           missing.map(async (town) => {
-            const deal = await fetchTownDeal(town, kindParam, propertyClassParam);
+            const deal = surfaceAnyPick
+              ? await fetchTownDealSurfaced(town, kindParam, propertyClassParam)
+              : await fetchTownDeal(town, kindParam, propertyClassParam);
             if (!stillActive()) return;
             next = { ...next, [town]: deal };
             filterCacheRef.current.set(activeFilterKey, { ...next });
@@ -378,12 +416,19 @@ export function useDealOfTheDayCarousel(options?: {
         const fetched: DealsByTown = {};
         await Promise.all(
           townsToFetch.map(async (town) => {
-            fetched[town] = await fetchTownDeal(
-              town,
-              kindParam,
-              propertyClassParam,
-              pinnedListingId,
-            );
+            fetched[town] = surfaceAnyPick
+              ? await fetchTownDealSurfaced(
+                  town,
+                  kindParam,
+                  propertyClassParam,
+                  pinnedListingId,
+                )
+              : await fetchTownDeal(
+                  town,
+                  kindParam,
+                  propertyClassParam,
+                  pinnedListingId,
+                );
           }),
         );
         if (!stillActive()) return;
@@ -403,7 +448,10 @@ export function useDealOfTheDayCarousel(options?: {
             }
             // Keep seed/cache when refresh miss — don't paint empty over a good card.
             const keep = prev[town];
-            if (dealMatchesFilter(keep, kindParam, keepProperty)) {
+            if (
+              dealMatchesFilter(keep, kindParam, keepProperty) ||
+              (surfaceAnyPick && hasListing(keep))
+            ) {
               next[town] = keep;
               any = true;
             } else {
@@ -433,6 +481,7 @@ export function useDealOfTheDayCarousel(options?: {
     activeFilterKey,
     seededDeals,
     seedFilterKey,
+    surfaceAnyPick,
   ]);
 
   // Warm other filter bundles so pills swap instantly (no admin sync required for UX).
@@ -453,10 +502,20 @@ export function useDealOfTheDayCarousel(options?: {
     })();
   }, [enabled, rotate, pinnedListingId, dealsByTown, townsToFetch]);
 
-  const filteredDealsByTown = useMemo(
-    () => filterDealsByTown(dealsByTown, kindParam, propertyClassParam),
-    [dealsByTown, kindParam, propertyClassParam],
-  );
+  const filteredDealsByTown = useMemo(() => {
+    const strict = filterDealsByTown(
+      dealsByTown,
+      kindParam,
+      propertyClassParam,
+    );
+    if (!surfaceAnyPick) return strict;
+    // Prefer the matching filter; keep a cross-kind fallback so a town is never blank.
+    const next: DealsByTown = {};
+    for (const town of TMRE_TOWNS) {
+      next[town] = strict[town] ?? (hasListing(dealsByTown[town]) ? dealsByTown[town]! : null);
+    }
+    return next;
+  }, [dealsByTown, kindParam, propertyClassParam, surfaceAnyPick]);
 
   const carouselTowns = useMemo(
     () => townsToFetch.filter((town) => hasListing(filteredDealsByTown[town])),
@@ -500,10 +559,13 @@ export function useDealOfTheDayCarousel(options?: {
   const currentDeal = currentTown ? filteredDealsByTown[currentTown] ?? null : null;
 
   // If state still holds a prior filter's deals, keep the loading chrome up
-  // (don't paint a sale/homes listing under a Rentals or Condos selection).
+  // (don't paint a sale/homes listing under a Rentals or Condos selection) —
+  // unless surfaceAnyPick intentionally keeps a cross-kind fallback visible.
   const hasMatchingDeal = Object.values(filteredDealsByTown).some(hasListing);
   const hasStaleDeal =
-    Object.values(dealsByTown).some(hasListing) && !hasMatchingDeal;
+    !surfaceAnyPick &&
+    Object.values(dealsByTown).some(hasListing) &&
+    !hasMatchingDeal;
   const displayLoading = loading || hasStaleDeal;
 
   useEffect(() => {
