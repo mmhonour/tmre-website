@@ -26,6 +26,68 @@ export type CtCoverageCounty = {
 }
 
 let seedPromise: Promise<void> | null = null
+let tablesPromise: Promise<void> | null = null
+
+/**
+ * Idempotent DDL — Netlify does not run `npm run db:migrate` on deploy, so
+ * production can lag local after 0009 lands. Safe to call on every Admin load.
+ */
+export async function ensureCtCoverageTables(): Promise<void> {
+  if (!tablesPromise) {
+    tablesPromise = createCtCoverageTables().finally(() => {
+      tablesPromise = null
+    })
+  }
+  await tablesPromise
+}
+
+async function createCtCoverageTables(): Promise<void> {
+  await query(`
+    CREATE TABLE IF NOT EXISTS ct_counties (
+      id          text PRIMARY KEY,
+      name        text NOT NULL UNIQUE,
+      sort_order  integer NOT NULL DEFAULT 0,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await query(`
+    CREATE TABLE IF NOT EXISTS ct_towns (
+      id              text PRIMARY KEY,
+      name            text NOT NULL,
+      county_id       text NOT NULL REFERENCES ct_counties (id) ON DELETE RESTRICT,
+      active          boolean NOT NULL DEFAULT false,
+      mls_city_code   text,
+      sort_order      integer NOT NULL DEFAULT 0,
+      created_at      timestamptz NOT NULL DEFAULT now(),
+      updated_at      timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (county_id, name)
+    )
+  `)
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_ct_towns_county_id
+      ON ct_towns (county_id)
+  `)
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_ct_towns_active
+      ON ct_towns (active)
+      WHERE active
+  `)
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_ct_towns_name_lower
+      ON ct_towns (lower(name))
+  `)
+  // Best-effort bookkeeping — ignore if schema_migrations shape differs.
+  try {
+    await query(
+      `INSERT INTO schema_migrations (version, applied_at)
+       VALUES ('0009_ct_coverage_towns', now())
+       ON CONFLICT (version) DO NOTHING`,
+    )
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * Upsert the full CT catalog. Preserves Admin `active` toggles on re-seed
@@ -33,7 +95,10 @@ let seedPromise: Promise<void> | null = null
  */
 export async function ensureCtCoverageSeeded(): Promise<void> {
   if (!seedPromise) {
-    seedPromise = seedCtCoverage().finally(() => {
+    seedPromise = (async () => {
+      await ensureCtCoverageTables()
+      await seedCtCoverage()
+    })().finally(() => {
       seedPromise = null
     })
   }

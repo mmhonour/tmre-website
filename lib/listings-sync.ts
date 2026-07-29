@@ -256,6 +256,7 @@ export async function syncIncrementalListings(
     console.info('[listings-sync/incremental] skipped — RETS not configured')
     await appendIncrementalStep('skip', 'RETS not configured')
     await finishIncrementalStepLog('skipped — RETS not configured')
+    await clearIncrementalSyncLive()
     await recordSyncRun({
       startedAt: now,
       finishedAt: now,
@@ -280,6 +281,8 @@ export async function syncIncrementalListings(
     console.info('[listings-sync/incremental] skipped — refresh already in progress')
     await appendIncrementalStep('skip', 'refresh already in progress')
     await finishIncrementalStepLog('skipped — refresh already in progress')
+    // Do not leave cron's Queued breadcrumb forever while another refresh holds the lock.
+    await clearIncrementalSyncLive()
     const now = new Date().toISOString()
     await recordSyncRun({
       startedAt: now,

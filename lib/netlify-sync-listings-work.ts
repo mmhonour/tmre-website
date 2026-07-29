@@ -158,11 +158,24 @@ export async function runIncrementalSyncListingsWork(
         : 'admin-worker'
       : options.source ?? 'cron-worker'
 
+    const clearLiveOnSkip = async (reason: string) => {
+      try {
+        const { clearIncrementalSyncLive } = await import(
+          '@/lib/incremental-sync-live'
+        )
+        await clearIncrementalSyncLive()
+        console.info(`[sync-listings-work] cleared live Queued — ${reason}`)
+      } catch (err) {
+        console.warn('[sync-listings-work] clear live on skip failed', err)
+      }
+    }
+
     // Pause / defer BEFORE catch-up so a paused schedule cannot spawn more work.
     if (!fromAdmin && (await isScheduledSyncJobPausedFresh('incremental'))) {
       await beginIncrementalStepLog(logSource)
       await appendIncrementalStep('skip', 'incremental scheduled sync paused by admin')
       await finishIncrementalStepLog('skipped — paused by admin')
+      await clearLiveOnSkip('paused')
       await recordIncrementalCronTick({
         startedAt,
         ok: false,
@@ -187,6 +200,7 @@ export async function runIncrementalSyncListingsWork(
         'deferred — Admin Next override is still in the future',
       )
       await finishIncrementalStepLog('skipped — Next override defer')
+      await clearLiveOnSkip('Next override defer')
       await recordIncrementalCronTick({
         startedAt,
         ok: false,
@@ -211,6 +225,7 @@ export async function runIncrementalSyncListingsWork(
         'not due yet — Configure frequency / start time',
       )
       await finishIncrementalStepLog('skipped — not due by Configure schedule')
+      await clearLiveOnSkip('not due')
       await recordIncrementalCronTick({
         startedAt,
         ok: false,
@@ -234,16 +249,14 @@ export async function runIncrementalSyncListingsWork(
     }
 
     // Only light catch-up here — never chain a weekly full-resync on the 30m path.
-    // Full reload stays on sync-listings-full. When thin cron already pulled RETS,
-    // skip 'incremental' so we don't double-hit MLS. Admin/watchdog skip catch-up —
-    // the explicit job below is the whole point of the click/heal.
+    // Never put 'incremental' through catch-up: that calls runAdminSyncAction which
+    // on serverless re-queues another worker (nested 202) without doing RETS.
+    // This worker runs syncIncrementalListings below instead.
     const catchup = fromAdmin
       ? { skipped: true as const, reason: 'admin-manual', plan: [] as const, steps: [] as const }
       : await runOverdueSyncCatchup({
           reason: 'netlify/sync-listings-worker',
-          onlyJobs: sideWorkOnly
-            ? ['stats-cache', 'publish-snapshot']
-            : ['incremental', 'stats-cache', 'publish-snapshot'],
+          onlyJobs: ['stats-cache', 'publish-snapshot'],
         })
 
     if (sideWorkOnly) {

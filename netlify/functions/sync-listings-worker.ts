@@ -53,6 +53,15 @@ export default async function handler(req: Request, _context: Context) {
     } catch {
       /* ignore */
     }
+    // Drop the cron's Queued breadcrumb so Admin/watchdog can heal.
+    try {
+      const { clearIncrementalSyncLive } = await import(
+        '../../lib/incremental-sync-live'
+      )
+      await clearIncrementalSyncLive()
+    } catch {
+      /* ignore */
+    }
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'content-type': 'application/json' },

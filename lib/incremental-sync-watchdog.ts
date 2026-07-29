@@ -6,6 +6,13 @@ import { recordSyncRun } from '@/lib/db/listings-repo'
 import { isScheduledSyncJobPausedFresh } from '@/lib/scheduled-sync-toggle'
 import { queueNetlifyIncrementalSync } from '@/lib/netlify-sync-trigger'
 import { isServerlessRuntime } from '@/lib/runtime-host'
+import {
+  clearIncrementalSyncLive,
+  isIncrementalSyncLiveStale,
+  isIncrementalSyncQueuedDead,
+  readIncrementalSyncLive,
+  stampIncrementalSyncLive,
+} from '@/lib/incremental-sync-live'
 
 /** If last successful incremental is older than this, force a worker queue. */
 export const INCREMENTAL_SYNC_STALE_MS = 70 * 60 * 1000
@@ -42,6 +49,9 @@ function parseAgeMs(iso: string | null, nowMs: number): number | null {
  * dead worker). When `last_incremental_sync` is older than ~70 minutes and the
  * job is not paused, queue the background worker with source=watchdog (bypasses
  * Next-override defer) so inventory keeps moving without Admin button clicks.
+ *
+ * Dead "Queued…" hops (worker never reached town pulls) are cleared so a fresh
+ * queue can land — cron 202 acks must not forever look "in progress".
  */
 export async function runIncrementalSyncWatchdog(
   options: { force?: boolean } = {},
@@ -74,20 +84,25 @@ export async function runIncrementalSyncWatchdog(
     }
   }
 
-  const startedIso = await getSyncMetaFresh('last_incremental_sync_started')
-  const startedAge = parseAgeMs(startedIso, nowMs)
-  // A run started < 20m ago may still be in the 15m worker — don't double-queue.
-  if (
-    startedAge != null &&
-    startedAge < 20 * 60 * 1000 &&
-    (ageMs == null || (startedIso && lastIncrementalSync && startedIso > lastIncrementalSync))
+  // End is already stale (>70m) when we get here. A Queued breadcrumb with a
+  // stale End means the worker never finished RETS — clear and re-queue.
+  // (Do not treat queue-only Start stamps as "in progress"; that was the
+  // forever-Queued deadlock when */30 cron kept refreshing Start.)
+  const live = readIncrementalSyncLive()
+  if (live?.phase === 'queued' || isIncrementalSyncQueuedDead(live, nowMs)) {
+    await clearIncrementalSyncLive()
+  } else if (
+    (live?.phase === 'town' || live?.phase === 'post-hooks') &&
+    !isIncrementalSyncLiveStale(live, nowMs)
   ) {
     return {
       action: 'in_progress',
       lastIncrementalSync,
       ageMs,
-      detail: `incremental started ${Math.round((startedAge ?? 0) / 60_000)}m ago — waiting`,
+      detail: `worker live (${live.phase}${live.town ? ` ${live.town}` : ''})`,
     }
+  } else if (live && isIncrementalSyncLiveStale(live, nowMs)) {
+    await clearIncrementalSyncLive()
   }
 
   if (!options.force) {
@@ -135,12 +150,7 @@ export async function runIncrementalSyncWatchdog(
   })
 
   if (queued.ok) {
-    // Same Start + live breadcrumb as cron/admin queue — otherwise Dashboard
-    // keeps the prior End and never shows Queued for watchdog-driven hops.
     await setSyncMetaDurable('last_incremental_sync_started', startedAt)
-    const { stampIncrementalSyncLive } = await import(
-      '@/lib/incremental-sync-live'
-    )
     await stampIncrementalSyncLive({
       phase: 'queued',
       town: null,

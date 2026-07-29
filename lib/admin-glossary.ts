@@ -83,6 +83,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     definition:
       'Project rule: this app uses a Next version with breaking changes — check node_modules/next/dist/docs/ before assuming older Next APIs.',
   },
+  {
+    term: 'Idempotent',
+    category: 'tooling',
+    definition:
+      'Safe to run again with the same result — a second (or tenth) run does not duplicate data or break what’s already there. Example: SQL `CREATE TABLE IF NOT EXISTS` and `INSERT … ON CONFLICT DO NOTHING/UPDATE`. TMRE uses this for db migrations (`npm run db:migrate`) and for Admin CT coverage, which creates `ct_counties` / `ct_towns` on first open if Netlify never ran the migration. Opposite of a one-shot script that fails or doubles rows if you re-run it.',
+  },
 
   // —— MLS / data ——
   {

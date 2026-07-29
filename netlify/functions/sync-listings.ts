@@ -131,95 +131,141 @@ export default async function handler() {
     }
 
     // ★ Primary path — background worker has ~15 minutes for full RETS.
+    // If a prior hop is still Queued (worker never started) past the dead-queue
+    // window, skip another 202 stamp and lean-fallback so End advances.
+    let skipQueueForLeanFallback = false
     try {
-      const queued = await queueNetlifyIncrementalSync(startedAt, {
-        source: 'cron',
-      })
-      if (queued.ok) {
-        console.info(
-          `[netlify/sync-listings] queued full worker via ${queued.base} (HTTP ${queued.status})`,
+      const {
+        clearIncrementalSyncLive,
+        isIncrementalSyncQueuedDead,
+        readIncrementalSyncLive,
+      } = await import('../../lib/incremental-sync-live')
+      const live = readIncrementalSyncLive()
+      if (isIncrementalSyncQueuedDead(live)) {
+        console.warn(
+          '[netlify/sync-listings] dead Queued hop — clearing live and leaning in-process RETS',
         )
-        // Heartbeat already stamped; worker will write last_incremental_sync when RETS finishes.
-        try {
-          const { recordIncrementalQueueAudit } = await import(
-            '../../lib/db/listings-repo'
-          )
-          await recordIncrementalQueueAudit({
-            startedAt,
-            source: 'cron',
-            queued: true,
-            detail: `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`,
-          })
-        } catch (err) {
-          console.warn('[netlify/sync-listings] queue audit failed', err)
-        }
-        try {
-          const { stampIncrementalSyncLive } = await import(
-            '../../lib/incremental-sync-live'
-          )
-          const { setSyncMetaDurable } = await import(
-            '../../lib/db/sync-meta-store'
-          )
-          await setSyncMetaDurable('last_incremental_sync_started', startedAt)
-          await stampIncrementalSyncLive({
-            phase: 'queued',
-            town: null,
-            townIndex: null,
-            updatedAt: startedAt,
-          })
-        } catch (err) {
-          console.warn('[netlify/sync-listings] live progress stamp failed', err)
-        }
-        try {
-          const { stampIncrementalQueuedStepLog } = await import(
-            '../../lib/incremental-sync-step-log'
-          )
-          await stampIncrementalQueuedStepLog(
-            'cron-queue',
-            `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`,
-          )
-        } catch (err) {
-          console.warn('[netlify/sync-listings] step log queue stamp failed', err)
-        }
+        await clearIncrementalSyncLive()
+        skipQueueForLeanFallback = true
+      } else if (live?.phase === 'queued') {
+        // Still inside the dead-queue window — don't re-stamp Start/Queued
+        // (that was the forever-Queued deadlock with */30 cron).
         await recordIncrementalCronTick({
           startedAt,
           ok: true,
-          skipped: false,
-          listingsCount: 0,
-          error: null,
+          skipped: true,
+          error: 'prior queue still waiting for worker — not re-stamping',
         })
-        // Closed loop: if a prior worker died, watchdog will re-queue once stale.
-        try {
-          const { runIncrementalSyncWatchdog } = await import(
-            '../../lib/incremental-sync-watchdog'
-          )
-          await runIncrementalSyncWatchdog()
-        } catch (err) {
-          console.warn('[netlify/sync-listings] post-queue watchdog failed', err)
-        }
         return new Response(
           JSON.stringify({
             ok: true,
-            mode: 'scheduled-queue',
+            mode: 'scheduled-queue-waiting',
             startedAt,
             workerQueued: {
               ok: true,
-              status: queued.status,
-              base: queued.base,
-              error: null,
+              status: null,
+              base: null,
+              error: 'prior queue still in flight',
             },
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         )
       }
-      console.warn(
-        `[netlify/sync-listings] worker queue failed (${queued.error}) — falling back to lean in-process RETS`,
-      )
     } catch (err) {
-      console.warn(
-        '[netlify/sync-listings] worker queue threw — falling back to lean in-process RETS',
-        err,
-      )
+      console.warn('[netlify/sync-listings] live queue check failed', err)
+    }
+
+    if (!skipQueueForLeanFallback) {
+      try {
+        const queued = await queueNetlifyIncrementalSync(startedAt, {
+          source: 'cron',
+        })
+        if (queued.ok) {
+          console.info(
+            `[netlify/sync-listings] queued full worker via ${queued.base} (HTTP ${queued.status})`,
+          )
+          // Heartbeat already stamped; worker will write last_incremental_sync when RETS finishes.
+          try {
+            const { recordIncrementalQueueAudit } = await import(
+              '../../lib/db/listings-repo'
+            )
+            await recordIncrementalQueueAudit({
+              startedAt,
+              source: 'cron',
+              queued: true,
+              detail: `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`,
+            })
+          } catch (err) {
+            console.warn('[netlify/sync-listings] queue audit failed', err)
+          }
+          try {
+            const { stampIncrementalSyncLive } = await import(
+              '../../lib/incremental-sync-live'
+            )
+            const { setSyncMetaDurable } = await import(
+              '../../lib/db/sync-meta-store'
+            )
+            await setSyncMetaDurable('last_incremental_sync_started', startedAt)
+            await stampIncrementalSyncLive({
+              phase: 'queued',
+              town: null,
+              townIndex: null,
+              updatedAt: startedAt,
+            })
+          } catch (err) {
+            console.warn('[netlify/sync-listings] live progress stamp failed', err)
+          }
+          try {
+            const { stampIncrementalQueuedStepLog } = await import(
+              '../../lib/incremental-sync-step-log'
+            )
+            await stampIncrementalQueuedStepLog(
+              'cron-queue',
+              `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`,
+            )
+          } catch (err) {
+            console.warn('[netlify/sync-listings] step log queue stamp failed', err)
+          }
+          await recordIncrementalCronTick({
+            startedAt,
+            ok: true,
+            skipped: false,
+            listingsCount: 0,
+            error: null,
+          })
+          // Closed loop: if a prior worker died, watchdog will re-queue once stale.
+          try {
+            const { runIncrementalSyncWatchdog } = await import(
+              '../../lib/incremental-sync-watchdog'
+            )
+            await runIncrementalSyncWatchdog()
+          } catch (err) {
+            console.warn('[netlify/sync-listings] post-queue watchdog failed', err)
+          }
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              mode: 'scheduled-queue',
+              startedAt,
+              workerQueued: {
+                ok: true,
+                status: queued.status,
+                base: queued.base,
+                error: null,
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        console.warn(
+          `[netlify/sync-listings] worker queue failed (${queued.error}) — falling back to lean in-process RETS`,
+        )
+      } catch (err) {
+        console.warn(
+          '[netlify/sync-listings] worker queue threw — falling back to lean in-process RETS',
+          err,
+        )
+      }
     }
 
     // Fallback — keep inventory moving if the HTTP hop to the worker is broken.
