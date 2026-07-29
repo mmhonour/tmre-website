@@ -233,7 +233,12 @@ async function upsertTaxHistory(
   )
 }
 
-export type UpsertListingResult = { upserted: boolean; priceChanged: boolean }
+export type UpsertListingResult = {
+  upserted: boolean
+  /** True when the row did not exist before this write. */
+  inserted: boolean
+  priceChanged: boolean
+}
 
 /** Upsert a single listing without touching other rows in its town bucket. */
 export async function upsertListing(
@@ -242,7 +247,7 @@ export async function upsertListing(
   statusBucket: string,
 ): Promise<UpsertListingResult> {
   const id = listingRowId(listing)
-  if (!id) return { upserted: false, priceChanged: false }
+  if (!id) return { upserted: false, inserted: false, priceChanged: false }
 
   const syncedAt = new Date()
   const nextPrice = listing.price ?? null
@@ -288,7 +293,10 @@ export async function upsertListing(
         }
       : null
 
-    return { result: { upserted: true, priceChanged }, change }
+    return {
+      result: { upserted: true, inserted: !hadRow, priceChanged },
+      change,
+    }
   })
 
   // Best-effort, post-commit: never let history logging affect the sync.
@@ -428,7 +436,12 @@ export async function upsertTownListings(
   return result
 }
 
-export type IncrementalUpsertResult = { count: number; priceChangedIds: string[] }
+export type IncrementalUpsertResult = {
+  count: number
+  inserted: number
+  updated: number
+  priceChangedIds: string[]
+}
 
 /** Upsert changed listings without deleting the rest of the bucket (incremental sync). */
 export async function upsertListingsIncremental(
@@ -436,23 +449,31 @@ export async function upsertListingsIncremental(
   statusBucket: string,
   listings: Listing[],
 ): Promise<IncrementalUpsertResult> {
-  if (listings.length === 0) return { count: 0, priceChangedIds: [] }
+  if (listings.length === 0) {
+    return { count: 0, inserted: 0, updated: 0, priceChangedIds: [] }
+  }
 
   const rows = listings.filter((l) => listingMatchesStatusBucket(l, statusBucket))
-  if (rows.length === 0) return { count: 0, priceChangedIds: [] }
+  if (rows.length === 0) {
+    return { count: 0, inserted: 0, updated: 0, priceChangedIds: [] }
+  }
 
   let count = 0
+  let inserted = 0
+  let updated = 0
   const priceChangedIds: string[] = []
   for (const listing of rows) {
     const result = await upsertListing(listing, town, statusBucket)
     if (!result.upserted) continue
     count += 1
+    if (result.inserted) inserted += 1
+    else updated += 1
     if (result.priceChanged) {
       const id = listingRowId(listing)
       if (id) priceChangedIds.push(id)
     }
   }
-  return { count, priceChangedIds }
+  return { count, inserted, updated, priceChangedIds }
 }
 
 // ---------------------------------------------------------------------------

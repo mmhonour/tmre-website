@@ -147,6 +147,19 @@ export async function runIncrementalSyncWatchdog(
       townIndex: null,
       updatedAt: startedAt,
     })
+    try {
+      const { stampIncrementalQueuedStepLog } = await import(
+        '@/lib/incremental-sync-step-log'
+      )
+      await stampIncrementalQueuedStepLog(
+        'watchdog-queue',
+        queued.base
+          ? `${queued.base} HTTP ${queued.status ?? '—'}`
+          : 'background worker',
+      )
+    } catch (err) {
+      console.warn('[incremental-watchdog] step log queue stamp failed', err)
+    }
   }
 
   try {

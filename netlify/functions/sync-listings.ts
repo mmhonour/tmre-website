@@ -151,6 +151,17 @@ export default async function handler() {
         } catch (err) {
           console.warn('[netlify/sync-listings] live progress stamp failed', err)
         }
+        try {
+          const { stampIncrementalQueuedStepLog } = await import(
+            '../../lib/incremental-sync-step-log'
+          )
+          await stampIncrementalQueuedStepLog(
+            'cron-queue',
+            `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`,
+          )
+        } catch (err) {
+          console.warn('[netlify/sync-listings] step log queue stamp failed', err)
+        }
         await recordIncrementalCronTick({
           startedAt,
           ok: true,
@@ -193,7 +204,10 @@ export default async function handler() {
     }
 
     // Fallback — keep inventory moving if the HTTP hop to the worker is broken.
-    const result = await syncIncrementalListings({ postHooks: false })
+    const result = await syncIncrementalListings({
+      postHooks: false,
+      stepLogSource: 'cron-lean-fallback',
+    })
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
     const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
     await recordIncrementalCronTick({

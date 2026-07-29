@@ -39,6 +39,10 @@ data/visitors.json.*
 data/contacts.json
 data/leads.json
 
+# local dump / probe scratch (not for commit)
+.tmp-*
+.tmp
+
 # debug
 *.log
 npm-debug.log*

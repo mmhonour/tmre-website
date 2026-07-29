@@ -22,6 +22,8 @@
     "probe:rets:furnished": "node --env-file=.env.local --import tsx scripts/probe-rets-furnished.ts",
     "probe:rets:open-houses": "node --env-file=.env.local --import tsx scripts/probe-rets-open-houses.ts",
     "sync:listings": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-listings.ts",
+    "sync:listings:incremental": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-listings-incremental.ts",
+    "dump:incremental-step-log": "tsx --require ./scripts/stub-server-only.cjs scripts/dump-incremental-step-log.ts",
     "sync:spotlight-status": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-spotlight-status.ts",
     "sync:property-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-property-addresses.ts",
     "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts"

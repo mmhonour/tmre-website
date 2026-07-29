@@ -145,8 +145,23 @@ export async function runIncrementalSyncListingsWork(
       console.info('[sync-listings-work] cleared stale overdue catch-up lock')
     }
 
+    const {
+      appendIncrementalStep,
+      beginIncrementalStepLog,
+      continueOrBeginIncrementalStepLog,
+      finishIncrementalStepLog,
+    } = await import('@/lib/incremental-sync-step-log')
+    const logSource = fromAdmin
+      ? options.source === 'watchdog'
+        ? 'watchdog'
+        : 'admin-worker'
+      : options.source ?? 'cron-worker'
+
     // Pause / defer BEFORE catch-up so a paused schedule cannot spawn more work.
     if (!fromAdmin && (await isScheduledSyncJobPausedFresh('incremental'))) {
+      await beginIncrementalStepLog(logSource)
+      await appendIncrementalStep('skip', 'incremental scheduled sync paused by admin')
+      await finishIncrementalStepLog('skipped — paused by admin')
       await recordIncrementalCronTick({
         startedAt,
         ok: false,
@@ -165,6 +180,12 @@ export async function runIncrementalSyncListingsWork(
     }
 
     if (!fromAdmin && shouldDeferScheduledJob('incremental')) {
+      await beginIncrementalStepLog(logSource)
+      await appendIncrementalStep(
+        'skip',
+        'deferred — Admin Next override is still in the future',
+      )
+      await finishIncrementalStepLog('skipped — Next override defer')
       await recordIncrementalCronTick({
         startedAt,
         ok: false,
@@ -201,7 +222,10 @@ export async function runIncrementalSyncListingsWork(
         })
 
     if (sideWorkOnly) {
+      await continueOrBeginIncrementalStepLog(logSource)
+      await appendIncrementalStep('side-work-only', 'RETS already completed by thin cron')
       const { savedSearchAlerts } = await runIncrementalSideWork()
+      await finishIncrementalStepLog('side-work only (no RETS)')
       await recordIncrementalCronTick({
         startedAt,
         ok: true,
@@ -223,7 +247,14 @@ export async function runIncrementalSyncListingsWork(
       }
     }
 
-    const result = await syncIncrementalListings()
+    // Continue queue breadcrumb when present; otherwise open a fresh run log.
+    await continueOrBeginIncrementalStepLog(logSource)
+    await appendIncrementalStep(
+      'worker-start',
+      `catchup=${catchup.skipped ? catchup.reason : 'ran'}`,
+    )
+
+    const result = await syncIncrementalListings({ postHooks: true })
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
     const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
     const townErrors = skippedEmpty
@@ -282,6 +313,24 @@ export async function runIncrementalSyncListingsWork(
   } catch (err) {
     console.error('[sync-listings-work]', err)
     const message = err instanceof Error ? err.message : String(err)
+    try {
+      const {
+        appendIncrementalStep,
+        continueOrBeginIncrementalStepLog,
+        finishIncrementalStepLog,
+      } = await import('@/lib/incremental-sync-step-log')
+      await continueOrBeginIncrementalStepLog(
+        options.source === 'watchdog'
+          ? 'watchdog'
+          : options.source === 'admin'
+            ? 'admin-worker'
+            : options.source ?? 'cron-worker',
+      )
+      await appendIncrementalStep('fatal', message)
+      await finishIncrementalStepLog(`fatal: ${message}`)
+    } catch {
+      /* ignore */
+    }
     if (!fromAdmin) {
       await recordIncrementalCronTick({
         startedAt,

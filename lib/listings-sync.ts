@@ -38,6 +38,10 @@ export type TownSyncResult = {
   town: TmreTown
   statusBucket: string
   count: number
+  /** New rows written (incremental path). */
+  inserted?: number
+  /** Existing rows overwritten (incremental path). */
+  updated?: number
   ok: boolean
   error?: string
   durationMs: number
@@ -140,12 +144,17 @@ export async function syncTownListingsIncremental(
       underContract,
       underContractCts,
     )
-    const [{ count: marketCount, priceChangedIds }, { count: closedCount }] =
-      await Promise.all([
-        upsertListingsIncremental(town, 'Active', marketListings),
-        upsertListingsIncremental(town, 'Closed', closed),
-      ])
-    const count = marketCount + closedCount
+    const [marketUpsert, closedUpsert] = await Promise.all([
+      upsertListingsIncremental(town, 'Active', marketListings),
+      upsertListingsIncremental(town, 'Closed', closed),
+    ])
+    const count = marketUpsert.count + closedUpsert.count
+    const inserted = marketUpsert.inserted + closedUpsert.inserted
+    const updated = marketUpsert.updated + closedUpsert.updated
+    const priceChangedIds = [
+      ...marketUpsert.priceChangedIds,
+      ...closedUpsert.priceChangedIds,
+    ]
 
     if (priceChangedIds.length > 0) {
       try {
@@ -169,6 +178,8 @@ export async function syncTownListingsIncremental(
       town,
       statusBucket,
       count,
+      inserted,
+      updated,
       ok: true,
       durationMs: Date.now() - t0,
     }
@@ -192,6 +203,8 @@ export async function syncTownListingsIncremental(
       town,
       statusBucket,
       count: 0,
+      inserted: 0,
+      updated: 0,
       ok: false,
       error: message,
       durationMs: Date.now() - t0,
@@ -205,6 +218,8 @@ export type SyncIncrementalOptions = {
    * Default true — full path used by background worker / Admin.
    */
   postHooks?: boolean
+  /** When set, opens a durable step log for this run (or continues one already begun). */
+  stepLogSource?: string
 }
 
 /** Incremental sync across all towns — no bucket deletions (use full sync for reconcile). */
@@ -212,9 +227,17 @@ export async function syncIncrementalListings(
   options: SyncIncrementalOptions = {},
 ): Promise<IncrementalSyncResult> {
   const postHooks = options.postHooks !== false
+  const { appendIncrementalStep, beginIncrementalStepLog, finishIncrementalStepLog } =
+    await import('@/lib/incremental-sync-step-log')
+  if (options.stepLogSource) {
+    await beginIncrementalStepLog(options.stepLogSource)
+  }
+
   if (!isRetsConfigured()) {
     const now = new Date().toISOString()
     console.info('[listings-sync/incremental] skipped — RETS not configured')
+    await appendIncrementalStep('skip', 'RETS not configured')
+    await finishIncrementalStepLog('skipped — RETS not configured')
     await recordSyncRun({
       startedAt: now,
       finishedAt: now,
@@ -237,6 +260,8 @@ export async function syncIncrementalListings(
 
   if (getSyncMeta('refresh_in_progress') === '1') {
     console.info('[listings-sync/incremental] skipped — refresh already in progress')
+    await appendIncrementalStep('skip', 'refresh already in progress')
+    await finishIncrementalStepLog('skipped — refresh already in progress')
     const now = new Date().toISOString()
     await recordSyncRun({
       startedAt: now,
@@ -264,6 +289,10 @@ export async function syncIncrementalListings(
   deleteSyncMeta('last_incremental_sync')
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
+  await appendIncrementalStep(
+    'rets-start',
+    `modifiedAfter=${modifiedAfter} postHooks=${postHooks}`,
+  )
 
   beginListingsRefresh('incremental')
 
@@ -276,28 +305,48 @@ export async function syncIncrementalListings(
         town,
         townIndex: i + 1,
       })
-      towns.push(await syncTownListingsIncremental(town, modifiedAfter))
+      await appendIncrementalStep('town-start', `${town} (${i + 1}/${TMRE_TOWNS.length})`)
+      const townResult = await syncTownListingsIncremental(town, modifiedAfter)
+      towns.push(townResult)
+      await appendIncrementalStep(
+        'town-end',
+        townResult.ok
+          ? `${town}: ${townResult.count} upserts (${townResult.inserted ?? 0} new, ${townResult.updated ?? 0} updated) ${townResult.durationMs}ms`
+          : `${town}: FAILED ${townResult.error ?? 'unknown'} ${townResult.durationMs}ms`,
+      )
       await yieldToEventLoop()
     }
 
     const finishedAt = new Date().toISOString()
     const totalUpserted = towns.reduce((sum, row) => sum + row.count, 0)
+    const totalInserted = towns.reduce((sum, row) => sum + (row.inserted ?? 0), 0)
+    const totalUpdated = towns.reduce((sum, row) => sum + (row.updated ?? 0), 0)
     const allOk = towns.every((row) => row.ok)
 
     // Durable stamp — serverless freezes before fire-and-forget write-through.
     await setSyncMetaDurable('last_incremental_sync', finishedAt)
+    await appendIncrementalStep(
+      'rets-done',
+      `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) allOk=${allOk}`,
+    )
     if (allOk && postHooks) {
       await stampIncrementalSyncLive({
         phase: 'post-hooks',
         town: null,
         townIndex: null,
       })
+      await appendIncrementalStep('post-hooks-start')
       // Town feeds for /latest — bounded hero thumbnails warm chained inside rebuild.
       try {
         const { warmLatestTownFeedsDeferred } = await import('@/lib/latest-town-feed-cache')
         warmLatestTownFeedsDeferred()
+        await appendIncrementalStep('post-hooks', 'latest town feeds scheduled')
       } catch (err) {
         console.warn('[listings-sync/incremental] town feed warm schedule failed', err)
+        await appendIncrementalStep(
+          'post-hooks',
+          `latest town feeds failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
       }
       // Rebuild the intelligence board synchronously so the result lands in stats_cache.
       try {
@@ -305,8 +354,13 @@ export async function syncIncrementalListings(
           '@/lib/intelligence-deal-board-cache'
         )
         await rebuildIntelligenceDealBoardCache()
+        await appendIncrementalStep('post-hooks', 'intelligence deal board rebuilt')
       } catch (err) {
         console.warn('[listings-sync/incremental] intelligence board rebuild failed (non-fatal):', err)
+        await appendIncrementalStep(
+          'post-hooks',
+          `deal board failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
       }
 
       // Per-town market stats for towns that received upserts (no full wipe).
@@ -317,17 +371,32 @@ export async function syncIncrementalListings(
         try {
           const { rebuildStatsCacheForTowns } = await import('@/lib/stats-cache')
           await rebuildStatsCacheForTowns(changedTowns, { trackRefresh: false })
+          await appendIncrementalStep(
+            'post-hooks',
+            `stats cache for ${changedTowns.join(', ')}`,
+          )
         } catch (err) {
           console.warn(
             '[listings-sync/incremental] per-town stats cache rebuild failed (non-fatal):',
             err,
           )
+          await appendIncrementalStep(
+            'post-hooks',
+            `stats cache failed: ${err instanceof Error ? err.message : String(err)}`,
+          )
         }
       }
+      await appendIncrementalStep('post-hooks-end')
+    } else if (!postHooks) {
+      await appendIncrementalStep('post-hooks-skip', 'postHooks=false')
     }
 
     console.info(
       `[listings-sync/incremental] complete in ${Date.now() - t0}ms — ${totalUpserted} upserts since ${modifiedAfter}`,
+    )
+
+    await finishIncrementalStepLog(
+      `ok=${allOk} upserts=${totalUpserted} (${totalInserted} new, ${totalUpdated} updated) ${Date.now() - t0}ms`,
     )
 
     return {
@@ -339,6 +408,15 @@ export async function syncIncrementalListings(
       towns,
       totalUpserted,
     }
+  } catch (err) {
+    await appendIncrementalStep(
+      'fatal',
+      err instanceof Error ? err.message : String(err),
+    )
+    await finishIncrementalStepLog(
+      `fatal: ${err instanceof Error ? err.message : String(err)}`,
+    )
+    throw err
   } finally {
     await clearIncrementalSyncLive()
     endListingsRefresh(new Date().toISOString())

@@ -414,6 +414,19 @@ async function runAdminSyncActionImpl(
             townIndex: null,
             updatedAt: startedAt,
           })
+          try {
+            const { stampIncrementalQueuedStepLog } = await import(
+              '@/lib/incremental-sync-step-log'
+            )
+            await stampIncrementalQueuedStepLog(
+              'admin-queue',
+              queued.base
+                ? `${queued.base} HTTP ${queued.status ?? '—'}`
+                : 'background worker',
+            )
+          } catch (err) {
+            console.warn('[admin-sync] incremental step log queue stamp failed', err)
+          }
           return {
             ok: true,
             action,
