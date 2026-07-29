@@ -39,7 +39,8 @@ CREATE INDEX IF NOT EXISTS idx_ct_towns_active
 CREATE INDEX IF NOT EXISTS idx_ct_towns_name_lower
   ON ct_towns (lower(name));
 
-INSERT INTO schema_migrations (id) VALUES ('0009_ct_coverage_towns')
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO schema_migrations (version, applied_at)
+VALUES ('0009_ct_coverage_towns', now())
+ON CONFLICT (version) DO NOTHING;
 
 COMMIT;
