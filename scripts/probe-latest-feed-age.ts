@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs'
 import { readStatsCacheRow } from '../lib/db/stats-cache-repo'
 import { getSyncMeta } from '../lib/db/sync-meta'
+import { LATEST_GLOBAL_FEED_CACHE_KEY } from '../lib/latest-feed-cache'
 
 if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
@@ -12,11 +13,15 @@ async function main() {
   console.info('last_latest_global_feed =', (await getSyncMeta('last_latest_global_feed')) ?? '(null)')
   console.info('last_incremental_sync =', (await getSyncMeta('last_incremental_sync')) ?? '(null)')
 
-  const row = await readStatsCacheRow('latest-feed:v1:global')
+  // Read the key the live code reads — a hardcoded v1 here reported a dead row
+  // as "stale feed" long after the cache key moved to v3.
+  console.info('cache key =', LATEST_GLOBAL_FEED_CACHE_KEY)
+  const row = await readStatsCacheRow(LATEST_GLOBAL_FEED_CACHE_KEY)
   if (!row?.payload) {
     console.info('global feed cache: (missing)')
     return
   }
+  console.info('row computedAt =', row.computedAt || '(null)')
   const parsed = JSON.parse(row.payload) as {
     generatedAt?: string
     listings?: { modificationTimestamp?: string | null; listDate?: string | null; address?: string }[]

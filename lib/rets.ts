@@ -189,6 +189,61 @@ function str(v: string | undefined): string {
   return (v ?? '').trim()
 }
 
+/**
+ * SmartMLS sends timestamps with no zone designator, and they are UTC — a raw
+ * ModificationTimestamp tracks the UTC wall clock, not Eastern. Handing those
+ * strings straight to a timestamptz column let Postgres read them in the session
+ * zone (America/New_York), storing every MLS change ~4h in the future and pushing
+ * date-only values back onto the previous Eastern day, which hid listings from
+ * every "new today" query. Normalize at the boundary instead.
+ */
+const MLS_SOURCE_TZ = 'America/New_York'
+
+function hasZoneDesignator(value: string): boolean {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)
+}
+
+/** e.g. '-04:00' — the Eastern offset in effect on the given calendar day (DST-aware). */
+function easternOffsetForDay(isoDay: string): string {
+  const noonUtc = new Date(`${isoDay}T12:00:00Z`)
+  if (Number.isNaN(noonUtc.getTime())) return '-05:00'
+  const label =
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: MLS_SOURCE_TZ,
+      timeZoneName: 'shortOffset',
+    })
+      .formatToParts(noonUtc)
+      .find((part) => part.type === 'timeZoneName')?.value ?? 'GMT-5'
+  const match = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(label)
+  if (!match) return '-05:00'
+  const [, sign, hours, minutes] = match
+  return `${sign}${hours.padStart(2, '0')}:${minutes ?? '00'}`
+}
+
+/** MLS datetime → explicit UTC instant. Zone-bearing values pass through. */
+function mlsDateTimeToIso(raw: string): string | null {
+  if (!raw) return null
+  if (hasZoneDesignator(raw)) return raw
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
+  // Date-only in a datetime field: treat as an Eastern calendar day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return mlsDateToIso(normalized)
+  return `${normalized}Z`
+}
+
+/**
+ * MLS date-only → Eastern midnight, so `list_date::date` in an Eastern session is
+ * the day the listing actually went on market (UTC midnight lands on the 28th for
+ * a listing dated the 29th).
+ */
+function mlsDateToIso(raw: string): string | null {
+  if (!raw) return null
+  if (hasZoneDesignator(raw)) return raw
+  const day = raw.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return raw
+  const time = raw.length > 10 ? raw.slice(11) || '00:00:00' : '00:00:00'
+  return `${day}T${time}${easternOffsetForDay(day)}`
+}
+
 function buildAddress(r: RawRetsRecord): Address {
   const parts = [
     str(r.StreetNumber),
@@ -275,10 +330,10 @@ function mapListing(r: RawRetsRecord): Listing {
     furnished: parseFurnishedFromRaw(r),
     yearBuilt: num(r.YearBuilt),
     dom: num(r.DOM),
-    listDate: str(r.ListingContractDate) || null,
-    modificationTimestamp: str(r.ModificationTimestamp) || null,
-    priceChangeTimestamp: str(r.PriceChangeTimestamp) || null,
-    statusChangeTimestamp: str(r.StatusChangeTimestamp) || null,
+    listDate: mlsDateToIso(str(r.ListingContractDate)),
+    modificationTimestamp: mlsDateTimeToIso(str(r.ModificationTimestamp)),
+    priceChangeTimestamp: mlsDateTimeToIso(str(r.PriceChangeTimestamp)),
+    statusChangeTimestamp: mlsDateTimeToIso(str(r.StatusChangeTimestamp)),
     latitude: num(r.Latitude),
     longitude: num(r.Longitude),
     photoCount: num(r.PhotoCount) ?? num(r.PhotosCount),
