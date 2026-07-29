@@ -197,7 +197,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "On Netlify: sync-listings (*/30) stamps last_incremental_cron_tick and queue-firsts sync-listings-worker for full RETS (≤15m); lean in-process RETS only if the hop fails. sync-listings-watchdog (*/15) re-queues when last_incremental_sync is older than ~70m. Pause on Incremental (not Latest MLS) or a future Admin Next override can skip a tick — skips now write ok:false in Sync history. Local Node: setInterval with the same cadence.",
+            "On Netlify: sync-listings (*/30) stamps last_incremental_cron_tick and queue-firsts sync-listings-worker for full RETS (≤15m). HTTP 202 stamps Start + Status Queued (preserves first queuedAt — re-stamps must not reset the stale clock). Lean in-process RETS if the hop fails or Queued is dead (~8m). Pause / Next override / Configure frequency can skip a tick (ok:false in Sync history). See Syncs → Dashboard diagram. Local Node: setInterval with the same cadence.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
@@ -206,7 +206,7 @@ export function describeStartupProcess(): {
           title: "Stale incremental watchdog",
           timing: "every 15 min + Admin open",
           detail:
-            "If last_incremental_sync is stale and Incremental is not paused, queues sync-listings-worker with source=watchdog (bypasses Next-override defer). Closes the loop when a cron heartbeat succeeds but the worker never finishes.",
+            "If last_incremental_sync (End) is older than ~70m and Incremental is not paused: clear any dead Queued live breadcrumb, then queue sync-listings-worker (source=watchdog, bypasses Next-defer). Do not treat queue-only Start as in-progress forever. Diagram: Syncs → Dashboard → Incremental update.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },

@@ -2474,7 +2474,9 @@ export default function AdminSyncTable({
                 Order
               </th>
               {isDashboard ? <th className={TH}>Action</th> : null}
-              <th className={TH}>Sync</th>
+                  <th className="px-3 py-2 text-left font-mono text-[8px] tracking-[0.14em] uppercase text-charcoal/40 border-r border-b border-transparent bg-cream/30 whitespace-nowrap">
+                    Sync
+                  </th>
               {isConfigure ? <th className={TH}>Description</th> : null}
               {isConfigure ? <th className={TH}>Pages</th> : null}
               {isConfigure ? <th className={TH}>Frequency</th> : null}
@@ -2811,7 +2813,7 @@ export default function AdminSyncTable({
                   ) : null}
                   <td className={cellPad}>
                     <p
-                      className={`font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/60 ${
+                      className={`font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/60 ${
                         rowExpands ? "leading-snug" : "leading-none truncate"
                       }`}
                       title={row.label}

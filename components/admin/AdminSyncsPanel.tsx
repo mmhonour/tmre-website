@@ -13,6 +13,7 @@ import {
   LEGACY_ADMIN_PANEL_TO_SYNCS,
   type AdminSyncsPanelId,
 } from "@/lib/admin-nav";
+import AdminIncrementalArchitectureDiagram from "@/components/admin/AdminIncrementalArchitectureDiagram";
 import AdminLatestPagePanel from "@/components/admin/AdminLatestPagePanel";
 import type { ScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 
@@ -155,6 +156,8 @@ export default function AdminSyncsPanel({
           initialPausedJobs={initialPausedJobs}
         />
       </div>
+
+      {panel === "dashboard" ? <AdminIncrementalArchitectureDiagram /> : null}
 
       <div
         role="tabpanel"

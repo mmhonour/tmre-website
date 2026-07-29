@@ -606,6 +606,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
 
   // —— Finance ——
   {
+    term: 'FOMC',
+    category: 'finance',
+    definition:
+      'Federal Open Market Committee — the Fed body that sets the federal funds target range (usually eight meetings a year). TMRE’s /fed-analysis page tracks the meeting calendar and prevailing rate decision for housing/mortgage context.',
+  },
+  {
     term: 'IF estimate',
     category: 'finance',
     definition:

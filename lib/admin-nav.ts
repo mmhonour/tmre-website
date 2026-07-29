@@ -345,6 +345,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "dashboard",
   },
   {
+    id: "admin-incremental-architecture",
+    label: "Incremental cron diagram",
+    tab: "syncs",
+    panel: "dashboard",
+  },
+  {
     id: "admin-latest-page",
     label: "Latest page health",
     tab: "syncs",
@@ -633,6 +639,11 @@ export const ADMIN_REPO_DOCS: AdminRepoDoc[] = [
     label: "startup-process.ts",
     path: "lib/startup-process.ts",
     description: "Mirrors instrumentation.ts startup lanes for /admin",
+  },
+  {
+    label: "incremental-sync-architecture.ts",
+    path: "lib/incremental-sync-architecture.ts",
+    description: "Incremental cron vs Admin Dashboard clocks diagram source",
   },
   {
     label: "sqlite-schema-diagram.ts",

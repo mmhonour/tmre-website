@@ -18,11 +18,13 @@ function formatLastBuilt(iso: string | null): string | null {
 
 const columns = [
   {
-    title: "Resources",    links: [
+    title: "Resources",
+    links: [
       { href: "/stats", label: "Market Intelligence" },
       { href: "/new-construction", label: "Active Projects" },
       { href: "/investors", label: "For Investors" },
       { href: "/market-pulse", label: "Market Pulse" },
+      { href: "/fed-analysis", label: "Fed Analysis" },
     ],
   },
   {
