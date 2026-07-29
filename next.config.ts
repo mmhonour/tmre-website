@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
         destination: "/spotlight",
         permanent: true,
       },
+      {
+        source: "/weekly-brief",
+        destination: "/market-pulse",
+        permanent: true,
+      },
     ];
   },
 };

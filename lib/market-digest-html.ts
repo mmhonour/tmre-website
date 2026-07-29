@@ -265,7 +265,7 @@ export function formatMarketDigestHtml(
               <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:${GOLD};">TMRE Monday market brief</p>
               <p style="margin:0 0 8px 0;font-family:Georgia,serif;font-size:22px;line-height:1.25;color:${WHITE};">${escapeHtml(etDate)}</p>
               <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11px;">
-                <a href="${escapeHtml(`${SITE_URL}/weekly-brief`)}" style="color:${GOLD};text-decoration:underline;">Read on the web</a>
+                <a href="${escapeHtml(`${SITE_URL}/market-pulse`)}" style="color:${GOLD};text-decoration:underline;">Read on the web</a>
                 <span style="color:rgba(255,255,255,0.35);"> · </span>
                 <a href="${escapeHtml(`${SITE_URL}/stats`)}" style="color:${GOLD};text-decoration:underline;">View live stats</a>
               </p>

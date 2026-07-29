@@ -6,7 +6,7 @@ import { TMRE_TOWNS } from "@/lib/tmre-towns";
 
 const OTHER_MARKET_LINKS = [
   { href: "/intelligence", label: "Live Deal Board" },
-  { href: "/intelligence", label: "Market Pulse" },
+  { href: "/market-pulse", label: "Market Pulse" },
 ] as const;
 
 export default function FooterMarketsColumn() {

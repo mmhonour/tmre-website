@@ -8,12 +8,12 @@ import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Weekly Brief",
-  description: `TMRE Weekly Brief — months supply, inventory, and Deal of the Week for ${TMRE_CORE_TOWNS_LABEL}, CT. Same content as the Monday market email.`,
-  alternates: { canonical: "/weekly-brief" },
+  title: "Market Pulse",
+  description: `TMRE Market Pulse — live web preview of the Monday market brief for ${TMRE_CORE_TOWNS_LABEL}, CT: months supply, inventory, and Deal of the Week.`,
+  alternates: { canonical: "/market-pulse" },
 };
 
-export default async function WeeklyBriefPage() {
+export default async function MarketPulsePage() {
   const snapshot = await buildMarketDigestSnapshot();
   const etDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -28,15 +28,17 @@ export default async function WeeklyBriefPage() {
       <section className="pt-28 pb-6 lg:pt-36 lg:pb-8">
         <div className="mx-auto max-w-2xl px-6 lg:px-10 mb-8">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
-            Resources
+            Markets
           </p>
-          <h2 className="font-serif text-3xl sm:text-4xl text-navy leading-tight">
-            Weekly Brief
-          </h2>
+          <h1 className="font-serif text-3xl sm:text-4xl text-navy leading-tight">
+            Market Pulse
+          </h1>
           <p className="mt-3 text-slate text-base leading-relaxed max-w-xl">
             The live web edition of the Monday market brief — inventory, months
-            supply, and Deal of the Week. Same snapshot the email uses; we&apos;ll
-            refine this page over time.
+            supply, and Deal of the Week. Same snapshot we email each week.
+          </p>
+          <p className="mt-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
+            As of {etDate} ET
           </p>
         </div>
 
@@ -56,14 +58,17 @@ export default async function WeeklyBriefPage() {
             <span className="italic text-gold">Join the brief.</span>
           </h2>
           <p className="mt-4 text-white/70 leading-relaxed">
-            Same content, Monday morning. Or stay on the{" "}
-            <Link href="/stats" className="text-gold underline underline-offset-2">
+            Same Market Pulse content, Monday morning. Or stay on the{" "}
+            <Link
+              href="/stats"
+              className="text-gold underline underline-offset-2"
+            >
               live stats
             </Link>{" "}
             board anytime.
           </p>
           <div className="mt-8">
-            <LeadForm source="weekly-brief" />
+            <LeadForm source="market-pulse" />
           </div>
         </div>
       </section>

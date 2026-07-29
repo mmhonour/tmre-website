@@ -22,7 +22,7 @@ const columns = [
       { href: "/stats", label: "Market Intelligence" },
       { href: "/new-construction", label: "Active Projects" },
       { href: "/investors", label: "For Investors" },
-      { href: "/weekly-brief", label: "Weekly Brief" },
+      { href: "/market-pulse", label: "Market Pulse" },
     ],
   },
   {

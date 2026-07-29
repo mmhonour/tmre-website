@@ -173,7 +173,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Same snapshot powers the public /weekly-brief page. Configure recipient on Admin → Communications → Monday market brief; social graphic posting comes later.',
+      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Same snapshot powers the public /market-pulse page (former /weekly-brief redirects there). Configure recipient on Admin → Communications → Monday market brief; social graphic posting comes later.',
   },
   {
     term: 'Deploy notifications',

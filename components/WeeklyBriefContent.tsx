@@ -116,15 +116,17 @@ function Kpi({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Web presentation of the Monday market brief snapshot.
+ * Web presentation of the Monday market brief snapshot (Market Pulse).
  * Same data as the email; refine layout here over time.
  */
 export default function WeeklyBriefContent({
   snapshot,
   etDate,
+  eyebrow = "TMRE Market Pulse",
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
+  eyebrow?: string;
 }) {
   const rows = chartRows(snapshot);
   const deal = snapshot.dealOfTheWeek;
@@ -134,7 +136,7 @@ export default function WeeklyBriefContent({
     <article className="mx-auto max-w-2xl">
       <header className="rounded-t-2xl bg-navy px-6 py-7 sm:px-8">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2">
-          TMRE Weekly Brief
+          {eyebrow}
         </p>
         <h1 className="font-serif text-2xl sm:text-3xl text-white leading-snug">
           {etDate}

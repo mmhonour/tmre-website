@@ -4,6 +4,7 @@ import HomeScrollReset from "@/components/HomeScrollReset";
 import LeadForm from "@/components/LeadForm";
 import { TMRE_CORE_TOWNS_LABEL, TMRE_PROPERTIES_TOWNS_LABEL, TMRE_TOWNS } from "@/lib/tmre-towns";
 import Image from "next/image";
+import Link from "next/link";
 import { Suspense } from "react";
 
 const norwalkStats = [
@@ -105,14 +106,23 @@ function MarketPulseSection() {
     <section className="bg-navy text-white relative">
       <div className="mx-auto max-w-7xl px-6 lg:px-10 -mt-20 relative z-10">
         <div className="rounded-3xl bg-gradient-to-br from-navy-light to-navy border border-white/10 shadow-2xl shadow-black/30 p-8 lg:p-12">
-          <div className="flex items-center justify-between gap-6 mb-10">
-            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-              Live Market Pulse
-            </p>
-            <div className="flex items-center gap-2 font-mono text-xs text-white/50">
-              <span className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse-dot" />
-              Updated 2 minutes ago
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-10">
+            <div>
+              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+                Market Pulse
+              </p>
+              <p className="mt-2 text-sm text-white/65 max-w-xl leading-relaxed">
+                Live preview of the Monday market brief — months supply, inventory,
+                and Deal of the Week.
+              </p>
             </div>
+            <Link
+              href="/market-pulse"
+              className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-gold border border-gold/35 rounded-full px-4 py-2 hover:bg-gold/10 transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse-dot" />
+              Open this week&apos;s brief
+            </Link>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
