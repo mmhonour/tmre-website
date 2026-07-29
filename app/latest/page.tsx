@@ -9,6 +9,7 @@ import {
   fetchTownUpdateStats,
   type LatestListingRow,
 } from "@/lib/latest-listings";
+import { feedCoversAllTmreTowns } from "@/lib/latest-town-coverage";
 import { listingPhotoThumbUrls } from "@/lib/listing-url";
 import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
@@ -37,7 +38,10 @@ export default async function LatestPage() {
   // otherwise hit Postgres so brand-new / freshly modified rows are not buried.
   const cached = await readLatestGlobalFeedCache(30);
   const initialListings =
-    cached && feedIsTmreOnly(cached) && feedHasUpdateWithinWindow(cached)
+    cached &&
+    feedIsTmreOnly(cached) &&
+    feedCoversAllTmreTowns(cached) &&
+    feedHasUpdateWithinWindow(cached)
       ? cached
       : await fetchLatestUpdatedListings({
           limit: 30,

@@ -21,6 +21,11 @@ import {
 } from '@/lib/tmre-towns'
 import { coerceLotAcres, parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
 import { latestActivityMs } from '@/lib/latest-activity'
+import {
+  ensureMinOneListingPerTmreTown,
+  feedCoversAllTmreTowns,
+  missingTmreTowns,
+} from '@/lib/latest-town-coverage'
 
 export type LatestListingRow = {
   key: string
@@ -388,12 +393,14 @@ export async function fetchLatestUpdatedListings(options: {
   // Instant path for default /latest: last warm from the 30-minute DB refresh.
   // Reject cache that has no MLS activity in the last 24h so stale warm cannot
   // hide brand-new / freshly modified inventory sitting in Postgres.
+  // Also reject feeds that omit any TMRE town (quiet towns must still show 1).
   if (!town && !options.since && !options.bypassGlobalFeedCache) {
     const { readLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
     const cached = await readLatestGlobalFeedCache(cap)
     if (
       cached &&
       feedIsTmreOnly(cached) &&
+      feedCoversAllTmreTowns(cached) &&
       feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)
     ) {
       return cached
@@ -451,7 +458,36 @@ export async function fetchLatestUpdatedListings(options: {
       : mapped
   }
 
-  const sorted = rankLatestFreshFirst(scoredRows, cap, nowMs)
+  // Town-scoped feeds stay newest-first. Global ticker also guarantees every
+  // TMRE town appears at least once (its latest update), then fills to `cap`.
+  let sorted = town
+    ? rankLatestFreshFirst(scoredRows, cap, nowMs)
+    : ensureMinOneListingPerTmreTown(
+        rankLatestFreshFirst(scoredRows, Math.max(cap * 4, 80), nowMs),
+        cap,
+      )
+
+  if (!town) {
+    const missing = missingTmreTowns(sorted)
+    if (missing.length > 0) {
+      const fillerBatches = await Promise.all(
+        missing.map((missingTown) =>
+          readRecentlyUpdatedListings({
+            limit: 1,
+            statusBucket: 'Active',
+            town: missingTown,
+          }),
+        ),
+      )
+      const fillerRows = mergeRecentlyUpdatedRows(fillerBatches)
+      if (fillerRows.length > 0) {
+        const fillerMapped = allowLiveScore
+          ? await scoreUnscoredLatestRows(fillerRows)
+          : mapStoredLatestRows(fillerRows)
+        sorted = ensureMinOneListingPerTmreTown(sorted, cap, fillerMapped)
+      }
+    }
+  }
 
   // Seed durable global ticker from this SQLite hit so the next load is instant.
   if (

@@ -27,6 +27,7 @@ export type AdminDataControlsPanelId =
 export type AdminSyncsPanelId =
   | "dashboard"
   | "configure"
+  | "latest-health"
   | "history"
   | "overview"
   | "db-tuning";
@@ -169,6 +170,12 @@ export const ADMIN_SYNCS_PANELS: {
     label: "Configure",
     subtitle:
       "Pause schedules, frequency / description, Next time overrides, and impacted pages",
+  },
+  {
+    id: "latest-health",
+    label: "Latest health",
+    subtitle:
+      "Deferred until Incremental shows consistent ~30m runs — then use this to verify /latest freshness",
   },
   {
     id: "history",
@@ -339,9 +346,9 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   {
     id: "admin-latest-page",
-    label: "Latest page",
+    label: "Latest page health",
     tab: "syncs",
-    panel: "dashboard",
+    panel: "latest-health",
   },
   {
     id: "admin-sync-configure",
@@ -840,6 +847,7 @@ export function isAdminSyncsPanelId(
   return (
     value === "dashboard" ||
     value === "configure" ||
+    value === "latest-health" ||
     value === "history" ||
     value === "overview" ||
     value === "db-tuning"

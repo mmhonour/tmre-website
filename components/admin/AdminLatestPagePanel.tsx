@@ -135,7 +135,9 @@ export default function AdminLatestPagePanel() {
             Latest page — daily health check
           </p>
           <p className="mt-1 text-sm text-slate max-w-2xl">
-            You use{" "}
+            Deferred until Incremental consistently finishes on a ~30 minute
+            cadence — clocks here are not trustworthy while pull End / Last
+            pull are wrong. After that, use this card (and{" "}
             <Link
               href="/latest"
               className="text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
@@ -143,9 +145,8 @@ export default function AdminLatestPagePanel() {
               rel="noreferrer"
             >
               /latest
-            </Link>{" "}
-            to confirm the site has fresh listings. This card is the Admin
-            truth for the same pipeline — not a stuck “Queued…” line.
+            </Link>
+            ) to confirm the site is serving fresh listings.
           </p>
         </div>
         <button

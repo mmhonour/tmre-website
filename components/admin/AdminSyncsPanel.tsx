@@ -125,9 +125,8 @@ export default function AdminSyncsPanel({
         </p>
       ) : null}
 
-      {panel === "dashboard" ? <AdminLatestPagePanel /> : null}
-
-      {/* Keep one SyncTable mounted so run state survives Dashboard ↔ Configure. */}
+      {/* Keep one SyncTable mounted so run state survives Dashboard ↔ Configure.
+          Always render first under those tabs — health check lives on its own tab. */}
       <div
         id="admin-sync"
         hidden={!showOps}
@@ -155,6 +154,14 @@ export default function AdminSyncsPanel({
           initialStatus={initialStatus}
           initialPausedJobs={initialPausedJobs}
         />
+      </div>
+
+      <div
+        role="tabpanel"
+        hidden={panel !== "latest-health"}
+        className={panel === "latest-health" ? "space-y-6" : undefined}
+      >
+        <AdminLatestPagePanel />
       </div>
 
       <div

@@ -1,0 +1,168 @@
+"use client";
+
+import { memo } from "react";
+import {
+  bedBathLabel,
+  dealBoardAcresLabel,
+  DealBoardPrimaryPhoto,
+  DealBoardStatusBadge,
+  listingDetailHref,
+} from "@/components/intelligence/deal-board/deal-board-shared";
+import type { LatestListingRow } from "@/lib/latest-listings";
+import { latestActivityIso } from "@/lib/latest-activity";
+import { mlsTimestampMs } from "@/lib/mls-time";
+import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
+import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
+import LatestAddressMetaHover from "@/components/latest/LatestAddressMetaHover";
+import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
+import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function formatMobileUpdatedAt(iso: string | null): { label: string; title: string } {
+  const t = mlsTimestampMs(iso);
+  if (Number.isNaN(t)) return { label: "—", title: "MLS updated —" };
+  const date = new Date(t);
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+  const today = new Date();
+  if (isSameLocalDay(date, today)) {
+    return { label: time, title: `MLS updated ${time} (your local time)` };
+  }
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
+  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
+  const day = date.getDate();
+  const label = `${weekday} ${month} ${day} · ${time}`;
+  return { label, title: `MLS updated ${label} (your local time)` };
+}
+
+function displayTown(l: LatestListingRow): string | null {
+  const raw = l.town?.trim() || l.city?.trim();
+  if (!raw) return null;
+  return normalizeTownName(raw);
+}
+
+type LatestMobileRowProps = {
+  listing: LatestListingRow;
+  isLive: boolean;
+  isNew?: boolean;
+  hideTown?: boolean;
+  showZipMap?: boolean;
+};
+
+/**
+ * Phone-first Latest feed row — photo + stacked meta (not the desktop table line).
+ */
+function LatestMobileRow({
+  listing: l,
+  isLive,
+  isNew = false,
+  hideTown = false,
+  showZipMap = false,
+}: LatestMobileRowProps) {
+  const town = hideTown ? null : displayTown(l);
+  const listingTownName = l.town?.trim() || l.city?.trim() || null;
+  const showZip =
+    Boolean(l.zip) && (showZipMap || townHasMultipleZips(listingTownName));
+  const detailHref = listingDetailHref(l);
+  const updatedAt = formatMobileUpdatedAt(
+    latestActivityIso(l.modificationTimestamp, l.listDate),
+  );
+  const ppsf =
+    !l.isRental && l.pricePerSqft != null
+      ? `$${Math.round(l.pricePerSqft)}/sf`
+      : null;
+  const bedBath = bedBathLabel(l.beds, l.baths);
+  const acres = dealBoardAcresLabel(l.lotAcres);
+  const specsLabel = [bedBath, ppsf, acres].filter(Boolean).join(" · ");
+  const priceLabel = `$${l.price.toLocaleString()}`;
+
+  return (
+    <div
+      {...listingHoverHandlers(isLive ? l.key : null)}
+      className={`flex gap-3 px-3 py-2.5 border-b border-charcoal/[0.08] last:border-0 ${
+        isNew ? "bg-sage/[0.06] animate-[fadeIn_0.4s_ease-out]" : ""
+      }`}
+    >
+      <DealBoardPrimaryPhoto
+        listing={l}
+        isLive={isLive}
+        width={96}
+        height={72}
+        priority
+        surface="light"
+        className="rounded-lg shrink-0"
+        showPhotoCountBadge={false}
+      />
+
+      <div className="min-w-0 flex-1 flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className="font-mono text-[11px] tabular-nums text-navy/70 truncate"
+            title={updatedAt.title}
+          >
+            {updatedAt.label}
+          </span>
+          <DealBoardStatusBadge status={l.status} />
+        </div>
+
+        <LatestAddressMetaHover
+          listing={l}
+          href={detailHref}
+          isLive={isLive}
+          className="truncate text-[15px] font-medium leading-snug text-navy underline decoration-charcoal/15 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold"
+        >
+          {l.address}
+        </LatestAddressMetaHover>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          {town ? (
+            <LatestTownMapHover
+              townName={town}
+              className="font-mono text-[10px] tracking-[0.1em] uppercase font-semibold text-gold"
+            />
+          ) : null}
+          {showZip && l.zip ? (
+            <LatestZipMapHover
+              zip={l.zip}
+              townName={listingTownName}
+              className="font-mono text-[11px] tabular-nums text-slate/70"
+            />
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="font-mono text-[14px] tabular-nums font-semibold text-navy">
+            {priceLabel}
+          </span>
+          {specsLabel ? (
+            <span className="font-mono text-[11px] tabular-nums text-slate truncate">
+              {specsLabel}
+            </span>
+          ) : null}
+        </div>
+
+        <ClickableGoldilocksScore
+          score={l.score}
+          breakdown={l.scoreBreakdown}
+          title={l.address}
+          subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
+          listingHref={detailHref}
+          isRental={l.isRental}
+          className="inline-flex w-fit justify-start text-[12px] leading-none"
+        />
+      </div>
+    </div>
+  );
+}
+
+export default memo(LatestMobileRow);

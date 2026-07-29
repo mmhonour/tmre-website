@@ -565,7 +565,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Latest',
     category: 'product',
     definition:
-      'Public /latest (“30 on 30”): up to 30 Active listings sorted by MLS ModificationTimestamp (brand-new list dates in the last day preferred). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Two clocks: Last pull = when Incremental finished; Newest MLS update = newest mod time among the 30 rows being served. Admin → Syncs → Dashboard has a Latest page card with live clocks. Signup for listing alerts also lives on /latest.',
+      'Public /latest (“30 on 30”): up to 30 Active listings sorted by MLS ModificationTimestamp (brand-new list dates in the last day preferred). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Two clocks: Last pull = when Incremental finished; Newest MLS update = newest mod time among the 30 rows being served. Admin → Syncs → Latest health has the diagnostic card (deferred until Incremental ~30m runs are trustworthy). Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Intelligence',

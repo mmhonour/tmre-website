@@ -54,9 +54,25 @@ export default function LatestSmoothScrollList<T>({
 }: LatestSmoothScrollListProps<T>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
+  // Mobile uses taller stacked cards — ticker row height assumes desktop lines.
+  const [allowTicker, setAllowTicker] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(min-width: 1024px)").matches
+      : true,
+  );
 
   useEffect(() => {
-    if (!enabled || rows.length < 2) {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setAllowTicker(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const tickerOn = enabled && allowTicker;
+
+  useEffect(() => {
+    if (!tickerOn || rows.length < 2) {
       setInView(false);
       return;
     }
@@ -72,9 +88,9 @@ export default function LatestSmoothScrollList<T>({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [enabled, rows.length, phaseKey]);
+  }, [tickerOn, rows.length, phaseKey]);
 
-  if (!enabled || rows.length < 2) {
+  if (!tickerOn || rows.length < 2) {
     return <>{rows.map((row) => renderRow(row, "a"))}</>;
   }
 

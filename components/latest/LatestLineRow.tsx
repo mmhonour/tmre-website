@@ -15,6 +15,7 @@ import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import ClickableGoldilocksScore from "@/components/ClickableGoldilocksScore";
 import LatestAddressMetaHover from "@/components/latest/LatestAddressMetaHover";
+import LatestMobileRow from "@/components/latest/LatestMobileRow";
 import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
 
@@ -84,13 +85,6 @@ function formatUpdatedAt(iso: string | null): UpdatedAtParts {
   };
 }
 
-const STATUS_DOT_CLASS: Record<string, string> = {
-  New: "bg-sage",
-  Active: "bg-sky",
-  Reduced: "bg-coral",
-  Pending: "bg-slate",
-};
-
 function displayTown(l: LatestListingRow): string | null {
   const raw = l.town?.trim() || l.city?.trim();
   if (!raw) return null;
@@ -133,7 +127,6 @@ function LatestLineRow({
     !l.isRental && l.pricePerSqft != null
       ? `$${Math.round(l.pricePerSqft)}/sf`
       : null;
-  const statusDotClass = STATUS_DOT_CLASS[l.status] ?? "bg-slate";
 
   const bedBath = bedBathLabel(l.beds, l.baths);
   const acres = dealBoardAcresLabel(l.lotAcres);
@@ -150,27 +143,37 @@ function LatestLineRow({
   } as const;
 
   return (
+    <>
+      <div className="lg:hidden">
+        <LatestMobileRow
+          listing={l}
+          isLive={isLive}
+          isNew={isNew}
+          hideTown={hideTown}
+          showZipMap={showZipMap}
+        />
+      </div>
     <div
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className={`flex items-start sm:items-center gap-1.5 sm:gap-2 pl-2 pr-2.5 sm:px-4 py-1.5 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors text-[13px] leading-snug ${
+      className={`hidden lg:flex items-center gap-2 px-4 py-1.5 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors text-[13px] leading-snug ${
         isNew ? "bg-sage/[0.06] animate-[fadeIn_0.4s_ease-out]" : ""
       }`}
     >
-      <div className="flex shrink-0 items-stretch gap-1.5 sm:gap-2">
+      <div className="flex shrink-0 items-stretch gap-2">
         <div
-          className="box-border flex w-[5.75rem] min-w-[5.75rem] max-w-[5.75rem] sm:w-[6.5rem] sm:min-w-[6.5rem] sm:max-w-[6.5rem] shrink-0 grow-0 flex-col justify-center overflow-hidden py-px"
+          className="box-border flex w-[6.5rem] min-w-[6.5rem] max-w-[6.5rem] shrink-0 grow-0 flex-col justify-center overflow-hidden py-px"
           title={updatedAt.title}
         >
-          <span className="font-mono text-[11px] sm:text-[12px] tabular-nums leading-none text-navy whitespace-nowrap">
+          <span className="font-mono text-[12px] tabular-nums leading-none text-navy whitespace-nowrap">
             {updatedAt.time}
           </span>
           {updatedAt.dateDay != null &&
           updatedAt.datePrefix != null &&
           updatedAt.dateSuffix != null ? (
-            <span className="mt-0.5 font-mono text-[9px] sm:text-[10px] leading-none text-slate whitespace-nowrap">
+            <span className="mt-0.5 font-mono text-[10px] leading-none text-slate whitespace-nowrap">
               {updatedAt.datePrefix}
               {updatedAt.dateDay}
-              <sup className="text-[7px] sm:text-[8px] leading-none">
+              <sup className="text-[8px] leading-none">
                 {updatedAt.dateSuffix}
               </sup>
             </span>
@@ -190,11 +193,11 @@ function LatestLineRow({
       {town ? (
         <LatestTownMapHover
           townName={town}
-          className="shrink-0 font-mono text-[11px] tracking-[0.08em] uppercase text-gold font-semibold mt-0.5 sm:mt-0"
+          className="shrink-0 font-mono text-[11px] tracking-[0.08em] uppercase text-gold font-semibold"
         />
       ) : null}
 
-      <div className="flex min-w-0 flex-1 items-start sm:items-center">
+      <div className="flex min-w-0 flex-1 items-center">
         <div
           className={`${metaColClass} flex shrink-0 flex-col gap-0.5 overflow-hidden`}
           style={addressColStyle}
@@ -223,32 +226,27 @@ function LatestLineRow({
             subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
             listingHref={detailHref}
             isRental={l.isRental}
-            className="inline-flex w-fit justify-start text-[12px] sm:text-[13px] leading-none"
+            className="inline-flex w-fit justify-start text-[13px] leading-none"
           />
         </div>
         <div
-          className={`${metaColClass} w-[7.5rem] shrink-0 font-mono text-[12px] sm:text-[13px] tabular-nums text-navy`}
+          className={`${metaColClass} w-[7.5rem] shrink-0 font-mono text-[13px] tabular-nums text-navy`}
         >
           {priceLabel}
         </div>
         <div
-          className={`${metaColClass} min-w-0 flex-1 basis-0 truncate font-mono text-[12px] sm:text-[13px] tabular-nums text-slate`}
+          className={`${metaColClass} min-w-0 flex-1 basis-0 truncate font-mono text-[13px] tabular-nums text-slate`}
           title={specsLabel || undefined}
         >
           {specsLabel || "—"}
         </div>
       </div>
 
-      {/* Narrow: colored status dot (group-header pills are the legend). Wider: full badge. */}
-      <span
-        className={`sm:hidden shrink-0 mt-1.5 h-2.5 w-2.5 rounded-full ring-1 ring-black/10 ${statusDotClass}`}
-        title={l.status}
-        aria-label={l.status}
-      />
-      <span className="hidden sm:inline shrink-0">
+      <span className="shrink-0">
         <DealBoardStatusBadge status={l.status} />
       </span>
     </div>
+    </>
   );
 }
 

@@ -26,6 +26,9 @@ type LatestTownStatsProps = {
   loading?: boolean;
   selectedTown: string | null;
   onTownSelect: (town: string) => void;
+  className?: string;
+  /** When false, omit the Stats eyebrow (e.g. inside a titled drawer). */
+  showHeading?: boolean;
 };
 
 function TownUpdateCard({
@@ -100,6 +103,8 @@ export default function LatestTownStats({
   loading = false,
   selectedTown,
   onTownSelect,
+  className = "",
+  showHeading = true,
 }: LatestTownStatsProps) {
   const visibleStats = selectedTown
     ? stats.filter((row) => row.town === selectedTown)
@@ -112,16 +117,26 @@ export default function LatestTownStats({
   }, [loading]);
 
   return (
-    <aside className="mt-4 lg:mt-0 lg:shrink-0 space-y-2">
-      <div className="flex items-baseline justify-between gap-2 pb-1 shrink-0">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">Stats</p>
-        <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate text-right">
+    <aside className={`space-y-2 lg:shrink-0 ${className}`.trim()}>
+      {showHeading ? (
+        <div className="flex shrink-0 items-baseline justify-between gap-2 pb-1">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            Stats
+          </p>
+          <p className="text-right font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
+            {selectedTown
+              ? `${normalizeTownName(selectedTown)} market`
+              : "Towns by update volume · 24h"}
+          </p>
+        </div>
+      ) : (
+        <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
           {selectedTown
             ? `${normalizeTownName(selectedTown)} market`
             : "Towns by update volume · 24h"}
         </p>
-      </div>
-      <div className="pt-4 space-y-2">
+      )}
+      <div className={`space-y-2 ${showHeading ? "pt-4" : ""}`}>
       {loading ? (
         <div className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 animate-pulse h-32" />
       ) : visibleStats.length === 0 ? (
