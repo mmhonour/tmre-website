@@ -12,16 +12,9 @@ import {
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+import type { MonthsSupplyPayload } from '@/lib/months-supply-types'
 
-export type MonthsSupplyPayload = {
-  city: string
-  kind: ListingKind
-  propertyClass: ListingPropertyClass
-  activeCount: number
-  avgMonthlyClosings: number | null
-  monthsSupply: number | null
-  generatedAt: string
-}
+export type { MonthsSupplyPayload } from '@/lib/months-supply-types'
 
 export type MonthsSupplyIndexPayload = {
   generatedAt: string

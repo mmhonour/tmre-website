@@ -13,6 +13,7 @@ import {
   LEGACY_ADMIN_PANEL_TO_SYNCS,
   type AdminSyncsPanelId,
 } from "@/lib/admin-nav";
+import AdminLatestPagePanel from "@/components/admin/AdminLatestPagePanel";
 import type { ScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 
 const VALID_PANELS = new Set<string>(ADMIN_SYNCS_PANELS.map((p) => p.id));
@@ -123,6 +124,8 @@ export default function AdminSyncsPanel({
           {active.subtitle}
         </p>
       ) : null}
+
+      {panel === "dashboard" ? <AdminLatestPagePanel /> : null}
 
       {/* Keep one SyncTable mounted so run state survives Dashboard ↔ Configure. */}
       <div

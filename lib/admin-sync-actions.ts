@@ -15,6 +15,17 @@ import {
   setSyncMeta,
   setSyncMetaDurable,
 } from '@/lib/db/sync-meta-store'
+import { stampIncrementalSyncLive } from '@/lib/incremental-sync-live'
+import {
+  formatIncrementalStepLog,
+  readIncrementalStepLog,
+  stampIncrementalQueuedStepLog,
+} from '@/lib/incremental-sync-step-log'
+import {
+  formatIncrementalUpsertStats,
+  readIncrementalUpsertHistory,
+  readLastIncrementalUpsertStats,
+} from '@/lib/incremental-upsert-stats'
 import {
   clearChunkedFullResyncProgress,
   readChunkedFullResyncProgress,
@@ -405,28 +416,18 @@ async function runAdminSyncActionImpl(
           // Mark Start immediately — End stays on the prior success until the
           // worker finishes (instant HTTP response is expected, not a real sync).
           await setSyncMetaDurable('last_incremental_sync_started', startedAt)
-          const { stampIncrementalSyncLive } = await import(
-            '@/lib/incremental-sync-live'
-          )
           await stampIncrementalSyncLive({
             phase: 'queued',
             town: null,
             townIndex: null,
             updatedAt: startedAt,
           })
-          try {
-            const { stampIncrementalQueuedStepLog } = await import(
-              '@/lib/incremental-sync-step-log'
-            )
-            await stampIncrementalQueuedStepLog(
-              'admin-queue',
-              queued.base
-                ? `${queued.base} HTTP ${queued.status ?? '—'}`
-                : 'background worker',
-            )
-          } catch (err) {
-            console.warn('[admin-sync] incremental step log queue stamp failed', err)
-          }
+          await stampIncrementalQueuedStepLog(
+            'admin-queue',
+            queued.base
+              ? `${queued.base} HTTP ${queued.status ?? '—'}`
+              : 'background worker',
+          )
           return {
             ok: true,
             action,
@@ -763,6 +764,30 @@ export async function readAdminSyncPanelStatus() {
   // Drop dead Queued breadcrumbs so Status cannot claim a worker is starting
   // hours after the hop died (End is still the last finished pull).
   const incrementalLive = await clearIncrementalSyncLiveIfStale()
+  const incrementalStepLog = readIncrementalStepLog()
+  let latestFeedNewestMls: string | null = null
+  let latestFeedRowCount = 0
+  try {
+    const { readLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
+    const feed = await readLatestGlobalFeedCache(30)
+    latestFeedRowCount = feed?.length ?? 0
+    for (const row of feed ?? []) {
+      const m = row.modificationTimestamp?.trim() || null
+      if (!m) continue
+      if (
+        !latestFeedNewestMls ||
+        Date.parse(m) > Date.parse(latestFeedNewestMls)
+      ) {
+        latestFeedNewestMls = m
+      }
+    }
+  } catch {
+    /* feed optional for panel */
+  }
+
+  const lastIncrementalUpserts = readLastIncrementalUpsertStats()
+  const incrementalUpsertHistory = readIncrementalUpsertHistory()
+
   return {
     stats,
     refresh,
@@ -772,5 +797,13 @@ export async function readAdminSyncPanelStatus() {
     nextOverrides,
     incrementalLive,
     incrementalLiveStatus: formatIncrementalSyncLiveStatus(incrementalLive),
+    incrementalStepLog,
+    incrementalStepLogText: formatIncrementalStepLog(incrementalStepLog).trim(),
+    latestFeedGeneratedAt: getSyncMeta('last_latest_global_feed'),
+    latestFeedNewestMls,
+    latestFeedRowCount,
+    lastIncrementalUpserts,
+    lastIncrementalUpsertsLabel: formatIncrementalUpsertStats(lastIncrementalUpserts),
+    incrementalUpsertHistory,
   }
 }

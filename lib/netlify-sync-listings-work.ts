@@ -13,6 +13,12 @@ import {
   clearSyncNextOverrideAfterRun,
   shouldDeferScheduledJob,
 } from '@/lib/sync-next-override'
+import {
+  appendIncrementalStep,
+  beginIncrementalStepLog,
+  continueOrBeginIncrementalStepLog,
+  finishIncrementalStepLog,
+} from '@/lib/incremental-sync-step-log'
 
 export const LAST_INCREMENTAL_CRON_TICK_KEY = 'last_incremental_cron_tick'
 
@@ -145,12 +151,6 @@ export async function runIncrementalSyncListingsWork(
       console.info('[sync-listings-work] cleared stale overdue catch-up lock')
     }
 
-    const {
-      appendIncrementalStep,
-      beginIncrementalStepLog,
-      continueOrBeginIncrementalStepLog,
-      finishIncrementalStepLog,
-    } = await import('@/lib/incremental-sync-step-log')
     const logSource = fromAdmin
       ? options.source === 'watchdog'
         ? 'watchdog'
@@ -276,6 +276,15 @@ export async function runIncrementalSyncListingsWork(
     // Queued/Worker audits always write listings_count=0. This Done roll-up is
     // the job-level finish line with total upserted across towns.
     try {
+      const totalInserted = result.towns.reduce(
+        (sum, row) => sum + (row.inserted ?? 0),
+        0,
+      )
+      const totalUpdated = result.towns.reduce(
+        (sum, row) => sum + (row.updated ?? 0),
+        0,
+      )
+      const upsertDetail = `${totalInserted} new, ${totalUpdated} updated`
       await recordSyncRun({
         startedAt: result.startedAt || startedAt,
         finishedAt: new Date().toISOString(),
@@ -283,7 +292,9 @@ export async function runIncrementalSyncListingsWork(
         statusBucket: 'Done/incremental',
         listingsCount: result.totalUpserted,
         ok: okTowns,
-        error: townErrors,
+        error: townErrors
+          ? `${townErrors} · ${upsertDetail}`
+          : upsertDetail,
       })
     } catch (err) {
       console.warn('[sync-listings-work] Done/incremental audit failed', err)
@@ -314,11 +325,6 @@ export async function runIncrementalSyncListingsWork(
     console.error('[sync-listings-work]', err)
     const message = err instanceof Error ? err.message : String(err)
     try {
-      const {
-        appendIncrementalStep,
-        continueOrBeginIncrementalStepLog,
-        finishIncrementalStepLog,
-      } = await import('@/lib/incremental-sync-step-log')
       await continueOrBeginIncrementalStepLog(
         options.source === 'watchdog'
           ? 'watchdog'

@@ -12,6 +12,12 @@ import {
   clearIncrementalSyncLive,
   stampIncrementalSyncLive,
 } from '@/lib/incremental-sync-live'
+import {
+  appendIncrementalStep,
+  beginIncrementalStepLog,
+  finishIncrementalStepLog,
+} from '@/lib/incremental-sync-step-log'
+import { persistIncrementalUpsertStats } from '@/lib/incremental-upsert-stats'
 import { beginListingsRefresh, endListingsRefresh } from '@/lib/listings-refresh-status'
 import {
   CLOSED_LISTINGS_FETCH_LIMIT,
@@ -58,9 +64,18 @@ export type FullSyncResult = {
 export type IncrementalSyncResult = FullSyncResult & {
   modifiedAfter: string
   mode: 'incremental'
+  totalInserted?: number
+  totalUpdated?: number
 }
 
 const INCREMENTAL_OVERLAP_MS = 2 * 60 * 1000
+/**
+ * Minimum MLS history each Incremental asks for (all 7 towns): 36 hours.
+ * Previously we only asked “since the last successful Incremental finished,”
+ * which can be just minutes ago — fine when every pull is healthy, but it never
+ * re-asks for a full day-plus of changes after a thin or skipped hop.
+ */
+const INCREMENTAL_MIN_LOOKBACK_MS = 36 * 60 * 60 * 1000
 const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 export function shouldRunFullSync(): boolean {
@@ -72,17 +87,20 @@ export function shouldRunFullSync(): boolean {
 }
 
 function incrementalWatermark(): string {
+  const floorMs = Date.now() - INCREMENTAL_MIN_LOOKBACK_MS
   const lastIncremental = getSyncMeta('last_incremental_sync')
   const lastFull = getSyncMeta('last_full_sync')
   const raw = lastIncremental ?? lastFull
+  let fromMetaMs = floorMs
   if (raw) {
     const t = Date.parse(raw)
     if (!Number.isNaN(t)) {
-      return new Date(t - INCREMENTAL_OVERLAP_MS).toISOString()
+      fromMetaMs = t - INCREMENTAL_OVERLAP_MS
     }
   }
-  // First incremental after a fresh DB — look back 24h only.
-  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // Use the older of the two times = ask MLS for at least 36h of changes
+  // (or more, if we have not finished an Incremental in longer than that).
+  return new Date(Math.min(fromMetaMs, floorMs)).toISOString()
 }
 
 /**
@@ -173,6 +191,8 @@ export async function syncTownListingsIncremental(
       statusBucket,
       listingsCount: count,
       ok: true,
+      // Visible in Admin → Sync history (not a failure — insert/update split).
+      error: `${inserted} new, ${updated} updated`,
     })
     return {
       town,
@@ -227,8 +247,6 @@ export async function syncIncrementalListings(
   options: SyncIncrementalOptions = {},
 ): Promise<IncrementalSyncResult> {
   const postHooks = options.postHooks !== false
-  const { appendIncrementalStep, beginIncrementalStepLog, finishIncrementalStepLog } =
-    await import('@/lib/incremental-sync-step-log')
   if (options.stepLogSource) {
     await beginIncrementalStepLog(options.stepLogSource)
   }
@@ -392,8 +410,28 @@ export async function syncIncrementalListings(
     }
 
     console.info(
-      `[listings-sync/incremental] complete in ${Date.now() - t0}ms — ${totalUpserted} upserts since ${modifiedAfter}`,
+      `[listings-sync/incremental] complete in ${Date.now() - t0}ms — ${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) since ${modifiedAfter}`,
     )
+
+    await persistIncrementalUpsertStats({
+      finishedAt,
+      startedAt,
+      modifiedAfter,
+      durationMs: Date.now() - t0,
+      ok: allOk,
+      upserted: totalUpserted,
+      inserted: totalInserted,
+      updated: totalUpdated,
+      towns: towns.map((row) => ({
+        town: row.town,
+        upserted: row.count,
+        inserted: row.inserted ?? 0,
+        updated: row.updated ?? 0,
+        ok: row.ok,
+        durationMs: row.durationMs,
+        error: row.error,
+      })),
+    })
 
     await finishIncrementalStepLog(
       `ok=${allOk} upserts=${totalUpserted} (${totalInserted} new, ${totalUpdated} updated) ${Date.now() - t0}ms`,
@@ -407,6 +445,8 @@ export async function syncIncrementalListings(
       durationMs: Date.now() - t0,
       towns,
       totalUpserted,
+      totalInserted,
+      totalUpdated,
     }
   } catch (err) {
     await appendIncrementalStep(

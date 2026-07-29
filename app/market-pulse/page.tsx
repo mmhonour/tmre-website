@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import LeadForm from "@/components/LeadForm";
-import WeeklyBriefContent from "@/components/WeeklyBriefContent";
+import MarketPulseContent from "@/components/MarketPulseContent";
 import { buildMarketDigestSnapshot } from "@/lib/market-digest";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
@@ -34,8 +34,10 @@ export default async function MarketPulsePage() {
             Market Pulse
           </h1>
           <p className="mt-3 text-slate text-base leading-relaxed max-w-xl">
-            The live web edition of the Monday market brief — inventory, months
-            supply, and Deal of the Week. Same snapshot we email each week.
+            The live web edition of the Monday market brief — inventory and
+            months supply by category (ALL, SFR, Condo, Rentals, Commercial),
+            plus Deal of the Week on ALL. Same ALL-sales snapshot we email each
+            week.
           </p>
           <p className="mt-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
             As of {etDate} ET
@@ -43,7 +45,7 @@ export default async function MarketPulsePage() {
         </div>
 
         <div className="px-4 sm:px-6 lg:px-10 pb-12">
-          <WeeklyBriefContent snapshot={snapshot} etDate={etDate} />
+          <MarketPulseContent snapshot={snapshot} etDate={etDate} />
         </div>
       </section>
 

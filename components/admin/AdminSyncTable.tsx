@@ -569,6 +569,34 @@ export type PanelStatus = {
   /** Real worker town progress (stamped in sync_meta during incremental). */
   incrementalLive?: IncrementalSyncLiveProgress | null;
   incrementalLiveStatus?: string | null;
+  /** Durable step transcript from the last Incremental (queue → towns → finish). */
+  incrementalStepLog?: {
+    runId: string;
+    source: string;
+    startedAt: string;
+    finishedAt: string | null;
+    summary?: string;
+    steps: { at: string; step: string; detail?: string }[];
+  } | null;
+  incrementalStepLogText?: string | null;
+  latestFeedGeneratedAt?: string | null;
+  latestFeedNewestMls?: string | null;
+  latestFeedRowCount?: number | null;
+  lastIncrementalUpsertsLabel?: string | null;
+  lastIncrementalUpserts?: {
+    finishedAt: string;
+    upserted: number;
+    inserted: number;
+    updated: number;
+    ok: boolean;
+  } | null;
+  incrementalUpsertHistory?: {
+    finishedAt: string;
+    upserted: number;
+    inserted: number;
+    updated: number;
+    ok: boolean;
+  }[];
   rets?: {
     configured: boolean;
     status: string;
@@ -1240,6 +1268,14 @@ export default function AdminSyncTable({
   // Persisted final status per row — survives page reloads via localStorage.
   const [finalStatuses, setFinalStatuses] = useState<Partial<Record<string, string>>>({});
   const persistFinalStatus = useCallback((rowId: string, text: string) => {
+    // Queue acks are not a finished pull — never freeze them as the durable Status.
+    if (
+      /queued/i.test(text) ||
+      /waiting for background worker/i.test(text) ||
+      /returns in seconds/i.test(text)
+    ) {
+      return;
+    }
     setFinalStatuses((prev) => {
       const next = { ...prev, [rowId]: text };
       try { localStorage.setItem("admin-sync-final-statuses", JSON.stringify(next)); } catch { /* ignore */ }
@@ -1319,8 +1355,31 @@ export default function AdminSyncTable({
     } catch { /* ignore */ }
     try {
       const rawFinal = localStorage.getItem("admin-sync-final-statuses");
-      if (rawFinal)
-        setFinalStatuses(JSON.parse(rawFinal) as Partial<Record<string, string>>);
+      if (rawFinal) {
+        const parsed = JSON.parse(rawFinal) as Partial<Record<string, string>>;
+        // Drop frozen "Queued…" lines left by older clients — not a finished result.
+        const cleaned: Partial<Record<string, string>> = {};
+        for (const [id, text] of Object.entries(parsed)) {
+          if (
+            !text ||
+            /queued/i.test(text) ||
+            /waiting for background worker/i.test(text) ||
+            /returns in seconds/i.test(text)
+          ) {
+            continue;
+          }
+          cleaned[id] = text;
+        }
+        setFinalStatuses(cleaned);
+        try {
+          localStorage.setItem(
+            "admin-sync-final-statuses",
+            JSON.stringify(cleaned),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
     } catch { /* ignore */ }
     try {
       const rawLog = localStorage.getItem(ADMIN_SYNC_RUN_LOG_STORAGE_KEY);
@@ -1729,7 +1788,8 @@ export default function AdminSyncTable({
               row.detail ??
               "";
             setDescriptions((prev) => ({ ...prev, [row.id]: finalText }));
-            if (finalText) persistFinalStatus(row.id, finalText);
+            // Queued is in-flight only — poll Status from the server until End lands.
+            if (finalText && !queued) persistFinalStatus(row.id, finalText);
             const finishedAt = body.finishedAt ?? new Date().toISOString();
             const durationMs = Date.now() - actionT0;
             if (body.townResults && body.townResults.length > 0) {
@@ -2077,8 +2137,8 @@ export default function AdminSyncTable({
             setErrors((prev) => ({ ...prev, [rowId]: undefined }));
             setMessages((prev) => ({ ...prev, [rowId]: body.message ?? "Complete" }));
             setDescriptions((prev) => ({ ...prev, [rowId]: syncAllFinalText }));
-            if (syncAllFinalText) persistFinalStatus(rowId, syncAllFinalText);
             const queued = Boolean(body.backgroundQueued);
+            if (syncAllFinalText && !queued) persistFinalStatus(rowId, syncAllFinalText);
             setRunTimings((prev) => ({
               ...prev,
               [rowId]: {
@@ -2202,9 +2262,14 @@ export default function AdminSyncTable({
             <>
               <p className="text-xs text-slate leading-relaxed max-w-xl">
                 Tap Sync now (or Sync all). Running jobs stay on top. Pause and schedule
-                edits live under Configure. For Incremental: End is the last finished
-                RETS pull — while Queued it shows as Prior; Latest deal ages are MLS
-                modification times (can look older than End after an empty pull).
+                edits live under Configure. Incremental fills Postgres; the{" "}
+                <a
+                  href="#admin-latest-page"
+                  className="text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
+                >
+                  Latest page
+                </a>{" "}
+                card above shows whether /latest is actually serving those updates.
               </p>
             </>
           ) : (
@@ -2461,11 +2526,26 @@ export default function AdminSyncTable({
                 }
                 if (isRunning || syncAllRunning || incrementalLiveNow) {
                   return (
-                    descriptions[row.id] ??
                     status?.incrementalLiveStatus ??
                     formatIncrementalSyncLiveStatus(status?.incrementalLive) ??
+                    descriptions[row.id] ??
                     "Running…"
                   );
+                }
+                // Prefer durable server truth over localStorage “Queued…” leftovers.
+                if (row.id === "incremental") {
+                  if (status?.lastIncrementalUpsertsLabel) {
+                    const when = status.lastIncrementalUpserts?.finishedAt
+                      ? ` · ${formatAgeAgo(status.lastIncrementalUpserts.finishedAt, nowMs) ?? ""}`
+                      : "";
+                    return `Last pull: ${status.lastIncrementalUpsertsLabel}${when}`;
+                  }
+                  if (status?.incrementalStepLog?.summary) {
+                    const src = status.incrementalStepLog.source
+                      ? `${status.incrementalStepLog.source}: `
+                      : "";
+                    return `${src}${status.incrementalStepLog.summary}`;
+                  }
                 }
                 const prior =
                   descriptions[row.id] ??

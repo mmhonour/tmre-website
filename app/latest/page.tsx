@@ -2,9 +2,16 @@ import { preload } from "react-dom";
 import LatestClient from "./LatestClient";
 import { readLatestGlobalFeedCache } from "@/lib/latest-feed-cache";
 import { readAllLatestTownFeedCaches } from "@/lib/latest-town-feed-cache";
-import { fetchTownUpdateStats, type LatestListingRow } from "@/lib/latest-listings";
+import {
+  feedHasUpdateWithinWindow,
+  fetchLatestUpdatedListings,
+  fetchTownUpdateStats,
+  type LatestListingRow,
+} from "@/lib/latest-listings";
 import { listingPhotoThumbUrls } from "@/lib/listing-url";
 import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Latest — TMRE",
@@ -25,7 +32,17 @@ function heroPhotoPreloadUrls(rows: LatestListingRow[], limit = 12): string[] {
 }
 
 export default async function LatestPage() {
-  const initialListings = (await readLatestGlobalFeedCache(30)) ?? [];
+  // Prefer warm cache only when it still contains last-24h MLS activity;
+  // otherwise hit Postgres so brand-new / freshly modified rows are not buried.
+  const cached = await readLatestGlobalFeedCache(30);
+  const initialListings =
+    cached && feedHasUpdateWithinWindow(cached)
+      ? cached
+      : await fetchLatestUpdatedListings({
+          limit: 30,
+          bypassGlobalFeedCache: true,
+          bypassTownFeedCache: true,
+        });
   const initialTownFeeds = await readAllLatestTownFeedCaches();
   const initialTownStats = await fetchTownUpdateStats();
   const photoPreloads = heroPhotoPreloadUrls(initialListings);

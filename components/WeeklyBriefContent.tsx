@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { fmtMoney } from "@/lib/listing-history";
-import type { MarketDigestSnapshot } from "@/lib/market-digest";
-import type { MonthsSupplyPayload } from "@/lib/months-supply-cache";
+import type { MarketDigestSnapshot } from "@/lib/market-digest-types";
+import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
 import { splitSentences } from "@/lib/split-sentences";
 
 function fmtMos(n: number | null | undefined): string {
@@ -123,13 +123,18 @@ export default function WeeklyBriefContent({
   snapshot,
   etDate,
   eyebrow = "TMRE Market Pulse",
+  scopeLabel = "sales",
+  showDealOfTheWeek = true,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
   eyebrow?: string;
+  /** Chart / footnote scope for the active category tab. */
+  scopeLabel?: string;
+  showDealOfTheWeek?: boolean;
 }) {
   const rows = chartRows(snapshot);
-  const deal = snapshot.dealOfTheWeek;
+  const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
   const social = snapshot.socialProfiles.filter((p) => p.handleOrUrl);
 
   return (
@@ -169,7 +174,7 @@ export default function WeeklyBriefContent({
         </div>
 
         <BarChart
-          title="Active inventory (sales)"
+          title={`Active inventory (${scopeLabel})`}
           rows={rows}
           valueOf={(r) => r.activeCount}
           formatValue={(r) => fmtActive(r.activeCount)}
@@ -178,7 +183,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title="Months supply (sales)"
+          title={`Months supply (${scopeLabel})`}
           rows={rows}
           valueOf={(r) => r.monthsSupply}
           formatValue={(r) => fmtMos(r.monthsSupply)}
@@ -287,7 +292,7 @@ export default function WeeklyBriefContent({
               </p>
             </div>
           </section>
-        ) : (
+        ) : showDealOfTheWeek ? (
           <section>
             <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-gold mb-2">
               Deal of the Week
@@ -296,11 +301,11 @@ export default function WeeklyBriefContent({
               No Deal of the Week in cache yet — check homepage / stats rebuild.
             </p>
           </section>
-        )}
+        ) : null}
 
         <p className="font-mono text-[11px] leading-relaxed text-slate">
-          MOS = active ÷ avg monthly closings (3 prior full months). Sale
-          listings, all property classes.
+          MOS = active ÷ avg monthly closings (3 prior full months). Scope:{" "}
+          {scopeLabel}.
         </p>
 
         <section>

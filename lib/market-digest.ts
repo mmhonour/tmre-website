@@ -1,44 +1,162 @@
 import 'server-only'
 
 import { absoluteUrl, SITE_URL } from '@/lib/business-info'
+import { readListingsFromDb } from '@/lib/db/listings-repo'
 import { readDealOfTheWeekCache } from '@/lib/deal-of-the-week-cache'
 import { fmtMoney } from '@/lib/listing-history'
+import { filterListingsByKind, type ListingKind } from '@/lib/listing-kind'
+import {
+  isCommercialPropertyType,
+  propertyClassHaystack,
+  type ListingPropertyClass,
+} from '@/lib/listing-property-class'
 import { listingShareHref } from '@/lib/listing-url'
 import { formatMarketDigestHtml } from '@/lib/market-digest-html'
 import {
+  avgMonthlyClosingsFromClosed,
+  computeMonthsSupplyRatio,
   readMonthsSupplyCached,
   type MonthsSupplyPayload,
 } from '@/lib/months-supply-cache'
+import type { Listing } from '@/lib/rets'
+import type {
+  MarketDigestCategorySlice,
+  MarketDigestSnapshot,
+} from '@/lib/market-digest-types'
+import type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
 import { getSocialProfilesFresh } from '@/lib/social-profiles-config'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
-export type MarketDigestDealOfTheWeek = {
-  mlsId: string
-  address: string
-  city: string | null
-  price: number | null
-  insight: string
-  href: string
-  photoUrl: string | null
-  composite: number | null
-  superlatives: string[]
-  beds: number | null
-  baths: number | null
-  sqft: number | null
-  yearBuilt: number | null
-  propertyType: string | null
-  style: string | null
-  valueDiscountPct: number | null
-  lotAcres: number | null
+export type {
+  MarketDigestCategorySlice,
+  MarketDigestDealOfTheWeek,
+  MarketDigestSnapshot,
+} from '@/lib/market-digest-types'
+export type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
+export { MARKET_PULSE_CATEGORY_IDS } from '@/lib/market-pulse-shared'
+
+type CachedCategorySpec = {
+  id: Exclude<MarketPulseCategoryId, 'commercial'>
+  label: string
+  scopeLabel: string
+  kind: ListingKind
+  propertyClass: ListingPropertyClass
 }
 
-export type MarketDigestSnapshot = {
-  generatedAt: string
-  market: MonthsSupplyPayload | null
-  westport: MonthsSupplyPayload | null
-  towns: MonthsSupplyPayload[]
-  dealOfTheWeek: MarketDigestDealOfTheWeek | null
-  socialProfiles: { label: string; handleOrUrl: string }[]
+const CACHED_CATEGORY_SPECS: readonly CachedCategorySpec[] = [
+  {
+    id: 'all',
+    label: 'ALL',
+    scopeLabel: 'sales',
+    kind: 'sale',
+    propertyClass: 'all',
+  },
+  {
+    id: 'sfr',
+    label: 'SFR',
+    scopeLabel: 'SFR sales',
+    kind: 'sale',
+    propertyClass: 'homes',
+  },
+  {
+    id: 'condo',
+    label: 'Condo',
+    scopeLabel: 'condo sales',
+    kind: 'sale',
+    propertyClass: 'condos',
+  },
+  {
+    id: 'rentals',
+    label: 'Rentals',
+    scopeLabel: 'rentals',
+    kind: 'rental',
+    propertyClass: 'all',
+  },
+]
+
+function isCommercialListing(listing: Listing): boolean {
+  return isCommercialPropertyType(propertyClassHaystack(listing))
+}
+
+function commercialPayload(
+  active: readonly Listing[],
+  closed: readonly Listing[],
+  city: string,
+  generatedAt: string,
+): MonthsSupplyPayload {
+  const saleActive = filterListingsByKind(active, 'sale').filter(isCommercialListing)
+  const saleClosed = filterListingsByKind(closed, 'sale').filter(isCommercialListing)
+  const activeCount = saleActive.length
+  const avgMonthlyClosings = avgMonthlyClosingsFromClosed(saleClosed)
+  return {
+    city,
+    kind: 'sale',
+    propertyClass: 'all',
+    activeCount,
+    avgMonthlyClosings,
+    monthsSupply: computeMonthsSupplyRatio(activeCount, avgMonthlyClosings),
+    generatedAt,
+  }
+}
+
+async function buildCachedCategorySlice(
+  spec: CachedCategorySpec,
+): Promise<MarketDigestCategorySlice> {
+  const [market, westport, ...townRows] = await Promise.all([
+    readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
+    readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
+    ...TMRE_TOWNS.map((town) =>
+      readMonthsSupplyCached(town, spec.kind, spec.propertyClass),
+    ),
+  ])
+  const towns = townRows
+    .filter((row): row is MonthsSupplyPayload => row != null)
+    .sort((a, b) => a.city.localeCompare(b.city))
+  return {
+    id: spec.id,
+    label: spec.label,
+    scopeLabel: spec.scopeLabel,
+    market,
+    westport,
+    towns,
+  }
+}
+
+/** Commercial is not in months-supply cache — compute from live Active/Closed. */
+async function buildCommercialCategorySlice(
+  generatedAt: string,
+): Promise<MarketDigestCategorySlice> {
+  const perTown = await Promise.all(
+    TMRE_TOWNS.map(async (town) => {
+      const [active, closed] = await Promise.all([
+        readListingsFromDb(town, 'Active', 500),
+        readListingsFromDb(town, 'Closed'),
+      ])
+      return {
+        active,
+        closed,
+        payload: commercialPayload(active, closed, town, generatedAt),
+      }
+    }),
+  )
+  const towns = perTown
+    .map((row) => row.payload)
+    .sort((a, b) => a.city.localeCompare(b.city))
+  const market = commercialPayload(
+    perTown.flatMap((row) => row.active),
+    perTown.flatMap((row) => row.closed),
+    'All',
+    generatedAt,
+  )
+  const westport = towns.find((t) => t.city.toLowerCase() === 'westport') ?? null
+  return {
+    id: 'commercial',
+    label: 'Commercial',
+    scopeLabel: 'commercial sales',
+    market,
+    westport,
+    towns,
+  }
 }
 
 function fmtMonthsSupply(n: number | null | undefined): string {
@@ -71,25 +189,24 @@ function townTableLines(rows: MonthsSupplyPayload[]): string[] {
 }
 
 /**
- * Assemble inventory + months-supply + Deal of the Week for the Monday email.
- * Uses stats_cache months-supply rows (sale / all property classes).
+ * Assemble inventory + months-supply + Deal of the Week for the Monday email
+ * and Market Pulse (with category tabs).
  */
 export async function buildMarketDigestSnapshot(): Promise<MarketDigestSnapshot> {
   const generatedAt = new Date().toISOString()
-  const [market, westport, social] = await Promise.all([
-    readMonthsSupplyCached('All', 'sale', 'all'),
-    readMonthsSupplyCached('Westport', 'sale', 'all'),
+  const [cachedSlices, commercial, social, deal] = await Promise.all([
+    Promise.all(CACHED_CATEGORY_SPECS.map((spec) => buildCachedCategorySlice(spec))),
+    buildCommercialCategorySlice(generatedAt),
     getSocialProfilesFresh(),
+    readDealOfTheWeekCache(),
   ])
 
-  const townRows: MonthsSupplyPayload[] = []
-  for (const town of TMRE_TOWNS) {
-    const row = await readMonthsSupplyCached(town, 'sale', 'all')
-    if (row) townRows.push(row)
-  }
-  townRows.sort((a, b) => a.city.localeCompare(b.city))
+  const categories: MarketDigestCategorySlice[] = [...cachedSlices, commercial]
+  const allSlice = categories.find((c) => c.id === 'all')
+  const market = allSlice?.market ?? null
+  const westport = allSlice?.westport ?? null
+  const townRows = allSlice?.towns ?? []
 
-  const deal = await readDealOfTheWeekCache()
   let dealOfTheWeek: MarketDigestSnapshot['dealOfTheWeek'] = null
   if (deal?.listing?.mlsId) {
     const listing = deal.listing
@@ -137,6 +254,7 @@ export async function buildMarketDigestSnapshot(): Promise<MarketDigestSnapshot>
     market,
     westport,
     towns: townRows,
+    categories,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({
       label: p.label,

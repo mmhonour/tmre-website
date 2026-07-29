@@ -652,9 +652,9 @@ export default function LatestClient({
           </h1>
           <p className="mt-4 text-sm lg:text-base text-white/70 max-w-2xl leading-relaxed animate-fade-up-delay-1">
             <span className="text-gold font-medium">30 on 30</span> — the{" "}
-            {LATEST_LIMIT} most recently updated active listings across {TMRE_TOWNS_LABEL},
-            refreshed every {LATEST_REFRESH_MINUTES} minutes and sorted by modification time —
-            live without reloading the page.
+            {LATEST_LIMIT} most recently updated active listings across {TMRE_TOWNS_LABEL}
+            {" "}(last-24h MLS updates and new listings first), refreshed every{" "}
+            {LATEST_REFRESH_MINUTES} minutes — live without reloading the page.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs animate-fade-up-delay-2">
             <span className="flex items-center gap-2">

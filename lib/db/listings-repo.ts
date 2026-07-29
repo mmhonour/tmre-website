@@ -881,6 +881,38 @@ const LISTING_SEARCH_STATUS_ORDER: Record<string, number> = {
   Expired: 2,
 }
 
+function mapRecentlyUpdatedQueryRows(
+  rows: {
+    data: unknown
+    raw: unknown
+    town: string
+    synced_at: Date | null
+    goldilocks_score: number | null
+    goldilocks_breakdown: unknown
+    goldilocks_scored_at: Date | null
+  }[],
+): RecentlyUpdatedRow[] {
+  return rows.map((row) => {
+    const listing = rowToListing(row)
+    const rawScore = row.goldilocks_score
+    const goldilocksScore =
+      rawScore == null
+        ? null
+        : Number.isFinite(Number(rawScore))
+          ? Number(rawScore)
+          : null
+    return {
+      listing,
+      town: row.town,
+      modificationTimestamp: listing.modificationTimestamp,
+      syncedAt: tsToIso(row.synced_at) ?? '',
+      goldilocksScore,
+      goldilocksBreakdown: jsonbToString(row.goldilocks_breakdown),
+      goldilocksScoredAt: tsToIso(row.goldilocks_scored_at),
+    }
+  })
+}
+
 export async function readRecentlyUpdatedListings(options: {
   since?: string | null
   limit?: number
@@ -922,25 +954,53 @@ export async function readRecentlyUpdatedListings(options: {
     params,
   )
 
-  return rows.map((row) => {
-    const listing = rowToListing(row)
-    const rawScore = row.goldilocks_score
-    const goldilocksScore =
-      rawScore == null
-        ? null
-        : Number.isFinite(Number(rawScore))
-          ? Number(rawScore)
-          : null
-    return {
-      listing,
-      town: row.town,
-      modificationTimestamp: listing.modificationTimestamp,
-      syncedAt: tsToIso(row.synced_at) ?? '',
-      goldilocksScore,
-      goldilocksBreakdown: jsonbToString(row.goldilocks_breakdown),
-      goldilocksScoredAt: tsToIso(row.goldilocks_scored_at),
-    }
-  })
+  return mapRecentlyUpdatedQueryRows(rows)
+}
+
+/**
+ * Active listings first listed within `since` (list_date). Used so Latest can
+ * surface brand-new inventory even when ModificationTimestamp ranking alone
+ * would bury them behind noisy price/status pings.
+ */
+export async function readRecentlyListedListings(options: {
+  since: string
+  limit?: number
+  statusBucket?: string
+  town?: string | null
+}): Promise<RecentlyUpdatedRow[]> {
+  const limit = Math.min(Math.max(options.limit ?? 100, 1), 500)
+  const statusBucket = options.statusBucket ?? 'Active'
+  const since = options.since.trim()
+  const town = options.town?.trim() || null
+  if (!since || Number.isNaN(Date.parse(since))) return []
+
+  const conditions = ['status_bucket = $1', 'list_date IS NOT NULL', 'list_date > $2']
+  const params: unknown[] = [statusBucket, new Date(since)]
+  if (town) {
+    params.push(town)
+    conditions.push(`town = $${params.length}`)
+  }
+  params.push(limit)
+  const limitPlaceholder = `$${params.length}`
+
+  const rows = await query<{
+    data: unknown
+    raw: unknown
+    town: string
+    synced_at: Date | null
+    goldilocks_score: number | null
+    goldilocks_breakdown: unknown
+    goldilocks_scored_at: Date | null
+  }>(
+    `SELECT data, raw, town, synced_at, goldilocks_score, goldilocks_breakdown, goldilocks_scored_at
+       FROM listings
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY list_date DESC, modification_timestamp DESC NULLS LAST
+      LIMIT ${limitPlaceholder}`,
+    params,
+  )
+
+  return mapRecentlyUpdatedQueryRows(rows)
 }
 
 let listingSearchIndexesEnsured = false

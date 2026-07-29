@@ -563,9 +563,9 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
   },
   {
     term: 'Latest',
-    category: 'ui-tabs',
+    category: 'product',
     definition:
-      'Explore page of recently MLS-updated listings, fed from DB/cache after incremental sync — not live RETS per page view.',
+      'Public /latest (“30 on 30”): up to 30 Active listings sorted by MLS ModificationTimestamp (brand-new list dates in the last day preferred). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Two clocks: Last pull = when Incremental finished; Newest MLS update = newest mod time among the 30 rows being served. Admin → Syncs → Dashboard has a Latest page card with live clocks. Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Intelligence',

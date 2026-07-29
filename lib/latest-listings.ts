@@ -3,9 +3,11 @@ import 'server-only'
 import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
 import { listingRowId, type TownUpdateStat } from '@/lib/db/listings-repo'
 import {
+  readRecentlyListedListings,
   readRecentlyUpdatedListings,
   readTownUpdateStats,
   upsertListingScores,
+  type RecentlyUpdatedRow,
 } from '@/lib/db/listings-repo'
 import { fetchActiveListingsForCity } from '@/lib/listings-store'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
@@ -39,6 +41,8 @@ export type LatestListingRow = {
   /** First downloaded photo index (skips empty RETS slots). */
   primaryPhotoIndex: number | null
   modificationTimestamp: string | null
+  /** MLS list date — used so brand-new inventory stays in the 24h Latest window. */
+  listDate: string | null
   syncedAt: string
 }
 
@@ -155,6 +159,7 @@ function toLatestRow(
     photoCount: listing.photoCount ?? null,
     primaryPhotoIndex: null,
     modificationTimestamp,
+    listDate: listing.listDate?.trim() || null,
     syncedAt,
   }
 }
@@ -266,6 +271,9 @@ async function scoreUnscoredLatestRows(
   return scoredRows
 }
 
+/** Latest must surface MLS activity from this window when it exists in Postgres. */
+export const LATEST_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
+
 function sortLatestByModification(rows: LatestListingRow[]): LatestListingRow[] {
   return [...rows].sort((a, b) => {
     const ta = Date.parse(a.modificationTimestamp ?? '')
@@ -275,6 +283,69 @@ function sortLatestByModification(rows: LatestListingRow[]): LatestListingRow[] 
     if (Number.isNaN(tb)) return -1
     return tb - ta
   })
+}
+
+function parseIsoMs(iso: string | null | undefined): number | null {
+  if (!iso?.trim()) return null
+  const ms = Date.parse(iso)
+  return Number.isNaN(ms) ? null : ms
+}
+
+/** True when at least one row has MLS mod or list-date inside the fresh window. */
+export function feedHasUpdateWithinWindow(
+  rows: readonly LatestListingRow[],
+  windowMs = LATEST_FRESH_WINDOW_MS,
+  nowMs = Date.now(),
+): boolean {
+  const cutoff = nowMs - windowMs
+  for (const row of rows) {
+    const mod = parseIsoMs(row.modificationTimestamp)
+    if (mod != null && mod >= cutoff) return true
+    const listed = parseIsoMs(row.listDate)
+    if (listed != null && listed >= cutoff) return true
+  }
+  return false
+}
+
+function rowInFreshWindow(row: LatestListingRow, cutoffMs: number): boolean {
+  const mod = parseIsoMs(row.modificationTimestamp)
+  if (mod != null && mod >= cutoffMs) return true
+  const listed = parseIsoMs(row.listDate)
+  if (listed != null && listed >= cutoffMs) return true
+  return false
+}
+
+/**
+ * Prefer last-24h MLS mods + brand-new list dates, then fill with older updates
+ * so the ticker stays full when the market is quiet.
+ */
+function rankLatestFreshFirst(
+  rows: LatestListingRow[],
+  cap: number,
+  nowMs = Date.now(),
+): LatestListingRow[] {
+  const cutoff = nowMs - LATEST_FRESH_WINDOW_MS
+  const fresh: LatestListingRow[] = []
+  const older: LatestListingRow[] = []
+  for (const row of sortLatestByModification(rows)) {
+    if (rowInFreshWindow(row, cutoff)) fresh.push(row)
+    else older.push(row)
+  }
+  return [...fresh, ...older].slice(0, cap)
+}
+
+function mergeRecentlyUpdatedRows(
+  batches: RecentlyUpdatedRow[][],
+): RecentlyUpdatedRow[] {
+  const byKey = new Map<string, RecentlyUpdatedRow>()
+  for (const batch of batches) {
+    for (const row of batch) {
+      const key = listingRowId(row.listing)
+      if (!key || byKey.has(key)) continue
+      byKey.set(key, row)
+    }
+  }
+  return [...byKey.values()]
 }
 
 export async function fetchLatestUpdatedListings(options: {
@@ -294,27 +365,47 @@ export async function fetchLatestUpdatedListings(options: {
   const cap = options.limit ?? 30
   const town = options.town?.trim() || null
   const allowLiveScore = options.allowLiveScore === true
+  const nowMs = Date.now()
 
   // Instant path for default /latest: last warm from the 30-minute DB refresh.
+  // Reject cache that has no MLS activity in the last 24h so stale warm cannot
+  // hide brand-new / freshly modified inventory sitting in Postgres.
   if (!town && !options.since && !options.bypassGlobalFeedCache) {
     const { readLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
     const cached = await readLatestGlobalFeedCache(cap)
-    if (cached) return cached
+    if (cached && feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)) {
+      return cached
+    }
   }
 
   // Instant path for Latest town clicks: prebuilt during the background warm.
   if (town && !options.since && !options.bypassTownFeedCache) {
     const { readLatestTownFeedCache } = await import('@/lib/latest-town-feed-cache')
     const cached = await readLatestTownFeedCache(town, cap)
-    if (cached) return cached
+    if (cached && feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)) {
+      return cached
+    }
   }
 
-  const rows = await readRecentlyUpdatedListings({
-    since: options.since,
-    limit: cap,
-    statusBucket: 'Active',
-    town,
-  })
+  const freshSinceIso = new Date(nowMs - LATEST_FRESH_WINDOW_MS).toISOString()
+  const [byMod, byListDate] = await Promise.all([
+    readRecentlyUpdatedListings({
+      since: options.since,
+      // Pull a wider mod slice so 24h ranking has room after merge.
+      limit: Math.min(Math.max(cap * 3, cap), 120),
+      statusBucket: 'Active',
+      town,
+    }),
+    options.since
+      ? Promise.resolve([] as RecentlyUpdatedRow[])
+      : readRecentlyListedListings({
+          since: freshSinceIso,
+          limit: cap,
+          statusBucket: 'Active',
+          town,
+        }),
+  ])
+  const rows = mergeRecentlyUpdatedRows([byListDate, byMod])
   if (rows.length === 0) return []
 
   // Prefer stored scores on the request path. If this slice is mostly
@@ -333,7 +424,7 @@ export async function fetchLatestUpdatedListings(options: {
       : mapped
   }
 
-  const sorted = sortLatestByModification(scoredRows).slice(0, cap)
+  const sorted = rankLatestFreshFirst(scoredRows, cap, nowMs)
 
   // Seed durable global ticker from this SQLite hit so the next load is instant.
   if (

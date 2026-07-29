@@ -331,6 +331,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "dashboard",
   },
   {
+    id: "admin-latest-page",
+    label: "Latest page",
+    tab: "syncs",
+    panel: "dashboard",
+  },
+  {
     id: "admin-sync-configure",
     label: "Syncs configure",
     tab: "syncs",
