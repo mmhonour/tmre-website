@@ -17,23 +17,29 @@ export const dynamic = 'force-dynamic'
 async function nextRunsPayload() {
   const stats = await readListingsDbStats()
   const refresh = readListingsRefreshStatus()
-  const nextRuns = buildAdminSyncNextRuns({
-    lastFullSyncStarted: stats.lastFullSyncStarted,
-    lastFullSync: stats.lastFullSync,
-    lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
-    lastIncrementalSync: stats.lastIncrementalSync,
-    lastListingScoresStarted: stats.lastListingScoresStarted,
-    lastListingScores: stats.lastListingScores,
-    lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
-    lastRefreshFinished:
-      getSyncMeta('last_refresh_finished_at') ?? refresh.lastFinishedAt,
-    lastStatsCacheStarted: stats.lastStatsCacheStarted,
-    lastStatsCache: stats.lastStatsCache,
-    lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
-    lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
-  })
+  const { readSyncScheduleConfig } = await import('@/lib/sync-schedule-config')
+  const scheduleConfig = readSyncScheduleConfig()
+  const nextRuns = buildAdminSyncNextRuns(
+    {
+      lastFullSyncStarted: stats.lastFullSyncStarted,
+      lastFullSync: stats.lastFullSync,
+      lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
+      lastIncrementalSync: stats.lastIncrementalSync,
+      lastListingScoresStarted: stats.lastListingScoresStarted,
+      lastListingScores: stats.lastListingScores,
+      lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
+      lastRefreshFinished:
+        getSyncMeta('last_refresh_finished_at') ?? refresh.lastFinishedAt,
+      lastStatsCacheStarted: stats.lastStatsCacheStarted,
+      lastStatsCache: stats.lastStatsCache,
+      lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
+      lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
+    },
+    new Date(),
+    scheduleConfig,
+  )
   const nextOverrides = await readSyncNextOverridesFresh()
-  return { nextRuns, nextOverrides }
+  return { nextRuns, nextOverrides, scheduleConfig }
 }
 
 export async function GET(req: NextRequest) {

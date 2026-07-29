@@ -2,14 +2,7 @@ import 'server-only'
 
 import { runAdminSyncAction } from '@/lib/admin-sync-actions'
 import type { AdminSyncActionId } from '@/lib/admin-sync-types'
-import {
-  isIntervalSyncOverdue,
-  isWeeklyMondaySyncOverdue,
-  latestIntervalMs,
-  parseIsoMs,
-  statsRefreshIntervalMs,
-} from '@/lib/admin-sync-schedule'
-import { ZIP_BOUNDARIES_TTL_MS } from '@/lib/zip-boundary-cache'
+import { parseIsoMs } from '@/lib/admin-sync-schedule'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
@@ -18,11 +11,11 @@ import {
   isScheduledSyncPausedFresh,
   type ScheduledSyncJobId,
 } from '@/lib/scheduled-sync-toggle'
+import { shouldDeferScheduledJob } from '@/lib/sync-next-override'
 import {
-  isSyncNextOverrideDue,
-  shouldDeferScheduledJob,
-  type SyncNextOverrideJobId,
-} from '@/lib/sync-next-override'
+  isScheduledJobDue,
+  readSyncScheduleConfig,
+} from '@/lib/sync-schedule-config'
 
 export type OverdueSyncJob = AdminSyncActionId | 'edge-scores'
 
@@ -107,53 +100,25 @@ function overdueCatchupEnabled(): boolean {
   return process.env.ENABLE_OVERDUE_SYNC_CATCHUP !== '0'
 }
 
-function incrementalBaselineIso(
-  lastIncremental: string | null,
-  lastFull: string | null,
-): string | null {
-  const incrementalMs = parseIsoMs(lastIncremental)
-  const fullMs = parseIsoMs(lastFull)
-  if (incrementalMs == null) return lastFull
-  if (fullMs == null) return lastIncremental
-  return incrementalMs >= fullMs ? lastIncremental : lastFull
-}
-
 /** Jobs whose scheduled window passed while the host was down. Each runs at most once. */
 export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
-  const stats = {
-    lastFullSync: getSyncMeta('last_full_sync'),
-    lastIncrementalSync: getSyncMeta('last_incremental_sync'),
-    lastListingScores: getSyncMeta('last_listing_scores'),
-    lastStatsCache: getSyncMeta('last_stats_cache'),
-    lastDealOfTheDayCache: getSyncMeta('last_deal_of_the_day_cache'),
-    lastListingEdgeScores: getSyncMeta('last_listing_edge_scores'),
-  }
-  const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
-  const propertyAddressesSyncedAt = getSyncMeta('property_addresses_synced_at')
-  const incrementalIntervalMs = latestIntervalMs()
-  const statsIntervalMs = statsRefreshIntervalMs()
+  const schedule = readSyncScheduleConfig()
+  // Prefer Configure Order for catch-up sequencing.
+  const executionOrder: OverdueSyncJob[] = [
+    ...schedule.order,
+    'publish-snapshot',
+    'edge-scores',
+  ]
 
   const overdue = new Set<OverdueSyncJob>()
-  const notDeferred = (job: SyncNextOverrideJobId) => !shouldDeferScheduledJob(job, now)
 
-  if (
-    notDeferred('full-resync') &&
-    (isSyncNextOverrideDue('full-resync', now) ||
-      isWeeklyMondaySyncOverdue(stats.lastFullSync, 5, 0, now)) &&
-    isRetsConfigured()
-  ) {
+  if (isScheduledJobDue('full-resync', now, schedule) && isRetsConfigured()) {
     overdue.add('full-resync')
   }
 
   if (
     !overdue.has('full-resync') &&
-    notDeferred('incremental') &&
-    (isSyncNextOverrideDue('incremental', now) ||
-      isIntervalSyncOverdue(
-        incrementalBaselineIso(stats.lastIncrementalSync, stats.lastFullSync),
-        incrementalIntervalMs,
-        now,
-      )) &&
+    isScheduledJobDue('incremental', now, schedule) &&
     isRetsConfigured()
   ) {
     overdue.add('incremental')
@@ -161,66 +126,46 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
 
   if (
     !overdue.has('full-resync') &&
-    notDeferred('listing-scores') &&
-    (isSyncNextOverrideDue('listing-scores', now) ||
-      isWeeklyMondaySyncOverdue(stats.lastListingScores, 5, 0, now))
+    isScheduledJobDue('listing-scores', now, schedule)
   ) {
     overdue.add('listing-scores')
   }
 
   if (
     !overdue.has('full-resync') &&
-    notDeferred('stats-cache') &&
-    (isSyncNextOverrideDue('stats-cache', now) ||
-      isIntervalSyncOverdue(stats.lastStatsCache, statsIntervalMs, now))
+    isScheduledJobDue('stats-cache', now, schedule)
   ) {
     overdue.add('stats-cache')
   }
 
   if (
     !overdue.has('full-resync') &&
-    notDeferred('deal-of-the-day') &&
-    (isSyncNextOverrideDue('deal-of-the-day', now) ||
-      isWeeklyMondaySyncOverdue(stats.lastDealOfTheDayCache, 5, 0, now))
+    isScheduledJobDue('deal-of-the-day', now, schedule)
   ) {
     overdue.add('deal-of-the-day')
   }
 
-  const refreshBaseline = incrementalBaselineIso(stats.lastIncrementalSync, stats.lastFullSync)
-  const refreshDue =
-    (isWeeklyMondaySyncOverdue(stats.lastFullSync, 5, 0, now) ||
-      isIntervalSyncOverdue(refreshBaseline, incrementalIntervalMs, now) ||
-      isSyncNextOverrideDue('incremental', now) ||
-      isSyncNextOverrideDue('full-resync', now)) &&
-    isRetsConfigured()
   if (
-    refreshDue &&
-    notDeferred('incremental') &&
-    isIntervalSyncOverdue(lastRefreshFinished, incrementalIntervalMs, now)
+    (overdue.has('incremental') || overdue.has('full-resync')) &&
+    !shouldDeferScheduledJob('incremental', now)
   ) {
+    // Refresh-finished / read snapshot when MLS refresh itself is due.
     overdue.add('publish-snapshot')
   }
 
   if (
-    notDeferred('property-addresses') &&
-    (isSyncNextOverrideDue('property-addresses', now) ||
-      isWeeklyMondaySyncOverdue(propertyAddressesSyncedAt, 1, 0, now)) &&
+    isScheduledJobDue('property-addresses', now, schedule) &&
     isRetsConfigured()
   ) {
     overdue.add('property-addresses')
   }
 
-  const lastZipBoundaries = getSyncMeta('last_zip_boundaries_sync')
-  if (
-    notDeferred('zip-boundaries') &&
-    (isSyncNextOverrideDue('zip-boundaries', now) ||
-      lastZipBoundaries == null ||
-      isIntervalSyncOverdue(lastZipBoundaries, ZIP_BOUNDARIES_TTL_MS, now))
-  ) {
+  if (isScheduledJobDue('zip-boundaries', now, schedule)) {
     overdue.add('zip-boundaries')
   }
 
-  if (isWeeklyMondaySyncOverdue(stats.lastListingEdgeScores, 2, 0, now)) {
+  // Edge scores follow listing-scores cadence when that job is due.
+  if (overdue.has('listing-scores')) {
     overdue.add('edge-scores')
   }
 
@@ -232,7 +177,21 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.delete('full-resync')
   }
 
-  return EXECUTION_ORDER.filter((job) => overdue.has(job))
+  const seen = new Set<OverdueSyncJob>()
+  const ordered: OverdueSyncJob[] = []
+  for (const job of executionOrder) {
+    if (overdue.has(job) && !seen.has(job)) {
+      seen.add(job)
+      ordered.push(job)
+    }
+  }
+  for (const job of EXECUTION_ORDER) {
+    if (overdue.has(job) && !seen.has(job)) {
+      seen.add(job)
+      ordered.push(job)
+    }
+  }
+  return ordered
 }
 
 async function runOverdueJob(job: OverdueSyncJob): Promise<OverdueSyncCatchupStep> {

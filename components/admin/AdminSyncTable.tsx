@@ -9,7 +9,6 @@ import {
 import type { AdminSyncActionId, FullResyncFinalizeStepId } from "@/lib/admin-sync-types";
 import {
   ADMIN_SYNC_ACTIONS,
-  ADMIN_SYNC_ALL_CLIENT_STEPS,
   ADMIN_MANUAL_SYNC_ORDER_BY_ROW,
   ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL,
   FULL_RESYNC_FINALIZE_STEPS,
@@ -31,6 +30,15 @@ import {
   syncNextOverrideStepMs,
   type SyncNextOverrides,
 } from "@/lib/sync-next-override-shared";
+import {
+  SYNC_SCHEDULE_FREQUENCIES,
+  defaultSyncScheduleConfig,
+  frequencyLabel,
+  orderNumberByRow,
+  syncAllClientStepsFromConfig,
+  type SyncScheduleConfig,
+  type SyncScheduleFrequencyId,
+} from "@/lib/sync-schedule-config-shared";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import {
@@ -503,32 +511,15 @@ export type AdminSyncRow = {
 /** Dashboard = run/status; Configure = pause + next-start override. */
 export type AdminSyncTableMode = "dashboard" | "configure";
 
-/** Natural cadence labels for Configure Frequency (read-only). */
-function configureScheduleForRow(rowId: string): {
-  frequency: string;
-  wakeHint: string;
-} {
+/** Derived / status-only rows — no Configure schedule editors. */
+function configureScheduleHintForRow(rowId: string): string | null {
   switch (rowId) {
-    case "full-resync":
-      return { frequency: "Weekly", wakeHint: "Cron wakes Mon ~5:00 AM ET" };
-    case "incremental":
-      return { frequency: "Every 30 min", wakeHint: "Cron wakes :00 / :30" };
     case "latest-mls":
-      return { frequency: "With incremental", wakeHint: "Follows Incremental" };
-    case "listing-scores":
-      return { frequency: "With full resync", wakeHint: "Follows Full resync" };
-    case "stats-cache":
-      return { frequency: "With full resync", wakeHint: "Often with Incremental" };
-    case "deal-of-the-day":
-      return { frequency: "With full resync", wakeHint: "Follows Full resync" };
+      return "Follows Incremental";
     case "refresh-finished":
-      return { frequency: "With MLS refresh", wakeHint: "End of sync" };
-    case "property-addresses":
-      return { frequency: "Weekly", wakeHint: "Cron wakes Mon ~1:00 AM ET" };
-    case "zip-boundaries":
-      return { frequency: "Monthly", wakeHint: "Cron wakes 1st · 10:00 UTC" };
+      return "End of MLS refresh";
     default:
-      return { frequency: "—", wakeHint: "—" };
+      return null;
   }
 }
 
@@ -566,6 +557,8 @@ export type PanelStatus = {
   /** Admin-set Next times that preempt the natural schedule. */
   nextOverrides?: SyncNextOverrides;
   scheduleHints?: AdminSyncScheduleHints;
+  /** Configure Frequency / Start time / Order (persisted in sync_meta). */
+  scheduleConfig?: SyncScheduleConfig;
   /** Real worker town progress (stamped in sync_meta during incremental). */
   incrementalLive?: IncrementalSyncLiveProgress | null;
   incrementalLiveStatus?: string | null;
@@ -918,7 +911,7 @@ function formatNextStepLabel(jobId: ScheduledSyncJobId): string {
   return `${Math.round(ms / 60_000)}m`;
 }
 
-/** Compact ▲/▼ next to NEXT — nudges Admin override earlier/later. */
+/** Compact ▲/▼ next to Dashboard NEXT — one-time override nudge. */
 function NextOverrideSpinner({
   jobId,
   busy,
@@ -937,7 +930,11 @@ function NextOverrideSpinner({
     "leading-none px-0.5 text-[9px] text-charcoal/40 hover:text-navy disabled:opacity-30 disabled:pointer-events-none";
   return (
     <span className="inline-flex items-center gap-0.5 normal-case tracking-normal">
-      <span className="inline-flex flex-col -my-0.5" role="group" aria-label={`Adjust next run (±${step})`}>
+      <span
+        className="inline-flex flex-col -my-0.5"
+        role="group"
+        aria-label={`Adjust next run (±${step})`}
+      >
         <button
           type="button"
           className={btn}
@@ -971,6 +968,50 @@ function NextOverrideSpinner({
           ×
         </button>
       ) : null}
+    </span>
+  );
+}
+
+/** Compact ▲/▼ for Configure Order (Sync All priority). */
+function OrderReorderSpinner({
+  busy,
+  canUp,
+  canDown,
+  onMove,
+}: {
+  busy: boolean;
+  canUp: boolean;
+  canDown: boolean;
+  onMove: (direction: "up" | "down") => void;
+}) {
+  const btn =
+    "leading-none px-0.5 text-[9px] text-charcoal/40 hover:text-navy disabled:opacity-30 disabled:pointer-events-none";
+  return (
+    <span
+      className="inline-flex flex-col -my-0.5"
+      role="group"
+      aria-label="Reorder Sync all priority"
+    >
+      <button
+        type="button"
+        className={btn}
+        title="Higher priority (run earlier in Sync all)"
+        aria-label="Move job earlier in Sync all order"
+        disabled={busy || !canUp}
+        onClick={() => onMove("up")}
+      >
+        ▲
+      </button>
+      <button
+        type="button"
+        className={btn}
+        title="Lower priority (run later in Sync all)"
+        aria-label="Move job later in Sync all order"
+        disabled={busy || !canDown}
+        onClick={() => onMove("down")}
+      >
+        ▼
+      </button>
     </span>
   );
 }
@@ -1239,6 +1280,11 @@ export default function AdminSyncTable({
   const [nextSavingJob, setNextSavingJob] = useState<ScheduledSyncJobId | null>(
     null,
   );
+  const [scheduleSavingJob, setScheduleSavingJob] =
+    useState<ScheduledSyncJobId | "order" | null>(null);
+  const scheduleConfig =
+    status?.scheduleConfig ?? defaultSyncScheduleConfig();
+  const orderByRow = orderNumberByRow(scheduleConfig);
   const [pendingRetries, setPendingRetries] = useState<
     Partial<Record<string, PendingSyncRetry>>
   >({});
@@ -1540,6 +1586,69 @@ export default function AdminSyncTable({
       }
     },
     [pausedJobs],
+  );
+
+  const patchScheduleConfig = useCallback(
+    async (
+      body:
+        | { jobId: ScheduledSyncJobId; frequency: SyncScheduleFrequencyId }
+        | { jobId: ScheduledSyncJobId; startTimeEt: string }
+        | { moveJobId: ScheduledSyncJobId; direction: "up" | "down" },
+    ) => {
+      const savingKey =
+        "moveJobId" in body ? ("order" as const) : body.jobId;
+      setScheduleSavingJob(savingKey);
+      try {
+        const res = await fetch("/api/admin/sync-schedule", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = (await res.json()) as {
+          scheduleConfig?: SyncScheduleConfig;
+          nextRuns?: PanelStatus["nextRuns"];
+          error?: string;
+        };
+        if (!res.ok || !payload.scheduleConfig) {
+          console.warn("[admin sync-schedule]", payload.error ?? res.status);
+          return;
+        }
+        setStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                scheduleConfig: payload.scheduleConfig,
+                ...(payload.nextRuns ? { nextRuns: payload.nextRuns } : {}),
+              }
+            : {
+                refreshing: false,
+                lastRefreshFinished: null,
+                lastRefreshStarted: null,
+                latestListingUpdate: null,
+                stats: {
+                  total: 0,
+                  lastFullSync: null,
+                  lastFullSyncStarted: null,
+                  lastIncrementalSync: null,
+                  lastIncrementalSyncStarted: null,
+                  lastListingScores: null,
+                  lastListingScoresStarted: null,
+                  lastStatsCache: null,
+                  lastStatsCacheStarted: null,
+                  lastDealOfTheDayCache: null,
+                  lastDealOfTheDayCacheStarted: null,
+                },
+                scheduleConfig: payload.scheduleConfig,
+                nextRuns: payload.nextRuns,
+              },
+        );
+      } catch (err) {
+        console.warn("[admin sync-schedule]", err);
+      } finally {
+        setScheduleSavingJob(null);
+      }
+    },
+    [],
   );
 
   const patchNextOverride = useCallback(
@@ -1897,11 +2006,13 @@ export default function AdminSyncTable({
   );
 
   const executeSyncAll = useCallback(async () => {
-
-    const stepsToRun = ADMIN_SYNC_ALL_CLIENT_STEPS.filter(
+    const syncAllSteps = syncAllClientStepsFromConfig(
+      status?.scheduleConfig ?? defaultSyncScheduleConfig(),
+    );
+    const stepsToRun = syncAllSteps.filter(
       (actionId) => !isSyncAllActionPaused(actionId, pausedJobs),
     );
-    const skippedPaused = ADMIN_SYNC_ALL_CLIENT_STEPS.filter((actionId) =>
+    const skippedPaused = syncAllSteps.filter((actionId) =>
       isSyncAllActionPaused(actionId, pausedJobs),
     );
     const runningLabels = stepsToRun.map(syncAllActionLabel);
@@ -2182,6 +2293,7 @@ export default function AdminSyncTable({
     }
   }, [
     pausedJobs,
+    status?.scheduleConfig,
     refreshStatus,
     rows,
     persistFinalStatus,
@@ -2275,14 +2387,13 @@ export default function AdminSyncTable({
           ) : (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-2xl">
-                Pause skips Sync all and cron for that job. Frequency is the natural
-                cadence (read-only). Use ▲/▼ on Next start to set when the job may run
-                next — one-time; clears after a successful run.
+                Pause skips Sync all and cron. Frequency and Start time (ET) set when
+                cron may run the job. Next start is computed and read-only. ▲/▼ on
+                Order sets Sync all priority (including Incremental).
               </p>
               <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-                “Takes hold” is the next practical cron wake that can honor your Next
-                start (e.g. Incremental only at :00 / :30). Live run status stays on
-                Dashboard.
+                Netlify wakes every 30 minutes; each tick runs a job only when due for
+                its Frequency + Start time. Live run status stays on Dashboard.
               </p>
             </>
           )}
@@ -2336,8 +2447,9 @@ export default function AdminSyncTable({
             <col className={isDashboard ? "w-[7.5rem]" : "w-[9rem]"} />
             {isConfigure ? <col /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
-            {isConfigure ? <col className="w-[7.5rem]" /> : null}
-            {isConfigure ? <col className="w-[12rem]" /> : null}
+            {isConfigure ? <col className="w-[8.5rem]" /> : null}
+            {isConfigure ? <col className="w-[7rem]" /> : null}
+            {isConfigure ? <col className="w-[9rem]" /> : null}
             {isDashboard ? <col className="w-[5.5rem]" /> : null}
             {isDashboard ? <col className="w-[6.5rem]" /> : null}
             {isDashboard ? <col className="w-[7.5rem]" /> : null}
@@ -2369,7 +2481,15 @@ export default function AdminSyncTable({
               {isConfigure ? (
                 <th
                   className={TH}
-                  title="Set the next allowed start; Takes hold = next cron wake that can run it"
+                  title="Time of day in America/New_York when this job should run (anchor for intervals)"
+                >
+                  Start time
+                </th>
+              ) : null}
+              {isConfigure ? (
+                <th
+                  className={TH}
+                  title="Next practical cron wake — read-only from Frequency + Start time"
                 >
                   Next start
                 </th>
@@ -2432,8 +2552,8 @@ export default function AdminSyncTable({
               return [...rows]
               .sort((a, b) => {
                 if (isConfigure) {
-                  const aOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[a.id] ?? 999;
-                  const bOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[b.id] ?? 999;
+                  const aOrder = orderByRow[a.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[a.id] ?? 999;
+                  const bOrder = orderByRow[b.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[b.id] ?? 999;
                   if (aOrder !== bOrder) return aOrder - bOrder;
                   return a.label.localeCompare(b.label);
                 }
@@ -2489,10 +2609,17 @@ export default function AdminSyncTable({
                 timing.finished,
                 nowMs,
               );
-              const manualOrder = ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
+              const manualOrder =
+                orderByRow[row.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
               const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
               const rowPaused = Boolean(pauseJob && pausedJobs[pauseJob]);
-              const configureSchedule = configureScheduleForRow(row.id);
+              const derivedScheduleHint = configureScheduleHintForRow(row.id);
+              const jobSchedule = pauseJob
+                ? scheduleConfig.jobs[pauseJob]
+                : null;
+              const orderIndex = pauseJob
+                ? scheduleConfig.order.indexOf(pauseJob)
+                : -1;
               const stripe = index % 2 === 1;
               // Paused jobs read as disabled — mute status colors to idle grey.
               const displayVisual =
@@ -2633,13 +2760,31 @@ export default function AdminSyncTable({
                       isConfigure ? "left-[3.25rem]" : "left-0"
                     }`}
                   >
-                    {manualOrder != null ? (
-                      <span
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
-                        title={`Manual sync step ${manualOrder}`}
-                      >
-                        {manualOrder}
-                      </span>
+                    {manualOrder != null && pauseJob ? (
+                      <div className="inline-flex items-center gap-1">
+                        <span
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
+                          title={`Sync all step ${manualOrder}`}
+                        >
+                          {manualOrder}
+                        </span>
+                        {isConfigure ? (
+                          <OrderReorderSpinner
+                            busy={scheduleSavingJob === "order"}
+                            canUp={orderIndex > 0}
+                            canDown={
+                              orderIndex >= 0 &&
+                              orderIndex < scheduleConfig.order.length - 1
+                            }
+                            onMove={(direction) =>
+                              void patchScheduleConfig({
+                                moveJobId: pauseJob,
+                                direction,
+                              })
+                            }
+                          />
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
                     )}
@@ -2698,12 +2843,54 @@ export default function AdminSyncTable({
                   ) : null}
                   {isConfigure ? (
                     <td className={TD_EXPAND}>
-                      <p className="font-mono text-[11px] tracking-wide text-navy leading-snug">
-                        {configureSchedule.frequency}
-                      </p>
-                      <p className="mt-0.5 font-mono text-[9px] tracking-wide text-charcoal/40 leading-snug">
-                        {configureSchedule.wakeHint}
-                      </p>
+                      {jobSchedule && pauseJob ? (
+                        <select
+                          className="w-full max-w-[9rem] rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] text-navy disabled:opacity-40"
+                          value={jobSchedule.frequency}
+                          disabled={scheduleSavingJob === pauseJob}
+                          aria-label={`Frequency for ${row.label}`}
+                          onChange={(e) =>
+                            void patchScheduleConfig({
+                              jobId: pauseJob,
+                              frequency: e.target
+                                .value as SyncScheduleFrequencyId,
+                            })
+                          }
+                        >
+                          {SYNC_SCHEDULE_FREQUENCIES.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="font-mono text-[11px] tracking-wide text-charcoal/45 leading-snug">
+                          {derivedScheduleHint ?? "—"}
+                        </p>
+                      )}
+                    </td>
+                  ) : null}
+                  {isConfigure ? (
+                    <td className={TD_EXPAND}>
+                      {jobSchedule && pauseJob ? (
+                        <input
+                          type="time"
+                          className="w-full max-w-[8rem] rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] tabular-nums text-navy disabled:opacity-40"
+                          value={jobSchedule.startTimeEt}
+                          disabled={scheduleSavingJob === pauseJob}
+                          aria-label={`Start time (ET) for ${row.label}`}
+                          onChange={(e) =>
+                            void patchScheduleConfig({
+                              jobId: pauseJob,
+                              startTimeEt: e.target.value,
+                            })
+                          }
+                        />
+                      ) : (
+                        <span className="font-mono text-[10px] tracking-wide text-charcoal/30">
+                          —
+                        </span>
+                      )}
                     </td>
                   ) : null}
                   {isConfigure ? (
@@ -2716,13 +2903,10 @@ export default function AdminSyncTable({
                         if (!nextJobId) {
                           return (
                             <p className="font-mono text-[11px] tracking-wide text-charcoal/45 leading-snug">
-                              {configureSchedule.wakeHint}
+                              {derivedScheduleHint ?? "—"}
                             </p>
                           );
                         }
-                        const hasNextOverride = Boolean(
-                          status?.nextOverrides?.[nextJobId],
-                        );
                         const takeHoldIso = nextPracticalTakeHoldIso(
                           nextJobId,
                           nextRunAt,
@@ -2739,56 +2923,29 @@ export default function AdminSyncTable({
                           nextMs != null &&
                           takeHoldMs != null &&
                           Math.abs(takeHoldMs - nextMs) < 60_000;
+                        const freq = jobSchedule
+                          ? frequencyLabel(jobSchedule.frequency)
+                          : null;
 
                         return (
                           <div className="flex flex-col gap-0.5 min-w-0">
-                            <div className="inline-flex items-center gap-1 min-w-0">
-                              <span
-                                className={`font-mono text-[11px] tabular-nums leading-snug ${
-                                  hasNextOverride
-                                    ? "text-gold font-semibold"
-                                    : "text-navy font-semibold"
-                                }`}
-                              >
-                                {nextRunAt != null ? nextLabel : "—"}
-                              </span>
-                              <NextOverrideSpinner
-                                jobId={nextJobId}
-                                busy={nextSavingJob === nextJobId}
-                                hasOverride={hasNextOverride}
-                                onNudge={(steps) =>
-                                  void patchNextOverride(nextJobId, {
-                                    steps,
-                                    baseNextAt: nextRunAt,
-                                  })
-                                }
-                                onClear={() =>
-                                  void patchNextOverride(nextJobId, {
-                                    nextAt: null,
-                                  })
-                                }
-                              />
-                            </div>
-                            {takeHoldIso ? (
+                            <span className="font-mono text-[11px] tabular-nums leading-snug text-navy font-semibold">
+                              {nextRunAt != null ? nextLabel : "—"}
+                            </span>
+                            {takeHoldIso && !sameSlot ? (
                               <p
-                                className={`font-mono text-[9px] tracking-wide leading-snug ${
-                                  sameSlot
-                                    ? "text-charcoal/40"
-                                    : "text-gold/90"
-                                }`}
-                                title={
-                                  sameSlot
-                                    ? "Next start already lands on a cron wake"
-                                    : "Cron cannot fire between wakes — this is when it can actually run"
-                                }
+                                className="font-mono text-[9px] tracking-wide leading-snug text-charcoal/45"
+                                title="Cron wakes every 30 minutes — this is when it can actually run"
                               >
                                 Takes hold {takeHoldLabel}
-                                {!sameSlot ? " · next cron wake" : null}
                               </p>
                             ) : null}
-                            {hasNextOverride ? (
-                              <p className="font-mono text-[8px] tracking-wide text-gold/70 leading-snug">
-                                Override set · clears after a successful run
+                            {freq ? (
+                              <p className="font-mono text-[8px] tracking-wide text-charcoal/40 leading-snug">
+                                {freq}
+                                {jobSchedule
+                                  ? ` · ${jobSchedule.startTimeEt} ET`
+                                  : null}
                               </p>
                             ) : null}
                           </div>

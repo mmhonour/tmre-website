@@ -8,7 +8,8 @@ import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */
-export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v1:global'
+// v2: TMRE-only feed (drops polluted v1 caches that included out-of-market towns).
+export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v2:global'
 export const LATEST_GLOBAL_FEED_LIMIT = 30
 
 export type LatestGlobalFeedCachePayload = {

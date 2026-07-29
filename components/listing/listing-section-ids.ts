@@ -42,9 +42,9 @@ export function listingRecentlyClosedPanelIdForTab(
 }
 
 export function listingSectionIdForTab(
-  tab: ListingScrollSectionTab | "photos" | "map",
+  tab: ListingScrollSectionTab | "photos" | "map" | "admin",
 ): string | null {
-  if (tab === "photos" || tab === "map") return null;
+  if (tab === "photos" || tab === "map" || tab === "admin") return null;
   return LISTING_SECTION_IDS[tab] ?? null;
 }
 

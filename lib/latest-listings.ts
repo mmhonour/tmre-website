@@ -12,8 +12,15 @@ import {
 import { fetchActiveListingsForCity } from '@/lib/listings-store'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import type { Listing } from '@/lib/rets'
-import { isTmreTown, normalizeZip, resolveListingTown, type TmreTown } from '@/lib/tmre-towns'
+import {
+  isTmreTown,
+  listingInTmreCoverage,
+  normalizeZip,
+  resolveListingTown,
+  type TmreTown,
+} from '@/lib/tmre-towns'
 import { coerceLotAcres, parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
+import { latestActivityMs } from '@/lib/latest-activity'
 
 export type LatestListingRow = {
   key: string
@@ -129,6 +136,14 @@ function toLatestRow(
       ? Number(storedScore)
       : 0)
 
+  const zip = normalizeZip(listing.address.postalCode)
+  const town =
+    (isTmreTown(dbTown) ? dbTown.trim() : null) ||
+    townForListing(listing)
+  // Latest is TMRE-only — drop out-of-market rows (Stamford / Putnam / …).
+  if (!town || !isTmreTown(town)) return null
+  if (!listingInTmreCoverage(zip, town)) return null
+
   return {
     key: listing.listingKey || listing.mlsId,
     listingKey: listing.listingKey ?? null,
@@ -137,12 +152,8 @@ function toLatestRow(
     scoreBreakdown: score,
     address: listing.address.street || listing.address.full,
     city: listing.address.city?.trim() || null,
-    town:
-      dbTown?.trim() ||
-      townForListing(listing) ||
-      listing.address.city?.trim() ||
-      null,
-    zip: normalizeZip(listing.address.postalCode),
+    town,
+    zip,
     type: shortType(listing.propertyType),
     price: listing.price,
     pricePerSqft,
@@ -274,10 +285,10 @@ async function scoreUnscoredLatestRows(
 /** Latest must surface MLS activity from this window when it exists in Postgres. */
 export const LATEST_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
 
-function sortLatestByModification(rows: LatestListingRow[]): LatestListingRow[] {
+function sortLatestByActivity(rows: LatestListingRow[]): LatestListingRow[] {
   return [...rows].sort((a, b) => {
-    const ta = Date.parse(a.modificationTimestamp ?? '')
-    const tb = Date.parse(b.modificationTimestamp ?? '')
+    const ta = latestActivityMs(a.modificationTimestamp, a.listDate)
+    const tb = latestActivityMs(b.modificationTimestamp, b.listDate)
     if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
     if (Number.isNaN(ta)) return 1
     if (Number.isNaN(tb)) return -1
@@ -308,11 +319,18 @@ export function feedHasUpdateWithinWindow(
 }
 
 function rowInFreshWindow(row: LatestListingRow, cutoffMs: number): boolean {
-  const mod = parseIsoMs(row.modificationTimestamp)
-  if (mod != null && mod >= cutoffMs) return true
-  const listed = parseIsoMs(row.listDate)
-  if (listed != null && listed >= cutoffMs) return true
+  const activity = latestActivityMs(row.modificationTimestamp, row.listDate)
+  if (!Number.isNaN(activity) && activity >= cutoffMs) return true
   return false
+}
+
+/** True when every row is one of the 7 TMRE towns (rejects polluted warm cache). */
+export function feedIsTmreOnly(rows: readonly LatestListingRow[]): boolean {
+  if (rows.length === 0) return false
+  for (const row of rows) {
+    if (!isTmreTown(row.town) && !isTmreTown(row.city)) return false
+  }
+  return true
 }
 
 /**
@@ -327,7 +345,7 @@ function rankLatestFreshFirst(
   const cutoff = nowMs - LATEST_FRESH_WINDOW_MS
   const fresh: LatestListingRow[] = []
   const older: LatestListingRow[] = []
-  for (const row of sortLatestByModification(rows)) {
+  for (const row of sortLatestByActivity(rows)) {
     if (rowInFreshWindow(row, cutoff)) fresh.push(row)
     else older.push(row)
   }
@@ -373,16 +391,25 @@ export async function fetchLatestUpdatedListings(options: {
   if (!town && !options.since && !options.bypassGlobalFeedCache) {
     const { readLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
     const cached = await readLatestGlobalFeedCache(cap)
-    if (cached && feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)) {
+    if (
+      cached &&
+      feedIsTmreOnly(cached) &&
+      feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)
+    ) {
       return cached
     }
   }
 
   // Instant path for Latest town clicks: prebuilt during the background warm.
   if (town && !options.since && !options.bypassTownFeedCache) {
+    if (!isTmreTown(town)) return []
     const { readLatestTownFeedCache } = await import('@/lib/latest-town-feed-cache')
     const cached = await readLatestTownFeedCache(town, cap)
-    if (cached && feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)) {
+    if (
+      cached &&
+      feedIsTmreOnly(cached) &&
+      feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)
+    ) {
       return cached
     }
   }

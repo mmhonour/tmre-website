@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     refresh,
     nextRuns,
     scheduleHints,
+    scheduleConfig,
     nextOverrides,
     lastIncrementalCronTick,
     incrementalLive,
@@ -74,6 +75,7 @@ export async function GET(req: NextRequest) {
     nextRuns,
     nextOverrides,
     scheduleHints,
+    scheduleConfig,
     incrementalLive,
     incrementalLiveStatus,
     incrementalStepLog,
@@ -142,20 +144,26 @@ export async function POST(req: NextRequest) {
         ? await runAdminSyncAllCaches()
         : await runAdminSyncAction(action, { town, finalize, finalizeStep })
     const stats = await readListingsDbStats()
-    const nextRuns = buildAdminSyncNextRuns({
-      lastFullSyncStarted: stats.lastFullSyncStarted,
-      lastFullSync: stats.lastFullSync,
-      lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
-      lastIncrementalSync: stats.lastIncrementalSync,
-      lastListingScoresStarted: stats.lastListingScoresStarted,
-      lastListingScores: stats.lastListingScores,
-      lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
-      lastRefreshFinished: getSyncMeta('last_refresh_finished_at'),
-      lastStatsCacheStarted: stats.lastStatsCacheStarted,
-      lastStatsCache: stats.lastStatsCache,
-      lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
-      lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
-    })
+    const { readSyncScheduleConfig } = await import('@/lib/sync-schedule-config')
+    const scheduleConfig = readSyncScheduleConfig()
+    const nextRuns = buildAdminSyncNextRuns(
+      {
+        lastFullSyncStarted: stats.lastFullSyncStarted,
+        lastFullSync: stats.lastFullSync,
+        lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
+        lastIncrementalSync: stats.lastIncrementalSync,
+        lastListingScoresStarted: stats.lastListingScoresStarted,
+        lastListingScores: stats.lastListingScores,
+        lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
+        lastRefreshFinished: getSyncMeta('last_refresh_finished_at'),
+        lastStatsCacheStarted: stats.lastStatsCacheStarted,
+        lastStatsCache: stats.lastStatsCache,
+        lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
+        lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
+      },
+      new Date(),
+      scheduleConfig,
+    )
     const scheduleHints = buildAdminSyncScheduleHints()
     const nextOverrides = readSyncNextOverrides()
     return NextResponse.json({
@@ -164,6 +172,7 @@ export async function POST(req: NextRequest) {
       nextRuns,
       nextOverrides,
       scheduleHints,
+      scheduleConfig,
       latestListingUpdate: await readLatestListingModificationTimestamp(),
       propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
       zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),

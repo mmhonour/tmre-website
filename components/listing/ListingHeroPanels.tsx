@@ -47,8 +47,14 @@ import ListingRemarksSidePanel, {
 } from "@/components/listing/ListingRemarksSidePanel";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import { LISTING_ANALYSIS_ID } from "@/components/listing/ListingDetailsSchoolsPanel";
+import ListingAdminAgentPanel from "@/components/listing/ListingAdminAgentPanel";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import { formatMlsStatus } from "@/lib/listing-history";
 import { isRentalListing } from "@/lib/listing-kind";
+import {
+  extractListingAgentContact,
+  type ListingAgentContact,
+} from "@/lib/listing-agent-contact";
 import { listingSectionHref, listingShareHref } from "@/lib/listing-url";
 import { SPOTLIGHT_SHARE_URL, spotlightSectionHref } from "@/lib/spotlight-url";
 import { useRouter } from "next/navigation";
@@ -135,6 +141,8 @@ type ListingHeroPanelsProps = {
   sidebar?: ReactNode;
   footer?: ReactNode;
   interest?: ListingInterestProps | null;
+  /** Opaque RETS row — Admin tab shows contacting / list agent when unlocked. */
+  listingRaw?: Record<string, string> | null;
 };
 
 export default function ListingHeroPanels({
@@ -151,9 +159,15 @@ export default function ListingHeroPanels({
   sidebar,
   footer,
   interest = null,
+  listingRaw = null,
 }: ListingHeroPanelsProps) {
   const router = useRouter();
+  const siteUnlocked = useSiteUnlocked();
   const isSpotlight = variant === "spotlight";
+  const adminAgentContact: ListingAgentContact | null = useMemo(
+    () => extractListingAgentContact(listingRaw),
+    [listingRaw],
+  );
   const frameClass = listingPanelCompactClass;
   const compactHero = Boolean(
     belowTabs || sections || belowHero || sidebar || footer || interest,
@@ -184,6 +198,8 @@ export default function ListingHeroPanels({
   const photosModeCountRef = useRef(0);
   /** Location panel / map drawer — off by default; Map tab toggles it. */
   const [mapVisible, setMapVisible] = useState(false);
+  /** Admin contacting-agent panel — site unlock only. */
+  const [adminVisible, setAdminVisible] = useState(false);
   /** Drawer is mobile-only; keep Location open when resizing up to desktop. */
   const [isDesktopLayout, setIsDesktopLayout] = useState(false);
   const {
@@ -294,7 +310,10 @@ export default function ListingHeroPanels({
   const toggleMap = useCallback(() => {
     setMapVisible((prev) => {
       const next = !prev;
-      if (next) setMobileDrawer(null);
+      if (next) {
+        setMobileDrawer(null);
+        setAdminVisible(false);
+      }
       const url = new URL(window.location.href);
       if (next) {
         window.history.replaceState(
@@ -315,6 +334,33 @@ export default function ListingHeroPanels({
       window.history.replaceState(null, "", `${url.pathname}${url.search}`);
     }
   }, []);
+
+  const toggleAdmin = useCallback(() => {
+    if (!siteUnlocked) return;
+    setAdminVisible((prev) => {
+      const next = !prev;
+      if (next) {
+        setMapVisible(false);
+        setMobileDrawer(null);
+        const url = new URL(window.location.href);
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}#listing-admin`,
+        );
+      } else {
+        const url = new URL(window.location.href);
+        if (url.hash === "#listing-admin") {
+          window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+        }
+      }
+      return next;
+    });
+  }, [siteUnlocked]);
+
+  useEffect(() => {
+    if (!siteUnlocked) setAdminVisible(false);
+  }, [siteUnlocked]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -635,6 +681,9 @@ export default function ListingHeroPanels({
         forceShowPhotos={photosTabVisible}
         mapVisible={mapVisible}
         onMapToggle={toggleMap}
+        adminVisible={adminVisible}
+        onAdminToggle={siteUnlocked ? toggleAdmin : null}
+        showAdminTab={siteUnlocked}
         historyElevated={historyElevated}
         onHistoryToggle={
           useSlidePanel && isDesktopLayout ? toggleHistoryPanel : null
@@ -1099,6 +1148,9 @@ export default function ListingHeroPanels({
         </div>
       ) : null}
       {mapVisible ? mapBlock("aspect-square", true) : null}
+      {siteUnlocked && adminVisible && isDesktopLayout ? (
+        <ListingAdminAgentPanel contact={adminAgentContact} />
+      ) : null}
     </div>
   );
 
@@ -1229,6 +1281,17 @@ export default function ListingHeroPanels({
         <div id="listing-map-drawer">
           {mapBlock("aspect-square max-h-[min(70vh,28rem)]", false)}
         </div>
+      </ListingSideDrawer>
+
+      <ListingSideDrawer
+        open={siteUnlocked && adminVisible && !isDesktopLayout}
+        onClose={() => {
+          if (window.matchMedia("(min-width: 1024px)").matches) return;
+          setAdminVisible(false);
+        }}
+        title="Admin"
+      >
+        <ListingAdminAgentPanel contact={adminAgentContact} />
       </ListingSideDrawer>
 
       <ListingSideDrawer

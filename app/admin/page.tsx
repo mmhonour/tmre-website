@@ -238,6 +238,7 @@ export default async function AdminPage() {
     refresh,
     nextRuns,
     scheduleHints,
+    scheduleConfig,
     lastIncrementalCronTick,
     nextOverrides,
   } = await readAdminSyncPanelStatus();
@@ -438,6 +439,7 @@ export default async function AdminPage() {
     nextRuns,
     nextOverrides,
     scheduleHints,
+    scheduleConfig,
   };
 
   // Which Postgres this admin process is editing (Neon vs local). Site controls

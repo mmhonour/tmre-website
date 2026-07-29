@@ -247,7 +247,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Next override (spinner)',
     category: 'sync-admin',
     definition:
-      'Admin Syncs ▲/▼ beside Next writes sync_next_override_<job> in sync_meta, replacing the natural next time. Future = defer automatic cron/catch-up; past/now = due. Cleared after a successful run (or ×). Step size: 5m incremental/stats, 30m scores/DOTD/addresses, 1h full, 1d zip.',
+      'Admin Syncs → Configure: Frequency picklist + Start time (ET) persist in sync_meta (sync_schedule_config). Netlify wakes every 30m; handlers run only when due. Next start is read-only (computed). Order ▲/▼ sets Sync all priority — Incremental is included. Dashboard Next ▲/▼ still writes one-time sync_next_override_<job> (clears after a successful run).',
   },
   {
     term: 'Smart sync',

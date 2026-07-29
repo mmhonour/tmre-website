@@ -584,10 +584,10 @@ export async function readListingFromDbByMlsId(
 }
 
 function townForListingRecord(listing: Listing): string {
+  // Site-wide: only the 7 TMRE towns — never persist raw MLS cities like Stamford.
   return (
     resolveListingTown(listing.address.city) ||
     townForZip(listing.address.postalCode ?? '') ||
-    listing.address.city?.trim() ||
     'Unknown'
   )
 }

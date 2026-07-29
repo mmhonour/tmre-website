@@ -588,13 +588,21 @@ export type AdminSyncAllResult = {
   steps: AdminSyncActionResult[]
 }
 
-/** Run every admin cache action in order (stops on first failure). */
+/** Run every admin cache action in Configure order (stops on first failure). */
 export async function runAdminSyncAllCaches(): Promise<AdminSyncAllResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
   const steps: AdminSyncActionResult[] = []
+  const { readSyncScheduleConfig, syncAllClientStepsFromConfig } = await import(
+    '@/lib/sync-schedule-config'
+  )
+  // Server Sync all uses the same ordered list as the client (minus publish-snapshot
+  // extras handled below via runAdminSyncAllExtraCaches).
+  const sequence = syncAllClientStepsFromConfig(readSyncScheduleConfig()).filter(
+    (id) => id !== 'publish-snapshot',
+  )
 
-  for (const actionId of ADMIN_SYNC_ALL_SEQUENCE) {
+  for (const actionId of sequence) {
     const step = await runAdminSyncAction(actionId)
     steps.push(step)
     if (!step.ok) {
@@ -737,20 +745,26 @@ export async function readAdminSyncPanelStatus() {
   const refresh = readListingsRefreshStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
-  const nextRuns = buildAdminSyncNextRuns({
-    lastFullSyncStarted: stats.lastFullSyncStarted,
-    lastFullSync: stats.lastFullSync,
-    lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
-    lastIncrementalSync: stats.lastIncrementalSync,
-    lastListingScoresStarted: stats.lastListingScoresStarted,
-    lastListingScores: stats.lastListingScores,
-    lastRefreshStarted,
-    lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
-    lastStatsCacheStarted: stats.lastStatsCacheStarted,
-    lastStatsCache: stats.lastStatsCache,
-    lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
-    lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
-  })
+  const { readSyncScheduleConfig } = await import('@/lib/sync-schedule-config')
+  const scheduleConfig = readSyncScheduleConfig()
+  const nextRuns = buildAdminSyncNextRuns(
+    {
+      lastFullSyncStarted: stats.lastFullSyncStarted,
+      lastFullSync: stats.lastFullSync,
+      lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
+      lastIncrementalSync: stats.lastIncrementalSync,
+      lastListingScoresStarted: stats.lastListingScoresStarted,
+      lastListingScores: stats.lastListingScores,
+      lastRefreshStarted,
+      lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
+      lastStatsCacheStarted: stats.lastStatsCacheStarted,
+      lastStatsCache: stats.lastStatsCache,
+      lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
+      lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
+    },
+    new Date(),
+    scheduleConfig,
+  )
   const scheduleHints = buildAdminSyncScheduleHints()
   // Tick is Admin-truth — Fresh covers any race after hydrate.
   const lastIncrementalCronTick =
@@ -793,6 +807,7 @@ export async function readAdminSyncPanelStatus() {
     refresh,
     nextRuns,
     scheduleHints,
+    scheduleConfig,
     lastIncrementalCronTick,
     nextOverrides,
     incrementalLive,

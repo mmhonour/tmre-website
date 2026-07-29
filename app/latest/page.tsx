@@ -4,6 +4,7 @@ import { readLatestGlobalFeedCache } from "@/lib/latest-feed-cache";
 import { readAllLatestTownFeedCaches } from "@/lib/latest-town-feed-cache";
 import {
   feedHasUpdateWithinWindow,
+  feedIsTmreOnly,
   fetchLatestUpdatedListings,
   fetchTownUpdateStats,
   type LatestListingRow,
@@ -36,7 +37,7 @@ export default async function LatestPage() {
   // otherwise hit Postgres so brand-new / freshly modified rows are not buried.
   const cached = await readLatestGlobalFeedCache(30);
   const initialListings =
-    cached && feedHasUpdateWithinWindow(cached)
+    cached && feedIsTmreOnly(cached) && feedHasUpdateWithinWindow(cached)
       ? cached
       : await fetchLatestUpdatedListings({
           limit: 30,

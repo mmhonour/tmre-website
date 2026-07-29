@@ -22,6 +22,7 @@ import {
 } from '@/lib/db/listing-history-log'
 import type { PoolClient } from 'pg'
 import { ADMIN_SYNC_HISTORY_MAX_LIMIT } from '@/lib/admin-sync-history-glom'
+import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export {
   ADMIN_SYNC_HISTORY_DEFAULT_DAYS,
@@ -913,6 +914,21 @@ function mapRecentlyUpdatedQueryRows(
   })
 }
 
+/** Scope Latest / town-stats queries to one town or the 7 TMRE towns only. */
+function pushTownScope(
+  conditions: string[],
+  params: unknown[],
+  town: string | null,
+): void {
+  if (town) {
+    params.push(town)
+    conditions.push(`town = $${params.length}`)
+    return
+  }
+  params.push([...TMRE_TOWNS])
+  conditions.push(`town = ANY($${params.length}::text[])`)
+}
+
 export async function readRecentlyUpdatedListings(options: {
   since?: string | null
   limit?: number
@@ -930,10 +946,7 @@ export async function readRecentlyUpdatedListings(options: {
     params.push(new Date(since))
     conditions.push(`modification_timestamp > $${params.length}`)
   }
-  if (town) {
-    params.push(town)
-    conditions.push(`town = $${params.length}`)
-  }
+  pushTownScope(conditions, params, town)
   params.push(limit)
   const limitPlaceholder = `$${params.length}`
 
@@ -976,10 +989,7 @@ export async function readRecentlyListedListings(options: {
 
   const conditions = ['status_bucket = $1', 'list_date IS NOT NULL', 'list_date > $2']
   const params: unknown[] = [statusBucket, new Date(since)]
-  if (town) {
-    params.push(town)
-    conditions.push(`town = $${params.length}`)
-  }
+  pushTownScope(conditions, params, town)
   params.push(limit)
   const limitPlaceholder = `$${params.length}`
 
@@ -1243,9 +1253,10 @@ export async function readTownUpdateStats(
      WHERE l.status_bucket = $1
        AND l.modification_timestamp IS NOT NULL
        AND l.modification_timestamp > $2
+       AND l.town = ANY($3::text[])
      GROUP BY l.town
      ORDER BY update_count DESC, latest_update DESC`,
-    [statusBucket, since],
+    [statusBucket, since, [...TMRE_TOWNS]],
   )
 
   return rows.map((row) => ({

@@ -24,6 +24,7 @@ export type ListingTab =
   | "overview"
   | "photos"
   | "map"
+  | "admin"
   | "history"
   | "comparables"
   | "comparable-rentals"
@@ -45,7 +46,7 @@ type TabDef = { id: ListingTab; label: string; href: string };
  * until that control is opened (or one of those tabs is already active).
  * Clicking Comps also opens Sold (sale) or Rented (rental).
  * On mobile (hideMobileEdgeTabs), What if / History / Map leave the strip for
- * the right-edge pill stack — so the last stacked row is omitted.
+ * the right-edge pill stack — Admin stays on the strip next to Comps.
  */
 const TAB_ORDER: ListingTab[] = [
   "overview",
@@ -56,13 +57,14 @@ const TAB_ORDER: ListingTab[] = [
   "if",
   "history",
   "map",
+  "admin",
 ];
 
 /** When the strip overflows, wrap into these rows (same overall order). */
 const STACK_ROWS: ListingTab[][] = [
   ["overview", "photos"],
   ["comparables", "comparable-rentals", "uag"],
-  ["if", "history", "map"],
+  ["if", "history", "map", "admin"],
 ];
 
 const TRANSACTION_TABS = new Set<ListingTab>([
@@ -98,10 +100,17 @@ function tabVisible(
   alwaysShowPhotos: boolean,
   showTransactionTabs: boolean,
   hideMobileEdgeTabs: boolean,
+  showAdminTab: boolean,
 ): boolean {
   // Photos tab only after the user clicks a photo on Overview (photos mode),
   // while on the dedicated photos page, or on local mockups that always show it.
   if (tabId === "photos") return alwaysShowPhotos || active === "photos";
+  if (tabId === "admin") {
+    if (!showAdminTab) return false;
+    // Mobile: Admin is injected next to Comps — omit from natural Map-adjacent slot.
+    if (hideMobileEdgeTabs) return false;
+    return true;
+  }
   if (TRANSACTION_TABS.has(tabId)) return showTransactionTabs;
   // Mobile: What if / History / Map live on the right-edge pill stack instead.
   if (hideMobileEdgeTabs && MOBILE_EDGE_PILL_TABS.has(tabId)) return false;
@@ -127,6 +136,9 @@ export default function ListingSubnav({
   forceShowPhotos = false,
   mapVisible = false,
   onMapToggle = null,
+  adminVisible = false,
+  onAdminToggle = null,
+  showAdminTab = false,
   historyElevated = false,
   onHistoryToggle = null,
   /** Hide What if / History / Map below `lg` (edge pills in ListingHeroPanels). */
@@ -168,6 +180,12 @@ export default function ListingSubnav({
   mapVisible?: boolean;
   /** Toggle Location panel without opening slide content. */
   onMapToggle?: (() => void) | null;
+  /** Admin agent panel open (Admin tab highlight). */
+  adminVisible?: boolean;
+  /** Toggle Admin agent panel (site-password unlock only). */
+  onAdminToggle?: (() => void) | null;
+  /** Show Admin tab when visitor has site unlock (Admin). */
+  showAdminTab?: boolean;
   /** Desktop: History side panel elevated under Details. */
   historyElevated?: boolean;
   /** Desktop Overview: toggle History elevate instead of slide-up. */
@@ -217,13 +235,15 @@ export default function ListingSubnav({
   const extraQs = extra.toString();
 
   const routeHref = (section: ListingTab) => {
+    // Admin / Map are overlay toggles on overview — no dedicated routes.
+    const routeSection = section === "admin" || section === "map" ? "overview" : section;
     if (routeBase === "spotlight") {
-      const base = spotlightSectionHref(section);
+      const base = spotlightSectionHref(routeSection);
       return extraQs ? `${base}?${extraQs}` : base;
     }
     return listingSectionHref(
       mlsId,
-      section,
+      routeSection,
       addressHint,
       townHint,
       extraQs || undefined,
@@ -246,6 +266,14 @@ export default function ListingSubnav({
     if (section === "map") {
       const overview = routeHref("overview");
       const hash = "#listing-location";
+      return overview.includes("#")
+        ? `${overview.replace(/#.*$/, "")}${hash}`
+        : `${overview}${hash}`;
+    }
+
+    if (section === "admin") {
+      const overview = routeHref("overview");
+      const hash = "#listing-admin";
       return overview.includes("#")
         ? `${overview.replace(/#.*$/, "")}${hash}`
         : `${overview}${hash}`;
@@ -276,7 +304,9 @@ export default function ListingSubnav({
     { id: "if", label: "What if", href: sectionHref("if") },
     { id: "history", label: "History", href: sectionHref("history") },
     { id: "map", label: "Map", href: sectionHref("map") },
+    { id: "admin", label: "Admin", href: sectionHref("admin") },
   ];
+  const adminTabDef = allTabs.find((tab) => tab.id === "admin") ?? null;
   const tabsById = new Map(
     allTabs
       .filter((tab) =>
@@ -286,6 +316,7 @@ export default function ListingSubnav({
           showPhotosTab,
           showTransactionTabs,
           suppressEdgeTabs,
+          showAdminTab,
         ),
       )
       .map((tab) => [tab.id, tab]),
@@ -298,7 +329,7 @@ export default function ListingSubnav({
   // mounts, so the next click is a cache hit (browser + Postgres warm).
   useEffect(() => {
     for (const tab of allTabs) {
-      if (tab.id === "map") continue;
+      if (tab.id === "map" || tab.id === "admin") continue;
       if (tab.id === "photos" && active !== "photos" && !forceShowPhotos) {
         continue;
       }
@@ -485,19 +516,21 @@ export default function ListingSubnav({
     const highlighted =
       tab.id === "map"
         ? mapVisible
-        : tab.id === "history" && onHistoryToggle
-          ? historyElevated
-          : panelMode
-            ? tab.id === "photos"
-              ? forceShowPhotos && panelTab == null
-              : panelTab === tab.id ||
-                (tab.id === "overview" &&
-                  panelTab == null &&
-                  !forceShowPhotos &&
-                  !historyElevated)
-            : !onTabSelect && useHashJump && active === "overview" && scrollActive
-              ? scrollActive === tab.id
-              : active === tab.id;
+        : tab.id === "admin"
+          ? adminVisible
+          : tab.id === "history" && onHistoryToggle
+            ? historyElevated
+            : panelMode
+              ? tab.id === "photos"
+                ? forceShowPhotos && panelTab == null
+                : panelTab === tab.id ||
+                  (tab.id === "overview" &&
+                    panelTab == null &&
+                    !forceShowPhotos &&
+                    !historyElevated)
+              : !onTabSelect && useHashJump && active === "overview" && scrollActive
+                ? scrollActive === tab.id
+                : active === tab.id;
     return (
       <Link
         key={`${keyPrefix}${tab.id}`}
@@ -510,6 +543,12 @@ export default function ListingSubnav({
           if (tab.id === "map") {
             event.preventDefault();
             onMapToggle?.();
+            return;
+          }
+
+          if (tab.id === "admin") {
+            event.preventDefault();
+            onAdminToggle?.();
             return;
           }
 
@@ -585,8 +624,13 @@ export default function ListingSubnav({
         if (!showTransactionTabs) {
           nodes.push(renderTransactionsControl(keyPrefix));
         }
+        // Mobile: Admin sits next to Comps (desktop keeps Admin next to Map).
+        if (showAdminTab && suppressEdgeTabs && adminTabDef && onAdminToggle) {
+          nodes.push(renderTabLink(adminTabDef, keyPrefix));
+        }
         continue;
       }
+      if (id === "admin" && suppressEdgeTabs) continue;
       const tab = tabsById.get(id);
       if (!tab) continue;
       if (id === "comparable-rentals") {

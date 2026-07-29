@@ -3,6 +3,7 @@ import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { queueNetlifyFullSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
+import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
@@ -10,7 +11,8 @@ import {
 } from '../../lib/netlify-thin-cron'
 
 /**
- * Thin weekly full-reload trigger (NO background) — must finish in ~30s.
+ * Thin full-reload trigger (NO background) — must finish in ~30s.
+ * Dense every-30m cron; Configure Frequency/Start time decide when work runs.
  * Queues sync-listings-full-worker for the real MLS work.
  *
  * Do NOT put schedule+background on one function (silent no-op on Netlify).
@@ -27,6 +29,9 @@ export default async function handler() {
       return thinCronSkipped(
         'deferred — Admin Next override is still in the future',
       )
+    }
+    if (shouldSkipScheduledJobNotDue('full-resync')) {
+      return thinCronSkipped('not due yet — Configure frequency / start time')
     }
     const queued = await queueNetlifyFullSync()
     if (queued.ok) {
@@ -45,7 +50,7 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  // 5:00 AM Eastern Standard Time on Mondays (UTC-5). During EDT this fires at 6:00 AM local.
+  // Dense wake; Admin Configure Frequency/Start time gate the real work.
   // Literal cron. Do NOT set background: true on this function.
-  schedule: '0 9 * * 1',
+  schedule: '*/30 * * * *',
 }

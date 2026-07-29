@@ -200,6 +200,7 @@ export default function ListingComparablesClient({
           addressHint: street || addressHint,
           townHint: resolvedTown,
         }}
+        listingRaw={listing.raw ?? null}
         interest={
           !isClosed
             ? {

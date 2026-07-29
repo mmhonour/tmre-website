@@ -13,6 +13,7 @@ import {
   clearSyncNextOverrideAfterRun,
   shouldDeferScheduledJob,
 } from '@/lib/sync-next-override'
+import { shouldSkipScheduledJobNotDue } from '@/lib/sync-schedule-config'
 import {
   appendIncrementalStep,
   beginIncrementalStepLog,
@@ -198,6 +199,30 @@ export async function runIncrementalSyncListingsWork(
           ok: false,
           skipped: true,
           reason: 'Admin Next override — not due yet',
+          sideWorkOnly,
+        },
+      }
+    }
+
+    if (!fromAdmin && shouldSkipScheduledJobNotDue('incremental')) {
+      await beginIncrementalStepLog(logSource)
+      await appendIncrementalStep(
+        'skip',
+        'not due yet — Configure frequency / start time',
+      )
+      await finishIncrementalStepLog('skipped — not due by Configure schedule')
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: false,
+        skipped: true,
+        error: 'not due yet — Configure frequency / start time',
+      })
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          skipped: true,
+          reason: 'not due yet — Configure frequency / start time',
           sideWorkOnly,
         },
       }

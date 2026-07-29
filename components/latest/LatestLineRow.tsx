@@ -9,6 +9,7 @@ import {
   listingDetailHref,
 } from "@/components/intelligence/deal-board/deal-board-shared";
 import type { LatestListingRow } from "@/lib/latest-listings";
+import { latestActivityIso } from "@/lib/latest-activity";
 import { mlsTimestampMs } from "@/lib/mls-time";
 import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -123,7 +124,11 @@ function LatestLineRow({
   const showZip =
     Boolean(l.zip) && (showZipMap || townHasMultipleZips(listingTownName));
   const detailHref = listingDetailHref(l);
-  const updatedAt = formatUpdatedAt(l.modificationTimestamp);
+  // Prefer fresher of mod vs list date so New inventory doesn't show an older
+  // ModificationTimestamp day when listDate is today/yesterday.
+  const updatedAt = formatUpdatedAt(
+    latestActivityIso(l.modificationTimestamp, l.listDate),
+  );
   const ppsf =
     !l.isRental && l.pricePerSqft != null
       ? `$${Math.round(l.pricePerSqft)}/sf`

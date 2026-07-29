@@ -3,6 +3,7 @@ import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { queueNetlifyZipBoundariesSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
+import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
@@ -10,7 +11,8 @@ import {
 } from '../../lib/netlify-thin-cron'
 
 /**
- * Thin monthly zip-boundary trigger (NO background).
+ * Thin zip-boundary trigger (NO background).
+ * Dense every-30m cron; Configure Frequency/Start time gate the work.
  * Queues sync-zip-boundaries-worker.
  */
 export default async function handler() {
@@ -23,6 +25,9 @@ export default async function handler() {
       return thinCronSkipped(
         'deferred — Admin Next override is still in the future',
       )
+    }
+    if (shouldSkipScheduledJobNotDue('zip-boundaries')) {
+      return thinCronSkipped('not due yet — Configure frequency / start time')
     }
     const queued = await queueNetlifyZipBoundariesSync()
     if (!queued.ok) {
@@ -37,6 +42,5 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  // 10:00 UTC on the 1st of each month.
-  schedule: '0 10 1 * *',
+  schedule: '*/30 * * * *',
 }

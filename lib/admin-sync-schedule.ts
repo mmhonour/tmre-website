@@ -2,11 +2,19 @@ import 'server-only'
 
 import { LATEST_DB_REFRESH_MS } from '@/lib/latest-refresh'
 import { readPostDeployFullResyncStatus } from '@/lib/deploy-full-resync-schedule'
-import { nextMonday1amEt } from '@/lib/property-address-schedule'
 import { STATS_CACHE_TTL_MS } from '@/lib/stats-cache'
 import type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 import { applySyncNextOverride } from '@/lib/sync-next-override'
 import { SCHEDULED_SYNC_JOB_BY_ROW } from '@/lib/scheduled-sync-jobs'
+import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
+import {
+  defaultSyncScheduleConfig,
+  frequencyIntervalMs,
+  parseStartTimeEt,
+  type SyncJobScheduleConfig,
+  type SyncScheduleConfig,
+} from '@/lib/sync-schedule-config-shared'
+import { getSyncMeta } from '@/lib/db/sync-meta-store'
 
 export type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 export { formatAdminNextSyncAt } from '@/lib/admin-sync-schedule-format'
@@ -256,7 +264,8 @@ function nextMinuteCadenceSlot(intervalMinutes: number, from = new Date()): Date
   return slot
 }
 
-function nextIntervalStart(
+/** Next run from last finish + interval, or next cadence slot when overdue/never. */
+export function nextIntervalStartFromLast(
   lastFinishedIso: string | null,
   intervalMs: number,
   from = new Date(),
@@ -273,6 +282,15 @@ function nextIntervalStart(
   return nextMinuteCadenceSlot(intervalMinutes, from)
 }
 
+/** @deprecated use nextIntervalStartFromLast */
+function nextIntervalStart(
+  lastFinishedIso: string | null,
+  intervalMs: number,
+  from = new Date(),
+): Date {
+  return nextIntervalStartFromLast(lastFinishedIso, intervalMs, from)
+}
+
 function earliestDate(...dates: (Date | null | undefined)[]): Date | null {
   let best: Date | null = null
   for (const date of dates) {
@@ -282,48 +300,154 @@ function earliestDate(...dates: (Date | null | undefined)[]): Date | null {
   return best
 }
 
-export function buildAdminSyncNextRuns(input: BuildNextRunsInput, now = new Date()): AdminSyncNextRuns {
-  const incrementalIntervalMs = latestIntervalMs()
-  const statsIntervalMs = statsRefreshIntervalMs()
+export function computeNaturalNextRunIso(
+  job: SyncJobScheduleConfig,
+  lastFinishedIso: string | null,
+  now = new Date(),
+): string {
+  const { hour, minute } = parseStartTimeEt(job.startTimeEt)
+  const intervalMs = frequencyIntervalMs(job.frequency)
+
+  if (intervalMs != null) {
+    return nextIntervalStartFromLast(
+      lastFinishedIso,
+      intervalMs,
+      now,
+    ).toISOString()
+  }
+  if (job.frequency === 'daily') {
+    return nextDailyTimeEt(hour, minute, now).toISOString()
+  }
+  if (job.frequency === 'weekly') {
+    return nextMondayTimeEt(hour, minute, now).toISOString()
+  }
+  return nextMonthDayEt(1, hour, minute, now).toISOString()
+}
+
+export function isJobDueBySchedule(
+  job: SyncJobScheduleConfig,
+  lastFinishedIso: string | null,
+  now = new Date(),
+): boolean {
+  const { hour, minute } = parseStartTimeEt(job.startTimeEt)
+  const intervalMs = frequencyIntervalMs(job.frequency)
+  const lastMs = parseIsoMs(lastFinishedIso)
+
+  if (intervalMs != null) {
+    if (lastMs == null) return true
+    return isIntervalSyncOverdue(lastFinishedIso, intervalMs, now)
+  }
+  if (job.frequency === 'daily') {
+    if (lastMs == null) return true
+    return isDailySyncOverdue(lastFinishedIso, hour, minute, now)
+  }
+  if (job.frequency === 'weekly') {
+    if (lastMs == null) return true
+    return isWeeklyMondaySyncOverdue(lastFinishedIso, hour, minute, now)
+  }
+  if (lastMs == null) return true
+  const dueSlot = lastPastMonthDayEt(1, hour, minute, now)
+  return lastMs < dueSlot.getTime()
+}
+
+function lastPastMonthDayEt(
+  day: number,
+  hour: number,
+  minute: number,
+  before: Date,
+): Date {
+  const probe = new Date(before.getTime() - 35 * 24 * 60 * 60 * 1000)
+  let candidate = nextMonthDayEt(day, hour, minute, probe)
+  for (let i = 0; i < 6; i++) {
+    const next = nextMonthDayEt(day, hour, minute, candidate)
+    if (next.getTime() > before.getTime()) return candidate
+    candidate = next
+  }
+  return candidate
+}
+
+function lastFinishedForJob(
+  jobId: ScheduledSyncJobId,
+  input: BuildNextRunsInput,
+): string | null {
+  switch (jobId) {
+    case 'full-resync':
+      return input.lastFullSync
+    case 'incremental':
+      return input.lastIncrementalSync
+    case 'listing-scores':
+      return input.lastListingScores
+    case 'stats-cache':
+      return input.lastStatsCache
+    case 'deal-of-the-day':
+      return input.lastDealOfTheDayCache
+    case 'property-addresses':
+      return getSyncMeta('property_addresses_synced_at')
+    case 'zip-boundaries':
+      return getSyncMeta('last_zip_boundaries_sync')
+    default:
+      return null
+  }
+}
+
+export function buildAdminSyncNextRuns(
+  input: BuildNextRunsInput,
+  now = new Date(),
+  schedule?: SyncScheduleConfig | null,
+): AdminSyncNextRuns {
+  // Callers should pass Configure schedule from sync_meta; defaults otherwise.
+  const config = schedule ?? defaultSyncScheduleConfig()
 
   const postDeploy = readPostDeployFullResyncStatus(now)
-  const nextFullResyncWeekly = nextMonday5amEt(now)
-  const nextFullResync =
-    postDeploy.nextAt && postDeploy.source === 'post-deploy'
-      ? new Date(postDeploy.nextAt)
-      : nextFullResyncWeekly
-  const nextIncrementalNatural = nextIntervalStart(
-    input.lastIncrementalSync,
-    incrementalIntervalMs,
-    now,
-  )
-  const nextStatsCacheNatural = nextIntervalStart(input.lastStatsCache, statsIntervalMs, now)
+
+  const naturalFor = (jobId: ScheduledSyncJobId): string => {
+    const job = config.jobs[jobId]
+    let natural = computeNaturalNextRunIso(
+      job,
+      lastFinishedForJob(jobId, input),
+      now,
+    )
+    // Post-deploy full resync still wins when scheduled.
+    if (
+      jobId === 'full-resync' &&
+      postDeploy.nextAt &&
+      postDeploy.source === 'post-deploy'
+    ) {
+      const postMs = Date.parse(postDeploy.nextAt)
+      const naturalMs = Date.parse(natural)
+      if (!Number.isNaN(postMs) && (Number.isNaN(naturalMs) || postMs < naturalMs)) {
+        natural = postDeploy.nextAt
+      }
+    }
+    return natural
+  }
+
   const nextFullResyncIso = applySyncNextOverride(
-    nextFullResync.toISOString(),
+    naturalFor('full-resync'),
     SCHEDULED_SYNC_JOB_BY_ROW['full-resync'],
   )
   const nextIncrementalIso = applySyncNextOverride(
-    nextIncrementalNatural.toISOString(),
+    naturalFor('incremental'),
     SCHEDULED_SYNC_JOB_BY_ROW.incremental,
   )
   const nextStatsCacheIso = applySyncNextOverride(
-    nextStatsCacheNatural.toISOString(),
+    naturalFor('stats-cache'),
     SCHEDULED_SYNC_JOB_BY_ROW['stats-cache'],
   )
   const nextListingScoresIso = applySyncNextOverride(
-    nextFullResync.toISOString(),
+    naturalFor('listing-scores'),
     SCHEDULED_SYNC_JOB_BY_ROW['listing-scores'],
   )
   const nextDealOfTheDayIso = applySyncNextOverride(
-    nextFullResync.toISOString(),
+    naturalFor('deal-of-the-day'),
     SCHEDULED_SYNC_JOB_BY_ROW['deal-of-the-day'],
   )
   const nextPropertyAddressesIso = applySyncNextOverride(
-    nextMonday1amEt(now).toISOString(),
+    naturalFor('property-addresses'),
     SCHEDULED_SYNC_JOB_BY_ROW['property-addresses'],
   )
   const nextZipBoundariesIso = applySyncNextOverride(
-    nextMonthDayUtc(1, 10, now).toISOString(),
+    naturalFor('zip-boundaries'),
     SCHEDULED_SYNC_JOB_BY_ROW['zip-boundaries'],
   )
 
@@ -353,6 +477,46 @@ export function nextMonthDayUtc(day: number, hour: number, from = new Date()): D
   return new Date(
     Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, day, hour, 0, 0, 0),
   )
+}
+
+/**
+ * Next calendar day `day` (1–28) at HH:MM America/New_York.
+ * Used for Configure “Monthly” + Start time.
+ */
+export function nextMonthDayEt(
+  day: number,
+  hour: number,
+  minute: number,
+  from = new Date(),
+): Date {
+  const safeDay = Math.min(28, Math.max(1, Math.floor(day)))
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(from)
+
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? '0')
+  const y = get('year')
+  const m = get('month')
+  const d = get('day')
+  const etHour = get('hour') === 24 ? 0 : get('hour')
+  const etMinute = get('minute')
+  const etSecond = get('second')
+  const etAsUtc = Date.UTC(y, m - 1, d, etHour, etMinute, etSecond)
+
+  const targetThisMonth = Date.UTC(y, m - 1, safeDay, hour, minute, 0)
+  if (etAsUtc < targetThisMonth) {
+    return new Date(from.getTime() + (targetThisMonth - etAsUtc))
+  }
+  const targetNextMonth = Date.UTC(y, m, safeDay, hour, minute, 0)
+  return new Date(from.getTime() + (targetNextMonth - etAsUtc))
 }
 
 export function buildAdminSyncScheduleHints(now = new Date()): AdminSyncScheduleHints {

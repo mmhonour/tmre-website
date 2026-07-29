@@ -3,6 +3,7 @@ import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { queueNetlifyPropertyAddressSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
+import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
@@ -10,7 +11,8 @@ import {
 } from '../../lib/netlify-thin-cron'
 
 /**
- * Thin weekly property-address trigger (NO background).
+ * Thin property-address trigger (NO background).
+ * Dense every-30m cron; Configure Frequency/Start time gate the work.
  * Queues sync-property-addresses-worker.
  */
 export default async function handler() {
@@ -23,6 +25,9 @@ export default async function handler() {
       return thinCronSkipped(
         'deferred — Admin Next override is still in the future',
       )
+    }
+    if (shouldSkipScheduledJobNotDue('property-addresses')) {
+      return thinCronSkipped('not due yet — Configure frequency / start time')
     }
     const queued = await queueNetlifyPropertyAddressSync()
     if (!queued.ok) {
@@ -37,6 +42,5 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  // 1:00 AM Eastern Standard Time on Mondays (UTC-5). During EDT this is 2:00am local.
-  schedule: '0 6 * * 1',
+  schedule: '*/30 * * * *',
 }

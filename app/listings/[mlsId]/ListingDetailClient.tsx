@@ -253,6 +253,7 @@ export default function ListingDetailClient({
           addressHint: street || addressHint,
           townHint,
         }}
+        listingRaw={l.raw ?? null}
         interest={
           !isClosed
             ? {

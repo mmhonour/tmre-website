@@ -12,7 +12,8 @@ import type { LatestListingRow, TownUpdateStat } from "@/lib/latest-listings";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
 import { mlsTimestampMs } from "@/lib/mls-time";
-import { TMRE_TOWNS_LABEL, normalizeZip } from "@/lib/tmre-towns";
+import { latestActivityIso, latestActivityMs } from "@/lib/latest-activity";
+import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 
 type ApiResponse = {
   listings: LatestListingRow[];
@@ -64,17 +65,12 @@ function summarizeTownStatuses(
   );
 }
 
-function modificationMs(iso: string | null | undefined): number {
-  const t = mlsTimestampMs(iso);
-  return Number.isNaN(t) ? 0 : t;
-}
-
 function pickListingRow(
   a: LatestListingRow,
   b: LatestListingRow,
 ): LatestListingRow {
-  const aMs = modificationMs(a.modificationTimestamp);
-  const bMs = modificationMs(b.modificationTimestamp);
+  const aMs = latestActivityMs(a.modificationTimestamp, a.listDate);
+  const bMs = latestActivityMs(b.modificationTimestamp, b.listDate);
   const newer = bMs > aMs ? b : a;
   const older = bMs > aMs ? a : b;
   // Poll rows often arrive before Goldilocks is persisted — keep the better
@@ -114,7 +110,8 @@ function mergeListings(
   return Array.from(byKey.values())
     .sort(
       (a, b) =>
-        modificationMs(b.modificationTimestamp) - modificationMs(a.modificationTimestamp),
+        latestActivityMs(b.modificationTimestamp, b.listDate) -
+        latestActivityMs(a.modificationTimestamp, a.listDate),
     )
     .slice(0, LATEST_LIMIT);
 }
@@ -123,10 +120,11 @@ function newestModification(listings: LatestListingRow[]): string | null {
   let best: string | null = null;
   let bestMs = -1;
   for (const row of listings) {
-    const t = modificationMs(row.modificationTimestamp);
-    if (t > bestMs) {
+    const iso = latestActivityIso(row.modificationTimestamp, row.listDate);
+    const t = latestActivityMs(row.modificationTimestamp, row.listDate);
+    if (!Number.isNaN(t) && t > bestMs) {
       bestMs = t;
-      best = row.modificationTimestamp;
+      best = iso;
     }
   }
   return best;
@@ -224,7 +222,8 @@ function listingsForTown(
     .filter((row) => (row.town?.trim() || row.city?.trim()) === key)
     .sort(
       (a, b) =>
-        modificationMs(b.modificationTimestamp) - modificationMs(a.modificationTimestamp),
+        latestActivityMs(b.modificationTimestamp, b.listDate) -
+        latestActivityMs(a.modificationTimestamp, a.listDate),
     );
 }
 
@@ -252,7 +251,16 @@ export default function LatestClient({
   initialTownFeeds = {},
   initialTownStats = [],
 }: LatestClientProps) {
-  const [listings, setListings] = useState<LatestListingRow[]>(initialListings);
+  const [listings, setListings] = useState<LatestListingRow[]>(() =>
+    initialListings
+      .filter((row) => isTmreTown(row.town) || isTmreTown(row.city))
+      .sort(
+        (a, b) =>
+          latestActivityMs(b.modificationTimestamp, b.listDate) -
+          latestActivityMs(a.modificationTimestamp, a.listDate),
+      )
+      .slice(0, LATEST_LIMIT),
+  );
   const [townStats, setTownStats] = useState<TownUpdateStat[]>(initialTownStats);
   const [loading, setLoading] = useState(initialListings.length === 0);
   const [error, setError] = useState<string | null>(null);
@@ -352,13 +360,23 @@ export default function LatestClient({
           });
         }, 8000);
       }
+      const tmreOnly = body.listings.filter(
+        (row) => isTmreTown(row.town) || isTmreTown(row.city),
+      );
       setListings((current) => {
-        const merged = mergeListings(current, body.listings);
+        const merged = mergeListings(current, tmreOnly);
         watermarkRef.current = newestModification(merged);
         return merged;
       });
     } else {
-      const capped = body.listings.slice(0, LATEST_LIMIT);
+      const capped = body.listings
+        .filter((row) => isTmreTown(row.town) || isTmreTown(row.city))
+        .sort(
+          (a, b) =>
+            latestActivityMs(b.modificationTimestamp, b.listDate) -
+            latestActivityMs(a.modificationTimestamp, a.listDate),
+        )
+        .slice(0, LATEST_LIMIT);
       setListings(capped);
       watermarkRef.current = newestModification(capped);
     }
@@ -438,8 +456,14 @@ export default function LatestClient({
   }, [selectedTown, fetchTownListings, listings]);
 
   const visibleListings = useMemo(() => {
-    if (!selectedTown) return listings;
-    return townListings;
+    const source = selectedTown ? townListings : listings;
+    return source
+      .filter((row) => isTmreTown(row.town) || isTmreTown(row.city))
+      .sort(
+        (a, b) =>
+          latestActivityMs(b.modificationTimestamp, b.listDate) -
+          latestActivityMs(a.modificationTimestamp, a.listDate),
+      );
   }, [listings, selectedTown, townListings]);
 
   // Preload all town market snapshots from SQLite so sidebar clicks are instant.
@@ -950,11 +974,18 @@ export default function LatestClient({
                         );
                       })
                     : visibleListings.map((l, i) => {
-                          const key = localDateKey(l.modificationTimestamp);
+                          const activityIso = latestActivityIso(
+                            l.modificationTimestamp,
+                            l.listDate,
+                          );
+                          const key = localDateKey(activityIso);
                           const prevKey =
                             i > 0
                               ? localDateKey(
-                                  visibleListings[i - 1].modificationTimestamp,
+                                  latestActivityIso(
+                                    visibleListings[i - 1].modificationTimestamp,
+                                    visibleListings[i - 1].listDate,
+                                  ),
                                 )
                               : null;
                           const showHeader = key !== prevKey;
@@ -967,7 +998,7 @@ export default function LatestClient({
                                     aria-hidden
                                   />
                                   <span className="font-semibold text-navy/70">
-                                    {localDateLabel(l.modificationTimestamp)}
+                                    {localDateLabel(activityIso)}
                                   </span>
                                 </div>
                               ) : null}

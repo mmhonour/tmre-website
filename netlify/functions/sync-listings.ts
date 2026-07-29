@@ -15,6 +15,7 @@ import {
   clearSyncNextOverrideAfterRun,
   shouldDeferScheduledJob,
 } from '../../lib/sync-next-override'
+import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 
 /**
  * Scheduled incremental trigger (NO background flag) — must finish in ~26–30s.
@@ -106,6 +107,24 @@ export default async function handler() {
           mode: 'scheduled-queue',
           skipped: true,
           reason: 'Admin Next override — not due yet',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    if (shouldSkipScheduledJobNotDue('incremental')) {
+      await recordIncrementalCronTick({
+        startedAt,
+        ok: false,
+        skipped: true,
+        error: 'not due yet — Configure frequency / start time',
+      })
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          mode: 'scheduled-queue',
+          skipped: true,
+          reason: 'not due yet — Configure frequency / start time',
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )

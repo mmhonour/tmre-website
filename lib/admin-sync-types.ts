@@ -40,33 +40,44 @@ export function isAdminSyncActionId(value: string): value is AdminSyncActionId {
   return value in ADMIN_SYNC_ACTIONS
 }
 
-/** Serial order for Admin “Sync all” (MLS full reload → derived caches → read snapshot). */
+/**
+ * Fallback Sync all order when Configure schedule has not loaded yet.
+ * Prefer syncAllClientStepsFromConfig(readSyncScheduleConfig()) at runtime.
+ * Incremental is included — Order # / Sync All priority is Admin-configurable.
+ */
 export const ADMIN_SYNC_ALL_SEQUENCE = [
   'full-resync',
+  'incremental',
   'listing-scores',
   'stats-cache',
   'deal-of-the-day',
+  'property-addresses',
+  'zip-boundaries',
 ] as const satisfies readonly AdminSyncActionId[]
 
-/** Client-side Sync all — one POST per step to stay under serverless timeouts. */
+/** Client-side Sync all fallback — one POST per step to stay under serverless timeouts. */
 export const ADMIN_SYNC_ALL_CLIENT_STEPS = [
   ...ADMIN_SYNC_ALL_SEQUENCE,
   'publish-snapshot',
 ] as const satisfies readonly AdminSyncActionId[]
 
-/** Step numbers shown in the admin sync table for manual “Sync all” (by panel row id). */
+/**
+ * Fallback Order # when Configure schedule has not loaded.
+ * Runtime UI uses scheduleConfig.order from sync_meta.
+ */
 export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'full-resync': 1,
-  'listing-scores': 2,
-  'stats-cache': 3,
-  'deal-of-the-day': 4,
-  'refresh-finished': 5,
+  incremental: 2,
+  'listing-scores': 3,
+  'stats-cache': 4,
+  'deal-of-the-day': 5,
   'property-addresses': 6,
   'zip-boundaries': 7,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */
 export const ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL = new Set<AdminSyncActionId>([
+  'incremental',
   'listing-scores',
   'stats-cache',
   'deal-of-the-day',

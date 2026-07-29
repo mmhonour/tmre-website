@@ -40,9 +40,10 @@
   included_files = []
   schedule = "*/15 * * * *"
 
+# Dense every-30m wake — Configure Frequency/Start time gate inside the handler.
 [functions."sync-listings-full"]
   included_files = []
-  schedule = "0 9 * * 1"
+  schedule = "*/30 * * * *"
 
 [functions."sync-listings-full-worker"]
   included_files = []
@@ -50,7 +51,7 @@
 
 [functions."sync-property-addresses"]
   included_files = []
-  schedule = "0 6 * * 1"
+  schedule = "*/30 * * * *"
 
 [functions."sync-property-addresses-worker"]
   included_files = []
@@ -58,7 +59,7 @@
 
 [functions."sync-listing-edge-scores"]
   included_files = []
-  schedule = "0 7 * * 1"
+  schedule = "*/30 * * * *"
 
 [functions."sync-listing-edge-scores-worker"]
   included_files = []
@@ -66,7 +67,7 @@
 
 [functions."sync-zip-boundaries"]
   included_files = []
-  schedule = "0 10 1 * *"
+  schedule = "*/30 * * * *"
 
 [functions."sync-zip-boundaries-worker"]
   included_files = []

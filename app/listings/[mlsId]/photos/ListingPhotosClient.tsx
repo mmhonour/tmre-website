@@ -246,6 +246,7 @@ export default function ListingPhotosClient({
           addressHint: street || addressHint,
           townHint,
         }}
+        listingRaw={listing.raw ?? null}
         interest={
           !isClosed
             ? {
