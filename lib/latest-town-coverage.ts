@@ -1,10 +1,13 @@
 import { latestActivityMs } from '@/lib/latest-activity'
+import { isLatestEventStatus } from '@/lib/latest-status-rules'
 import {
   TMRE_TOWNS,
   isTmreTown,
   normalizeTownName,
   type TmreTown,
 } from '@/lib/tmre-towns'
+
+export { isLatestEventStatus } from '@/lib/latest-status-rules'
 
 /** Minimal fields needed to enforce one-latest-per-town coverage. */
 export type LatestCoverageRow = {
@@ -19,22 +22,6 @@ export type LatestCoverageRow = {
 
 /** Latest must surface MLS activity from this window when it exists in Postgres. */
 export const LATEST_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
-
-/**
- * Statuses that represent a real MLS event rather than a routine modification
- * (remarks edit, photo swap, sub-1% price tweak). A quiet day still produces
- * ~160 modifications, so events must outrank plain rows for the 30 slots.
- */
-const EVENT_STATUSES: ReadonlySet<string> = new Set([
-  'Coming Soon',
-  'New',
-  'Back on Market',
-  'Reduced',
-])
-
-export function isLatestEventStatus(status: string | null | undefined): boolean {
-  return status != null && EVENT_STATUSES.has(status)
-}
 
 function rowTown(row: LatestCoverageRow): TmreTown | null {
   const fromTown = normalizeTownName(row.town)

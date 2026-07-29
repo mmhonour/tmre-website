@@ -36,7 +36,7 @@ const BASE = String(
   arg('base') ??
     process.env.NEXT_PUBLIC_SITE_URL ??
     process.env.URL ??
-    'https://themarshallreport.com',
+    'https://tmrebuilder.com',
 ).replace(/\/$/, '')
 const SECRET = process.env.SYNC_CRON_SECRET?.trim() ?? ''
 const ENDPOINT = `${BASE}/.netlify/functions/sync-diagnose`

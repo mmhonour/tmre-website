@@ -7,9 +7,8 @@ import {
   listingFrameCompactClass,
   listingPanelCompactClass,
 } from "@/components/listing/listing-frame";
-import { useListingDetailsRemarksSwap } from "@/components/listing/ListingDetailsRemarksSwapContext";
-import ListingPanelElevateTriangle from "@/components/listing/ListingPanelElevateTriangle";
-import { useListingHistoryDetailsSwap } from "@/components/listing/ListingHistoryDetailsSwapContext";
+import ListingDeckCardHeader from "@/components/listing/ListingDeckCardHeader";
+import { useListingDesktopDeck } from "@/components/listing/ListingDesktopDeckContext";
 import { fmtAcres } from "@/lib/listing-comparables-shared";
 import { closedVsLastListPct } from "@/lib/listing-history";
 import { formatInsightMedianPpsf } from "@/lib/insight-median-ppsf";
@@ -377,9 +376,8 @@ export default function ListingDetailsSchoolsPanel({
   const siblingDimClass = analysisHighlighted
     ? PANEL_DIM_CLASS
     : "opacity-100";
-  const remarksSwap = useListingDetailsRemarksSwap();
-  const historySwap = useListingHistoryDetailsSwap();
-  const bodyCollapsed = Boolean(historySwap?.historyElevated);
+  const deck = useListingDesktopDeck();
+  const bodyCollapsed = deck ? !deck.isExpanded("details") : false;
   const bodyRef = useRef<HTMLDivElement>(null);
   const [bodyHeight, setBodyHeight] = useState(0);
 
@@ -410,39 +408,15 @@ export default function ListingDetailsSchoolsPanel({
     hasSchools,
     analysisKind,
     analysisHighlighted,
+    bodyCollapsed,
   ]);
 
   return (
     <div className={`${panelClass} space-y-3`}>
-      <div className="mb-0 flex items-start justify-between gap-2">
-        <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-gold">
-          Details
-        </p>
-        {remarksSwap ? (
-          <button
-            type="button"
-            onClick={remarksSwap.toggle}
-            className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[9px] tracking-[0.12em] uppercase text-gold/85 transition-colors hover:text-gold"
-            aria-expanded={remarksSwap.detailsElevated}
-            aria-label={
-              remarksSwap.detailsElevated
-                ? "See listing remarks"
-                : "See more details"
-            }
-          >
-            <span className="underline decoration-gold/35 underline-offset-2">
-              {remarksSwap.detailsElevated
-                ? "SEE LISTING REMARKS"
-                : "see more details"}
-            </span>
-            <ListingPanelElevateTriangle
-              pointing={remarksSwap.detailsElevated ? "down" : "up"}
-            />
-          </button>
-        ) : null}
-      </div>
+      <ListingDeckCardHeader cardId="details" title="Details" />
 
       <div
+        id="listing-deck-body-details"
         className="overflow-hidden transition-[max-height] duration-300 ease-out"
         style={{
           maxHeight: bodyCollapsed
@@ -451,6 +425,7 @@ export default function ListingDetailsSchoolsPanel({
               ? bodyHeight
               : undefined,
         }}
+        aria-hidden={bodyCollapsed}
       >
         <div ref={bodyRef} className="space-y-3">
       <div className={`${PANEL_DIM_TRANSITION} ${siblingDimClass}`}>

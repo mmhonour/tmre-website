@@ -6,6 +6,8 @@ import { buildMarketDigestSnapshot } from "@/lib/market-digest";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
 export const dynamic = "force-dynamic";
+/** Commercial tab hits Neon for Active + recent Closed; keep under Netlify's SSR budget. */
+export const maxDuration = 26;
 
 export const metadata: Metadata = {
   title: "Market Pulse",

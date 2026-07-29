@@ -1,7 +1,10 @@
 import 'server-only'
 
 import { absoluteUrl, SITE_URL } from '@/lib/business-info'
-import { readListingsFromDb } from '@/lib/db/listings-repo'
+import {
+  readListingsFromDb,
+  readRecentClosedListingsFromDb,
+} from '@/lib/db/listings-repo'
 import { readDealOfTheWeekCache } from '@/lib/deal-of-the-week-cache'
 import { fmtMoney } from '@/lib/listing-history'
 import { filterListingsByKind, type ListingKind } from '@/lib/listing-kind'
@@ -122,40 +125,72 @@ async function buildCachedCategorySlice(
   }
 }
 
-/** Commercial is not in months-supply cache — compute from live Active/Closed. */
-async function buildCommercialCategorySlice(
+/** Empty Commercial tab — used when the live pull fails so the page still loads. */
+function emptyCommercialCategorySlice(
   generatedAt: string,
-): Promise<MarketDigestCategorySlice> {
-  const perTown = await Promise.all(
-    TMRE_TOWNS.map(async (town) => {
-      const [active, closed] = await Promise.all([
-        readListingsFromDb(town, 'Active', 500),
-        readListingsFromDb(town, 'Closed'),
-      ])
-      return {
-        active,
-        closed,
-        payload: commercialPayload(active, closed, town, generatedAt),
-      }
-    }),
-  )
-  const towns = perTown
-    .map((row) => row.payload)
-    .sort((a, b) => a.city.localeCompare(b.city))
-  const market = commercialPayload(
-    perTown.flatMap((row) => row.active),
-    perTown.flatMap((row) => row.closed),
-    'All',
-    generatedAt,
-  )
-  const westport = towns.find((t) => t.city.toLowerCase() === 'westport') ?? null
+): MarketDigestCategorySlice {
+  const empty = commercialPayload([], [], 'All', generatedAt)
   return {
     id: 'commercial',
     label: 'Commercial',
     scopeLabel: 'commercial sales',
-    market,
-    westport,
-    towns,
+    market: empty,
+    westport: null,
+    towns: [],
+  }
+}
+
+/**
+ * Commercial is not in months-supply cache — compute from live Active + recent
+ * Closed. Closed is bounded to ~4 months: MOS only needs the trailing 3 full
+ * calendar months, and an unbounded Closed pull (all sales since 2019 × 7 towns)
+ * is what was 500ing /market-pulse on Netlify.
+ */
+async function buildCommercialCategorySlice(
+  generatedAt: string,
+): Promise<MarketDigestCategorySlice> {
+  try {
+    // Four months of lookback covers the three prior full months plus the
+    // current partial month, with a little slack for timezone edges.
+    const since = new Date()
+    since.setUTCMonth(since.getUTCMonth() - 4)
+    const sinceIso = since.toISOString()
+
+    const perTown = await Promise.all(
+      TMRE_TOWNS.map(async (town) => {
+        const [active, closed] = await Promise.all([
+          readListingsFromDb(town, 'Active', 500),
+          readRecentClosedListingsFromDb(town, sinceIso, 2000),
+        ])
+        return {
+          active,
+          closed,
+          payload: commercialPayload(active, closed, town, generatedAt),
+        }
+      }),
+    )
+    const towns = perTown
+      .map((row) => row.payload)
+      .sort((a, b) => a.city.localeCompare(b.city))
+    const market = commercialPayload(
+      perTown.flatMap((row) => row.active),
+      perTown.flatMap((row) => row.closed),
+      'All',
+      generatedAt,
+    )
+    const westport =
+      towns.find((t) => t.city.toLowerCase() === 'westport') ?? null
+    return {
+      id: 'commercial',
+      label: 'Commercial',
+      scopeLabel: 'commercial sales',
+      market,
+      westport,
+      towns,
+    }
+  } catch (err) {
+    console.error('[market-digest] commercial slice failed — returning empty', err)
+    return emptyCommercialCategorySlice(generatedAt)
   }
 }
 
@@ -213,10 +248,10 @@ export async function buildMarketDigestSnapshot(): Promise<MarketDigestSnapshot>
     dealOfTheWeek = {
       mlsId: listing.mlsId,
       address:
-        listing.address.street?.trim() ||
-        listing.address.full?.trim() ||
+        listing.address?.street?.trim() ||
+        listing.address?.full?.trim() ||
         listing.mlsId,
-      city: listing.address.city?.trim() || null,
+      city: listing.address?.city?.trim() || null,
       price: listing.price ?? null,
       insight: deal.insight?.trim() || '',
       href: absoluteUrl(listingShareHref(listing.mlsId)),

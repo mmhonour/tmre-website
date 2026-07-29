@@ -1490,6 +1490,32 @@ export async function readListingsFromDb(
   return rows.map((row) => rowToListing(row))
 }
 
+/**
+ * Recent Closed rows for one town — for months-supply math that only needs the
+ * trailing few calendar months. Unbounded Closed pulls (all sales since 2019)
+ * blow the Market Pulse serverless budget.
+ */
+export async function readRecentClosedListingsFromDb(
+  town: string,
+  sinceIso: string,
+  limit = 2000,
+): Promise<Listing[]> {
+  const since = sinceIso.trim()
+  if (!since) return []
+  const cap = Math.max(1, Math.min(Math.round(limit), 5000))
+  const rows = await query<ListingJsonRow>(
+    `SELECT data, raw FROM listings
+      WHERE town = $1
+        AND status_bucket = 'Closed'
+        AND COALESCE(status_change_timestamp, modification_timestamp, synced_at)
+            > $2::timestamptz
+      ORDER BY COALESCE(status_change_timestamp, modification_timestamp) DESC NULLS LAST
+      LIMIT $3`,
+    [town, since, cap],
+  )
+  return rows.map((row) => rowToListing(row))
+}
+
 /** All listings across several towns for one bucket, priced high→low (nulls last). */
 export async function readAllListingsFromDb(
   towns: readonly string[],

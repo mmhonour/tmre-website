@@ -176,7 +176,7 @@ export const ADMIN_SYNCS_PANELS: {
     id: "latest-health",
     label: "Latest health",
     subtitle:
-      "Deferred until Incremental shows consistent ~30m runs — then use this to verify /latest freshness",
+      "Feed freshness clocks, upsert history, and the /latest badge + ranking logic surface",
   },
   {
     id: "mls-reconcile",

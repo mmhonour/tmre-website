@@ -33,6 +33,13 @@ import {
   missingTmreTowns,
   rankLatestFeedRows,
 } from '@/lib/latest-town-coverage'
+import {
+  BACK_ON_MARKET_HEURISTIC_WINDOW_DAYS,
+  BACK_ON_MARKET_MIN_DOM,
+  BACK_ON_MARKET_WINDOW_DAYS,
+  NEW_LISTING_MAX_DOM,
+  REDUCED_MIN_PERCENT,
+} from '@/lib/latest-status-rules'
 
 export type LatestListingRow = {
   key: string
@@ -87,21 +94,9 @@ function daysBetween(iso: string | null, now: Date = new Date()): number | null 
 }
 
 const DAY_MS = 86_400_000
-/** Genuinely new inventory: DOM inside this window, or listed inside it. */
-const NEW_LISTING_MAX_DOM = 7
-/**
- * How long a recorded Under Contract → Active (or off-market → Active) flip is
- * still news. Applies to the exact `previous_mls_status` signal.
- */
-const BACK_ON_MARKET_WINDOW_MS = 14 * DAY_MS
-/**
- * Fallback window for rows with no recorded previous status (pre-0010 rows and
- * anything built straight from a RETS Listing): only a very recent MLS status
- * change counts, since we cannot see what it changed from.
- */
-const BACK_ON_MARKET_HEURISTIC_WINDOW_MS = 3 * DAY_MS
-/** Past this DOM a re-activated listing is clearly not new inventory. */
-const BACK_ON_MARKET_MIN_DOM = 14
+const BACK_ON_MARKET_WINDOW_MS = BACK_ON_MARKET_WINDOW_DAYS * DAY_MS
+const BACK_ON_MARKET_HEURISTIC_WINDOW_MS =
+  BACK_ON_MARKET_HEURISTIC_WINDOW_DAYS * DAY_MS
 
 function isActiveMlsStatus(status: string): boolean {
   return status === 'active' || status === 'a'
@@ -181,7 +176,7 @@ function deriveStatus(
   ) {
     return 'Back on Market'
   }
-  if ((priceReductionPercent ?? 0) > 1) return 'Reduced'
+  if ((priceReductionPercent ?? 0) > REDUCED_MIN_PERCENT) return 'Reduced'
   return 'Active'
 }
 

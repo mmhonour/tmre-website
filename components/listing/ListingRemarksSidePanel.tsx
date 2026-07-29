@@ -1,17 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useListingDetailsRemarksSwap } from "@/components/listing/ListingDetailsRemarksSwapContext";
-import ListingPanelElevateTriangle from "@/components/listing/ListingPanelElevateTriangle";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import ListingDeckCardHeader from "@/components/listing/ListingDeckCardHeader";
+import { useListingDesktopDeck } from "@/components/listing/ListingDesktopDeckContext";
 
 /** Auto-collapse expanded remarks back to half-height. */
 export const LISTING_REMARKS_EXPAND_MS = 20_000;
 
 /**
- * Desktop Listing remarks panel: default max-height is half of content;
- * expand via More (or external teaser) and auto-revert after 20s.
- * No in-panel scrollbar — overflow is clipped until More expands.
- * When Details has minimized remarks, header triangle restores the body.
+ * Desktop Listing remarks card in the right-column deck.
+ * Minimized = header only; expanded = body (half-height + More, or full).
  */
 export default function ListingRemarksSidePanel({
   remarks,
@@ -19,19 +23,18 @@ export default function ListingRemarksSidePanel({
   expanded,
   onExpand,
   onCollapse,
-  /** Desktop: collapse body so Details can sit just under this header. */
-  bodyCollapsed = false,
 }: {
   remarks: string | null;
   frameClass: string;
   expanded: boolean;
   onExpand: () => void;
   onCollapse: () => void;
-  bodyCollapsed?: boolean;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState(0);
-  const remarksSwap = useListingDetailsRemarksSwap();
+  const deck = useListingDesktopDeck();
+  const deckExpanded = deck ? deck.isExpanded("remarks") : true;
+  const bodyCollapsed = deck ? !deckExpanded : false;
 
   useLayoutEffect(() => {
     const el = bodyRef.current;
@@ -41,7 +44,7 @@ export default function ListingRemarksSidePanel({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [remarks]);
+  }, [remarks, deckExpanded]);
 
   const halfHeight = contentHeight > 0 ? Math.round(contentHeight * 0.5) : 0;
   const canToggle =
@@ -54,62 +57,28 @@ export default function ListingRemarksSidePanel({
         ? contentHeight
         : halfHeight;
 
-  const restoreControl =
-    bodyCollapsed && remarksSwap ? (
-      <button
-        type="button"
-        onClick={remarksSwap.toggle}
-        className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[9px] tracking-[0.12em] uppercase text-gold/85 transition-colors hover:text-gold"
-        aria-expanded={false}
-        aria-label="See listing remarks"
-      >
-        <span className="underline decoration-gold/35 underline-offset-2">
-          see listing remarks
-        </span>
-        <ListingPanelElevateTriangle pointing="up" />
-      </button>
-    ) : null;
-
-  if (!remarks?.trim()) {
-    return (
-      <div className={`${frameClass} flex flex-col`}>
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <p className="font-mono text-[8px] tracking-[0.2em] uppercase text-gold">
-            Listing remarks
-          </p>
-          {restoreControl}
-        </div>
-        <div
-          className="overflow-hidden transition-[max-height] duration-300 ease-out"
-          style={{ maxHeight: bodyCollapsed ? 0 : undefined }}
-        >
-          <p className="text-white/50 text-[12px] leading-relaxed">
-            No public remarks for this listing.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={`${frameClass} flex flex-col`}>
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="font-mono text-[8px] tracking-[0.2em] uppercase text-gold">
-          Listing remarks
-        </p>
-        {restoreControl}
-      </div>
+      <ListingDeckCardHeader cardId="remarks" title="Listing remarks" />
       <div
+        id="listing-deck-body-remarks"
         className="overflow-hidden transition-[max-height] duration-300 ease-out"
         style={maxHeight != null ? { maxHeight } : undefined}
+        aria-hidden={bodyCollapsed}
       >
-        <div ref={bodyRef}>
-          <p className="text-white/80 text-[12px] leading-relaxed whitespace-pre-line">
-            {remarks}
-          </p>
+        <div ref={bodyRef} className={bodyCollapsed ? "invisible h-0" : undefined}>
+          {remarks?.trim() ? (
+            <p className="mt-2 text-white/80 text-[12px] leading-relaxed whitespace-pre-line">
+              {remarks}
+            </p>
+          ) : (
+            <p className="mt-2 text-white/50 text-[12px] leading-relaxed">
+              No public remarks for this listing.
+            </p>
+          )}
         </div>
       </div>
-      {canToggle ? (
+      {canToggle && remarks?.trim() ? (
         <button
           type="button"
           onClick={() => (expanded ? onCollapse() : onExpand())}

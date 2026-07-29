@@ -34,8 +34,10 @@ import {
   ListingPhotosModeContext,
   type ListingPhotosModeApi,
 } from "@/components/listing/ListingPhotosModeContext";
-import { ListingDetailsRemarksSwapContext } from "@/components/listing/ListingDetailsRemarksSwapContext";
-import { ListingHistoryDetailsSwapContext } from "@/components/listing/ListingHistoryDetailsSwapContext";
+import {
+  ListingDesktopDeckProvider,
+  type ListingDesktopDeckCardId,
+} from "@/components/listing/ListingDesktopDeckContext";
 import ListingHistorySidePanel from "@/components/listing/ListingHistorySidePanel";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import {
@@ -207,10 +209,12 @@ export default function ListingHeroPanels({
     expand: expandRemarks,
     collapse: collapseRemarks,
   } = useListingRemarksExpand();
-  /** Desktop: Details slides up under Listing remarks header. */
-  const [detailsElevated, setDetailsElevated] = useState(false);
-  /** Desktop: History slides up under Details header. */
-  const [historyElevated, setHistoryElevated] = useState(false);
+  /**
+   * Desktop Overview card deck: which of Remarks / Details / History / Admin
+   * is expanded. Null = all header-only (peeking deck tops).
+   */
+  const [activeDeckCard, setActiveDeckCard] =
+    useState<ListingDesktopDeckCardId | null>("remarks");
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
 
   const openMobileDrawer = useCallback((id: Exclude<MobileDrawerId, null>) => {
@@ -254,7 +258,7 @@ export default function ListingHeroPanels({
           window.scrollTo(0, windowScrollY);
           return tab;
         });
-        setHistoryElevated(false);
+        if (tab === "history") setActiveDeckCard(null);
         return;
       }
       const href =
@@ -278,9 +282,10 @@ export default function ListingHeroPanels({
     ],
   );
 
-  /** Insight median $/sqft → collapse remarks + open/highlight Analysis. */
+  /** Insight median $/sqft → open Details deck card + highlight Analysis. */
   const activateAnalysisFromMedian = useCallback(() => {
     collapseRemarks();
+    setActiveDeckCard("details");
     setMapVisible(false);
     const loc = new URL(window.location.href);
     if (loc.hash.replace(/^#/, "") !== LISTING_ANALYSIS_ID) {
@@ -337,11 +342,27 @@ export default function ListingHeroPanels({
 
   const toggleAdmin = useCallback(() => {
     if (!siteUnlocked) return;
+    setMapVisible(false);
+    setMobileDrawer(null);
+    if (isDesktopLayout) {
+      // Desktop: Admin is always in the deck when unlocked — tab expands/minimizes it.
+      setAdminVisible(true);
+      setActiveDeckCard((prev) => (prev === "admin" ? null : "admin"));
+      const url = new URL(window.location.href);
+      if (activeDeckCard !== "admin") {
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}#listing-admin`,
+        );
+      } else if (url.hash === "#listing-admin") {
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      }
+      return;
+    }
     setAdminVisible((prev) => {
       const next = !prev;
       if (next) {
-        setMapVisible(false);
-        setMobileDrawer(null);
         const url = new URL(window.location.href);
         window.history.replaceState(
           null,
@@ -356,11 +377,17 @@ export default function ListingHeroPanels({
       }
       return next;
     });
-  }, [siteUnlocked]);
+  }, [siteUnlocked, isDesktopLayout, activeDeckCard]);
 
   useEffect(() => {
-    if (!siteUnlocked) setAdminVisible(false);
-  }, [siteUnlocked]);
+    if (!siteUnlocked) {
+      setAdminVisible(false);
+      setActiveDeckCard((prev) => (prev === "admin" ? "remarks" : prev));
+      return;
+    }
+    // Desktop: keep Admin in the peeking deck whenever site-unlocked.
+    if (isDesktopLayout) setAdminVisible(true);
+  }, [siteUnlocked, isDesktopLayout]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -391,8 +418,7 @@ export default function ListingHeroPanels({
   }, [mobileDrawer, isDesktopLayout]);
 
   const elevateHistoryPanel = useCallback(() => {
-    setHistoryElevated(true);
-    setDetailsElevated(false);
+    setActiveDeckCard("history");
     setPanelTab(null);
     const hash = hashForPanelTab("history");
     const url = new URL(window.location.href);
@@ -406,10 +432,9 @@ export default function ListingHeroPanels({
   }, []);
 
   const toggleHistoryPanel = useCallback(() => {
-    setHistoryElevated((prev) => {
-      const next = !prev;
-      if (next) {
-        setDetailsElevated(false);
+    setActiveDeckCard((prev) => {
+      const next = prev === "history" ? null : "history";
+      if (next === "history") {
         setPanelTab(null);
         const hash = hashForPanelTab("history");
         const url = new URL(window.location.href);
@@ -430,7 +455,7 @@ export default function ListingHeroPanels({
 
   const openPanel = useCallback(
     (tab: ListingScrollSectionTab) => {
-      // Desktop Overview: History lives under Details — elevate instead of slide-up.
+      // Desktop Overview: History is a deck card — expand it instead of slide-up.
       if (
         tab === "history" &&
         typeof window !== "undefined" &&
@@ -439,7 +464,7 @@ export default function ListingHeroPanels({
         elevateHistoryPanel();
         return;
       }
-      setHistoryElevated(false);
+      if (tab !== "history") setActiveDeckCard("remarks");
       setPanelTab(tab);
       const hash = hashForPanelTab(tab);
       const url = new URL(window.location.href);
@@ -541,7 +566,7 @@ export default function ListingHeroPanels({
         return;
       }
       if (tab) {
-        setHistoryElevated(false);
+        if (tab !== "history") setActiveDeckCard("remarks");
         setPanelTab(tab);
       }
     };
@@ -681,10 +706,12 @@ export default function ListingHeroPanels({
         forceShowPhotos={photosTabVisible}
         mapVisible={mapVisible}
         onMapToggle={toggleMap}
-        adminVisible={adminVisible}
+        adminVisible={
+          isDesktopLayout ? activeDeckCard === "admin" : adminVisible
+        }
         onAdminToggle={siteUnlocked ? toggleAdmin : null}
         showAdminTab={siteUnlocked}
-        historyElevated={historyElevated}
+        historyElevated={activeDeckCard === "history"}
         onHistoryToggle={
           useSlidePanel && isDesktopLayout ? toggleHistoryPanel : null
         }
@@ -825,64 +852,16 @@ export default function ListingHeroPanels({
   const remarksTeaserLine = firstListingRemarksLine(remarks);
   const showRemarksTeaser =
     remarksSurfaceActive && Boolean(remarksTeaserLine);
-  const detailsRemarksSwapAvailable =
+  const desktopDeckEnabled =
     isDesktopLayout && remarksSurfaceActive && Boolean(sidebar);
-  const historyDetailsSwapAvailable = detailsRemarksSwapAvailable;
-
-  const toggleDetailsRemarksSwap = useCallback(() => {
-    setDetailsElevated((prev) => {
-      const next = !prev;
-      if (next) {
-        collapseRemarks();
-        setHistoryElevated(false);
-      }
-      return next;
-    });
-  }, [collapseRemarks]);
-
-  const toggleHistoryDetailsSwap = useCallback(() => {
-    setHistoryElevated((prev) => {
-      const next = !prev;
-      if (next) setDetailsElevated(false);
-      return next;
-    });
-  }, []);
-
-  const detailsRemarksSwapApi = useMemo(
-    () =>
-      detailsRemarksSwapAvailable
-        ? { detailsElevated, toggle: toggleDetailsRemarksSwap }
-        : null,
-    [
-      detailsRemarksSwapAvailable,
-      detailsElevated,
-      toggleDetailsRemarksSwap,
-    ],
-  );
-
-  const historyDetailsSwapApi = useMemo(
-    () =>
-      historyDetailsSwapAvailable
-        ? { historyElevated, toggle: toggleHistoryDetailsSwap }
-        : null,
-    [
-      historyDetailsSwapAvailable,
-      historyElevated,
-      toggleHistoryDetailsSwap,
-    ],
-  );
 
   useEffect(() => {
     if (!remarksSurfaceActive) collapseRemarks();
   }, [remarksSurfaceActive, collapseRemarks]);
 
   useEffect(() => {
-    if (!detailsRemarksSwapAvailable) setDetailsElevated(false);
-  }, [detailsRemarksSwapAvailable]);
-
-  useEffect(() => {
-    if (!historyDetailsSwapAvailable) setHistoryElevated(false);
-  }, [historyDetailsSwapAvailable]);
+    if (!desktopDeckEnabled) setActiveDeckCard("remarks");
+  }, [desktopDeckEnabled]);
 
   const propertyPanel = (
     <div className="min-w-0 max-lg:w-full">
@@ -1021,9 +1000,7 @@ export default function ListingHeroPanels({
             type="button"
             onClick={() => {
               if (isDesktopLayout) {
-                // Restore remarks if Details/History minimized them, then expand.
-                if (detailsElevated) setDetailsElevated(false);
-                if (historyElevated) setHistoryElevated(false);
+                setActiveDeckCard("remarks");
                 expandRemarks();
                 return;
               }
@@ -1035,14 +1012,12 @@ export default function ListingHeroPanels({
             className="mt-2 w-full min-w-0 max-lg:pr-28 text-left text-[11px] leading-snug text-white/70 underline decoration-white/45 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 focus:outline-none focus-visible:text-gold"
             aria-expanded={
               isDesktopLayout
-                ? !detailsElevated && remarksExpanded
+                ? activeDeckCard === "remarks" && remarksExpanded
                 : mobileDrawer === "remarks"
             }
             title={
               isDesktopLayout
-                ? detailsElevated
-                  ? "Show and expand listing remarks"
-                  : "Expand listing remarks"
+                ? "Open listing remarks in the card deck"
                 : "Open listing remarks"
             }
           >
@@ -1109,9 +1084,7 @@ export default function ListingHeroPanels({
     </div>
   );
 
-  // Desktop remarks above Details — only while Overview (not Sold / History / …).
-  // Half-height + More expands in place (no scrollbar) so the sticky column
-  // stays short enough that Property Details / I'm Interested aren't clipped.
+  // Desktop Overview: Remarks / Details / History / Admin as a peeking card deck.
   const remarksPanel = remarksSurfaceActive ? (
     <ListingRemarksSidePanel
       remarks={remarks}
@@ -1119,9 +1092,23 @@ export default function ListingHeroPanels({
       expanded={remarksExpanded}
       onExpand={expandRemarks}
       onCollapse={collapseRemarks}
-      bodyCollapsed={detailsElevated}
     />
   ) : null;
+
+  const deckCardShell = (cardId: ListingDesktopDeckCardId, child: ReactNode) => {
+    const expanded = activeDeckCard === cardId;
+    return (
+      <div
+        className={`relative shrink-0 transition-[box-shadow,transform] duration-300 ${
+          expanded
+            ? "z-30 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.65)]"
+            : "z-10"
+        }`}
+      >
+        {child}
+      </div>
+    );
+  };
 
   const rightColumn = (
     <div
@@ -1133,24 +1120,51 @@ export default function ListingHeroPanels({
         id={LISTING_CRITERIA_SLOT_ID}
         className="min-w-0 w-full text-left empty:hidden"
       />
-      {remarksPanel}
-      {/* Mount Details only on desktop so Analysis id isn't duplicated vs the mobile drawer. */}
-      {isDesktopLayout && sidebar ? (
-        <div className="shrink-0">{sidebar}</div>
-      ) : null}
-      {isDesktopLayout && remarksSurfaceActive && sidebar ? (
-        <div className="shrink-0">
-          <ListingHistorySidePanel
-            mlsId={subnav.mlsId}
-            townHint={subnav.townHint}
-            frameClass={frameClass}
-          />
+      {/*
+        Card deck: each panel’s header peeks under the next (-mt overlap).
+        Only the active card’s body expands; minimize returns it to a top strip.
+      */}
+      {desktopDeckEnabled ? (
+        <div className="flex min-w-0 flex-col">
+          {remarksPanel
+            ? deckCardShell("remarks", remarksPanel)
+            : null}
+          {sidebar ? (
+            <div className={remarksPanel ? "-mt-2" : undefined}>
+              {deckCardShell("details", <div className="shrink-0">{sidebar}</div>)}
+            </div>
+          ) : null}
+          <div className="-mt-2">
+            {deckCardShell(
+              "history",
+              <ListingHistorySidePanel
+                mlsId={subnav.mlsId}
+                townHint={subnav.townHint}
+                frameClass={frameClass}
+              />,
+            )}
+          </div>
+          {siteUnlocked ? (
+            <div className="-mt-2">
+              {deckCardShell(
+                "admin",
+                <ListingAdminAgentPanel
+                  contact={adminAgentContact}
+                  deckMode
+                />,
+              )}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <>
+          {remarksPanel}
+          {isDesktopLayout && sidebar ? (
+            <div className="shrink-0">{sidebar}</div>
+          ) : null}
+        </>
+      )}
       {mapVisible ? mapBlock("aspect-square", true) : null}
-      {siteUnlocked && adminVisible && isDesktopLayout ? (
-        <ListingAdminAgentPanel contact={adminAgentContact} />
-      ) : null}
     </div>
   );
 
@@ -1171,8 +1185,11 @@ export default function ListingHeroPanels({
 
   return (
     <ListingCriteriaVisibilityProvider>
-      <ListingDetailsRemarksSwapContext.Provider value={detailsRemarksSwapApi}>
-      <ListingHistoryDetailsSwapContext.Provider value={historyDetailsSwapApi}>
+      <ListingDesktopDeckProvider
+        enabled={desktopDeckEnabled}
+        activeCard={activeDeckCard}
+        onActiveCardChange={setActiveDeckCard}
+      >
       <div
         className={`grid grid-cols-1 items-start gap-x-7 gap-y-4 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)] lg:gap-x-10 ${
           compactHero ? "" : "mb-6"
@@ -1301,8 +1318,7 @@ export default function ListingHeroPanels({
       >
         <div id="listing-details-drawer">{detailsBlock}</div>
       </ListingSideDrawer>
-      </ListingHistoryDetailsSwapContext.Provider>
-      </ListingDetailsRemarksSwapContext.Provider>
+      </ListingDesktopDeckProvider>
     </ListingCriteriaVisibilityProvider>
   );
 }
