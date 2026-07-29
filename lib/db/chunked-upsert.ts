@@ -41,6 +41,12 @@ export async function chunkedUpsert(options: {
    * Pass an empty array for `DO NOTHING`.
    */
   updateColumns?: string[]
+  /**
+   * Raw `SET` expressions appended after the column assignments, for values
+   * derived from the existing row (e.g. `col = CASE WHEN table.x IS DISTINCT
+   * FROM EXCLUDED.x THEN … END`). Ignored when the conflict clause is DO NOTHING.
+   */
+  extraUpdateExpressions?: readonly string[]
   /** One array of values per row, in the same order as `columns`. */
   rows: readonly unknown[][]
   /** Desired rows per INSERT statement (auto-capped to the bind-param limit). */
@@ -76,11 +82,13 @@ export async function chunkedUpsert(options: {
 
   const updateColumns =
     options.updateColumns ?? colNames.filter((n) => !conflictColumns.includes(n))
+  const updateExpressions = [
+    ...updateColumns.map((c) => `${c} = EXCLUDED.${c}`),
+    ...(options.extraUpdateExpressions ?? []),
+  ]
   const conflictClause =
     updateColumns.length > 0
-      ? `ON CONFLICT (${conflictColumns.join(', ')}) DO UPDATE SET ${updateColumns
-          .map((c) => `${c} = EXCLUDED.${c}`)
-          .join(', ')}`
+      ? `ON CONFLICT (${conflictColumns.join(', ')}) DO UPDATE SET ${updateExpressions.join(', ')}`
       : `ON CONFLICT (${conflictColumns.join(', ')}) DO NOTHING`
 
   const perStatement = Math.max(

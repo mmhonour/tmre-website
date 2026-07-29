@@ -9,7 +9,11 @@ import {
   upsertListingScores,
   type RecentlyUpdatedRow,
 } from '@/lib/db/listings-repo'
-import { fetchActiveListingsForCity } from '@/lib/listings-store'
+import {
+  UNDER_CONTRACT_CTS_MLS_STATUS,
+  UNDER_CONTRACT_MLS_STATUS,
+  fetchActiveListingsForCity,
+} from '@/lib/listings-store'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import type { Listing } from '@/lib/rets'
 import {
@@ -21,10 +25,13 @@ import {
 } from '@/lib/tmre-towns'
 import { coerceLotAcres, parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
 import { latestActivityMs } from '@/lib/latest-activity'
+import { mlsTimestampMs } from '@/lib/mls-time'
 import {
+  LATEST_FRESH_WINDOW_MS,
   ensureMinOneListingPerTmreTown,
   feedCoversAllTmreTowns,
   missingTmreTowns,
+  rankLatestFeedRows,
 } from '@/lib/latest-town-coverage'
 
 export type LatestListingRow = {
@@ -43,7 +50,7 @@ export type LatestListingRow = {
   sqft: number | null
   lotAcres: number | null
   dom: number | null
-  status: 'Active' | 'Pending' | 'New' | 'Reduced'
+  status: 'Active' | 'Pending' | 'New' | 'Reduced' | 'Coming Soon' | 'Back on Market'
   isRental: boolean
   beds: number | null
   baths: number | null
@@ -79,16 +86,102 @@ function daysBetween(iso: string | null, now: Date = new Date()): number | null 
   return Math.max(0, Math.floor((now.getTime() - t) / 86_400_000))
 }
 
+const DAY_MS = 86_400_000
+/** Genuinely new inventory: DOM inside this window, or listed inside it. */
+const NEW_LISTING_MAX_DOM = 7
+/**
+ * How long a recorded Under Contract → Active (or off-market → Active) flip is
+ * still news. Applies to the exact `previous_mls_status` signal.
+ */
+const BACK_ON_MARKET_WINDOW_MS = 14 * DAY_MS
+/**
+ * Fallback window for rows with no recorded previous status (pre-0010 rows and
+ * anything built straight from a RETS Listing): only a very recent MLS status
+ * change counts, since we cannot see what it changed from.
+ */
+const BACK_ON_MARKET_HEURISTIC_WINDOW_MS = 3 * DAY_MS
+/** Past this DOM a re-activated listing is clearly not new inventory. */
+const BACK_ON_MARKET_MIN_DOM = 14
+
+function isActiveMlsStatus(status: string): boolean {
+  return status === 'active' || status === 'a'
+}
+
+/** Statuses a listing can come back to market *from*. */
+function isBackOnMarketSourceStatus(status: string | null): boolean {
+  const s = status?.trim().toLowerCase() ?? ''
+  if (!s) return false
+  if (
+    s === UNDER_CONTRACT_MLS_STATUS.toLowerCase() ||
+    s === UNDER_CONTRACT_CTS_MLS_STATUS.toLowerCase() ||
+    s.includes('under contract')
+  ) {
+    return true
+  }
+  return s.includes('withdrawn') || s.includes('off market') || s.includes('off-market')
+}
+
+function isNewInventory(
+  daysOnMarket: number | null,
+  listDate: string | null,
+  nowMs: number,
+): boolean {
+  if ((daysOnMarket ?? 99) <= NEW_LISTING_MAX_DOM) return true
+  const listedMs = mlsTimestampMs(listDate)
+  if (Number.isNaN(listedMs)) return false
+  return nowMs - listedMs <= NEW_LISTING_MAX_DOM * DAY_MS
+}
+
+/**
+ * Available again but not new. Prefers the recorded previous status; falls back
+ * to a recent status change on an older listing when that is unknown.
+ */
+function isBackOnMarket(
+  currentStatus: string,
+  previousMlsStatus: string | null,
+  statusChangedAt: string | null,
+  daysOnMarket: number | null,
+  nowMs: number,
+): boolean {
+  if (!isActiveMlsStatus(currentStatus)) return false
+  const changedMs = mlsTimestampMs(statusChangedAt)
+  const sinceChangeMs = Number.isNaN(changedMs) ? null : nowMs - changedMs
+
+  if (previousMlsStatus) {
+    if (!isBackOnMarketSourceStatus(previousMlsStatus)) return false
+    return sinceChangeMs == null || sinceChangeMs <= BACK_ON_MARKET_WINDOW_MS
+  }
+
+  if (sinceChangeMs == null || sinceChangeMs > BACK_ON_MARKET_HEURISTIC_WINDOW_MS) {
+    return false
+  }
+  return (daysOnMarket ?? 0) >= BACK_ON_MARKET_MIN_DOM
+}
+
 function deriveStatus(
   listing: Listing,
   priceReductionPercent: number | null,
   daysOnMarket: number | null,
+  previousMlsStatus: string | null,
+  previousStatusChangedAt: string | null,
+  nowMs: number = Date.now(),
 ): LatestListingRow['status'] {
-  const status = listing.status?.toLowerCase() ?? ''
+  const status = listing.status?.trim().toLowerCase() ?? ''
   if (status === 'pending') return 'Pending'
-  if (status === 'coming soon' || status === 'cs') return 'New'
+  if (status === 'coming soon' || status === 'cs') return 'Coming Soon'
+  if (isNewInventory(daysOnMarket, listing.listDate ?? null, nowMs)) return 'New'
+  if (
+    isBackOnMarket(
+      status,
+      previousMlsStatus,
+      previousStatusChangedAt ?? listing.statusChangeTimestamp ?? null,
+      daysOnMarket,
+      nowMs,
+    )
+  ) {
+    return 'Back on Market'
+  }
   if ((priceReductionPercent ?? 0) > 1) return 'Reduced'
-  if ((daysOnMarket ?? 99) <= 7) return 'New'
   return 'Active'
 }
 
@@ -116,6 +209,9 @@ function toLatestRow(
   syncedAt: string,
   dbTown: string,
   storedScore: number | null = null,
+  /** Null for rows built straight from a RETS Listing (no stored history). */
+  previousMlsStatus: string | null = null,
+  previousStatusChangedAt: string | null = null,
 ): LatestListingRow | null {
   if (listing.price == null || listing.price <= 0) return null
   const rental = isRentalType(listing.propertyType)
@@ -166,7 +262,13 @@ function toLatestRow(
     lotAcres:
       coerceLotAcres(listing.lotAcres) ?? parseLotAcresFromRaw(listing.raw) ?? null,
     dom: daysOnMarket,
-    status: deriveStatus(listing, priceReductionPercent, daysOnMarket),
+    status: deriveStatus(
+      listing,
+      priceReductionPercent,
+      daysOnMarket,
+      previousMlsStatus,
+      previousStatusChangedAt,
+    ),
     isRental: rental,
     beds: listing.beds,
     baths: listing.baths,
@@ -193,6 +295,8 @@ function mapStoredLatestRows(
       row.syncedAt,
       row.town,
       row.goldilocksScore,
+      row.previousMlsStatus,
+      row.previousStatusChangedAt,
     )
     if (mapped) out.push(mapped)
   }
@@ -216,6 +320,8 @@ async function scoreUnscoredLatestRows(
         row.syncedAt,
         row.town,
         row.goldilocksScore,
+        row.previousMlsStatus,
+        row.previousStatusChangedAt,
       )
       if (mapped) scoredRows.push(mapped)
       continue
@@ -231,6 +337,9 @@ async function scoreUnscoredLatestRows(
         row.modificationTimestamp,
         row.syncedAt,
         row.town,
+        null,
+        row.previousMlsStatus,
+        row.previousStatusChangedAt,
       )
       if (mapped) scoredRows.push(mapped)
       continue
@@ -279,6 +388,9 @@ async function scoreUnscoredLatestRows(
         row.modificationTimestamp,
         row.syncedAt,
         row.town,
+        null,
+        row.previousMlsStatus,
+        row.previousStatusChangedAt,
       )
       if (mapped) scoredRows.push(mapped)
     }
@@ -287,19 +399,7 @@ async function scoreUnscoredLatestRows(
   return scoredRows
 }
 
-/** Latest must surface MLS activity from this window when it exists in Postgres. */
-export const LATEST_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
-
-function sortLatestByActivity(rows: LatestListingRow[]): LatestListingRow[] {
-  return [...rows].sort((a, b) => {
-    const ta = latestActivityMs(a.modificationTimestamp, a.listDate)
-    const tb = latestActivityMs(b.modificationTimestamp, b.listDate)
-    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
-    if (Number.isNaN(ta)) return 1
-    if (Number.isNaN(tb)) return -1
-    return tb - ta
-  })
-}
+export { LATEST_FRESH_WINDOW_MS }
 
 function parseIsoMs(iso: string | null | undefined): number | null {
   if (!iso?.trim()) return null
@@ -323,12 +423,6 @@ export function feedHasUpdateWithinWindow(
   return false
 }
 
-function rowInFreshWindow(row: LatestListingRow, cutoffMs: number): boolean {
-  const activity = latestActivityMs(row.modificationTimestamp, row.listDate)
-  if (!Number.isNaN(activity) && activity >= cutoffMs) return true
-  return false
-}
-
 /** True when every row is one of the 7 TMRE towns (rejects polluted warm cache). */
 export function feedIsTmreOnly(rows: readonly LatestListingRow[]): boolean {
   if (rows.length === 0) return false
@@ -339,22 +433,16 @@ export function feedIsTmreOnly(rows: readonly LatestListingRow[]): boolean {
 }
 
 /**
- * Prefer last-24h MLS mods + brand-new list dates, then fill with older updates
- * so the ticker stays full when the market is quiet.
+ * Prefer last-24h MLS mods + brand-new list dates — real events (Coming Soon /
+ * New / Back on Market / Reduced) ahead of plain rows inside each of those
+ * groups — then fill with older updates so the ticker stays full when quiet.
  */
 function rankLatestFreshFirst(
   rows: LatestListingRow[],
   cap: number,
   nowMs = Date.now(),
 ): LatestListingRow[] {
-  const cutoff = nowMs - LATEST_FRESH_WINDOW_MS
-  const fresh: LatestListingRow[] = []
-  const older: LatestListingRow[] = []
-  for (const row of sortLatestByActivity(rows)) {
-    if (rowInFreshWindow(row, cutoff)) fresh.push(row)
-    else older.push(row)
-  }
-  return [...fresh, ...older].slice(0, cap)
+  return rankLatestFeedRows(rows, nowMs).slice(0, cap)
 }
 
 function mergeRecentlyUpdatedRows(

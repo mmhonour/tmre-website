@@ -120,14 +120,84 @@ const LISTING_COLUMNS = [
   'synced_at',
 ] as const
 
+/**
+ * Extra ON CONFLICT assignments that capture the status a listing is leaving,
+ * read from the conflict target's existing row (no extra SELECT). Only a real
+ * status change moves them; otherwise both values are preserved. See 0010.
+ */
+const PREVIOUS_STATUS_UPDATE_SQL = [
+  `previous_mls_status = CASE
+     WHEN listings.mls_status IS DISTINCT FROM EXCLUDED.mls_status THEN listings.mls_status
+     ELSE listings.previous_mls_status
+   END`,
+  `previous_status_changed_at = CASE
+     WHEN listings.mls_status IS DISTINCT FROM EXCLUDED.mls_status THEN now()
+     ELSE listings.previous_status_changed_at
+   END`,
+]
+
 const UPSERT_LISTING_SQL = (() => {
   const cols = LISTING_COLUMNS.join(', ')
   const placeholders = LISTING_COLUMNS.map((_, i) => `$${i + 1}`).join(', ')
-  const updates = LISTING_COLUMNS.filter((c) => c !== 'id')
-    .map((c) => `${c} = EXCLUDED.${c}`)
-    .join(', ')
+  const updates = [
+    ...LISTING_COLUMNS.filter((c) => c !== 'id').map((c) => `${c} = EXCLUDED.${c}`),
+    ...PREVIOUS_STATUS_UPDATE_SQL,
+  ].join(', ')
   return `INSERT INTO listings (${cols}) VALUES (${placeholders}) ON CONFLICT (id) DO UPDATE SET ${updates}`
 })()
+
+let previousStatusColumnsReady = false
+let previousStatusColumnsPromise: Promise<void> | null = null
+
+const PREVIOUS_STATUS_COLUMNS = ['previous_mls_status', 'previous_status_changed_at']
+
+/** Catalog probe — takes no lock, unlike ALTER TABLE ... ADD COLUMN IF NOT EXISTS. */
+async function previousStatusColumnsExist(): Promise<boolean> {
+  const row = await queryOne<{ n: number }>(
+    `SELECT count(*)::int AS n
+       FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'listings'
+        AND column_name = ANY($1::text[])`,
+    [PREVIOUS_STATUS_COLUMNS],
+  )
+  return (row?.n ?? 0) >= PREVIOUS_STATUS_COLUMNS.length
+}
+
+/**
+ * Idempotent DDL for migration 0010 — Netlify does not run `npm run db:migrate`
+ * on deploy, so the sync write path (and the Latest read path) must not assume
+ * the columns exist. Runs at most once per process; mirrors ensureCtCoverageTables().
+ *
+ * The catalog is checked first because `ADD COLUMN IF NOT EXISTS` still takes an
+ * ACCESS EXCLUSIVE lock on `listings` when it is a no-op, which would queue ahead
+ * of every reader whenever a long sync transaction is holding the table.
+ */
+export async function ensureListingPreviousStatusColumns(): Promise<void> {
+  if (previousStatusColumnsReady) return
+  if (!previousStatusColumnsPromise) {
+    previousStatusColumnsPromise = (async () => {
+      try {
+        if (await previousStatusColumnsExist()) {
+          previousStatusColumnsReady = true
+          return
+        }
+        await query(`ALTER TABLE listings ADD COLUMN IF NOT EXISTS previous_mls_status text`)
+        await query(
+          `ALTER TABLE listings ADD COLUMN IF NOT EXISTS previous_status_changed_at timestamptz`,
+        )
+        previousStatusColumnsReady = true
+      } catch (err) {
+        // Never let this gate a sync write or a Latest read: the queries that
+        // follow degrade on their own if the columns really are absent.
+        console.warn('[listings-repo] ensure previous-status columns skipped', err)
+      }
+    })().finally(() => {
+      previousStatusColumnsPromise = null
+    })
+  }
+  await previousStatusColumnsPromise
+}
 
 /**
  * Map a Listing to the ordered parameter list for UPSERT_LISTING_SQL.
@@ -250,6 +320,7 @@ export async function upsertListing(
   const id = listingRowId(listing)
   if (!id) return { upserted: false, inserted: false, priceChanged: false }
 
+  await ensureListingPreviousStatusColumns()
   const syncedAt = new Date()
   const nextPrice = listing.price ?? null
   const nextStatus = listing.status ?? null
@@ -345,6 +416,7 @@ export async function upsertTownListings(
     return empty
   }
 
+  await ensureListingPreviousStatusColumns()
   const syncedAt = new Date()
   const { result, changes } = await withTransaction(async (client) => {
     const existing = await client.query<{
@@ -406,6 +478,8 @@ export async function upsertTownListings(
       table: 'listings',
       columns: LISTING_UPSERT_COLUMNS,
       conflictColumns: ['id'],
+      // Keep the batched path's status bookkeeping identical to upsertListing().
+      extraUpdateExpressions: PREVIOUS_STATUS_UPDATE_SQL,
       rows: listingRows,
       chunkRows,
       client,
@@ -835,6 +909,9 @@ export type RecentlyUpdatedRow = {
   listing: Listing
   town: string
   modificationTimestamp: string | null
+  /** MLS status held before the current one (null before migration 0010 data). */
+  previousMlsStatus: string | null
+  previousStatusChangedAt: string | null
   syncedAt: string
   goldilocksScore: number | null
   goldilocksBreakdown: string | null
@@ -882,16 +959,58 @@ const LISTING_SEARCH_STATUS_ORDER: Record<string, number> = {
   Expired: 2,
 }
 
+type RecentlyUpdatedQueryRow = {
+  data: unknown
+  raw: unknown
+  town: string
+  previous_mls_status: string | null
+  previous_status_changed_at: Date | null
+  synced_at: Date | null
+  goldilocks_score: number | null
+  goldilocks_breakdown: unknown
+  goldilocks_scored_at: Date | null
+}
+
+/** Columns every Latest read needs — shared so the two queries cannot drift. */
+const RECENTLY_UPDATED_SELECT_COLUMNS = `data, raw, town, previous_mls_status,
+       previous_status_changed_at, synced_at, goldilocks_score, goldilocks_breakdown,
+       goldilocks_scored_at`
+
+/** Same shape without the 0010 columns, for a DB the guard could not alter. */
+const RECENTLY_UPDATED_FALLBACK_COLUMNS = `data, raw, town,
+       NULL::text AS previous_mls_status,
+       NULL::timestamptz AS previous_status_changed_at,
+       synced_at, goldilocks_score, goldilocks_breakdown, goldilocks_scored_at`
+
+/**
+ * Run a Latest read, retrying without the migration-0010 columns if they are
+ * missing. Latest going blank is a far worse failure than losing the Back on
+ * Market signal, which the feed already treats as optional.
+ */
+async function queryRecentlyUpdatedRows(
+  buildSql: (columns: string) => string,
+  params: unknown[],
+): Promise<RecentlyUpdatedRow[]> {
+  try {
+    return mapRecentlyUpdatedQueryRows(
+      await query<RecentlyUpdatedQueryRow>(
+        buildSql(RECENTLY_UPDATED_SELECT_COLUMNS),
+        params,
+      ),
+    )
+  } catch (err) {
+    console.warn('[listings-repo] Latest read retried without 0010 columns', err)
+    return mapRecentlyUpdatedQueryRows(
+      await query<RecentlyUpdatedQueryRow>(
+        buildSql(RECENTLY_UPDATED_FALLBACK_COLUMNS),
+        params,
+      ),
+    )
+  }
+}
+
 function mapRecentlyUpdatedQueryRows(
-  rows: {
-    data: unknown
-    raw: unknown
-    town: string
-    synced_at: Date | null
-    goldilocks_score: number | null
-    goldilocks_breakdown: unknown
-    goldilocks_scored_at: Date | null
-  }[],
+  rows: RecentlyUpdatedQueryRow[],
 ): RecentlyUpdatedRow[] {
   return rows.map((row) => {
     const listing = rowToListing(row)
@@ -906,6 +1025,8 @@ function mapRecentlyUpdatedQueryRows(
       listing,
       town: row.town,
       modificationTimestamp: listing.modificationTimestamp,
+      previousMlsStatus: row.previous_mls_status?.trim() || null,
+      previousStatusChangedAt: tsToIso(row.previous_status_changed_at),
       syncedAt: tsToIso(row.synced_at) ?? '',
       goldilocksScore,
       goldilocksBreakdown: jsonbToString(row.goldilocks_breakdown),
@@ -940,6 +1061,7 @@ export async function readRecentlyUpdatedListings(options: {
   const since = options.since?.trim() || null
   const town = options.town?.trim() || null
 
+  await ensureListingPreviousStatusColumns()
   const conditions = ['status_bucket = $1', 'modification_timestamp IS NOT NULL']
   const params: unknown[] = [statusBucket]
   if (since) {
@@ -950,24 +1072,14 @@ export async function readRecentlyUpdatedListings(options: {
   params.push(limit)
   const limitPlaceholder = `$${params.length}`
 
-  const rows = await query<{
-    data: unknown
-    raw: unknown
-    town: string
-    synced_at: Date | null
-    goldilocks_score: number | null
-    goldilocks_breakdown: unknown
-    goldilocks_scored_at: Date | null
-  }>(
-    `SELECT data, raw, town, synced_at, goldilocks_score, goldilocks_breakdown, goldilocks_scored_at
+  return queryRecentlyUpdatedRows(
+    (columns) => `SELECT ${columns}
        FROM listings
       WHERE ${conditions.join(' AND ')}
       ORDER BY modification_timestamp DESC
       LIMIT ${limitPlaceholder}`,
     params,
   )
-
-  return mapRecentlyUpdatedQueryRows(rows)
 }
 
 /**
@@ -987,30 +1099,21 @@ export async function readRecentlyListedListings(options: {
   const town = options.town?.trim() || null
   if (!since || Number.isNaN(Date.parse(since))) return []
 
+  await ensureListingPreviousStatusColumns()
   const conditions = ['status_bucket = $1', 'list_date IS NOT NULL', 'list_date > $2']
   const params: unknown[] = [statusBucket, new Date(since)]
   pushTownScope(conditions, params, town)
   params.push(limit)
   const limitPlaceholder = `$${params.length}`
 
-  const rows = await query<{
-    data: unknown
-    raw: unknown
-    town: string
-    synced_at: Date | null
-    goldilocks_score: number | null
-    goldilocks_breakdown: unknown
-    goldilocks_scored_at: Date | null
-  }>(
-    `SELECT data, raw, town, synced_at, goldilocks_score, goldilocks_breakdown, goldilocks_scored_at
+  return queryRecentlyUpdatedRows(
+    (columns) => `SELECT ${columns}
        FROM listings
       WHERE ${conditions.join(' AND ')}
       ORDER BY list_date DESC, modification_timestamp DESC NULLS LAST
       LIMIT ${limitPlaceholder}`,
     params,
   )
-
-  return mapRecentlyUpdatedQueryRows(rows)
 }
 
 let listingSearchIndexesEnsured = false

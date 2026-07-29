@@ -28,6 +28,7 @@ export type AdminSyncsPanelId =
   | "dashboard"
   | "configure"
   | "latest-health"
+  | "mls-reconcile"
   | "history"
   | "overview"
   | "db-tuning";
@@ -176,6 +177,12 @@ export const ADMIN_SYNCS_PANELS: {
     label: "Latest health",
     subtitle:
       "Deferred until Incremental shows consistent ~30m runs — then use this to verify /latest freshness",
+  },
+  {
+    id: "mls-reconcile",
+    label: "MLS reconcile",
+    subtitle:
+      "Per town, compares the live MLS Active set against Postgres by MLS number — what the MLS has that we are missing, and what we still show as Active",
   },
   {
     id: "history",
@@ -355,6 +362,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Latest page health",
     tab: "syncs",
     panel: "latest-health",
+  },
+  {
+    id: "admin-mls-reconcile",
+    label: "MLS reconcile",
+    tab: "syncs",
+    panel: "mls-reconcile",
   },
   {
     id: "admin-sync-configure",
@@ -859,6 +872,7 @@ export function isAdminSyncsPanelId(
     value === "dashboard" ||
     value === "configure" ||
     value === "latest-health" ||
+    value === "mls-reconcile" ||
     value === "history" ||
     value === "overview" ||
     value === "db-tuning"

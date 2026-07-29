@@ -13,6 +13,27 @@ export type LatestCoverageRow = {
   city: string | null
   modificationTimestamp: string | null
   listDate: string | null
+  /** Feed status when the caller has one (LatestListingRow) — drives event ranking. */
+  status?: string
+}
+
+/** Latest must surface MLS activity from this window when it exists in Postgres. */
+export const LATEST_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Statuses that represent a real MLS event rather than a routine modification
+ * (remarks edit, photo swap, sub-1% price tweak). A quiet day still produces
+ * ~160 modifications, so events must outrank plain rows for the 30 slots.
+ */
+const EVENT_STATUSES: ReadonlySet<string> = new Set([
+  'Coming Soon',
+  'New',
+  'Back on Market',
+  'Reduced',
+])
+
+export function isLatestEventStatus(status: string | null | undefined): boolean {
+  return status != null && EVENT_STATUSES.has(status)
 }
 
 function rowTown(row: LatestCoverageRow): TmreTown | null {
@@ -34,6 +55,30 @@ function sortByActivityDesc<T extends LatestCoverageRow>(rows: readonly T[]): T[
   })
 }
 
+/**
+ * Feed ordering: last-24h activity first (so the ticker stays "latest" and the
+ * 24h cache-validity check keeps passing), and within each freshness group real
+ * events above plain Active/Pending rows. Recency is preserved inside every group.
+ */
+export function rankLatestFeedRows<T extends LatestCoverageRow>(
+  rows: readonly T[],
+  nowMs = Date.now(),
+): T[] {
+  const cutoff = nowMs - LATEST_FRESH_WINDOW_MS
+  const freshEvents: T[] = []
+  const freshRest: T[] = []
+  const olderEvents: T[] = []
+  const olderRest: T[] = []
+  for (const row of sortByActivityDesc(rows)) {
+    const activity = latestActivityMs(row.modificationTimestamp, row.listDate)
+    const fresh = !Number.isNaN(activity) && activity >= cutoff
+    const event = isLatestEventStatus(row.status)
+    if (fresh) (event ? freshEvents : freshRest).push(row)
+    else (event ? olderEvents : olderRest).push(row)
+  }
+  return [...freshEvents, ...freshRest, ...olderEvents, ...olderRest]
+}
+
 /** True when every TMRE town has at least one listing in the feed. */
 export function feedCoversAllTmreTowns(
   rows: readonly LatestCoverageRow[],
@@ -48,9 +93,9 @@ export function feedCoversAllTmreTowns(
 }
 
 /**
- * Keep the usual newest-first ranking, but guarantee each TMRE town appears
- * at least once (its newest row from `rows` / `extras`) so quiet towns are
- * never squeezed out of the 30-slot ticker.
+ * Keep the usual events-then-newest ranking, but guarantee each TMRE town
+ * appears at least once (its top-ranked row from `rows` / `extras`) so quiet
+ * towns are never squeezed out of the 30-slot ticker.
  */
 export function ensureMinOneListingPerTmreTown<T extends LatestCoverageRow>(
   rows: readonly T[],
@@ -58,18 +103,18 @@ export function ensureMinOneListingPerTmreTown<T extends LatestCoverageRow>(
   extras: readonly T[] = [],
 ): T[] {
   const limit = Math.max(1, cap)
-  const pool = sortByActivityDesc([...rows, ...extras])
+  const pool = rankLatestFeedRows([...rows, ...extras])
   if (pool.length === 0) return []
 
-  const newestByTown = new Map<TmreTown, T>()
+  const topByTown = new Map<TmreTown, T>()
   for (const row of pool) {
     const town = rowTown(row)
-    if (!town || newestByTown.has(town)) continue
-    newestByTown.set(town, row)
+    if (!town || topByTown.has(town)) continue
+    topByTown.set(town, row)
   }
 
-  const seeds = sortByActivityDesc(
-    TMRE_TOWNS.map((town) => newestByTown.get(town)).filter(
+  const seeds = rankLatestFeedRows(
+    TMRE_TOWNS.map((town) => topByTown.get(town)).filter(
       (row): row is T => row != null,
     ),
   )
@@ -89,7 +134,7 @@ export function ensureMinOneListingPerTmreTown<T extends LatestCoverageRow>(
     seen.add(row.key)
   }
 
-  return sortByActivityDesc(picked)
+  return rankLatestFeedRows(picked)
 }
 
 /** Towns among TMRE_TOWNS that have no row in the feed yet. */

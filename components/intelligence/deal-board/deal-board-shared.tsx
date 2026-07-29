@@ -310,8 +310,14 @@ export function DealBoardScoreBadge({
   return <span className={className}>{value.toFixed(1)}</span>;
 }
 
+/** Short pill copy — "Back on Market" does not fit the mobile Latest row. */
+const STATUS_BADGE_LABELS: Record<string, string> = {
+  Reduced: "Reduced!",
+  "Back on Market": "Back on Mkt",
+};
+
 export function formatStatusBadgeLabel(status: DealBoardRowStatus | string): string {
-  return status === "Reduced" ? "Reduced!" : status;
+  return STATUS_BADGE_LABELS[status] ?? status;
 }
 
 export function DealBoardStatusBadge({
@@ -333,6 +339,8 @@ export function DealBoardStatusBadge({
     Pending: "bg-charcoal/10 text-slate border-charcoal/20",
     "Under Contract": "bg-gold/15 text-gold border-gold/35",
     "Continue to Show": "bg-gold/15 text-gold border-gold/35",
+    "Coming Soon": "bg-gold/10 text-gold border-gold/30",
+    "Back on Market": "bg-navy/10 text-navy border-navy/30",
   };
   const photoMap: Record<string, string> = {
     New: "bg-sage text-white border-sage/50 shadow-sm",
@@ -341,6 +349,8 @@ export function DealBoardStatusBadge({
     Pending: "bg-charcoal text-white/90 border-charcoal/50 shadow-sm",
     "Under Contract": "bg-gold text-navy border-gold/50 shadow-sm",
     "Continue to Show": "bg-gold text-navy border-gold/50 shadow-sm",
+    "Coming Soon": "bg-gold text-navy border-gold/50 shadow-sm",
+    "Back on Market": "bg-navy text-white border-navy/50 shadow-sm",
   };
   const listingMap: Record<string, string> = {
     New: "bg-sage/20 text-sage border-sage/40",
@@ -350,6 +360,7 @@ export function DealBoardStatusBadge({
     "Under Contract": "bg-gold/20 text-gold border-gold/40",
     "Continue to Show": "bg-gold/20 text-gold border-gold/40",
     "Coming Soon": "bg-gold/15 text-gold border-gold/35",
+    "Back on Market": "bg-white/15 text-white/85 border-white/30",
     Closed: "bg-white/10 text-white/60 border-white/20",
     Expired: "bg-coral/15 text-coral border-coral/30",
     Withdrawn: "bg-white/10 text-white/50 border-white/20",

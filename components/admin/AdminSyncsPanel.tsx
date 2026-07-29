@@ -15,6 +15,7 @@ import {
 } from "@/lib/admin-nav";
 import AdminIncrementalArchitectureDiagram from "@/components/admin/AdminIncrementalArchitectureDiagram";
 import AdminLatestPagePanel from "@/components/admin/AdminLatestPagePanel";
+import AdminMlsReconcilePanel from "@/components/admin/AdminMlsReconcilePanel";
 import type { ScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 
 const VALID_PANELS = new Set<string>(ADMIN_SYNCS_PANELS.map((p) => p.id));
@@ -165,6 +166,14 @@ export default function AdminSyncsPanel({
         className={panel === "latest-health" ? "space-y-6" : undefined}
       >
         <AdminLatestPagePanel />
+      </div>
+
+      <div
+        role="tabpanel"
+        hidden={panel !== "mls-reconcile"}
+        className={panel === "mls-reconcile" ? "space-y-6" : undefined}
+      >
+        <AdminMlsReconcilePanel />
       </div>
 
       <div

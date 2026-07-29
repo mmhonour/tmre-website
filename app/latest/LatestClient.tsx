@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
+import { formatStatusBadgeLabel } from "@/components/intelligence/deal-board/deal-board-shared";
 import LatestLineRow from "@/components/latest/LatestLineRow";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import LatestSmoothScrollList from "@/components/latest/LatestSmoothScrollList";
@@ -41,7 +42,9 @@ const POLL_MS = LATEST_DB_REFRESH_MS;
 const LATEST_REFRESH_MINUTES = LATEST_DB_REFRESH_MS / 60_000;
 
 const STATUS_SUMMARY_ORDER: LatestListingRow["status"][] = [
+  "Coming Soon",
   "New",
+  "Back on Market",
   "Reduced",
   "Pending",
   "Active",
@@ -52,6 +55,8 @@ const STATUS_PILL_CLASS: Record<LatestListingRow["status"], string> = {
   Active: "bg-sky/10 text-sky border-sky/30",
   Reduced: "bg-coral/10 text-coral border-coral/30",
   Pending: "bg-charcoal/10 text-slate border-charcoal/20",
+  "Coming Soon": "bg-gold/10 text-gold border-gold/30",
+  "Back on Market": "bg-navy/10 text-navy border-navy/30",
 };
 
 function summarizeTownStatuses(
@@ -1012,7 +1017,7 @@ export default function LatestClient({
                               }`}
                             >
                               <span className="tabular-nums font-semibold">{count}</span>
-                              {status === "Reduced" ? "Reduced!" : status}
+                              {formatStatusBadgeLabel(status)}
                             </button>
                           );
                         });

@@ -1,6 +1,16 @@
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 
-export type DealBoardRowStatus = "Active" | "Pending" | "New" | "Reduced";
+/**
+ * Board signal statuses. "Coming Soon" / "Back on Market" are produced only by
+ * the Latest feed (LatestListingRow), which renders through the same row shells.
+ */
+export type DealBoardRowStatus =
+  | "Active"
+  | "Pending"
+  | "New"
+  | "Reduced"
+  | "Coming Soon"
+  | "Back on Market";
 
 export type DealBoardStatusFilter = "all" | "new" | "reduced" | "active";
 
