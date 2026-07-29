@@ -86,7 +86,7 @@ export function shouldRunFullSync(): boolean {
   return Date.now() - t > FULL_SYNC_INTERVAL_MS
 }
 
-function incrementalWatermark(): string {
+export function incrementalWatermark(): string {
   const floorMs = Date.now() - INCREMENTAL_MIN_LOOKBACK_MS
   const lastIncremental = getSyncMeta('last_incremental_sync')
   const lastFull = getSyncMeta('last_full_sync')
