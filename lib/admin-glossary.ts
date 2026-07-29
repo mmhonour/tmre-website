@@ -620,6 +620,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Timothy Marks Real Estate / the brand and site covering core CT towns (Norwalk, New Canaan, Westport, Wilton, Weston, Fairfield, Ridgefield).',
   },
   {
+    term: 'CT coverage',
+    category: 'product',
+    definition:
+      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Toggle active to prepare future site-wide coverage. Public pages still use hardcoded TMRE_TOWNS until wired; listings.town can later filter/join on active ct_towns.name.',
+  },
+  {
     term: 'BHHS',
     category: 'product',
     definition:

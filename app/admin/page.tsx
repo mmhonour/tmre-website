@@ -31,6 +31,7 @@ import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenceDealBoardPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
+import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
@@ -704,6 +705,7 @@ export default async function AdminPage() {
       rets={retsPanel}
       intelInventory={inventoryBandsPanel}
       intelDealBoard={<AdminIntelligenceDealBoardPanel />}
+      ctCoverage={<AdminCtCoveragePanel />}
     />
   );
 

@@ -20,7 +20,8 @@ export type AdminDataControlsPanelId =
   | "vintages"
   | "rets"
   | "intel-inventory"
-  | "intel-deal-board";
+  | "intel-deal-board"
+  | "ct-coverage";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -143,6 +144,12 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     label: "Deal board",
     subtitle:
       "Read-only middle-tier rules when Intelligence is sorted by score",
+  },
+  {
+    id: "ct-coverage",
+    label: "CT coverage",
+    subtitle:
+      "Activate CT counties / towns for future site-wide coverage (not wired to pages yet)",
   },
 ];
 
@@ -384,6 +391,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Sales by price bands",
     tab: "data-controls",
     panel: "price-bands",
+  },
+  {
+    id: "admin-ct-coverage",
+    label: "CT coverage",
+    tab: "data-controls",
+    panel: "ct-coverage",
   },
   { id: "admin-stats-inventory", label: "Stats storage map", tab: "stats" },
   { id: "admin-stats-market", label: "Market & town stats", tab: "stats" },
@@ -816,7 +829,8 @@ export function isAdminDataControlsPanelId(
     value === "vintages" ||
     value === "rets" ||
     value === "intel-inventory" ||
-    value === "intel-deal-board"
+    value === "intel-deal-board" ||
+    value === "ct-coverage"
   );
 }
 

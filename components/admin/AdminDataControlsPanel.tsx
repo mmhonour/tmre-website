@@ -42,6 +42,7 @@ export default function AdminDataControlsPanel({
   rets,
   intelInventory,
   intelDealBoard,
+  ctCoverage,
 }: {
   site: ReactNode;
   spotlight: ReactNode;
@@ -52,6 +53,7 @@ export default function AdminDataControlsPanel({
   rets: ReactNode;
   intelInventory: ReactNode;
   intelDealBoard: ReactNode;
+  ctCoverage: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDataControlsPanelId>("site");
 
@@ -92,6 +94,7 @@ export default function AdminDataControlsPanel({
     rets,
     "intel-inventory": intelInventory,
     "intel-deal-board": intelDealBoard,
+    "ct-coverage": ctCoverage,
   };
   const active = ADMIN_DATA_CONTROLS_PANELS.find((item) => item.id === panel);
 
