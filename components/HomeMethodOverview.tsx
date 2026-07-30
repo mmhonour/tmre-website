@@ -336,10 +336,11 @@ export default function HomeMethodOverview() {
               </h1>
 
               <p className="mt-3 max-w-xl animate-fade-up-delay-1 text-[0.92rem] leading-relaxed text-white/75 sm:mt-5 sm:text-base lg:text-lg">
-                Listings shout. Headlines contradict. We give buyers and sellers
-                a single, town-calibrated measure — so you walk into
-                Intelligence, Spotlight, Statistics, and What if already knowing
-                how to read the room.
+                Giving buyers and owners a single, town-calibrated measure.
+                Relative value, market context, and deal shape — scored and
+                synthesized so you spend time effectively. Use Market
+                Intelligence, Statistics, and &ldquo;What If&rdquo; scenarios to
+                read the room.
               </p>
 
               <p className="mt-3 hidden max-w-xl animate-fade-up-delay-1 text-sm leading-relaxed text-white/55 sm:mt-4 sm:block">

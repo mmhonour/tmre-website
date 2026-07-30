@@ -13,7 +13,7 @@ const values = [
   {
     icon: "◐",
     title: "Signal over noise",
-    body: 'Giving buyers and owners a single, town-calibrated measure. Relative value, market context, and deal shape — scored and synthesized so you spend time effectively. Armed with Market Intelligence, Statistics, and "What If" scenarios to read the room.',
+    body: "We surface what matters: relative value, market context, and deal shape — scored and synthesized so you spend time deciding, not digging.",
   },
   {
     icon: "◇",
