@@ -423,6 +423,9 @@ type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft" | "furnishe
 /** Descriptor peeks: accumulate kinds, or `"all"` (mag glass / every kind exposed). */
 type ExposedIntelSliders = "all" | IntelSliderKind[] | null;
 
+/** Pill groups the descriptor line can peek open while the chrome is collapsed. */
+type FilterChromePeek = "towns" | "tx" | "cls" | "sliders";
+
 function availableIntelSliderKinds(opts: {
   showPriceFilter: boolean;
   cls: ClsFilter;
@@ -1708,10 +1711,21 @@ export default function IntelligenceClient({
    * Always start minimized on load / navigation so descriptors stay in view.
    */
   const [filterChromeCollapsed, setFilterChromeCollapsed] = useState(true);
-  /** While collapsed, optionally peek one pill group / sliders via descriptor clicks. */
-  const [filterChromePeek, setFilterChromePeek] = useState<
-    "towns" | "tx" | "cls" | "sliders" | null
-  >(null);
+  /**
+   * While collapsed, which pill groups / sliders the descriptor line has peeked
+   * open. Clicks accumulate (like slider descriptors do); clicking the same
+   * descriptor again drops only that group.
+   */
+  const [filterChromePeeks, setFilterChromePeeks] = useState<FilterChromePeek[]>(
+    [],
+  );
+  const isPeeking = (key: FilterChromePeek) => filterChromePeeks.includes(key);
+  const addFilterChromePeek = (key: FilterChromePeek) =>
+    setFilterChromePeeks((prev) =>
+      prev.includes(key) ? prev : [...prev, key],
+    );
+  const dropFilterChromePeek = (key: FilterChromePeek) =>
+    setFilterChromePeeks((prev) => prev.filter((k) => k !== key));
   /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
@@ -2491,7 +2505,7 @@ export default function IntelligenceClient({
   // descriptors stay visible (same chrome as after scrolling + collapse).
   useEffect(() => {
     setFilterChromeCollapsed(true);
-    setFilterChromePeek(null);
+    setFilterChromePeeks([]);
     try {
       setMiniGraphsHidden(sessionStorage.getItem("tmre-intel-mini-graphs-hidden") === "1");
     } catch {
@@ -2513,7 +2527,7 @@ export default function IntelligenceClient({
       if (target.closest("[data-intel-slider-context-blurb-pinned]")) return;
       setCollapsedSlidersOpen(false);
       setExposedSliders(null);
-      if (filterChromePeek === "sliders") setFilterChromePeek(null);
+      dropFilterChromePeek("sliders");
       setPriceSliderActive(false, { immediate: true });
       setBedSliderActive(false, { immediate: true });
       setBathSliderActive(false, { immediate: true });
@@ -2523,7 +2537,8 @@ export default function IntelligenceClient({
     };
     window.addEventListener("pointerdown", dismissCollapsedSliders);
     return () => window.removeEventListener("pointerdown", dismissCollapsedSliders);
-  }, [collapsedSlidersOpen, filtersExpanded, exposedSliders, filterChromePeek]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsedSlidersOpen, filtersExpanded, exposedSliders]);
 
   useEffect(() => {
     if (active !== "All" && availableZips.length <= 1) setZip(null);
@@ -2592,10 +2607,11 @@ export default function IntelligenceClient({
     ) {
       return;
     }
-    setFilterChromePeek((prev) => {
-      if (prev === "tx" || prev === "sliders") return prev;
-      return "towns";
-    });
+    setFilterChromePeeks((prev) =>
+      prev.includes("tx") || prev.includes("sliders") || prev.includes("towns")
+        ? prev
+        : [...prev, "towns"],
+    );
   }, [
     isMobileViewport,
     active,
@@ -3407,7 +3423,7 @@ export default function IntelligenceClient({
     active !== "All" &&
     !townNeedsMobileZipPick &&
     filterChromeCollapsed &&
-    filterChromePeek !== "towns";
+    !isPeeking("towns");
   const showMobileTownPills = !mobileLocationChromeHidden;
   const showMobileZipPills = !mobileLocationChromeHidden;
   const inlineTownZip =
@@ -3563,7 +3579,7 @@ export default function IntelligenceClient({
   function hideCollapsedSliders() {
     setCollapsedSlidersOpen(false);
     setExposedSliders(null);
-    if (filterChromePeek === "sliders") setFilterChromePeek(null);
+    dropFilterChromePeek("sliders");
     setPriceSliderActive(false, { immediate: true });
     setBedSliderActive(false, { immediate: true });
     setBathSliderActive(false, { immediate: true });
@@ -3580,7 +3596,7 @@ export default function IntelligenceClient({
         return;
       }
       if (filterChromeCollapsed) {
-        setFilterChromePeek("sliders");
+        addFilterChromePeek("sliders");
       }
       setCollapsedSlidersOpen(true);
       setExposedSliders("all");
@@ -3618,7 +3634,7 @@ export default function IntelligenceClient({
     }
 
     if (filterChromeCollapsed) {
-      setFilterChromePeek("sliders");
+      addFilterChromePeek("sliders");
     }
     setCollapsedSlidersOpen(true);
     const available = availableIntelSliderKinds({
@@ -3644,7 +3660,7 @@ export default function IntelligenceClient({
   /** Open the filter chrome/sliders that the descriptor line summarizes. */
   function handleEditFilters() {
     setFilterChromeCollapsed(false);
-    setFilterChromePeek(null);
+    setFilterChromePeeks([]);
     setFiltersExpanded(true);
     setCollapsedSlidersOpen(false);
     setExposedSliders(null);
@@ -3974,13 +3990,10 @@ export default function IntelligenceClient({
     ],
   );
 
-  const showTownChrome =
-    !filterChromeCollapsed || filterChromePeek === "towns";
-  const showClsChrome =
-    !filterChromeCollapsed || filterChromePeek === "cls";
-  const showTxChrome = !filterChromeCollapsed || filterChromePeek === "tx";
-  const showSliderChrome =
-    !filterChromeCollapsed || filterChromePeek === "sliders";
+  const showTownChrome = !filterChromeCollapsed || isPeeking("towns");
+  const showClsChrome = !filterChromeCollapsed || isPeeking("cls");
+  const showTxChrome = !filterChromeCollapsed || isPeeking("tx");
+  const showSliderChrome = !filterChromeCollapsed || isPeeking("sliders");
 
   /** DOTD follows Intelligence town + Sale/Rental (All tx → sale picks). */
   const dotdKind = tx === "rental" ? "rental" : "sale";
@@ -3991,54 +4004,41 @@ export default function IntelligenceClient({
         ? saleProperty
         : "homes";
 
-  const peekTownPills = () => {
-    // Already showing (full chrome or town peek) → hide. Otherwise peek towns.
-    if (!filterChromeCollapsed || filterChromePeek === "towns") {
-      setFilterChromeCollapsed(true);
-      setFilterChromePeek(null);
+  /**
+   * Descriptor clicks on the town / tx / class line each toggle their own pill
+   * group and leave the others alone, so several can stay open at once. Full
+   * chrome (Edit all) collapses back to descriptors on any of these clicks.
+   */
+  const peekPills = (key: FilterChromePeek) => {
+    setFilterChromeCollapsed(true);
+    // Full chrome already shows every group, so the click means hide.
+    if (!filterChromeCollapsed) {
+      setFilterChromePeeks([]);
       return;
     }
-    setFilterChromeCollapsed(true);
-    setFilterChromePeek("towns");
+    if (isPeeking(key)) dropFilterChromePeek(key);
+    else addFilterChromePeek(key);
   };
-  const peekClsPills = () => {
-    // Already showing (full chrome or class peek) → hide. Otherwise peek
-    // All / Residential / Commercial.
-    if (!filterChromeCollapsed || filterChromePeek === "cls") {
-      setFilterChromeCollapsed(true);
-      setFilterChromePeek(null);
-      return;
-    }
-    setFilterChromeCollapsed(true);
-    setFilterChromePeek("cls");
-  };
+  const peekTownPills = () => peekPills("towns");
+  const peekClsPills = () => peekPills("cls");
   const peekTxPills = () => {
-    // Already showing (full chrome or tx peek) → hide. Otherwise peek tx row
-    // (All / For Sale / Rentals, plus Homes… when not on rentals).
-    if (!filterChromeCollapsed || filterChromePeek === "tx") {
-      setFilterChromeCollapsed(true);
-      setFilterChromePeek(
-        isMobileViewport &&
-          active !== "All" &&
-          townHasMultipleZips(active) &&
-          showZipFilters &&
-          !mobileZipConfirmed
-          ? "towns"
-          : null,
-      );
-      return;
+    const closingTx = !filterChromeCollapsed || isPeeking("tx");
+    peekPills("tx");
+    // Phone: a multi-zip town still needing All/zip keeps its pills in reach.
+    if (
+      closingTx &&
+      isMobileViewport &&
+      active !== "All" &&
+      townHasMultipleZips(active) &&
+      showZipFilters &&
+      !mobileZipConfirmed
+    ) {
+      addFilterChromePeek("towns");
     }
-    setFilterChromeCollapsed(true);
-    setFilterChromePeek("tx");
   };
   const toggleFilterChrome = () => {
-    if (filterChromeCollapsed) {
-      setFilterChromeCollapsed(false);
-      setFilterChromePeek(null);
-    } else {
-      setFilterChromeCollapsed(true);
-      setFilterChromePeek(null);
-    }
+    setFilterChromeCollapsed(!filterChromeCollapsed);
+    setFilterChromePeeks([]);
   };
 
   const filterDescriptorLeading = (
@@ -4090,12 +4090,19 @@ export default function IntelligenceClient({
     sqftSliderActive ||
     furnishedSliderActive;
 
-  /** Magnifying glass + Edit all — leftmost on the descriptor line. */
+  /** Magnifying glass — leftmost on the descriptor line. */
   const descriptorSearchControl = (
     <DescriptorSearchControl
       active={descriptorSearchActive}
       onClick={() => exposeSliderFilters()}
-      onEdit={handleEditFilters}
+    />
+  );
+
+  /** Edit all — trailing end of the descriptor line. */
+  const descriptorEditAllControl = (
+    <DescriptorEditAllControl
+      active={descriptorSearchActive}
+      onClick={handleEditFilters}
     />
   );
 
@@ -4359,6 +4366,7 @@ export default function IntelligenceClient({
             {descriptorSearchControl}
             {filterDescriptorLeading}
             {sliderDescriptorLabels}
+            {descriptorEditAllControl}
           </p>
         </div>
       </div>
@@ -4382,6 +4390,33 @@ export default function IntelligenceClient({
                 <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
                   Market Intelligence
                 </p>
+                <button
+                  type="button"
+                  onClick={toggleFilterChrome}
+                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center text-white/70 hover:text-gold transition-colors"
+                  aria-expanded={!filterChromeCollapsed}
+                  aria-label={
+                    filterChromeCollapsed
+                      ? "Show town, sale, and slider filters"
+                      : "Hide town, sale, and slider filters"
+                  }
+                  title={
+                    filterChromeCollapsed ? "Show filters" : "Minimize filters"
+                  }
+                >
+                  <svg
+                    viewBox="0 0 12 12"
+                    className="h-12 w-12"
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    {filterChromeCollapsed ? (
+                      <path d="M1.2 3.5 L6 9.2 L10.8 3.5 Z" />
+                    ) : (
+                      <path d="M1.2 8.5 L6 2.8 L10.8 8.5 Z" />
+                    )}
+                  </svg>
+                </button>
               </div>
               <div
                 className={`grid transition-[grid-template-rows] duration-700 ease-in-out ${
@@ -4418,8 +4453,8 @@ export default function IntelligenceClient({
                   heroIntroDismissed ? "mt-0" : "mt-1"
                 }`}
               >
-                <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start">
-                  {showClsChrome ? (
+                {showClsChrome ? (
+                  <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start">
                     <div data-intel-cls-filter-chrome>
                       <FilterGroup
                         label=""
@@ -4432,37 +4467,8 @@ export default function IntelligenceClient({
                         ]}
                       />
                     </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={toggleFilterChrome}
-                    className="inline-flex h-12 w-12 shrink-0 items-center justify-center text-white/70 hover:text-gold transition-colors"
-                    aria-expanded={!filterChromeCollapsed}
-                    aria-label={
-                      filterChromeCollapsed
-                        ? "Show town, sale, and slider filters"
-                        : "Hide town, sale, and slider filters"
-                    }
-                    title={
-                      filterChromeCollapsed
-                        ? "Show filters"
-                        : "Minimize filters"
-                    }
-                  >
-                    <svg
-                      viewBox="0 0 12 12"
-                      className="h-12 w-12"
-                      fill="currentColor"
-                      aria-hidden
-                    >
-                      {filterChromeCollapsed ? (
-                        <path d="M1.2 3.5 L6 9.2 L10.8 3.5 Z" />
-                      ) : (
-                        <path d="M1.2 8.5 L6 2.8 L10.8 8.5 Z" />
-                      )}
-                    </svg>
-                  </button>
-                </div>
+                  </div>
+                ) : null}
 
                 {showTownChrome && (showMobileTownPills || showMobileZipPills) ? (
                   <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
@@ -4498,13 +4504,10 @@ export default function IntelligenceClient({
                             // Phone: single-zip towns settle immediately; multi-zip
                             // stays open (peek) until All zips / a zip is tapped.
                             if (isMobileViewport && city !== "All") {
-                              if (townHasMultipleZips(city)) {
-                                setFilterChromeCollapsed(true);
-                                setFilterChromePeek("towns");
-                              } else {
-                                setFilterChromeCollapsed(true);
-                                setFilterChromePeek(null);
-                              }
+                              setFilterChromeCollapsed(true);
+                              setFilterChromePeeks(
+                                townHasMultipleZips(city) ? ["towns"] : [],
+                              );
                             }
                             flashTownMapOnSelect(city);
                           }}
@@ -4568,7 +4571,7 @@ export default function IntelligenceClient({
                               setZipLinksExpanded(false);
                               if (isMobileViewport) {
                                 setFilterChromeCollapsed(true);
-                                setFilterChromePeek(null);
+                                setFilterChromePeeks([]);
                               }
                               flashZipMapOnSelect(next);
                             }}
@@ -4614,7 +4617,7 @@ export default function IntelligenceClient({
                             setZipLinksExpanded(false);
                             if (isMobileViewport) {
                               setFilterChromeCollapsed(true);
-                              setFilterChromePeek(null);
+                              setFilterChromePeeks([]);
                             }
                             flashZipMapOnSelect(next);
                           }}
@@ -4673,6 +4676,7 @@ export default function IntelligenceClient({
               >
                 {descriptorSearchControl}
                 {sliderDescriptorLabels}
+                {descriptorEditAllControl}
               </p>
               </div>
 
@@ -5984,11 +5988,9 @@ function DescriptorSearchIcon({ className }: { className?: string }) {
 function DescriptorSearchControl({
   active,
   onClick,
-  onEdit,
 }: {
   active: boolean;
   onClick: () => void;
-  onEdit?: () => void;
 }) {
   return (
     <span
@@ -6006,20 +6008,30 @@ function DescriptorSearchControl({
       >
         <DescriptorSearchIcon className={active ? "h-5 w-5" : "h-3.5 w-3.5"} />
       </button>
-      {onEdit ? (
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label="Edit all filters — scroll to top and show filter controls"
-          title="Edit all filters"
-          className={`font-mono font-bold tracking-[0.14em] uppercase text-gold leading-none origin-left transition-all duration-300 ease-out hover:text-gold-light underline-offset-2 hover:underline ${
-            active ? "text-lg scale-110" : "text-[9px] scale-100"
-          }`}
-        >
-          Edit all
-        </button>
-      ) : null}
     </span>
+  );
+}
+
+/** `ml-auto` parks this at the right end of the descriptor line. */
+function DescriptorEditAllControl({
+  active,
+  onClick,
+}: {
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Edit all filters — scroll to top and show filter controls"
+      title="Edit all filters"
+      className={`ml-auto shrink-0 self-center pl-2 font-mono font-bold tracking-[0.14em] uppercase text-gold leading-none origin-right transition-all duration-300 ease-out hover:text-gold-light underline-offset-2 hover:underline ${
+        active ? "text-lg scale-110" : "text-[9px] scale-100"
+      }`}
+    >
+      Edit all
+    </button>
   );
 }
 
