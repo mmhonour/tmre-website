@@ -105,7 +105,12 @@ import {
 } from "@/lib/pricing-matching-config";
 import { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPanel";
+import AdminTrafficPanel from "@/components/admin/AdminTrafficPanel";
 import AdminGlossaryPanel from "@/components/admin/AdminGlossaryPanel";
+import {
+  readContentViewTotals,
+  readTopContentViews,
+} from "@/lib/db/content-views-repo";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
@@ -251,6 +256,20 @@ export default async function AdminPage() {
     () => readLatestListingModificationTimestamp(),
     null,
   );
+  const [topViewedProperties, topViewedPages, contentViewTotals] =
+    await Promise.all([
+      safe("top-viewed-properties", () =>
+        readTopContentViews({ kind: "listing", limit: 25 }), []),
+      safe("top-viewed-pages", () =>
+        readTopContentViews({ kind: "page", limit: 25 }), []),
+      safe("content-view-totals", () => readContentViewTotals(), {
+        properties: 0,
+        propertyViews: 0,
+        pages: 0,
+        pageViews: 0,
+        since: null,
+      }),
+    ]);
   const lastRefreshFinished = getSyncMeta("last_refresh_finished_at");
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
@@ -970,6 +989,13 @@ export default async function AdminPage() {
         db={dbPanel}
         postgres={postgresPanel}
         stats={<AdminStatsInventoryPanel />}
+        traffic={
+          <AdminTrafficPanel
+            properties={topViewedProperties}
+            pages={topViewedPages}
+            totals={contentViewTotals}
+          />
+        }
         dataControls={dataControlsPanel}
         communications={communicationsPanel}
         cookies={<AdminBrowserCookiesPanel />}

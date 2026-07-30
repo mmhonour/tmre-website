@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
+import { recordContentView } from '@/lib/db/content-views-repo'
 import {
   emptyVisitorGeo,
   readVisitorByVid,
@@ -78,6 +79,14 @@ export async function POST(req: NextRequest) {
       ip,
       geo: geo ?? undefined,
     })
+
+    // Running per-property / per-page counts. Kept separate from the pageview
+    // write so a counter failure cannot cost the visitor record.
+    try {
+      await recordContentView({ vid, path: pagePath, at: now })
+    } catch (err) {
+      console.warn('[visitor/log] content view count failed', err)
+    }
   } catch (err) {
     console.error('[visitor/log] write failed', err)
   }

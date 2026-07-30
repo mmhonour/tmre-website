@@ -2,6 +2,7 @@ export type AdminTabId =
   | "db"
   | "postgres"
   | "stats"
+  | "traffic"
   | "data-controls"
   | "communications"
   | "cookies"
@@ -326,6 +327,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "Interesting stats, Market Bands, and where caches live",
   },
   {
+    id: "traffic",
+    label: "Traffic",
+    subtitle:
+      "Running view counts per property and page, counted from every visit since the counter went live",
+  },
+  {
     id: "data-controls",
     label: "Data controls",
     subtitle:
@@ -449,6 +456,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     tab: "syncs",
     panel: "history",
   },
+  { id: "admin-top-properties", label: "Most viewed properties", tab: "traffic" },
+  { id: "admin-top-pages", label: "Most viewed pages", tab: "traffic" },
   { id: "admin-stats-interesting", label: "Interesting stats", tab: "stats" },
   {
     id: "admin-stats-price-buckets",

@@ -195,6 +195,7 @@ export default function AdminTabbedLayout({
   db,
   postgres,
   stats,
+  traffic,
   dataControls,
   communications,
   cookies,
@@ -208,6 +209,7 @@ export default function AdminTabbedLayout({
   db: ReactNode;
   postgres: ReactNode;
   stats: ReactNode;
+  traffic: ReactNode;
   dataControls: ReactNode;
   communications: ReactNode;
   cookies: ReactNode;
@@ -288,6 +290,7 @@ export default function AdminTabbedLayout({
     db,
     postgres,
     stats,
+    traffic,
     "data-controls": dataControls,
     communications,
     cookies,

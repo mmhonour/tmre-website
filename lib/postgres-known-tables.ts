@@ -22,6 +22,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'town_property_addresses',
   'zip_boundaries',
   'visitors',
+  'content_views',
   'leads',
   'site_users',
   'site_user_magic_links',

@@ -654,6 +654,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'visitors' },
   },
   {
+    id: 'content-views-postgres',
+    name: 'Property / page view counts',
+    category: 'site-data',
+    medium: 'postgres',
+    location: 'content_views',
+    keyPattern: 'content_views.(content_key, vid)',
+    owner: 'lib/db/content-views-repo.ts',
+    notes:
+      'Running counts behind Admin → Traffic. One row per content and visitor, so it survives the 50-hit trim on visitors.pages.',
+    live: { kind: 'postgres_table', table: 'content_views' },
+  },
+  {
     id: 'leads-postgres',
     name: 'Monday brief / home CTA leads',
     category: 'site-data',

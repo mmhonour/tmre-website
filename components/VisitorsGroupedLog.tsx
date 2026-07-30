@@ -2,11 +2,18 @@
 
 import { useState } from "react";
 import {
+  contentViewPageLabel,
+  resolveViewedContent,
+} from "@/lib/content-views";
+import {
   formatVisitorIdentity,
   visitorIdentitySourceLabel,
   type VisitorProviderGroup,
   type VisitorRecord,
 } from "@/lib/visitors-types";
+
+/** MLS id → "street, town", for the properties in this log. */
+type PropertyLabels = Record<string, string>;
 
 function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -18,14 +25,28 @@ function formatTimestamp(iso: string | null | undefined): string {
   }).format(date);
 }
 
-function recentPaths(visitor: VisitorRecord, limit = 4): string {
-  const paths = [...visitor.pages]
+/** Property address where the path resolves to a listing, page name otherwise. */
+function pathLabel(path: string, properties: PropertyLabels): string {
+  const content = resolveViewedContent(path);
+  if (content.kind === "listing" && content.mlsId) {
+    const base = properties[content.mlsId] ?? `MLS ${content.mlsId}`;
+    return content.section ? `${base} (${content.section})` : base;
+  }
+  return contentViewPageLabel(content.path);
+}
+
+function recentPaths(
+  visitor: VisitorRecord,
+  properties: PropertyLabels,
+  limit = 4,
+): string {
+  const labels = [...visitor.pages]
     .reverse()
-    .map((p) => p.path)
+    .map((p) => pathLabel(p.path, properties))
     .filter(Boolean);
   const unique: string[] = [];
-  for (const path of paths) {
-    if (!unique.includes(path)) unique.push(path);
+  for (const label of labels) {
+    if (!unique.includes(label)) unique.push(label);
     if (unique.length >= limit) break;
   }
   return unique.join(" → ") || "—";
@@ -53,7 +74,13 @@ function DrillToggle({
   );
 }
 
-function VisitorRow({ visitor }: { visitor: VisitorRecord }) {
+function VisitorRow({
+  visitor,
+  properties,
+}: {
+  visitor: VisitorRecord;
+  properties: PropertyLabels;
+}) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(12rem,1.1fr)_minmax(0,1.4fr)_auto] gap-2 lg:gap-6 lg:items-start pl-2 sm:pl-4">
       <div className="min-w-0">
@@ -88,7 +115,9 @@ function VisitorRow({ visitor }: { visitor: VisitorRecord }) {
         <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40 mb-1">
           Recent pages
         </p>
-        <p className="text-sm text-slate break-words">{recentPaths(visitor)}</p>
+        <p className="text-sm text-slate break-words">
+          {recentPaths(visitor, properties)}
+        </p>
         <p className="mt-2 font-mono text-[10px] text-charcoal/35 truncate">
           {visitor.vid}
           {visitor.ip ? ` · ${visitor.ip}` : ""}
@@ -113,8 +142,10 @@ function VisitorRow({ visitor }: { visitor: VisitorRecord }) {
 
 export default function VisitorsGroupedLog({
   groups,
+  properties = {},
 }: {
   groups: VisitorProviderGroup[];
+  properties?: PropertyLabels;
 }) {
   const [openProviders, setOpenProviders] = useState<Set<string>>(() => new Set());
   const [openLocations, setOpenLocations] = useState<Set<string>>(() => new Set());
@@ -218,7 +249,10 @@ export default function VisitorsGroupedLog({
                                 <ul className="mt-2 ml-1 border-l border-charcoal/[0.06] pl-3 sm:pl-4 divide-y divide-charcoal/[0.06]">
                                   {loc.visitors.map((visitor) => (
                                     <li key={visitor.vid} className="py-3">
-                                      <VisitorRow visitor={visitor} />
+                                      <VisitorRow
+                                        visitor={visitor}
+                                        properties={properties}
+                                      />
                                     </li>
                                   ))}
                                 </ul>
