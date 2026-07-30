@@ -13,6 +13,10 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Fails the deploy if the sync function bundle cannot be imported (see plugin).
+[[plugins]]
+  package = "/netlify/plugins/verify-sync-functions"
+
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["rets-client", "node-expat", "better-sqlite3", "bindings", "@netlify/blobs"]

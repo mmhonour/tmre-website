@@ -1,0 +1,21 @@
+{
+  "name": "server-only",
+  "version": "0.0.1",
+  "description": "Condition-correct stand-in for the upstream server-only marker. Throws in browser bundles (the guardrail) but stays inert under Node, so plain Netlify Lambdas can import lib/ modules without crashing at module init.",
+  "private": true,
+  "license": "MIT",
+  "main": "./empty.js",
+  "browser": "./throw.js",
+  "exports": {
+    ".": {
+      "browser": "./throw.js",
+      "react-server": "./empty.js",
+      "default": "./empty.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "empty.js",
+    "throw.js"
+  ]
+}
