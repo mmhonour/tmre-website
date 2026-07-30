@@ -4,6 +4,7 @@ import { query, queryOne, withTransaction } from '@/lib/db/postgres'
 import type { PoolClient } from 'pg'
 import type {
   VisitorGeo,
+  VisitorIdentitySource,
   VisitorPageHit,
   VisitorRecord,
 } from '@/lib/visitors-types'
@@ -58,6 +59,22 @@ type VisitorRow = {
   name: string | null
   audience_type: string | null
   lead_id: string | null
+}
+
+/**
+ * Read rows carry contact details resolved across the tables that already hold
+ * them: `leads` (via lead_id), `site_users` and `saved_search_alerts` (via
+ * visitor_id). Nothing here is enriched from outside — every value was supplied
+ * by the visitor.
+ */
+type VisitorIdentityRow = VisitorRow & {
+  phone: string | null
+  visitor_email: string | null
+  visitor_name: string | null
+  has_lead: boolean
+  has_account: boolean
+  has_alert: boolean
+  last_login_at: Date | string | null
 }
 
 function tsToIso(value: Date | string): string {
@@ -115,28 +132,134 @@ const SELECT_COLS = `
   email, zip, name, audience_type, lead_id
 `
 
+type IdentityJoins = { leads: boolean; siteUsers: boolean; alerts: boolean }
+
+let identityJoins: IdentityJoins | null = null
+
+/**
+ * Which identity tables exist. Probed once rather than assumed: a database
+ * missing migration 0004 / 0008 / 0011 would otherwise fail the whole visitors
+ * read on an unknown relation.
+ */
+async function detectIdentityJoins(): Promise<IdentityJoins> {
+  if (identityJoins) return identityJoins
+  try {
+    const rows = await query<{ table_name: string }>(
+      `SELECT table_name
+       FROM information_schema.tables
+       WHERE table_schema = current_schema()
+         AND table_name IN ('leads', 'site_users', 'saved_search_alerts')`,
+    )
+    const names = new Set(rows.map((r) => r.table_name))
+    identityJoins = {
+      leads: names.has('leads'),
+      siteUsers: names.has('site_users'),
+      alerts: names.has('saved_search_alerts'),
+    }
+  } catch {
+    identityJoins = { leads: false, siteUsers: false, alerts: false }
+  }
+  return identityJoins
+}
+
+function identitySelect(joins: IdentityJoins): string {
+  const emails = ['v.email']
+  const names = ['v.name']
+  const phones: string[] = []
+  const flags: string[] = []
+  const from = ['FROM visitors v']
+
+  if (joins.leads) {
+    from.push('LEFT JOIN leads l ON l.id = v.lead_id')
+    emails.push('l.email')
+    names.push('l.name')
+    phones.push('l.phone')
+    flags.push('(l.id IS NOT NULL) AS has_lead')
+  } else {
+    flags.push('false AS has_lead')
+  }
+
+  if (joins.siteUsers) {
+    from.push(`LEFT JOIN LATERAL (
+       SELECT su.email, su.name, su.last_login_at
+       FROM site_users su
+       WHERE su.visitor_id = v.vid
+       ORDER BY su.last_login_at DESC NULLS LAST
+       LIMIT 1
+     ) acct ON true`)
+    emails.push('acct.email')
+    names.push('acct.name')
+    flags.push('(acct.email IS NOT NULL) AS has_account', 'acct.last_login_at')
+  } else {
+    flags.push('false AS has_account', 'NULL::timestamptz AS last_login_at')
+  }
+
+  if (joins.alerts) {
+    from.push(`LEFT JOIN LATERAL (
+       SELECT a.email, a.phone
+       FROM saved_search_alerts a
+       WHERE a.visitor_id = v.vid
+         AND (a.email IS NOT NULL OR a.phone IS NOT NULL)
+       ORDER BY a.active DESC, a.updated_at DESC
+       LIMIT 1
+     ) alert ON true`)
+    emails.push('alert.email')
+    phones.push('alert.phone')
+    flags.push('(alert.email IS NOT NULL OR alert.phone IS NOT NULL) AS has_alert')
+  } else {
+    flags.push('false AS has_alert')
+  }
+
+  return `SELECT
+       v.vid, v.first_seen, v.last_seen, v.pageviews, v.ip, v.geo, v.pages,
+       v.zip, v.audience_type, v.lead_id,
+       v.email AS visitor_email,
+       v.name AS visitor_name,
+       COALESCE(${emails.join(', ')}) AS email,
+       COALESCE(${names.join(', ')}) AS name,
+       ${phones.length > 0 ? `COALESCE(${phones.join(', ')})` : 'NULL::text'} AS phone,
+       ${flags.join(',\n       ')}
+     ${from.join('\n     ')}`
+}
+
+function identityRowToRecord(row: VisitorIdentityRow): VisitorRecord {
+  const sources: VisitorIdentitySource[] = []
+  if (row.has_lead) sources.push('lead')
+  if (row.has_account) sources.push('account')
+  if (row.has_alert) sources.push('alert')
+  if (!row.has_lead && (row.visitor_email || row.visitor_name)) sources.push('form')
+
+  return {
+    ...rowToRecord(row),
+    phone: row.phone,
+    identitySources: sources,
+    lastLoginAt: row.last_login_at ? tsToIso(row.last_login_at) : null,
+  }
+}
+
 export async function readVisitorByVid(vid: string): Promise<VisitorRecord | null> {
   await ensureVisitorsTable()
   const id = vid.trim()
   if (!id) return null
-  const row = await queryOne<VisitorRow>(
-    `SELECT ${SELECT_COLS} FROM visitors WHERE vid = $1`,
+  const joins = await detectIdentityJoins()
+  const row = await queryOne<VisitorIdentityRow>(
+    `${identitySelect(joins)} WHERE v.vid = $1`,
     [id],
   )
-  return row ? rowToRecord(row) : null
+  return row ? identityRowToRecord(row) : null
 }
 
 export async function listVisitorRecords(limit = 500): Promise<VisitorRecord[]> {
   await ensureVisitorsTable()
   const capped = Math.min(Math.max(1, Math.floor(limit)), 5000)
-  const rows = await query<VisitorRow>(
-    `SELECT ${SELECT_COLS}
-     FROM visitors
-     ORDER BY last_seen DESC
+  const joins = await detectIdentityJoins()
+  const rows = await query<VisitorIdentityRow>(
+    `${identitySelect(joins)}
+     ORDER BY v.last_seen DESC
      LIMIT $1`,
     [capped],
   )
-  return rows.map(rowToRecord)
+  return rows.map(identityRowToRecord)
 }
 
 function trimPages(pages: VisitorPageHit[]): VisitorPageHit[] {

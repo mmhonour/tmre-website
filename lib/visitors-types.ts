@@ -13,6 +13,9 @@ export type VisitorPageHit = {
   at: string
 }
 
+/** Where a visitor's contact details came from — all first-party, self-supplied. */
+export type VisitorIdentitySource = 'lead' | 'account' | 'alert' | 'form'
+
 export type VisitorRecord = {
   vid: string
   firstSeen: string
@@ -24,8 +27,22 @@ export type VisitorRecord = {
   email?: string | null
   zip?: string | null
   name?: string | null
+  phone?: string | null
   audienceType?: string | null
   leadId?: string | null
+  identitySources?: VisitorIdentitySource[]
+  lastLoginAt?: string | null
+}
+
+export function visitorIdentitySourceLabel(source: VisitorIdentitySource): string {
+  if (source === 'lead') return 'Brief signup'
+  if (source === 'account') return 'Signed in'
+  if (source === 'alert') return 'Search alert'
+  return 'Site form'
+}
+
+export function visitorIsIdentified(visitor: VisitorRecord): boolean {
+  return Boolean(visitor.email || visitor.phone)
 }
 
 export function emptyVisitorGeo(): VisitorGeo {
@@ -44,6 +61,7 @@ export function formatVisitorIdentity(visitor: VisitorRecord): string {
   if (visitor.name && visitor.email) return `${visitor.name} · ${visitor.email}`
   if (visitor.email) return visitor.email
   if (visitor.name) return visitor.name
+  if (visitor.phone) return visitor.phone
   return 'Anonymous'
 }
 

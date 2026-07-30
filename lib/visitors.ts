@@ -19,7 +19,10 @@ import {
   formatVisitorIdentity,
   formatVisitorLocation,
   groupVisitorsByProviderThenLocation,
+  visitorIdentitySourceLabel,
+  visitorIsIdentified,
   type VisitorGeo,
+  type VisitorIdentitySource,
   type VisitorPageHit,
   type VisitorProviderGroup,
   type VisitorRecord,
@@ -27,6 +30,7 @@ import {
 
 export type {
   VisitorGeo,
+  VisitorIdentitySource,
   VisitorPageHit,
   VisitorProviderGroup,
   VisitorRecord,
@@ -36,6 +40,8 @@ export {
   formatVisitorIdentity,
   formatVisitorLocation,
   groupVisitorsByProviderThenLocation,
+  visitorIdentitySourceLabel,
+  visitorIsIdentified,
 }
 
 export {

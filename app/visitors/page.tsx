@@ -5,6 +5,7 @@ import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
 import {
   groupVisitorsByProviderThenLocation,
   readVisitorRecords,
+  visitorIsIdentified,
 } from "@/lib/visitors";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,8 @@ export default async function VisitorsPage() {
 
   const visitors = await readVisitorRecords();
   const groups = groupVisitorsByProviderThenLocation(visitors);
-  const identified = visitors.filter((v) => Boolean(v.email)).length;
+  const identified = visitors.filter(visitorIsIdentified).length;
+  const withPhone = visitors.filter((v) => Boolean(v.phone)).length;
   const totalPageviews = visitors.reduce((sum, v) => sum + (v.pageviews || 0), 0);
 
   return (
@@ -52,6 +54,7 @@ export default async function VisitorsPage() {
             <span>{visitors.length.toLocaleString()} visitors</span>
             <span>{groups.length.toLocaleString()} providers</span>
             <span>{identified.toLocaleString()} identified</span>
+            <span>{withPhone.toLocaleString()} with phone</span>
             <span>{totalPageviews.toLocaleString()} pageviews</span>
           </div>
         </div>
