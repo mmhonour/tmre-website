@@ -187,7 +187,7 @@ type IntelCity = (typeof INTEL_CITIES)[number];
 /** Market positioning copy — separate from offline mock data. */
 const TOWN_TAGLINES = TOWN_MARKET_TAGLINES;
 
-type IntelDescriptorPartKind = "town" | "tx" | "plain";
+type IntelDescriptorPartKind = "town" | "tx" | "cls" | "plain";
 
 type IntelDescriptorPart = {
   kind: IntelDescriptorPartKind;
@@ -228,8 +228,8 @@ function intelFilterDescriptorParts({
   if (tx === "sale") parts.push({ kind: "tx", label: "For Sale" });
   else if (tx === "rental") parts.push({ kind: "tx", label: "Rentals" });
 
-  if (cls === "residential") parts.push({ kind: "plain", label: "Residential" });
-  else if (cls === "commercial") parts.push({ kind: "plain", label: "Commercial" });
+  if (cls === "residential") parts.push({ kind: "cls", label: "Residential" });
+  else if (cls === "commercial") parts.push({ kind: "cls", label: "Commercial" });
 
   if (tx !== "rental" && cls !== "commercial") {
     if (saleProperty === "homes") parts.push({ kind: "tx", label: "Homes" });
@@ -257,23 +257,28 @@ function IntelDescriptorContext({
   parts,
   onTownClick,
   onTxClick,
+  onClsClick,
 }: {
   parts: IntelDescriptorPart[];
   onTownClick?: () => void;
   onTxClick?: () => void;
+  onClsClick?: () => void;
 }) {
   return (
     <>
       {parts.map((part, index) => {
         const interactive =
           (part.kind === "town" && onTownClick != null) ||
-          (part.kind === "tx" && onTxClick != null);
+          (part.kind === "tx" && onTxClick != null) ||
+          (part.kind === "cls" && onClsClick != null);
         const onClick =
           part.kind === "town"
             ? onTownClick
             : part.kind === "tx"
               ? onTxClick
-              : undefined;
+              : part.kind === "cls"
+                ? onClsClick
+                : undefined;
         return (
           <span key={`${part.kind}-${part.label}-${index}`} className="contents">
             {interactive && onClick ? (
@@ -1697,14 +1702,15 @@ export default function IntelligenceClient({
   );
   const filtersExpanded = filtersExpandedPref === "true";
   /**
-   * Collapse town/tx pills + sliders/price boxes. Class pills (All/Residential/
-   * Commercial) and the filter descriptor line always stay visible.
+   * Collapse town/class/tx pills + sliders/price boxes. Descriptor line stays
+   * visible; descriptor clicks peek the matching group. Triangle still expands
+   * everything (later: whether class pills stay always-visible vs hide-only).
    * Always start minimized on load / navigation so descriptors stay in view.
    */
   const [filterChromeCollapsed, setFilterChromeCollapsed] = useState(true);
   /** While collapsed, optionally peek one pill group / sliders via descriptor clicks. */
   const [filterChromePeek, setFilterChromePeek] = useState<
-    "towns" | "tx" | "sliders" | null
+    "towns" | "tx" | "cls" | "sliders" | null
   >(null);
   /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
@@ -3155,7 +3161,7 @@ export default function IntelligenceClient({
   const listingsBlurbLiveRef = useRef(listingsBlurbLive);
   listingsBlurbLiveRef.current = listingsBlurbLive;
 
-  // Desktop: after 10s, erase the listings blurb from the first letter (~2/sec).
+  // Desktop: after 10s, erase the listings blurb from the first letter (4/sec).
   // Reinstate whenever the user issues a new search (filter key changes).
   useEffect(() => {
     setListingsBlurbFrozen(null);
@@ -3184,7 +3190,7 @@ export default function IntelligenceClient({
           return;
         }
         setListingsBlurbCharsRemoved(removed);
-      }, 500);
+      }, 250);
     }, 10_000);
 
     return () => {
@@ -3970,6 +3976,8 @@ export default function IntelligenceClient({
 
   const showTownChrome =
     !filterChromeCollapsed || filterChromePeek === "towns";
+  const showClsChrome =
+    !filterChromeCollapsed || filterChromePeek === "cls";
   const showTxChrome = !filterChromeCollapsed || filterChromePeek === "tx";
   const showSliderChrome =
     !filterChromeCollapsed || filterChromePeek === "sliders";
@@ -3992,6 +4000,17 @@ export default function IntelligenceClient({
     }
     setFilterChromeCollapsed(true);
     setFilterChromePeek("towns");
+  };
+  const peekClsPills = () => {
+    // Already showing (full chrome or class peek) → hide. Otherwise peek
+    // All / Residential / Commercial.
+    if (!filterChromeCollapsed || filterChromePeek === "cls") {
+      setFilterChromeCollapsed(true);
+      setFilterChromePeek(null);
+      return;
+    }
+    setFilterChromeCollapsed(true);
+    setFilterChromePeek("cls");
   };
   const peekTxPills = () => {
     // Already showing (full chrome or tx peek) → hide. Otherwise peek tx row
@@ -4027,6 +4046,7 @@ export default function IntelligenceClient({
       parts={filterDescriptorParts}
       onTownClick={peekTownPills}
       onTxClick={peekTxPills}
+      onClsClick={peekClsPills}
     />
   );
 
@@ -4399,16 +4419,20 @@ export default function IntelligenceClient({
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start">
-                  <FilterGroup
-                    label=""
-                    value={cls}
-                    onChange={setCls}
-                    options={[
-                      { value: "all", label: "All" },
-                      { value: "residential", label: "Residential" },
-                      { value: "commercial", label: "Commercial" },
-                    ]}
-                  />
+                  {showClsChrome ? (
+                    <div data-intel-cls-filter-chrome>
+                      <FilterGroup
+                        label=""
+                        value={cls}
+                        onChange={setCls}
+                        options={[
+                          { value: "all", label: "All" },
+                          { value: "residential", label: "Residential" },
+                          { value: "commercial", label: "Commercial" },
+                        ]}
+                      />
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={toggleFilterChrome}

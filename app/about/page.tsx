@@ -12,8 +12,8 @@ export const metadata = {
 const values = [
   {
     icon: "◐",
-    title: "AI-native",
-    body: "Market intelligence, property scoring, content generation, and deal analysis powered by AI. Not as a feature — as the foundation of how we operate.",
+    title: "Signal over noise",
+    body: 'Giving buyers and owners a single, town-calibrated measure. Relative value, market context, and deal shape — scored and synthesized so you spend time effectively. Armed with Market Intelligence, Statistics, and "What If" scenarios to read the room.',
   },
   {
     icon: "◇",

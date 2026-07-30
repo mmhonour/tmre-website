@@ -1,0 +1,11 @@
+---
+description: Give a three-minute review window after a plan
+alwaysApply: true
+---
+
+# Plan review window
+
+After presenting a completed plan, give the user three minutes to review it before starting implementation.
+
+- Do not begin implementation during that window unless the user explicitly says to proceed (for example, “execute,” “build it,” or “start now”).
+- A plan-confirmation response does not waive the review window unless it explicitly authorizes implementation.

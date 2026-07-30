@@ -321,12 +321,6 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     subtitle: "RETS connection and listings by town",
   },
   {
-    id: "postgres",
-    label: "NEON",
-    subtitle:
-      "Schema visualization and database inventory (row counts vs last full resync)",
-  },
-  {
     id: "stats",
     label: "Stats",
     subtitle: "Interesting stats, Market Bands, and where caches live",
@@ -352,6 +346,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "architecture",
     label: "Architecture",
     subtitle: "Site map, /latest status logic, and product docs",
+  },
+  {
+    id: "postgres",
+    label: "NEON",
+    subtitle:
+      "Schema visualization and database inventory (row counts vs last full resync)",
   },
   {
     id: "r2",
