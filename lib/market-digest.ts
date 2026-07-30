@@ -5,6 +5,7 @@ import {
   readListingsFromDb,
   readRecentClosedListingsFromDb,
 } from '@/lib/db/listings-repo'
+import { readMarketPulseClosedCounts } from '@/lib/market-pulse-closed-cache'
 import {
   readDealOfTheDayBundle,
   type DealOfTheDayResponse,
@@ -33,18 +34,22 @@ import {
 import type { Listing } from '@/lib/rets'
 import type {
   MarketDigestCategorySlice,
+  MarketDigestClosedTownCount,
   MarketDigestDealOfTheWeek,
   MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
+import { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
 import type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
 import { getSocialProfilesFresh } from '@/lib/social-profiles-config'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export type {
   MarketDigestCategorySlice,
+  MarketDigestClosedTownCount,
   MarketDigestDealOfTheWeek,
   MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
+export { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
 export type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
 export { MARKET_PULSE_CATEGORY_IDS } from '@/lib/market-pulse-shared'
 
@@ -52,6 +57,7 @@ type CachedCategorySpec = {
   id: Exclude<MarketPulseCategoryId, 'commercial'>
   label: string
   scopeLabel: string
+  selectionLabel: string
   kind: ListingKind
   propertyClass: ListingPropertyClass
 }
@@ -61,6 +67,7 @@ const CACHED_CATEGORY_SPECS: readonly CachedCategorySpec[] = [
     id: 'all',
     label: 'ALL',
     scopeLabel: 'sales',
+    selectionLabel: 'all sales',
     kind: 'sale',
     propertyClass: 'all',
   },
@@ -68,6 +75,7 @@ const CACHED_CATEGORY_SPECS: readonly CachedCategorySpec[] = [
     id: 'sfr',
     label: 'SFR',
     scopeLabel: 'SFR sales',
+    selectionLabel: 'SFR',
     kind: 'sale',
     propertyClass: 'homes',
   },
@@ -75,6 +83,7 @@ const CACHED_CATEGORY_SPECS: readonly CachedCategorySpec[] = [
     id: 'condo',
     label: 'Condo',
     scopeLabel: 'condo sales',
+    selectionLabel: 'condos',
     kind: 'sale',
     propertyClass: 'condos',
   },
@@ -82,10 +91,36 @@ const CACHED_CATEGORY_SPECS: readonly CachedCategorySpec[] = [
     id: 'rentals',
     label: 'Rentals',
     scopeLabel: 'rentals',
+    selectionLabel: 'rentals',
     kind: 'rental',
     propertyClass: 'all',
   },
 ]
+
+/**
+ * Closed totals per town for the trailing window.
+ *
+ * Only the Monday email asks for these inline: the aggregate scans two years of
+ * Closed rows (2–6s per property class) and Market Pulse has 500'd on Netlify
+ * before by doing Closed work during a page render. The web page fetches the
+ * same numbers per tab from /api/market-pulse/closed-by-town instead.
+ */
+async function closedTrailingCounts(options: {
+  kind: ListingKind
+  propertyClass?: ListingPropertyClass
+  commercialOnly?: boolean
+}): Promise<MarketDigestClosedTownCount[]> {
+  try {
+    const { payload } = await readMarketPulseClosedCounts(options)
+    return payload.rows
+  } catch (err) {
+    console.warn(
+      '[market-digest] closed trailing counts failed',
+      err instanceof Error ? err.message : err,
+    )
+    return []
+  }
+}
 
 function isCommercialListing(listing: Listing): boolean {
   return isCommercialPropertyType(propertyClassHaystack(listing))
@@ -181,8 +216,12 @@ function commercialPayload(
 
 async function buildCachedCategorySlice(
   spec: CachedCategorySpec,
+  includeClosedTrailing = false,
 ): Promise<MarketDigestCategorySlice> {
-  const [market, westport, ...townRows] = await Promise.all([
+  const [closedTrailing, market, westport, ...townRows] = await Promise.all([
+    includeClosedTrailing
+      ? closedTrailingCounts({ kind: spec.kind, propertyClass: spec.propertyClass })
+      : Promise.resolve<MarketDigestClosedTownCount[]>([]),
     readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
     readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
     ...TMRE_TOWNS.map((town) =>
@@ -196,9 +235,11 @@ async function buildCachedCategorySlice(
     id: spec.id,
     label: spec.label,
     scopeLabel: spec.scopeLabel,
+    selectionLabel: spec.selectionLabel,
     market,
     westport,
     towns,
+    closedTrailing,
     deal: null,
   }
 }
@@ -212,9 +253,11 @@ function emptyCommercialCategorySlice(
     id: 'commercial',
     label: 'Commercial',
     scopeLabel: 'commercial sales',
+    selectionLabel: 'commercial',
     market: empty,
     westport: null,
     towns: [],
+    closedTrailing: [],
     deal: null,
   }
 }
@@ -227,6 +270,7 @@ function emptyCommercialCategorySlice(
  */
 async function buildCommercialCategorySlice(
   generatedAt: string,
+  includeClosedTrailing = false,
 ): Promise<MarketDigestCategorySlice> {
   try {
     // Four months of lookback covers the three prior full months plus the
@@ -277,9 +321,13 @@ async function buildCommercialCategorySlice(
       id: 'commercial',
       label: 'Commercial',
       scopeLabel: 'commercial sales',
+      selectionLabel: 'commercial',
       market,
       westport,
       towns,
+      closedTrailing: includeClosedTrailing
+        ? await closedTrailingCounts({ kind: 'sale', commercialOnly: true })
+        : [],
       deal,
     }
   } catch (err) {
@@ -321,11 +369,22 @@ function townTableLines(rows: MonthsSupplyPayload[]): string[] {
  * Assemble inventory + months-supply + Deal of the Week for the Monday email
  * and Market Pulse (with category tabs).
  */
-export async function buildMarketDigestSnapshot(): Promise<MarketDigestSnapshot> {
+export async function buildMarketDigestSnapshot(options?: {
+  /**
+   * Include the trailing closed-sales totals. Email only — the web page fetches
+   * them per tab so a two-year Closed aggregate never blocks the render.
+   */
+  includeClosedTrailing?: boolean
+}): Promise<MarketDigestSnapshot> {
+  const includeClosedTrailing = options?.includeClosedTrailing ?? false
   const generatedAt = new Date().toISOString()
   const [cachedSlices, commercial, social, deal] = await Promise.all([
-    Promise.all(CACHED_CATEGORY_SPECS.map((spec) => buildCachedCategorySlice(spec))),
-    buildCommercialCategorySlice(generatedAt),
+    Promise.all(
+      CACHED_CATEGORY_SPECS.map((spec) =>
+        buildCachedCategorySlice(spec, includeClosedTrailing),
+      ),
+    ),
+    buildCommercialCategorySlice(generatedAt, includeClosedTrailing),
     getSocialProfilesFresh(),
     readDealOfTheWeekCache(),
   ])
@@ -358,6 +417,7 @@ export async function buildMarketDigestSnapshot(): Promise<MarketDigestSnapshot>
     market,
     westport,
     towns: townRows,
+    closedTrailing: allSlice?.closedTrailing ?? [],
     categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({
@@ -409,6 +469,17 @@ export function formatMarketDigestEmail(snapshot: MarketDigestSnapshot): {
     '',
     'MOS = active ÷ avg monthly closings (3 prior full months).',
     'Sale listings, all property classes.',
+  ]
+
+  const closedRows = snapshot.closedTrailing ?? []
+  const closedLines = [
+    `CLOSED SALES — TRAILING ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} MONTHS (sales)`,
+    '-------------------------------------------------',
+    ...(closedRows.length === 0
+      ? ['(no closed sales in the trailing window yet)']
+      : closedRows.map(
+          (row) => `${pad(row.city.trim() || '—', 14)} ${row.count.toLocaleString()}`,
+        )),
   ]
 
   const dealLines: string[] = ['DEAL OF THE WEEK', '----------------']
@@ -464,6 +535,8 @@ export function formatMarketDigestEmail(snapshot: MarketDigestSnapshot): {
     ...kpiLines,
     '',
     ...inventoryLines,
+    '',
+    ...closedLines,
     '',
     ...dealLines,
     '',

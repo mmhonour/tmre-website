@@ -1,6 +1,12 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { fmtMoney } from "@/lib/listing-history";
-import type { MarketDigestSnapshot } from "@/lib/market-digest-types";
+import {
+  MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
+  type MarketDigestSnapshot,
+} from "@/lib/market-digest-types";
 import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
 import { splitSentences } from "@/lib/split-sentences";
 
@@ -14,10 +20,53 @@ function fmtActive(n: number | null | undefined): string {
   return String(Math.round(n));
 }
 
-function cityLabel(row: MonthsSupplyPayload): string {
+function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || "—";
   if (city.toLowerCase() === "all") return "All towns";
   return city;
+}
+
+/** Bars scramble briefly on load / property-type change, then land on real values. */
+const SETTLE_STEPS = 5;
+const SETTLE_STEP_MS = 130;
+
+function useSettleProgress(resetKey: string, barCount: number): number[] | null {
+  const [scramble, setScramble] = useState<number[] | null>(null);
+  const timers = useRef<number[]>([]);
+
+  useEffect(() => {
+    for (const id of timers.current) window.clearTimeout(id);
+    timers.current = [];
+
+    if (barCount === 0) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ) {
+      setScramble(null);
+      return;
+    }
+
+    const randomRow = () =>
+      Array.from({ length: barCount }, () => 12 + Math.random() * 88);
+    setScramble(randomRow());
+
+    for (let step = 1; step < SETTLE_STEPS; step++) {
+      timers.current.push(
+        window.setTimeout(() => setScramble(randomRow()), step * SETTLE_STEP_MS),
+      );
+    }
+    timers.current.push(
+      window.setTimeout(() => setScramble(null), SETTLE_STEPS * SETTLE_STEP_MS),
+    );
+
+    return () => {
+      for (const id of timers.current) window.clearTimeout(id);
+      timers.current = [];
+    };
+  }, [resetKey, barCount]);
+
+  return scramble;
 }
 
 function chartRows(snapshot: MarketDigestSnapshot): MonthsSupplyPayload[] {
@@ -35,7 +84,7 @@ function chartRows(snapshot: MarketDigestSnapshot): MonthsSupplyPayload[] {
   return rows;
 }
 
-function BarChart({
+function BarChart<Row extends { city: string }>({
   title,
   rows,
   valueOf,
@@ -43,16 +92,24 @@ function BarChart({
   barClassName,
   emptyMessage,
   townHref,
+  settleKey,
 }: {
   title: string;
-  rows: MonthsSupplyPayload[];
-  valueOf: (row: MonthsSupplyPayload) => number | null;
-  formatValue: (row: MonthsSupplyPayload) => string;
+  rows: Row[];
+  valueOf: (row: Row) => number | null;
+  formatValue: (row: Row) => string;
   barClassName: string;
   emptyMessage: string;
   /** When set, town labels become links (inventory → Intelligence, MOS → Stats). */
   townHref?: (cityLabel: string) => string;
+  /** Changing this replays the settle animation (page load, property type switch). */
+  settleKey?: string;
 }) {
+  const scramble = useSettleProgress(
+    `${settleKey ?? ""}-${title}`,
+    rows.length,
+  );
+
   if (rows.length === 0) {
     return (
       <section>
@@ -78,10 +135,11 @@ function BarChart({
         {title}
       </p>
       <ul className="space-y-2.5">
-        {rows.map((row) => {
+        {rows.map((row, index) => {
           const v = valueOf(row);
-          const pct =
+          const settled =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
+          const pct = scramble?.[index] ?? settled;
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
           return (
@@ -103,7 +161,7 @@ function BarChart({
               )}
               <div className="h-3.5 rounded-sm bg-black/10 overflow-hidden">
                 <div
-                  className={`h-full rounded-sm ${barClassName}`}
+                  className={`h-full rounded-sm transition-[width] duration-150 ease-out ${barClassName}`}
                   style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
                 />
               </div>
@@ -140,14 +198,19 @@ export default function WeeklyBriefContent({
   scopeLabel = "sales",
   showDealOfTheWeek = true,
   dealHeading = "Deal of the Week",
+  selectionLabel,
   townHref,
   monthsSupplyTownHref,
+  closedSalesTownHref,
+  settleKey,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
   eyebrow?: string;
   /** Chart / footnote scope for the active category tab. */
   scopeLabel?: string;
+  /** Property type the visitor picked, for chart titles (defaults to scope). */
+  selectionLabel?: string;
   showDealOfTheWeek?: boolean;
   /** Heading above the featured deal card. */
   dealHeading?: string;
@@ -155,9 +218,15 @@ export default function WeeklyBriefContent({
   townHref?: (cityLabel: string) => string;
   /** Months supply town labels → Stats months-supply chart. */
   monthsSupplyTownHref?: (cityLabel: string) => string;
+  /** Closed-sales town labels → Stats sales-by-month chart. */
+  closedSalesTownHref?: (cityLabel: string) => string;
+  /** Changing this replays the bar settle animation. */
+  settleKey?: string;
 }) {
   const rows = chartRows(snapshot);
+  const closedRows = snapshot.closedTrailing ?? [];
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
+  const titleScope = selectionLabel ?? scopeLabel;
 
   return (
     <article className="mx-auto max-w-2xl">
@@ -196,13 +265,14 @@ export default function WeeklyBriefContent({
         </div>
 
         <BarChart
-          title={`Active inventory (${scopeLabel})`}
+          title={`Active inventory (${titleScope})`}
           rows={rows}
           valueOf={(r) => r.activeCount}
           formatValue={(r) => fmtActive(r.activeCount)}
           barClassName="bg-[var(--mp-inventory-bar)]"
           emptyMessage="No inventory rows in cache yet."
           townHref={townHref}
+          settleKey={settleKey}
         />
 
         <BarChart
@@ -213,6 +283,18 @@ export default function WeeklyBriefContent({
           barClassName="bg-[var(--mp-months-supply-bar)]"
           emptyMessage="No months-supply rows in cache yet."
           townHref={monthsSupplyTownHref ?? townHref}
+          settleKey={settleKey}
+        />
+
+        <BarChart
+          title={`Closed sales — trailing ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} months (${titleScope})`}
+          rows={closedRows}
+          valueOf={(r) => r.count}
+          formatValue={(r) => r.count.toLocaleString()}
+          barClassName="bg-[var(--mp-inventory-bar)]"
+          emptyMessage="Loading closed sales…"
+          townHref={closedSalesTownHref}
+          settleKey={settleKey}
         />
 
         {deal ? (

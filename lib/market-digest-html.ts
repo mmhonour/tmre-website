@@ -3,7 +3,10 @@ import 'server-only'
 import { SITE_URL } from '@/lib/business-info'
 import { fmtMoney } from '@/lib/listing-history'
 import { splitSentences } from '@/lib/split-sentences'
-import type { MarketDigestSnapshot } from '@/lib/market-digest-types'
+import {
+  MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
+  type MarketDigestSnapshot,
+} from '@/lib/market-digest-types'
 import type { MonthsSupplyPayload } from '@/lib/months-supply-types'
 
 const NAVY = '#1B2A4A'
@@ -35,7 +38,7 @@ function fmtActive(n: number | null | undefined): string {
   return String(Math.round(n))
 }
 
-function cityLabel(row: MonthsSupplyPayload): string {
+function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || '—'
   if (city.toLowerCase() === 'all') return 'All towns'
   return city
@@ -83,11 +86,11 @@ function barRow(
     </tr>`
 }
 
-function barChartSection(
+function barChartSection<Row extends { city: string }>(
   title: string,
-  rows: MonthsSupplyPayload[],
-  valueOf: (row: MonthsSupplyPayload) => number | null,
-  formatValue: (row: MonthsSupplyPayload) => string,
+  rows: Row[],
+  valueOf: (row: Row) => number | null,
+  formatValue: (row: Row) => string,
   barColor: string,
   emptyMessage: string,
 ): string {
@@ -300,6 +303,14 @@ export function formatMarketDigestHtml(
                   (r) => fmtMosShort(r.monthsSupply),
                   BAR_MOS,
                   'No months-supply rows in cache yet.',
+                )}
+                ${barChartSection(
+                  `Closed sales — trailing ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} months (sales)`,
+                  snapshot.closedTrailing ?? [],
+                  (r) => r.count,
+                  (r) => r.count.toLocaleString(),
+                  BAR_INVENTORY,
+                  'No closed sales in the trailing window yet.',
                 )}
                 ${dealSection}
                 <tr><td style="padding:0 0 18px 0;">

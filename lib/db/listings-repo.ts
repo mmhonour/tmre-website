@@ -1516,6 +1516,75 @@ export async function readRecentClosedListingsFromDb(
   return rows.map((row) => rowToListing(row))
 }
 
+export type ClosedSalesByTownRow = { town: string; count: number }
+
+/**
+ * Closed counts per town over a trailing month window, aggregated in Postgres.
+ *
+ * Market Pulse cannot do this by pulling rows: months-supply only keeps ~4
+ * months of Closed and caps at 2,000 rows per town, so a two-year window would
+ * silently truncate. The kind / property-class regexes mirror
+ * `lib/listing-kind.ts` and `lib/listing-property-class.ts` against the same
+ * haystack of columns those helpers read.
+ */
+export async function readClosedCountsByTown(options: {
+  towns: readonly string[]
+  months?: number
+  kind: 'sale' | 'rental'
+  /** Residential subtype; ignored when `commercialOnly` is set. */
+  propertyClass?: 'all' | 'homes' | 'multi' | 'condos'
+  /** Market Pulse Commercial tab — not a residential class. */
+  commercialOnly?: boolean
+}): Promise<ClosedSalesByTownRow[]> {
+  const towns = [...options.towns]
+  if (towns.length === 0) return []
+  const months = Math.max(1, Math.min(Math.round(options.months ?? 24), 120))
+
+  const COMMERCIAL = 'commercial|industrial|business'
+  const CONDO = 'condo|condominium|co-?op|cooperative'
+  const MULTI =
+    'multi|duplex|triplex|fourplex|2-family|3-family|4-family|two[ -]?family|three[ -]?family|four[ -]?family|residential\\s*income|income\\s*property'
+  const RENTAL = 'rent|lease'
+
+  const classClause = options.commercialOnly
+    ? `hay ~* '${COMMERCIAL}'`
+    : options.propertyClass === 'condos'
+      ? `hay ~* '${CONDO}'`
+      : options.propertyClass === 'multi'
+        ? `hay ~* '${MULTI}'`
+        : options.propertyClass === 'homes'
+          ? `hay !~* '${COMMERCIAL}' AND hay !~* '${CONDO}' AND hay !~* '${MULTI}'`
+          : 'true'
+
+  const kindClause =
+    options.kind === 'rental' ? `kind_hay ~* '${RENTAL}'` : `kind_hay !~* '${RENTAL}'`
+
+  const rows = await query<{ town: string; count: number }>(
+    `WITH closed AS (
+       SELECT town,
+              concat_ws(' ', property_type, data->>'style',
+                        raw->>'PropertyType', raw->>'PropertySubType',
+                        raw->>'MRD_TYP', raw->>'ArchitecturalStyle') AS hay,
+              concat_ws(' ', property_type,
+                        raw->>'PropertyType', raw->>'PropertySubType',
+                        raw->>'TransactionType', raw->>'MRD_TYP',
+                        raw->>'StandardStatus') AS kind_hay
+         FROM listings
+        WHERE status_bucket = 'Closed'
+          AND town = ANY($1::text[])
+          AND COALESCE(close_date, status_change_timestamp, modification_timestamp)
+              >= NOW() - make_interval(months => $2)
+     )
+     SELECT town, count(*)::int AS count
+       FROM closed
+      WHERE ${kindClause} AND ${classClause}
+      GROUP BY town
+      ORDER BY town`,
+    [towns, months],
+  )
+  return rows
+}
+
 /** All listings across several towns for one bucket, priced high→low (nulls last). */
 export async function readAllListingsFromDb(
   towns: readonly string[],

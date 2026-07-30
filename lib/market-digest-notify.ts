@@ -50,7 +50,9 @@ export async function sendMarketDigestEmail(opts?: {
     return { ok: false, skipped: true, reason: 'RESEND_API_KEY not set' }
   }
 
-  const snapshot = await buildMarketDigestSnapshot()
+  // Background worker has ~15 minutes, so the email can afford the two-year
+  // closed-sales aggregate that Market Pulse fetches client-side.
+  const snapshot = await buildMarketDigestSnapshot({ includeClosedTrailing: true })
   const { subject, text, html } = formatMarketDigestEmail(snapshot)
   const from =
     process.env.CONTACT_FROM_EMAIL?.trim() ||

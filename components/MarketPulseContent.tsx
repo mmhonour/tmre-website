@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import WeeklyBriefContent from "@/components/WeeklyBriefContent";
-import type { MarketDigestSnapshot } from "@/lib/market-digest-types";
+import type {
+  MarketDigestClosedTownCount,
+  MarketDigestSnapshot,
+} from "@/lib/market-digest-types";
 import {
   MARKET_PULSE_CATEGORY_IDS,
+  marketPulseTownClosedSalesStatsHref,
   marketPulseTownIntelligenceHref,
   marketPulseTownMonthsSupplyStatsHref,
   type MarketPulseCategoryId,
@@ -15,6 +19,15 @@ import {
 } from "@/lib/filter-pill-styles";
 
 const TAB_ORDER = MARKET_PULSE_CATEGORY_IDS;
+
+/** Closed-by-town query params per tab (mirrors the digest category specs). */
+const CLOSED_QUERY: Record<MarketPulseCategoryId, string> = {
+  all: "kind=sale&property=all",
+  sfr: "kind=sale&property=homes",
+  condo: "kind=sale&property=condos",
+  rentals: "kind=rental&property=all",
+  commercial: "commercial=1",
+};
 
 export default function MarketPulseContent({
   snapshot,
@@ -34,6 +47,45 @@ export default function MarketPulseContent({
 
   const active =
     categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+  const category = active?.id ?? "all";
+
+  // Two-year closed aggregate is fetched per tab: running it for five property
+  // classes during SSR is what used to time the page out on Netlify.
+  const [closedByCategory, setClosedByCategory] = useState<
+    Partial<Record<MarketPulseCategoryId, MarketDigestClosedTownCount[]>>
+  >(() => {
+    const seeded: Partial<
+      Record<MarketPulseCategoryId, MarketDigestClosedTownCount[]>
+    > = {};
+    for (const cat of snapshot.categories) {
+      if (cat.closedTrailing?.length) seeded[cat.id] = cat.closedTrailing;
+    }
+    return seeded;
+  });
+
+  useEffect(() => {
+    if (closedByCategory[category]) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/market-pulse/closed-by-town?${CLOSED_QUERY[category]}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          rows?: MarketDigestClosedTownCount[];
+        };
+        if (cancelled || !Array.isArray(body.rows)) return;
+        setClosedByCategory((prev) => ({ ...prev, [category]: body.rows }));
+      } catch {
+        /* leave the chart on its empty state */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [category, closedByCategory]);
 
   const viewSnapshot: MarketDigestSnapshot = active
     ? {
@@ -41,15 +93,17 @@ export default function MarketPulseContent({
         market: active.market,
         westport: active.westport,
         towns: active.towns,
+        closedTrailing: closedByCategory[category] ?? [],
         dealOfTheWeek: active.deal ?? null,
       }
     : snapshot;
 
-  const category = active?.id ?? "all";
   const townHref = (cityLabel: string) =>
     marketPulseTownIntelligenceHref(cityLabel, category);
   const monthsSupplyTownHref = (cityLabel: string) =>
     marketPulseTownMonthsSupplyStatsHref(cityLabel, category);
+  const closedSalesTownHref = (cityLabel: string) =>
+    marketPulseTownClosedSalesStatsHref(cityLabel, category);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -83,12 +137,15 @@ export default function MarketPulseContent({
         snapshot={viewSnapshot}
         etDate={etDate}
         scopeLabel={active?.scopeLabel ?? "sales"}
+        selectionLabel={active?.selectionLabel ?? active?.scopeLabel ?? "sales"}
         showDealOfTheWeek
         dealHeading={
           active?.id === "all" ? "Deal of the Week" : "Featured deal"
         }
         townHref={townHref}
         monthsSupplyTownHref={monthsSupplyTownHref}
+        closedSalesTownHref={closedSalesTownHref}
+        settleKey={category}
       />
     </div>
   );
