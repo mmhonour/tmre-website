@@ -33,6 +33,7 @@ import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenc
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
 import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
+import AdminPageStylesPanel from "@/components/admin/AdminPageStylesPanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import AdminLatestStatusLogicPanel from "@/components/admin/AdminLatestStatusLogicPanel";
@@ -712,6 +713,7 @@ export default async function AdminPage() {
       intelInventory={inventoryBandsPanel}
       intelDealBoard={<AdminIntelligenceDealBoardPanel />}
       ctCoverage={<AdminCtCoveragePanel />}
+      pageStyles={<AdminPageStylesPanel />}
     />
   );
 

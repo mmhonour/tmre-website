@@ -22,7 +22,8 @@ export type AdminDataControlsPanelId =
   | "rets"
   | "intel-inventory"
   | "intel-deal-board"
-  | "ct-coverage";
+  | "ct-coverage"
+  | "page-styles";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -154,6 +155,11 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     label: "CT coverage",
     subtitle:
       "Activate CT counties / towns for future site-wide coverage (not wired to pages yet)",
+  },
+  {
+    id: "page-styles",
+    label: "Page styles",
+    subtitle: "Palette, typography, and presets for Market Pulse",
   },
 ];
 
@@ -901,7 +907,8 @@ export function isAdminDataControlsPanelId(
     value === "rets" ||
     value === "intel-inventory" ||
     value === "intel-deal-board" ||
-    value === "ct-coverage"
+    value === "ct-coverage" ||
+    value === "page-styles"
   );
 }
 

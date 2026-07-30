@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import LeadForm from "@/components/LeadForm";
 import MarketPulseContent from "@/components/MarketPulseContent";
 import { buildMarketDigestSnapshot } from "@/lib/market-digest";
+import {
+  getMarketPulseThemeFresh,
+  marketPulseThemeCssVars,
+} from "@/lib/page-theme-config";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +21,10 @@ export const metadata: Metadata = {
 };
 
 export default async function MarketPulsePage() {
-  const snapshot = await buildMarketDigestSnapshot();
+  const [snapshot, theme] = await Promise.all([
+    buildMarketDigestSnapshot(),
+    getMarketPulseThemeFresh(),
+  ]);
   const etDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "long",
@@ -26,22 +34,25 @@ export default async function MarketPulsePage() {
   }).format(new Date(snapshot.generatedAt));
 
   return (
-    <main className="bg-[#EEF1F6] min-h-[70vh]">
+    <main
+      style={marketPulseThemeCssVars(theme) as CSSProperties}
+      className="market-pulse-theme min-h-[70vh] bg-[var(--mp-page-bg)] [font-family:var(--mp-body-font)]"
+    >
       <section className="pt-28 pb-6 lg:pt-36 lg:pb-8">
         <div className="mx-auto max-w-2xl px-6 lg:px-10 mb-8">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
+          <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] uppercase text-[var(--mp-accent)] mb-3">
             Markets
           </p>
-          <h1 className="font-serif text-3xl sm:text-4xl text-navy leading-tight">
+          <h1 className="[font-family:var(--mp-heading-font)] text-3xl sm:text-4xl text-[var(--mp-text)] leading-tight">
             Market Pulse
           </h1>
-          <p className="mt-3 text-slate text-base leading-relaxed max-w-xl">
+          <p className="mt-3 text-[var(--mp-muted-text)] text-base leading-relaxed max-w-xl">
             The live web edition of the Monday market brief — inventory and
             months supply by category (ALL, SFR, Condo, Rentals, Commercial),
             plus Deal of the Week on ALL. Same ALL-sales snapshot we email each
             week.
           </p>
-          <p className="mt-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
+          <p className="mt-2 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)] opacity-70">
             As of {etDate} ET
           </p>
         </div>

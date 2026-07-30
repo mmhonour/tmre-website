@@ -56,10 +56,10 @@ function BarChart({
   if (rows.length === 0) {
     return (
       <section>
-        <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-gold mb-3">
+        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
           {title}
         </p>
-        <p className="font-serif text-sm text-slate">{emptyMessage}</p>
+        <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">{emptyMessage}</p>
       </section>
     );
   }
@@ -74,7 +74,7 @@ function BarChart({
 
   return (
     <section>
-      <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-gold mb-4">
+      <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-4">
         {title}
       </p>
       <ul className="space-y-2.5">
@@ -92,22 +92,22 @@ function BarChart({
               {href ? (
                 <Link
                   href={href}
-                  className="font-serif text-sm text-navy truncate underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors"
+                  className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors"
                 >
                   {label}
                 </Link>
               ) : (
-                <span className="font-serif text-sm text-navy truncate">
+                <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
                   {label}
                 </span>
               )}
-              <div className="h-3.5 rounded-sm bg-[#E8EBF2] overflow-hidden">
+              <div className="h-3.5 rounded-sm bg-black/10 overflow-hidden">
                 <div
                   className={`h-full rounded-sm ${barClassName}`}
                   style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
                 />
               </div>
-              <span className="font-mono text-xs text-navy text-right tabular-nums">
+              <span className="[font-family:var(--mp-mono-font)] text-xs text-[var(--mp-text)] text-right tabular-nums">
                 {formatValue(row)}
               </span>
             </li>
@@ -120,11 +120,11 @@ function BarChart({
 
 function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-charcoal/[0.08] bg-cream px-3 py-4 text-center">
-      <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-slate mb-1.5">
+    <div className="rounded-lg border border-black/[0.08] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
+      <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase text-[var(--mp-muted-text)] mb-1.5">
         {label}
       </p>
-      <p className="font-serif text-2xl text-navy leading-tight">{value}</p>
+      <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight">{value}</p>
     </div>
   );
 }
@@ -158,21 +158,21 @@ export default function WeeklyBriefContent({
 
   return (
     <article className="mx-auto max-w-2xl">
-      <header className="rounded-t-2xl bg-navy px-6 py-7 sm:px-8">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2">
+      <header className="rounded-t-2xl bg-[var(--mp-surface)] px-6 py-7 sm:px-8">
+        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] uppercase text-[var(--mp-accent)] mb-2">
           {eyebrow}
         </p>
-        <h1 className="font-serif text-2xl sm:text-3xl text-white leading-snug">
+        <h1 className="[font-family:var(--mp-heading-font)] text-2xl sm:text-3xl text-white leading-snug">
           {etDate}
         </h1>
         <p className="mt-3 font-mono text-[11px]">
-          <Link href="/stats" className="text-gold underline underline-offset-2">
+          <Link href="/stats" className="text-[var(--mp-accent)] underline underline-offset-2">
             View live stats
           </Link>
         </p>
       </header>
 
-      <div className="rounded-b-2xl border border-t-0 border-charcoal/[0.08] bg-white px-6 py-7 sm:px-8 space-y-8 shadow-sm shadow-navy/5">
+      <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-6 py-7 sm:px-8 space-y-8 shadow-sm shadow-black/5">
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <Kpi
             label="Market active"
@@ -197,7 +197,7 @@ export default function WeeklyBriefContent({
           rows={rows}
           valueOf={(r) => r.activeCount}
           formatValue={(r) => fmtActive(r.activeCount)}
-          barClassName="bg-[#2A3D6B]"
+          barClassName="bg-[var(--mp-inventory-bar)]"
           emptyMessage="No inventory rows in cache yet."
           townHref={townHref}
         />
@@ -207,13 +207,13 @@ export default function WeeklyBriefContent({
           rows={rows}
           valueOf={(r) => r.monthsSupply}
           formatValue={(r) => fmtMos(r.monthsSupply)}
-          barClassName="bg-gold"
+          barClassName="bg-[var(--mp-months-supply-bar)]"
           emptyMessage="No months-supply rows in cache yet."
           townHref={townHref}
         />
 
         {deal ? (
-          <section className="rounded-xl bg-[#131F38] overflow-hidden">
+          <section className="rounded-xl bg-[var(--mp-surface-deep)] overflow-hidden">
             <div className="px-5 pt-5 pb-3 sm:px-6">
               <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-gold mb-1">
                 {dealHeading}
