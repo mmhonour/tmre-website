@@ -338,9 +338,12 @@ export default function HomeMethodOverview() {
               <p className="mt-3 max-w-xl animate-fade-up-delay-1 text-[0.92rem] leading-relaxed text-white/75 sm:mt-5 sm:text-base lg:text-lg">
                 Giving buyers and owners a single, town-calibrated measure.
                 Relative value, market context, and deal shape — scored and
-                synthesized so you spend time effectively. Use Market
-                Intelligence, Statistics, and &ldquo;What If&rdquo; scenarios to
-                read the room.
+                synthesized so you spend time effectively.
+              </p>
+
+              <p className="mt-3 max-w-xl animate-fade-up-delay-1 text-[0.92rem] leading-relaxed text-white/75 sm:mt-4 sm:text-base lg:text-lg">
+                Use Market Intelligence, Statistics, and &ldquo;What If&rdquo;
+                scenarios to read the room.
               </p>
 
               <p className="mt-3 hidden max-w-xl animate-fade-up-delay-1 text-sm leading-relaxed text-white/55 sm:mt-4 sm:block">
