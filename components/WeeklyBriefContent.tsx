@@ -50,7 +50,7 @@ function BarChart({
   formatValue: (row: MonthsSupplyPayload) => string;
   barClassName: string;
   emptyMessage: string;
-  /** When set, town labels link into Intelligence with current Pulse criteria. */
+  /** When set, town labels become links (inventory → Intelligence, MOS → Stats). */
   townHref?: (cityLabel: string) => string;
 }) {
   if (rows.length === 0) {
@@ -141,6 +141,7 @@ export default function WeeklyBriefContent({
   showDealOfTheWeek = true,
   dealHeading = "Deal of the Week",
   townHref,
+  monthsSupplyTownHref,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -150,8 +151,10 @@ export default function WeeklyBriefContent({
   showDealOfTheWeek?: boolean;
   /** Heading above the featured deal card. */
   dealHeading?: string;
-  /** Town chart labels → Intelligence (with current Pulse criteria). */
+  /** Active inventory town labels → Intelligence. */
   townHref?: (cityLabel: string) => string;
+  /** Months supply town labels → Stats months-supply chart. */
+  monthsSupplyTownHref?: (cityLabel: string) => string;
 }) {
   const rows = chartRows(snapshot);
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
@@ -209,7 +212,7 @@ export default function WeeklyBriefContent({
           formatValue={(r) => fmtMos(r.monthsSupply)}
           barClassName="bg-[var(--mp-months-supply-bar)]"
           emptyMessage="No months-supply rows in cache yet."
-          townHref={townHref}
+          townHref={monthsSupplyTownHref ?? townHref}
         />
 
         {deal ? (

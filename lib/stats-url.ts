@@ -22,3 +22,16 @@ export function statsMedianListingsHref(options: {
   }
   return `/stats?${params.toString()}#median-price-listings`;
 }
+
+/** Deep link to Stats → Months supply chart for a town (or All). */
+export function statsMonthsSupplyHref(options: {
+  city: string;
+  kind?: "sale" | "rental";
+}): string {
+  const params = new URLSearchParams({
+    city: options.city,
+    kind: options.kind ?? "sale",
+    chart: "months-supply",
+  });
+  return `/stats?${params.toString()}`;
+}

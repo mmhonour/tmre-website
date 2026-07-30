@@ -1,57 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { notifyContactByEmail } from '@/lib/contact-notify'
+import {
+  insertLead,
+  isLeadAudienceType,
+  LEAD_AUDIENCE_TYPES,
+  listLeads,
+  type Lead,
+} from '@/lib/leads-store'
 import { attachLeadFieldsToVisitor } from '@/lib/visitors'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
-const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
 const VID_COOKIE = 'tmre_vid'
-
-const AUDIENCE_TYPES = ['seller', 'buyer', 'investor', 'contractor'] as const
-type AudienceType = (typeof AUDIENCE_TYPES)[number]
-
-type Lead = {
-  id: string
-  name: string
-  email: string
-  phone: string | null
-  zip: string
-  town: string | null
-  audience_type: AudienceType
-  source: string
-  createdAt: string
-}
 
 function townFromZip(zip: string): string | null {
   const z = zip.trim()
   if (/^0685[0-5]$/.test(z)) return 'Norwalk'
   if (z === '06880' || z === '06838') return 'Westport'
   return null
-}
-
-function isAudienceType(v: unknown): v is AudienceType {
-  return typeof v === 'string' && (AUDIENCE_TYPES as readonly string[]).includes(v)
-}
-
-async function readLeads(): Promise<Lead[]> {
-  try {
-    const raw = await fs.readFile(LEADS_FILE, 'utf8')
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as Lead[]) : []
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
-    throw err
-  }
-}
-
-async function writeLeads(leads: Lead[]): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-  await fs.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf8')
 }
 
 async function attachLeadToVisitor(vid: string, lead: Lead): Promise<void> {
@@ -90,9 +59,9 @@ export async function POST(req: NextRequest) {
   if (!zip || !/^\d{5}$/.test(zip)) {
     return NextResponse.json({ error: 'valid 5-digit zip is required' }, { status: 400 })
   }
-  if (!isAudienceType(audience_type)) {
+  if (!isLeadAudienceType(audience_type)) {
     return NextResponse.json(
-      { error: `audience_type must be one of ${AUDIENCE_TYPES.join(', ')}` },
+      { error: `audience_type must be one of ${LEAD_AUDIENCE_TYPES.join(', ')}` },
       { status: 400 },
     )
   }
@@ -110,9 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const leads = await readLeads()
-    leads.push(lead)
-    await writeLeads(leads)
+    await insertLead(lead)
   } catch (err) {
     console.error('[/api/leads] write failed', err)
     return NextResponse.json({ error: 'Failed to store lead' }, { status: 500 })
@@ -141,9 +108,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, lead, emailed }, { status: 201 })
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!isAdminAuthorizedRequest(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
-    const leads = await readLeads()
+    const leads = await listLeads()
     return NextResponse.json({ count: leads.length, leads })
   } catch (err) {
     console.error('[/api/leads] read failed', err)

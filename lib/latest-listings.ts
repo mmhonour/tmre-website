@@ -97,10 +97,11 @@ function isActiveMlsStatus(status: string): boolean {
   return status === 'active' || status === 'a'
 }
 
-/** Prior statuses that qualify Back on Market (UC / UC-CTS / Temp off market only). */
+/** Prior statuses that qualify Back on Market (CS / UC / UC-CTS / Temp off). */
 function isBackOnMarketSourceStatus(status: string | null): boolean {
   const s = status?.trim().toLowerCase() ?? ''
   if (!s) return false
+  if (s === 'coming soon' || s === 'cs') return true
   if (
     s === UNDER_CONTRACT_MLS_STATUS.toLowerCase() ||
     s === UNDER_CONTRACT_CTS_MLS_STATUS.toLowerCase() ||
@@ -128,8 +129,8 @@ function isNewInventory(
 }
 
 /**
- * Available again but not new. Requires a recorded previous status from UC /
- * UC-CTS / Temp off market within the Back on Market window.
+ * Available again after Coming Soon / UC / UC-CTS / Temp off market within the
+ * Back on Market window. Evaluated before New so CS → Active is not relabelled.
  */
 function isBackOnMarket(
   currentStatus: string,
@@ -161,7 +162,6 @@ function deriveStatus(
   const status = listing.status?.trim().toLowerCase() ?? ''
   if (status === 'pending' || status === 'p') return null
   if (status === 'coming soon' || status === 'cs') return 'Coming Soon'
-  if (isNewInventory(daysOnMarket, listing.listDate ?? null, nowMs)) return 'New'
   if (
     isBackOnMarket(
       status,
@@ -172,6 +172,7 @@ function deriveStatus(
   ) {
     return 'Back on Market'
   }
+  if (isNewInventory(daysOnMarket, listing.listDate ?? null, nowMs)) return 'New'
   if (priceChangePercent != null && priceChangePercent !== 0) {
     return priceChangePercent > 0 ? 'Reduced' : 'Increased'
   }
@@ -429,8 +430,8 @@ export function feedIsTmreOnly(rows: readonly LatestListingRow[]): boolean {
 }
 
 /**
- * Prefer last-24h MLS mods + brand-new list dates among event rows only
- * (Coming Soon / New / Back on Market / Reduced / Increased).
+ * Rank event rows for /latest: Eastern calendar today first (timestamp desc),
+ * then prior day, then older — Coming Soon / New / BOM / Reduced / Increased.
  */
 function rankLatestFreshFirst(
   rows: LatestListingRow[],

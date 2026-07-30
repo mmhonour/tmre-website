@@ -654,6 +654,17 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'visitors' },
   },
   {
+    id: 'leads-postgres',
+    name: 'Monday brief / home CTA leads',
+    category: 'site-data',
+    medium: 'postgres',
+    location: 'leads',
+    keyPattern: 'leads.id',
+    owner: 'lib/leads-store.ts',
+    notes: 'Replaces data/leads.json — durable on Netlify serverless.',
+    live: { kind: 'postgres_table', table: 'leads' },
+  },
+  {
     id: 'contacts-json',
     name: 'Contact form leads',
     category: 'site-data',

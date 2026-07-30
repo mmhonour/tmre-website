@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import FedAnalysisCalendar from "@/components/fed-analysis/FedAnalysisCalendar";
+import FedRecentDecisions from "@/components/fed-analysis/FedRecentDecisions";
 import {
   decisionLabel,
   FOMC_MEETINGS,
   formatFedFundsRange,
+  formatFomcMeetingSpan,
   getNextFomcMeeting,
   getPrevailingFedPolicy,
-  parseFomcYmd,
 } from "@/lib/fed-fomc-calendar";
 
 export const metadata: Metadata = {
@@ -21,13 +22,6 @@ export default function FedAnalysisPage() {
   const now = new Date();
   const prevailing = getPrevailingFedPolicy(now);
   const nextMeeting = getNextFomcMeeting(now);
-  const recent = [...FOMC_MEETINGS]
-    .filter((m) => m.decision != null)
-    .sort(
-      (a, b) =>
-        parseFomcYmd(b.endDate).getTime() - parseFomcYmd(a.endDate).getTime(),
-    )
-    .slice(0, 8);
 
   return (
     <>
@@ -93,7 +87,10 @@ export default function FedAnalysisPage() {
               {nextMeeting ? (
                 <>
                   <p className="mt-3 font-serif text-2xl text-navy sm:text-3xl">
-                    {formatSpan(nextMeeting.startDate, nextMeeting.endDate)}
+                    {formatFomcMeetingSpan(
+                      nextMeeting.startDate,
+                      nextMeeting.endDate,
+                    )}
                   </p>
                   <p className="mt-2 text-sm text-slate">
                     {nextMeeting.decision == null
@@ -132,31 +129,7 @@ export default function FedAnalysisPage() {
             </div>
 
             <div>
-              <p className="mb-3 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                Recent decisions
-              </p>
-              <ol className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-                {recent.map((m, i) => (
-                  <li
-                    key={m.id}
-                    className={`flex items-start justify-between gap-3 px-4 py-3.5 sm:px-5 ${
-                      i > 0 ? "border-t border-charcoal/[0.06]" : ""
-                    }`}
-                  >
-                    <div>
-                      <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-navy">
-                        {formatSpan(m.startDate, m.endDate)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate">
-                        {decisionLabel(m.decision, m.basisPoints)}
-                      </p>
-                    </div>
-                    <p className="shrink-0 font-mono text-[12px] tabular-nums text-navy">
-                      {formatFedFundsRange(m.targetRangeLow, m.targetRangeHigh)}
-                    </p>
-                  </li>
-                ))}
-              </ol>
+              <FedRecentDecisions meetings={FOMC_MEETINGS} />
               <p className="mt-4 text-xs leading-relaxed text-slate">
                 Source schedule:{" "}
                 <a
@@ -184,20 +157,4 @@ export default function FedAnalysisPage() {
       </section>
     </>
   );
-}
-
-function formatSpan(startDate: string, endDate: string): string {
-  const start = parseFomcYmd(startDate);
-  const end = parseFomcYmd(endDate);
-  const sameMonth = start.getMonth() === end.getMonth();
-  const a = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(start);
-  const b = new Intl.DateTimeFormat("en-US", {
-    month: sameMonth ? undefined : "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(end);
-  return `${a} – ${b}`;
 }

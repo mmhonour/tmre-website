@@ -253,6 +253,39 @@ export function decisionLabel(
   return basisPoints != null ? `Hike ${Math.abs(basisPoints)} bps` : 'Hike'
 }
 
+/** Single calendar day with weekday — e.g. "Wed, Jul 29, 2026". */
+export function formatFomcDayWithWeekday(
+  ymd: string,
+  opts?: { month?: 'short' | 'long'; year?: boolean },
+): string {
+  const date = parseYmd(ymd)
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: opts?.month ?? 'short',
+    day: 'numeric',
+    ...(opts?.year === false ? {} : { year: 'numeric' }),
+  }).format(date)
+}
+
+/** Meeting span with weekdays on both ends — e.g. "Tue, Jul 28 – Wed, Jul 29, 2026". */
+export function formatFomcMeetingSpan(startDate: string, endDate: string): string {
+  const start = parseYmd(startDate)
+  const end = parseYmd(endDate)
+  const sameMonth = start.getMonth() === end.getMonth()
+  const a = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(start)
+  const b = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: sameMonth ? undefined : 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(end)
+  return `${a} – ${b}`
+}
+
 /** Most recent meeting with a recorded decision (prevailing policy). */
 export function getPrevailingFedPolicy(
   now = new Date(),
@@ -266,12 +299,9 @@ export function getPrevailingFedPolicy(
     )
   const meeting = decided[0]
   if (!meeting || meeting.decision == null) return null
-  const decidedOnLabel = new Intl.DateTimeFormat('en-US', {
+  const decidedOnLabel = formatFomcDayWithWeekday(meeting.endDate, {
     month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: 'America/New_York',
-  }).format(parseYmd(meeting.endDate))
+  })
   return {
     meeting,
     targetLabel: formatFedFundsRange(

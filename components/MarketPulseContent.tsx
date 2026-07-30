@@ -6,6 +6,7 @@ import type { MarketDigestSnapshot } from "@/lib/market-digest-types";
 import {
   MARKET_PULSE_CATEGORY_IDS,
   marketPulseTownIntelligenceHref,
+  marketPulseTownMonthsSupplyStatsHref,
   type MarketPulseCategoryId,
 } from "@/lib/market-pulse-shared";
 import {
@@ -44,8 +45,11 @@ export default function MarketPulseContent({
       }
     : snapshot;
 
+  const category = active?.id ?? "all";
   const townHref = (cityLabel: string) =>
-    marketPulseTownIntelligenceHref(cityLabel, active?.id ?? "all");
+    marketPulseTownIntelligenceHref(cityLabel, category);
+  const monthsSupplyTownHref = (cityLabel: string) =>
+    marketPulseTownMonthsSupplyStatsHref(cityLabel, category);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -84,6 +88,7 @@ export default function MarketPulseContent({
           active?.id === "all" ? "Deal of the Week" : "Featured deal"
         }
         townHref={townHref}
+        monthsSupplyTownHref={monthsSupplyTownHref}
       />
     </div>
   );

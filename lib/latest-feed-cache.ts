@@ -8,8 +8,8 @@ import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */
-// v5: event-only feed (Coming Soon / New / BOM / Reduced / Increased).
-export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v5:global'
+// v6: BOM includes Coming Soon → Active; fill today then prior Eastern day.
+export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v6:global'
 export const LATEST_GLOBAL_FEED_LIMIT = 30
 
 export type LatestGlobalFeedCachePayload = {

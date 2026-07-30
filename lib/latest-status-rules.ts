@@ -20,6 +20,7 @@ export const BACK_ON_MARKET_WINDOW_DAYS = 14
  * Withdrawn / generic off-market / heuristic (no previous status) do not qualify.
  */
 export const BACK_ON_MARKET_SOURCE_LABELS = [
+  'Coming Soon',
   'Under Contract',
   'Under Contract - Continue to Show',
   'Temp off market',
@@ -74,17 +75,17 @@ export const LATEST_STATUS_PRECEDENCE: readonly LatestStatusRuleRow[] = [
   },
   {
     order: 2,
-    status: 'New',
-    badge: 'New',
-    event: true,
-    rule: `Days on market ≤ ${NEW_LISTING_MAX_DOM}, or list date within the last ${NEW_LISTING_MAX_DOM} days.`,
-  },
-  {
-    order: 3,
     status: 'Back on Market',
     badge: 'Back on Mkt',
     event: true,
-    rule: `Currently Active, previous MLS status was Under Contract, Under Contract – Continue to Show, or Temp off market, and the flip was within ${BACK_ON_MARKET_WINDOW_DAYS} days.`,
+    rule: `Currently Active, previous MLS status was Coming Soon, Under Contract, Under Contract – Continue to Show, or Temp off market, and the flip was within ${BACK_ON_MARKET_WINDOW_DAYS} days. Evaluated before New so a Coming Soon → Active flip is not relabelled New.`,
+  },
+  {
+    order: 3,
+    status: 'New',
+    badge: 'New',
+    event: true,
+    rule: `Days on market ≤ ${NEW_LISTING_MAX_DOM}, or list date within the last ${NEW_LISTING_MAX_DOM} days (and not already Back on Market).`,
   },
   {
     order: 4,
@@ -124,9 +125,9 @@ export const LATEST_FEED_RANKING: readonly LatestRankingStep[] = [
   },
   {
     order: 3,
-    label: 'Fill remaining slots by recency',
+    label: 'Fill by Eastern calendar day, then timestamp',
     detail:
-      'Last-24h activity first, then older. Cap at 30. /latest does not call RETS — it reads this feed cache (or Postgres when the cache is rejected as stale).',
+      'Take all qualifying events from today (America/New_York), newest timestamp first. If fewer than 30, fill from the prior day the same way, then any older days. Cap at 30. /latest does not call RETS — it reads this feed cache (or Postgres when the cache is rejected as stale).',
   },
 ]
 
@@ -154,7 +155,8 @@ export const LATEST_STATUS_INPUTS: readonly {
   {
     field: 'previous_mls_status',
     source: 'Captured on upsert when mls_status changes (migration 0010)',
-    usedFor: 'Back on Market only from UC / UC-CTS / Temp off market',
+    usedFor:
+      'Back on Market from Coming Soon, UC, UC-CTS, or Temp off market',
   },
   {
     field: 'previous_status_changed_at / status_change_timestamp',
@@ -169,6 +171,7 @@ export const LATEST_STATUS_INPUTS: readonly {
   {
     field: 'modification_timestamp + list_date',
     source: 'MLS clocks',
-    usedFor: 'Activity ranking (freshest of the two)',
+    usedFor:
+      'Activity ranking — Eastern calendar day (today, then prior day), then timestamp desc',
   },
 ]

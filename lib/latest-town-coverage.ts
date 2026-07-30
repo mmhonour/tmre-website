@@ -20,8 +20,13 @@ export type LatestCoverageRow = {
   status?: string
 }
 
-/** Latest must surface MLS activity from this window when it exists in Postgres. */
+/**
+ * Cache / pull freshness window (not the feed fill order). Feed fill uses
+ * Eastern calendar today → prior day; this window still rejects stale warm cache.
+ */
 export const LATEST_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
+
+const ET = 'America/New_York'
 
 function rowTown(row: LatestCoverageRow): TmreTown | null {
   const fromTown = normalizeTownName(row.town)
@@ -42,28 +47,68 @@ function sortByActivityDesc<T extends LatestCoverageRow>(rows: readonly T[]): T[
   })
 }
 
+/** YYYY-MM-DD in America/New_York for an activity instant. */
+export function easternCalendarDayKey(ms: number): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: ET,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(ms))
+}
+
+/** Prior Eastern calendar day relative to `nowMs`. */
+export function priorEasternCalendarDayKey(nowMs: number): string {
+  const today = easternCalendarDayKey(nowMs)
+  for (let hours = 1; hours <= 48; hours++) {
+    const key = easternCalendarDayKey(nowMs - hours * 60 * 60 * 1000)
+    if (key !== today) return key
+  }
+  return today
+}
+
 /**
- * Feed ordering: last-24h activity first (so the ticker stays "latest" and the
- * 24h cache-validity check keeps passing). Recency is preserved inside every
- * group. /latest only passes event rows, so the "rest" buckets stay empty.
+ * Feed ordering after badges: Eastern calendar today (timestamp desc), then
+ * the prior day (timestamp desc), then older days. Events stay ahead of any
+ * non-event rows inside each day bucket (global /latest only passes events).
  */
 export function rankLatestFeedRows<T extends LatestCoverageRow>(
   rows: readonly T[],
   nowMs = Date.now(),
 ): T[] {
-  const cutoff = nowMs - LATEST_FRESH_WINDOW_MS
-  const freshEvents: T[] = []
-  const freshRest: T[] = []
+  const todayKey = easternCalendarDayKey(nowMs)
+  const priorKey = priorEasternCalendarDayKey(nowMs)
+
+  const todayEvents: T[] = []
+  const todayRest: T[] = []
+  const priorEvents: T[] = []
+  const priorRest: T[] = []
   const olderEvents: T[] = []
   const olderRest: T[] = []
+
   for (const row of sortByActivityDesc(rows)) {
     const activity = latestActivityMs(row.modificationTimestamp, row.listDate)
-    const fresh = !Number.isNaN(activity) && activity >= cutoff
+    const dayKey = Number.isNaN(activity)
+      ? null
+      : easternCalendarDayKey(activity)
     const event = isLatestEventStatus(row.status)
-    if (fresh) (event ? freshEvents : freshRest).push(row)
-    else (event ? olderEvents : olderRest).push(row)
+    if (dayKey === todayKey) {
+      ;(event ? todayEvents : todayRest).push(row)
+    } else if (dayKey === priorKey) {
+      ;(event ? priorEvents : priorRest).push(row)
+    } else {
+      ;(event ? olderEvents : olderRest).push(row)
+    }
   }
-  return [...freshEvents, ...freshRest, ...olderEvents, ...olderRest]
+
+  return [
+    ...todayEvents,
+    ...todayRest,
+    ...priorEvents,
+    ...priorRest,
+    ...olderEvents,
+    ...olderRest,
+  ]
 }
 
 /** True when every TMRE town has at least one listing in the feed. */

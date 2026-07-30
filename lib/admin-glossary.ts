@@ -577,7 +577,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Latest',
     category: 'product',
     definition:
-      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after UC / UC-CTS / Temp off market), Reduced, or Increased. Plain Active and Pending never appear. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
+      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Fills today’s Eastern-day events first (timestamp desc), then the prior day. Plain Active and Pending never appear. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Intelligence',

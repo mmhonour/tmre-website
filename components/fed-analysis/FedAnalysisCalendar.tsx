@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   decisionLabel,
   formatFedFundsRange,
+  formatFomcMeetingSpan,
   meetingOnDay,
   type FomcMeeting,
 } from "@/lib/fed-fomc-calendar";
@@ -129,13 +130,17 @@ export default function FedAnalysisCalendar({
               {cell.day != null ? (
                 <>
                   <span
-                    className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1 font-mono text-[11px] tabular-nums ${
+                    className={`inline-flex h-6 items-center justify-center gap-0.5 rounded-full px-1.5 font-mono text-[10px] tabular-nums ${
                       isToday(cell.day)
                         ? "bg-navy text-white"
                         : "text-charcoal/55"
                     }`}
+                    title={`${WEEKDAYS[i % 7]} ${cell.day}`}
                   >
-                    {cell.day}
+                    <span className="tracking-[0.04em] opacity-70">
+                      {WEEKDAYS[i % 7]}
+                    </span>
+                    <span className="text-[11px]">{cell.day}</span>
                   </span>
                   {meeting ? (
                     <p
@@ -163,7 +168,7 @@ export default function FedAnalysisCalendar({
             >
               <div className="min-w-0">
                 <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
-                  {formatMeetingSpan(m)}
+                  {formatFomcMeetingSpan(m.startDate, m.endDate)}
                   {m.hasSep ? " · SEP" : ""}
                 </p>
                 {m.note ? (
@@ -202,20 +207,4 @@ export default function FedAnalysisCalendar({
       )}
     </div>
   );
-}
-
-function formatMeetingSpan(m: FomcMeeting): string {
-  const start = new Date(`${m.startDate}T12:00:00`);
-  const end = new Date(`${m.endDate}T12:00:00`);
-  const sameMonth = start.getMonth() === end.getMonth();
-  const startFmt = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(start);
-  const endFmt = new Intl.DateTimeFormat("en-US", {
-    month: sameMonth ? undefined : "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(end);
-  return `${startFmt} – ${endFmt}`;
 }
