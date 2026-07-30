@@ -1,7 +1,7 @@
 /**
  * Single source of truth for /latest badge rules and feed ranking.
- * Imported by the feed builder (server) and Admin → Syncs → Latest health
- * (client) so the logic surface cannot drift from the code that applies it.
+ * Imported by the feed builder (server) and Admin → Architecture → Status
+ * logic (client) so the logic surface cannot drift from the code that applies it.
  *
  * Keep this file free of `server-only` and free of DB / RETS imports.
  */
@@ -10,46 +10,36 @@
 export const NEW_LISTING_MAX_DOM = 7
 
 /**
- * How long a recorded Under Contract → Active (or off-market → Active) flip is
- * still news. Applies to the exact `previous_mls_status` signal.
+ * How long a recorded UC / Temp-off-market → Active flip is still news.
+ * Applies to the exact `previous_mls_status` signal.
  */
 export const BACK_ON_MARKET_WINDOW_DAYS = 14
 
 /**
- * Fallback window (days) for rows with no recorded previous status: only a very
- * recent MLS status change counts, since we cannot see what it changed from.
+ * Prior MLS statuses that qualify an Active listing as Back on Market.
+ * Withdrawn / generic off-market / heuristic (no previous status) do not qualify.
  */
-export const BACK_ON_MARKET_HEURISTIC_WINDOW_DAYS = 3
+export const BACK_ON_MARKET_SOURCE_LABELS = [
+  'Under Contract',
+  'Under Contract - Continue to Show',
+  'Temp off market',
+] as const
 
-/**
- * Past this DOM a re-activated listing is clearly not new inventory.
- * Parked decision: keep 14 (errs toward not over-claiming) vs relax to 7.
- */
-export const BACK_ON_MARKET_MIN_DOM = 14
-
-/** Price cut above this percent earns the Reduced badge. */
-export const REDUCED_MIN_PERCENT = 1
-
-/** Real MLS events that outrank routine modifications for the 30 feed slots. */
+/** Real MLS events that earn a /latest slot. Plain Active / Pending never appear. */
 export const LATEST_EVENT_STATUSES = [
   'Coming Soon',
   'New',
   'Back on Market',
   'Reduced',
+  'Increased',
 ] as const
 
 export type LatestEventStatus = (typeof LATEST_EVENT_STATUSES)[number]
 
-export const LATEST_BADGE_STATUSES = [
-  'Pending',
-  'Coming Soon',
-  'New',
-  'Back on Market',
-  'Reduced',
-  'Active',
-] as const
+/** Badges shown on /latest — same set as event statuses (no filler Active/Pending). */
+export const LATEST_BADGE_STATUSES = LATEST_EVENT_STATUSES
 
-export type LatestBadgeStatus = (typeof LATEST_BADGE_STATUSES)[number]
+export type LatestBadgeStatus = LatestEventStatus
 
 export function isLatestEventStatus(status: string | null | undefined): boolean {
   return (
@@ -64,7 +54,7 @@ export type LatestStatusRuleRow = {
   status: LatestBadgeStatus
   /** Short badge label shown on /latest (may be abbreviated on mobile). */
   badge: string
-  /** Whether this status claims a priority feed slot over plain Active. */
+  /** Whether this status claims a priority feed slot (all /latest rows do). */
   event: boolean
   /** Plain-language rule. */
   rule: string
@@ -72,50 +62,43 @@ export type LatestStatusRuleRow = {
 
 /**
  * Badge precedence for /latest. First match wins — same order as `deriveStatus`
- * in `lib/latest-listings.ts`.
+ * in `lib/latest-listings.ts`. Rows that match none of these are excluded.
  */
 export const LATEST_STATUS_PRECEDENCE: readonly LatestStatusRuleRow[] = [
   {
     order: 1,
-    status: 'Pending',
-    badge: 'Pending',
-    event: false,
-    rule: 'MLS status is Pending.',
-  },
-  {
-    order: 2,
     status: 'Coming Soon',
     badge: 'Coming Soon',
     event: true,
-    rule: 'MLS status is Coming Soon (or CS). No longer relabelled as New.',
+    rule: 'MLS status is Coming Soon (or CS).',
   },
   {
-    order: 3,
+    order: 2,
     status: 'New',
     badge: 'New',
     event: true,
     rule: `Days on market ≤ ${NEW_LISTING_MAX_DOM}, or list date within the last ${NEW_LISTING_MAX_DOM} days.`,
   },
   {
-    order: 4,
+    order: 3,
     status: 'Back on Market',
     badge: 'Back on Mkt',
     event: true,
-    rule: `Currently Active, and either (a) previous MLS status was Under Contract / Continue to Show / withdrawn / off-market within ${BACK_ON_MARKET_WINDOW_DAYS} days, or (b) no previous status recorded yet — status changed in the last ${BACK_ON_MARKET_HEURISTIC_WINDOW_DAYS} days and DOM ≥ ${BACK_ON_MARKET_MIN_DOM}.`,
+    rule: `Currently Active, previous MLS status was Under Contract, Under Contract – Continue to Show, or Temp off market, and the flip was within ${BACK_ON_MARKET_WINDOW_DAYS} days.`,
   },
   {
-    order: 5,
+    order: 4,
     status: 'Reduced',
     badge: 'Reduced',
     event: true,
-    rule: `Price cut greater than ${REDUCED_MIN_PERCENT}% vs original list price.`,
+    rule: 'List price is lower than original list price (any amount).',
   },
   {
-    order: 6,
-    status: 'Active',
-    badge: 'Active',
-    event: false,
-    rule: 'Everything else that is still Active — remarks edits, photo swaps, sub-1% price tweaks.',
+    order: 5,
+    status: 'Increased',
+    badge: 'Increased',
+    event: true,
+    rule: 'List price is higher than original list price (any amount).',
   },
 ]
 
@@ -129,21 +112,21 @@ export type LatestRankingStep = {
 export const LATEST_FEED_RANKING: readonly LatestRankingStep[] = [
   {
     order: 1,
-    label: 'Seed one row per TMRE town',
+    label: 'Keep event rows only',
     detail:
-      'Coverage wins: each of the 7 towns claims its own top-ranked row first, so a quiet town is never squeezed out.',
+      'Coming Soon, New, Back on Market, Reduced, and Increased. Pending and plain Active (remarks/photos/minor edits) never appear.',
   },
   {
     order: 2,
-    label: 'Fill remaining slots by rank',
+    label: 'Seed one row per TMRE town when available',
     detail:
-      'Within the last 24 hours of activity: event statuses (Coming Soon, New, Back on Market, Reduced) above plain Active/Pending. Then the same split for older activity. Recency is preserved inside each group.',
+      'Each of the 7 towns claims its top-ranked event row first when it has one — quiet towns with no qualifying events are simply omitted.',
   },
   {
     order: 3,
-    label: 'Cap at 30',
+    label: 'Fill remaining slots by recency',
     detail:
-      'Display order is the ranked set. /latest does not call RETS — it reads this feed cache (or Postgres when the cache is rejected as stale / incomplete).',
+      'Last-24h activity first, then older. Cap at 30. /latest does not call RETS — it reads this feed cache (or Postgres when the cache is rejected as stale).',
   },
 ]
 
@@ -156,7 +139,7 @@ export const LATEST_STATUS_INPUTS: readonly {
   {
     field: 'mls_status / listing.status',
     source: 'RETS → listings row',
-    usedFor: 'Pending, Coming Soon, Active gate for Back on Market',
+    usedFor: 'Coming Soon; Active gate for Back on Market',
   },
   {
     field: 'list_date',
@@ -166,12 +149,12 @@ export const LATEST_STATUS_INPUTS: readonly {
   {
     field: 'DOM',
     source: 'MLS days on market',
-    usedFor: 'New vs Back on Market heuristic',
+    usedFor: 'New inventory window',
   },
   {
     field: 'previous_mls_status',
     source: 'Captured on upsert when mls_status changes (migration 0010)',
-    usedFor: 'Exact Back on Market signal (UC / withdrawn → Active)',
+    usedFor: 'Back on Market only from UC / UC-CTS / Temp off market',
   },
   {
     field: 'previous_status_changed_at / status_change_timestamp',
@@ -181,7 +164,7 @@ export const LATEST_STATUS_INPUTS: readonly {
   {
     field: 'price vs original_list_price',
     source: 'Listing fields',
-    usedFor: `Reduced when cut > ${REDUCED_MIN_PERCENT}%`,
+    usedFor: 'Reduced (any cut) or Increased (any raise)',
   },
   {
     field: 'modification_timestamp + list_date',

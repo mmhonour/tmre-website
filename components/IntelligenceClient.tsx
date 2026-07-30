@@ -2123,27 +2123,6 @@ export default function IntelligenceClient({
     urlSearchAppliedRef.current = true;
 
     setActive(urlSearch.city as IntelCity);
-    setZip(urlSearch.zip);
-    if (urlSearch.bedsMin != null) {
-      setMinBedsFilter(String(urlSearch.bedsMin) as MinBedFilter);
-    }
-    if (urlSearch.bedsMax != null) {
-      setMaxBedsFilter(String(urlSearch.bedsMax) as MinBedFilter);
-    } else if (urlSearch.exactBeds && urlSearch.bedsMin != null) {
-      setMaxBedsFilter(String(urlSearch.bedsMin) as MinBedFilter);
-    }
-    if (urlSearch.bathsMin != null) {
-      setMinBathsFilter(String(urlSearch.bathsMin) as MinBathFilter);
-    }
-    if (urlSearch.bathsMax != null) {
-      setMaxBathsFilter(String(urlSearch.bathsMax) as MinBathFilter);
-    }
-    if (urlSearch.vintageMin != null) {
-      setMinVintageFilter(String(urlSearch.vintageMin) as VintageIndexFilter);
-    }
-    if (urlSearch.vintageMax != null) {
-      setMaxVintageFilter(String(urlSearch.vintageMax) as VintageIndexFilter);
-    }
     if (urlSearch.tx) setTx(urlSearch.tx as TxFilter);
     if (urlSearch.cls) setCls(urlSearch.cls as ClsFilter);
     if (urlSearch.property) {
@@ -2151,16 +2130,62 @@ export default function IntelligenceClient({
     } else if (urlSearch.tx === "rental" || urlSearch.cls === "commercial") {
       setSaleProperty("all");
     }
-    setNewConstructionFilter(urlSearch.newConstruction ? "new" : "all");
-    if (urlSearch.status) {
-      setBoardStatusFilter(urlSearch.status as BoardStatusFilter);
-    }
-    if (urlSearch.sort) {
-      setSortKey(urlSearch.sort as SortKey);
-    }
-    if (urlSearch.dir) setSortDir(urlSearch.dir);
-    if (urlSearch.furnished) {
-      setFurnishedFilter(urlSearch.furnished as FurnishedFilter);
+
+    if (urlSearch.resetMinor) {
+      // Market Pulse (and similar) deep links: apply criteria, wipe leftover prefs.
+      setZip(null);
+      setMinBedsFilter("0");
+      setMaxBedsFilter("6");
+      setMinBathsFilter("0");
+      setMaxBathsFilter("6");
+      setMinVintageFilter("0");
+      setMaxVintageFilter("6");
+      setNewConstructionFilter("all");
+      setFurnishedFilter("all");
+      setBoardStatusFilter("all");
+      setSortKey("score");
+      setSortDir("desc");
+      setMinPriceIndex(0);
+      setMaxPriceIndex(INTEL_PRICE_MAX_INDEX);
+      setMinSqftIndex(0);
+      setMaxSqftIndex(INTEL_SQFT_MAX_INDEX);
+      setActivePriceBandId(null);
+      setActiveLuxuryPriceBandId(null);
+      priceRangeCustomizedRef.current = false;
+      sqftRangeCustomizedRef.current = false;
+    } else {
+      setZip(urlSearch.zip);
+      if (urlSearch.bedsMin != null) {
+        setMinBedsFilter(String(urlSearch.bedsMin) as MinBedFilter);
+      }
+      if (urlSearch.bedsMax != null) {
+        setMaxBedsFilter(String(urlSearch.bedsMax) as MinBedFilter);
+      } else if (urlSearch.exactBeds && urlSearch.bedsMin != null) {
+        setMaxBedsFilter(String(urlSearch.bedsMin) as MinBedFilter);
+      }
+      if (urlSearch.bathsMin != null) {
+        setMinBathsFilter(String(urlSearch.bathsMin) as MinBathFilter);
+      }
+      if (urlSearch.bathsMax != null) {
+        setMaxBathsFilter(String(urlSearch.bathsMax) as MinBathFilter);
+      }
+      if (urlSearch.vintageMin != null) {
+        setMinVintageFilter(String(urlSearch.vintageMin) as VintageIndexFilter);
+      }
+      if (urlSearch.vintageMax != null) {
+        setMaxVintageFilter(String(urlSearch.vintageMax) as VintageIndexFilter);
+      }
+      setNewConstructionFilter(urlSearch.newConstruction ? "new" : "all");
+      if (urlSearch.status) {
+        setBoardStatusFilter(urlSearch.status as BoardStatusFilter);
+      }
+      if (urlSearch.sort) {
+        setSortKey(urlSearch.sort as SortKey);
+      }
+      if (urlSearch.dir) setSortDir(urlSearch.dir);
+      if (urlSearch.furnished) {
+        setFurnishedFilter(urlSearch.furnished as FurnishedFilter);
+      }
     }
     // Keep a compact shareable URL in the address bar (no hex id).
     window.history.replaceState(
@@ -2168,25 +2193,49 @@ export default function IntelligenceClient({
       "",
       buildIntelligenceShareHref({
         city: urlSearch.city,
-        zip: urlSearch.zip,
+        zip: urlSearch.resetMinor ? null : urlSearch.zip,
         tx: urlSearch.tx ?? undefined,
         cls: urlSearch.cls ?? undefined,
         property: urlSearch.property ?? undefined,
-        bedsMin: urlSearch.bedsMin ?? undefined,
-        bedsMax: urlSearch.bedsMax ?? undefined,
-        bathsMin: urlSearch.bathsMin ?? undefined,
-        bathsMax: urlSearch.bathsMax ?? undefined,
-        vintageMin: urlSearch.vintageMin ?? undefined,
-        vintageMax: urlSearch.vintageMax ?? undefined,
-        newConstruction: urlSearch.newConstruction,
-        status: urlSearch.status ?? undefined,
-        sort: urlSearch.sort ?? undefined,
-        dir: urlSearch.dir ?? undefined,
-        furnished: urlSearch.furnished,
-        minPrice: urlSearch.minPrice ?? undefined,
-        maxPrice: urlSearch.maxPrice ?? undefined,
-        minSqft: urlSearch.minSqft ?? undefined,
-        maxSqft: urlSearch.maxSqft ?? undefined,
+        bedsMin: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.bedsMin ?? undefined),
+        bedsMax: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.bedsMax ?? undefined),
+        bathsMin: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.bathsMin ?? undefined),
+        bathsMax: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.bathsMax ?? undefined),
+        vintageMin: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.vintageMin ?? undefined),
+        vintageMax: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.vintageMax ?? undefined),
+        newConstruction: urlSearch.resetMinor
+          ? false
+          : urlSearch.newConstruction,
+        status: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.status ?? undefined),
+        sort: urlSearch.resetMinor ? undefined : (urlSearch.sort ?? undefined),
+        dir: urlSearch.resetMinor ? undefined : (urlSearch.dir ?? undefined),
+        furnished: urlSearch.resetMinor ? null : urlSearch.furnished,
+        minPrice: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.minPrice ?? undefined),
+        maxPrice: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.maxPrice ?? undefined),
+        minSqft: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.minSqft ?? undefined),
+        maxSqft: urlSearch.resetMinor
+          ? undefined
+          : (urlSearch.maxSqft ?? undefined),
       }),
     );
   }, [

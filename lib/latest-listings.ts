@@ -29,16 +29,13 @@ import { mlsTimestampMs } from '@/lib/mls-time'
 import {
   LATEST_FRESH_WINDOW_MS,
   ensureMinOneListingPerTmreTown,
-  feedCoversAllTmreTowns,
-  missingTmreTowns,
   rankLatestFeedRows,
 } from '@/lib/latest-town-coverage'
 import {
-  BACK_ON_MARKET_HEURISTIC_WINDOW_DAYS,
-  BACK_ON_MARKET_MIN_DOM,
   BACK_ON_MARKET_WINDOW_DAYS,
   NEW_LISTING_MAX_DOM,
-  REDUCED_MIN_PERCENT,
+  isLatestEventStatus,
+  type LatestBadgeStatus,
 } from '@/lib/latest-status-rules'
 
 export type LatestListingRow = {
@@ -57,7 +54,7 @@ export type LatestListingRow = {
   sqft: number | null
   lotAcres: number | null
   dom: number | null
-  status: 'Active' | 'Pending' | 'New' | 'Reduced' | 'Coming Soon' | 'Back on Market'
+  status: LatestBadgeStatus
   isRental: boolean
   beds: number | null
   baths: number | null
@@ -95,14 +92,12 @@ function daysBetween(iso: string | null, now: Date = new Date()): number | null 
 
 const DAY_MS = 86_400_000
 const BACK_ON_MARKET_WINDOW_MS = BACK_ON_MARKET_WINDOW_DAYS * DAY_MS
-const BACK_ON_MARKET_HEURISTIC_WINDOW_MS =
-  BACK_ON_MARKET_HEURISTIC_WINDOW_DAYS * DAY_MS
 
 function isActiveMlsStatus(status: string): boolean {
   return status === 'active' || status === 'a'
 }
 
-/** Statuses a listing can come back to market *from*. */
+/** Prior statuses that qualify Back on Market (UC / UC-CTS / Temp off market only). */
 function isBackOnMarketSourceStatus(status: string | null): boolean {
   const s = status?.trim().toLowerCase() ?? ''
   if (!s) return false
@@ -113,7 +108,12 @@ function isBackOnMarketSourceStatus(status: string | null): boolean {
   ) {
     return true
   }
-  return s.includes('withdrawn') || s.includes('off market') || s.includes('off-market')
+  return (
+    s === 'temp off market' ||
+    s === 't' ||
+    s.includes('temp off') ||
+    s.includes('temporarily off')
+  )
 }
 
 function isNewInventory(
@@ -128,41 +128,38 @@ function isNewInventory(
 }
 
 /**
- * Available again but not new. Prefers the recorded previous status; falls back
- * to a recent status change on an older listing when that is unknown.
+ * Available again but not new. Requires a recorded previous status from UC /
+ * UC-CTS / Temp off market within the Back on Market window.
  */
 function isBackOnMarket(
   currentStatus: string,
   previousMlsStatus: string | null,
   statusChangedAt: string | null,
-  daysOnMarket: number | null,
   nowMs: number,
 ): boolean {
   if (!isActiveMlsStatus(currentStatus)) return false
-  const changedMs = mlsTimestampMs(statusChangedAt)
-  const sinceChangeMs = Number.isNaN(changedMs) ? null : nowMs - changedMs
-
-  if (previousMlsStatus) {
-    if (!isBackOnMarketSourceStatus(previousMlsStatus)) return false
-    return sinceChangeMs == null || sinceChangeMs <= BACK_ON_MARKET_WINDOW_MS
-  }
-
-  if (sinceChangeMs == null || sinceChangeMs > BACK_ON_MARKET_HEURISTIC_WINDOW_MS) {
+  if (!previousMlsStatus || !isBackOnMarketSourceStatus(previousMlsStatus)) {
     return false
   }
-  return (daysOnMarket ?? 0) >= BACK_ON_MARKET_MIN_DOM
+  const changedMs = mlsTimestampMs(statusChangedAt)
+  if (Number.isNaN(changedMs)) return true
+  return nowMs - changedMs <= BACK_ON_MARKET_WINDOW_MS
 }
 
+/**
+ * Badge for a /latest row, or null when the listing is not feed-eligible
+ * (Pending, plain Active, Withdrawn returns, etc.).
+ */
 function deriveStatus(
   listing: Listing,
-  priceReductionPercent: number | null,
+  priceChangePercent: number | null,
   daysOnMarket: number | null,
   previousMlsStatus: string | null,
   previousStatusChangedAt: string | null,
   nowMs: number = Date.now(),
-): LatestListingRow['status'] {
+): LatestBadgeStatus | null {
   const status = listing.status?.trim().toLowerCase() ?? ''
-  if (status === 'pending') return 'Pending'
+  if (status === 'pending' || status === 'p') return null
   if (status === 'coming soon' || status === 'cs') return 'Coming Soon'
   if (isNewInventory(daysOnMarket, listing.listDate ?? null, nowMs)) return 'New'
   if (
@@ -170,14 +167,15 @@ function deriveStatus(
       status,
       previousMlsStatus,
       previousStatusChangedAt ?? listing.statusChangeTimestamp ?? null,
-      daysOnMarket,
       nowMs,
     )
   ) {
     return 'Back on Market'
   }
-  if ((priceReductionPercent ?? 0) > REDUCED_MIN_PERCENT) return 'Reduced'
-  return 'Active'
+  if (priceChangePercent != null && priceChangePercent !== 0) {
+    return priceChangePercent > 0 ? 'Reduced' : 'Increased'
+  }
+  return null
 }
 
 function townForListing(listing: Listing): TmreTown | null {
@@ -218,7 +216,7 @@ function toLatestRow(
     listing.dom != null
       ? listing.dom
       : daysBetween(listing.listDate ?? listing.modificationTimestamp)
-  const priceReductionPercent =
+  const priceChangePercent =
     listing.originalListPrice &&
     listing.price &&
     listing.originalListPrice > 0 &&
@@ -240,6 +238,15 @@ function toLatestRow(
   if (!town || !isTmreTown(town)) return null
   if (!listingInTmreCoverage(zip, town)) return null
 
+  const status = deriveStatus(
+    listing,
+    priceChangePercent,
+    daysOnMarket,
+    previousMlsStatus,
+    previousStatusChangedAt,
+  )
+  if (!status || !isLatestEventStatus(status)) return null
+
   return {
     key: listing.listingKey || listing.mlsId,
     listingKey: listing.listingKey ?? null,
@@ -257,13 +264,7 @@ function toLatestRow(
     lotAcres:
       coerceLotAcres(listing.lotAcres) ?? parseLotAcresFromRaw(listing.raw) ?? null,
     dom: daysOnMarket,
-    status: deriveStatus(
-      listing,
-      priceReductionPercent,
-      daysOnMarket,
-      previousMlsStatus,
-      previousStatusChangedAt,
-    ),
+    status,
     isRental: rental,
     beds: listing.beds,
     baths: listing.baths,
@@ -428,9 +429,8 @@ export function feedIsTmreOnly(rows: readonly LatestListingRow[]): boolean {
 }
 
 /**
- * Prefer last-24h MLS mods + brand-new list dates — real events (Coming Soon /
- * New / Back on Market / Reduced) ahead of plain rows inside each of those
- * groups — then fill with older updates so the ticker stays full when quiet.
+ * Prefer last-24h MLS mods + brand-new list dates among event rows only
+ * (Coming Soon / New / Back on Market / Reduced / Increased).
  */
 function rankLatestFreshFirst(
   rows: LatestListingRow[],
@@ -476,14 +476,14 @@ export async function fetchLatestUpdatedListings(options: {
   // Instant path for default /latest: last warm from the 30-minute DB refresh.
   // Reject cache that has no MLS activity in the last 24h so stale warm cannot
   // hide brand-new / freshly modified inventory sitting in Postgres.
-  // Also reject feeds that omit any TMRE town (quiet towns must still show 1).
+  // Town coverage is best-effort: quiet towns with no event rows are omitted.
   if (!town && !options.since && !options.bypassGlobalFeedCache) {
     const { readLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
     const cached = await readLatestGlobalFeedCache(cap)
     if (
       cached &&
       feedIsTmreOnly(cached) &&
-      feedCoversAllTmreTowns(cached) &&
+      cached.every((row) => isLatestEventStatus(row.status)) &&
       feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)
     ) {
       return cached
@@ -505,11 +505,12 @@ export async function fetchLatestUpdatedListings(options: {
   }
 
   const freshSinceIso = new Date(nowMs - LATEST_FRESH_WINDOW_MS).toISOString()
+  // Wide pull: most Active mods are filler; we keep only event rows after map.
+  const pullLimit = Math.min(Math.max(cap * 10, 200), 400)
   const [byMod, byListDate] = await Promise.all([
     readRecentlyUpdatedListings({
       since: options.since,
-      // Pull a wider mod slice so 24h ranking has room after merge.
-      limit: Math.min(Math.max(cap * 3, cap), 120),
+      limit: pullLimit,
       statusBucket: 'Active',
       town,
     }),
@@ -517,7 +518,7 @@ export async function fetchLatestUpdatedListings(options: {
       ? Promise.resolve([] as RecentlyUpdatedRow[])
       : readRecentlyListedListings({
           since: freshSinceIso,
-          limit: cap,
+          limit: pullLimit,
           statusBucket: 'Active',
           town,
         }),
@@ -541,36 +542,14 @@ export async function fetchLatestUpdatedListings(options: {
       : mapped
   }
 
-  // Town-scoped feeds stay newest-first. Global ticker also guarantees every
-  // TMRE town appears at least once (its latest update), then fills to `cap`.
-  let sorted = town
+  // Town-scoped: newest events first. Global: seed one event per town when a
+  // town has any, then fill to `cap` — never pad with plain Active.
+  const sorted = town
     ? rankLatestFreshFirst(scoredRows, cap, nowMs)
     : ensureMinOneListingPerTmreTown(
         rankLatestFreshFirst(scoredRows, Math.max(cap * 4, 80), nowMs),
         cap,
       )
-
-  if (!town) {
-    const missing = missingTmreTowns(sorted)
-    if (missing.length > 0) {
-      const fillerBatches = await Promise.all(
-        missing.map((missingTown) =>
-          readRecentlyUpdatedListings({
-            limit: 1,
-            statusBucket: 'Active',
-            town: missingTown,
-          }),
-        ),
-      )
-      const fillerRows = mergeRecentlyUpdatedRows(fillerBatches)
-      if (fillerRows.length > 0) {
-        const fillerMapped = allowLiveScore
-          ? await scoreUnscoredLatestRows(fillerRows)
-          : mapStoredLatestRows(fillerRows)
-        sorted = ensureMinOneListingPerTmreTown(sorted, cap, fillerMapped)
-      }
-    }
-  }
 
   // Seed durable global ticker from this SQLite hit so the next load is instant.
   if (

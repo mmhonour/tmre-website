@@ -42,6 +42,7 @@ function BarChart({
   formatValue,
   barClassName,
   emptyMessage,
+  townHref,
 }: {
   title: string;
   rows: MonthsSupplyPayload[];
@@ -49,6 +50,8 @@ function BarChart({
   formatValue: (row: MonthsSupplyPayload) => string;
   barClassName: string;
   emptyMessage: string;
+  /** When set, town labels link into Intelligence with current Pulse criteria. */
+  townHref?: (cityLabel: string) => string;
 }) {
   if (rows.length === 0) {
     return (
@@ -79,14 +82,25 @@ function BarChart({
           const v = valueOf(row);
           const pct =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
+          const label = cityLabel(row);
+          const href = townHref?.(row.city ?? label);
           return (
             <li
               key={`${row.city}-${title}`}
               className="grid grid-cols-[7.5rem_1fr_3.5rem] items-center gap-2"
             >
-              <span className="font-serif text-sm text-navy truncate">
-                {cityLabel(row)}
-              </span>
+              {href ? (
+                <Link
+                  href={href}
+                  className="font-serif text-sm text-navy truncate underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors"
+                >
+                  {label}
+                </Link>
+              ) : (
+                <span className="font-serif text-sm text-navy truncate">
+                  {label}
+                </span>
+              )}
               <div className="h-3.5 rounded-sm bg-[#E8EBF2] overflow-hidden">
                 <div
                   className={`h-full rounded-sm ${barClassName}`}
@@ -125,6 +139,8 @@ export default function WeeklyBriefContent({
   eyebrow = "TMRE Market Pulse",
   scopeLabel = "sales",
   showDealOfTheWeek = true,
+  dealHeading = "Deal of the Week",
+  townHref,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -132,10 +148,13 @@ export default function WeeklyBriefContent({
   /** Chart / footnote scope for the active category tab. */
   scopeLabel?: string;
   showDealOfTheWeek?: boolean;
+  /** Heading above the featured deal card. */
+  dealHeading?: string;
+  /** Town chart labels → Intelligence (with current Pulse criteria). */
+  townHref?: (cityLabel: string) => string;
 }) {
   const rows = chartRows(snapshot);
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
-  const social = snapshot.socialProfiles.filter((p) => p.handleOrUrl);
 
   return (
     <article className="mx-auto max-w-2xl">
@@ -180,6 +199,7 @@ export default function WeeklyBriefContent({
           formatValue={(r) => fmtActive(r.activeCount)}
           barClassName="bg-[#2A3D6B]"
           emptyMessage="No inventory rows in cache yet."
+          townHref={townHref}
         />
 
         <BarChart
@@ -189,13 +209,14 @@ export default function WeeklyBriefContent({
           formatValue={(r) => fmtMos(r.monthsSupply)}
           barClassName="bg-gold"
           emptyMessage="No months-supply rows in cache yet."
+          townHref={townHref}
         />
 
         {deal ? (
           <section className="rounded-xl bg-[#131F38] overflow-hidden">
             <div className="px-5 pt-5 pb-3 sm:px-6">
               <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-gold mb-1">
-                Deal of the Week
+                {dealHeading}
               </p>
               <p className="font-serif text-3xl sm:text-4xl leading-tight text-white">
                 <span className="italic text-gold">
@@ -295,10 +316,11 @@ export default function WeeklyBriefContent({
         ) : showDealOfTheWeek ? (
           <section>
             <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-gold mb-2">
-              Deal of the Week
+              {dealHeading}
             </p>
             <p className="font-serif text-sm text-slate">
-              No Deal of the Week in cache yet — check homepage / stats rebuild.
+              No featured deal in cache for this category yet — check homepage /
+              stats rebuild.
             </p>
           </section>
         ) : null}
@@ -307,25 +329,6 @@ export default function WeeklyBriefContent({
           MOS = active ÷ avg monthly closings (3 prior full months). Scope:{" "}
           {scopeLabel}.
         </p>
-
-        <section>
-          <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-gold mb-3">
-            Social profiles
-          </p>
-          {social.length === 0 ? (
-            <p className="font-serif text-sm text-slate">
-              No social handles saved yet.
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {social.map((p) => (
-                <li key={p.label} className="font-mono text-xs text-navy">
-                  {p.label}: {p.handleOrUrl}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </div>
     </article>
   );

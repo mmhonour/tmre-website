@@ -313,6 +313,7 @@ export function DealBoardScoreBadge({
 /** Short pill copy — "Back on Market" does not fit the mobile Latest row. */
 const STATUS_BADGE_LABELS: Record<string, string> = {
   Reduced: "Reduced!",
+  Increased: "Increased!",
   "Back on Market": "Back on Mkt",
 };
 
@@ -336,6 +337,7 @@ export function DealBoardStatusBadge({
     New: "bg-sage/10 text-sage border-sage/30",
     Active: "bg-sky/10 text-sky border-sky/30",
     Reduced: "bg-coral/10 text-coral border-coral/30",
+    Increased: "bg-sky/10 text-sky border-sky/30",
     Pending: "bg-charcoal/10 text-slate border-charcoal/20",
     "Under Contract": "bg-gold/15 text-gold border-gold/35",
     "Continue to Show": "bg-gold/15 text-gold border-gold/35",
@@ -346,6 +348,7 @@ export function DealBoardStatusBadge({
     New: "bg-sage text-white border-sage/50 shadow-sm",
     Active: "bg-sky text-white border-sky/50 shadow-sm",
     Reduced: "bg-coral text-white border-coral/50 shadow-sm",
+    Increased: "bg-sky text-white border-sky/50 shadow-sm",
     Pending: "bg-charcoal text-white/90 border-charcoal/50 shadow-sm",
     "Under Contract": "bg-gold text-navy border-gold/50 shadow-sm",
     "Continue to Show": "bg-gold text-navy border-gold/50 shadow-sm",
@@ -356,6 +359,7 @@ export function DealBoardStatusBadge({
     New: "bg-sage/20 text-sage border-sage/40",
     Active: "bg-sky/20 text-sky border-sky/40",
     Reduced: "bg-coral/20 text-coral border-coral/40",
+    Increased: "bg-sky/20 text-sky border-sky/40",
     Pending: "bg-white/10 text-white/75 border-white/25",
     "Under Contract": "bg-gold/20 text-gold border-gold/40",
     "Continue to Show": "bg-gold/20 text-gold border-gold/40",

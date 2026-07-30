@@ -16,13 +16,27 @@ import {
 } from '@/lib/db/visitors-repo'
 import {
   emptyVisitorGeo,
+  formatVisitorIdentity,
+  formatVisitorLocation,
+  groupVisitorsByProviderThenLocation,
   type VisitorGeo,
   type VisitorPageHit,
+  type VisitorProviderGroup,
   type VisitorRecord,
 } from '@/lib/visitors-types'
 
-export type { VisitorGeo, VisitorPageHit, VisitorRecord }
-export { emptyVisitorGeo }
+export type {
+  VisitorGeo,
+  VisitorPageHit,
+  VisitorProviderGroup,
+  VisitorRecord,
+}
+export {
+  emptyVisitorGeo,
+  formatVisitorIdentity,
+  formatVisitorLocation,
+  groupVisitorsByProviderThenLocation,
+}
 
 export {
   attachLeadFieldsToVisitor,
@@ -32,19 +46,4 @@ export {
 
 export async function readVisitorRecords(): Promise<VisitorRecord[]> {
   return listVisitorRecords()
-}
-
-export function formatVisitorLocation(visitor: VisitorRecord): string {
-  const { geo, zip } = visitor
-  const parts = [geo.city, geo.region, geo.postal || zip].filter(Boolean)
-  if (parts.length > 0) return parts.join(', ')
-  if (geo.country) return geo.country
-  return 'Unknown location'
-}
-
-export function formatVisitorIdentity(visitor: VisitorRecord): string {
-  if (visitor.name && visitor.email) return `${visitor.name} · ${visitor.email}`
-  if (visitor.email) return visitor.email
-  if (visitor.name) return visitor.name
-  return 'Anonymous'
 }

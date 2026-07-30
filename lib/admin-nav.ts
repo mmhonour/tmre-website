@@ -7,6 +7,7 @@ export type AdminTabId =
   | "cookies"
   | "architecture"
   | "syncs"
+  | "r2"
   | "server"
   | "glossary";
 
@@ -34,13 +35,13 @@ export type AdminSyncsPanelId =
   | "db-tuning";
 
 /** Sub-panels under Admin → Database. */
-export type AdminDatabasePanelId =
-  | "rets-connection"
-  | "inventory"
-  | "town-counts";
+export type AdminDatabasePanelId = "rets-connection" | "town-counts";
+
+/** Sub-panels under Admin → NEON Postgres. */
+export type AdminPostgresPanelId = "schema" | "inventory";
 
 /** Sub-panels under Admin → Architecture. */
-export type AdminArchitecturePanelId = "map" | "docs";
+export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
 
 /** Sub-panels under Admin → Communications. */
 export type AdminCommunicationsPanelId =
@@ -57,6 +58,7 @@ export type AdminSectionLink = {
     | AdminSyncsPanelId
     | AdminDataControlsPanelId
     | AdminDatabasePanelId
+    | AdminPostgresPanelId
     | AdminArchitecturePanelId
     | AdminCommunicationsPanelId;
 };
@@ -212,15 +214,28 @@ export const ADMIN_DATABASE_PANELS: {
     subtitle: "Live SmartMLS probe and stored connection health",
   },
   {
+    id: "town-counts",
+    label: "Listings by town",
+    subtitle: "Active listing counts from the current Postgres inventory",
+  },
+];
+
+export const ADMIN_POSTGRES_PANELS: {
+  id: AdminPostgresPanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "schema",
+    label: "NEON Postgres",
+    subtitle:
+      "Tables, columns, approximate counts, and relationships",
+  },
+  {
     id: "inventory",
     label: "Database inventory",
     subtitle:
       "Table row comparison vs last full-resync snapshot, plus connected-store summaries",
-  },
-  {
-    id: "town-counts",
-    label: "Listings by town",
-    subtitle: "Active listing counts from the current Postgres inventory",
   },
 ];
 
@@ -234,6 +249,12 @@ export const ADMIN_ARCHITECTURE_PANELS: {
     label: "Site architecture",
     subtitle:
       "Visual map of Netlify, Neon, RETS, R2, DNS/CDN, Resend, and related services",
+  },
+  {
+    id: "status-logic",
+    label: "Status logic",
+    subtitle:
+      "/latest badge precedence, feed ranking, and the fields that drive them",
   },
   {
     id: "docs",
@@ -291,13 +312,13 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "db",
     label: "Database",
-    subtitle: "RETS connection, inventory, town counts, and write tuning",
+    subtitle: "RETS connection and listings by town",
   },
   {
     id: "postgres",
-    label: "NEON Postgres",
+    label: "NEON",
     subtitle:
-      "Schema visualization — tables, columns, approximate counts, and relationships",
+      "Schema visualization and database inventory (row counts vs last full resync)",
   },
   {
     id: "stats",
@@ -324,7 +345,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "architecture",
     label: "Architecture",
-    subtitle: "Site architecture map and product docs",
+    subtitle: "Site map, /latest status logic, and product docs",
+  },
+  {
+    id: "r2",
+    label: "R2",
+    subtitle: "Cloudflare R2 listing photo storage health and related tools",
   },
   {
     id: "server",
@@ -378,14 +404,20 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-inventory-comparison",
     label: "Inventory comparison",
-    tab: "db",
+    tab: "postgres",
     panel: "inventory",
   },
   {
     id: "admin-database-inventory",
     label: "Database inventory",
-    tab: "db",
+    tab: "postgres",
     panel: "inventory",
+  },
+  {
+    id: "admin-sqlite-schemas",
+    label: "NEON Postgres",
+    tab: "postgres",
+    panel: "schema",
   },
   {
     id: "admin-town-counts",
@@ -437,8 +469,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-photo-health",
     label: "Listing photo health",
-    tab: "data-controls",
-    panel: "site",
+    tab: "r2",
   },
   {
     id: "admin-photo-ttl",
@@ -519,6 +550,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "map",
   },
   {
+    id: "admin-latest-status-logic",
+    label: "Status logic",
+    tab: "architecture",
+    panel: "status-logic",
+  },
+  {
     id: "admin-rets-credentials",
     label: "RETS credentials",
     tab: "data-controls",
@@ -545,11 +582,6 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Deal board middle tier",
     tab: "data-controls",
     panel: "intel-deal-board",
-  },
-  {
-    id: "admin-sqlite-schemas",
-    label: "NEON Postgres schema",
-    tab: "postgres",
   },
   {
     id: "admin-startup",
@@ -622,7 +654,8 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
   {
     label: "Visitors",
     href: "/visitors",
-    description: "Visitor log and town interest",
+    description:
+      "Admin-password visitor log — provider → location drilldown (unlocked only)",
   },
   {
     label: "Listing detail",
@@ -834,6 +867,13 @@ export function adminDatabasePanelForSection(
   return isAdminDatabasePanelId(panel) ? panel : null;
 }
 
+export function adminPostgresPanelForSection(
+  sectionId: string,
+): AdminPostgresPanelId | null {
+  const panel = ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel;
+  return isAdminPostgresPanelId(panel) ? panel : null;
+}
+
 export function adminArchitecturePanelForSection(
   sectionId: string,
 ): AdminArchitecturePanelId | null {
@@ -882,11 +922,13 @@ export function isAdminSyncsPanelId(
 export function isAdminDatabasePanelId(
   value: string | null | undefined,
 ): value is AdminDatabasePanelId {
-  return (
-    value === "rets-connection" ||
-    value === "inventory" ||
-    value === "town-counts"
-  );
+  return value === "rets-connection" || value === "town-counts";
+}
+
+export function isAdminPostgresPanelId(
+  value: string | null | undefined,
+): value is AdminPostgresPanelId {
+  return value === "schema" || value === "inventory";
 }
 
 /** Schema diagram deep-links under Admin → NEON Postgres. */
@@ -901,7 +943,7 @@ export function isAdminPostgresSchemaHash(hash: string): boolean {
 export function isAdminArchitecturePanelId(
   value: string | null | undefined,
 ): value is AdminArchitecturePanelId {
-  return value === "map" || value === "docs";
+  return value === "map" || value === "docs" || value === "status-logic";
 }
 
 export function isAdminCommunicationsPanelId(
@@ -922,6 +964,7 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
     ((tab === "syncs" && isAdminSyncsPanelId(link.panel)) ||
       (tab === "data-controls" && isAdminDataControlsPanelId(link.panel)) ||
       (tab === "db" && isAdminDatabasePanelId(link.panel)) ||
+      (tab === "postgres" && isAdminPostgresPanelId(link.panel)) ||
       (tab === "architecture" && isAdminArchitecturePanelId(link.panel)) ||
       (tab === "communications" && isAdminCommunicationsPanelId(link.panel)))
   ) {
@@ -942,6 +985,10 @@ export function adminDatabaseHref(panel: AdminDatabasePanelId): string {
   return `/admin?tab=db&panel=${panel}`;
 }
 
+export function adminPostgresHref(panel: AdminPostgresPanelId): string {
+  return `/admin?tab=postgres&panel=${panel}`;
+}
+
 export function adminArchitectureHref(panel: AdminArchitecturePanelId): string {
   return `/admin?tab=architecture&panel=${panel}`;
 }
@@ -957,7 +1004,7 @@ export function adminPostgresSchemaTableAnchor(table: string): string {
   return `schema-table-${table}`;
 }
 
-/** Deep-link to a table on Admin → NEON Postgres. */
+/** Deep-link to a table on Admin → NEON Postgres → Schema. */
 export function adminPostgresTableHref(table: string): string {
-  return `/admin?tab=postgres#${adminPostgresSchemaTableAnchor(table)}`;
+  return `/admin?tab=postgres&panel=schema#${adminPostgresSchemaTableAnchor(table)}`;
 }

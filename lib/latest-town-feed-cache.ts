@@ -11,8 +11,8 @@ import { readLatestGlobalFeedCache } from '@/lib/latest-feed-cache'
 import { warmLatestHeroPhotosDeferred } from '@/lib/latest-hero-photo-warm'
 
 export const LATEST_TOWN_FEED_LIMIT = 30
-// v2: Coming Soon / Back on Market statuses + events ranked above plain rows.
-export const LATEST_TOWN_FEED_CACHE_PREFIX = 'latest-town-feed:v2'
+// v3: event-only feed (Coming Soon / New / BOM / Reduced / Increased).
+export const LATEST_TOWN_FEED_CACHE_PREFIX = 'latest-town-feed:v3'
 /** Single stats_cache row for all town feeds (~7 × 30 listings). */
 export const LATEST_TOWN_FEEDS_BUNDLE_KEY = `${LATEST_TOWN_FEED_CACHE_PREFIX}:bundle`
 

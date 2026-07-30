@@ -9,6 +9,7 @@ export type DealBoardRowStatus =
   | "Pending"
   | "New"
   | "Reduced"
+  | "Increased"
   | "Coming Soon"
   | "Back on Market";
 

@@ -120,10 +120,6 @@ const exploreGroupsBase: ExploreGroup[] = [
       { href: "/owner-history", label: "Owner History" },
     ],
   },
-  {
-    title: "System",
-    links: [{ href: "/visitors", label: "Visitors", requiresUnlock: true }],
-  },
 ];
 
 function getExploreGroups(siteUnlocked: boolean): ExploreGroup[] {
@@ -428,6 +424,7 @@ function PhoneCallWithLogout({
   phone?: { tel: string; display: string };
 }) {
   const siteUnlocked = useSiteUnlocked();
+  const pathname = usePathname();
 
   return (
     <div
@@ -436,7 +433,23 @@ function PhoneCallWithLogout({
       }`}
     >
       <PhoneCta className={iconCtaButtonClass} align={align} phone={phone} />
-      {siteUnlocked ? <SiteLogoutButton /> : <SiteLoginButton />}
+      {siteUnlocked ? (
+        <>
+          <Link
+            href="/visitors"
+            className={`font-mono text-[9px] tracking-[0.14em] uppercase transition-colors ${
+              pathname === "/visitors"
+                ? "text-gold"
+                : "text-white/55 hover:text-gold"
+            }`}
+          >
+            Visitors
+          </Link>
+          <SiteLogoutButton />
+        </>
+      ) : (
+        <SiteLoginButton />
+      )}
     </div>
   );
 }

@@ -2,45 +2,39 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ADMIN_ARCHITECTURE_PANELS,
-  adminArchitecturePanelForSection,
-  isAdminArchitecturePanelId,
-  LEGACY_ADMIN_TAB_TO_ARCHITECTURE,
-  type AdminArchitecturePanelId,
+  ADMIN_POSTGRES_PANELS,
+  adminPostgresPanelForSection,
+  isAdminPostgresPanelId,
+  isAdminPostgresSchemaHash,
+  type AdminPostgresPanelId,
 } from "@/lib/admin-nav";
 
-const VALID_PANELS = new Set<string>(
-  ADMIN_ARCHITECTURE_PANELS.map((p) => p.id),
-);
+const VALID_PANELS = new Set<string>(ADMIN_POSTGRES_PANELS.map((p) => p.id));
 
-function panelFromLocation(): AdminArchitecturePanelId {
-  if (typeof window === "undefined") return "map";
+function panelFromLocation(): AdminPostgresPanelId {
+  if (typeof window === "undefined") return "schema";
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab && LEGACY_ADMIN_TAB_TO_ARCHITECTURE[tab]) {
-    return LEGACY_ADMIN_TAB_TO_ARCHITECTURE[tab]!;
-  }
-  if (tab && tab !== "architecture") return "map";
+  if (tab && tab !== "postgres") return "schema";
   const panel = params.get("panel");
-  if (panel && VALID_PANELS.has(panel) && isAdminArchitecturePanelId(panel)) {
+  if (panel && VALID_PANELS.has(panel) && isAdminPostgresPanelId(panel)) {
     return panel;
   }
   const hash = window.location.hash.replace(/^#/, "");
-  const fromSection = adminArchitecturePanelForSection(hash);
+  if (hash && isAdminPostgresSchemaHash(hash)) return "schema";
+  const fromSection = adminPostgresPanelForSection(hash);
   if (fromSection) return fromSection;
-  return "map";
+  return "schema";
 }
 
-export default function AdminArchitecturePanel({
-  map,
-  docs,
-  statusLogic,
+export default function AdminPostgresPanel({
+  schema,
+  inventory,
 }: {
-  map: ReactNode;
-  docs: ReactNode;
-  statusLogic: ReactNode;
+  schema: ReactNode;
+  inventory: ReactNode;
 }) {
-  const [panel, setPanel] = useState<AdminArchitecturePanelId>("map");
+  const [panel, setPanel] = useState<AdminPostgresPanelId>("schema");
 
   useEffect(() => {
     const sync = () => setPanel(panelFromLocation());
@@ -53,30 +47,29 @@ export default function AdminArchitecturePanel({
     };
   }, []);
 
-  function selectPanel(next: AdminArchitecturePanelId) {
+  function selectPanel(next: AdminPostgresPanelId) {
     setPanel(next);
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", "architecture");
+    url.searchParams.set("tab", "postgres");
     url.searchParams.set("panel", next);
     url.hash = "";
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminArchitecturePanelId, ReactNode> = {
-    map,
-    docs,
-    "status-logic": statusLogic,
+  const panels: Record<AdminPostgresPanelId, ReactNode> = {
+    schema,
+    inventory,
   };
-  const active = ADMIN_ARCHITECTURE_PANELS.find((item) => item.id === panel);
+  const active = ADMIN_POSTGRES_PANELS.find((item) => item.id === panel);
 
   return (
     <div className="space-y-6">
       <div
         role="tablist"
-        aria-label="Architecture"
+        aria-label="NEON"
         className="flex flex-row flex-wrap items-stretch gap-1 border-b border-charcoal/[0.1]"
       >
-        {ADMIN_ARCHITECTURE_PANELS.map((item) => {
+        {ADMIN_POSTGRES_PANELS.map((item) => {
           const isActive = panel === item.id;
           return (
             <button
@@ -102,7 +95,7 @@ export default function AdminArchitecturePanel({
         </p>
       ) : null}
 
-      {ADMIN_ARCHITECTURE_PANELS.map((item) => (
+      {ADMIN_POSTGRES_PANELS.map((item) => (
         <div
           key={item.id}
           role="tabpanel"

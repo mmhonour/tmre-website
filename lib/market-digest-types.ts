@@ -29,6 +29,8 @@ export type MarketDigestCategorySlice = {
   market: MonthsSupplyPayload | null
   westport: MonthsSupplyPayload | null
   towns: MonthsSupplyPayload[]
+  /** Featured deal for this tab (DOTW for ALL; DOTD-aligned for other types). */
+  deal: MarketDigestDealOfTheWeek | null
 }
 
 export type MarketDigestSnapshot = {

@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { InventorySnapshot } from "@/lib/db/listings-repo";
 
 type RowStatus = "match" | "low" | "empty" | "missing" | "no-snapshot";
+
+type SortKey = "table" | "current" | "snapshot" | "delta";
+
+type SortDir = "asc" | "desc";
 
 function rowStatus(current: number, ref: number | undefined): RowStatus {
   if (ref === undefined) return "no-snapshot";
@@ -47,6 +51,8 @@ export default function AdminInventoryComparisonPanel({
   );
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("table");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
     let cancelled = false;
@@ -92,9 +98,63 @@ export default function AdminInventoryComparisonPanel({
 
   const hasSnapshot = capturedAt != null;
 
-  const allTables = Array.from(
-    new Set([...Object.keys(liveCounts), ...Object.keys(snapshotCounts)]),
-  ).sort();
+  const allTables = useMemo(
+    () =>
+      Array.from(
+        new Set([...Object.keys(liveCounts), ...Object.keys(snapshotCounts)]),
+      ),
+    [liveCounts, snapshotCounts],
+  );
+
+  const sortedTables = useMemo(() => {
+    const rows = allTables.map((table) => {
+      const current = liveCounts[table] ?? 0;
+      const snapshot = snapshotCounts[table];
+      const delta = snapshot !== undefined ? current - snapshot : null;
+      return { table, current, snapshot, delta };
+    });
+    const dir = sortDir === "asc" ? 1 : -1;
+    rows.sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "table":
+          cmp = a.table.localeCompare(b.table);
+          break;
+        case "current":
+          cmp = a.current - b.current;
+          break;
+        case "snapshot": {
+          const av = a.snapshot ?? Number.NEGATIVE_INFINITY;
+          const bv = b.snapshot ?? Number.NEGATIVE_INFINITY;
+          cmp = av - bv;
+          break;
+        }
+        case "delta": {
+          const av = a.delta ?? Number.NEGATIVE_INFINITY;
+          const bv = b.delta ?? Number.NEGATIVE_INFINITY;
+          cmp = av - bv;
+          break;
+        }
+      }
+      if (cmp !== 0) return cmp * dir;
+      return a.table.localeCompare(b.table);
+    });
+    return rows;
+  }, [allTables, liveCounts, snapshotCounts, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "table" ? "asc" : "desc");
+  }
+
+  function sortIndicator(key: SortKey): string {
+    if (sortKey !== key) return "";
+    return sortDir === "asc" ? " ↑" : " ↓";
+  }
 
   const hasAnyMismatch = allTables.some((t) => {
     const s = rowStatus(liveCounts[t] ?? 0, snapshotCounts[t]);
@@ -147,7 +207,7 @@ export default function AdminInventoryComparisonPanel({
 
       {open && (
         <div className="border-t border-charcoal/[0.06]">
-          <p className="px-5 sm:px-6 py-3 text-sm text-charcoal/65 leading-relaxed max-w-3xl">
+          <p className="px-5 sm:px-6 py-3 text-sm text-charcoal/65 leading-relaxed w-full">
             After each successful full resync, Admin saves exact row counts for
             every public Neon table. This panel compares those saved numbers to
             live <span className="font-mono text-[11px]">COUNT(*)</span> totals
@@ -164,22 +224,50 @@ export default function AdminInventoryComparisonPanel({
               <thead>
                 <tr className="bg-cream/40">
                   <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 w-4" />
-                  <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40">
-                    Table
-                  </th>
-                  <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 text-right tabular-nums">
-                    Current
-                  </th>
-                  <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 text-right tabular-nums">
-                    Snapshot
-                  </th>
-                  <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 text-right tabular-nums">
-                    Δ
-                  </th>
+                  {(
+                    [
+                      { key: "table", label: "Table", align: "left" },
+                      { key: "current", label: "Current", align: "right" },
+                      { key: "snapshot", label: "Snapshot", align: "right" },
+                      { key: "delta", label: "Δ", align: "right" },
+                    ] as const
+                  ).map((col) => {
+                    const active = sortKey === col.key;
+                    return (
+                      <th
+                        key={col.key}
+                        className={`px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase ${
+                          col.align === "right" ? "text-right tabular-nums" : ""
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(col.key)}
+                          className={`inline-flex items-center gap-0.5 transition-colors ${
+                            active
+                              ? "text-navy"
+                              : "text-charcoal/40 hover:text-navy"
+                          } ${
+                            col.align === "right" ? "w-full justify-end" : ""
+                          }`}
+                          aria-sort={
+                            active
+                              ? sortDir === "asc"
+                                ? "ascending"
+                                : "descending"
+                              : "none"
+                          }
+                        >
+                          {col.label}
+                          {sortIndicator(col.key)}
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-charcoal/[0.04]">
-                {allTables.length === 0 ? (
+                {sortedTables.length === 0 ? (
                   <tr>
                     <td
                       colSpan={5}
@@ -189,11 +277,8 @@ export default function AdminInventoryComparisonPanel({
                     </td>
                   </tr>
                 ) : (
-                  allTables.map((table) => {
-                    const current = liveCounts[table] ?? 0;
-                    const ref = snapshotCounts[table];
+                  sortedTables.map(({ table, current, snapshot: ref, delta }) => {
                     const s = rowStatus(current, ref);
-                    const delta = ref !== undefined ? current - ref : null;
                     return (
                       <tr
                         key={table}

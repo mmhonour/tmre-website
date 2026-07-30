@@ -1,45 +1,18 @@
 import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
+import HomeMarketPulse from "@/components/HomeMarketPulse";
 import HomeMethodOverview from "@/components/HomeMethodOverview";
 import HomeScrollReset from "@/components/HomeScrollReset";
 import LeadForm from "@/components/LeadForm";
-import { TMRE_CORE_TOWNS_LABEL, TMRE_PROPERTIES_TOWNS_LABEL, TMRE_TOWNS } from "@/lib/tmre-towns";
+import { loadHomeMarketPulseTowns } from "@/lib/home-market-pulse";
+import { TMRE_PROPERTIES_TOWNS_LABEL, TMRE_TOWNS } from "@/lib/tmre-towns";
 import Image from "next/image";
-import Link from "next/link";
 import { Suspense } from "react";
-
-const norwalkStats = [
-  { label: "Median price", value: "$711K", trend: "+4.2% YoY" },
-  { label: "Days on market", value: "12", trend: "−3 vs Q1" },
-  { label: "Sale-to-list", value: "102.8%", trend: "Premium market" },
-  { label: "Months supply", value: "1.7", trend: "Seller's market" },
-];
-
-const westportStats = [
-  { label: "Median price", value: "$1.94M", trend: "+6.1% YoY" },
-  { label: "Days on market", value: "8", trend: "−2 vs Q1" },
-  { label: "Sale-to-list", value: "101.9%", trend: "Premium market" },
-  { label: "Months supply", value: "2.1", trend: "Tight inventory" },
-];
-
-const wiltonStats = [
-  { label: "Median price", value: "$1.12M", trend: "+4.8% YoY" },
-  { label: "Days on market", value: "14", trend: "−1 vs Q1" },
-  { label: "Sale-to-list", value: "100.6%", trend: "At ask" },
-  { label: "Months supply", value: "2.4", trend: "Moderate" },
-];
-
-const fairfieldStats = [
-  { label: "Median price", value: "$875K", trend: "+5.3% YoY" },
-  { label: "Days on market", value: "10", trend: "−2 vs Q1" },
-  { label: "Sale-to-list", value: "101.5%", trend: "Above ask" },
-  { label: "Months supply", value: "1.9", trend: "Seller's market" },
-];
 
 const tools = [
   {
     name: "Market Pulse",
     tagline: "Daily city signal",
-    body: `Real-time read on inventory, velocity, and pricing pressure across ${TMRE_CORE_TOWNS_LABEL} — refreshed every 24 hours.`,
+    body: `Real-time read on inventory, velocity, and pricing pressure across ${TMRE_TOWNS.join(", ")} — refreshed with the stats cache.`,
     icon: "◐",
   },
   {
@@ -85,7 +58,9 @@ const audiences = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const pulseTowns = await loadHomeMarketPulseTowns();
+
   return (
     <>
       <HomeScrollReset />
@@ -93,109 +68,11 @@ export default function Home() {
       <Suspense fallback={null}>
         <DealOfTheWeekHero afterOverview />
       </Suspense>
-      <MarketPulseSection />
+      <HomeMarketPulse towns={pulseTowns} />
       <ToolsSection />
       <AudiencesSection />
       <EmailCtaSection />
     </>
-  );
-}
-
-function MarketPulseSection() {
-  return (
-    <section className="bg-navy text-white relative">
-      <div className="mx-auto max-w-7xl px-6 lg:px-10 -mt-20 relative z-10">
-        <div className="rounded-3xl bg-gradient-to-br from-navy-light to-navy border border-white/10 shadow-2xl shadow-black/30 p-8 lg:p-12">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-10">
-            <div>
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                Market Pulse
-              </p>
-              <p className="mt-2 text-sm text-white/65 max-w-xl leading-relaxed">
-                Live preview of the Monday market brief — months supply, inventory,
-                and Deal of the Week.
-              </p>
-            </div>
-            <Link
-              href="/market-pulse"
-              className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-gold border border-gold/35 rounded-full px-4 py-2 hover:bg-gold/10 transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse-dot" />
-              Open this week&apos;s brief
-            </Link>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <CityCard
-              name="Norwalk"
-              tagline="Premium-velocity market"
-              stats={norwalkStats}
-              accent="sky"
-            />
-            <CityCard
-              name="Westport"
-              tagline="Trophy-tier inventory"
-              stats={westportStats}
-              accent="gold"
-            />
-            <CityCard
-              name="Wilton"
-              tagline="Upscale residential enclave"
-              stats={wiltonStats}
-              accent="coral"
-            />
-            <CityCard
-              name="Fairfield"
-              tagline="Balanced Fairfield County"
-              stats={fairfieldStats}
-              accent="sage"
-            />
-          </div>
-        </div>
-      </div>
-      <div className="h-24 bg-gradient-to-b from-navy to-cream" aria-hidden />
-    </section>
-  );
-}
-
-function CityCard({
-  name,
-  tagline,
-  stats,
-  accent,
-}: {
-  name: string;
-  tagline: string;
-  stats: { label: string; value: string; trend: string }[];
-  accent: "sky" | "gold" | "sage" | "coral";
-}) {
-  const accentColor =
-    accent === "gold" ? "text-gold" :
-    accent === "sage" ? "text-sage" :
-    accent === "coral" ? "text-coral" :
-    "text-sky";
-  return (
-    <div className="rounded-2xl bg-navy-dark/60 border border-white/5 p-6 lg:p-8 transition-all hover:border-gold/30 hover:-translate-y-1">
-      <div className="flex items-baseline justify-between mb-6">
-        <h3 className="font-serif text-2xl text-white">{name}, CT</h3>
-        <span className={`font-mono text-[10px] tracking-[0.2em] uppercase ${accentColor}`}>
-          {tagline}
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-5">
-        {stats.map((stat) => (
-          <div key={stat.label} className="border-l border-white/10 pl-4">
-            <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/50 mb-1.5">
-              {stat.label}
-            </p>
-            <p className="font-mono text-2xl font-medium text-white tabular-nums">
-              {stat.value}
-            </p>
-            <p className="text-[11px] text-white/45 mt-1">{stat.trend}</p>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -216,7 +93,7 @@ function ToolsSection() {
             </h2>
             <p className="mt-4 text-slate text-base lg:text-lg leading-relaxed">
               Every tool runs on the same proprietary deal model. The difference
-              is the question you're asking.
+              is the question you&apos;re asking.
             </p>
           </div>
           <figure className="shrink-0 self-center sm:self-center">
@@ -267,7 +144,7 @@ function AudiencesSection() {
             Built for everyone in the deal
           </p>
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl text-white leading-[1.1]">
-            Whatever side you're{" "}
+            Whatever side you&apos;re{" "}
             <span className="italic gold-shimmer">on.</span>
           </h2>
         </div>

@@ -44,8 +44,8 @@ function sortByActivityDesc<T extends LatestCoverageRow>(rows: readonly T[]): T[
 
 /**
  * Feed ordering: last-24h activity first (so the ticker stays "latest" and the
- * 24h cache-validity check keeps passing), and within each freshness group real
- * events above plain Active/Pending rows. Recency is preserved inside every group.
+ * 24h cache-validity check keeps passing). Recency is preserved inside every
+ * group. /latest only passes event rows, so the "rest" buckets stay empty.
  */
 export function rankLatestFeedRows<T extends LatestCoverageRow>(
   rows: readonly T[],

@@ -21,17 +21,16 @@ const columns = [
     title: "Resources",
     links: [
       { href: "/stats", label: "Market Intelligence" },
-      { href: "/new-construction", label: "Active Projects" },
-      { href: "/investors", label: "For Investors" },
       { href: "/market-pulse", label: "Market Pulse" },
       { href: "/fed-analysis", label: "Fed Analysis" },
+      { href: "/new-construction", label: "Active Projects" },
+      { href: "/investors", label: "For Investors" },
     ],
   },
   {
     title: "Company",
     links: [
       { href: "/about", label: "About TMRE" },
-      { href: "/about", label: "Methodology" },
       { href: "/contact", label: "Contact" },
       { href: "/list-with-me", label: "List with me" },
       { href: "/login", label: "Sign in" },

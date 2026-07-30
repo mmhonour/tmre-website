@@ -5,9 +5,18 @@ import {
   readListingsFromDb,
   readRecentClosedListingsFromDb,
 } from '@/lib/db/listings-repo'
+import {
+  readDealOfTheDayBundle,
+  type DealOfTheDayResponse,
+} from '@/lib/deal-of-the-day-cache'
 import { readDealOfTheWeekCache } from '@/lib/deal-of-the-week-cache'
+import { computeTopDeal, type DealPickPayload } from '@/lib/deal-pick'
 import { fmtMoney } from '@/lib/listing-history'
-import { filterListingsByKind, type ListingKind } from '@/lib/listing-kind'
+import {
+  filterListingsByKind,
+  isRentalListing,
+  type ListingKind,
+} from '@/lib/listing-kind'
 import {
   isCommercialPropertyType,
   propertyClassHaystack,
@@ -24,6 +33,7 @@ import {
 import type { Listing } from '@/lib/rets'
 import type {
   MarketDigestCategorySlice,
+  MarketDigestDealOfTheWeek,
   MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
 import type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
@@ -81,6 +91,73 @@ function isCommercialListing(listing: Listing): boolean {
   return isCommercialPropertyType(propertyClassHaystack(listing))
 }
 
+function dealFromPickPayload(
+  deal: DealPickPayload & { photoUrl?: string | null },
+): MarketDigestDealOfTheWeek | null {
+  const listing = deal.listing
+  if (!listing?.mlsId) return null
+  return {
+    mlsId: listing.mlsId,
+    address:
+      listing.address?.street?.trim() ||
+      listing.address?.full?.trim() ||
+      listing.mlsId,
+    city: listing.address?.city?.trim() || null,
+    price: listing.price ?? null,
+    insight: deal.insight?.trim() || '',
+    href: absoluteUrl(listingShareHref(listing.mlsId)),
+    photoUrl: deal.photoUrl
+      ? deal.photoUrl.startsWith('http')
+        ? deal.photoUrl
+        : absoluteUrl(deal.photoUrl)
+      : null,
+    composite:
+      deal.score?.composite != null && Number.isFinite(deal.score.composite)
+        ? deal.score.composite
+        : null,
+    superlatives: Array.isArray(deal.superlatives)
+      ? deal.superlatives.filter(
+          (w): w is string => typeof w === 'string' && w.trim().length > 0,
+        )
+      : [],
+    beds: listing.beds ?? null,
+    baths: listing.baths ?? null,
+    sqft: listing.sqft ?? null,
+    yearBuilt: listing.yearBuilt ?? null,
+    propertyType: listing.propertyType?.trim() || null,
+    style: listing.style?.trim() || null,
+    valueDiscountPct:
+      deal.valueDiscountPct != null && Number.isFinite(deal.valueDiscountPct)
+        ? deal.valueDiscountPct
+        : null,
+    lotAcres:
+      deal.lotAcres != null && Number.isFinite(deal.lotAcres)
+        ? deal.lotAcres
+        : null,
+  }
+}
+
+function dealFromDotd(deal: DealOfTheDayResponse | null): MarketDigestDealOfTheWeek | null {
+  if (!deal) return null
+  return dealFromPickPayload(deal)
+}
+
+/** Highest-score Deal of the Day across TMRE towns for a kind × property class. */
+async function bestDealOfTheDay(
+  kind: 'sale' | 'rental',
+  propertyClass: ListingPropertyClass,
+): Promise<MarketDigestDealOfTheWeek | null> {
+  const bundle = await readDealOfTheDayBundle(kind, propertyClass)
+  if (!bundle) return null
+  let best: DealOfTheDayResponse | null = null
+  for (const town of TMRE_TOWNS) {
+    const row = bundle.deals[town]
+    if (!row) continue
+    if (!best || row.score.composite > best.score.composite) best = row
+  }
+  return dealFromDotd(best)
+}
+
 function commercialPayload(
   active: readonly Listing[],
   closed: readonly Listing[],
@@ -122,6 +199,7 @@ async function buildCachedCategorySlice(
     market,
     westport,
     towns,
+    deal: null,
   }
 }
 
@@ -137,6 +215,7 @@ function emptyCommercialCategorySlice(
     market: empty,
     westport: null,
     towns: [],
+    deal: null,
   }
 }
 
@@ -180,6 +259,20 @@ async function buildCommercialCategorySlice(
     )
     const westport =
       towns.find((t) => t.city.toLowerCase() === 'westport') ?? null
+    const commercialActive = perTown
+      .flatMap((row) => row.active)
+      .filter(isCommercialListing)
+      .filter((l) => !isRentalListing(l))
+    let deal: MarketDigestDealOfTheWeek | null = null
+    try {
+      const pick = await computeTopDeal(commercialActive)
+      deal = pick ? dealFromPickPayload(pick) : null
+    } catch (dealErr) {
+      console.warn(
+        '[market-digest] commercial deal pick failed',
+        dealErr instanceof Error ? dealErr.message : dealErr,
+      )
+    }
     return {
       id: 'commercial',
       label: 'Commercial',
@@ -187,6 +280,7 @@ async function buildCommercialCategorySlice(
       market,
       westport,
       towns,
+      deal,
     }
   } catch (err) {
     console.error('[market-digest] commercial slice failed — returning empty', err)
@@ -242,54 +336,29 @@ export async function buildMarketDigestSnapshot(): Promise<MarketDigestSnapshot>
   const westport = allSlice?.westport ?? null
   const townRows = allSlice?.towns ?? []
 
-  let dealOfTheWeek: MarketDigestSnapshot['dealOfTheWeek'] = null
-  if (deal?.listing?.mlsId) {
-    const listing = deal.listing
-    dealOfTheWeek = {
-      mlsId: listing.mlsId,
-      address:
-        listing.address?.street?.trim() ||
-        listing.address?.full?.trim() ||
-        listing.mlsId,
-      city: listing.address?.city?.trim() || null,
-      price: listing.price ?? null,
-      insight: deal.insight?.trim() || '',
-      href: absoluteUrl(listingShareHref(listing.mlsId)),
-      photoUrl: deal.photoUrl
-        ? deal.photoUrl.startsWith('http')
-          ? deal.photoUrl
-          : absoluteUrl(deal.photoUrl)
-        : null,
-      composite:
-        deal.score?.composite != null && Number.isFinite(deal.score.composite)
-          ? deal.score.composite
-          : null,
-      superlatives: Array.isArray(deal.superlatives)
-        ? deal.superlatives.filter((w): w is string => typeof w === 'string' && w.trim().length > 0)
-        : [],
-      beds: listing.beds ?? null,
-      baths: listing.baths ?? null,
-      sqft: listing.sqft ?? null,
-      yearBuilt: listing.yearBuilt ?? null,
-      propertyType: listing.propertyType?.trim() || null,
-      style: listing.style?.trim() || null,
-      valueDiscountPct:
-        deal.valueDiscountPct != null && Number.isFinite(deal.valueDiscountPct)
-          ? deal.valueDiscountPct
-          : null,
-      lotAcres:
-        deal.lotAcres != null && Number.isFinite(deal.lotAcres)
-          ? deal.lotAcres
-          : null,
-    }
-  }
+  const dealOfTheWeek = deal ? dealFromPickPayload(deal) : null
+
+  // Per-tab featured deals so Market Pulse doesn't blank the card off ALL/SFR.
+  const [sfrDeal, condoDeal, rentalDeal] = await Promise.all([
+    bestDealOfTheDay('sale', 'homes'),
+    bestDealOfTheDay('sale', 'condos'),
+    bestDealOfTheDay('rental', 'all'),
+  ])
+  const categoriesWithDeals = categories.map((cat) => {
+    if (cat.id === 'all') return { ...cat, deal: dealOfTheWeek }
+    if (cat.id === 'sfr') return { ...cat, deal: sfrDeal }
+    if (cat.id === 'condo') return { ...cat, deal: condoDeal }
+    if (cat.id === 'rentals') return { ...cat, deal: rentalDeal }
+    // commercial deal already attached in buildCommercialCategorySlice
+    return cat
+  })
 
   return {
     generatedAt,
     market,
     westport,
     towns: townRows,
-    categories,
+    categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({
       label: p.label,

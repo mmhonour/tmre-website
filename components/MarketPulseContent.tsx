@@ -5,6 +5,7 @@ import WeeklyBriefContent from "@/components/WeeklyBriefContent";
 import type { MarketDigestSnapshot } from "@/lib/market-digest-types";
 import {
   MARKET_PULSE_CATEGORY_IDS,
+  marketPulseTownIntelligenceHref,
   type MarketPulseCategoryId,
 } from "@/lib/market-pulse-shared";
 import {
@@ -39,10 +40,12 @@ export default function MarketPulseContent({
         market: active.market,
         westport: active.westport,
         towns: active.towns,
-        dealOfTheWeek:
-          active.id === "all" ? snapshot.dealOfTheWeek : null,
+        dealOfTheWeek: active.deal ?? null,
       }
     : snapshot;
+
+  const townHref = (cityLabel: string) =>
+    marketPulseTownIntelligenceHref(cityLabel, active?.id ?? "all");
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -76,7 +79,11 @@ export default function MarketPulseContent({
         snapshot={viewSnapshot}
         etDate={etDate}
         scopeLabel={active?.scopeLabel ?? "sales"}
-        showDealOfTheWeek={active?.id === "all"}
+        showDealOfTheWeek
+        dealHeading={
+          active?.id === "all" ? "Deal of the Week" : "Featured deal"
+        }
+        townHref={townHref}
       />
     </div>
   );

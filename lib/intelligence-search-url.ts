@@ -90,6 +90,8 @@ export type ParsedIntelligenceSearch = {
   maxPrice: number | null
   minSqft: number | null
   maxSqft: number | null
+  /** Clear cookie/memory minor filters not defined in the URL. */
+  resetMinor: boolean
 }
 
 /** Compact shareable board state (only non-defaults are encoded). */
@@ -114,6 +116,11 @@ export type IntelligenceShareState = {
   maxPrice?: number | null
   minSqft?: number
   maxSqft?: number | null
+  /**
+   * When true, Intelligence resets cookie/memory minor filters (beds, zip,
+   * vintage, etc.) that are not explicitly present in the share URL.
+   */
+  resetMinor?: boolean
 }
 
 const TX_SHORT: Record<string, 'all' | 'sale' | 'rental'> = {
@@ -244,6 +251,8 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
     params.set('smax', String(Math.round(state.maxSqft)))
   }
 
+  if (state.resetMinor) params.set('rst', '1')
+
   const qs = params.toString()
   return qs ? `/intelligence?${qs}` : '/intelligence'
 }
@@ -290,6 +299,7 @@ function hasIntelligenceShareParams(searchParams: URLSearchParams): boolean {
     'pmax',
     'smin',
     'smax',
+    'rst',
   ]
   return keys.some((k) => searchParams.has(k))
 }
@@ -410,5 +420,6 @@ export function parseIntelligenceSearchParams(
     maxPrice: Number.isFinite(pmax) && pmax > 0 ? pmax : null,
     minSqft: Number.isFinite(smin) && smin > 0 ? smin : null,
     maxSqft: Number.isFinite(smax) && smax > 0 ? smax : null,
+    resetMinor: searchParams.get('rst') === '1',
   }
 }

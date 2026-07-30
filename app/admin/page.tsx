@@ -24,6 +24,7 @@ import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
 import AdminPriceBucketsPanel from "@/components/admin/AdminPriceBucketsPanel";
 import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
+import AdminPostgresPanel from "@/components/admin/AdminPostgresPanel";
 import AdminSyncsPanel from "@/components/admin/AdminSyncsPanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
 import AdminInventoryComparisonPanel from "@/components/admin/AdminInventoryComparisonPanel";
@@ -34,6 +35,7 @@ import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySe
 import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
+import AdminLatestStatusLogicPanel from "@/components/admin/AdminLatestStatusLogicPanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
 import { emptyScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 import {
@@ -562,18 +564,14 @@ export default async function AdminPage() {
   );
 
   const postgresPanel = (
-    <div id="admin-sqlite-schemas" className="scroll-mt-24">
-      <AdminSqliteDiagrams
-        databases={sqliteDiagrams}
-        blobRuntime={photosOnR2 ? undefined : blobRuntime}
-      />
-    </div>
-  );
-
-  const dbPanel = (
-    <AdminDatabasePanel
-      retsConnection={
-        <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
+    <AdminPostgresPanel
+      schema={
+        <div id="admin-sqlite-schemas" className="scroll-mt-24">
+          <AdminSqliteDiagrams
+            databases={sqliteDiagrams}
+            blobRuntime={photosOnR2 ? undefined : blobRuntime}
+          />
+        </div>
       }
       inventory={
         <>
@@ -582,6 +580,14 @@ export default async function AdminPage() {
           />
           <AdminDatabaseInventoryPanel initial={databaseStats} />
         </>
+      }
+    />
+  );
+
+  const dbPanel = (
+    <AdminDatabasePanel
+      retsConnection={
+        <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
       }
       townCounts={
         <div
@@ -638,10 +644,10 @@ export default async function AdminPage() {
     />
   );
 
+  const r2Panel = <AdminPhotoHealthPanel />;
+
   const sitePanel = (
     <>
-      <AdminPhotoHealthPanel />
-
       <AdminPhotoTtlPanel
         initial={{
           ttlMinutes: photoTtlMinutes,
@@ -968,10 +974,12 @@ export default async function AdminPage() {
         architecture={
           <AdminArchitecturePanel
             map={<AdminSiteArchitecturePanel />}
+            statusLogic={<AdminLatestStatusLogicPanel />}
             docs={<AdminProductDocsPanel />}
           />
         }
         syncs={syncsPanel}
+        r2={r2Panel}
         server={serverPanel}
         glossary={<AdminGlossaryPanel />}
       />

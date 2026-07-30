@@ -29,11 +29,9 @@ function panelFromLocation(): AdminDatabasePanelId {
 
 export default function AdminDatabasePanel({
   retsConnection,
-  inventory,
   townCounts,
 }: {
   retsConnection: ReactNode;
-  inventory: ReactNode;
   townCounts: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminDatabasePanelId>("rets-connection");
@@ -60,7 +58,6 @@ export default function AdminDatabasePanel({
 
   const panels: Record<AdminDatabasePanelId, ReactNode> = {
     "rets-connection": retsConnection,
-    inventory,
     "town-counts": townCounts,
   };
   const active = ADMIN_DATABASE_PANELS.find((item) => item.id === panel);

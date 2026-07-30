@@ -46,15 +46,13 @@ const STATUS_SUMMARY_ORDER: LatestListingRow["status"][] = [
   "New",
   "Back on Market",
   "Reduced",
-  "Pending",
-  "Active",
+  "Increased",
 ];
 
 const STATUS_PILL_CLASS: Record<LatestListingRow["status"], string> = {
   New: "bg-sage/10 text-sage border-sage/30",
-  Active: "bg-sky/10 text-sky border-sky/30",
   Reduced: "bg-coral/10 text-coral border-coral/30",
-  Pending: "bg-charcoal/10 text-slate border-charcoal/20",
+  Increased: "bg-sky/10 text-sky border-sky/30",
   "Coming Soon": "bg-gold/10 text-gold border-gold/30",
   "Back on Market": "bg-navy/10 text-navy border-navy/30",
 };

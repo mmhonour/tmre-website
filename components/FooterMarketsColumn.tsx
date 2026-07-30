@@ -4,11 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 
-const OTHER_MARKET_LINKS = [
-  { href: "/intelligence", label: "Live Deal Board" },
-  { href: "/market-pulse", label: "Market Pulse" },
-] as const;
-
 export default function FooterMarketsColumn() {
   const [expanded, setExpanded] = useState(false);
 
@@ -48,16 +43,14 @@ export default function FooterMarketsColumn() {
             </ul>
           ) : null}
         </li>
-        {OTHER_MARKET_LINKS.map((link) => (
-          <li key={link.label}>
-            <Link
-              href={link.href}
-              className="text-sm text-white/75 hover:text-gold transition-colors"
-            >
-              {link.label}
-            </Link>
-          </li>
-        ))}
+        <li>
+          <Link
+            href="/intelligence"
+            className="text-sm text-white/75 hover:text-gold transition-colors"
+          >
+            Live Deal Board
+          </Link>
+        </li>
       </ul>
     </div>
   );

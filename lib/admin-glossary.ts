@@ -66,6 +66,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Server-Side Rendering — HTML generated on the server before the browser runs React.',
   },
   {
+    term: 'Netlify SSR budget',
+    category: 'tooling',
+    definition:
+      'Wall-clock time Netlify allows one SSR (or other non-background serverless) request before it kills the function. On this site that ceiling is about 26 seconds for page renders — Next.js `export const maxDuration` (e.g. Market Pulse sets 26) asks for up to that many seconds, but the plan hard-caps the real limit. Blow the budget and the visitor gets a gateway timeout / 500 (often an HTML error page), even if Postgres would have finished a moment later. Distinct from background *-worker functions, which get ~15 minutes. Heavy Neon reads during SSR (unbounded Closed history, many towns, etc.) are the usual way pages miss this budget.',
+  },
+  {
     term: 'Hydration (React)',
     category: 'tooling',
     definition:
@@ -485,7 +491,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Cold gap (photos)',
     category: 'photos-cdn',
     definition:
-      'Active listings that report photoCount > 0 but have zero stored photos in R2/index — the Admin “Listing photo health” metric.',
+      'Active listings that report photoCount > 0 but have zero stored photos in R2/index — the Admin → R2 → Listing photo health metric.',
   },
   {
     term: 'Hero (photo)',
@@ -571,7 +577,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Latest',
     category: 'product',
     definition:
-      'Public /latest (“30 on 30”): up to 30 Active listings. Badges (Pending → Coming Soon → New → Back on Market → Reduced → Active) and event-first ranking are defined in lib/latest-status-rules.ts and surfaced on Admin → Syncs → Latest health. Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
+      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after UC / UC-CTS / Temp off market), Reduced, or Increased. Plain Active and Pending never appear. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Intelligence',
@@ -589,7 +595,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Visitors log',
     category: 'sync-admin',
     definition:
-      'Password-gated /visitors activity log. Stored in Neon Postgres (`visitors` table) — not a local JSON file — so it persists on Netlify serverless.',
+      'Password-gated /visitors activity log (same Admin Log in cookie). Grouped by network provider (geo.org) then location with +/− drilldown. Stored in Neon Postgres (`visitors` table). Nav link sits under Log in/out when unlocked; /api/visitors requires the same unlock.',
   },
   {
     term: 'List with Me',
