@@ -82,23 +82,77 @@ type ListingLabelRow = {
 
 /** View logs store whatever was in the URL (id, mls_id, or listing_key). */
 function listingLabelLookupKeys(row: ListingLabelRow): string[] {
-  return [row.id, row.mls_id, row.listing_key]
+  const raw = [row.id, row.mls_id, row.listing_key]
     .map((value) => (typeof value === 'string' ? value.trim() : ''))
     .filter(Boolean)
+  // Index both original and lower-case — Matrix keys / URL casing can differ.
+  const out = new Set<string>()
+  for (const key of raw) {
+    out.add(key)
+    out.add(key.toLowerCase())
+  }
+  return [...out]
+}
+
+function resolvedStreet(row: ListingLabelRow): string | null {
+  const street = row.address_street?.trim() || row.address_full?.trim() || ''
+  return street || null
 }
 
 async function fetchListingLabelsByIds(
   ids: readonly string[],
 ): Promise<ListingLabelRow[]> {
   if (ids.length === 0) return []
+  const lowered = [...new Set(ids.map((id) => id.trim().toLowerCase()).filter(Boolean))]
+  if (lowered.length === 0) return []
+  // Prefer denormalized address columns; fall back to JSON `data.address`
+  // (some rows sync with empty street columns).
   return query<ListingLabelRow>(
-    `SELECT id, mls_id, listing_key, address_street, address_full, town, price, mls_status
+    `SELECT id,
+            mls_id,
+            listing_key,
+            COALESCE(
+              NULLIF(btrim(address_street), ''),
+              NULLIF(btrim(address_full), ''),
+              NULLIF(btrim(data->'address'->>'street'), ''),
+              NULLIF(btrim(data->'address'->>'full'), ''),
+              NULLIF(
+                btrim(concat_ws(' ', raw->>'StreetNumber', raw->>'StreetName')),
+                ''
+              ),
+              NULLIF(btrim(raw->>'UnparsedAddress'), '')
+            ) AS address_street,
+            COALESCE(
+              NULLIF(btrim(address_full), ''),
+              NULLIF(btrim(data->'address'->>'full'), ''),
+              NULLIF(btrim(raw->>'UnparsedAddress'), '')
+            ) AS address_full,
+            COALESCE(
+              NULLIF(btrim(town), ''),
+              NULLIF(btrim(data->'address'->>'city'), ''),
+              NULLIF(btrim(raw->>'City'), '')
+            ) AS town,
+            price,
+            mls_status
      FROM listings
-     WHERE id = ANY($1::text[])
-        OR mls_id = ANY($1::text[])
-        OR listing_key = ANY($1::text[])`,
-    [ids],
+     WHERE lower(id) = ANY($1::text[])
+        OR lower(mls_id) = ANY($1::text[])
+        OR lower(listing_key) = ANY($1::text[])`,
+    [lowered],
   )
+}
+
+/** Ids to resolve — mls_id from the row, plus the listing:… content_key suffix. */
+function lookupIdsFromSummaries(rows: ContentViewSummary[]): string[] {
+  const ids = new Set<string>()
+  for (const row of rows) {
+    if (row.mlsId?.trim()) ids.add(row.mlsId.trim())
+    if (row.kind === 'listing' && row.contentKey.startsWith('listing:')) {
+      const fromKey = row.contentKey.slice('listing:'.length).trim()
+      if (fromKey) ids.add(fromKey)
+    }
+  }
+  return [...ids]
 }
 
 function tsToIso(value: Date | string): string {
@@ -142,9 +196,7 @@ const AGGREGATE_SELECT = `
 async function attachListingDetails(
   rows: ContentViewSummary[],
 ): Promise<ContentViewSummary[]> {
-  const mlsIds = [
-    ...new Set(rows.map((r) => r.mlsId).filter((id): id is string => Boolean(id))),
-  ]
+  const mlsIds = lookupIdsFromSummaries(rows)
   if (mlsIds.length === 0) return rows
 
   let labels: ListingLabelRow[] = []
@@ -160,15 +212,33 @@ async function attachListingDetails(
       byKey.set(key, label)
     }
   }
+
+  const findLabel = (row: ContentViewSummary): ListingLabelRow | undefined => {
+    const candidates = [
+      row.mlsId?.trim(),
+      row.kind === 'listing' && row.contentKey.startsWith('listing:')
+        ? row.contentKey.slice('listing:'.length).trim()
+        : null,
+    ].filter((v): v is string => Boolean(v))
+    for (const id of candidates) {
+      const hit = byKey.get(id) ?? byKey.get(id.toLowerCase())
+      if (hit) return hit
+    }
+    return undefined
+  }
+
   return rows.map((row) => {
-    const label = row.mlsId ? byKey.get(row.mlsId) : undefined
+    const label = findLabel(row)
     if (!label) return row
+    const address = resolvedStreet(label)
     return {
       ...row,
-      address: label.address_street || label.address_full,
+      address,
       town: label.town,
       price: label.price === null ? null : toNumber(label.price),
       status: label.mls_status,
+      // Prefer the short MLS number for display chrome when the URL used a listing key.
+      mlsId: label.mls_id?.trim() || row.mlsId,
     }
   })
 }
@@ -270,12 +340,18 @@ export async function readListingLabelsByMlsIds(
     return {}
   }
   const labels: Record<string, string> = {}
+  const idSetLower = new Set([...idSet].map((id) => id.toLowerCase()))
   for (const row of rows) {
-    const street = row.address_street || row.address_full
+    const street = resolvedStreet(row)
     if (!street) continue
     const label = row.town ? `${street}, ${row.town}` : street
     for (const key of listingLabelLookupKeys(row)) {
-      if (idSet.has(key)) labels[key] = label
+      if (idSet.has(key) || idSetLower.has(key.toLowerCase())) {
+        // Prefer the caller's original casing as the map key.
+        const requested =
+          [...idSet].find((id) => id.toLowerCase() === key.toLowerCase()) ?? key
+        labels[requested] = label
+      }
     }
   }
   return labels

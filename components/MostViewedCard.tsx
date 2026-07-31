@@ -17,7 +17,10 @@ function metaLine(row: ContentViewSummary): string {
   if (typeof row.price === "number" && row.price > 0) {
     parts.push(formatExactCompactPrice(row.price));
   }
-  if (row.mlsId) parts.push(`MLS ${row.mlsId}`);
+  // Short MLS number only — long Matrix keys already appear as the unresolved title.
+  if (row.mlsId && row.mlsId.length <= 16) {
+    parts.push(`MLS ${row.mlsId}`);
+  }
   return parts.join(" · ");
 }
 
