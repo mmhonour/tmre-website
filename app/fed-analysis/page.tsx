@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import FedCpiTimeline from "@/components/fed-analysis/FedCpiTimeline";
 import FedDecisionTimeline from "@/components/fed-analysis/FedDecisionTimeline";
 import FedEventsCalendar from "@/components/fed-analysis/FedEventsCalendar";
 import FedPolicySnapshot from "@/components/fed-analysis/FedPolicySnapshot";
@@ -95,6 +96,15 @@ export default async function FedAnalysisPage() {
           <div className="mb-8">
             <FedDecisionTimeline
               meetings={meetings}
+              now={now}
+              defaultLookback="all"
+            />
+          </div>
+
+          {/* Prevailing CPI timeline — full width, mirrors Decision timeline */}
+          <div className="mb-8">
+            <FedCpiTimeline
+              releases={CPI_RELEASES}
               now={now}
               defaultLookback="all"
             />

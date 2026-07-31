@@ -13,6 +13,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { StatsValueCalc } from "@/lib/stats-compute";
+import { StatsCalcTooltipShell } from "./StatsCalcTooltip";
 import { TOWN_LIST, type StatsKind, type Town } from "./stats-towns";
 
 const TOWN_COLOR: Record<Town, string> = {
@@ -28,6 +30,8 @@ const TOWN_COLOR: Record<Town, string> = {
 export type MedianPricePoint = {
   town: Town;
   medianPrice: number;
+  /** From stats_cache MarketStatsPayload.medianPriceCalc — not computed in the client. */
+  medianPriceCalc?: StatsValueCalc;
 };
 
 type ChartRow = MedianPricePoint & { color: string };
@@ -92,13 +96,21 @@ export default function MedianPriceBarChart({
         })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
-          .then((payload: { medianPrice?: number | null } | null) => ({
-            town,
-            medianPrice:
-              typeof payload?.medianPrice === "number" && payload.medianPrice > 0
-                ? payload.medianPrice
-                : 0,
-          })),
+          .then(
+            (
+              payload: {
+                medianPrice?: number | null;
+                medianPriceCalc?: StatsValueCalc;
+              } | null,
+            ) => ({
+              town,
+              medianPrice:
+                typeof payload?.medianPrice === "number" && payload.medianPrice > 0
+                  ? payload.medianPrice
+                  : 0,
+              medianPriceCalc: payload?.medianPriceCalc,
+            }),
+          ),
       ),
     ).then((rows) => {
       if (cancelled) return;
@@ -187,27 +199,23 @@ export default function MedianPriceBarChart({
                 width={52}
               />
               <Tooltip
-                contentStyle={{
-                  background: "#1a1f35",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 12,
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  color: "#fff",
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-                }}
-                labelStyle={{
-                  color: "#D4AF37",
-                  marginBottom: 6,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.15em",
-                  fontSize: 10,
-                }}
-                formatter={(value) => [
-                  fmtTooltip(Number(value)),
-                  kind === "rental" ? "Median closed rent" : "Median closed price",
-                ]}
                 cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const row = payload[0]?.payload as ChartRow | undefined;
+                  const value = Number(payload[0]?.value);
+                  return (
+                    <StatsCalcTooltipShell
+                      label={String(label ?? row?.town ?? "")}
+                      valueLine={`${fmtTooltip(value)} · ${
+                        kind === "rental"
+                          ? "Median closed rent"
+                          : "Median closed price"
+                      }`}
+                      calc={row?.medianPriceCalc}
+                    />
+                  );
+                }}
               />
               <Bar dataKey="medianPrice" fill={`url(#${id}-price-grad)`} radius={[8, 8, 0, 0]} maxBarSize={72}>
                 {chartData.map((entry) => (

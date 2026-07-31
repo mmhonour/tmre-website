@@ -61,13 +61,30 @@ function getMonthFromTimestamp(ts: string | null): { year: number; month: number
   return { year: d.getFullYear(), month: d.getMonth() + 1 }
 }
 
+/**
+ * How a cached stats value was produced — written at rebuild time so the UI
+ * can show methodology on hover without recomputing from listings.
+ */
+export type StatsValueCalc = {
+  /** One-line tooltip explanation. */
+  summary: string
+  /** Optional extra lines under the summary. */
+  detail?: string[]
+  /** Machine-readable inputs for audit / future UI. */
+  inputs?: Record<string, number | string | boolean | null>
+}
+
 export type MarketStatsPayload = {
   city: string
   kind: ListingKind
   activeCount: number
   medianPrice: number | null
+  /** Cached explanation for {@link medianPrice} (bar / KPI hover). */
+  medianPriceCalc?: StatsValueCalc
   avgDaysOnMarket: number | null
+  avgDaysOnMarketCalc?: StatsValueCalc
   avgPricePerSqft: number | null
+  avgPricePerSqftCalc?: StatsValueCalc
   avgBeds: number | null
   sampleSize: number
 }
@@ -104,6 +121,8 @@ export type StatsBucketRow = {
   label: string
   count: number
   share: number
+  /** Cached explanation for this bucket’s count/share. */
+  calc?: StatsValueCalc
 }
 
 export type SalesByVintagePayload = {
@@ -159,6 +178,60 @@ export type SalesByPricePayload = {
   topBucket: StatsBucketRow | null
 }
 
+function periodLabel(): string {
+  return `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`
+}
+
+function medianPriceCalcFor(
+  city: string,
+  kind: ListingKind,
+  medianPrice: number | null,
+  closedPrices: number[],
+  activePrices: number[],
+  activeCount: number,
+): StatsValueCalc | undefined {
+  if (medianPrice == null) return undefined
+  const period = periodLabel()
+  const closedNoun =
+    kind === 'rental' ? 'closed lease rents' : 'closed sale prices'
+  if (closedPrices.length > 0) {
+    const n = closedPrices.length
+    return {
+      summary: `Median of ${n.toLocaleString()} ${closedNoun} in ${city} (${period}).`,
+      detail: [
+        `Mid-point of sorted closed/sold amounts with CloseDate in ${period}.`,
+        `Active inventory (${activeCount.toLocaleString()}) is not used when closed samples exist.`,
+      ],
+      inputs: {
+        source: 'closed',
+        sampleSize: n,
+        periodStart: STATS_CLOSED_PERIOD_START,
+        periodEnd: CURRENT_YEAR,
+        city,
+        kind,
+        medianPrice,
+      },
+    }
+  }
+  const n = activePrices.length
+  if (n === 0) return undefined
+  return {
+    summary: `Median of ${n.toLocaleString()} active list prices in ${city} (fallback — no closed prices in ${period}).`,
+    detail: [
+      `No ${closedNoun} with a usable close price in ${period}, so active list prices were used.`,
+    ],
+    inputs: {
+      source: 'active-fallback',
+      sampleSize: n,
+      periodStart: STATS_CLOSED_PERIOD_START,
+      periodEnd: CURRENT_YEAR,
+      city,
+      kind,
+      medianPrice,
+    },
+  }
+}
+
 export function computeMarketStats(
   activeListings: Listing[],
   city: string,
@@ -185,15 +258,60 @@ export function computeMarketStats(
       : []
   const beds = filteredActive.map((l) => l.beds).filter((b): b is number => b != null && b > 0)
 
+  const medianPrice = median(closedPrices) ?? median(activePrices)
+  const avgDaysOnMarket = mean(doms)
+  const avgPricePerSqft = kind === 'sale' ? mean(ppsf) : null
+  const activeCount = filteredActive.length
+
   return {
     city,
     kind,
-    activeCount: filteredActive.length,
-    medianPrice: median(closedPrices) ?? median(activePrices),
-    avgDaysOnMarket: mean(doms),
-    avgPricePerSqft: kind === 'sale' ? mean(ppsf) : null,
+    activeCount,
+    medianPrice,
+    medianPriceCalc: medianPriceCalcFor(
+      city,
+      kind,
+      medianPrice,
+      closedPrices,
+      activePrices,
+      activeCount,
+    ),
+    avgDaysOnMarket,
+    avgDaysOnMarketCalc:
+      avgDaysOnMarket != null
+        ? {
+            summary: `Mean Days on Market across ${doms.length.toLocaleString()} active ${
+              kind === 'rental' ? 'rentals' : 'listings'
+            } in ${city} with a non-null DOM.`,
+            detail: [
+              `Sum of DOM ÷ ${doms.length.toLocaleString()} (active ${kind} only; closed sales are excluded).`,
+            ],
+            inputs: {
+              source: 'active-dom-mean',
+              sampleSize: doms.length,
+              city,
+              kind,
+              avgDaysOnMarket,
+            },
+          }
+        : undefined,
+    avgPricePerSqft,
+    avgPricePerSqftCalc:
+      avgPricePerSqft != null
+        ? {
+            summary: `Mean list $/sqft across ${ppsf.length.toLocaleString()} active sales in ${city} with price and sqft > 0.`,
+            detail: ['Each listing contributes price ÷ living area; then average those ratios.'],
+            inputs: {
+              source: 'active-ppsf-mean',
+              sampleSize: ppsf.length,
+              city,
+              kind,
+              avgPricePerSqft,
+            },
+          }
+        : undefined,
     avgBeds: mean(beds),
-    sampleSize: filteredActive.length,
+    sampleSize: activeCount,
   }
 }
 
@@ -396,18 +514,42 @@ export function computeSalesByVintage(
   }
 
   const knownTotal = total - counts.unknown
-  const buckets = VINTAGE_BUCKETS.map((b) => ({
-    id: b.id,
-    label: b.label,
-    count: counts[b.id],
-    share: knownTotal > 0 ? counts[b.id] / knownTotal : 0,
-  }))
+  const period = `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`
+  const noun = kind === 'rental' ? 'closed leases' : 'closed sales'
+  const buckets = VINTAGE_BUCKETS.map((b) => {
+    const count = counts[b.id]
+    const share = knownTotal > 0 ? count / knownTotal : 0
+    const pct = knownTotal > 0 ? Math.round(share * 1000) / 10 : 0
+    return {
+      id: b.id,
+      label: b.label,
+      count,
+      share,
+      calc: {
+        summary: `${count.toLocaleString()} of ${knownTotal.toLocaleString()} ${noun} with known year built in ${city} (${period}) are ${b.label} (${pct}%).`,
+        detail: [
+          `Share = vintage count ÷ known year-built closings (unknown year built excluded from the denominator).`,
+          `Total closings in period: ${total.toLocaleString()}.`,
+        ],
+        inputs: {
+          city,
+          kind,
+          period,
+          vintageLabel: b.label,
+          count,
+          knownTotal,
+          totalSales: total,
+          share,
+        },
+      } satisfies StatsValueCalc,
+    }
+  })
   const ranked = [...buckets].sort((a, b) => b.count - a.count)
 
   return {
     city,
     kind,
-    period: `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`,
+    period,
     totalSales: total,
     knownYearBuilt: knownTotal,
     unknownYearBuilt: counts.unknown,
@@ -510,12 +652,27 @@ export function computeSalesByPrice(
       counts[classifyRentPrice(closedKindPrice(l, kind))] += 1
     }
     const knownTotal = total - counts.unknown
-    const buckets = RENT_BUCKETS.map((b) => ({
-      id: b.id,
-      label: b.label,
-      count: counts[b.id],
-      share: knownTotal > 0 ? counts[b.id] / knownTotal : 0,
-    }))
+    const buckets = RENT_BUCKETS.map((b) => {
+      const count = counts[b.id]
+      const share = knownTotal > 0 ? count / knownTotal : 0
+      return {
+        id: b.id,
+        label: b.label,
+        count,
+        share,
+        calc: bucketCalc({
+          city,
+          kind,
+          period,
+          bandLabel: b.label,
+          count,
+          knownTotal,
+          total,
+          share,
+          noun: 'closed leases',
+        }),
+      }
+    })
     const ranked = [...buckets].sort((a, b) => b.count - a.count)
     return {
       city,
@@ -541,12 +698,27 @@ export function computeSalesByPrice(
   }
 
   const knownTotal = total - (counts.unknown ?? 0)
-  const buckets = bandDefs.map((b) => ({
-    id: b.id,
-    label: b.label,
-    count: counts[b.id] ?? 0,
-    share: knownTotal > 0 ? (counts[b.id] ?? 0) / knownTotal : 0,
-  }))
+  const buckets = bandDefs.map((b) => {
+    const count = counts[b.id] ?? 0
+    const share = knownTotal > 0 ? count / knownTotal : 0
+    return {
+      id: b.id,
+      label: b.label,
+      count,
+      share,
+      calc: bucketCalc({
+        city,
+        kind,
+        period,
+        bandLabel: b.label,
+        count,
+        knownTotal,
+        total,
+        share,
+        noun: 'closed sales',
+      }),
+    }
+  })
   const ranked = [...buckets].sort((a, b) => b.count - a.count)
 
   return {
@@ -558,6 +730,37 @@ export function computeSalesByPrice(
     unknownPrice: counts.unknown ?? 0,
     buckets,
     topBucket: ranked[0]?.count ? ranked[0] : null,
+  }
+}
+
+function bucketCalc(args: {
+  city: string
+  kind: ListingKind
+  period: string
+  bandLabel: string
+  count: number
+  knownTotal: number
+  total: number
+  share: number
+  noun: string
+}): StatsValueCalc {
+  const pct = args.knownTotal > 0 ? Math.round(args.share * 1000) / 10 : 0
+  return {
+    summary: `${args.count.toLocaleString()} of ${args.knownTotal.toLocaleString()} ${args.noun} with known price in ${args.city} (${args.period}) fell in ${args.bandLabel} (${pct}%).`,
+    detail: [
+      `Share = band count ÷ known-price closings (unknown-price closings excluded from the denominator).`,
+      `Total closings in period: ${args.total.toLocaleString()}.`,
+    ],
+    inputs: {
+      city: args.city,
+      kind: args.kind,
+      period: args.period,
+      bandLabel: args.bandLabel,
+      count: args.count,
+      knownTotal: args.knownTotal,
+      totalSales: args.total,
+      share: args.share,
+    },
   }
 }
 
@@ -624,14 +827,29 @@ export function computeActiveByPrice(
       counts[classifyRentPrice(l.price)] += 1
     }
     const knownTotal = total - counts.unknown
-    const buckets: ActiveByPriceBucket[] = RENT_BUCKETS.map((b) => ({
-      id: b.id,
-      label: b.label,
-      min: b.min,
-      max: b.max,
-      count: counts[b.id],
-      share: knownTotal > 0 ? counts[b.id] / knownTotal : 0,
-    }))
+    const buckets: ActiveByPriceBucket[] = RENT_BUCKETS.map((b) => {
+      const count = counts[b.id]
+      const share = knownTotal > 0 ? count / knownTotal : 0
+      return {
+        id: b.id,
+        label: b.label,
+        min: b.min,
+        max: b.max,
+        count,
+        share,
+        calc: bucketCalc({
+          city,
+          kind,
+          period: 'active',
+          bandLabel: b.label,
+          count,
+          knownTotal,
+          total,
+          share,
+          noun: 'active rentals',
+        }),
+      }
+    })
     const ranked = [...buckets].sort((a, b) => b.count - a.count)
     return {
       city,
@@ -654,14 +872,29 @@ export function computeActiveByPrice(
   }
 
   const knownTotal = total - (counts.unknown ?? 0)
-  const buckets: ActiveByPriceBucket[] = bandDefs.map((b) => ({
-    id: b.id,
-    label: b.label,
-    min: b.min,
-    max: b.max,
-    count: counts[b.id] ?? 0,
-    share: knownTotal > 0 ? (counts[b.id] ?? 0) / knownTotal : 0,
-  }))
+  const buckets: ActiveByPriceBucket[] = bandDefs.map((b) => {
+    const count = counts[b.id] ?? 0
+    const share = knownTotal > 0 ? count / knownTotal : 0
+    return {
+      id: b.id,
+      label: b.label,
+      min: b.min,
+      max: b.max,
+      count,
+      share,
+      calc: bucketCalc({
+        city,
+        kind,
+        period: 'active',
+        bandLabel: b.label,
+        count,
+        knownTotal,
+        total,
+        share,
+        noun: 'active listings',
+      }),
+    }
+  })
   const ranked = [...buckets].sort((a, b) => b.count - a.count)
 
   return {

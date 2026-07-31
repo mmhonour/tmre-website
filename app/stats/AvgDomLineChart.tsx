@@ -11,6 +11,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { StatsValueCalc } from "@/lib/stats-compute";
+import { StatsCalcTooltipShell } from "./StatsCalcTooltip";
 import type { StatsKind, Town } from "./stats-towns";
 import { statsActiveLabel } from "./stats-labels";
 import { STATS_TOWN_COLOR } from "./stats-town-colors";
@@ -20,6 +22,7 @@ export type DomPoint = {
   town: Town;
   avgDom: number;
   pace: string;
+  avgDaysOnMarketCalc?: StatsValueCalc;
 };
 
 function paceLabel(avgDom: number): string {
@@ -126,27 +129,20 @@ export default function AvgDomLineChart({
                 tickFormatter={(v) => `${v}d`}
               />
               <Tooltip
-                contentStyle={{
-                  background: "#1a1f35",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 12,
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  color: "#fff",
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-                }}
-                labelStyle={{
-                  color: "#D4AF37",
-                  marginBottom: 6,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.15em",
-                  fontSize: 10,
-                }}
-                formatter={(value, _name, item) => {
-                  const pace = (item.payload as { pace?: string }).pace ?? "";
-                  return [`${Math.round(Number(value))}d · ${pace}`, "Avg DOM"];
-                }}
                 cursor={{ stroke: "rgba(255,255,255,0.08)", strokeWidth: 1 }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const row = payload[0]?.payload as DomPoint & { pace?: string };
+                  const days = Math.round(Number(payload[0]?.value));
+                  const pace = row?.pace ?? paceLabel(days);
+                  return (
+                    <StatsCalcTooltipShell
+                      label={String(label ?? row?.town ?? "")}
+                      valueLine={`${days}d · ${pace} · Avg DOM`}
+                      calc={row?.avgDaysOnMarketCalc}
+                    />
+                  );
+                }}
               />
               <Area
                 type="monotone"

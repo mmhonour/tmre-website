@@ -22,7 +22,9 @@ import {
   statsPriceBandLabel,
   statsVolumeNoun,
 } from "./stats-labels";
+import type { StatsValueCalc } from "@/lib/stats-compute";
 import { pillClass } from "./stats-month-chart-utils";
+import { StatsCalcTooltipShell } from "./StatsCalcTooltip";
 import { useStatsChartReady } from "./stats-chart-frame-context";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -36,6 +38,7 @@ type BucketRow = {
   label: string;
   count: number;
   share: number;
+  calc?: StatsValueCalc;
 };
 
 type ApiResponse = {
@@ -256,34 +259,31 @@ export default function PriceSalesChart({
                 width={36}
               />
               <Tooltip
-                contentStyle={{
-                  background: "#1a1f35",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 12,
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  color: "#fff",
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-                }}
-                labelStyle={{
-                  color: "#D4AF37",
-                  marginBottom: 6,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.15em",
-                  fontSize: 10,
-                }}
-                formatter={(value, _name, item) => {
-                  const row = item.payload as BucketRow;
+                cursor={{ stroke: "rgba(255,255,255,0.08)", strokeWidth: 1 }}
+                content={({ active, payload: tipPayload, label }) => {
+                  if (!active || !tipPayload?.length) return null;
+                  const row = tipPayload[0]?.payload as BucketRow;
+                  const value = tipPayload[0]?.value;
                   const pct =
                     payload && payload.knownPrice > 0
                       ? Math.round(row.share * 100)
                       : null;
-                  return [
-                    pct != null ? `${value} ${volumeNoun} (${pct}%)` : `${value} ${volumeNoun}`,
-                    isRental ? "Closed lease" : "Closed",
-                  ];
+                  const valueLine =
+                    pct != null
+                      ? `${value} ${volumeNoun} (${pct}%) · ${
+                          isRental ? "Closed lease" : "Closed"
+                        }`
+                      : `${value} ${volumeNoun} · ${
+                          isRental ? "Closed lease" : "Closed"
+                        }`;
+                  return (
+                    <StatsCalcTooltipShell
+                      label={String(label ?? row.label)}
+                      valueLine={valueLine}
+                      calc={row.calc}
+                    />
+                  );
                 }}
-                cursor={{ stroke: "rgba(255,255,255,0.08)", strokeWidth: 1 }}
               />
               <Area
                 type="linear"

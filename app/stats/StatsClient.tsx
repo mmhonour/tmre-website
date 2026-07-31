@@ -74,8 +74,11 @@ type CityStats = {
   city: string;
   activeCount: number;
   medianPrice: number | null;
+  medianPriceCalc?: import("@/lib/stats-compute").StatsValueCalc;
   avgDaysOnMarket: number | null;
+  avgDaysOnMarketCalc?: import("@/lib/stats-compute").StatsValueCalc;
   avgPricePerSqft: number | null;
+  avgPricePerSqftCalc?: import("@/lib/stats-compute").StatsValueCalc;
   avgBeds: number | null;
   sampleSize: number;
 };
@@ -581,11 +584,13 @@ export default function StatsClient() {
   const medianChartData = useMemo(
     () =>
       TOWN_LIST.map((town) => {
-        const medianPrice = stats[town]?.medianPrice;
+        const row = stats[town];
+        const medianPrice = row?.medianPrice;
         return {
           town,
           medianPrice:
             typeof medianPrice === "number" && medianPrice > 0 ? medianPrice : 0,
+          medianPriceCalc: row?.medianPriceCalc,
         };
       }).filter((d) => d.medianPrice > 0),
     [stats],
@@ -595,11 +600,13 @@ export default function StatsClient() {
     () =>
       visibleTowns
         .map((town) => {
-          const avgDom = stats[town]?.avgDaysOnMarket;
+          const row = stats[town];
+          const avgDom = row?.avgDaysOnMarket;
           if (avgDom == null) return null;
           return {
             town,
             avgDom,
+            avgDaysOnMarketCalc: row?.avgDaysOnMarketCalc,
             pace:
               avgDom <= 10
                 ? "Moving fast"
