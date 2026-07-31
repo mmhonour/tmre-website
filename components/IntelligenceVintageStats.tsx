@@ -164,7 +164,7 @@ function VintageSnapshotSummaryBody({
 
 function vintagePanelTitle(tx: TxFilter): string {
   if (tx === "rental") return "Rentals by VINTAGE or SCORE or MEDIAN";
-  return "Sales by VINTAGE or SCORE or MEDIAN";
+  return "Sales by vintage";
 }
 
 function vintageSnapshotTitle(label: string): string {

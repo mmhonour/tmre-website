@@ -45,6 +45,15 @@ export const DEFAULT_MARKET_PULSE_THEME: MarketPulseTheme = {
   monoFont: "mono",
 };
 
+export type MarketPulseThemePreset = {
+  id: string
+  label: string
+  theme: MarketPulseTheme
+  /** Built-ins ship in git; custom presets live in Postgres per environment. */
+  source: "builtin" | "custom"
+  createdAt?: string
+}
+
 export const MARKET_PULSE_THEME_PRESETS: Record<
   string,
   { label: string; theme: MarketPulseTheme }
@@ -94,6 +103,26 @@ export const MARKET_PULSE_THEME_PRESETS: Record<
     },
   },
 };
+
+export function builtinMarketPulsePresets(): MarketPulseThemePreset[] {
+  return Object.entries(MARKET_PULSE_THEME_PRESETS).map(([id, preset]) => ({
+    id,
+    label: preset.label,
+    theme: cloneMarketPulseTheme(preset.theme),
+    source: "builtin" as const,
+  }))
+}
+
+/** Stable id for a custom preset label (prefixed so it never clashes with builtins). */
+export function slugifyCustomPresetId(label: string): string {
+  const base = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+  return `custom-${base || "preset"}`
+}
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 

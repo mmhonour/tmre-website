@@ -227,6 +227,39 @@ function DealPhoto({
   );
 }
 
+function dealCompactBedBath(l: DealCarouselPayload["listing"]): string | null {
+  if (l.beds != null && l.baths != null) return `${l.beds}/${l.baths}`;
+  if (l.beds != null) return `${l.beds}bd`;
+  if (l.baths != null) return `${l.baths}ba`;
+  return null;
+}
+
+function dealCompactThumb(
+  deal: DealCarouselPayload,
+  isHero: boolean,
+  size: "sm" | "xs" = "sm",
+) {
+  const box =
+    size === "xs" ? "h-7 w-9" : "h-9 w-11";
+  if (deal.photoUrl) {
+    return (
+      <ListingThumbImage
+        src={deal.photoUrl}
+        className={`relative block ${box} shrink-0 overflow-hidden rounded`}
+        imgClassName="absolute inset-0 h-full w-full object-cover"
+      />
+    );
+  }
+  return (
+    <div
+      className={`${box} shrink-0 rounded ${
+        isHero ? "bg-white/10" : "bg-cream"
+      }`}
+      aria-hidden
+    />
+  );
+}
+
 /** Phone / narrow: two tight lines + tiny thumb (no price, no score-breakdown link). */
 function DealContentCompact({
   deal,
@@ -244,37 +277,14 @@ function DealContentCompact({
   href: string;
 }) {
   const l = deal.listing;
-  const bedBath =
-    l.beds != null && l.baths != null
-      ? `${l.beds}/${l.baths}`
-      : l.beds != null
-        ? `${l.beds}bd`
-        : l.baths != null
-          ? `${l.baths}ba`
-          : null;
   const line2 = [
     l.address.street || l.address.full,
-    bedBath,
+    dealCompactBedBath(l),
     fmtSqftK(l.sqft),
     fmtLotAcresCompact(deal.lotAcres),
   ]
     .filter(Boolean)
     .join(" · ");
-
-  const thumb = deal.photoUrl ? (
-    <ListingThumbImage
-      src={deal.photoUrl}
-      className="relative block h-9 w-11 shrink-0 overflow-hidden rounded"
-      imgClassName="absolute inset-0 h-full w-full object-cover"
-    />
-  ) : (
-    <div
-      className={`h-9 w-11 shrink-0 rounded ${
-        isHero ? "bg-white/10" : "bg-cream"
-      }`}
-      aria-hidden
-    />
-  );
 
   return (
     <Link
@@ -284,7 +294,7 @@ function DealContentCompact({
         isHero ? "hover:bg-white/[0.04]" : "hover:bg-cream/60"
       }`}
     >
-      {thumb}
+      {dealCompactThumb(deal, isHero)}
       <div className="min-w-0 flex-1 leading-tight">
         <p
           className={`font-mono text-[9px] tracking-[0.08em] uppercase truncate ${
@@ -311,6 +321,67 @@ function DealContentCompact({
           {line2}
         </p>
       </div>
+    </Link>
+  );
+}
+
+/** Desktop: one line when Intelligence filter chrome under descriptors is hidden. */
+function DealContentDesktopSingleLine({
+  deal,
+  headerTown,
+  composite,
+  scoreColor,
+  isHero,
+  href,
+}: {
+  deal: DealCarouselPayload;
+  headerTown: string | null;
+  composite: number | null | undefined;
+  scoreColor: string;
+  isHero: boolean;
+  href: string;
+}) {
+  const l = deal.listing;
+  const detail = [
+    l.address.street || l.address.full,
+    dealCompactBedBath(l),
+    fmtSqftK(l.sqft),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <Link
+      href={href}
+      {...listingHoverHandlers(l.mlsId || l.listingKey || null)}
+      className={`flex items-center gap-2 px-3 py-1.5 ${
+        isHero ? "hover:bg-white/[0.04]" : "hover:bg-cream/60"
+      }`}
+    >
+      {dealCompactThumb(deal, isHero, "xs")}
+      <p
+        className={`min-w-0 flex-1 font-mono text-[10px] leading-none truncate ${
+          isHero ? "text-white/85" : "text-navy"
+        }`}
+      >
+        <span className="tracking-[0.08em] uppercase text-gold">DOTD</span>
+        <span className={isHero ? "text-white/45" : "text-slate/70"}>
+          {" "}
+          {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}
+        </span>
+        {composite != null ? (
+          <span className={`tabular-nums ${scoreColor}`}>
+            {" "}
+            · {composite.toFixed(1)}
+          </span>
+        ) : null}
+        {detail ? (
+          <span className={isHero ? "text-white/70" : "text-navy"}>
+            {" "}
+            · {detail}
+          </span>
+        ) : null}
+      </p>
     </Link>
   );
 }
@@ -431,6 +502,11 @@ export default function DealOfTheDayFrame({
    * surfaces one Deal of the Day card when any pick exists.
    */
   surfaceAnyPick = false,
+  /**
+   * Desktop only: collapse the card body to a single line (Intelligence when
+   * filter chrome under property descriptors is hidden).
+   */
+  desktopSingleLine = false,
 }: {
   city?: string;
   theme?: "hero" | "light";
@@ -446,6 +522,7 @@ export default function DealOfTheDayFrame({
   initialPropertyClass?: DealPropertyClassFilter;
   hideUntilReady?: boolean;
   surfaceAnyPick?: boolean;
+  desktopSingleLine?: boolean;
 }) {
   const {
     loading,
@@ -569,90 +646,117 @@ export default function DealOfTheDayFrame({
           )}
         </div>
 
-        {/* Desktop / tablet: full card */}
-        <div className="hidden lg:block">
-          <div
-            className={`px-4 ${isHero ? "py-2" : "py-3"} flex items-center justify-between ${
-              isHero ? "border-b border-white/10" : "border-b border-charcoal/[0.06]"
-            }`}
-          >
-            <Link
-              href={dealHref}
-              className={`font-mono text-[10px] tracking-[0.2em] uppercase text-gold transition-colors cursor-pointer ${
-                isHero ? "hover:text-gold-light" : "hover:text-navy"
-              }`}
-            >
-              <span className="uppercase">Deal of the Day</span>
-              <span
-                className={`normal-case tracking-normal ${
-                  isHero ? "text-white/45" : "text-slate"
-                }`}
-              >
-                {" "}
-                {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}
-              </span>
-            </Link>
-            {loading ? (
-              <span
-                className={`font-mono text-[9px] ${isHero ? "text-white/40" : "text-slate/50"}`}
-              >
-                Loading…
-              </span>
-            ) : composite != null && score ? (
-              <button
-                type="button"
-                onClick={openBreakdown}
-                className={`font-mono text-sm tabular-nums font-medium underline underline-offset-2 transition-colors cursor-pointer ${scoreColor} ${
-                  isHero
-                    ? "decoration-white/30 hover:decoration-gold"
-                    : "decoration-charcoal/20 hover:decoration-gold"
-                }`}
-                aria-label="View score breakdown"
-              >
-                {composite.toFixed(1)}
-              </button>
-            ) : null}
-          </div>
-
-          <div className={`overflow-hidden ${isHero ? "min-h-0" : "min-h-[9rem]"}`}>
+        {/* Desktop: single-line strip when Intelligence filters are hidden */}
+        {desktopSingleLine ? (
+          <div className="hidden lg:block">
             {loading ? (
               <div
-                className={`p-4 ${isHero ? "h-24" : "h-32"} animate-pulse ${
-                  isHero ? "bg-white/5" : "bg-cream/80"
-                }`}
+                className={`h-10 animate-pulse ${isHero ? "bg-white/5" : "bg-cream/80"}`}
               />
             ) : !deal || !l ? (
               <p
-                className={`p-4 font-mono text-[10px] tracking-wide ${
+                className={`px-3 py-2 font-mono text-[10px] tracking-wide truncate ${
                   isHero ? "text-white/40" : "text-slate"
                 }`}
               >
                 {emptyCopy}
               </p>
             ) : (
-              <DealContent
+              <DealContentDesktopSingleLine
                 deal={deal}
-                slideDir={slideDir}
-                slideKey={`${currentTown}-${carouselIndex}`}
+                headerTown={headerTown}
+                composite={composite}
+                scoreColor={scoreColor}
                 isHero={isHero}
-                onOpenBreakdown={openBreakdown}
+                href={dealHref}
               />
             )}
           </div>
+        ) : (
+          <div className="hidden lg:block">
+            <div
+              className={`px-4 ${isHero ? "py-2" : "py-3"} flex items-center justify-between ${
+                isHero ? "border-b border-white/10" : "border-b border-charcoal/[0.06]"
+              }`}
+            >
+              <Link
+                href={dealHref}
+                className={`font-mono text-[10px] tracking-[0.2em] uppercase text-gold transition-colors cursor-pointer ${
+                  isHero ? "hover:text-gold-light" : "hover:text-navy"
+                }`}
+              >
+                <span className="uppercase">Deal of the Day</span>
+                <span
+                  className={`normal-case tracking-normal ${
+                    isHero ? "text-white/45" : "text-slate"
+                  }`}
+                >
+                  {" "}
+                  {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}
+                </span>
+              </Link>
+              {loading ? (
+                <span
+                  className={`font-mono text-[9px] ${isHero ? "text-white/40" : "text-slate/50"}`}
+                >
+                  Loading…
+                </span>
+              ) : composite != null && score ? (
+                <button
+                  type="button"
+                  onClick={openBreakdown}
+                  className={`font-mono text-sm tabular-nums font-medium underline underline-offset-2 transition-colors cursor-pointer ${scoreColor} ${
+                    isHero
+                      ? "decoration-white/30 hover:decoration-gold"
+                      : "decoration-charcoal/20 hover:decoration-gold"
+                  }`}
+                  aria-label="View score breakdown"
+                >
+                  {composite.toFixed(1)}
+                </button>
+              ) : null}
+            </div>
 
-          {rotateTowns ? (
-            <CarouselControls
-              paused={paused}
-              onTogglePause={togglePause}
-              onPrev={goPrev}
-              onNext={goNext}
-              canNavigate={canNavigate}
-              townLabel={currentTown}
-              positionLabel={positionLabel}
-              isHero={isHero}
-            />
-          ) : null}
-        </div>
+            <div className={`overflow-hidden ${isHero ? "min-h-0" : "min-h-[9rem]"}`}>
+              {loading ? (
+                <div
+                  className={`p-4 ${isHero ? "h-24" : "h-32"} animate-pulse ${
+                    isHero ? "bg-white/5" : "bg-cream/80"
+                  }`}
+                />
+              ) : !deal || !l ? (
+                <p
+                  className={`p-4 font-mono text-[10px] tracking-wide ${
+                    isHero ? "text-white/40" : "text-slate"
+                  }`}
+                >
+                  {emptyCopy}
+                </p>
+              ) : (
+                <DealContent
+                  deal={deal}
+                  slideDir={slideDir}
+                  slideKey={`${currentTown}-${carouselIndex}`}
+                  isHero={isHero}
+                  onOpenBreakdown={openBreakdown}
+                />
+              )}
+            </div>
+
+            {rotateTowns ? (
+              <CarouselControls
+                paused={paused}
+                onTogglePause={togglePause}
+                onPrev={goPrev}
+                onNext={goNext}
+                canNavigate={canNavigate}
+                townLabel={currentTown}
+                positionLabel={positionLabel}
+                isHero={isHero}
+              />
+            ) : null}
+          </div>
+        )}
       </aside>
 
       <ModalPortal

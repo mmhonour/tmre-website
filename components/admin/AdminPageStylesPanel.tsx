@@ -4,16 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import {
   cloneMarketPulseTheme,
   MARKET_PULSE_FONT_OPTIONS,
-  MARKET_PULSE_THEME_PRESETS,
   marketPulseThemeCssVars,
   type MarketPulseFontId,
   type MarketPulseTheme,
+  type MarketPulseThemePreset,
 } from "@/lib/page-theme-shared";
 
 type Payload = {
   theme: MarketPulseTheme;
   default: MarketPulseTheme;
   isDefault: boolean;
+  presets?: MarketPulseThemePreset[];
   error?: string;
 };
 
@@ -33,8 +34,11 @@ export default function AdminPageStylesPanel() {
   const [saved, setSaved] = useState<MarketPulseTheme | null>(null);
   const [draft, setDraft] = useState<MarketPulseTheme | null>(null);
   const [defaults, setDefaults] = useState<MarketPulseTheme | null>(null);
+  const [presets, setPresets] = useState<MarketPulseThemePreset[]>([]);
+  const [presetName, setPresetName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPreset, setSavingPreset] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +55,7 @@ export default function AdminPageStylesPanel() {
         setSaved(cloneMarketPulseTheme(body.theme));
         setDraft(cloneMarketPulseTheme(body.theme));
         setDefaults(cloneMarketPulseTheme(body.default));
+        setPresets(body.presets ?? []);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
@@ -66,6 +71,15 @@ export default function AdminPageStylesPanel() {
   const dirty = useMemo(
     () => Boolean(draft && saved && JSON.stringify(draft) !== JSON.stringify(saved)),
     [draft, saved],
+  );
+
+  const builtinPresets = useMemo(
+    () => presets.filter((p) => p.source === "builtin"),
+    [presets],
+  );
+  const customPresets = useMemo(
+    () => presets.filter((p) => p.source === "custom"),
+    [presets],
   );
 
   const cssVars = draft ? marketPulseThemeCssVars(draft) : undefined;
@@ -103,6 +117,56 @@ export default function AdminPageStylesPanel() {
     }
   }
 
+  async function saveAsPreset() {
+    if (!draft) return;
+    setSavingPreset(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/page-theme", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ label: presetName, theme: draft }),
+      });
+      const body = (await res.json()) as Payload & {
+        preset?: MarketPulseThemePreset;
+      };
+      if (!res.ok) {
+        setError(body.error ?? "Could not save preset");
+        return;
+      }
+      if (body.presets) setPresets(body.presets);
+      setPresetName("");
+      setMessage(
+        `Preset “${body.preset?.label ?? presetName}” saved in this environment’s database (not overwritten by deploy).`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save preset");
+    } finally {
+      setSavingPreset(false);
+    }
+  }
+
+  async function deletePreset(id: string) {
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(
+        `/api/admin/page-theme?id=${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
+      const body = (await res.json()) as Payload;
+      if (!res.ok) {
+        setError(body.error ?? "Delete failed");
+        return;
+      }
+      if (body.presets) setPresets(body.presets);
+      setMessage("Custom preset removed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
   if (loading || !draft) {
     return (
       <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-6 py-8 text-sm text-slate">
@@ -122,7 +186,9 @@ export default function AdminPageStylesPanel() {
         </p>
         <p className="mt-1 max-w-3xl text-sm text-slate">
           Page-specific palette and typography. These controls affect only{" "}
-          <span className="font-mono text-xs">/market-pulse</span>.
+          <span className="font-mono text-xs">/market-pulse</span>. Custom
+          presets are stored in this environment’s database — a push from
+          another env will not overwrite them.
         </p>
       </div>
 
@@ -166,12 +232,12 @@ export default function AdminPageStylesPanel() {
 
         <section>
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-            Presets
+            Built-in presets
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {Object.entries(MARKET_PULSE_THEME_PRESETS).map(([id, preset]) => (
+            {builtinPresets.map((preset) => (
               <button
-                key={id}
+                key={preset.id}
                 type="button"
                 onClick={() => setDraft(cloneMarketPulseTheme(preset.theme))}
                 className="rounded-full border border-navy/20 bg-cream/40 px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase text-navy transition-colors hover:border-gold hover:bg-cream"
@@ -179,6 +245,71 @@ export default function AdminPageStylesPanel() {
                 {preset.label}
               </button>
             ))}
+          </div>
+        </section>
+
+        <section>
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
+            Custom presets
+          </p>
+          <p className="mt-1 text-xs text-slate">
+            Saved in Neon for this environment only — not in git, so deploys
+            from another branch or env leave them alone.
+          </p>
+          {customPresets.length > 0 ? (
+            <ul className="mt-3 space-y-2">
+              {customPresets.map((preset) => (
+                <li
+                  key={preset.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-charcoal/[0.1] px-3 py-2"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setDraft(cloneMarketPulseTheme(preset.theme))}
+                    className="font-mono text-[11px] tracking-[0.08em] uppercase text-navy underline-offset-2 hover:underline"
+                  >
+                    {preset.label}
+                  </button>
+                  <span className="font-mono text-[10px] text-charcoal/40">
+                    {preset.id}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void deletePreset(preset.id)}
+                    className="ml-auto font-mono text-[10px] tracking-[0.1em] uppercase text-coral/80 hover:text-coral"
+                  >
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 font-mono text-[10px] tracking-[0.08em] uppercase text-charcoal/40">
+              None yet
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-1.5">
+              <span className="font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
+                New preset name
+              </span>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(event) => setPresetName(event.target.value)}
+                maxLength={48}
+                placeholder="e.g. Soft coastal"
+                className="rounded-lg border border-charcoal/15 bg-white px-3 py-2 text-sm text-navy placeholder:text-charcoal/35 focus:border-navy focus:outline-none"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void saveAsPreset()}
+              disabled={savingPreset || presetName.trim().length < 2}
+              className="rounded-full border border-navy/30 bg-cream/40 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:bg-cream disabled:pointer-events-none disabled:opacity-40"
+            >
+              {savingPreset ? "Saving…" : "Save as preset"}
+            </button>
           </div>
         </section>
 

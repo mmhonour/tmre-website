@@ -3999,6 +3999,13 @@ export default function IntelligenceClient({
   const showTxChrome = !filterChromeCollapsed || isPeeking("tx");
   const showSliderChrome = !filterChromeCollapsed || isPeeking("sliders");
 
+  /** Desktop DOTD: single line when no filter chrome sits under the descriptors. */
+  const desktopDotdSingleLine =
+    !showTownChrome &&
+    !showClsChrome &&
+    !showTxChrome &&
+    !showSliderChrome;
+
   /** DOTD follows Intelligence town + Sale/Rental (All tx → sale picks). */
   const dotdKind = tx === "rental" ? "rental" : "sale";
   const dotdPropertyClass =
@@ -4102,12 +4109,15 @@ export default function IntelligenceClient({
     />
   );
 
-  /** Edit all — trailing end of the descriptor line. */
+  /** Edit all — immediately after the last descriptor (sqft / furnished). */
   const descriptorEditAllControl = (
-    <DescriptorEditAllControl
-      active={descriptorSearchActive}
-      onClick={handleEditFilters}
-    />
+    <>
+      <IntelFilterDescriptorDot />
+      <DescriptorEditAllControl
+        active={descriptorSearchActive}
+        onClick={handleEditFilters}
+      />
+    </>
   );
 
   /** Range labels — always available (including when pill chrome is minimized). */
@@ -4367,7 +4377,7 @@ export default function IntelligenceClient({
   const vintageFolderTabLabel =
     tx === "rental"
       ? "Rentals by VINTAGE or SCORE or MEDIAN"
-      : "Sales by VINTAGE or SCORE or MEDIAN";
+      : "Sales by vintage";
   /** folder-comps-mobile look, adapted for cream sidebar (inactive wasn’t white). */
   const desktopStatsFolderTabClass = (active: boolean) => {
     const base =
@@ -4946,6 +4956,7 @@ export default function IntelligenceClient({
               initialPropertyClass={dotdPropertyClass}
               hideUntilReady
               surfaceAnyPick
+              desktopSingleLine={desktopDotdSingleLine}
               className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
             />
           </div>
@@ -6071,7 +6082,7 @@ function DescriptorSearchControl({
   );
 }
 
-/** `ml-auto` parks this at the right end of the descriptor line. */
+/** Sits inline after the last slider descriptor (typically sqft). */
 function DescriptorEditAllControl({
   active,
   onClick,
@@ -6085,7 +6096,7 @@ function DescriptorEditAllControl({
       onClick={onClick}
       aria-label="Edit all filters — scroll to top and show filter controls"
       title="Edit all filters"
-      className={`ml-auto shrink-0 self-center pl-2 font-mono font-bold tracking-[0.14em] uppercase text-gold leading-none origin-right transition-all duration-300 ease-out hover:text-gold-light underline-offset-2 hover:underline ${
+      className={`shrink-0 self-center font-mono font-bold tracking-[0.14em] uppercase text-gold leading-none origin-left transition-all duration-300 ease-out hover:text-gold-light underline-offset-2 hover:underline ${
         active ? "text-lg scale-110" : "text-[9px] scale-100"
       }`}
     >
