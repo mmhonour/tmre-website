@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import WeeklyBriefContent from "@/components/WeeklyBriefContent";
+import { useMarketPulseSettle } from "@/hooks/useMarketPulseSettle";
 import type {
   MarketDigestClosedTownCount,
   MarketDigestSnapshot,
@@ -37,6 +38,10 @@ export default function MarketPulseContent({
   etDate: string;
 }) {
   const [categoryId, setCategoryId] = useState<MarketPulseCategoryId>("all");
+  /** Property types that have already played their settle animation. */
+  const [animatedCategories, setAnimatedCategories] = useState(
+    () => new Set<MarketPulseCategoryId>(),
+  );
 
   const categories = useMemo(() => {
     const byId = new Map(snapshot.categories.map((c) => [c.id, c]));
@@ -45,9 +50,33 @@ export default function MarketPulseContent({
     );
   }, [snapshot.categories]);
 
+  const categoryIds = useMemo(
+    () => categories.map((c) => c.id),
+    [categories],
+  );
+
   const active =
     categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
   const category = active?.id ?? "all";
+
+  const allTypesAnimated =
+    categoryIds.length > 0 &&
+    categoryIds.every((id) => animatedCategories.has(id));
+  const shouldAnimate =
+    !allTypesAnimated && !animatedCategories.has(category);
+
+  const markAnimated = useCallback((id: MarketPulseCategoryId) => {
+    setAnimatedCategories((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+
+  const settle = useMarketPulseSettle(shouldAnimate, category, () => {
+    markAnimated(category);
+  });
 
   // Two-year closed aggregate is fetched per tab: running it for five property
   // classes during SSR is what used to time the page out on Netlify.
@@ -145,7 +174,7 @@ export default function MarketPulseContent({
         townHref={townHref}
         monthsSupplyTownHref={monthsSupplyTownHref}
         closedSalesTownHref={closedSalesTownHref}
-        settleKey={category}
+        settle={settle}
       />
     </div>
   );

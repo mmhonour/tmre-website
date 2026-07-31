@@ -7,7 +7,6 @@ import {
   adminArchitecturePanelForSection,
   adminCommunicationsPanelForSection,
   adminDataControlsPanelForSection,
-  adminDatabasePanelForSection,
   adminPostgresPanelForSection,
   adminServerPanelForSection,
   adminSyncsPanelForSection,
@@ -15,7 +14,6 @@ import {
   isAdminArchitecturePanelId,
   isAdminCommunicationsPanelId,
   isAdminDataControlsPanelId,
-  isAdminDatabasePanelId,
   isAdminPostgresPanelId,
   isAdminPostgresSchemaHash,
   isAdminServerPanelId,
@@ -35,20 +33,12 @@ function tabFromLocation(): AdminTabId {
     return "data-controls";
   }
   if (queryTab === "sync-log") return "syncs";
-  // Old Database → Postgres nested panel → top-level NEON Postgres.
-  if (queryTab === "db" && params.get("panel") === "postgres") {
-    return "postgres";
-  }
-  // Old Database → Database inventory → NEON Postgres → Inventory.
-  if (queryTab === "db" && params.get("panel") === "inventory") {
-    return "postgres";
-  }
-  // Old Database → Sync status / Sync history deep-links.
-  if (
-    queryTab === "db" &&
-    params.get("panel") &&
-    LEGACY_ADMIN_PANEL_TO_SYNCS[params.get("panel")!]
-  ) {
+  // Former Database parent tab (deprecated) — destinations after URL normalize.
+  if (queryTab === "db") {
+    const panel = params.get("panel");
+    if (panel === "town-counts" || panel === "postgres" || panel === "inventory") {
+      return "postgres";
+    }
     return "syncs";
   }
   if (queryTab && LEGACY_ADMIN_TAB_TO_ARCHITECTURE[queryTab]) {
@@ -89,26 +79,25 @@ function normalizeLegacyNestedTabUrls() {
     return;
   }
 
-  // Former Database → Postgres nested panel → top-level tab.
-  if (queryTab === "db" && panel === "postgres") {
-    url.searchParams.set("tab", "postgres");
-    url.searchParams.set("panel", "schema");
-    window.history.replaceState(null, "", url);
-    return;
-  }
-
-  // Former Database → Database inventory → NEON Postgres → Inventory.
-  if (queryTab === "db" && panel === "inventory") {
-    url.searchParams.set("tab", "postgres");
-    url.searchParams.set("panel", "inventory");
-    window.history.replaceState(null, "", url);
-    return;
-  }
-
-  // Former Database sync sub-panels → Syncs.
-  if (queryTab === "db" && panel && LEGACY_ADMIN_PANEL_TO_SYNCS[panel]) {
-    url.searchParams.set("tab", "syncs");
-    url.searchParams.set("panel", LEGACY_ADMIN_PANEL_TO_SYNCS[panel]!);
+  // Former Database parent tab (deprecated) — split into Syncs / NEON.
+  if (queryTab === "db") {
+    if (panel === "town-counts") {
+      url.searchParams.set("tab", "postgres");
+      url.searchParams.set("panel", "town-counts");
+    } else if (panel === "postgres") {
+      url.searchParams.set("tab", "postgres");
+      url.searchParams.set("panel", "schema");
+    } else if (panel === "inventory") {
+      url.searchParams.set("tab", "postgres");
+      url.searchParams.set("panel", "inventory");
+    } else if (panel && LEGACY_ADMIN_PANEL_TO_SYNCS[panel]) {
+      url.searchParams.set("tab", "syncs");
+      url.searchParams.set("panel", LEGACY_ADMIN_PANEL_TO_SYNCS[panel]!);
+    } else {
+      // rets-connection, bare ?tab=db, or unknown Database panels
+      url.searchParams.set("tab", "syncs");
+      url.searchParams.set("panel", "rets-connection");
+    }
     window.history.replaceState(null, "", url);
     return;
   }
@@ -162,13 +151,6 @@ function ensureNestedPanelParam() {
     window.history.replaceState(null, "", url);
     return;
   }
-  if (tab === "db") {
-    if (isAdminDatabasePanelId(url.searchParams.get("panel"))) return;
-    const fromSection = hash ? adminDatabasePanelForSection(hash) : null;
-    url.searchParams.set("panel", fromSection ?? "rets-connection");
-    window.history.replaceState(null, "", url);
-    return;
-  }
   if (tab === "postgres") {
     if (isAdminPostgresPanelId(url.searchParams.get("panel"))) return;
     if (hash && isAdminPostgresSchemaHash(hash)) {
@@ -212,7 +194,6 @@ function scrollToSection(sectionId: string) {
 }
 
 export default function AdminTabbedLayout({
-  db,
   postgres,
   stats,
   traffic,
@@ -227,7 +208,6 @@ export default function AdminTabbedLayout({
   glossary,
   statusBar = null,
 }: {
-  db: ReactNode;
   postgres: ReactNode;
   stats: ReactNode;
   traffic: ReactNode;
@@ -284,10 +264,6 @@ export default function AdminTabbedLayout({
       if (!isAdminDataControlsPanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "site");
       }
-    } else if (next === "db") {
-      if (!isAdminDatabasePanelId(url.searchParams.get("panel"))) {
-        url.searchParams.set("panel", "rets-connection");
-      }
     } else if (next === "postgres") {
       if (!isAdminPostgresPanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "schema");
@@ -313,7 +289,6 @@ export default function AdminTabbedLayout({
 
   const panels: Record<AdminTabId, ReactNode> = {
     syncs,
-    db,
     postgres,
     stats,
     traffic,

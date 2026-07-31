@@ -53,6 +53,7 @@ export default function AdminSyncsPanel({
   history,
   overview,
   dbTuning,
+  retsConnection,
   storeLabel,
   storeLabelClassName,
   lambdaLine,
@@ -64,6 +65,7 @@ export default function AdminSyncsPanel({
   history: ReactNode;
   overview: ReactNode;
   dbTuning: ReactNode;
+  retsConnection: ReactNode;
   storeLabel: string;
   storeLabelClassName: string;
   lambdaLine?: string | null;
@@ -196,6 +198,13 @@ export default function AdminSyncsPanel({
         className={panel === "db-tuning" ? "space-y-6" : undefined}
       >
         {dbTuning}
+      </div>
+      <div
+        role="tabpanel"
+        hidden={panel !== "rets-connection"}
+        className={panel === "rets-connection" ? "space-y-6" : undefined}
+      >
+        {retsConnection}
       </div>
     </div>
   );

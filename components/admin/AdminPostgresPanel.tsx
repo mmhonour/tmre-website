@@ -30,9 +30,11 @@ function panelFromLocation(): AdminPostgresPanelId {
 export default function AdminPostgresPanel({
   schema,
   inventory,
+  townCounts,
 }: {
   schema: ReactNode;
   inventory: ReactNode;
+  townCounts: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminPostgresPanelId>("schema");
 
@@ -59,6 +61,7 @@ export default function AdminPostgresPanel({
   const panels: Record<AdminPostgresPanelId, ReactNode> = {
     schema,
     inventory,
+    "town-counts": townCounts,
   };
   const active = ADMIN_POSTGRES_PANELS.find((item) => item.id === panel);
 

@@ -195,6 +195,12 @@ export const FOMC_MEETINGS: readonly FomcMeeting[] = [
     statementUrl:
       'https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm',
     note: '9–3 vote; three members preferred a 25bp hike.',
+    excerpt:
+      'The Committee decided to maintain the target range for the federal funds rate at 3-1/2 to 3-3/4 percent, in support of the Federal Reserve\'s dual mandate. The Committee is continuing its policy of maintaining ample reserves in the banking system.',
+    summary:
+      'The Committee decided to maintain the target range for the federal funds rate at 3-1/2 to 3-3/4 percent, in support of the Federal Reserve\'s dual mandate. The Committee is continuing its policy of maintaining ample reserves in the banking system.\n\nEconomic activity is expanding at a solid pace despite elevated uncertainty that owes, in part, to the conflict in the Middle East. Productivity growth and capital investment are strong. Job gains have kept pace with the workforce, and the unemployment rate has changed little.\n\nInflation remains elevated relative to the Committee\'s 2 percent goal, in part reflecting supply shocks that have driven price increases in certain sectors, including energy. The Committee will deliver price stability.',
+    voteNote:
+      'Voting against the monetary policy action were Beth M. Hammack, Neel Kashkari, and Lorie K. Logan, who preferred to raise the target range for the federal funds rate by 1/4 percentage point at this meeting.',
   },
   {
     id: '2026-09',

@@ -1,7 +1,9 @@
 import type { FomcMeeting } from "@/lib/fed-fomc-calendar";
 
 /**
- * Official statement text stored by Fed sync — disclosed as Fed language, not AI.
+ * Excerpted paragraphs from the official FOMC statement (Fed language, not AI).
+ * Populated by Admin Fed sync into Postgres; seed calendar may carry the latest
+ * meeting as a fallback until sync runs.
  */
 export default function FedStatementSummary({
   meeting,
@@ -12,13 +14,15 @@ export default function FedStatementSummary({
     return (
       <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Statement summary
+          Statement excerpt
         </p>
         <p className="mt-3 text-sm text-slate">
-          No stored summary yet. Run{" "}
-          <span className="font-mono text-xs text-navy">Admin → Communications → Fed sync</span>{" "}
-          after the statement posts — we store paragraphs grepped from the official
-          release (not AI-written).
+          No excerpt stored for the prevailing decision yet. Run{" "}
+          <span className="font-mono text-xs text-navy">
+            Admin → Communications → Fed sync
+          </span>{" "}
+          after the statement posts — we store the Fed&apos;s own paragraphs
+          (not AI-written).
         </p>
       </div>
     );
@@ -30,15 +34,23 @@ export default function FedStatementSummary({
     <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Statement summary
+          Statement excerpt
         </p>
         <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/40">
-          From the official FOMC statement
+          Official FOMC language · not AI
         </p>
       </div>
-      <div className="mt-3 space-y-3 text-sm leading-relaxed text-slate">
+      <p className="mt-2 text-xs leading-relaxed text-charcoal/50">
+        Short excerpts from the Committee&apos;s published statement for the
+        prevailing decision
+        {meeting.endDate ? ` (${meeting.endDate})` : ""}. Full text remains on
+        federalreserve.gov.
+      </p>
+      <div className="mt-4 space-y-3 text-sm leading-relaxed text-slate">
         {body.split(/\n\n+/).map((para, i) => (
-          <p key={i}>{para}</p>
+          <p key={i} className={i === 0 ? "font-medium text-navy/90" : undefined}>
+            {para}
+          </p>
         ))}
       </div>
       {meeting.voteNote ? (
@@ -53,7 +65,7 @@ export default function FedStatementSummary({
           rel="noreferrer"
           className="mt-3 inline-block font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
         >
-          Full statement
+          Full official statement
         </a>
       ) : null}
     </div>

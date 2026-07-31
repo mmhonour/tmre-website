@@ -1,5 +1,4 @@
 export type AdminTabId =
-  | "db"
   | "postgres"
   | "stats"
   | "traffic"
@@ -24,7 +23,8 @@ export type AdminDataControlsPanelId =
   | "rets"
   | "intel-inventory"
   | "intel-deal-board"
-  | "ct-coverage";
+  | "ct-coverage"
+  | "town-budget";
 
 /** Sub-panels under Admin → Web server. */
 export type AdminServerPanelId = "api-routes" | "page-styles";
@@ -37,13 +37,11 @@ export type AdminSyncsPanelId =
   | "mls-reconcile"
   | "history"
   | "overview"
-  | "db-tuning";
-
-/** Sub-panels under Admin → Database. */
-export type AdminDatabasePanelId = "rets-connection" | "town-counts";
+  | "db-tuning"
+  | "rets-connection";
 
 /** Sub-panels under Admin → NEON Postgres. */
-export type AdminPostgresPanelId = "schema" | "inventory";
+export type AdminPostgresPanelId = "schema" | "inventory" | "town-counts";
 
 /** Sub-panels under Admin → Architecture. */
 export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
@@ -63,7 +61,6 @@ export type AdminSectionLink = {
   panel?:
     | AdminSyncsPanelId
     | AdminDataControlsPanelId
-    | AdminDatabasePanelId
     | AdminPostgresPanelId
     | AdminArchitecturePanelId
     | AdminCommunicationsPanelId
@@ -162,6 +159,12 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     subtitle:
       "Activate CT counties / towns for future site-wide coverage (not wired to pages yet)",
   },
+  {
+    id: "town-budget",
+    label: "Town budget",
+    subtitle:
+      "Seven source URL slots (one per TMRE town) plus fetch year — sync/parse later",
+  },
 ];
 
 export const ADMIN_SERVER_PANELS: {
@@ -225,22 +228,10 @@ export const ADMIN_SYNCS_PANELS: {
     label: "DB write tuning",
     subtitle: "Upsert chunk size and RETS Active fetch limit",
   },
-];
-
-export const ADMIN_DATABASE_PANELS: {
-  id: AdminDatabasePanelId;
-  label: string;
-  subtitle: string;
-}[] = [
   {
     id: "rets-connection",
     label: "RETS connection",
     subtitle: "Live SmartMLS probe and stored connection health",
-  },
-  {
-    id: "town-counts",
-    label: "Listings by town",
-    subtitle: "Active listing counts from the current Postgres inventory",
   },
 ];
 
@@ -260,6 +251,11 @@ export const ADMIN_POSTGRES_PANELS: {
     label: "Database inventory",
     subtitle:
       "Table row comparison vs last full-resync snapshot, plus connected-store summaries",
+  },
+  {
+    id: "town-counts",
+    label: "Listings by town",
+    subtitle: "Active listing counts from the current Postgres inventory",
   },
 ];
 
@@ -337,12 +333,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "syncs",
     label: "Syncs",
     subtitle:
-      "Dashboard to run syncs, Configure for schedules, plus history and cron overview",
-  },
-  {
-    id: "db",
-    label: "Database",
-    subtitle: "RETS connection and listings by town",
+      "Dashboard, Configure, RETS connection, history, and cron overview",
   },
   {
     id: "stats",
@@ -387,7 +378,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "postgres",
     label: "NEON",
     subtitle:
-      "Schema visualization and database inventory (row counts vs last full resync)",
+      "Schema, database inventory, and active listings by town",
   },
   {
     id: "r2",
@@ -410,7 +401,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-rets-connection",
     label: "RETS connection",
-    tab: "db",
+    tab: "syncs",
     panel: "rets-connection",
   },
   {
@@ -464,7 +455,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-town-counts",
     label: "Listings by town",
-    tab: "db",
+    tab: "postgres",
     panel: "town-counts",
   },
   {
@@ -500,6 +491,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "CT coverage",
     tab: "data-controls",
     panel: "ct-coverage",
+  },
+  {
+    id: "admin-town-budget-sources",
+    label: "Town budget sources",
+    tab: "data-controls",
+    panel: "town-budget",
   },
   { id: "admin-stats-inventory", label: "Stats storage map", tab: "stats" },
   { id: "admin-stats-market", label: "Market & town stats", tab: "stats" },
@@ -922,13 +919,6 @@ export function adminSyncsPanelForSection(
   return isAdminSyncsPanelId(panel) ? panel : null;
 }
 
-export function adminDatabasePanelForSection(
-  sectionId: string,
-): AdminDatabasePanelId | null {
-  const panel = ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel;
-  return isAdminDatabasePanelId(panel) ? panel : null;
-}
-
 export function adminPostgresPanelForSection(
   sectionId: string,
 ): AdminPostgresPanelId | null {
@@ -970,7 +960,8 @@ export function isAdminDataControlsPanelId(
     value === "rets" ||
     value === "intel-inventory" ||
     value === "intel-deal-board" ||
-    value === "ct-coverage"
+    value === "ct-coverage" ||
+    value === "town-budget"
   );
 }
 
@@ -990,20 +981,17 @@ export function isAdminSyncsPanelId(
     value === "mls-reconcile" ||
     value === "history" ||
     value === "overview" ||
-    value === "db-tuning"
+    value === "db-tuning" ||
+    value === "rets-connection"
   );
-}
-
-export function isAdminDatabasePanelId(
-  value: string | null | undefined,
-): value is AdminDatabasePanelId {
-  return value === "rets-connection" || value === "town-counts";
 }
 
 export function isAdminPostgresPanelId(
   value: string | null | undefined,
 ): value is AdminPostgresPanelId {
-  return value === "schema" || value === "inventory";
+  return (
+    value === "schema" || value === "inventory" || value === "town-counts"
+  );
 }
 
 /** Schema diagram deep-links under Admin → NEON Postgres. */
@@ -1039,7 +1027,6 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
     link?.panel &&
     ((tab === "syncs" && isAdminSyncsPanelId(link.panel)) ||
       (tab === "data-controls" && isAdminDataControlsPanelId(link.panel)) ||
-      (tab === "db" && isAdminDatabasePanelId(link.panel)) ||
       (tab === "postgres" && isAdminPostgresPanelId(link.panel)) ||
       (tab === "architecture" && isAdminArchitecturePanelId(link.panel)) ||
       (tab === "communications" && isAdminCommunicationsPanelId(link.panel)) ||
@@ -1060,10 +1047,6 @@ export function adminDataControlsHref(panel: AdminDataControlsPanelId): string {
 
 export function adminSyncsHref(panel: AdminSyncsPanelId): string {
   return `/admin?tab=syncs&panel=${panel}`;
-}
-
-export function adminDatabaseHref(panel: AdminDatabasePanelId): string {
-  return `/admin?tab=db&panel=${panel}`;
 }
 
 export function adminPostgresHref(panel: AdminPostgresPanelId): string {

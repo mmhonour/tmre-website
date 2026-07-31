@@ -25,7 +25,6 @@ import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
 import AdminPricingPanel from "@/components/admin/AdminPricingPanel";
 import AdminPriceBucketsPanel from "@/components/admin/AdminPriceBucketsPanel";
 import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
-import AdminDatabasePanel from "@/components/admin/AdminDatabasePanel";
 import AdminPostgresPanel from "@/components/admin/AdminPostgresPanel";
 import AdminSyncsPanel from "@/components/admin/AdminSyncsPanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
@@ -35,6 +34,7 @@ import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenc
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
 import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
+import AdminTownBudgetSourcesPanel from "@/components/admin/AdminTownBudgetSourcesPanel";
 import AdminPageStylesPanel from "@/components/admin/AdminPageStylesPanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
@@ -74,6 +74,7 @@ import { getMarketDigestConfigFresh } from "@/lib/market-digest-config";
 import { getDeployNotifyConfigFresh } from "@/lib/deploy-notify-config";
 import { listSavedSearchAlertsForAdmin } from "@/lib/saved-search-alerts";
 import { getSocialProfilesFresh } from "@/lib/social-profiles-config";
+import { getTownBudgetSourcesFresh } from "@/lib/town-budget-sources-config";
 import {
   getBrokerageNameFresh,
   DEFAULT_BROKERAGE_NAME,
@@ -556,6 +557,11 @@ export default async function AdminPage() {
     () => getSocialProfilesFresh(),
     null,
   )
+  const townBudgetSources = await safe(
+    "town-budget-sources",
+    () => getTownBudgetSourcesFresh(),
+    null,
+  )
   const listingAlerts = await safe(
     "listing-alerts",
     () => listSavedSearchAlertsForAdmin(100),
@@ -629,6 +635,42 @@ export default async function AdminPage() {
     </div>
   );
 
+  const townCountsPanel = (
+    <div
+      id="admin-town-counts"
+      className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+    >
+      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
+        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+          Active listings by town
+        </p>
+      </div>
+      {Object.keys(stats.byTown).length > 0 ? (
+        <ul className="divide-y divide-charcoal/[0.08]">
+          {Object.entries(stats.byTown)
+            .sort((a, b) => b[1] - a[1])
+            .map(([town, count]) => (
+              <li
+                key={town}
+                className="flex items-baseline justify-between gap-4 px-5 sm:px-6 py-3"
+              >
+                <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/55">
+                  {town}
+                </span>
+                <span className="font-mono tabular-nums text-navy font-semibold">
+                  {count.toLocaleString()}
+                </span>
+              </li>
+            ))}
+        </ul>
+      ) : (
+        <p className="px-5 sm:px-6 py-6 text-sm text-charcoal/55">
+          No active listing counts yet — run a sync to populate town inventory.
+        </p>
+      )}
+    </div>
+  );
+
   const postgresPanel = (
     <AdminPostgresPanel
       schema={
@@ -647,49 +689,7 @@ export default async function AdminPage() {
           <AdminDatabaseInventoryPanel initial={databaseStats} />
         </>
       }
-    />
-  );
-
-  const dbPanel = (
-    <AdminDatabasePanel
-      retsConnection={
-        <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
-      }
-      townCounts={
-        <div
-          id="admin-town-counts"
-          className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
-        >
-          <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/40">
-            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-              Active listings by town
-            </p>
-          </div>
-          {Object.keys(stats.byTown).length > 0 ? (
-            <ul className="divide-y divide-charcoal/[0.08]">
-              {Object.entries(stats.byTown)
-                .sort((a, b) => b[1] - a[1])
-                .map(([town, count]) => (
-                  <li
-                    key={town}
-                    className="flex items-baseline justify-between gap-4 px-5 sm:px-6 py-3"
-                  >
-                    <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-charcoal/55">
-                      {town}
-                    </span>
-                    <span className="font-mono tabular-nums text-navy font-semibold">
-                      {count.toLocaleString()}
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          ) : (
-            <p className="px-5 sm:px-6 py-6 text-sm text-charcoal/55">
-              No active listing counts yet — run a sync to populate town inventory.
-            </p>
-          )}
-        </div>
-      }
+      townCounts={townCountsPanel}
     />
   );
 
@@ -779,6 +779,11 @@ export default async function AdminPage() {
       intelInventory={inventoryBandsPanel}
       intelDealBoard={<AdminIntelligenceDealBoardPanel />}
       ctCoverage={<AdminCtCoveragePanel />}
+      townBudget={
+        <AdminTownBudgetSourcesPanel
+          initial={townBudgetSources ?? undefined}
+        />
+      }
     />
   );
 
@@ -822,6 +827,9 @@ export default async function AdminPage() {
         />
       }
       dbTuning={dbTuningPanel}
+      retsConnection={
+        <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
+      }
     />
   );
 
@@ -1037,7 +1045,6 @@ export default async function AdminPage() {
 
       <AdminTabbedLayout
         statusBar={statusBar}
-        db={dbPanel}
         postgres={postgresPanel}
         stats={<AdminStatsInventoryPanel />}
         traffic={

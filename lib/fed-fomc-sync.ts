@@ -108,6 +108,10 @@ function mergeSeedWithDb(
       endDate: overlay.endDate || base.endDate,
       hasSep: overlay.hasSep ?? base.hasSep,
       note: overlay.note ?? base.note,
+      // Prefer synced statement text; fall back to seed excerpts when DB is empty.
+      summary: overlay.summary || base.summary,
+      excerpt: overlay.excerpt || base.excerpt,
+      voteNote: overlay.voteNote || base.voteNote,
     }
   })
 }
