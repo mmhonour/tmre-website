@@ -41,33 +41,47 @@ export function brandedEmailGoogleFontsLink(): string {
   return `<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet" />`
 }
 
+export type BrandedEmailHeaderOptions = {
+  /** When false, omit the camera/brand mark (What if emails). Default true. */
+  showLogo?: boolean
+  /** Display size for the agent headshot (linked to full-res asset). Default 44. */
+  headshotSize?: number
+}
+
 export function brandedEmailHeader(
   theme: MarketPulseTheme,
   eyebrow: string,
+  opts: BrandedEmailHeaderOptions = {},
 ): string {
+  const showLogo = opts.showLogo !== false
+  const headshotSize = opts.headshotSize ?? 44
   const heading = emailFontStack(theme.headingFont)
   const mono = emailFontStack(theme.monoFont)
   const logo = absoluteUrl(BRAND_IMAGE_PATH)
   const headshot = absoluteUrl(HEADSHOT_PATH)
+  const aboutHref = absoluteUrl('/about')
+  const logoCell = showLogo
+    ? `<td align="right" style="vertical-align:middle;width:56px;">
+              <a href="${escapeEmailHtml(SITE_URL)}" style="text-decoration:none;">
+                <img src="${escapeEmailHtml(logo)}" alt="${escapeEmailHtml(BRAND_NAME)} logo" width="48" height="48" style="display:block;width:48px;height:48px;border:0;" />
+              </a>
+            </td>`
+    : ''
   return `
     <tr>
       <td style="padding:20px 22px 18px 22px;background-color:${theme.surface};">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
           <tr>
-            <td style="vertical-align:middle;width:52px;">
-              <a href="${escapeEmailHtml(SITE_URL)}" style="text-decoration:none;">
-                <img src="${escapeEmailHtml(headshot)}" alt="${escapeEmailHtml(AGENT_NAME)}" width="44" height="44" style="display:block;width:44px;height:44px;border-radius:8px;border:1px solid ${theme.accent};object-fit:cover;" />
+            <td style="vertical-align:middle;width:${headshotSize + 8}px;">
+              <a href="${escapeEmailHtml(aboutHref)}" style="text-decoration:none;" title="Full-resolution photo">
+                <img src="${escapeEmailHtml(headshot)}" alt="${escapeEmailHtml(AGENT_NAME)}" width="${headshotSize}" height="${headshotSize}" style="display:block;width:${headshotSize}px;height:${headshotSize}px;border-radius:8px;border:1px solid ${theme.accent};object-fit:cover;" />
               </a>
             </td>
             <td style="vertical-align:middle;padding-left:12px;">
               <a href="${escapeEmailHtml(SITE_URL)}" style="font-family:${heading};font-size:22px;letter-spacing:0.15em;color:#FFFFFF;text-decoration:none;">${escapeEmailHtml(BRAND_NAME)}</a>
               <p style="margin:4px 0 0 0;font-family:${mono};font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:${theme.accent};">${escapeEmailHtml(eyebrow)}</p>
             </td>
-            <td align="right" style="vertical-align:middle;width:56px;">
-              <a href="${escapeEmailHtml(SITE_URL)}" style="text-decoration:none;">
-                <img src="${escapeEmailHtml(logo)}" alt="${escapeEmailHtml(BRAND_NAME)} logo" width="48" height="48" style="display:block;width:48px;height:48px;border:0;" />
-              </a>
-            </td>
+            ${logoCell}
           </tr>
         </table>
       </td>
@@ -117,6 +131,7 @@ export function brandedEmailWrap(opts: {
   brokerage: string
   bodyRowsHtml: string
   extraFooterLinks?: { href: string; label: string }[]
+  header?: BrandedEmailHeaderOptions
 }): string {
   const { theme } = opts
   return `<!DOCTYPE html>
@@ -132,7 +147,7 @@ export function brandedEmailWrap(opts: {
     <tr>
       <td align="center" style="padding:24px 12px;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:${theme.cardBackground};border-collapse:collapse;">
-          ${brandedEmailHeader(theme, opts.eyebrow)}
+          ${brandedEmailHeader(theme, opts.eyebrow, opts.header)}
           ${opts.bodyRowsHtml}
           ${brandedEmailFooter(theme, opts.brokerage, opts.extraFooterLinks)}
         </table>

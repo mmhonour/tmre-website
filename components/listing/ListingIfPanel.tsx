@@ -1299,6 +1299,10 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
+      <div className="max-lg:px-3 lg:px-0">
+        <IfEmailScenarioForm mlsId={mlsId} />
+      </div>
+
       {/* Mobile: sell/rent as pill tabs + Criteria; desktop: side-by-side panels. */}
       <div className="lg:hidden mb-1 flex items-end justify-between gap-3 max-lg:px-3">
         <div
@@ -1382,8 +1386,6 @@ export default function ListingIfPanel({
           {townHint ? `, ${townHint}` : ""}
         </p>
       ) : null}
-
-      <IfEmailScenarioForm mlsId={mlsId} />
     </>
   );
 

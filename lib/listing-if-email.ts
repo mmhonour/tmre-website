@@ -204,6 +204,8 @@ function formatListingIfEmailHtml(opts: {
     brokerage: opts.brokerage,
     bodyRowsHtml: bodyRows,
     extraFooterLinks: [{ href: opts.pageHref, label: 'View scenario' }],
+    // Match the What if page: no camera/hero mark — headshot + TMRE only.
+    header: { showLogo: false, headshotSize: 56 },
   })
 }
 
