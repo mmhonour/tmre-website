@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { ArrowLeftRightIcon } from "@/components/icons";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
@@ -698,6 +704,173 @@ const IF_SCENARIO_PANEL_IDS = {
   rent: "if-you-rent",
 } as const;
 
+function IfEmailScenarioForm({
+  mlsId,
+  defaultMethod = IF_DEFAULT_MIDPOINT_METHOD,
+}: {
+  mlsId: string;
+  defaultMethod?: IfMidpointMethod;
+}) {
+  const [open, setOpen] = useState(false);
+  const [to, setTo] = useState("");
+  const [includeSale, setIncludeSale] = useState(true);
+  const [includeRent, setIncludeRent] = useState(true);
+  const [method, setMethod] = useState<IfMidpointMethod>(defaultMethod);
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+    setError(null);
+    const kinds: Array<"sale" | "rent"> = [];
+    if (includeSale) kinds.push("sale");
+    if (includeRent) kinds.push("rent");
+    if (kinds.length === 0) {
+      setError("Select sale, rent, or both.");
+      return;
+    }
+    setSending(true);
+    try {
+      const res = await fetch(
+        `/api/listings/${encodeURIComponent(mlsId)}/if/email`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: to.trim(),
+            kinds,
+            midpointMethod: method,
+          }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        bcc?: string | null;
+      };
+      if (!res.ok) {
+        setError(body.error || "Failed to send email");
+        return;
+      }
+      setMessage(
+        body.bcc
+          ? "Sent — a copy went to your notify inbox."
+          : "Sent.",
+      );
+      setTo("");
+    } catch {
+      setError("Failed to send email");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
+            Email scenario
+          </p>
+          <p className="mt-1 text-xs text-white/45 leading-relaxed">
+            Branded summary with ranges, midpoint method, and comps. BCC goes to
+            your Admin contact email.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen((v) => !v);
+            setMessage(null);
+            setError(null);
+          }}
+          className={`${filterPillIndependentButtonClass(open, "compact", "dark")} font-mono text-[10px] tracking-[0.12em] uppercase shrink-0`}
+        >
+          {open ? "Close" : "Email"}
+        </button>
+      </div>
+
+      {open ? (
+        <form onSubmit={onSubmit} className="space-y-3">
+          <label className="block space-y-1">
+            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/40">
+              To
+            </span>
+            <input
+              type="email"
+              required
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="recipient@example.com"
+              className="w-full rounded-md border border-white/15 bg-navy/40 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-gold/50 focus:outline-none"
+            />
+          </label>
+
+          <div className="flex flex-wrap gap-4 font-mono text-[10px] tracking-[0.12em] uppercase text-white/50">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeSale}
+                onChange={(e) => setIncludeSale(e.target.checked)}
+                className="accent-gold"
+              />
+              If you sell
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeRent}
+                onChange={(e) => setIncludeRent(e.target.checked)}
+                className="accent-gold"
+              />
+              If you rent
+            </label>
+          </div>
+
+          <div
+            role="group"
+            aria-label="Email midpoint method"
+            className="flex flex-wrap gap-1"
+          >
+            {IF_MIDPOINT_METHODS.map((m) => {
+              const active = method === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMethod(m)}
+                  className={
+                    active
+                      ? "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-navy bg-gold"
+                      : "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
+                  }
+                  aria-pressed={active}
+                >
+                  {IF_MIDPOINT_METHOD_LABELS[m]}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="submit"
+            disabled={sending}
+            className="rounded-md bg-gold px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-navy disabled:opacity-50"
+          >
+            {sending ? "Sending…" : "Send email"}
+          </button>
+
+          {message ? (
+            <p className="text-xs text-sage">{message}</p>
+          ) : null}
+          {error ? <p className="text-xs text-coral">{error}</p> : null}
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
 function ScenarioPanel({
   title,
   headline,
@@ -1205,6 +1378,8 @@ export default function ListingIfPanel({
           {townHint ? `, ${townHint}` : ""}
         </p>
       ) : null}
+
+      <IfEmailScenarioForm mlsId={mlsId} />
     </>
   );
 
