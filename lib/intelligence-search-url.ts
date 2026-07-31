@@ -268,6 +268,43 @@ export function intelligenceShareUrl(
   return base ? `${base}${path}` : path
 }
 
+type CriteriaLike = {
+  town: string | null
+  tx: 'sale' | 'rental' | 'all' | null
+  propertyClass: 'residential' | 'commercial' | 'all' | null
+  saleProperty: string | null
+  minBeds: number | null
+  maxBeds: number | null
+  minBaths: number | null
+  maxBaths: number | null
+  zip: string | null
+  newConstruction: boolean | null
+}
+
+function asShareProperty(
+  raw: string | null,
+): 'all' | 'homes' | 'multi' | 'condos' {
+  if (raw === 'homes' || raw === 'multi' || raw === 'condos') return raw
+  return 'all'
+}
+
+/** Intelligence deep-link for a saved-search / visitor criteria snapshot. */
+export function intelligenceSearchHrefFromCriteria(c: CriteriaLike): string {
+  return buildIntelligenceShareHref({
+    city: c.town?.trim() || 'All',
+    zip: c.zip,
+    tx: c.tx ?? 'all',
+    cls: c.propertyClass ?? 'all',
+    property: asShareProperty(c.saleProperty),
+    bedsMin: c.minBeds ?? undefined,
+    bedsMax: c.maxBeds ?? undefined,
+    bathsMin: c.minBaths ?? undefined,
+    bathsMax: c.maxBaths ?? undefined,
+    newConstruction: c.newConstruction === true,
+    resetMinor: true,
+  })
+}
+
 /**
  * Parse inbound Intelligence search — supports compact share keys (`c`, `b`, …)
  * and legacy listing deep-link keys (`city`, `beds`, `exact`, …).

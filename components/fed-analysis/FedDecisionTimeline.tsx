@@ -130,17 +130,22 @@ function lookbackCaption(lookback: TimelineLookback): string {
   return "Last 5 years + next · mid of funds range";
 }
 
+const DEFAULT_TITLE =
+  "Federal Reserve Open Market Committee decision timeline";
+
 export default function FedDecisionTimeline({
   meetings,
   now = new Date(),
   embedded = false,
   defaultLookback = "all",
+  title = DEFAULT_TITLE,
 }: {
   meetings: readonly FomcMeeting[];
   now?: Date;
   /** Omit outer card chrome when nested under Next FOMC. */
   embedded?: boolean;
   defaultLookback?: TimelineLookback;
+  title?: string;
 }) {
   const [lookback, setLookback] = useState<TimelineLookback>(defaultLookback);
   const { points, next, from, to } = useMemo(
@@ -199,8 +204,8 @@ export default function FedDecisionTimeline({
     return (
       <div className={shellClass}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Decision timeline
+          <p className="max-w-xl font-mono text-[11px] leading-snug tracking-[0.16em] uppercase text-gold">
+            {title}
           </p>
           {rangeControls}
         </div>
@@ -322,8 +327,8 @@ export default function FedDecisionTimeline({
   return (
     <div className={shellClass}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Decision timeline
+        <p className="max-w-xl font-mono text-[11px] leading-snug tracking-[0.16em] uppercase text-gold">
+          {title}
         </p>
         {rangeControls}
       </div>

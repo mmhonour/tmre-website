@@ -9,7 +9,8 @@ import {
 } from "@/lib/tmre-towns";
 
 const DEFAULT_ZOOM = 15;
-const MIN_ZOOM = 12;
+/** ~town / multi-neighborhood for Fairfield County; was 12 (too tight to “pan out”). */
+const MIN_ZOOM = 10;
 const MAX_ZOOM = 18;
 const TILE_SIZE = 256;
 
@@ -173,17 +174,20 @@ function MapZoomControls({
   zoom,
   onZoomIn,
   onZoomOut,
+  busy = false,
 }: {
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  /** True while the next zoom level’s tiles are loading. */
+  busy?: boolean;
 }) {
   return (
     <div className="absolute left-2 top-2 z-20 flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
       <button
         type="button"
         onClick={onZoomIn}
-        disabled={zoom >= MAX_ZOOM}
+        disabled={busy || zoom >= MAX_ZOOM}
         aria-label="Zoom in"
         className="flex h-7 w-7 items-center justify-center font-mono text-sm leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
       >
@@ -193,7 +197,7 @@ function MapZoomControls({
       <button
         type="button"
         onClick={onZoomOut}
-        disabled={zoom <= MIN_ZOOM}
+        disabled={busy || zoom <= MIN_ZOOM}
         aria-label="Zoom out"
         className="flex h-7 w-7 items-center justify-center font-mono text-sm leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
       >
@@ -201,6 +205,30 @@ function MapZoomControls({
       </button>
     </div>
   );
+}
+
+function mosaicZoomLevel(
+  mosaic: { tiles: MosaicTile[] } | null,
+): number | null {
+  const key = mosaic?.tiles[0]?.key;
+  if (!key) return null;
+  const z = Number(key.split("/")[0]);
+  return Number.isFinite(z) ? z : null;
+}
+
+function preloadMosaicTiles(tiles: MosaicTile[]): Promise<void> {
+  if (tiles.length === 0) return Promise.resolve();
+  return Promise.all(
+    tiles.map(
+      (tile) =>
+        new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          img.src = tile.src;
+        }),
+    ),
+  ).then(() => undefined);
 }
 
 function TownOutlineOverlay({
@@ -372,6 +400,11 @@ export default function ListingLocationMap({
   const initialZoom = defaultZoom ?? DEFAULT_ZOOM;
   const [zoom, setZoom] = useState(initialZoom);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  /** Painted mosaic — only swaps after the next zoom’s tiles have loaded. */
+  const [displayMosaic, setDisplayMosaic] = useState<ReturnType<
+    typeof centeredTileMosaic
+  > | null>(null);
+  const [tilesPending, setTilesPending] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const lat = latitude != null ? Number(latitude) : null;
   const lon = longitude != null ? Number(longitude) : null;
@@ -417,6 +450,40 @@ export default function ListingLocationMap({
     );
   }, [coordsOk, lat, lon, zoom, containerSize.width, containerSize.height]);
 
+  // Keep the current map visible while the next zoom level preloads — avoids
+  // blanking/flicker when +/- remounts every <img> with new tile URLs.
+  useEffect(() => {
+    if (!mosaic) {
+      setDisplayMosaic(null);
+      setTilesPending(false);
+      return;
+    }
+
+    const nextZ = mosaicZoomLevel(mosaic);
+    const shownZ = mosaicZoomLevel(displayMosaic);
+    const zoomChanged = nextZ != null && shownZ != null && nextZ !== shownZ;
+
+    if (!displayMosaic || !zoomChanged) {
+      setDisplayMosaic(mosaic);
+      setTilesPending(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTilesPending(true);
+    void preloadMosaicTiles(mosaic.tiles).then(() => {
+      if (cancelled) return;
+      setDisplayMosaic(mosaic);
+      setTilesPending(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // displayMosaic intentionally omitted — we only react to the target mosaic.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom-swap gate
+  }, [mosaic]);
+
   const isHero = variant === "hero";
   // Hero: fill the parent shell (absolute inset-0 from ListingHeroPanels).
   // Compact: fixed strip height.
@@ -425,6 +492,7 @@ export default function ListingLocationMap({
     : "relative w-full h-20 sm:h-[5.5rem]";
 
   const showMapFrame = coordsOk || showTownMystery;
+  const painted = displayMosaic ?? mosaic;
 
   return (
     <div
@@ -452,8 +520,8 @@ export default function ListingLocationMap({
               : `Map for ${addressQuery}`
           }
         >
-          {mosaic
-            ? mosaic.tiles.map((tile) => (
+          {painted
+            ? painted.tiles.map((tile) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   key={tile.key}
@@ -461,14 +529,15 @@ export default function ListingLocationMap({
                   alt=""
                   className={`absolute max-w-none ${
                     showTownMystery ? "opacity-35 saturate-50" : ""
-                  }`}
+                  } ${tilesPending ? "opacity-90" : ""}`}
                   style={{
                     width: tile.width,
                     height: tile.height,
                     left: tile.left,
                     top: tile.top,
                   }}
-                  loading="lazy"
+                  loading="eager"
+                  decoding="async"
                   draggable={false}
                 />
               ))
@@ -484,10 +553,10 @@ export default function ListingLocationMap({
             />
           ) : null}
 
-          {mosaic && !hidePin && !showTownMystery ? (
+          {painted && !hidePin && !showTownMystery ? (
             <span
               className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full text-blue-600 drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]"
-              style={{ left: mosaic.pinLeft, top: mosaic.pinTop }}
+              style={{ left: painted.pinLeft, top: painted.pinTop }}
               aria-hidden
             >
               <HouseIcon className="h-5 w-5" />
@@ -497,6 +566,7 @@ export default function ListingLocationMap({
           {!showTownMystery ? (
             <MapZoomControls
               zoom={zoom}
+              busy={tilesPending}
               onZoomIn={() => setZoom((z) => Math.min(MAX_ZOOM, z + 1))}
               onZoomOut={() => setZoom((z) => Math.max(MIN_ZOOM, z - 1))}
             />

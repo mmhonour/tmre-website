@@ -2,9 +2,14 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import { query } from '@/lib/db/postgres'
-import { SITE_URL } from '@/lib/business-info'
+import {
+  absoluteUrl,
+  normalizePhoneDigits,
+  SITE_URL,
+} from '@/lib/business-info'
 import { isValidEmail } from '@/lib/contact-notify-config'
-import { normalizePhoneDigits } from '@/lib/business-info'
+import { intelligenceSearchHrefFromCriteria } from '@/lib/intelligence-search-url'
+import { listingPhotoProxyUrl, listingShareHref } from '@/lib/listing-url'
 import {
   fingerprintCriteria,
   labelCriteria,
@@ -17,7 +22,6 @@ import {
   notifySavedSearchCreatedAdmin,
   type SavedSearchMatchListing,
 } from '@/lib/saved-search-notify'
-import { listingShareHref } from '@/lib/listing-url'
 
 export type AlertChannel = 'email' | 'sms'
 export type AlertCadence = 'immediate' | 'daily' | 'weekly'
@@ -176,6 +180,7 @@ export async function createSavedSearchAlert(
     to: email,
     criteriaLabel: label,
     cadenceLabel,
+    searchHref: absoluteUrl(intelligenceSearchHrefFromCriteria(criteria)),
   }).catch((err) => {
     console.warn('[saved-search-alerts] confirmation email failed', err)
   })
@@ -347,12 +352,13 @@ type ListingMatchRow = {
   price: string | number | null
   beds: string | number | null
   baths: string | number | null
-  listing_key: string | null
+  photo_count: string | number | null
 }
 
 function toMatchListing(row: ListingMatchRow): SavedSearchMatchListing {
-  const mlsId = row.mls_id
-  const key = row.listing_key?.trim() || mlsId
+  const mlsId = row.mls_id.trim()
+  const photoCount =
+    row.photo_count != null ? Number(row.photo_count) : 0
   return {
     id: row.id,
     mlsId,
@@ -361,8 +367,12 @@ function toMatchListing(row: ListingMatchRow): SavedSearchMatchListing {
     price: row.price != null ? Number(row.price) : null,
     beds: row.beds != null ? Number(row.beds) : null,
     baths: row.baths != null ? Number(row.baths) : null,
-    // Canonical public route is /listings/[id] (plural) — /listing/ 404s.
-    href: listingShareHref(key),
+    // Short public share URL uses MLS # — not the long Matrix listing_key.
+    href: listingShareHref(mlsId),
+    photoUrl:
+      Number.isFinite(photoCount) && photoCount > 0
+        ? absoluteUrl(listingPhotoProxyUrl(mlsId, 0))
+        : null,
   }
 }
 
@@ -439,7 +449,7 @@ export async function findMatchingNewListings(
   params.push(limit)
   const sql = `
     SELECT l.id, l.mls_id, l.address_full, l.address_street, l.town,
-           l.price, l.beds, l.baths, l.listing_key
+           l.price, l.beds, l.baths, l.photo_count
     FROM listings l
     WHERE ${conditions.join(' AND ')}
     ORDER BY COALESCE(l.list_date, l.modification_timestamp) DESC NULLS LAST
@@ -525,6 +535,9 @@ async function deliverAlert(
     to: alert.email,
     criteriaLabel: alert.criteriaLabel,
     cadence: alert.cadence,
+    searchHref: absoluteUrl(
+      intelligenceSearchHrefFromCriteria(alert.criteria),
+    ),
     listings,
   })
   if (!ok) return 0

@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import FedCpiTimeline from "@/components/fed-analysis/FedCpiTimeline";
-import FedDecisionTimeline from "@/components/fed-analysis/FedDecisionTimeline";
 import FedEventsCalendar from "@/components/fed-analysis/FedEventsCalendar";
 import FedPolicySnapshot from "@/components/fed-analysis/FedPolicySnapshot";
 import FedRecentCpi from "@/components/fed-analysis/FedRecentCpi";
 import FedRecentDecisions from "@/components/fed-analysis/FedRecentDecisions";
+import FedTimelinePair from "@/components/fed-analysis/FedTimelinePair";
 import { CPI_RELEASES, CPI_SCHEDULE_URL } from "@/lib/cpi-calendar";
 import {
   getNextFomcMeeting,
@@ -92,18 +91,10 @@ export default async function FedAnalysisPage() {
             />
           </div>
 
-          {/* Decision timeline — full width */}
+          {/* FOMC + CPI timelines — separate or overlay */}
           <div className="mb-8">
-            <FedDecisionTimeline
+            <FedTimelinePair
               meetings={meetings}
-              now={now}
-              defaultLookback="all"
-            />
-          </div>
-
-          {/* Prevailing CPI timeline — full width, mirrors Decision timeline */}
-          <div className="mb-8">
-            <FedCpiTimeline
               releases={CPI_RELEASES}
               now={now}
               defaultLookback="all"

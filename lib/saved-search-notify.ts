@@ -1,6 +1,17 @@
 import 'server-only'
 
-import { SITE_URL } from '@/lib/business-info'
+import {
+  absoluteUrl,
+  AGENT_MLS_ID,
+  AGENT_NAME,
+  SITE_URL,
+} from '@/lib/business-info'
+import { getBrokerageNameFresh } from '@/lib/brokerage-config'
+import { getMarketPulseThemeFresh } from '@/lib/page-theme-config'
+import {
+  formatSavedSearchConfirmationHtml,
+  formatSavedSearchMatchesHtml,
+} from '@/lib/saved-search-email-html'
 
 const RESEND_TIMEOUT_MS = 10_000
 
@@ -12,7 +23,10 @@ export type SavedSearchMatchListing = {
   price: number | null
   beds: number | null
   baths: number | null
+  /** Short share path or absolute URL — prefer `/listings/{mlsId}`. */
   href: string
+  /** Absolute thumbnail URL when available. */
+  photoUrl?: string | null
 }
 
 function formatPrice(n: number | null): string {
@@ -24,6 +38,18 @@ function formatPrice(n: number | null): string {
   }).format(n)
 }
 
+function absHref(href: string): string {
+  return href.startsWith('http') ? href : absoluteUrl(href)
+}
+
+function footerText(brokerage: string): string[] {
+  return [
+    '',
+    `${AGENT_NAME} (MLS #${AGENT_MLS_ID}) is a licensed real estate agent affiliated with ${brokerage}. Equal Housing Opportunity.`,
+    SITE_URL,
+  ]
+}
+
 /**
  * Email the visitor a batch of matching listings. Returns true when Resend
  * accepted the message. SMS is not implemented yet (see search-alerts whiteboard).
@@ -32,6 +58,7 @@ export async function notifySavedSearchByEmail(opts: {
   to: string
   criteriaLabel: string
   cadence: string
+  searchHref: string
   listings: SavedSearchMatchListing[]
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim()
@@ -50,21 +77,36 @@ export async function notifySavedSearchByEmail(opts: {
       ? `New match — ${opts.listings[0].address ?? opts.listings[0].mlsId}`
       : `${opts.listings.length} new matches — ${opts.criteriaLabel}`
 
+  const [theme, brokerage] = await Promise.all([
+    getMarketPulseThemeFresh(),
+    getBrokerageNameFresh(),
+  ])
+  const searchUrl = absHref(opts.searchHref)
+
   const lines = [
     `Your TMRE saved search “${opts.criteriaLabel}” has new listing${opts.listings.length === 1 ? '' : 's'}.`,
     `Cadence: ${opts.cadence}`,
+    `Search: ${searchUrl}`,
     '',
     ...opts.listings.flatMap((l, i) => [
       `${i + 1}. ${l.address ?? 'Address TBD'}${l.town ? ` · ${l.town}` : ''}`,
       `   ${formatPrice(l.price)}${l.beds != null ? ` · ${l.beds} bd` : ''}${l.baths != null ? ` · ${l.baths} ba` : ''}`,
       `   MLS #${l.mlsId}`,
-      `   ${l.href.startsWith('http') ? l.href : `${SITE_URL}${l.href}`}`,
+      `   ${absHref(l.href)}`,
       '',
     ]),
-    'Manage preferences on the Latest page: ' + `${SITE_URL}/latest`,
-    '',
-    '— TMRE listing alerts',
+    'Manage preferences: ' + `${SITE_URL}/latest`,
+    ...footerText(brokerage),
   ]
+
+  const html = formatSavedSearchMatchesHtml({
+    theme,
+    brokerage,
+    criteriaLabel: opts.criteriaLabel,
+    cadence: opts.cadence,
+    searchHref: searchUrl,
+    listings: opts.listings,
+  })
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
@@ -80,6 +122,7 @@ export async function notifySavedSearchByEmail(opts: {
         to: [opts.to],
         subject,
         text: lines.join('\n'),
+        html,
       }),
       signal: controller.signal,
     })
@@ -102,12 +145,40 @@ export async function notifySavedSearchConfirmation(opts: {
   to: string
   criteriaLabel: string
   cadenceLabel: string
+  searchHref: string
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) return false
   const from =
     process.env.CONTACT_FROM_EMAIL?.trim() ||
     'TMRE Alerts <notifications@tmre-website.com>'
+
+  const [theme, brokerage] = await Promise.all([
+    getMarketPulseThemeFresh(),
+    getBrokerageNameFresh(),
+  ])
+  const searchUrl = absHref(opts.searchHref)
+
+  const text = [
+    `You're set. We'll email you when new listings match:`,
+    '',
+    `Search: ${opts.criteriaLabel}`,
+    searchUrl,
+    `When: ${opts.cadenceLabel}`,
+    '',
+    `Latest feed: ${SITE_URL}/latest`,
+    `Optional sign-in (passwordless): ${SITE_URL}/login`,
+    ...footerText(brokerage),
+  ].join('\n')
+
+  const html = formatSavedSearchConfirmationHtml({
+    theme,
+    brokerage,
+    criteriaLabel: opts.criteriaLabel,
+    cadenceLabel: opts.cadenceLabel,
+    searchHref: searchUrl,
+  })
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
   try {
@@ -121,17 +192,8 @@ export async function notifySavedSearchConfirmation(opts: {
         from,
         to: [opts.to],
         subject: `Alert saved — ${opts.criteriaLabel}`,
-        text: [
-          `You're set. We'll email you when new listings match:`,
-          '',
-          `Search: ${opts.criteriaLabel}`,
-          `When: ${opts.cadenceLabel}`,
-          '',
-          `Latest feed: ${SITE_URL}/latest`,
-          `Optional sign-in (passwordless): ${SITE_URL}/login`,
-          '',
-          '— TMRE listing alerts',
-        ].join('\n'),
+        text,
+        html,
       }),
       signal: controller.signal,
     })
