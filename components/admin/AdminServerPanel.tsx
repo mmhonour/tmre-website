@@ -28,9 +28,11 @@ function panelFromLocation(): AdminServerPanelId {
 export default function AdminServerPanel({
   apiRoutes,
   pageStyles,
+  uiKit,
 }: {
   apiRoutes: ReactNode;
   pageStyles: ReactNode;
+  uiKit: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminServerPanelId>("api-routes");
 
@@ -57,6 +59,7 @@ export default function AdminServerPanel({
   const panels: Record<AdminServerPanelId, ReactNode> = {
     "api-routes": apiRoutes,
     "page-styles": pageStyles,
+    "ui-kit": uiKit,
   };
   const active = ADMIN_SERVER_PANELS.find((item) => item.id === panel);
 

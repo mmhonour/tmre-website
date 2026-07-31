@@ -104,12 +104,13 @@ function emptyKindTownAvgScoreData(): KindTownAvgScoreData {
   }
 }
 
-async function acquireStatsCacheRebuildLock(): Promise<string | null> {
+async function acquireStatsCacheRebuildLock(force = false): Promise<string | null> {
   const token = new Date().toISOString()
+  // force=0ms stale window steals any prior holder (admin / background heal).
   const ok = await tryAcquireTimedLock(
     STATS_CACHE_REBUILD_LOCK_KEY,
     token,
-    STATS_CACHE_REBUILD_LOCK_STALE_MS,
+    force ? 0 : STATS_CACHE_REBUILD_LOCK_STALE_MS,
   )
   if (!ok) {
     console.info('[stats-cache] skipped — rebuild lock held')
@@ -486,6 +487,8 @@ async function writeTownMarketStats(
     activeByMonthByTown: KindTownActiveMonthData
     avgScoreByVintageByTown: KindTownAvgScoreData
   },
+  /** Expired (and similar) history for seasonal active-by-month reconstruction. */
+  offMarket: readonly Listing[] = [],
 ): Promise<number> {
   let written = 0
   const scoredActive = await scoredActiveRows(active)
@@ -511,7 +514,13 @@ async function writeTownMarketStats(
     if (bundles) bundles.salesByMonthByTown[kind][town] = monthPayload.data
     written += 1
 
-    const activeMonthPayload = computeActiveByMonth(active, closed, town, kind)
+    const activeMonthPayload = computeActiveByMonth(
+      active,
+      closed,
+      town,
+      kind,
+      offMarket,
+    )
     await writeStatsCache('active-by-month', town, kind, {
       ...activeMonthPayload,
       generatedAt,
@@ -685,21 +694,27 @@ async function writeAllAggregateStats(
   return written
 }
 
-type RebuildStatsResult = {
+export type RebuildStatsSkipReason = 'lock' | 'no-listings' | 'not-stale' | 'empty-towns'
+
+export type RebuildStatsResult = {
   written: number
   durationMs: number
   skipped?: boolean
+  skipReason?: RebuildStatsSkipReason
 }
 
 /**
  * Recompute Stats API payloads from listings and upsert into stats_cache.
  * Does not clear existing rows — failed mid-rebuild leaves prior payloads intact.
+ * Pass `force: true` (admin / worker heal) to steal a stuck rebuild lock immediately.
  */
-export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}): Promise<RebuildStatsResult> {
+export async function rebuildStatsCache(
+  options: { trackRefresh?: boolean; force?: boolean } = {},
+): Promise<RebuildStatsResult> {
   const trackRefresh = options.trackRefresh !== false
-  const lockToken = await acquireStatsCacheRebuildLock()
+  const lockToken = await acquireStatsCacheRebuildLock(options.force === true)
   if (!lockToken) {
-    return { written: 0, durationMs: 0, skipped: true }
+    return { written: 0, durationMs: 0, skipped: true, skipReason: 'lock' }
   }
 
   if (trackRefresh) beginListingsRefresh('stats-cache')
@@ -708,7 +723,12 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
   const t0 = Date.now()
   try {
     if (!(await hasLocalListingsCache())) {
-      return { written: 0, durationMs: Date.now() - t0 }
+      return {
+        written: 0,
+        durationMs: Date.now() - t0,
+        skipped: true,
+        skipReason: 'no-listings',
+      }
     }
 
     let written = 0
@@ -735,9 +755,10 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
       // Closed: no price-DESC cap. Norwalk alone has ~5k closed; a 2500
       // high-price sample dropped nearly all recent mid-market closings and
       // inflated months-supply (e.g. June 2026 ≈ 174).
-      const [active, closed] = await Promise.all([
+      const [active, closed, expired] = await Promise.all([
         readListingsFromDb(town, 'Active', 500),
         readListingsFromDb(town, 'Closed'),
+        readListingsFromDb(town, 'Expired'),
       ])
       townListingsForMonthsSupply[town] = { active, closed }
       written += await writeTownMarketStats(
@@ -752,6 +773,7 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
           activeByMonthByTown,
           avgScoreByVintageByTown,
         },
+        expired,
       )
     }
 
@@ -812,20 +834,20 @@ export async function rebuildStatsCache(options: { trackRefresh?: boolean } = {}
  */
 export async function rebuildStatsCacheForTowns(
   towns: readonly TmreTown[],
-  options: { trackRefresh?: boolean } = {},
+  options: { trackRefresh?: boolean; force?: boolean } = {},
 ): Promise<RebuildStatsResult> {
   const unique = [...new Set(towns)]
   if (unique.length === 0) {
-    return { written: 0, durationMs: 0, skipped: true }
+    return { written: 0, durationMs: 0, skipped: true, skipReason: 'empty-towns' }
   }
   if (unique.length >= TMRE_TOWNS.length) {
     return rebuildStatsCache(options)
   }
 
   const trackRefresh = options.trackRefresh === true
-  const lockToken = await acquireStatsCacheRebuildLock()
+  const lockToken = await acquireStatsCacheRebuildLock(options.force === true)
   if (!lockToken) {
-    return { written: 0, durationMs: 0, skipped: true }
+    return { written: 0, durationMs: 0, skipped: true, skipReason: 'lock' }
   }
 
   if (trackRefresh) beginListingsRefresh('stats-cache')
@@ -834,7 +856,12 @@ export async function rebuildStatsCacheForTowns(
   const t0 = Date.now()
   try {
     if (!(await hasLocalListingsCache())) {
-      return { written: 0, durationMs: Date.now() - t0 }
+      return {
+        written: 0,
+        durationMs: Date.now() - t0,
+        skipped: true,
+        skipReason: 'no-listings',
+      }
     }
 
     let written = 0
@@ -855,9 +882,10 @@ export async function rebuildStatsCacheForTowns(
     const townListingsForMonthsSupply = {} as TownListingsMap
 
     for (const town of unique) {
-      const [active, closed] = await Promise.all([
+      const [active, closed, expired] = await Promise.all([
         readListingsFromDb(town, 'Active', 500),
         readListingsFromDb(town, 'Closed'),
+        readListingsFromDb(town, 'Expired'),
       ])
       townListingsForMonthsSupply[town] = { active, closed }
       written += await writeTownMarketStats(
@@ -867,6 +895,8 @@ export async function rebuildStatsCacheForTowns(
         generatedAt,
         saleBuckets,
         inventorySegments,
+        undefined,
+        expired,
       )
     }
 
@@ -929,15 +959,15 @@ export async function rebuildStatsCacheForTown(
 /** Rebuild stats cache when missing or older than STATS_CACHE_TTL_MS. */
 export async function rebuildStatsCacheIfStale(force = false): Promise<RebuildStatsResult> {
   if (!(await hasLocalListingsCache())) {
-    return { written: 0, durationMs: 0, skipped: true }
+    return { written: 0, durationMs: 0, skipped: true, skipReason: 'no-listings' }
   }
   if (!force && !isStatsCacheStale() && !(await statsCacheMissingRequiredEntries())) {
     const { statsCacheEntries } = await readListingsDbStats()
     if (statsCacheEntries > 0) {
-      return { written: 0, durationMs: 0, skipped: true }
+      return { written: 0, durationMs: 0, skipped: true, skipReason: 'not-stale' }
     }
   }
-  return rebuildStatsCache()
+  return rebuildStatsCache({ force })
 }
 
 /** Queue a stats cache rebuild without blocking the current request. */

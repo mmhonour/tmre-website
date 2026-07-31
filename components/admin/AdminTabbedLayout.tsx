@@ -129,6 +129,14 @@ function normalizeLegacyNestedTabUrls() {
     url.searchParams.set("tab", "server");
     url.searchParams.set("panel", "page-styles");
     window.history.replaceState(null, "", url);
+    return;
+  }
+
+  // Former Architecture → UI kit → Web server → UI kit.
+  if (queryTab === "architecture" && panel === "ui-kit") {
+    url.searchParams.set("tab", "server");
+    url.searchParams.set("panel", "ui-kit");
+    window.history.replaceState(null, "", url);
   }
 }
 

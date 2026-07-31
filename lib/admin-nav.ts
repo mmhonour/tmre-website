@@ -27,7 +27,7 @@ export type AdminDataControlsPanelId =
   | "town-budget";
 
 /** Sub-panels under Admin → Web server. */
-export type AdminServerPanelId = "api-routes" | "page-styles";
+export type AdminServerPanelId = "api-routes" | "page-styles" | "ui-kit";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -44,7 +44,7 @@ export type AdminSyncsPanelId =
 export type AdminPostgresPanelId = "schema" | "inventory" | "town-counts";
 
 /** Sub-panels under Admin → Architecture. */
-export type AdminArchitecturePanelId = "map" | "docs" | "status-logic" | "ui-kit";
+export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
 
 /** Sub-panels under Admin → Communications. */
 export type AdminCommunicationsPanelId =
@@ -182,6 +182,12 @@ export const ADMIN_SERVER_PANELS: {
     label: "Page styles",
     subtitle: "Palette, typography, and presets for Market Pulse",
   },
+  {
+    id: "ui-kit",
+    label: "UI kit",
+    subtitle:
+      "Live preview of every tab / pill style with stable IDs (mobile + desktop notes)",
+  },
 ];
 
 export const ADMIN_SYNCS_PANELS: {
@@ -190,15 +196,15 @@ export const ADMIN_SYNCS_PANELS: {
   subtitle: string;
 }[] = [
   {
-    id: "history",
-    label: "Sync history",
-    subtitle: "Durable database sync history and latest in-browser sync steps",
-  },
-  {
     id: "dashboard",
     label: "Dashboard",
     subtitle:
       "Run syncs and scan status — compact view for phone and desktop",
+  },
+  {
+    id: "history",
+    label: "Sync history",
+    subtitle: "Durable database sync history and latest in-browser sync steps",
   },
   {
     id: "configure",
@@ -275,12 +281,6 @@ export const ADMIN_ARCHITECTURE_PANELS: {
     label: "Status logic",
     subtitle:
       "/latest badge precedence, feed ranking, and the fields that drive them",
-  },
-  {
-    id: "ui-kit",
-    label: "UI kit",
-    subtitle:
-      "Live preview of every tab / pill style with stable IDs (mobile + desktop notes)",
   },
   {
     id: "docs",
@@ -612,7 +612,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-ui-kit",
     label: "UI kit — tab styles",
-    tab: "architecture",
+    tab: "server",
     panel: "ui-kit",
   },
   {
@@ -980,7 +980,9 @@ export function isAdminDataControlsPanelId(
 export function isAdminServerPanelId(
   value: string | null | undefined,
 ): value is AdminServerPanelId {
-  return value === "api-routes" || value === "page-styles";
+  return (
+    value === "api-routes" || value === "page-styles" || value === "ui-kit"
+  );
 }
 
 export function isAdminSyncsPanelId(
@@ -1018,12 +1020,7 @@ export function isAdminPostgresSchemaHash(hash: string): boolean {
 export function isAdminArchitecturePanelId(
   value: string | null | undefined,
 ): value is AdminArchitecturePanelId {
-  return (
-    value === "map" ||
-    value === "docs" ||
-    value === "status-logic" ||
-    value === "ui-kit"
-  );
+  return value === "map" || value === "docs" || value === "status-logic";
 }
 
 export function isAdminCommunicationsPanelId(

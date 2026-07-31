@@ -93,7 +93,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'UI kit (tab styles)',
     category: 'ui-tabs',
     definition:
-      'Admin → Architecture → UI kit — live catalog of every distinct tab/pill visual system with stable IDs (e.g. pill-seg-dark-compact, underline-listing, edge-listing-mobile). Source list in lib/admin-tab-kit.ts; previews reuse production class helpers from lib/filter-pill-styles.ts.',
+      'Admin → Web server → UI kit — live catalog of every distinct tab/pill visual system with stable IDs (e.g. pill-seg-dark-compact, underline-listing, edge-listing-mobile). Source list in lib/admin-tab-kit.ts; previews reuse production class helpers from lib/filter-pill-styles.ts.',
   },
   {
     term: '“This is not the Next.js you know”',
@@ -295,7 +295,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'stats_cache_rebuild_lock',
     category: 'sync-admin',
     definition:
-      'Durable sync_meta lock (ISO start time) so only one stats_cache rebuild runs across Lambdas. Stolen after ~20 minutes if a holder dies mid-run.',
+      'Durable sync_meta lock (ISO start time) so only one stats_cache rebuild runs across Lambdas. Stolen after ~20 minutes if a holder dies mid-run. Admin Syncs / background stats-cache worker steals immediately (force) so a Next.js timeout cannot leave the row stuck at “0 entries”.',
   },
   {
     term: 'Months supply (cached)',

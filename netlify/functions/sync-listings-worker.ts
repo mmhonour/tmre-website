@@ -16,17 +16,20 @@ import { recordSyncRun } from '../../lib/db/listings-repo'
 export default async function handler(req: Request, _context: Context) {
   let startedAt = new Date().toISOString()
   let sideWorkOnly = false
+  let statsCacheOnly = false
   let source: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog' | undefined
   try {
     const body = (await req.json().catch(() => null)) as {
       startedAt?: string
       sideWorkOnly?: boolean
+      statsCacheOnly?: boolean
       source?: string
     } | null
     if (body?.startedAt && !Number.isNaN(Date.parse(body.startedAt))) {
       startedAt = body.startedAt
     }
     if (body?.sideWorkOnly === true) sideWorkOnly = true
+    if (body?.statsCacheOnly === true) statsCacheOnly = true
     if (
       body?.source === 'admin' ||
       body?.source === 'cron' ||
@@ -76,9 +79,11 @@ export default async function handler(req: Request, _context: Context) {
       statusBucket: 'Worker/incremental',
       listingsCount: 0,
       ok: true,
-      error: sideWorkOnly
-        ? `worker started (${source ?? 'cron'}) — side-work only`
-        : `worker started (${source ?? 'cron'}) — running RETS`,
+      error: statsCacheOnly
+        ? `worker started (${source ?? 'cron'}) — stats-cache only`
+        : sideWorkOnly
+          ? `worker started (${source ?? 'cron'}) — side-work only`
+          : `worker started (${source ?? 'cron'}) — running RETS`,
     })
   } catch (err) {
     console.warn('[sync-listings-worker] start audit failed', err)
@@ -86,6 +91,7 @@ export default async function handler(req: Request, _context: Context) {
 
   const result = await runIncrementalSyncListingsWork(startedAt, {
     sideWorkOnly,
+    statsCacheOnly,
     source,
   })
   return new Response(JSON.stringify(result.body), {

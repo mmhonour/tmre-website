@@ -490,7 +490,7 @@ function KitCard({ entry }: { entry: AdminTabKitEntry }) {
 
 /**
  * Live catalog of every distinct tab/pill visual system with stable IDs.
- * Deep link: /admin?tab=architecture&panel=ui-kit
+ * Deep link: /admin?tab=server&panel=ui-kit
  */
 export default function AdminUiKitPanel() {
   const groups = adminTabKitGroups();

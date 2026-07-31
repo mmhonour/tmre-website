@@ -36,6 +36,8 @@ type ListingForDetailsPanel = {
   propertyType?: string | null;
   price: number | null;
   originalListPrice?: number | null;
+  beds?: number | null;
+  baths?: number | null;
   dom?: number | null;
   sqft?: number | null;
   lotAcres?: number | null;
@@ -102,6 +104,8 @@ export function buildSpotlightDetailsPanelProps(
       propertyType: display.propertyType,
       price: display.price,
       originalListPrice: display.originalListPrice,
+      beds: display.beds,
+      baths: display.baths,
       dom: display.dom,
       sqft: display.sqft,
       lotAcres: mlsListing?.lotAcres ?? null,
@@ -195,6 +199,8 @@ export function buildListingDetailsPanelProps(
     price: listing.price,
     originalListPrice: listing.originalListPrice ?? null,
     reductionPct,
+    beds: listing.beds ?? null,
+    baths: listing.baths ?? null,
     dom: listing.dom ?? null,
     sqft: listing.sqft ?? null,
     marketBandLabel: !isRental

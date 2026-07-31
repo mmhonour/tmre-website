@@ -74,6 +74,11 @@ export type IncrementalSyncWorkOptions = {
    */
   sideWorkOnly?: boolean
   /**
+   * Admin Syncs "Stats cache" — rebuild stats_cache only (no RETS / digests).
+   * Steals a stuck rebuild lock so a timed-out Next.js click cannot block forever.
+   */
+  statsCacheOnly?: boolean
+  /**
    * Admin Syncs "Incremental" / watchdog / manual queue — full RETS + digests.
    * Does not stamp the 30-minute cron heartbeat, and ignores schedule pause /
    * Next-override defer (explicit heal / admin intent).
@@ -139,6 +144,7 @@ export async function runIncrementalSyncListingsWork(
 }> {
   process.env.NETLIFY_SYNC_HANDLER = '1'
   const sideWorkOnly = options.sideWorkOnly === true
+  const statsCacheOnly = options.statsCacheOnly === true
   /** Admin click or stale-sync watchdog — bypass pause/defer; don't stamp cron tick. */
   const fromAdmin =
     options.source === 'admin' || options.source === 'watchdog'
@@ -150,6 +156,33 @@ export async function runIncrementalSyncListingsWork(
     }
     if (healStaleOverdueCatchupLock()) {
       console.info('[sync-listings-work] cleared stale overdue catch-up lock')
+    }
+
+    // Admin Syncs "Stats cache" — dedicated path (no RETS / pause gates / cron tick).
+    if (statsCacheOnly) {
+      const { rebuildStatsCache } = await import('@/lib/stats-cache')
+      const result = await rebuildStatsCache({
+        trackRefresh: true,
+        force: true,
+      })
+      const ok = !result.skipped && result.written > 0
+      console.info(
+        `[sync-listings-work] statsCacheOnly written=${result.written} skipped=${result.skipped ?? false} reason=${result.skipReason ?? '—'}`,
+      )
+      return {
+        status: ok ? 200 : 409,
+        body: {
+          ok,
+          statsCacheOnly: true,
+          written: result.written,
+          skipped: result.skipped === true,
+          skipReason: result.skipReason ?? null,
+          durationMs: result.durationMs,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          stats: await getSyncStatus(),
+        },
+      }
     }
 
     const logSource = fromAdmin

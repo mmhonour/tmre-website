@@ -467,8 +467,13 @@ export function computeActiveByMonth(
   closedListings: Listing[],
   city: string,
   kind: ListingKind,
+  /** Expired / withdrawn history — without these, older years look too linear. */
+  offMarketListings: readonly Listing[] = [],
 ): ActiveByMonthPayload {
-  const inventory = filterListingsByKind([...activeListings, ...closedListings], kind)
+  const inventory = filterListingsByKind(
+    [...activeListings, ...closedListings, ...offMarketListings],
+    kind,
+  )
   const counts = new Map<string, number>()
 
   for (const year of SALES_BY_MONTH_YEARS) {

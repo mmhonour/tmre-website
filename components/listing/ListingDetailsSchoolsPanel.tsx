@@ -33,6 +33,8 @@ export type ListingDetailsSchoolsPanelProps = {
   price: number | null;
   originalListPrice: number | null;
   reductionPct: number | null;
+  beds: number | null;
+  baths: number | null;
   dom: number | null;
   sqft: number | null;
   /** Admin Market Bands category (+ fine step), sale homes only. */
@@ -131,6 +133,8 @@ export default function ListingDetailsSchoolsPanel({
   price,
   originalListPrice,
   reductionPct,
+  beds,
+  baths,
   dom,
   sqft,
   marketBandLabel,
@@ -405,6 +409,8 @@ export default function ListingDetailsSchoolsPanel({
     closeDate,
     originalListPrice,
     reductionPct,
+    beds,
+    baths,
     dom,
     sqft,
     marketBandLabel,
@@ -474,6 +480,12 @@ export default function ListingDetailsSchoolsPanel({
               )}
             </>
           )}
+          {beds != null && beds > 0 ? (
+            <Stat label="Beds" value={String(beds)} />
+          ) : null}
+          {baths != null && baths > 0 ? (
+            <Stat label="Baths" value={String(baths)} />
+          ) : null}
           {dom != null ? (
             <Stat label="Days on market" value={`${dom}d`} />
           ) : null}

@@ -23,29 +23,20 @@ export default function HomeScrollReset() {
 
     pinTop();
 
-    // After fonts/images settle, restoration can re-apply — pin again.
-    const raf = window.requestAnimationFrame(() => {
-      pinTop();
-      window.requestAnimationFrame(pinTop);
-    });
+    // One follow-up after layout — avoid a burst of scrollTo calls that feel
+    // like the hero background is hopping on mobile.
+    const raf = window.requestAnimationFrame(() => pinTop());
     const t0 = window.setTimeout(pinTop, 0);
-    const t1 = window.setTimeout(pinTop, 120);
-    const t2 = window.setTimeout(pinTop, 400);
 
     const onPageShow = (e: PageTransitionEvent) => {
       if (e.persisted) pinTop();
     };
-    const onLoad = () => pinTop();
     window.addEventListener("pageshow", onPageShow);
-    window.addEventListener("load", onLoad);
 
     return () => {
       window.cancelAnimationFrame(raf);
       window.clearTimeout(t0);
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
       window.removeEventListener("pageshow", onPageShow);
-      window.removeEventListener("load", onLoad);
       if (prev != null && "scrollRestoration" in history) {
         history.scrollRestoration = prev;
       }

@@ -39,8 +39,8 @@ function buildSlots(
 /**
  * Vertical stack of listing photos for continuous page scroll under sticky tabs.
  * Photos are flush edge-to-edge (no gaps, borders, or radius between frames).
- * Each photo links to the Photos gallery at that index when `photoHref` is set,
- * or calls `onPhotoActivate` / Overview photos-mode context when provided.
+ * Overview photos-mode context (or `onPhotoActivate`) keeps clicks in-page;
+ * otherwise `photoHref` navigates to the Photos gallery.
  * When Photos mode is active, collapses to a single hero with prev/next cycle.
  * When `mapSlot` is set, a frameless Location map sits in the 2nd stack position.
  */
@@ -177,13 +177,13 @@ export default function ListingPhotoScrollStack({
           />
         );
 
-        // Prefer a real /photos link (same thumbnail gallery as Details → Photos)
-        // over in-page carousel mode, which leaves an empty region below.
+        // Overview slide-panel context: stay on this page (carousel). Do not
+        // follow photoHref → /photos — that remounts the listing route.
         const href = photoHref?.(index);
         const activate =
           onPhotoActivate != null
             ? () => onPhotoActivate(index)
-            : !href && photosMode
+            : photosMode
               ? () => photosMode.enter(index)
               : null;
 

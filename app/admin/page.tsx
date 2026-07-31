@@ -840,6 +840,7 @@ export default async function AdminPage() {
     <AdminServerPanel
       apiRoutes={<AdminServerFunctionsPanel />}
       pageStyles={<AdminPageStylesPanel />}
+      uiKit={<AdminUiKitPanel />}
     />
   );
 
@@ -1065,7 +1066,6 @@ export default async function AdminPage() {
           <AdminArchitecturePanel
             map={<AdminSiteArchitecturePanel />}
             statusLogic={<AdminLatestStatusLogicPanel />}
-            uiKit={<AdminUiKitPanel />}
             docs={<AdminProductDocsPanel />}
           />
         }

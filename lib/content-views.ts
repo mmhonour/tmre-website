@@ -76,7 +76,12 @@ export function resolveViewedContent(rawPath: string): ResolvedContent {
   const pathname = rawPathname.replace(/\/+$/, '') || '/'
   const segments = pathname.split('/').filter(Boolean)
 
-  if (segments[0] === 'listings' && segments[1]) {
+  // Canonical route is /listings/[id]; /listing/[id] is a legacy redirect target
+  // still seen in old emails / retained visitor hits — count as the property.
+  if (
+    (segments[0] === 'listings' || segments[0] === 'listing') &&
+    segments[1]
+  ) {
     const mlsId = decodeSegment(segments[1])
     return {
       kind: 'listing',
@@ -145,6 +150,12 @@ export function contentViewPageLabel(path: string): string {
   if (known) return known
   const spotlightTab = /^\/spotlight\?property=(\d)$/.exec(path)
   if (spotlightTab) return `Spotlight #${spotlightTab[1]}`
+  // Belt-and-suspenders if a legacy singular path is still stored as kind=page.
+  const legacyListing = /^\/listing\/([^/?#]+)/i.exec(path)
+  if (legacyListing) {
+    const id = decodeSegment(legacyListing[1]!)
+    return id.length <= 16 ? `MLS ${id}` : `Listing ${id.slice(0, 8)}…`
+  }
   return path
 }
 

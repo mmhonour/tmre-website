@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { query } from '@/lib/db/postgres'
+import { execute, query } from '@/lib/db/postgres'
 import {
   resolveViewedContent,
   type ContentViewKind,
@@ -8,10 +8,65 @@ import {
 } from '@/lib/content-views'
 
 let ensured = false
+let singularListingPagesHealed = false
+
+/**
+ * Fold legacy `page:/listing/{id}` rows into `listing:{id}` (canonical plural path).
+ * Safe to re-run — no-op once those page rows are gone.
+ */
+async function healSingularListingPageViews(): Promise<void> {
+  if (singularListingPagesHealed) return
+  try {
+    // Merge into an existing listing row for the same visitor when present.
+    await execute(`
+      WITH bad AS (
+        SELECT content_key,
+               vid,
+               views,
+               first_viewed_at,
+               last_viewed_at,
+               substring(path from '^/listing/([^/?#]+)') AS mls_id
+        FROM content_views
+        WHERE kind = 'page'
+          AND path ~ '^/listing/[^/?#]+'
+      ),
+      merged AS (
+        UPDATE content_views AS good
+        SET views = good.views + bad.views,
+            first_viewed_at = LEAST(good.first_viewed_at, bad.first_viewed_at),
+            last_viewed_at = GREATEST(good.last_viewed_at, bad.last_viewed_at)
+        FROM bad
+        WHERE bad.mls_id IS NOT NULL
+          AND good.vid = bad.vid
+          AND good.content_key = 'listing:' || bad.mls_id
+        RETURNING bad.content_key AS bad_key, bad.vid AS bad_vid
+      )
+      DELETE FROM content_views AS cv
+      USING merged AS m
+      WHERE cv.content_key = m.bad_key AND cv.vid = m.bad_vid
+    `)
+    // Remaining singular-page rows have no listing twin — rewrite in place.
+    await execute(`
+      UPDATE content_views
+      SET content_key = 'listing:' || substring(path from '^/listing/([^/?#]+)'),
+          kind = 'listing',
+          mls_id = substring(path from '^/listing/([^/?#]+)'),
+          path = '/listings/' || substring(path from '^/listing/([^/?#]+)')
+      WHERE kind = 'page'
+        AND path ~ '^/listing/[^/?#]+'
+    `)
+    singularListingPagesHealed = true
+  } catch (err) {
+    console.warn('[content-views] singular /listing/ page heal failed', err)
+  }
+}
 
 /** Idempotent guard so a database without migration 0012 still records views. */
 export async function ensureContentViewsTable(): Promise<void> {
-  if (ensured) return
+  if (ensured) {
+    await healSingularListingPageViews()
+    return
+  }
   await query(`
     CREATE TABLE IF NOT EXISTS content_views (
       content_key      text NOT NULL,
@@ -31,6 +86,7 @@ export async function ensureContentViewsTable(): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_content_views_last_viewed ON content_views (last_viewed_at DESC)`,
   )
   ensured = true
+  await healSingularListingPageViews()
 }
 
 /**

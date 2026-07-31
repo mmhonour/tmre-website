@@ -15,7 +15,6 @@ import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
-import { listingPhotosHref } from "@/lib/listing-url";
 import { ListingShell } from "@/components/listing/ListingShell";
 import {
   listingChromeApiUrl,
@@ -207,14 +206,6 @@ export default function ListingDetailClient({
       photoCount={photoCount}
       altBase={street || "Listing photo"}
       mapSlot={mapSlot}
-      photoHref={(i) =>
-        listingPhotosHref(
-          l.mlsId,
-          street || addressHint,
-          townHint || l.address.city,
-          i,
-        )
-      }
     />
   ) : null;
 

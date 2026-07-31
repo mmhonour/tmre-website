@@ -251,6 +251,18 @@ export function queueNetlifyIncrementalSync(
   })
 }
 
+/** Admin Syncs "Stats cache" — rebuild only (no RETS), up to ~15 min. */
+export function queueNetlifyStatsCacheRebuild(
+  startedAt?: string,
+  options?: { source?: IncrementalQueueSource },
+): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-listings-worker', {
+    source: options?.source ?? 'admin',
+    startedAt: startedAt ?? new Date().toISOString(),
+    statsCacheOnly: true,
+  })
+}
+
 /** Full reload worker (background). Never point this at the scheduled trigger. */
 export function queueNetlifyFullSync(): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/sync-listings-full-worker', {

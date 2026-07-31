@@ -35,12 +35,10 @@ export default function AdminArchitecturePanel({
   map,
   docs,
   statusLogic,
-  uiKit,
 }: {
   map: ReactNode;
   docs: ReactNode;
   statusLogic: ReactNode;
-  uiKit: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminArchitecturePanelId>("map");
 
@@ -68,7 +66,6 @@ export default function AdminArchitecturePanel({
     map,
     docs,
     "status-logic": statusLogic,
-    "ui-kit": uiKit,
   };
   const active = ADMIN_ARCHITECTURE_PANELS.find((item) => item.id === panel);
 

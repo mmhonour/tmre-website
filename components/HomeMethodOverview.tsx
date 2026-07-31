@@ -302,21 +302,29 @@ export default function HomeMethodOverview() {
 
   return (
     <section className="relative overflow-x-hidden text-white pt-[5.5rem] pb-6 sm:pt-20 sm:pb-12 lg:pt-24 lg:pb-14">
-      {/* Atmosphere: this week’s listing photo */}
+      {/*
+        Atmosphere photo. On mobile the image is locked to 100svh so score / pill /
+        interesting-stat reflow (and the iOS URL-bar resize) cannot re-crop
+        object-cover — that was the “hopping” background. Below the fold is navy.
+        Desktop still fills the whole section.
+      */}
       <div className="absolute inset-0" aria-hidden>
-        {photoUrl ? (
-          <Image
-            src={photoUrl}
-            alt=""
-            fill
-            priority
-            unoptimized
-            className="object-cover scale-105"
-            sizes="100vw"
-          />
-        ) : (
-          <div className="absolute inset-0 navy-gradient" />
-        )}
+        <div className="absolute inset-0 bg-navy-dark" />
+        <div className="absolute inset-x-0 top-0 h-[100svh] overflow-hidden sm:inset-0 sm:h-auto">
+          {photoUrl ? (
+            <Image
+              src={photoUrl}
+              alt=""
+              fill
+              priority
+              unoptimized
+              className="object-cover object-center sm:scale-105"
+              sizes="100vw"
+            />
+          ) : (
+            <div className="absolute inset-0 navy-gradient" />
+          )}
+        </div>
         <div className="absolute inset-0 bg-gradient-to-b from-navy-dark/88 via-navy/82 to-navy-dark/92" />
         <div className="absolute inset-0 hero-grid opacity-30" />
       </div>
@@ -355,13 +363,13 @@ export default function HomeMethodOverview() {
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2 sm:mt-7">
                 <Link
                   href="/score"
-                  className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark transition-colors hover:bg-gold-light"
+                  className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 transition-colors hover:text-gold"
                 >
                   How scoring works
                 </Link>
                 <Link
                   href="/intelligence"
-                  className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 transition-colors hover:text-gold"
+                  className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark transition-colors hover:bg-gold-light"
                 >
                   Open Intelligence →
                 </Link>

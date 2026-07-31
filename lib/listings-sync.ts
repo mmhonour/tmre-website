@@ -20,14 +20,16 @@ import {
 import { persistIncrementalUpsertStats } from '@/lib/incremental-upsert-stats'
 import { beginListingsRefresh, endListingsRefresh } from '@/lib/listings-refresh-status'
 import {
+  fetchClosedListingsForTownYearWindows,
+  fetchExpiredListingsForTownYearWindows,
+} from '@/lib/closed-listings-rets'
+import {
   CLOSED_LISTINGS_FETCH_LIMIT,
   CLOSED_LISTINGS_SINCE,
   COMING_SOON_MLS_STATUS,
   EXPIRED_LISTINGS_FETCH_LIMIT,
   getActiveListingsFetchLimit,
   isClosedListing,
-  isExpiredListing,
-  searchExpiredListingsForTown,
   searchMarketListingsForTown,
   setSyncedActiveCount,
   UNDER_CONTRACT_CTS_MLS_STATUS,
@@ -35,7 +37,6 @@ import {
 } from '@/lib/listings-store'
 import { searchListings, type Listing, type SearchParams } from '@/lib/rets'
 import { isRetsConfigured, retsSyncBlockedMessage } from '@/lib/rets'
-import { STATS_CLOSED_PERIOD_START } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import type { FullResyncFinalizeStepId } from '@/lib/admin-sync-types'
@@ -500,6 +501,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Pull closed sales for one town in calendar-year RETS windows so mid years
+ * (e.g. 2022–2023) are not dropped by the oldest-first page cap.
+ */
+async function fetchClosedListingsForTown(
+  town: TmreTown,
+  limit: number,
+): Promise<Listing[]> {
+  return fetchClosedListingsForTownYearWindows(town, { limit, parallel: true })
+}
+
 function yieldToEventLoop(): Promise<void> {
   return sleep(0)
 }
@@ -567,40 +579,6 @@ function mergeSyncListings(...groups: Listing[][]): Listing[] {
   return merged
 }
 
-/** Comparables + stats charts only use closed sales since this calendar year. */
-const RECENT_CLOSED_SINCE = `${STATS_CLOSED_PERIOD_START}-01-01`
-
-/**
- * Pull closed sales for one town. RETS search is capped at 2500 rows and returns
- * oldest status changes first, so high-volume towns miss recent closes unless we
- * always merge an explicit recent window (2024+).
- */
-async function fetchClosedListingsForTown(
-  town: TmreTown,
-  limit: number,
-): Promise<Listing[]> {
-  const bulkParams: SearchParams = {
-    city: town,
-    status: 'Closed',
-    limit,
-    closedAfter: CLOSED_SINCE,
-  }
-  const recentParams: SearchParams = {
-    city: town,
-    status: 'Closed',
-    limit,
-    closedAfter: RECENT_CLOSED_SINCE,
-  }
-  const [recent, bulk] = await Promise.all([
-    searchListings(recentParams).catch(() => [] as Listing[]),
-    searchListings(bulkParams).catch(() => [] as Listing[]),
-  ])
-  return mergeSyncListings(
-    recent.filter(isClosedListing),
-    bulk.filter(isClosedListing),
-  )
-}
-
 /** Pull one town/status bucket from RETS and upsert into Postgres. */
 export async function syncTownListings(
   town: TmreTown,
@@ -652,8 +630,10 @@ export async function syncTownListings(
         underContractCts,
       )
     } else if (statusBucket === 'Expired') {
-      listings = await searchExpiredListingsForTown(town, EXPIRED_LISTINGS_FETCH_LIMIT)
-      listings = listings.filter(isExpiredListing)
+      listings = await fetchExpiredListingsForTownYearWindows(town, {
+        limit: Math.max(EXPIRED_LISTINGS_FETCH_LIMIT, 2000),
+        parallel: true,
+      })
     } else {
       listings = await fetchClosedListingsForTown(
         town,

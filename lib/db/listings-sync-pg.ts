@@ -6,14 +6,16 @@ import {
   upsertTownListings,
 } from '@/lib/db/listings-repo'
 import {
+  fetchClosedListingsForTownYearWindows,
+  fetchExpiredListingsForTownYearWindows,
+} from '@/lib/closed-listings-rets'
+import {
   CLOSED_LISTINGS_FETCH_LIMIT,
   CLOSED_LISTINGS_SINCE,
   COMING_SOON_MLS_STATUS,
   EXPIRED_LISTINGS_FETCH_LIMIT,
   getActiveListingsFetchLimit,
   isClosedListing,
-  isExpiredListing,
-  searchExpiredListingsForTown,
   searchMarketListingsForTown,
   UNDER_CONTRACT_CTS_MLS_STATUS,
   UNDER_CONTRACT_MLS_STATUS,
@@ -24,7 +26,6 @@ import {
   type Listing,
   type SearchParams,
 } from '@/lib/rets'
-import { STATS_CLOSED_PERIOD_START } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 // ---------------------------------------------------------------------------
@@ -64,8 +65,6 @@ export type FullSyncResult = {
 type StatusBucket = 'Active' | 'Closed' | 'Expired'
 
 const CLOSED_SINCE = CLOSED_LISTINGS_SINCE
-/** Comparables + stats charts only use closed sales since this calendar year. */
-const RECENT_CLOSED_SINCE = `${STATS_CLOSED_PERIOD_START}-01-01`
 
 /** Dedupe by listingKey||mlsId, first occurrence wins. Mirrors listings-sync.ts. */
 function mergeSyncListings(...groups: Listing[][]): Listing[] {
@@ -82,24 +81,11 @@ function mergeSyncListings(...groups: Listing[][]): Listing[] {
   return merged
 }
 
-/**
- * Pull closed sales for one town. RETS caps at 2500 rows oldest-first, so we
- * always merge an explicit recent window (2024+) with the bulk window. Mirrors
- * lib/listings-sync.ts fetchClosedListingsForTown.
- */
-async function fetchClosedListingsForTown(town: TmreTown, limit: number): Promise<Listing[]> {
-  const bulkParams: SearchParams = { city: town, status: 'Closed', limit, closedAfter: CLOSED_SINCE }
-  const recentParams: SearchParams = {
-    city: town,
-    status: 'Closed',
-    limit,
-    closedAfter: RECENT_CLOSED_SINCE,
-  }
-  const [recent, bulk] = await Promise.all([
-    searchListings(recentParams).catch(() => [] as Listing[]),
-    searchListings(bulkParams).catch(() => [] as Listing[]),
-  ])
-  return mergeSyncListings(recent.filter(isClosedListing), bulk.filter(isClosedListing))
+async function fetchClosedListingsForTown(
+  town: TmreTown,
+  limit: number,
+): Promise<Listing[]> {
+  return fetchClosedListingsForTownYearWindows(town, { limit, parallel: true })
 }
 
 /** Fetch one town/bucket from RETS (identical pull logic to the SQLite path). */
@@ -129,8 +115,10 @@ async function fetchTownBucket(town: TmreTown, statusBucket: StatusBucket): Prom
     )
   }
   if (statusBucket === 'Expired') {
-    const listings = await searchExpiredListingsForTown(town, EXPIRED_LISTINGS_FETCH_LIMIT)
-    return listings.filter(isExpiredListing)
+    return fetchExpiredListingsForTownYearWindows(town, {
+      limit: Math.max(EXPIRED_LISTINGS_FETCH_LIMIT, 2000),
+      parallel: true,
+    })
   }
   return fetchClosedListingsForTown(town, CLOSED_LISTINGS_FETCH_LIMIT)
 }

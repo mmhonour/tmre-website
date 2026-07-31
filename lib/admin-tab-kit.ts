@@ -1,6 +1,6 @@
 /**
  * Stable IDs for site-wide tab / pill visual systems.
- * Admin → Architecture → UI kit renders a live preview for each entry.
+ * Admin → Web server → UI kit renders a live preview for each entry.
  */
 
 export type AdminTabKitSurface = 'dark' | 'light'

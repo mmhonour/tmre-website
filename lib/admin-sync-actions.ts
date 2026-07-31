@@ -564,8 +564,80 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'stats-cache': {
-      const result = await rebuildStatsCache({ trackRefresh: true })
+      // Production: full rebuild is too heavy for the Next.js request (gateway
+      // 504 leaves stats_cache_rebuild_lock held → later clicks report "0 entries").
+      if (isServerlessRuntime()) {
+        const { queueNetlifyStatsCacheRebuild } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const queued = await queueNetlifyStatsCacheRebuild(startedAt, {
+          source: 'admin',
+        })
+        if (queued.ok) {
+          await setSyncMetaDurable('last_stats_cache_started', startedAt)
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              'Stats cache queued (background worker) — End updates when rebuild finishes',
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Steals a stuck rebuild lock if needed.`
+              : 'Queued on background worker. Steals a stuck rebuild lock if needed.',
+          }
+        }
+        const finishedAt = new Date().toISOString()
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: 'Stats cache queue failed',
+          detail: queued.error ?? 'Could not reach background worker',
+        }
+      }
+      const result = await rebuildStatsCache({ trackRefresh: true, force: true })
       const finishedAt = new Date().toISOString()
+      if (result.skipped) {
+        const why =
+          result.skipReason === 'lock'
+            ? 'rebuild lock held by another process'
+            : result.skipReason === 'no-listings'
+              ? 'no listings in Postgres yet'
+              : result.skipReason === 'not-stale'
+                ? 'cache still fresh'
+                : 'skipped'
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: result.durationMs || Date.now() - t0,
+          recordsFetched: 0,
+          message: `Stats cache skipped — ${why}`,
+          detail:
+            result.skipReason === 'lock'
+              ? 'Wait for the other rebuild, or clear stats_cache_rebuild_lock in sync_meta if a dead Lambda left it stuck.'
+              : `No stats_cache rows written (${why}).`,
+        }
+      }
+      if (result.written === 0) {
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: result.durationMs || Date.now() - t0,
+          recordsFetched: 0,
+          message: 'Stats cache rebuilt — 0 entries',
+          detail:
+            'Rebuild finished but wrote nothing — check listings inventory and Neon connectivity.',
+        }
+      }
       return {
         ok: true,
         action,

@@ -10,21 +10,7 @@ import ListingSidebar from "@/components/listing/ListingSidebar";
 import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome";
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
-import { spotlightSectionHref } from "@/lib/spotlight-url";
-import type { SpotlightPropertyTabId } from "@/lib/spotlight-listing";
 import { spotlightPropertySearchParam } from "@/lib/spotlight-listing";
-
-function spotlightPhotosHref(
-  propertyTab: SpotlightPropertyTabId,
-  photoIndex?: number,
-): string {
-  const params = new URLSearchParams();
-  const propertyParam = spotlightPropertySearchParam(propertyTab);
-  if (propertyParam) params.set("property", propertyParam);
-  if (photoIndex != null) params.set("photo", String(photoIndex));
-  const qs = params.toString();
-  return qs ? `${spotlightSectionHref("photos")}?${qs}` : spotlightSectionHref("photos");
-}
 
 export default function SpotlightListingClient() {
   const {
@@ -72,7 +58,6 @@ export default function SpotlightListingClient() {
       mlsId={display.mlsId}
       photoCount={display.photoCount}
       altBase={display.config.displayTitle}
-      photoHref={(i) => spotlightPhotosHref(propertyTab, i)}
       obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
       mapSlot={presentation.mapLocation}
     />

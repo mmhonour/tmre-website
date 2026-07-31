@@ -200,6 +200,8 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     location: 'stats_cache',
     keyPattern: 'active-by-month:{town}:{sale|rental}',
     owner: 'lib/stats-cache.ts',
+    notes:
+      'End-of-month Active inventory from Active + Closed + Expired list/leave dates. Mid years need year-chunk RETS pulls (npm run backfill:closed-years) so the page cap does not drop 2022–2023.',
     live: { kind: 'stats_cache_prefix', prefix: 'active-by-month:' },
   },
   {
