@@ -272,100 +272,44 @@ function applyMethod(
   return scenarioWithMidpointMethod(ensureMidpointAggregates(base), method)
 }
 
-/**
- * Email a What if scenario (sale / rent / both). BCC goes to Admin contact
- * notify email. HTML uses Admin → Page Styles theme colors/fonts.
- */
-export async function sendListingIfEmail(
-  input: SendListingIfEmailInput,
-): Promise<{ ok: true; bcc: string | null } | { ok: false; error: string }> {
-  const mlsId = input.mlsId.trim()
-  const to = input.to.trim()
-  if (!mlsId) return { ok: false, error: 'Listing id required' }
-  if (!isValidEmail(to)) return { ok: false, error: 'Valid recipient email required' }
-
-  const kinds = Array.from(
-    new Set(
-      (input.kinds ?? []).filter(
-        (k): k is ListingIfEmailKind => k === 'sale' || k === 'rent',
-      ),
-    ),
-  )
-  if (kinds.length === 0) {
-    return { ok: false, error: 'Select at least one scenario (sale or rent)' }
+function dbUnavailableMessage(err: unknown): string | null {
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  const code =
+    err && typeof err === 'object' && 'code' in err
+      ? String((err as { code?: unknown }).code ?? '')
+      : ''
+  if (
+    code === 'ECONNREFUSED' ||
+    /ECONNREFUSED|connect.*5432|Postgres is unavailable/i.test(msg) ||
+    (err instanceof AggregateError &&
+      err.errors.some((e) => dbUnavailableMessage(e)))
+  ) {
+    return 'Database unavailable — start local Postgres or point DATABASE_URL at Neon, then retry.'
   }
+  return null
+}
 
-  const midpointMethod = parseMidpointMethod(input.midpointMethod)
-  const apiKey = process.env.RESEND_API_KEY?.trim()
-  if (!apiKey) {
-    return { ok: false, error: 'Email delivery is not configured' }
+function resendErrorMessage(status: number, detail: string): string {
+  try {
+    const parsed = JSON.parse(detail) as {
+      message?: string
+      name?: string
+    }
+    if (parsed.message?.trim()) {
+      return `Email provider rejected the send: ${parsed.message.trim()}`
+    }
+  } catch {
+    // plain text body
   }
+  const trimmed = detail.trim().slice(0, 240)
+  if (trimmed) return `Email provider rejected the send (${status}): ${trimmed}`
+  return `Email provider rejected the send (${status})`
+}
 
-  const [{ listing }, payload, theme, brokerage, agentEmail] = await Promise.all([
-    readListingFromDbByMlsId(mlsId),
-    fetchListingIfPayload(mlsId),
-    getMarketPulseThemeFresh(),
-    getBrokerageNameFresh(),
-    getContactNotifyEmailFresh(),
-  ])
-
-  if (!listing || !payload) {
-    return { ok: false, error: 'Listing or What if estimate not found' }
-  }
-
-  const address =
-    listing.address?.street?.trim() ||
-    listing.address?.full?.trim() ||
-    `MLS #${listing.mlsId}`
-  const town = listing.address?.city?.trim() || null
-  const addressLabel = town ? `${address}, ${town}` : address
-  const pageHref = absoluteUrl(
-    listingSectionHref(listing.mlsId, 'if', address, town),
-  )
-
-  const scenarios = kinds.map((kind) => ({
-    kind,
-    scenario: applyMethod(payload, kind, midpointMethod),
-  }))
-
-  const html = formatListingIfEmailHtml({
-    theme,
-    brokerage,
-    addressLabel,
-    mlsId: listing.mlsId,
-    pageHref,
-    midpointMethod,
-    scenarios,
-  })
-  const text = formatListingIfEmailText({
-    addressLabel,
-    mlsId: listing.mlsId,
-    pageHref,
-    midpointMethod,
-    brokerage,
-    scenarios,
-  })
-
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() ||
-    'TMRE What if <notifications@tmre-website.com>'
-  const subject = `What if — ${addressLabel}`
-
-  const bcc =
-    isValidEmail(agentEmail) &&
-    agentEmail.trim().toLowerCase() !== to.toLowerCase()
-      ? agentEmail.trim()
-      : null
-
-  const body: Record<string, unknown> = {
-    from,
-    to: [to],
-    subject,
-    text,
-    html,
-  }
-  if (bcc) body.bcc = [bcc]
-
+async function postResendEmail(
+  apiKey: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
   try {
@@ -381,16 +325,160 @@ export async function sendListingIfEmail(
     if (!res.ok) {
       const detail = await res.text().catch(() => '')
       console.error('[listing-if-email] Resend failed', res.status, detail)
-      return { ok: false, error: 'Failed to send email' }
+      return { ok: false, error: resendErrorMessage(res.status, detail) }
     }
-    return { ok: true, bcc }
+    return { ok: true }
   } catch (err) {
     if ((err as Error)?.name === 'AbortError') {
       return { ok: false, error: 'Email request timed out' }
     }
-    console.error('[listing-if-email] send failed', err)
-    return { ok: false, error: 'Failed to send email' }
+    console.error('[listing-if-email] Resend request failed', err)
+    return { ok: false, error: 'Failed to reach email provider' }
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * Email a What if scenario (sale / rent / both). BCC goes to Admin contact
+ * notify email. HTML uses Admin → Page Styles theme colors/fonts.
+ */
+export async function sendListingIfEmail(
+  input: SendListingIfEmailInput,
+): Promise<{ ok: true; bcc: string | null } | { ok: false; error: string }> {
+  try {
+    const mlsId = input.mlsId.trim()
+    const to = input.to.trim()
+    if (!mlsId) return { ok: false, error: 'Listing id required' }
+    if (!isValidEmail(to)) {
+      return { ok: false, error: 'Valid recipient email required' }
+    }
+
+    const kinds = Array.from(
+      new Set(
+        (input.kinds ?? []).filter(
+          (k): k is ListingIfEmailKind => k === 'sale' || k === 'rent',
+        ),
+      ),
+    )
+    if (kinds.length === 0) {
+      return { ok: false, error: 'Select at least one scenario (sale or rent)' }
+    }
+
+    const midpointMethod = parseMidpointMethod(input.midpointMethod)
+    const apiKey = process.env.RESEND_API_KEY?.trim()
+    if (!apiKey) {
+      return { ok: false, error: 'Email delivery is not configured (RESEND_API_KEY)' }
+    }
+
+    let listing: Awaited<ReturnType<typeof readListingFromDbByMlsId>>['listing']
+    let payload: Awaited<ReturnType<typeof fetchListingIfPayload>>
+    let theme: Awaited<ReturnType<typeof getMarketPulseThemeFresh>>
+    let brokerage: string
+    let agentEmail: string
+    try {
+      ;[{ listing }, payload, theme, brokerage, agentEmail] = await Promise.all([
+        readListingFromDbByMlsId(mlsId),
+        fetchListingIfPayload(mlsId),
+        getMarketPulseThemeFresh(),
+        getBrokerageNameFresh(),
+        getContactNotifyEmailFresh(),
+      ])
+    } catch (err) {
+      const dbMsg = dbUnavailableMessage(err)
+      if (dbMsg) {
+        console.error('[listing-if-email] database unavailable', err)
+        return { ok: false, error: dbMsg }
+      }
+      throw err
+    }
+
+    if (!listing || !payload) {
+      return { ok: false, error: 'Listing or What if estimate not found' }
+    }
+
+    const address =
+      listing.address?.street?.trim() ||
+      listing.address?.full?.trim() ||
+      `MLS #${listing.mlsId}`
+    const town = listing.address?.city?.trim() || null
+    const addressLabel = town ? `${address}, ${town}` : address
+    const pageHref = absoluteUrl(
+      listingSectionHref(listing.mlsId, 'if', address, town),
+    )
+
+    const scenarios = kinds.map((kind) => ({
+      kind,
+      scenario: applyMethod(payload, kind, midpointMethod),
+    }))
+
+    const html = formatListingIfEmailHtml({
+      theme,
+      brokerage,
+      addressLabel,
+      mlsId: listing.mlsId,
+      pageHref,
+      midpointMethod,
+      scenarios,
+    })
+    const text = formatListingIfEmailText({
+      addressLabel,
+      mlsId: listing.mlsId,
+      pageHref,
+      midpointMethod,
+      brokerage,
+      scenarios,
+    })
+
+    const from =
+      process.env.CONTACT_FROM_EMAIL?.trim() ||
+      'TMRE Website <notifications@tmrebuilder.com>'
+    const subject = `What if — ${addressLabel}`
+
+    const bcc =
+      isValidEmail(agentEmail) &&
+      agentEmail.trim().toLowerCase() !== to.toLowerCase()
+        ? agentEmail.trim()
+        : null
+
+    const baseBody: Record<string, unknown> = {
+      from,
+      to: [to],
+      subject,
+      text,
+      html,
+    }
+
+    if (bcc) {
+      const withBcc = await postResendEmail(apiKey, { ...baseBody, bcc: [bcc] })
+      if (withBcc.ok) return { ok: true, bcc }
+      console.warn(
+        '[listing-if-email] send with BCC failed; retrying without BCC',
+        withBcc.error,
+      )
+      const withoutBcc = await postResendEmail(apiKey, baseBody)
+      if (withoutBcc.ok) {
+        return { ok: true, bcc: null }
+      }
+      return withoutBcc
+    }
+
+    const sent = await postResendEmail(apiKey, baseBody)
+    if (!sent.ok) return sent
+    return { ok: true, bcc: null }
+  } catch (err) {
+    const dbMsg = dbUnavailableMessage(err)
+    if (dbMsg) {
+      console.error('[listing-if-email] database unavailable', err)
+      return { ok: false, error: dbMsg }
+    }
+    console.error('[listing-if-email] unexpected failure', err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error && err.message
+          ? `Failed to send email: ${err.message}`
+          : 'Failed to send email',
+    }
   }
 }

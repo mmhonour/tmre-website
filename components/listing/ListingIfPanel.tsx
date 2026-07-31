@@ -750,7 +750,7 @@ function IfEmailScenarioForm({
         bcc?: string | null;
       };
       if (!res.ok) {
-        setError(body.error || "Failed to send email");
+        setError(body.error || `Failed to send email (${res.status})`);
         return;
       }
       setMessage(
@@ -759,8 +759,12 @@ function IfEmailScenarioForm({
           : "Sent.",
       );
       setTo("");
-    } catch {
-      setError("Failed to send email");
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to send email",
+      );
     } finally {
       setSending(false);
     }

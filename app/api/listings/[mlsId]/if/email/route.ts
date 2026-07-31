@@ -49,26 +49,40 @@ export async function POST(
   const kinds = parseKinds(record.kinds)
   const midpointMethod = parseMethod(record.midpointMethod)
 
-  const result = await sendListingIfEmail({
-    mlsId: id,
-    to,
-    kinds,
-    midpointMethod,
-  })
+  try {
+    const result = await sendListingIfEmail({
+      mlsId: id,
+      to,
+      kinds,
+      midpointMethod,
+    })
 
-  if (!result.ok) {
-    const status =
-      result.error.includes('not found')
-        ? 404
-        : result.error.includes('not configured')
-          ? 503
-          : result.error.includes('required') ||
-              result.error.includes('Select') ||
-              result.error.includes('Valid')
-            ? 400
-            : 502
-    return NextResponse.json({ error: result.error }, { status })
+    if (!result.ok) {
+      const status =
+        result.error.includes('not found')
+          ? 404
+          : result.error.includes('not configured') ||
+              result.error.includes('Database unavailable')
+            ? 503
+            : result.error.includes('required') ||
+                result.error.includes('Select') ||
+                result.error.includes('Valid')
+              ? 400
+              : 502
+      return NextResponse.json({ error: result.error }, { status })
+    }
+
+    return NextResponse.json({ ok: true, bcc: result.bcc })
+  } catch (err) {
+    console.error('[/api/listings/[mlsId]/if/email] unexpected', err)
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to send email',
+      },
+      { status: 500 },
+    )
   }
-
-  return NextResponse.json({ ok: true, bcc: result.bcc })
 }
