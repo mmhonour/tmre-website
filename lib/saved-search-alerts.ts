@@ -17,6 +17,7 @@ import {
   notifySavedSearchCreatedAdmin,
   type SavedSearchMatchListing,
 } from '@/lib/saved-search-notify'
+import { listingShareHref } from '@/lib/listing-url'
 
 export type AlertChannel = 'email' | 'sms'
 export type AlertCadence = 'immediate' | 'daily' | 'weekly'
@@ -360,7 +361,8 @@ function toMatchListing(row: ListingMatchRow): SavedSearchMatchListing {
     price: row.price != null ? Number(row.price) : null,
     beds: row.beds != null ? Number(row.beds) : null,
     baths: row.baths != null ? Number(row.baths) : null,
-    href: `/listing/${encodeURIComponent(key)}`,
+    // Canonical public route is /listings/[id] (plural) — /listing/ 404s.
+    href: listingShareHref(key),
   }
 }
 

@@ -1,3 +1,6 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import {
   decisionLabel,
   formatFedFundsRange,
@@ -6,6 +9,15 @@ import {
   parseFomcYmd,
   type FomcMeeting,
 } from "@/lib/fed-fomc-calendar";
+
+export type TimelineLookback = 12 | 24 | 60 | "all";
+
+const LOOKBACK_OPTIONS: { id: TimelineLookback; label: string }[] = [
+  { id: 12, label: "1Y" },
+  { id: 24, label: "2Y" },
+  { id: 60, label: "5Y" },
+  { id: "all", label: "Max" },
+];
 
 function startOfLocalDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -58,8 +70,24 @@ function rateMid(m: FomcMeeting): number | null {
 export function selectTimelineMeetings(
   now: Date,
   meetings: readonly FomcMeeting[],
+  lookback: TimelineLookback = "all",
 ): { points: FomcMeeting[]; next: FomcMeeting | null; from: Date; to: Date } {
-  const from = monthsAgo(now, 12);
+  const decided = meetings.filter(
+    (m) => m.decision != null && rateMid(m) != null,
+  );
+  const earliest =
+    decided.length > 0
+      ? decided.reduce((min, m) => {
+          const t = parseFomcYmd(m.endDate).getTime();
+          return t < min ? t : min;
+        }, Infinity)
+      : now.getTime();
+
+  const from =
+    lookback === "all"
+      ? startOfLocalDay(new Date(earliest))
+      : monthsAgo(now, lookback);
+
   const next = getNextFomcMeeting(now, meetings);
   const past = meetings
     .filter((m) => {
@@ -90,20 +118,35 @@ export function selectTimelineMeetings(
 type PlotPoint = {
   meeting: FomcMeeting;
   isNext: boolean;
-  /** Rate level used for Y (mid of range; next uses last decided mid). */
   rate: number;
   x: number;
   y: number;
 };
 
+function lookbackCaption(lookback: TimelineLookback): string {
+  if (lookback === "all") return "Full history + next · mid of funds range";
+  if (lookback === 12) return "Last 12 months + next · mid of funds range";
+  if (lookback === 24) return "Last 2 years + next · mid of funds range";
+  return "Last 5 years + next · mid of funds range";
+}
+
 export default function FedDecisionTimeline({
   meetings,
   now = new Date(),
+  embedded = false,
+  defaultLookback = "all",
 }: {
   meetings: readonly FomcMeeting[];
   now?: Date;
+  /** Omit outer card chrome when nested under Next FOMC. */
+  embedded?: boolean;
+  defaultLookback?: TimelineLookback;
 }) {
-  const { points, next, from, to } = selectTimelineMeetings(now, meetings);
+  const [lookback, setLookback] = useState<TimelineLookback>(defaultLookback);
+  const { points, next, from, to } = useMemo(
+    () => selectTimelineMeetings(now, meetings, lookback),
+    [now, meetings, lookback],
+  );
 
   const decidedWithRate = points.filter(
     (m) => !(next?.id === m.id && m.decision == null) && rateMid(m) != null,
@@ -121,14 +164,48 @@ export default function FedDecisionTimeline({
     })
     .filter((r): r is number => r != null);
 
+  const shellClass = embedded
+    ? "min-w-0"
+    : "overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6";
+
+  const rangeControls = (
+    <div
+      role="group"
+      aria-label="Timeline range"
+      className="flex flex-wrap items-center gap-1"
+    >
+      {LOOKBACK_OPTIONS.map((opt) => {
+        const active = lookback === opt.id;
+        return (
+          <button
+            key={String(opt.id)}
+            type="button"
+            aria-pressed={active}
+            onClick={() => setLookback(opt.id)}
+            className={`rounded-full border px-2 py-0.5 font-mono text-[9px] tracking-[0.12em] uppercase transition-colors ${
+              active
+                ? "border-navy/35 bg-navy/5 text-navy"
+                : "border-charcoal/15 bg-white text-charcoal/45 hover:border-navy/25 hover:text-navy"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   if (points.length === 0 || ratesForScale.length === 0) {
     return (
-      <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Decision timeline
-        </p>
+      <div className={shellClass}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            Decision timeline
+          </p>
+          {rangeControls}
+        </div>
         <p className="mt-4 text-sm text-slate">
-          No decided meetings in the last 12 months yet.
+          No decided meetings in this range yet.
         </p>
       </div>
     );
@@ -143,6 +220,8 @@ export default function FedDecisionTimeline({
   const t0 = from.getTime();
   const t1 = Math.max(to.getTime(), startOfLocalDay(now).getTime());
   const tSpan = Math.max(t1 - t0, 1);
+  const spanMonths =
+    (t1 - t0) / (1000 * 60 * 60 * 24 * 30.44);
 
   const minRate = Math.min(...ratesForScale);
   const maxRate = Math.max(...ratesForScale);
@@ -171,7 +250,6 @@ export default function FedDecisionTimeline({
     })
     .filter((p): p is PlotPoint => p != null);
 
-  // Step path: hold level until next decision day, then jump.
   let stepPath = "";
   for (let i = 0; i < plotPoints.length; i++) {
     const p = plotPoints[i]!;
@@ -191,54 +269,75 @@ export default function FedDecisionTimeline({
     ),
   );
 
-  // Month ticks on X
-  const monthLabels: { key: string; x: number; label: string }[] = [];
-  let cursor = new Date(from.getFullYear(), from.getMonth(), 1);
-  if (cursor.getTime() < from.getTime()) {
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-  }
-  while (cursor.getTime() <= t1) {
-    const x =
-      pad.left + ((cursor.getTime() - t0) / tSpan) * innerW;
-    monthLabels.push({
-      key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
-      x,
-      label: new Intl.DateTimeFormat("en-US", { month: "short" }).format(
-        cursor,
-      ),
-    });
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  // Month ticks for short spans; year ticks when the window is long.
+  const xLabels: { key: string; x: number; label: string }[] = [];
+  if (spanMonths > 30) {
+    let year = from.getFullYear();
+    const endYear = new Date(t1).getFullYear();
+    while (year <= endYear) {
+      const t = new Date(year, 0, 1).getTime();
+      if (t >= t0 - 1 && t <= t1) {
+        xLabels.push({
+          key: `y-${year}`,
+          x: pad.left + ((t - t0) / tSpan) * innerW,
+          label: String(year),
+        });
+      }
+      year += 1;
+    }
+  } else {
+    let cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+    if (cursor.getTime() < from.getTime()) {
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+    const monthStep = spanMonths > 18 ? 2 : 1;
+    while (cursor.getTime() <= t1) {
+      const x = pad.left + ((cursor.getTime() - t0) / tSpan) * innerW;
+      xLabels.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+        x,
+        label: new Intl.DateTimeFormat("en-US", { month: "short" }).format(
+          cursor,
+        ),
+      });
+      cursor = new Date(
+        cursor.getFullYear(),
+        cursor.getMonth() + monthStep,
+        1,
+      );
+    }
   }
 
-  // Y ticks at ~0.5% steps across the visible range
   const yTicks: number[] = [];
-  const step = 0.5;
+  const step = spanMonths > 36 ? 1 : 0.5;
   const firstTick = Math.ceil(yMin / step) * step;
   for (let r = firstTick; r <= yMax + 1e-9; r += step) {
     yTicks.push(Number(r.toFixed(2)));
   }
   if (yTicks.length === 0) yTicks.push(yMin, yMax);
 
+  // Label every Nth point when dense so the chart stays readable.
+  const labelEvery = plotPoints.length > 24 ? 3 : plotPoints.length > 14 ? 2 : 1;
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
+    <div className={shellClass}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
           Decision timeline
         </p>
-        <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/40">
-          Last 12 months + next · mid of funds range
-        </p>
+        {rangeControls}
       </div>
+      <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/40">
+        {lookbackCaption(lookback)}
+      </p>
 
-      {/* Desktop / tablet: rate × time */}
       <div className="mt-4 hidden md:block">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-auto"
+          className="h-auto w-full"
           role="img"
           aria-label="FOMC decisions plotted by date and federal funds target rate"
         >
-          {/* Y grid + labels */}
           {yTicks.map((rate) => (
             <g key={rate}>
               <line
@@ -262,7 +361,6 @@ export default function FedDecisionTimeline({
             </g>
           ))}
 
-          {/* X axis */}
           <line
             x1={pad.left}
             x2={width - pad.right}
@@ -272,7 +370,6 @@ export default function FedDecisionTimeline({
             className="text-charcoal/20"
             strokeWidth={1}
           />
-          {/* Y axis */}
           <line
             x1={pad.left}
             x2={pad.left}
@@ -283,7 +380,7 @@ export default function FedDecisionTimeline({
             strokeWidth={1}
           />
 
-          {monthLabels.map((m) => (
+          {xLabels.map((m) => (
             <g key={m.key}>
               <line
                 x1={m.x}
@@ -306,7 +403,6 @@ export default function FedDecisionTimeline({
             </g>
           ))}
 
-          {/* Today */}
           <line
             x1={todayX}
             x2={todayX}
@@ -327,7 +423,6 @@ export default function FedDecisionTimeline({
             TODAY
           </text>
 
-          {/* Step through rate levels */}
           <path
             d={stepPath}
             fill="none"
@@ -339,6 +434,8 @@ export default function FedDecisionTimeline({
 
           {plotPoints.map((p, i) => {
             const tone = decisionTone(p.meeting.decision);
+            const showLabel =
+              p.isNext || i % labelEvery === 0 || i === plotPoints.length - 1;
             const labelAbove = i % 2 === 0;
             return (
               <g key={p.meeting.id}>
@@ -350,39 +447,49 @@ export default function FedDecisionTimeline({
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={6}
+                  r={plotPoints.length > 30 ? 4 : 6}
                   fill={p.isNext ? "var(--color-cream)" : tone.fill}
                   stroke={p.isNext ? "var(--color-gold)" : "white"}
-                  strokeWidth={p.isNext ? 1.5 : 1.5}
+                  strokeWidth={1.5}
                   strokeDasharray={p.isNext ? "2 1.5" : undefined}
                 />
-                <text
-                  x={p.x}
-                  y={labelAbove ? p.y - 14 : p.y + 20}
-                  textAnchor="middle"
-                  className="fill-charcoal/50"
-                  style={{ fontSize: 9, fontFamily: "ui-monospace, monospace" }}
-                >
-                  {formatFomcDayWithWeekday(p.meeting.endDate, {
-                    month: "short",
-                    year: false,
-                  }).replace(/,.*/, "")}
-                </text>
-                <text
-                  x={p.x}
-                  y={labelAbove ? p.y - 26 : p.y + 32}
-                  textAnchor="middle"
-                  fill={p.isNext ? "var(--color-gold)" : tone.fill}
-                  style={{
-                    fontSize: 10,
-                    fontFamily: "ui-monospace, monospace",
-                    fontWeight: 600,
-                  }}
-                >
-                  {p.isNext
-                    ? "Next"
-                    : decisionLabel(p.meeting.decision, p.meeting.basisPoints)}
-                </text>
+                {showLabel ? (
+                  <>
+                    <text
+                      x={p.x}
+                      y={labelAbove ? p.y - 12 : p.y + 16}
+                      textAnchor="middle"
+                      className="fill-charcoal/50"
+                      style={{
+                        fontSize: 8,
+                        fontFamily: "ui-monospace, monospace",
+                      }}
+                    >
+                      {formatFomcDayWithWeekday(p.meeting.endDate, {
+                        month: "short",
+                        year: spanMonths > 24,
+                      }).replace(/,.*/, "")}
+                    </text>
+                    <text
+                      x={p.x}
+                      y={labelAbove ? p.y - 22 : p.y + 26}
+                      textAnchor="middle"
+                      fill={p.isNext ? "var(--color-gold)" : tone.fill}
+                      style={{
+                        fontSize: 9,
+                        fontFamily: "ui-monospace, monospace",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {p.isNext
+                        ? "Next"
+                        : decisionLabel(
+                            p.meeting.decision,
+                            p.meeting.basisPoints,
+                          )}
+                    </text>
+                  </>
+                ) : null}
               </g>
             );
           })}
@@ -419,7 +526,6 @@ export default function FedDecisionTimeline({
         </ul>
       </div>
 
-      {/* Mobile: newest first (desktop chart stays chronological L→R) */}
       <ol className="mt-5 space-y-0 md:hidden">
         {[...plotPoints].reverse().map((p, i, rows) => {
           const tone = decisionTone(p.meeting.decision);
@@ -447,6 +553,7 @@ export default function FedDecisionTimeline({
                 <p className="font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/45">
                   {formatFomcDayWithWeekday(p.meeting.endDate, {
                     month: "short",
+                    year: true,
                   })}
                 </p>
                 <p

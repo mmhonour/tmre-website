@@ -52,8 +52,11 @@ function SortButton({
 
 export default function FedRecentDecisions({
   meetings,
+  embedded = false,
 }: {
   meetings: readonly FomcMeeting[];
+  /** Skip outer card when nested under the decision timeline. */
+  embedded?: boolean;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -120,7 +123,13 @@ export default function FedRecentDecisions({
           />
         </div>
       </div>
-      <ol className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
+      <ol
+        className={
+          embedded
+            ? "overflow-hidden rounded-xl border border-charcoal/[0.1] bg-cream/25"
+            : "overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+        }
+      >
         {rows.map((m, i) => (
           <li
             key={m.id}

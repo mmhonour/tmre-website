@@ -22,11 +22,14 @@ export default function FedEventsCalendar({
   cpiReleases,
   initialYear,
   initialMonth,
+  embedded = false,
 }: {
   meetings: readonly FomcMeeting[];
   cpiReleases: readonly CpiRelease[];
   initialYear: number;
   initialMonth: number;
+  /** Flatter chrome when nested above Prevailing CPI. */
+  embedded?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(() => ({
@@ -96,15 +99,25 @@ export default function FedEventsCalendar({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
+    <div
+      className={
+        embedded
+          ? "w-full overflow-hidden rounded-xl border border-charcoal/[0.1] bg-cream/30"
+          : "overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+      }
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="fed-markets-calendar-body"
-        className="flex w-full items-center justify-between gap-3 bg-cream/40 px-4 py-3 text-left sm:px-5 hover:bg-cream/60 transition-colors"
+        className={`flex w-full items-center justify-between gap-3 text-left transition-colors ${
+          embedded
+            ? "px-3 py-2.5 hover:bg-cream/70 sm:px-4"
+            : "bg-cream/40 px-4 py-3 hover:bg-cream/60 sm:px-5"
+        }`}
       >
-        <div className="min-w-0">
+        <div className={`min-w-0 ${embedded ? "text-right sm:text-left" : ""}`}>
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             Markets calendar
           </p>

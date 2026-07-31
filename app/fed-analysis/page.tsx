@@ -76,28 +76,32 @@ export default async function FedAnalysisPage() {
               nextMeeting={nextMeeting}
               releases={CPI_RELEASES}
               now={now}
+              marketsCalendar={
+                <FedEventsCalendar
+                  meetings={meetings}
+                  cpiReleases={CPI_RELEASES}
+                  initialYear={now.getFullYear()}
+                  initialMonth={now.getMonth()}
+                  embedded
+                />
+              }
+              decisionTimeline={
+                <FedDecisionTimeline
+                  meetings={meetings}
+                  now={now}
+                  embedded
+                  defaultLookback="all"
+                />
+              }
+              recentDecisions={
+                <FedRecentDecisions meetings={meetings} embedded />
+              }
             />
           </div>
 
           <div className="mb-8 grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
-            <div>
-              <FedEventsCalendar
-                meetings={meetings}
-                cpiReleases={CPI_RELEASES}
-                initialYear={now.getFullYear()}
-                initialMonth={now.getMonth()}
-              />
-            </div>
-            <FedRecentCpi releases={CPI_RELEASES} />
-          </div>
-
-          <div className="mb-8 grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
             <FedDecisionsMiniGraph meetings={meetings} now={now} />
-            <FedRecentDecisions meetings={meetings} />
-          </div>
-
-          <div className="mb-8">
-            <FedDecisionTimeline meetings={meetings} now={now} />
+            <FedRecentCpi releases={CPI_RELEASES} />
           </div>
 
           <p className="text-xs leading-relaxed text-slate">

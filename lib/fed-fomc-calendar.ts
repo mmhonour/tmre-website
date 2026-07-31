@@ -2,7 +2,10 @@
  * Hand-maintained FOMC calendar + rate decisions for /fed-analysis.
  * Dates from federalreserve.gov calendars; outcomes from published statements.
  * Update after each decision day (usually 2:00 p.m. ET on the second day).
+ * History (2020–2024) lives in fed-fomc-history.ts and is prepended below.
  */
+
+import { FOMC_HISTORY } from '@/lib/fed-fomc-history'
 
 export type FomcDecision = 'cut' | 'hold' | 'hike'
 
@@ -34,8 +37,8 @@ export type FomcMeeting = {
   syncedAt?: string | null
 }
 
-/** Recent + upcoming regularly scheduled FOMC meetings. */
-export const FOMC_MEETINGS: readonly FomcMeeting[] = [
+/** Forward calendar (2025+) — concatenated with {@link FOMC_HISTORY}. */
+const FOMC_FORWARD: readonly FomcMeeting[] = [
   // —— 2025 ——
   {
     id: '2025-01',
@@ -235,7 +238,13 @@ export const FOMC_MEETINGS: readonly FomcMeeting[] = [
     targetRangeHigh: null,
     statementUrl: null,
   },
-] as const
+]
+
+/** Full seed calendar: history through the current / next-year schedule. */
+export const FOMC_MEETINGS: readonly FomcMeeting[] = [
+  ...FOMC_HISTORY,
+  ...FOMC_FORWARD,
+]
 
 export type PrevailingFedPolicy = {
   meeting: FomcMeeting
