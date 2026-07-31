@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import FedDecisionTimeline from "@/components/fed-analysis/FedDecisionTimeline";
-import FedDecisionsMiniGraph from "@/components/fed-analysis/FedDecisionsMiniGraph";
 import FedEventsCalendar from "@/components/fed-analysis/FedEventsCalendar";
 import FedPolicySnapshot from "@/components/fed-analysis/FedPolicySnapshot";
 import FedRecentCpi from "@/components/fed-analysis/FedRecentCpi";
@@ -70,37 +69,40 @@ export default async function FedAnalysisPage() {
 
       <section className="bg-cream py-10 lg:py-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
+          {/* Markets calendar — upper right */}
+          <div className="mb-6 flex justify-end">
+            <div className="w-full max-w-md">
+              <FedEventsCalendar
+                meetings={meetings}
+                cpiReleases={CPI_RELEASES}
+                initialYear={now.getFullYear()}
+                initialMonth={now.getMonth()}
+              />
+            </div>
+          </div>
+
+          {/* FOMC decision | Prevailing CPI */}
           <div className="mb-8">
             <FedPolicySnapshot
               prevailingFed={prevailing}
               nextMeeting={nextMeeting}
               releases={CPI_RELEASES}
               now={now}
-              marketsCalendar={
-                <FedEventsCalendar
-                  meetings={meetings}
-                  cpiReleases={CPI_RELEASES}
-                  initialYear={now.getFullYear()}
-                  initialMonth={now.getMonth()}
-                  embedded
-                />
-              }
-              decisionTimeline={
-                <FedDecisionTimeline
-                  meetings={meetings}
-                  now={now}
-                  embedded
-                  defaultLookback="all"
-                />
-              }
-              recentDecisions={
-                <FedRecentDecisions meetings={meetings} embedded />
-              }
             />
           </div>
 
-          <div className="mb-8 grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
-            <FedDecisionsMiniGraph meetings={meetings} now={now} />
+          {/* Decision timeline — full width */}
+          <div className="mb-8">
+            <FedDecisionTimeline
+              meetings={meetings}
+              now={now}
+              defaultLookback="all"
+            />
+          </div>
+
+          {/* Recent Fed decisions | Recent CPI prints */}
+          <div className="mb-8 grid gap-8 lg:grid-cols-2 lg:items-start">
+            <FedRecentDecisions meetings={meetings} />
             <FedRecentCpi releases={CPI_RELEASES} />
           </div>
 

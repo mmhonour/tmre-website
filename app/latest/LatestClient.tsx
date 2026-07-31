@@ -167,7 +167,7 @@ function localDateLabel(iso: string | null | undefined): string {
   const fullDate = LOCAL_DATE_LABEL_FMT.format(new Date(t));
   const todayKey = LOCAL_DATE_KEY_FMT.format(new Date());
   const key = localDateKey(iso);
-  if (key === todayKey) return `Today, ${fullDate}`;
+  if (key === todayKey) return "Today";
   const yesterday = new Date(Date.now() - 86_400_000);
   if (key === LOCAL_DATE_KEY_FMT.format(yesterday)) return `Yesterday, ${fullDate}`;
   return fullDate;

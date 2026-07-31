@@ -96,7 +96,7 @@ export default function FedRecentDecisions({
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Recent decisions
+          Recent Fed decisions
         </p>
         <div
           className="flex flex-wrap items-center gap-1.5"
