@@ -48,28 +48,36 @@ const PAD_BOTTOM = 18;
 const INTERACTIVE_HINT_MS = 10_000;
 const ORIGINAL_VIEW_FLASH_MS = 5_000;
 
+function withDollar(label: string): string {
+  const t = label.trim();
+  if (!t || t.startsWith("$")) return t;
+  return `$${t}`;
+}
+
 function shortBandLabel(label: string, kind: "sale" | "rental"): string {
   const s = label.replace(/\/mo/gi, "").trim();
   if (kind === "rental") {
     const m = s.match(/\$?([\d,.]+)\s*[Kk]?\+?/);
-    if (/\+/.test(s)) return `${(m?.[1] ?? "12").replace(/,.*/, "")}k+`;
+    if (/\+/.test(s)) {
+      return withDollar(`${(m?.[1] ?? "12").replace(/,.*/, "")}k+`);
+    }
     const lo = s.match(/\$?([\d,.]+)/);
     if (lo) {
       const n = Number(lo[1].replace(/,/g, ""));
       if (Number.isFinite(n)) {
-        return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+        return withDollar(n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
       }
     }
   }
-  // Sale: "$500K–$1.249M" → "500K"; "$10M+" → "10M+"
+  // Sale: "$500K–$1.249M" → "$500K"; "$10M+" → "$10M+"
   const plus = s.match(/\$?([\d.]+)\s*([MmKk])\+/);
-  if (plus) return `${plus[1]}${plus[2].toUpperCase()}+`;
+  if (plus) return withDollar(`${plus[1]}${plus[2].toUpperCase()}+`);
   const start = s.match(/\$?([\d.]+)\s*([MmKk])?/);
   if (start) {
     const unit = (start[2] ?? "").toUpperCase();
-    return unit ? `${start[1]}${unit}` : start[1];
+    return withDollar(unit ? `${start[1]}${unit}` : start[1]);
   }
-  return s.slice(0, 6);
+  return withDollar(s.slice(0, 6));
 }
 
 function formatCount(n: number): string {
@@ -282,8 +290,9 @@ export default function IntelligencePriceBandMiniChart({
               const isFirst = i === 0;
               const isLast = i === points.length - 1;
               const anchor = isFirst ? "start" : isLast ? "end" : "middle";
-              const countY = Math.max(9, point.y - 9);
-              const bandY = Math.min(HEIGHT - 3, point.y + 14);
+              // Price ($) above the point; inventory count below.
+              const priceY = Math.max(9, point.y - 9);
+              const countY = Math.min(HEIGHT - 3, point.y + 14);
 
               return (
                 <g key={point.id}>
@@ -295,21 +304,21 @@ export default function IntelligencePriceBandMiniChart({
                     <>
                       <text
                         x={point.x}
+                        y={priceY}
+                        textAnchor={anchor}
+                        className="fill-black font-mono text-[8px] uppercase"
+                        style={{ fontSize: 8, letterSpacing: "0.04em" }}
+                      >
+                        {point.shortLabel}
+                      </text>
+                      <text
+                        x={point.x}
                         y={countY}
                         textAnchor={anchor}
                         className="fill-black font-mono text-[9px] tabular-nums"
                         style={{ fontSize: 9 }}
                       >
                         {countLabel}
-                      </text>
-                      <text
-                        x={point.x}
-                        y={bandY}
-                        textAnchor={anchor}
-                        className="fill-black font-mono text-[8px] uppercase"
-                        style={{ fontSize: 8, letterSpacing: "0.04em" }}
-                      >
-                        {point.shortLabel}
                       </text>
                     </>
                   ) : null}

@@ -1,23 +1,17 @@
 /** Client-safe town budget source slots (Admin → Data controls). */
 
-import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
-
 export type TownBudgetSourceSlot = {
-  /** TMRE town this slot points at. */
-  town: TmreTown
+  /** Municipality name (matches ct_towns.name when active). */
+  town: string
   /** Calendar / fetch year (default = current calendar year). */
   year: number
   /** Official budget page or document URL to fetch later. */
   sourceUrl: string
-  /** Optional note (doc type, FY label, etc.). */
-  notes: string
 }
 
 export type TownBudgetSourcesConfig = {
   slots: TownBudgetSourceSlot[]
 }
-
-export const TOWN_BUDGET_SOURCE_SLOT_COUNT = TMRE_TOWNS.length
 
 export function currentBudgetFetchYear(now = new Date()): number {
   return now.getFullYear()
@@ -31,28 +25,12 @@ export function budgetFetchYearOptions(now = new Date()): number[] {
   return years
 }
 
-export function defaultTownBudgetSources(
-  now = new Date(),
-): TownBudgetSourcesConfig {
-  const year = currentBudgetFetchYear(now)
-  return {
-    slots: TMRE_TOWNS.map((town) => ({
-      town,
-      year,
-      sourceUrl: '',
-      notes: '',
-    })),
-  }
+export function emptyTownBudgetSources(): TownBudgetSourcesConfig {
+  return { slots: [] }
 }
 
-export const DEFAULT_TOWN_BUDGET_SOURCES = defaultTownBudgetSources()
-
-function asTown(value: unknown): TmreTown | null {
-  if (typeof value !== 'string') return null
-  return (TMRE_TOWNS as readonly string[]).includes(value)
-    ? (value as TmreTown)
-    : null
-}
+/** @deprecated Prefer empty + active towns merge — kept for API payload shape. */
+export const DEFAULT_TOWN_BUDGET_SOURCES = emptyTownBudgetSources()
 
 function asYear(value: unknown, fallback: number): number {
   const n =
@@ -67,12 +45,18 @@ function asYear(value: unknown, fallback: number): number {
   return y
 }
 
-export function normalizeTownBudgetSources(
+function asTownName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const town = value.trim().slice(0, 80)
+  return town || null
+}
+
+/** Index stored / incoming slots by town name (case-sensitive, matches ct_towns). */
+export function townBudgetSlotsByTown(
   raw: unknown,
-  now = new Date(),
-): TownBudgetSourcesConfig {
-  const fallbackYear = currentBudgetFetchYear(now)
-  const defaults = defaultTownBudgetSources(now).slots
+): Map<string, TownBudgetSourceSlot> {
+  const fallbackYear = currentBudgetFetchYear()
+  const map = new Map<string, TownBudgetSourceSlot>()
   const incoming =
     raw &&
     typeof raw === 'object' &&
@@ -80,29 +64,64 @@ export function normalizeTownBudgetSources(
       ? (raw as { slots: unknown[] }).slots
       : []
 
-  // Prefer matching by town name so reordering TMRE_TOWNS does not scramble URLs.
-  const byTown = new Map<string, Record<string, unknown>>()
   for (const row of incoming) {
     if (!row || typeof row !== 'object') continue
     const o = row as Record<string, unknown>
-    const town = asTown(o.town)
-    if (town) byTown.set(town, o)
-  }
-
-  const slots: TownBudgetSourceSlot[] = defaults.map((fallback, i) => {
-    const o = byTown.get(fallback.town) ??
-      (incoming[i] && typeof incoming[i] === 'object'
-        ? (incoming[i] as Record<string, unknown>)
-        : null)
-    if (!o) return { ...fallback }
-    return {
-      town: fallback.town,
+    const town = asTownName(o.town)
+    if (!town) continue
+    map.set(town, {
+      town,
       year: asYear(o.year, fallbackYear),
       sourceUrl:
         typeof o.sourceUrl === 'string' ? o.sourceUrl.trim().slice(0, 800) : '',
-      notes: typeof o.notes === 'string' ? o.notes.trim().slice(0, 500) : '',
-    }
-  })
+    })
+  }
+  return map
+}
 
+/**
+ * Build display slots for the given active CT coverage towns, carrying forward
+ * any saved URL / year from storage.
+ */
+export function mergeTownBudgetSourcesForActiveTowns(
+  stored: unknown,
+  activeTowns: readonly string[],
+  now = new Date(),
+): TownBudgetSourcesConfig {
+  const byTown = townBudgetSlotsByTown(stored)
+  const year = currentBudgetFetchYear(now)
+  const towns = [...activeTowns]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+
+  return {
+    slots: towns.map((town) => {
+      const prev = byTown.get(town)
+      return {
+        town,
+        year: prev ? asYear(prev.year, year) : year,
+        sourceUrl: prev?.sourceUrl ?? '',
+      }
+    }),
+  }
+}
+
+/**
+ * Normalize a PATCH body. When `activeTowns` is provided, only those towns are
+ * returned (for the Admin table). Without it, returns every slot in the body.
+ */
+export function normalizeTownBudgetSources(
+  raw: unknown,
+  options?: { activeTowns?: readonly string[]; now?: Date },
+): TownBudgetSourcesConfig {
+  const now = options?.now ?? new Date()
+  if (options?.activeTowns) {
+    return mergeTownBudgetSourcesForActiveTowns(raw, options.activeTowns, now)
+  }
+  const byTown = townBudgetSlotsByTown(raw)
+  const slots = [...byTown.values()].sort((a, b) =>
+    a.town.localeCompare(b.town),
+  )
   return { slots }
 }

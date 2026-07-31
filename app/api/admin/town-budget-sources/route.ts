@@ -4,7 +4,7 @@ import {
   getTownBudgetSourcesFresh,
   setTownBudgetSources,
 } from '@/lib/town-budget-sources-config'
-import { DEFAULT_TOWN_BUDGET_SOURCES } from '@/lib/town-budget-sources-shared'
+import { emptyTownBudgetSources } from '@/lib/town-budget-sources-shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 async function payload() {
   return {
     ...(await getTownBudgetSourcesFresh()),
-    default: DEFAULT_TOWN_BUDGET_SOURCES,
+    default: emptyTownBudgetSources(),
   }
 }
 
@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       ...applied,
-      default: DEFAULT_TOWN_BUDGET_SOURCES,
+      default: emptyTownBudgetSources(),
     })
   } catch (err) {
     return NextResponse.json(

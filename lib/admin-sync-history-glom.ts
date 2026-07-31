@@ -20,7 +20,19 @@ export function normalizeSyncStatusBucket(bucket: string | null | undefined): st
  */
 export function isSyncLifecycleBucket(bucket: string | null | undefined): boolean {
   const b = (bucket ?? '').trim()
-  return b === 'Queued' || b === 'Worker' || b === 'Done'
+  return b === 'Queued' || b === 'Worker' || b === 'Done' || b === 'Failed'
+}
+
+/** Pretty labels for status_bucket suffixes used by dashboard job audits. */
+const SYNC_TYPE_LABELS: Record<string, string> = {
+  incremental: 'Incremental',
+  full: 'Full',
+  goldilocks: 'Goldilocks',
+  stats: 'Stats cache',
+  'deal-day': 'Deal of the Day',
+  addresses: 'Addresses',
+  'zip-maps': 'Zip boundaries',
+  snapshot: 'Snapshot',
 }
 
 /** Display label for the Bucket column / subgroup (adds sync type on lifecycle rows). */
@@ -46,6 +58,8 @@ export function normalizeSyncType(bucket: string | null | undefined): string {
   const suffix = raw.includes('/') ? raw.split('/').slice(1).join('/').trim() : ''
   if (!suffix) return 'Full'
   if (raw.toLowerCase().startsWith('cron/')) return 'Cron'
+  const key = suffix.toLowerCase()
+  if (SYNC_TYPE_LABELS[key]) return SYNC_TYPE_LABELS[key]!
   return suffix.charAt(0).toUpperCase() + suffix.slice(1).toLowerCase()
 }
 
@@ -102,6 +116,7 @@ const BUCKET_ORDER = [
   'Closed',
   'Expired',
   'Done',
+  'Failed',
   'cron',
 ]
 

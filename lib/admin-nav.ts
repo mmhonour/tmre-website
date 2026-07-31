@@ -163,7 +163,7 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     id: "town-budget",
     label: "Town budget",
     subtitle:
-      "Seven source URL slots (one per TMRE town) plus fetch year — sync/parse later",
+      "Town · Source URL · Year — one row per CT coverage–enabled town; sync/parse later",
   },
 ];
 

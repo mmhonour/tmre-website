@@ -69,16 +69,22 @@ const PAD_BOTTOM = 18;
 
 const INTERACTIVE_HINT_MS = 10_000;
 
+function withDollar(label: string): string {
+  const t = label.trim();
+  if (!t || t.startsWith("$")) return t;
+  return `$${t}`;
+}
+
 function shortBandLabel(label: string): string {
   const s = label.trim();
   const plus = s.match(/\$?([\d.]+)\s*([MmKk])\+/);
-  if (plus) return `${plus[1]}${plus[2].toUpperCase()}+`;
+  if (plus) return withDollar(`${plus[1]}${plus[2].toUpperCase()}+`);
   const start = s.match(/\$?([\d.]+)\s*([MmKk])?/);
   if (start) {
     const unit = (start[2] ?? "").toUpperCase();
-    return unit ? `${start[1]}${unit}` : start[1];
+    return withDollar(unit ? `${start[1]}${unit}` : start[1]);
   }
-  return s.slice(0, 6);
+  return withDollar(s.slice(0, 6));
 }
 
 function formatCount(n: number): string {
@@ -469,8 +475,9 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
               const isFirst = i === 0;
               const isLast = i === points.length - 1;
               const anchor = isFirst ? "start" : isLast ? "end" : "middle";
-              const countY = Math.max(9, point.y - 9);
-              const bandY = Math.min(HEIGHT - 3, point.y + 14);
+              // Price ($) above the point; inventory count below.
+              const priceY = Math.max(9, point.y - 9);
+              const countY = Math.min(HEIGHT - 3, point.y + 14);
 
               return (
                 <g key={point.id}>
@@ -481,21 +488,21 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                     <>
                       <text
                         x={point.x}
+                        y={priceY}
+                        textAnchor={anchor}
+                        className="fill-black font-mono text-[8px] uppercase"
+                        style={{ fontSize: 8, letterSpacing: "0.04em" }}
+                      >
+                        {point.shortLabel}
+                      </text>
+                      <text
+                        x={point.x}
                         y={countY}
                         textAnchor={anchor}
                         className="fill-black font-mono text-[9px] tabular-nums"
                         style={{ fontSize: 9 }}
                       >
                         {formatCount(point.count)}
-                      </text>
-                      <text
-                        x={point.x}
-                        y={bandY}
-                        textAnchor={anchor}
-                        className="fill-black font-mono text-[8px] uppercase"
-                        style={{ fontSize: 8, letterSpacing: "0.04em" }}
-                      >
-                        {point.shortLabel}
                       </text>
                     </>
                   ) : null}

@@ -1,10 +1,14 @@
 import 'server-only'
 
+import { listActiveCtTownNames } from '@/lib/ct-coverage'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import {
   DEFAULT_TOWN_BUDGET_SOURCES,
+  mergeTownBudgetSourcesForActiveTowns,
   normalizeTownBudgetSources,
+  townBudgetSlotsByTown,
+  type TownBudgetSourceSlot,
   type TownBudgetSourcesConfig,
 } from '@/lib/town-budget-sources-shared'
 
@@ -16,38 +20,65 @@ export {
   type TownBudgetSourcesConfig,
 } from '@/lib/town-budget-sources-shared'
 
-function parseStored(raw: string | null | undefined): TownBudgetSourcesConfig {
-  if (!raw?.trim()) return structuredClone(DEFAULT_TOWN_BUDGET_SOURCES)
+function parseStoredRaw(raw: string | null | undefined): unknown {
+  if (!raw?.trim()) return { slots: [] }
   try {
-    return normalizeTownBudgetSources(JSON.parse(raw) as unknown)
+    return JSON.parse(raw) as unknown
   } catch {
-    return structuredClone(DEFAULT_TOWN_BUDGET_SOURCES)
+    return { slots: [] }
   }
 }
 
-/** Cached sync_meta read. */
+/** Cached sync_meta read merged onto currently active CT towns. */
 export function getTownBudgetSources(): TownBudgetSourcesConfig {
-  return parseStored(getSyncMeta(TOWN_BUDGET_SOURCES_KEY))
+  // Active towns need Postgres — without it, surface stored slots only.
+  return normalizeTownBudgetSources(parseStoredRaw(getSyncMeta(TOWN_BUDGET_SOURCES_KEY)))
 }
 
-/** Authoritative Postgres read. */
+/** Authoritative: active CT coverage towns × saved URL/year. */
 export async function getTownBudgetSourcesFresh(): Promise<TownBudgetSourcesConfig> {
   try {
-    const raw = await getSyncMetaFresh(TOWN_BUDGET_SOURCES_KEY)
-    return parseStored(raw)
+    const [raw, activeTowns] = await Promise.all([
+      getSyncMetaFresh(TOWN_BUDGET_SOURCES_KEY),
+      listActiveCtTownNames(),
+    ])
+    return mergeTownBudgetSourcesForActiveTowns(
+      parseStoredRaw(raw),
+      activeTowns,
+    )
   } catch {
     return getTownBudgetSources()
   }
 }
 
-/** Persist source slots (durable). Parsing / fetch runs later. */
+/**
+ * Persist URL/year for active towns. Keeps saved rows for towns that are
+ * currently inactive so re-enabling in CT coverage restores the URL.
+ */
 export async function setTownBudgetSources(
   value: unknown,
 ): Promise<TownBudgetSourcesConfig> {
-  const normalized = normalizeTownBudgetSources(value)
-  await setSyncMetaDurable(
-    TOWN_BUDGET_SOURCES_KEY,
-    JSON.stringify(normalized),
-  )
-  return normalized
+  const activeTowns = await listActiveCtTownNames()
+  const prevRaw = await getSyncMetaFresh(TOWN_BUDGET_SOURCES_KEY)
+  const merged = townBudgetSlotsByTown(parseStoredRaw(prevRaw))
+  const incoming = townBudgetSlotsByTown(value)
+
+  for (const town of activeTowns) {
+    const next = incoming.get(town)
+    if (next) {
+      merged.set(town, next)
+    } else if (!merged.has(town)) {
+      merged.set(town, {
+        town,
+        year: new Date().getFullYear(),
+        sourceUrl: '',
+      })
+    }
+  }
+
+  const toStore: TownBudgetSourcesConfig = {
+    slots: [...merged.values()].sort((a, b) => a.town.localeCompare(b.town)),
+  }
+  await setSyncMetaDurable(TOWN_BUDGET_SOURCES_KEY, JSON.stringify(toStore))
+  return mergeTownBudgetSourcesForActiveTowns(toStore, activeTowns)
 }

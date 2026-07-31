@@ -294,14 +294,13 @@ export default function AdminSyncHistoryPanel({
             Database sync history
           </p>
           <p className="mt-1 text-sm text-slate max-w-2xl">
-            MLS syncs from Admin, cron, and overdue catch-up for the{" "}
-            {windowLabel} — collapsed by sync type (Full, Incremental), then by
-            status phase (Queued, Worker, Active+Closed, Done, …). Queued /
-            Worker / Done rows show the sync type in the Bucket column (e.g.
-            Queued · Incremental); town RETS rows stay as Active / Closed.
-            Queued / Worker are ack lines (count 0); Done carries the job total
-            upserted. The newest type opens with all of its buckets expanded by
-            default
+            Durable sync_runs for the {windowLabel}: MLS town pulls (Full /
+            Incremental) plus every Syncs dashboard job (Goldilocks, Stats
+            cache, Deal of the Day, Addresses, Zip maps, Snapshot). Collapsed by
+            sync type, then by status phase (Queued, Worker, Active+Closed,
+            Done, Failed, …). Queued / Worker / Done rows show the sync type in
+            the Bucket column; town RETS rows stay as Active / Closed. The newest
+            type opens with all of its buckets expanded by default
             {overallLatestLabel ? (
               <>
                 {" "}

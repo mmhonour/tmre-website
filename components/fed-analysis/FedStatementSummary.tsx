@@ -29,8 +29,8 @@ function VoterList({
 }
 
 /**
- * Footer links on the Prevailing decision card: Statement summary (toggle) left,
- * Read statement (official URL) right. Panel content is hidden until toggled.
+ * Footer links under Fed Target Range: Federal Reserve Statement Summary
+ * (toggle) left, Read statement (official URL) right. Panel hidden until toggled.
  */
 export default function FedStatementSummary({
   meeting,
@@ -62,7 +62,9 @@ export default function FedStatementSummary({
           aria-controls="fed-statement-summary-panel"
           className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy disabled:cursor-not-allowed disabled:text-charcoal/35 disabled:no-underline"
         >
-          {open ? "Hide statement summary" : "Statement summary"}
+          {open
+            ? "Hide Federal Reserve statement summary"
+            : "Federal Reserve statement summary"}
         </button>
         {meeting?.statementUrl ? (
           <a
@@ -87,7 +89,7 @@ export default function FedStatementSummary({
         >
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-              Statement summary
+              Federal Reserve statement summary
             </p>
             <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/40">
               Official FOMC language · not AI

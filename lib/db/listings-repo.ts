@@ -582,6 +582,37 @@ export async function recordSyncRun(input: {
 }
 
 /**
+ * Durable Sync History row for an Admin Syncs dashboard job (Goldilocks, stats,
+ * Deal of the Day, addresses, zip maps, snapshot, full/incremental roll-up).
+ * statusBucket uses Done|Failed/{suffix} so History groups by sync type.
+ */
+export async function recordDashboardSyncAudit(input: {
+  startedAt: string
+  finishedAt: string
+  /** Suffix after Done/Failed — e.g. goldilocks, stats, incremental. */
+  syncSuffix: string
+  listingsCount: number
+  ok: boolean
+  detail: string
+}): Promise<void> {
+  const suffix = input.syncSuffix.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+  if (!suffix) return
+  try {
+    await recordSyncRun({
+      startedAt: input.startedAt,
+      finishedAt: input.finishedAt,
+      town: '(all)',
+      statusBucket: `${input.ok ? 'Done' : 'Failed'}/${suffix}`,
+      listingsCount: input.listingsCount,
+      ok: input.ok,
+      error: input.detail.trim() || null,
+    })
+  } catch (err) {
+    console.warn('[listings-repo] recordDashboardSyncAudit failed', err)
+  }
+}
+
+/**
  * Durable breadcrumb for Admin Sync history when Incremental is handed to the
  * Netlify background worker (HTTP returns before any town RETS rows exist).
  */

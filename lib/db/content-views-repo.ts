@@ -70,12 +70,35 @@ type AggregateRow = {
 }
 
 type ListingLabelRow = {
+  id: string
   mls_id: string
+  listing_key: string | null
   address_street: string | null
   address_full: string | null
   town: string | null
   price: string | number | null
   mls_status: string | null
+}
+
+/** View logs store whatever was in the URL (id, mls_id, or listing_key). */
+function listingLabelLookupKeys(row: ListingLabelRow): string[] {
+  return [row.id, row.mls_id, row.listing_key]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean)
+}
+
+async function fetchListingLabelsByIds(
+  ids: readonly string[],
+): Promise<ListingLabelRow[]> {
+  if (ids.length === 0) return []
+  return query<ListingLabelRow>(
+    `SELECT id, mls_id, listing_key, address_street, address_full, town, price, mls_status
+     FROM listings
+     WHERE id = ANY($1::text[])
+        OR mls_id = ANY($1::text[])
+        OR listing_key = ANY($1::text[])`,
+    [ids],
+  )
 }
 
 function tsToIso(value: Date | string): string {
@@ -126,19 +149,19 @@ async function attachListingDetails(
 
   let labels: ListingLabelRow[] = []
   try {
-    labels = await query<ListingLabelRow>(
-      `SELECT mls_id, address_street, address_full, town, price, mls_status
-       FROM listings
-       WHERE mls_id = ANY($1::text[])`,
-      [mlsIds],
-    )
+    labels = await fetchListingLabelsByIds(mlsIds)
   } catch {
     return rows
   }
 
-  const byMls = new Map(labels.map((row) => [row.mls_id, row]))
+  const byKey = new Map<string, ListingLabelRow>()
+  for (const label of labels) {
+    for (const key of listingLabelLookupKeys(label)) {
+      byKey.set(key, label)
+    }
+  }
   return rows.map((row) => {
-    const label = row.mlsId ? byMls.get(row.mlsId) : undefined
+    const label = row.mlsId ? byKey.get(row.mlsId) : undefined
     if (!label) return row
     return {
       ...row,
@@ -230,20 +253,19 @@ export async function readVisitorContentViews(
   return attachListingDetails(rows.map(aggregateRowToSummary))
 }
 
-/** Property labels for the MLS ids appearing in a visitor log, keyed by MLS id. */
+/**
+ * Property labels for ids appearing in a visitor log (URL id / mls_id /
+ * listing_key), keyed by whichever identifier was requested.
+ */
 export async function readListingLabelsByMlsIds(
   mlsIds: readonly string[],
 ): Promise<Record<string, string>> {
-  const ids = [...new Set(mlsIds.map((id) => id.trim()).filter(Boolean))]
+  const idSet = new Set(mlsIds.map((id) => id.trim()).filter(Boolean))
+  const ids = [...idSet]
   if (ids.length === 0) return {}
   let rows: ListingLabelRow[] = []
   try {
-    rows = await query<ListingLabelRow>(
-      `SELECT mls_id, address_street, address_full, town, price, mls_status
-       FROM listings
-       WHERE mls_id = ANY($1::text[])`,
-      [ids],
-    )
+    rows = await fetchListingLabelsByIds(ids)
   } catch {
     return {}
   }
@@ -251,7 +273,10 @@ export async function readListingLabelsByMlsIds(
   for (const row of rows) {
     const street = row.address_street || row.address_full
     if (!street) continue
-    labels[row.mls_id] = row.town ? `${street}, ${row.town}` : street
+    const label = row.town ? `${street}, ${row.town}` : street
+    for (const key of listingLabelLookupKeys(row)) {
+      if (idSet.has(key)) labels[key] = label
+    }
   }
   return labels
 }

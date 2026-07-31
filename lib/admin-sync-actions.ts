@@ -6,6 +6,7 @@ import {
   countListings,
   countListingsByBucket,
   readListingsDbStats,
+  recordDashboardSyncAudit,
   recordIncrementalQueueAudit,
 } from '@/lib/db/listings-repo'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
@@ -122,6 +123,56 @@ export type AdminSyncActionOptions = {
   finalizeStep?: string
 }
 
+/** status_bucket suffix → Sync History sync-type group (see normalizeSyncType). */
+const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
+  'full-resync': 'full',
+  incremental: 'incremental',
+  'listing-scores': 'goldilocks',
+  'publish-snapshot': 'snapshot',
+  'stats-cache': 'stats',
+  'deal-of-the-day': 'deal-day',
+  'property-addresses': 'addresses',
+  'zip-boundaries': 'zip-maps',
+}
+
+/** Finalize-step → Sync History type (weekly full resync chain). */
+const FINALIZE_STEP_AUDIT_SUFFIX: Partial<
+  Record<(typeof FULL_RESYNC_FINALIZE_STEPS)[number], string>
+> = {
+  scores: 'goldilocks',
+  'stats-cache': 'stats',
+  'deal-of-day': 'deal-day',
+  persist: 'snapshot',
+}
+
+async function auditDashboardSyncResult(
+  result: AdminSyncActionResult,
+  options: AdminSyncActionOptions,
+): Promise<void> {
+  // Per-town RETS chunks already write town sync_runs rows.
+  if (options.town) return
+  // Background queue already wrote Queued/incremental — Done comes from the worker.
+  if (result.backgroundQueued) return
+
+  let syncSuffix: string | undefined
+  if (options.finalizeStep && isFullResyncFinalizeStepId(options.finalizeStep)) {
+    syncSuffix = FINALIZE_STEP_AUDIT_SUFFIX[options.finalizeStep]
+  } else {
+    syncSuffix = DASHBOARD_SYNC_AUDIT_SUFFIX[result.action]
+  }
+  if (!syncSuffix) return
+
+  const detail = [result.message, result.detail].filter(Boolean).join(' — ')
+  await recordDashboardSyncAudit({
+    startedAt: result.startedAt,
+    finishedAt: result.finishedAt || new Date().toISOString(),
+    syncSuffix,
+    listingsCount: result.recordsFetched ?? 0,
+    ok: result.ok,
+    detail,
+  })
+}
+
 export async function runAdminSyncAction(
   action: AdminSyncActionId,
   options: AdminSyncActionOptions = {},
@@ -130,6 +181,7 @@ export async function runAdminSyncAction(
   if (result.ok && isSyncNextOverrideJobId(result.action)) {
     await clearSyncNextOverrideAfterRun(result.action)
   }
+  await auditDashboardSyncResult(result, options)
   return result
 }
 

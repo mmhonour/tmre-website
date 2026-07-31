@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import CtCountyMiniMap from "@/components/admin/CtCountyMiniMap";
 
 type TownRow = {
   id: string;
@@ -141,7 +142,8 @@ export default function AdminCtCoveragePanel() {
           <span className="text-navy/80">
             not wired into public pages or RETS yet
           </span>
-          . Today&rsquo;s seven TMRE towns start enabled.
+          . Today&rsquo;s seven TMRE towns start enabled. County maps highlight
+          light blue when any town in that county is active.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading
@@ -166,7 +168,7 @@ export default function AdminCtCoveragePanel() {
               <button
                 type="button"
                 onClick={() => toggleCollapsed(county.id)}
-                className="flex w-full items-center gap-2 text-left"
+                className="flex w-full items-center gap-3 text-left"
                 aria-expanded={!isCollapsed}
               >
                 <span
@@ -175,12 +177,19 @@ export default function AdminCtCoveragePanel() {
                 >
                   {isCollapsed ? "+" : "−"}
                 </span>
-                <span className="font-mono text-[11px] tracking-[0.14em] uppercase text-navy">
-                  {county.name} County
+                <span className="min-w-0 flex-1">
+                  <span className="font-mono text-[11px] tracking-[0.14em] uppercase text-navy">
+                    {county.name} County
+                  </span>
+                  <span className="ml-2 font-mono text-[10px] text-charcoal/45">
+                    {county.activeCount}/{county.townCount} active
+                  </span>
                 </span>
-                <span className="font-mono text-[10px] text-charcoal/45">
-                  {county.activeCount}/{county.townCount} active
-                </span>
+                <CtCountyMiniMap
+                  countyId={county.id}
+                  enabled={county.activeCount > 0}
+                  className="h-12 w-[5.25rem] rounded border border-charcoal/20 bg-white sm:h-14 sm:w-[6.25rem]"
+                />
               </button>
 
               {!isCollapsed ? (
