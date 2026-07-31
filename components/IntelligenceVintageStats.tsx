@@ -163,8 +163,8 @@ function VintageSnapshotSummaryBody({
 }
 
 function vintagePanelTitle(tx: TxFilter): string {
-  if (tx === "rental") return "Rentals by vintage";
-  return "Sales by vintage";
+  if (tx === "rental") return "Rentals by VINTAGE or SCORE or MEDIAN";
+  return "Sales by VINTAGE or SCORE or MEDIAN";
 }
 
 function vintageSnapshotTitle(label: string): string {
@@ -214,6 +214,7 @@ export default function IntelligenceVintageStats({
   expandedKeys,
   onToggleExpanded,
   onVintageListingsClick,
+  hidePanelTitle = false,
 }: {
   title: string;
   listings: VintageListingRow[];
@@ -224,6 +225,8 @@ export default function IntelligenceVintageStats({
   expandedKeys?: Set<string>;
   onToggleExpanded?: (key: string) => void;
   onVintageListingsClick?: (bucketId: VintageBucketId) => void;
+  /** When the parent already shows the panel name (e.g. desktop folder tab). */
+  hidePanelTitle?: boolean;
 }) {
   const [sortKey, setSortKey] = useState<VintageStatsSortKey>("score");
   const [sortDir, setSortDir] = useState<VintageStatsSortDir>("desc");
@@ -284,10 +287,16 @@ export default function IntelligenceVintageStats({
   return (
     <div className="space-y-4">
       <div className="pb-1 shrink-0">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          {vintagePanelTitle(tx)}
-        </p>
-        <p className="font-mono text-[9px] tracking-wide text-slate/70 mt-0.5 truncate">
+        {hidePanelTitle ? null : (
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            {vintagePanelTitle(tx)}
+          </p>
+        )}
+        <p
+          className={`font-mono text-[9px] tracking-wide text-slate/70 truncate ${
+            hidePanelTitle ? "" : "mt-0.5"
+          }`}
+        >
           {title}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1">

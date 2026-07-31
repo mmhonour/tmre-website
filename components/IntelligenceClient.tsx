@@ -1729,6 +1729,10 @@ export default function IntelligenceClient({
   /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
+  /** Desktop sidebar: folder tabs between town Stats and vintage panel. */
+  const [desktopStatsTab, setDesktopStatsTab] = useState<"stats" | "vintage">(
+    "stats",
+  );
   const [miniGraphsHidden, setMiniGraphsHidden] = useState(false);
   const [miniGraphsAutoHideSuspended, setMiniGraphsAutoHideSuspended] =
     useState(false);
@@ -4330,30 +4334,49 @@ export default function IntelligenceClient({
     );
   });
 
-  const vintageStatsPanel = showVintageStats ? (
-    <IntelligenceVintageStats
-      title={vintageStatsTitle}
-      listings={vintageListingRows}
-      tx={tx}
-      city={active === "All" ? "All" : active}
-      collapsible
-      expandedKeys={expandedSnapshotKeys}
-      onToggleExpanded={toggleSnapshotExpanded}
-      onVintageListingsClick={(bucketId) => {
-        closeTownStats();
-        closeVintageStats();
-        selectVintageListings(bucketId);
-      }}
-    />
-  ) : null;
+  const renderVintageStatsPanel = (hidePanelTitle = false) =>
+    showVintageStats ? (
+      <IntelligenceVintageStats
+        title={vintageStatsTitle}
+        listings={vintageListingRows}
+        tx={tx}
+        city={active === "All" ? "All" : active}
+        collapsible
+        expandedKeys={expandedSnapshotKeys}
+        onToggleExpanded={toggleSnapshotExpanded}
+        hidePanelTitle={hidePanelTitle}
+        onVintageListingsClick={(bucketId) => {
+          closeTownStats();
+          closeVintageStats();
+          selectVintageListings(bucketId);
+        }}
+      />
+    ) : null;
 
-  /** Desktop sidebar: towns + vintages together. */
-  const townStatsPanels = (
-    <>
-      {townSnapshotPanels}
-      {vintageStatsPanel}
-    </>
-  );
+  const vintageStatsPanel = renderVintageStatsPanel(false);
+
+  const desktopShowStatsTab = liveSnapshots.length > 0;
+  const desktopShowVintageTab = showVintageStats;
+  const desktopStatsFolderTabs =
+    desktopShowStatsTab && desktopShowVintageTab;
+  const desktopSidebarTab: "stats" | "vintage" = desktopStatsFolderTabs
+    ? desktopStatsTab
+    : desktopShowVintageTab
+      ? "vintage"
+      : "stats";
+  const vintageFolderTabLabel =
+    tx === "rental"
+      ? "Rentals by VINTAGE or SCORE or MEDIAN"
+      : "Sales by VINTAGE or SCORE or MEDIAN";
+  /** folder-comps-mobile look, adapted for cream sidebar (inactive wasn’t white). */
+  const desktopStatsFolderTabClass = (active: boolean) => {
+    const base =
+      "relative min-w-0 flex-1 whitespace-normal px-1.5 py-1.5 font-mono text-[8px] font-bold leading-tight tracking-[0.08em] uppercase transition-colors rounded-t-md border -mb-px text-left";
+    if (active) {
+      return `${base} z-[1] border-gold border-b-transparent bg-gold text-navy`;
+    }
+    return `${base} border-transparent text-charcoal/40 hover:text-navy`;
+  };
 
   const pinnedDescriptorBar =
     descriptorsPinned && typeof document !== "undefined" ? (
@@ -5391,19 +5414,55 @@ export default function IntelligenceClient({
                 anySnapshotExpanded ? "gap-4" : "gap-2"
               }`}
             >
-              {(liveSnapshots.length > 0 || showVintageStats) ? (
-                <div className="shrink-0">
-                  <p className="text-left font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                    Stats
-                  </p>
+              {desktopShowStatsTab || desktopShowVintageTab ? (
+                <div id="intel-stats-panel" className="min-w-0">
+                  {desktopStatsFolderTabs ? (
+                    <div
+                      role="tablist"
+                      aria-label="Stats panels"
+                      className="flex w-full items-end gap-0.5"
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={desktopSidebarTab === "stats"}
+                        className={desktopStatsFolderTabClass(
+                          desktopSidebarTab === "stats",
+                        )}
+                        onClick={() => setDesktopStatsTab("stats")}
+                      >
+                        Stats
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={desktopSidebarTab === "vintage"}
+                        className={desktopStatsFolderTabClass(
+                          desktopSidebarTab === "vintage",
+                        )}
+                        onClick={() => setDesktopStatsTab("vintage")}
+                      >
+                        {vintageFolderTabLabel}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="shrink-0 text-left font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+                      {desktopShowStatsTab ? "Stats" : vintageFolderTabLabel}
+                    </p>
+                  )}
+                  <div
+                    className={`${
+                      desktopStatsFolderTabs
+                        ? "rounded-b-md rounded-tr-md border border-charcoal/[0.1] border-t-0 bg-white/70 px-2 pt-2 pb-2"
+                        : ""
+                    } ${anySnapshotExpanded ? "space-y-4" : "space-y-2"}`}
+                  >
+                    {desktopSidebarTab === "stats"
+                      ? townSnapshotPanels
+                      : renderVintageStatsPanel(desktopStatsFolderTabs)}
+                  </div>
                 </div>
               ) : null}
-              <div
-                id="intel-stats-panel"
-                className={anySnapshotExpanded ? "space-y-4" : "space-y-2"}
-              >
-                {townStatsPanels}
-              </div>
             </aside>
           </div>{/* end grid */}
         </div>
