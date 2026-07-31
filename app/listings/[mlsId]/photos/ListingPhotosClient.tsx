@@ -208,6 +208,7 @@ export default function ListingPhotosClient({
       cityMedianPpsf: data.cityMedianPpsf,
       listingPricePerSqft: data.pricePerSqft,
       medianPpsfBand: data.medianPpsfBand,
+      marketBandLabel: data.marketBandLabel,
     },
   );
 

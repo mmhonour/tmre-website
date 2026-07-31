@@ -9,6 +9,7 @@ import {
   adminDataControlsPanelForSection,
   adminDatabasePanelForSection,
   adminPostgresPanelForSection,
+  adminServerPanelForSection,
   adminSyncsPanelForSection,
   adminTabForSection,
   isAdminArchitecturePanelId,
@@ -17,6 +18,7 @@ import {
   isAdminDatabasePanelId,
   isAdminPostgresPanelId,
   isAdminPostgresSchemaHash,
+  isAdminServerPanelId,
   isAdminSyncsPanelId,
   LEGACY_ADMIN_PANEL_TO_SYNCS,
   LEGACY_ADMIN_TAB_TO_ARCHITECTURE,
@@ -127,6 +129,17 @@ function normalizeLegacyNestedTabUrls() {
     url.searchParams.set("tab", "cookies");
     url.searchParams.delete("panel");
     window.history.replaceState(null, "", url);
+    return;
+  }
+
+  // Former Data controls → Page styles → Web server → Page styles.
+  if (
+    queryTab === "data-controls" &&
+    url.searchParams.get("panel") === "page-styles"
+  ) {
+    url.searchParams.set("tab", "server");
+    url.searchParams.set("panel", "page-styles");
+    window.history.replaceState(null, "", url);
   }
 }
 
@@ -181,6 +194,13 @@ function ensureNestedPanelParam() {
       ? adminCommunicationsPanelForSection(hash)
       : null;
     url.searchParams.set("panel", fromSection ?? "market-digest");
+    window.history.replaceState(null, "", url);
+    return;
+  }
+  if (tab === "server") {
+    if (isAdminServerPanelId(url.searchParams.get("panel"))) return;
+    const fromSection = hash ? adminServerPanelForSection(hash) : null;
+    url.searchParams.set("panel", fromSection ?? "api-routes");
     window.history.replaceState(null, "", url);
   }
 }
@@ -277,6 +297,10 @@ export default function AdminTabbedLayout({
     } else if (next === "communications") {
       if (!isAdminCommunicationsPanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "market-digest");
+      }
+    } else if (next === "server") {
+      if (!isAdminServerPanelId(url.searchParams.get("panel"))) {
+        url.searchParams.set("panel", "api-routes");
       }
     } else {
       url.searchParams.delete("panel");

@@ -191,6 +191,7 @@ export default function ListingDetailClient({
       cityMedianPpsf: data.cityMedianPpsf,
       listingPricePerSqft: data.pricePerSqft,
       medianPpsfBand: data.medianPpsfBand,
+      marketBandLabel: data.marketBandLabel,
     },
   );
   const isClosed = details.isClosed;

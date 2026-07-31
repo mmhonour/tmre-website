@@ -72,6 +72,7 @@ export default function ListingComparablesClient({
     cityMedianPpsf,
     pricePerSqft,
     medianPpsfBand,
+    marketBandLabel,
     state,
   } = useListingChrome<Listing>(mlsId);
   const activeTab =
@@ -161,6 +162,7 @@ export default function ListingComparablesClient({
       cityMedianPpsf,
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
+      marketBandLabel,
     },
   );
 

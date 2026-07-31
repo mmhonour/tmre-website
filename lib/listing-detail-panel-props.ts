@@ -67,6 +67,8 @@ export type BuildListingDetailsPanelOpts = {
   /** Scored listing $/sqft (sale or rent); preferred over panel-computed sale ppsf. */
   listingPricePerSqft?: number | null;
   medianPpsfBand?: "below" | "at" | "above" | null;
+  /** Admin Market Bands category + fine step for sale homes. */
+  marketBandLabel?: string | null;
 };
 
 type SpotlightMlsEnrichment = {
@@ -88,6 +90,7 @@ export function buildSpotlightDetailsPanelProps(
     cityMedianPpsf?: number | null;
     listingPricePerSqft?: number | null;
     medianPpsfBand?: "below" | "at" | "above" | null;
+    marketBandLabel?: string | null;
   },
 ): ListingDetailsSchoolsPanelProps {
   return buildListingDetailsPanelProps(
@@ -115,6 +118,7 @@ export function buildSpotlightDetailsPanelProps(
       cityMedianPpsf: median?.cityMedianPpsf,
       listingPricePerSqft: median?.listingPricePerSqft,
       medianPpsfBand: median?.medianPpsfBand,
+      marketBandLabel: median?.marketBandLabel,
     },
   );
 }
@@ -192,6 +196,10 @@ export function buildListingDetailsPanelProps(
     originalListPrice: listing.originalListPrice ?? null,
     reductionPct,
     dom: listing.dom ?? null,
+    sqft: listing.sqft ?? null,
+    marketBandLabel: !isRental
+      ? (opts?.marketBandLabel?.trim() || null)
+      : null,
     ppsf,
     lotAcres,
     assessedMarketValue,

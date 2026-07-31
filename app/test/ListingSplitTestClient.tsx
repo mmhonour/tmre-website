@@ -76,6 +76,7 @@ function ListingSplitTestInner() {
     cityMedianPpsf,
     pricePerSqft,
     medianPpsfBand,
+    marketBandLabel,
     photos,
     photosState,
     presentation,
@@ -166,6 +167,7 @@ function ListingSplitTestInner() {
       cityMedianPpsf,
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
+      marketBandLabel,
     },
   );
 

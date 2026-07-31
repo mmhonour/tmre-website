@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveMarketBandLabelForListing } from '@/lib/inventory-segment-bands-config'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
 import { listingCacheHeaders, readListingFromDbByMlsId } from '@/lib/listings-store'
@@ -28,7 +29,8 @@ export async function GET(
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
-    const [photos, detailScore, edgeScoreRow] = await Promise.all([
+    const [photos, detailScore, edgeScoreRow, marketBandLabel] =
+      await Promise.all([
       includePhotos
         ? resolveListingPhotoUrls(
             id,
@@ -39,6 +41,7 @@ export async function GET(
         : Promise.resolve([] as string[]),
       scoreListingForDetailPage(listing),
       readListingEdgeScoreByMlsId(id),
+      resolveMarketBandLabelForListing(listing),
     ])
 
     // Persist so Latest / board caches stop showing 0.0 for listings that
@@ -72,6 +75,7 @@ export async function GET(
         cityMedianPpsf: detailScore?.cityMedianPpsf ?? null,
         pricePerSqft: detailScore?.pricePerSqft ?? null,
         medianPpsfBand: detailScore?.medianPpsfBand ?? null,
+        marketBandLabel,
         edgeScore: edgeScoreRow?.edgeScore ?? null,
         edgeScoreBreakdown: edgeScoreRow?.breakdownJson
           ? (JSON.parse(edgeScoreRow.breakdownJson) as Record<string, unknown>)

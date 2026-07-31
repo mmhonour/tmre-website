@@ -21,6 +21,17 @@ export type FomcMeeting = {
   targetRangeHigh: number | null
   statementUrl: string | null
   note?: string
+  /**
+   * Short text grepped from the official FOMC statement (Fed sync → Postgres).
+   * Not AI-generated.
+   */
+  summary?: string | null
+  /** Lead paragraph from the official statement. */
+  excerpt?: string | null
+  /** Voting for / against lines when parsed. */
+  voteNote?: string | null
+  /** ISO timestamp of last successful Fed sync for this meeting. */
+  syncedAt?: string | null
 }
 
 /** Recent + upcoming regularly scheduled FOMC meetings. */
@@ -177,12 +188,13 @@ export const FOMC_MEETINGS: readonly FomcMeeting[] = [
     startDate: '2026-07-28',
     endDate: '2026-07-29',
     hasSep: false,
-    decision: null,
-    basisPoints: null,
-    targetRangeLow: null,
-    targetRangeHigh: null,
-    statementUrl: null,
-    note: 'Decision day typically 2:00 p.m. ET — update after the statement posts.',
+    decision: 'hold',
+    basisPoints: 0,
+    targetRangeLow: 3.5,
+    targetRangeHigh: 3.75,
+    statementUrl:
+      'https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm',
+    note: '9–3 vote; three members preferred a 25bp hike.',
   },
   {
     id: '2026-09',

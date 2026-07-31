@@ -3,6 +3,7 @@ import AdminProductDocsPanel from "@/components/admin/AdminProductDocsPanel";
 import AdminRetsConnectionPanel from "@/components/admin/AdminRetsConnectionPanel";
 import AdminRetsCredentialsPanel from "@/components/admin/AdminRetsCredentialsPanel";
 import AdminServerFunctionsPanel from "@/components/admin/AdminServerFunctionsPanel";
+import AdminServerPanel from "@/components/admin/AdminServerPanel";
 import AdminSpotlightSitePanel from "@/components/admin/AdminSpotlightSitePanel";
 import AdminSqliteDiagrams from "@/components/admin/AdminSqliteDiagrams";
 import AdminSyncHistoryPanel from "@/components/admin/AdminSyncHistoryPanel";
@@ -17,6 +18,7 @@ import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminCommunicationsPanel from "@/components/admin/AdminCommunicationsPanel";
 import AdminListingAlertsPanel from "@/components/admin/AdminListingAlertsPanel";
 import AdminMarketDigestPanel from "@/components/admin/AdminMarketDigestPanel";
+import AdminFedSyncPanel from "@/components/admin/AdminFedSyncPanel";
 import AdminDeployNotifyPanel from "@/components/admin/AdminDeployNotifyPanel";
 import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
@@ -715,6 +717,7 @@ export default async function AdminPage() {
       listingAlerts={
         <AdminListingAlertsPanel initial={listingAlerts ?? undefined} />
       }
+      fedSync={<AdminFedSyncPanel />}
     />
   );
 
@@ -732,7 +735,6 @@ export default async function AdminPage() {
       intelInventory={inventoryBandsPanel}
       intelDealBoard={<AdminIntelligenceDealBoardPanel />}
       ctCoverage={<AdminCtCoveragePanel />}
-      pageStyles={<AdminPageStylesPanel />}
     />
   );
 
@@ -779,7 +781,12 @@ export default async function AdminPage() {
     />
   );
 
-  const serverPanel = <AdminServerFunctionsPanel />;
+  const serverPanel = (
+    <AdminServerPanel
+      apiRoutes={<AdminServerFunctionsPanel />}
+      pageStyles={<AdminPageStylesPanel />}
+    />
+  );
 
   const deployBuild = readDeployBuildInfo();
 

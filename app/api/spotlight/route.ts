@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveMarketBandLabelForListing } from '@/lib/inventory-segment-bands-config'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
 import { spotlightApiCacheHeaders } from '@/lib/listings-store'
 import { resolveSpotlightListing } from '@/lib/spotlight-cache'
@@ -23,7 +24,12 @@ export async function GET(req: NextRequest) {
       propertyTab,
     })
 
-    const detailScore = listing ? await scoreListingForDetailPage(listing) : null
+    const [detailScore, marketBandLabel] = listing
+      ? await Promise.all([
+          scoreListingForDetailPage(listing),
+          resolveMarketBandLabelForListing(listing),
+        ])
+      : [null, null]
 
     return NextResponse.json(
       {
@@ -35,6 +41,7 @@ export async function GET(req: NextRequest) {
         cityMedianPpsf: detailScore?.cityMedianPpsf ?? null,
         pricePerSqft: detailScore?.pricePerSqft ?? null,
         medianPpsfBand: detailScore?.medianPpsfBand ?? null,
+        marketBandLabel,
         source,
         spotlightCache: cacheHit,
         propertyTab,

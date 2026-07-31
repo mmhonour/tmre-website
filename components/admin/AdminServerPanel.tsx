@@ -2,43 +2,37 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ADMIN_COMMUNICATIONS_PANELS,
-  adminCommunicationsPanelForSection,
-  isAdminCommunicationsPanelId,
-  type AdminCommunicationsPanelId,
+  ADMIN_SERVER_PANELS,
+  adminServerPanelForSection,
+  isAdminServerPanelId,
+  type AdminServerPanelId,
 } from "@/lib/admin-nav";
 
-const VALID_PANELS = new Set<string>(
-  ADMIN_COMMUNICATIONS_PANELS.map((p) => p.id),
-);
+const VALID_PANELS = new Set<string>(ADMIN_SERVER_PANELS.map((p) => p.id));
 
-function panelFromLocation(): AdminCommunicationsPanelId {
-  if (typeof window === "undefined") return "market-digest";
+function panelFromLocation(): AdminServerPanelId {
+  if (typeof window === "undefined") return "api-routes";
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab && tab !== "communications") return "market-digest";
+  if (tab && tab !== "server") return "api-routes";
   const panel = params.get("panel");
-  if (panel && VALID_PANELS.has(panel) && isAdminCommunicationsPanelId(panel)) {
+  if (panel && VALID_PANELS.has(panel) && isAdminServerPanelId(panel)) {
     return panel;
   }
   const hash = window.location.hash.replace(/^#/, "");
-  const fromSection = adminCommunicationsPanelForSection(hash);
+  const fromSection = adminServerPanelForSection(hash);
   if (fromSection) return fromSection;
-  return "market-digest";
+  return "api-routes";
 }
 
-export default function AdminCommunicationsPanel({
-  marketDigest,
-  socialProfiles,
-  listingAlerts,
-  fedSync,
+export default function AdminServerPanel({
+  apiRoutes,
+  pageStyles,
 }: {
-  marketDigest: ReactNode;
-  socialProfiles: ReactNode;
-  listingAlerts: ReactNode;
-  fedSync: ReactNode;
+  apiRoutes: ReactNode;
+  pageStyles: ReactNode;
 }) {
-  const [panel, setPanel] = useState<AdminCommunicationsPanelId>("market-digest");
+  const [panel, setPanel] = useState<AdminServerPanelId>("api-routes");
 
   useEffect(() => {
     const sync = () => setPanel(panelFromLocation());
@@ -51,31 +45,29 @@ export default function AdminCommunicationsPanel({
     };
   }, []);
 
-  function selectPanel(next: AdminCommunicationsPanelId) {
+  function selectPanel(next: AdminServerPanelId) {
     setPanel(next);
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", "communications");
+    url.searchParams.set("tab", "server");
     url.searchParams.set("panel", next);
     url.hash = "";
     window.history.replaceState(null, "", url);
   }
 
-  const panels: Record<AdminCommunicationsPanelId, ReactNode> = {
-    "market-digest": marketDigest,
-    "social-profiles": socialProfiles,
-    "listing-alerts": listingAlerts,
-    "fed-sync": fedSync,
+  const panels: Record<AdminServerPanelId, ReactNode> = {
+    "api-routes": apiRoutes,
+    "page-styles": pageStyles,
   };
-  const active = ADMIN_COMMUNICATIONS_PANELS.find((item) => item.id === panel);
+  const active = ADMIN_SERVER_PANELS.find((item) => item.id === panel);
 
   return (
     <div className="space-y-6">
       <div
         role="tablist"
-        aria-label="Communications"
+        aria-label="Web server"
         className="flex flex-row flex-wrap items-stretch gap-1 border-b border-charcoal/[0.1]"
       >
-        {ADMIN_COMMUNICATIONS_PANELS.map((item) => {
+        {ADMIN_SERVER_PANELS.map((item) => {
           const isActive = panel === item.id;
           return (
             <button
@@ -100,17 +92,7 @@ export default function AdminCommunicationsPanel({
           {active.subtitle}
         </p>
       ) : null}
-
-      {ADMIN_COMMUNICATIONS_PANELS.map((item) => (
-        <div
-          key={item.id}
-          role="tabpanel"
-          hidden={panel !== item.id}
-          className={panel === item.id ? "space-y-6" : undefined}
-        >
-          {panels[item.id]}
-        </div>
-      ))}
+      <div>{panels[panel]}</div>
     </div>
   );
 }

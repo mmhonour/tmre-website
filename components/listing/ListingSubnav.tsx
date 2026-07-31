@@ -564,8 +564,8 @@ export default function ListingSubnav({
             return;
           }
 
-          // Overview photos mode: never hard-navigate to /photos — that remounts
-          // the listing page. Stay here and enter/reveal photos in place.
+          // Optional in-page photos handler (legacy). Prefer following tab.href
+          // to /photos so Overview matches the Details → Photos thumbnail view.
           if (tab.id === "photos" && onPhotosSelect) {
             event.preventDefault();
             onPhotosSelect();
@@ -573,12 +573,8 @@ export default function ListingSubnav({
           }
 
           if (panelMode && onPanelOpen && onPanelClose) {
-            if (tab.id === "photos") {
-              // Fallback: close any open panel; never follow the /photos href.
-              event.preventDefault();
-              if (panelTab != null) onPanelClose();
-              return;
-            }
+            // Photos has its own route with the thumbnail gallery — follow href.
+            if (tab.id === "photos") return;
             if (PANEL_SECTION_TABS.has(tab.id)) {
               event.preventDefault();
               onPanelOpen(tab.id as ListingScrollSectionTab);

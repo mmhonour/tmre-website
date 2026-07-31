@@ -23,6 +23,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'zip_boundaries',
   'visitors',
   'content_views',
+  'fomc_meetings',
   'leads',
   'site_users',
   'site_user_magic_links',

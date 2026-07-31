@@ -63,34 +63,32 @@ export default function PhotoGallery({
   const canCycle = count > 1;
 
   return (
-    <div className="space-y-3">
-      <div>
-        <div className="relative overflow-hidden bg-navy-dark aspect-[16/10] max-lg:rounded-none max-lg:border-x-0 max-lg:border-b border-white/10 lg:rounded-2xl lg:border">
-          <ListingThumbImage
-            src={current}
-            alt={`${address} — photo ${safeActive + 1} of ${count}`}
-            className="absolute inset-0 block w-full h-full"
-            imgClassName={listingPhotoObfuscationImgClass(
-              obfuscateActive,
-              "absolute inset-0 w-full h-full object-cover",
-            )}
-          />
-          {obfuscateActive ? <ListingPhotoObfuscationOverlay /> : null}
-          {canCycle ? (
-            <ListingPhotoCycleControls
-              onPrev={() => setActive((safeActive - 1 + count) % count)}
-              onNext={() => setActive((safeActive + 1) % count)}
-            />
-          ) : null}
-        </div>
+    <div>
+      <div className="relative overflow-hidden bg-navy-dark aspect-[16/10] max-lg:rounded-none max-lg:border-x-0 max-lg:border-b border-white/10 lg:rounded-2xl lg:border">
+        <ListingThumbImage
+          src={current}
+          alt={`${address} — photo ${safeActive + 1} of ${count}`}
+          className="absolute inset-0 block w-full h-full"
+          imgClassName={listingPhotoObfuscationImgClass(
+            obfuscateActive,
+            "absolute inset-0 w-full h-full object-cover",
+          )}
+        />
+        {obfuscateActive ? <ListingPhotoObfuscationOverlay /> : null}
         {canCycle ? (
-          <p className="mt-1.5 text-right font-mono text-[10px] tracking-[0.15em] uppercase text-white/55 max-lg:px-3">
+          <ListingPhotoCycleControls
+            onPrev={() => setActive((safeActive - 1 + count) % count)}
+            onNext={() => setActive((safeActive + 1) % count)}
+          />
+        ) : null}
+        {canCycle ? (
+          <p className="pointer-events-none absolute bottom-2 left-2 z-10 rounded bg-black/55 px-2 py-0.5 font-mono text-[10px] tracking-[0.15em] uppercase text-white/90">
             {safeActive + 1} / {count}
           </p>
         ) : null}
       </div>
       {canCycle && (
-        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-lg:px-3">
+        <div className="grid grid-cols-6 sm:grid-cols-8 gap-0">
           {photos.map((p, i) => {
             const obfuscateThumb = shouldObfuscate(i);
             return (
@@ -98,12 +96,13 @@ export default function PhotoGallery({
                 key={`${p}-${i}`}
                 type="button"
                 onClick={() => setActive(i)}
-                className={`relative aspect-square rounded-md overflow-hidden border transition-all ${
+                className={`relative aspect-square overflow-hidden transition-shadow ${
                   i === safeActive
-                    ? "border-gold ring-2 ring-gold/40"
-                    : "border-white/10 hover:border-white/30"
+                    ? "z-10 ring-2 ring-inset ring-gold"
+                    : "hover:z-10 hover:ring-2 hover:ring-inset hover:ring-white/35"
                 }`}
                 aria-label={`Photo ${i + 1}`}
+                aria-current={i === safeActive ? "true" : undefined}
               >
                 <ListingThumbImage
                   src={p}

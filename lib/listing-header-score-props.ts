@@ -26,6 +26,8 @@ export type ListingScoreApiFields = {
   cityMedianPpsf?: number | null;
   pricePerSqft?: number | null;
   medianPpsfBand?: MedianPpsfBand | null;
+  /** Admin Market Bands category + fine step, e.g. "Mid-market · $1.75M–$2.249M". */
+  marketBandLabel?: string | null;
   edgeScore?: number | null;
   edgeScoreBreakdown?: Record<string, unknown> | null;
 };

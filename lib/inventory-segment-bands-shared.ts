@@ -302,6 +302,74 @@ export function classifySegmentStepPrice(
   return classifySalePrice(price, steps);
 }
 
+function priceInSegment(
+  price: number,
+  segment: InventorySegmentDef,
+): boolean {
+  if (price < segment.min) return false;
+  if (segment.max != null && price > segment.max) return false;
+  return true;
+}
+
+export type InventoryMarketBandMatch = {
+  segmentId: InventorySegmentId;
+  segmentLabel: string;
+  stepId: string | null;
+  stepLabel: string | null;
+};
+
+/**
+ * Which Admin Market Band a sale price falls in.
+ * Prefers Value → Mid-market → Luxury over Discount so the stub discount
+ * range (overlapping Value by default) does not steal ordinary homes.
+ */
+export function classifyInventoryMarketBand(
+  price: number | null | undefined,
+  config: InventorySegmentBandsConfig = DEFAULT_INVENTORY_SEGMENT_BANDS,
+): InventoryMarketBandMatch | null {
+  if (price == null || !Number.isFinite(price) || price <= 0) return null;
+
+  const primary: InventorySegmentId[] = ["value", "mid", "luxury"];
+  let segment: InventorySegmentDef | null = null;
+  for (const id of primary) {
+    const candidate = getInventorySegment(config, id);
+    if (priceInSegment(price, candidate)) {
+      segment = candidate;
+      break;
+    }
+  }
+  if (!segment) {
+    const discount = getInventorySegment(config, "discount");
+    if (priceInSegment(price, discount)) segment = discount;
+  }
+  if (!segment) return null;
+
+  const steps = visiblePriceBuckets(segment.steps);
+  const stepId = classifySegmentStepPrice(price, steps);
+  const step =
+    stepId !== "unknown" ? steps.find((s) => s.id === stepId) ?? null : null;
+  const stepLabel = step?.label?.trim() || null;
+  // Stub Admin placeholder — show the category only until steps are configured.
+  const usableStep =
+    stepLabel && !/configure/i.test(stepLabel) ? stepLabel : null;
+
+  return {
+    segmentId: segment.id,
+    segmentLabel: segment.label,
+    stepId: usableStep ? stepId : null,
+    stepLabel: usableStep,
+  };
+}
+
+/** Display string for Details — e.g. "Mid-market · $1.75M–$2.249M". */
+export function formatInventoryMarketBandLabel(
+  match: InventoryMarketBandMatch | null,
+): string | null {
+  if (!match) return null;
+  if (match.stepLabel) return `${match.segmentLabel} · ${match.stepLabel}`;
+  return match.segmentLabel;
+}
+
 export function emptySegmentStepCounts(
   steps: readonly PriceBucketDef[],
 ): Record<string, number> {

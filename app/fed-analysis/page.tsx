@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import FedAnalysisCalendar from "@/components/fed-analysis/FedAnalysisCalendar";
-import FedRecentDecisions from "@/components/fed-analysis/FedRecentDecisions";
+import FedDecisionTimeline from "@/components/fed-analysis/FedDecisionTimeline";
+import FedStatementSummary from "@/components/fed-analysis/FedStatementSummary";
 import {
   decisionLabel,
-  FOMC_MEETINGS,
   formatFedFundsRange,
   formatFomcMeetingSpan,
   getNextFomcMeeting,
   getPrevailingFedPolicy,
 } from "@/lib/fed-fomc-calendar";
+import { getFomcMeetingsFresh } from "@/lib/fed-fomc-sync";
+
+const FOMC_CALENDAR_URL =
+  "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
 
 export const metadata: Metadata = {
   title: "Fed Analysis — TMRE",
@@ -18,10 +21,13 @@ export const metadata: Metadata = {
   alternates: { canonical: "/fed-analysis" },
 };
 
-export default function FedAnalysisPage() {
+export const dynamic = "force-dynamic";
+
+export default async function FedAnalysisPage() {
   const now = new Date();
-  const prevailing = getPrevailingFedPolicy(now);
-  const nextMeeting = getNextFomcMeeting(now);
+  const meetings = await getFomcMeetingsFresh();
+  const prevailing = getPrevailingFedPolicy(now, meetings);
+  const nextMeeting = getNextFomcMeeting(now, meetings);
 
   return (
     <>
@@ -35,16 +41,15 @@ export default function FedAnalysisPage() {
             Fed <span className="italic gold-shimmer">Analysis.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/70 lg:text-base animate-fade-up-delay-1">
-            FOMC decision calendar and the prevailing federal funds target range
-            — the policy rate that feeds into mortgage pricing for Fairfield
-            County buyers and sellers.
+            FOMC decisions and the prevailing federal funds target range — the
+            policy rate that feeds into mortgage pricing for Fairfield County
+            buyers and sellers.
           </p>
         </div>
       </section>
 
       <section className="bg-cream py-10 lg:py-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          {/* Prevailing decision */}
           <div className="mb-8 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
             <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
@@ -103,7 +108,7 @@ export default function FedAnalysisPage() {
                 <p className="mt-3 text-sm text-slate">
                   Calendar needs the next year&rsquo;s dates — check{" "}
                   <a
-                    href="https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+                    href={FOMC_CALENDAR_URL}
                     target="_blank"
                     rel="noreferrer"
                     className="text-navy underline underline-offset-2"
@@ -116,43 +121,34 @@ export default function FedAnalysisPage() {
             </div>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
-            <div>
-              <p className="mb-3 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                Decision calendar
-              </p>
-              <FedAnalysisCalendar
-                meetings={FOMC_MEETINGS}
-                initialYear={now.getFullYear()}
-                initialMonth={now.getMonth()}
-              />
-            </div>
-
-            <div>
-              <FedRecentDecisions meetings={FOMC_MEETINGS} />
-              <p className="mt-4 text-xs leading-relaxed text-slate">
-                Source schedule:{" "}
-                <a
-                  href="https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-navy underline underline-offset-2"
-                >
-                  Federal Reserve FOMC calendars
-                </a>
-                . Dates stay tentative until confirmed at the prior meeting.
-                Mortgage rates also move with term premiums and credit spreads —
-                see{" "}
-                <Link
-                  href="/market-pulse"
-                  className="text-navy underline underline-offset-2"
-                >
-                  Market Pulse
-                </Link>{" "}
-                for local inventory context.
-              </p>
-            </div>
+          <div className="mb-8">
+            <FedStatementSummary meeting={prevailing?.meeting ?? null} />
           </div>
+
+          <FedDecisionTimeline meetings={meetings} now={now} />
+
+          <p className="mt-6 text-xs leading-relaxed text-slate">
+            Full schedule:{" "}
+            <a
+              href={FOMC_CALENDAR_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-navy underline underline-offset-2"
+            >
+              Federal Reserve FOMC calendars
+            </a>
+            . Dates stay tentative until confirmed at the prior meeting.
+            Statement summaries are taken from the official release (stored via
+            Admin Fed sync), not AI-written. Mortgage rates also move with term
+            premiums and credit spreads — see{" "}
+            <Link
+              href="/market-pulse"
+              className="text-navy underline underline-offset-2"
+            >
+              Market Pulse
+            </Link>{" "}
+            for local inventory context.
+          </p>
         </div>
       </section>
     </>

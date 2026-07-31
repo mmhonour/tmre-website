@@ -1,39 +1,45 @@
 ---
-description: Always ask the user before committing and pushing to GitHub/Netlify
+description: Never commit or push without an explicit instruction, and never ask about it
 alwaysApply: true
 ---
 
-# Git Commit & Push Approval Required
+# Git Commit & Push — Explicit Instruction Only
 
-Before running any `git commit` or `git push` (or any command that commits/pushes, including via subagents), you MUST stop and ask the user first.
+Commit and push only when the user's own message says to. Never ask whether to
+commit, push, or queue more changes: the queue decides what happens next.
 
 ## Required behaviour
 
 1. Complete all code changes requested.
 2. Summarise what files changed and why (one sentence per file is enough).
-3. Ask the user: **"Ready to commit and push — or do you have more changes to queue first?"**
-4. **End your turn immediately after asking** — do NOT block or wait for a response.
-   The user will answer when ready. If they have queued requests, process those first.
-5. Only proceed with commit + push after the user explicitly says yes.
+3. End the turn there. No commit, no push, no question about either.
 
-## Non-blocking ask
+## Do not ask
 
-After posing the commit/push question, **always end your turn**.
-- Do not use `AwaitShell` or any polling while waiting for approval.
-- If the user's next message is a new request (not a yes/no), handle that request first, then re-surface the pending commit question at the end if still relevant.
+Do NOT ask "ready to commit and push?", "anything else first?", or any variant,
+in prose or via `AskQuestion`. Questions like these interrupt the queue.
 
-## What to ask
-
-Use `AskQuestion` with at least these two options:
-- "Commit and push now"
-- "I have more changes first"
+`AskQuestion` is still right for decisions that change the work itself — which
+approach to take, which data source to use, how to resolve an ambiguity. It is
+never right for asking permission to commit or for asking whether more changes
+are coming.
 
 ## Never auto-commit
 
-Do NOT commit or push automatically, even when:
+Do NOT commit or push on your own initiative, even when:
 - The user says "fix X" and you finish the fix
 - A previous message implied pushing was expected
 - The task feels complete
 - A subagent is being used for git operations
 
-The only exception is when the user's message itself is an explicit instruction to commit/push (e.g. "commit and push", "push to Netlify").
+The only trigger is an explicit instruction in the user's message, e.g. "commit
+and push", "push local changes", "push to Netlify". When that arrives, run the
+typecheck rule first, then commit and push everything outstanding.
+
+## Push stuck after typecheck
+
+After `npx tsc --noEmit` succeeds, if `git push` (or the commit+push sequence)
+takes more than **30 seconds** or is clearly hanging / blocked on approvals /
+auth / sandbox, **stop retrying**. Hand the exact command(s) to the user so
+they can run them locally. Do not keep waiting, polling, or re-requesting
+permissions for the same push.

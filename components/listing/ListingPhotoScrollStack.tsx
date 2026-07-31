@@ -177,15 +177,16 @@ export default function ListingPhotoScrollStack({
           />
         );
 
+        // Prefer a real /photos link (same thumbnail gallery as Details → Photos)
+        // over in-page carousel mode, which leaves an empty region below.
+        const href = photoHref?.(index);
         const activate =
           onPhotoActivate != null
             ? () => onPhotoActivate(index)
-            : photosMode
+            : !href && photosMode
               ? () => photosMode.enter(index)
               : null;
 
-        // Overview photos-mode (context or prop) wins over gallery links so a
-        // photo click reveals the Photos tab instead of leaving the page.
         if (activate) {
           return (
             <button
@@ -203,7 +204,6 @@ export default function ListingPhotoScrollStack({
           );
         }
 
-        const href = photoHref?.(index);
         if (href) {
           return (
             <Link

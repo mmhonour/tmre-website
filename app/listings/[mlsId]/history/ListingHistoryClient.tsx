@@ -65,6 +65,7 @@ export default function ListingHistoryClient({
     cityMedianPpsf,
     pricePerSqft,
     medianPpsfBand,
+    marketBandLabel,
     state,
   } =
     useListingChrome<Listing>(mlsId);
@@ -140,6 +141,7 @@ export default function ListingHistoryClient({
       cityMedianPpsf,
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
+      marketBandLabel,
     },
   );
 

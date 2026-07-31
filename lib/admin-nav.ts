@@ -23,8 +23,10 @@ export type AdminDataControlsPanelId =
   | "rets"
   | "intel-inventory"
   | "intel-deal-board"
-  | "ct-coverage"
-  | "page-styles";
+  | "ct-coverage";
+
+/** Sub-panels under Admin → Web server. */
+export type AdminServerPanelId = "api-routes" | "page-styles";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -49,7 +51,8 @@ export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
 export type AdminCommunicationsPanelId =
   | "market-digest"
   | "social-profiles"
-  | "listing-alerts";
+  | "listing-alerts"
+  | "fed-sync";
 
 export type AdminSectionLink = {
   id: string;
@@ -62,7 +65,8 @@ export type AdminSectionLink = {
     | AdminDatabasePanelId
     | AdminPostgresPanelId
     | AdminArchitecturePanelId
-    | AdminCommunicationsPanelId;
+    | AdminCommunicationsPanelId
+    | AdminServerPanelId;
 };
 
 /** Former top-level tabs now nested under Data Controls. */
@@ -156,6 +160,18 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     label: "CT coverage",
     subtitle:
       "Activate CT counties / towns for future site-wide coverage (not wired to pages yet)",
+  },
+];
+
+export const ADMIN_SERVER_PANELS: {
+  id: AdminServerPanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "api-routes",
+    label: "API routes",
+    subtitle: "Next.js route handlers under app/api/",
   },
   {
     id: "page-styles",
@@ -293,6 +309,12 @@ export const ADMIN_COMMUNICATIONS_PANELS: {
     subtitle:
       "End-user alerts from Latest — email, search criteria, cadence, and delivery status",
   },
+  {
+    id: "fed-sync",
+    label: "Fed sync",
+    subtitle:
+      "Scrape official FOMC statements into Postgres for /fed-analysis (Fed text, not AI)",
+  },
 ];
 
 export type AdminDocLink = {
@@ -368,7 +390,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "server",
     label: "Web server",
-    subtitle: "API routes and request handlers",
+    subtitle: "API routes and Market Pulse page styles",
   },
   {
     id: "glossary",
@@ -535,6 +557,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "listing-alerts",
   },
   {
+    id: "admin-fed-sync",
+    label: "Fed sync",
+    tab: "communications",
+    panel: "fed-sync",
+  },
+  {
     id: "admin-spotlight",
     label: "Spotlight properties",
     tab: "data-controls",
@@ -616,7 +644,18 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     tab: "syncs",
     panel: "overview",
   },
-  { id: "admin-api-routes", label: "API routes", tab: "server" },
+  {
+    id: "admin-api-routes",
+    label: "API routes",
+    tab: "server",
+    panel: "api-routes",
+  },
+  {
+    id: "admin-page-styles",
+    label: "Page styles",
+    tab: "server",
+    panel: "page-styles",
+  },
   {
     id: "admin-product-pages",
     label: "Product pages",
@@ -903,6 +942,13 @@ export function adminCommunicationsPanelForSection(
   return isAdminCommunicationsPanelId(panel) ? panel : null;
 }
 
+export function adminServerPanelForSection(
+  sectionId: string,
+): AdminServerPanelId | null {
+  const panel = ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel;
+  return isAdminServerPanelId(panel) ? panel : null;
+}
+
 export function isAdminDataControlsPanelId(
   value: string | null | undefined,
 ): value is AdminDataControlsPanelId {
@@ -916,9 +962,14 @@ export function isAdminDataControlsPanelId(
     value === "rets" ||
     value === "intel-inventory" ||
     value === "intel-deal-board" ||
-    value === "ct-coverage" ||
-    value === "page-styles"
+    value === "ct-coverage"
   );
+}
+
+export function isAdminServerPanelId(
+  value: string | null | undefined,
+): value is AdminServerPanelId {
+  return value === "api-routes" || value === "page-styles";
 }
 
 export function isAdminSyncsPanelId(
@@ -968,7 +1019,8 @@ export function isAdminCommunicationsPanelId(
   return (
     value === "market-digest" ||
     value === "social-profiles" ||
-    value === "listing-alerts"
+    value === "listing-alerts" ||
+    value === "fed-sync"
   );
 }
 
@@ -982,11 +1034,16 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
       (tab === "db" && isAdminDatabasePanelId(link.panel)) ||
       (tab === "postgres" && isAdminPostgresPanelId(link.panel)) ||
       (tab === "architecture" && isAdminArchitecturePanelId(link.panel)) ||
-      (tab === "communications" && isAdminCommunicationsPanelId(link.panel)))
+      (tab === "communications" && isAdminCommunicationsPanelId(link.panel)) ||
+      (tab === "server" && isAdminServerPanelId(link.panel)))
   ) {
     params.set("panel", link.panel);
   }
   return `/admin?${params.toString()}#${sectionId}`;
+}
+
+export function adminServerHref(panel: AdminServerPanelId): string {
+  return `/admin?tab=server&panel=${panel}`;
 }
 
 export function adminDataControlsHref(panel: AdminDataControlsPanelId): string {

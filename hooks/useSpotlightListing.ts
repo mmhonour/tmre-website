@@ -40,6 +40,7 @@ type SpotlightFetchPayload = {
   cityMedianPpsf?: number | null;
   pricePerSqft?: number | null;
   medianPpsfBand?: ListingScoreApiFields["medianPpsfBand"];
+  marketBandLabel?: string | null;
 };
 
 const spotlightFetchCache = new Map<string, SpotlightFetchPayload>();
@@ -71,6 +72,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   const [pricePerSqft, setPricePerSqft] = useState<number | null>(null);
   const [medianPpsfBand, setMedianPpsfBand] =
     useState<ListingScoreApiFields["medianPpsfBand"]>(null);
+  const [marketBandLabel, setMarketBandLabel] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("ready");
   const [photosState, setPhotosState] = useState<
@@ -91,6 +93,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setCityMedianPpsf(null);
       setPricePerSqft(null);
       setMedianPpsfBand(null);
+      setMarketBandLabel(null);
       setPhotos([]);
       lastPropertyTabRef.current = propertyTab;
     } else if (cached?.listing) {
@@ -101,6 +104,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setCityMedianPpsf(cached.cityMedianPpsf ?? null);
       setPricePerSqft(cached.pricePerSqft ?? null);
       setMedianPpsfBand(cached.medianPpsfBand ?? null);
+      setMarketBandLabel(cached.marketBandLabel ?? null);
       if (includePhotos && cached.photos) {
         setPhotos(cached.photos);
         setPhotosState("ready");
@@ -129,6 +133,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setCityMedianPpsf(peeked.cityMedianPpsf ?? null);
       setPricePerSqft(peeked.pricePerSqft ?? null);
       setMedianPpsfBand(peeked.medianPpsfBand ?? null);
+      setMarketBandLabel(peeked.marketBandLabel ?? null);
       if (includePhotos && peeked.photos) {
         setPhotos(peeked.photos);
         setPhotosState("ready");
@@ -150,6 +155,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
         setCityMedianPpsf(d.cityMedianPpsf ?? null);
         setPricePerSqft(d.pricePerSqft ?? null);
         setMedianPpsfBand(d.medianPpsfBand ?? null);
+        setMarketBandLabel(d.marketBandLabel ?? null);
         if (includePhotos) {
           setPhotos(d.photos ?? []);
           setPhotosState("ready");
@@ -196,6 +202,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     cityMedianPpsf,
     pricePerSqft,
     medianPpsfBand,
+    marketBandLabel,
     photos,
     photosState,
     privacy,

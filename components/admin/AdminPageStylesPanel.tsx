@@ -129,6 +129,43 @@ export default function AdminPageStylesPanel() {
       <div className="space-y-8 px-5 py-6 sm:px-6">
         <section>
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
+            Preview
+          </p>
+          <div
+            style={cssVars}
+            className="mt-3 rounded-xl bg-[var(--mp-page-bg)] p-4"
+          >
+            <div className="rounded-lg bg-[var(--mp-surface)] px-4 py-3">
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase text-[var(--mp-accent)]">
+                TMRE Market Pulse
+              </p>
+              <p className="mt-1 [font-family:var(--mp-heading-font)] text-xl text-white">
+                A clearer read on the market
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 rounded-b-lg bg-[var(--mp-card-bg)] p-4">
+              <div>
+                <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase text-[var(--mp-muted-text)]">
+                  Inventory
+                </p>
+                <div className="mt-2 h-2 rounded bg-charcoal/10">
+                  <div className="h-2 w-3/4 rounded bg-[var(--mp-inventory-bar)]" />
+                </div>
+              </div>
+              <div>
+                <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase text-[var(--mp-muted-text)]">
+                  Months supply
+                </p>
+                <div className="mt-2 h-2 rounded bg-charcoal/10">
+                  <div className="h-2 w-1/2 rounded bg-[var(--mp-months-supply-bar)]" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
             Presets
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -202,43 +239,6 @@ export default function AdminPageStylesPanel() {
                 </select>
               </label>
             ))}
-          </div>
-        </section>
-
-        <section>
-          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-            Preview
-          </p>
-          <div
-            style={cssVars}
-            className="mt-3 rounded-xl bg-[var(--mp-page-bg)] p-4"
-          >
-            <div className="rounded-lg bg-[var(--mp-surface)] px-4 py-3">
-              <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase text-[var(--mp-accent)]">
-                TMRE Market Pulse
-              </p>
-              <p className="mt-1 [font-family:var(--mp-heading-font)] text-xl text-white">
-                A clearer read on the market
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3 rounded-b-lg bg-[var(--mp-card-bg)] p-4">
-              <div>
-                <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase text-[var(--mp-muted-text)]">
-                  Inventory
-                </p>
-                <div className="mt-2 h-2 rounded bg-charcoal/10">
-                  <div className="h-2 w-3/4 rounded bg-[var(--mp-inventory-bar)]" />
-                </div>
-              </div>
-              <div>
-                <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase text-[var(--mp-muted-text)]">
-                  Months supply
-                </p>
-                <div className="mt-2 h-2 rounded bg-charcoal/10">
-                  <div className="h-2 w-1/2 rounded bg-[var(--mp-months-supply-bar)]" />
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 

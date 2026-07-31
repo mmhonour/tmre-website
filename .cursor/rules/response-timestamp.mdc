@@ -1,11 +1,11 @@
 ---
-description: Stamp local start time before work and end time when the reply finishes
+description: Stamp local start/end times and AI model on every reply
 alwaysApply: true
 ---
 
-# Response timestamps (start + end)
+# Response timestamps (start + end) and model
 
-Use the same short stamp format for both:
+Use the same short stamp format for times:
 
 `ddmmm hh:nn`
 
@@ -15,12 +15,30 @@ Rules for the stamp itself:
 - Use the current local time from the latest user/system timestamp when available; otherwise the best known clock for the session.
 - Month is a 3-letter English abbreviation with no period (Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec).
 - Day is zero-padded to 2 digits; hour and minute are 24-hour `hh:nn`, zero-padded.
-- No seconds, no timezone suffix, no extra label (just the stamp).
+- No seconds, no timezone suffix.
+
+## Model name
+
+Use the product name for this session’s model (e.g. `Cursor Grok 4.5`). Do not invent a different model. If the session identity is unclear, omit the model rather than guessing.
 
 ## Start (before work)
 
-When you begin handling a user request — before tool calls or substantive work — put the start stamp on its own first line of the reply (or as the first line of the first message in that turn). Do this on every new user request going forward, including short answers.
+When you begin handling a user request — before tool calls or substantive work — put the start stamp on its own first line:
+
+`30Jul 20:14`
+
+Do this on every new user request going forward, including short answers. Remember that start stamp for the end line.
 
 ## End (when finished)
 
-When you finish a user request (final reply for that turn), end with the end stamp on its own last line. Do this on every completed reply going forward, including short answers.
+When you finish a user request (final reply for that turn), end with **one** last line that includes:
+
+1. the end stamp
+2. the start stamp (so it is still visible without scrolling up)
+3. the model name
+
+Format (single line):
+
+`30Jul 20:18 · started 30Jul 20:14 · Cursor Grok 4.5`
+
+Do this on every completed reply going forward, including short answers and queue-item completions. Never drop the start time from the end line.

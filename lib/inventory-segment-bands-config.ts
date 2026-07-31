@@ -3,8 +3,10 @@ import "server-only";
 import { getSyncMeta as getSyncMetaFresh } from "@/lib/db/sync-meta";
 import { getSyncMeta, setSyncMetaDurable } from "@/lib/db/sync-meta-store";
 import {
+  classifyInventoryMarketBand,
   cloneInventorySegmentBandsConfig,
   DEFAULT_INVENTORY_SEGMENT_BANDS,
+  formatInventoryMarketBandLabel,
   isDefaultInventorySegmentBandsConfig,
   luxuryFloorFromConfig,
   luxuryStepsFromConfig,
@@ -13,6 +15,8 @@ import {
   type InventorySegmentId,
   type InventorySegmentDef,
 } from "@/lib/inventory-segment-bands-shared";
+import { closeFieldsFromListing, formatMlsStatus } from "@/lib/listing-history";
+import { isRentalListing } from "@/lib/listing-kind";
 import type { PriceBucketDef } from "@/lib/price-buckets-shared";
 
 export const INVENTORY_SEGMENT_BANDS_SYNC_KEY = "intel_inventory_segment_bands";
@@ -70,4 +74,32 @@ export async function setInventorySegmentBandsConfig(
     JSON.stringify(normalized.config),
   );
   return normalized.config;
+}
+
+/**
+ * Admin Market Band label for a listing (sale homes only).
+ * Closed → closed price; otherwise list price. Rentals return null.
+ */
+export async function resolveMarketBandLabelForListing(listing: {
+  status: string;
+  price: number | null;
+  propertyType?: string | null;
+  statusChangeTimestamp?: string | null;
+  raw?: Record<string, string> | null;
+}): Promise<string | null> {
+  if (
+    isRentalListing({
+      propertyType: listing.propertyType ?? "",
+      raw: listing.raw ?? undefined,
+    })
+  ) {
+    return null;
+  }
+  const isClosed = formatMlsStatus(listing.status) === "Closed";
+  const { closePrice } = closeFieldsFromListing(listing);
+  const price = isClosed ? (closePrice ?? listing.price) : listing.price;
+  const config = await getInventorySegmentBandsConfigFresh();
+  return formatInventoryMarketBandLabel(
+    classifyInventoryMarketBand(price, config),
+  );
 }

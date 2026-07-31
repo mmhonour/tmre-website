@@ -47,6 +47,9 @@ export function useListingChrome<TListing>(mlsId: string) {
   const [medianPpsfBand, setMedianPpsfBand] = useState<
     ListingScoreApiFields["medianPpsfBand"]
   >(() => initial?.medianPpsfBand ?? null);
+  const [marketBandLabel, setMarketBandLabel] = useState<string | null>(
+    () => initial?.marketBandLabel ?? null,
+  );
   const [state, setState] = useState<LoadState>(() =>
     initial?.listing ? "ready" : "loading",
   );
@@ -65,6 +68,7 @@ export function useListingChrome<TListing>(mlsId: string) {
       setCityMedianPpsf(cached.cityMedianPpsf ?? null);
       setPricePerSqft(cached.pricePerSqft ?? null);
       setMedianPpsfBand(cached.medianPpsfBand ?? null);
+      setMarketBandLabel(cached.marketBandLabel ?? null);
       setState("ready");
     } else {
       setListing(null);
@@ -75,6 +79,7 @@ export function useListingChrome<TListing>(mlsId: string) {
       setCityMedianPpsf(null);
       setPricePerSqft(null);
       setMedianPpsfBand(null);
+      setMarketBandLabel(null);
       setState("loading");
     }
 
@@ -95,6 +100,7 @@ export function useListingChrome<TListing>(mlsId: string) {
         setCityMedianPpsf(d.cityMedianPpsf ?? null);
         setPricePerSqft(d.pricePerSqft ?? null);
         setMedianPpsfBand(d.medianPpsfBand ?? null);
+        setMarketBandLabel(d.marketBandLabel ?? null);
         setState("ready");
       })
       .catch(() => {
@@ -115,6 +121,7 @@ export function useListingChrome<TListing>(mlsId: string) {
     cityMedianPpsf,
     pricePerSqft,
     medianPpsfBand,
+    marketBandLabel,
     state,
   };
 }

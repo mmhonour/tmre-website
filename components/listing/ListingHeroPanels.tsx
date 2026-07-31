@@ -702,7 +702,9 @@ export default function ListingHeroPanels({
         panelTab={useSlidePanel ? panelTab : null}
         onPanelOpen={useSlidePanel ? openPanel : null}
         onPanelClose={useSlidePanel ? closePanel : null}
-        onPhotosSelect={useSlidePanel ? enterPhotosMode : null}
+        // Navigate to /photos (thumbnail gallery) like Details → Photos —
+        // do not enter in-page carousel mode, which leaves an empty region below.
+        onPhotosSelect={null}
         forceShowPhotos={photosTabVisible}
         mapVisible={mapVisible}
         onMapToggle={toggleMap}

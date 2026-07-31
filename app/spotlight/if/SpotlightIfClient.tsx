@@ -20,6 +20,7 @@ export default function SpotlightIfClient() {
     cityMedianPpsf,
     pricePerSqft,
     medianPpsfBand,
+    marketBandLabel,
     propertyTab,
     presentation,
   } = useSpotlightListing();
@@ -45,6 +46,7 @@ export default function SpotlightIfClient() {
       cityMedianPpsf,
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
+      marketBandLabel,
     },
   );
 

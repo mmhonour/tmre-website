@@ -28,6 +28,7 @@ export default function SpotlightComparablesClient({
     cityMedianPpsf,
     pricePerSqft,
     medianPpsfBand,
+    marketBandLabel,
     propertyTab,
     presentation,
   } = useSpotlightListing();
@@ -53,6 +54,7 @@ export default function SpotlightComparablesClient({
       cityMedianPpsf,
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
+      marketBandLabel,
     },
   );
 

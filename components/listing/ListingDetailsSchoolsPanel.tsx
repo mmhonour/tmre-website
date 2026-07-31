@@ -34,6 +34,9 @@ export type ListingDetailsSchoolsPanelProps = {
   originalListPrice: number | null;
   reductionPct: number | null;
   dom: number | null;
+  sqft: number | null;
+  /** Admin Market Bands category (+ fine step), sale homes only. */
+  marketBandLabel: string | null;
   ppsf: number | null;
   lotAcres: number | null;
   /** Town assessment from synced Postgres `AssessedValue` (not live RETS). */
@@ -129,6 +132,8 @@ export default function ListingDetailsSchoolsPanel({
   originalListPrice,
   reductionPct,
   dom,
+  sqft,
+  marketBandLabel,
   ppsf,
   lotAcres,
   assessedMarketValue,
@@ -326,7 +331,10 @@ export default function ListingDetailsSchoolsPanel({
   const showMedianPpsf =
     cityMedianPpsf != null && cityMedianPpsf > 0;
   const showAnalysis = Boolean(
-    activeAnalysis || (saleAnalysis && rentalPrice) || showMedianPpsf,
+    activeAnalysis ||
+      (saleAnalysis && rentalPrice) ||
+      showMedianPpsf ||
+      marketBandLabel,
   );
   const comparePpsf =
     listingPricePerSqft ??
@@ -398,6 +406,8 @@ export default function ListingDetailsSchoolsPanel({
     originalListPrice,
     reductionPct,
     dom,
+    sqft,
+    marketBandLabel,
     ppsf,
     lotAcres,
     furnishedLabel,
@@ -464,8 +474,11 @@ export default function ListingDetailsSchoolsPanel({
               )}
             </>
           )}
-          {!isClosed && dom != null ? (
+          {dom != null ? (
             <Stat label="Days on market" value={`${dom}d`} />
+          ) : null}
+          {sqft != null && sqft > 0 ? (
+            <Stat label="Sq Ft" value={sqft.toLocaleString()} />
           ) : null}
           {!isRental && (
             <Stat
@@ -548,6 +561,10 @@ export default function ListingDetailsSchoolsPanel({
               </div>
             ) : null}
           </div>
+
+          {marketBandLabel ? (
+            <Stat label="Price band" value={marketBandLabel} />
+          ) : null}
 
           {showMedianPpsf && medianFmt ? (
             <div className="space-y-1">
