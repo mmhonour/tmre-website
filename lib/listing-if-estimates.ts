@@ -47,13 +47,46 @@ export const IF_LOCATION_WEIGHT_TIER_2 = 1.6
 export const IF_LOCATION_WEIGHT_TIER_3 = 1.2
 export const IF_LOCATION_WEIGHT_FAR = 0.85
 
+/** Midpoint $/sqft (or price) aggregations — all three are cached on each scenario. */
+export const IF_MIDPOINT_METHODS = [
+  'median',
+  'average',
+  'weightedAverage',
+] as const
+export type IfMidpointMethod = (typeof IF_MIDPOINT_METHODS)[number]
+
+/** Default What if midpoint — median; average / weighted avg stay available in cache. */
+export const IF_DEFAULT_MIDPOINT_METHOD: IfMidpointMethod = 'median'
+
+export const IF_MIDPOINT_METHOD_LABELS: Record<IfMidpointMethod, string> = {
+  median: 'Median',
+  average: 'Average',
+  weightedAverage: 'Weighted avg',
+}
+
+export type IfMidpointVariant = {
+  amount: number | null
+  blendedPpsf: number | null
+}
+
+export type IfMidpointAggregates = Record<IfMidpointMethod, IfMidpointVariant>
+
+export function emptyMidpointAggregates(): IfMidpointAggregates {
+  const blank: IfMidpointVariant = { amount: null, blendedPpsf: null }
+  return {
+    median: { ...blank },
+    average: { ...blank },
+    weightedAverage: { ...blank },
+  }
+}
+
 /**
  * Plain-language explanation of the per-comp `wt` shown on What if.
  * Formula: wt = vintageWeight × locationPremiumWeight.
  */
 export function ifCompWeightExplainLines(): string[] {
   return [
-    'wt is the weight each comparable gets in the weighted median $/sqft (and price) that feeds the What if estimate. Higher wt pulls the midpoint more toward that property.',
+    'wt is the weight each comparable gets when you pick Weighted avg for the What if midpoint. Higher wt pulls that average more toward that property. Median and Average ignore wt.',
     'wt = vintage factor × location-tier factor.',
     `Vintage factor: same era ×${IF_VINTAGE_WEIGHT_SAME}, neighboring era ×${IF_VINTAGE_WEIGHT_ADJACENT}, farther eras ×${IF_VINTAGE_WEIGHT_FAR}. If this home’s vintage is unknown, every comp uses ×1.`,
     `Location-tier factor: compare this home’s location-premium multiplier to the comp’s. Difference ≤${IF_LOCATION_PREMIUM_TIER_1} → ×${IF_LOCATION_WEIGHT_TIER_1}; ≤${IF_LOCATION_PREMIUM_TIER_2} → ×${IF_LOCATION_WEIGHT_TIER_2}; ≤${IF_LOCATION_PREMIUM_TIER_3} → ×${IF_LOCATION_WEIGHT_TIER_3}; otherwise ×${IF_LOCATION_WEIGHT_FAR}. If this home has no location premium, every comp uses ×1.`,
@@ -75,22 +108,37 @@ function median(nums: number[]): number | null {
     : sorted[mid]!
 }
 
-function weightedMedian(
+function weightedAverage(
   entries: readonly { value: number; weight: number }[],
 ): number | null {
   const valid = entries.filter((e) => e.weight > 0 && Number.isFinite(e.value))
   if (valid.length === 0) return null
-
-  const sorted = [...valid].sort((a, b) => a.value - b.value)
-  const totalWeight = sorted.reduce((sum, e) => sum + e.weight, 0)
+  const totalWeight = valid.reduce((sum, e) => sum + e.weight, 0)
   if (totalWeight <= 0) return null
+  return valid.reduce((sum, e) => sum + e.value * e.weight, 0) / totalWeight
+}
 
-  let cumulative = 0
-  for (const entry of sorted) {
-    cumulative += entry.weight
-    if (cumulative >= totalWeight / 2) return entry.value
+function averageOf(
+  entries: readonly { value: number; weight: number }[],
+): number | null {
+  const valid = entries.filter((e) => Number.isFinite(e.value))
+  if (valid.length === 0) return null
+  return valid.reduce((sum, e) => sum + e.value, 0) / valid.length
+}
+
+function aggregateEntries(
+  entries: readonly { value: number; weight: number }[],
+  method: IfMidpointMethod,
+): number | null {
+  if (method === 'median') {
+    return median(
+      entries
+        .filter((e) => Number.isFinite(e.value))
+        .map((e) => e.value),
+    )
   }
-  return sorted[sorted.length - 1]!.value
+  if (method === 'average') return averageOf(entries)
+  return weightedAverage(entries)
 }
 
 function weightedPercentile(
@@ -217,12 +265,12 @@ function activeCompPrice(comp: ComparableListing): number | null {
   return null
 }
 
-function weightedPpsfMedian(
+function ppsfEntries(
   comps: ComparableListing[],
   subjectVintage: VintageBucketId | null | undefined,
   subjectPremium: LocationPremiumFactors | null | undefined,
-): number | null {
-  const entries = comps
+): { value: number; weight: number }[] {
+  return comps
     .map((comp) => {
       const ppsf = adjustedCompPpsf(comp, subjectPremium)
       if (ppsf == null) return null
@@ -232,7 +280,24 @@ function weightedPpsfMedian(
       }
     })
     .filter((entry): entry is { value: number; weight: number } => entry != null)
-  return weightedMedian(entries)
+}
+
+function priceEntries(
+  comps: ComparableListing[],
+  useClosePrice: boolean,
+  subjectVintage: VintageBucketId | null | undefined,
+  subjectPremium: LocationPremiumFactors | null | undefined,
+): { value: number; weight: number }[] {
+  return comps
+    .map((comp) => {
+      const price = useClosePrice ? soldCompPrice(comp) : activeCompPrice(comp)
+      if (price == null) return null
+      return {
+        value: adjustedCompPrice(comp, price, subjectPremium),
+        weight: compWeight(comp, subjectVintage, subjectPremium),
+      }
+    })
+    .filter((entry): entry is { value: number; weight: number } => entry != null)
 }
 
 function priceValues(
@@ -244,23 +309,66 @@ function priceValues(
     .filter((price): price is number => price != null)
 }
 
-function weightedPriceMedian(
-  comps: ComparableListing[],
-  useClosePrice: boolean,
+function buildMidpointAggregatesFromPpsf(
+  sold: ComparableListing[],
+  active: ComparableListing[],
+  subjectSqft: number,
   subjectVintage: VintageBucketId | null | undefined,
   subjectPremium: LocationPremiumFactors | null | undefined,
-): number | null {
-  const entries = comps
-    .map((comp) => {
-      const price = useClosePrice ? soldCompPrice(comp) : activeCompPrice(comp)
-      if (price == null) return null
-      return {
-        value: adjustedCompPrice(comp, price, subjectPremium),
-        weight: compWeight(comp, subjectVintage, subjectPremium),
-      }
-    })
-    .filter((entry): entry is { value: number; weight: number } => entry != null)
-  return weightedMedian(entries)
+): IfMidpointAggregates {
+  const soldEntries = ppsfEntries(sold, subjectVintage, subjectPremium)
+  const activeEntries = ppsfEntries(active, subjectVintage, subjectPremium)
+  const out = emptyMidpointAggregates()
+  for (const method of IF_MIDPOINT_METHODS) {
+    const blended = blendedMarketPpsf(
+      aggregateEntries(soldEntries, method),
+      aggregateEntries(activeEntries, method),
+    )
+    out[method] = {
+      blendedPpsf: blended,
+      amount: blended != null ? Math.round(blended * subjectSqft) : null,
+    }
+  }
+  return out
+}
+
+function buildMidpointAggregatesFromPrices(
+  sold: ComparableListing[],
+  active: ComparableListing[],
+  subjectSqft: number | null | undefined,
+  subjectVintage: VintageBucketId | null | undefined,
+  subjectPremium: LocationPremiumFactors | null | undefined,
+): IfMidpointAggregates {
+  const soldEntries = priceEntries(sold, true, subjectVintage, subjectPremium)
+  const activeEntries = priceEntries(
+    active,
+    false,
+    subjectVintage,
+    subjectPremium,
+  )
+  const out = emptyMidpointAggregates()
+  const sqft =
+    subjectSqft != null && subjectSqft > 0 ? subjectSqft : null
+  for (const method of IF_MIDPOINT_METHODS) {
+    const soldAgg = aggregateEntries(soldEntries, method)
+    const activeAgg = aggregateEntries(activeEntries, method)
+    let amount: number | null = null
+    if (soldAgg != null && activeAgg != null) {
+      amount = Math.round(
+        soldAgg * SOLD_PPSF_WEIGHT + activeAgg * ACTIVE_PPSF_WEIGHT,
+      )
+    } else if (soldAgg != null) {
+      amount = Math.round(soldAgg)
+    } else if (activeAgg != null) {
+      amount = Math.round(activeAgg)
+    }
+    out[method] = {
+      amount,
+      blendedPpsf:
+        amount != null && sqft != null ? amount / sqft : null,
+    }
+  }
+  return out
 }
 
 function blendedMarketPpsf(
@@ -392,20 +500,21 @@ function estimateFromPpsf(
   subjectPrice: number | null | undefined,
   context: IfEstimateContext,
   kind: 'sale' | 'rent',
-): IfEstimate {
+): IfEstimate & { midpointAggregates: IfMidpointAggregates } {
   const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
   const tierSold = compsInSubjectPriceTier(sold, refPpsf)
   const tierActive = compsInSubjectPriceTier(active, refPpsf)
   const subjectVintage = context.subjectVintage ?? null
   const subjectPremium = context.locationPremium ?? null
 
-  const soldPpsf = weightedPpsfMedian(tierSold, subjectVintage, subjectPremium)
-  const activePpsf = weightedPpsfMedian(
+  const midpointAggregates = buildMidpointAggregatesFromPpsf(
+    tierSold,
     tierActive,
+    subjectSqft,
     subjectVintage,
     subjectPremium,
   )
-  const ppsf = blendedMarketPpsf(soldPpsf, activePpsf)
+  const ppsf = midpointAggregates[IF_DEFAULT_MIDPOINT_METHOD].blendedPpsf
   const soldCount = tierSold.filter((c) => validPpsf(c.pricePerSqft)).length
   const activeCount = tierActive.filter((c) => validPpsf(c.pricePerSqft)).length
   const amountEntries = collectTierAmountEntries(
@@ -423,14 +532,16 @@ function estimateFromPpsf(
       amountHigh: null,
       soldCount,
       activeCount,
+      midpointAggregates,
     }
   }
 
-  const amount = Math.round(ppsf * subjectSqft)
+  const amount = midpointAggregates[IF_DEFAULT_MIDPOINT_METHOD].amount
   return {
     ...finalizeEstimateRange(amount, amountEntries, kind),
     soldCount,
     activeCount,
+    midpointAggregates,
   }
 }
 
@@ -442,36 +553,21 @@ function estimateFromPrices(
   subjectSqft: number | null | undefined,
   context: IfEstimateContext,
   kind: 'sale' | 'rent',
-): IfEstimate {
+): IfEstimate & { midpointAggregates: IfMidpointAggregates } {
   const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
   const tierSold = compsInSubjectPriceTier(sold, refPpsf)
   const tierActive = compsInSubjectPriceTier(active, refPpsf)
   const subjectVintage = context.subjectVintage ?? null
   const subjectPremium = context.locationPremium ?? null
 
-  const soldMedian = weightedPriceMedian(
+  const midpointAggregates = buildMidpointAggregatesFromPrices(
     tierSold,
-    true,
-    subjectVintage,
-    subjectPremium,
-  )
-  const activeMedian = weightedPriceMedian(
     tierActive,
-    false,
+    subjectSqft,
     subjectVintage,
     subjectPremium,
   )
-
-  let amount: number | null = null
-  if (soldMedian != null && activeMedian != null) {
-    amount = Math.round(
-      soldMedian * SOLD_PPSF_WEIGHT + activeMedian * ACTIVE_PPSF_WEIGHT,
-    )
-  } else if (soldMedian != null) {
-    amount = Math.round(soldMedian)
-  } else if (activeMedian != null) {
-    amount = Math.round(activeMedian)
-  }
+  const amount = midpointAggregates[IF_DEFAULT_MIDPOINT_METHOD].amount
 
   const amountEntries = collectTierAmountEntries(
     sold,
@@ -485,6 +581,7 @@ function estimateFromPrices(
     ...finalizeEstimateRange(amount, amountEntries, kind),
     soldCount: priceValues(tierSold, true).length,
     activeCount: priceValues(tierActive, false).length,
+    midpointAggregates,
   }
 }
 
@@ -545,6 +642,8 @@ export type IfEstimateMath = {
   soldPpsfWeight: number
   activePpsfWeight: number
   blendedPpsf: number | null
+  /** Which cached midpoint is reflected in `amount` / `blendedPpsf`. */
+  midpointMethod: IfMidpointMethod
   subjectSqft: number | null
   rangeLowPercentile: number
   rangeHighPercentile: number
@@ -558,6 +657,68 @@ export type IfScenario = IfEstimate & {
   params: IfMatchParams
   math: IfEstimateMath
   comps: IfCompRow[]
+  /** Median / average / weighted-average midpoints — pick without refetch. */
+  midpointAggregates: IfMidpointAggregates
+}
+
+/** Fill midpoint aggregates for older cached payloads that only stored one mid. */
+export function ensureMidpointAggregates(scenario: IfScenario): IfScenario {
+  const existing = scenario.midpointAggregates
+  const hasCached =
+    existing &&
+    IF_MIDPOINT_METHODS.some((m) => existing[m]?.amount != null)
+  if (hasCached) {
+    return {
+      ...scenario,
+      math: {
+        ...scenario.math,
+        midpointMethod:
+          scenario.math.midpointMethod ?? IF_DEFAULT_MIDPOINT_METHOD,
+      },
+    }
+  }
+  const shared: IfMidpointVariant = {
+    amount: scenario.amount,
+    blendedPpsf: scenario.math?.blendedPpsf ?? null,
+  }
+  return {
+    ...scenario,
+    midpointAggregates: {
+      median: { ...shared },
+      average: { ...shared },
+      weightedAverage: { ...shared },
+    },
+    math: {
+      ...scenario.math,
+      midpointMethod:
+        scenario.math.midpointMethod ?? IF_DEFAULT_MIDPOINT_METHOD,
+    },
+  }
+}
+
+/** Swap the displayed midpoint to a precomputed aggregation (range unchanged). */
+export function scenarioWithMidpointMethod(
+  scenario: IfScenario,
+  method: IfMidpointMethod,
+): IfScenario {
+  const base = ensureMidpointAggregates(scenario)
+  const variant = base.midpointAggregates[method]
+  if (variant.amount == null && base.amount == null) {
+    return {
+      ...base,
+      math: { ...base.math, midpointMethod: method },
+    }
+  }
+  if (variant.amount == null) return base
+  return {
+    ...base,
+    amount: variant.amount,
+    math: {
+      ...base.math,
+      blendedPpsf: variant.blendedPpsf,
+      midpointMethod: method,
+    },
+  }
 }
 
 export type ListingIfPayload = {
@@ -614,6 +775,7 @@ function emptyScenario(
       soldPpsfWeight: SOLD_PPSF_WEIGHT,
       activePpsfWeight: ACTIVE_PPSF_WEIGHT,
       blendedPpsf: null,
+      midpointMethod: IF_DEFAULT_MIDPOINT_METHOD,
       subjectSqft: params.sqft,
       rangeLowPercentile: RANGE_LOW_PERCENTILE,
       rangeHighPercentile: RANGE_HIGH_PERCENTILE,
@@ -621,6 +783,7 @@ function emptyScenario(
       matchedActiveCount,
     },
     comps: [],
+    midpointAggregates: emptyMidpointAggregates(),
   }
 }
 
@@ -718,6 +881,7 @@ export function estimateFromComparables(
         matchedSold,
         matchedActive,
         'ppsf',
+        fromPpsf.midpointAggregates,
       )
     }
   }
@@ -742,6 +906,7 @@ export function estimateFromComparables(
     matchedSold,
     matchedActive,
     fromPrices.amount != null ? 'price' : 'none',
+    fromPrices.midpointAggregates,
   )
 }
 
@@ -757,6 +922,7 @@ function finalizeScenario(
   matchedSoldCount: number,
   matchedActiveCount: number,
   method: IfEstimateMath['method'],
+  midpointAggregates: IfMidpointAggregates,
 ): IfScenario {
   if (estimate.amount == null && estimate.soldCount + estimate.activeCount === 0) {
     return emptyScenario(params, matchedSoldCount, matchedActiveCount)
@@ -765,14 +931,7 @@ function finalizeScenario(
   const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
   const tierSold = compsInSubjectPriceTier(sold, refPpsf)
   const tierActive = compsInSubjectPriceTier(active, refPpsf)
-  const subjectVintage = context.subjectVintage ?? null
-  const subjectPremium = context.locationPremium ?? null
-  const soldPpsf = weightedPpsfMedian(tierSold, subjectVintage, subjectPremium)
-  const activePpsf = weightedPpsfMedian(
-    tierActive,
-    subjectVintage,
-    subjectPremium,
-  )
+  const primary = midpointAggregates[IF_DEFAULT_MIDPOINT_METHOD]
 
   return {
     ...estimate,
@@ -781,7 +940,8 @@ function finalizeScenario(
       method,
       soldPpsfWeight: SOLD_PPSF_WEIGHT,
       activePpsfWeight: ACTIVE_PPSF_WEIGHT,
-      blendedPpsf: blendedMarketPpsf(soldPpsf, activePpsf),
+      blendedPpsf: primary.blendedPpsf,
+      midpointMethod: IF_DEFAULT_MIDPOINT_METHOD,
       subjectSqft,
       rangeLowPercentile: RANGE_LOW_PERCENTILE,
       rangeHighPercentile: RANGE_HIGH_PERCENTILE,
@@ -789,6 +949,7 @@ function finalizeScenario(
       matchedActiveCount,
     },
     comps: buildCompRows(tierSold, tierActive, subjectSqft, context),
+    midpointAggregates,
   }
 }
 

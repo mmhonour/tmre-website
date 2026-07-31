@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftRightIcon } from "@/components/icons";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
@@ -14,15 +14,22 @@ import MatchingCriteriaSummary, {
 } from "@/components/listing/MatchingCriteriaSummary";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
+  emptyMidpointAggregates,
+  ensureMidpointAggregates,
   fmtIfRentMoney,
   fmtIfSaleMoney,
+  IF_DEFAULT_MIDPOINT_METHOD,
+  IF_MIDPOINT_METHOD_LABELS,
+  IF_MIDPOINT_METHODS,
   ifCompWeightExplainLines,
   roundIfRentHigh,
   roundIfRentLow,
   roundIfRentMidpoint,
+  scenarioWithMidpointMethod,
   type IfCompRow,
   type IfEstimate,
   type IfMatchParams,
+  type IfMidpointMethod,
   type IfScenario,
   type ListingIfPayload,
 } from "@/lib/listing-if-estimates";
@@ -253,6 +260,7 @@ function emptyScenario(): IfScenario {
       soldPpsfWeight: 0.55,
       activePpsfWeight: 0.45,
       blendedPpsf: null,
+      midpointMethod: IF_DEFAULT_MIDPOINT_METHOD,
       subjectSqft: null,
       rangeLowPercentile: 0.25,
       rangeHighPercentile: 0.75,
@@ -260,6 +268,7 @@ function emptyScenario(): IfScenario {
       matchedActiveCount: 0,
     },
     comps: [],
+    midpointAggregates: emptyMidpointAggregates(),
   };
 }
 
@@ -310,7 +319,7 @@ function compCountPhrase(
 
 /**
  * Preferred multi-line worksheet:
- *   MATH: WEIGHTED
+ *   MATH: MEDIAN | AVERAGE | WEIGHTED AVG
  *   $599/sqft          ← click to expand derivation
  *   × 3,069 sqft
  *   ─────────
@@ -320,10 +329,14 @@ function IfMathWorksheet({
   est,
   sqft,
   kind,
+  midpointMethod,
+  onMidpointMethodChange,
 }: {
   est: IfEstimate;
   sqft: number | null;
   kind: "sale" | "rent";
+  midpointMethod: IfMidpointMethod;
+  onMidpointMethodChange: (method: IfMidpointMethod) => void;
 }) {
   const [showPpsf, setShowPpsf] = useState(false);
 
@@ -334,6 +347,7 @@ function IfMathWorksheet({
   const isRent = kind === "rent";
   const soldWord = isRent ? "rented" : "sold";
   const comps = compCountPhrase(est.soldCount, est.activeCount, soldWord);
+  const methodLabel = IF_MIDPOINT_METHOD_LABELS[midpointMethod].toLowerCase();
 
   const midLabel = isRent
     ? `${fmtIfRentMoney(roundIfRentMidpoint(est.amount))}/mo`
@@ -348,11 +362,42 @@ function IfMathWorksheet({
   const linkClass =
     "text-gold underline decoration-gold/50 underline-offset-2 hover:text-gold-light transition-colors cursor-pointer";
 
+  const methodExplain =
+    midpointMethod === "weightedAverage"
+      ? `${ppsfLabel ?? "This midpoint"} is the weight-adjusted average $/sqft of the matched comps — closed ${isRent ? "leases" : "sales"} count more than active ${isRent ? "rentals" : "listings"}, and same-vintage, same location-tier comps pull harder (see wt).`
+      : midpointMethod === "average"
+        ? `${ppsfLabel ?? "This midpoint"} is the simple average $/sqft of the matched comps — each comp counts equally; closed ${isRent ? "leases" : "sales"} still blend heavier than actives in the market mix.`
+        : `${ppsfLabel ?? "This midpoint"} is the median $/sqft of the matched comps — the middle value after sorting, so outliers move it less than an average would.`;
+
   return (
     <div className="font-mono text-[10px] text-white/40 tabular-nums leading-relaxed">
-      <span className="uppercase tracking-[0.12em] text-white/50">
-        Math: weighted
-      </span>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="uppercase tracking-[0.12em] text-white/50">Math</span>
+        <div
+          role="group"
+          aria-label="Midpoint $/sqft method"
+          className="inline-flex flex-wrap gap-1"
+        >
+          {IF_MIDPOINT_METHODS.map((method) => {
+            const active = midpointMethod === method;
+            return (
+              <button
+                key={method}
+                type="button"
+                onClick={() => onMidpointMethodChange(method)}
+                className={
+                  active
+                    ? "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-navy bg-gold"
+                    : "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
+                }
+                aria-pressed={active}
+              >
+                {IF_MIDPOINT_METHOD_LABELS[method]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {hasSqft && ppsfLabel ? (
         <div className="mt-1 w-fit text-right">
@@ -375,7 +420,9 @@ function IfMathWorksheet({
       ) : (
         <div className="mt-1 text-white/60">
           {midLabel}{" "}
-          <span className="text-white/30">(weighted median of {comps})</span>
+          <span className="text-white/30">
+            ({methodLabel} of {comps})
+          </span>
         </div>
       )}
 
@@ -390,10 +437,7 @@ function IfMathWorksheet({
 
       {showPpsf && ppsfLabel ? (
         <p className="mt-1 normal-case tracking-normal text-white/45">
-          {ppsfLabel} is the weighted median $/sqft of the matched comps — closed{" "}
-          {isRent ? "leases" : "sales"} count more than active{" "}
-          {isRent ? "rentals" : "listings"}, and same-vintage, same location-tier
-          comps are weighted higher.
+          {methodExplain}
           {lowPpsf && highPpsf
             ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
             : ""}
@@ -661,8 +705,6 @@ function ScenarioPanel({
   comps,
   kind,
   townHint,
-  range,
-  midpoint,
   amountLabel,
   midpointLabel,
   foundCountEmphasized = false,
@@ -674,19 +716,67 @@ function ScenarioPanel({
   comps: IfCompRow[];
   kind: "sale" | "rent";
   townHint?: string | null;
-  range: ReactNode;
-  midpoint: string | null;
   amountLabel: string;
   midpointLabel: string;
   foundCountEmphasized?: boolean;
   className?: string;
 }) {
+  const [midpointMethod, setMidpointMethod] = useState<IfMidpointMethod>(
+    scenario.math.midpointMethod ?? IF_DEFAULT_MIDPOINT_METHOD,
+  );
+
+  const displayScenario = useMemo(
+    () =>
+      scenarioWithMidpointMethod(
+        ensureMidpointAggregates(scenario),
+        midpointMethod,
+      ),
+    [scenario, midpointMethod],
+  );
+
   const hasEstimate =
-    scenario.amount != null ||
-    scenario.soldCount + scenario.activeCount > 0 ||
-    scenario.math.matchedSoldCount + scenario.math.matchedActiveCount > 0;
+    displayScenario.amount != null ||
+    displayScenario.soldCount + displayScenario.activeCount > 0 ||
+    displayScenario.math.matchedSoldCount +
+      displayScenario.math.matchedActiveCount >
+      0;
 
   const panelId = IF_SCENARIO_PANEL_IDS[kind];
+  const isRent = kind === "rent";
+  const midpoint =
+    displayScenario.amount != null
+      ? isRent
+        ? `${fmtIfRentMoney(roundIfRentMidpoint(displayScenario.amount))}/mo`
+        : fmtIfSaleMoney(displayScenario.amount)
+      : null;
+
+  const range = isRent ? (
+    <IfEstimateRangeDisplay
+      low={
+        displayScenario.amountLow != null
+          ? roundIfRentLow(displayScenario.amountLow)
+          : null
+      }
+      high={
+        displayScenario.amountHigh != null
+          ? roundIfRentHigh(displayScenario.amountHigh)
+          : null
+      }
+      midpoint={
+        displayScenario.amount != null
+          ? roundIfRentMidpoint(displayScenario.amount)
+          : null
+      }
+      formatAmount={fmtIfRentMoney}
+    />
+  ) : (
+    <IfEstimateRangeDisplay
+      low={displayScenario.amountLow}
+      high={displayScenario.amountHigh}
+      midpoint={displayScenario.amount}
+      formatAmount={fmtIfSaleMoney}
+    />
+  );
 
   return (
     <article
@@ -722,18 +812,20 @@ function ScenarioPanel({
       ) : (
         <>
           <IfMathWorksheet
-            est={scenario}
-            sqft={scenario.math.subjectSqft ?? scenario.params.sqft}
+            est={displayScenario}
+            sqft={displayScenario.math.subjectSqft ?? displayScenario.params.sqft}
             kind={kind}
+            midpointMethod={midpointMethod}
+            onMidpointMethodChange={setMidpointMethod}
           />
           <CompList
             comps={comps}
             kind={kind}
             townHint={townHint}
-            amountLow={scenario.amountLow}
-            amountHigh={scenario.amountHigh}
-            subjectBeds={scenario.params.beds}
-            subjectBaths={scenario.params.baths}
+            amountLow={displayScenario.amountLow}
+            amountHigh={displayScenario.amountHigh}
+            subjectBeds={displayScenario.params.beds}
+            subjectBaths={displayScenario.params.baths}
             foundCountEmphasized={foundCountEmphasized}
           />
         </>
@@ -1086,19 +1178,6 @@ export default function ListingIfPanel({
               ? "max-lg:block lg:block"
               : "max-lg:hidden lg:block"
           }
-          range={
-            <IfEstimateRangeDisplay
-              low={saleEstimate.amountLow}
-              high={saleEstimate.amountHigh}
-              midpoint={saleEstimate.amount}
-              formatAmount={fmtIfSaleMoney}
-            />
-          }
-          midpoint={
-            saleEstimate.amount != null
-              ? fmtIfSaleMoney(saleEstimate.amount)
-              : null
-          }
           amountLabel="Estimated Value Range"
           midpointLabel="Midpoint"
         />
@@ -1114,31 +1193,6 @@ export default function ListingIfPanel({
             mobileScenarioLead === "rent"
               ? "max-lg:block lg:block"
               : "max-lg:hidden lg:block"
-          }
-          range={
-            <IfEstimateRangeDisplay
-              low={
-                rentEstimate.amountLow != null
-                  ? roundIfRentLow(rentEstimate.amountLow)
-                  : null
-              }
-              high={
-                rentEstimate.amountHigh != null
-                  ? roundIfRentHigh(rentEstimate.amountHigh)
-                  : null
-              }
-              midpoint={
-                rentEstimate.amount != null
-                  ? roundIfRentMidpoint(rentEstimate.amount)
-                  : null
-              }
-              formatAmount={fmtIfRentMoney}
-            />
-          }
-          midpoint={
-            rentEstimate.amount != null
-              ? `${fmtIfRentMoney(roundIfRentMidpoint(rentEstimate.amount))}/mo`
-              : null
           }
           amountLabel="Estimated monthly rent range"
           midpointLabel="Midpoint"
