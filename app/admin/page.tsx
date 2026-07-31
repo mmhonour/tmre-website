@@ -108,11 +108,20 @@ import {
 import { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
 import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPanel";
 import AdminTrafficPanel from "@/components/admin/AdminTrafficPanel";
+import AdminVisitorsPanel from "@/components/admin/AdminVisitorsPanel";
 import AdminGlossaryPanel from "@/components/admin/AdminGlossaryPanel";
+import { resolveViewedContent } from "@/lib/content-views";
 import {
   readContentViewTotals,
+  readListingLabelsByMlsIds,
   readTopContentViews,
 } from "@/lib/db/content-views-repo";
+import { groupVisitorsByPropertyThenDate } from "@/lib/visitors-property-groups";
+import {
+  groupVisitorsByProviderThenLocation,
+  readVisitorRecords,
+  visitorIsIdentified,
+} from "@/lib/visitors";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
 import SitePasswordGate from "@/components/SitePasswordGate";
@@ -258,7 +267,7 @@ export default async function AdminPage() {
     () => readLatestListingModificationTimestamp(),
     null,
   );
-  const [topViewedProperties, topViewedPages, contentViewTotals] =
+  const [topViewedProperties, topViewedPages, contentViewTotals, visitorRecords] =
     await Promise.all([
       safe("top-viewed-properties", () =>
         readTopContentViews({ kind: "listing", limit: 25 }), []),
@@ -271,7 +280,42 @@ export default async function AdminPage() {
         pageViews: 0,
         since: null,
       }),
+      safe("visitor-records", () => readVisitorRecords(), []),
     ]);
+  const visitorProviderGroups =
+    groupVisitorsByProviderThenLocation(visitorRecords);
+  const visitorLoggedMlsIds = visitorRecords.flatMap((visitor) =>
+    visitor.pages
+      .map((hit) => resolveViewedContent(hit.path).mlsId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const visitorPropertyLabels = await safe(
+    "visitor-property-labels",
+    () => readListingLabelsByMlsIds(visitorLoggedMlsIds),
+    {},
+  );
+  const visitorPropertyGroups = groupVisitorsByPropertyThenDate(
+    visitorRecords,
+    visitorPropertyLabels,
+  );
+  const visitorsPanel = (
+    <AdminVisitorsPanel
+      providerGroups={visitorProviderGroups}
+      propertyGroups={visitorPropertyGroups}
+      propertyLabels={visitorPropertyLabels}
+      stats={{
+        visitors: visitorRecords.length,
+        providers: visitorProviderGroups.length,
+        propertiesInLog: visitorPropertyGroups.length,
+        identified: visitorRecords.filter(visitorIsIdentified).length,
+        withPhone: visitorRecords.filter((v) => Boolean(v.phone)).length,
+        pageviews: visitorRecords.reduce(
+          (sum, v) => sum + (v.pageviews || 0),
+          0,
+        ),
+      }}
+    />
+  );
   const lastRefreshFinished = getSyncMeta("last_refresh_finished_at");
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
@@ -1003,6 +1047,7 @@ export default async function AdminPage() {
             totals={contentViewTotals}
           />
         }
+        visitors={visitorsPanel}
         dataControls={dataControlsPanel}
         communications={communicationsPanel}
         cookies={<AdminBrowserCookiesPanel />}

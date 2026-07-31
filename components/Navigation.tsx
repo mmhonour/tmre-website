@@ -7,7 +7,7 @@ import PhoneCta from "./PhoneCta";
 import { AGENT_MLS_ID, DEFAULT_BROKERAGE_NAME } from "@/lib/business-info";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 const iconCtaButtonClass =
@@ -425,6 +425,9 @@ function PhoneCallWithLogout({
 }) {
   const siteUnlocked = useSiteUnlocked();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const visitorsActive =
+    pathname === "/admin" && searchParams.get("tab") === "visitors";
 
   return (
     <div
@@ -436,9 +439,9 @@ function PhoneCallWithLogout({
       {siteUnlocked ? (
         <>
           <Link
-            href="/visitors"
+            href="/admin?tab=visitors"
             className={`font-mono text-[9px] tracking-[0.14em] uppercase transition-colors ${
-              pathname === "/visitors"
+              visitorsActive
                 ? "text-gold"
                 : "text-white/55 hover:text-gold"
             }`}

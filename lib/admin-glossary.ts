@@ -595,7 +595,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Visitors log',
     category: 'sync-admin',
     definition:
-      'Password-gated /visitors activity log (same Admin Log in cookie). Grouped by network provider (geo.org) then location with +/− drilldown. Stored in Neon Postgres (`visitors` table). Nav link sits under Log in/out when unlocked; /api/visitors requires the same unlock.',
+      'Admin → Visitors parent tab (same Admin Log in cookie). Grouped by network provider → location or property → date with +/− drilldown. Stored in Neon Postgres (`visitors` table). Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
   },
   {
     term: 'List with Me',

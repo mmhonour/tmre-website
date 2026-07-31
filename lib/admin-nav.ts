@@ -3,6 +3,7 @@ export type AdminTabId =
   | "postgres"
   | "stats"
   | "traffic"
+  | "visitors"
   | "data-controls"
   | "communications"
   | "cookies"
@@ -355,6 +356,12 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
       "Running view counts per property and page, counted from every visit since the counter went live",
   },
   {
+    id: "visitors",
+    label: "Visitors",
+    subtitle:
+      "Visitor activity log — provider → location or property → date, with +/− drilldown",
+  },
+  {
     id: "data-controls",
     label: "Data controls",
     subtitle:
@@ -480,6 +487,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   { id: "admin-top-properties", label: "Most viewed properties", tab: "traffic" },
   { id: "admin-top-pages", label: "Most viewed pages", tab: "traffic" },
+  { id: "admin-visitors-log", label: "Visitors log", tab: "visitors" },
   { id: "admin-stats-interesting", label: "Interesting stats", tab: "stats" },
   {
     id: "admin-stats-price-buckets",
@@ -707,9 +715,9 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
   },
   {
     label: "Visitors",
-    href: "/visitors",
+    href: "/admin?tab=visitors",
     description:
-      "Admin-password visitor log — provider → location drilldown (unlocked only)",
+      "Admin → Visitors — provider → location or property → date log (unlocked only)",
   },
   {
     label: "Listing detail",
