@@ -90,6 +90,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'A shell quoting form that feeds a multi-line block as stdin or as an argument, commonly written `<<\'EOF\'` … `EOF` (or `<<EOF` when variables should expand). Agents and docs often use it for `git commit -m "$(cat <<\'EOF\' … EOF)"` so the message keeps newlines without messy escaping. Bash / Git Bash / WSL understand heredocs; Windows PowerShell does not — there `<<` is a redirection/parse error. On this PC use a here-string instead, e.g. `@"… "@ | Set-Content …` then `git commit -F file`, or pass multiple `-m` flags.',
   },
   {
+    term: 'UI kit (tab styles)',
+    category: 'ui-tabs',
+    definition:
+      'Admin → Architecture → UI kit — live catalog of every distinct tab/pill visual system with stable IDs (e.g. pill-seg-dark-compact, underline-listing, edge-listing-mobile). Source list in lib/admin-tab-kit.ts; previews reuse production class helpers from lib/filter-pill-styles.ts.',
+  },
+  {
     term: '“This is not the Next.js you know”',
     category: 'tooling',
     definition:
@@ -601,7 +607,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Visitors log',
     category: 'sync-admin',
     definition:
-      'Admin → Visitors parent tab (same Admin Log in cookie). Grouped by network provider → location or property → date with +/− drilldown. Stored in Neon Postgres (`visitors` table). Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
+      'Admin → Visitors parent tab (same Admin Log in cookie). Top: Most viewed properties / pages (content_views running totals, side by side). Below: visitors log grouped by network provider → location or property → date with +/− drilldown (visitors table). Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
   },
   {
     term: 'List with Me',

@@ -37,6 +37,7 @@ import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
 import AdminTownBudgetSourcesPanel from "@/components/admin/AdminTownBudgetSourcesPanel";
 import AdminPageStylesPanel from "@/components/admin/AdminPageStylesPanel";
 import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
+import AdminUiKitPanel from "@/components/admin/AdminUiKitPanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import AdminLatestStatusLogicPanel from "@/components/admin/AdminLatestStatusLogicPanel";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
@@ -304,6 +305,8 @@ export default async function AdminPage() {
       providerGroups={visitorProviderGroups}
       propertyGroups={visitorPropertyGroups}
       propertyLabels={visitorPropertyLabels}
+      topProperties={topViewedProperties}
+      topPages={topViewedPages}
       stats={{
         visitors: visitorRecords.length,
         providers: visitorProviderGroups.length,
@@ -1062,6 +1065,7 @@ export default async function AdminPage() {
           <AdminArchitecturePanel
             map={<AdminSiteArchitecturePanel />}
             statusLogic={<AdminLatestStatusLogicPanel />}
+            uiKit={<AdminUiKitPanel />}
             docs={<AdminProductDocsPanel />}
           />
         }

@@ -44,7 +44,7 @@ export type AdminSyncsPanelId =
 export type AdminPostgresPanelId = "schema" | "inventory" | "town-counts";
 
 /** Sub-panels under Admin → Architecture. */
-export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
+export type AdminArchitecturePanelId = "map" | "docs" | "status-logic" | "ui-kit";
 
 /** Sub-panels under Admin → Communications. */
 export type AdminCommunicationsPanelId =
@@ -277,6 +277,12 @@ export const ADMIN_ARCHITECTURE_PANELS: {
       "/latest badge precedence, feed ranking, and the fields that drive them",
   },
   {
+    id: "ui-kit",
+    label: "UI kit",
+    subtitle:
+      "Live preview of every tab / pill style with stable IDs (mobile + desktop notes)",
+  },
+  {
     id: "docs",
     label: "Product docs",
     subtitle: "Live pages and repository reference files",
@@ -476,8 +482,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     tab: "syncs",
     panel: "history",
   },
-  { id: "admin-top-properties", label: "Most viewed properties", tab: "traffic" },
-  { id: "admin-top-pages", label: "Most viewed pages", tab: "traffic" },
+  { id: "admin-top-properties", label: "Most viewed properties", tab: "visitors" },
+  { id: "admin-top-pages", label: "Most viewed pages", tab: "visitors" },
   { id: "admin-visitors-log", label: "Visitors log", tab: "visitors" },
   { id: "admin-stats-interesting", label: "Interesting stats", tab: "stats" },
   {
@@ -602,6 +608,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Status logic",
     tab: "architecture",
     panel: "status-logic",
+  },
+  {
+    id: "admin-ui-kit",
+    label: "UI kit — tab styles",
+    tab: "architecture",
+    panel: "ui-kit",
   },
   {
     id: "admin-rets-credentials",
@@ -1006,7 +1018,12 @@ export function isAdminPostgresSchemaHash(hash: string): boolean {
 export function isAdminArchitecturePanelId(
   value: string | null | undefined,
 ): value is AdminArchitecturePanelId {
-  return value === "map" || value === "docs" || value === "status-logic";
+  return (
+    value === "map" ||
+    value === "docs" ||
+    value === "status-logic" ||
+    value === "ui-kit"
+  );
 }
 
 export function isAdminCommunicationsPanelId(

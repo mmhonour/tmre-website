@@ -1,4 +1,6 @@
+import MostViewedCard from "@/components/MostViewedCard";
 import VisitorsLogViews from "@/components/VisitorsLogViews";
+import type { ContentViewSummary } from "@/lib/content-views";
 import type { VisitorPropertyGroup } from "@/lib/visitors-property-groups";
 import type { VisitorProviderGroup } from "@/lib/visitors-types";
 
@@ -6,11 +8,15 @@ export default function AdminVisitorsPanel({
   providerGroups,
   propertyGroups,
   propertyLabels,
+  topProperties,
+  topPages,
   stats,
 }: {
   providerGroups: VisitorProviderGroup[];
   propertyGroups: VisitorPropertyGroup[];
   propertyLabels: Record<string, string>;
+  topProperties: ContentViewSummary[];
+  topPages: ContentViewSummary[];
   stats: {
     visitors: number;
     providers: number;
@@ -22,6 +28,23 @@ export default function AdminVisitorsPanel({
 }) {
   return (
     <div id="admin-visitors-log" className="scroll-mt-24 space-y-6">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <MostViewedCard
+          id="admin-top-properties"
+          title="Most viewed properties"
+          note="Running count from content_views. Spotlight views count toward the property they featured."
+          rows={topProperties}
+          emptyMessage="No property views counted yet — run the content_views backfill or wait for the next visit."
+        />
+        <MostViewedCard
+          id="admin-top-pages"
+          title="Most viewed pages"
+          note="Running count of everything that is not a property page."
+          rows={topPages}
+          emptyMessage="No page views counted yet."
+        />
+      </div>
+
       <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
           Visitors log
@@ -29,8 +52,7 @@ export default function AdminVisitorsPanel({
         <p className="mt-2 max-w-3xl text-sm text-slate">
           Activity from the{" "}
           <span className="font-mono text-xs">visitors</span> table — provider →
-          location, or property → date. Most-viewed running totals live under{" "}
-          <span className="font-mono text-xs">Traffic</span> (
+          location, or property → date. Distinct from the running totals above (
           <span className="font-mono text-xs">content_views</span>).
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] text-charcoal/50">

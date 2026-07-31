@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import FedCpiPanels from "@/components/fed-analysis/FedCpiPanels";
 import FedDecisionTimeline from "@/components/fed-analysis/FedDecisionTimeline";
 import FedDecisionsMiniGraph from "@/components/fed-analysis/FedDecisionsMiniGraph";
 import FedEventsCalendar from "@/components/fed-analysis/FedEventsCalendar";
+import FedPolicySnapshot from "@/components/fed-analysis/FedPolicySnapshot";
 import FedRecentCpi from "@/components/fed-analysis/FedRecentCpi";
 import FedRecentDecisions from "@/components/fed-analysis/FedRecentDecisions";
-import FedStatementSummary from "@/components/fed-analysis/FedStatementSummary";
 import { CPI_RELEASES, CPI_SCHEDULE_URL } from "@/lib/cpi-calendar";
 import {
-  decisionLabel,
-  formatFedFundsRange,
-  formatFomcMeetingSpan,
   getNextFomcMeeting,
   getPrevailingFedPolicy,
 } from "@/lib/fed-fomc-calendar";
@@ -74,70 +70,13 @@ export default async function FedAnalysisPage() {
 
       <section className="bg-cream py-10 lg:py-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          <div className="mb-4 grid gap-4 lg:grid-cols-[1.2fr_1fr] lg:items-stretch">
-            <div className="flex flex-col rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                Prevailing decision
-              </p>
-              {prevailing ? (
-                <>
-                  <p className="mt-3 font-serif text-3xl text-navy sm:text-4xl">
-                    {prevailing.targetLabel}
-                  </p>
-                  <p className="mt-2 text-sm text-slate">
-                    Federal funds target range after{" "}
-                    <span className="font-medium text-navy">
-                      {prevailing.decisionLabel}
-                    </span>{" "}
-                    on {prevailing.decidedOnLabel}.
-                  </p>
-                  <FedStatementSummary meeting={prevailing.meeting} />
-                </>
-              ) : (
-                <p className="mt-3 text-sm text-slate">
-                  No decided meetings in the local calendar yet.
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6">
-              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-                Next FOMC
-              </p>
-              {nextMeeting ? (
-                <>
-                  <p className="mt-3 font-serif text-2xl text-navy sm:text-3xl">
-                    {formatFomcMeetingSpan(
-                      nextMeeting.startDate,
-                      nextMeeting.endDate,
-                    )}
-                  </p>
-                  <p className="mt-2 text-sm text-slate">
-                    {nextMeeting.decision == null
-                      ? "Statement typically 2:00 p.m. ET on the decision day; Chair press conference ~2:30 p.m. ET."
-                      : `${decisionLabel(nextMeeting.decision, nextMeeting.basisPoints)} · ${formatFedFundsRange(nextMeeting.targetRangeLow, nextMeeting.targetRangeHigh)}`}
-                    {nextMeeting.hasSep ? " Includes SEP projections." : ""}
-                  </p>
-                </>
-              ) : (
-                <p className="mt-3 text-sm text-slate">
-                  Calendar needs the next year&rsquo;s dates — check{" "}
-                  <a
-                    href={FOMC_CALENDAR_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-navy underline underline-offset-2"
-                  >
-                    federalreserve.gov
-                  </a>
-                  .
-                </p>
-              )}
-            </div>
-          </div>
-
           <div className="mb-8">
-            <FedCpiPanels releases={CPI_RELEASES} now={now} />
+            <FedPolicySnapshot
+              prevailingFed={prevailing}
+              nextMeeting={nextMeeting}
+              releases={CPI_RELEASES}
+              now={now}
+            />
           </div>
 
           <div className="mb-8 grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
