@@ -6,6 +6,7 @@
  */
 import assert from 'node:assert/strict'
 import {
+  formatSyncHistoryBucketLabel,
   glomSyncHistoryRuns,
   normalizeSyncStatusBucket,
   normalizeSyncType,
@@ -17,6 +18,14 @@ assert.equal(normalizeSyncStatusBucket('Active+Closed/incremental'), 'Active+Clo
 assert.equal(normalizeSyncType('Queued/incremental'), 'Incremental')
 assert.equal(normalizeSyncType('Worker/incremental'), 'Incremental')
 assert.equal(normalizeSyncType('Active+Closed/incremental'), 'Incremental')
+assert.equal(
+  formatSyncHistoryBucketLabel('Queued', 'Incremental'),
+  'Queued · Incremental',
+)
+assert.equal(
+  formatSyncHistoryBucketLabel('Active+Closed', 'Incremental'),
+  'Active+Closed',
+)
 
 const started = '2026-07-27T20:33:38.000Z'
 const townStart = '2026-07-27T20:34:10.000Z'

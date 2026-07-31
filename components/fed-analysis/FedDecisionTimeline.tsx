@@ -419,9 +419,9 @@ export default function FedDecisionTimeline({
         </ul>
       </div>
 
-      {/* Mobile: list with rate levels */}
+      {/* Mobile: newest first (desktop chart stays chronological L→R) */}
       <ol className="mt-5 space-y-0 md:hidden">
-        {plotPoints.map((p, i) => {
+        {[...plotPoints].reverse().map((p, i, rows) => {
           const tone = decisionTone(p.meeting.decision);
           return (
             <li key={p.meeting.id} className="flex gap-3">
@@ -434,7 +434,7 @@ export default function FedDecisionTimeline({
                   }`}
                   aria-hidden
                 />
-                {i < plotPoints.length - 1 ? (
+                {i < rows.length - 1 ? (
                   <span
                     className="mt-1 w-px flex-1 bg-charcoal/15"
                     aria-hidden
@@ -442,7 +442,7 @@ export default function FedDecisionTimeline({
                 ) : null}
               </div>
               <div
-                className={`min-w-0 pb-5 ${i === plotPoints.length - 1 ? "pb-0" : ""}`}
+                className={`min-w-0 pb-5 ${i === rows.length - 1 ? "pb-0" : ""}`}
               >
                 <p className="font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/45">
                   {formatFomcDayWithWeekday(p.meeting.endDate, {

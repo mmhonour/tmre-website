@@ -84,6 +84,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Next.js 16 default bundler for next dev (replaces the older webpack default for local development).',
   },
   {
+    term: 'Bash heredoc',
+    category: 'tooling',
+    definition:
+      'A shell quoting form that feeds a multi-line block as stdin or as an argument, commonly written `<<\'EOF\'` … `EOF` (or `<<EOF` when variables should expand). Agents and docs often use it for `git commit -m "$(cat <<\'EOF\' … EOF)"` so the message keeps newlines without messy escaping. Bash / Git Bash / WSL understand heredocs; Windows PowerShell does not — there `<<` is a redirection/parse error. On this PC use a here-string instead, e.g. `@"… "@ | Set-Content …` then `git commit -F file`, or pass multiple `-m` flags.',
+  },
+  {
     term: '“This is not the Next.js you know”',
     category: 'tooling',
     definition:

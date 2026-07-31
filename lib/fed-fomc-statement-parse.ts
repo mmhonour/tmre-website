@@ -104,6 +104,98 @@ function extractVoteNote(text: string): string | null {
   return block.replace(/\s+/g, ' ').trim().slice(0, 800)
 }
 
+export type FomcVoteBreakdown = {
+  forNames: string[]
+  againstNames: string[]
+  /** Trailing "who preferred …" clause when present. */
+  againstPreference: string | null
+  forCount: number | null
+  againstCount: number | null
+}
+
+function splitVoterNames(clause: string): string[] {
+  let s = clause.replace(/\s+/g, ' ').trim()
+  s = s.replace(/,?\s*who preferred[\s\S]*$/i, '').trim()
+  s = s.replace(/[.]+$/, '').trim()
+  if (!s) return []
+  // "A, B, and C" → split on commas, then strip a leading "and ".
+  return s
+    .split(/\s*,\s*/)
+    .map((part) => part.replace(/^\s*and\s+/i, '').trim())
+    .filter((part) => part.length > 1 && !/^voting\b/i.test(part))
+}
+
+function extractVoteTally(
+  ...blobs: Array<string | null | undefined>
+): { forCount: number | null; againstCount: number | null } {
+  for (const blob of blobs) {
+    if (!blob) continue
+    const m =
+      /(\d+)\s*[–—-]\s*(\d+)\s*vote/i.exec(blob) ||
+      /by a\s+(\d+)\s*[–—-]\s*(\d+)/i.exec(blob)
+    if (!m) continue
+    const forCount = Number(m[1])
+    const againstCount = Number(m[2])
+    if (!Number.isFinite(forCount) || !Number.isFinite(againstCount)) continue
+    return { forCount, againstCount }
+  }
+  return { forCount: null, againstCount: null }
+}
+
+/**
+ * Split a stored voteNote (plus optional meeting note / summary) into
+ * Voting for / Voting against lists for the Fed Analysis grid.
+ */
+export function parseFomcVoteBreakdown(
+  voteNote: string | null | undefined,
+  extras: { note?: string | null; summary?: string | null } = {},
+): FomcVoteBreakdown | null {
+  const raw = (voteNote ?? '').replace(/\s+/g, ' ').trim()
+  if (!raw) return null
+
+  const forMatch =
+    /Voting for the monetary policy action were\s+(.+?)(?=\s+Voting against|\s*$)/i.exec(
+      raw,
+    )
+  const againstMatch =
+    /Voting against(?: the monetary policy action)? were\s+(.+)/i.exec(raw)
+
+  const forNames = forMatch ? splitVoterNames(forMatch[1]!) : []
+  let againstNames: string[] = []
+  let againstPreference: string | null = null
+  if (againstMatch) {
+    const clause = againstMatch[1]!.trim()
+    const pref = /,\s*who preferred\s+(.+)$/i.exec(clause)
+    againstPreference = pref ? pref[1]!.replace(/[.]+$/, '').trim() : null
+    againstNames = splitVoterNames(clause)
+  }
+
+  const tally = extractVoteTally(raw, extras.note, extras.summary)
+  let forCount = tally.forCount
+  let againstCount = tally.againstCount
+  if (forCount == null && forNames.length > 0) forCount = forNames.length
+  if (againstCount == null && againstNames.length > 0) {
+    againstCount = againstNames.length
+  }
+
+  if (
+    forNames.length === 0 &&
+    againstNames.length === 0 &&
+    forCount == null &&
+    againstCount == null
+  ) {
+    return null
+  }
+
+  return {
+    forNames,
+    againstNames,
+    againstPreference,
+    forCount,
+    againstCount,
+  }
+}
+
 function extractBodyParagraphs(text: string): string[] {
   // Drop chrome before the release time line when present.
   let body = text

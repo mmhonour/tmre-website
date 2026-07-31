@@ -15,6 +15,26 @@ export function normalizeSyncStatusBucket(bucket: string | null | undefined): st
 }
 
 /**
+ * Lifecycle ack / roll-up buckets — Bucket alone does not say Full vs Incremental,
+ * so History labels them as "Queued · Incremental".
+ */
+export function isSyncLifecycleBucket(bucket: string | null | undefined): boolean {
+  const b = (bucket ?? '').trim()
+  return b === 'Queued' || b === 'Worker' || b === 'Done'
+}
+
+/** Display label for the Bucket column / subgroup (adds sync type on lifecycle rows). */
+export function formatSyncHistoryBucketLabel(
+  bucket: string,
+  syncType: string,
+): string {
+  if (isSyncLifecycleBucket(bucket) && syncType.trim()) {
+    return `${bucket} · ${syncType}`
+  }
+  return bucket
+}
+
+/**
  * Sync mode from status_bucket suffixes, e.g. "Active/incremental" → "Incremental".
  * Plain Active / Closed / Expired (full town/bucket pulls) → "Full".
  * Cron heartbeat rows use "cron/incremental" → "Cron".

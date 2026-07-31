@@ -12,6 +12,7 @@ import { formatRunDuration } from "@/components/admin/AdminSyncTable";
 import {
   ADMIN_SYNC_HISTORY_DEFAULT_DAYS,
   ADMIN_SYNC_HISTORY_MAX_LIMIT,
+  formatSyncHistoryBucketLabel,
   glomSyncHistoryRuns,
   type SyncHistoryRawRow,
 } from "@/lib/admin-sync-history-glom";
@@ -295,9 +296,12 @@ export default function AdminSyncHistoryPanel({
           <p className="mt-1 text-sm text-slate max-w-2xl">
             MLS syncs from Admin, cron, and overdue catch-up for the{" "}
             {windowLabel} — collapsed by sync type (Full, Incremental), then by
-            status bucket (Queued, Worker, Active+Closed, Done, …). Queued /
-            Worker are ack lines (count 0); Done carries the job total upserted.
-            The newest type opens with all of its buckets expanded by default
+            status phase (Queued, Worker, Active+Closed, Done, …). Queued /
+            Worker / Done rows show the sync type in the Bucket column (e.g.
+            Queued · Incremental); town RETS rows stay as Active / Closed.
+            Queued / Worker are ack lines (count 0); Done carries the job total
+            upserted. The newest type opens with all of its buckets expanded by
+            default
             {overallLatestLabel ? (
               <>
                 {" "}
@@ -482,7 +486,10 @@ export default function AdminSyncHistoryPanel({
                                       {bucketOpen ? "−" : "+"}
                                     </span>
                                     <span className="font-semibold">
-                                      {bucketGroup.bucket}
+                                      {formatSyncHistoryBucketLabel(
+                                        bucketGroup.bucket,
+                                        typeGroup.syncType,
+                                      )}
                                     </span>
                                     <span className="normal-case tracking-normal text-charcoal/45">
                                       {bucketGroup.rows.length.toLocaleString()}{" "}
@@ -530,7 +537,10 @@ export default function AdminSyncHistoryPanel({
                                         {formatSyncTime(run.finishedAt)}
                                       </td>
                                       <td className="px-4 py-2.5 align-top font-mono text-[11px] tracking-[0.06em] uppercase text-navy">
-                                        {run.bucket}
+                                        {formatSyncHistoryBucketLabel(
+                                          run.bucket,
+                                          run.syncType,
+                                        )}
                                       </td>
                                       <td className="px-4 py-2.5 align-top font-mono text-[11px] text-charcoal/70 leading-snug">
                                         {run.townsLabel}

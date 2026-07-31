@@ -190,6 +190,11 @@ export const ADMIN_SYNCS_PANELS: {
   subtitle: string;
 }[] = [
   {
+    id: "history",
+    label: "Sync history",
+    subtitle: "Durable database sync history and latest in-browser sync steps",
+  },
+  {
     id: "dashboard",
     label: "Dashboard",
     subtitle:
@@ -212,11 +217,6 @@ export const ADMIN_SYNCS_PANELS: {
     label: "MLS reconcile",
     subtitle:
       "Per town, compares the live MLS Active set against Postgres by MLS number — what the MLS has that we are missing, and what we still show as Active",
-  },
-  {
-    id: "history",
-    label: "Sync history",
-    subtitle: "Durable database sync history and latest in-browser sync steps",
   },
   {
     id: "overview",
