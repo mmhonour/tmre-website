@@ -68,12 +68,24 @@ body {
   animation-play-state: paused;
 }
 
+/* Desktop ticker only — mobile uses stacked LatestMobileRow cards that need
+   natural height. Ticker is disabled below lg; without this override the slot
+   still clipped every grouped row to 48px. */
 .latest-ticker-row-slot {
-  height: var(--latest-row-height, 48px);
-  min-height: var(--latest-row-height, 48px);
-  max-height: var(--latest-row-height, 48px);
-  overflow: hidden;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
   box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  .latest-ticker-row-slot {
+    height: var(--latest-row-height, 48px);
+    min-height: var(--latest-row-height, 48px);
+    max-height: var(--latest-row-height, 48px);
+    overflow: hidden;
+  }
 }
 
 @keyframes latestSmoothScroll {

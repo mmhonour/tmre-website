@@ -134,10 +134,16 @@ function MetricCell({ metric, town }: { metric: SnapshotMetric; town: string }) 
 
 type LatestIntelligenceTownSnapshotProps = {
   town: string;
+  /**
+   * When true, render only the metrics grid (no second title card) — used inside
+   * the consolidated Latest town side panel.
+   */
+  embedded?: boolean;
 };
 
 export default function LatestIntelligenceTownSnapshot({
   town,
+  embedded = false,
 }: LatestIntelligenceTownSnapshotProps) {
   const [snapshot, setSnapshot] = useState<IntelligenceTownSnapshot | null>(
     () => getCachedTownSnapshot(town),
@@ -178,32 +184,52 @@ export default function LatestIntelligenceTownSnapshot({
 
   if (loading && !snapshot) {
     return (
-      <div className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 animate-pulse h-48" />
+      <div
+        className={
+          embedded
+            ? "h-32 animate-pulse bg-cream/40"
+            : "h-48 animate-pulse rounded-2xl border border-charcoal/[0.08] bg-white p-5"
+        }
+      />
     );
   }
 
   if (error || !snapshot) {
     return (
-      <div className="rounded-2xl bg-white border border-charcoal/[0.08] p-5">
+      <div
+        className={
+          embedded
+            ? "px-4 py-3 lg:px-5"
+            : "rounded-2xl border border-charcoal/[0.08] bg-white p-5"
+        }
+      >
         <p className="font-mono text-[10px] text-slate">
-          {error ? `Market snapshot unavailable (${error})` : "Market snapshot unavailable."}
+          {error
+            ? `Market snapshot unavailable (${error})`
+            : "Market snapshot unavailable."}
         </p>
       </div>
     );
   }
 
+  const metrics = (
+    <div className="grid grid-cols-2">
+      {snapshot.metrics.map((metric) => (
+        <MetricCell key={metric.label} metric={metric} town={snapshot.town} />
+      ))}
+    </div>
+  );
+
+  if (embedded) return metrics;
+
   return (
-    <div className="bg-white border border-charcoal/[0.06] overflow-hidden rounded-2xl">
+    <div className="overflow-hidden rounded-2xl border border-charcoal/[0.06] bg-white">
       <div className="navy-gradient border-b border-white/10 px-5 py-4">
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold font-bold text-center truncate">
+        <p className="truncate text-center font-mono text-[10px] font-bold tracking-[0.2em] uppercase text-gold">
           {snapshot.title}
         </p>
       </div>
-      <div className="grid grid-cols-2">
-        {snapshot.metrics.map((metric) => (
-          <MetricCell key={metric.label} metric={metric} town={snapshot.town} />
-        ))}
-      </div>
+      {metrics}
     </div>
   );
 }

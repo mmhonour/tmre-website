@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import LatestIntelligenceTownSnapshot, {
   prefetchAllTownSnapshots,
 } from "@/components/latest/LatestIntelligenceTownSnapshot";
@@ -31,7 +31,11 @@ type LatestTownStatsProps = {
   showHeading?: boolean;
 };
 
-function TownUpdateCard({
+/**
+ * One side panel per town: update volume + latest stamp (former card) fused with
+ * the market snapshot metrics. Expand/collapse keeps the header visible.
+ */
+function LatestTownSidePanel({
   row,
   rank,
   selected,
@@ -47,53 +51,91 @@ function TownUpdateCard({
   const latestHref = row.latestListingId
     ? listingDetailHref(row.latestListingId, row.latestListingAddress, row.town)
     : null;
+  const [expanded, setExpanded] = useState(selected);
+
+  useEffect(() => {
+    if (selected) setExpanded(true);
+  }, [selected]);
 
   return (
     <div
-      className={`rounded-2xl overflow-hidden bg-white border transition-all hover:-translate-y-0.5 hover:shadow-md hover:shadow-navy/5 ${
+      className={`overflow-hidden rounded-2xl border bg-white transition-all ${
         selected
           ? "border-gold/40 ring-1 ring-gold/20"
           : "border-charcoal/[0.08]"
       }`}
     >
-      <button
-        type="button"
-        onClick={() => onTownSelect(row.town)}
-        className="navy-gradient w-full flex items-baseline justify-between gap-2 px-4 lg:px-5 py-3 border-b border-white/10 text-left transition-colors hover:brightness-110"
-        aria-pressed={selected}
-      >
-        <span
-          className={`font-mono text-xs sm:text-sm tracking-[0.18em] uppercase text-gold ${
-            selected ? "font-bold" : ""
-          }`}
+      <div className="navy-gradient flex w-full items-stretch border-b border-white/10">
+        <button
+          type="button"
+          onClick={() => onTownSelect(row.town)}
+          className="flex min-w-0 flex-1 items-baseline justify-between gap-2 px-4 py-3 text-left transition-colors hover:brightness-110 lg:px-5"
+          aria-pressed={selected}
         >
-          #{rank} ·{" "}
-          <span className="underline decoration-gold/40 underline-offset-2 hover:decoration-gold">
-            {label}
-          </span>
-        </span>
-        <span className="font-mono text-lg tabular-nums font-semibold text-gold">
-          {row.updateCount}
-        </span>
-      </button>
-      <div className="flex items-baseline justify-between gap-2 px-4 lg:px-5 py-3">
-        <span className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate shrink-0">
-          Latest
-        </span>
-        {latestHref ? (
-          <Link
-            href={latestHref}
-            className="font-mono tabular-nums text-navy text-sm font-medium text-right hover:text-gold transition-colors underline decoration-charcoal/20 hover:decoration-gold underline-offset-2"
-            onClick={(e) => e.stopPropagation()}
+          <span
+            className={`font-mono text-xs tracking-[0.18em] uppercase text-gold sm:text-sm ${
+              selected ? "font-bold" : ""
+            }`}
           >
-            {latestLabel}
-          </Link>
-        ) : (
-          <span className="font-mono tabular-nums text-navy text-sm font-medium text-right">
-            {latestLabel}
+            #{rank} ·{" "}
+            <span className="underline decoration-gold/40 underline-offset-2 hover:decoration-gold">
+              {label}
+            </span>
           </span>
-        )}
+          <span className="shrink-0 font-mono text-lg font-semibold tabular-nums text-gold">
+            {row.updateCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-label={
+            expanded ? `Collapse ${label} market panel` : `Expand ${label} market panel`
+          }
+          className="inline-flex w-10 shrink-0 items-center justify-center border-l border-white/10 text-gold/80 transition-colors hover:bg-white/5 hover:text-gold"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className="h-3.5 w-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            {expanded ? (
+              <path d="M3 10l5-5 5 5" />
+            ) : (
+              <path d="M3 6l5 5 5-5" />
+            )}
+          </svg>
+        </button>
       </div>
+
+      {expanded ? (
+        <>
+          <div className="flex items-baseline justify-between gap-2 border-b border-charcoal/[0.06] px-4 py-3 lg:px-5">
+            <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
+              Latest
+            </span>
+            {latestHref ? (
+              <Link
+                href={latestHref}
+                className="text-right font-mono text-sm font-medium tabular-nums text-navy underline decoration-charcoal/20 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold"
+              >
+                {latestLabel}
+              </Link>
+            ) : (
+              <span className="text-right font-mono text-sm font-medium tabular-nums text-navy">
+                {latestLabel}
+              </span>
+            )}
+          </div>
+          <LatestIntelligenceTownSnapshot town={row.town} embedded />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -110,7 +152,6 @@ export default function LatestTownStats({
     ? stats.filter((row) => row.town === selectedTown)
     : stats;
 
-  // Keep snapshots primed whenever the sidebar is shown.
   useEffect(() => {
     if (loading) return;
     void prefetchAllTownSnapshots();
@@ -137,25 +178,25 @@ export default function LatestTownStats({
         </p>
       )}
       <div className={`space-y-2 ${showHeading ? "pt-4" : ""}`}>
-      {loading ? (
-        <div className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 animate-pulse h-32" />
-      ) : visibleStats.length === 0 ? (
-        <div className="rounded-2xl bg-white border border-charcoal/[0.08] p-5">
-          <p className="font-mono text-[10px] text-slate">No town updates in the last 24 hours.</p>
-        </div>
-      ) : (
-        visibleStats.map((row, index) => (
-          <TownUpdateCard
-            key={row.town}
-            row={row}
-            rank={selectedTown ? 1 : index + 1}
-            selected={selectedTown === row.town}
-            onTownSelect={onTownSelect}
-          />
-        ))
-      )}
-
-      {selectedTown ? <LatestIntelligenceTownSnapshot town={selectedTown} /> : null}
+        {loading ? (
+          <div className="h-32 animate-pulse rounded-2xl border border-charcoal/[0.08] bg-white p-5" />
+        ) : visibleStats.length === 0 ? (
+          <div className="rounded-2xl border border-charcoal/[0.08] bg-white p-5">
+            <p className="font-mono text-[10px] text-slate">
+              No town updates in the last 24 hours.
+            </p>
+          </div>
+        ) : (
+          visibleStats.map((row, index) => (
+            <LatestTownSidePanel
+              key={row.town}
+              row={row}
+              rank={selectedTown ? 1 : index + 1}
+              selected={selectedTown === row.town}
+              onTownSelect={onTownSelect}
+            />
+          ))
+        )}
       </div>
     </aside>
   );

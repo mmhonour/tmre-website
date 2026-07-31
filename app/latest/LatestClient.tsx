@@ -264,7 +264,8 @@ export default function LatestClient({
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [newKeys, setNewKeys] = useState<Set<string>>(new Set());
-  const [groupByTown, setGroupByTown] = useState(true);
+  /** Default: chronological (by time). Group-by-town is opt-in. */
+  const [groupByTown, setGroupByTown] = useState(false);
   const [groupByZip, setGroupByZip] = useState(false);
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
