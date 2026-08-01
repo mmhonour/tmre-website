@@ -31,12 +31,10 @@ export default function AdminCommunicationsPanel({
   marketDigest,
   socialProfiles,
   listingAlerts,
-  fedSync,
 }: {
   marketDigest: ReactNode;
   socialProfiles: ReactNode;
   listingAlerts: ReactNode;
-  fedSync: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminCommunicationsPanelId>("market-digest");
 
@@ -64,7 +62,6 @@ export default function AdminCommunicationsPanel({
     "market-digest": marketDigest,
     "social-profiles": socialProfiles,
     "listing-alerts": listingAlerts,
-    "fed-sync": fedSync,
   };
   const active = ADMIN_COMMUNICATIONS_PANELS.find((item) => item.id === panel);
 
@@ -100,17 +97,7 @@ export default function AdminCommunicationsPanel({
           {active.subtitle}
         </p>
       ) : null}
-
-      {ADMIN_COMMUNICATIONS_PANELS.map((item) => (
-        <div
-          key={item.id}
-          role="tabpanel"
-          hidden={panel !== item.id}
-          className={panel === item.id ? "space-y-6" : undefined}
-        >
-          {panels[item.id]}
-        </div>
-      ))}
+      <div>{panels[panel]}</div>
     </div>
   );
 }

@@ -51,6 +51,8 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
     { label: "Intelligence", href: "/intelligence" },
     { label: "Latest", href: "/latest" },
   ],
+  "fomc-sync": [{ label: "Fed Analysis", href: "/fed-analysis" }],
+  "cpi-sync": [{ label: "Fed Analysis", href: "/fed-analysis" }],
 };
 
 export function adminSyncImpactedPages(rowId: string): AdminSyncImpactedPage[] {

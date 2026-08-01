@@ -294,6 +294,22 @@ export function queueNetlifyMarketDigest(): Promise<NetlifyFunctionQueueResult> 
   })
 }
 
+export function queueNetlifyFomcSync(options?: {
+  source?: 'admin' | 'netlify-sync-trigger'
+}): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-fomc-worker', {
+    source: options?.source ?? 'netlify-sync-trigger',
+  })
+}
+
+export function queueNetlifyCpiSync(options?: {
+  source?: 'admin' | 'netlify-sync-trigger'
+}): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-cpi-worker', {
+    source: options?.source ?? 'netlify-sync-trigger',
+  })
+}
+
 /** Back-compat boolean helper for callers that only need success/fail. */
 export async function queueNetlifyIncrementalSyncOk(startedAt?: string): Promise<boolean> {
   const result = await queueNetlifyIncrementalSync(startedAt)

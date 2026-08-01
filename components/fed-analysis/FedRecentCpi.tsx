@@ -130,7 +130,7 @@ export default function FedRecentCpi({
                 i > 0 ? "border-t border-charcoal/[0.06]" : ""
               }`}
             >
-              <div>
+              <div className="min-w-0">
                 <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-navy">
                   {formatCpiReferenceMonth(r.referenceMonth)}
                 </p>
@@ -138,6 +138,25 @@ export default function FedRecentCpi({
                   Released{" "}
                   {formatFomcDayWithWeekday(r.releaseDate, { month: "short" })}
                 </p>
+                {(r.highlights?.length ?? 0) > 0 ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {r.highlights!.slice(0, 2).map((h, hi) => (
+                      <span
+                        key={`${r.id}-${h.label}-${hi}`}
+                        className={`max-w-[10rem] truncate rounded-full border px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase ${
+                          h.direction === "up"
+                            ? "border-coral/30 bg-coral/10 text-coral"
+                            : h.direction === "down"
+                              ? "border-sage/30 bg-sage/10 text-sage"
+                              : "border-charcoal/15 text-charcoal/50"
+                        }`}
+                        title={h.label}
+                      >
+                        {h.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <p className="shrink-0 text-right font-mono text-[12px] tabular-nums text-navy">
                 {formatCpiPct(r.yoyPct)} YoY

@@ -24,6 +24,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'visitors',
   'content_views',
   'fomc_meetings',
+  'cpi_releases',
   'leads',
   'site_users',
   'site_user_magic_links',

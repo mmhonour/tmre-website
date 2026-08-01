@@ -50,8 +50,7 @@ export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
 export type AdminCommunicationsPanelId =
   | "market-digest"
   | "social-profiles"
-  | "listing-alerts"
-  | "fed-sync";
+  | "listing-alerts";
 
 export type AdminSectionLink = {
   id: string;
@@ -312,12 +311,6 @@ export const ADMIN_COMMUNICATIONS_PANELS: {
     subtitle:
       "End-user alerts from Latest — email, search criteria, cadence, and delivery status",
   },
-  {
-    id: "fed-sync",
-    label: "Fed sync",
-    subtitle:
-      "Scrape official FOMC statements into Postgres for /fed-analysis (Fed text, not AI)",
-  },
 ];
 
 export type AdminDocLink = {
@@ -566,12 +559,6 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Listing alerts",
     tab: "communications",
     panel: "listing-alerts",
-  },
-  {
-    id: "admin-fed-sync",
-    label: "Fed sync",
-    tab: "communications",
-    panel: "fed-sync",
   },
   {
     id: "admin-spotlight",
@@ -837,6 +824,30 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     detail: "Background Monday market brief email send",
     schedule: "On invoke (background)",
   },
+  {
+    label: "sync-fomc",
+    detail:
+      "Thin trigger — queues sync-fomc-worker on FOMC decision day after Configure start time (default 15:15 ET)",
+    schedule: "Every 30 min (event-gated)",
+  },
+  {
+    label: "sync-fomc-worker",
+    detail:
+      "Background FOMC statement scrape → Postgres for /fed-analysis (official Fed text, not AI)",
+    schedule: "On invoke (background)",
+  },
+  {
+    label: "sync-cpi",
+    detail:
+      "Thin trigger — queues sync-cpi-worker on BLS CPI release day after Configure start time (default 09:15 ET)",
+    schedule: "Every 30 min (event-gated)",
+  },
+  {
+    label: "sync-cpi-worker",
+    detail:
+      "Background BLS CPI news-release scrape → Postgres for /fed-analysis (official BLS text, not AI)",
+    schedule: "On invoke (background)",
+  },
 ];
 
 /** Documented in Admin → Server / Site — Netlify → webhook, not a cron function. */
@@ -1029,8 +1040,7 @@ export function isAdminCommunicationsPanelId(
   return (
     value === "market-digest" ||
     value === "social-profiles" ||
-    value === "listing-alerts" ||
-    value === "fed-sync"
+    value === "listing-alerts"
   );
 }
 

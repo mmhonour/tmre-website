@@ -3,10 +3,14 @@
  * Dates from bls.gov/schedule/news_release/cpi.htm; prints filled after release.
  * Update after each 8:30 a.m. ET print (usually second week of the month).
  * History (2020–2024) lives in cpi-history.ts and is prepended below.
+ * Admin Fed sync overlays BLS news-release summaries into Postgres.
  */
 
+import type { CpiHighlight } from '@/lib/cpi-release-parse'
 import { CPI_HISTORY } from '@/lib/cpi-history'
 import { formatFomcDayWithWeekday, parseFomcYmd } from '@/lib/fed-fomc-calendar'
+
+export type { CpiHighlight }
 
 export type CpiRelease = {
   id: string
@@ -25,6 +29,13 @@ export type CpiRelease = {
   coreYoyPct: number | null
   releaseUrl: string | null
   note?: string
+  /** Lead paragraphs from the official BLS CPI news release (Fed sync). */
+  summary?: string | null
+  /** First body paragraph. */
+  excerpt?: string | null
+  /** Category / driver chips scraped from the release. */
+  highlights?: CpiHighlight[]
+  syncedAt?: string
 }
 
 export const CPI_SCHEDULE_URL =

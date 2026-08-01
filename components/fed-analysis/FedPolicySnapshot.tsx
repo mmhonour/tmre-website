@@ -1,3 +1,4 @@
+import FedCpiSummary from "@/components/fed-analysis/FedCpiSummary";
 import FedStatementSummary from "@/components/fed-analysis/FedStatementSummary";
 import {
   formatCpiPct,
@@ -120,16 +121,28 @@ export default function FedPolicySnapshot({
                   {prevailingCpi.release.note}
                 </p>
               ) : null}
-              {prevailingCpi.release.releaseUrl ? (
-                <a
-                  href={prevailingCpi.release.releaseUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-block font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
-                >
-                  BLS release
-                </a>
+              {(prevailingCpi.release.highlights?.length ?? 0) > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {prevailingCpi.release.highlights!.slice(0, 4).map((h, i) => {
+                    const tone =
+                      h.direction === "up"
+                        ? "border-coral/30 bg-coral/10 text-coral"
+                        : h.direction === "down"
+                          ? "border-sage/30 bg-sage/10 text-sage"
+                          : "border-charcoal/15 bg-cream/60 text-charcoal/55";
+                    return (
+                      <span
+                        key={`${h.label}-${i}`}
+                        className={`inline-flex max-w-[12rem] truncate rounded-full border px-2 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase ${tone}`}
+                        title={h.label}
+                      >
+                        {h.label}
+                      </span>
+                    );
+                  })}
+                </div>
               ) : null}
+              <FedCpiSummary release={prevailingCpi.release} />
             </>
           ) : (
             <p className="mt-3 text-sm text-slate">

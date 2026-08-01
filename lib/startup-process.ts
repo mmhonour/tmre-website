@@ -399,13 +399,39 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC).`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET.`,
           status: "info",
           statusLabel: "Cron",
         },
       ],
     });
   }
+
+  lanes.push({
+    id: "fed-event-sync",
+    title: "Fed / CPI event syncs",
+    subtitle: "Official statement scrapes for /fed-analysis (Syncs dashboard)",
+    steps: [
+      {
+        id: "fomc-sync-cron",
+        title: "FOMC statement sync",
+        timing: "Decision day ~3:15 p.m. ET",
+        detail:
+          "netlify/functions/sync-fomc → sync-fomc-worker: scrape federalreserve.gov statement into fomc_meetings. Dense */30 cron; runs only when today is an FOMC endDate and Configure start time (default 15:15 ET) has passed. Pause on Syncs → Configure.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+      {
+        id: "cpi-sync-cron",
+        title: "CPI release sync",
+        timing: "Release day ~9:15 a.m. ET",
+        detail:
+          "netlify/functions/sync-cpi → sync-cpi-worker: scrape bls.gov CPI news release into cpi_releases (summary + highlights). Dense */30 cron; runs only when today is a CPI releaseDate and Configure start time (default 09:15 ET) has passed.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
 
   lanes.push({
     id: "zip-boundaries",

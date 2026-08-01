@@ -77,7 +77,7 @@ export default function FedTimelinePair({
   now?: Date;
   defaultLookback?: TimelineLookback;
 }) {
-  const [mode, setMode] = useState<ViewMode>("separate");
+  const [mode, setMode] = useState<ViewMode>("overlay");
   const [lookback, setLookback] = useState<TimelineLookback>(defaultLookback);
 
   const modeToggle = (

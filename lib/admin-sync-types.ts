@@ -32,6 +32,16 @@ export const ADMIN_SYNC_ACTIONS = {
     label: 'Zip boundary maps',
     description: 'Census TIGERweb ZCTA rings → Postgres for Intelligence / Latest maps',
   },
+  'fomc-sync': {
+    label: 'FOMC statement sync',
+    description:
+      'Scrape official FOMC statement on decision day (~3:15 p.m. ET) into Postgres for /fed-analysis',
+  },
+  'cpi-sync': {
+    label: 'CPI release sync',
+    description:
+      'Scrape official BLS CPI news release on print day (~9:15 a.m. ET) into Postgres for /fed-analysis',
+  },
 } as const
 
 export type AdminSyncActionId = keyof typeof ADMIN_SYNC_ACTIONS
@@ -53,6 +63,7 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'deal-of-the-day',
   'property-addresses',
   'zip-boundaries',
+  // fomc-sync / cpi-sync omitted — event-day only
 ] as const satisfies readonly AdminSyncActionId[]
 
 /** Client-side Sync all fallback — one POST per step to stay under serverless timeouts. */
@@ -73,6 +84,8 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'deal-of-the-day': 5,
   'property-addresses': 6,
   'zip-boundaries': 7,
+  'fomc-sync': 8,
+  'cpi-sync': 9,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

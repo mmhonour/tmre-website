@@ -19,6 +19,8 @@ export const SYNC_SCHEDULE_FREQUENCIES = [
   { id: 'daily', label: 'Daily', intervalMs: null },
   { id: 'weekly', label: 'Weekly', intervalMs: null },
   { id: 'monthly', label: 'Monthly', intervalMs: null },
+  /** Calendar event day (FOMC decision / CPI release) — start time still applies. */
+  { id: 'event', label: 'Event day', intervalMs: null },
 ] as const
 
 export type SyncScheduleFrequencyId = (typeof SYNC_SCHEDULE_FREQUENCIES)[number]['id']
@@ -93,6 +95,8 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'deal-of-the-day',
       'property-addresses',
       'zip-boundaries',
+      'fomc-sync',
+      'cpi-sync',
     ],
     jobs: {
       'full-resync': { frequency: 'weekly', startTimeEt: '05:00' },
@@ -102,6 +106,8 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'deal-of-the-day': { frequency: 'weekly', startTimeEt: '05:00' },
       'property-addresses': { frequency: 'weekly', startTimeEt: '01:00' },
       'zip-boundaries': { frequency: 'monthly', startTimeEt: '06:00' },
+      'fomc-sync': { frequency: 'event', startTimeEt: '15:15' },
+      'cpi-sync': { frequency: 'event', startTimeEt: '09:15' },
     },
   }
 }
@@ -158,6 +164,7 @@ function isSyncAllActionableJob(
     jobId === 'deal-of-the-day' ||
     jobId === 'property-addresses' ||
     jobId === 'zip-boundaries'
+    // fomc-sync / cpi-sync are event-day only — not part of Sync all
   )
 }
 

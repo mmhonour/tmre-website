@@ -8,6 +8,8 @@ export type AdminSyncPanelRowId =
   | 'deal-of-the-day'
   | 'property-addresses'
   | 'zip-boundaries'
+  | 'fomc-sync'
+  | 'cpi-sync'
 
 /** Format next sync time; includes weekday + date when more than 24h away. */
 export function formatAdminNextSyncAt(iso: string | null | undefined, now = new Date()): string {

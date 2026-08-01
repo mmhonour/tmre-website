@@ -12,12 +12,39 @@ type MeetingRow = {
   syncedAt: string | null;
 };
 
+type CpiRow = {
+  id: string;
+  releaseDate: string;
+  releaseUrl: string | null;
+  hasSummary: boolean;
+  summaryChars: number;
+  highlightCount: number;
+  momPct: number | null;
+  yoyPct: number | null;
+  syncedAt: string | null;
+};
+
 type StatusPayload = {
   lastSyncedAt: string | null;
   lastResult: string | null;
-  meetingCount: number;
-  withSummary: number;
-  meetings: MeetingRow[];
+  fomc?: {
+    meetingCount: number;
+    withSummary: number;
+    meetings: MeetingRow[];
+    lastSyncedAt: string | null;
+    lastResult: string | null;
+  };
+  cpi?: {
+    releaseCount: number;
+    withSummary: number;
+    withHighlights: number;
+    releases: CpiRow[];
+    lastSyncedAt: string | null;
+    lastResult: string | null;
+  };
+  meetingCount?: number;
+  withSummary?: number;
+  meetings?: MeetingRow[];
 };
 
 export default function AdminFedSyncPanel() {
@@ -64,13 +91,15 @@ export default function AdminFedSyncPanel() {
         fetched?: number;
         skipped?: number;
         failed?: number;
+        fomc?: { updated?: number; fetched?: number };
+        cpi?: { updated?: number; fetched?: number };
       };
       if (!res.ok && res.status !== 207) {
         setMessage(body.error ?? "Fed sync failed");
         return;
       }
       setMessage(
-        `Synced — fetched ${body.fetched ?? 0}, updated ${body.updated ?? 0}, skipped ${body.skipped ?? 0}, failed ${body.failed ?? 0}`,
+        `Synced — FOMC ${body.fomc?.updated ?? 0} / CPI ${body.cpi?.updated ?? 0} updated · fetched ${body.fetched ?? 0}, skipped ${body.skipped ?? 0}, failed ${body.failed ?? 0}`,
       );
       await refresh();
     } catch (err) {
@@ -88,6 +117,12 @@ export default function AdminFedSyncPanel() {
     );
   }
 
+  const meetings = status?.fomc?.meetings ?? status?.meetings ?? [];
+  const fomcWithSummary =
+    status?.fomc?.withSummary ?? status?.withSummary ?? 0;
+  const fomcCount = status?.fomc?.meetingCount ?? status?.meetingCount ?? 0;
+  const cpiReleases = status?.cpi?.releases ?? [];
+
   return (
     <div
       id="admin-fed-sync"
@@ -98,10 +133,11 @@ export default function AdminFedSyncPanel() {
           Fed sync
         </p>
         <p className="mt-1 max-w-3xl text-sm text-slate">
-          Fetches official FOMC statements from federalreserve.gov, greps the
-          target range / vote / body paragraphs, and stores them in Postgres for{" "}
+          Fetches official FOMC statements from federalreserve.gov and BLS CPI
+          news releases from bls.gov, greps range / vote / CPI body paragraphs
+          and category highlights, and stores them in Postgres for{" "}
           <span className="font-mono text-xs">/fed-analysis</span>. No AI key —
-          the summary is the Fed&apos;s own text.
+          the summary is the Fed&apos;s and BLS&apos;s own text.
         </p>
       </div>
 
@@ -131,46 +167,96 @@ export default function AdminFedSyncPanel() {
           <p className="font-mono text-[10px] text-sage">{message}</p>
         ) : null}
 
-        <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
-          {status?.withSummary ?? 0} of {status?.meetingCount ?? 0} meetings
-          have a stored summary
-        </p>
-
-        <ul className="divide-y divide-charcoal/[0.08] rounded-xl border border-charcoal/[0.08]">
-          {(status?.meetings ?? [])
-            .slice()
-            .reverse()
-            .slice(0, 12)
-            .map((m) => (
-              <li
-                key={m.id}
-                className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="font-mono text-[11px] text-navy">
-                    {m.id}{" "}
-                    <span className="text-charcoal/40">· {m.endDate}</span>
-                  </p>
-                  <p className="mt-0.5 font-mono text-[10px] text-charcoal/45">
-                    {m.decision ?? "pending"}
-                    {m.hasSummary
-                      ? ` · summary ${m.summaryChars.toLocaleString()} chars`
-                      : " · no summary yet"}
-                  </p>
-                </div>
-                {m.statementUrl ? (
-                  <a
-                    href={m.statementUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono text-[10px] uppercase tracking-[0.12em] text-navy underline underline-offset-2"
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
+              FOMC · {fomcWithSummary} of {fomcCount} with summary
+            </p>
+            <ul className="mt-2 divide-y divide-charcoal/[0.08] rounded-xl border border-charcoal/[0.08]">
+              {meetings
+                .slice()
+                .reverse()
+                .slice(0, 10)
+                .map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5"
                   >
-                    Statement
-                  </a>
-                ) : null}
-              </li>
-            ))}
-        </ul>
+                    <div className="min-w-0">
+                      <p className="font-mono text-[11px] text-navy">
+                        {m.id}{" "}
+                        <span className="text-charcoal/40">· {m.endDate}</span>
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] text-charcoal/45">
+                        {m.decision ?? "pending"}
+                        {m.hasSummary
+                          ? ` · summary ${m.summaryChars.toLocaleString()} chars`
+                          : " · no summary yet"}
+                      </p>
+                    </div>
+                    {m.statementUrl ? (
+                      <a
+                        href={m.statementUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-mono text-[10px] uppercase tracking-[0.12em] text-navy underline underline-offset-2"
+                      >
+                        Statement
+                      </a>
+                    ) : null}
+                  </li>
+                ))}
+            </ul>
+          </div>
+
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
+              CPI · {status?.cpi?.withSummary ?? 0} summaries ·{" "}
+              {status?.cpi?.withHighlights ?? 0} with highlights
+            </p>
+            <ul className="mt-2 divide-y divide-charcoal/[0.08] rounded-xl border border-charcoal/[0.08]">
+              {cpiReleases.length === 0 ? (
+                <li className="px-4 py-3 font-mono text-[10px] text-charcoal/45">
+                  No CPI overlays yet — run sync after a BLS print.
+                </li>
+              ) : (
+                cpiReleases.slice(0, 10).map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-mono text-[11px] text-navy">
+                        {r.id}{" "}
+                        <span className="text-charcoal/40">
+                          · {r.releaseDate}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] text-charcoal/45">
+                        {r.hasSummary
+                          ? `summary ${r.summaryChars.toLocaleString()} chars`
+                          : "no summary yet"}
+                        {r.highlightCount > 0
+                          ? ` · ${r.highlightCount} highlights`
+                          : ""}
+                      </p>
+                    </div>
+                    {r.releaseUrl ? (
+                      <a
+                        href={r.releaseUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-mono text-[10px] uppercase tracking-[0.12em] text-navy underline underline-offset-2"
+                      >
+                        Release
+                      </a>
+                    ) : null}
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );

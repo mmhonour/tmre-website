@@ -133,6 +133,8 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'deal-of-the-day': 'deal-day',
   'property-addresses': 'addresses',
   'zip-boundaries': 'zip-maps',
+  'fomc-sync': 'fomc',
+  'cpi-sync': 'cpi',
 }
 
 /** Finalize-step → Sync History type (weekly full resync chain). */
@@ -692,6 +694,90 @@ async function runAdminSyncActionImpl(
           result.failed.length > 0
             ? `Wrote ${result.written}; failed: ${result.failed.join(', ')}`
             : `All TMRE town ZCTAs from Census TIGERweb → zip_boundaries`,
+      }
+    }
+    case 'fomc-sync': {
+      if (isServerlessRuntime()) {
+        const { queueNetlifyFomcSync } = await import('@/lib/netlify-sync-trigger')
+        const queued = await queueNetlifyFomcSync({ source: 'admin' })
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? 'FOMC sync queued on Netlify background worker'
+            : `FOMC sync queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { runFedFomcSync } = await import('@/lib/fed-fomc-sync')
+      const { setSyncMetaDurable } = await import('@/lib/db/sync-meta-store')
+      const { etYmd } = await import('@/lib/fed-event-sync-schedule')
+      const { FOMC_MEETINGS } = await import('@/lib/fed-fomc-calendar')
+      const result = await runFedFomcSync()
+      const finishedAt = result.syncedAt
+      const today = etYmd()
+      const todayMeeting = FOMC_MEETINGS.find((m) => m.endDate === today)
+      const eventId =
+        todayMeeting?.id ??
+        result.meetings.find((m) => m.ok && !m.skipped)?.id ??
+        null
+      if ((result.ok || result.updated > 0) && eventId) {
+        await setSyncMetaDurable('fomc_last_synced_event_id', eventId)
+      }
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - t0,
+        recordsFetched: result.updated,
+        message: `FOMC sync — updated ${result.updated}, fetched ${result.fetched}`,
+        detail: `skipped ${result.skipped} · failed ${result.failed}`,
+      }
+    }
+    case 'cpi-sync': {
+      if (isServerlessRuntime()) {
+        const { queueNetlifyCpiSync } = await import('@/lib/netlify-sync-trigger')
+        const queued = await queueNetlifyCpiSync({ source: 'admin' })
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? 'CPI sync queued on Netlify background worker'
+            : `CPI sync queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { runCpiReleaseSync } = await import('@/lib/cpi-release-sync')
+      const { setSyncMetaDurable } = await import('@/lib/db/sync-meta-store')
+      const { etYmd } = await import('@/lib/fed-event-sync-schedule')
+      const { CPI_RELEASES } = await import('@/lib/cpi-calendar')
+      const result = await runCpiReleaseSync()
+      const finishedAt = result.syncedAt
+      const today = etYmd()
+      const todayRelease = CPI_RELEASES.find((r) => r.releaseDate === today)
+      const eventId =
+        todayRelease?.id ??
+        result.releases.find((r) => r.ok && !r.skipped)?.id ??
+        null
+      if ((result.ok || result.updated > 0) && eventId) {
+        await setSyncMetaDurable('cpi_last_synced_event_id', eventId)
+      }
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - t0,
+        recordsFetched: result.updated,
+        message: `CPI sync — updated ${result.updated}, fetched ${result.fetched}`,
+        detail: `skipped ${result.skipped} · failed ${result.failed}`,
       }
     }
     default: {

@@ -552,6 +552,8 @@ export type PanelStatus = {
   propertyAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
+  fomcLastSyncedAt?: string | null;
+  cpiLastSyncedAt?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   /** Admin-set Next times that preempt the natural schedule. */
@@ -828,6 +830,10 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
         started: status.zipBoundariesSyncStartedAt ?? null,
         finished: status.zipBoundariesSyncedAt ?? null,
       };
+    case "fomc-sync":
+      return { started: null, finished: status.fomcLastSyncedAt ?? null };
+    case "cpi-sync":
+      return { started: null, finished: status.cpiLastSyncedAt ?? null };
     default:
       return { started: null, finished: null };
   }
@@ -1035,6 +1041,8 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "deal-of-the-day": "deal-of-the-day",
   "property-addresses": "property-addresses",
   "zip-boundaries": "zip-boundaries",
+  "fomc-sync": "fomc-sync",
+  "cpi-sync": "cpi-sync",
 };
 
 function pauseJobForSyncAllAction(

@@ -5,7 +5,8 @@ import FedPolicySnapshot from "@/components/fed-analysis/FedPolicySnapshot";
 import FedRecentCpi from "@/components/fed-analysis/FedRecentCpi";
 import FedRecentDecisions from "@/components/fed-analysis/FedRecentDecisions";
 import FedTimelinePair from "@/components/fed-analysis/FedTimelinePair";
-import { CPI_RELEASES, CPI_SCHEDULE_URL } from "@/lib/cpi-calendar";
+import { CPI_SCHEDULE_URL } from "@/lib/cpi-calendar";
+import { getCpiReleasesFresh } from "@/lib/cpi-release-sync";
 import {
   getNextFomcMeeting,
   getPrevailingFedPolicy,
@@ -26,7 +27,10 @@ export const dynamic = "force-dynamic";
 
 export default async function FedAnalysisPage() {
   const now = new Date();
-  const meetings = await getFomcMeetingsFresh();
+  const [meetings, releases] = await Promise.all([
+    getFomcMeetingsFresh(),
+    getCpiReleasesFresh(),
+  ]);
   const prevailing = getPrevailingFedPolicy(now, meetings);
   const nextMeeting = getNextFomcMeeting(now, meetings);
 
@@ -74,7 +78,7 @@ export default async function FedAnalysisPage() {
             <div className="w-full max-w-md">
               <FedEventsCalendar
                 meetings={meetings}
-                cpiReleases={CPI_RELEASES}
+                cpiReleases={releases}
                 initialYear={now.getFullYear()}
                 initialMonth={now.getMonth()}
               />
@@ -86,7 +90,7 @@ export default async function FedAnalysisPage() {
             <FedPolicySnapshot
               prevailingFed={prevailing}
               nextMeeting={nextMeeting}
-              releases={CPI_RELEASES}
+              releases={releases}
               now={now}
             />
           </div>
@@ -95,7 +99,7 @@ export default async function FedAnalysisPage() {
           <div className="mb-8">
             <FedTimelinePair
               meetings={meetings}
-              releases={CPI_RELEASES}
+              releases={releases}
               now={now}
               defaultLookback="all"
             />
@@ -104,7 +108,7 @@ export default async function FedAnalysisPage() {
           {/* Recent Fed decisions | Recent CPI prints */}
           <div className="mb-8 grid gap-8 lg:grid-cols-2 lg:items-start">
             <FedRecentDecisions meetings={meetings} />
-            <FedRecentCpi releases={CPI_RELEASES} />
+            <FedRecentCpi releases={releases} />
           </div>
 
           <p className="text-xs leading-relaxed text-slate">
@@ -127,8 +131,8 @@ export default async function FedAnalysisPage() {
               BLS CPI release schedule
             </a>
             . FOMC dates stay tentative until confirmed at the prior meeting.
-            Statement excerpts are taken from the official release (stored via
-            Admin Fed sync), not AI-written. Mortgage rates also move with term
+            FOMC and CPI excerpts are taken from the official releases (stored
+            via Admin Fed sync), not AI-written. Mortgage rates also move with term
             premiums and credit spreads — see{" "}
             <Link
               href="/market-pulse"

@@ -17,6 +17,13 @@ import {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
+function cpiDayTone(r: CpiRelease): string {
+  if (r.momPct == null) return "border-sky/30 bg-sky/10";
+  if (r.momPct > 0.05) return "border-coral/35 bg-coral/10";
+  if (r.momPct < -0.05) return "border-sage/35 bg-sage/10";
+  return "border-navy/25 bg-navy/[0.04]";
+}
+
 export default function FedEventsCalendar({
   meetings,
   cpiReleases,
@@ -173,14 +180,30 @@ export default function FedEventsCalendar({
                 }
                 const hasFomc = Boolean(cell.meeting);
                 const hasCpi = cell.cpi.length > 0;
+                const cpi = cell.cpi[0];
+                const dayClass = hasCpi
+                  ? cpiDayTone(cpi!)
+                  : hasFomc
+                    ? "border-navy/20 bg-cream/50"
+                    : "border-transparent";
+                const tipHighlight = cpi?.highlights?.[0]?.label;
                 return (
                   <div
                     key={cell.day}
-                    className={`min-h-[4.25rem] rounded-lg border px-1 py-1 ${
-                      hasFomc || hasCpi
-                        ? "border-navy/20 bg-cream/50"
-                        : "border-transparent"
-                    }`}
+                    title={
+                      hasCpi
+                        ? [
+                            "CPI",
+                            cpi!.momPct != null
+                              ? `${formatCpiPct(cpi!.momPct)} MoM`
+                              : null,
+                            tipHighlight,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : undefined
+                    }
+                    className={`min-h-[4.25rem] rounded-lg border px-1 py-1 ${dayClass}`}
                   >
                     <p className="font-mono text-[10px] tabular-nums text-charcoal/45">
                       {cell.day}
@@ -194,9 +217,19 @@ export default function FedEventsCalendar({
                       </p>
                     ) : null}
                     {hasCpi ? (
-                      <p className="mt-0.5 truncate font-mono text-[8px] tracking-[0.08em] uppercase text-sky">
-                        CPI
-                      </p>
+                      <>
+                        <p className="mt-0.5 truncate font-mono text-[8px] tracking-[0.08em] uppercase text-sky">
+                          CPI
+                          {cpi!.momPct != null
+                            ? ` · ${formatCpiPct(cpi!.momPct)}`
+                            : ""}
+                        </p>
+                        {tipHighlight ? (
+                          <p className="mt-0.5 truncate font-mono text-[7px] tracking-[0.06em] uppercase text-charcoal/45">
+                            {tipHighlight}
+                          </p>
+                        ) : null}
+                      </>
                     ) : null}
                   </div>
                 );
@@ -208,7 +241,16 @@ export default function FedEventsCalendar({
                 <span className="h-2 w-2 rounded-full bg-navy" aria-hidden /> FOMC
               </li>
               <li className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-coral/80" aria-hidden />{" "}
+                CPI up MoM
+              </li>
+              <li className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-sage" aria-hidden /> CPI
+                down MoM
+              </li>
+              <li className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-sky" aria-hidden /> CPI
+                pending
               </li>
             </ul>
 
@@ -244,6 +286,24 @@ export default function FedEventsCalendar({
                           .filter(Boolean)
                           .join(" · ")}`
                       : " · Awaiting print"}
+                    {(r.highlights?.length ?? 0) > 0 ? (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {r.highlights!.slice(0, 3).map((h, i) => (
+                          <span
+                            key={`${r.id}-${h.label}-${i}`}
+                            className={`rounded-full border px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase ${
+                              h.direction === "up"
+                                ? "border-coral/30 bg-coral/10 text-coral"
+                                : h.direction === "down"
+                                  ? "border-sage/30 bg-sage/10 text-sage"
+                                  : "border-charcoal/15 text-charcoal/50"
+                            }`}
+                          >
+                            {h.label}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
                   </li>
                 ))}
               </ul>

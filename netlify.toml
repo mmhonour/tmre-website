@@ -84,3 +84,21 @@
 [functions."market-digest-worker"]
   included_files = []
   background = true
+
+# FOMC decision day ~3:15pm ET — dense cron; handler gates on calendar + start time.
+[functions."sync-fomc"]
+  included_files = []
+  schedule = "*/30 * * * *"
+
+[functions."sync-fomc-worker"]
+  included_files = []
+  background = true
+
+# CPI release day ~9:15am ET — dense cron; handler gates on calendar + start time.
+[functions."sync-cpi"]
+  included_files = []
+  schedule = "*/30 * * * *"
+
+[functions."sync-cpi-worker"]
+  included_files = []
+  background = true

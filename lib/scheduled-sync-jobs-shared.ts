@@ -8,6 +8,8 @@ export const SCHEDULED_SYNC_JOB_IDS = [
   'deal-of-the-day',
   'property-addresses',
   'zip-boundaries',
+  'fomc-sync',
+  'cpi-sync',
 ] as const
 
 export type ScheduledSyncJobId = (typeof SCHEDULED_SYNC_JOB_IDS)[number]
@@ -27,5 +29,7 @@ export function emptyScheduledSyncPausedJobs(): ScheduledSyncPausedJobs {
     'deal-of-the-day': false,
     'property-addresses': false,
     'zip-boundaries': false,
+    'fomc-sync': false,
+    'cpi-sync': false,
   }
 }

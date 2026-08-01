@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -43,7 +43,7 @@ function SortButton({
       {label}
       {active ? (
         <span aria-hidden className="tabular-nums">
-          {dir === "desc" ? "Γåô" : "Γåæ"}
+          {dir === "desc" ? "↓" : "↑"}
         </span>
       ) : null}
     </button>

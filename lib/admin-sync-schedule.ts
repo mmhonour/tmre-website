@@ -2,6 +2,10 @@ import 'server-only'
 
 import { LATEST_DB_REFRESH_MS } from '@/lib/latest-refresh'
 import { readPostDeployFullResyncStatus } from '@/lib/deploy-full-resync-schedule'
+import {
+  nextCpiSyncTarget,
+  nextFomcSyncTarget,
+} from '@/lib/fed-event-sync-schedule'
 import { STATS_CACHE_TTL_MS } from '@/lib/stats-cache'
 import type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 import { applySyncNextOverride } from '@/lib/sync-next-override'
@@ -321,6 +325,11 @@ export function computeNaturalNextRunIso(
   if (job.frequency === 'weekly') {
     return nextMondayTimeEt(hour, minute, now).toISOString()
   }
+  if (job.frequency === 'event') {
+    // Event-day jobs (FOMC / CPI) compute next run from calendars — callers
+    // must special-case; this fallback is never the source of truth.
+    return nextDailyTimeEt(hour, minute, now).toISOString()
+  }
   return nextMonthDayEt(1, hour, minute, now).toISOString()
 }
 
@@ -344,6 +353,10 @@ export function isJobDueBySchedule(
   if (job.frequency === 'weekly') {
     if (lastMs == null) return true
     return isWeeklyMondaySyncOverdue(lastFinishedIso, hour, minute, now)
+  }
+  if (job.frequency === 'event') {
+    // Handled by isScheduledJobDue → fed-event-sync-schedule.
+    return false
   }
   if (lastMs == null) return true
   const dueSlot = lastPastMonthDayEt(1, hour, minute, now)
@@ -385,6 +398,10 @@ function lastFinishedForJob(
       return getSyncMeta('property_addresses_synced_at')
     case 'zip-boundaries':
       return getSyncMeta('last_zip_boundaries_sync')
+    case 'fomc-sync':
+      return getSyncMeta('fomc_last_synced_at')
+    case 'cpi-sync':
+      return getSyncMeta('cpi_last_synced_at')
     default:
       return null
   }
@@ -451,6 +468,26 @@ export function buildAdminSyncNextRuns(
     SCHEDULED_SYNC_JOB_BY_ROW['zip-boundaries'],
   )
 
+  // Event-day calendars — not interval/weekly/monthly Configure math.
+  const fomcTarget = nextFomcSyncTarget(
+    undefined,
+    now,
+    config.jobs['fomc-sync']?.startTimeEt,
+  )
+  const cpiTarget = nextCpiSyncTarget(
+    undefined,
+    now,
+    config.jobs['cpi-sync']?.startTimeEt,
+  )
+  const nextFomcSyncIso = applySyncNextOverride(
+    fomcTarget?.at.toISOString() ?? null,
+    SCHEDULED_SYNC_JOB_BY_ROW['fomc-sync'],
+  )
+  const nextCpiSyncIso = applySyncNextOverride(
+    cpiTarget?.at.toISOString() ?? null,
+    SCHEDULED_SYNC_JOB_BY_ROW['cpi-sync'],
+  )
+
   const nextIncrementalDate = nextIncrementalIso ? new Date(nextIncrementalIso) : null
   const nextFullResyncDate = nextFullResyncIso ? new Date(nextFullResyncIso) : null
   const nextRefresh = earliestDate(nextIncrementalDate, nextFullResyncDate)
@@ -465,6 +502,8 @@ export function buildAdminSyncNextRuns(
     'deal-of-the-day': nextDealOfTheDayIso,
     'property-addresses': nextPropertyAddressesIso,
     'zip-boundaries': nextZipBoundariesIso,
+    'fomc-sync': nextFomcSyncIso,
+    'cpi-sync': nextCpiSyncIso,
   }
 }
 

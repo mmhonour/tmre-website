@@ -5,6 +5,10 @@ import {
   setSyncMetaDurable,
 } from '@/lib/db/sync-meta-store'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
+import {
+  cpiSyncDueRelease,
+  fomcSyncDueMeeting,
+} from '@/lib/fed-event-sync-schedule'
 import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   mergeSyncScheduleConfig,
@@ -83,6 +87,10 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'property_addresses_synced_at'
     case 'zip-boundaries':
       return 'last_zip_boundaries_sync'
+    case 'fomc-sync':
+      return 'fomc_last_synced_at'
+    case 'cpi-sync':
+      return 'cpi_last_synced_at'
     default: {
       const _exhaustive: never = jobId
       return _exhaustive
@@ -107,6 +115,31 @@ export function isScheduledJobDue(
 ): boolean {
   if (shouldDeferScheduledJob(jobId, now)) return false
   if (isSyncNextOverrideDue(jobId, now)) return true
+
+  if (jobId === 'fomc-sync' || jobId === 'cpi-sync') {
+    const start =
+      config.jobs[jobId]?.startTimeEt ??
+      (jobId === 'fomc-sync' ? '15:15' : '09:15')
+    if (jobId === 'fomc-sync') {
+      return Boolean(
+        fomcSyncDueMeeting(
+          undefined,
+          now,
+          start,
+          getSyncMeta('fomc_last_synced_event_id'),
+        ),
+      )
+    }
+    return Boolean(
+      cpiSyncDueRelease(
+        undefined,
+        now,
+        start,
+        getSyncMeta('cpi_last_synced_event_id'),
+      ),
+    )
+  }
+
   return isJobDueBySchedule(
     config.jobs[jobId],
     readLastFinishedForScheduledJob(jobId),

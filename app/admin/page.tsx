@@ -18,7 +18,6 @@ import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminCommunicationsPanel from "@/components/admin/AdminCommunicationsPanel";
 import AdminListingAlertsPanel from "@/components/admin/AdminListingAlertsPanel";
 import AdminMarketDigestPanel from "@/components/admin/AdminMarketDigestPanel";
-import AdminFedSyncPanel from "@/components/admin/AdminFedSyncPanel";
 import AdminDeployNotifyPanel from "@/components/admin/AdminDeployNotifyPanel";
 import AdminSocialProfilesPanel from "@/components/admin/AdminSocialProfilesPanel";
 import AdminGoldilocksPanel from "@/components/admin/AdminGoldilocksPanel";
@@ -325,6 +324,8 @@ export default async function AdminPage() {
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
   const zipBoundariesSyncedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_KEY);
   const zipBoundariesSyncStartedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_STARTED_KEY);
+  const fomcLastSyncedAt = getSyncMeta("fomc_last_synced_at");
+  const cpiLastSyncedAt = getSyncMeta("cpi_last_synced_at");
   const zipInventory = await safe(
     "zip-boundaries-inventory",
     () => zipBoundariesInventory(),
@@ -481,6 +482,28 @@ export default async function AdminPage() {
       actionId: "zip-boundaries",
       nextRunAt: nextRuns["zip-boundaries"],
     },
+    {
+      id: "fomc-sync",
+      label: "FOMC statement sync",
+      value: formatTimestamp(fomcLastSyncedAt),
+      finishedAt: fomcLastSyncedAt,
+      sortMs: timestampSortMs(fomcLastSyncedAt),
+      detail:
+        "Official FOMC statement scrape on decision day (~3:15 p.m. ET) → Postgres for /fed-analysis",
+      actionId: "fomc-sync",
+      nextRunAt: nextRuns["fomc-sync"],
+    },
+    {
+      id: "cpi-sync",
+      label: "CPI release sync",
+      value: formatTimestamp(cpiLastSyncedAt),
+      finishedAt: cpiLastSyncedAt,
+      sortMs: timestampSortMs(cpiLastSyncedAt),
+      detail:
+        "Official BLS CPI news release scrape on print day (~9:15 a.m. ET) → Postgres for /fed-analysis",
+      actionId: "cpi-sync",
+      nextRunAt: nextRuns["cpi-sync"],
+    },
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
@@ -496,6 +519,8 @@ export default async function AdminPage() {
     propertyAddressesSyncedAt: propertyAddressesSyncedAt,
     zipBoundariesSyncedAt,
     zipBoundariesSyncStartedAt,
+    fomcLastSyncedAt,
+    cpiLastSyncedAt,
     stats: {
       total: stats.total,
       lastFullSync: stats.lastFullSync,
@@ -764,7 +789,6 @@ export default async function AdminPage() {
       listingAlerts={
         <AdminListingAlertsPanel initial={listingAlerts ?? undefined} />
       }
-      fedSync={<AdminFedSyncPanel />}
     />
   );
 

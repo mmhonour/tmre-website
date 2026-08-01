@@ -16,4 +16,6 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'deal-of-the-day': 'deal-of-the-day',
   'property-addresses': 'property-addresses',
   'zip-boundaries': 'zip-boundaries',
+  'fomc-sync': 'fomc-sync',
+  'cpi-sync': 'cpi-sync',
 }

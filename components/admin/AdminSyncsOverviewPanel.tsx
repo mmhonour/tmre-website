@@ -20,6 +20,10 @@ const NETLIFY_PAUSE_BY_FN: Record<string, (typeof SCHEDULED_SYNC_JOB_IDS)[number
   "sync-zip-boundaries-worker": "zip-boundaries",
   "market-digest": null,
   "market-digest-worker": null,
+  "sync-fomc": "fomc-sync",
+  "sync-fomc-worker": "fomc-sync",
+  "sync-cpi": "cpi-sync",
+  "sync-cpi-worker": "cpi-sync",
 };
 
 type ZipInventory = {
