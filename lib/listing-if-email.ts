@@ -11,6 +11,7 @@ import {
   getContactNotifyEmailFresh,
   isValidEmail,
 } from '@/lib/contact-notify-config'
+import { fmtAcres, fmtSqft } from '@/lib/listing-comparables-shared'
 import { fetchListingIfPayload } from '@/lib/listing-if-cache'
 import {
   ensureMidpointAggregates,
@@ -23,17 +24,21 @@ import {
   roundIfRentLow,
   roundIfRentMidpoint,
   scenarioWithMidpointMethod,
+  type IfCompRow,
   type IfMidpointMethod,
   type IfScenario,
   type ListingIfPayload,
 } from '@/lib/listing-if-estimates'
+import { fmtDate, fmtMoney } from '@/lib/listing-history'
 import { listingSectionHref } from '@/lib/listing-url'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { getMarketPulseThemeFresh } from '@/lib/page-theme-config'
 import type { MarketPulseTheme } from '@/lib/page-theme-shared'
 
 const RESEND_TIMEOUT_MS = 10_000
-const MAX_COMPS_IN_EMAIL = 6
+/** Match site tokens (globals.css) for out-of-band / exact-match accents in email. */
+const EMAIL_SAGE = '#4A7C6F'
+const EMAIL_CORAL = '#C85A3A'
 
 export type ListingIfEmailKind = 'sale' | 'rent'
 
@@ -58,6 +63,157 @@ function fmtPpsf(amount: number, sqft: number, kind: ListingIfEmailKind): string
   const ppsf = amount / sqft
   if (kind === 'rent') return `$${ppsf.toFixed(2)}/sqft`
   return `$${Math.round(ppsf).toLocaleString('en-US')}/sqft`
+}
+
+/** Same 25th–75th band tint as the What if CompList (top = above high, bottom = below low). */
+function compQuarterBand(
+  implied: number | null | undefined,
+  amountLow: number | null | undefined,
+  amountHigh: number | null | undefined,
+): 'top' | 'bottom' | null {
+  if (
+    implied == null ||
+    amountLow == null ||
+    amountHigh == null ||
+    !Number.isFinite(implied)
+  ) {
+    return null
+  }
+  if (implied > amountHigh) return 'top'
+  if (implied < amountLow) return 'bottom'
+  return null
+}
+
+/** Default CompList sort: price ascending (undated/null prices last). */
+function sortCompsForEmail(comps: IfCompRow[]): IfCompRow[] {
+  return [...comps].sort((a, b) => {
+    const pa =
+      a.price != null && a.price > 0 ? a.price : Number.POSITIVE_INFINITY
+    const pb =
+      b.price != null && b.price > 0 ? b.price : Number.POSITIVE_INFINITY
+    return pa - pb
+  })
+}
+
+function exactMatch(subject: number | null | undefined, comp: number | null | undefined): boolean {
+  if (subject == null || comp == null) return false
+  if (!Number.isFinite(subject) || !Number.isFinite(comp)) return false
+  return subject === comp
+}
+
+function bedBathMetaHtml(
+  comp: IfCompRow,
+  subjectBeds: number | null,
+  subjectBaths: number | null,
+  muted: string,
+): string {
+  const parts: string[] = []
+  if (comp.beds != null) {
+    const color = exactMatch(subjectBeds, comp.beds) ? EMAIL_SAGE : muted
+    parts.push(
+      `<span style="color:${color};">${escapeEmailHtml(String(comp.beds))} bd</span>`,
+    )
+  }
+  if (comp.baths != null) {
+    const color = exactMatch(subjectBaths, comp.baths) ? EMAIL_SAGE : muted
+    parts.push(
+      `<span style="color:${color};">${escapeEmailHtml(String(comp.baths))} ba</span>`,
+    )
+  }
+  return parts.join(' · ')
+}
+
+/** One property row — mirrors CompList on the What if screen. */
+function compRowHtml(
+  comp: IfCompRow,
+  kind: ListingIfEmailKind,
+  theme: MarketPulseTheme,
+  subjectBeds: number | null,
+  subjectBaths: number | null,
+  amountLow: number | null,
+  amountHigh: number | null,
+): string {
+  const body = emailFontStack(theme.bodyFont)
+  const mono = emailFontStack(theme.monoFont)
+  const isRent = kind === 'rent'
+  const href = absoluteUrl(
+    listingSectionHref(comp.listingKey || comp.mlsId, 'overview'),
+  )
+  const role =
+    comp.role === 'sold' ? (isRent ? 'Rented' : 'Sold') : 'Active'
+  const close = comp.closeDate ? fmtDate(comp.closeDate) : null
+  const priceLabel =
+    comp.price != null
+      ? `${fmtMoney(comp.price)}${isRent ? '/mo' : ''}`
+      : '—'
+  const quarter = compQuarterBand(
+    comp.impliedSubjectAmount,
+    amountLow,
+    amountHigh,
+  )
+  const bandColor =
+    quarter === 'top'
+      ? EMAIL_SAGE
+      : quarter === 'bottom'
+        ? EMAIL_CORAL
+        : theme.mutedText
+  const adjPpsf =
+    comp.adjustedPricePerSqft != null
+      ? `$${
+          isRent
+            ? comp.adjustedPricePerSqft.toFixed(2)
+            : Math.round(comp.adjustedPricePerSqft).toLocaleString('en-US')
+        }/sqft`
+      : null
+  const bedBath = bedBathMetaHtml(
+    comp,
+    subjectBeds,
+    subjectBaths,
+    theme.mutedText,
+  )
+  const sizeParts = [fmtSqft(comp.sqft), fmtAcres(comp.lotAcres)].filter(
+    (part) => part !== '—',
+  )
+  const implied =
+    comp.impliedSubjectAmount != null
+      ? isRent
+        ? `${fmtIfRentMoney(comp.impliedSubjectAmount)}/mo`
+        : fmtIfSaleMoney(comp.impliedSubjectAmount)
+      : null
+
+  const metaBits = [
+    `<span>${escapeEmailHtml(role)}</span>`,
+    close ? `<span>${escapeEmailHtml(close)}</span>` : null,
+    `<span style="color:${bandColor};">${escapeEmailHtml(priceLabel)}</span>`,
+    adjPpsf
+      ? `<span>${escapeEmailHtml(adjPpsf)}</span>`
+      : null,
+    bedBath || null,
+    sizeParts.length > 0
+      ? `<span>${escapeEmailHtml(sizeParts.join(' · '))}</span>`
+      : null,
+    `<span style="color:${theme.accent};">wt ${comp.weight.toFixed(2)}</span>`,
+  ].filter(Boolean)
+
+  return `<tr>
+    <td style="padding:10px 0;border-top:1px solid #E2E6EE;vertical-align:top;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr>
+          <td style="font-family:${body};font-size:13px;line-height:1.35;color:${theme.text};padding-right:10px;">
+            <a href="${escapeEmailHtml(href)}" style="color:${theme.text};text-decoration:underline;font-weight:600;">${escapeEmailHtml(comp.address)}</a>
+            <div style="margin-top:3px;font-family:${mono};font-size:11px;line-height:1.45;color:${theme.mutedText};">
+              ${metaBits.join(' · ')}
+            </div>
+          </td>
+          ${
+            implied
+              ? `<td style="width:1%;white-space:nowrap;vertical-align:top;text-align:right;font-family:${mono};font-size:11px;color:${bandColor};padding-left:8px;">→ ${escapeEmailHtml(implied)}</td>`
+              : ''
+          }
+        </tr>
+      </table>
+    </td>
+  </tr>`
 }
 
 function scenarioBlockHtml(
@@ -100,32 +256,32 @@ function scenarioBlockHtml(
   const ppsf =
     sqft != null && sqft > 0 ? fmtPpsf(scenario.amount, sqft, kind) : null
 
-  const comps = scenario.comps.slice(0, MAX_COMPS_IN_EMAIL)
+  const comps = sortCompsForEmail(scenario.comps)
+  const subjectBeds = scenario.params.beds
+  const subjectBaths = scenario.params.baths
   const compRows =
     comps.length === 0
-      ? `<p style="margin:8px 0 0 0;font-family:${body};font-size:13px;color:${theme.mutedText};">No comps listed.</p>`
-      : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:10px;">
+      ? `<p style="margin:12px 0 0 0;font-family:${body};font-size:13px;color:${theme.mutedText};">No comps listed.</p>`
+      : `<p style="margin:14px 0 4px 0;font-family:${mono};font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${theme.mutedText};">Properties used (${comps.length})</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
           ${comps
-            .map((c) => {
-              const price =
-                c.price != null
-                  ? kind === 'rent'
-                    ? fmtIfRentMoney(c.price)
-                    : fmtIfSaleMoney(c.price)
-                  : '—'
-              const role = c.role === 'sold' ? (kind === 'rent' ? 'Rented' : 'Sold') : 'Active'
-              const href = absoluteUrl(
-                listingSectionHref(c.listingKey || c.mlsId, 'overview'),
-              )
-              return `<tr>
-                <td style="padding:6px 0;border-top:1px solid #E2E6EE;font-family:${body};font-size:13px;color:${theme.text};">
-                  <a href="${escapeEmailHtml(href)}" style="color:${theme.text};text-decoration:underline;">${escapeEmailHtml(c.address)}</a>
-                  <span style="color:${theme.mutedText};"> · ${escapeEmailHtml(role)} · ${escapeEmailHtml(price)}</span>
-                </td>
-              </tr>`
-            })
+            .map((c) =>
+              compRowHtml(
+                c,
+                kind,
+                theme,
+                subjectBeds,
+                subjectBaths,
+                scenario.amountLow,
+                scenario.amountHigh,
+              ),
+            )
             .join('')}
-        </table>`
+        </table>
+        <p style="margin:10px 0 0 0;font-family:${mono};font-size:10px;letter-spacing:0.08em;color:${theme.mutedText};">
+          <span style="color:${EMAIL_SAGE};font-weight:600;">Green</span> = exact bed/bath match or implied above range ·
+          <span style="color:${EMAIL_CORAL};font-weight:600;">Coral</span> = implied below range
+        </p>`
 
   return `
     <tr><td style="padding:0 0 20px 0;">
@@ -250,10 +406,51 @@ function formatListingIfEmailText(opts: {
           ? fmtIfSaleMoney(scenario.amountHigh)
           : '—'
     lines.push(`Midpoint: ${mid}`, `Range: ${low} – ${high}`)
-    for (const c of scenario.comps.slice(0, MAX_COMPS_IN_EMAIL)) {
-      lines.push(
-        `  • ${c.address} (${c.role}) ${c.price != null ? (kind === 'rent' ? fmtIfRentMoney(c.price) : fmtIfSaleMoney(c.price)) : ''}`,
-      )
+    lines.push(`Properties used (${scenario.comps.length})`)
+    for (const c of sortCompsForEmail(scenario.comps)) {
+      const role =
+        c.role === 'sold' ? (kind === 'rent' ? 'Rented' : 'Sold') : 'Active'
+      const price =
+        c.price != null
+          ? `${fmtMoney(c.price)}${kind === 'rent' ? '/mo' : ''}`
+          : '—'
+      const close = c.closeDate ? fmtDate(c.closeDate) : null
+      const adjPpsf =
+        c.adjustedPricePerSqft != null
+          ? `$${
+              kind === 'rent'
+                ? c.adjustedPricePerSqft.toFixed(2)
+                : Math.round(c.adjustedPricePerSqft).toLocaleString('en-US')
+            }/sqft`
+          : null
+      const beds =
+        c.beds != null || c.baths != null
+          ? [c.beds != null ? `${c.beds} bd` : null, c.baths != null ? `${c.baths} ba` : null]
+              .filter(Boolean)
+              .join(' · ')
+          : null
+      const size = [fmtSqft(c.sqft), fmtAcres(c.lotAcres)]
+        .filter((p) => p !== '—')
+        .join(' · ')
+      const implied =
+        c.impliedSubjectAmount != null
+          ? kind === 'rent'
+            ? `${fmtIfRentMoney(c.impliedSubjectAmount)}/mo`
+            : fmtIfSaleMoney(c.impliedSubjectAmount)
+          : null
+      const meta = [
+        role,
+        close,
+        price,
+        adjPpsf,
+        beds,
+        size || null,
+        `wt ${c.weight.toFixed(2)}`,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      lines.push(`  • ${c.address}`)
+      lines.push(`    ${meta}${implied ? ` → ${implied}` : ''}`)
     }
     lines.push('')
   }
