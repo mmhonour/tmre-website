@@ -238,28 +238,26 @@ function IfEstimateRangeDisplay({
         ? `Between ${lowLabel}, midpoint ${midLabel}, and ${highLabel}`
         : `Between ${lowLabel} and ${highLabel}`;
     return (
-      <div className="flex flex-col gap-1.5" aria-label={aria}>
-        <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/50">
-          Between
+      <div
+        className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-2.5"
+        aria-label={aria}
+      >
+        <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+          {lowLabel}
         </span>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-2.5">
-          <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
-            {lowLabel}
-          </span>
-          <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
-          {midLabel != null ? (
-            <>
-              {/* Mid ~4pt smaller than low/high. */}
-              <span className="font-serif text-xl sm:text-[1.625rem] text-gold tabular-nums leading-snug">
-                {midLabel}
-              </span>
-              <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
-            </>
-          ) : null}
-          <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
-            {highLabel}
-          </span>
-        </div>
+        <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+        {midLabel != null ? (
+          <>
+            {/* Mid ~4pt smaller than low/high. */}
+            <span className="font-serif text-xl sm:text-[1.625rem] text-gold tabular-nums leading-snug">
+              {midLabel}
+            </span>
+            <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+          </>
+        ) : null}
+        <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+          {highLabel}
+        </span>
       </div>
     );
   }
@@ -474,21 +472,21 @@ function IfMathWorksheet({
                   <span className="text-coral">bottom</span> quarter of the
                   market with a <span className="text-sage">green</span> or{" "}
                   <span className="text-coral">red</span> row tint
-                </p>
-                <p className="m-0 mt-2">Based on the following comps</p>
-                <p className="m-0">
+                  {"\n\n"}
+                  Based on the following comps
+                  {"\n"}
                   {"\t"}
                   {est.soldCount} {soldWord}
-                </p>
-                <p className="m-0">
+                  {"\n"}
                   {"\t"}
                   {est.activeCount} active
+                  {lowPpsf && highPpsf ? (
+                    <>
+                      {"\n\n"}
+                      Range {lowPpsf}–{highPpsf}
+                    </>
+                  ) : null}
                 </p>
-                {lowPpsf && highPpsf ? (
-                  <p className="m-0 mt-2">
-                    Range {lowPpsf}–{highPpsf}
-                  </p>
-                ) : null}
               </div>
             </div>
 
@@ -997,7 +995,6 @@ function ScenarioPanel({
   comps,
   kind,
   townHint,
-  amountLabel,
   inventorySegmentBands = null,
   foundCountEmphasized = false,
   onEmailClick = null,
@@ -1009,7 +1006,6 @@ function ScenarioPanel({
   comps: IfCompRow[];
   kind: "sale" | "rent";
   townHint?: string | null;
-  amountLabel: string;
   /** Admin Market Bands config — used for sale midpoint band label only. */
   inventorySegmentBands?: InventorySegmentBandsConfig | null;
   foundCountEmphasized?: boolean;
@@ -1112,12 +1108,7 @@ function ScenarioPanel({
         </div>
       </div>
 
-      <div>
-        {range}
-        <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/35">
-          {amountLabel}
-        </p>
-      </div>
+      <div>{range}</div>
 
       {!hasEstimate ? (
         <p className="text-white/45 text-xs leading-relaxed">
@@ -1190,6 +1181,7 @@ export default function ListingIfPanel({
   suppressPageChrome?: boolean;
 }) {
   void _routeBase;
+  void suppressPageChrome;
   const [data, setData] = useState<ListingIfPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionMatch, setSessionMatch] = useState<SessionMatchOverrides | null>(
@@ -1442,26 +1434,43 @@ export default function ListingIfPanel({
       </div>
     ) : null;
 
+  const desktopIfCriteriaSlotId = listingCriteriaLinkSlotId(
+    LISTING_SECTION_IDS.if,
+  );
+
   const mainColumn = (
     <>
       {!criteriaInSidePanel && criteriaBlock ? (
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
-      {siteUnlocked ? (
-        <div className="hidden lg:flex justify-end px-0">
-          <button
-            type="button"
-            onClick={() => openEmailScenario(["sale", "rent"])}
-            className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/40 underline decoration-white/20 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50"
-          >
-            Email scenario
-          </button>
+      {/* Desktop: mail icon left (panel edge) · Criteria right — same row, no "What if" label. */}
+      {criteriaInSidePanel || siteUnlocked ? (
+        <div className="mb-1 hidden items-start justify-between gap-3 lg:flex lg:px-0">
+          {siteUnlocked ? (
+            <button
+              type="button"
+              onClick={() => openEmailScenario(["sale", "rent"])}
+              className="p-0.5 text-white/35 transition-colors hover:text-gold"
+              aria-label="Email scenario"
+              title="Email scenario"
+            >
+              <IfEmailIcon className="h-4 w-4" />
+            </button>
+          ) : (
+            <span aria-hidden className="h-4 w-4" />
+          )}
+          {criteriaInSidePanel ? (
+            <div
+              id={desktopIfCriteriaSlotId}
+              className="flex min-h-[1em] shrink-0 items-start justify-end"
+            />
+          ) : null}
         </div>
       ) : null}
 
       {siteUnlocked && emailOpen ? (
-        <div className="max-lg:px-3 lg:px-0 lg:max-w-sm lg:ml-auto">
+        <div className="max-lg:px-3 lg:max-w-sm lg:px-0">
           <IfEmailScenarioDialog
             mlsId={mlsId}
             open={emailOpen}
@@ -1534,7 +1543,6 @@ export default function ListingIfPanel({
               ? "max-lg:block lg:block"
               : "max-lg:hidden lg:block"
           }
-          amountLabel="Estimated Value Range"
         />
         <ScenarioPanel
           title="If you rent"
@@ -1552,7 +1560,6 @@ export default function ListingIfPanel({
               ? "max-lg:block lg:block"
               : "max-lg:hidden lg:block"
           }
-          amountLabel="Estimated monthly rent range"
         />
       </div>
 
@@ -1573,29 +1580,11 @@ export default function ListingIfPanel({
           : "rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-5"
       }
     >
-      {isPage && !suppressPageChrome ? (
-        <div className="max-lg:px-3 lg:px-0">
-          <div className="min-w-0 text-left">
-            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold mb-1">
-              What if
-            </p>
-            <p className="text-white/50 text-sm leading-relaxed">
-              Based on matching criteria, we estimate a sale and rent range for
-              this home — and show the comps that fed each number.
-            </p>
-          </div>
-        </div>
-      ) : null}
-
       {criteriaInSidePanel ? (
         <ListingCriteriaSideLayout
           criteria={criteriaBlock}
           heading="What if criteria"
-          linkSlotId={
-            isDesktop
-              ? listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)
-              : null
-          }
+          linkSlotId={isDesktop ? desktopIfCriteriaSlotId : null}
           linkSlotIds={isDesktop ? null : [mobileIfCriteriaSlotId]}
         >
           {mainColumn}

@@ -225,11 +225,8 @@ export function ListingMobileScrollSections({
       </Section>
       <Section
         id={LISTING_SECTION_IDS.if}
-        title="What if"
+        title=""
         hidden={!show("if")}
-        criteriaLinkSlotId={listingCriteriaLinkSlotId(LISTING_SECTION_IDS.if)}
-        criteriaLinkDesktopOnly
-        hideTitleOnMobile
         compact={isPanel}
       >
         {mount("if") ? (
