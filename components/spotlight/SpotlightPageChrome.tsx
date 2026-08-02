@@ -102,6 +102,7 @@ export function SpotlightPageChrome({
           baths: display.baths,
           sqft: display.sqft,
           yearBuilt: display.yearBuilt,
+          modificationTimestamp: display.modificationTimestamp,
           price: display.price,
           priceIsClosed: primaryListingPriceIsClosed({
             status: display.status,

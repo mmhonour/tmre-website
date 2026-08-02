@@ -46,6 +46,7 @@ type Listing = {
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
+  modificationTimestamp?: string | null;
   dom: number | null;
   photoCount: number | null;
   latitude: number | null;
@@ -173,6 +174,7 @@ export default function ListingIfClient({
           baths: listing.baths,
           sqft: listing.sqft,
           yearBuilt: listing.yearBuilt,
+          modificationTimestamp: listing.modificationTimestamp ?? null,
           price: primaryListingPrice(listing),
           priceIsClosed: primaryListingPriceIsClosed(listing),
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),

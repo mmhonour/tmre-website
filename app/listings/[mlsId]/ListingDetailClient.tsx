@@ -235,6 +235,7 @@ export default function ListingDetailClient({
           baths: l.baths,
           sqft: l.sqft,
           yearBuilt: l.yearBuilt,
+          modificationTimestamp: l.modificationTimestamp,
           price: primaryListingPrice(l),
           priceIsClosed: primaryListingPriceIsClosed(l),
           bedBathSearchHref: intelligenceSearchHrefFromListing(l),

@@ -24,7 +24,7 @@ import {
   type TmreTown,
 } from '@/lib/tmre-towns'
 import { coerceLotAcres, parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
-import { latestActivityMs } from '@/lib/latest-activity'
+import { latestActivityIso, latestRowActivityMs } from '@/lib/latest-activity'
 import { mlsTimestampMs } from '@/lib/mls-time'
 import {
   LATEST_FRESH_WINDOW_MS,
@@ -34,6 +34,7 @@ import {
 import {
   BACK_ON_MARKET_WINDOW_DAYS,
   NEW_LISTING_MAX_DOM,
+  PRICE_CHANGE_EVENT_WINDOW_MS,
   isLatestEventStatus,
   type LatestBadgeStatus,
 } from '@/lib/latest-status-rules'
@@ -63,9 +64,15 @@ export type LatestListingRow = {
   photoCount: number | null
   /** First downloaded photo index (skips empty RETS slots). */
   primaryPhotoIndex: number | null
+  /** MLS ModificationTimestamp — legal/advertising freshness, not price-event clock. */
   modificationTimestamp: string | null
   /** MLS list date — used so brand-new inventory stays in the 24h Latest window. */
   listDate: string | null
+  /**
+   * Badge-specific event clock for ranking/day headers:
+   * Reduced/Increased → PriceChangeTimestamp; CS/BOM → status change; New → mod/list.
+   */
+  eventAt: string | null
   syncedAt: string
 }
 
@@ -147,6 +154,15 @@ function isBackOnMarket(
   return nowMs - changedMs <= BACK_ON_MARKET_WINDOW_MS
 }
 
+function isFreshPriceChange(
+  priceChangeTimestamp: string | null | undefined,
+  nowMs: number,
+): boolean {
+  const changedMs = mlsTimestampMs(priceChangeTimestamp)
+  if (Number.isNaN(changedMs)) return false
+  return nowMs - changedMs <= PRICE_CHANGE_EVENT_WINDOW_MS
+}
+
 /**
  * Badge for a /latest row, or null when the listing is not feed-eligible
  * (Pending, plain Active, Withdrawn returns, etc.).
@@ -173,10 +189,32 @@ function deriveStatus(
     return 'Back on Market'
   }
   if (isNewInventory(daysOnMarket, listing.listDate ?? null, nowMs)) return 'New'
-  if (priceChangePercent != null && priceChangePercent !== 0) {
+  if (
+    priceChangePercent != null &&
+    priceChangePercent !== 0 &&
+    isFreshPriceChange(listing.priceChangeTimestamp, nowMs)
+  ) {
     return priceChangePercent > 0 ? 'Reduced' : 'Increased'
   }
   return null
+}
+
+/** Per-badge event clock used for /latest ranking and day headers. */
+function resolveEventAt(
+  status: LatestBadgeStatus,
+  listing: Listing,
+  modificationTimestamp: string | null,
+): string | null {
+  if (status === 'Reduced' || status === 'Increased') {
+    return listing.priceChangeTimestamp?.trim() || null
+  }
+  if (status === 'Coming Soon' || status === 'Back on Market') {
+    return (
+      listing.statusChangeTimestamp?.trim() ||
+      latestActivityIso(modificationTimestamp, listing.listDate)
+    )
+  }
+  return latestActivityIso(modificationTimestamp, listing.listDate)
 }
 
 function townForListing(listing: Listing): TmreTown | null {
@@ -248,6 +286,9 @@ function toLatestRow(
   )
   if (!status || !isLatestEventStatus(status)) return null
 
+  const eventAt = resolveEventAt(status, listing, modificationTimestamp)
+  if (!eventAt) return null
+
   return {
     key: listing.listingKey || listing.mlsId,
     listingKey: listing.listingKey ?? null,
@@ -275,6 +316,7 @@ function toLatestRow(
     primaryPhotoIndex: null,
     modificationTimestamp,
     listDate: listing.listDate?.trim() || null,
+    eventAt,
     syncedAt,
   }
 }
@@ -398,13 +440,7 @@ async function scoreUnscoredLatestRows(
 
 export { LATEST_FRESH_WINDOW_MS }
 
-function parseIsoMs(iso: string | null | undefined): number | null {
-  if (!iso?.trim()) return null
-  const ms = Date.parse(iso)
-  return Number.isNaN(ms) ? null : ms
-}
-
-/** True when at least one row has MLS mod or list-date inside the fresh window. */
+/** True when at least one row has an event clock inside the fresh window. */
 export function feedHasUpdateWithinWindow(
   rows: readonly LatestListingRow[],
   windowMs = LATEST_FRESH_WINDOW_MS,
@@ -412,10 +448,8 @@ export function feedHasUpdateWithinWindow(
 ): boolean {
   const cutoff = nowMs - windowMs
   for (const row of rows) {
-    const mod = parseIsoMs(row.modificationTimestamp)
-    if (mod != null && mod >= cutoff) return true
-    const listed = parseIsoMs(row.listDate)
-    if (listed != null && listed >= cutoff) return true
+    const eventMs = latestRowActivityMs(row)
+    if (!Number.isNaN(eventMs) && eventMs >= cutoff) return true
   }
   return false
 }

@@ -84,6 +84,10 @@ const PANEL_SECTION_TABS = new Set<string>([
   "uag",
 ]);
 
+const SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID = "spotlight-insight-closed-note";
+const SPOTLIGHT_CLOSED_INSIGHT_NOTE =
+  "Insight may be inaccurate for Closed Homes that have not been recently updated";
+
 function tabFromLocationHash(): ListingScrollSectionTab | null {
   if (typeof window === "undefined") return null;
   const id = window.location.hash.replace(/^#/, "");
@@ -635,6 +639,32 @@ export default function ListingHeroPanels({
       </span>
     ) : null;
 
+  const closedInsightCaveat =
+    isSpotlight && statusLabel === "Closed" && Boolean(overviewInsight);
+  const insightHeading = closedInsightCaveat ? (
+    <>
+      Insight
+      <a
+        href={`#${SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID}`}
+        className="ml-0.5 text-gold/80 no-underline transition-colors hover:text-gold"
+        title={SPOTLIGHT_CLOSED_INSIGHT_NOTE}
+        aria-label={SPOTLIGHT_CLOSED_INSIGHT_NOTE}
+      >
+        *
+      </a>
+    </>
+  ) : (
+    "Insight"
+  );
+  const closedInsightFootnote = closedInsightCaveat ? (
+    <p
+      id={SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID}
+      className="mt-2 max-w-[16rem] text-left font-mono text-[8px] leading-snug tracking-[0.04em] text-white/40 normal-case"
+    >
+      {SPOTLIGHT_CLOSED_INSIGHT_NOTE}
+    </p>
+  ) : null;
+
   const insightBody = overviewInsight ? (
     <ListingInsightCopy
       text={overviewInsight}
@@ -651,9 +681,10 @@ export default function ListingHeroPanels({
       aria-label="Listing insight"
     >
       <p className="mb-1 text-center font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-        Insight
+        {insightHeading}
       </p>
       {insightBody}
+      {closedInsightFootnote}
     </aside>
   ) : null;
 
@@ -920,7 +951,7 @@ export default function ListingHeroPanels({
               [
                 {
                   id: "insight" as const,
-                  label: "Insight",
+                  label: closedInsightCaveat ? "Insight*" : "Insight",
                   active: mobileDrawer === "insight",
                   controls: "listing-insight-drawer",
                   onClick: () => {
@@ -1241,6 +1272,7 @@ export default function ListingHeroPanels({
               sqft={header.sqft}
               yearBuilt={header.yearBuilt}
               bedBathSearchHref={header.bedBathSearchHref}
+              modificationTimestamp={header.modificationTimestamp}
             />
           </div>
         </div>
@@ -1260,7 +1292,7 @@ export default function ListingHeroPanels({
       <ListingSideDrawer
         open={mobileDrawer === "insight" && !isDesktopLayout}
         onClose={closeMobileDrawer}
-        title="Insight"
+        title={closedInsightCaveat ? "Insight*" : "Insight"}
       >
         <div id="listing-insight-drawer" className="space-y-5">
           {overviewInsight ? (
@@ -1270,6 +1302,14 @@ export default function ListingHeroPanels({
               medianHref={`#${LISTING_ANALYSIS_ID}`}
               onMedianClick={activateAnalysisFromMedian}
             />
+          ) : null}
+          {closedInsightCaveat ? (
+            <p
+              id={`${SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID}-mobile`}
+              className="font-mono text-[10px] leading-relaxed tracking-[0.04em] text-white/45 normal-case"
+            >
+              {SPOTLIGHT_CLOSED_INSIGHT_NOTE}
+            </p>
           ) : null}
           <section
             className="space-y-3 border-t border-white/10 pt-4"

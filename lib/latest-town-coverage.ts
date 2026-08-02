@@ -1,4 +1,4 @@
-import { latestActivityMs } from '@/lib/latest-activity'
+import { latestRowActivityMs } from '@/lib/latest-activity'
 import { isLatestEventStatus } from '@/lib/latest-status-rules'
 import {
   TMRE_TOWNS,
@@ -16,6 +16,8 @@ export type LatestCoverageRow = {
   city: string | null
   modificationTimestamp: string | null
   listDate: string | null
+  /** Badge-specific event clock (e.g. PriceChangeTimestamp for Reduced). */
+  eventAt?: string | null
   /** Feed status when the caller has one (LatestListingRow) — drives event ranking. */
   status?: string
 }
@@ -38,8 +40,8 @@ function rowTown(row: LatestCoverageRow): TmreTown | null {
 
 function sortByActivityDesc<T extends LatestCoverageRow>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => {
-    const ta = latestActivityMs(a.modificationTimestamp, a.listDate)
-    const tb = latestActivityMs(b.modificationTimestamp, b.listDate)
+    const ta = latestRowActivityMs(a)
+    const tb = latestRowActivityMs(b)
     if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
     if (Number.isNaN(ta)) return 1
     if (Number.isNaN(tb)) return -1
@@ -87,7 +89,7 @@ export function rankLatestFeedRows<T extends LatestCoverageRow>(
   const olderRest: T[] = []
 
   for (const row of sortByActivityDesc(rows)) {
-    const activity = latestActivityMs(row.modificationTimestamp, row.listDate)
+    const activity = latestRowActivityMs(row)
     const dayKey = Number.isNaN(activity)
       ? null
       : easternCalendarDayKey(activity)

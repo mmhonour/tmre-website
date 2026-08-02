@@ -801,26 +801,56 @@ const IF_SCENARIO_PANEL_IDS = {
   rent: "if-you-rent",
 } as const;
 
-function IfEmailScenarioForm({
+function IfEmailIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Compact admin-only send dialog — opened from desktop link or mobile panel icons. */
+function IfEmailScenarioDialog({
   mlsId,
+  open,
+  onClose,
+  includeSale,
+  includeRent,
+  onIncludeSaleChange,
+  onIncludeRentChange,
   defaultMethod = IF_DEFAULT_MIDPOINT_METHOD,
 }: {
   mlsId: string;
+  open: boolean;
+  onClose: () => void;
+  includeSale: boolean;
+  includeRent: boolean;
+  onIncludeSaleChange: (v: boolean) => void;
+  onIncludeRentChange: (v: boolean) => void;
   defaultMethod?: IfMidpointMethod;
 }) {
-  const siteUnlocked = useSiteUnlocked();
-  const [open, setOpen] = useState(false);
   const [to, setTo] = useState("");
-  const [includeSale, setIncludeSale] = useState(true);
-  const [includeRent, setIncludeRent] = useState(true);
   const [method, setMethod] = useState<IfMidpointMethod>(defaultMethod);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Admin unlock only — public visitors must not see a send UI that only
-  // works for the Resend account allowlist (e.g. tmarkst@aol.com).
-  if (!siteUnlocked) return null;
+  useEffect(() => {
+    if (!open) return;
+    setMessage(null);
+    setError(null);
+    setMethod(defaultMethod);
+  }, [open, defaultMethod]);
+
+  if (!open) return null;
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -856,9 +886,7 @@ function IfEmailScenarioForm({
         return;
       }
       setMessage(
-        body.bcc
-          ? "Sent — a copy went to your notify inbox."
-          : "Sent.",
+        body.bcc ? "Sent — a copy went to your notify inbox." : "Sent.",
       );
       setTo("");
     } catch (err) {
@@ -873,107 +901,91 @@ function IfEmailScenarioForm({
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
-            Email scenario
-          </p>
-          <p className="mt-1 text-xs text-white/45 leading-relaxed">
-            Admin only. Branded summary with ranges, midpoint, and comps. BCC
-            goes to your Admin contact email. Public lead capture is not wired
-            yet — use when Resend can deliver beyond your verified inbox.
-          </p>
-        </div>
+    <div className="rounded-lg border border-white/15 bg-navy/95 p-3 shadow-lg space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold">
+          Email scenario
+        </p>
         <button
           type="button"
-          onClick={() => {
-            setOpen((v) => !v);
-            setMessage(null);
-            setError(null);
-          }}
-          className={`${filterPillIndependentButtonClass(open, "compact", "dark")} font-mono text-[10px] tracking-[0.12em] uppercase shrink-0`}
+          onClick={onClose}
+          className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/40 hover:text-gold"
         >
-          {open ? "Close" : "Email"}
+          Close
         </button>
       </div>
+      <form onSubmit={onSubmit} className="space-y-2.5">
+        <label className="block space-y-1">
+          <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/40">
+            To
+          </span>
+          <input
+            type="email"
+            required
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            placeholder="recipient@example.com"
+            className="w-full rounded-md border border-white/15 bg-navy/40 px-2.5 py-1.5 text-sm text-white placeholder:text-white/30 focus:border-gold/50 focus:outline-none"
+          />
+        </label>
 
-      {open ? (
-        <form onSubmit={onSubmit} className="space-y-3">
-          <label className="block space-y-1">
-            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/40">
-              To
-            </span>
+        <div className="flex flex-wrap gap-3 font-mono text-[9px] tracking-[0.12em] uppercase text-white/50">
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
             <input
-              type="email"
-              required
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="recipient@example.com"
-              className="w-full rounded-md border border-white/15 bg-navy/40 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-gold/50 focus:outline-none"
+              type="checkbox"
+              checked={includeSale}
+              onChange={(e) => onIncludeSaleChange(e.target.checked)}
+              className="accent-gold"
             />
+            Sell
           </label>
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeRent}
+              onChange={(e) => onIncludeRentChange(e.target.checked)}
+              className="accent-gold"
+            />
+            Rent
+          </label>
+        </div>
 
-          <div className="flex flex-wrap gap-4 font-mono text-[10px] tracking-[0.12em] uppercase text-white/50">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeSale}
-                onChange={(e) => setIncludeSale(e.target.checked)}
-                className="accent-gold"
-              />
-              If you sell
-            </label>
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeRent}
-                onChange={(e) => setIncludeRent(e.target.checked)}
-                className="accent-gold"
-              />
-              If you rent
-            </label>
-          </div>
+        <div
+          role="group"
+          aria-label="Email midpoint method"
+          className="flex flex-wrap gap-1"
+        >
+          {IF_MIDPOINT_METHODS.map((m) => {
+            const active = method === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMethod(m)}
+                className={
+                  active
+                    ? "rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-navy bg-gold"
+                    : "rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
+                }
+                aria-pressed={active}
+              >
+                {IF_MIDPOINT_METHOD_LABELS[m]}
+              </button>
+            );
+          })}
+        </div>
 
-          <div
-            role="group"
-            aria-label="Email midpoint method"
-            className="flex flex-wrap gap-1"
-          >
-            {IF_MIDPOINT_METHODS.map((m) => {
-              const active = method === m;
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMethod(m)}
-                  className={
-                    active
-                      ? "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-navy bg-gold"
-                      : "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
-                  }
-                  aria-pressed={active}
-                >
-                  {IF_MIDPOINT_METHOD_LABELS[m]}
-                </button>
-              );
-            })}
-          </div>
+        <button
+          type="submit"
+          disabled={sending}
+          className="rounded-md bg-gold px-2.5 py-1.5 font-mono text-[9px] tracking-[0.14em] uppercase text-navy disabled:opacity-50"
+        >
+          {sending ? "Sending…" : "Send"}
+        </button>
 
-          <button
-            type="submit"
-            disabled={sending}
-            className="rounded-md bg-gold px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-navy disabled:opacity-50"
-          >
-            {sending ? "Sending…" : "Send email"}
-          </button>
-
-          {message ? (
-            <p className="text-xs text-sage">{message}</p>
-          ) : null}
-          {error ? <p className="text-xs text-coral">{error}</p> : null}
-        </form>
-      ) : null}
+        {message ? <p className="text-[11px] text-sage">{message}</p> : null}
+        {error ? <p className="text-[11px] text-coral">{error}</p> : null}
+      </form>
     </div>
   );
 }
@@ -988,6 +1000,7 @@ function ScenarioPanel({
   amountLabel,
   inventorySegmentBands = null,
   foundCountEmphasized = false,
+  onEmailClick = null,
   className,
 }: {
   title: string;
@@ -1000,6 +1013,8 @@ function ScenarioPanel({
   /** Admin Market Bands config — used for sale midpoint band label only. */
   inventorySegmentBands?: InventorySegmentBandsConfig | null;
   foundCountEmphasized?: boolean;
+  /** Mobile: tiny mail icon on this panel. Desktop uses a single page-level link. */
+  onEmailClick?: (() => void) | null;
   className?: string;
 }) {
   const [midpointMethod, setMidpointMethod] = useState<IfMidpointMethod>(
@@ -1081,7 +1096,20 @@ function ScenarioPanel({
             {headline}
           </p>
         </div>
-        {saleMarketBand ? <IfMarketBandBadge band={saleMarketBand} /> : null}
+        <div className="flex shrink-0 items-start gap-2">
+          {saleMarketBand ? <IfMarketBandBadge band={saleMarketBand} /> : null}
+          {onEmailClick ? (
+            <button
+              type="button"
+              onClick={onEmailClick}
+              className="lg:hidden -mt-0.5 p-0.5 text-white/35 transition-colors hover:text-gold"
+              aria-label={`Email ${title} scenario`}
+              title="Email this scenario"
+            >
+              <IfEmailIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div>
@@ -1177,6 +1205,16 @@ export default function ListingIfPanel({
   const [mobileScenarioLead, setMobileScenarioLead] = useState<"sale" | "rent">(
     "sale",
   );
+  const siteUnlocked = useSiteUnlocked();
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailIncludeSale, setEmailIncludeSale] = useState(true);
+  const [emailIncludeRent, setEmailIncludeRent] = useState(true);
+
+  const openEmailScenario = (kinds: Array<"sale" | "rent">) => {
+    setEmailIncludeSale(kinds.includes("sale"));
+    setEmailIncludeRent(kinds.includes("rent"));
+    setEmailOpen(true);
+  };
   const mobileIfCriteriaSlotId = listingCriteriaLinkSlotId(
     LISTING_SECTION_IDS.if,
   );
@@ -1192,6 +1230,7 @@ export default function ListingIfPanel({
     setSessionSeeded(false);
     setCriteriaStepFeedback(null);
     setMobileScenarioLead("sale");
+    setEmailOpen(false);
     if (criteriaFeedbackTimerRef.current != null) {
       clearTimeout(criteriaFeedbackTimerRef.current);
       criteriaFeedbackTimerRef.current = null;
@@ -1409,9 +1448,31 @@ export default function ListingIfPanel({
         <div className="text-center space-y-1">{criteriaBlock}</div>
       ) : null}
 
-      <div className="max-lg:px-3 lg:px-0">
-        <IfEmailScenarioForm mlsId={mlsId} />
-      </div>
+      {siteUnlocked ? (
+        <div className="hidden lg:flex justify-end px-0">
+          <button
+            type="button"
+            onClick={() => openEmailScenario(["sale", "rent"])}
+            className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/40 underline decoration-white/20 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50"
+          >
+            Email scenario
+          </button>
+        </div>
+      ) : null}
+
+      {siteUnlocked && emailOpen ? (
+        <div className="max-lg:px-3 lg:px-0 lg:max-w-sm lg:ml-auto">
+          <IfEmailScenarioDialog
+            mlsId={mlsId}
+            open={emailOpen}
+            onClose={() => setEmailOpen(false)}
+            includeSale={emailIncludeSale}
+            includeRent={emailIncludeRent}
+            onIncludeSaleChange={setEmailIncludeSale}
+            onIncludeRentChange={setEmailIncludeRent}
+          />
+        </div>
+      ) : null}
 
       {/* Mobile: sell/rent as pill tabs + Criteria; desktop: side-by-side panels. */}
       <div className="lg:hidden mb-1 flex items-end justify-between gap-3 max-lg:px-3">
@@ -1465,6 +1526,9 @@ export default function ListingIfPanel({
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
           inventorySegmentBands={data?.inventorySegmentBands ?? null}
+          onEmailClick={
+            siteUnlocked ? () => openEmailScenario(["sale"]) : null
+          }
           className={
             mobileScenarioLead === "sale"
               ? "max-lg:block lg:block"
@@ -1480,6 +1544,9 @@ export default function ListingIfPanel({
           kind="rent"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
+          onEmailClick={
+            siteUnlocked ? () => openEmailScenario(["rent"]) : null
+          }
           className={
             mobileScenarioLead === "rent"
               ? "max-lg:block lg:block"

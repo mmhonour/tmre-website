@@ -27,6 +27,8 @@ type ListingHeaderProps = {
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
+  /** MLS ModificationTimestamp — shown small on property facts. */
+  modificationTimestamp?: string | null;
   /** List/ask, or Closed sale/lease amount (History close) when `priceIsClosed`. */
   price?: number | null;
   /** When true, `price` is the final close — aria / semantics say Closed, not List. */
@@ -87,6 +89,7 @@ export default function ListingHeader({
   baths,
   sqft,
   yearBuilt,
+  modificationTimestamp = null,
   price = null,
   priceIsClosed = false,
   bedBathSearchHref,
@@ -214,6 +217,7 @@ export default function ListingHeader({
         sqft={sqft}
         yearBuilt={yearBuilt}
         bedBathSearchHref={bedBathSearchHref}
+        modificationTimestamp={modificationTimestamp}
         className={`${compact ? "mt-2" : "mt-3"}${
           hideFactsOnMobile ? " max-lg:hidden" : ""
         }`}

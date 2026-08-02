@@ -12,7 +12,7 @@ import { warmLatestHeroPhotosDeferred } from '@/lib/latest-hero-photo-warm'
 
 export const LATEST_TOWN_FEED_LIMIT = 30
 // v4: BOM includes Coming Soon → Active; fill today then prior Eastern day.
-export const LATEST_TOWN_FEED_CACHE_PREFIX = 'latest-town-feed:v4'
+export const LATEST_TOWN_FEED_CACHE_PREFIX = 'latest-town-feed:v5'
 /** Single stats_cache row for all town feeds (~7 × 30 listings). */
 export const LATEST_TOWN_FEEDS_BUNDLE_KEY = `${LATEST_TOWN_FEED_CACHE_PREFIX}:bundle`
 

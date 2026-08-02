@@ -359,7 +359,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'feeds',
     medium: 'postgres',
     location: 'stats_cache',
-    keyPattern: 'latest-feed:v4:global',
+    keyPattern: 'latest-feed:v7:global',
     owner: 'lib/latest-feed-cache.ts',
     live: { kind: 'stats_cache_prefix', prefix: 'latest-feed:' },
   },

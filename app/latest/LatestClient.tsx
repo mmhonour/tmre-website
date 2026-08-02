@@ -14,7 +14,10 @@ import type { LatestListingRow, TownUpdateStat } from "@/lib/latest-listings";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
 import { mlsTimestampMs } from "@/lib/mls-time";
-import { latestActivityIso, latestActivityMs } from "@/lib/latest-activity";
+import {
+  latestRowActivityIso,
+  latestRowActivityMs,
+} from "@/lib/latest-activity";
 import { ensureMinOneListingPerTmreTown } from "@/lib/latest-town-coverage";
 import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 
@@ -73,8 +76,8 @@ function pickListingRow(
   a: LatestListingRow,
   b: LatestListingRow,
 ): LatestListingRow {
-  const aMs = latestActivityMs(a.modificationTimestamp, a.listDate);
-  const bMs = latestActivityMs(b.modificationTimestamp, b.listDate);
+  const aMs = latestRowActivityMs(a);
+  const bMs = latestRowActivityMs(b);
   const newer = bMs > aMs ? b : a;
   const older = bMs > aMs ? a : b;
   // Poll rows often arrive before Goldilocks is persisted — keep the better
@@ -118,8 +121,8 @@ function newestModification(listings: LatestListingRow[]): string | null {
   let best: string | null = null;
   let bestMs = -1;
   for (const row of listings) {
-    const iso = latestActivityIso(row.modificationTimestamp, row.listDate);
-    const t = latestActivityMs(row.modificationTimestamp, row.listDate);
+    const iso = latestRowActivityIso(row);
+    const t = latestRowActivityMs(row);
     if (!Number.isNaN(t) && t > bestMs) {
       bestMs = t;
       best = iso;
@@ -220,11 +223,7 @@ function listingsForTown(
   if (!key) return [];
   return rows
     .filter((row) => (row.town?.trim() || row.city?.trim()) === key)
-    .sort(
-      (a, b) =>
-        latestActivityMs(b.modificationTimestamp, b.listDate) -
-        latestActivityMs(a.modificationTimestamp, a.listDate),
-    );
+    .sort((a, b) => latestRowActivityMs(b) - latestRowActivityMs(a));
 }
 
 type LatestClientProps = {
@@ -457,11 +456,7 @@ export default function LatestClient({
     const source = selectedTown ? townListings : listings;
     return source
       .filter((row) => isTmreTown(row.town) || isTmreTown(row.city))
-      .sort(
-        (a, b) =>
-          latestActivityMs(b.modificationTimestamp, b.listDate) -
-          latestActivityMs(a.modificationTimestamp, a.listDate),
-      );
+      .sort((a, b) => latestRowActivityMs(b) - latestRowActivityMs(a));
   }, [listings, selectedTown, townListings]);
 
   // Preload all town market snapshots from SQLite so sidebar clicks are instant.
@@ -739,7 +734,7 @@ export default function LatestClient({
             {newestMlsLabel ? (
               <span
                 className="tracking-[0.08em] uppercase text-white/40"
-                title="Newest modificationTimestamp among listings in this feed (MLS clock — not Admin Incremental End)"
+                title="Newest event clock among listings in this feed (price/status/list — not ModificationTimestamp-only bumps)"
               >
                 Newest MLS update {newestMlsLabel}
               </span>
@@ -1151,18 +1146,12 @@ export default function LatestClient({
                         );
                       })
                     : visibleListings.map((l, i) => {
-                          const activityIso = latestActivityIso(
-                            l.modificationTimestamp,
-                            l.listDate,
-                          );
+                          const activityIso = latestRowActivityIso(l);
                           const key = localDateKey(activityIso);
                           const prevKey =
                             i > 0
                               ? localDateKey(
-                                  latestActivityIso(
-                                    visibleListings[i - 1].modificationTimestamp,
-                                    visibleListings[i - 1].listDate,
-                                  ),
+                                  latestRowActivityIso(visibleListings[i - 1]),
                                 )
                               : null;
                           const showHeader = key !== prevKey;

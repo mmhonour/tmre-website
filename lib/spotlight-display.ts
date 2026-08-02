@@ -113,6 +113,7 @@ export type SpotlightMlsListing = {
   sqft?: number | null;
   yearBuilt?: number | null;
   dom?: number | null;
+  modificationTimestamp?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   photoCount?: number | null;
@@ -152,6 +153,7 @@ export type SpotlightDisplay = {
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
+  modificationTimestamp: string | null;
   price: number | null;
   originalListPrice: number | null;
   photoCount: number;
@@ -242,6 +244,7 @@ export function buildSpotlightDisplay(
     baths: pickNumber(mls?.baths, config.baths),
     sqft: pickNumber(mls?.sqft, config.sqft),
     yearBuilt: pickNumber(mls?.yearBuilt, config.yearBuilt),
+    modificationTimestamp: mls?.modificationTimestamp?.trim() || null,
     price: (() => {
       if (mls) {
         const status = spotlightEffectiveStatus(config, mls);

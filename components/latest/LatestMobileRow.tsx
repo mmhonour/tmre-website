@@ -9,7 +9,7 @@ import {
   listingDetailHref,
 } from "@/components/intelligence/deal-board/deal-board-shared";
 import type { LatestListingRow } from "@/lib/latest-listings";
-import { latestActivityIso } from "@/lib/latest-activity";
+import { latestRowActivityIso } from "@/lib/latest-activity";
 import { mlsTimestampMs } from "@/lib/mls-time";
 import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -74,9 +74,7 @@ function LatestMobileRow({
   const showZip =
     Boolean(l.zip) && (showZipMap || townHasMultipleZips(listingTownName));
   const detailHref = listingDetailHref(l);
-  const updatedAt = formatMobileUpdatedAt(
-    latestActivityIso(l.modificationTimestamp, l.listDate),
-  );
+  const updatedAt = formatMobileUpdatedAt(latestRowActivityIso(l));
   const ppsf =
     !l.isRental && l.pricePerSqft != null
       ? `$${Math.round(l.pricePerSqft)}/sf`

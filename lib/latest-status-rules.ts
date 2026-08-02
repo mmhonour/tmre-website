@@ -16,6 +16,16 @@ export const NEW_LISTING_MAX_DOM = 7
 export const BACK_ON_MARKET_WINDOW_DAYS = 14
 
 /**
+ * How long a price cut/raise stays eligible for /latest after MLS
+ * PriceChangeTimestamp. ModificationTimestamp bumps (remarks/photos/legal
+ * freshness) do not keep a stale reduction in the feed.
+ */
+export const PRICE_CHANGE_EVENT_WINDOW_HOURS = 36
+
+export const PRICE_CHANGE_EVENT_WINDOW_MS =
+  PRICE_CHANGE_EVENT_WINDOW_HOURS * 60 * 60 * 1000
+
+/**
  * Prior MLS statuses that qualify an Active listing as Back on Market.
  * Withdrawn / generic off-market / heuristic (no previous status) do not qualify.
  */
@@ -92,14 +102,14 @@ export const LATEST_STATUS_PRECEDENCE: readonly LatestStatusRuleRow[] = [
     status: 'Reduced',
     badge: 'Reduced',
     event: true,
-    rule: 'List price is lower than original list price (any amount).',
+    rule: `List price is lower than original list price, and MLS PriceChangeTimestamp is within the last ${PRICE_CHANGE_EVENT_WINDOW_HOURS} hours. ModificationTimestamp-only bumps (remarks/photos/legal freshness) do not qualify.`,
   },
   {
     order: 5,
     status: 'Increased',
     badge: 'Increased',
     event: true,
-    rule: 'List price is higher than original list price (any amount).',
+    rule: `List price is higher than original list price, and MLS PriceChangeTimestamp is within the last ${PRICE_CHANGE_EVENT_WINDOW_HOURS} hours. ModificationTimestamp-only bumps do not qualify.`,
   },
 ]
 
@@ -125,9 +135,9 @@ export const LATEST_FEED_RANKING: readonly LatestRankingStep[] = [
   },
   {
     order: 3,
-    label: 'Fill by Eastern calendar day, then timestamp',
+    label: 'Fill by Eastern calendar day, then event timestamp',
     detail:
-      'Take all qualifying events from today (America/New_York), newest timestamp first. If fewer than 30, fill from the prior day the same way, then any older days. Cap at 30. /latest does not call RETS — it reads this feed cache (or Postgres when the cache is rejected as stale).',
+      'Take all qualifying events from today (America/New_York), newest event clock first (PriceChangeTimestamp for Reduced/Increased; status/list clocks for other badges). If fewer than 30, fill from the prior day the same way, then any older days. Cap at 30. MLS ModificationTimestamp is advertising/legal freshness — not the /latest event clock. /latest does not call RETS on page view — it reads this feed cache (or Postgres when the cache is rejected as stale).',
   },
 ]
 
@@ -161,17 +171,17 @@ export const LATEST_STATUS_INPUTS: readonly {
   {
     field: 'previous_status_changed_at / status_change_timestamp',
     source: 'Upsert bookkeeping / MLS StatusChangeTimestamp',
-    usedFor: 'How recent the flip to Active was',
+    usedFor: 'How recent the flip to Active was; Coming Soon / BOM event clock',
   },
   {
-    field: 'price vs original_list_price',
-    source: 'Listing fields',
-    usedFor: 'Reduced (any cut) or Increased (any raise)',
+    field: 'price vs original_list_price + price_change_timestamp',
+    source: 'Listing fields / MLS PriceChangeTimestamp',
+    usedFor: `Reduced or Increased only when PriceChangeTimestamp is within ${PRICE_CHANGE_EVENT_WINDOW_HOURS}h — that timestamp is also the /latest row clock`,
   },
   {
-    field: 'modification_timestamp + list_date',
-    source: 'MLS clocks',
+    field: 'modification_timestamp',
+    source: 'MLS ModificationTimestamp (legal/advertising freshness)',
     usedFor:
-      'Activity ranking — Eastern calendar day (today, then prior day), then timestamp desc',
+      'Shown on listing/Spotlight property facts; used for New when fresher than list date — not a Reduced/Increased qualifier',
   },
 ]

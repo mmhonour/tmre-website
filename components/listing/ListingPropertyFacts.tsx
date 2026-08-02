@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { formatMlsModificationStamp } from "@/lib/format-mls-mod-stamp";
 
 function joinMetaSegments(segments: ReactNode[]): ReactNode {
   const filtered = segments.filter(
@@ -25,6 +26,8 @@ export type ListingPropertyFactsProps = {
   sqft: number | null;
   yearBuilt: number | null;
   bedBathSearchHref?: string | null;
+  /** MLS ModificationTimestamp — legal/advertising freshness (not /latest event). */
+  modificationTimestamp?: string | null;
   className?: string;
 };
 
@@ -40,6 +43,7 @@ export default function ListingPropertyFacts({
   sqft,
   yearBuilt,
   bedBathSearchHref = null,
+  modificationTimestamp = null,
   className = "",
 }: ListingPropertyFactsProps) {
   const bedBathLabel =
@@ -69,8 +73,9 @@ export default function ListingPropertyFacts({
     bedBathSegment,
     sqft ? `${sqft.toLocaleString()} sqft` : null,
   ]);
+  const modStamp = formatMlsModificationStamp(modificationTimestamp);
 
-  if (!primary && !secondary) return null;
+  if (!primary && !secondary && !modStamp) return null;
 
   return (
     <div className={className}>
@@ -86,6 +91,16 @@ export default function ListingPropertyFacts({
           }`}
         >
           {secondary}
+        </p>
+      ) : null}
+      {modStamp ? (
+        <p
+          className={`font-mono text-[8px] tracking-[0.1em] uppercase text-white/30 tabular-nums ${
+            primary || secondary ? "mt-1" : ""
+          }`}
+          title="MLS ModificationTimestamp — advertising/legal freshness; not the Latest event clock"
+        >
+          {modStamp}
         </p>
       ) : null}
     </div>

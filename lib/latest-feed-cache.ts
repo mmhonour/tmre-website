@@ -9,7 +9,7 @@ import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */
 // v6: BOM includes Coming Soon → Active; fill today then prior Eastern day.
-export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v6:global'
+export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v7:global'
 export const LATEST_GLOBAL_FEED_LIMIT = 30
 
 export type LatestGlobalFeedCachePayload = {
