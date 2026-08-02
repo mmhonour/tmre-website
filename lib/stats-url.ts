@@ -48,3 +48,16 @@ export function statsSalesTrendHref(options: {
   });
   return `/stats?${params.toString()}`;
 }
+
+/** Deep link to Stats → avg days on market chart for a town (or All). */
+export function statsAvgDomHref(options: {
+  city: string;
+  kind?: "sale" | "rental";
+}): string {
+  const params = new URLSearchParams({
+    city: options.city,
+    kind: options.kind ?? "sale",
+    chart: "avg-dom",
+  });
+  return `/stats?${params.toString()}`;
+}

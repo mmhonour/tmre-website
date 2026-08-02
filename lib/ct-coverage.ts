@@ -27,16 +27,29 @@ export type CtCoverageCounty = {
 
 let seedPromise: Promise<void> | null = null
 let tablesPromise: Promise<void> | null = null
+/** Process-local: skip DDL after first successful ensure. */
+let tablesReady = false
+/** Process-local: skip full seed upsert after catalog is known populated. */
+let seedComplete = false
+
+function expectedCtTownCount(): number {
+  return CT_COUNTY_TOWN_SEED.reduce((sum, c) => sum + c.towns.length, 0)
+}
 
 /**
  * Idempotent DDL — Netlify does not run `npm run db:migrate` on deploy, so
  * production can lag local after 0009 lands. Safe to call on every Admin load.
  */
 export async function ensureCtCoverageTables(): Promise<void> {
+  if (tablesReady) return
   if (!tablesPromise) {
-    tablesPromise = createCtCoverageTables().finally(() => {
-      tablesPromise = null
-    })
+    tablesPromise = createCtCoverageTables()
+      .then(() => {
+        tablesReady = true
+      })
+      .finally(() => {
+        tablesPromise = null
+      })
   }
   await tablesPromise
 }
@@ -90,14 +103,25 @@ async function createCtCoverageTables(): Promise<void> {
 }
 
 /**
- * Upsert the full CT catalog. Preserves Admin `active` toggles on re-seed
- * except first insert (defaults from CT_DEFAULT_ACTIVE_TOWNS).
+ * Upsert the full CT catalog when empty/incomplete. Preserves Admin `active`
+ * toggles on re-seed except first insert (defaults from CT_DEFAULT_ACTIVE_TOWNS).
+ *
+ * Hot path: once the catalog row count matches the seed, skip the per-town
+ * upsert loop — that was making Admin → CT Coverage feel multi-second slow.
  */
 export async function ensureCtCoverageSeeded(): Promise<void> {
+  if (seedComplete) return
   if (!seedPromise) {
     seedPromise = (async () => {
       await ensureCtCoverageTables()
-      await seedCtCoverage()
+      const row = await queryOne<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM ct_towns`,
+      )
+      const have = row?.n ?? 0
+      if (have < expectedCtTownCount()) {
+        await seedCtCoverage()
+      }
+      seedComplete = true
     })().finally(() => {
       seedPromise = null
     })

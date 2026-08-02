@@ -8,9 +8,6 @@ const DECK_CARD_W = 52;
 const DECK_CARD_H = 40;
 const DECK_STAGGER_Y = 48;
 
-const STRIP_THUMB_W = 64;
-const STRIP_THUMB_H = 48;
-
 export default function DealPhotoThumbnailDeck({
   mlsId,
   photoCount,
@@ -81,8 +78,7 @@ export default function DealPhotoThumbnailDeck({
   return (
     <Link
       href={photosHref}
-      className="group/strip flex shrink-0 flex-col gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 rounded-md"
-      style={{ width: STRIP_THUMB_W }}
+      className="group/strip flex h-full w-full min-h-0 flex-col items-stretch justify-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 rounded-md"
       aria-label={`View all ${photoCount ?? thumbs.length} photos of ${address}`}
       onClick={(e) => e.stopPropagation()}
     >
@@ -91,8 +87,7 @@ export default function DealPhotoThumbnailDeck({
         return (
           <div
             key={`${src}-${i}`}
-            className="relative overflow-hidden rounded-md border border-white/15 bg-navy-dark shadow-md shadow-black/40 transition-all duration-200 group-hover/strip:border-gold/35 group-hover/strip:shadow-lg group-hover/strip:shadow-black/50"
-            style={{ width: STRIP_THUMB_W, height: STRIP_THUMB_H }}
+            className="relative min-h-0 w-full flex-1 overflow-hidden rounded-md bg-navy-dark transition-opacity duration-200 group-hover/strip:opacity-95"
           >
             <ListingThumbImage
               src={src}

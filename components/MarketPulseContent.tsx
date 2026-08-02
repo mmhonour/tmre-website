@@ -9,6 +9,7 @@ import type {
 } from "@/lib/market-digest-types";
 import {
   MARKET_PULSE_CATEGORY_IDS,
+  marketPulseTownAvgDomStatsHref,
   marketPulseTownClosedSalesStatsHref,
   marketPulseTownIntelligenceHref,
   marketPulseTownMonthsSupplyStatsHref,
@@ -123,6 +124,7 @@ export default function MarketPulseContent({
         westport: active.westport,
         towns: active.towns,
         closedTrailing: closedByCategory[category] ?? [],
+        avgDomByTown: active.avgDomByTown ?? [],
         dealOfTheWeek: active.deal ?? null,
       }
     : snapshot;
@@ -133,6 +135,8 @@ export default function MarketPulseContent({
     marketPulseTownMonthsSupplyStatsHref(cityLabel, category);
   const closedSalesTownHref = (cityLabel: string) =>
     marketPulseTownClosedSalesStatsHref(cityLabel, category);
+  const avgDomTownHref = (cityLabel: string) =>
+    marketPulseTownAvgDomStatsHref(cityLabel, category);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -174,6 +178,7 @@ export default function MarketPulseContent({
         townHref={townHref}
         monthsSupplyTownHref={monthsSupplyTownHref}
         closedSalesTownHref={closedSalesTownHref}
+        avgDomTownHref={avgDomTownHref}
         settle={settle}
       />
     </div>

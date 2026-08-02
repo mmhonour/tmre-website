@@ -27,6 +27,12 @@ export type MarketDigestClosedTownCount = {
   count: number
 }
 
+/** Avg days on market for one town (from stats cache / active commercial DOM). */
+export type MarketDigestDomTownCount = {
+  city: string
+  avgDaysOnMarket: number
+}
+
 export type MarketDigestCategorySlice = {
   id: MarketPulseCategoryId
   label: string
@@ -39,6 +45,8 @@ export type MarketDigestCategorySlice = {
   towns: MonthsSupplyPayload[]
   /** Closed sales per town over `closedTrailingMonths` (empty when the query fails). */
   closedTrailing: MarketDigestClosedTownCount[]
+  /** Avg DOM per town for the Market Pulse bar chart. */
+  avgDomByTown: MarketDigestDomTownCount[]
   /** Featured deal for this tab (DOTW for ALL; DOTD-aligned for other types). */
   deal: MarketDigestDealOfTheWeek | null
 }
@@ -54,6 +62,8 @@ export type MarketDigestSnapshot = {
   towns: MonthsSupplyPayload[]
   /** ALL-sales closed totals per town over the trailing window. */
   closedTrailing: MarketDigestClosedTownCount[]
+  /** ALL-sales avg DOM per town (default Market Pulse tab). */
+  avgDomByTown: MarketDigestDomTownCount[]
   /** Market Pulse tabs (ALL / SFR / Condo / Rentals / Commercial). */
   categories: MarketDigestCategorySlice[]
   dealOfTheWeek: MarketDigestDealOfTheWeek | null

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CtCountyMiniMap from "@/components/admin/CtCountyMiniMap";
+import CtCoverageTownsMap from "@/components/admin/CtCoverageTownsMap";
 
 type TownRow = {
   id: string;
@@ -77,6 +78,14 @@ export default function AdminCtCoveragePanel() {
     return { townCount, activeCount };
   }, [counties]);
 
+  const activeTownNames = useMemo(
+    () =>
+      counties.flatMap((c) =>
+        c.towns.filter((t) => t.active).map((t) => t.name),
+      ),
+    [counties],
+  );
+
   const toggleCollapsed = (countyId: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -142,9 +151,9 @@ export default function AdminCtCoveragePanel() {
           <span className="text-navy/80">
             not wired into public pages or RETS yet
           </span>
-          . Today&rsquo;s seven TMRE towns start enabled. County maps use Census
-          TIGER outlines (same family as Intelligence town/zip maps), zoomed to
-          that county only — gold when any town there is active.
+          . The large map matches Intelligence &ldquo;All towns&rdquo; (ZCTA
+          outlines): click a town to zoom in, All towns or the same town again
+          to zoom out. Per-county thumbnails stay on each county row.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading
@@ -160,6 +169,12 @@ export default function AdminCtCoveragePanel() {
           <p className="mt-2 font-mono text-[10px] text-coral">{error}</p>
         ) : null}
       </div>
+
+      {!loading && counties.length > 0 ? (
+        <div className="border-b border-charcoal/[0.08] px-5 py-4 sm:px-6">
+          <CtCoverageTownsMap activeTownNames={activeTownNames} />
+        </div>
+      ) : null}
 
       <div className="divide-y divide-charcoal/[0.06]">
         {counties.map((county) => {

@@ -38,6 +38,11 @@ function fmtActive(n: number | null | undefined): string {
   return String(Math.round(n))
 }
 
+function fmtDomShort(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return `${Math.round(n)}d`
+}
+
 function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || '—'
   if (city.toLowerCase() === 'all') return 'All towns'
@@ -303,6 +308,14 @@ export function formatMarketDigestHtml(
                   (r) => fmtMosShort(r.monthsSupply),
                   BAR_MOS,
                   'No months-supply rows in cache yet.',
+                )}
+                ${barChartSection(
+                  'Avg days on market (sales)',
+                  snapshot.avgDomByTown ?? [],
+                  (r) => r.avgDaysOnMarket,
+                  (r) => fmtDomShort(r.avgDaysOnMarket),
+                  BAR_INVENTORY,
+                  'No days-on-market rows in cache yet.',
                 )}
                 ${barChartSection(
                   `Closed sales — trailing ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} months (sales)`,

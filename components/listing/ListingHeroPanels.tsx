@@ -578,6 +578,11 @@ export default function ListingHeroPanels({
    * Comps / What if / etc. Under-address facts stay hidden on mobile always.
    */
   const showMobileMetaDock = remarksSurfaceActive && !photosModeActive;
+  /**
+   * What if covers the lower dock — float the same property facts under the
+   * sticky chrome so the subject meta stays visible during the scenario.
+   */
+  const showMobileWhatIfMetaDock = useSlidePanel && panelTab === "if";
 
   const photosModeApi = useMemo<ListingPhotosModeApi | null>(() => {
     if (!useSlidePanel) return null;
@@ -873,7 +878,11 @@ export default function ListingHeroPanels({
         <div
           ref={panelScrollRef}
           id={LISTING_SECTION_IDS.overview}
-          className={`listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y pt-0 max-lg:px-0 lg:pt-2 lg:pb-4 ${
+          className={`listing-tab-panel min-h-0 flex-1 overflow-y-scroll overscroll-y-contain touch-pan-y max-lg:px-0 lg:pt-2 lg:pb-4 ${
+            showMobileWhatIfMetaDock
+              ? "pt-[calc(4.25rem+0.25rem)] lg:pt-2"
+              : "pt-0"
+          } ${
             showMobileMetaDock
               ? "pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-4"
               : "pb-4"
@@ -1301,6 +1310,26 @@ export default function ListingHeroPanels({
           aria-label="Property facts"
         >
           <div className="pointer-events-auto border-t border-white/10 bg-[#1B2A4A]/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom,0px))] shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md">
+            <ListingPropertyFacts
+              propertyType={header.propertyType}
+              style={header.style}
+              beds={header.beds}
+              baths={header.baths}
+              sqft={header.sqft}
+              yearBuilt={header.yearBuilt}
+              bedBathSearchHref={header.bedBathSearchHref}
+              modificationTimestamp={header.modificationTimestamp}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {showMobileWhatIfMetaDock ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 z-30 lg:hidden top-[var(--listing-sticky-offset,6rem)]"
+          aria-label="Property facts"
+        >
+          <div className="pointer-events-auto border-b border-white/10 bg-[#1B2A4A]/95 px-3 py-2.5 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md">
             <ListingPropertyFacts
               propertyType={header.propertyType}
               style={header.style}

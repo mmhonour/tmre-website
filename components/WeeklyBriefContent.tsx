@@ -28,6 +28,11 @@ function fmtActive(n: number | null | undefined): string {
   return String(Math.round(n));
 }
 
+function fmtDom(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${Math.round(n)}d`;
+}
+
 function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || "—";
   if (city.toLowerCase() === "all") return "All towns";
@@ -62,7 +67,7 @@ function BarChart<Row extends { city: string }>({
   title: string;
   rows: Row[];
   valueOf: (row: Row) => number | null;
-  valueKind: "int" | "mos";
+  valueKind: "int" | "mos" | "dom";
   barClassName: string;
   emptyMessage: string;
   townHref?: (cityLabel: string) => string;
@@ -128,6 +133,12 @@ function BarChart<Row extends { city: string }>({
               : settleIntDisplay(v, settle, index);
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
+          const valueText =
+            valueKind === "mos"
+              ? fmtMos(display)
+              : valueKind === "dom"
+                ? fmtDom(display)
+                : fmtActive(display);
           return (
             <li
               key={`${row.city}-${title}`}
@@ -152,7 +163,7 @@ function BarChart<Row extends { city: string }>({
                 />
               </div>
               <span className="[font-family:var(--mp-mono-font)] text-xs text-[var(--mp-text)] text-right tabular-nums">
-                {valueKind === "mos" ? fmtMos(display) : fmtActive(display)}
+                {valueText}
               </span>
             </li>
           );
@@ -215,6 +226,7 @@ export default function WeeklyBriefContent({
   townHref,
   monthsSupplyTownHref,
   closedSalesTownHref,
+  avgDomTownHref,
   settle = MARKET_PULSE_SETTLE_IDLE,
 }: {
   snapshot: MarketDigestSnapshot;
@@ -233,11 +245,14 @@ export default function WeeklyBriefContent({
   monthsSupplyTownHref?: (cityLabel: string) => string;
   /** Closed-sales town labels → Stats sales-by-month chart. */
   closedSalesTownHref?: (cityLabel: string) => string;
+  /** Avg DOM town labels → Stats avg-dom chart. */
+  avgDomTownHref?: (cityLabel: string) => string;
   /** Shared settle clock from Market Pulse (scramble → count-up). */
   settle?: MarketPulseSettleState;
 }) {
   const rows = chartRows(snapshot);
   const closedRows = snapshot.closedTrailing ?? [];
+  const domRows = snapshot.avgDomByTown ?? [];
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
   const titleScope = selectionLabel ?? scopeLabel;
 
@@ -304,6 +319,17 @@ export default function WeeklyBriefContent({
           barClassName="bg-[var(--mp-months-supply-bar)]"
           emptyMessage="No months-supply rows in cache yet."
           townHref={monthsSupplyTownHref ?? townHref}
+          settle={settle}
+        />
+
+        <BarChart
+          title={`Avg days on market (${titleScope})`}
+          rows={domRows}
+          valueOf={(r) => r.avgDaysOnMarket}
+          valueKind="dom"
+          barClassName="bg-[var(--mp-inventory-bar)]"
+          emptyMessage="No days-on-market rows in cache yet."
+          townHref={avgDomTownHref ?? townHref}
           settle={settle}
         />
 

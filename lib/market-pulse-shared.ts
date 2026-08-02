@@ -1,5 +1,9 @@
 import { buildIntelligenceShareHref } from '@/lib/intelligence-search-url'
-import { statsMonthsSupplyHref, statsSalesTrendHref } from '@/lib/stats-url'
+import {
+  statsAvgDomHref,
+  statsMonthsSupplyHref,
+  statsSalesTrendHref,
+} from '@/lib/stats-url'
 import { isTmreTown, normalizeTownName } from '@/lib/tmre-towns'
 
 /** Market Pulse category tabs (web). Email stays on ALL sales. */
@@ -87,6 +91,18 @@ export function marketPulseTownClosedSalesStatsHref(
 ): string {
   const filters = marketPulseCategoryToIntelligenceFilters(categoryId)
   return statsSalesTrendHref({
+    city: marketPulseTownLabelToStatsCity(cityLabel),
+    kind: filters.tx === 'rental' ? 'rental' : 'sale',
+  })
+}
+
+/** /stats deep link to avg days on market for a Market Pulse town row. */
+export function marketPulseTownAvgDomStatsHref(
+  cityLabel: string,
+  categoryId: MarketPulseCategoryId,
+): string {
+  const filters = marketPulseCategoryToIntelligenceFilters(categoryId)
+  return statsAvgDomHref({
     city: marketPulseTownLabelToStatsCity(cityLabel),
     kind: filters.tx === 'rental' ? 'rental' : 'sale',
   })

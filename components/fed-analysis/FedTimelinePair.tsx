@@ -62,6 +62,9 @@ function cpiFill(r: CpiRelease): string {
 
 type ViewMode = "separate" | "overlay";
 
+/** Mobile Policy overlay: horizontal graph, vertical event list, or both. */
+type MobileOverlayView = "graph" | "timeline" | "both";
+
 /**
  * Decision + CPI timelines with an optional overlay view (shared time axis,
  * shared percent scale — funds mid-range vs CPI-U YoY).
@@ -79,6 +82,8 @@ export default function FedTimelinePair({
 }) {
   const [mode, setMode] = useState<ViewMode>("overlay");
   const [lookback, setLookback] = useState<TimelineLookback>(defaultLookback);
+  const [mobileOverlayView, setMobileOverlayView] =
+    useState<MobileOverlayView>("both");
 
   const modeToggle = (
     <div
@@ -144,6 +149,8 @@ export default function FedTimelinePair({
       lookback={lookback}
       setLookback={setLookback}
       modeToggle={modeToggle}
+      mobileOverlayView={mobileOverlayView}
+      setMobileOverlayView={setMobileOverlayView}
     />
   );
 }
@@ -155,6 +162,8 @@ function OverlayTimeline({
   lookback,
   setLookback,
   modeToggle,
+  mobileOverlayView,
+  setMobileOverlayView,
 }: {
   meetings: readonly FomcMeeting[];
   releases: readonly CpiRelease[];
@@ -162,6 +171,8 @@ function OverlayTimeline({
   lookback: TimelineLookback;
   setLookback: (v: TimelineLookback) => void;
   modeToggle: ReactNode;
+  mobileOverlayView: MobileOverlayView;
+  setMobileOverlayView: (v: MobileOverlayView) => void;
 }) {
   const fomc = useMemo(
     () => selectTimelineMeetings(now, meetings, lookback),
@@ -239,6 +250,39 @@ function OverlayTimeline({
     </div>
   );
 
+  const mobileViewToggle = (
+    <div
+      role="group"
+      aria-label="Mobile overlay presentation"
+      className="flex flex-wrap items-center gap-1 md:hidden"
+    >
+      {(
+        [
+          { id: "graph" as const, label: "Graph" },
+          { id: "timeline" as const, label: "Timeline" },
+          { id: "both" as const, label: "Both" },
+        ] as const
+      ).map((opt) => {
+        const active = mobileOverlayView === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => setMobileOverlayView(opt.id)}
+            className={`rounded-full border px-2.5 py-0.5 font-mono text-[9px] tracking-[0.12em] uppercase transition-colors ${
+              active
+                ? "border-navy/35 bg-navy/5 text-navy"
+                : "border-charcoal/15 bg-white text-charcoal/45 hover:border-navy/25 hover:text-navy"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const shellClass =
     "overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-5 shadow-sm shadow-charcoal/[0.04] sm:px-6";
 
@@ -260,6 +304,11 @@ function OverlayTimeline({
       </div>
     );
   }
+
+  const showMobileGraph =
+    mobileOverlayView === "graph" || mobileOverlayView === "both";
+  const showMobileTimeline =
+    mobileOverlayView === "timeline" || mobileOverlayView === "both";
 
   const pad = { top: 28, right: 16, bottom: 36, left: 44 };
   const width = 720;
@@ -418,14 +467,24 @@ function OverlayTimeline({
           {modeToggle}
         </div>
       </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 md:hidden">
+        <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/40">
+          Mobile view
+        </p>
+        {mobileViewToggle}
+      </div>
       <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/40">
         {caption}
       </p>
 
-      <div className="mt-4 hidden md:block">
+      <div
+        className={`mt-4 ${
+          showMobileGraph ? "block" : "hidden md:block"
+        }`}
+      >
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="h-auto w-full"
+          className="h-auto w-full max-md:max-h-52"
           role="img"
           aria-label="FOMC federal funds target and CPI YoY overlaid by date"
         >
@@ -623,8 +682,12 @@ function OverlayTimeline({
         </ul>
       </div>
 
-      {/* Mobile: stacked recent events from both series */}
-      <ol className="mt-5 space-y-0 md:hidden">
+      {/* Mobile: descriptive vertical timeline of FOMC + CPI events */}
+      <ol
+        className={`mt-5 space-y-0 ${
+          showMobileTimeline ? "md:hidden" : "hidden"
+        }`}
+      >
         {[
           ...fomcPts.map((p) => ({
             key: `f-${p.meeting.id}`,

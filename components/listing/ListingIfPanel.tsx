@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -23,6 +24,10 @@ import MatchingCriteriaSummary, {
   type CriteriaStepFeedback,
   type CriteriaStepKey,
 } from "@/components/listing/MatchingCriteriaSummary";
+import {
+  hasIfRangeAnimSeen,
+  markIfRangeAnimSeen,
+} from "@/lib/if-range-anim-pref";
 import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import {
   emptyMidpointAggregates,
@@ -257,18 +262,42 @@ function IfMarketBandBadge({ band }: { band: IfMarketBandDisplay }) {
 const IF_RANGE_SIZE_SWAPS = 4;
 const IF_RANGE_SIZE_SWAP_MS = 520;
 
+/** Stable $/sqft key for “same PPSF → skip animation” (sale whole $, rent cents). */
+function ifMidPpsfKey(
+  amount: number | null | undefined,
+  sqft: number | null | undefined,
+  kind: "sale" | "rent",
+): string | null {
+  if (
+    amount == null ||
+    !Number.isFinite(amount) ||
+    sqft == null ||
+    !(sqft > 0)
+  ) {
+    return null;
+  }
+  const ppsf = amount / sqft;
+  return kind === "rent" ? ppsf.toFixed(2) : String(Math.round(ppsf));
+}
+
 function IfEstimateRangeDisplay({
   low,
   high,
   midpoint = null,
   formatAmount,
   suffix = "",
+  animate = true,
+  midPpsfKey = null,
 }: {
   low: number | null;
   high: number | null;
   midpoint?: number | null;
   formatAmount: (value: number) => string;
   suffix?: string;
+  /** When false (cookie / prior method click), stay at resting sizes. */
+  animate?: boolean;
+  /** Midpoint $/sqft signature — skip anim when this is unchanged. */
+  midPpsfKey?: string | null;
 }) {
   const resolvedLow = low ?? (high == null ? midpoint : null);
   const resolvedHigh = high ?? (low == null ? midpoint : null);
@@ -277,6 +306,7 @@ function IfEstimateRangeDisplay({
 
   // false = outer large / mid small (start + final after 4 swaps).
   const [midIsLarge, setMidIsLarge] = useState(false);
+  const lastPpsfKeyRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (
@@ -287,10 +317,20 @@ function IfEstimateRangeDisplay({
     ) {
       return;
     }
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
+
+    const ppsfUnchanged =
+      lastPpsfKeyRef.current !== undefined &&
+      lastPpsfKeyRef.current === midPpsfKey;
+
+    const skipAnim =
+      !animate ||
+      ppsfUnchanged ||
+      (typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+    lastPpsfKeyRef.current = midPpsfKey;
+
+    if (skipAnim) {
       setMidIsLarge(false);
       return;
     }
@@ -305,7 +345,7 @@ function IfEstimateRangeDisplay({
       }
     }, IF_RANGE_SIZE_SWAP_MS);
     return () => window.clearInterval(id);
-  }, [resolvedLow, resolvedHigh, resolvedMid]);
+  }, [resolvedLow, resolvedHigh, resolvedMid, animate, midPpsfKey]);
 
   if (
     resolvedLow != null &&
@@ -1277,6 +1317,7 @@ function ScenarioPanel({
   emailOpen = false,
   midpointMethod,
   onMidpointMethodChange,
+  skipRangeAnimation = false,
   className,
 }: {
   title: string;
@@ -1294,6 +1335,8 @@ function ScenarioPanel({
   emailOpen?: boolean;
   midpointMethod: IfMidpointMethod;
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
+  /** Cookie / method click — suppress the outer↔median size swap. */
+  skipRangeAnimation?: boolean;
   className?: string;
 }) {
   const [showTopBand, setShowTopBand] = useState(false);
@@ -1337,6 +1380,14 @@ function ScenarioPanel({
     displayScenario.amountLow != null &&
     displayScenario.amountHigh != null;
 
+  const subjectSqft =
+    displayScenario.math.subjectSqft ?? displayScenario.params.sqft;
+  const midPpsfKey = ifMidPpsfKey(
+    displayScenario.amount,
+    subjectSqft,
+    kind,
+  );
+
   const range = isRent ? (
     <IfEstimateRangeDisplay
       low={
@@ -1355,6 +1406,8 @@ function ScenarioPanel({
           : null
       }
       formatAmount={fmtIfRentMoney}
+      animate={!skipRangeAnimation}
+      midPpsfKey={midPpsfKey}
     />
   ) : (
     <IfEstimateRangeDisplay
@@ -1362,6 +1415,8 @@ function ScenarioPanel({
       high={displayScenario.amountHigh}
       midpoint={displayScenario.amount}
       formatAmount={fmtIfSaleMoney}
+      animate={!skipRangeAnimation}
+      midPpsfKey={midPpsfKey}
     />
   );
 
@@ -1541,6 +1596,19 @@ export default function ListingIfPanel({
   const [midpointMethod, setMidpointMethod] = useState<IfMidpointMethod>(
     IF_DEFAULT_MIDPOINT_METHOD,
   );
+  /** After Median/Average/Weighted click (cookie per MLS), skip range size anim. */
+  const [skipRangeAnimation, setSkipRangeAnimation] = useState(() =>
+    hasIfRangeAnimSeen(mlsId),
+  );
+
+  const handleMidpointMethodChange = useCallback(
+    (method: IfMidpointMethod) => {
+      setMidpointMethod(method);
+      markIfRangeAnimSeen(mlsId);
+      setSkipRangeAnimation(true);
+    },
+    [mlsId],
+  );
 
   const toggleEmailScenario = () => {
     setEmailOpen((open) => !open);
@@ -1562,6 +1630,7 @@ export default function ListingIfPanel({
     setMobileScenarioLead("sale");
     setEmailOpen(false);
     setMidpointMethod(IF_DEFAULT_MIDPOINT_METHOD);
+    setSkipRangeAnimation(hasIfRangeAnimSeen(mlsId));
     if (criteriaFeedbackTimerRef.current != null) {
       clearTimeout(criteriaFeedbackTimerRef.current);
       criteriaFeedbackTimerRef.current = null;
@@ -1873,7 +1942,8 @@ export default function ListingIfPanel({
           foundCountEmphasized={foundCountEmphasized}
           inventorySegmentBands={data?.inventorySegmentBands ?? null}
           midpointMethod={midpointMethod}
-          onMidpointMethodChange={setMidpointMethod}
+          onMidpointMethodChange={handleMidpointMethodChange}
+          skipRangeAnimation={skipRangeAnimation}
           emailOpen={emailOpen}
           onEmailClick={
             siteUnlocked ? () => toggleEmailScenario() : null
@@ -1893,7 +1963,8 @@ export default function ListingIfPanel({
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
           midpointMethod={midpointMethod}
-          onMidpointMethodChange={setMidpointMethod}
+          onMidpointMethodChange={handleMidpointMethodChange}
+          skipRangeAnimation={skipRangeAnimation}
           emailOpen={emailOpen}
           onEmailClick={
             siteUnlocked ? () => toggleEmailScenario() : null

@@ -110,6 +110,11 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
     purpose: "Legacy looked-at listings (prefer localStorage)",
     ...PREF,
   },
+  tmre_if_range_anim_seen: {
+    purpose:
+      "What if: MLS ids that have used Median/Average/Weighted — skip range size animation",
+    ...PREF,
+  },
 };
 
 export type CookieLocationInfo = {

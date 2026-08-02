@@ -12,6 +12,7 @@ import {
 } from '@/lib/deal-of-the-day-cache'
 import { readDealOfTheWeekCache } from '@/lib/deal-of-the-week-cache'
 import { computeTopDeal, type DealPickPayload } from '@/lib/deal-pick'
+import { readStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { fmtMoney } from '@/lib/listing-history'
 import {
   filterListingsByKind,
@@ -36,17 +37,23 @@ import type {
   MarketDigestCategorySlice,
   MarketDigestClosedTownCount,
   MarketDigestDealOfTheWeek,
+  MarketDigestDomTownCount,
   MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
 import { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
 import type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
 import { getSocialProfilesFresh } from '@/lib/social-profiles-config'
+import {
+  statsCacheKey,
+  type MarketStatsPayload,
+} from '@/lib/stats-compute'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export type {
   MarketDigestCategorySlice,
   MarketDigestClosedTownCount,
   MarketDigestDealOfTheWeek,
+  MarketDigestDomTownCount,
   MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
 export { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
@@ -120,6 +127,56 @@ async function closedTrailingCounts(options: {
     )
     return []
   }
+}
+
+function parseMarketStatsPayload(
+  row: { payload: string } | null,
+): MarketStatsPayload | null {
+  if (!row?.payload) return null
+  try {
+    return JSON.parse(row.payload) as MarketStatsPayload
+  } catch {
+    return null
+  }
+}
+
+/** Avg DOM from stats_cache market-stats (All + each TMRE town). */
+async function avgDomByTownFromStats(
+  kind: ListingKind,
+): Promise<MarketDigestDomTownCount[]> {
+  try {
+    const cities = ['All', ...TMRE_TOWNS] as const
+    const rows = await Promise.all(
+      cities.map(async (city) => {
+        const cached = await readStatsCacheRow(
+          statsCacheKey('market-stats', city, kind),
+        )
+        const market = parseMarketStatsPayload(cached)
+        const avg = market?.avgDaysOnMarket
+        if (avg == null || !Number.isFinite(avg) || avg < 0) return null
+        return { city, avgDaysOnMarket: avg }
+      }),
+    )
+    const out: MarketDigestDomTownCount[] = []
+    for (const r of rows) {
+      if (r) out.push({ city: r.city, avgDaysOnMarket: r.avgDaysOnMarket })
+    }
+    return out
+  } catch (err) {
+    console.warn(
+      '[market-digest] avg DOM by town failed',
+      err instanceof Error ? err.message : err,
+    )
+    return []
+  }
+}
+
+function meanDomFromListings(listings: readonly Listing[]): number | null {
+  const doms = listings
+    .map((l) => l.dom)
+    .filter((d): d is number => d != null && Number.isFinite(d) && d >= 0)
+  if (doms.length === 0) return null
+  return doms.reduce((a, b) => a + b, 0) / doms.length
 }
 
 function isCommercialListing(listing: Listing): boolean {
@@ -218,16 +275,21 @@ async function buildCachedCategorySlice(
   spec: CachedCategorySpec,
   includeClosedTrailing = false,
 ): Promise<MarketDigestCategorySlice> {
-  const [closedTrailing, market, westport, ...townRows] = await Promise.all([
-    includeClosedTrailing
-      ? closedTrailingCounts({ kind: spec.kind, propertyClass: spec.propertyClass })
-      : Promise.resolve<MarketDigestClosedTownCount[]>([]),
-    readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
-    readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
-    ...TMRE_TOWNS.map((town) =>
-      readMonthsSupplyCached(town, spec.kind, spec.propertyClass),
-    ),
-  ])
+  const [closedTrailing, avgDomByTown, market, westport, ...townRows] =
+    await Promise.all([
+      includeClosedTrailing
+        ? closedTrailingCounts({
+            kind: spec.kind,
+            propertyClass: spec.propertyClass,
+          })
+        : Promise.resolve<MarketDigestClosedTownCount[]>([]),
+      avgDomByTownFromStats(spec.kind),
+      readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
+      readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
+      ...TMRE_TOWNS.map((town) =>
+        readMonthsSupplyCached(town, spec.kind, spec.propertyClass),
+      ),
+    ])
   const towns = townRows
     .filter((row): row is MonthsSupplyPayload => row != null)
     .sort((a, b) => a.city.localeCompare(b.city))
@@ -240,6 +302,7 @@ async function buildCachedCategorySlice(
     westport,
     towns,
     closedTrailing,
+    avgDomByTown,
     deal: null,
   }
 }
@@ -258,6 +321,7 @@ function emptyCommercialCategorySlice(
     westport: null,
     towns: [],
     closedTrailing: [],
+    avgDomByTown: [],
     deal: null,
   }
 }
@@ -307,6 +371,23 @@ async function buildCommercialCategorySlice(
       .flatMap((row) => row.active)
       .filter(isCommercialListing)
       .filter((l) => !isRentalListing(l))
+    const avgDomByTown: MarketDigestDomTownCount[] = []
+    const marketDom = meanDomFromListings(commercialActive)
+    if (marketDom != null) {
+      avgDomByTown.push({ city: 'All', avgDaysOnMarket: marketDom })
+    }
+    for (const row of perTown) {
+      const townActive = row.active
+        .filter(isCommercialListing)
+        .filter((l) => !isRentalListing(l))
+      const townDom = meanDomFromListings(townActive)
+      if (townDom != null) {
+        avgDomByTown.push({
+          city: row.payload.city,
+          avgDaysOnMarket: townDom,
+        })
+      }
+    }
     let deal: MarketDigestDealOfTheWeek | null = null
     try {
       const pick = await computeTopDeal(commercialActive)
@@ -328,6 +409,7 @@ async function buildCommercialCategorySlice(
       closedTrailing: includeClosedTrailing
         ? await closedTrailingCounts({ kind: 'sale', commercialOnly: true })
         : [],
+      avgDomByTown,
       deal,
     }
   } catch (err) {
@@ -418,6 +500,7 @@ export async function buildMarketDigestSnapshot(options?: {
     westport,
     towns: townRows,
     closedTrailing: allSlice?.closedTrailing ?? [],
+    avgDomByTown: allSlice?.avgDomByTown ?? [],
     categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({

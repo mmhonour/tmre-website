@@ -24,6 +24,13 @@ const cache = new Map<string, Ring[]>();
 /** Cached assembled boundary bundles per popover load key (avoids loading flashes). */
 const boundaryBundleCache = new Map<string, Map<string, Ring[]>>();
 
+/** Load ZCTA rings for the given zips (module cache + `/api/zip-boundaries`). */
+export async function loadZipBoundariesForZips(
+  zips: readonly string[],
+): Promise<Map<string, Ring[]>> {
+  return fetchBoundariesBatch(zips);
+}
+
 async function fetchBoundariesBatch(zips: readonly string[]): Promise<Map<string, Ring[]>> {
   const out = new Map<string, Ring[]>();
   const missing: string[] = [];
