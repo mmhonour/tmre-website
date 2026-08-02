@@ -1,12 +1,43 @@
-import {
-  CT_COUNTY_MAP_ORDER,
-  CT_COUNTY_MAP_PATHS,
-  CT_COUNTY_MAP_VIEWBOX,
-} from "@/lib/ct-county-map-paths";
+import { CT_COUNTY_BOUNDARY_RINGS } from "@/lib/ct-county-boundary-rings";
+
+const VIEW_W = 100;
+const VIEW_H = 72;
+const PAD = 4;
+
+type Ring = [number, number][];
+
+function projectRings(rings: Ring[]): string[] {
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const ring of rings) {
+    for (const [lon, lat] of ring) {
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+  }
+  const scaleX = (VIEW_W - PAD * 2) / (maxLon - minLon || 1);
+  const scaleY = (VIEW_H - PAD * 2) / (maxLat - minLat || 1);
+  const scale = Math.min(scaleX, scaleY);
+  const offsetX = PAD + (VIEW_W - PAD * 2 - (maxLon - minLon) * scale) / 2;
+  const offsetY = PAD + (VIEW_H - PAD * 2 - (maxLat - minLat) * scale) / 2;
+
+  return rings.map((ring) => {
+    const pts = ring.map(([lon, lat]) => {
+      const x = offsetX + (lon - minLon) * scale;
+      const y = offsetY + (maxLat - lat) * scale;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    return `M ${pts.join(" L ")} Z`;
+  });
+}
 
 /**
- * Small CT outline with all counties bordered; focal county filled.
- * Enabled counties use light blue; inactive use cream.
+ * Census TIGER county outline (same source family as Intelligence ZCTA maps),
+ * zoomed to this county only — not a full-state cartoon with one county tinted.
  */
 export default function CtCountyMiniMap({
   countyId,
@@ -18,32 +49,46 @@ export default function CtCountyMiniMap({
   enabled: boolean;
   className?: string;
 }) {
-  const focusFill = enabled ? "#93c5fd" /* light blue */ : "#f5f0e8"; /* cream */
-  const otherFill = "#ffffff";
-  const stroke = "#1e3a5f"; /* navy-ish */
+  const rings = CT_COUNTY_BOUNDARY_RINGS[countyId];
+  if (!rings?.length) {
+    return (
+      <div
+        className={`shrink-0 rounded border border-charcoal/20 bg-cream ${className}`}
+        aria-label={`${countyId} County map unavailable`}
+      />
+    );
+  }
+
+  const paths = projectRings(rings);
+  const fill = enabled ? "rgba(212,175,55,0.32)" : "rgba(148,163,184,0.16)";
+  const stroke = enabled ? "#B8941F" : "rgba(100,116,139,0.65)";
 
   return (
     <svg
-      viewBox={CT_COUNTY_MAP_VIEWBOX}
-      className={`shrink-0 overflow-visible ${className}`}
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      className={`shrink-0 overflow-hidden bg-slate-50 ${className}`}
       role="img"
       aria-label={`${countyId} County map${enabled ? ", enabled" : ""}`}
     >
-      {CT_COUNTY_MAP_ORDER.map((id) => {
-        const d = CT_COUNTY_MAP_PATHS[id];
-        if (!d) return null;
-        const isFocus = id === countyId;
-        return (
-          <path
-            key={id}
-            d={d}
-            fill={isFocus ? focusFill : otherFill}
-            stroke={stroke}
-            strokeWidth={isFocus ? 1.6 : 0.9}
-            vectorEffect="non-scaling-stroke"
-          />
-        );
-      })}
+      {paths.map((d, i) => (
+        <path
+          key={`fill-${i}`}
+          d={d}
+          fill={fill}
+          stroke="none"
+        />
+      ))}
+      {paths.map((d, i) => (
+        <path
+          key={`stroke-${i}`}
+          d={d}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
     </svg>
   );
 }

@@ -671,7 +671,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'CT coverage',
     category: 'product',
     definition:
-      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Toggle active to prepare future site-wide coverage. Public pages still use hardcoded TMRE_TOWNS until wired; listings.town can later filter/join on active ct_towns.name.',
+      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Toggle active to prepare future site-wide coverage. County thumbnails use Census TIGER county outlines (same TIGERweb family as Intelligence ZCTA maps), zoomed to that county. Public pages still use hardcoded TMRE_TOWNS until wired.',
   },
   {
     term: 'BHHS',

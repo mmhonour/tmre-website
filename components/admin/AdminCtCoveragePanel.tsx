@@ -142,8 +142,9 @@ export default function AdminCtCoveragePanel() {
           <span className="text-navy/80">
             not wired into public pages or RETS yet
           </span>
-          . Today&rsquo;s seven TMRE towns start enabled. County maps highlight
-          light blue when any town in that county is active.
+          . Today&rsquo;s seven TMRE towns start enabled. County maps use Census
+          TIGER outlines (same family as Intelligence town/zip maps), zoomed to
+          that county only — gold when any town there is active.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading

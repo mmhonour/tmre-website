@@ -146,6 +146,8 @@ export function SpotlightPageChrome({
               }
             : null
         }
+        /** Same Admin agent pull-through as /listings — from MLS `raw`. */
+        listingRaw={display.intelligenceListing.raw ?? null}
         belowTabs={belowTabs}
         remarks={remarks}
         sections={sections}

@@ -188,6 +188,46 @@ function sortIfComps(
   });
 }
 
+/**
+ * When Math TOP/GREEN or BOTTOM/RED rows are shown: closed price DESC for top,
+ * ASC for bottom. In-band stays between them (price ASC).
+ */
+function sortIfCompsWithBandPrice(
+  comps: IfCompRow[],
+  amountLow: number | null | undefined,
+  amountHigh: number | null | undefined,
+  showTopBand: boolean,
+  showBottomBand: boolean,
+): IfCompRow[] {
+  if (!showTopBand && !showBottomBand) {
+    return sortIfComps(comps, "price", "asc");
+  }
+  if (showTopBand && !showBottomBand) {
+    return sortIfComps(comps, "price", "desc");
+  }
+  if (showBottomBand && !showTopBand) {
+    return sortIfComps(comps, "price", "asc");
+  }
+  const top: IfCompRow[] = [];
+  const mid: IfCompRow[] = [];
+  const bottom: IfCompRow[] = [];
+  for (const comp of comps) {
+    const band = compQuarterBand(
+      comp.impliedSubjectAmount,
+      amountLow,
+      amountHigh,
+    );
+    if (band === "top") top.push(comp);
+    else if (band === "bottom") bottom.push(comp);
+    else mid.push(comp);
+  }
+  return [
+    ...sortIfComps(top, "price", "desc"),
+    ...sortIfComps(mid, "price", "asc"),
+    ...sortIfComps(bottom, "price", "asc"),
+  ];
+}
+
 type IfMarketBandDisplay = {
   /** Admin Market Band category, e.g. Mid-market */
   name: string;
@@ -252,8 +292,8 @@ function IfEstimateRangeDisplay({
         <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
         {midLabel != null ? (
           <>
-            {/* Mid ~4pt smaller than low/high. */}
-            <span className="font-serif text-xl sm:text-[1.625rem] text-gold tabular-nums leading-snug">
+            {/* Midpoint = half the low/high type size (text-2xl / sm:text-3xl). */}
+            <span className="font-serif text-[0.75rem] sm:text-[0.9375rem] text-gold tabular-nums leading-snug">
               {midLabel}
             </span>
             <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
@@ -667,6 +707,19 @@ function CompList({
     dir: "asc",
   });
   const [showWtExplain, setShowWtExplain] = useState(false);
+  const bandSortActive = showTopBand || showBottomBand;
+
+  // TOP/GREEN → closed price DESC; BOTTOM/RED → closed price ASC.
+  useEffect(() => {
+    if (showTopBand && !showBottomBand) {
+      setSort({ key: "price", dir: "desc" });
+    } else if (showBottomBand && !showTopBand) {
+      setSort({ key: "price", dir: "asc" });
+    } else if (showTopBand && showBottomBand) {
+      setSort({ key: "price", dir: "desc" });
+    }
+  }, [showTopBand, showBottomBand]);
+
   const visibleComps = useMemo(
     () =>
       comps.filter((comp) => {
@@ -682,8 +735,26 @@ function CompList({
     [comps, amountLow, amountHigh, showTopBand, showBottomBand],
   );
   const sorted = useMemo(
-    () => sortIfComps(visibleComps, sort.key, sort.dir),
-    [visibleComps, sort.key, sort.dir],
+    () =>
+      bandSortActive
+        ? sortIfCompsWithBandPrice(
+            visibleComps,
+            amountLow,
+            amountHigh,
+            showTopBand,
+            showBottomBand,
+          )
+        : sortIfComps(visibleComps, sort.key, sort.dir),
+    [
+      visibleComps,
+      sort.key,
+      sort.dir,
+      bandSortActive,
+      amountLow,
+      amountHigh,
+      showTopBand,
+      showBottomBand,
+    ],
   );
 
   if (comps.length === 0) return null;
@@ -1033,10 +1104,19 @@ function IfEmailScenarioDialog({
   };
 
   return (
-    <div className="w-full rounded-lg border border-white/15 bg-navy/95 p-3 shadow-lg">
+    <div className="relative w-full rounded-lg border border-white/15 bg-navy/95 p-3 pt-9 shadow-lg lg:pt-3">
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md font-mono text-lg leading-none text-white/45 transition-colors hover:bg-white/10 hover:text-gold lg:right-2.5 lg:top-2.5"
+        aria-label="Close email scenario"
+        title="Close"
+      >
+        ×
+      </button>
       <form
         onSubmit={onSubmit}
-        className="flex w-full flex-col gap-2.5 lg:flex-row lg:items-end lg:gap-4"
+        className="flex w-full flex-col gap-2.5 lg:flex-row lg:items-end lg:gap-4 lg:pr-8"
       >
         <span
           className="inline-flex shrink-0 items-center text-gold lg:pb-1.5"
@@ -1127,13 +1207,6 @@ function IfEmailScenarioDialog({
                 ? "Confirm send"
                 : "Send"}
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/40 hover:text-gold"
-          >
-            Close
-          </button>
         </div>
       </form>
       {message ? (
@@ -1154,6 +1227,7 @@ function ScenarioPanel({
   inventorySegmentBands = null,
   foundCountEmphasized = false,
   onEmailClick = null,
+  emailOpen = false,
   midpointMethod,
   onMidpointMethodChange,
   className,
@@ -1169,6 +1243,8 @@ function ScenarioPanel({
   foundCountEmphasized?: boolean;
   /** Mobile: tiny mail icon on this panel. Desktop uses a single page-level link. */
   onEmailClick?: (() => void) | null;
+  /** When true, the mail icon toggles the scenario panel closed. */
+  emailOpen?: boolean;
   midpointMethod: IfMidpointMethod;
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
   className?: string;
@@ -1257,9 +1333,18 @@ function ScenarioPanel({
             <button
               type="button"
               onClick={onEmailClick}
-              className="lg:hidden -mt-0.5 p-0.5 text-white/35 transition-colors hover:text-gold"
-              aria-label={`Email ${title} scenario`}
-              title="Email this scenario"
+              className={`lg:hidden -mt-0.5 p-0.5 transition-colors ${
+                emailOpen
+                  ? "text-gold"
+                  : "text-white/35 hover:text-gold"
+              }`}
+              aria-label={
+                emailOpen
+                  ? "Close email scenario"
+                  : `Email ${title} scenario`
+              }
+              title={emailOpen ? "Close email scenario" : "Email this scenario"}
+              aria-expanded={emailOpen}
             >
               <MailIcon className="h-3.5 w-3.5" />
             </button>
@@ -1713,6 +1798,7 @@ export default function ListingIfPanel({
           inventorySegmentBands={data?.inventorySegmentBands ?? null}
           midpointMethod={midpointMethod}
           onMidpointMethodChange={setMidpointMethod}
+          emailOpen={emailOpen}
           onEmailClick={
             siteUnlocked ? () => toggleEmailScenario(["sale"]) : null
           }
@@ -1732,6 +1818,7 @@ export default function ListingIfPanel({
           foundCountEmphasized={foundCountEmphasized}
           midpointMethod={midpointMethod}
           onMidpointMethodChange={setMidpointMethod}
+          emailOpen={emailOpen}
           onEmailClick={
             siteUnlocked ? () => toggleEmailScenario(["rent"]) : null
           }
