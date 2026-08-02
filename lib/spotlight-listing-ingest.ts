@@ -115,6 +115,18 @@ export async function ensureSpotlightListingIngested(
     }
   }
 
+  // Hot cache first — public /spotlight must work even if Neon upsert stalls.
+  try {
+    const { writeSpotlightCache } = await import('@/lib/spotlight-cache')
+    await writeSpotlightCache(id, {
+      listing: live,
+      source: 'rets',
+      cachedAt: new Date().toISOString(),
+    })
+  } catch (err) {
+    console.warn('[spotlight-ingest] hot cache write failed', id, err)
+  }
+
   // Await Postgres write — do not fire-and-forget for client-review urgency.
   let persisted = false
   try {

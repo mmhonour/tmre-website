@@ -171,20 +171,14 @@ export async function PATCH(req: NextRequest) {
       })
     }
 
+    // Hot cache is written during ingest before Postgres upsert. If Neon is
+    // slow/failing, still save the override so public /spotlight can serve
+    // from stats_cache (Spotlight #5 blank-page failure mode).
     if (!ingest.alreadyInDb && !ingest.persisted) {
-      return NextResponse.json({
-        ok: false,
-        saved: false,
-        reason: 'persist' as const,
-        tab,
-        mlsId,
-        exists: true,
-        ...addressFromListing(ingest.listing!),
-        source: 'rets' as const,
-        error:
-          ingest.error ??
-          'Fetched from RETS but could not write to Postgres',
-      })
+      console.warn(
+        '[spotlight-mls] Postgres upsert failed after RETS — saving override + hot cache anyway',
+        ingest.error,
+      )
     }
   }
 

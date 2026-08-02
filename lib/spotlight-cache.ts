@@ -39,47 +39,6 @@ function withFreshTax(listing: Listing | null): Listing | null {
   return listing ? refreshListingPropertyTax(listing) : null
 }
 
-/**
- * Spotlight must reflect the live MLS row. Always try RETS first so a prior
- * Closed sale (or stale Postgres/cache facts) cannot linger on /spotlight.
- * Fall back to DB / stats_cache only when RETS is unavailable.
- */
-async function loadSpotlightListingRecord(
-  mlsId: string,
-  cached: SpotlightCachePayload | null,
-  _listingFresh: boolean,
-): Promise<{ listing: Listing | null; source: ListingsSource }> {
-  void _listingFresh
-
-  try {
-    const live = await getListingByMlsId(mlsId)
-    if (live) {
-      // Await upsert — fire-and-forget raced scheduled incremental sync and
-      // left public Spotlight empty while Admin had already shown the address.
-      try {
-        await persistListingRecord(live)
-      } catch (err) {
-        console.warn('[spotlight-cache] listing persist failed:', err)
-      }
-      return { listing: withFreshTax(live), source: 'rets' }
-    }
-  } catch (err) {
-    console.warn('[spotlight-cache] RETS lookup failed — falling back to DB', err)
-  }
-
-  const { listing: dbListing } = await readListingFromDbByMlsId(mlsId)
-  if (dbListing) {
-    return { listing: dbListing, source: 'db' }
-  }
-  if (cached?.listing) {
-    return {
-      listing: withFreshTax(cached.listing),
-      source: cached.source ?? 'db',
-    }
-  }
-  return { listing: null, source: 'db' }
-}
-
 function isFresh(iso: string | undefined, ttlMs: number): boolean {
   if (!iso) return false
   return Date.now() - new Date(iso).getTime() < ttlMs
@@ -89,6 +48,77 @@ function isFresh(iso: string | undefined, ttlMs: number): boolean {
 function photosAreLocalProxy(photos: string[] | undefined): boolean {
   if (!photos || photos.length === 0) return false
   return photos.every((url) => url.startsWith('/api/listings/'))
+}
+
+/**
+ * Load Spotlight listing facts.
+ *
+ * Default order: Postgres → RETS → stale hot cache.
+ * Hot cache is written as soon as RETS returns so a busy incremental sync
+ * cannot blank an Admin-assigned slot (Spotlight #4/#5).
+ * `forceRefresh` prefers RETS first (Admin rebuild / explicit refresh).
+ */
+async function loadSpotlightListingRecord(
+  mlsId: string,
+  cached: SpotlightCachePayload | null,
+  forceRefresh: boolean,
+): Promise<{ listing: Listing | null; source: ListingsSource }> {
+  if (!forceRefresh) {
+    try {
+      const { listing: dbListing } = await readListingFromDbByMlsId(mlsId)
+      if (dbListing) {
+        return { listing: dbListing, source: 'db' }
+      }
+    } catch (err) {
+      console.warn('[spotlight-cache] DB read failed:', err)
+    }
+  }
+
+  try {
+    const live = await getListingByMlsId(mlsId)
+    if (live) {
+      const fresh = withFreshTax(live)
+      // Hot cache before Postgres upsert — public page must not wait on Neon.
+      try {
+        await writeSpotlightCache(mlsId, {
+          listing: fresh,
+          photos: cached?.photos,
+          source: 'rets',
+          cachedAt: new Date().toISOString(),
+          photosCachedAt: cached?.photosCachedAt,
+        })
+      } catch (err) {
+        console.warn('[spotlight-cache] hot cache write failed:', err)
+      }
+      try {
+        await persistListingRecord(live)
+      } catch (err) {
+        console.warn('[spotlight-cache] listing persist failed:', err)
+      }
+      return { listing: fresh, source: 'rets' }
+    }
+  } catch (err) {
+    console.warn('[spotlight-cache] RETS lookup failed — falling back', err)
+  }
+
+  if (forceRefresh) {
+    try {
+      const { listing: dbListing } = await readListingFromDbByMlsId(mlsId)
+      if (dbListing) {
+        return { listing: dbListing, source: 'db' }
+      }
+    } catch (err) {
+      console.warn('[spotlight-cache] DB read failed after RETS:', err)
+    }
+  }
+
+  if (cached?.listing) {
+    return {
+      listing: withFreshTax(cached.listing),
+      source: cached.source ?? 'db',
+    }
+  }
+  return { listing: null, source: 'db' }
 }
 
 export async function readSpotlightCache(
@@ -124,40 +154,67 @@ export async function resolveSpotlightListing(options: {
   const config =
     options.config ??
     getSpotlightListingConfig(options.propertyTab ?? 1)
+  const forceRefresh = options.forceRefresh === true
   const mlsId = await resolveSpotlightMlsId(config)
   if (!mlsId) {
     return { listing: null, photos: [], source: 'db', cacheHit: false }
   }
 
-  const cached = options.forceRefresh ? null : await readSpotlightCache(mlsId)
-  // Listing facts always revalidate via RETS inside loadSpotlightListingRecord.
-  // Photo URLs may still use the longer photos TTL.
-  const listingFresh = false
+  const cached = forceRefresh ? null : await readSpotlightCache(mlsId)
   const photosFresh =
     photosAreLocalProxy(cached?.photos) &&
     isFresh(cached?.photosCachedAt, SPOTLIGHT_PHOTOS_TTL_MS)
 
-  if (listingFresh && cached) {
-    if (!options.includePhotos || photosFresh) {
-      const { listing, source } = await loadSpotlightListingRecord(
-        mlsId,
-        cached,
-        true,
-      )
-      return {
-        listing,
-        photos: options.includePhotos ? (cached.photos ?? []) : [],
-        source,
-        cacheHit: true,
-      }
+  // Serve hot cache immediately when fresh — do not wait on RETS (incremental
+  // sync often holds the RETS client and blanked Admin-assigned slots).
+  if (
+    !forceRefresh &&
+    cached?.listing &&
+    isFresh(cached.cachedAt, SPOTLIGHT_LISTING_TTL_MS)
+  ) {
+    return {
+      listing: withFreshTax(cached.listing),
+      photos: options.includePhotos ? (cached.photos ?? []) : [],
+      source: cached.source ?? 'db',
+      cacheHit: true,
     }
   }
 
-  const { listing, source } = await loadSpotlightListingRecord(
+  let { listing, source } = await loadSpotlightListingRecord(
     mlsId,
     cached,
-    listingFresh,
+    forceRefresh,
   )
+
+  // Last resort: one-off ingest (RETS → hot cache → Postgres). Use the RETS
+  // listing even when Postgres upsert fails so the public page is not blank.
+  if (!listing) {
+    try {
+      const { ensureSpotlightListingIngested } = await import(
+        '@/lib/spotlight-listing-ingest'
+      )
+      const ingest = await ensureSpotlightListingIngested(mlsId, {
+        warmCache: false,
+      })
+      if (ingest.listing) {
+        listing = withFreshTax(ingest.listing)
+        source = ingest.source === 'none' ? 'rets' : ingest.source
+        try {
+          await writeSpotlightCache(mlsId, {
+            listing,
+            photos: cached?.photos,
+            source,
+            cachedAt: new Date().toISOString(),
+            photosCachedAt: cached?.photosCachedAt,
+          })
+        } catch (err) {
+          console.warn('[spotlight-cache] hot cache after ingest failed:', err)
+        }
+      }
+    } catch (err) {
+      console.warn('[spotlight-cache] one-off ingest failed:', err)
+    }
+  }
 
   let photos = photosFresh ? (cached!.photos ?? []) : []
   let photosCachedAt = photosFresh ? cached!.photosCachedAt : undefined
@@ -173,13 +230,16 @@ export async function resolveSpotlightListing(options: {
     photosCachedAt = new Date().toISOString()
   }
 
-  await writeSpotlightCache(mlsId, {
-    listing,
-    photos: photos.length > 0 ? photos : cached?.photos,
-    source,
-    cachedAt: listingFresh && cached ? cached.cachedAt : new Date().toISOString(),
-    photosCachedAt: photosCachedAt ?? cached?.photosCachedAt,
-  })
+  // Never overwrite a good hot cache with a null listing miss.
+  if (listing) {
+    await writeSpotlightCache(mlsId, {
+      listing,
+      photos: photos.length > 0 ? photos : cached?.photos,
+      source,
+      cachedAt: new Date().toISOString(),
+      photosCachedAt: photosCachedAt ?? cached?.photosCachedAt,
+    })
+  }
 
   return {
     listing,
