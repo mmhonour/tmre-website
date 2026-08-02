@@ -380,11 +380,13 @@ export default function AdminSpotlightPrivacyPanel() {
           Spotlight properties
         </p>
         <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
-          Assign an MLS # to each slot. If it is not already in Postgres, we
-          immediately pull it from RETS and write it to Postgres (one-off) so
-          the listing is ready for client review without waiting for the
-          scheduled sync. Each listing can only appear once — duplicates are
-          rejected. Blank slots are hidden on the public spotlight page.
+          Assign an MLS # to each slot — any MLS status is accepted (Active,
+          Coming Soon, Under Contract, Closed, Expired, Withdrawn, etc.). If it
+          is not already in Postgres, we immediately pull it from RETS and write
+          it to Postgres (one-off) so the listing is ready for client review
+          without waiting for the scheduled sync. Each listing can only appear
+          once — duplicates are rejected. Blank slots are hidden on the public
+          spotlight page.
           Privacy toggles default off (address hidden, photos 1 &amp; 2
           blurred, town-only map). Check{" "}
           <span className="text-charcoal/80">No longer Coming Soon</span> once a
@@ -579,6 +581,25 @@ export default function AdminSpotlightPrivacyPanel() {
           {error}
         </p>
       ) : null}
+
+      <div className="px-5 sm:px-6 py-4 border-t border-charcoal/[0.08] bg-cream/30">
+        <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45">
+          How Spotlight gets the listing
+        </p>
+        <p className="mt-2 text-sm text-charcoal/65 max-w-2xl leading-relaxed">
+          The listing itself lives in Postgres{" "}
+          <span className="text-charcoal/80">listings</span> — that is the
+          inventory row the public page should serve. On save we pull from RETS
+          (if needed) and upsert there. A small{" "}
+          <span className="text-charcoal/80">stats_cache</span> hotspot is only
+          a temporary shelf: when Neon is slow or an incremental sync is busy,
+          we can still show the RETS payload immediately while the{" "}
+          <span className="text-charcoal/80">listings</span> upsert catches up.
+          You do not need cache for the listing to exist — you need the row in{" "}
+          <span className="text-charcoal/80">listings</span>. Cache is backup
+          speed, not the source of truth.
+        </p>
+      </div>
     </div>
   );
 }
