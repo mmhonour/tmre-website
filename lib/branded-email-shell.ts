@@ -14,7 +14,8 @@ import {
   type MarketPulseTheme,
 } from '@/lib/page-theme-shared'
 
-const HEADSHOT_PATH = '/timothy-tmre.png'
+/** Pre-baked B&W thumbnail — email clients ignore CSS `filter: grayscale`. */
+const HEADSHOT_PATH = '/timothy-tmre-bw.png'
 
 export function escapeEmailHtml(value: string): string {
   return value

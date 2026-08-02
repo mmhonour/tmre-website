@@ -193,7 +193,7 @@ type IfMarketBandDisplay = {
 
 function IfMarketBandBadge({ band }: { band: IfMarketBandDisplay }) {
   return (
-    <span className="ml-1 flex min-w-0 flex-col justify-center leading-tight text-right sm:ml-1.5">
+    <span className="flex shrink-0 flex-col items-end leading-tight text-right">
       <span className="font-mono text-[8px] sm:text-[9px] tracking-[0.12em] uppercase text-white/55">
         {band.name}
       </span>
@@ -212,15 +212,12 @@ function IfEstimateRangeDisplay({
   midpoint = null,
   formatAmount,
   suffix = "",
-  marketBand = null,
 }: {
   low: number | null;
   high: number | null;
   midpoint?: number | null;
   formatAmount: (value: number) => string;
   suffix?: string;
-  /** Sale only — Admin Market Band for the midpoint amount. */
-  marketBand?: IfMarketBandDisplay | null;
 }) {
   const resolvedLow = low ?? (high == null ? midpoint : null);
   const resolvedHigh = high ?? (low == null ? midpoint : null);
@@ -252,7 +249,7 @@ function IfEstimateRangeDisplay({
           <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
           {midLabel != null ? (
             <>
-              {/* Mid ~4pt smaller than low/high so the band fits to the right. */}
+              {/* Mid ~4pt smaller than low/high. */}
               <span className="font-serif text-xl sm:text-[1.625rem] text-gold tabular-nums leading-snug">
                 {midLabel}
               </span>
@@ -262,7 +259,6 @@ function IfEstimateRangeDisplay({
           <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
             {highLabel}
           </span>
-          {marketBand ? <IfMarketBandBadge band={marketBand} /> : null}
         </div>
       </div>
     );
@@ -282,7 +278,6 @@ function IfEstimateRangeDisplay({
       <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
         {single}
       </p>
-      {marketBand ? <IfMarketBandBadge band={marketBand} /> : null}
     </div>
   );
 }
@@ -389,6 +384,7 @@ function IfMathWorksheet({
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
 }) {
   const [showPpsf, setShowPpsf] = useState(false);
+  const [mathOpen, setMathOpen] = useState(true);
 
   if (est.amount == null || est.amountLow == null || est.amountHigh == null) {
     return null;
@@ -422,7 +418,21 @@ function IfMathWorksheet({
   return (
     <div className="font-mono text-[10px] text-white/40 tabular-nums leading-relaxed">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="uppercase tracking-[0.12em] text-white/50">Math</span>
+        <button
+          type="button"
+          onClick={() => setMathOpen((open) => !open)}
+          className="inline-flex items-center gap-1 uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-gold"
+          aria-expanded={mathOpen}
+          aria-controls={`what-if-math-detail-${kind}`}
+          title={mathOpen ? "Minimize math" : "Expand math"}
+        >
+          <span className="underline decoration-white/25 underline-offset-2">
+            Math
+          </span>
+          <span className="text-gold tabular-nums" aria-hidden>
+            {mathOpen ? "<--" : "-->"}
+          </span>
+        </button>
         <div
           role="group"
           aria-label="Midpoint $/sqft method"
@@ -449,60 +459,78 @@ function IfMathWorksheet({
         </div>
       </div>
 
-      {/* Two borderless columns: percentile blurb | right-aligned equation. */}
-      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-6">
-        <div className="min-w-0 border-0 bg-transparent p-0">
-          <p className="normal-case tracking-normal text-left">
-            These are the 25th–75th percentile — in other words we exclude the{" "}
-            <span className="text-sage">top quarter</span> and{" "}
-            <span className="text-coral">bottom quarter</span> of the market,
-            based on {comps}
-            {lowPpsf && highPpsf
-              ? ` that range from ${lowPpsf}–${highPpsf}`
-              : ""}
-            . Outer comps stay in the list with a{" "}
-            <span className="text-sage">green</span> or{" "}
-            <span className="text-coral">red</span> row tint.
-          </p>
-        </div>
-
-        <div className="min-w-0 border-0 bg-transparent p-0 sm:justify-self-end">
-          {hasSqft && ppsfLabel ? (
-            <div className="w-fit text-right max-sm:ml-auto">
-              <button
-                type="button"
-                onClick={() => setShowPpsf((v) => !v)}
-                className={linkClass}
-                title="How this $/sqft was derived"
-                aria-expanded={showPpsf}
-              >
-                {ppsfLabel}
-              </button>
-              <div>
-                <span className="text-white/30">× </span>
-                {sqft.toLocaleString("en-US")} sqft
+      {mathOpen ? (
+        <>
+          {/* Two borderless columns: percentile blurb | right-aligned equation. */}
+          <div
+            id={`what-if-math-detail-${kind}`}
+            className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-6"
+          >
+            <div className="min-w-0 border-0 bg-transparent p-0">
+              <div className="normal-case tracking-normal text-left whitespace-pre-wrap">
+                <p className="m-0">
+                  25th–75th percentile excluded i.e.{" "}
+                  <span className="text-sage">top</span> and{" "}
+                  <span className="text-coral">bottom</span> quarter of the
+                  market with a <span className="text-sage">green</span> or{" "}
+                  <span className="text-coral">red</span> row tint
+                </p>
+                <p className="m-0 mt-2">Based on the following comps</p>
+                <p className="m-0">
+                  {"\t"}
+                  {est.soldCount} {soldWord}
+                </p>
+                <p className="m-0">
+                  {"\t"}
+                  {est.activeCount} active
+                </p>
+                {lowPpsf && highPpsf ? (
+                  <p className="m-0 mt-2">
+                    Range {lowPpsf}–{highPpsf}
+                  </p>
+                ) : null}
               </div>
-              <div className="my-0.5 border-t border-white/20" />
-              <div className="text-white/70">{midLabel}</div>
             </div>
-          ) : (
-            <div className="w-fit text-right text-white/60 max-sm:ml-auto">
-              {midLabel}{" "}
-              <span className="text-white/30">
-                ({methodLabel} of {comps})
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {showPpsf && ppsfLabel ? (
-        <p className="mt-3 normal-case tracking-normal text-white/45 text-left">
-          {methodExplain}
-          {lowPpsf && highPpsf
-            ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
-            : ""}
-        </p>
+            <div className="min-w-0 border-0 bg-transparent p-0 sm:justify-self-end">
+              {hasSqft && ppsfLabel ? (
+                <div className="w-fit text-right max-sm:ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowPpsf((v) => !v)}
+                    className={linkClass}
+                    title="How this $/sqft was derived"
+                    aria-expanded={showPpsf}
+                  >
+                    {ppsfLabel}
+                  </button>
+                  <div>
+                    <span className="text-white/30">× </span>
+                    {sqft.toLocaleString("en-US")} sqft
+                  </div>
+                  <div className="my-0.5 border-t border-white/20" />
+                  <div className="text-white/70">{midLabel}</div>
+                </div>
+              ) : (
+                <div className="w-fit text-right text-white/60 max-sm:ml-auto">
+                  {midLabel}{" "}
+                  <span className="text-white/30">
+                    ({methodLabel} of {comps})
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {showPpsf && ppsfLabel ? (
+            <p className="mt-3 normal-case tracking-normal text-white/45 text-left">
+              {methodExplain}
+              {lowPpsf && highPpsf
+                ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
+                : ""}
+            </p>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
@@ -1034,7 +1062,6 @@ function ScenarioPanel({
       high={displayScenario.amountHigh}
       midpoint={displayScenario.amount}
       formatAmount={fmtIfSaleMoney}
-      marketBand={saleMarketBand}
     />
   );
 
@@ -1045,11 +1072,16 @@ function ScenarioPanel({
         className ? ` ${className}` : ""
       }`}
     >
-      <div>
-        <p className="hidden lg:block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-          {title}
-        </p>
-        <p className="lg:mt-2 text-white/70 text-sm leading-relaxed">{headline}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="hidden lg:block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+            {title}
+          </p>
+          <p className="lg:mt-2 text-white/70 text-sm leading-relaxed">
+            {headline}
+          </p>
+        </div>
+        {saleMarketBand ? <IfMarketBandBadge band={saleMarketBand} /> : null}
       </div>
 
       <div>

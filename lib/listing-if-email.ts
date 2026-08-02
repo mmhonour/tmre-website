@@ -250,24 +250,37 @@ function scenarioBlockHtml(
       </td></tr>`
   }
 
-  const mid =
+  const midLabel =
     kind === 'rent'
-      ? `${fmtIfRentMoney(roundIfRentMidpoint(scenario.amount))}/mo`
+      ? fmtIfRentMoney(roundIfRentMidpoint(scenario.amount))
       : fmtIfSaleMoney(scenario.amount)
-  const low =
+  const lowLabel =
     kind === 'rent' && scenario.amountLow != null
       ? fmtIfRentMoney(roundIfRentLow(scenario.amountLow))
       : scenario.amountLow != null
         ? fmtIfSaleMoney(scenario.amountLow)
-        : '—'
-  const high =
+        : null
+  const highLabel =
     kind === 'rent' && scenario.amountHigh != null
       ? fmtIfRentMoney(roundIfRentHigh(scenario.amountHigh))
       : scenario.amountHigh != null
         ? fmtIfSaleMoney(scenario.amountHigh)
-        : '—'
+        : null
   const ppsf =
     sqft != null && sqft > 0 ? fmtPpsf(scenario.amount, sqft, kind) : null
+
+  // Match What if page: $low ↔ $mid ↔ $high; mid at half the end sizes.
+  const rangeFontPx = 26
+  const midFontPx = Math.round(rangeFontPx * 0.5)
+  const arrow = `<span style="display:inline-block;padding:0 8px;font-family:${mono};font-size:16px;color:${theme.accent};vertical-align:middle;">↔</span>`
+  const rangeHeadlineHtml =
+    lowLabel != null &&
+    highLabel != null &&
+    lowLabel !== highLabel
+      ? `<p style="margin:0 0 6px 0;font-family:${heading};font-size:${rangeFontPx}px;line-height:1.25;color:${theme.text};">
+              <span style="color:${theme.text};">${escapeEmailHtml(lowLabel)}</span>${arrow}<span style="font-size:${midFontPx}px;color:${theme.accent};vertical-align:middle;">${escapeEmailHtml(midLabel)}</span>${arrow}<span style="color:${theme.text};">${escapeEmailHtml(highLabel)}</span>
+            </p>`
+      : `<p style="margin:0 0 6px 0;font-family:${heading};font-size:${rangeFontPx}px;line-height:1.2;color:${theme.text};">${escapeEmailHtml(midLabel)}</p>`
 
   const comps = sortCompsForEmail(scenario.comps)
   const subjectBeds = scenario.params.beds
@@ -302,10 +315,9 @@ function scenarioBlockHtml(
         <tr>
           <td style="padding:16px 18px;">
             <p style="margin:0 0 4px 0;font-family:${mono};font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:${theme.accent};">${escapeEmailHtml(title)}</p>
-            <p style="margin:0 0 6px 0;font-family:${heading};font-size:26px;line-height:1.2;color:${theme.text};">${escapeEmailHtml(mid)}</p>
+            ${rangeHeadlineHtml}
             <p style="margin:0 0 4px 0;font-family:${mono};font-size:12px;color:${theme.mutedText};">
-              Range ${escapeEmailHtml(low)} – ${escapeEmailHtml(high)}
-              · Midpoint via ${escapeEmailHtml(methodLabel)}
+              ${kind === 'rent' ? 'Monthly rent · ' : ''}Midpoint via ${escapeEmailHtml(methodLabel)}
               ${ppsf ? ` · ${escapeEmailHtml(ppsf)}` : ''}
             </p>
             <p style="margin:0;font-family:${body};font-size:12px;color:${theme.mutedText};">
@@ -404,21 +416,25 @@ function formatListingIfEmailText(opts: {
     }
     const mid =
       kind === 'rent'
-        ? `${fmtIfRentMoney(roundIfRentMidpoint(scenario.amount))}/mo`
+        ? fmtIfRentMoney(roundIfRentMidpoint(scenario.amount))
         : fmtIfSaleMoney(scenario.amount)
     const low =
       kind === 'rent' && scenario.amountLow != null
         ? fmtIfRentMoney(roundIfRentLow(scenario.amountLow))
         : scenario.amountLow != null
           ? fmtIfSaleMoney(scenario.amountLow)
-          : '—'
+          : null
     const high =
       kind === 'rent' && scenario.amountHigh != null
         ? fmtIfRentMoney(roundIfRentHigh(scenario.amountHigh))
         : scenario.amountHigh != null
           ? fmtIfSaleMoney(scenario.amountHigh)
-          : '—'
-    lines.push(`Midpoint: ${mid}`, `Range: ${low} – ${high}`)
+          : null
+    if (low != null && high != null && low !== high) {
+      lines.push(`${low} ↔ ${mid} ↔ ${high}`)
+    } else {
+      lines.push(mid)
+    }
     lines.push(`Properties used (${scenario.comps.length})`)
     for (const c of sortCompsForEmail(scenario.comps)) {
       const role =
