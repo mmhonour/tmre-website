@@ -17,7 +17,6 @@ import {
 } from "@/components/icons";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
-  useListingDesktopLayout,
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import MatchingCriteriaSummary, {
@@ -1268,14 +1267,14 @@ export default function ListingIfPanel({
     setEmailIncludeRent(kinds.includes("rent"));
     setEmailOpen(true);
   };
-  const mobileIfCriteriaSlotId = listingCriteriaLinkSlotId(
+  /** Distinct from desktop — both mounts stay in the DOM; getElementById must not hit the lg-only slot. */
+  const mobileIfCriteriaSlotId = `${listingCriteriaLinkSlotId(
     LISTING_SECTION_IDS.if,
-  );
+  )}-mobile`;
   const criteriaFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const isPage = variant === "page";
-  const isDesktop = useListingDesktopLayout() === true;
 
   useEffect(() => {
     setSessionMatch(null);
@@ -1547,8 +1546,8 @@ export default function ListingIfPanel({
         </div>
       ) : null}
 
-      {/* Mobile: sell/rent as pill tabs + Criteria; desktop: side-by-side panels. */}
-      <div className="lg:hidden mb-1 flex items-end justify-between gap-3 max-lg:px-3">
+      {/* Mobile: sell/rent pills left · Criteria right (top-aligned with tabs). */}
+      <div className="lg:hidden mb-1 flex items-start justify-between gap-3 max-lg:px-3">
         <div
           role="tablist"
           aria-label="What if scenarios"
@@ -1584,7 +1583,7 @@ export default function ListingIfPanel({
         {criteriaInSidePanel ? (
           <div
             id={mobileIfCriteriaSlotId}
-            className="flex shrink-0 items-end justify-end min-h-[1em]"
+            className="ml-auto flex shrink-0 items-start justify-end min-h-[1em] pt-0.5"
           />
         ) : null}
       </div>
@@ -1652,8 +1651,8 @@ export default function ListingIfPanel({
         <ListingCriteriaSideLayout
           criteria={criteriaBlock}
           heading="What if criteria"
-          linkSlotId={isDesktop ? desktopIfCriteriaSlotId : null}
-          linkSlotIds={isDesktop ? null : [mobileIfCriteriaSlotId]}
+          linkSlotId={desktopIfCriteriaSlotId}
+          linkSlotIds={[mobileIfCriteriaSlotId]}
         >
           {mainColumn}
         </ListingCriteriaSideLayout>
