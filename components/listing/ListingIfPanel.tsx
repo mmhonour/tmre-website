@@ -9,7 +9,12 @@ import {
   type FormEvent,
 } from "react";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
-import { ArrowLeftRightIcon } from "@/components/icons";
+import {
+  ArrowLeftRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MailIcon,
+} from "@/components/icons";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
   useListingDesktopLayout,
@@ -382,7 +387,7 @@ function IfMathWorksheet({
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
 }) {
   const [showPpsf, setShowPpsf] = useState(false);
-  const [mathOpen, setMathOpen] = useState(true);
+  const [mathOpen, setMathOpen] = useState(false);
 
   if (est.amount == null || est.amountLow == null || est.amountHigh == null) {
     return null;
@@ -427,9 +432,11 @@ function IfMathWorksheet({
           <span className="underline decoration-white/25 underline-offset-2">
             Math
           </span>
-          <span className="text-gold tabular-nums" aria-hidden>
-            {mathOpen ? "<--" : "-->"}
-          </span>
+          {mathOpen ? (
+            <ChevronLeftIcon className="h-3 w-3 text-gold" />
+          ) : (
+            <ChevronRightIcon className="h-3 w-3 text-gold" />
+          )}
         </button>
         <div
           role="group"
@@ -799,23 +806,7 @@ const IF_SCENARIO_PANEL_IDS = {
   rent: "if-you-rent",
 } as const;
 
-function IfEmailIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      aria-hidden
-    >
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <path d="m3 7 9 6 9-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** Compact admin-only send dialog — opened from desktop link or mobile panel icons. */
+/** Compact admin-only send dialog — opened from desktop / mobile mail icons. */
 function IfEmailScenarioDialog({
   mlsId,
   open,
@@ -824,7 +815,7 @@ function IfEmailScenarioDialog({
   includeRent,
   onIncludeSaleChange,
   onIncludeRentChange,
-  defaultMethod = IF_DEFAULT_MIDPOINT_METHOD,
+  midpointMethod,
 }: {
   mlsId: string;
   open: boolean;
@@ -833,10 +824,13 @@ function IfEmailScenarioDialog({
   includeRent: boolean;
   onIncludeSaleChange: (v: boolean) => void;
   onIncludeRentChange: (v: boolean) => void;
-  defaultMethod?: IfMidpointMethod;
+  /** Same midpoint method currently selected on the What if panels. */
+  midpointMethod: IfMidpointMethod;
 }) {
   const [to, setTo] = useState("");
-  const [method, setMethod] = useState<IfMidpointMethod>(defaultMethod);
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
+  const [useDifferentAddress, setUseDifferentAddress] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -845,10 +839,40 @@ function IfEmailScenarioDialog({
     if (!open) return;
     setMessage(null);
     setError(null);
-    setMethod(defaultMethod);
-  }, [open, defaultMethod]);
+    setUseDifferentAddress(false);
+    setSessionChecked(false);
+    let cancelled = false;
+    void fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then(
+        (body: {
+          authenticated?: boolean;
+          user?: { email?: string };
+        }) => {
+          if (cancelled) return;
+          const email = body.authenticated
+            ? body.user?.email?.trim() || null
+            : null;
+          setSignedInEmail(email);
+          if (email) setTo(email);
+          setSessionChecked(true);
+        },
+      )
+      .catch(() => {
+        if (!cancelled) {
+          setSignedInEmail(null);
+          setSessionChecked(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   if (!open) return null;
+
+  const confirmSignedIn =
+    Boolean(signedInEmail) && !useDifferentAddress && sessionChecked;
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -861,6 +885,13 @@ function IfEmailScenarioDialog({
       setError("Select sale, rent, or both.");
       return;
     }
+    const recipient = confirmSignedIn
+      ? (signedInEmail ?? "").trim()
+      : to.trim();
+    if (!recipient) {
+      setError("Recipient email required.");
+      return;
+    }
     setSending(true);
     try {
       const res = await fetch(
@@ -869,9 +900,9 @@ function IfEmailScenarioDialog({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: to.trim(),
+            to: recipient,
             kinds,
-            midpointMethod: method,
+            midpointMethod,
           }),
         },
       );
@@ -886,7 +917,7 @@ function IfEmailScenarioDialog({
       setMessage(
         body.bcc ? "Sent — a copy went to your notify inbox." : "Sent.",
       );
-      setTo("");
+      if (!confirmSignedIn) setTo("");
     } catch (err) {
       setError(
         err instanceof Error && err.message
@@ -899,35 +930,68 @@ function IfEmailScenarioDialog({
   };
 
   return (
-    <div className="rounded-lg border border-white/15 bg-navy/95 p-3 shadow-lg space-y-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold">
-          Email scenario
-        </p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/40 hover:text-gold"
+    <div className="w-full rounded-lg border border-white/15 bg-navy/95 p-3 shadow-lg">
+      <form
+        onSubmit={onSubmit}
+        className="flex w-full flex-col gap-2.5 lg:flex-row lg:items-end lg:gap-4"
+      >
+        <span
+          className="inline-flex shrink-0 items-center text-gold lg:pb-1.5"
+          title="Email scenario"
         >
-          Close
-        </button>
-      </div>
-      <form onSubmit={onSubmit} className="space-y-2.5">
-        <label className="block space-y-1">
-          <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/40">
-            To
-          </span>
-          <input
-            type="email"
-            required
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            placeholder="recipient@example.com"
-            className="w-full rounded-md border border-white/15 bg-navy/40 px-2.5 py-1.5 text-sm text-white placeholder:text-white/30 focus:border-gold/50 focus:outline-none"
-          />
-        </label>
+          <MailIcon className="h-4 w-4" />
+          <span className="sr-only">Email scenario</span>
+        </span>
 
-        <div className="flex flex-wrap gap-3 font-mono text-[9px] tracking-[0.12em] uppercase text-white/50">
+        {confirmSignedIn ? (
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/40">
+              Send to
+            </p>
+            <p className="text-sm text-white/85 break-all">
+              {signedInEmail}
+              <span className="text-white/45"> — confirm?</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setUseDifferentAddress(true);
+                setTo("");
+              }}
+              className="font-mono text-[9px] tracking-[0.1em] uppercase text-white/40 underline decoration-white/20 underline-offset-2 hover:text-gold"
+            >
+              Different address
+            </button>
+          </div>
+        ) : (
+          <label className="min-w-0 flex-1 space-y-1">
+            <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/40">
+              To
+            </span>
+            <input
+              type="email"
+              required
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="recipient@example.com"
+              className="w-full rounded-md border border-white/15 bg-navy/40 px-2.5 py-1.5 text-sm text-white placeholder:text-white/30 focus:border-gold/50 focus:outline-none"
+            />
+            {signedInEmail && useDifferentAddress ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setUseDifferentAddress(false);
+                  setTo(signedInEmail);
+                }}
+                className="font-mono text-[9px] tracking-[0.1em] uppercase text-white/40 underline decoration-white/20 underline-offset-2 hover:text-gold"
+              >
+                Use {signedInEmail}
+              </button>
+            ) : null}
+          </label>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 lg:pb-1.5">
           <label className="inline-flex items-center gap-1.5 cursor-pointer">
             <input
               type="checkbox"
@@ -948,42 +1012,31 @@ function IfEmailScenarioDialog({
           </label>
         </div>
 
-        <div
-          role="group"
-          aria-label="Email midpoint method"
-          className="flex flex-wrap gap-1"
-        >
-          {IF_MIDPOINT_METHODS.map((m) => {
-            const active = method === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMethod(m)}
-                className={
-                  active
-                    ? "rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-navy bg-gold"
-                    : "rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
-                }
-                aria-pressed={active}
-              >
-                {IF_MIDPOINT_METHOD_LABELS[m]}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+          <button
+            type="submit"
+            disabled={sending || !sessionChecked}
+            className="rounded-md bg-gold px-2.5 py-1.5 font-mono text-[9px] tracking-[0.14em] uppercase text-navy disabled:opacity-50"
+          >
+            {sending
+              ? "Sending…"
+              : confirmSignedIn
+                ? "Confirm send"
+                : "Send"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/40 hover:text-gold"
+          >
+            Close
+          </button>
         </div>
-
-        <button
-          type="submit"
-          disabled={sending}
-          className="rounded-md bg-gold px-2.5 py-1.5 font-mono text-[9px] tracking-[0.14em] uppercase text-navy disabled:opacity-50"
-        >
-          {sending ? "Sending…" : "Send"}
-        </button>
-
-        {message ? <p className="text-[11px] text-sage">{message}</p> : null}
-        {error ? <p className="text-[11px] text-coral">{error}</p> : null}
       </form>
+      {message ? (
+        <p className="mt-2 text-[11px] text-sage">{message}</p>
+      ) : null}
+      {error ? <p className="mt-2 text-[11px] text-coral">{error}</p> : null}
     </div>
   );
 }
@@ -998,6 +1051,8 @@ function ScenarioPanel({
   inventorySegmentBands = null,
   foundCountEmphasized = false,
   onEmailClick = null,
+  midpointMethod,
+  onMidpointMethodChange,
   className,
 }: {
   title: string;
@@ -1011,12 +1066,10 @@ function ScenarioPanel({
   foundCountEmphasized?: boolean;
   /** Mobile: tiny mail icon on this panel. Desktop uses a single page-level link. */
   onEmailClick?: (() => void) | null;
+  midpointMethod: IfMidpointMethod;
+  onMidpointMethodChange: (method: IfMidpointMethod) => void;
   className?: string;
 }) {
-  const [midpointMethod, setMidpointMethod] = useState<IfMidpointMethod>(
-    scenario.math.midpointMethod ?? IF_DEFAULT_MIDPOINT_METHOD,
-  );
-
   const displayScenario = useMemo(
     () =>
       scenarioWithMidpointMethod(
@@ -1102,7 +1155,7 @@ function ScenarioPanel({
               aria-label={`Email ${title} scenario`}
               title="Email this scenario"
             >
-              <IfEmailIcon className="h-3.5 w-3.5" />
+              <MailIcon className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </div>
@@ -1122,7 +1175,7 @@ function ScenarioPanel({
             sqft={displayScenario.math.subjectSqft ?? displayScenario.params.sqft}
             kind={kind}
             midpointMethod={midpointMethod}
-            onMidpointMethodChange={setMidpointMethod}
+            onMidpointMethodChange={onMidpointMethodChange}
           />
           <CompList
             comps={comps}
@@ -1201,8 +1254,16 @@ export default function ListingIfPanel({
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailIncludeSale, setEmailIncludeSale] = useState(true);
   const [emailIncludeRent, setEmailIncludeRent] = useState(true);
+  /** Shared across sell/rent panels and the email dialog (no re-pick in email). */
+  const [midpointMethod, setMidpointMethod] = useState<IfMidpointMethod>(
+    IF_DEFAULT_MIDPOINT_METHOD,
+  );
 
-  const openEmailScenario = (kinds: Array<"sale" | "rent">) => {
+  const toggleEmailScenario = (kinds: Array<"sale" | "rent">) => {
+    if (emailOpen) {
+      setEmailOpen(false);
+      return;
+    }
     setEmailIncludeSale(kinds.includes("sale"));
     setEmailIncludeRent(kinds.includes("rent"));
     setEmailOpen(true);
@@ -1223,6 +1284,7 @@ export default function ListingIfPanel({
     setCriteriaStepFeedback(null);
     setMobileScenarioLead("sale");
     setEmailOpen(false);
+    setMidpointMethod(IF_DEFAULT_MIDPOINT_METHOD);
     if (criteriaFeedbackTimerRef.current != null) {
       clearTimeout(criteriaFeedbackTimerRef.current);
       criteriaFeedbackTimerRef.current = null;
@@ -1450,12 +1512,13 @@ export default function ListingIfPanel({
           {siteUnlocked ? (
             <button
               type="button"
-              onClick={() => openEmailScenario(["sale", "rent"])}
+              onClick={() => toggleEmailScenario(["sale", "rent"])}
               className="p-0.5 text-white/35 transition-colors hover:text-gold"
-              aria-label="Email scenario"
-              title="Email scenario"
+              aria-label={emailOpen ? "Close email scenario" : "Email scenario"}
+              title={emailOpen ? "Close email scenario" : "Email scenario"}
+              aria-expanded={emailOpen}
             >
-              <IfEmailIcon className="h-4 w-4" />
+              <MailIcon className="h-4 w-4" />
             </button>
           ) : (
             <span aria-hidden className="h-4 w-4" />
@@ -1470,7 +1533,7 @@ export default function ListingIfPanel({
       ) : null}
 
       {siteUnlocked && emailOpen ? (
-        <div className="max-lg:px-3 lg:max-w-sm lg:px-0">
+        <div className="w-full max-lg:px-3 lg:px-0">
           <IfEmailScenarioDialog
             mlsId={mlsId}
             open={emailOpen}
@@ -1479,6 +1542,7 @@ export default function ListingIfPanel({
             includeRent={emailIncludeRent}
             onIncludeSaleChange={setEmailIncludeSale}
             onIncludeRentChange={setEmailIncludeRent}
+            midpointMethod={midpointMethod}
           />
         </div>
       ) : null}
@@ -1535,8 +1599,10 @@ export default function ListingIfPanel({
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
           inventorySegmentBands={data?.inventorySegmentBands ?? null}
+          midpointMethod={midpointMethod}
+          onMidpointMethodChange={setMidpointMethod}
           onEmailClick={
-            siteUnlocked ? () => openEmailScenario(["sale"]) : null
+            siteUnlocked ? () => toggleEmailScenario(["sale"]) : null
           }
           className={
             mobileScenarioLead === "sale"
@@ -1552,8 +1618,10 @@ export default function ListingIfPanel({
           kind="rent"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
+          midpointMethod={midpointMethod}
+          onMidpointMethodChange={setMidpointMethod}
           onEmailClick={
-            siteUnlocked ? () => openEmailScenario(["rent"]) : null
+            siteUnlocked ? () => toggleEmailScenario(["rent"]) : null
           }
           className={
             mobileScenarioLead === "rent"

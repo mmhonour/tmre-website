@@ -39,6 +39,59 @@ export function ArrowLeftRightIcon({ className }: { className?: string }) {
   );
 }
 
+/** Chevron pointing right (expand / next). */
+export function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className ?? "h-4 w-4"}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.25}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+/** Chevron pointing left (collapse / back). */
+export function ChevronLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className ?? "h-4 w-4"}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.25}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m15 6-6 6 6 6" />
+    </svg>
+  );
+}
+
+/** Envelope — email / mailto affordances. */
+export function MailIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className ?? navIconClass}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function PhoneIcon({ className }: { className?: string }) {
   return (
     <svg
