@@ -84,9 +84,64 @@ const PANEL_SECTION_TABS = new Set<string>([
   "uag",
 ]);
 
-const SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID = "spotlight-insight-closed-note";
 const SPOTLIGHT_CLOSED_INSIGHT_NOTE =
   "Insight may be inaccurate for Closed Homes that have not been recently updated";
+
+/** Spotlight Closed: Insight<sup>*</sup> opens a short disclaimer popover. */
+function SpotlightClosedInsightLink({
+  className = "font-mono text-[10px] tracking-[0.2em] uppercase text-gold",
+}: {
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative inline-flex justify-center">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`${className} underline decoration-gold/40 underline-offset-2 transition-colors hover:decoration-gold`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+      >
+        Insight
+        <sup className="ml-px text-[0.65em] font-normal tracking-normal leading-none">
+          *
+        </sup>
+      </button>
+      {open ? (
+        <div
+          role="dialog"
+          aria-label={SPOTLIGHT_CLOSED_INSIGHT_NOTE}
+          className="absolute left-1/2 top-full z-40 mt-1.5 w-[min(16rem,70vw)] -translate-x-1/2 rounded-md border border-white/15 bg-[#152238] px-2.5 py-2 text-left shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)]"
+        >
+          <p className="font-mono text-[9px] leading-snug tracking-[0.04em] text-white/70 normal-case">
+            {SPOTLIGHT_CLOSED_INSIGHT_NOTE}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function tabFromLocationHash(): ListingScrollSectionTab | null {
   if (typeof window === "undefined") return null;
@@ -641,29 +696,6 @@ export default function ListingHeroPanels({
 
   const closedInsightCaveat =
     isSpotlight && statusLabel === "Closed" && Boolean(overviewInsight);
-  const insightHeading = closedInsightCaveat ? (
-    <>
-      Insight
-      <a
-        href={`#${SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID}`}
-        className="ml-0.5 text-gold/80 no-underline transition-colors hover:text-gold"
-        title={SPOTLIGHT_CLOSED_INSIGHT_NOTE}
-        aria-label={SPOTLIGHT_CLOSED_INSIGHT_NOTE}
-      >
-        *
-      </a>
-    </>
-  ) : (
-    "Insight"
-  );
-  const closedInsightFootnote = closedInsightCaveat ? (
-    <p
-      id={SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID}
-      className="mt-2 max-w-[16rem] text-left font-mono text-[8px] leading-snug tracking-[0.04em] text-white/40 normal-case"
-    >
-      {SPOTLIGHT_CLOSED_INSIGHT_NOTE}
-    </p>
-  ) : null;
 
   const insightBody = overviewInsight ? (
     <ListingInsightCopy
@@ -680,11 +712,16 @@ export default function ListingHeroPanels({
       className="ml-auto hidden w-fit max-w-full min-w-0 flex-col overflow-visible lg:flex"
       aria-label="Listing insight"
     >
-      <p className="mb-1 text-center font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-        {insightHeading}
-      </p>
+      <div className="mb-1 flex justify-center">
+        {closedInsightCaveat ? (
+          <SpotlightClosedInsightLink />
+        ) : (
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+            Insight
+          </p>
+        )}
+      </div>
       {insightBody}
-      {closedInsightFootnote}
     </aside>
   ) : null;
 
@@ -1292,9 +1329,14 @@ export default function ListingHeroPanels({
       <ListingSideDrawer
         open={mobileDrawer === "insight" && !isDesktopLayout}
         onClose={closeMobileDrawer}
-        title={closedInsightCaveat ? "Insight*" : "Insight"}
+        title="Insight"
       >
         <div id="listing-insight-drawer" className="space-y-5">
+          {closedInsightCaveat ? (
+            <div className="flex justify-start">
+              <SpotlightClosedInsightLink className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold" />
+            </div>
+          ) : null}
           {overviewInsight ? (
             <ListingInsightCopy
               text={overviewInsight}
@@ -1302,14 +1344,6 @@ export default function ListingHeroPanels({
               medianHref={`#${LISTING_ANALYSIS_ID}`}
               onMedianClick={activateAnalysisFromMedian}
             />
-          ) : null}
-          {closedInsightCaveat ? (
-            <p
-              id={`${SPOTLIGHT_CLOSED_INSIGHT_NOTE_ID}-mobile`}
-              className="font-mono text-[10px] leading-relaxed tracking-[0.04em] text-white/45 normal-case"
-            >
-              {SPOTLIGHT_CLOSED_INSIGHT_NOTE}
-            </p>
           ) : null}
           <section
             className="space-y-3 border-t border-white/10 pt-4"
