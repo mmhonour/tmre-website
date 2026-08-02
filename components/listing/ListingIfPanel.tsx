@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
 } from "react";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import {
@@ -251,8 +250,11 @@ function IfMarketBandBadge({ band }: { band: IfMarketBandDisplay }) {
   );
 }
 
-/** Outer starts large / mid small; swap sizes 3×; end with mid larger than outer. */
-const IF_RANGE_SIZE_SWAPS = 3;
+/**
+ * Outer starts large / mid small; swap sizes 4× so the cycle ends where it
+ * began: outer large, median back to its smaller size.
+ */
+const IF_RANGE_SIZE_SWAPS = 4;
 const IF_RANGE_SIZE_SWAP_MS = 520;
 
 function IfEstimateRangeDisplay({
@@ -261,22 +263,19 @@ function IfEstimateRangeDisplay({
   midpoint = null,
   formatAmount,
   suffix = "",
-  underHigh = null,
 }: {
   low: number | null;
   high: number | null;
   midpoint?: number | null;
   formatAmount: (value: number) => string;
   suffix?: string;
-  /** Centered under the high (upper) amount — e.g. Math link. */
-  underHigh?: ReactNode;
 }) {
   const resolvedLow = low ?? (high == null ? midpoint : null);
   const resolvedHigh = high ?? (low == null ? midpoint : null);
   const resolvedMid =
     midpoint != null && Number.isFinite(midpoint) ? midpoint : null;
 
-  // false = outer large / mid small; true = mid large / outer small (final after 3 swaps).
+  // false = outer large / mid small (start + final after 4 swaps).
   const [midIsLarge, setMidIsLarge] = useState(false);
 
   useEffect(() => {
@@ -292,7 +291,7 @@ function IfEstimateRangeDisplay({
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ) {
-      setMidIsLarge(true);
+      setMidIsLarge(false);
       return;
     }
 
@@ -335,11 +334,6 @@ function IfEstimateRangeDisplay({
 
     return (
       <div className="w-full" aria-label={aria}>
-        {/*
-          Left-aligned to the panel. One amount row uses items-center so
-          lower / median / upper stay vertically centered through size swaps.
-          Math (underHigh) sits in the high column under the upper amount.
-        */}
         <div
           className={
             midLabel != null
@@ -368,17 +362,6 @@ function IfEstimateRangeDisplay({
           >
             {highLabel}
           </span>
-          {underHigh ? (
-            <div
-              className={
-                midLabel != null
-                  ? "col-start-5 row-start-2 justify-self-center pt-1"
-                  : "col-start-3 row-start-2 justify-self-center pt-1"
-              }
-            >
-              {underHigh}
-            </div>
-          ) : null}
         </div>
       </div>
     );
@@ -395,12 +378,9 @@ function IfEstimateRangeDisplay({
 
   return (
     <div className="w-full">
-      <div className="inline-flex flex-col items-center gap-1">
-        <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-none">
-          {single}
-        </p>
-        {underHigh}
-      </div>
+      <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-none">
+        {single}
+      </p>
     </div>
   );
 }
@@ -535,75 +515,68 @@ function IfMathBandKeyword({
   );
 }
 
-/**
- * Math link (+ midpoint methods when open).
- * Minimized: right-aligned under the range high.
- * Expanded: left-aligned with the panel.
- */
+/** Math toggle — lives in the right column of the range / Math grid. */
 function IfMathLinkBar({
   kind,
   mathOpen,
   onToggle,
-  midpointMethod,
-  onMidpointMethodChange,
 }: {
   kind: "sale" | "rent";
   mathOpen: boolean;
   onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-gold"
+      aria-expanded={mathOpen}
+      aria-controls={`what-if-math-detail-${kind}`}
+      title={mathOpen ? "Minimize math" : "Expand math"}
+    >
+      <span className="underline decoration-white/25 underline-offset-2">
+        Math
+      </span>
+      {mathOpen ? (
+        <ChevronLeftIcon className="h-3 w-3 text-gold" />
+      ) : (
+        <ChevronRightIcon className="h-3 w-3 text-gold" />
+      )}
+    </button>
+  );
+}
+
+function IfMathMethodPills({
+  midpointMethod,
+  onMidpointMethodChange,
+}: {
   midpointMethod: IfMidpointMethod;
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
 }) {
   return (
     <div
-      className={
-        mathOpen
-          ? "flex flex-col items-start gap-1"
-          : "flex flex-col items-center gap-1"
-      }
+      role="group"
+      aria-label="Midpoint $/sqft method"
+      className="inline-flex flex-wrap justify-start gap-1"
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-gold"
-        aria-expanded={mathOpen}
-        aria-controls={`what-if-math-detail-${kind}`}
-        title={mathOpen ? "Minimize math" : "Expand math"}
-      >
-        <span className="underline decoration-white/25 underline-offset-2">
-          Math
-        </span>
-        {mathOpen ? (
-          <ChevronLeftIcon className="h-3 w-3 text-gold" />
-        ) : (
-          <ChevronRightIcon className="h-3 w-3 text-gold" />
-        )}
-      </button>
-      {mathOpen ? (
-        <div
-          role="group"
-          aria-label="Midpoint $/sqft method"
-          className="inline-flex flex-wrap justify-start gap-1"
-        >
-          {IF_MIDPOINT_METHODS.map((method) => {
-            const active = midpointMethod === method;
-            return (
-              <button
-                key={method}
-                type="button"
-                onClick={() => onMidpointMethodChange(method)}
-                className={
-                  active
-                    ? "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-navy bg-gold"
-                    : "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
-                }
-                aria-pressed={active}
-              >
-                {IF_MIDPOINT_METHOD_LABELS[method]}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      {IF_MIDPOINT_METHODS.map((method) => {
+        const active = midpointMethod === method;
+        return (
+          <button
+            key={method}
+            type="button"
+            onClick={() => onMidpointMethodChange(method)}
+            className={
+              active
+                ? "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-navy bg-gold"
+                : "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
+            }
+            aria-pressed={active}
+          >
+            {IF_MIDPOINT_METHOD_LABELS[method]}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -613,7 +586,6 @@ function IfMathWorksheet({
   sqft,
   kind,
   midpointMethod,
-  onMidpointMethodChange,
   showTopBand,
   showBottomBand,
   onToggleTopBand,
@@ -624,7 +596,6 @@ function IfMathWorksheet({
   sqft: number | null;
   kind: "sale" | "rent";
   midpointMethod: IfMidpointMethod;
-  onMidpointMethodChange: (method: IfMidpointMethod) => void;
   showTopBand: boolean;
   showBottomBand: boolean;
   onToggleTopBand: () => void;
@@ -1366,19 +1337,6 @@ function ScenarioPanel({
     displayScenario.amountLow != null &&
     displayScenario.amountHigh != null;
 
-  const mathLinkBar = canShowMath ? (
-    <IfMathLinkBar
-      kind={kind}
-      mathOpen={mathOpen}
-      onToggle={() => setMathOpen((open) => !open)}
-      midpointMethod={midpointMethod}
-      onMidpointMethodChange={onMidpointMethodChange}
-    />
-  ) : null;
-
-  /** Minimized: tuck Math under the high amount (right). Expanded: left of panel. */
-  const mathUnderHigh = canShowMath && !mathOpen ? mathLinkBar : null;
-
   const range = isRent ? (
     <IfEstimateRangeDisplay
       low={
@@ -1397,7 +1355,6 @@ function ScenarioPanel({
           : null
       }
       formatAmount={fmtIfRentMoney}
-      underHigh={mathUnderHigh}
     />
   ) : (
     <IfEstimateRangeDisplay
@@ -1405,7 +1362,6 @@ function ScenarioPanel({
       high={displayScenario.amountHigh}
       midpoint={displayScenario.amount}
       formatAmount={fmtIfSaleMoney}
-      underHigh={mathUnderHigh}
     />
   );
 
@@ -1460,25 +1416,49 @@ function ScenarioPanel({
         </>
       ) : (
         <>
-          <div className="space-y-2">
-            {range}
-            {canShowMath && mathOpen ? (
-              <div className="w-full">{mathLinkBar}</div>
+          {/*
+            Borderless 2-col grid: range left, Math link right.
+            Expanded Math detail is a full-width row under both columns.
+          */}
+          <div
+            className={
+              canShowMath
+                ? "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2"
+                : "w-full"
+            }
+          >
+            <div className="min-w-0 justify-self-start">{range}</div>
+            {canShowMath ? (
+              <div className="justify-self-end self-center">
+                <IfMathLinkBar
+                  kind={kind}
+                  mathOpen={mathOpen}
+                  onToggle={() => setMathOpen((open) => !open)}
+                />
+              </div>
             ) : null}
-            <IfMathWorksheet
-              est={displayScenario}
-              sqft={
-                displayScenario.math.subjectSqft ?? displayScenario.params.sqft
-              }
-              kind={kind}
-              midpointMethod={midpointMethod}
-              onMidpointMethodChange={onMidpointMethodChange}
-              showTopBand={showTopBand}
-              showBottomBand={showBottomBand}
-              onToggleTopBand={() => setShowTopBand((v) => !v)}
-              onToggleBottomBand={() => setShowBottomBand((v) => !v)}
-              mathOpen={mathOpen}
-            />
+            {canShowMath && mathOpen ? (
+              <div className="col-span-2 flex min-w-0 flex-col gap-2">
+                <IfMathMethodPills
+                  midpointMethod={midpointMethod}
+                  onMidpointMethodChange={onMidpointMethodChange}
+                />
+                <IfMathWorksheet
+                  est={displayScenario}
+                  sqft={
+                    displayScenario.math.subjectSqft ??
+                    displayScenario.params.sqft
+                  }
+                  kind={kind}
+                  midpointMethod={midpointMethod}
+                  showTopBand={showTopBand}
+                  showBottomBand={showBottomBand}
+                  onToggleTopBand={() => setShowTopBand((v) => !v)}
+                  onToggleBottomBand={() => setShowBottomBand((v) => !v)}
+                  mathOpen={mathOpen}
+                />
+              </div>
+            ) : null}
           </div>
           <CompList
             comps={comps}
