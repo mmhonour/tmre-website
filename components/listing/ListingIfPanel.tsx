@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import {
@@ -250,23 +251,62 @@ function IfMarketBandBadge({ band }: { band: IfMarketBandDisplay }) {
   );
 }
 
+/** Outer starts large / mid small; swap sizes 3×; end with mid larger than outer. */
+const IF_RANGE_SIZE_SWAPS = 3;
+const IF_RANGE_SIZE_SWAP_MS = 520;
+
 function IfEstimateRangeDisplay({
   low,
   high,
   midpoint = null,
   formatAmount,
   suffix = "",
+  underHigh = null,
 }: {
   low: number | null;
   high: number | null;
   midpoint?: number | null;
   formatAmount: (value: number) => string;
   suffix?: string;
+  /** Centered under the high (upper) amount — e.g. Math link. */
+  underHigh?: ReactNode;
 }) {
   const resolvedLow = low ?? (high == null ? midpoint : null);
   const resolvedHigh = high ?? (low == null ? midpoint : null);
   const resolvedMid =
     midpoint != null && Number.isFinite(midpoint) ? midpoint : null;
+
+  // false = outer large / mid small; true = mid large / outer small (final after 3 swaps).
+  const [midIsLarge, setMidIsLarge] = useState(false);
+
+  useEffect(() => {
+    if (
+      resolvedLow == null ||
+      resolvedHigh == null ||
+      resolvedLow === resolvedHigh ||
+      resolvedMid == null
+    ) {
+      return;
+    }
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      setMidIsLarge(true);
+      return;
+    }
+
+    setMidIsLarge(false);
+    let swaps = 0;
+    const id = window.setInterval(() => {
+      swaps += 1;
+      setMidIsLarge((v) => !v);
+      if (swaps >= IF_RANGE_SIZE_SWAPS) {
+        window.clearInterval(id);
+      }
+    }, IF_RANGE_SIZE_SWAP_MS);
+    return () => window.clearInterval(id);
+  }, [resolvedLow, resolvedHigh, resolvedMid]);
 
   if (
     resolvedLow != null &&
@@ -281,27 +321,45 @@ function IfEstimateRangeDisplay({
       midLabel != null
         ? `Between ${lowLabel}, midpoint ${midLabel}, and ${highLabel}`
         : `Between ${lowLabel} and ${highLabel}`;
+
+    const outerSize = midIsLarge
+      ? "text-[0.75rem] sm:text-[0.9375rem]"
+      : "text-2xl sm:text-3xl";
+    const midSize = midIsLarge
+      ? "text-2xl sm:text-3xl"
+      : "text-[0.75rem] sm:text-[0.9375rem]";
+    const sizeTransition =
+      "transition-[font-size,line-height,margin] duration-500 ease-in-out";
+
     return (
       <div
-        className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-2.5"
+        className="flex w-full flex-wrap items-start justify-end gap-x-2 gap-y-1 sm:gap-x-2.5"
         aria-label={aria}
       >
-        <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+        <span
+          className={`font-serif text-white tabular-nums leading-snug ${outerSize} ${sizeTransition}`}
+        >
           {lowLabel}
         </span>
-        <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+        <ArrowLeftRightIcon className="mt-1.5 h-5 w-5 shrink-0 text-gold/90 sm:mt-2" />
         {midLabel != null ? (
           <>
-            {/* Midpoint = half the low/high type size (text-2xl / sm:text-3xl). */}
-            <span className="font-serif text-[0.75rem] sm:text-[0.9375rem] text-gold tabular-nums leading-snug">
+            <span
+              className={`mt-1.5 font-serif text-gold tabular-nums leading-snug sm:mt-2 ${midSize} ${sizeTransition}`}
+            >
               {midLabel}
             </span>
-            <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+            <ArrowLeftRightIcon className="mt-1.5 h-5 w-5 shrink-0 text-gold/90 sm:mt-2" />
           </>
         ) : null}
-        <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
-          {highLabel}
-        </span>
+        <div className="inline-flex flex-col items-center gap-1">
+          <span
+            className={`font-serif text-white tabular-nums leading-snug ${outerSize} ${sizeTransition}`}
+          >
+            {highLabel}
+          </span>
+          {underHigh}
+        </div>
       </div>
     );
   }
@@ -316,10 +374,13 @@ function IfEstimateRangeDisplay({
           : "—";
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
-        {single}
-      </p>
+    <div className="flex w-full flex-wrap items-start justify-end gap-x-3 gap-y-1">
+      <div className="inline-flex flex-col items-center gap-1">
+        <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+          {single}
+        </p>
+        {underHigh}
+      </div>
     </div>
   );
 }
@@ -454,6 +515,69 @@ function IfMathBandKeyword({
   );
 }
 
+/** Math link (+ midpoint methods when open) — centered under the range high. */
+function IfMathLinkBar({
+  kind,
+  mathOpen,
+  onToggle,
+  midpointMethod,
+  onMidpointMethodChange,
+}: {
+  kind: "sale" | "rent";
+  mathOpen: boolean;
+  onToggle: () => void;
+  midpointMethod: IfMidpointMethod;
+  onMidpointMethodChange: (method: IfMidpointMethod) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-gold"
+        aria-expanded={mathOpen}
+        aria-controls={`what-if-math-detail-${kind}`}
+        title={mathOpen ? "Minimize math" : "Expand math"}
+      >
+        <span className="underline decoration-white/25 underline-offset-2">
+          Math
+        </span>
+        {mathOpen ? (
+          <ChevronLeftIcon className="h-3 w-3 text-gold" />
+        ) : (
+          <ChevronRightIcon className="h-3 w-3 text-gold" />
+        )}
+      </button>
+      {mathOpen ? (
+        <div
+          role="group"
+          aria-label="Midpoint $/sqft method"
+          className="inline-flex flex-wrap justify-center gap-1"
+        >
+          {IF_MIDPOINT_METHODS.map((method) => {
+            const active = midpointMethod === method;
+            return (
+              <button
+                key={method}
+                type="button"
+                onClick={() => onMidpointMethodChange(method)}
+                className={
+                  active
+                    ? "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-navy bg-gold"
+                    : "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
+                }
+                aria-pressed={active}
+              >
+                {IF_MIDPOINT_METHOD_LABELS[method]}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function IfMathWorksheet({
   est,
   sqft,
@@ -464,6 +588,7 @@ function IfMathWorksheet({
   showBottomBand,
   onToggleTopBand,
   onToggleBottomBand,
+  mathOpen,
 }: {
   est: IfEstimate;
   sqft: number | null;
@@ -474,11 +599,16 @@ function IfMathWorksheet({
   showBottomBand: boolean;
   onToggleTopBand: () => void;
   onToggleBottomBand: () => void;
+  mathOpen: boolean;
 }) {
   const [showPpsf, setShowPpsf] = useState(false);
-  const [mathOpen, setMathOpen] = useState(false);
 
-  if (est.amount == null || est.amountLow == null || est.amountHigh == null) {
+  if (
+    !mathOpen ||
+    est.amount == null ||
+    est.amountLow == null ||
+    est.amountHigh == null
+  ) {
     return null;
   }
 
@@ -508,151 +638,102 @@ function IfMathWorksheet({
         : `${ppsfLabel ?? "This midpoint"} is the median $/sqft of the matched comps — the middle value after sorting, so outliers move it less than an average would.`;
 
   return (
-    <div className="font-mono text-[10px] text-white/40 tabular-nums leading-relaxed">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <button
-          type="button"
-          onClick={() => setMathOpen((open) => !open)}
-          className="inline-flex items-center gap-1 uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-gold"
-          aria-expanded={mathOpen}
-          aria-controls={`what-if-math-detail-${kind}`}
-          title={mathOpen ? "Minimize math" : "Expand math"}
-        >
-          <span className="underline decoration-white/25 underline-offset-2">
-            Math
-          </span>
-          {mathOpen ? (
-            <ChevronLeftIcon className="h-3 w-3 text-gold" />
-          ) : (
-            <ChevronRightIcon className="h-3 w-3 text-gold" />
-          )}
-        </button>
-        {mathOpen ? (
-          <div
-            role="group"
-            aria-label="Midpoint $/sqft method"
-            className="inline-flex flex-wrap gap-1"
-          >
-            {IF_MIDPOINT_METHODS.map((method) => {
-              const active = midpointMethod === method;
-              return (
-                <button
-                  key={method}
-                  type="button"
-                  onClick={() => onMidpointMethodChange(method)}
-                  className={
-                    active
-                      ? "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-navy bg-gold"
-                      : "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
-                  }
-                  aria-pressed={active}
-                >
-                  {IF_MIDPOINT_METHOD_LABELS[method]}
-                </button>
-              );
-            })}
+    <div
+      id={`what-if-math-detail-${kind}`}
+      className="font-mono text-[10px] text-white/40 tabular-nums leading-relaxed"
+    >
+      {/*
+        Shared mobile + desktop: two invisible columns
+        (description | equation) — same grid, no breakpoint swap.
+      */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4">
+        <div className="min-w-0 normal-case tracking-normal text-left space-y-3">
+          <p className="m-0">
+            25th–75th percentile excluded i.e.{" "}
+            <IfMathBandKeyword
+              label="TOP"
+              band="top"
+              active={showTopBand}
+              onToggle={onToggleTopBand}
+            />{" "}
+            and{" "}
+            <IfMathBandKeyword
+              label="BOTTOM"
+              band="bottom"
+              active={showBottomBand}
+              onToggle={onToggleBottomBand}
+            />{" "}
+            quarter of the market with a{" "}
+            <IfMathBandKeyword
+              label="GREEN"
+              band="top"
+              active={showTopBand}
+              onToggle={onToggleTopBand}
+            />{" "}
+            or{" "}
+            <IfMathBandKeyword
+              label="RED"
+              band="bottom"
+              active={showBottomBand}
+              onToggle={onToggleBottomBand}
+            />{" "}
+            row tint
+          </p>
+          <div className="whitespace-pre-wrap">
+            <p className="m-0">
+              Based on the following comps
+              {"\n"}
+              {"\t"}
+              {est.soldCount} {soldWord}
+              {"\n"}
+              {"\t"}
+              {est.activeCount} active
+            </p>
           </div>
-        ) : null}
-      </div>
-
-      {mathOpen ? (
-        <>
-          {/* Two borderless columns: percentile blurb | right-aligned equation. */}
-          <div
-            id={`what-if-math-detail-${kind}`}
-            className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-6"
-          >
-            <div className="min-w-0 border-0 bg-transparent p-0">
-              <div className="normal-case tracking-normal text-left space-y-3">
-                <p className="m-0">
-                  25th–75th percentile excluded i.e.{" "}
-                  <IfMathBandKeyword
-                    label="TOP"
-                    band="top"
-                    active={showTopBand}
-                    onToggle={onToggleTopBand}
-                  />{" "}
-                  and{" "}
-                  <IfMathBandKeyword
-                    label="BOTTOM"
-                    band="bottom"
-                    active={showBottomBand}
-                    onToggle={onToggleBottomBand}
-                  />{" "}
-                  quarter of the market with a{" "}
-                  <IfMathBandKeyword
-                    label="GREEN"
-                    band="top"
-                    active={showTopBand}
-                    onToggle={onToggleTopBand}
-                  />{" "}
-                  or{" "}
-                  <IfMathBandKeyword
-                    label="RED"
-                    band="bottom"
-                    active={showBottomBand}
-                    onToggle={onToggleBottomBand}
-                  />{" "}
-                  row tint
-                </p>
-                <div className="whitespace-pre-wrap">
-                  <p className="m-0">
-                    Based on the following comps
-                    {"\n"}
-                    {"\t"}
-                    {est.soldCount} {soldWord}
-                    {"\n"}
-                    {"\t"}
-                    {est.activeCount} active
-                  </p>
-                </div>
-                {lowPpsf && highPpsf ? (
-                  <p className="m-0">
-                    Range {lowPpsf}–{highPpsf}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="min-w-0 border-0 bg-transparent p-0 sm:justify-self-end">
-              {hasSqft && ppsfLabel ? (
-                <div className="w-fit text-right max-sm:ml-auto">
-                  <button
-                    type="button"
-                    onClick={() => setShowPpsf((v) => !v)}
-                    className={linkClass}
-                    title="How this $/sqft was derived"
-                    aria-expanded={showPpsf}
-                  >
-                    {ppsfLabel}
-                  </button>
-                  <div>
-                    <span className="text-white/30">× </span>
-                    {sqft.toLocaleString("en-US")} sqft
-                  </div>
-                  <div className="my-0.5 border-t border-white/20" />
-                  <div className="text-white/70">{midLabel}</div>
-                </div>
-              ) : (
-                <div className="w-fit text-right text-white/60 max-sm:ml-auto">
-                  {midLabel}{" "}
-                  <span className="text-white/30">
-                    ({methodLabel} of {comps})
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {showPpsf && ppsfLabel ? (
-            <p className="mt-3 normal-case tracking-normal text-white/45 text-left">
-              {methodExplain}
-              {lowPpsf && highPpsf
-                ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
-                : ""}
+          {lowPpsf && highPpsf ? (
+            <p className="m-0">
+              Range {lowPpsf}–{highPpsf}
             </p>
           ) : null}
-        </>
+        </div>
+
+        <div className="justify-self-end">
+          {hasSqft && ppsfLabel ? (
+            <div className="w-fit text-right">
+              <button
+                type="button"
+                onClick={() => setShowPpsf((v) => !v)}
+                className={linkClass}
+                title="How this $/sqft was derived"
+                aria-expanded={showPpsf}
+              >
+                {ppsfLabel}
+              </button>
+              <div>
+                <span className="text-white/30">× </span>
+                {sqft.toLocaleString("en-US")} sqft
+              </div>
+              <div className="my-0.5 border-t border-white/20" />
+              <div className="text-white/70">{midLabel}</div>
+            </div>
+          ) : (
+            <div className="w-fit text-right text-white/60">
+              {midLabel}{" "}
+              <span className="text-white/30">
+                ({methodLabel} of {comps})
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showPpsf && ppsfLabel ? (
+        <p className="mt-3 normal-case tracking-normal text-white/45 text-left">
+          {methodExplain}
+          {lowPpsf && highPpsf
+            ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
+            : ""}
+        </p>
       ) : null}
     </div>
   );
@@ -778,7 +859,7 @@ function CompList({
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <div className="mb-2 flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p
           className={`inline-block origin-left font-mono text-[10px] tracking-[0.14em] uppercase text-white/50 transition-transform duration-300 ease-out ${
             foundCountEmphasized ? "scale-150" : "scale-100"
@@ -787,7 +868,7 @@ function CompList({
           {propertiesUsedLabel}
         </p>
         <div
-          className="flex flex-wrap items-center gap-x-3 gap-y-1"
+          className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1"
           role="group"
           aria-label="Sort properties"
         >
@@ -1251,6 +1332,7 @@ function ScenarioPanel({
 }) {
   const [showTopBand, setShowTopBand] = useState(false);
   const [showBottomBand, setShowBottomBand] = useState(false);
+  const [mathOpen, setMathOpen] = useState(false);
 
   const displayScenario = useMemo(
     () =>
@@ -1283,6 +1365,20 @@ function ScenarioPanel({
     };
   })();
 
+  const mathUnderHigh =
+    hasEstimate &&
+    displayScenario.amount != null &&
+    displayScenario.amountLow != null &&
+    displayScenario.amountHigh != null ? (
+      <IfMathLinkBar
+        kind={kind}
+        mathOpen={mathOpen}
+        onToggle={() => setMathOpen((open) => !open)}
+        midpointMethod={midpointMethod}
+        onMidpointMethodChange={onMidpointMethodChange}
+      />
+    ) : null;
+
   const range = isRent ? (
     <IfEstimateRangeDisplay
       low={
@@ -1301,6 +1397,7 @@ function ScenarioPanel({
           : null
       }
       formatAmount={fmtIfRentMoney}
+      underHigh={mathUnderHigh}
     />
   ) : (
     <IfEstimateRangeDisplay
@@ -1308,6 +1405,7 @@ function ScenarioPanel({
       high={displayScenario.amountHigh}
       midpoint={displayScenario.amount}
       formatAmount={fmtIfSaleMoney}
+      underHigh={mathUnderHigh}
     />
   );
 
@@ -1352,26 +1450,33 @@ function ScenarioPanel({
         </div>
       </div>
 
-      <div>{range}</div>
-
       {!hasEstimate ? (
-        <p className="text-white/45 text-xs leading-relaxed">
-          Not enough comparable {kind === "sale" ? "sales" : "rentals"} matched
-          these parameters to estimate a range yet.
-        </p>
+        <>
+          <div>{range}</div>
+          <p className="text-white/45 text-xs leading-relaxed">
+            Not enough comparable {kind === "sale" ? "sales" : "rentals"} matched
+            these parameters to estimate a range yet.
+          </p>
+        </>
       ) : (
         <>
-          <IfMathWorksheet
-            est={displayScenario}
-            sqft={displayScenario.math.subjectSqft ?? displayScenario.params.sqft}
-            kind={kind}
-            midpointMethod={midpointMethod}
-            onMidpointMethodChange={onMidpointMethodChange}
-            showTopBand={showTopBand}
-            showBottomBand={showBottomBand}
-            onToggleTopBand={() => setShowTopBand((v) => !v)}
-            onToggleBottomBand={() => setShowBottomBand((v) => !v)}
-          />
+          <div className="space-y-2">
+            {range}
+            <IfMathWorksheet
+              est={displayScenario}
+              sqft={
+                displayScenario.math.subjectSqft ?? displayScenario.params.sqft
+              }
+              kind={kind}
+              midpointMethod={midpointMethod}
+              onMidpointMethodChange={onMidpointMethodChange}
+              showTopBand={showTopBand}
+              showBottomBand={showBottomBand}
+              onToggleTopBand={() => setShowTopBand((v) => !v)}
+              onToggleBottomBand={() => setShowBottomBand((v) => !v)}
+              mathOpen={mathOpen}
+            />
+          </div>
           <CompList
             comps={comps}
             kind={kind}

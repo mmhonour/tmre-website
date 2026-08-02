@@ -341,7 +341,7 @@ function CompSortLinks<T extends string>({
 
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0 ${className ?? ""}`}
+      className={`flex w-full flex-wrap items-center justify-end gap-x-3 gap-y-1 ${className ?? ""}`}
       role="group"
       aria-label={ariaLabel}
     >
@@ -367,45 +367,32 @@ function CompSortLinks<T extends string>({
           </span>
         ) : null;
 
+        // Edge (and any option with `info`): one control — sorts and shows definition.
         if (option.info) {
           const infoOpen = infoKey === option.key;
           return (
             <div
               key={option.key}
               ref={infoOpen ? infoRootRef : undefined}
-              className="relative inline-flex items-center gap-0.5"
+              className="relative inline-flex items-center"
             >
               <button
                 type="button"
-                onClick={() =>
-                  setInfoKey((prev) => (prev === option.key ? null : option.key))
+                onClick={() => {
+                  onSort(option.key);
+                  setInfoKey(option.key);
+                }}
+                title={
+                  option.title ??
+                  `${option.label} — tap to sort; definition opens with the sort`
                 }
-                title={option.title ?? `What is ${option.label}?`}
                 className={linkClass}
                 aria-expanded={infoOpen}
                 aria-haspopup="dialog"
+                aria-sort={ariaSort}
               >
                 {option.label}
-              </button>
-              <button
-                type="button"
-                onClick={() => onSort(option.key)}
-                className={`font-mono text-[10px] tracking-[0.12em] transition-colors ${
-                  active
-                    ? "text-gold"
-                    : isLight
-                      ? "text-slate/40 hover:text-gold"
-                      : "text-white/30 hover:text-gold"
-                }`}
-                aria-label={`Sort by ${option.label}`}
-                aria-sort={ariaSort}
-                title={`Sort by ${option.label}`}
-              >
-                {sortArrow ?? (
-                  <span aria-hidden className="opacity-70">
-                    ↕
-                  </span>
-                )}
+                {sortArrow}
               </button>
               {infoOpen ? (
                 <div
@@ -1725,54 +1712,15 @@ export default function ListingComparablesPanel({
           {mobileSoldChrome ? (
             <>
               {useMobileCompSubTabs ? (
-                <div className="mb-1 flex flex-col gap-y-0.5">
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="mb-1 flex w-full flex-col gap-y-0.5">
+                  <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1">
                     <LookbackSpinner
                       months={lookbackMonths}
                       onChange={setLookbackMonths}
                       theme={sortTheme}
                     />
-                    {sortedSold.length > 0 ? (
-                      <CompSortLinks
-                        className="ml-auto justify-end"
-                        options={[
-                          {
-                            key: "score",
-                            label: "Edge",
-                            info: EDGE_SCORE_POPOVER_NOTE,
-                          },
-                          { key: "closeDate", label: "CLOSED" },
-                          { key: "price", label: "Price" },
-                        ]}
-                        activeKey={soldSort.key}
-                        activeDir={soldSort.dir}
-                        onSort={handleSoldSort}
-                        theme={sortTheme}
-                        ariaLabel={`${recentlyClosedLabel} sort`}
-                      />
-                    ) : null}
                   </div>
-                  <CompExactMatchLegend
-                    theme={isModal ? "light" : "dark"}
-                    className="shrink-0 self-end text-right"
-                  />
-                </div>
-              ) : (
-                <CompFoundLegendRow
-                  theme={isModal ? "light" : "dark"}
-                  foundCount={sortedSold.length}
-                  foundCountClass={foundCountClass}
-                  hideFoundCount
-                  className="mb-1"
-                />
-              )}
-              {!useMobileCompSubTabs ? (
-              <div className="mb-2 flex items-end justify-between gap-x-3 gap-y-1">
-                <p className={`${sectionTitleClass} min-w-0 leading-none`}>
-                  {recentlyClosedLabel} ({sortedSold.length})
-                </p>
-                {sortedSold.length > 0 ? (
-                  <div className="flex shrink-0 justify-end">
+                  {sortedSold.length > 0 ? (
                     <CompSortLinks
                       options={[
                         {
@@ -1789,7 +1737,43 @@ export default function ListingComparablesPanel({
                       theme={sortTheme}
                       ariaLabel={`${recentlyClosedLabel} sort`}
                     />
-                  </div>
+                  ) : null}
+                  <CompExactMatchLegend
+                    theme={isModal ? "light" : "dark"}
+                    className="w-full self-end text-right"
+                  />
+                </div>
+              ) : (
+                <CompFoundLegendRow
+                  theme={isModal ? "light" : "dark"}
+                  foundCount={sortedSold.length}
+                  foundCountClass={foundCountClass}
+                  hideFoundCount
+                  className="mb-1"
+                />
+              )}
+              {!useMobileCompSubTabs ? (
+              <div className="mb-2 flex w-full flex-col gap-y-1">
+                <p className={`${sectionTitleClass} min-w-0 leading-none`}>
+                  {recentlyClosedLabel} ({sortedSold.length})
+                </p>
+                {sortedSold.length > 0 ? (
+                  <CompSortLinks
+                    options={[
+                      {
+                        key: "score",
+                        label: "Edge",
+                        info: EDGE_SCORE_POPOVER_NOTE,
+                      },
+                      { key: "closeDate", label: "CLOSED" },
+                      { key: "price", label: "Price" },
+                    ]}
+                    activeKey={soldSort.key}
+                    activeDir={soldSort.dir}
+                    onSort={handleSoldSort}
+                    theme={sortTheme}
+                    ariaLabel={`${recentlyClosedLabel} sort`}
+                  />
                 ) : null}
               </div>
               ) : null}
@@ -1820,7 +1804,7 @@ export default function ListingComparablesPanel({
                   ) : null}
                 </div>
                 {sortedSold.length > 0 ? (
-                  <div className="mt-2">
+                  <div className="mt-2 w-full">
                     <CompSortLinks
                       options={[
                         {
@@ -1841,8 +1825,8 @@ export default function ListingComparablesPanel({
                 ) : null}
               </>
             ) : (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <div className="flex w-full flex-col gap-y-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                   <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
                   <LookbackSpinner
                     months={lookbackMonths}
@@ -1963,37 +1947,34 @@ export default function ListingComparablesPanel({
         >
           <div className={isMobilePage ? (useMobileCompSubTabs ? "mb-1" : "mb-2") : "mb-3"}>
             {useMobileCompSubTabs ? (
-              <div className="flex flex-col gap-y-0.5">
-                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                  {sortedActive.length > 0 ? (
-                    <CompSortLinks
-                      className="justify-end"
-                      options={[
-                        { key: "default", label: "Match" },
-                        {
-                          key: "score",
-                          label: "Edge",
-                          info: EDGE_SCORE_POPOVER_NOTE,
-                        },
-                        { key: "price", label: "Price" },
-                      ]}
-                      activeKey={activeSort.key}
-                      activeDir={activeSort.dir}
-                      onSort={handleActiveSort}
-                      theme={sortTheme}
-                      ariaLabel="On market sort"
-                    />
-                  ) : null}
-                </div>
+              <div className="flex w-full flex-col gap-y-0.5">
+                {sortedActive.length > 0 ? (
+                  <CompSortLinks
+                    options={[
+                      { key: "default", label: "Match" },
+                      {
+                        key: "score",
+                        label: "Edge",
+                        info: EDGE_SCORE_POPOVER_NOTE,
+                      },
+                      { key: "price", label: "Price" },
+                    ]}
+                    activeKey={activeSort.key}
+                    activeDir={activeSort.dir}
+                    onSort={handleActiveSort}
+                    theme={sortTheme}
+                    ariaLabel="On market sort"
+                  />
+                ) : null}
                 <CompExactMatchLegend
                   theme={isModal ? "light" : "dark"}
-                  className="shrink-0 self-end text-right"
+                  className="w-full self-end text-right"
                 />
               </div>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                  <p className={sectionTitleClass}>
+                <div className="flex w-full flex-col gap-y-1">
+                  <p className={`${sectionTitleClass} min-w-0`}>
                     {isMobilePage
                       ? `${activeColumnTitle} (${sortedActive.length})`
                       : activeColumnTitle}
