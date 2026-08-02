@@ -329,36 +329,56 @@ function IfEstimateRangeDisplay({
       ? "text-2xl sm:text-3xl"
       : "text-[0.75rem] sm:text-[0.9375rem]";
     const sizeTransition =
-      "transition-[font-size,line-height,margin] duration-500 ease-in-out";
+      "transition-[font-size,line-height] duration-500 ease-in-out";
+    const amountClass =
+      "font-serif tabular-nums leading-none inline-flex items-center";
 
     return (
-      <div
-        className="flex w-full flex-wrap items-start justify-end gap-x-2 gap-y-1 sm:gap-x-2.5"
-        aria-label={aria}
-      >
-        <span
-          className={`font-serif text-white tabular-nums leading-snug ${outerSize} ${sizeTransition}`}
+      <div className="w-full" aria-label={aria}>
+        {/*
+          Left-aligned to the panel. One amount row uses items-center so
+          lower / median / upper stay vertically centered through size swaps.
+          Math (underHigh) sits in the high column under the upper amount.
+        */}
+        <div
+          className={
+            midLabel != null
+              ? "inline-grid max-w-full grid-cols-[auto_auto_auto_auto_auto] items-center justify-items-center gap-x-2 sm:gap-x-2.5"
+              : "inline-grid max-w-full grid-cols-[auto_auto_auto] items-center justify-items-center gap-x-2 sm:gap-x-2.5"
+          }
         >
-          {lowLabel}
-        </span>
-        <ArrowLeftRightIcon className="mt-1.5 h-5 w-5 shrink-0 text-gold/90 sm:mt-2" />
-        {midLabel != null ? (
-          <>
-            <span
-              className={`mt-1.5 font-serif text-gold tabular-nums leading-snug sm:mt-2 ${midSize} ${sizeTransition}`}
-            >
-              {midLabel}
-            </span>
-            <ArrowLeftRightIcon className="mt-1.5 h-5 w-5 shrink-0 text-gold/90 sm:mt-2" />
-          </>
-        ) : null}
-        <div className="inline-flex flex-col items-center gap-1">
           <span
-            className={`font-serif text-white tabular-nums leading-snug ${outerSize} ${sizeTransition}`}
+            className={`${amountClass} text-white ${outerSize} ${sizeTransition}`}
+          >
+            {lowLabel}
+          </span>
+          <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+          {midLabel != null ? (
+            <>
+              <span
+                className={`${amountClass} text-gold ${midSize} ${sizeTransition}`}
+              >
+                {midLabel}
+              </span>
+              <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+            </>
+          ) : null}
+          <span
+            className={`${amountClass} text-white ${outerSize} ${sizeTransition}`}
           >
             {highLabel}
           </span>
-          {underHigh}
+          {underHigh ? (
+            <div
+              className={
+                midLabel != null
+                  ? "col-start-5 row-start-2 justify-self-center pt-1"
+                  : "col-start-3 row-start-2 justify-self-center pt-1"
+              }
+            >
+              {underHigh}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -374,9 +394,9 @@ function IfEstimateRangeDisplay({
           : "—";
 
   return (
-    <div className="flex w-full flex-wrap items-start justify-end gap-x-3 gap-y-1">
+    <div className="w-full">
       <div className="inline-flex flex-col items-center gap-1">
-        <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+        <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-none">
           {single}
         </p>
         {underHigh}
@@ -515,7 +535,11 @@ function IfMathBandKeyword({
   );
 }
 
-/** Math link (+ midpoint methods when open) — centered under the range high. */
+/**
+ * Math link (+ midpoint methods when open).
+ * Minimized: right-aligned under the range high.
+ * Expanded: left-aligned with the panel.
+ */
 function IfMathLinkBar({
   kind,
   mathOpen,
@@ -530,7 +554,13 @@ function IfMathLinkBar({
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div
+      className={
+        mathOpen
+          ? "flex flex-col items-start gap-1"
+          : "flex flex-col items-center gap-1"
+      }
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -552,7 +582,7 @@ function IfMathLinkBar({
         <div
           role="group"
           aria-label="Midpoint $/sqft method"
-          className="inline-flex flex-wrap justify-center gap-1"
+          className="inline-flex flex-wrap justify-start gap-1"
         >
           {IF_MIDPOINT_METHODS.map((method) => {
             const active = midpointMethod === method;
@@ -1330,19 +1360,24 @@ function ScenarioPanel({
     };
   })();
 
-  const mathUnderHigh =
+  const canShowMath =
     hasEstimate &&
     displayScenario.amount != null &&
     displayScenario.amountLow != null &&
-    displayScenario.amountHigh != null ? (
-      <IfMathLinkBar
-        kind={kind}
-        mathOpen={mathOpen}
-        onToggle={() => setMathOpen((open) => !open)}
-        midpointMethod={midpointMethod}
-        onMidpointMethodChange={onMidpointMethodChange}
-      />
-    ) : null;
+    displayScenario.amountHigh != null;
+
+  const mathLinkBar = canShowMath ? (
+    <IfMathLinkBar
+      kind={kind}
+      mathOpen={mathOpen}
+      onToggle={() => setMathOpen((open) => !open)}
+      midpointMethod={midpointMethod}
+      onMidpointMethodChange={onMidpointMethodChange}
+    />
+  ) : null;
+
+  /** Minimized: tuck Math under the high amount (right). Expanded: left of panel. */
+  const mathUnderHigh = canShowMath && !mathOpen ? mathLinkBar : null;
 
   const range = isRent ? (
     <IfEstimateRangeDisplay
@@ -1427,6 +1462,9 @@ function ScenarioPanel({
         <>
           <div className="space-y-2">
             {range}
+            {canShowMath && mathOpen ? (
+              <div className="w-full">{mathLinkBar}</div>
+            ) : null}
             <IfMathWorksheet
               est={displayScenario}
               sqft={

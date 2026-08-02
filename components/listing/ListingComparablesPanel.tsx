@@ -297,6 +297,25 @@ function buildRelativeScoreColorMap(
 const EDGE_SCORE_POPOVER_NOTE =
   "Edge ranks each listing on location, age, size, layout, condition, and value versus peers. Higher scores sort first when you sort by Edge.";
 
+/** After the first auto-open, Edge sort no longer pops the definition (asterisk reopens). */
+const EDGE_SORT_INFO_SEEN_KEY = "tmre.edgeSortDefinitionSeen";
+
+function hasSeenEdgeSortInfo(): boolean {
+  try {
+    return window.localStorage.getItem(EDGE_SORT_INFO_SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markEdgeSortInfoSeen(): void {
+  try {
+    window.localStorage.setItem(EDGE_SORT_INFO_SEEN_KEY, "1");
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 function CompSortLinks<T extends string>({
   options,
   activeKey,
@@ -341,7 +360,7 @@ function CompSortLinks<T extends string>({
 
   return (
     <div
-      className={`flex w-full flex-wrap items-center justify-end gap-x-3 gap-y-1 ${className ?? ""}`}
+      className={`flex flex-wrap items-center justify-end gap-x-3 gap-y-1 ${className ?? "w-full"}`}
       role="group"
       aria-label={ariaLabel}
     >
@@ -367,28 +386,44 @@ function CompSortLinks<T extends string>({
           </span>
         ) : null;
 
-        // Edge (and any option with `info`): one control — sorts and shows definition.
+        // Edge (and any option with `info`): sort on label; definition once, then via *.
         if (option.info) {
           const infoOpen = infoKey === option.key;
+          const asteriskClass = isLight
+            ? "font-mono text-[10px] leading-none text-slate/55 hover:text-gold transition-colors"
+            : "font-mono text-[10px] leading-none text-white/40 hover:text-gold transition-colors";
           return (
             <div
               key={option.key}
               ref={infoOpen ? infoRootRef : undefined}
-              className="relative inline-flex items-center"
+              className="relative inline-flex items-baseline gap-0"
             >
               <button
                 type="button"
                 onClick={() => {
-                  onSort(option.key);
-                  setInfoKey(option.key);
+                  setInfoKey((prev) =>
+                    prev === option.key ? null : option.key,
+                  );
                 }}
-                title={
-                  option.title ??
-                  `${option.label} — tap to sort; definition opens with the sort`
-                }
-                className={linkClass}
+                title="What Edge means"
+                aria-label={`${option.label} definition`}
                 aria-expanded={infoOpen}
                 aria-haspopup="dialog"
+                className={`mr-0.5 -translate-y-[0.15em] ${asteriskClass}`}
+              >
+                <sup aria-hidden>*</sup>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onSort(option.key);
+                  if (!hasSeenEdgeSortInfo()) {
+                    setInfoKey(option.key);
+                    markEdgeSortInfoSeen();
+                  }
+                }}
+                title={option.title ?? `Sort by ${option.label}`}
+                className={linkClass}
                 aria-sort={ariaSort}
               >
                 {option.label}
@@ -1291,7 +1326,7 @@ export default function ListingComparablesPanel({
    * ON THE MARKET sub-tabs (with counts) replace jump links + section titles.
    */
   const isMobilePage = isPage && isDesktop === false;
-  /** Mobile Sold / Rented: Look-back + Criteria above the panel; title/sort under legend. */
+  /** Mobile Sold / Rented: title + look-back/sorts row inside the panel. */
   const mobileSoldChrome = isMobilePage;
   const useMobileCompSubTabs =
     mobileSoldChrome && showSoldColumn && showActiveColumn && showCompsGrid;
@@ -1676,21 +1711,15 @@ export default function ListingComparablesPanel({
       ) : null}
       {showMobileSoldPane && (
         <div className="min-w-0">
-          {mobileSoldChrome && !useMobileCompSubTabs ? (
-            <div className="mb-1 flex items-end justify-between gap-3 max-lg:px-3">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <LookbackSpinner
-                  months={lookbackMonths}
-                  onChange={setLookbackMonths}
-                  theme={sortTheme}
-                />
-              </div>
-              {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
-                <div
-                  id={criteriaLinkSlotId}
-                  className="flex shrink-0 items-end justify-end"
-                />
-              ) : null}
+          {mobileSoldChrome &&
+          !useMobileCompSubTabs &&
+          criteriaInSidePanel &&
+          showMobileCriteriaLinkSlot ? (
+            <div className="mb-1 flex items-end justify-end gap-3 max-lg:px-3">
+              <div
+                id={criteriaLinkSlotId}
+                className="flex shrink-0 items-end justify-end"
+              />
             </div>
           ) : null}
         <div
@@ -1714,6 +1743,54 @@ export default function ListingComparablesPanel({
               {useMobileCompSubTabs ? (
                 <div className="mb-1 flex w-full flex-col gap-y-0.5">
                   <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <div className="min-w-0 shrink-0">
+                      <LookbackSpinner
+                        months={lookbackMonths}
+                        onChange={setLookbackMonths}
+                        theme={sortTheme}
+                      />
+                    </div>
+                    {sortedSold.length > 0 ? (
+                      <CompSortLinks
+                        options={[
+                          {
+                            key: "score",
+                            label: "Edge",
+                            info: EDGE_SCORE_POPOVER_NOTE,
+                          },
+                          { key: "closeDate", label: "CLOSED" },
+                          { key: "price", label: "Price" },
+                        ]}
+                        activeKey={soldSort.key}
+                        activeDir={soldSort.dir}
+                        onSort={handleSoldSort}
+                        theme={sortTheme}
+                        ariaLabel={`${recentlyClosedLabel} sort`}
+                        className="min-w-0 ml-auto"
+                      />
+                    ) : null}
+                  </div>
+                  <CompExactMatchLegend
+                    theme={isModal ? "light" : "dark"}
+                    className="w-full self-end text-right"
+                  />
+                </div>
+              ) : (
+                <CompFoundLegendRow
+                  theme={isModal ? "light" : "dark"}
+                  foundCount={sortedSold.length}
+                  foundCountClass={foundCountClass}
+                  hideFoundCount
+                  className="mb-1"
+                />
+              )}
+              {!useMobileCompSubTabs ? (
+              <div className="mb-2 flex w-full flex-col gap-y-1">
+                <p className={`${sectionTitleClass} min-w-0 leading-none`}>
+                  {recentlyClosedLabel} ({sortedSold.length})
+                </p>
+                <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="min-w-0 shrink-0">
                     <LookbackSpinner
                       months={lookbackMonths}
                       onChange={setLookbackMonths}
@@ -1736,98 +1813,20 @@ export default function ListingComparablesPanel({
                       onSort={handleSoldSort}
                       theme={sortTheme}
                       ariaLabel={`${recentlyClosedLabel} sort`}
+                      className="min-w-0 ml-auto"
                     />
                   ) : null}
-                  <CompExactMatchLegend
-                    theme={isModal ? "light" : "dark"}
-                    className="w-full self-end text-right"
-                  />
                 </div>
-              ) : (
-                <CompFoundLegendRow
-                  theme={isModal ? "light" : "dark"}
-                  foundCount={sortedSold.length}
-                  foundCountClass={foundCountClass}
-                  hideFoundCount
-                  className="mb-1"
-                />
-              )}
-              {!useMobileCompSubTabs ? (
-              <div className="mb-2 flex w-full flex-col gap-y-1">
-                <p className={`${sectionTitleClass} min-w-0 leading-none`}>
-                  {recentlyClosedLabel} ({sortedSold.length})
-                </p>
-                {sortedSold.length > 0 ? (
-                  <CompSortLinks
-                    options={[
-                      {
-                        key: "score",
-                        label: "Edge",
-                        info: EDGE_SCORE_POPOVER_NOTE,
-                      },
-                      { key: "closeDate", label: "CLOSED" },
-                      { key: "price", label: "Price" },
-                    ]}
-                    activeKey={soldSort.key}
-                    activeDir={soldSort.dir}
-                    onSort={handleSoldSort}
-                    theme={sortTheme}
-                    ariaLabel={`${recentlyClosedLabel} sort`}
-                  />
-                ) : null}
               </div>
               ) : null}
             </>
           ) : (
             <>
           <div className={isMobilePage ? "mb-2" : "mb-3"}>
-            {isMobilePage ? (
-              <>
-                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                    <p className={sectionTitleClass}>
-                      {recentlyClosedLabel} ({sortedSold.length})
-                    </p>
-                    <LookbackSpinner
-                      months={lookbackMonths}
-                      onChange={setLookbackMonths}
-                      theme={sortTheme}
-                    />
-                  </div>
-                  {showActiveColumn ? (
-                    <a
-                      href={`#${onMarketPanelId}`}
-                      className={`${stackedJumpLinkClass} shrink-0`}
-                    >
-                      ON MARKET({sortedActive.length})
-                    </a>
-                  ) : null}
-                </div>
-                {sortedSold.length > 0 ? (
-                  <div className="mt-2 w-full">
-                    <CompSortLinks
-                      options={[
-                        {
-                          key: "score",
-                          label: "Edge",
-                          info: EDGE_SCORE_POPOVER_NOTE,
-                        },
-                        { key: "closeDate", label: "CLOSED" },
-                        { key: "price", label: "Price" },
-                      ]}
-                      activeKey={soldSort.key}
-                      activeDir={soldSort.dir}
-                      onSort={handleSoldSort}
-                      theme={sortTheme}
-                      ariaLabel={`${recentlyClosedLabel} sort`}
-                    />
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="flex w-full flex-col gap-y-1">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                  <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
+            <div className="flex w-full flex-col gap-y-1">
+              <p className={sectionTitleClass}>{recentlyClosedLabel}</p>
+              <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0 shrink-0">
                   <LookbackSpinner
                     months={lookbackMonths}
                     onChange={setLookbackMonths}
@@ -1850,10 +1849,11 @@ export default function ListingComparablesPanel({
                     onSort={handleSoldSort}
                     theme={sortTheme}
                     ariaLabel={`${recentlyClosedLabel} sort`}
+                    className="min-w-0 ml-auto"
                   />
                 ) : null}
               </div>
-            )}
+            </div>
             {criteriaInSidePanel && showMobileCriteriaLinkSlot ? (
               <div
                 id={criteriaLinkSlotId}
