@@ -1061,24 +1061,16 @@ const IF_SCENARIO_PANEL_IDS = {
   rent: "if-you-rent",
 } as const;
 
-/** Compact admin-only send dialog — opened from desktop / mobile mail icons. */
+/** Compact admin-only send dialog — always emails sell + rent scenarios. */
 function IfEmailScenarioDialog({
   mlsId,
   open,
   onClose,
-  includeSale,
-  includeRent,
-  onIncludeSaleChange,
-  onIncludeRentChange,
   midpointMethod,
 }: {
   mlsId: string;
   open: boolean;
   onClose: () => void;
-  includeSale: boolean;
-  includeRent: boolean;
-  onIncludeSaleChange: (v: boolean) => void;
-  onIncludeRentChange: (v: boolean) => void;
   /** Same midpoint method currently selected on the What if panels. */
   midpointMethod: IfMidpointMethod;
 }) {
@@ -1133,13 +1125,6 @@ function IfEmailScenarioDialog({
     e.preventDefault();
     setMessage(null);
     setError(null);
-    const kinds: Array<"sale" | "rent"> = [];
-    if (includeSale) kinds.push("sale");
-    if (includeRent) kinds.push("rent");
-    if (kinds.length === 0) {
-      setError("Select sale, rent, or both.");
-      return;
-    }
     const recipient = confirmSignedIn
       ? (signedInEmail ?? "").trim()
       : to.trim();
@@ -1156,7 +1141,7 @@ function IfEmailScenarioDialog({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             to: recipient,
-            kinds,
+            kinds: ["sale", "rent"],
             midpointMethod,
           }),
         },
@@ -1184,12 +1169,15 @@ function IfEmailScenarioDialog({
     }
   };
 
+  const toLabelClass =
+    "shrink-0 font-mono text-[9px] tracking-[0.12em] uppercase text-white/40";
+
   return (
-    <div className="relative w-full rounded-lg border border-white/15 bg-navy/95 p-3 pt-9 shadow-lg lg:pt-3">
+    <div className="relative w-full border border-transparent bg-transparent p-1.5 pt-7 lg:p-1 lg:pt-1">
       <button
         type="button"
         onClick={onClose}
-        className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md font-mono text-lg leading-none text-white/45 transition-colors hover:bg-white/10 hover:text-gold lg:right-2.5 lg:top-2.5"
+        className="absolute right-0 top-0 z-10 flex h-6 w-6 items-center justify-center font-mono text-base leading-none text-white/45 transition-colors hover:text-gold"
         aria-label="Close email scenario"
         title="Close"
       >
@@ -1197,103 +1185,80 @@ function IfEmailScenarioDialog({
       </button>
       <form
         onSubmit={onSubmit}
-        className="flex w-full flex-col gap-2.5 lg:flex-row lg:items-end lg:gap-4 lg:pr-8"
+        className="flex w-full flex-col gap-1.5 lg:flex-row lg:items-end lg:gap-3 lg:pr-7"
       >
-        <span
-          className="inline-flex shrink-0 items-center text-gold lg:pb-1.5"
-          title="Email scenario"
-        >
-          <MailIcon className="h-4 w-4" />
-          <span className="sr-only">Email scenario</span>
-        </span>
+        <div className="min-w-0 flex-1 space-y-1">
+          <span
+            className="hidden text-gold lg:inline-flex"
+            title="Email scenario"
+          >
+            <MailIcon className="h-3.5 w-3.5" />
+            <span className="sr-only">Email scenario</span>
+          </span>
 
-        {confirmSignedIn ? (
-          <div className="min-w-0 flex-1 space-y-1">
-            <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/40">
-              Send to
-            </p>
-            <p className="text-sm text-white/85 break-all">
-              {signedInEmail}
-              <span className="text-white/45"> — confirm?</span>
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setUseDifferentAddress(true);
-                setTo("");
-              }}
-              className="font-mono text-[9px] tracking-[0.1em] uppercase text-white/40 underline decoration-white/20 underline-offset-2 hover:text-gold"
-            >
-              Different address
-            </button>
-          </div>
-        ) : (
-          <label className="min-w-0 flex-1 space-y-1">
-            <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/40">
-              To
-            </span>
-            <input
-              type="email"
-              required
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="recipient@example.com"
-              className="w-full rounded-md border border-white/15 bg-navy/40 px-2.5 py-1.5 text-sm text-white placeholder:text-white/30 focus:border-gold/50 focus:outline-none"
-            />
-            {signedInEmail && useDifferentAddress ? (
+          {confirmSignedIn ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className={toLabelClass}>To</span>
+              <p className="min-w-0 flex-1 text-sm text-white/85 break-all">
+                {signedInEmail}
+                <span className="text-white/45"> — confirm?</span>
+              </p>
               <button
                 type="button"
                 onClick={() => {
-                  setUseDifferentAddress(false);
-                  setTo(signedInEmail);
+                  setUseDifferentAddress(true);
+                  setTo("");
                 }}
                 className="font-mono text-[9px] tracking-[0.1em] uppercase text-white/40 underline decoration-white/20 underline-offset-2 hover:text-gold"
               >
-                Use {signedInEmail}
+                Different address
               </button>
-            ) : null}
-          </label>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3 font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 lg:pb-1.5">
-          <label className="inline-flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeSale}
-              onChange={(e) => onIncludeSaleChange(e.target.checked)}
-              className="accent-gold"
-            />
-            Sell
-          </label>
-          <label className="inline-flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeRent}
-              onChange={(e) => onIncludeRentChange(e.target.checked)}
-              className="accent-gold"
-            />
-            Rent
-          </label>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="flex min-w-0 items-center gap-2">
+                <span className={toLabelClass}>To</span>
+                <input
+                  type="email"
+                  required
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  placeholder="recipient@example.com"
+                  className="min-w-0 flex-1 rounded-md border border-white/15 bg-navy/40 px-2 py-1 text-sm text-white placeholder:text-white/30 focus:border-gold/50 focus:outline-none"
+                />
+              </label>
+              {signedInEmail && useDifferentAddress ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseDifferentAddress(false);
+                    setTo(signedInEmail);
+                  }}
+                  className="font-mono text-[9px] tracking-[0.1em] uppercase text-white/40 underline decoration-white/20 underline-offset-2 hover:text-gold"
+                >
+                  Use {signedInEmail}
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
-          <button
-            type="submit"
-            disabled={sending || !sessionChecked}
-            className="rounded-md bg-gold px-2.5 py-1.5 font-mono text-[9px] tracking-[0.14em] uppercase text-navy disabled:opacity-50"
-          >
-            {sending
-              ? "Sending…"
-              : confirmSignedIn
-                ? "Confirm send"
-                : "Send"}
-          </button>
-        </div>
+        <button
+          type="submit"
+          disabled={sending || !sessionChecked}
+          className="shrink-0 rounded-md bg-gold px-2.5 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-navy disabled:opacity-50"
+        >
+          {sending
+            ? "Sending…"
+            : confirmSignedIn
+              ? "Confirm send"
+              : "Send"}
+        </button>
       </form>
       {message ? (
-        <p className="mt-2 text-[11px] text-sage">{message}</p>
+        <p className="mt-1 text-[11px] text-sage">{message}</p>
       ) : null}
-      {error ? <p className="mt-2 text-[11px] text-coral">{error}</p> : null}
+      {error ? <p className="mt-1 text-[11px] text-coral">{error}</p> : null}
     </div>
   );
 }
@@ -1554,21 +1519,13 @@ export default function ListingIfPanel({
   );
   const siteUnlocked = useSiteUnlocked();
   const [emailOpen, setEmailOpen] = useState(false);
-  const [emailIncludeSale, setEmailIncludeSale] = useState(true);
-  const [emailIncludeRent, setEmailIncludeRent] = useState(true);
   /** Shared across sell/rent panels and the email dialog (no re-pick in email). */
   const [midpointMethod, setMidpointMethod] = useState<IfMidpointMethod>(
     IF_DEFAULT_MIDPOINT_METHOD,
   );
 
-  const toggleEmailScenario = (kinds: Array<"sale" | "rent">) => {
-    if (emailOpen) {
-      setEmailOpen(false);
-      return;
-    }
-    setEmailIncludeSale(kinds.includes("sale"));
-    setEmailIncludeRent(kinds.includes("rent"));
-    setEmailOpen(true);
+  const toggleEmailScenario = () => {
+    setEmailOpen((open) => !open);
   };
   /** Distinct from desktop — both mounts stay in the DOM; getElementById must not hit the lg-only slot. */
   const mobileIfCriteriaSlotId = `${listingCriteriaLinkSlotId(
@@ -1814,7 +1771,7 @@ export default function ListingIfPanel({
           {siteUnlocked ? (
             <button
               type="button"
-              onClick={() => toggleEmailScenario(["sale", "rent"])}
+              onClick={() => toggleEmailScenario()}
               className="p-0.5 text-white/35 transition-colors hover:text-gold"
               aria-label={emailOpen ? "Close email scenario" : "Email scenario"}
               title={emailOpen ? "Close email scenario" : "Email scenario"}
@@ -1840,10 +1797,6 @@ export default function ListingIfPanel({
             mlsId={mlsId}
             open={emailOpen}
             onClose={() => setEmailOpen(false)}
-            includeSale={emailIncludeSale}
-            includeRent={emailIncludeRent}
-            onIncludeSaleChange={setEmailIncludeSale}
-            onIncludeRentChange={setEmailIncludeRent}
             midpointMethod={midpointMethod}
           />
         </div>
@@ -1905,7 +1858,7 @@ export default function ListingIfPanel({
           onMidpointMethodChange={setMidpointMethod}
           emailOpen={emailOpen}
           onEmailClick={
-            siteUnlocked ? () => toggleEmailScenario(["sale"]) : null
+            siteUnlocked ? () => toggleEmailScenario() : null
           }
           className={
             mobileScenarioLead === "sale"
@@ -1925,7 +1878,7 @@ export default function ListingIfPanel({
           onMidpointMethodChange={setMidpointMethod}
           emailOpen={emailOpen}
           onEmailClick={
-            siteUnlocked ? () => toggleEmailScenario(["rent"]) : null
+            siteUnlocked ? () => toggleEmailScenario() : null
           }
           className={
             mobileScenarioLead === "rent"
