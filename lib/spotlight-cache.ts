@@ -54,9 +54,13 @@ async function loadSpotlightListingRecord(
   try {
     const live = await getListingByMlsId(mlsId)
     if (live) {
-      void persistListingRecord(live).catch((err) => {
-        console.warn('[spotlight-cache] listing persist skipped:', err)
-      })
+      // Await upsert — fire-and-forget raced scheduled incremental sync and
+      // left public Spotlight empty while Admin had already shown the address.
+      try {
+        await persistListingRecord(live)
+      } catch (err) {
+        console.warn('[spotlight-cache] listing persist failed:', err)
+      }
       return { listing: withFreshTax(live), source: 'rets' }
     }
   } catch (err) {

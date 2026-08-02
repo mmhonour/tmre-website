@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
-import { fetchListingByMlsId } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
+import { rebuildSpotlightCache } from '@/lib/spotlight-cache'
 import {
   SPOTLIGHT_PROPERTY_TABS,
   type SpotlightPropertyTabId,
 } from '@/lib/spotlight-listing'
+import { ensureSpotlightListingIngested } from '@/lib/spotlight-listing-ingest'
 import {
   effectiveSpotlightMlsId,
   findSpotlightMlsConflict,
@@ -18,6 +19,8 @@ import {
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+/** One-off RETS + photo warm can exceed the default serverless budget. */
+export const maxDuration = 60
 
 type MlsResolveSource = 'db' | 'rets' | 'none' | 'error'
 
@@ -37,57 +40,42 @@ function addressFromListing(listing: Listing): { street: string; town: string } 
   }
 }
 
-/** DB-first (optionally RETS) resolution of an MLS id to a listing address. */
-async function resolveMlsAddress(
-  mlsId: string,
-  { allowRets }: { allowRets: boolean },
-): Promise<{ exists: boolean; street: string; town: string; source: MlsResolveSource }> {
+async function summarizeFromDb(mlsId: string): Promise<{
+  exists: boolean
+  street: string
+  town: string
+  source: MlsResolveSource
+}> {
   const id = mlsId.trim()
   if (!id) return { exists: false, street: '', town: '', source: 'none' }
-
-  // Track whether the DB read *failed* (e.g. Postgres unreachable) vs simply
-  // returned no row. These are very different: a connection error must not be
-  // reported to the admin as "id no longer resolves".
-  let dbErrored = false
   try {
     const dbListing = await readListingByIdFromDb(id)
     if (dbListing) {
       return { exists: true, ...addressFromListing(dbListing), source: 'db' }
     }
+    return { exists: false, street: '', town: '', source: 'none' }
   } catch {
-    dbErrored = true
+    return { exists: false, street: '', town: '', source: 'error' }
   }
-
-  if (allowRets) {
-    try {
-      const { listing } = await fetchListingByMlsId(id)
-      if (listing) {
-        return { exists: true, ...addressFromListing(listing), source: 'rets' }
-      }
-    } catch {
-      // treat as not found / unavailable
-    }
-  }
-
-  // Couldn't confirm the listing. If the DB read threw, surface an error state
-  // so the panel can say "Postgres unreachable" instead of pretending the saved
-  // id is bad.
-  if (dbErrored) return { exists: false, street: '', town: '', source: 'error' }
-
-  return { exists: false, street: '', town: '', source: 'none' }
 }
 
 async function buildTabSummaries(
   overrides: SpotlightMlsOverrides,
-  { allowRets }: { allowRets: boolean },
 ): Promise<TabMlsSummary[]> {
   return Promise.all(
     SPOTLIGHT_PROPERTY_TABS.map(async (tab) => {
       const mlsId = effectiveSpotlightMlsId(tab, overrides)
       if (!mlsId) {
-        return { tab, mlsId: '', exists: false, street: '', town: '', source: 'none' as const }
+        return {
+          tab,
+          mlsId: '',
+          exists: false,
+          street: '',
+          town: '',
+          source: 'none' as const,
+        }
       }
-      const resolved = await resolveMlsAddress(mlsId, { allowRets })
+      const resolved = await summarizeFromDb(mlsId)
       return { tab, mlsId, ...resolved }
     }),
   )
@@ -98,7 +86,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const overrides = await readSpotlightMlsOverridesFresh()
-  const tabs = await buildTabSummaries(overrides, { allowRets: false })
+  const tabs = await buildTabSummaries(overrides)
   const duplicateTabs = findSpotlightMlsDuplicateTabs(overrides)
   return NextResponse.json({ overrides, tabs, duplicateTabs })
 }
@@ -125,7 +113,11 @@ export async function PATCH(req: NextRequest) {
 
   const overrides = await readSpotlightMlsOverridesFresh()
 
-  // Empty = intentional clear (hides the tab). Non-empty must validate first.
+  // Empty = intentional clear (hides the tab). Non-empty must ingest first.
+  let ingest:
+    | Awaited<ReturnType<typeof ensureSpotlightListingIngested>>
+    | null = null
+
   if (mlsId.length > 0) {
     const nextPreview: SpotlightMlsOverrides = { ...overrides, [tab]: mlsId }
     const conflictTab = findSpotlightMlsConflict(tab, mlsId, nextPreview)
@@ -144,9 +136,27 @@ export async function PATCH(req: NextRequest) {
       })
     }
 
-    const resolved = await resolveMlsAddress(mlsId, { allowRets: true })
-    if (!resolved.exists) {
-      // Do not persist an id that resolves to no listing.
+    // Marketing path: if missing from Postgres, pull RETS and await upsert now.
+    ingest = await ensureSpotlightListingIngested(mlsId, {
+      warmCache: false,
+    })
+
+    if (ingest.error?.startsWith('Postgres unavailable')) {
+      return NextResponse.json({
+        ok: false,
+        saved: false,
+        reason: 'db' as const,
+        tab,
+        mlsId,
+        exists: false,
+        street: '',
+        town: '',
+        source: 'error' as const,
+        error: ingest.error,
+      })
+    }
+
+    if (!ingest.found) {
       return NextResponse.json({
         ok: false,
         saved: false,
@@ -157,6 +167,23 @@ export async function PATCH(req: NextRequest) {
         street: '',
         town: '',
         source: 'none' as const,
+        error: ingest.error,
+      })
+    }
+
+    if (!ingest.alreadyInDb && !ingest.persisted) {
+      return NextResponse.json({
+        ok: false,
+        saved: false,
+        reason: 'persist' as const,
+        tab,
+        mlsId,
+        exists: true,
+        ...addressFromListing(ingest.listing!),
+        source: 'rets' as const,
+        error:
+          ingest.error ??
+          'Fetched from RETS but could not write to Postgres',
       })
     }
   }
@@ -164,14 +191,61 @@ export async function PATCH(req: NextRequest) {
   const next: SpotlightMlsOverrides = { ...overrides, [tab]: mlsId }
   await writeSpotlightMlsOverrides(next)
 
-  const tabs = await buildTabSummaries(next, { allowRets: true })
+  let cacheWarmed = false
+  if (mlsId.length > 0) {
+    // Override is saved — warm listing + photos so /spotlight is client-ready.
+    cacheWarmed = await rebuildSpotlightCache(tab).catch((err) => {
+      console.warn('[spotlight-mls] cache warm after ingest failed', err)
+      return false
+    })
+  }
+
+  const tabs = await buildTabSummaries(next)
   const saved = tabs.find((t) => t.tab === tab)
+
+  // Prefer RETS address from the ingest when DB summary is still catching up.
+  const street =
+    saved?.street ||
+    (ingest?.listing ? addressFromListing(ingest.listing).street : '')
+  const town =
+    saved?.town ||
+    (ingest?.listing ? addressFromListing(ingest.listing).town : '')
+
   return NextResponse.json({
     ok: true,
     saved: true,
     overrides: next,
-    tabs,
-    tab: saved,
+    tabs: tabs.map((t) =>
+      t.tab === tab && ingest && !ingest.alreadyInDb
+        ? {
+            ...t,
+            exists: true,
+            street: street || t.street,
+            town: town || t.town,
+            source: 'rets' as const,
+          }
+        : t,
+    ),
+    tab: saved
+      ? {
+          ...saved,
+          exists: saved.exists || Boolean(ingest?.found),
+          street: street || saved.street,
+          town: town || saved.town,
+          source:
+            ingest && !ingest.alreadyInDb
+              ? ('rets' as const)
+              : saved.source,
+        }
+      : saved,
+    ingest: ingest
+      ? {
+          alreadyInDb: ingest.alreadyInDb,
+          persisted: ingest.persisted,
+          cacheWarmed,
+          source: ingest.source,
+        }
+      : null,
     duplicateTabs: findSpotlightMlsDuplicateTabs(next),
   })
 }

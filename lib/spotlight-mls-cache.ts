@@ -69,33 +69,79 @@ export function listingLooksCurrent(status: string | null | undefined): boolean 
   return /active|coming\s*soon|pending|temp\s*off|hold/i.test(s)
 }
 
+type MlsCurrentCheck = {
+  /** Listing is Active / CS / UC / Pending (etc.). */
+  current: boolean
+  /**
+   * We positively loaded a listing row (DB or RETS). False when both were
+   * empty/unavailable — must NOT be treated as "off-market" (that blanked
+   * Spotlight #4/#5 while an incremental RETS sync was in flight).
+   */
+  known: boolean
+  inDb: boolean
+  status: string | null
+}
+
 /** DB first, then live RETS — so a UC rental in Postgres (or MLS) beats a Closed directory id. */
-async function mlsIdIsCurrent(
-  mlsId: string,
-): Promise<{ current: boolean; status: string | null }> {
+async function mlsIdIsCurrent(mlsId: string): Promise<MlsCurrentCheck> {
   const trimmed = mlsId.trim()
-  if (!trimmed) return { current: false, status: null }
+  if (!trimmed) {
+    return { current: false, known: false, inDb: false, status: null }
+  }
 
   const { listing: dbListing } = await readListingFromDbByMlsId(trimmed)
-  if (listingLooksCurrent(dbListing?.status)) {
-    return { current: true, status: dbListing?.status ?? null }
+  if (dbListing) {
+    if (listingLooksCurrent(dbListing.status)) {
+      return {
+        current: true,
+        known: true,
+        inDb: true,
+        status: dbListing.status ?? null,
+      }
+    }
+    // Stale Closed/Expired in DB — still ask RETS for a current record.
   }
 
   try {
     const live = await getListingByMlsId(trimmed)
-    if (live && listingLooksCurrent(live.status)) {
-      void persistListingRecord(live).catch((err) => {
-        console.warn('[spotlight-mls] persist current listing skipped:', err)
-      })
-      return { current: true, status: live.status ?? null }
+    if (live) {
+      if (listingLooksCurrent(live.status)) {
+        // Await so public Spotlight does not race an in-flight incremental sync.
+        try {
+          await persistListingRecord(live)
+        } catch (err) {
+          console.warn('[spotlight-mls] persist current listing failed:', err)
+        }
+        return {
+          current: true,
+          known: true,
+          inDb: false,
+          status: live.status ?? null,
+        }
+      }
+      return {
+        current: false,
+        known: true,
+        inDb: Boolean(dbListing),
+        status: live.status ?? dbListing?.status ?? null,
+      }
     }
     return {
       current: false,
-      status: live?.status ?? dbListing?.status ?? null,
+      known: Boolean(dbListing),
+      inDb: Boolean(dbListing),
+      status: dbListing?.status ?? null,
     }
   } catch (err) {
     console.warn(`[spotlight-mls] RETS check failed for ${trimmed}:`, err)
-    return { current: false, status: dbListing?.status ?? null }
+    // Transient RETS failure (e.g. incremental sync holding the client) —
+    // unknown, not "off-market".
+    return {
+      current: listingLooksCurrent(dbListing?.status),
+      known: Boolean(dbListing),
+      inDb: Boolean(dbListing),
+      status: dbListing?.status ?? null,
+    }
   }
 }
 
@@ -121,13 +167,16 @@ export function spotlightConfigMlsId(
  * Resolve the MLS id Spotlight should show for a property tab.
  *
  * Precedence:
- *   1. Admin override — only while that listing is still on-market
+ *   1. Admin override — honored unless we know it is Closed/Expired. Transient
+ *      RETS failures (e.g. during incremental sync) must not hide the tab.
  *   2. Current listing at the configured address (Active / CS / UC / Pending)
  *   3. Hardcoded config.mlsId when that id is still on-market (DB or RETS)
  *   4. config.mlsId / prior resolved cache as last resort
  *
  * Never cache or return a Closed/Expired id when a current listing exists —
  * that was the Day-N failure mode for 42 Treadwell (2023 sale vs 2026 UC rental).
+ * Never drop an explicit Admin override just because Postgres is empty and RETS
+ * is busy — that blanked open slots #4/#5 after a successful Admin save.
  */
 export async function resolveSpotlightMlsId(
   config: SpotlightListingConfig,
@@ -139,15 +188,40 @@ export async function resolveSpotlightMlsId(
       const overrideId = overrides[tab]!.trim() || null
       // Explicit clear → hide the tab.
       if (!overrideId) return null
+
       const overrideCheck = await mlsIdIsCurrent(overrideId)
-      if (overrideCheck.current) {
+
+      // Definitively Closed/Expired/etc. — fall through to address/config.
+      if (overrideCheck.known && !overrideCheck.current) {
+        console.warn(
+          `[spotlight-mls] tab ${tab} override ${overrideId} is off-market` +
+            ` (${overrideCheck.status ?? 'unknown'}) — re-resolving by address/config`,
+        )
+      } else {
+        // Honor explicit Admin assignment when:
+        //  - listing is on-market, OR
+        //  - status is unknown (DB empty / RETS busy during incremental).
+        // Empty-slot tabs (#4/#5) have no address fallback — dropping the
+        // override here blanked the public page while Admin still showed the
+        // RETS address from save-time validation.
+        if (!overrideCheck.inDb) {
+          try {
+            const { ensureSpotlightListingIngested } = await import(
+              '@/lib/spotlight-listing-ingest'
+            )
+            await ensureSpotlightListingIngested(overrideId, {
+              warmCache: false,
+            })
+          } catch (err) {
+            console.warn(
+              '[spotlight-mls] one-off ingest for override failed:',
+              err,
+            )
+          }
+        }
         writeSpotlightResolvedMlsId(config.id, overrideId)
         return overrideId
       }
-      console.warn(
-        `[spotlight-mls] tab ${tab} override ${overrideId} is off-market` +
-          ` (${overrideCheck.status ?? 'unknown'}) — re-resolving by address/config`,
-      )
     }
   }
 

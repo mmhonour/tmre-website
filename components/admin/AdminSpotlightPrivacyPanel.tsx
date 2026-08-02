@@ -38,10 +38,19 @@ type MlsSaveStatus =
   | "idle"
   | "validating"
   | "saved"
+  | "pulled"
   | "cleared"
   | "notfound"
   | "duplicate"
+  | "persist"
   | "error";
+
+type IngestInfo = {
+  alreadyInDb: boolean;
+  persisted: boolean;
+  cacheWarmed: boolean;
+  source: "db" | "rets" | "none";
+};
 
 const DEFAULT_PRIVACY: SpotlightEffectivePrivacy = {
   showAddress: false,
@@ -70,6 +79,9 @@ export default function AdminSpotlightPrivacyPanel() {
   );
   const [conflictTab, setConflictTab] = useState<
     Partial<Record<SpotlightPropertyTabId, SpotlightPropertyTabId>>
+  >({});
+  const [ingestByTab, setIngestByTab] = useState<
+    Partial<Record<SpotlightPropertyTabId, IngestInfo>>
   >({});
   const saveSeqRef = useRef(0);
   const savedTimersRef = useRef<
@@ -208,17 +220,24 @@ export default function AdminSpotlightPrivacyPanel() {
       const data = (await res.json()) as {
         ok: boolean;
         saved: boolean;
-        reason?: "duplicate" | "notfound";
+        reason?: "duplicate" | "notfound" | "persist" | "db";
         conflictTab?: SpotlightPropertyTabId;
         tabs?: TabMls[];
         tab?: TabMls;
         duplicateTabs?: SpotlightPropertyTabId[];
+        ingest?: IngestInfo | null;
+        error?: string;
       };
 
       if (!data.saved) {
         if (data.reason === "duplicate" && data.conflictTab != null) {
           setConflictTab((prev) => ({ ...prev, [tab]: data.conflictTab! }));
           setMlsStatus((prev) => ({ ...prev, [tab]: "duplicate" }));
+          return;
+        }
+        if (data.reason === "persist" || data.reason === "db") {
+          setMlsStatus((prev) => ({ ...prev, [tab]: "persist" }));
+          setError(data.error ?? "Could not write listing to Postgres");
           return;
         }
         setMlsStatus((prev) => ({ ...prev, [tab]: "notfound" }));
@@ -229,21 +248,30 @@ export default function AdminSpotlightPrivacyPanel() {
       if (data.tab) {
         setMlsInput((prev) => ({ ...prev, [tab]: data.tab!.mlsId }));
       }
+      if (data.ingest) {
+        setIngestByTab((prev) => ({ ...prev, [tab]: data.ingest! }));
+      }
+      const pulledFresh = Boolean(
+        data.ingest && !data.ingest.alreadyInDb && data.ingest.persisted,
+      );
       setMlsStatus((prev) => ({
         ...prev,
-        [tab]: value.length === 0 ? "cleared" : "saved",
+        [tab]:
+          value.length === 0 ? "cleared" : pulledFresh ? "pulled" : "saved",
       }));
 
       const existingTimer = savedTimersRef.current[tab];
       if (existingTimer) clearTimeout(existingTimer);
       savedTimersRef.current[tab] = setTimeout(() => {
         setMlsStatus((prev) =>
-          prev[tab] === "saved" || prev[tab] === "cleared"
+          prev[tab] === "saved" ||
+          prev[tab] === "pulled" ||
+          prev[tab] === "cleared"
             ? { ...prev, [tab]: "idle" }
             : prev,
         );
         delete savedTimersRef.current[tab];
-      }, 2500);
+      }, 4000);
     } catch (err) {
       setMlsStatus((prev) => ({ ...prev, [tab]: "error" }));
       setError(err instanceof Error ? err.message : "Save failed");
@@ -290,7 +318,12 @@ export default function AdminSpotlightPrivacyPanel() {
   } {
     const status = mlsStatus[tab] ?? "idle";
     const summary = mls[tab];
-    if (status === "validating") return { text: "Checking Postgres, then RETS…", tone: "muted" };
+    if (status === "validating") {
+      return {
+        text: "Checking Postgres — if missing, pulling RETS and writing Postgres now…",
+        tone: "muted",
+      };
+    }
     if (status === "duplicate") {
       const other = conflictTab[tab];
       return {
@@ -303,10 +336,26 @@ export default function AdminSpotlightPrivacyPanel() {
     }
     if (status === "notfound")
       return { text: "MLS # not found in Postgres or RETS", tone: "bad" };
+    if (status === "persist")
+      return {
+        text: "RETS found it, but Postgres write failed — retry",
+        tone: "bad",
+      };
     if (status === "cleared") return { text: "Cleared — tab hidden", tone: "muted" };
+    if (status === "pulled") {
+      const ingest = ingestByTab[tab];
+      return {
+        text: ingest?.cacheWarmed
+          ? "Pulled from RETS · saved to Postgres · Spotlight cache ready"
+          : "Pulled from RETS · saved to Postgres",
+        tone: "ok",
+      };
+    }
     if (status === "saved")
       return {
-        text: summary?.town ? `Saved · ${summary.town}` : "Saved",
+        text: summary?.town
+          ? `Saved · already in Postgres · ${summary.town}`
+          : "Saved · already in Postgres",
         tone: "ok",
       };
     if (status === "error") return { text: "Save failed", tone: "bad" };
@@ -331,10 +380,13 @@ export default function AdminSpotlightPrivacyPanel() {
           Spotlight properties
         </p>
         <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
-          Assign an MLS # to each slot (validated against Postgres, then RETS).
-          Each listing can only appear once — duplicates are rejected. Blank
-          slots are hidden on the public spotlight page. Privacy toggles default
-          off (address hidden, photos 1 &amp; 2 blurred, town-only map). Check{" "}
+          Assign an MLS # to each slot. If it is not already in Postgres, we
+          immediately pull it from RETS and write it to Postgres (one-off) so
+          the listing is ready for client review without waiting for the
+          scheduled sync. Each listing can only appear once — duplicates are
+          rejected. Blank slots are hidden on the public spotlight page.
+          Privacy toggles default off (address hidden, photos 1 &amp; 2
+          blurred, town-only map). Check{" "}
           <span className="text-charcoal/80">No longer Coming Soon</span> once a
           listing goes live (or when MLS status is Active — that happens
           automatically). Changes save automatically.
