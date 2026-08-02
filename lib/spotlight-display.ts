@@ -1,6 +1,7 @@
 import {
   coalesceListingStatus,
   formatMlsStatus,
+  primaryListingPrice,
 } from "@/lib/listing-history";
 import {
   SPOTLIGHT_LISTING,
@@ -241,7 +242,18 @@ export function buildSpotlightDisplay(
     baths: pickNumber(mls?.baths, config.baths),
     sqft: pickNumber(mls?.sqft, config.sqft),
     yearBuilt: pickNumber(mls?.yearBuilt, config.yearBuilt),
-    price: config.price ?? mls?.price ?? null,
+    price: (() => {
+      if (mls) {
+        const status = spotlightEffectiveStatus(config, mls);
+        const closedOrList = primaryListingPrice({
+          status,
+          price: mls.price ?? null,
+          raw: mls.raw ?? null,
+        });
+        if (closedOrList != null) return closedOrList;
+      }
+      return config.price ?? mls?.price ?? null;
+    })(),
     originalListPrice: config.originalListPrice ?? mls?.originalListPrice ?? null,
     photoCount: mls?.photoCount ?? config.photoCount ?? 0,
     remarks: remarksFromListing(config, mls),

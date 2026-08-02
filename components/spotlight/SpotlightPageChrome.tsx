@@ -9,6 +9,7 @@ import {
   listingHeaderScoreProps,
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
+import { primaryListingPriceIsClosed } from "@/lib/listing-history";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import type { SpotlightDisplay } from "@/lib/spotlight-display";
 import { spotlightAllowsInterest } from "@/lib/spotlight-display";
@@ -102,6 +103,11 @@ export function SpotlightPageChrome({
           sqft: display.sqft,
           yearBuilt: display.yearBuilt,
           price: display.price,
+          priceIsClosed: primaryListingPriceIsClosed({
+            status: display.status,
+            price: display.price,
+            raw: display.intelligenceListing.raw ?? null,
+          }),
           bedBathSearchHref,
           heroSlot: effectiveHeroSlot,
           ...listingHeaderScoreProps({

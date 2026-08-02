@@ -444,11 +444,19 @@ function CompRow({
   const thumbUrl =
     id && comp.photoCount !== 0 ? listingPhotoProxyUrl(id, 0) : null;
 
-  const priceLabel = showCloseDate
-    ? comp.closePrice != null
-      ? `${fmtMoney(comp.closePrice)}${isRental ? "/mo" : ""}`
-      : `${fmtMoney(comp.price)}${isRental ? "/mo" : ""}`
-    : `${fmtMoney(comp.price)}${isRental ? "/mo" : ""}`;
+  // Closed comps: History close (ClosePrice) only — list price is TMI here.
+  const closedAmount =
+    comp.closePrice != null && comp.closePrice > 0
+      ? comp.closePrice
+      : comp.price;
+  const amount = showCloseDate ? closedAmount : comp.price;
+  const priceLabel =
+    amount != null ? `${fmtMoney(amount)}${isRental ? "/mo" : ""}` : "—";
+  const priceKindLabel = showCloseDate
+    ? isRental
+      ? "Rented"
+      : "Sold"
+    : "Listed";
 
   const restMetaParts = [
     fmtSqft(comp.sqft),
@@ -493,7 +501,21 @@ function CompRow({
         <Link href={href} className={`min-w-0 truncate ${addressLinkClass}`}>
           {comp.address}
         </Link>
-        <span className={`shrink-0 tabular-nums text-right ${priceClass}`}>
+        <span
+          className={`shrink-0 tabular-nums text-right ${priceClass}`}
+          title={
+            showCloseDate
+              ? "Final closing price (History)"
+              : "Current list / ask price"
+          }
+        >
+          <span
+            className={`mr-1.5 font-mono text-[9px] tracking-[0.12em] uppercase ${
+              isModal ? "text-slate" : "text-white/45"
+            }`}
+          >
+            {priceKindLabel}
+          </span>
           {priceLabel}
         </span>
       </div>

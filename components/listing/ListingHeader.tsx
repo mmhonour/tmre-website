@@ -27,8 +27,10 @@ type ListingHeaderProps = {
   baths: number | null;
   sqft: number | null;
   yearBuilt: number | null;
-  /** List / ask price shown bold to the right of street + town. */
+  /** List/ask, or Closed sale/lease amount (History close) when `priceIsClosed`. */
   price?: number | null;
+  /** When true, `price` is the final close — aria / semantics say Closed, not List. */
+  priceIsClosed?: boolean;
   bedBathSearchHref?: string | null;
   hideMarketMeta?: boolean;
   /** Spotlight: hide street/city address line (title-only header). MLS status renders on the panel label row. */
@@ -86,6 +88,7 @@ export default function ListingHeader({
   sqft,
   yearBuilt,
   price = null,
+  priceIsClosed = false,
   bedBathSearchHref,
   hideMarketMeta = false,
   privacyMode = false,
@@ -184,8 +187,12 @@ export default function ListingHeader({
                 }`}
                 aria-label={
                   isRental
-                    ? `Monthly rent ${priceLabel}`
-                    : `List price ${priceLabel}`
+                    ? priceIsClosed
+                      ? `Closed rent ${priceLabel}`
+                      : `Monthly rent ${priceLabel}`
+                    : priceIsClosed
+                      ? `Closed price ${priceLabel}`
+                      : `List price ${priceLabel}`
                 }
               >
                 {priceLabel}

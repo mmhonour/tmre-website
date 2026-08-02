@@ -2,7 +2,12 @@
 
 import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
 import { useListingChrome } from "@/hooks/useListingChrome";
-import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
+import {
+  formatMlsStatus,
+  fmtMoney,
+  primaryListingPrice,
+  primaryListingPriceIsClosed,
+} from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
@@ -158,7 +163,8 @@ export default function ListingHistoryClient({
           baths: listing.baths,
           sqft: listing.sqft,
           yearBuilt: listing.yearBuilt,
-          price: listing.price,
+          price: primaryListingPrice(listing),
+          priceIsClosed: primaryListingPriceIsClosed(listing),
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
           heroSlot,
           ...listingHeaderScoreProps({

@@ -140,7 +140,7 @@ function compRowHtml(
     listingSectionHref(comp.listingKey || comp.mlsId, 'overview'),
   )
   const role =
-    comp.role === 'sold' ? (isRent ? 'Rented' : 'Sold') : 'Active'
+    comp.role === 'sold' ? (isRent ? 'Rented' : 'Sold') : 'Listed'
   const close = comp.closeDate ? fmtDate(comp.closeDate) : null
   const priceLabel =
     comp.price != null
@@ -422,7 +422,7 @@ function formatListingIfEmailText(opts: {
     lines.push(`Properties used (${scenario.comps.length})`)
     for (const c of sortCompsForEmail(scenario.comps)) {
       const role =
-        c.role === 'sold' ? (kind === 'rent' ? 'Rented' : 'Sold') : 'Active'
+        c.role === 'sold' ? (kind === 'rent' ? 'Rented' : 'Sold') : 'Listed'
       const price =
         c.price != null
           ? `${fmtMoney(c.price)}${kind === 'rent' ? '/mo' : ''}`

@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
-import { fmtMoney } from "@/lib/listing-history";
+import {
+  fmtMoney,
+  primaryListingPrice,
+  primaryListingPriceIsClosed,
+} from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
@@ -231,7 +235,8 @@ export default function ListingDetailClient({
           baths: l.baths,
           sqft: l.sqft,
           yearBuilt: l.yearBuilt,
-          price: l.price,
+          price: primaryListingPrice(l),
+          priceIsClosed: primaryListingPriceIsClosed(l),
           bedBathSearchHref: intelligenceSearchHrefFromListing(l),
           heroSlot,
           ...listingHeaderScoreProps({

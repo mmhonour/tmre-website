@@ -180,6 +180,32 @@ export function closeFieldsFromListing(
   }
 }
 
+type ListingPriceSource = Pick<Listing, 'status' | 'price'> & {
+  statusChangeTimestamp?: string | null
+  raw?: Listing['raw'] | null
+}
+
+/**
+ * Primary money figure for headers / Spotlight / comps display.
+ * Closed → final close (same source as History’s Closed entry); otherwise list/ask.
+ */
+export function primaryListingPrice(listing: ListingPriceSource): number | null {
+  if (formatMlsStatus(listing?.status) === 'Closed') {
+    const { closePrice } = closeFieldsFromListing(listing)
+    if (closePrice != null && closePrice > 0) return closePrice
+  }
+  return listing.price != null && listing.price > 0 ? listing.price : null
+}
+
+/** Whether {@link primaryListingPrice} is a closed sale/lease vs list/ask. */
+export function primaryListingPriceIsClosed(
+  listing: ListingPriceSource,
+): boolean {
+  if (formatMlsStatus(listing?.status) !== 'Closed') return false
+  const { closePrice } = closeFieldsFromListing(listing)
+  return closePrice != null && closePrice > 0
+}
+
 export function buildCurrentListingEvents(listing: Listing): ListingHistoryEvent[] {
   const events: ListingHistoryEvent[] = []
   const statusLabel = formatMlsStatus(listing.status)

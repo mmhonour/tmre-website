@@ -106,7 +106,7 @@ function ifCompMatchesSession(
       city: comp.city,
       zip: comp.zip,
       price: comp.price,
-      closePrice: null,
+      closePrice: comp.role === "sold" ? comp.price : null,
       closeDate: comp.closeDate,
       beds: comp.beds,
       baths: comp.baths,
@@ -710,10 +710,17 @@ function CompList({
                     ? isRent
                       ? "Rented"
                       : "Sold"
-                    : "Active"}
+                    : "Listed"}
                   {comp.closeDate ? ` · ${fmtDate(comp.closeDate)}` : ""}
                   {" · "}
-                  <span className={quarterPriceClass ?? undefined}>
+                  <span
+                    className={quarterPriceClass ?? undefined}
+                    title={
+                      comp.role === "sold"
+                        ? "Final closing price (History)"
+                        : "Current list / ask price"
+                    }
+                  >
                     {priceLabel}
                   </span>
                   {comp.adjustedPricePerSqft != null
@@ -1285,14 +1292,14 @@ export default function ListingIfPanel({
       ...saleComps.map((comp) =>
         criteriaPreviewRowFromIfComp(comp, {
           isRental: false,
-          tag: comp.role === "sold" ? "Sold" : "Active",
+          tag: comp.role === "sold" ? "Sold" : "Listed",
           townHint,
         }),
       ),
       ...rentComps.map((comp) =>
         criteriaPreviewRowFromIfComp(comp, {
           isRental: true,
-          tag: comp.role === "sold" ? "Rented" : "For rent",
+          tag: comp.role === "sold" ? "Rented" : "Listed",
           townHint,
         }),
       ),

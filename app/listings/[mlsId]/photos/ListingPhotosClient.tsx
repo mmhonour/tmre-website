@@ -9,7 +9,12 @@ import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url
 import { ListingShell } from "@/components/listing/ListingShell";
 import PhotoGallery from "@/components/listing/PhotoGallery";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
-import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
+import {
+  formatMlsStatus,
+  fmtMoney,
+  primaryListingPrice,
+  primaryListingPriceIsClosed,
+} from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import {
   listingHeaderScoreProps,
@@ -225,7 +230,8 @@ export default function ListingPhotosClient({
           baths: listing.baths,
           sqft: listing.sqft,
           yearBuilt: listing.yearBuilt,
-          price: listing.price,
+          price: primaryListingPrice(listing),
+          priceIsClosed: primaryListingPriceIsClosed(listing),
           bedBathSearchHref: intelligenceSearchHrefFromListing(listing),
           ...listingHeaderScoreProps({
             goldilocksScore: data.goldilocksScore,
