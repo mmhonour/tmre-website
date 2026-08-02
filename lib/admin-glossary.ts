@@ -589,7 +589,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Spotlight Safety',
     category: 'ui-tabs',
     definition:
-      'Don’t let a stale Closed sale win over a live listing at the same address — not “never show Closed.” Admin pins Spotlight by MLS # (any status); the site does not auto-pick from street address. Published on Admin → Spotlight.',
+      'Don’t let a stale Closed sale win over a live listing at the same address — not “never show Closed.” Admin pins Spotlight by MLS # (any status); the site does not auto-pick from street address. Full rule set is published on Admin → Spotlight (Spotlight rules panel).',
+  },
+  {
+    term: 'Spotlight display order',
+    category: 'ui-tabs',
+    definition:
+      'Admin → Spotlight can reorder the public property rail (e.g. show #5 first) without changing slot ids. Property #5 stays #5 (same MLS, privacy, ?property=5 bookmarks). Public page polls /api/spotlight/tabs for a version stamp every ~18s.',
   },
   {
     term: 'Deal of the Day / Week',

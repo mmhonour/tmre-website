@@ -18,6 +18,7 @@ import {
   type SpotlightPropertyTabId,
 } from "@/lib/spotlight-listing";
 import { loadTabJson, peekTabJson, invalidateTabJson } from "@/lib/tab-data-prefetch";
+import { SPOTLIGHT_ORDER_CHANGED_EVENT } from "@/lib/spotlight-tab-order-shared";
 
 type LoadState = "ready" | "error";
 
@@ -79,6 +80,18 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     "idle" | "loading" | "ready" | "error"
   >(includePhotos ? "loading" : "idle");
   const lastPropertyTabRef = useRef<SpotlightPropertyTabId | null>(null);
+  /** Bumps when Admin display order changes so we soft-refetch the current slot. */
+  const [orderRefreshNonce, setOrderRefreshNonce] = useState(0);
+
+  useEffect(() => {
+    const onOrderChanged = () => {
+      setOrderRefreshNonce((n) => n + 1);
+    };
+    window.addEventListener(SPOTLIGHT_ORDER_CHANGED_EVENT, onOrderChanged);
+    return () => {
+      window.removeEventListener(SPOTLIGHT_ORDER_CHANGED_EVENT, onOrderChanged);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,7 +185,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     return () => {
       cancelled = true;
     };
-  }, [includePhotos, propertyTab]);
+  }, [includePhotos, propertyTab, orderRefreshNonce]);
 
   const display = useMemo(
     () => buildSpotlightDisplay(config, mlsListing),

@@ -10,11 +10,11 @@ import {
   SPOTLIGHT_PROPERTY_TABS,
   type SpotlightPropertyTabId,
 } from "@/lib/spotlight-listing";
+import { SPOTLIGHT_ADMIN_RULES } from "@/lib/spotlight-safety-shared";
 import {
-  SPOTLIGHT_SAFETY_RULE_BODY,
-  SPOTLIGHT_SAFETY_RULE_SUMMARY,
-  SPOTLIGHT_SAFETY_RULE_TITLE,
-} from "@/lib/spotlight-safety-shared";
+  DEFAULT_SPOTLIGHT_TAB_ORDER,
+  normalizeSpotlightTabOrder,
+} from "@/lib/spotlight-tab-order-shared";
 
 type TabRow = {
   tab: SpotlightPropertyTabId;
@@ -98,6 +98,16 @@ export default function AdminSpotlightPrivacyPanel() {
   const [promotionByTab, setPromotionByTab] = useState<
     Partial<Record<SpotlightPropertyTabId, MlsPromotion>>
   >({});
+  const [displayOrder, setDisplayOrder] = useState<SpotlightPropertyTabId[]>([
+    ...DEFAULT_SPOTLIGHT_TAB_ORDER,
+  ]);
+  const [savedDisplayOrder, setSavedDisplayOrder] = useState<
+    SpotlightPropertyTabId[]
+  >([...DEFAULT_SPOTLIGHT_TAB_ORDER]);
+  const [orderStatus, setOrderStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const orderSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveSeqRef = useRef(0);
   const savedTimersRef = useRef<
     Partial<Record<SpotlightPropertyTabId, ReturnType<typeof setTimeout>>>
@@ -126,16 +136,24 @@ export default function AdminSpotlightPrivacyPanel() {
       fetch("/api/admin/spotlight-mls", { cache: "no-store" }).then((r) =>
         r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
       ),
+      fetch("/api/admin/spotlight-tab-order", { cache: "no-store" }).then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
+      ),
     ])
       .then(
-        ([privacy, mlsData]: [
+        ([privacy, mlsData, orderData]: [
           { overrides: SpotlightPrivacyOverrides; tabs: TabRow[] },
           { tabs: TabMls[]; duplicateTabs?: SpotlightPropertyTabId[] },
+          { order?: unknown },
         ]) => {
           setOverrides(privacy.overrides ?? {});
           setTabs(privacy.tabs ?? []);
           applyMlsSummaries(mlsData.tabs ?? []);
           setDuplicateTabs(mlsData.duplicateTabs ?? []);
+          const order = normalizeSpotlightTabOrder(orderData.order);
+          setDisplayOrder(order);
+          setSavedDisplayOrder(order);
+          setOrderStatus("idle");
         },
       )
       .catch((err) => {
@@ -153,8 +171,53 @@ export default function AdminSpotlightPrivacyPanel() {
       for (const timer of Object.values(savedTimersRef.current)) {
         if (timer) clearTimeout(timer);
       }
+      if (orderSavedTimerRef.current) clearTimeout(orderSavedTimerRef.current);
     };
   }, []);
+
+  const orderDirty =
+    displayOrder.join(",") !== savedDisplayOrder.join(",");
+
+  function moveDisplaySlot(tab: SpotlightPropertyTabId, delta: -1 | 1) {
+    setDisplayOrder((prev) => {
+      const idx = prev.indexOf(tab);
+      if (idx < 0) return prev;
+      const nextIdx = idx + delta;
+      if (nextIdx < 0 || nextIdx >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(idx, 1);
+      next.splice(nextIdx, 0, item);
+      return next;
+    });
+    setOrderStatus("idle");
+  }
+
+  async function saveDisplayOrder() {
+    if (!orderDirty) return;
+    setOrderStatus("saving");
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/spotlight-tab-order", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: displayOrder }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { order?: unknown };
+      const order = normalizeSpotlightTabOrder(data.order ?? displayOrder);
+      setDisplayOrder(order);
+      setSavedDisplayOrder(order);
+      setOrderStatus("saved");
+      if (orderSavedTimerRef.current) clearTimeout(orderSavedTimerRef.current);
+      orderSavedTimerRef.current = setTimeout(() => {
+        setOrderStatus("idle");
+        orderSavedTimerRef.current = null;
+      }, 5000);
+    } catch (err) {
+      setOrderStatus("error");
+      setError(err instanceof Error ? err.message : "Order save failed");
+    }
+  }
 
   async function persistOverrides(
     nextOverrides: SpotlightPrivacyOverrides,
@@ -311,7 +374,7 @@ export default function AdminSpotlightPrivacyPanel() {
     }
   }
 
-  const tabRows =
+  const tabRowsBase =
     tabs.length > 0
       ? tabs
       : SPOTLIGHT_PROPERTY_TABS.map((tab) => ({
@@ -321,6 +384,10 @@ export default function AdminSpotlightPrivacyPanel() {
           street: "",
           effective: DEFAULT_PRIVACY,
         }));
+  const tabById = new Map(tabRowsBase.map((row) => [row.tab, row]));
+  const tabRows = displayOrder
+    .map((tab) => tabById.get(tab))
+    .filter((row): row is TabRow => row != null);
 
   function statusLabel(tab: SpotlightPropertyTabId): string | null {
     const status = tabStatus[tab] ?? "idle";
@@ -429,26 +496,97 @@ export default function AdminSpotlightPrivacyPanel() {
           Spotlight properties
         </p>
         <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
-          Enter an <span className="text-charcoal/80">MLS #</span> for each
-          slot — not a street address. Address auto-resolve is off for all five
-          tabs. Privacy toggles default off (address hidden, photos 1 &amp; 2
-          blurred, town-only map). Check{" "}
-          <span className="text-charcoal/80">No longer Coming Soon</span> once a
-          listing goes live (or when MLS status is Active — that happens
-          automatically). Changes save on blur / Enter.
+          Assign MLS #s, privacy, and rail order below. All operating rules for
+          Spotlight are published in this panel — keep them current when
+          behavior changes.
         </p>
-        <div className="mt-4 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 max-w-3xl">
+        <div className="mt-4 rounded-xl border border-gold/35 bg-gold/10 px-4 py-4 max-w-3xl">
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-navy">
-            {SPOTLIGHT_SAFETY_RULE_TITLE}
+            Spotlight rules
           </p>
-          <p className="mt-1.5 text-sm font-medium text-navy/90">
-            {SPOTLIGHT_SAFETY_RULE_SUMMARY}
+          <p className="mt-1 text-xs text-charcoal/60">
+            Source of truth for how Admin pins and the public /spotlight page
+            behave. Slot numbers are stable; display order is separate.
           </p>
-          <p className="mt-2 text-xs leading-relaxed text-charcoal/70">
-            {SPOTLIGHT_SAFETY_RULE_BODY}
-          </p>
+          <ol className="mt-3 list-none space-y-3">
+            {SPOTLIGHT_ADMIN_RULES.map((rule, index) => (
+              <li
+                key={rule.id}
+                className="rounded-lg border border-navy/10 bg-white/60 px-3 py-2.5"
+              >
+                <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-navy">
+                  {index + 1}. {rule.title}
+                </p>
+                <p className="mt-1 text-sm font-medium text-navy/90">
+                  {rule.summary}
+                </p>
+                <p className="mt-1.5 text-xs leading-relaxed text-charcoal/70">
+                  {rule.body}
+                </p>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
+
+      {!loading ? (
+        <div className="mx-5 sm:mx-6 mt-4 rounded-xl border border-charcoal/[0.08] bg-cream/30 px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 max-w-xl">
+              <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-navy">
+                Display order
+              </p>
+              <p className="mt-1 text-xs text-charcoal/65 leading-relaxed">
+                Reorder how tabs appear on the public Spotlight rail. Slot
+                numbers stay fixed (Property #5 stays #5 with the same MLS,
+                privacy, and links). This does not swap MLS ids between slots.
+              </p>
+              <p className="mt-2 font-mono text-[11px] text-charcoal/80 tracking-wide">
+                Rail:{" "}
+                {displayOrder.map((tab, i) => (
+                  <span key={tab}>
+                    {i > 0 ? (
+                      <span className="text-charcoal/35"> → </span>
+                    ) : null}
+                    <span className="text-navy">#{tab}</span>
+                  </span>
+                ))}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1.5">
+              <button
+                type="button"
+                disabled={!orderDirty || orderStatus === "saving"}
+                onClick={() => void saveDisplayOrder()}
+                className="rounded-lg bg-navy px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-cream disabled:opacity-40 hover:bg-navy/90"
+              >
+                {orderStatus === "saving" ? "Saving…" : "Save order"}
+              </button>
+              <p
+                className={`font-mono text-[10px] tracking-[0.1em] ${
+                  orderStatus === "error"
+                    ? "text-coral"
+                    : orderStatus === "saved"
+                      ? "text-sage"
+                      : orderDirty
+                        ? "text-charcoal/45"
+                        : "text-charcoal/35"
+                }`}
+              >
+                {orderStatus === "saving"
+                  ? "Saving…"
+                  : orderStatus === "saved"
+                    ? "Order saved · updating site…"
+                    : orderStatus === "error"
+                      ? "Save failed"
+                      : orderDirty
+                        ? "Unsaved order changes"
+                        : "Order matches site"}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {duplicateTabs.length > 0 ? (
         <div className="mx-5 sm:mx-6 mt-4 rounded-xl border border-coral/30 bg-coral/5 px-4 py-3">
@@ -476,24 +614,54 @@ export default function AdminSpotlightPrivacyPanel() {
                   <div>
                     <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-navy">
                       Spotlight {row.tab}
+                      <span className="ml-2 text-charcoal/40 normal-case tracking-normal">
+                        rail position{" "}
+                        {displayOrder.indexOf(row.tab) + 1} of{" "}
+                        {displayOrder.length}
+                      </span>
                     </p>
                     <p className="mt-1 text-sm text-charcoal/70">
                       {headerLabel(row)}
                     </p>
                   </div>
-                  {status ? (
-                    <p
-                      className={`font-mono text-[10px] tracking-[0.12em] uppercase ${
-                        tabStatus[row.tab] === "error"
-                          ? "text-coral"
-                          : tabStatus[row.tab] === "saved"
-                            ? "text-sage"
-                            : "text-charcoal/45"
-                      }`}
-                    >
-                      {status}
-                    </p>
-                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-lg border border-charcoal/15 overflow-hidden">
+                      <button
+                        type="button"
+                        className="px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/70 hover:bg-cream disabled:opacity-30"
+                        disabled={displayOrder.indexOf(row.tab) <= 0}
+                        onClick={() => moveDisplaySlot(row.tab, -1)}
+                        aria-label={`Move Spotlight ${row.tab} earlier in the rail`}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-charcoal/70 hover:bg-cream border-l border-charcoal/15 disabled:opacity-30"
+                        disabled={
+                          displayOrder.indexOf(row.tab) >=
+                          displayOrder.length - 1
+                        }
+                        onClick={() => moveDisplaySlot(row.tab, 1)}
+                        aria-label={`Move Spotlight ${row.tab} later in the rail`}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                    {status ? (
+                      <p
+                        className={`font-mono text-[10px] tracking-[0.12em] uppercase ${
+                          tabStatus[row.tab] === "error"
+                            ? "text-coral"
+                            : tabStatus[row.tab] === "saved"
+                              ? "text-sage"
+                              : "text-charcoal/45"
+                        }`}
+                      >
+                        {status}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start">

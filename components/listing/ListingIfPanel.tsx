@@ -67,7 +67,6 @@ import {
 import {
   classifyInventoryMarketBand,
   DEFAULT_INVENTORY_SEGMENT_BANDS,
-  formatInventoryMarketBandLabel,
   type InventorySegmentBandsConfig,
 } from "@/lib/inventory-segment-bands-shared";
 
@@ -185,13 +184,35 @@ function sortIfComps(
   });
 }
 
+type IfMarketBandDisplay = {
+  /** Admin Market Band category, e.g. Mid-market */
+  name: string;
+  /** Fine step / price range within the band, e.g. $1.75M–$2.249M */
+  range: string | null;
+};
+
+function IfMarketBandBadge({ band }: { band: IfMarketBandDisplay }) {
+  return (
+    <span className="ml-1 flex min-w-0 flex-col justify-center leading-tight text-right sm:ml-1.5">
+      <span className="font-mono text-[8px] sm:text-[9px] tracking-[0.12em] uppercase text-white/55">
+        {band.name}
+      </span>
+      {band.range ? (
+        <span className="font-mono text-[8px] sm:text-[9px] tracking-[0.08em] uppercase text-white/40 tabular-nums">
+          {band.range}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function IfEstimateRangeDisplay({
   low,
   high,
   midpoint = null,
   formatAmount,
   suffix = "",
-  marketBandLabel = null,
+  marketBand = null,
 }: {
   low: number | null;
   high: number | null;
@@ -199,7 +220,7 @@ function IfEstimateRangeDisplay({
   formatAmount: (value: number) => string;
   suffix?: string;
   /** Sale only — Admin Market Band for the midpoint amount. */
-  marketBandLabel?: string | null;
+  marketBand?: IfMarketBandDisplay | null;
 }) {
   const resolvedLow = low ?? (high == null ? midpoint : null);
   const resolvedHigh = high ?? (low == null ? midpoint : null);
@@ -224,14 +245,15 @@ function IfEstimateRangeDisplay({
         <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/50">
           Between
         </span>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 sm:gap-x-3">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-2.5">
           <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
             {lowLabel}
           </span>
           <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
           {midLabel != null ? (
             <>
-              <span className="font-serif text-2xl sm:text-3xl text-gold tabular-nums leading-snug">
+              {/* Mid ~4pt smaller than low/high so the band fits to the right. */}
+              <span className="font-serif text-xl sm:text-[1.625rem] text-gold tabular-nums leading-snug">
                 {midLabel}
               </span>
               <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
@@ -240,11 +262,7 @@ function IfEstimateRangeDisplay({
           <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
             {highLabel}
           </span>
-          {marketBandLabel ? (
-            <span className="font-mono text-[10px] sm:text-[11px] tracking-[0.12em] uppercase text-white/55 sm:ml-1">
-              {marketBandLabel}
-            </span>
-          ) : null}
+          {marketBand ? <IfMarketBandBadge band={marketBand} /> : null}
         </div>
       </div>
     );
@@ -260,15 +278,11 @@ function IfEstimateRangeDisplay({
           : "—";
 
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
         {single}
       </p>
-      {marketBandLabel ? (
-        <span className="font-mono text-[10px] sm:text-[11px] tracking-[0.12em] uppercase text-white/55">
-          {marketBandLabel}
-        </span>
-      ) : null}
+      {marketBand ? <IfMarketBandBadge band={marketBand} /> : null}
     </div>
   );
 }
@@ -435,46 +449,52 @@ function IfMathWorksheet({
         </div>
       </div>
 
-      <p className="mt-2 normal-case tracking-normal text-left">
-        These are the 25th–75th percentile — in other words we exclude the{" "}
-        <span className="text-sage">top quarter</span> and{" "}
-        <span className="text-coral">bottom quarter</span> of the market, based
-        on {comps}
-        {lowPpsf && highPpsf ? ` that range from ${lowPpsf}–${highPpsf}` : ""}
-        . Outer comps stay in the list with a{" "}
-        <span className="text-sage">green</span> or{" "}
-        <span className="text-coral">red</span> row tint.
-      </p>
-
-      {/* Blank line between percentile blurb and the right-aligned equation. */}
-      <div className="h-4" aria-hidden />
-
-      {hasSqft && ppsfLabel ? (
-        <div className="ml-auto w-fit text-right">
-          <button
-            type="button"
-            onClick={() => setShowPpsf((v) => !v)}
-            className={linkClass}
-            title="How this $/sqft was derived"
-            aria-expanded={showPpsf}
-          >
-            {ppsfLabel}
-          </button>
-          <div>
-            <span className="text-white/30">× </span>
-            {sqft.toLocaleString("en-US")} sqft
-          </div>
-          <div className="my-0.5 border-t border-white/20" />
-          <div className="text-white/70">{midLabel}</div>
+      {/* Two borderless columns: percentile blurb | right-aligned equation. */}
+      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-6">
+        <div className="min-w-0 border-0 bg-transparent p-0">
+          <p className="normal-case tracking-normal text-left">
+            These are the 25th–75th percentile — in other words we exclude the{" "}
+            <span className="text-sage">top quarter</span> and{" "}
+            <span className="text-coral">bottom quarter</span> of the market,
+            based on {comps}
+            {lowPpsf && highPpsf
+              ? ` that range from ${lowPpsf}–${highPpsf}`
+              : ""}
+            . Outer comps stay in the list with a{" "}
+            <span className="text-sage">green</span> or{" "}
+            <span className="text-coral">red</span> row tint.
+          </p>
         </div>
-      ) : (
-        <div className="ml-auto w-fit text-right text-white/60">
-          {midLabel}{" "}
-          <span className="text-white/30">
-            ({methodLabel} of {comps})
-          </span>
+
+        <div className="min-w-0 border-0 bg-transparent p-0 sm:justify-self-end">
+          {hasSqft && ppsfLabel ? (
+            <div className="w-fit text-right max-sm:ml-auto">
+              <button
+                type="button"
+                onClick={() => setShowPpsf((v) => !v)}
+                className={linkClass}
+                title="How this $/sqft was derived"
+                aria-expanded={showPpsf}
+              >
+                {ppsfLabel}
+              </button>
+              <div>
+                <span className="text-white/30">× </span>
+                {sqft.toLocaleString("en-US")} sqft
+              </div>
+              <div className="my-0.5 border-t border-white/20" />
+              <div className="text-white/70">{midLabel}</div>
+            </div>
+          ) : (
+            <div className="w-fit text-right text-white/60 max-sm:ml-auto">
+              {midLabel}{" "}
+              <span className="text-white/30">
+                ({methodLabel} of {comps})
+              </span>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {showPpsf && ppsfLabel ? (
         <p className="mt-3 normal-case tracking-normal text-white/45 text-left">
@@ -969,15 +989,18 @@ function ScenarioPanel({
 
   const panelId = IF_SCENARIO_PANEL_IDS[kind];
   const isRent = kind === "rent";
-  const saleMarketBandLabel =
-    !isRent && displayScenario.amount != null
-      ? formatInventoryMarketBandLabel(
-          classifyInventoryMarketBand(
-            displayScenario.amount,
-            inventorySegmentBands ?? DEFAULT_INVENTORY_SEGMENT_BANDS,
-          ),
-        )
-      : null;
+  const saleMarketBand: IfMarketBandDisplay | null = (() => {
+    if (isRent || displayScenario.amount == null) return null;
+    const match = classifyInventoryMarketBand(
+      displayScenario.amount,
+      inventorySegmentBands ?? DEFAULT_INVENTORY_SEGMENT_BANDS,
+    );
+    if (!match) return null;
+    return {
+      name: match.segmentLabel,
+      range: match.stepLabel,
+    };
+  })();
 
   const range = isRent ? (
     <IfEstimateRangeDisplay
@@ -1004,7 +1027,7 @@ function ScenarioPanel({
       high={displayScenario.amountHigh}
       midpoint={displayScenario.amount}
       formatAmount={fmtIfSaleMoney}
-      marketBandLabel={saleMarketBandLabel}
+      marketBand={saleMarketBand}
     />
   );
 
