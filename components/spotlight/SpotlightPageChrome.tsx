@@ -68,9 +68,13 @@ export function SpotlightPageChrome({
     display.intelligenceListing,
   );
 
+  // Photos tab renders PhotoGallery in belowTabs (hero + thumb strip) — same as
+  // /listings/.../photos. Do not inject a second header hero above it.
   const effectiveHeroSlot =
     heroSlot ??
-    (active !== "overview" && presentation.showHero ? (
+    (active !== "overview" &&
+    active !== "photos" &&
+    presentation.showHero ? (
       <ListingHeroPhoto
         url={listingPhotoProxyUrl(display.mlsId, 0)}
         alt={display.config.displayTitle}

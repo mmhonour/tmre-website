@@ -15,6 +15,7 @@ export function ListingOverviewPhotoDeck({
   heroAlt,
   hideHero = false,
   obfuscatePhotoIndex,
+  photoHref,
   showHero = true,
   mapSlot = null,
 }: {
@@ -49,6 +50,7 @@ export function ListingOverviewPhotoDeck({
         photoCount={count}
         altBase={heroAlt}
         obfuscatePhotoIndex={obfuscatePhotoIndex}
+        photoHref={photoHref}
         mapSlot={mapSlot}
       />
     </div>

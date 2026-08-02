@@ -18,12 +18,16 @@ export default async function handler(req: Request, _context: Context) {
   let sideWorkOnly = false
   let statsCacheOnly = false
   let source: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog' | undefined
+  let towns: string[] | undefined
+  let statusScope: 'all' | 'active' | 'closed' | undefined
   try {
     const body = (await req.json().catch(() => null)) as {
       startedAt?: string
       sideWorkOnly?: boolean
       statsCacheOnly?: boolean
       source?: string
+      towns?: string[]
+      statusScope?: string
     } | null
     if (body?.startedAt && !Number.isNaN(Date.parse(body.startedAt))) {
       startedAt = body.startedAt
@@ -37,6 +41,15 @@ export default async function handler(req: Request, _context: Context) {
       body?.source === 'watchdog'
     ) {
       source = body.source
+    }
+    if (Array.isArray(body?.towns)) {
+      towns = body.towns.filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+      if (towns.length === 0) towns = undefined
+    }
+    if (body?.statusScope === 'active' || body?.statusScope === 'closed') {
+      statusScope = body.statusScope
+    } else if (body?.statusScope === 'all') {
+      statusScope = 'all'
     }
   } catch {
     /* ignore body parse */
@@ -83,7 +96,15 @@ export default async function handler(req: Request, _context: Context) {
         ? `worker started (${source ?? 'cron'}) — stats-cache only`
         : sideWorkOnly
           ? `worker started (${source ?? 'cron'}) — side-work only`
-          : `worker started (${source ?? 'cron'}) — running RETS`,
+          : (() => {
+              const bits = [
+                towns?.length ? towns.join(', ') : null,
+                statusScope && statusScope !== 'all' ? statusScope : null,
+              ].filter(Boolean)
+              return bits.length
+                ? `worker started (${source ?? 'cron'}) — RETS · ${bits.join(' · ')}`
+                : `worker started (${source ?? 'cron'}) — running RETS`
+            })(),
     })
   } catch (err) {
     console.warn('[sync-listings-worker] start audit failed', err)
@@ -93,6 +114,8 @@ export default async function handler(req: Request, _context: Context) {
     sideWorkOnly,
     statsCacheOnly,
     source,
+    towns,
+    statusScope,
   })
   return new Response(JSON.stringify(result.body), {
     status: result.status,

@@ -242,12 +242,29 @@ export function queueNetlifyIncrementalSync(
      * admin / watchdog skip cron heartbeat + pause/defer gates.
      */
     source?: IncrementalQueueSource
+    /**
+     * Adhoc Admin town scope. Omit = all TMRE towns (cron / default Sync now).
+     * Single-town values are validated in the worker.
+     */
+    towns?: readonly string[]
+    /** Adhoc Admin status filter: all | active | closed. */
+    statusScope?: 'all' | 'active' | 'closed'
   },
 ): Promise<NetlifyFunctionQueueResult> {
+  const towns =
+    options?.towns && options.towns.length > 0
+      ? [...options.towns]
+      : undefined
+  const statusScope =
+    options?.statusScope === 'active' || options?.statusScope === 'closed'
+      ? options.statusScope
+      : undefined
   return queueNetlifyFunction('/.netlify/functions/sync-listings-worker', {
     source: options?.source ?? 'netlify-sync-trigger',
     startedAt: startedAt ?? new Date().toISOString(),
     ...(options?.sideWorkOnly ? { sideWorkOnly: true } : {}),
+    ...(towns ? { towns } : {}),
+    ...(statusScope ? { statusScope } : {}),
   })
 }
 

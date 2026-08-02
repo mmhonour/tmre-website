@@ -177,13 +177,13 @@ export default function ListingPhotoScrollStack({
           />
         );
 
-        // Overview slide-panel context: stay on this page (carousel). Do not
-        // follow photoHref → /photos — that remounts the listing route.
+        // Prefer photoHref → /photos (hero + thumbnail strip). In-page photos
+        // mode is carousel-only and is used only when no gallery href is set.
         const href = photoHref?.(index);
         const activate =
           onPhotoActivate != null
             ? () => onPhotoActivate(index)
-            : photosMode
+            : !href && photosMode
               ? () => photosMode.enter(index)
               : null;
 

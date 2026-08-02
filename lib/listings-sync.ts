@@ -123,49 +123,97 @@ async function fetchClosedListingsIncremental(
   return rows.filter(isClosedListing)
 }
 
+/** Adhoc Incremental status scope (Admin Sync now filters). */
+export type IncrementalStatusScope = 'all' | 'active' | 'closed'
+
+export type SyncTownIncrementalOptions = {
+  /**
+   * Which MLS families to pull. Default `all` =
+   * Active + Coming Soon + UC + UC-CTS + Closed (same as scheduled incremental).
+   */
+  statusScope?: IncrementalStatusScope
+}
+
+function incrementalStatusBucketLabel(scope: IncrementalStatusScope): string {
+  if (scope === 'active') return 'Active/incremental'
+  if (scope === 'closed') return 'Closed/incremental'
+  return 'Active+Closed/incremental'
+}
+
 /** Pull only listings modified since the last incremental watermark. */
 export async function syncTownListingsIncremental(
   town: TmreTown,
   modifiedAfter: string,
+  options: SyncTownIncrementalOptions = {},
 ): Promise<TownSyncResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
-  const statusBucket = 'Active+Closed/incremental'
+  const statusScope: IncrementalStatusScope = options.statusScope ?? 'all'
+  const pullActive = statusScope === 'all' || statusScope === 'active'
+  const pullClosed = statusScope === 'all' || statusScope === 'closed'
+  const statusBucket = incrementalStatusBucketLabel(statusScope)
 
   try {
     const limit = getActiveListingsFetchLimit()
+    const empty: Listing[] = []
     const [active, comingSoon, underContract, underContractCts, closed] =
       await Promise.all([
-        searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter }),
-        searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit, {
-          modifiedAfter,
-        }).catch(() => [] as Listing[]),
-        searchMarketListingsForTown(town, UNDER_CONTRACT_MLS_STATUS, limit, {
-          modifiedAfter,
-        }).catch(() => [] as Listing[]),
-        searchMarketListingsForTown(
-          town,
-          UNDER_CONTRACT_CTS_MLS_STATUS,
-          limit,
-          { modifiedAfter },
-        ).catch(() => [] as Listing[]),
-        fetchClosedListingsIncremental(town, modifiedAfter).catch((err) => {
-          console.warn(
-            `[listings-sync/incremental] ${town} Closed pull failed (non-fatal)`,
-            err instanceof Error ? err.message : err,
-          )
-          return [] as Listing[]
-        }),
+        pullActive
+          ? searchMarketListingsForTown(town, 'Active', limit, { modifiedAfter })
+          : Promise.resolve(empty),
+        pullActive
+          ? searchMarketListingsForTown(town, COMING_SOON_MLS_STATUS, limit, {
+              modifiedAfter,
+            }).catch(() => empty)
+          : Promise.resolve(empty),
+        pullActive
+          ? searchMarketListingsForTown(town, UNDER_CONTRACT_MLS_STATUS, limit, {
+              modifiedAfter,
+            }).catch(() => empty)
+          : Promise.resolve(empty),
+        pullActive
+          ? searchMarketListingsForTown(
+              town,
+              UNDER_CONTRACT_CTS_MLS_STATUS,
+              limit,
+              { modifiedAfter },
+            ).catch(() => empty)
+          : Promise.resolve(empty),
+        pullClosed
+          ? fetchClosedListingsIncremental(town, modifiedAfter).catch((err) => {
+              console.warn(
+                `[listings-sync/incremental] ${town} Closed pull failed (non-fatal)`,
+                err instanceof Error ? err.message : err,
+              )
+              return empty
+            })
+          : Promise.resolve(empty),
       ])
-    const marketListings = mergeSyncListings(
-      active,
-      comingSoon,
-      underContract,
-      underContractCts,
-    )
+    const marketListings = pullActive
+      ? mergeSyncListings(
+          active,
+          comingSoon,
+          underContract,
+          underContractCts,
+        )
+      : []
     const [marketUpsert, closedUpsert] = await Promise.all([
-      upsertListingsIncremental(town, 'Active', marketListings),
-      upsertListingsIncremental(town, 'Closed', closed),
+      pullActive
+        ? upsertListingsIncremental(town, 'Active', marketListings)
+        : Promise.resolve({
+            count: 0,
+            inserted: 0,
+            updated: 0,
+            priceChangedIds: [] as string[],
+          }),
+      pullClosed
+        ? upsertListingsIncremental(town, 'Closed', closed)
+        : Promise.resolve({
+            count: 0,
+            inserted: 0,
+            updated: 0,
+            priceChangedIds: [] as string[],
+          }),
     ])
     const count = marketUpsert.count + closedUpsert.count
     const inserted = marketUpsert.inserted + closedUpsert.inserted
@@ -241,13 +289,28 @@ export type SyncIncrementalOptions = {
   postHooks?: boolean
   /** When set, opens a durable step log for this run (or continues one already begun). */
   stepLogSource?: string
+  /**
+   * Adhoc Admin scope — one or more TMRE towns. Omit / empty = all towns
+   * (scheduled cron + default Sync now).
+   */
+  towns?: readonly TmreTown[]
+  /**
+   * Adhoc Admin status filter. Default `all` (Active family + Closed).
+   * `active` = Active + Coming Soon + UC + UC-CTS. `closed` = Closed only.
+   */
+  statusScope?: IncrementalStatusScope
 }
 
-/** Incremental sync across all towns — no bucket deletions (use full sync for reconcile). */
+/** Incremental sync across towns — no bucket deletions (use full sync for reconcile). */
 export async function syncIncrementalListings(
   options: SyncIncrementalOptions = {},
 ): Promise<IncrementalSyncResult> {
   const postHooks = options.postHooks !== false
+  const townsToRun: readonly TmreTown[] =
+    options.towns && options.towns.length > 0
+      ? options.towns.filter((t, i, arr) => arr.indexOf(t) === i)
+      : TMRE_TOWNS
+  const statusScope: IncrementalStatusScope = options.statusScope ?? 'all'
   if (options.stepLogSource) {
     await beginIncrementalStepLog(options.stepLogSource)
   }
@@ -311,24 +374,39 @@ export async function syncIncrementalListings(
   deleteSyncMeta('last_incremental_sync')
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
+  const townsLabel =
+    townsToRun.length === TMRE_TOWNS.length
+      ? 'all towns'
+      : townsToRun.join(', ')
+  const statusLabel =
+    statusScope === 'all'
+      ? 'Active+CS+UC+Closed'
+      : statusScope === 'active'
+        ? 'Active+CS+UC'
+        : 'Closed'
   await appendIncrementalStep(
     'rets-start',
-    `modifiedAfter=${modifiedAfter} postHooks=${postHooks}`,
+    `modifiedAfter=${modifiedAfter} postHooks=${postHooks} towns=${townsLabel} status=${statusLabel}`,
   )
 
   beginListingsRefresh('incremental')
 
   try {
-    for (let i = 0; i < TMRE_TOWNS.length; i++) {
-      const town = TMRE_TOWNS[i]
+    for (let i = 0; i < townsToRun.length; i++) {
+      const town = townsToRun[i]
       // Real in-flight town — Admin Dashboard polls this for Status text.
       await stampIncrementalSyncLive({
         phase: 'town',
         town,
         townIndex: i + 1,
       })
-      await appendIncrementalStep('town-start', `${town} (${i + 1}/${TMRE_TOWNS.length})`)
-      const townResult = await syncTownListingsIncremental(town, modifiedAfter)
+      await appendIncrementalStep(
+        'town-start',
+        `${town} (${i + 1}/${townsToRun.length})`,
+      )
+      const townResult = await syncTownListingsIncremental(town, modifiedAfter, {
+        statusScope,
+      })
       towns.push(townResult)
       await appendIncrementalStep(
         'town-end',

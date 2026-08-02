@@ -78,6 +78,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Client React attaching to server-rendered HTML. “Hydration failed” means server text didn’t match what the client rendered (e.g. locale dates).',
   },
   {
+    term: 'Accessibility tree',
+    category: 'tooling',
+    definition:
+      'The browser’s structured view of a page for assistive tech (and for agent/devtools snapshots): roles, names, and states (e.g. link “Photos”, button “Previous photo”, heading “1 Sheridan Street”) rather than raw HTML/CSS. Cursor’s browser tools often return this YAML-style tree instead of a full screenshot — useful to confirm whether a control exists, is current/expanded, or is missing (e.g. no photo buttons) without relying only on visuals.',
+  },
+  {
     term: 'Turbopack',
     category: 'tooling',
     definition:

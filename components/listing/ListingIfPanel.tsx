@@ -8,6 +8,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import { ArrowLeftRightIcon } from "@/components/icons";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
@@ -63,6 +64,12 @@ import {
   filterPillIndependentButtonClass,
   filterPillIndependentContainerClass,
 } from "@/lib/filter-pill-styles";
+import {
+  classifyInventoryMarketBand,
+  DEFAULT_INVENTORY_SEGMENT_BANDS,
+  formatInventoryMarketBandLabel,
+  type InventorySegmentBandsConfig,
+} from "@/lib/inventory-segment-bands-shared";
 
 const CRITERIA_STEP_FEEDBACK_MS = 10_000;
 
@@ -184,15 +191,20 @@ function IfEstimateRangeDisplay({
   midpoint = null,
   formatAmount,
   suffix = "",
+  marketBandLabel = null,
 }: {
   low: number | null;
   high: number | null;
   midpoint?: number | null;
   formatAmount: (value: number) => string;
   suffix?: string;
+  /** Sale only — Admin Market Band for the midpoint amount. */
+  marketBandLabel?: string | null;
 }) {
   const resolvedLow = low ?? (high == null ? midpoint : null);
   const resolvedHigh = high ?? (low == null ? midpoint : null);
+  const resolvedMid =
+    midpoint != null && Number.isFinite(midpoint) ? midpoint : null;
 
   if (
     resolvedLow != null &&
@@ -201,11 +213,14 @@ function IfEstimateRangeDisplay({
   ) {
     const lowLabel = `${formatAmount(resolvedLow)}${suffix}`;
     const highLabel = `${formatAmount(resolvedHigh)}${suffix}`;
+    const midLabel =
+      resolvedMid != null ? `${formatAmount(resolvedMid)}${suffix}` : null;
+    const aria =
+      midLabel != null
+        ? `Between ${lowLabel}, midpoint ${midLabel}, and ${highLabel}`
+        : `Between ${lowLabel} and ${highLabel}`;
     return (
-      <div
-        className="flex flex-col gap-1.5"
-        aria-label={`Between ${lowLabel} and ${highLabel}`}
-      >
+      <div className="flex flex-col gap-1.5" aria-label={aria}>
         <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/50">
           Between
         </span>
@@ -214,9 +229,22 @@ function IfEstimateRangeDisplay({
             {lowLabel}
           </span>
           <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+          {midLabel != null ? (
+            <>
+              <span className="font-serif text-2xl sm:text-3xl text-gold tabular-nums leading-snug">
+                {midLabel}
+              </span>
+              <ArrowLeftRightIcon className="h-5 w-5 shrink-0 text-gold/90" />
+            </>
+          ) : null}
           <span className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
             {highLabel}
           </span>
+          {marketBandLabel ? (
+            <span className="font-mono text-[10px] sm:text-[11px] tracking-[0.12em] uppercase text-white/55 sm:ml-1">
+              {marketBandLabel}
+            </span>
+          ) : null}
         </div>
       </div>
     );
@@ -232,9 +260,16 @@ function IfEstimateRangeDisplay({
           : "—";
 
   return (
-    <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
-      {single}
-    </p>
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <p className="font-serif text-2xl sm:text-3xl text-white tabular-nums leading-snug">
+        {single}
+      </p>
+      {marketBandLabel ? (
+        <span className="font-mono text-[10px] sm:text-[11px] tracking-[0.12em] uppercase text-white/55">
+          {marketBandLabel}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -315,12 +350,7 @@ function compCountPhrase(
   activeCount: number,
   soldWord: string,
 ): string {
-  const parts: string[] = [];
-  if (soldCount > 0) parts.push(`${soldCount} ${soldWord}`);
-  if (activeCount > 0) parts.push(`${activeCount} active`);
-  if (parts.length === 0) return "matched comps";
-  if (parts.length === 1 && soldCount > 0) return `${parts[0]} comps`;
-  return `${parts.join(" + ")} comps`;
+  return `${soldCount} ${soldWord} + ${activeCount} active comps`;
 }
 
 /**
@@ -405,8 +435,22 @@ function IfMathWorksheet({
         </div>
       </div>
 
+      <p className="mt-2 normal-case tracking-normal text-left">
+        These are the 25th–75th percentile — in other words we exclude the{" "}
+        <span className="text-sage">top quarter</span> and{" "}
+        <span className="text-coral">bottom quarter</span> of the market, based
+        on {comps}
+        {lowPpsf && highPpsf ? ` that range from ${lowPpsf}–${highPpsf}` : ""}
+        . Outer comps stay in the list with a{" "}
+        <span className="text-sage">green</span> or{" "}
+        <span className="text-coral">red</span> row tint.
+      </p>
+
+      {/* Blank line between percentile blurb and the right-aligned equation. */}
+      <div className="h-4" aria-hidden />
+
       {hasSqft && ppsfLabel ? (
-        <div className="mt-1 w-fit text-right">
+        <div className="ml-auto w-fit text-right">
           <button
             type="button"
             onClick={() => setShowPpsf((v) => !v)}
@@ -424,7 +468,7 @@ function IfMathWorksheet({
           <div className="text-white/70">{midLabel}</div>
         </div>
       ) : (
-        <div className="mt-1 text-white/60">
+        <div className="ml-auto w-fit text-right text-white/60">
           {midLabel}{" "}
           <span className="text-white/30">
             ({methodLabel} of {comps})
@@ -432,17 +476,8 @@ function IfMathWorksheet({
         </div>
       )}
 
-      <p className="mt-2 normal-case tracking-normal">
-        These are the 25th–75th percentile — in other words we exclude the{" "}
-        <span className="text-sage">top quarter</span> and{" "}
-        <span className="text-coral">bottom quarter</span> of the market, based
-        on {comps}
-        {lowPpsf && highPpsf ? ` that range from ${lowPpsf}–${highPpsf}` : ""}
-        .
-      </p>
-
       {showPpsf && ppsfLabel ? (
-        <p className="mt-1 normal-case tracking-normal text-white/45">
+        <p className="mt-3 normal-case tracking-normal text-white/45 text-left">
           {methodExplain}
           {lowPpsf && highPpsf
             ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
@@ -631,10 +666,17 @@ function CompList({
             (part) => part !== "—",
           );
 
+          const rowTintClass =
+            quarter === "top"
+              ? "bg-sage/15 border-l-2 border-sage/70"
+              : quarter === "bottom"
+                ? "bg-coral/15 border-l-2 border-coral/70"
+                : "";
+
           return (
             <li
               key={`${comp.role}-${id}`}
-              className="py-2.5 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
+              className={`-mx-2 px-2 py-2.5 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3 rounded-sm ${rowTintClass}`}
             >
               <div className="min-w-0">
                 <Link
@@ -711,6 +753,7 @@ function IfEmailScenarioForm({
   mlsId: string;
   defaultMethod?: IfMidpointMethod;
 }) {
+  const siteUnlocked = useSiteUnlocked();
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState("");
   const [includeSale, setIncludeSale] = useState(true);
@@ -719,6 +762,10 @@ function IfEmailScenarioForm({
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Admin unlock only — public visitors must not see a send UI that only
+  // works for the Resend account allowlist (e.g. tmarkst@aol.com).
+  if (!siteUnlocked) return null;
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -778,8 +825,9 @@ function IfEmailScenarioForm({
             Email scenario
           </p>
           <p className="mt-1 text-xs text-white/45 leading-relaxed">
-            Branded summary with ranges, midpoint method, and comps. BCC goes to
-            your Admin contact email.
+            Admin only. Branded summary with ranges, midpoint, and comps. BCC
+            goes to your Admin contact email. Public lead capture is not wired
+            yet — use when Resend can deliver beyond your verified inbox.
           </p>
         </div>
         <button
@@ -883,7 +931,7 @@ function ScenarioPanel({
   kind,
   townHint,
   amountLabel,
-  midpointLabel,
+  inventorySegmentBands = null,
   foundCountEmphasized = false,
   className,
 }: {
@@ -894,7 +942,8 @@ function ScenarioPanel({
   kind: "sale" | "rent";
   townHint?: string | null;
   amountLabel: string;
-  midpointLabel: string;
+  /** Admin Market Bands config — used for sale midpoint band label only. */
+  inventorySegmentBands?: InventorySegmentBandsConfig | null;
   foundCountEmphasized?: boolean;
   className?: string;
 }) {
@@ -920,11 +969,14 @@ function ScenarioPanel({
 
   const panelId = IF_SCENARIO_PANEL_IDS[kind];
   const isRent = kind === "rent";
-  const midpoint =
-    displayScenario.amount != null
-      ? isRent
-        ? `${fmtIfRentMoney(roundIfRentMidpoint(displayScenario.amount))}/mo`
-        : fmtIfSaleMoney(displayScenario.amount)
+  const saleMarketBandLabel =
+    !isRent && displayScenario.amount != null
+      ? formatInventoryMarketBandLabel(
+          classifyInventoryMarketBand(
+            displayScenario.amount,
+            inventorySegmentBands ?? DEFAULT_INVENTORY_SEGMENT_BANDS,
+          ),
+        )
       : null;
 
   const range = isRent ? (
@@ -952,6 +1004,7 @@ function ScenarioPanel({
       high={displayScenario.amountHigh}
       midpoint={displayScenario.amount}
       formatAmount={fmtIfSaleMoney}
+      marketBandLabel={saleMarketBandLabel}
     />
   );
 
@@ -974,11 +1027,6 @@ function ScenarioPanel({
         <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/35">
           {amountLabel}
         </p>
-        {hasEstimate && midpoint ? (
-          <p className="mt-2 font-mono text-[10px] tracking-[0.1em] text-white/45 tabular-nums">
-            {midpointLabel}: {midpoint}
-          </p>
-        ) : null}
       </div>
 
       {!hasEstimate ? (
@@ -1354,13 +1402,13 @@ export default function ListingIfPanel({
           kind="sale"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}
+          inventorySegmentBands={data?.inventorySegmentBands ?? null}
           className={
             mobileScenarioLead === "sale"
               ? "max-lg:block lg:block"
               : "max-lg:hidden lg:block"
           }
           amountLabel="Estimated Value Range"
-          midpointLabel="Midpoint"
         />
         <ScenarioPanel
           title="If you rent"
@@ -1376,7 +1424,6 @@ export default function ListingIfPanel({
               : "max-lg:hidden lg:block"
           }
           amountLabel="Estimated monthly rent range"
-          midpointLabel="Midpoint"
         />
       </div>
 

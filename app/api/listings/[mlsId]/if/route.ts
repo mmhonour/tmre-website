@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getInventorySegmentBandsConfigFresh } from '@/lib/inventory-segment-bands-config'
 import { fetchListingIfPayload } from '@/lib/listing-if-cache'
 import { listingCacheHeaders } from '@/lib/listings-store'
 
@@ -16,14 +17,20 @@ export async function GET(
   }
 
   try {
-    const payload = await fetchListingIfPayload(id)
+    const [payload, inventorySegmentBands] = await Promise.all([
+      fetchListingIfPayload(id),
+      getInventorySegmentBandsConfigFresh(),
+    ])
     if (!payload) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
 
-    return NextResponse.json(payload, {
-      headers: listingCacheHeaders('db'),
-    })
+    return NextResponse.json(
+      { ...payload, inventorySegmentBands },
+      {
+        headers: listingCacheHeaders('db'),
+      },
+    )
   } catch (err) {
     console.error('[/api/listings/[mlsId]/if] error', err)
     return NextResponse.json(

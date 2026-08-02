@@ -21,6 +21,7 @@ import {
   loadTabJson,
   peekTabJson,
 } from "@/lib/tab-data-prefetch";
+import { listingPhotosHref } from "@/lib/listing-url";
 
 type Schools = {
   elementary: string | null;
@@ -200,11 +201,20 @@ export default function ListingDetailClient({
     longitude: l.longitude,
     addressQuery: mapsQuery,
   };
+  const photosHrefForIndex = (photoIndex: number) =>
+    listingPhotosHref(
+      mlsId,
+      street || addressHint,
+      townHint || l.address.city,
+      photoIndex,
+    );
+
   const heroSlot = !isComingSoon ? (
     <ListingPhotoScrollStack
       mlsId={l.mlsId}
       photoCount={photoCount}
       altBase={street || "Listing photo"}
+      photoHref={photosHrefForIndex}
       mapSlot={mapSlot}
     />
   ) : null;
@@ -262,6 +272,7 @@ export default function ListingDetailClient({
             photoCount={photoCount > 0 ? photoCount : null}
             heroAlt={street || "Listing photo"}
             hideHero={isComingSoon}
+            photoHref={photosHrefForIndex}
             showHero
             mapSlot={mapSlot}
           />

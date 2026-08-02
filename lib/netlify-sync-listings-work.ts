@@ -84,6 +84,10 @@ export type IncrementalSyncWorkOptions = {
    * Next-override defer (explicit heal / admin intent).
    */
   source?: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog'
+  /** Adhoc Admin town scope; omit = all towns. */
+  towns?: readonly string[]
+  /** Adhoc Admin status filter; omit = all (Active family + Closed). */
+  statusScope?: 'all' | 'active' | 'closed'
 }
 
 async function runSpotlightAndAlerts(): Promise<{
@@ -325,7 +329,20 @@ export async function runIncrementalSyncListingsWork(
       `catchup=${catchup.skipped ? catchup.reason : 'ran'}`,
     )
 
-    const result = await syncIncrementalListings({ postHooks: true })
+    const { isTmreTown } = await import('@/lib/tmre-towns')
+    type TmreTown = import('@/lib/tmre-towns').TmreTown
+    const scopedTowns = (options.towns ?? [])
+      .map((t) => t.trim())
+      .filter((t): t is TmreTown => isTmreTown(t))
+    const statusScope =
+      options.statusScope === 'active' || options.statusScope === 'closed'
+        ? options.statusScope
+        : undefined
+    const result = await syncIncrementalListings({
+      postHooks: true,
+      ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
+      ...(statusScope ? { statusScope } : {}),
+    })
     const skippedEmpty = result.towns.length === 0 && result.durationMs === 0
     const okTowns = skippedEmpty ? true : result.towns.every((row) => row.ok)
     const townErrors = skippedEmpty

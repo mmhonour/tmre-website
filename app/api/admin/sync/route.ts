@@ -101,17 +101,35 @@ export async function POST(req: NextRequest) {
 
   let action = ''
   let town: string | undefined
+  let towns: string[] | undefined
+  let statusScope: 'all' | 'active' | 'closed' | undefined
   let finalize = false
   let finalizeStep: string | undefined
   try {
     const body = (await req.json()) as {
       action?: string
       town?: string
+      towns?: string[]
+      statusScope?: string
       finalize?: boolean
       finalizeStep?: string
     }
     action = body.action?.trim() ?? ''
     town = body.town?.trim()
+    if (Array.isArray(body.towns)) {
+      towns = body.towns
+        .filter((t): t is string => typeof t === 'string')
+        .map((t) => t.trim())
+        .filter(Boolean)
+      if (towns.length === 0) towns = undefined
+    }
+    if (
+      body.statusScope === 'all' ||
+      body.statusScope === 'active' ||
+      body.statusScope === 'closed'
+    ) {
+      statusScope = body.statusScope
+    }
     finalize = body.finalize === true
     finalizeStep = body.finalizeStep?.trim()
   } catch {
@@ -144,7 +162,13 @@ export async function POST(req: NextRequest) {
     const result =
       action === 'sync-all-caches'
         ? await runAdminSyncAllCaches()
-        : await runAdminSyncAction(action, { town, finalize, finalizeStep })
+        : await runAdminSyncAction(action, {
+            town,
+            towns,
+            statusScope,
+            finalize,
+            finalizeStep,
+          })
     const stats = await readListingsDbStats()
     const { readSyncScheduleConfig } = await import('@/lib/sync-schedule-config')
     const scheduleConfig = readSyncScheduleConfig()

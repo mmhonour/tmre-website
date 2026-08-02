@@ -11,6 +11,7 @@ import { SpotlightPageChrome } from "@/components/spotlight/SpotlightPageChrome"
 import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { spotlightPropertySearchParam } from "@/lib/spotlight-listing";
+import { spotlightSectionHref } from "@/lib/spotlight-url";
 
 export default function SpotlightListingClient() {
   const {
@@ -53,12 +54,23 @@ export default function SpotlightListingClient() {
   );
   const isClosed = details.isClosed;
 
+  const propertyParam = spotlightPropertySearchParam(propertyTab);
+  const photosHrefForIndex = (photoIndex: number) => {
+    const base = spotlightSectionHref("photos");
+    const qs = new URLSearchParams();
+    if (propertyParam) qs.set("property", propertyParam);
+    if (photoIndex >= 0) qs.set("photo", String(photoIndex));
+    const q = qs.toString();
+    return q ? `${base}?${q}` : base;
+  };
+
   const heroSlot = presentation.showHero ? (
     <ListingPhotoScrollStack
       mlsId={display.mlsId}
       photoCount={display.photoCount}
       altBase={display.config.displayTitle}
       obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
+      photoHref={photosHrefForIndex}
       mapSlot={presentation.mapLocation}
     />
   ) : null;
@@ -82,6 +94,7 @@ export default function SpotlightListingClient() {
           heroAlt={display.config.displayTitle}
           hideHero={presentation.hidePhotoDeckHero}
           obfuscatePhotoIndex={presentation.shouldObfuscatePhoto}
+          photoHref={photosHrefForIndex}
           showHero
           mapSlot={presentation.mapLocation}
         />
@@ -93,7 +106,7 @@ export default function SpotlightListingClient() {
           addressHint={presentation.ifAddressHint}
           townHint={presentation.townHint}
           routeBase="spotlight"
-          propertyParam={spotlightPropertySearchParam(propertyTab)}
+          propertyParam={propertyParam}
           mode="panel"
         />
       }

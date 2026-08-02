@@ -129,13 +129,16 @@ export function spotlightConfigMlsId(
  * Resolve the MLS id Spotlight should show for a property tab.
  *
  * Precedence:
- *   1. Admin override — always honored, **any MLS status**
- *   2. Address resolve (whatever status MLS returns)
+ *   1. Admin override — always honored, **any MLS status** (incl. Closed)
+ *   2. Address hit that is still on-market (Active / CS / UC / Pending) —
+ *      must beat a Closed directory leftover (42 Treadwell: 170610470 Closed
+ *      sale vs 24192179 UC rental where Timothy is list agent)
  *   3. Hardcoded config.mlsId — any status
- *   4. Prior resolved cache
+ *   4. Off-market address hit only when there is no hardcoded id
+ *   5. Prior resolved cache
  *
- * Spotlight is a marketing pin. Do not refuse Closed / Expired / Withdrawn /
- * Cancelled — that blanked Admin-assigned slots (e.g. 99101000).
+ * Admin pins accept every status. Automatic address resolve does not — that
+ * is the Treadwell rule (stale Closed must not replace the live listing).
  */
 export async function resolveSpotlightMlsId(
   config: SpotlightListingConfig,
@@ -167,7 +170,29 @@ export async function resolveSpotlightMlsId(
         postalCode: config.address.postalCode,
       })
       const liveId = resolved.mlsId?.trim() ?? null
+      const liveCurrent = listingLooksCurrent(resolved.listing?.status)
+
+      // On-market address hit (e.g. UC rental) wins over a hardcoded Closed id.
+      if (liveId && liveCurrent) {
+        await ensurePinnedMlsAvailable(liveId)
+        writeSpotlightResolvedMlsId(config.id, liveId)
+        return liveId
+      }
+
+      // Address only found Closed/Expired — prefer hardcoded config id
+      // (24192179) so Spotlight #1 shows Timothy’s UC rental, not the 2023 sale.
+      if (fixed) {
+        await ensurePinnedMlsAvailable(fixed)
+        writeSpotlightResolvedMlsId(config.id, fixed)
+        return fixed
+      }
+
       if (liveId) {
+        console.warn(
+          `[spotlight-mls] using off-market address hit ${liveId}` +
+            ` (${resolved.listing?.status ?? 'unknown'}) for ${config.id}` +
+            ' — no hardcoded mlsId to prefer',
+        )
         await ensurePinnedMlsAvailable(liveId)
         writeSpotlightResolvedMlsId(config.id, liveId)
         return liveId

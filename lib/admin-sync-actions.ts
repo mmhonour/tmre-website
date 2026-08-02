@@ -117,6 +117,16 @@ function formatSyncFailures(failed: TownSyncResult[]): string | undefined {
 export type AdminSyncActionOptions = {
   /** One town step of a chunked full resync. */
   town?: string
+  /**
+   * Adhoc Incremental scope — omit / empty = all TMRE towns.
+   * When set to a single TMRE town, only that town is pulled.
+   */
+  towns?: string[]
+  /**
+   * Adhoc Incremental status filter — `all` (default) | `active` | `closed`.
+   * `active` = Active + Coming Soon + UC + UC-CTS. `closed` = Closed only.
+   */
+  statusScope?: 'all' | 'active' | 'closed'
   /** Run ALL finalize cache rebuilds in one shot (non-serverless / local-dev only). */
   finalize?: boolean
   /** One finalize step of a chunked full resync (see `FULL_RESYNC_FINALIZE_STEPS`). */
@@ -447,6 +457,47 @@ async function runAdminSyncActionImpl(
             'Clear the refresh lock on admin (Refresh lock panel) or wait ~8 minutes for auto-heal on serverless.',
         }
       }
+      // Adhoc scope: optional single town (or list) from Admin town picker.
+      const scopedTowns = (options.towns?.length
+        ? options.towns
+        : options.town
+          ? [options.town]
+          : []
+      )
+        .map((t) => t.trim())
+        .filter((t): t is (typeof TMRE_TOWNS)[number] => isTmreTown(t))
+      if (
+        (options.towns?.length || options.town) &&
+        scopedTowns.length === 0
+      ) {
+        const finishedAt = new Date().toISOString()
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: `Unknown town: ${options.town ?? options.towns?.join(', ')}`,
+        }
+      }
+      const townScopeLabel =
+        scopedTowns.length === 0
+          ? 'all towns'
+          : scopedTowns.length === 1
+            ? scopedTowns[0]
+            : scopedTowns.join(', ')
+      const statusScope: 'all' | 'active' | 'closed' =
+        options.statusScope === 'active' || options.statusScope === 'closed'
+          ? options.statusScope
+          : 'all'
+      const statusScopeLabel =
+        statusScope === 'all'
+          ? 'Active+CS+UC+Closed'
+          : statusScope === 'active'
+            ? 'Active+CS+UC'
+            : 'Closed'
+      const scopeLabel = `${townScopeLabel} · ${statusScopeLabel}`
+
       // Production: never await 7-town RETS in the Next.js request — Netlify
       // gateway returns HTML 504 before maxDuration. Same handoff as scheduled cron.
       if (isServerlessRuntime()) {
@@ -455,6 +506,8 @@ async function runAdminSyncActionImpl(
         )
         const queued = await queueNetlifyIncrementalSync(startedAt, {
           source: 'admin',
+          ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
+          ...(statusScope !== 'all' ? { statusScope } : {}),
         })
         // Always write Sync history — queue ack alone never created town sync_runs,
         // which left "last run" stuck at the prior real RETS batch (e.g. 2:47pm).
@@ -463,7 +516,7 @@ async function runAdminSyncActionImpl(
           source: 'admin',
           queued: queued.ok,
           detail: queued.ok
-            ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+            ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'} · ${scopeLabel}`
             : queued.error ?? 'unknown queue error',
         })
         if (queued.ok) {
@@ -472,15 +525,15 @@ async function runAdminSyncActionImpl(
           await setSyncMetaDurable('last_incremental_sync_started', startedAt)
           await stampIncrementalSyncLive({
             phase: 'queued',
-            town: null,
+            town: scopedTowns.length === 1 ? scopedTowns[0] : null,
             townIndex: null,
             updatedAt: startedAt,
           })
           await stampIncrementalQueuedStepLog(
             'admin-queue',
             queued.base
-              ? `${queued.base} HTTP ${queued.status ?? '—'}`
-              : 'background worker',
+              ? `${queued.base} HTTP ${queued.status ?? '—'} · ${scopeLabel}`
+              : `background worker · ${scopeLabel}`,
           )
           return {
             ok: true,
@@ -489,11 +542,10 @@ async function runAdminSyncActionImpl(
             finishedAt: startedAt,
             durationMs: Date.now() - t0,
             backgroundQueued: true,
-            message:
-              'Incremental queued (background worker) — this click returns in seconds; RETS can take several minutes',
+            message: `Incremental queued for ${scopeLabel} (background worker)`,
             detail: queued.base
-              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Dashboard Status will show each town as the worker pulls MLS.`
-              : 'Queued on background worker. Dashboard Status will show each town as the worker pulls MLS.',
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}) · ${scopeLabel}. Dashboard Status will show progress as the worker pulls MLS.`
+              : `Queued on background worker · ${scopeLabel}. Dashboard Status will show progress as the worker pulls MLS.`,
           }
         }
         const finishedAt = new Date().toISOString()
@@ -509,7 +561,10 @@ async function runAdminSyncActionImpl(
             'No site URL or worker rejected the queue. Check SYNC_CRON_SECRET / URL env and Netlify function logs.',
         }
       }
-      const result = await syncIncrementalListings()
+      const result = await syncIncrementalListings({
+        ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
+        ...(statusScope !== 'all' ? { statusScope } : {}),
+      })
       const skipped =
         result.durationMs === 0 && result.towns.length === 0 && result.totalUpserted === 0
       const ok = !skipped && result.towns.every((row) => row.ok)
@@ -524,10 +579,10 @@ async function runAdminSyncActionImpl(
         recordsFetched: result.totalUpserted,
         townResults: result.towns,
         message: ok
-          ? `Incremental sync complete — ${result.totalUpserted.toLocaleString()} upserts`
+          ? `Incremental sync complete (${scopeLabel}) — ${result.totalUpserted.toLocaleString()} upserts`
           : skipped
             ? 'Incremental skipped — refresh lock held or RETS unavailable'
-            : `Incremental sync finished with ${failed.length} failure(s)`,
+            : `Incremental sync finished with ${failed.length} failure(s) (${scopeLabel})`,
         detail: skipped
           ? 'Clear refresh lock on admin or wait ~8 minutes for serverless auto-heal.'
           : ok

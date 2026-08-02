@@ -1301,6 +1301,16 @@ export default function AdminSyncTable({
   const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
     null,
   );
+  /** Adhoc Incremental town scope — empty string = All Towns. */
+  const [incrementalTownScope, setIncrementalTownScope] = useState<string>("");
+  const incrementalTownScopeRef = useRef(incrementalTownScope);
+  incrementalTownScopeRef.current = incrementalTownScope;
+  /** Adhoc Incremental status scope — all | active | closed. */
+  const [incrementalStatusScope, setIncrementalStatusScope] = useState<
+    "all" | "active" | "closed"
+  >("all");
+  const incrementalStatusScopeRef = useRef(incrementalStatusScope);
+  incrementalStatusScopeRef.current = incrementalStatusScope;
   /** FIFO of Sync now / Sync all clicks while another job is running. */
   const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
   const syncQueueRef = useRef<SyncQueueItem[]>([]);
@@ -1848,10 +1858,26 @@ export default function AdminSyncTable({
           }));
 
           try {
+            const townScope =
+              actionId === "incremental"
+                ? incrementalTownScopeRef.current.trim()
+                : "";
+            const statusScope =
+              actionId === "incremental"
+                ? incrementalStatusScopeRef.current
+                : "all";
+            const scopeBits = [
+              townScope || null,
+              statusScope !== "all" ? statusScope : null,
+            ].filter(Boolean);
             const res = await fetch("/api/admin/sync", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ action: actionId }),
+              body: JSON.stringify({
+                action: actionId,
+                ...(townScope ? { town: townScope, towns: [townScope] } : {}),
+                ...(statusScope !== "all" ? { statusScope } : {}),
+              }),
             });
             const body = await readAdminSyncPostResponse(res);
 
@@ -1860,7 +1886,9 @@ export default function AdminSyncTable({
               lastError = errText;
               appendRunLog({
                 id: `${row.id}-${actionT0}-a${attempt}`,
-                label: actionLabel,
+                label: scopeBits.length
+                  ? `${actionLabel} · ${scopeBits.join(" · ")}`
+                  : actionLabel,
                 startedAt,
                 finishedAt: new Date().toISOString(),
                 durationMs: Date.now() - actionT0,
@@ -2802,18 +2830,72 @@ export default function AdminSyncTable({
                   {isDashboard ? (
                     <td className={cellPad}>
                       {row.actionId ? (
-                        <button
-                          type="button"
-                          onClick={() => runSync(row)}
-                          disabled={disabled}
-                          className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
-                        >
-                          {isRunning
-                            ? "Syncing…"
-                            : isWaiting
-                              ? "Queued"
-                              : "Sync now"}
-                        </button>
+                        <div className="flex flex-col items-start gap-1.5">
+                          {row.id === "incremental" ? (
+                            <div className="flex flex-col gap-1.5">
+                              <label className="flex flex-col gap-0.5">
+                                <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
+                                  Towns
+                                </span>
+                                <select
+                                  value={incrementalTownScope}
+                                  disabled={disabled}
+                                  onChange={(e) =>
+                                    setIncrementalTownScope(e.target.value)
+                                  }
+                                  className="max-w-[9.5rem] rounded-md border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] text-navy disabled:opacity-40"
+                                  aria-label="Incremental town scope"
+                                >
+                                  <option value="">All Towns</option>
+                                  {TMRE_TOWNS.map((town) => (
+                                    <option key={town} value={town}>
+                                      {town}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
+                                  Status
+                                </span>
+                                <select
+                                  value={incrementalStatusScope}
+                                  disabled={disabled}
+                                  onChange={(e) =>
+                                    setIncrementalStatusScope(
+                                      e.target.value as
+                                        | "all"
+                                        | "active"
+                                        | "closed",
+                                    )
+                                  }
+                                  className="max-w-[9.5rem] rounded-md border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] text-navy disabled:opacity-40"
+                                  aria-label="Incremental status scope"
+                                >
+                                  <option value="all">
+                                    All (Active+Closed)
+                                  </option>
+                                  <option value="active">
+                                    Active family
+                                  </option>
+                                  <option value="closed">Closed only</option>
+                                </select>
+                              </label>
+                            </div>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => runSync(row)}
+                            disabled={disabled}
+                            className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
+                          >
+                            {isRunning
+                              ? "Syncing…"
+                              : isWaiting
+                                ? "Queued"
+                                : "Sync now"}
+                          </button>
+                        </div>
                       ) : (
                         <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
                       )}

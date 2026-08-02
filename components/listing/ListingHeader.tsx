@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
 import ListingShareButton from "@/components/listing/ListingShareButton";
 import ListingPropertyFacts from "@/components/listing/ListingPropertyFacts";
@@ -104,12 +105,16 @@ export default function ListingHeader({
   hideFactsOnMobile = false,
 }: ListingHeaderProps & { className?: string; compact?: boolean }) {
   const hideMeta = hideMarketMeta || privacyMode;
+  const siteUnlocked = useSiteUnlocked();
   const [scoreOpen, setScoreOpen] = useState(false);
 
   const title = address.street || address.full;
   const showScore = goldilocksScore != null && goldilocksScore > 0;
   const priceLabel =
     price != null && price > 0 ? formatListingHeaderPrice(price) : null;
+  // Spotlight hides MLS from the public; Admin unlock reveals it with a label.
+  const showAdminMls = hideMeta && siteUnlocked && Boolean(mlsId.trim());
+  const showPublicMls = !hideMeta && Boolean(mlsId.trim());
 
   const titleAndMeta = (
     <>
@@ -135,7 +140,8 @@ export default function ListingHeader({
               {title}
             </h1>
             {(!privacyMode && (address.city || address.postalCode)) ||
-            !hideMeta ||
+            showPublicMls ||
+            showAdminMls ||
             shareHref ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 {!privacyMode && (address.city || address.postalCode) ? (
@@ -149,9 +155,19 @@ export default function ListingHeader({
                       .join(" ")}
                   </span>
                 ) : null}
-                {!hideMeta ? (
+                {showPublicMls ? (
                   <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap">
                     #{mlsId}
+                  </span>
+                ) : null}
+                {showAdminMls ? (
+                  <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="font-mono text-[9px] tracking-[0.14em] uppercase text-white/40 whitespace-nowrap">
+                      Admin visible only
+                    </span>
+                    <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap">
+                      #{mlsId}
+                    </span>
                   </span>
                 ) : null}
                 {shareHref ? (

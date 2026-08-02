@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   sendListingIfEmail,
   type ListingIfEmailKind,
@@ -28,9 +29,15 @@ function parseMethod(raw: unknown): IfMidpointMethod {
 }
 
 export async function POST(
-  req: Request,
+  req: NextRequest,
   ctx: { params: Promise<{ mlsId: string }> },
 ) {
+  // Admin-only until Resend can deliver to arbitrary public recipients
+  // (domain verified + not stuck in test-mode allowlist).
+  if (!isAdminAuthorizedRequest(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { mlsId } = await ctx.params
   const id = (mlsId ?? '').trim()
   if (!id) {

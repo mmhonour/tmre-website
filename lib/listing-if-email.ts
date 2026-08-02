@@ -195,8 +195,21 @@ function compRowHtml(
     `<span style="color:${theme.accent};">wt ${comp.weight.toFixed(2)}</span>`,
   ].filter(Boolean)
 
+  const rowBg =
+    quarter === 'top'
+      ? 'background-color:rgba(107,142,122,0.12);'
+      : quarter === 'bottom'
+        ? 'background-color:rgba(196,112,96,0.12);'
+        : ''
+  const rowBorder =
+    quarter === 'top'
+      ? `border-left:3px solid ${EMAIL_SAGE};`
+      : quarter === 'bottom'
+        ? `border-left:3px solid ${EMAIL_CORAL};`
+        : ''
+
   return `<tr>
-    <td style="padding:10px 0;border-top:1px solid #E2E6EE;vertical-align:top;">
+    <td style="padding:10px 8px;border-top:1px solid #E2E6EE;vertical-align:top;${rowBg}${rowBorder}">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
         <tr>
           <td style="font-family:${body};font-size:13px;line-height:1.35;color:${theme.text};padding-right:10px;">

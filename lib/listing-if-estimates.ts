@@ -20,6 +20,7 @@ import {
   vintageBucketDistance,
   type VintageBucketId,
 } from '@/lib/vintage-buckets'
+import type { InventorySegmentBandsConfig } from '@/lib/inventory-segment-bands-shared'
 
 const TOP_COMP_COUNT = 8
 /** Keep comps in the same location/price tier as the subject ($/sqft band). */
@@ -731,6 +732,8 @@ export type ListingIfPayload = {
   locationPremiumLabels?: string[]
   subjectVintageLabel?: string | null
   subjectSqft?: number | null
+  /** Admin Market Bands — attached by `/if` API for sale midpoint labeling. */
+  inventorySegmentBands?: InventorySegmentBandsConfig
 }
 
 export function buildIfMatchParams(
