@@ -372,18 +372,68 @@ function compCountPhrase(
  *   ─────────
  *   $1.8M
  */
+function IfMathBandKeyword({
+  label,
+  band,
+  active,
+  onToggle,
+}: {
+  label: string;
+  band: "top" | "bottom";
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const color =
+    band === "top"
+      ? active
+        ? "text-sage underline decoration-sage/70"
+        : "text-sage/80 underline decoration-sage/40 hover:text-sage"
+      : active
+        ? "text-coral underline decoration-coral/70"
+        : "text-coral/80 underline decoration-coral/40 hover:text-coral";
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      title={
+        band === "top"
+          ? active
+            ? "Hide top-quarter (green) comps"
+            : "Show top-quarter (green) comps"
+          : active
+            ? "Hide bottom-quarter (red) comps"
+            : "Show bottom-quarter (red) comps"
+      }
+      className={`${color} underline-offset-2 transition-colors cursor-pointer ${
+        active ? "font-semibold" : ""
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function IfMathWorksheet({
   est,
   sqft,
   kind,
   midpointMethod,
   onMidpointMethodChange,
+  showTopBand,
+  showBottomBand,
+  onToggleTopBand,
+  onToggleBottomBand,
 }: {
   est: IfEstimate;
   sqft: number | null;
   kind: "sale" | "rent";
   midpointMethod: IfMidpointMethod;
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
+  showTopBand: boolean;
+  showBottomBand: boolean;
+  onToggleTopBand: () => void;
+  onToggleBottomBand: () => void;
 }) {
   const [showPpsf, setShowPpsf] = useState(false);
   const [mathOpen, setMathOpen] = useState(false);
@@ -437,30 +487,32 @@ function IfMathWorksheet({
             <ChevronRightIcon className="h-3 w-3 text-gold" />
           )}
         </button>
-        <div
-          role="group"
-          aria-label="Midpoint $/sqft method"
-          className="inline-flex flex-wrap gap-1"
-        >
-          {IF_MIDPOINT_METHODS.map((method) => {
-            const active = midpointMethod === method;
-            return (
-              <button
-                key={method}
-                type="button"
-                onClick={() => onMidpointMethodChange(method)}
-                className={
-                  active
-                    ? "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-navy bg-gold"
-                    : "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
-                }
-                aria-pressed={active}
-              >
-                {IF_MIDPOINT_METHOD_LABELS[method]}
-              </button>
-            );
-          })}
-        </div>
+        {mathOpen ? (
+          <div
+            role="group"
+            aria-label="Midpoint $/sqft method"
+            className="inline-flex flex-wrap gap-1"
+          >
+            {IF_MIDPOINT_METHODS.map((method) => {
+              const active = midpointMethod === method;
+              return (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => onMidpointMethodChange(method)}
+                  className={
+                    active
+                      ? "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-navy bg-gold"
+                      : "rounded px-1.5 py-0.5 uppercase tracking-[0.1em] text-white/45 hover:text-gold border border-white/15"
+                  }
+                  aria-pressed={active}
+                >
+                  {IF_MIDPOINT_METHOD_LABELS[method]}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
       {mathOpen ? (
@@ -471,28 +523,54 @@ function IfMathWorksheet({
             className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-6"
           >
             <div className="min-w-0 border-0 bg-transparent p-0">
-              <div className="normal-case tracking-normal text-left whitespace-pre-wrap">
+              <div className="normal-case tracking-normal text-left space-y-3">
                 <p className="m-0">
                   25th–75th percentile excluded i.e.{" "}
-                  <span className="text-sage">top</span> and{" "}
-                  <span className="text-coral">bottom</span> quarter of the
-                  market with a <span className="text-sage">green</span> or{" "}
-                  <span className="text-coral">red</span> row tint
-                  {"\n\n"}
-                  Based on the following comps
-                  {"\n"}
-                  {"\t"}
-                  {est.soldCount} {soldWord}
-                  {"\n"}
-                  {"\t"}
-                  {est.activeCount} active
-                  {lowPpsf && highPpsf ? (
-                    <>
-                      {"\n\n"}
-                      Range {lowPpsf}–{highPpsf}
-                    </>
-                  ) : null}
+                  <IfMathBandKeyword
+                    label="TOP"
+                    band="top"
+                    active={showTopBand}
+                    onToggle={onToggleTopBand}
+                  />{" "}
+                  and{" "}
+                  <IfMathBandKeyword
+                    label="BOTTOM"
+                    band="bottom"
+                    active={showBottomBand}
+                    onToggle={onToggleBottomBand}
+                  />{" "}
+                  quarter of the market with a{" "}
+                  <IfMathBandKeyword
+                    label="GREEN"
+                    band="top"
+                    active={showTopBand}
+                    onToggle={onToggleTopBand}
+                  />{" "}
+                  or{" "}
+                  <IfMathBandKeyword
+                    label="RED"
+                    band="bottom"
+                    active={showBottomBand}
+                    onToggle={onToggleBottomBand}
+                  />{" "}
+                  row tint
                 </p>
+                <div className="whitespace-pre-wrap">
+                  <p className="m-0">
+                    Based on the following comps
+                    {"\n"}
+                    {"\t"}
+                    {est.soldCount} {soldWord}
+                    {"\n"}
+                    {"\t"}
+                    {est.activeCount} active
+                  </p>
+                </div>
+                {lowPpsf && highPpsf ? (
+                  <p className="m-0">
+                    Range {lowPpsf}–{highPpsf}
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -568,6 +646,8 @@ function CompList({
   subjectBeds = null,
   subjectBaths = null,
   foundCountEmphasized = false,
+  showTopBand = false,
+  showBottomBand = false,
 }: {
   comps: IfCompRow[];
   kind: "sale" | "rent";
@@ -577,19 +657,43 @@ function CompList({
   subjectBeds?: number | null;
   subjectBaths?: number | null;
   foundCountEmphasized?: boolean;
+  /** When false (default), hide green / above-high comps. */
+  showTopBand?: boolean;
+  /** When false (default), hide red / below-low comps. */
+  showBottomBand?: boolean;
 }) {
   const [sort, setSort] = useState<{ key: IfCompSortKey; dir: SortDir }>({
     key: "price",
     dir: "asc",
   });
   const [showWtExplain, setShowWtExplain] = useState(false);
+  const visibleComps = useMemo(
+    () =>
+      comps.filter((comp) => {
+        const quarter = compQuarterBand(
+          comp.impliedSubjectAmount,
+          amountLow,
+          amountHigh,
+        );
+        if (quarter === "top") return showTopBand;
+        if (quarter === "bottom") return showBottomBand;
+        return true;
+      }),
+    [comps, amountLow, amountHigh, showTopBand, showBottomBand],
+  );
   const sorted = useMemo(
-    () => sortIfComps(comps, sort.key, sort.dir),
-    [comps, sort.key, sort.dir],
+    () => sortIfComps(visibleComps, sort.key, sort.dir),
+    [visibleComps, sort.key, sort.dir],
   );
 
   if (comps.length === 0) return null;
   const isRent = kind === "rent";
+  const totalCount = comps.length;
+  const visibleCount = visibleComps.length;
+  const propertiesUsedLabel =
+    visibleCount < totalCount
+      ? `Properties used (${visibleCount}/${totalCount})`
+      : `Properties used (${totalCount})`;
   const wtLinkClass =
     "text-gold underline decoration-gold/50 underline-offset-2 hover:text-gold-light transition-colors cursor-pointer";
 
@@ -609,7 +713,7 @@ function CompList({
             foundCountEmphasized ? "scale-150" : "scale-100"
           }`}
         >
-          Properties used ({comps.length})
+          {propertiesUsedLabel}
         </p>
         <div
           className="flex flex-wrap items-center gap-x-3 gap-y-1"
@@ -1069,6 +1173,9 @@ function ScenarioPanel({
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
   className?: string;
 }) {
+  const [showTopBand, setShowTopBand] = useState(false);
+  const [showBottomBand, setShowBottomBand] = useState(false);
+
   const displayScenario = useMemo(
     () =>
       scenarioWithMidpointMethod(
@@ -1175,6 +1282,10 @@ function ScenarioPanel({
             kind={kind}
             midpointMethod={midpointMethod}
             onMidpointMethodChange={onMidpointMethodChange}
+            showTopBand={showTopBand}
+            showBottomBand={showBottomBand}
+            onToggleTopBand={() => setShowTopBand((v) => !v)}
+            onToggleBottomBand={() => setShowBottomBand((v) => !v)}
           />
           <CompList
             comps={comps}
@@ -1185,6 +1296,8 @@ function ScenarioPanel({
             subjectBeds={displayScenario.params.beds}
             subjectBaths={displayScenario.params.baths}
             foundCountEmphasized={foundCountEmphasized}
+            showTopBand={showTopBand}
+            showBottomBand={showBottomBand}
           />
         </>
       )}

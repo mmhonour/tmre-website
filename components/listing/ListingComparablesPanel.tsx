@@ -293,6 +293,10 @@ function buildRelativeScoreColorMap(
   return map;
 }
 
+/** User-facing definition for the Sold / Rented / On the market Edge sort. */
+const EDGE_SCORE_POPOVER_NOTE =
+  "Edge ranks each listing on location, age, size, layout, condition, and value versus peers. Higher scores sort first when you sort by Edge.";
+
 function CompSortLinks<T extends string>({
   options,
   activeKey,
@@ -302,7 +306,7 @@ function CompSortLinks<T extends string>({
   ariaLabel,
   className,
 }: {
-  options: { key: T; label: string; title?: string }[];
+  options: { key: T; label: string; title?: string; info?: string }[];
   activeKey: T;
   activeDir: SortDir;
   onSort: (key: T) => void;
@@ -311,6 +315,29 @@ function CompSortLinks<T extends string>({
   className?: string;
 }) {
   const isLight = theme === "light";
+  const [infoKey, setInfoKey] = useState<T | null>(null);
+  const infoRootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (infoKey == null) return;
+    const onDoc = (e: MouseEvent) => {
+      if (
+        infoRootRef.current &&
+        !infoRootRef.current.contains(e.target as Node)
+      ) {
+        setInfoKey(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setInfoKey(null);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [infoKey]);
 
   return (
     <div
@@ -327,6 +354,83 @@ function CompSortLinks<T extends string>({
           : isLight
             ? "text-slate/60 decoration-charcoal/15 hover:text-gold hover:decoration-gold/50"
             : "text-white/35 decoration-white/20 hover:text-gold hover:decoration-gold/50";
+        const linkClass = `inline-flex items-center gap-0.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors underline underline-offset-2 ${stateClass}`;
+        const ariaSort =
+          active
+            ? activeDir === "asc"
+              ? ("ascending" as const)
+              : ("descending" as const)
+            : ("none" as const);
+        const sortArrow = active ? (
+          <span className="text-gold" aria-hidden>
+            {activeDir === "asc" ? "↑" : "↓"}
+          </span>
+        ) : null;
+
+        if (option.info) {
+          const infoOpen = infoKey === option.key;
+          return (
+            <div
+              key={option.key}
+              ref={infoOpen ? infoRootRef : undefined}
+              className="relative inline-flex items-center gap-0.5"
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setInfoKey((prev) => (prev === option.key ? null : option.key))
+                }
+                title={option.title ?? `What is ${option.label}?`}
+                className={linkClass}
+                aria-expanded={infoOpen}
+                aria-haspopup="dialog"
+              >
+                {option.label}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSort(option.key)}
+                className={`font-mono text-[10px] tracking-[0.12em] transition-colors ${
+                  active
+                    ? "text-gold"
+                    : isLight
+                      ? "text-slate/40 hover:text-gold"
+                      : "text-white/30 hover:text-gold"
+                }`}
+                aria-label={`Sort by ${option.label}`}
+                aria-sort={ariaSort}
+                title={`Sort by ${option.label}`}
+              >
+                {sortArrow ?? (
+                  <span aria-hidden className="opacity-70">
+                    ↕
+                  </span>
+                )}
+              </button>
+              {infoOpen ? (
+                <div
+                  role="dialog"
+                  aria-label={option.info}
+                  className={
+                    isLight
+                      ? "absolute right-0 top-full z-40 mt-1.5 w-[min(16rem,70vw)] rounded-md border border-charcoal/15 bg-cream px-2.5 py-2 text-left shadow-[0_8px_24px_-12px_rgba(0,0,0,0.2)]"
+                      : "absolute right-0 top-full z-40 mt-1.5 w-[min(16rem,70vw)] rounded-md border border-white/15 bg-[#152238] px-2.5 py-2 text-left shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)]"
+                  }
+                >
+                  <p
+                    className={
+                      isLight
+                        ? "font-mono text-[9px] leading-snug tracking-[0.04em] text-slate/80 normal-case"
+                        : "font-mono text-[9px] leading-snug tracking-[0.04em] text-white/70 normal-case"
+                    }
+                  >
+                    {option.info}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          );
+        }
 
         return (
           <button
@@ -334,21 +438,11 @@ function CompSortLinks<T extends string>({
             type="button"
             onClick={() => onSort(option.key)}
             title={option.title}
-            className={`inline-flex items-center gap-0.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors underline underline-offset-2 ${stateClass}`}
-            aria-sort={
-              active
-                ? activeDir === "asc"
-                  ? "ascending"
-                  : "descending"
-                : "none"
-            }
+            className={linkClass}
+            aria-sort={ariaSort}
           >
             {option.label}
-            {active ? (
-              <span className="text-gold" aria-hidden>
-                {activeDir === "asc" ? "↑" : "↓"}
-              </span>
-            ) : null}
+            {sortArrow}
           </button>
         );
       })}
@@ -1645,8 +1739,7 @@ export default function ListingComparablesPanel({
                           {
                             key: "score",
                             label: "Edge",
-                            title:
-                              "Edge score — how strong the deal looks vs similar listings (deal model)",
+                            info: EDGE_SCORE_POPOVER_NOTE,
                           },
                           { key: "closeDate", label: "CLOSED" },
                           { key: "price", label: "Price" },
@@ -1682,7 +1775,11 @@ export default function ListingComparablesPanel({
                   <div className="flex shrink-0 justify-end">
                     <CompSortLinks
                       options={[
-                        { key: "score", label: "Edge" },
+                        {
+                          key: "score",
+                          label: "Edge",
+                          info: EDGE_SCORE_POPOVER_NOTE,
+                        },
                         { key: "closeDate", label: "CLOSED" },
                         { key: "price", label: "Price" },
                       ]}
@@ -1726,7 +1823,11 @@ export default function ListingComparablesPanel({
                   <div className="mt-2">
                     <CompSortLinks
                       options={[
-                        { key: "score", label: "Edge" },
+                        {
+                          key: "score",
+                          label: "Edge",
+                          info: EDGE_SCORE_POPOVER_NOTE,
+                        },
                         { key: "closeDate", label: "CLOSED" },
                         { key: "price", label: "Price" },
                       ]}
@@ -1752,7 +1853,11 @@ export default function ListingComparablesPanel({
                 {sortedSold.length > 0 ? (
                   <CompSortLinks
                     options={[
-                      { key: "score", label: "Edge" },
+                      {
+                        key: "score",
+                        label: "Edge",
+                        info: EDGE_SCORE_POPOVER_NOTE,
+                      },
                       { key: "closeDate", label: "CLOSED" },
                       { key: "price", label: "Price" },
                     ]}
@@ -1868,8 +1973,7 @@ export default function ListingComparablesPanel({
                         {
                           key: "score",
                           label: "Edge",
-                          title:
-                            "Edge score — how strong the deal looks vs similar listings (deal model)",
+                          info: EDGE_SCORE_POPOVER_NOTE,
                         },
                         { key: "price", label: "Price" },
                       ]}
@@ -1898,7 +2002,11 @@ export default function ListingComparablesPanel({
                     <CompSortLinks
                       options={[
                         { key: "default", label: "Match" },
-                        { key: "score", label: "Edge" },
+                        {
+                          key: "score",
+                          label: "Edge",
+                          info: EDGE_SCORE_POPOVER_NOTE,
+                        },
                         { key: "price", label: "Price" },
                       ]}
                       activeKey={activeSort.key}
