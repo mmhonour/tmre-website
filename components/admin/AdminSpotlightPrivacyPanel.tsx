@@ -10,6 +10,11 @@ import {
   SPOTLIGHT_PROPERTY_TABS,
   type SpotlightPropertyTabId,
 } from "@/lib/spotlight-listing";
+import {
+  SPOTLIGHT_SAFETY_RULE_BODY,
+  SPOTLIGHT_SAFETY_RULE_SUMMARY,
+  SPOTLIGHT_SAFETY_RULE_TITLE,
+} from "@/lib/spotlight-safety-shared";
 
 type TabRow = {
   tab: SpotlightPropertyTabId;
@@ -39,11 +44,18 @@ type MlsSaveStatus =
   | "validating"
   | "saved"
   | "pulled"
+  | "promoted"
   | "cleared"
   | "notfound"
   | "duplicate"
   | "persist"
   | "error";
+
+type MlsPromotion = {
+  previousMlsId: string;
+  newMlsId: string;
+  newerByTimestamp: boolean | null;
+};
 
 type IngestInfo = {
   alreadyInDb: boolean;
@@ -82,6 +94,9 @@ export default function AdminSpotlightPrivacyPanel() {
   >({});
   const [ingestByTab, setIngestByTab] = useState<
     Partial<Record<SpotlightPropertyTabId, IngestInfo>>
+  >({});
+  const [promotionByTab, setPromotionByTab] = useState<
+    Partial<Record<SpotlightPropertyTabId, MlsPromotion>>
   >({});
   const saveSeqRef = useRef(0);
   const savedTimersRef = useRef<
@@ -226,6 +241,7 @@ export default function AdminSpotlightPrivacyPanel() {
         tab?: TabMls;
         duplicateTabs?: SpotlightPropertyTabId[];
         ingest?: IngestInfo | null;
+        promotion?: MlsPromotion | null;
         error?: string;
       };
 
@@ -251,13 +267,29 @@ export default function AdminSpotlightPrivacyPanel() {
       if (data.ingest) {
         setIngestByTab((prev) => ({ ...prev, [tab]: data.ingest! }));
       }
+      if (data.promotion) {
+        setPromotionByTab((prev) => ({ ...prev, [tab]: data.promotion! }));
+      } else {
+        setPromotionByTab((prev) => {
+          const next = { ...prev };
+          delete next[tab];
+          return next;
+        });
+      }
       const pulledFresh = Boolean(
         data.ingest && !data.ingest.alreadyInDb && data.ingest.persisted,
       );
+      const promoted = Boolean(data.promotion);
       setMlsStatus((prev) => ({
         ...prev,
         [tab]:
-          value.length === 0 ? "cleared" : pulledFresh ? "pulled" : "saved",
+          value.length === 0
+            ? "cleared"
+            : promoted
+              ? "promoted"
+              : pulledFresh
+                ? "pulled"
+                : "saved",
       }));
 
       const existingTimer = savedTimersRef.current[tab];
@@ -266,12 +298,13 @@ export default function AdminSpotlightPrivacyPanel() {
         setMlsStatus((prev) =>
           prev[tab] === "saved" ||
           prev[tab] === "pulled" ||
+          prev[tab] === "promoted" ||
           prev[tab] === "cleared"
             ? { ...prev, [tab]: "idle" }
             : prev,
         );
         delete savedTimersRef.current[tab];
-      }, 4000);
+      }, 5000);
     } catch (err) {
       setMlsStatus((prev) => ({ ...prev, [tab]: "error" }));
       setError(err instanceof Error ? err.message : "Save failed");
@@ -342,6 +375,22 @@ export default function AdminSpotlightPrivacyPanel() {
         tone: "bad",
       };
     if (status === "cleared") return { text: "Cleared — tab hidden", tone: "muted" };
+    if (status === "promoted") {
+      const promo = promotionByTab[tab];
+      if (promo) {
+        const ageNote =
+          promo.newerByTimestamp === true
+            ? " · newer MLS mod time"
+            : promo.newerByTimestamp === false
+              ? " · older MLS mod time than previous pin"
+              : "";
+        return {
+          text: `Promoted #${promo.previousMlsId} → #${promo.newMlsId}${ageNote}`,
+          tone: "ok",
+        };
+      }
+      return { text: "Promoted new MLS # pin", tone: "ok" };
+    }
     if (status === "pulled") {
       const ingest = ingestByTab[tab];
       return {
@@ -380,19 +429,25 @@ export default function AdminSpotlightPrivacyPanel() {
           Spotlight properties
         </p>
         <p className="mt-1 text-sm text-charcoal/65 max-w-2xl">
-          Assign an MLS # to each slot — any MLS status is accepted (Active,
-          Coming Soon, Under Contract, Closed, Expired, Withdrawn, etc.). If it
-          is not already in Postgres, we immediately pull it from RETS and write
-          it to Postgres (one-off) so the listing is ready for client review
-          without waiting for the scheduled sync. Each listing can only appear
-          once — duplicates are rejected. Blank slots are hidden on the public
-          spotlight page.
-          Privacy toggles default off (address hidden, photos 1 &amp; 2
+          Enter an <span className="text-charcoal/80">MLS #</span> for each
+          slot — not a street address. Address auto-resolve is off for all five
+          tabs. Privacy toggles default off (address hidden, photos 1 &amp; 2
           blurred, town-only map). Check{" "}
           <span className="text-charcoal/80">No longer Coming Soon</span> once a
           listing goes live (or when MLS status is Active — that happens
-          automatically). Changes save automatically.
+          automatically). Changes save on blur / Enter.
         </p>
+        <div className="mt-4 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 max-w-3xl">
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-navy">
+            {SPOTLIGHT_SAFETY_RULE_TITLE}
+          </p>
+          <p className="mt-1.5 text-sm font-medium text-navy/90">
+            {SPOTLIGHT_SAFETY_RULE_SUMMARY}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-charcoal/70">
+            {SPOTLIGHT_SAFETY_RULE_BODY}
+          </p>
+        </div>
       </div>
 
       {duplicateTabs.length > 0 ? (

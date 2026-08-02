@@ -583,7 +583,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Spotlight',
     category: 'ui-tabs',
     definition:
-      'Curated property slots (#1–#3) with privacy controls (hide address/photos/map) managed in Admin → Data controls → Spotlight.',
+      'Curated property slots (#1–#5) with privacy controls (hide address/photos/map) managed in Admin → Spotlight. Assign by MLS # only.',
+  },
+  {
+    term: 'Spotlight Safety',
+    category: 'ui-tabs',
+    definition:
+      'Don’t let a stale Closed sale win over a live listing at the same address — not “never show Closed.” Admin pins Spotlight by MLS # (any status); the site does not auto-pick from street address. Published on Admin → Spotlight.',
   },
   {
     term: 'Deal of the Day / Week',

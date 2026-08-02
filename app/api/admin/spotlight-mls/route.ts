@@ -112,6 +112,7 @@ export async function PATCH(req: NextRequest) {
   const mlsId = typeof rawMlsId === 'string' ? rawMlsId.trim() : ''
 
   const overrides = await readSpotlightMlsOverridesFresh()
+  const previousMlsId = (overrides[tab] ?? '').trim()
 
   // Empty = intentional clear (hides the tab). Non-empty must ingest first.
   let ingest:
@@ -205,10 +206,41 @@ export async function PATCH(req: NextRequest) {
     saved?.town ||
     (ingest?.listing ? addressFromListing(ingest.listing).town : '')
 
+  /** When Admin replaces a pin, report whether the new MLS is newer by mod time. */
+  let promotion: {
+    previousMlsId: string
+    newMlsId: string
+    newerByTimestamp: boolean | null
+  } | null = null
+  if (
+    mlsId.length > 0 &&
+    previousMlsId.length > 0 &&
+    previousMlsId !== mlsId
+  ) {
+    let newerByTimestamp: boolean | null = null
+    try {
+      const [prevRow, nextRow] = await Promise.all([
+        readListingByIdFromDb(previousMlsId),
+        ingest?.listing
+          ? Promise.resolve(ingest.listing)
+          : readListingByIdFromDb(mlsId),
+      ])
+      const prevMod = parseModMs(prevRow?.modificationTimestamp)
+      const nextMod = parseModMs(nextRow?.modificationTimestamp)
+      if (prevMod != null && nextMod != null) {
+        newerByTimestamp = nextMod >= prevMod
+      }
+    } catch {
+      newerByTimestamp = null
+    }
+    promotion = { previousMlsId, newMlsId: mlsId, newerByTimestamp }
+  }
+
   return NextResponse.json({
     ok: true,
     saved: true,
     overrides: next,
+    promotion,
     tabs: tabs.map((t) =>
       t.tab === tab && ingest && !ingest.alreadyInDb
         ? {
@@ -242,4 +274,10 @@ export async function PATCH(req: NextRequest) {
       : null,
     duplicateTabs: findSpotlightMlsDuplicateTabs(next),
   })
+}
+
+function parseModMs(raw: string | null | undefined): number | null {
+  if (!raw?.trim()) return null
+  const ms = Date.parse(raw.trim())
+  return Number.isFinite(ms) ? ms : null
 }

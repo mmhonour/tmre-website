@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { resolveMlsIdByAddress } from '@/lib/address-mls-resolve'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   persistListingRecord,
@@ -128,17 +127,14 @@ export function spotlightConfigMlsId(
 /**
  * Resolve the MLS id Spotlight should show for a property tab.
  *
- * Precedence:
+ * Precedence (MLS # only — no street-address auto-pick):
  *   1. Admin override — always honored, **any MLS status** (incl. Closed)
- *   2. Address hit that is still on-market (Active / CS / UC / Pending) —
- *      must beat a Closed directory leftover (42 Treadwell: 170610470 Closed
- *      sale vs 24192179 UC rental where Timothy is list agent)
- *   3. Hardcoded config.mlsId — any status
- *   4. Off-market address hit only when there is no hardcoded id
- *   5. Prior resolved cache
+ *   2. Hardcoded config.mlsId — seed until Admin pins (any status)
+ *   3. Prior resolved cache
  *
- * Admin pins accept every status. Automatic address resolve does not — that
- * is the Treadwell rule (stale Closed must not replace the live listing).
+ * Spotlight Safety: Admin must enter the MLS # to feature; we never guess
+ * from address (that is what used to let a stale Closed sale displace a live
+ * listing). See `lib/spotlight-safety-shared.ts`.
  */
 export async function resolveSpotlightMlsId(
   config: SpotlightListingConfig,
@@ -158,50 +154,6 @@ export async function resolveSpotlightMlsId(
   }
 
   const fixed = config.mlsId?.trim() || null
-  const street = config.address.street.trim()
-  const city = config.address.city.trim()
-
-  if (street.length >= 2 && city.length >= 2) {
-    try {
-      const resolved = await resolveMlsIdByAddress({
-        street,
-        city,
-        state: config.address.state,
-        postalCode: config.address.postalCode,
-      })
-      const liveId = resolved.mlsId?.trim() ?? null
-      const liveCurrent = listingLooksCurrent(resolved.listing?.status)
-
-      // On-market address hit (e.g. UC rental) wins over a hardcoded Closed id.
-      if (liveId && liveCurrent) {
-        await ensurePinnedMlsAvailable(liveId)
-        writeSpotlightResolvedMlsId(config.id, liveId)
-        return liveId
-      }
-
-      // Address only found Closed/Expired — prefer hardcoded config id
-      // (24192179) so Spotlight #1 shows Timothy’s UC rental, not the 2023 sale.
-      if (fixed) {
-        await ensurePinnedMlsAvailable(fixed)
-        writeSpotlightResolvedMlsId(config.id, fixed)
-        return fixed
-      }
-
-      if (liveId) {
-        console.warn(
-          `[spotlight-mls] using off-market address hit ${liveId}` +
-            ` (${resolved.listing?.status ?? 'unknown'}) for ${config.id}` +
-            ' — no hardcoded mlsId to prefer',
-        )
-        await ensurePinnedMlsAvailable(liveId)
-        writeSpotlightResolvedMlsId(config.id, liveId)
-        return liveId
-      }
-    } catch (err) {
-      console.warn('[spotlight-mls] address resolve failed — using config id', err)
-    }
-  }
-
   if (fixed) {
     await ensurePinnedMlsAvailable(fixed)
     writeSpotlightResolvedMlsId(config.id, fixed)

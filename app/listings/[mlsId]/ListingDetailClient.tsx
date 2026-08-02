@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRecordLookedAtListing } from "@/hooks/useRecordLookedAtListing";
-import { fmtDate, fmtMoney, formatMlsStatus } from "@/lib/listing-history";
+import { fmtMoney } from "@/lib/listing-history";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import ListingHeroPanels from "@/components/listing/ListingHeroPanels";
 import ListingErrorPanel from "@/components/listing/ListingErrorPanel";
@@ -195,7 +195,6 @@ export default function ListingDetailClient({
     },
   );
   const isClosed = details.isClosed;
-  const isComingSoon = formatMlsStatus(l.status) === "Coming Soon";
   const mapSlot = {
     latitude: l.latitude,
     longitude: l.longitude,
@@ -209,7 +208,7 @@ export default function ListingDetailClient({
       photoIndex,
     );
 
-  const heroSlot = !isComingSoon ? (
+  const heroSlot = (
     <ListingPhotoScrollStack
       mlsId={l.mlsId}
       photoCount={photoCount}
@@ -217,7 +216,7 @@ export default function ListingDetailClient({
       photoHref={photosHrefForIndex}
       mapSlot={mapSlot}
     />
-  ) : null;
+  );
 
   return (
     <ListingShell>
@@ -271,7 +270,6 @@ export default function ListingDetailClient({
             mlsId={l.mlsId}
             photoCount={photoCount > 0 ? photoCount : null}
             heroAlt={street || "Listing photo"}
-            hideHero={isComingSoon}
             photoHref={photosHrefForIndex}
             showHero
             mapSlot={mapSlot}
