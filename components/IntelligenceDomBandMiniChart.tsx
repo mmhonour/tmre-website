@@ -82,6 +82,7 @@ export default function IntelligenceDomBandMiniChart({
   onInteract?: () => void;
 }) {
   const [buckets, setBuckets] = useState<ApiBucket[]>([]);
+  const [ready, setReady] = useState(false);
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(() => new Set());
@@ -98,6 +99,7 @@ export default function IntelligenceDomBandMiniChart({
     const ac = new AbortController();
     abortRef.current = ac;
     introStartedRef.current = false;
+    setReady(false);
     setBuckets([]);
     setExtraCallouts(new Set());
 
@@ -108,18 +110,21 @@ export default function IntelligenceDomBandMiniChart({
         return (await res.json()) as ApiPayload;
       })
       .then((data) => {
-        if (ac.signal.aborted || !data?.buckets) return;
+        if (ac.signal.aborted) return;
         setBuckets(
-          data.buckets.filter(
+          (data?.buckets ?? []).filter(
             (b) =>
               typeof b.count === "number" &&
               Number.isFinite(b.minDays) &&
               b.minDays >= 0,
           ),
         );
+        setReady(true);
       })
       .catch(() => {
-        /* aborted or network */
+        if (ac.signal.aborted) return;
+        setBuckets([]);
+        setReady(true);
       });
 
     return () => ac.abort();
@@ -187,12 +192,28 @@ export default function IntelligenceDomBandMiniChart({
     };
   }, []);
 
-  if (points.length === 0) return null;
-
   const chartTitle = ACTIVE_BY_DOM_LABEL;
   const linePath = points
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
     .join(" ");
+
+  // Keep the carousel slot occupied while buckets load / when empty.
+  if (!ready || points.length === 0) {
+    return (
+      <div className="relative flex w-full flex-col items-stretch gap-0.5 bg-transparent">
+        <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
+          <div className="relative flex h-[4.5rem] w-full items-center justify-center">
+            <p className="pointer-events-none absolute right-0.5 top-0 text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+              {chartTitle}
+            </p>
+            <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/45">
+              {!ready ? "Loading…" : "No inventory by DOM"}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handlePointClick = (point: BandPoint) => {
     onInteract?.();

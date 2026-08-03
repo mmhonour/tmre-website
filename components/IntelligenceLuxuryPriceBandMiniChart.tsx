@@ -156,10 +156,12 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
 }) {
   const seedCity = initialSeed?.city ?? null;
   const miniCarousel = useMiniGraphsCarousel();
-  /** On mobile carousel, only cycle bands while this slide is showing. */
+  /** Only cycle bands while this graph is on-screen (mobile slide or desktop window). */
   const isActiveCarouselSlide =
     !miniCarousel?.isCarousel ||
-    miniCarousel.activeKey === LUXURY_CAROUSEL_SLOT_KEY;
+    (miniCarousel.isKeyVisible
+      ? miniCarousel.isKeyVisible(LUXURY_CAROUSEL_SLOT_KEY)
+      : miniCarousel.activeKey === LUXURY_CAROUSEL_SLOT_KEY);
   const [segment, setSegment] = useState<InventorySegmentId>("luxury");
   const [bandPaused, setBandPaused] = useState(false);
   const [bySegment, setBySegment] = useState<

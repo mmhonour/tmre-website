@@ -23,7 +23,8 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
  * Pattern (queue-first for reliability under Netlify schedule limits):
  *   1) Stamp heartbeat (proves the cron fired)
  *   2) Queue sync-listings-worker for full RETS + digests (up to ~15 min)
- *   3) Only if the queue hop fails: lean in-process RETS (no board/stats)
+ *   3) Only if the queue hop fails: lean in-process RETS, then queue
+ *      side-work-only worker for board/stats (lean itself skips postHooks)
  *
  * Doing 7-town RETS inside this scheduled function routinely times out; that
  * looked like “4pm failed” even when the scheduler did fire. Side-work-only
@@ -269,6 +270,8 @@ export default async function handler() {
     }
 
     // Fallback — keep inventory moving if the HTTP hop to the worker is broken.
+    // postHooks=false stays inside the ~30s schedule budget; board/stats warm is
+    // queued as side-work-only so UC pills and scores don't go stale for days.
     const result = await syncIncrementalListings({
       postHooks: false,
       stepLogSource: 'cron-lean-fallback',
@@ -287,8 +290,36 @@ export default async function handler() {
             .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
             .join('; ') || 'lean fallback after queue failure',
     })
+    let sideWorkQueued: { ok: boolean; error: string | null } = {
+      ok: false,
+      error: null,
+    }
     if (okTowns && !skippedEmpty) {
       await clearSyncNextOverrideAfterRun('incremental')
+      try {
+        const side = await queueNetlifyIncrementalSync(
+          new Date().toISOString(),
+          { sideWorkOnly: true, source: 'cron' },
+        )
+        sideWorkQueued = {
+          ok: side.ok,
+          error: side.ok ? null : side.error ?? 'side-work queue failed',
+        }
+        if (!side.ok) {
+          console.warn(
+            `[netlify/sync-listings] side-work queue after lean failed (${side.error})`,
+          )
+        }
+      } catch (err) {
+        sideWorkQueued = {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }
+        console.warn(
+          '[netlify/sync-listings] side-work queue after lean threw',
+          err,
+        )
+      }
     }
 
     return new Response(
@@ -298,6 +329,7 @@ export default async function handler() {
         mode: 'scheduled-lean-fallback',
         startedAt,
         workerQueued: { ok: false, status: null, base: null, error: 'queue failed' },
+        sideWorkQueued,
       }),
       {
         status: okTowns ? 200 : 502,

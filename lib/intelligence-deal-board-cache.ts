@@ -29,6 +29,10 @@ import {
 export const INTELLIGENCE_DEAL_BOARD_CACHE_KEY = 'intelligence-deal-board:v5'
 /** Per-town cap for the board payload. Keep at/above Active inventory depth. */
 export const INTELLIGENCE_DEAL_BOARD_LIMIT = 2000
+/** Age at which GET /api/intelligence/deal-board kicks a background rebuild. */
+export const INTELLIGENCE_DEAL_BOARD_STALE_DEFERRED_MS = 2 * 60 * 60 * 1000
+/** Age at which the API awaits a rebuild before responding (UC pills, scores). */
+export const INTELLIGENCE_DEAL_BOARD_STALE_BLOCKING_MS = 12 * 60 * 60 * 1000
 
 export type IntelligenceBoardListing = {
   key: string

@@ -429,6 +429,8 @@ function dualSliderThumbValues(
 }
 /** Keep slider descriptors enlarged this long after thumb release or descriptor click. */
 const DESCRIPTOR_ENLARGE_HOLD_MS = 10_000;
+/** Idle dismiss for filter peeks + Market Intelligence / triangle chrome. */
+const FILTER_PEEK_IDLE_MS = 30_000;
 type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft" | "furnished";
 /** Descriptor peeks: accumulate kinds, or `"all"` (mag glass / every kind exposed). */
 type ExposedIntelSliders = "all" | IntelSliderKind[] | null;
@@ -1785,6 +1787,18 @@ export default function IntelligenceClient({
     );
   const dropFilterChromePeek = (key: FilterChromePeek) =>
     setFilterChromePeeks((prev) => prev.filter((k) => k !== key));
+  /**
+   * Bumped on filter-chrome interaction so the peek idle timer restarts.
+   * Also clears Market Intelligence / triangle auto-dismiss.
+   */
+  const [filterPeekActivityEpoch, setFilterPeekActivityEpoch] = useState(0);
+  /** After idle: hide “Market Intelligence” + triangle until a filter is triggered. */
+  const [marketIntelChromeDismissed, setMarketIntelChromeDismissed] =
+    useState(false);
+  const bumpFilterPeekActivity = useCallback(() => {
+    setFilterPeekActivityEpoch((n) => n + 1);
+    setMarketIntelChromeDismissed(false);
+  }, []);
   /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
@@ -3705,7 +3719,58 @@ export default function IntelligenceClient({
     setFurnishedSliderActive(false, { immediate: true });
   }
 
+  /**
+   * After FILTER_PEEK_IDLE_MS with no filter activity: collapse peeks (keep
+   * forced multi-zip town peek) and sync Market Intelligence + triangle:
+   * hide while chrome remains (quiet page / forced zip); re-show when peeks
+   * fully clear. Full Edit-all chrome is not auto-minimized.
+   */
+  useEffect(() => {
+    if (!filterChromeCollapsed) return;
+
+    const peeksOpen =
+      filterChromePeeks.length > 0 || collapsedSlidersOpen;
+    const forcedTownPeekOnly =
+      townNeedsMobileZipPick &&
+      filterChromePeeks.length > 0 &&
+      filterChromePeeks.every((k) => k === "towns") &&
+      !collapsedSlidersOpen;
+
+    // Quiet page, or only forced multi-zip town peek: hide MI + triangle.
+    if (!peeksOpen || forcedTownPeekOnly) {
+      const id = window.setTimeout(() => {
+        setMarketIntelChromeDismissed(true);
+      }, FILTER_PEEK_IDLE_MS);
+      return () => window.clearTimeout(id);
+    }
+
+    const id = window.setTimeout(() => {
+      setFilterChromePeeks((prev) =>
+        townNeedsMobileZipPick ? prev.filter((k) => k === "towns") : [],
+      );
+      setCollapsedSlidersOpen(false);
+      setExposedSliders(null);
+      setPriceSliderActive(false, { immediate: true });
+      setBedSliderActive(false, { immediate: true });
+      setBathSliderActive(false, { immediate: true });
+      setVintageSliderActive(false, { immediate: true });
+      setSqftSliderActive(false, { immediate: true });
+      setFurnishedSliderActive(false, { immediate: true });
+      // Peeks cleared → no filter chrome showing → keep triangle available.
+      // If multi-zip still forces towns, hide MI above those pills instead.
+      setMarketIntelChromeDismissed(townNeedsMobileZipPick);
+    }, FILTER_PEEK_IDLE_MS);
+    return () => window.clearTimeout(id);
+  }, [
+    filterChromeCollapsed,
+    filterChromePeeks,
+    collapsedSlidersOpen,
+    filterPeekActivityEpoch,
+    townNeedsMobileZipPick,
+  ]);
+
   function exposeSliderFilters(kind?: IntelSliderKind) {
+    bumpFilterPeekActivity();
     // Mag glass: toggle all sliders off if already fully exposed.
     if (kind == null) {
       if (collapsedSlidersOpen && exposedSliders === "all") {
@@ -3776,6 +3841,7 @@ export default function IntelligenceClient({
 
   /** Open the filter chrome/sliders that the descriptor line summarizes. */
   function handleEditFilters() {
+    bumpFilterPeekActivity();
     setFilterChromeCollapsed(false);
     setFilterChromePeeks([]);
     setFiltersExpanded(true);
@@ -4111,6 +4177,12 @@ export default function IntelligenceClient({
   const showClsChrome = !filterChromeCollapsed || isPeeking("cls");
   const showTxChrome = !filterChromeCollapsed || isPeeking("tx");
   const showSliderChrome = !filterChromeCollapsed || isPeeking("sliders");
+  /**
+   * Market Intelligence + triangle: driven by idle dismiss flag.
+   * Cleared on filter activity; idle effect sets/clears it so the row
+   * reappears when peeks collapse (no chrome) or when a filter is triggered.
+   */
+  const showMarketIntelChrome = !marketIntelChromeDismissed;
 
   /** Desktop DOTD: single line when no filter chrome sits under the descriptors. */
   const desktopDotdSingleLine =
@@ -4134,6 +4206,7 @@ export default function IntelligenceClient({
    * chrome (Edit all) collapses back to descriptors on any of these clicks.
    */
   const peekPills = (key: FilterChromePeek) => {
+    bumpFilterPeekActivity();
     setFilterChromeCollapsed(true);
     // Full chrome already shows every group, so the click means hide.
     if (!filterChromeCollapsed) {
@@ -4161,6 +4234,7 @@ export default function IntelligenceClient({
     }
   };
   const toggleFilterChrome = () => {
+    bumpFilterPeekActivity();
     setFilterChromeCollapsed(!filterChromeCollapsed);
     setFilterChromePeeks([]);
   };
@@ -4536,8 +4610,12 @@ export default function IntelligenceClient({
         */}
         <div className="relative mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
-          <div className="flex min-w-0 flex-col gap-y-2 transition-[gap] duration-300 ease-out lg:flex-row lg:items-start lg:gap-x-5">
-            <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-col gap-y-2 transition-[gap] duration-300 ease-out lg:flex-row lg:items-end lg:gap-x-5">
+            <div
+              className="min-w-0 flex-1"
+              onPointerDownCapture={bumpFilterPeekActivity}
+            >
+              {showMarketIntelChrome ? (
               <div className="flex items-center gap-3 min-w-0">
                 <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
                   Market Intelligence
@@ -4570,6 +4648,7 @@ export default function IntelligenceClient({
                   </svg>
                 </button>
               </div>
+              ) : null}
               <div
                 className={`grid transition-[grid-template-rows] duration-700 ease-in-out ${
                   heroIntroDismissed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
@@ -4805,15 +4884,16 @@ export default function IntelligenceClient({
                 ) : null}
 
               {/*
-                Desktop + filters minimized (triangle down): town context line
-                (For Sale|Rentals · tagline · months supply) above slider
-                descriptors. Expanded / mobile keep descriptors first.
+                Town context (town · For Sale|Rentals · tagline · months supply)
+                above slider descriptors on mobile always, and on desktop when
+                filters are minimized. Desktop expanded keeps DOM order
+                (descriptors first) via lg:order-none.
               */}
               <div className="flex flex-col items-start min-w-0 w-full gap-1.5">
               {/* Slider range labels; pin on scroll. */}
               <div
-                className={`w-full min-w-0 ${
-                  filterChromeCollapsed ? "lg:order-2" : ""
+                className={`w-full min-w-0 order-2 ${
+                  filterChromeCollapsed ? "" : "lg:order-none"
                 }`}
               >
               <div ref={descriptorSentinelRef} className="h-0 w-full" aria-hidden />
@@ -4835,8 +4915,8 @@ export default function IntelligenceClient({
                 {showTxChrome ? (
                   <div
                     data-intel-tx-filter-chrome
-                    className={`flex flex-wrap items-center gap-2 min-w-0 self-start w-full ${
-                      filterChromeCollapsed ? "lg:order-3" : ""
+                    className={`flex flex-wrap items-center gap-2 min-w-0 self-start w-full order-3 ${
+                      filterChromeCollapsed ? "" : "lg:order-none"
                     }`}
                   >
                     <FilterGroup
@@ -4901,8 +4981,8 @@ export default function IntelligenceClient({
               {/* Price/slider filter chrome */}
               {showSliderChrome ? (
                 <div
-                  className={`w-full min-w-0 ${
-                    filterChromeCollapsed ? "lg:order-4" : ""
+                  className={`w-full min-w-0 order-4 ${
+                    filterChromeCollapsed ? "" : "lg:order-none"
                   }`}
                 >
                 <IntelFilterControlsRow
@@ -4984,8 +5064,8 @@ export default function IntelligenceClient({
                 </div>
               ) : null}
               <div
-                className={`w-full min-w-0 ${
-                  filterChromeCollapsed ? "lg:order-1" : ""
+                className={`w-full min-w-0 order-1 ${
+                  filterChromeCollapsed ? "" : "lg:order-none"
                 }`}
               >
               {active === "All" ? (
@@ -4994,8 +5074,8 @@ export default function IntelligenceClient({
                     filterChromeCollapsed
                       ? "mt-0"
                       : filtersExpanded
-                        ? "mt-3"
-                        : "mt-1"
+                        ? "mt-0 lg:mt-3"
+                        : "mt-0 lg:mt-1"
                   }
                   towns={allTownsDescriptorStats}
                   aggregateMonthsSupply={aggregateAllTownsMonthsSupply}
@@ -5026,8 +5106,8 @@ export default function IntelligenceClient({
                     filterChromeCollapsed
                       ? "mt-0"
                       : filtersExpanded
-                        ? "mt-3"
-                        : "mt-1"
+                        ? "mt-0 lg:mt-3"
+                        : "mt-0 lg:mt-1"
                   }`}
                 >
                   {filterDescriptorLeading}
@@ -5092,8 +5172,8 @@ export default function IntelligenceClient({
             <div
               className={
                 mobileHeroCompactChrome
-                  ? "hidden lg:block lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-start"
-                  : "w-full lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-start"
+                  ? "hidden lg:block lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-end"
+                  : "w-full lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-end"
               }
             >
               <DealOfTheDayFrame
