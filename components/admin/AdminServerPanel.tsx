@@ -29,10 +29,12 @@ export default function AdminServerPanel({
   apiRoutes,
   pageStyles,
   uiKit,
+  intelDescriptorSizes,
 }: {
   apiRoutes: ReactNode;
   pageStyles: ReactNode;
   uiKit: ReactNode;
+  intelDescriptorSizes: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminServerPanelId>("api-routes");
 
@@ -60,6 +62,7 @@ export default function AdminServerPanel({
     "api-routes": apiRoutes,
     "page-styles": pageStyles,
     "ui-kit": uiKit,
+    "intel-descriptor-sizes": intelDescriptorSizes,
   };
   const active = ADMIN_SERVER_PANELS.find((item) => item.id === panel);
 

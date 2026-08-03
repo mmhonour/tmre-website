@@ -25,6 +25,10 @@ import {
   type ListingPropertyClass,
 } from '@/lib/listing-property-class'
 import { listingShareHref } from '@/lib/listing-url'
+import {
+  DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  renderMarketDigestSubject,
+} from '@/lib/market-digest-config'
 import { formatMarketDigestHtml } from '@/lib/market-digest-html'
 import {
   avgMonthlyClosingsFromClosed,
@@ -555,7 +559,15 @@ export async function buildMarketDigestSnapshot(options?: {
   }
 }
 
-export function formatMarketDigestEmail(snapshot: MarketDigestSnapshot): {
+export type FormatMarketDigestEmailOptions = {
+  subjectTemplate?: string
+  includeSocialProfiles?: boolean
+}
+
+export function formatMarketDigestEmail(
+  snapshot: MarketDigestSnapshot,
+  options?: FormatMarketDigestEmailOptions,
+): {
   subject: string
   text: string
   html: string
@@ -568,7 +580,11 @@ export function formatMarketDigestEmail(snapshot: MarketDigestSnapshot): {
     day: 'numeric',
   }).format(new Date(snapshot.generatedAt))
 
-  const subject = `Monday market brief — months supply & inventory (${etDate})`
+  const subject = renderMarketDigestSubject(
+    options?.subjectTemplate ?? DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+    etDate,
+  )
+  const includeSocial = options?.includeSocialProfiles === true
 
   const tableRows: MonthsSupplyPayload[] = []
   if (snapshot.market) tableRows.push(snapshot.market)
@@ -641,17 +657,21 @@ export function formatMarketDigestEmail(snapshot: MarketDigestSnapshot): {
     dealLines.push('No Deal of the Week in cache yet — check homepage / stats rebuild.')
   }
 
-  const socialLines: string[] = [
-    'SOCIAL PROFILES (Admin → Site)',
-    '-----------------------------',
-  ]
-  const filled = snapshot.socialProfiles.filter((p) => p.handleOrUrl)
-  if (filled.length === 0) {
-    socialLines.push('No handles saved yet.')
-  } else {
-    for (const p of filled) {
-      socialLines.push(`• ${p.label}: ${p.handleOrUrl}`)
+  const socialLines: string[] = []
+  if (includeSocial) {
+    socialLines.push(
+      'SOCIAL PROFILES (Admin → Communications)',
+      '---------------------------------------',
+    )
+    const filled = snapshot.socialProfiles.filter((p) => p.handleOrUrl)
+    if (filled.length === 0) {
+      socialLines.push('No handles saved yet.')
+    } else {
+      for (const p of filled) {
+        socialLines.push(`• ${p.label}: ${p.handleOrUrl}`)
+      }
     }
+    socialLines.push('')
   }
 
   const text = [
@@ -669,11 +689,12 @@ export function formatMarketDigestEmail(snapshot: MarketDigestSnapshot): {
     ...dealLines,
     '',
     ...socialLines,
-    '',
     '— Sent by tmre-website market digest',
   ].join('\n')
 
-  const html = formatMarketDigestHtml(snapshot, etDate)
+  const html = formatMarketDigestHtml(snapshot, etDate, {
+    includeSocialProfiles: includeSocial,
+  })
 
   return { subject, text, html }
 }

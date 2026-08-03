@@ -69,7 +69,10 @@ import {
 } from "@/lib/filter-pill-styles";
 import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
-import { listingDetailHrefForListing } from "@/lib/listing-url";
+import {
+  dealOfTheDayHref,
+  listingDetailHrefForListing,
+} from "@/lib/listing-url";
 import { underContractStatusLabel } from "@/lib/listing-status";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
 import {
@@ -1999,6 +2002,11 @@ export default function IntelligenceClient({
     miniGraphsInteractRef.current?.();
   };
   const [heroIntroDismissed, setHeroIntroDismissed] = useState(false);
+  /**
+   * Phone only: 5s after the hero intro collapses, replace the DOTD card with a
+   * left “deal of the day” link and right-aligned months supply.
+   */
+  const [mobileHeroCompactChrome, setMobileHeroCompactChrome] = useState(false);
   const [listingsRefresh, setListingsRefresh] = useState<{
     refreshing: boolean;
     lastFinishedAt: string | null;
@@ -2046,6 +2054,15 @@ export default function IntelligenceClient({
     const timer = window.setTimeout(() => setHeroIntroDismissed(true), 30_000);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport || !heroIntroDismissed) {
+      setMobileHeroCompactChrome(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setMobileHeroCompactChrome(true), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [isMobileViewport, heroIntroDismissed]);
 
   useEffect(() => {
     return () => {
@@ -4444,9 +4461,7 @@ export default function IntelligenceClient({
       ? "vintage"
       : "stats";
   const vintageFolderTabLabel =
-    tx === "rental"
-      ? "Rentals by VINTAGE or SCORE or MEDIAN"
-      : "Sales by vintage";
+    tx === "rental" ? "Rentals by vintage" : "Sales by vintage";
   /** folder-comps-mobile look, adapted for cream sidebar (inactive wasn’t white). */
   const desktopStatsFolderTabClass = (active: boolean) => {
     const base =
@@ -4490,7 +4505,11 @@ export default function IntelligenceClient({
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <div
-            className="flex flex-col lg:flex-row lg:items-start lg:gap-x-5 gap-y-2 transition-[gap] duration-300 ease-out"
+            className={`flex flex-col gap-y-2 transition-[gap] duration-300 ease-out ${
+              desktopDotdSingleLine
+                ? "lg:flex-col lg:gap-y-2"
+                : "lg:flex-row lg:items-start lg:gap-x-5"
+            }`}
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-3 min-w-0">
@@ -4957,6 +4976,7 @@ export default function IntelligenceClient({
                   monthlySalesLoaded={monthlySalesLoaded}
                   filterContext={allTownsFilterContext}
                   contextLeading={filterDescriptorLeading}
+                  hideMonthsSupply={mobileHeroCompactChrome}
                   trailing={
                     showSliderChrome &&
                     collapsedSlidersOpen &&
@@ -4989,11 +5009,15 @@ export default function IntelligenceClient({
                   TOWN_TAGLINES[active] ? (
                     <span className="text-white/45">{TOWN_TAGLINES[active]}</span>
                   ) : null}
-                  <IntelFilterDescriptorDot />
-                  <IntelMonthsSupplyInline
-                    monthsSupply={activeTownMonthsSupply}
-                    monthlySalesLoaded={monthlySalesLoaded}
-                  />
+                  {!mobileHeroCompactChrome ? (
+                    <>
+                      <IntelFilterDescriptorDot />
+                      <IntelMonthsSupplyInline
+                        monthsSupply={activeTownMonthsSupply}
+                        monthlySalesLoaded={monthlySalesLoaded}
+                      />
+                    </>
+                  ) : null}
                   {showSliderChrome &&
                   collapsedSlidersOpen &&
                   (!filtersExpanded || isPartialDescriptorPeek) ? (
@@ -5014,25 +5038,59 @@ export default function IntelligenceClient({
               </div>
               </div>
             </div>
-            <DealOfTheDayFrame
-              key={`intel-dotd-${active}-${dotdKind}-${dotdPropertyClass}`}
-              city={active}
-              theme="hero"
-              rotateTowns={active === "All"}
-              transactionFilter={dotdKind}
-              propertyClass={dotdPropertyClass}
-              initialDealsByTown={
-                dotdKind === "sale" && dotdPropertyClass === "homes"
-                  ? initialDotdDealsByTown
-                  : null
+            {mobileHeroCompactChrome ? (
+              <div className="flex w-full items-baseline justify-between gap-x-4 lg:hidden">
+                <Link
+                  href={dealOfTheDayHref(active === "All" ? null : active, {
+                    kind: dotdKind,
+                    propertyClass: dotdPropertyClass,
+                  })}
+                  className="shrink-0 font-mono text-[11px] tracking-[0.12em] lowercase text-gold underline underline-offset-2 decoration-gold/45 transition-colors hover:text-gold-light hover:decoration-gold"
+                >
+                  deal of the day
+                </Link>
+                <span className="min-w-0 text-right">
+                  <IntelMonthsSupplyInline
+                    monthsSupply={
+                      active === "All"
+                        ? aggregateAllTownsMonthsSupply
+                        : activeTownMonthsSupply
+                    }
+                    monthlySalesLoaded={monthlySalesLoaded}
+                    label="months supply"
+                  />
+                </span>
+              </div>
+            ) : null}
+            <div
+              className={
+                mobileHeroCompactChrome ? "hidden lg:block" : undefined
               }
-              initialKind={dotdKind}
-              initialPropertyClass={dotdPropertyClass}
-              hideUntilReady
-              surfaceAnyPick
-              desktopSingleLine={desktopDotdSingleLine}
-              className="w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
-            />
+            >
+              <DealOfTheDayFrame
+                key={`intel-dotd-${active}-${dotdKind}-${dotdPropertyClass}`}
+                city={active}
+                theme="hero"
+                rotateTowns={active === "All"}
+                transactionFilter={dotdKind}
+                propertyClass={dotdPropertyClass}
+                initialDealsByTown={
+                  dotdKind === "sale" && dotdPropertyClass === "homes"
+                    ? initialDotdDealsByTown
+                    : null
+                }
+                initialKind={dotdKind}
+                initialPropertyClass={dotdPropertyClass}
+                hideUntilReady
+                surfaceAnyPick
+                desktopSingleLine={desktopDotdSingleLine}
+                className={
+                  desktopDotdSingleLine
+                    ? "w-full shrink-0 animate-fade-up"
+                    : "w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
+                }
+              />
+            </div>
           </div>
         </div>
       </section>

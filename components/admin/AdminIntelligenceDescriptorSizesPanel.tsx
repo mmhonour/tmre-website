@@ -71,7 +71,7 @@ function DescriptorPreview({
 }
 
 /**
- * Admin → Data controls → Filter text: mobile/desktop idle sizes for
+ * Admin → Web server → Filter text: mobile/desktop idle sizes for
  * Intelligence filter descriptors, with live preview.
  */
 export default function AdminIntelligenceDescriptorSizesPanel() {

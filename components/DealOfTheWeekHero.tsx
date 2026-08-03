@@ -774,31 +774,6 @@ export default function DealOfTheWeekHero({
             </h1>
             {isDay ? (
               <div className="max-w-xl space-y-3">
-                <DealDayChooserBar
-                  townLabel={carousel.currentTown}
-                  carouselControls={
-                    !city && carousel.carouselTowns.length > 0
-                      ? {
-                          paused: carousel.paused,
-                          onTogglePause: carousel.togglePause,
-                          onPrev: carousel.goPrev,
-                          onNext: carousel.goNext,
-                          canStep: carousel.canNavigate,
-                          townLabel: carousel.currentTown,
-                          carouselIndex: carousel.carouselIndex,
-                          carouselTotal: carousel.carouselTowns.length,
-                        }
-                      : null
-                  }
-                  transactionFilter={dayTxFilter}
-                  onTransactionFilterChange={setTxFilter}
-                  propertyClass={
-                    dayTxFilter === "sale" ? dayPropertyClass : undefined
-                  }
-                  onPropertyClassChange={
-                    dayTxFilter === "sale" ? setDayPropertyClass : undefined
-                  }
-                />
                 <div
                   key={`photo-${slideKey}`}
                   className={`relative ${
@@ -846,6 +821,31 @@ export default function DealOfTheWeekHero({
                     />
                   ) : null}
                 </div>
+                <DealDayChooserBar
+                  townLabel={carousel.currentTown}
+                  carouselControls={
+                    !city && carousel.carouselTowns.length > 0
+                      ? {
+                          paused: carousel.paused,
+                          onTogglePause: carousel.togglePause,
+                          onPrev: carousel.goPrev,
+                          onNext: carousel.goNext,
+                          canStep: carousel.canNavigate,
+                          townLabel: carousel.currentTown,
+                          carouselIndex: carousel.carouselIndex,
+                          carouselTotal: carousel.carouselTowns.length,
+                        }
+                      : null
+                  }
+                  transactionFilter={dayTxFilter}
+                  onTransactionFilterChange={setTxFilter}
+                  propertyClass={
+                    dayTxFilter === "sale" ? dayPropertyClass : undefined
+                  }
+                  onPropertyClassChange={
+                    dayTxFilter === "sale" ? setDayPropertyClass : undefined
+                  }
+                />
               </div>
             ) : null}
             {isDay ? (
@@ -948,7 +948,7 @@ type DealDayCarouselControls = {
   carouselTotal: number;
 };
 
-/** Town carousel + sale/rental/class pills — sits above the DOTD hero photo. */
+/** Town carousel + sale/rental/class pills — below the DOTD hero + thumbnails. */
 function DealDayChooserBar({
   townLabel,
   carouselControls,
@@ -965,11 +965,7 @@ function DealDayChooserBar({
   onPropertyClassChange?: (value: DealSalePropertyClass) => void;
 }) {
   return (
-    <div
-      className={`flex max-w-xl flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 ${
-        townLabel ? "justify-between" : "justify-end"
-      }`}
-    >
+    <div className="flex max-w-xl flex-wrap items-center justify-start gap-x-3 gap-y-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
       {townLabel ? (
         carouselControls ? (
           <div className="flex items-center gap-1 shrink-0">
@@ -1022,7 +1018,7 @@ function DealDayChooserBar({
       ) : null}
       {(transactionFilter && onTransactionFilterChange) ||
       (propertyClass && onPropertyClassChange) ? (
-        <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           {transactionFilter && onTransactionFilterChange ? (
             <DealTransactionFilterPills
               value={transactionFilter}
@@ -1606,9 +1602,14 @@ function PhotoBanner({
   const frameClass = framed
     ? "rounded-2xl border border-white/10 shadow-xl shadow-black/30"
     : "";
-  const mainPhoto = (
+
+  const heroPhoto = (
     <div
-      className={`relative min-w-0 ${photoDeck ? "flex-[1.55]" : "w-full"} aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden ${frameClass}`}
+      className={`relative min-w-0 ${
+        photoDeck ? "flex-1" : "w-full"
+      } aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden ${
+        photoDeck ? "" : frameClass
+      }`}
     >
       {src ? (
         <ListingThumbImage
@@ -1644,24 +1645,25 @@ function PhotoBanner({
   );
 
   if (photoDeck) {
+    // Outer panel → hero panel + thumbnail panel (flush, photo aspect).
     return (
-      <div className="flex w-full items-stretch gap-2 sm:gap-2.5">
-        {mainPhoto}
-        <div className="flex min-w-0 flex-1 items-center justify-center self-stretch">
-          <DealPhotoThumbnailDeck
-            mlsId={photoDeck.mlsId}
-            photoCount={photoDeck.photoCount}
-            photosHref={photoDeck.photosHref}
-            address={photoDeck.address}
-            priority={photoDeck.priority}
-            variant="strip"
-          />
-        </div>
+      <div
+        className={`flex w-full items-stretch overflow-hidden ${frameClass}`}
+      >
+        {heroPhoto}
+        <DealPhotoThumbnailDeck
+          mlsId={photoDeck.mlsId}
+          photoCount={photoDeck.photoCount}
+          photosHref={photoDeck.photosHref}
+          address={photoDeck.address}
+          priority={photoDeck.priority}
+          variant="strip"
+        />
       </div>
     );
   }
 
-  return mainPhoto;
+  return heroPhoto;
 }
 
 function SchoolsBlock({

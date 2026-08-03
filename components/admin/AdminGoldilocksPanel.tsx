@@ -80,13 +80,9 @@ function formatDomDayRange(range: GoldilocksDomDayRange): string {
   return `${range.minDays}–${range.maxDays}`;
 }
 
-function formatDomTierSummaryLine(tier: GoldilocksDomTier): string {
-  const label = tier.label.trim() || "(unnamed)";
-  const ranges =
-    tier.ranges.length > 0
-      ? tier.ranges.map(formatDomDayRange).join(", ")
-      : "no ranges";
-  return `${label} · score ${tier.score} · ${ranges} days`;
+function formatDomRangesLabel(tier: GoldilocksDomTier): string {
+  if (tier.ranges.length === 0) return "—";
+  return tier.ranges.map(formatDomDayRange).join(", ");
 }
 
 type GoldilocksSubPanelId = "weights" | "dom" | "characteristics";
@@ -240,9 +236,11 @@ export default function AdminGoldilocksPanel({
   const domBandSummary = useMemo(() => {
     if (!draft) return null;
     return {
-      lines: draft.domTiers.map((tier) => ({
+      tiers: draft.domTiers.map((tier) => ({
         id: tier.id,
-        text: formatDomTierSummaryLine(tier),
+        label: tier.label.trim() || "(unnamed)",
+        score: tier.score,
+        ranges: formatDomRangesLabel(tier),
       })),
       missingScore: draft.domMissingScore,
     };
@@ -686,23 +684,97 @@ export default function AdminGoldilocksPanel({
         {subPanel === "dom" ? (
           <div className="space-y-4 px-5 py-5 sm:px-6">
             {domBandSummary ? (
-              <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 px-4 py-3">
+              <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 px-4 py-3 sm:px-5">
                 <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45">
                   Current bands · read-only
                 </p>
-                <ul className="mt-2 space-y-1">
-                  {domBandSummary.lines.map((line) => (
-                    <li
-                      key={line.id}
-                      className="font-mono text-[12px] leading-snug text-navy/85"
+                <div
+                  className="mt-3 overflow-hidden rounded-lg border border-charcoal/[0.08] bg-white/70"
+                  role="table"
+                  aria-label="DOM band summary"
+                >
+                  <div
+                    className="grid grid-cols-[minmax(0,1.2fr)_4.5rem_minmax(0,1.5fr)] gap-x-4 border-b border-charcoal/[0.1] bg-cream/80 px-3 py-2 sm:gap-x-6 sm:px-4"
+                    role="row"
+                  >
+                    <div
+                      role="columnheader"
+                      className="font-mono text-[10px] font-semibold tracking-[0.14em] uppercase text-charcoal/55"
                     >
-                      {line.text}
-                    </li>
+                      Tier
+                    </div>
+                    <div
+                      role="columnheader"
+                      className="font-mono text-[10px] font-semibold tracking-[0.14em] uppercase text-charcoal/55 text-right"
+                    >
+                      Score
+                    </div>
+                    <div
+                      role="columnheader"
+                      className="font-mono text-[10px] font-semibold tracking-[0.14em] uppercase text-charcoal/55"
+                    >
+                      Day ranges
+                    </div>
+                  </div>
+                  {domBandSummary.tiers.map((tier, i) => (
+                    <div
+                      key={tier.id}
+                      role="row"
+                      className={`grid grid-cols-[minmax(0,1.2fr)_4.5rem_minmax(0,1.5fr)] gap-x-4 px-3 py-2.5 sm:gap-x-6 sm:px-4 ${
+                        i > 0 ? "border-t border-charcoal/[0.06]" : ""
+                      }`}
+                    >
+                      <div
+                        role="cell"
+                        className="min-w-0 font-mono text-[12px] leading-snug text-navy/90 truncate"
+                        title={tier.label}
+                      >
+                        {tier.label}
+                      </div>
+                      <div
+                        role="cell"
+                        className="font-mono text-[12px] tabular-nums leading-snug text-navy text-right"
+                      >
+                        {tier.score}
+                      </div>
+                      <div
+                        role="cell"
+                        className="min-w-0 font-mono text-[12px] leading-snug text-charcoal/70"
+                      >
+                        {tier.ranges}
+                        {tier.ranges !== "—" ? (
+                          <span className="text-charcoal/40"> days</span>
+                        ) : null}
+                      </div>
+                    </div>
                   ))}
-                </ul>
-                <p className="mt-2 font-mono text-[12px] text-charcoal/60">
-                  Missing DOM · score {domBandSummary.missingScore}
-                </p>
+                  <div
+                    role="row"
+                    className="grid grid-cols-[minmax(0,1.2fr)_4.5rem_minmax(0,1.5fr)] gap-x-4 border-t border-charcoal/[0.1] bg-cream/50 px-3 py-2.5 sm:gap-x-6 sm:px-4"
+                  >
+                    <div
+                      role="cell"
+                      className="min-w-0 font-mono text-[12px] leading-snug text-charcoal/70"
+                    >
+                      Missing DOM
+                      <span className="mt-0.5 block font-sans text-[11px] normal-case tracking-normal text-charcoal/45">
+                        Fallback when a listing has no days-on-market
+                      </span>
+                    </div>
+                    <div
+                      role="cell"
+                      className="font-mono text-[12px] tabular-nums leading-snug text-navy text-right"
+                    >
+                      {domBandSummary.missingScore}
+                    </div>
+                    <div
+                      role="cell"
+                      className="font-mono text-[12px] leading-snug text-charcoal/40"
+                    >
+                      —
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : null}
             <p className="text-sm text-charcoal/65">

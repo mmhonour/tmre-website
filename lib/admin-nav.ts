@@ -23,12 +23,15 @@ export type AdminDataControlsPanelId =
   | "rets"
   | "intel-inventory"
   | "intel-deal-board"
-  | "intel-descriptor-sizes"
   | "ct-coverage"
   | "town-budget";
 
 /** Sub-panels under Admin → Web server. */
-export type AdminServerPanelId = "api-routes" | "page-styles" | "ui-kit";
+export type AdminServerPanelId =
+  | "api-routes"
+  | "page-styles"
+  | "ui-kit"
+  | "intel-descriptor-sizes";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -154,12 +157,6 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
       "Read-only middle-tier rules when Intelligence is sorted by score",
   },
   {
-    id: "intel-descriptor-sizes",
-    label: "Filter text",
-    subtitle:
-      "Mobile vs desktop idle size for Intelligence filter descriptors",
-  },
-  {
     id: "ct-coverage",
     label: "CT coverage",
     subtitle:
@@ -193,6 +190,12 @@ export const ADMIN_SERVER_PANELS: {
     label: "UI kit",
     subtitle:
       "Live preview of every tab / pill style with stable IDs (mobile + desktop notes)",
+  },
+  {
+    id: "intel-descriptor-sizes",
+    label: "Filter text",
+    subtitle:
+      "Mobile vs desktop idle size for Intelligence filter descriptors",
   },
 ];
 
@@ -640,7 +643,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-intel-descriptor-sizes",
     label: "Intelligence filter descriptor sizes",
-    tab: "data-controls",
+    tab: "server",
     panel: "intel-descriptor-sizes",
   },
   {
@@ -920,6 +923,14 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         detail: "List end-user listing alerts (Admin → Communications)",
         href: "/api/admin/saved-search-alerts",
       },
+      {
+        label: "PATCH /api/admin/saved-search-alerts",
+        detail: "Activate or disable a listing alert { id, active }",
+      },
+      {
+        label: "DELETE /api/admin/saved-search-alerts",
+        detail: "Permanently delete a listing alert { id }",
+      },
       { label: "GET /api/admin/rets-credentials", detail: "RETS credentials + optional probe", href: "/api/admin/rets-credentials" },
       { label: "POST /api/admin/rets-credentials", detail: "Save RETS credentials and probe login" },
       { label: "GET /api/admin/sync", detail: "Trigger sync actions", href: "/api/admin/sync" },
@@ -1006,7 +1017,6 @@ export function isAdminDataControlsPanelId(
     value === "rets" ||
     value === "intel-inventory" ||
     value === "intel-deal-board" ||
-    value === "intel-descriptor-sizes" ||
     value === "ct-coverage" ||
     value === "town-budget"
   );
@@ -1016,7 +1026,10 @@ export function isAdminServerPanelId(
   value: string | null | undefined,
 ): value is AdminServerPanelId {
   return (
-    value === "api-routes" || value === "page-styles" || value === "ui-kit"
+    value === "api-routes" ||
+    value === "page-styles" ||
+    value === "ui-kit" ||
+    value === "intel-descriptor-sizes"
   );
 }
 

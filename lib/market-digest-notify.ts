@@ -24,6 +24,7 @@ export type MarketDigestSendResult = {
 /**
  * Build and send the Monday months-supply / inventory digest via Resend.
  * When `force` is false, skips if disabled, already sent this ET week, or no API key.
+ * Admin "Send test now" uses `force: true` (same subject template; does not stamp the week).
  */
 export async function sendMarketDigestEmail(opts?: {
   force?: boolean
@@ -53,7 +54,10 @@ export async function sendMarketDigestEmail(opts?: {
   // Background worker has ~15 minutes, so the email can afford the two-year
   // closed-sales aggregate that Market Pulse fetches client-side.
   const snapshot = await buildMarketDigestSnapshot({ includeClosedTrailing: true })
-  const { subject, text, html } = formatMarketDigestEmail(snapshot)
+  const { subject, text, html } = formatMarketDigestEmail(snapshot, {
+    subjectTemplate: config.subjectTemplate,
+    includeSocialProfiles: config.includeSocialProfiles,
+  })
   const from =
     process.env.CONTACT_FROM_EMAIL?.trim() ||
     'TMRE Market Brief <notifications@tmre-website.com>'
@@ -71,7 +75,7 @@ export async function sendMarketDigestEmail(opts?: {
       body: JSON.stringify({
         from,
         to: [config.email],
-        subject: force ? `[Test] ${subject}` : subject,
+        subject,
         text,
         html,
       }),

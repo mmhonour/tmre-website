@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useLayoutEffect, useRef, useState } from "react";
 import { listingPhotoThumbUrls } from "@/lib/listing-url";
 import ListingThumbImage from "@/components/ListingThumbImage";
 
 const DECK_CARD_W = 52;
 const DECK_CARD_H = 40;
 const DECK_STAGGER_Y = 48;
+
+/** Fallback until the first thumb reports its intrinsic size (common MLS landscape). */
+const DEFAULT_PHOTO_ASPECT = 4 / 3;
 
 export default function DealPhotoThumbnailDeck({
   mlsId,
@@ -27,6 +31,25 @@ export default function DealPhotoThumbnailDeck({
 }) {
   // Skip photo 0 — same image as the hero; show photos 2–6 (indices 1–5).
   const thumbs = listingPhotoThumbUrls(mlsId, photoCount, 5, 1);
+  const stripRef = useRef<HTMLAnchorElement>(null);
+  const [stripHeight, setStripHeight] = useState(0);
+  /** width / height from the first decoded listing photo. */
+  const [photoAspect, setPhotoAspect] = useState(DEFAULT_PHOTO_ASPECT);
+
+  useLayoutEffect(() => {
+    if (variant !== "strip") return;
+    const el = stripRef.current;
+    if (!el) return;
+    const sync = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setStripHeight(h);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [variant, thumbs.length]);
+
   if (thumbs.length === 0) return null;
 
   const totalShown = 1 + thumbs.length;
@@ -75,10 +98,19 @@ export default function DealPhotoThumbnailDeck({
     );
   }
 
+  const n = thumbs.length;
+  // Column width so each thumb is photoAspect (w/h) at equal height shares of the hero.
+  const stripWidth =
+    stripHeight > 0 && n > 0
+      ? Math.max(1, (stripHeight / n) * photoAspect)
+      : undefined;
+
   return (
     <Link
+      ref={stripRef}
       href={photosHref}
-      className="group/strip flex h-full w-full min-h-0 flex-col items-stretch justify-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 rounded-md"
+      className="group/strip flex h-full min-h-0 shrink-0 flex-col gap-0 self-stretch focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+      style={stripWidth != null ? { width: stripWidth } : { width: "4.5rem" }}
       aria-label={`View all ${photoCount ?? thumbs.length} photos of ${address}`}
       onClick={(e) => e.stopPropagation()}
     >
@@ -87,13 +119,21 @@ export default function DealPhotoThumbnailDeck({
         return (
           <div
             key={`${src}-${i}`}
-            className="relative min-h-0 w-full flex-1 overflow-hidden rounded-md bg-navy-dark transition-opacity duration-200 group-hover/strip:opacity-95"
+            className="relative min-h-0 w-full flex-1 overflow-hidden bg-navy-dark"
           >
             <ListingThumbImage
               src={src}
               priority={priority && i === 0}
               className="absolute inset-0 block h-full w-full"
               imgClassName="absolute inset-0 h-full w-full object-cover"
+              onNaturalSize={(w, h) => {
+                if (i !== 0 || h <= 0) return;
+                const next = w / h;
+                if (!Number.isFinite(next) || next <= 0) return;
+                setPhotoAspect((prev) =>
+                  Math.abs(prev - next) < 0.01 ? prev : next,
+                );
+              }}
             />
             {isLast && extra > 0 ? (
               <span className="absolute inset-0 flex items-center justify-center bg-navy/55 font-mono text-[10px] tracking-wide text-white">

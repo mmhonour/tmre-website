@@ -574,6 +574,9 @@ export default async function AdminPage() {
       lastSentAt: null,
       lastWeekKey: null,
       defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
+      subjectTemplate:
+        "Monday market brief — months supply & inventory ({date})",
+      includeSocialProfiles: false,
     },
   )
   const deployNotify = await safe(
@@ -806,7 +809,6 @@ export default async function AdminPage() {
       rets={retsPanel}
       intelInventory={inventoryBandsPanel}
       intelDealBoard={<AdminIntelligenceDealBoardPanel />}
-      intelDescriptorSizes={<AdminIntelligenceDescriptorSizesPanel />}
       ctCoverage={<AdminCtCoveragePanel />}
       townBudget={
         <AdminTownBudgetSourcesPanel
@@ -867,6 +869,7 @@ export default async function AdminPage() {
       apiRoutes={<AdminServerFunctionsPanel />}
       pageStyles={<AdminPageStylesPanel />}
       uiKit={<AdminUiKitPanel />}
+      intelDescriptorSizes={<AdminIntelligenceDescriptorSizesPanel />}
     />
   );
 

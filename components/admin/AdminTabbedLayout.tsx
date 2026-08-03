@@ -132,6 +132,17 @@ function normalizeLegacyNestedTabUrls() {
     return;
   }
 
+  // Former Data controls → Filter text → Web server → Filter text.
+  if (
+    queryTab === "data-controls" &&
+    url.searchParams.get("panel") === "intel-descriptor-sizes"
+  ) {
+    url.searchParams.set("tab", "server");
+    url.searchParams.set("panel", "intel-descriptor-sizes");
+    window.history.replaceState(null, "", url);
+    return;
+  }
+
   // Former Architecture → UI kit → Web server → UI kit.
   if (queryTab === "architecture" && panel === "ui-kit") {
     url.searchParams.set("tab", "server");

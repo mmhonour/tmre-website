@@ -165,7 +165,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'sales-by-month:{town}:{sale|rental}',
     owner: 'lib/stats-cache.ts',
     notes:
-      'Also stores closedThisWeek (+ by zip) and wentToContractThisWeek (+ by zip) from Postgres Active/Closed rows — never a live RETS pull.',
+      'Also stores closedThisWeek (+ by zip), closedThisWeekVolume (sum of close prices for those closings), and wentToContractThisWeek (+ by zip) from Postgres Active/Closed rows — never a live RETS pull. Home Market Pulse reads weekly closings + dollar volume from here.',
     live: { kind: 'stats_cache_prefix', prefix: 'sales-by-month:' },
   },
   {

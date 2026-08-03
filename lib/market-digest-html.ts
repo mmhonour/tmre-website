@@ -64,30 +64,44 @@ function chartRows(snapshot: MarketDigestSnapshot): MonthsSupplyPayload[] {
   return rows
 }
 
+/** Fixed inner bar width — % widths on empty cells collapse in many mail clients. */
+const BAR_INNER_PX = 280
+const BAR_HEIGHT_PX = 14
+
 function barRow(
   label: string,
   valueLabel: string,
   pct: number,
   barColor: string,
 ): string {
-  const width = Math.max(0, Math.min(100, Math.round(pct)))
-  const remainder = 100 - width
+  const filled = Math.max(
+    0,
+    Math.min(BAR_INNER_PX, Math.round((Math.max(0, Math.min(100, pct)) / 100) * BAR_INNER_PX)),
+  )
+  const empty = BAR_INNER_PX - filled
+  // Spacer chars keep Outlook/Gmail from collapsing colored cells to 0 height.
+  const fill =
+    filled <= 0
+      ? ''
+      : `<td width="${filled}" bgcolor="${barColor}" height="${BAR_HEIGHT_PX}" style="width:${filled}px;max-width:${filled}px;height:${BAR_HEIGHT_PX}px;background-color:${barColor};font-size:0;line-height:${BAR_HEIGHT_PX}px;mso-line-height-rule:exactly;">&nbsp;</td>`
+  const track =
+    empty <= 0
+      ? ''
+      : `<td width="${empty}" bgcolor="${BAR_TRACK}" height="${BAR_HEIGHT_PX}" style="width:${empty}px;max-width:${empty}px;height:${BAR_HEIGHT_PX}px;background-color:${BAR_TRACK};font-size:0;line-height:${BAR_HEIGHT_PX}px;mso-line-height-rule:exactly;">&nbsp;</td>`
   const barCell =
-    width <= 0
-      ? `<td bgcolor="${BAR_TRACK}" style="height:14px;font-size:0;line-height:0;border-radius:2px;">&nbsp;</td>`
-      : remainder <= 0
-        ? `<td width="100%" bgcolor="${barColor}" style="height:14px;font-size:0;line-height:0;border-radius:2px;">&nbsp;</td>`
-        : `<td width="${width}%" bgcolor="${barColor}" style="height:14px;font-size:0;line-height:0;border-radius:2px 0 0 2px;">&nbsp;</td><td width="${remainder}%" bgcolor="${BAR_TRACK}" style="height:14px;font-size:0;line-height:0;border-radius:0 2px 2px 0;">&nbsp;</td>`
+    filled <= 0 && empty <= 0
+      ? `<td width="${BAR_INNER_PX}" bgcolor="${BAR_TRACK}" height="${BAR_HEIGHT_PX}" style="width:${BAR_INNER_PX}px;height:${BAR_HEIGHT_PX}px;background-color:${BAR_TRACK};font-size:0;line-height:${BAR_HEIGHT_PX}px;">&nbsp;</td>`
+      : `${fill}${track}`
 
   return `
     <tr>
-      <td style="padding:6px 10px 6px 0;font-family:Georgia,serif;font-size:13px;color:${NAVY};white-space:nowrap;width:110px;vertical-align:middle;">${escapeHtml(label)}</td>
+      <td width="110" style="padding:6px 10px 6px 0;font-family:Georgia,serif;font-size:13px;color:${NAVY};white-space:nowrap;width:110px;vertical-align:middle;">${escapeHtml(label)}</td>
       <td style="padding:6px 8px;vertical-align:middle;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <table role="presentation" width="${BAR_INNER_PX}" cellpadding="0" cellspacing="0" border="0" style="width:${BAR_INNER_PX}px;border-collapse:collapse;table-layout:fixed;">
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td style="padding:6px 0 6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:${NAVY};text-align:right;white-space:nowrap;width:56px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="64" style="padding:6px 0 6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:${NAVY};text-align:right;white-space:nowrap;width:64px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
     </tr>`
 }
 
@@ -221,13 +235,20 @@ function dealOfTheWeekSection(
     </td></tr>`
 }
 
+export type FormatMarketDigestHtmlOptions = {
+  /** Opt-in footer from Admin → Communications → Social profiles. Default off. */
+  includeSocialProfiles?: boolean
+}
+
 /**
  * Email-safe HTML grid for the Monday market brief (table layout, inline styles).
  */
 export function formatMarketDigestHtml(
   snapshot: MarketDigestSnapshot,
   etDate: string,
+  options?: FormatMarketDigestHtmlOptions,
 ): string {
+  const includeSocial = options?.includeSocialProfiles === true
   const rows = chartRows(snapshot)
   const marketActive = snapshot.market ? fmtActive(snapshot.market.activeCount) : '—'
   const marketMos = snapshot.market
@@ -237,16 +258,26 @@ export function formatMarketDigestHtml(
     ? fmtMosShort(snapshot.westport.monthsSupply)
     : '—'
 
-  const filledSocial = snapshot.socialProfiles.filter((p) => p.handleOrUrl)
-  const socialHtml =
-    filledSocial.length === 0
-      ? `<p style="margin:0;font-family:Georgia,serif;font-size:13px;color:${SLATE};">No social handles saved yet (Admin → Site).</p>`
-      : `<table role="presentation" cellpadding="0" cellspacing="0" border="0">${filledSocial
-          .map(
-            (p) =>
-              `<tr><td style="padding:3px 0;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:${NAVY};">${escapeHtml(p.label)}: ${escapeHtml(p.handleOrUrl)}</td></tr>`,
-          )
-          .join('')}</table>`
+  const filledSocial = includeSocial
+    ? snapshot.socialProfiles.filter((p) => p.handleOrUrl)
+    : []
+  const socialSection =
+    !includeSocial
+      ? ''
+      : `
+                <tr><td style="padding:0 0 8px 0;">
+                  <p style="margin:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Social profiles</p>
+                  ${
+                    filledSocial.length === 0
+                      ? `<p style="margin:0;font-family:Georgia,serif;font-size:13px;color:${SLATE};">No social handles saved yet (Admin → Communications).</p>`
+                      : `<table role="presentation" cellpadding="0" cellspacing="0" border="0">${filledSocial
+                          .map(
+                            (p) =>
+                              `<tr><td style="padding:3px 0;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:${NAVY};">${escapeHtml(p.label)}: ${escapeHtml(p.handleOrUrl)}</td></tr>`,
+                          )
+                          .join('')}</table>`
+                  }
+                </td></tr>`
 
   const dealSection = snapshot.dealOfTheWeek
     ? dealOfTheWeekSection(snapshot.dealOfTheWeek)
@@ -331,10 +362,7 @@ export function formatMarketDigestHtml(
                     MOS = active ÷ avg monthly closings (3 prior full months). Sale listings, all property classes.
                   </p>
                 </td></tr>
-                <tr><td style="padding:0 0 8px 0;">
-                  <p style="margin:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Social profiles</p>
-                  ${socialHtml}
-                </td></tr>
+                ${socialSection}
               </table>
             </td>
           </tr>

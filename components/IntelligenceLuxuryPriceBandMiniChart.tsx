@@ -371,24 +371,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
 
   return (
     <div className="relative flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
-      <div className="flex w-full min-w-0 items-start gap-2">
-          <div className="flex w-[4.75rem] shrink-0 flex-col items-start justify-center gap-1 self-stretch">
-            <p className="bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
-              {chartTitle}
-            </p>
-            {/* Desktop hint; mobile carousel strip shows its own. */}
-            <p
-              className={`pointer-events-none hidden italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
-                showInteractiveHint
-                  ? "animate-interactive-graph-hint"
-                  : "opacity-0"
-              }`}
-              aria-hidden={!showInteractiveHint}
-            >
-              interactive graph
-            </p>
-          </div>
-          <div className="flex min-w-0 max-w-[248px] flex-1 flex-col items-stretch gap-0.5">
+      <div className="flex w-full min-w-0 max-w-[248px] flex-col items-stretch gap-0.5">
           <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <div
               role="tablist"
@@ -453,6 +436,23 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
             </button>
           </div>
           {points.length > 0 ? (
+          <div className="relative w-full">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-between gap-2 px-0.5">
+              <p className="min-w-0 bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+                {chartTitle}
+              </p>
+              {/* Desktop hint; mobile carousel strip shows its own. */}
+              <p
+                className={`hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
+                  showInteractiveHint
+                    ? "animate-interactive-graph-hint"
+                    : "opacity-0"
+                }`}
+                aria-hidden={!showInteractiveHint}
+              >
+                interactive graph
+              </p>
+            </div>
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="h-[4.5rem] w-full overflow-visible bg-transparent"
@@ -539,8 +539,12 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
               );
             })}
           </svg>
+          </div>
           ) : (
-            <div className="flex h-[4.5rem] w-full max-w-[248px] items-center justify-center">
+            <div className="relative flex h-[4.5rem] w-full max-w-[248px] items-center justify-center">
+              <p className="pointer-events-none absolute left-0.5 top-0 font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+                {chartTitle}
+              </p>
               <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/45">
                 No inventory in this band
               </p>
@@ -560,7 +564,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
               </button>
             </div>
           ) : null}
-          </div>
       </div>
     </div>
   );

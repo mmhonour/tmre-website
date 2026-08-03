@@ -292,13 +292,20 @@ const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 export type AdminSavedSearchAlertRow = {
   id: string
   email: string | null
+  visitorId: string | null
   criteriaLabel: string
+  criteriaFingerprint: string
   cadence: AlertCadence
   cadenceLabel: string
   channel: AlertChannel
   active: boolean
   lastNotifiedAt: string | null
   createdAt: string
+  /**
+   * True when another alert shares the same email + criteria fingerprint
+   * (same person signed up for the same search more than once).
+   */
+  isDuplicate: boolean
 }
 
 function cadenceLabelFor(row: SavedSearchAlert): string {
@@ -315,6 +322,15 @@ function cadenceLabelFor(row: SavedSearchAlert): string {
   return 'Weekly'
 }
 
+function adminUserKey(email: string | null): string {
+  const trimmed = email?.trim().toLowerCase() ?? ''
+  return trimmed || '(no email)'
+}
+
+function duplicateGroupKey(email: string | null, fingerprint: string): string {
+  return `${adminUserKey(email)}\0${fingerprint}`
+}
+
 /** Newest end-user listing alerts for Admin → Communications. */
 export async function listSavedSearchAlertsForAdmin(
   limit = 100,
@@ -327,20 +343,61 @@ export async function listSavedSearchAlertsForAdmin(
      LIMIT $1`,
     [capped],
   )
-  return rows.map((row) => {
-    const alert = mapRow(row)
+  const alerts = rows.map(mapRow)
+  const dupCounts = new Map<string, number>()
+  for (const alert of alerts) {
+    const key = duplicateGroupKey(alert.email, alert.criteriaFingerprint)
+    dupCounts.set(key, (dupCounts.get(key) ?? 0) + 1)
+  }
+  return alerts.map((alert) => {
+    const key = duplicateGroupKey(alert.email, alert.criteriaFingerprint)
     return {
       id: alert.id,
       email: alert.email,
+      visitorId: alert.visitorId,
       criteriaLabel: alert.criteriaLabel,
+      criteriaFingerprint: alert.criteriaFingerprint,
       cadence: alert.cadence,
       cadenceLabel: cadenceLabelFor(alert),
       channel: alert.channel,
       active: alert.active,
       lastNotifiedAt: alert.lastNotifiedAt,
       createdAt: alert.createdAt,
+      isDuplicate: (dupCounts.get(key) ?? 0) > 1,
     }
   })
+}
+
+/** Enable or disable a listing alert (admin). Returns false if id missing. */
+export async function setSavedSearchAlertActive(
+  id: string,
+  active: boolean,
+): Promise<boolean> {
+  await ensureSavedSearchAlertTables()
+  const trimmed = id.trim()
+  if (!trimmed) return false
+  const updated = await query<{ id: string }>(
+    `UPDATE saved_search_alerts
+     SET active = $2, updated_at = now()
+     WHERE id = $1
+     RETURNING id`,
+    [trimmed, active],
+  )
+  return updated.length > 0
+}
+
+/** Permanently delete a listing alert and its delivery rows (admin). */
+export async function deleteSavedSearchAlert(id: string): Promise<boolean> {
+  await ensureSavedSearchAlertTables()
+  const trimmed = id.trim()
+  if (!trimmed) return false
+  const deleted = await query<{ id: string }>(
+    `DELETE FROM saved_search_alerts
+     WHERE id = $1
+     RETURNING id`,
+    [trimmed],
+  )
+  return deleted.length > 0
 }
 
 type ListingMatchRow = {

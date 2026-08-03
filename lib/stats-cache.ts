@@ -172,6 +172,7 @@ export async function readAggregatedSalesByMonth(
     data: aggregateMonthCounts(rows, statsMonthChartYears()),
     closedThisWeek: 0,
     closedThisWeekByZip: {},
+    closedThisWeekVolume: 0,
     wentToContractThisWeek: 0,
     wentToContractThisWeekByZip: {},
     generatedAt,

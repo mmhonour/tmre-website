@@ -5,6 +5,8 @@ import {
   getMarketDigestConfigFresh,
   setMarketDigestEmail,
   setMarketDigestEnabled,
+  setMarketDigestIncludeSocialProfiles,
+  setMarketDigestSubjectTemplate,
 } from '@/lib/market-digest-config'
 import { sendMarketDigestEmail } from '@/lib/market-digest-notify'
 
@@ -34,7 +36,12 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const o = body as { email?: unknown; enabled?: unknown }
+  const o = body as {
+    email?: unknown
+    enabled?: unknown
+    subjectTemplate?: unknown
+    includeSocialProfiles?: unknown
+  }
   try {
     if (typeof o.email === 'string') {
       if (!isValidEmail(o.email)) {
@@ -47,6 +54,12 @@ export async function PATCH(req: NextRequest) {
     }
     if (typeof o.enabled === 'boolean') {
       await setMarketDigestEnabled(o.enabled)
+    }
+    if (typeof o.subjectTemplate === 'string') {
+      await setMarketDigestSubjectTemplate(o.subjectTemplate)
+    }
+    if (typeof o.includeSocialProfiles === 'boolean') {
+      await setMarketDigestIncludeSocialProfiles(o.includeSocialProfiles)
     }
     return NextResponse.json({ ok: true, ...(await payload()) })
   } catch (err) {

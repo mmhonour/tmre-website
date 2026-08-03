@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { MarketDigestConfig } from "@/lib/market-digest-shared";
+import {
+  DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  type MarketDigestConfig,
+} from "@/lib/market-digest-shared";
 
 function isValidEmail(value: string): boolean {
   const trimmed = value.trim();
@@ -9,9 +12,15 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
+function previewSubject(template: string): string {
+  const sample = "Monday, August 3, 2026";
+  const base = template.trim() || DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE;
+  return base.replaceAll("{date}", sample);
+}
+
 /**
  * Monday morning months-supply / inventory email + Deal of the Week note.
- * Cron: Netlify market-digest (Mon ~8am ET).
+ * Cron: Netlify market-digest (Mon ~8am ET) — separate from MLS incremental sync.
  */
 export default function AdminMarketDigestPanel({
   initial,
@@ -21,6 +30,12 @@ export default function AdminMarketDigestPanel({
   const [config, setConfig] = useState<MarketDigestConfig | null>(initial ?? null);
   const [email, setEmail] = useState(initial?.email ?? "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
+  const [subjectTemplate, setSubjectTemplate] = useState(
+    initial?.subjectTemplate ?? DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  );
+  const [includeSocialProfiles, setIncludeSocialProfiles] = useState(
+    initial?.includeSocialProfiles ?? false,
+  );
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -35,6 +50,8 @@ export default function AdminMarketDigestPanel({
         setConfig(body);
         setEmail(body.email);
         setEnabled(body.enabled);
+        setSubjectTemplate(body.subjectTemplate);
+        setIncludeSocialProfiles(body.includeSocialProfiles);
       })
       .catch(() => {});
     return () => {
@@ -44,7 +61,10 @@ export default function AdminMarketDigestPanel({
 
   const dirty =
     config != null &&
-    (config.email !== email.trim() || config.enabled !== enabled);
+    (config.email !== email.trim() ||
+      config.enabled !== enabled ||
+      config.subjectTemplate !== subjectTemplate.trim() ||
+      config.includeSocialProfiles !== includeSocialProfiles);
 
   const save = async () => {
     const trimmed = email.trim();
@@ -58,7 +78,12 @@ export default function AdminMarketDigestPanel({
       const res = await fetch("/api/admin/market-digest", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: trimmed, enabled }),
+        body: JSON.stringify({
+          email: trimmed,
+          enabled,
+          subjectTemplate: subjectTemplate.trim(),
+          includeSocialProfiles,
+        }),
       });
       const body = (await res.json()) as MarketDigestConfig & {
         ok?: boolean;
@@ -71,6 +96,8 @@ export default function AdminMarketDigestPanel({
       setConfig(body);
       setEmail(body.email);
       setEnabled(body.enabled);
+      setSubjectTemplate(body.subjectTemplate);
+      setIncludeSocialProfiles(body.includeSocialProfiles);
       setMessage(
         body.enabled
           ? `Saved — Monday brief goes to ${body.email}`
@@ -110,6 +137,10 @@ export default function AdminMarketDigestPanel({
                 lastSentAt: body.lastSentAt ?? prev.lastSentAt,
                 lastWeekKey: body.lastWeekKey ?? prev.lastWeekKey,
                 defaultEmail: body.defaultEmail ?? prev.defaultEmail,
+                subjectTemplate:
+                  body.subjectTemplate ?? prev.subjectTemplate,
+                includeSocialProfiles:
+                  body.includeSocialProfiles ?? prev.includeSocialProfiles,
               }
             : (body as MarketDigestConfig),
         );
@@ -134,9 +165,9 @@ export default function AdminMarketDigestPanel({
           Monday market brief
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
-          Weekly HTML email every Monday morning (~8am Eastern): inventory and
-          months-supply bar charts by town, plus a Deal of the Week photo card
-          matching the site wording. Plain-text fallback included. Requires{" "}
+          Weekly HTML email every Monday morning (~8am Eastern) via its own
+          Netlify cron — not the MLS incremental sync. Inventory / months-supply
+          bars, DOTW card, plain-text fallback. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
         </p>
       </div>
@@ -183,6 +214,44 @@ export default function AdminMarketDigestPanel({
             {sending ? "Sending…" : "Send test now"}
           </button>
         </div>
+
+        <label className="flex flex-col gap-1 max-w-xl">
+          <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
+            Email subject
+          </span>
+          <input
+            type="text"
+            value={subjectTemplate}
+            onChange={(e) => setSubjectTemplate(e.target.value)}
+            placeholder={DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE}
+            className="w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm text-navy focus:border-navy focus:outline-none"
+          />
+          <span className="font-mono text-[10px] text-charcoal/40">
+            Use {"{date}"} for the Eastern long date. Preview:{" "}
+            <span className="text-charcoal/65">
+              {previewSubject(subjectTemplate)}
+            </span>
+          </span>
+        </label>
+
+        <label className="inline-flex items-start gap-2 cursor-pointer select-none max-w-xl">
+          <input
+            type="checkbox"
+            checked={includeSocialProfiles}
+            onChange={(e) => setIncludeSocialProfiles(e.target.checked)}
+            className="mt-0.5 rounded border-charcoal/30"
+          />
+          <span>
+            <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/70">
+              Include social profiles in email
+            </span>
+            <span className="mt-0.5 block text-xs text-slate">
+              Off by default. When on, appends Admin → Communications → Social
+              profiles at the bottom of the brief.
+            </span>
+          </span>
+        </label>
+
         {config ? (
           <p className="font-mono text-[10px] text-charcoal/45">
             last sent{" "}

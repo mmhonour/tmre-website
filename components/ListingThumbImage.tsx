@@ -22,6 +22,8 @@ type ListingThumbImageProps = {
   /** Override pulse placeholder (e.g. light feed backgrounds). */
   placeholderClassName?: string;
   onLoaded?: () => void;
+  /** Fires with the decoded image’s intrinsic pixel size (for aspect-true thumbs). */
+  onNaturalSize?: (width: number, height: number) => void;
   onFailed?: () => void;
 };
 
@@ -34,6 +36,7 @@ export default function ListingThumbImage({
   hideLoadingPlaceholder = false,
   placeholderClassName = "absolute inset-0 bg-white/10 animate-pulse",
   onLoaded,
+  onNaturalSize,
   onFailed,
 }: ListingThumbImageProps) {
   const [activeSrc, setActiveSrc] = useState(src);
@@ -63,11 +66,15 @@ export default function ListingThumbImage({
           loading={priority ? "eager" : "lazy"}
           fetchPriority={priority ? "high" : "auto"}
           decoding="async"
-          onLoad={() => {
+          onLoad={(e) => {
             loadedSrcCache.add(activeSrc);
             failedSrcCache.delete(activeSrc);
             setLoaded(true);
             setFailed(false);
+            const img = e.currentTarget;
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+              onNaturalSize?.(img.naturalWidth, img.naturalHeight);
+            }
             onLoaded?.();
           }}
           onError={() => {

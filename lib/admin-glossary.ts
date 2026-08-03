@@ -203,7 +203,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email (Netlify market-digest cron, Mon ~8am ET) with months supply, inventory by town, formula explanation, and Deal of the Week text. Same snapshot powers the public /market-pulse page (former /weekly-brief redirects there). Configure recipient on Admin → Communications → Monday market brief; social graphic posting comes later.',
+      'Weekly Resend email via its own Netlify cron (market-digest, Mon 12:00 UTC ≈ 8am ET) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Admin → Communications → Monday market brief: recipient, subject template ({date}), optional social-profiles footer (off by default), Send test now.',
   },
   {
     term: 'Deploy notifications',
@@ -221,7 +221,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Saved search / listing alert',
     category: 'product',
     definition:
-      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries. Browse signups in Admin → Communications → Listing alerts.',
+      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries. Manage in Admin → Communications → Listing alerts (group by email, activate/disable/delete; duplicate = same email + same criteria fingerprint).',
   },
 
   // —— Sync / admin ——

@@ -8,7 +8,13 @@ import {
   type StatScaleDirection,
 } from "@/lib/stat-scale-color";
 
-type SortKey = "medianPrice" | "daysOnMarket" | "saleToList" | "monthsSupply";
+type SortKey =
+  | "medianPrice"
+  | "daysOnMarket"
+  | "saleToList"
+  | "monthsSupply"
+  | "closedThisWeekVolume"
+  | "closedThisWeek";
 
 const SORT_FIELDS: {
   key: SortKey;
@@ -20,6 +26,8 @@ const SORT_FIELDS: {
   { key: "daysOnMarket", label: "Days on market", natural: "desc" },
   { key: "saleToList", label: "Sale-to-list", natural: "asc" },
   { key: "monthsSupply", label: "Months supply", natural: "desc" },
+  { key: "closedThisWeekVolume", label: "Volume closed", natural: "desc" },
+  { key: "closedThisWeek", label: "Closings", natural: "desc" },
 ];
 
 function formatPrice(n: number | null): string {
@@ -47,6 +55,11 @@ function formatMos(n: number | null): string {
   return n.toFixed(1);
 }
 
+function formatCount(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return String(Math.round(n));
+}
+
 export default function HomeMarketPulse({
   towns,
 }: {
@@ -62,6 +75,8 @@ export default function HomeMarketPulse({
       daysOnMarket: towns.map((t) => t.daysOnMarket),
       saleToList: towns.map((t) => t.saleToList),
       monthsSupply: towns.map((t) => t.monthsSupply),
+      closedThisWeekVolume: towns.map((t) => t.closedThisWeekVolume),
+      closedThisWeek: towns.map((t) => t.closedThisWeek),
     }),
     [towns],
   );
@@ -185,6 +200,8 @@ function CityCard({
     daysOnMarket: (number | null)[];
     saleToList: (number | null)[];
     monthsSupply: (number | null)[];
+    closedThisWeekVolume: (number | null)[];
+    closedThisWeek: (number | null)[];
   };
 }) {
   const stats: {
@@ -232,6 +249,28 @@ function CityCard({
         town.monthsSupply,
         peers.monthsSupply,
         "desc",
+      ),
+    },
+    {
+      key: "closedThisWeekVolume",
+      label: "Volume closed",
+      value: formatPrice(town.closedThisWeekVolume),
+      trend: town.trends.closedThisWeekVolume,
+      style: relativeStatColorStyle(
+        town.closedThisWeekVolume,
+        peers.closedThisWeekVolume,
+        "asc",
+      ),
+    },
+    {
+      key: "closedThisWeek",
+      label: "Closings",
+      value: formatCount(town.closedThisWeek),
+      trend: town.trends.closedThisWeek,
+      style: relativeStatColorStyle(
+        town.closedThisWeek,
+        peers.closedThisWeek,
+        "asc",
       ),
     },
   ];
