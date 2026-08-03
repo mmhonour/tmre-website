@@ -165,14 +165,30 @@ export async function runIncrementalSyncListingsWork(
     // Admin Syncs "Stats cache" — dedicated path (no RETS / pause gates / cron tick).
     if (statsCacheOnly) {
       const { rebuildStatsCache } = await import('@/lib/stats-cache')
+      const { recordDashboardSyncAudit } = await import('@/lib/db/listings-repo')
       const result = await rebuildStatsCache({
         trackRefresh: true,
         force: true,
       })
+      const finishedAt = new Date().toISOString()
       const ok = !result.skipped && result.written > 0
+      const detail = result.skipped
+        ? `Stats cache skipped — ${result.skipReason ?? 'unknown'}`
+        : ok
+          ? `Stats cache rebuilt — ${result.written.toLocaleString()} entries`
+          : 'Stats cache rebuilt — 0 entries (check listings inventory / Neon)'
       console.info(
         `[sync-listings-work] statsCacheOnly written=${result.written} skipped=${result.skipped ?? false} reason=${result.skipReason ?? '—'}`,
       )
+      // Sync History — Admin queue only wrote Queued/stats; this is Done|Failed.
+      await recordDashboardSyncAudit({
+        startedAt,
+        finishedAt,
+        syncSuffix: 'stats',
+        listingsCount: result.written,
+        ok,
+        detail,
+      })
       return {
         status: ok ? 200 : 409,
         body: {
@@ -183,7 +199,7 @@ export async function runIncrementalSyncListingsWork(
           skipReason: result.skipReason ?? null,
           durationMs: result.durationMs,
           startedAt,
-          finishedAt: new Date().toISOString(),
+          finishedAt,
           stats: await getSyncStatus(),
         },
       }

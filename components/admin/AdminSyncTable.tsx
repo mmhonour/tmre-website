@@ -33,6 +33,7 @@ import {
 import {
   SYNC_SCHEDULE_FREQUENCIES,
   defaultSyncScheduleConfig,
+  frequencyIntervalMs,
   frequencyLabel,
   orderNumberByRow,
   syncAllClientStepsFromConfig,
@@ -1132,10 +1133,44 @@ function isScheduleBreached(
   return finishedMs < dueMs;
 }
 
+/**
+ * True when last End is older than the Configure cadence allows — even if Next
+ * still shows a future wall-clock (daily/weekly Next ignores stale finishes).
+ */
+function isFinishPastCadence(
+  finishedAt: string | null,
+  nextRunAt: string | null,
+  frequency: SyncScheduleFrequencyId | undefined,
+  nowMs: number,
+): boolean {
+  const finishedMs = parseIsoMs(finishedAt);
+  if (finishedMs == null || !frequency) return false;
+  const intervalMs = frequencyIntervalMs(frequency);
+  if (intervalMs != null) {
+    return nowMs - finishedMs >= intervalMs + 60_000;
+  }
+  // Calendar jobs: Next is the upcoming slot from *now*. The previous slot is
+  // roughly Next − one period; finishing before that means a missed run.
+  const nextMs = parseIsoMs(nextRunAt);
+  if (nextMs == null) return false;
+  const periodMs =
+    frequency === "daily"
+      ? 24 * 60 * 60_000
+      : frequency === "weekly"
+        ? 7 * 24 * 60 * 60_000
+        : frequency === "monthly"
+          ? 30 * 24 * 60 * 60_000
+          : null;
+  if (periodMs == null) return false;
+  const lastSlotMs = nextMs - periodMs;
+  return finishedMs < lastSlotMs - 60_000;
+}
+
 function resolveSyncRowVisualStatus(options: {
   row: AdminSyncRow;
   timing: SyncTiming;
   nextRunAt: string | null;
+  jobFrequency?: SyncScheduleFrequencyId;
   status: PanelStatus | null;
   isRunning: boolean;
   syncAllRunning: boolean;
@@ -1148,6 +1183,7 @@ function resolveSyncRowVisualStatus(options: {
     row,
     timing,
     nextRunAt,
+    jobFrequency,
     status,
     isRunning,
     syncAllRunning,
@@ -1198,11 +1234,16 @@ function resolveSyncRowVisualStatus(options: {
   // action of its own so it should never turn green regardless of its timestamp.
   if (row.id === "latest-mls") return "idle";
 
-  // Successful End → green when still on schedule. Once Next is overdue, paint
-  // the row rose so a stalled cadence (e.g. incremental silent for a day) is
-  // obvious — not just a tiny "Overdue" on the Next label.
+  // Successful End → green when still on schedule. Alert when Next is past *or*
+  // End is older than Configure cadence (daily Next can stay future for hours
+  // while End is days stale — that must not stay sage).
   if (timing.finished) {
-    if (isScheduleBreached(nextRunAt, timing.finished, nowMs)) return "alert";
+    if (
+      isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
+      isFinishPastCadence(timing.finished, nextRunAt, jobFrequency, nowMs)
+    ) {
+      return "alert";
+    }
     return "ok";
   }
 
@@ -2477,13 +2518,14 @@ export default function AdminSyncTable({
       <div className="overflow-x-auto">
         <table
           className={`w-full border-collapse table-fixed ${
-            isDashboard ? "min-w-[760px] md:min-w-[920px]" : "min-w-[880px]"
+            isDashboard ? "min-w-[820px] md:min-w-[980px]" : "min-w-[880px]"
           }`}
         >
           <colgroup>
             {isConfigure ? <col className="w-[3.25rem]" /> : null}
             <col className="w-[3rem]" />
-            {isDashboard ? <col className="w-[6.25rem]" /> : null}
+            {isDashboard ? <col className="w-[5.5rem]" /> : null}
+            {isDashboard ? <col className="w-[5.25rem]" /> : null}
             <col className={isDashboard ? "w-[7.5rem]" : "w-[9rem]"} />
             {isConfigure ? <col /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
@@ -2514,6 +2556,14 @@ export default function AdminSyncTable({
                 Order
               </th>
               {isDashboard ? <th className={TH}>Action</th> : null}
+              {isDashboard ? (
+                <th
+                  className={TH}
+                  title="Optional town / listing-status scope for Sync now (Incremental for now)"
+                >
+                  Scope
+                </th>
+              ) : null}
                   <th className="px-3 py-2 text-left font-mono text-[8px] tracking-[0.14em] uppercase text-charcoal/40 border-r border-b border-transparent bg-cream/30 whitespace-nowrap">
                     Sync
                   </th>
@@ -2593,22 +2643,19 @@ export default function AdminSyncTable({
 
               return [...rows]
               .sort((a, b) => {
-                if (isConfigure) {
-                  const aOrder = orderByRow[a.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[a.id] ?? 999;
-                  const bOrder = orderByRow[b.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[b.id] ?? 999;
-                  if (aOrder !== bOrder) return aOrder - bOrder;
-                  return a.label.localeCompare(b.label);
+                // Same Configure order on Dashboard so #5 Stats cache lines up.
+                // Running rows still pin to the top so in-flight work is visible.
+                if (!isConfigure) {
+                  const aRunning = rowIsRunningForSort(a);
+                  const bRunning = rowIsRunningForSort(b);
+                  if (aRunning !== bRunning) return aRunning ? -1 : 1;
                 }
-                const aRunning = rowIsRunningForSort(a);
-                const bRunning = rowIsRunningForSort(b);
-                if (aRunning !== bRunning) return aRunning ? -1 : 1;
-                const aFinished = parseIsoMs(
-                  timingWithLogFallback(a, status, runTimings, runSnapshot).finished,
-                );
-                const bFinished = parseIsoMs(
-                  timingWithLogFallback(b, status, runTimings, runSnapshot).finished,
-                );
-                return (bFinished ?? -Infinity) - (aFinished ?? -Infinity);
+                const aOrder =
+                  orderByRow[a.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[a.id] ?? 999;
+                const bOrder =
+                  orderByRow[b.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[b.id] ?? 999;
+                if (aOrder !== bOrder) return aOrder - bOrder;
+                return a.label.localeCompare(b.label);
               })
               .map((row, index) => {
               const isRunning =
@@ -2633,6 +2680,10 @@ export default function AdminSyncTable({
                 row.id === "zip-boundaries" ||
                 row.id === "market-digest";
               const nextRunAt = nextRunForRow(row, status);
+              const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+              const jobSchedule = pauseJob
+                ? scheduleConfig.jobs[pauseJob]
+                : null;
               // Configure is schedule/setup only — no live status colors.
               const visual = isConfigure
                 ? ("idle" as const)
@@ -2640,6 +2691,7 @@ export default function AdminSyncTable({
                     row,
                     timing,
                     nextRunAt,
+                    jobFrequency: jobSchedule?.frequency,
                     status,
                     isRunning: isRunning || isWaiting,
                     syncAllRunning,
@@ -2647,19 +2699,18 @@ export default function AdminSyncTable({
                     error: rowError,
                     nowMs,
                   });
-              const scheduleBreached = isScheduleBreached(
-                nextRunAt,
-                timing.finished,
-                nowMs,
-              );
+              const scheduleBreached =
+                isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
+                isFinishPastCadence(
+                  timing.finished,
+                  nextRunAt,
+                  jobSchedule?.frequency,
+                  nowMs,
+                );
               const manualOrder =
                 orderByRow[row.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
-              const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
               const rowPaused = Boolean(pauseJob && pausedJobs[pauseJob]);
               const derivedScheduleHint = configureScheduleHintForRow(row.id);
-              const jobSchedule = pauseJob
-                ? scheduleConfig.jobs[pauseJob]
-                : null;
               const orderIndex = pauseJob
                 ? scheduleConfig.order.indexOf(pauseJob)
                 : -1;
@@ -2835,75 +2886,75 @@ export default function AdminSyncTable({
                   {isDashboard ? (
                     <td className={cellPad}>
                       {row.actionId ? (
-                        <div className="flex flex-col items-start gap-1.5">
-                          {row.id === "incremental" ? (
-                            <div className="flex flex-col gap-1.5">
-                              <label className="flex flex-col gap-0.5">
-                                <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
-                                  Towns
-                                </span>
-                                <select
-                                  value={incrementalTownScope}
-                                  disabled={disabled}
-                                  onChange={(e) =>
-                                    setIncrementalTownScope(e.target.value)
-                                  }
-                                  className="max-w-[9.5rem] rounded-md border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] text-navy disabled:opacity-40"
-                                  aria-label="Incremental town scope"
-                                >
-                                  <option value="">All Towns</option>
-                                  {TMRE_TOWNS.map((town) => (
-                                    <option key={town} value={town}>
-                                      {town}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="flex flex-col gap-0.5">
-                                <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
-                                  Status
-                                </span>
-                                <select
-                                  value={incrementalStatusScope}
-                                  disabled={disabled}
-                                  onChange={(e) =>
-                                    setIncrementalStatusScope(
-                                      e.target.value as
-                                        | "all"
-                                        | "active"
-                                        | "closed",
-                                    )
-                                  }
-                                  className="max-w-[9.5rem] rounded-md border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] text-navy disabled:opacity-40"
-                                  aria-label="Incremental status scope"
-                                >
-                                  <option value="all">
-                                    All (Active+Closed)
-                                  </option>
-                                  <option value="active">
-                                    Active family
-                                  </option>
-                                  <option value="closed">Closed only</option>
-                                </select>
-                              </label>
-                            </div>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => runSync(row)}
-                            disabled={disabled}
-                            className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
-                          >
-                            {isRunning
-                              ? "Syncing…"
-                              : isWaiting
-                                ? "Queued"
-                                : "Sync now"}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => runSync(row)}
+                          disabled={disabled}
+                          className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
+                        >
+                          {isRunning
+                            ? "Syncing…"
+                            : isWaiting
+                              ? "Queued"
+                              : "Sync now"}
+                        </button>
                       ) : (
                         <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
                       )}
+                    </td>
+                  ) : null}
+                  {isDashboard ? (
+                    <td className={cellPad}>
+                      {row.id === "incremental" ? (
+                        <div className="flex flex-col gap-px">
+                          <label className="flex flex-col gap-px">
+                            <span className="font-mono text-[7px] tracking-[0.1em] uppercase text-charcoal/45 leading-none">
+                              Towns
+                            </span>
+                            <select
+                              value={incrementalTownScope}
+                              disabled={disabled}
+                              onChange={(e) =>
+                                setIncrementalTownScope(e.target.value)
+                              }
+                              className="w-full max-w-[4.75rem] h-4 rounded border border-charcoal/15 bg-white px-1 py-0 font-mono text-[8px] leading-none text-navy disabled:opacity-40"
+                              aria-label="Incremental town scope"
+                            >
+                              <option value="">All Towns</option>
+                              {TMRE_TOWNS.map((town) => (
+                                <option key={town} value={town}>
+                                  {town}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="flex flex-col gap-px">
+                            <span className="font-mono text-[7px] tracking-[0.1em] uppercase text-charcoal/45 leading-none">
+                              Status
+                            </span>
+                            <select
+                              value={incrementalStatusScope}
+                              disabled={disabled}
+                              onChange={(e) =>
+                                setIncrementalStatusScope(
+                                  e.target.value as
+                                    | "all"
+                                    | "active"
+                                    | "closed",
+                                )
+                              }
+                              className="w-full max-w-[4.75rem] h-4 rounded border border-charcoal/15 bg-white px-1 py-0 font-mono text-[8px] leading-none text-navy disabled:opacity-40"
+                              aria-label="Incremental status scope"
+                            >
+                              <option value="all">
+                                All (Active+Closed)
+                              </option>
+                              <option value="active">Active family</option>
+                              <option value="closed">Closed only</option>
+                            </select>
+                          </label>
+                        </div>
+                      ) : null}
                     </td>
                   ) : null}
                   <td className={cellPad}>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   FACTOR_DESCRIPTIONS,
   FACTOR_LABELS,
@@ -70,14 +71,21 @@ export default async function ScorePage() {
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
-            Scoring
+            Goldilocks
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
             How we score <span className="italic gold-shimmer">every listing.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
             Every active listing in our markets gets a 0–100 Goldilocks composite the moment it hits the board.
-            Here&rsquo;s what goes into it — and what doesn&rsquo;t.
+            Here&rsquo;s what goes into it — and what doesn&rsquo;t. Factor weights are tuned in{" "}
+            <Link
+              href="/admin?panel=goldilocks"
+              className="text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+            >
+              Admin → Goldilocks
+            </Link>
+            .
           </p>
         </div>
       </section>
@@ -172,7 +180,15 @@ export default async function ScorePage() {
           </div>
 
           <p className="font-mono text-[10px] tracking-wide text-slate/50 text-center">
-            Goldilocks composite · Relative to current active listings in each city · TMRE proprietary model
+            Goldilocks composite · Weights from{" "}
+            <Link
+              href="/admin?panel=goldilocks"
+              className="text-slate/70 underline decoration-slate/30 underline-offset-2 hover:text-navy"
+            >
+              Admin → Goldilocks
+            </Link>
+            {" "}
+            · Relative to current active listings in each city · TMRE proprietary model
           </p>
         </div>
       </section>

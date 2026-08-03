@@ -495,8 +495,8 @@ export default function HomeMethodOverview({
                 <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2 sm:text-right">
                   Actual home · rotating towns
                 </p>
-                <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] sm:gap-5 lg:gap-6">
-                  <div className="min-w-0 sm:text-right">
+                <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] sm:gap-5 lg:gap-6">
+                  <div className="flex min-h-0 min-w-0 flex-col justify-center border border-transparent px-3 py-3 sm:px-4 sm:py-3.5 sm:text-right">
                     {live ? (
                       <Link
                         href={dealOfTheDayHref(live.town, {
@@ -546,7 +546,7 @@ export default function HomeMethodOverview({
                           prefetchTabJson(url);
                         }
                       }}
-                      className="group/stat min-w-0 rounded-sm border border-white/10 bg-white/[0.04] px-3 py-3 text-left transition-colors hover:border-gold/35 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark sm:px-4 sm:py-3.5"
+                      className="group/stat flex min-h-0 min-w-0 flex-col justify-center border border-transparent bg-transparent px-3 py-3 text-left transition-colors hover:border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark sm:px-4 sm:py-3.5"
                       title={
                         interestingStat.kind === "best-vintage" ||
                         interestingStat.kind === "vintage-gap"

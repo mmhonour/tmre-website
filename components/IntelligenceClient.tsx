@@ -263,6 +263,20 @@ function intelFilterDescriptorParts({
   return parts;
 }
 
+/** When pinned, move filter chrome into the fixed nav panel (keeps one React tree). */
+function IntelChromePortal({
+  pin,
+  host,
+  children,
+}: {
+  pin: boolean;
+  host: HTMLElement | null;
+  children: ReactNode;
+}) {
+  if (pin && host) return createPortal(children, host);
+  return <>{children}</>;
+}
+
 function IntelDescriptorContext({
   parts,
   onTownClick,
@@ -1780,6 +1794,11 @@ export default function IntelligenceClient({
   const [filterChromePeeks, setFilterChromePeeks] = useState<FilterChromePeek[]>(
     [],
   );
+  /** Desktop: click minimized DOTD strip to expand before navigating. */
+  const [dotdForceExpanded, setDotdForceExpanded] = useState(false);
+  /** Host for peeked filter chrome while descriptors are pinned under the nav. */
+  const [pinnedFilterChromeHost, setPinnedFilterChromeHost] =
+    useState<HTMLDivElement | null>(null);
   const isPeeking = (key: FilterChromePeek) => filterChromePeeks.includes(key);
   const addFilterChromePeek = (key: FilterChromePeek) =>
     setFilterChromePeeks((prev) =>
@@ -4184,12 +4203,12 @@ export default function IntelligenceClient({
    */
   const showMarketIntelChrome = !marketIntelChromeDismissed;
 
-  /** Desktop DOTD: single line when no filter chrome sits under the descriptors. */
-  const desktopDotdSingleLine =
-    !showTownChrome &&
-    !showClsChrome &&
-    !showTxChrome &&
-    !showSliderChrome;
+  const anyFilterChromeOpen =
+    showTownChrome || showClsChrome || showTxChrome || showSliderChrome;
+  useEffect(() => {
+    if (anyFilterChromeOpen) setDotdForceExpanded(false);
+  }, [anyFilterChromeOpen]);
+  const desktopDotdSingleLine = !dotdForceExpanded && !anyFilterChromeOpen;
 
   /** DOTD follows Intelligence town + Sale/Rental (All tx → sale picks). */
   const dotdKind = tx === "rental" ? "rental" : "sale";
@@ -4367,7 +4386,11 @@ export default function IntelligenceClient({
     filtersExpanded,
     collapsedSlidersOpen,
     filterChromeCollapsed,
+    filterChromePeeks,
   ]);
+
+  const pinFilterChromeToNav =
+    descriptorsPinned && pinnedFilterChromeHost != null;
 
   const closeTownStats = () => setTownStatsOpen(false);
   const closeVintageStats = () => setVintageStatsOpen(false);
@@ -4576,8 +4599,10 @@ export default function IntelligenceClient({
   const pinnedDescriptorBar =
     descriptorsPinned && typeof document !== "undefined" ? (
       <div
-        className="fixed top-20 lg:top-24 inset-x-0 z-40 border-b border-white/10 bg-[#1B2A4A]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md"
+        className="fixed top-20 lg:top-24 inset-x-0 z-40 max-h-[min(70vh,36rem)] overflow-y-auto border-b border-white/10 bg-[#1B2A4A]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md"
         data-intel-slider-context-blurb-pinned
+        data-intel-pinned-filter-panel
+        onPointerDownCapture={bumpFilterPeekActivity}
       >
         <div className="mx-auto max-w-7xl px-6 lg:px-10 py-2">
           <p
@@ -4588,6 +4613,11 @@ export default function IntelligenceClient({
             {sliderDescriptorLabels}
             {descriptorEditAllControl}
           </p>
+          {/* Peeked pill / slider chrome portals here so it stays clickable. */}
+          <div
+            ref={setPinnedFilterChromeHost}
+            className="mt-2 flex flex-col gap-1.5 empty:mt-0 empty:hidden"
+          />
         </div>
       </div>
     ) : null;
@@ -4603,7 +4633,10 @@ export default function IntelligenceClient({
           filtersExpanded ? "pb-1 lg:pb-1" : "pb-1"
         }`}
       >
-        <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
+        <div
+          className="pointer-events-none absolute inset-0 hero-grid opacity-40"
+          aria-hidden
+        />
         {/*
           Same max-width + board|248px grid as the cream results section so
           desktop DOTD’s right edge lines up with the deal-board column (Live/Share).
@@ -4685,6 +4718,10 @@ export default function IntelligenceClient({
                 }`}
               >
                 {showClsChrome ? (
+                  <IntelChromePortal
+                    pin={pinFilterChromeToNav}
+                    host={pinnedFilterChromeHost}
+                  >
                   <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start">
                     <div data-intel-cls-filter-chrome>
                       <FilterGroup
@@ -4699,9 +4736,14 @@ export default function IntelligenceClient({
                       />
                     </div>
                   </div>
+                  </IntelChromePortal>
                 ) : null}
 
                 {showTownChrome && (showMobileTownPills || showMobileZipPills) ? (
+                  <IntelChromePortal
+                    pin={pinFilterChromeToNav}
+                    host={pinnedFilterChromeHost}
+                  >
                   <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
                     <div
                       className={
@@ -4881,6 +4923,7 @@ export default function IntelligenceClient({
                       </div>
                     ) : null}
                   </div>
+                  </IntelChromePortal>
                 ) : null}
 
               {/*
@@ -4913,6 +4956,10 @@ export default function IntelligenceClient({
               </div>
 
                 {showTxChrome ? (
+                  <IntelChromePortal
+                    pin={pinFilterChromeToNav}
+                    host={pinnedFilterChromeHost}
+                  >
                   <div
                     data-intel-tx-filter-chrome
                     className={`flex flex-wrap items-center gap-2 min-w-0 self-start w-full order-3 ${
@@ -4976,10 +5023,15 @@ export default function IntelligenceClient({
                       </>
                     ) : null}
                   </div>
+                  </IntelChromePortal>
                 ) : null}
 
               {/* Price/slider filter chrome */}
               {showSliderChrome ? (
+                  <IntelChromePortal
+                    pin={pinFilterChromeToNav}
+                    host={pinnedFilterChromeHost}
+                  >
                 <div
                   className={`w-full min-w-0 order-4 ${
                     filterChromeCollapsed ? "" : "lg:order-none"
@@ -5062,11 +5114,15 @@ export default function IntelligenceClient({
                   slidersCustomized={slidersCustomized}
                 />
                 </div>
+                  </IntelChromePortal>
               ) : null}
               <div
                 className={`w-full min-w-0 order-1 ${
                   filterChromeCollapsed ? "" : "lg:order-none"
+                } ${
+                  descriptorsPinned ? "invisible pointer-events-none" : ""
                 }`}
+                aria-hidden={descriptorsPinned || undefined}
               >
               {active === "All" ? (
                 <AllTownsDescriptor
@@ -5193,6 +5249,7 @@ export default function IntelligenceClient({
                 hideUntilReady
                 surfaceAnyPick
                 desktopSingleLine={desktopDotdSingleLine}
+                onDesktopSingleLineExpand={() => setDotdForceExpanded(true)}
                 className="w-full shrink-0 animate-fade-up"
               />
             </div>

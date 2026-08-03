@@ -631,6 +631,24 @@ async function runAdminSyncActionImpl(
         const queued = await queueNetlifyStatsCacheRebuild(startedAt, {
           source: 'admin',
         })
+        // History: Queued/stats now; worker writes Done|Failed/stats when finished.
+        // (backgroundQueued skips auditDashboardSyncResult — same as Incremental.)
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: queued.ok ? 'Queued/stats' : 'Failed/stats',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued background worker (admin) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (admin) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
         if (queued.ok) {
           await setSyncMetaDurable('last_stats_cache_started', startedAt)
           return {

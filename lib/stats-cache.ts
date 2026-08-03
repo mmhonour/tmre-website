@@ -8,7 +8,7 @@ import {
 import {
   getSyncMeta,
   releaseTimedLock,
-  setSyncMeta,
+  setSyncMetaDurable,
   tryAcquireTimedLock,
 } from '@/lib/db/sync-meta-store'
 import {
@@ -720,7 +720,8 @@ export async function rebuildStatsCache(
 
   if (trackRefresh) beginListingsRefresh('stats-cache')
   const startedAt = new Date().toISOString()
-  setSyncMeta('last_stats_cache_started', startedAt)
+  // Durable: Admin dashboard End/Start must survive Lambda freeze after rebuild.
+  await setSyncMetaDurable('last_stats_cache_started', startedAt)
   const t0 = Date.now()
   try {
     if (!(await hasLocalListingsCache())) {
@@ -799,7 +800,11 @@ export async function rebuildStatsCache(
       console.error('[stats-cache] months-supply rebuild failed', err)
     }
 
-    setSyncMeta('last_stats_cache', generatedAt)
+    // Only stamp End when something actually landed — empty writes must not
+    // paint the Admin row green or advance Next.
+    if (written > 0) {
+      await setSyncMetaDurable('last_stats_cache', generatedAt)
+    }
     console.info(`[stats-cache] rebuilt ${written} entries in ${Date.now() - t0}ms`)
 
     try {
@@ -820,6 +825,11 @@ export async function rebuildStatsCache(
       if (await refreshInterestingStat(generatedAt)) written += 1
     } catch (err) {
       console.error('[stats-cache] interesting-stat refresh failed', err)
+    }
+
+    // If post-steps wrote the first rows, stamp End now.
+    if (written > 0 && !getSyncMeta('last_stats_cache')) {
+      await setSyncMetaDurable('last_stats_cache', generatedAt)
     }
 
     return { written, durationMs: Date.now() - t0 }
@@ -853,7 +863,7 @@ export async function rebuildStatsCacheForTowns(
 
   if (trackRefresh) beginListingsRefresh('stats-cache')
   const startedAt = new Date().toISOString()
-  setSyncMeta('last_stats_cache_started', startedAt)
+  await setSyncMetaDurable('last_stats_cache_started', startedAt)
   const t0 = Date.now()
   try {
     if (!(await hasLocalListingsCache())) {
@@ -917,7 +927,9 @@ export async function rebuildStatsCacheForTowns(
       console.error('[stats-cache] months-supply rebuild failed (per-town)', err)
     }
 
-    setSyncMeta('last_stats_cache', generatedAt)
+    if (written > 0) {
+      await setSyncMetaDurable('last_stats_cache', generatedAt)
+    }
     console.info(
       `[stats-cache] per-town rebuild (${unique.join(', ')}) wrote ${written} entries in ${Date.now() - t0}ms`,
     )
@@ -940,6 +952,10 @@ export async function rebuildStatsCacheForTowns(
       if (await refreshInterestingStat(generatedAt)) written += 1
     } catch (err) {
       console.error('[stats-cache] interesting-stat refresh failed (per-town)', err)
+    }
+
+    if (written > 0 && !getSyncMeta('last_stats_cache')) {
+      await setSyncMetaDurable('last_stats_cache', generatedAt)
     }
 
     return { written, durationMs: Date.now() - t0 }

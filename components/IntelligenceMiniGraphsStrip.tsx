@@ -61,8 +61,8 @@ export function useMiniGraphsCarousel(): MiniGraphsCarouselApi | null {
 const DESKTOP_VISIBLE = 3;
 
 /**
- * Desktop: up to 3 charts in a row; when there are more, slowly slide the
- * 3-wide window left↔right (transform ping-pong — same pause / dwell as mobile).
+ * Desktop: up to 3 charts in a row; when there are more, rotate the 3-wide
+ * window continuously (…→(1,2,3)→(4,1,2)→(3,4,1)→…) — same pause / dwell as mobile.
  * Mobile: one chart at a time until paused.
  * Hide toggle often lives outside (left of board).
  */
@@ -146,14 +146,11 @@ export default function IntelligenceMiniGraphsStrip({
   /** Bumped on real user interaction so the idle auto-hide timer restarts. */
   const [activityEpoch, setActivityEpoch] = useState(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  /** Desktop ping-pong direction for the sliding 3-up window. */
-  const desktopDirRef = useRef(1);
 
   // Fresh visit / remount after navigating away — always start rotating.
   useEffect(() => {
     setPaused(false);
     setActiveIndex(0);
-    desktopDirRef.current = 1;
   }, []);
 
   const bumpActivity = useCallback(() => {
@@ -179,15 +176,11 @@ export default function IntelligenceMiniGraphsStrip({
     !isNarrow && items.length > DESKTOP_VISIBLE;
   const isCarousel =
     (isNarrow && items.length > 1) || desktopCarousel;
-  const desktopMaxIndex = Math.max(0, items.length - DESKTOP_VISIBLE);
 
   const safeActiveIndex = useMemo(() => {
     if (items.length === 0) return 0;
-    if (desktopCarousel) {
-      return Math.min(Math.max(0, activeIndex), desktopMaxIndex);
-    }
-    return activeIndex % items.length;
-  }, [activeIndex, desktopCarousel, desktopMaxIndex, items.length]);
+    return ((activeIndex % items.length) + items.length) % items.length;
+  }, [activeIndex, items.length]);
 
   const activeKey =
     isCarousel && items.length > 0
@@ -199,7 +192,8 @@ export default function IntelligenceMiniGraphsStrip({
       if (!isCarousel || items.length === 0) return true;
       if (isNarrow) return items[safeActiveIndex]?.key === key;
       for (let o = 0; o < DESKTOP_VISIBLE; o++) {
-        if (items[safeActiveIndex + o]?.key === key) return true;
+        const idx = (safeActiveIndex + o) % items.length;
+        if (items[idx]?.key === key) return true;
       }
       return false;
     },
@@ -261,12 +255,10 @@ export default function IntelligenceMiniGraphsStrip({
 
   useEffect(() => {
     if (items.length === 0) return;
-    if (desktopCarousel) {
-      if (activeIndex > desktopMaxIndex) setActiveIndex(desktopMaxIndex);
-      return;
+    if (activeIndex >= items.length || activeIndex < 0) {
+      setActiveIndex(((activeIndex % items.length) + items.length) % items.length);
     }
-    if (activeIndex >= items.length) setActiveIndex(0);
-  }, [items.length, activeIndex, desktopCarousel, desktopMaxIndex]);
+  }, [items.length, activeIndex]);
 
   const itemCount = items.length;
   const activeDwellSteps = (() => {
@@ -276,7 +268,8 @@ export default function IntelligenceMiniGraphsStrip({
     }
     let max = 1;
     for (let o = 0; o < DESKTOP_VISIBLE; o++) {
-      max = Math.max(max, items[safeActiveIndex + o]?.carouselDwellSteps ?? 1);
+      const idx = (safeActiveIndex + o) % items.length;
+      max = Math.max(max, items[idx]?.carouselDwellSteps ?? 1);
     }
     return max;
   })();
@@ -318,20 +311,8 @@ export default function IntelligenceMiniGraphsStrip({
     const dwellMs = ROTATE_MS * activeDwellSteps;
     const id = window.setTimeout(() => {
       if (desktopCarousel) {
-        const max = Math.max(0, itemCount - DESKTOP_VISIBLE);
-        if (max === 0) return;
-        setActiveIndex((prev) => {
-          const cur = Math.min(Math.max(0, prev), max);
-          let next = cur + desktopDirRef.current;
-          if (next > max) {
-            desktopDirRef.current = -1;
-            next = Math.max(0, max - 1);
-          } else if (next < 0) {
-            desktopDirRef.current = 1;
-            next = Math.min(1, max);
-          }
-          return next;
-        });
+        // Continuous wrap: (1,2,3) → (4,1,2) → (3,4,1) → …
+        setActiveIndex((prev) => (prev - 1 + itemCount) % itemCount);
         return;
       }
       setActiveIndex((prev) => (prev + 1) % itemCount);
@@ -468,14 +449,7 @@ export default function IntelligenceMiniGraphsStrip({
                 }`}
                 onClick={() => {
                   bumpActivity();
-                  if (desktopCarousel) {
-                    setActiveIndex(
-                      Math.min(i, Math.max(0, renderItems.length - DESKTOP_VISIBLE)),
-                    );
-                    desktopDirRef.current = 1;
-                  } else {
-                    setActiveIndex(i);
-                  }
+                  setActiveIndex(i);
                   setPaused(true);
                 }}
               />
@@ -549,30 +523,30 @@ export default function IntelligenceMiniGraphsStrip({
                 isNarrow && renderItems.length > 1
                   ? "Mini graphs — swipe left or right to change"
                   : desktopCarousel
-                    ? "Mini graphs — three visible; slides slowly left and right"
+                    ? "Mini graphs — three visible; rotates continuously"
                     : undefined
               }
             >
               {desktopCarousel ? (
                 <div
-                  className="flex flex-row items-start gap-4 will-change-transform transition-transform ease-in-out motion-reduce:transition-none"
-                  style={{
-                    // 100cqi = viewport width (container); slot = one card + gap.
-                    transform: `translateX(calc(-${safeActiveIndex} * (100cqi + ${DESKTOP_GAP_PX}px) / ${DESKTOP_VISIBLE}))`,
-                    transitionDuration: `${DESKTOP_SLIDE_MS}ms`,
-                  }}
+                  className="flex flex-row items-start gap-4"
+                  key={safeActiveIndex}
                 >
-                  {renderItems.map((item, i) => {
-                    const visible =
-                      i >= safeActiveIndex &&
-                      i < safeActiveIndex + DESKTOP_VISIBLE;
+                  {Array.from({ length: DESKTOP_VISIBLE }, (_, o) => {
+                    const idx =
+                      (safeActiveIndex + o) % Math.max(renderItems.length, 1);
+                    const item = renderItems[idx];
+                    if (!item) return null;
                     const cardW = `calc((100cqi - ${(DESKTOP_VISIBLE - 1) * DESKTOP_GAP_PX}px) / ${DESKTOP_VISIBLE})`;
                     return (
                       <div
-                        key={item.key}
-                        className="min-w-0 shrink-0"
-                        style={{ width: cardW, flex: `0 0 ${cardW}` }}
-                        aria-hidden={!visible}
+                        key={`${item.key}-${o}`}
+                        className="min-w-0 shrink-0 animate-fade-up motion-reduce:animate-none"
+                        style={{
+                          width: cardW,
+                          flex: `0 0 ${cardW}`,
+                          animationDuration: `${DESKTOP_SLIDE_MS}ms`,
+                        }}
                       >
                         {item.node}
                       </div>

@@ -334,14 +334,15 @@ function DealContentDesktopSingleLine({
   composite,
   scoreColor,
   isHero,
-  href,
+  onExpand,
 }: {
   deal: DealCarouselPayload;
   headerTown: string | null;
   composite: number | null | undefined;
   scoreColor: string;
   isHero: boolean;
-  href: string;
+  /** Minimized strip click expands the card (does not navigate). */
+  onExpand: () => void;
 }) {
   const l = deal.listing;
   const detail = [
@@ -353,12 +354,15 @@ function DealContentDesktopSingleLine({
     .join(" · ");
 
   return (
-    <Link
-      href={href}
+    <button
+      type="button"
+      onClick={onExpand}
       {...listingHoverHandlers(l.mlsId || l.listingKey || null)}
-      className={`flex items-center gap-2 px-3 py-1.5 ${
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
         isHero ? "hover:bg-white/[0.04]" : "hover:bg-cream/60"
       }`}
+      title="Expand Deal of the Day"
+      aria-label="Expand Deal of the Day"
     >
       {dealCompactThumb(deal, isHero, "xs")}
       <p
@@ -384,7 +388,7 @@ function DealContentDesktopSingleLine({
           </span>
         ) : null}
       </p>
-    </Link>
+    </button>
   );
 }
 
@@ -509,6 +513,8 @@ export default function DealOfTheDayFrame({
    * filter chrome under property descriptors is hidden).
    */
   desktopSingleLine = false,
+  /** Minimized desktop strip click — expand instead of navigating. */
+  onDesktopSingleLineExpand,
 }: {
   city?: string;
   theme?: "hero" | "light";
@@ -525,6 +531,7 @@ export default function DealOfTheDayFrame({
   hideUntilReady?: boolean;
   surfaceAnyPick?: boolean;
   desktopSingleLine?: boolean;
+  onDesktopSingleLineExpand?: () => void;
 }) {
   const {
     loading,
@@ -670,7 +677,7 @@ export default function DealOfTheDayFrame({
                 composite={composite}
                 scoreColor={scoreColor}
                 isHero={isHero}
-                href={dealHref}
+                onExpand={() => onDesktopSingleLineExpand?.()}
               />
             )}
           </div>
