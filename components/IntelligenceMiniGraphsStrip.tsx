@@ -6,9 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MutableRefObject,
   type ReactNode,
+  type TouchEvent as ReactTouchEvent,
 } from "react";
 
 const HIDDEN_PREF_KEY = "tmre-intel-mini-graphs-hidden";
@@ -16,6 +18,8 @@ const ROTATE_MS = 5_000;
 const INTERACTIVE_HINT_MS = 10_000;
 /** Hide the strip after this long with no pointer/chart interaction. */
 const AUTO_HIDE_IDLE_MS = 10_000;
+/** Horizontal finger swipe distance to change mobile carousel slide. */
+const SWIPE_MIN_PX = 48;
 
 export type IntelligenceMiniGraphSlot = {
   key: string;
@@ -127,6 +131,7 @@ export default function IntelligenceMiniGraphsStrip({
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   /** Bumped on real user interaction so the idle auto-hide timer restarts. */
   const [activityEpoch, setActivityEpoch] = useState(0);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Fresh visit / remount after navigating away — always start rotating.
   useEffect(() => {
@@ -216,6 +221,36 @@ export default function IntelligenceMiniGraphsStrip({
   const activeDwellSteps = Math.max(
     1,
     items[activeIndex]?.carouselDwellSteps ?? 1,
+  );
+
+  const onCarouselTouchStart = useCallback(
+    (e: ReactTouchEvent) => {
+      if (!isNarrow || itemCount <= 1) return;
+      const t = e.changedTouches[0] ?? e.touches[0];
+      if (!t) return;
+      touchStartRef.current = { x: t.clientX, y: t.clientY };
+    },
+    [isNarrow, itemCount],
+  );
+
+  const onCarouselTouchEnd = useCallback(
+    (e: ReactTouchEvent) => {
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      if (!start || !isNarrow || itemCount <= 1) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      if (Math.abs(dx) < SWIPE_MIN_PX) return;
+      // Prefer vertical page scroll / chart drag when the gesture is mostly vertical.
+      if (Math.abs(dx) <= Math.abs(dy)) return;
+      const step = dx < 0 ? 1 : -1;
+      bumpActivity();
+      setPaused(true);
+      setActiveIndex((prev) => (prev + step + itemCount) % itemCount);
+    },
+    [isNarrow, itemCount, bumpActivity],
   );
 
   useEffect(() => {
@@ -361,7 +396,26 @@ export default function IntelligenceMiniGraphsStrip({
           >
             <div
               className={
-                isNarrow ? "relative w-full overflow-hidden" : "w-full"
+                isNarrow
+                  ? "relative w-full overflow-hidden touch-pan-y"
+                  : "w-full"
+              }
+              onTouchStart={isNarrow ? onCarouselTouchStart : undefined}
+              onTouchEnd={isNarrow ? onCarouselTouchEnd : undefined}
+              onTouchCancel={
+                isNarrow
+                  ? () => {
+                      touchStartRef.current = null;
+                    }
+                  : undefined
+              }
+              aria-roledescription={
+                isNarrow && renderItems.length > 1 ? "carousel" : undefined
+              }
+              aria-label={
+                isNarrow && renderItems.length > 1
+                  ? "Mini graphs — swipe left or right to change"
+                  : undefined
               }
             >
               <div

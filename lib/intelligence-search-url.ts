@@ -225,14 +225,11 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
   if (state.newConstruction) params.set('nc', '1')
   if (state.status && state.status !== 'all') params.set('st', state.status)
 
-  if (state.sort && state.sort !== 'score') {
-    params.set('sort', state.sort)
-    // Non-default sort: always encode dir (price/town/status default to asc in UI).
-    params.set('dir', state.dir === 'asc' ? 'a' : 'd')
-  } else if (state.dir === 'asc') {
-    // Score defaults to desc — only encode ascending.
-    params.set('dir', 'a')
-  }
+  // Always encode sort + dir so shared links preserve the sharer's board order
+  // (omitting defaults let the recipient's cookie sort win).
+  const sort = state.sort?.trim() || 'score'
+  params.set('sort', sort)
+  params.set('dir', state.dir === 'asc' ? 'a' : 'd')
 
   if (state.furnished && state.furnished !== 'all') {
     params.set('furn', state.furnished)
@@ -549,7 +546,23 @@ export function parseIntelligenceSearchParams(
       ? statusRaw
       : null
 
-  const sort = searchParams.get('sort')?.trim() || null
+  const sortRaw = searchParams.get('sort')?.trim().toLowerCase() || null
+  const sort =
+    sortRaw &&
+    [
+      'score',
+      'town',
+      'beds',
+      'baths',
+      'price',
+      'ppsf',
+      'sqft',
+      'dom',
+      'year',
+      'status',
+    ].includes(sortRaw)
+      ? sortRaw
+      : null
   const dirRaw = (searchParams.get('dir') ?? '').trim().toLowerCase()
   const dir =
     dirRaw === 'a' || dirRaw === 'asc'

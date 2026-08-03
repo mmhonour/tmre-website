@@ -70,6 +70,25 @@ function pctInputValue(weight: number): string {
   return String(Math.round(weight * 1000) / 10);
 }
 
+function formatDomDayRange(range: GoldilocksDomDayRange): string {
+  if (range.maxDays == null) {
+    return `${range.minDays}+`;
+  }
+  if (range.minDays === range.maxDays) {
+    return String(range.minDays);
+  }
+  return `${range.minDays}–${range.maxDays}`;
+}
+
+function formatDomTierSummaryLine(tier: GoldilocksDomTier): string {
+  const label = tier.label.trim() || "(unnamed)";
+  const ranges =
+    tier.ranges.length > 0
+      ? tier.ranges.map(formatDomDayRange).join(", ")
+      : "no ranges";
+  return `${label} · score ${tier.score} · ${ranges} days`;
+}
+
 type GoldilocksSubPanelId = "weights" | "dom" | "characteristics";
 
 const GOLDILOCKS_SUB_PANELS: {
@@ -216,6 +235,18 @@ export default function AdminGoldilocksPanel({
       JSON.stringify(saved)
     );
   }, [draft, saved, keywordLists]);
+
+  /** Live read-only DOM band overview — tracks draft edits before save. */
+  const domBandSummary = useMemo(() => {
+    if (!draft) return null;
+    return {
+      lines: draft.domTiers.map((tier) => ({
+        id: tier.id,
+        text: formatDomTierSummaryLine(tier),
+      })),
+      missingScore: draft.domMissingScore,
+    };
+  }, [draft]);
 
   function updateKeywordPhrase(
     groupId: GoldilocksKeywordGroupId,
@@ -654,6 +685,26 @@ export default function AdminGoldilocksPanel({
       >
         {subPanel === "dom" ? (
           <div className="space-y-4 px-5 py-5 sm:px-6">
+            {domBandSummary ? (
+              <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 px-4 py-3">
+                <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45">
+                  Current bands · read-only
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {domBandSummary.lines.map((line) => (
+                    <li
+                      key={line.id}
+                      className="font-mono text-[12px] leading-snug text-navy/85"
+                    >
+                      {line.text}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 font-mono text-[12px] text-charcoal/60">
+                  Missing DOM · score {domBandSummary.missingScore}
+                </p>
+              </div>
+            ) : null}
             <p className="text-sm text-charcoal/65">
               First matching tier wins. Leave Max empty for open-ended (e.g.
               251+). Missing DOM on a listing uses the neutral score below.

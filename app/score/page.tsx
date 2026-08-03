@@ -5,6 +5,7 @@ import {
 import type { GoldilocksFactorKey } from "@/lib/goldilocks-score-info";
 import { getGoldilocksConfigFresh } from "@/lib/goldilocks-config";
 import { GOLDILOCKS_FACTOR_ORDER } from "@/lib/goldilocks-config-shared";
+import { TMRE_TOWNS } from "@/lib/tmre-towns";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,8 @@ export default async function ScorePage() {
     icon: FACTOR_ICONS[key],
     body: FACTOR_DESCRIPTIONS[key],
   }));
+  const townCount: number = TMRE_TOWNS.length;
+  const townCountLabel = `${townCount} ${townCount === 1 ? "town" : "towns"}`;
 
   const tiers = [
     {
@@ -101,7 +104,7 @@ export default async function ScorePage() {
               {[
                 ["0–100", "Score range"],
                 ["6", "Weighted factors"],
-                ["6 towns", "Independently calibrated"],
+                [townCountLabel, "Independently calibrated"],
                 ["Every sync", "Refreshed automatically"],
               ].map(([value, label]) => (
                 <div key={label}>

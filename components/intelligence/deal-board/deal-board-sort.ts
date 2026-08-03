@@ -19,14 +19,14 @@ export const DEAL_BOARD_SORT_COLUMNS: {
   townOnly?: boolean;
 }[] = [
   { key: "score", label: "Score" },
-  { key: "beds", label: "Bed", align: "right" },
-  { key: "baths", label: "Bath", align: "right" },
-  { key: "town", label: "Town", townOnly: true },
   { key: "price", label: "Price", align: "right" },
   { key: "ppsf", label: "$ / sqft", align: "right" },
-  { key: "sqft", label: "Sqft", align: "right" },
+  { key: "beds", label: "Bed", align: "right" },
+  { key: "baths", label: "Bath", align: "right" },
   { key: "dom", label: "DOM", align: "right" },
   { key: "year", label: "Year Built", align: "right" },
+  { key: "town", label: "Town", townOnly: true },
+  { key: "sqft", label: "Sqft", align: "right" },
   { key: "status", label: "Status / Insight" },
 ];
 

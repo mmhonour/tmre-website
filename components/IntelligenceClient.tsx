@@ -2249,13 +2249,10 @@ export default function IntelligenceClient({
       if (urlSearch.status) {
         setBoardStatusFilter(urlSearch.status as BoardStatusFilter);
       }
-      if (urlSearch.sort) {
-        setSortKey(urlSearch.sort as SortKey);
-      }
-      if (urlSearch.dir) setSortDir(urlSearch.dir);
       if (urlSearch.furnished) {
         setFurnishedFilter(urlSearch.furnished as FurnishedFilter);
       }
+      // Sort applied in a dedicated effect below so it wins over cookie hydration.
     }
     // Keep a compact shareable URL in the address bar (no hex id).
     window.history.replaceState(
@@ -2291,8 +2288,10 @@ export default function IntelligenceClient({
         status: urlSearch.resetMinor
           ? undefined
           : (urlSearch.status ?? undefined),
-        sort: urlSearch.resetMinor ? undefined : (urlSearch.sort ?? undefined),
-        dir: urlSearch.resetMinor ? undefined : (urlSearch.dir ?? undefined),
+        sort: urlSearch.resetMinor ? "score" : (urlSearch.sort ?? "score"),
+        dir: urlSearch.resetMinor
+          ? "desc"
+          : (urlSearch.dir ?? "desc"),
         furnished: urlSearch.resetMinor ? null : urlSearch.furnished,
         minPrice: urlSearch.resetMinor
           ? undefined
@@ -2323,10 +2322,27 @@ export default function IntelligenceClient({
     setSaleProperty,
     setNewConstructionFilter,
     setBoardStatusFilter,
-    setSortKey,
-    setSortDir,
     setFurnishedFilter,
   ]);
+
+  // Sort from the share URL must beat usePersistedFilter cookie hydration.
+  // Declared after those hooks' effects and re-run when urlSearch is present so
+  // a shared sort/dir is not overwritten by tmre_intel_sort_key / _dir cookies.
+  useEffect(() => {
+    if (!urlSearch) return;
+    if (urlSearch.resetMinor) {
+      setSortKey("score");
+      setSortDir("desc");
+      return;
+    }
+    const key =
+      urlSearch.sort &&
+      (SORT_KEY_VALUES as readonly string[]).includes(urlSearch.sort)
+        ? (urlSearch.sort as SortKey)
+        : "score";
+    setSortKey(key);
+    setSortDir(urlSearch.dir ?? "desc");
+  }, [urlSearch, setSortKey, setSortDir]);
 
   // Prefer cached months-supply avgs when property class / occupancy changes.
   useEffect(() => {
