@@ -30,6 +30,7 @@ import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInvento
 import AdminInventoryComparisonPanel from "@/components/admin/AdminInventoryComparisonPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenceDealBoardPanel";
+import AdminIntelligenceDescriptorSizesPanel from "@/components/admin/AdminIntelligenceDescriptorSizesPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
 import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
@@ -805,6 +806,7 @@ export default async function AdminPage() {
       rets={retsPanel}
       intelInventory={inventoryBandsPanel}
       intelDealBoard={<AdminIntelligenceDealBoardPanel />}
+      intelDescriptorSizes={<AdminIntelligenceDescriptorSizesPanel />}
       ctCoverage={<AdminCtCoveragePanel />}
       townBudget={
         <AdminTownBudgetSourcesPanel

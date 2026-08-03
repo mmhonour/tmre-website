@@ -95,7 +95,7 @@ export default function AllTownsDescriptor({
 
   return (
     <p
-      className={`${className ?? "mt-3"} flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide`}
+      className={`${className ?? "mt-3"} flex flex-wrap items-baseline gap-x-2 font-mono tracking-wide text-[length:var(--intel-desc-idle,9px)]`}
     >
       {contextLeading}
       <span

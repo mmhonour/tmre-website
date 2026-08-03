@@ -1,5 +1,6 @@
 import type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
 import type { MonthsSupplyPayload } from '@/lib/months-supply-types'
+import type { StatsValueCalc } from '@/lib/stats-compute'
 
 export type MarketDigestDealOfTheWeek = {
   mlsId: string
@@ -25,12 +26,16 @@ export type MarketDigestDealOfTheWeek = {
 export type MarketDigestClosedTownCount = {
   city: string
   count: number
+  /** Cached at closed-by-town rebuild — not computed in the browser. */
+  calc?: StatsValueCalc
 }
 
 /** Avg days on market for one town (from stats cache / active commercial DOM). */
 export type MarketDigestDomTownCount = {
   city: string
   avgDaysOnMarket: number
+  /** From market-stats cache (or commercial slice build). */
+  avgDaysOnMarketCalc?: StatsValueCalc
 }
 
 export type MarketDigestCategorySlice = {

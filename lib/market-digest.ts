@@ -29,6 +29,7 @@ import { formatMarketDigestHtml } from '@/lib/market-digest-html'
 import {
   avgMonthlyClosingsFromClosed,
   computeMonthsSupplyRatio,
+  monthsSupplyValueCalcs,
   readMonthsSupplyCached,
   type MonthsSupplyPayload,
 } from '@/lib/months-supply-cache'
@@ -154,12 +155,22 @@ async function avgDomByTownFromStats(
         const market = parseMarketStatsPayload(cached)
         const avg = market?.avgDaysOnMarket
         if (avg == null || !Number.isFinite(avg) || avg < 0) return null
-        return { city, avgDaysOnMarket: avg }
+        return {
+          city,
+          avgDaysOnMarket: avg,
+          avgDaysOnMarketCalc: market?.avgDaysOnMarketCalc,
+        }
       }),
     )
     const out: MarketDigestDomTownCount[] = []
     for (const r of rows) {
-      if (r) out.push({ city: r.city, avgDaysOnMarket: r.avgDaysOnMarket })
+      if (r) {
+        out.push({
+          city: r.city,
+          avgDaysOnMarket: r.avgDaysOnMarket,
+          avgDaysOnMarketCalc: r.avgDaysOnMarketCalc,
+        })
+      }
     }
     return out
   } catch (err) {
@@ -169,14 +180,6 @@ async function avgDomByTownFromStats(
     )
     return []
   }
-}
-
-function meanDomFromListings(listings: readonly Listing[]): number | null {
-  const doms = listings
-    .map((l) => l.dom)
-    .filter((d): d is number => d != null && Number.isFinite(d) && d >= 0)
-  if (doms.length === 0) return null
-  return doms.reduce((a, b) => a + b, 0) / doms.length
 }
 
 function isCommercialListing(listing: Listing): boolean {
@@ -260,13 +263,38 @@ function commercialPayload(
   const saleClosed = filterListingsByKind(closed, 'sale').filter(isCommercialListing)
   const activeCount = saleActive.length
   const avgMonthlyClosings = avgMonthlyClosingsFromClosed(saleClosed)
-  return {
+  const monthsSupply = computeMonthsSupplyRatio(activeCount, avgMonthlyClosings)
+  const calcs = monthsSupplyValueCalcs({
     city,
     kind: 'sale',
     propertyClass: 'all',
     activeCount,
     avgMonthlyClosings,
-    monthsSupply: computeMonthsSupplyRatio(activeCount, avgMonthlyClosings),
+    monthsSupply,
+  })
+  return {
+    city,
+    kind: 'sale',
+    propertyClass: 'all',
+    activeCount,
+    activeCountCalc: {
+      ...calcs.activeCountCalc,
+      summary: `${activeCount.toLocaleString()} active commercial for-sale listings in ${city}.`,
+      detail: [
+        'Count of Active sale listings classified as commercial at digest build time.',
+      ],
+    },
+    avgMonthlyClosings,
+    monthsSupply,
+    monthsSupplyCalc: calcs.monthsSupplyCalc
+      ? {
+          ...calcs.monthsSupplyCalc,
+          detail: [
+            'Commercial-only: avg monthly closings from commercial Closed sales over the prior 3 full calendar months.',
+            'Months supply = active commercial inventory ÷ that average.',
+          ],
+        }
+      : undefined,
     generatedAt,
   }
 }
@@ -372,21 +400,38 @@ async function buildCommercialCategorySlice(
       .filter(isCommercialListing)
       .filter((l) => !isRentalListing(l))
     const avgDomByTown: MarketDigestDomTownCount[] = []
-    const marketDom = meanDomFromListings(commercialActive)
-    if (marketDom != null) {
-      avgDomByTown.push({ city: 'All', avgDaysOnMarket: marketDom })
+    const pushCommercialDom = (
+      city: string,
+      listings: readonly Listing[],
+    ) => {
+      const doms = listings
+        .map((l) => l.dom)
+        .filter((d): d is number => d != null && Number.isFinite(d) && d >= 0)
+      if (doms.length === 0) return
+      const avg = doms.reduce((a, b) => a + b, 0) / doms.length
+      avgDomByTown.push({
+        city,
+        avgDaysOnMarket: avg,
+        avgDaysOnMarketCalc: {
+          summary: `Mean Days on Market across ${doms.length.toLocaleString()} active commercial listings in ${city} with a non-null DOM.`,
+          detail: [
+            `Sum of DOM ÷ ${doms.length.toLocaleString()} (active commercial sales only; closed sales excluded).`,
+          ],
+          inputs: {
+            source: 'commercial-active-dom-mean',
+            sampleSize: doms.length,
+            city,
+            avgDaysOnMarket: avg,
+          },
+        },
+      })
     }
+    pushCommercialDom('All', commercialActive)
     for (const row of perTown) {
       const townActive = row.active
         .filter(isCommercialListing)
         .filter((l) => !isRentalListing(l))
-      const townDom = meanDomFromListings(townActive)
-      if (townDom != null) {
-        avgDomByTown.push({
-          city: row.payload.city,
-          avgDaysOnMarket: townDom,
-        })
-      }
+      pushCommercialDom(row.payload.city, townActive)
     }
     let deal: MarketDigestDealOfTheWeek | null = null
     try {

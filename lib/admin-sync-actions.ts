@@ -703,7 +703,7 @@ async function runAdminSyncActionImpl(
         durationMs: result.durationMs || Date.now() - t0,
         recordsFetched: result.written,
         message: `Stats cache rebuilt — ${result.written.toLocaleString()} entries`,
-        detail: `Recomputed ${result.written.toLocaleString()} stats_cache objects (sales, vintage, price, active-by-month, avg-score-by-vintage)`,
+        detail: `Recomputed ${result.written.toLocaleString()} stats_cache objects (sales, vintage, price, months-supply, DOM/median calc explainers for bar hover)`,
       }
     }
     case 'deal-of-the-day': {

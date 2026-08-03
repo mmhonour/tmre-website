@@ -64,7 +64,7 @@ export default async function Home() {
   return (
     <>
       <HomeScrollReset />
-      <HomeMethodOverview />
+      <HomeMethodOverview pulseTowns={pulseTowns} />
       <Suspense fallback={null}>
         <DealOfTheWeekHero afterOverview />
       </Suspense>

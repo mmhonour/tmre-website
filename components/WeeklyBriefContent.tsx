@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import { fmtMoney } from "@/lib/listing-history";
 import {
   MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
@@ -16,6 +17,7 @@ import {
   settleMosDisplay,
   type MarketPulseSettleState,
 } from "@/lib/market-pulse-settle";
+import type { StatsValueCalc } from "@/lib/stats-compute";
 import { splitSentences } from "@/lib/split-sentences";
 
 function fmtMos(n: number | null | undefined): string {
@@ -63,6 +65,7 @@ function BarChart<Row extends { city: string }>({
   emptyMessage,
   townHref,
   settle,
+  calcOf,
 }: {
   title: string;
   rows: Row[];
@@ -72,6 +75,8 @@ function BarChart<Row extends { city: string }>({
   emptyMessage: string;
   townHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
+  /** Cached methodology from stats / closed cache — never computed in the client. */
+  calcOf?: (row: Row) => StatsValueCalc | undefined;
 }) {
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
 
@@ -139,6 +144,15 @@ function BarChart<Row extends { city: string }>({
               : valueKind === "dom"
                 ? fmtDom(display)
                 : fmtActive(display);
+          const calc = calcOf?.(row);
+          const metricLabel =
+            valueKind === "mos"
+              ? "Months supply"
+              : valueKind === "dom"
+                ? "Avg days on market"
+                : title.startsWith("Closed")
+                  ? "Closed sales"
+                  : "Active inventory";
           return (
             <li
               key={`${row.city}-${title}`}
@@ -156,11 +170,24 @@ function BarChart<Row extends { city: string }>({
                   {label}
                 </span>
               )}
-              <div className="h-3.5 rounded-sm bg-black/10 overflow-hidden">
+              <div className="group relative h-3.5 rounded-sm bg-black/10 overflow-visible">
+                <div className="h-full overflow-hidden rounded-sm">
+                  <div
+                    className={`h-full rounded-sm transition-[width] ease-out ${widthTransition} ${barClassName}`}
+                    style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+                  />
+                </div>
                 <div
-                  className={`h-full rounded-sm transition-[width] ease-out ${widthTransition} ${barClassName}`}
-                  style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
-                />
+                  className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                  role="tooltip"
+                >
+                  <StatsCalcTooltipShell
+                    label={label}
+                    valueLine={`${valueText} · ${metricLabel}`}
+                    calc={calc}
+                    theme="light"
+                  />
+                </div>
               </div>
               <span className="[font-family:var(--mp-mono-font)] text-xs text-[var(--mp-text)] text-right tabular-nums">
                 {valueText}
@@ -309,6 +336,7 @@ export default function WeeklyBriefContent({
           emptyMessage="No inventory rows in cache yet."
           townHref={townHref}
           settle={settle}
+          calcOf={(r) => r.activeCountCalc}
         />
 
         <BarChart
@@ -320,6 +348,7 @@ export default function WeeklyBriefContent({
           emptyMessage="No months-supply rows in cache yet."
           townHref={monthsSupplyTownHref ?? townHref}
           settle={settle}
+          calcOf={(r) => r.monthsSupplyCalc}
         />
 
         <BarChart
@@ -331,6 +360,7 @@ export default function WeeklyBriefContent({
           emptyMessage="No days-on-market rows in cache yet."
           townHref={avgDomTownHref ?? townHref}
           settle={settle}
+          calcOf={(r) => r.avgDaysOnMarketCalc}
         />
 
         <BarChart
@@ -342,6 +372,7 @@ export default function WeeklyBriefContent({
           emptyMessage="Loading closed sales…"
           townHref={closedSalesTownHref}
           settle={settle}
+          calcOf={(r) => r.calc}
         />
 
         {deal ? (

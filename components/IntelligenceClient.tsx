@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -73,8 +74,15 @@ import { underContractStatusLabel } from "@/lib/listing-status";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
 import {
   buildIntelligenceShareHref,
+  buildIntelligenceShareTitle,
   parseIntelligenceSearchParams,
 } from "@/lib/intelligence-search-url";
+import {
+  cloneIntelligenceDescriptorSizes,
+  DEFAULT_INTELLIGENCE_DESCRIPTOR_SIZES,
+  intelligenceDescriptorSizeCssVars,
+  type IntelligenceDescriptorSizes,
+} from "@/lib/intelligence-descriptor-sizes-shared";
 import ListingShareButton from "@/components/listing/ListingShareButton";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import {
@@ -482,9 +490,15 @@ function useHeldSliderActive(): [boolean, SetHeldSliderActive] {
   return [active, setHeldActive];
 }
 
+/** Idle size from admin CSS vars (`--intel-desc-idle`); active held enlarge stays `text-lg`. */
+const INTEL_DESCRIPTOR_IDLE_TEXT =
+  "text-[length:var(--intel-desc-idle,9px)]";
+
 function descriptorLabelClass(active: boolean, interactive: boolean): string {
   return `font-mono tabular-nums text-gold leading-none origin-left transition-all duration-300 ease-out shrink-0 ${
-    active ? "text-lg font-medium scale-110" : "text-[9px] scale-100"
+    active
+      ? "text-lg font-medium scale-110"
+      : `${INTEL_DESCRIPTOR_IDLE_TEXT} scale-100`
   }${
     interactive
       ? " cursor-pointer hover:text-gold-light underline-offset-2 hover:underline decoration-gold/30"
@@ -1588,14 +1602,46 @@ type LoadState = "loading" | "ready" | "fallback";
 export default function IntelligenceClient({
   initialDotdDealsByTown = null,
   initialInventorySegmentChart = null,
+  initialDescriptorSizes = DEFAULT_INTELLIGENCE_DESCRIPTOR_SIZES,
 }: {
   /** FSSR seed for Deal of the Day frame (sale/homes by default). */
   initialDotdDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
   /** SSR seed: Market Bands inventory charts (incl. Discount) for city All. */
   initialInventorySegmentChart?: import("@/lib/intelligence-inventory-segment-fssr").InventorySegmentChartSeed | null;
+  /** Admin-tuned idle filter descriptor sizes (mobile / desktop). */
+  initialDescriptorSizes?: IntelligenceDescriptorSizes;
 } = {}) {
   const siteUnlocked = useSiteUnlocked();
   const searchParams = useSearchParams();
+  const [descriptorSizes, setDescriptorSizes] =
+    useState<IntelligenceDescriptorSizes>(() =>
+      cloneIntelligenceDescriptorSizes(initialDescriptorSizes),
+    );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/intelligence/descriptor-sizes", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as { config?: IntelligenceDescriptorSizes };
+      })
+      .then((body) => {
+        if (cancelled || !body?.config) return;
+        setDescriptorSizes(cloneIntelligenceDescriptorSizes(body.config));
+      })
+      .catch(() => {
+        /* keep SSR / default sizes */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const descriptorSizeStyle = useMemo(
+    () =>
+      intelligenceDescriptorSizeCssVars(descriptorSizes) as CSSProperties,
+    [descriptorSizes],
+  );
   const urlSearch = useMemo(
     () => parseIntelligenceSearchParams(searchParams),
     [searchParams],
@@ -2904,30 +2950,29 @@ export default function IntelligenceClient({
     cls !== "commercial" &&
     intelSqftFilterActiveOnBoard(minSqftIndex, maxSqftIndex, boardSqftSteps);
 
-  const intelligenceShareHref = useMemo(
-    () =>
-      buildIntelligenceShareHref({
-        city: active,
-        zip,
-        tx,
-        cls,
-        property: saleProperty,
-        bedsMin: minBedrooms,
-        bedsMax: maxBedrooms,
-        bathsMin: minBathrooms,
-        bathsMax: maxBathrooms,
-        vintageMin: minVintage,
-        vintageMax: maxVintage,
-        newConstruction: newConstructionOnly,
-        status: boardStatusFilter,
-        sort: sortKey,
-        dir: sortDir,
-        furnished: furnishedFilter === "all" ? null : furnishedFilter,
-        minPrice: priceFilterActive ? minPrice : undefined,
-        maxPrice: priceFilterActive ? maxPrice : undefined,
-        minSqft: sqftFilterActive ? minSqft : undefined,
-        maxSqft: sqftFilterActive ? maxSqft : undefined,
-      }),
+  const intelligenceShareState = useMemo(
+    () => ({
+      city: active,
+      zip,
+      tx,
+      cls,
+      property: saleProperty,
+      bedsMin: minBedrooms,
+      bedsMax: maxBedrooms,
+      bathsMin: minBathrooms,
+      bathsMax: maxBathrooms,
+      vintageMin: minVintage,
+      vintageMax: maxVintage,
+      newConstruction: newConstructionOnly,
+      status: boardStatusFilter,
+      sort: sortKey,
+      dir: sortDir,
+      furnished: furnishedFilter === "all" ? null : furnishedFilter,
+      minPrice: priceFilterActive ? minPrice : undefined,
+      maxPrice: priceFilterActive ? maxPrice : undefined,
+      minSqft: sqftFilterActive ? minSqft : undefined,
+      maxSqft: sqftFilterActive ? maxSqft : undefined,
+    }),
     [
       active,
       zip,
@@ -2952,6 +2997,14 @@ export default function IntelligenceClient({
       minSqft,
       maxSqft,
     ],
+  );
+  const intelligenceShareHref = useMemo(
+    () => buildIntelligenceShareHref(intelligenceShareState),
+    [intelligenceShareState],
+  );
+  const intelligenceShareTitle = useMemo(
+    () => buildIntelligenceShareTitle(intelligenceShareState),
+    [intelligenceShareState],
   );
 
   // Apply price/sqft from the share URL once board step ladders are ready.
@@ -4395,7 +4448,9 @@ export default function IntelligenceClient({
         data-intel-slider-context-blurb-pinned
       >
         <div className="mx-auto max-w-7xl px-6 lg:px-10 py-2">
-          <p className="flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide">
+          <p
+            className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono tracking-wide ${INTEL_DESCRIPTOR_IDLE_TEXT}`}
+          >
             {descriptorSearchControl}
             {filterDescriptorLeading}
             {sliderDescriptorLabels}
@@ -4406,7 +4461,10 @@ export default function IntelligenceClient({
     ) : null;
 
   return (
-    <>
+    <div
+      style={descriptorSizeStyle}
+      className="[--intel-desc-idle:var(--intel-desc-mobile)] lg:[--intel-desc-idle:var(--intel-desc-desktop)]"
+    >
       {pinnedDescriptorBar}
       <section
         className={`navy-gradient text-white pt-20 lg:pt-24 relative overflow-hidden transition-[padding] duration-300 ease-out ${
@@ -4699,7 +4757,7 @@ export default function IntelligenceClient({
               >
               <div ref={descriptorSentinelRef} className="h-0 w-full" aria-hidden />
               <p
-                className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono text-xs tracking-wide mt-0.5 ${
+                className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono tracking-wide mt-0.5 ${INTEL_DESCRIPTOR_IDLE_TEXT} ${
                   descriptorsPinned
                     ? "invisible pointer-events-none"
                     : ""
@@ -4892,7 +4950,7 @@ export default function IntelligenceClient({
                         <button
                           type="button"
                           onClick={hideCollapsedSliders}
-                          className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
+                          className={`font-mono ${INTEL_DESCRIPTOR_IDLE_TEXT} tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap`}
                         >
                           Hide sliders
                         </button>
@@ -4902,7 +4960,7 @@ export default function IntelligenceClient({
                 />
               ) : (
                 <p
-                  className={`flex flex-wrap items-baseline gap-x-2 font-mono text-xs tracking-wide transition-[margin] duration-300 ease-out ${
+                  className={`flex flex-wrap items-baseline gap-x-2 font-mono tracking-wide transition-[margin] duration-300 ease-out ${INTEL_DESCRIPTOR_IDLE_TEXT} ${
                     filterChromeCollapsed
                       ? "mt-0"
                       : filtersExpanded
@@ -4928,7 +4986,7 @@ export default function IntelligenceClient({
                       <button
                         type="button"
                         onClick={hideCollapsedSliders}
-                        className="font-mono text-[9px] tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap"
+                        className={`font-mono ${INTEL_DESCRIPTOR_IDLE_TEXT} tracking-[0.12em] uppercase text-white/50 hover:text-gold underline underline-offset-2 decoration-white/20 hover:decoration-gold/50 transition-colors shrink-0 whitespace-nowrap`}
                       >
                         Hide sliders
                       </button>
@@ -5037,7 +5095,7 @@ export default function IntelligenceClient({
               <div className="flex w-full items-center justify-between gap-x-3 gap-y-1 lg:hidden">
                 <ListingShareButton
                   href={intelligenceShareHref}
-                  title="Share this Intelligence search"
+                  title={intelligenceShareTitle}
                   className="!h-12 !w-12 shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
                   iconClassName="h-7 w-7"
                   strokeWidth={1.25}
@@ -5170,7 +5228,7 @@ export default function IntelligenceClient({
                 </div>
                 <ListingShareButton
                   href={intelligenceShareHref}
-                  title="Share this Intelligence search"
+                  title={intelligenceShareTitle}
                   className="!hidden lg:!inline-flex !h-8 !w-8 shrink-0 text-navy hover:text-navy hover:bg-navy/[0.06]"
                   iconClassName="h-4 w-4"
                   strokeWidth={1.5}
@@ -5633,7 +5691,7 @@ export default function IntelligenceClient({
           anchorEl={zipFilterAnchorRef.current}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -6097,7 +6155,7 @@ function DescriptorEditAllControl({
       aria-label="Edit all filters — scroll to top and show filter controls"
       title="Edit all filters"
       className={`shrink-0 self-center font-mono font-bold tracking-[0.14em] uppercase text-gold leading-none origin-left transition-all duration-300 ease-out hover:text-gold-light underline-offset-2 hover:underline ${
-        active ? "text-lg scale-110" : "text-[9px] scale-100"
+        active ? "text-lg scale-110" : `${INTEL_DESCRIPTOR_IDLE_TEXT} scale-100`
       }`}
     >
       Edit all
@@ -6108,7 +6166,7 @@ function DescriptorEditAllControl({
 function IntelFilterDescriptorDot() {
   return (
     <span
-      className="shrink-0 self-center font-mono text-[11px] font-bold leading-none text-gold/65"
+      className={`shrink-0 self-center font-mono ${INTEL_DESCRIPTOR_IDLE_TEXT} font-bold leading-none text-gold/65`}
       aria-hidden
     >
       •

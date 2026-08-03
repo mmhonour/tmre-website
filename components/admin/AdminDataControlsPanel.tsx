@@ -42,6 +42,7 @@ export default function AdminDataControlsPanel({
   rets,
   intelInventory,
   intelDealBoard,
+  intelDescriptorSizes,
   ctCoverage,
   townBudget,
 }: {
@@ -54,6 +55,7 @@ export default function AdminDataControlsPanel({
   rets: ReactNode;
   intelInventory: ReactNode;
   intelDealBoard: ReactNode;
+  intelDescriptorSizes: ReactNode;
   ctCoverage: ReactNode;
   townBudget: ReactNode;
 }) {
@@ -96,6 +98,7 @@ export default function AdminDataControlsPanel({
     rets,
     "intel-inventory": intelInventory,
     "intel-deal-board": intelDealBoard,
+    "intel-descriptor-sizes": intelDescriptorSizes,
     "ct-coverage": ctCoverage,
     "town-budget": townBudget,
   };

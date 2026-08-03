@@ -257,6 +257,135 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
   return qs ? `/intelligence?${qs}` : '/intelligence'
 }
 
+/** Compact price token for share titles — e.g. 2000 → 2K, 1_500_000 → 1.5M (no $). */
+function formatSharePriceToken(n: number): string {
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000
+    const s =
+      m % 1 === 0
+        ? String(m)
+        : m.toFixed(1).replace(/\.0$/, '')
+    return `${s}M`
+  }
+  if (n >= 1000) return `${Math.round(n / 1000)}K`
+  return String(Math.round(n))
+}
+
+function formatSharePriceRangeLabel(
+  minPrice?: number,
+  maxPrice?: number | null,
+): string | null {
+  const hasMin = minPrice != null && minPrice > 0
+  const hasMax = maxPrice != null && Number.isFinite(maxPrice)
+  if (!hasMin && !hasMax) return null
+  if (hasMin && hasMax) {
+    // Prefer a shared unit: 2000–10000 → 2-10K
+    if (
+      minPrice! >= 1000 &&
+      maxPrice! >= 1000 &&
+      minPrice! < 1_000_000 &&
+      maxPrice! < 1_000_000
+    ) {
+      return `${Math.round(minPrice! / 1000)}-${Math.round(maxPrice! / 1000)}K`
+    }
+    return `${formatSharePriceToken(minPrice!)}-${formatSharePriceToken(maxPrice!)}`
+  }
+  if (hasMin) return `From${formatSharePriceToken(minPrice!)}`
+  return `Under${formatSharePriceToken(maxPrice!)}`
+}
+
+function formatShareSqftRangeLabel(
+  minSqft?: number,
+  maxSqft?: number | null,
+): string | null {
+  const hasMin = minSqft != null && minSqft > 0
+  const hasMax = maxSqft != null && Number.isFinite(maxSqft)
+  if (!hasMin && !hasMax) return null
+  if (hasMin && hasMax) return `${Math.round(minSqft!)}-${Math.round(maxSqft!)}Sqft`
+  if (hasMin) return `${Math.round(minSqft!)}+Sqft`
+  return `UpTo${Math.round(maxSqft!)}Sqft`
+}
+
+function formatShareCountRangeLabel(
+  min: number,
+  max: number,
+  unit: string,
+): string | null {
+  if (min <= 0 && max >= 6) return null
+  if (min === max) return `${min}${unit}`
+  if (min > 0 && max < 6) return `${min}-${max}${unit}`
+  if (min > 0) return `${min}+${unit}`
+  return `UpTo${max}${unit}`
+}
+
+/**
+ * Human-readable share title for Intelligence.
+ * No narrowed filters → `TMREMarketIntelligence`.
+ * Otherwise compact PascalCase, e.g. `WestportRentals2-10K`.
+ * Sort order is ignored (view preference, not a content filter).
+ */
+export function buildIntelligenceShareTitle(state: IntelligenceShareState): string {
+  const parts: string[] = []
+
+  const city = state.city?.trim()
+  if (city && city !== 'All') {
+    parts.push(city.replace(/\s+/g, ''))
+  }
+
+  const zip = state.zip?.trim()
+  if (zip) parts.push(zip)
+
+  if (state.tx === 'sale') parts.push('Sales')
+  else if (state.tx === 'rental') parts.push('Rentals')
+
+  if (state.cls === 'residential') parts.push('Residential')
+  else if (state.cls === 'commercial') parts.push('Commercial')
+
+  if (state.property === 'homes') parts.push('Homes')
+  else if (state.property === 'multi') parts.push('Multi')
+  else if (state.property === 'condos') parts.push('Condos')
+
+  const beds = formatShareCountRangeLabel(
+    state.bedsMin ?? 0,
+    state.bedsMax ?? 6,
+    'Beds',
+  )
+  if (beds) parts.push(beds)
+
+  const baths = formatShareCountRangeLabel(
+    state.bathsMin ?? 0,
+    state.bathsMax ?? 6,
+    'Baths',
+  )
+  if (baths) parts.push(baths)
+
+  const vintage = formatShareCountRangeLabel(
+    state.vintageMin ?? 0,
+    state.vintageMax ?? 6,
+    'Vintage',
+  )
+  if (vintage) parts.push(vintage)
+
+  if (state.newConstruction) parts.push('NewConstruction')
+
+  if (state.status === 'new') parts.push('NewListings')
+  else if (state.status === 'reduced') parts.push('Reduced')
+  else if (state.status === 'active') parts.push('Active')
+
+  if (state.furnished && state.furnished !== 'all') {
+    const furn = state.furnished.trim()
+    parts.push(furn.charAt(0).toUpperCase() + furn.slice(1))
+  }
+
+  const price = formatSharePriceRangeLabel(state.minPrice, state.maxPrice)
+  if (price) parts.push(price)
+
+  const sqft = formatShareSqftRangeLabel(state.minSqft, state.maxSqft)
+  if (sqft) parts.push(sqft)
+
+  return parts.length === 0 ? 'TMREMarketIntelligence' : parts.join('')
+}
+
 export function intelligenceShareUrl(
   state: IntelligenceShareState,
   origin?: string,

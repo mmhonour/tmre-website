@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import IntelligenceClient from "@/components/IntelligenceClient";
 import { loadDealOfTheDayFssrSeed } from "@/lib/deal-of-the-day-fssr";
+import { getIntelligenceDescriptorSizesFresh } from "@/lib/intelligence-descriptor-sizes-config";
 import { loadInventorySegmentChartSeed } from "@/lib/intelligence-inventory-segment-fssr";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
@@ -11,9 +12,10 @@ export const metadata = {
 };
 
 export default async function IntelligencePage() {
-  const [seed, inventorySeed] = await Promise.all([
+  const [seed, inventorySeed, descriptorSizes] = await Promise.all([
     loadDealOfTheDayFssrSeed("sale", "homes"),
     loadInventorySegmentChartSeed("All"),
+    getIntelligenceDescriptorSizesFresh(),
   ]);
 
   return (
@@ -21,6 +23,7 @@ export default async function IntelligencePage() {
       <IntelligenceClient
         initialDotdDealsByTown={seed?.dealsByTown ?? null}
         initialInventorySegmentChart={inventorySeed}
+        initialDescriptorSizes={descriptorSizes}
       />
     </Suspense>
   );

@@ -12,9 +12,66 @@ import {
 import { hasLocalListingsCache } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+import type { StatsValueCalc } from '@/lib/stats-compute'
 import type { MonthsSupplyPayload } from '@/lib/months-supply-types'
 
 export type { MonthsSupplyPayload } from '@/lib/months-supply-types'
+
+/** Build cached hover methodology for inventory / months-supply bars. */
+export function monthsSupplyValueCalcs(args: {
+  city: string
+  kind: ListingKind
+  propertyClass: ListingPropertyClass
+  activeCount: number
+  avgMonthlyClosings: number | null
+  monthsSupply: number | null
+}): {
+  activeCountCalc: StatsValueCalc
+  monthsSupplyCalc?: StatsValueCalc
+} {
+  const classLabel =
+    args.propertyClass === 'all' ? 'all property types' : args.propertyClass
+  const kindNoun = args.kind === 'rental' ? 'rentals' : 'for-sale listings'
+  const activeCountCalc: StatsValueCalc = {
+    summary: `${args.activeCount.toLocaleString()} active ${kindNoun} in ${args.city} (${classLabel}).`,
+    detail: [
+      'Count of Active listings matching the tab’s kind and property class at cache rebuild.',
+    ],
+    inputs: {
+      city: args.city,
+      kind: args.kind,
+      propertyClass: args.propertyClass,
+      activeCount: args.activeCount,
+    },
+  }
+  if (
+    args.monthsSupply == null ||
+    args.avgMonthlyClosings == null ||
+    args.avgMonthlyClosings <= 0
+  ) {
+    return { activeCountCalc }
+  }
+  const avg = args.avgMonthlyClosings
+  const avgLabel = avg % 1 === 0 ? String(avg) : avg.toFixed(1)
+  return {
+    activeCountCalc,
+    monthsSupplyCalc: {
+      summary: `${args.activeCount.toLocaleString()} active ÷ ${avgLabel} avg monthly closings = ${args.monthsSupply.toFixed(1)} mo supply in ${args.city}.`,
+      detail: [
+        'Avg monthly closings = mean Closed count over the prior 3 full calendar months (same kind / property class).',
+        'Months supply = active inventory ÷ that average.',
+      ],
+      inputs: {
+        city: args.city,
+        kind: args.kind,
+        propertyClass: args.propertyClass,
+        activeCount: args.activeCount,
+        avgMonthlyClosings: avg,
+        monthsSupply: args.monthsSupply,
+      },
+    },
+  }
+}
 
 export type MonthsSupplyIndexPayload = {
   generatedAt: string
@@ -103,13 +160,24 @@ export function computeMonthsSupplyPayload(
   const filteredClosed = filterByPropertyClass(kindClosed, propertyClass)
   const activeCount = filteredActive.length
   const avgMonthlyClosings = avgMonthlyClosingsFromClosed(filteredClosed)
-  return {
+  const monthsSupply = computeMonthsSupplyRatio(activeCount, avgMonthlyClosings)
+  const calcs = monthsSupplyValueCalcs({
     city,
     kind,
     propertyClass,
     activeCount,
     avgMonthlyClosings,
-    monthsSupply: computeMonthsSupplyRatio(activeCount, avgMonthlyClosings),
+    monthsSupply,
+  })
+  return {
+    city,
+    kind,
+    propertyClass,
+    activeCount,
+    activeCountCalc: calcs.activeCountCalc,
+    avgMonthlyClosings,
+    monthsSupply,
+    monthsSupplyCalc: calcs.monthsSupplyCalc,
     generatedAt,
   }
 }

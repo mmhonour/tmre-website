@@ -34,22 +34,50 @@ function cacheKey(scope: MarketPulseClosedScope): string {
   const slice = scope.commercialOnly
     ? 'commercial'
     : (scope.propertyClass ?? 'all')
-  return `market-pulse-closed:${scope.kind}:${slice}:${MARKET_DIGEST_CLOSED_TRAILING_MONTHS}m:v1`
+  // v2 — rows include cached calc explainers for Market Pulse bar hover.
+  return `market-pulse-closed:${scope.kind}:${slice}:${MARKET_DIGEST_CLOSED_TRAILING_MONTHS}m:v2`
 }
 
 async function compute(
   scope: MarketPulseClosedScope,
 ): Promise<MarketPulseClosedPayload> {
+  const months = MARKET_DIGEST_CLOSED_TRAILING_MONTHS
   const rows = await readClosedCountsByTown({
     towns: TMRE_TOWNS,
-    months: MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
+    months,
     kind: scope.kind,
     propertyClass: scope.propertyClass,
     commercialOnly: scope.commercialOnly,
   })
+  const noun = scope.commercialOnly
+    ? 'commercial closed sales'
+    : scope.kind === 'rental'
+      ? 'closed leases'
+      : 'closed sales'
+  const classLabel = scope.commercialOnly
+    ? 'commercial'
+    : (scope.propertyClass ?? 'all')
   return {
-    months: MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
-    rows: rows.map((row) => ({ city: row.town, count: row.count })),
+    months,
+    rows: rows.map((row) => ({
+      city: row.town,
+      count: row.count,
+      calc: {
+        summary: `${row.count.toLocaleString()} ${noun} in ${row.town} over the trailing ${months} months.`,
+        detail: [
+          `Postgres count of Closed listings with close date in the trailing ${months}-month window (${classLabel}).`,
+          'All towns roll-up is the sum of town counts when shown as “All towns”.',
+        ],
+        inputs: {
+          city: row.town,
+          count: row.count,
+          months,
+          kind: scope.kind,
+          propertyClass: scope.propertyClass ?? null,
+          commercialOnly: scope.commercialOnly ?? false,
+        },
+      },
+    })),
     generatedAt: new Date().toISOString(),
   }
 }

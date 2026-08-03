@@ -3,13 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import type { HomeMarketPulseTown } from "@/lib/home-market-pulse-types";
 import {
+  interestingStatHref,
   interestingStatWarmUrls,
   type InterestingStatKind,
 } from "@/lib/interesting-stat-link";
 import { dealOfTheDayHref } from "@/lib/listing-url";
 import { prefetchTabJson } from "@/lib/tab-data-prefetch";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
+
+/** Same cadence as the Deal of the Day score town swap. */
+const SCORE_ROTATE_MS = 1100;
 
 type ScoreSample = {
   town: TmreTown;
@@ -95,16 +100,100 @@ const SURFACE_HOLD_MS = 7000;
 
 /** Pill show/hide cadence — 75% slower than the original timers (×1.75). */
 const PILL_TIME_SCALE = 1.75;
+function formatPulsePrice(n: number | null): string | null {
+  if (n == null || !Number.isFinite(n)) return null;
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000;
+    return `$${m >= 10 ? m.toFixed(1) : m.toFixed(2).replace(/\.?0+$/, "")}M`;
+  }
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+/** Town pulse fallback when history has no insight for the carousel town. */
+function townPulseStat(
+  pulse: HomeMarketPulseTown,
+  rotateIndex: number,
+): InterestingStat {
+  const options: InterestingStat[] = [];
+  const price = formatPulsePrice(pulse.medianPrice);
+  if (price) {
+    options.push({
+      eyebrow: "Town pulse",
+      value: price,
+      detail: `Median sale price · ${pulse.town}`,
+      href: interestingStatHref("median-price", pulse.town),
+      kind: "median-price",
+      town: pulse.town,
+    });
+  }
+  if (pulse.daysOnMarket != null && Number.isFinite(pulse.daysOnMarket)) {
+    options.push({
+      eyebrow: "Town pulse",
+      value: `${Math.round(pulse.daysOnMarket)}d`,
+      detail: `Avg days on market · ${pulse.town}`,
+      href: interestingStatHref("avg-dom", pulse.town),
+      kind: "avg-dom",
+      town: pulse.town,
+    });
+  }
+  if (pulse.monthsSupply != null && Number.isFinite(pulse.monthsSupply)) {
+    options.push({
+      eyebrow: "Town pulse",
+      value: `${pulse.monthsSupply.toFixed(1)} mo`,
+      detail: `Months of supply · ${pulse.town}`,
+      href: interestingStatHref("months-supply", pulse.town),
+      kind: "months-supply",
+      town: pulse.town,
+    });
+  }
+  if (options.length === 0) {
+    return {
+      eyebrow: "Town pulse",
+      value: pulse.town,
+      detail: pulse.tagline || "Live market snapshot",
+      href: "/stats",
+      town: pulse.town,
+    };
+  }
+  return options[rotateIndex % options.length]!;
+}
+
+function pickInterestingForTown(
+  entries: InterestingStat[],
+  town: TmreTown,
+  rotateIndex: number,
+  pulseTowns: HomeMarketPulseTown[],
+): InterestingStat | null {
+  const matched = entries.filter((e) => e.town === town);
+  if (matched.length > 0) {
+    return matched[rotateIndex % matched.length]!;
+  }
+  const pulse = pulseTowns.find((t) => t.town === town);
+  if (pulse) return townPulseStat(pulse, rotateIndex);
+  const marketWide = entries.filter((e) => !e.town);
+  if (marketWide.length > 0) {
+    return marketWide[rotateIndex % marketWide.length]!;
+  }
+  if (entries.length > 0) return entries[rotateIndex % entries.length]!;
+  return null;
+}
+
 /**
  * Homepage primer: educate on the listing score, preview site surfaces,
  * and hand off to this week’s Deal of the Week — atmosphere from that listing.
  */
-export default function HomeMethodOverview() {
+export default function HomeMethodOverview({
+  pulseTowns = [],
+}: {
+  /** Town pulse rows — used to pair a town metric with the score carousel. */
+  pulseTowns?: HomeMarketPulseTown[];
+}) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [samples, setSamples] = useState<ScoreSample[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
-  const [interestingStat, setInterestingStat] = useState<InterestingStat | null>(
-    null,
+  const [interestingEntries, setInterestingEntries] = useState<InterestingStat[]>(
+    [],
   );
 
   // Scores first — photo + interesting-stat wait until we have a sample (or the
@@ -181,30 +270,36 @@ export default function HomeMethodOverview() {
     };
 
     const loadInterestingStat = () => {
-      fetch("/api/interesting-stat", { cache: "no-store" })
+      fetch("/api/interesting-stat?history=1", { cache: "no-store" })
         .then(async (r) => {
           if (!r.ok) return null;
-          return (await r.json()) as InterestingStat;
+          return (await r.json()) as { entries?: InterestingStat[] };
         })
         .then((d) => {
-          if (cancelled || !d?.value || !d?.detail) return;
-          const next: InterestingStat = {
-            eyebrow: d.eyebrow || "Interesting stat",
-            value: d.value,
-            detail: d.detail,
-            href: d.href || "/stats",
-            kind: d.kind,
-            town: d.town ?? null,
-          };
-          setInterestingStat(next);
-          if (next.kind) {
+          if (cancelled || !Array.isArray(d?.entries) || d.entries.length === 0) {
+            return;
+          }
+          const next = d.entries
+            .filter((e) => e?.value && e?.detail)
+            .map((e) => ({
+              eyebrow: e.eyebrow || "Interesting stat",
+              value: e.value,
+              detail: e.detail,
+              href: e.href || "/stats",
+              kind: e.kind,
+              town: e.town ?? null,
+            }));
+          if (next.length === 0) return;
+          setInterestingEntries(next);
+          const warm = next[0]!;
+          if (warm.kind) {
             for (const url of interestingStatWarmUrls(
-              next.kind,
-              next.town ?? null,
+              warm.kind,
+              warm.town ?? null,
             )) {
               prefetchTabJson(url);
             }
-          } else if (next.href.startsWith("/stats")) {
+          } else if (warm.href.startsWith("/stats")) {
             prefetchTabJson("/api/stats/page?kind=sale");
           }
         })
@@ -285,7 +380,7 @@ export default function HomeMethodOverview() {
     if (samples.length < 2) return;
     const id = window.setInterval(() => {
       setSampleIndex((i) => (i + 1) % samples.length);
-    }, 1100);
+    }, SCORE_ROTATE_MS);
     return () => window.clearInterval(id);
   }, [samples.length]);
 
@@ -299,6 +394,24 @@ export default function HomeMethodOverview() {
   }, [samples.length]);
 
   const live = samples[sampleIndex] ?? samples[0] ?? null;
+  const interestingStat = live
+    ? pickInterestingForTown(
+        interestingEntries,
+        live.town,
+        sampleIndex,
+        pulseTowns,
+      )
+    : interestingEntries[0] ?? null;
+
+  useEffect(() => {
+    if (!interestingStat?.kind) return;
+    for (const url of interestingStatWarmUrls(
+      interestingStat.kind,
+      interestingStat.town ?? null,
+    )) {
+      prefetchTabJson(url);
+    }
+  }, [interestingStat?.kind, interestingStat?.town, interestingStat?.value]);
 
   return (
     <section className="relative overflow-x-hidden text-white pt-[5.5rem] pb-6 sm:pt-20 sm:pb-12 lg:pt-24 lg:pb-14">
@@ -376,80 +489,86 @@ export default function HomeMethodOverview() {
               </div>
             </div>
 
-            {/* Deal of the Day score */}
-            <div className="flex min-w-0 flex-col items-stretch text-left animate-fade-up-delay-1 sm:items-end sm:text-right lg:col-span-6">
-              <div className="w-full min-w-0 max-w-md lg:max-w-lg sm:ml-auto">
-                <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2">
+            {/* Deal of the Day score + matched town interesting-stat */}
+            <div className="flex min-w-0 flex-col items-stretch text-left animate-fade-up-delay-1 lg:col-span-6">
+              <div className="w-full min-w-0 max-w-2xl sm:ml-auto">
+                <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2 sm:text-right">
                   Actual home · rotating towns
                 </p>
-                {live ? (
-                  <Link
-                    href={dealOfTheDayHref(live.town, {
-                      mlsId: live.mlsId,
-                      listingKey: live.listingKey,
-                      kind: "sale",
-                      propertyClass: "homes",
-                    })}
-                    className="group block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
-                    aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
-                  >
-                    <p
-                      key={`${live.town}-${live.score}-${live.mlsId}`}
-                      className="home-score-swap font-serif italic gold-shimmer text-[3.75rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[7rem] lg:text-[8.5rem]"
-                    >
-                      {live.score.toFixed(1)}.
+                <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] sm:gap-5 lg:gap-6">
+                  <div className="min-w-0 sm:text-right">
+                    {live ? (
+                      <Link
+                        href={dealOfTheDayHref(live.town, {
+                          mlsId: live.mlsId,
+                          listingKey: live.listingKey,
+                          kind: "sale",
+                          propertyClass: "homes",
+                        })}
+                        className="group block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
+                        aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
+                      >
+                        <p
+                          key={`${live.town}-${live.score}-${live.mlsId}`}
+                          className="home-score-swap font-serif italic gold-shimmer text-[3.75rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[6.25rem] lg:text-[7.5rem]"
+                        >
+                          {live.score.toFixed(1)}.
+                        </p>
+                        <p className="mt-1 font-serif italic text-xl text-white/90 transition-colors group-hover:text-gold sm:mt-2 sm:text-3xl">
+                          {live.town}
+                        </p>
+                      </Link>
+                    ) : (
+                      <>
+                        <p className="font-serif italic text-[3.75rem] leading-none tracking-tight text-white/40 sm:text-[6.25rem] lg:text-[7.5rem]">
+                          —.—
+                        </p>
+                        <p className="mt-1 font-serif italic text-xl text-white/90 sm:mt-2 sm:text-3xl">
+                          Scanning markets…
+                        </p>
+                      </>
+                    )}
+                    <p className="mt-2 max-w-sm text-xs leading-relaxed text-white/45 sm:mt-3 sm:ml-auto">
+                      Today&apos;s pick in each town — tap the score to open that
+                      deal. Same yardstick as Deal of the Week.
                     </p>
-                    <p className="mt-1 font-serif italic text-xl text-white/90 transition-colors group-hover:text-gold sm:mt-2 sm:text-3xl">
-                      {live.town}
-                    </p>
-                  </Link>
-                ) : (
-                  <>
-                    <p className="font-serif italic text-[3.75rem] leading-none tracking-tight text-white/40 sm:text-[7rem] lg:text-[8.5rem]">
-                      —.—
-                    </p>
-                    <p className="mt-1 font-serif italic text-xl text-white/90 sm:mt-2 sm:text-3xl">
-                      Scanning markets…
-                    </p>
-                  </>
-                )}
+                  </div>
 
-                <p className="mt-2 max-w-sm text-xs leading-relaxed text-white/45 sm:mt-3 sm:ml-auto">
-                  Today&apos;s pick in each town — tap the score to open that
-                  deal. Same yardstick as Deal of the Week.
-                </p>
-
-                {interestingStat ? (
-                  <Link
-                    href={interestingStat.href}
-                    onMouseEnter={() => {
-                      if (!interestingStat.kind) return;
-                      for (const url of interestingStatWarmUrls(
-                        interestingStat.kind,
-                        interestingStat.town ?? null,
-                      )) {
-                        prefetchTabJson(url);
+                  {interestingStat ? (
+                    <Link
+                      href={interestingStat.href}
+                      onMouseEnter={() => {
+                        if (!interestingStat.kind) return;
+                        for (const url of interestingStatWarmUrls(
+                          interestingStat.kind,
+                          interestingStat.town ?? null,
+                        )) {
+                          prefetchTabJson(url);
+                        }
+                      }}
+                      className="group/stat min-w-0 rounded-sm border border-white/10 bg-white/[0.04] px-3 py-3 text-left transition-colors hover:border-gold/35 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark sm:px-4 sm:py-3.5"
+                      title={
+                        interestingStat.kind === "best-vintage" ||
+                        interestingStat.kind === "vintage-gap"
+                          ? "Learn how scoring works"
+                          : "Open this chart on Statistics"
                       }
-                    }}
-                    className="mt-3 block w-full min-w-0 rounded-sm border border-transparent px-0 py-1 text-left cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent sm:mt-4 sm:ml-auto sm:text-right"
-                    title={
-                      interestingStat.kind === "best-vintage" ||
-                      interestingStat.kind === "vintage-gap"
-                        ? "Learn how scoring works"
-                        : "Open this chart on Statistics"
-                    }
-                  >
-                    <span className="block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-                      {interestingStat.eyebrow}
-                    </span>
-                    <span className="mt-1 block break-words font-serif italic text-2xl leading-tight text-white underline decoration-gold/35 underline-offset-4 sm:text-3xl">
-                      {interestingStat.value}
-                    </span>
-                    <span className="mt-1.5 block w-full max-w-none break-words text-xs leading-snug text-white/60 sm:ml-auto sm:max-w-sm">
-                      {interestingStat.detail}
-                    </span>
-                  </Link>
-                ) : null}
+                    >
+                      <span className="block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                        {interestingStat.eyebrow}
+                      </span>
+                      <span
+                        key={`${interestingStat.value}-${interestingStat.detail}-${live?.town ?? ""}`}
+                        className="home-score-swap mt-1.5 block break-words font-serif italic text-2xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.85rem]"
+                      >
+                        {interestingStat.value}
+                      </span>
+                      <span className="mt-1.5 block break-words text-xs leading-snug text-white/60">
+                        {interestingStat.detail}
+                      </span>
+                    </Link>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>

@@ -23,6 +23,7 @@ export type AdminDataControlsPanelId =
   | "rets"
   | "intel-inventory"
   | "intel-deal-board"
+  | "intel-descriptor-sizes"
   | "ct-coverage"
   | "town-budget";
 
@@ -151,6 +152,12 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     label: "Deal board",
     subtitle:
       "Read-only middle-tier rules when Intelligence is sorted by score",
+  },
+  {
+    id: "intel-descriptor-sizes",
+    label: "Filter text",
+    subtitle:
+      "Mobile vs desktop idle size for Intelligence filter descriptors",
   },
   {
     id: "ct-coverage",
@@ -631,6 +638,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "intel-deal-board",
   },
   {
+    id: "admin-intel-descriptor-sizes",
+    label: "Intelligence filter descriptor sizes",
+    tab: "data-controls",
+    panel: "intel-descriptor-sizes",
+  },
+  {
     id: "admin-startup",
     label: "Startup schedule",
     tab: "syncs",
@@ -878,6 +891,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
     title: "Intelligence & product caches",
     routes: [
       { label: "GET /api/intelligence/deal-board", detail: "Deal board rows + headlines", href: "/api/intelligence/deal-board" },
+      {
+        label: "GET /api/intelligence/descriptor-sizes",
+        detail: "Intelligence filter descriptor idle font sizes",
+        href: "/api/intelligence/descriptor-sizes",
+      },
       { label: "GET /api/deal-of-the-day", detail: "DOTD carousel picks", href: "/api/deal-of-the-day" },
       { label: "GET /api/spotlight", detail: "Spotlight listing + score", href: "/api/spotlight" },
       { label: "GET /api/latest/listings", detail: "Latest feed rows", href: "/api/listings/latest" },
@@ -907,6 +925,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       { label: "GET /api/admin/sync", detail: "Trigger sync actions", href: "/api/admin/sync" },
       { label: "GET /api/admin/spotlight-privacy", detail: "Spotlight privacy overrides", href: "/api/admin/spotlight-privacy" },
       { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
+      {
+        label: "GET /api/admin/intelligence-descriptor-sizes",
+        detail: "Intelligence filter descriptor mobile/desktop sizes",
+        href: "/api/admin/intelligence-descriptor-sizes",
+      },
       { label: "GET /api/admin/price-buckets", detail: "Sales by price band definitions", href: "/api/admin/price-buckets" },
       { label: "GET /api/admin/pricing-matching-config", detail: "Sales / Rentals / What if match parameters", href: "/api/admin/pricing-matching-config" },
       { label: "POST /api/sync/listings/incremental", detail: "Manual incremental sync hook", href: "/api/sync/listings/incremental" },
@@ -983,6 +1006,7 @@ export function isAdminDataControlsPanelId(
     value === "rets" ||
     value === "intel-inventory" ||
     value === "intel-deal-board" ||
+    value === "intel-descriptor-sizes" ||
     value === "ct-coverage" ||
     value === "town-budget"
   );
