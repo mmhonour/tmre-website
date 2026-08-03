@@ -483,7 +483,7 @@ export default function IntelligenceMiniGraphsStrip({
                   {desktopWindow.map(({ item, idx, offset }) => (
                     <div
                       key={`${item.key}-${offset}-${idx}`}
-                      className="w-full min-w-0 max-w-md flex-1"
+                      className="w-full min-w-0 flex-1"
                     >
                       {item.node}
                     </div>
@@ -507,8 +507,8 @@ export default function IntelligenceMiniGraphsStrip({
                       key={item.key}
                       className={
                         isNarrow
-                          ? "w-full min-w-full shrink-0 flex justify-start"
-                          : "w-full min-w-0 max-w-md flex-1"
+                          ? "w-full min-w-full shrink-0"
+                          : "w-full min-w-0 flex-1"
                       }
                       aria-hidden={isNarrow ? i !== safeActiveIndex : undefined}
                     >

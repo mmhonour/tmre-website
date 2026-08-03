@@ -9,10 +9,13 @@ import {
 } from "@/lib/intel-mini-graph-layout";
 
 /** Phrase after “Filters …” — swap later without rewriting the chrome. */
-export const ACTIVE_BY_DOM_LABEL = "Inventory by DOM";
+export const ACTIVE_BY_DOM_LABEL = "Days on Market";
 
 /** Dimension word in “Original view by …” flash. */
-export const VIEW_BY_DOM_DIMENSION_LABEL = "DOM";
+export const VIEW_BY_DOM_DIMENSION_LABEL = "Days on Market";
+
+/** Rotate which band callout label is visible (counts stay). */
+const CALLOUT_LABEL_ROTATE_MS = 2_500;
 
 type BandPoint = {
   id: string;
@@ -82,6 +85,8 @@ export default function IntelligenceDomBandMiniChart({
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(() => new Set());
+  /** Which point’s band label is showing — rotates so labels don’t overlap. */
+  const [calloutLabelIndex, setCalloutLabelIndex] = useState(0);
   const introStartedRef = useRef(false);
   const originalFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -152,6 +157,15 @@ export default function IntelligenceDomBandMiniChart({
   const pointIdsKey = points.map((p) => p.id).join("|");
 
   useEffect(() => {
+    setCalloutLabelIndex(0);
+    if (points.length <= 1) return;
+    const id = window.setInterval(() => {
+      setCalloutLabelIndex((i) => (i + 1) % points.length);
+    }, CALLOUT_LABEL_ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, [pointIdsKey, points.length]);
+
+  useEffect(() => {
     if (points.length === 0 || introStartedRef.current) return;
     introStartedRef.current = true;
     setShowInteractiveHint(true);
@@ -210,20 +224,17 @@ export default function IntelligenceDomBandMiniChart({
   };
 
   return (
-    <div className="relative flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
+    <div className="relative flex w-full flex-col items-stretch gap-0.5 bg-transparent">
       {showOriginalViewFlash ? (
-        <p className="pointer-events-none absolute left-0 top-0 z-[1] font-mono text-[9px] leading-snug tracking-[0.12em] uppercase text-navy/70">
+        <p className="pointer-events-none absolute right-0 top-0 z-[1] text-right font-mono text-[9px] leading-snug tracking-[0.12em] uppercase text-navy/70">
           Original view by {VIEW_BY_DOM_DIMENSION_LABEL}
         </p>
       ) : null}
-      <div className="flex w-full min-w-0 max-w-[248px] flex-col items-stretch gap-0.5">
+      <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
         <div className="relative w-full">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-between gap-2 px-0.5">
-            <p className="min-w-0 bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
-              {chartTitle}
-            </p>
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-end gap-2 px-0.5">
             <p
-              className={`hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
+              className={`mr-auto hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
                 showInteractiveHint
                   ? "animate-interactive-graph-hint"
                   : "opacity-0"
@@ -231,6 +242,9 @@ export default function IntelligenceDomBandMiniChart({
               aria-hidden={!showInteractiveHint}
             >
               interactive graph
+            </p>
+            <p className="min-w-0 bg-transparent text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+              {chartTitle}
             </p>
           </div>
           <svg
@@ -251,7 +265,10 @@ export default function IntelligenceDomBandMiniChart({
             {points.map((point, i) => {
               const active = activeBucketId === point.id;
               const glowing = glowIds.has(point.id);
-              const showCallout = point.callout || extraCallouts.has(point.id);
+              const showBandLabel =
+                i === calloutLabelIndex ||
+                active ||
+                extraCallouts.has(point.id);
               const countLabel = formatCount(point.count);
               const isFirst = i === 0;
               const isLast = i === points.length - 1;
@@ -265,28 +282,26 @@ export default function IntelligenceDomBandMiniChart({
                     {point.label} days · {point.count}{" "}
                     {kind === "rental" ? "for rent" : "for sale"}
                   </title>
-                  {showCallout ? (
-                    <>
-                      <text
-                        x={point.x}
-                        y={bandY}
-                        textAnchor={anchor}
-                        className="fill-black font-mono text-[8px] uppercase"
-                        style={{ fontSize: 8, letterSpacing: "0.04em" }}
-                      >
-                        {point.shortLabel}
-                      </text>
-                      <text
-                        x={point.x}
-                        y={countY}
-                        textAnchor={anchor}
-                        className="fill-black font-mono text-[9px] tabular-nums"
-                        style={{ fontSize: 9 }}
-                      >
-                        {countLabel}
-                      </text>
-                    </>
+                  {showBandLabel ? (
+                    <text
+                      x={point.x}
+                      y={bandY}
+                      textAnchor={anchor}
+                      className="fill-black font-mono text-[8px] uppercase"
+                      style={{ fontSize: 8, letterSpacing: "0.04em" }}
+                    >
+                      {point.shortLabel}
+                    </text>
                   ) : null}
+                  <text
+                    x={point.x}
+                    y={countY}
+                    textAnchor={anchor}
+                    className="fill-black font-mono text-[9px] tabular-nums"
+                    style={{ fontSize: 9 }}
+                  >
+                    {countLabel}
+                  </text>
                   {glowing ? (
                     <circle
                       cx={point.x}
@@ -328,10 +343,10 @@ export default function IntelligenceDomBandMiniChart({
               type="button"
               onClick={onResetFilter}
               className="text-right font-mono text-[9px] tracking-[0.12em] uppercase text-navy/70 underline decoration-navy/30 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
-              title="Reset DOM filter — show all days on market"
-              aria-label="All DOM — reset days-on-market filter"
+              title="Reset days-on-market filter — show all bands"
+              aria-label="All days — reset days-on-market filter"
             >
-              All DOM
+              All days
             </button>
           </div>
         ) : null}

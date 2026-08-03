@@ -301,7 +301,9 @@ function DealContentCompact({
             isHero ? "text-white/70" : "text-slate"
           }`}
         >
-          <span className="text-gold">Deal of the Day</span>
+          <span className="text-gold underline underline-offset-2 decoration-gold/45">
+            Deal of the Day
+          </span>
           <span className={isHero ? "text-white/45" : "text-slate/70"}>
             {" "}
             {formatDealOfTheDayHeaderSubtitle(new Date(), headerTown)}

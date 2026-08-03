@@ -176,21 +176,18 @@ export default function IntelligenceVintageMedianMiniChart({
   const chartTitle = MEDIAN_BY_VINTAGE_LABEL;
 
   return (
-    <div className="relative flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
+    <div className="relative flex w-full flex-col items-stretch gap-0.5 bg-transparent">
       {showOriginalViewFlash ? (
-        <p className="pointer-events-none absolute left-0 top-0 z-[1] font-mono text-[9px] leading-snug tracking-[0.12em] uppercase text-navy/70">
+        <p className="pointer-events-none absolute right-0 top-0 z-[1] text-right font-mono text-[9px] leading-snug tracking-[0.12em] uppercase text-navy/70">
           Original view by {VIEW_BY_DIMENSION_LABEL}
         </p>
       ) : null}
-      <div className="flex w-full min-w-0 max-w-[248px] flex-col items-stretch gap-0.5">
+      <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
           <div className="relative w-full">
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-between gap-2 px-0.5">
-              <p className="min-w-0 bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
-                {chartTitle}
-              </p>
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-end gap-2 px-0.5">
               {/* Desktop hint; mobile carousel strip shows its own. */}
               <p
-                className={`hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
+                className={`mr-auto hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
                   showInteractiveHint
                     ? "animate-interactive-graph-hint"
                     : "opacity-0"
@@ -198,6 +195,9 @@ export default function IntelligenceVintageMedianMiniChart({
                 aria-hidden={!showInteractiveHint}
               >
                 interactive graph
+              </p>
+              <p className="min-w-0 bg-transparent text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+                {chartTitle}
               </p>
             </div>
           <svg

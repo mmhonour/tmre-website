@@ -71,10 +71,7 @@ import {
 } from "@/lib/filter-pill-styles";
 import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
-import {
-  dealOfTheDayHref,
-  listingDetailHrefForListing,
-} from "@/lib/listing-url";
+import { listingDetailHrefForListing } from "@/lib/listing-url";
 import { underContractStatusLabel } from "@/lib/listing-status";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
 import {
@@ -2017,9 +2014,13 @@ export default function IntelligenceClient({
   const [heroIntroDismissed, setHeroIntroDismissed] = useState(false);
   /**
    * Phone only: 5s after the hero intro collapses, replace the DOTD card with a
-   * left “deal of the day” link and right-aligned months supply.
+   * left “deal of the day” control and right-aligned months supply.
+   * Tapping the control restores the DOTD preview (and descriptor months supply).
    */
   const [mobileHeroCompactChrome, setMobileHeroCompactChrome] = useState(false);
+  /** After the user restores the preview, don’t auto-collapse again this visit. */
+  const [mobileHeroCompactSuspended, setMobileHeroCompactSuspended] =
+    useState(false);
   const [listingsRefresh, setListingsRefresh] = useState<{
     refreshing: boolean;
     lastFinishedAt: string | null;
@@ -2073,9 +2074,10 @@ export default function IntelligenceClient({
       setMobileHeroCompactChrome(false);
       return;
     }
+    if (mobileHeroCompactSuspended) return;
     const timer = window.setTimeout(() => setMobileHeroCompactChrome(true), 5_000);
     return () => window.clearTimeout(timer);
-  }, [isMobileViewport, heroIntroDismissed]);
+  }, [isMobileViewport, heroIntroDismissed, mobileHeroCompactSuspended]);
 
   useEffect(() => {
     return () => {
@@ -4528,14 +4530,13 @@ export default function IntelligenceClient({
         }`}
       >
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
-        <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
-          <div
-            className={`flex flex-col gap-y-2 transition-[gap] duration-300 ease-out ${
-              desktopDotdSingleLine
-                ? "lg:flex-col lg:gap-y-2"
-                : "lg:flex-row lg:items-start lg:gap-x-5"
-            }`}
-          >
+        {/*
+          Same max-width + board|248px grid as the cream results section so
+          desktop DOTD’s right edge lines up with the deal-board column (Live/Share).
+        */}
+        <div className="relative mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
+          <div className="flex min-w-0 flex-col gap-y-2 transition-[gap] duration-300 ease-out lg:flex-row lg:items-start lg:gap-x-5">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-3 min-w-0">
                 <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
@@ -5065,15 +5066,16 @@ export default function IntelligenceClient({
             </div>
             {mobileHeroCompactChrome ? (
               <div className="flex w-full items-baseline justify-between gap-x-4 lg:hidden">
-                <Link
-                  href={dealOfTheDayHref(active === "All" ? null : active, {
-                    kind: dotdKind,
-                    propertyClass: dotdPropertyClass,
-                  })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileHeroCompactChrome(false);
+                    setMobileHeroCompactSuspended(true);
+                  }}
                   className="shrink-0 font-mono text-[11px] tracking-[0.12em] lowercase text-gold underline underline-offset-2 decoration-gold/45 transition-colors hover:text-gold-light hover:decoration-gold"
                 >
                   deal of the day
-                </Link>
+                </button>
                 <span className="min-w-0 text-right">
                   <IntelMonthsSupplyInline
                     monthsSupply={
@@ -5089,7 +5091,9 @@ export default function IntelligenceClient({
             ) : null}
             <div
               className={
-                mobileHeroCompactChrome ? "hidden lg:block" : undefined
+                mobileHeroCompactChrome
+                  ? "hidden lg:block lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-start"
+                  : "w-full lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-start"
               }
             >
               <DealOfTheDayFrame
@@ -5109,13 +5113,12 @@ export default function IntelligenceClient({
                 hideUntilReady
                 surfaceAnyPick
                 desktopSingleLine={desktopDotdSingleLine}
-                className={
-                  desktopDotdSingleLine
-                    ? "w-full shrink-0 animate-fade-up"
-                    : "w-full lg:w-[17rem] lg:max-w-[17rem] shrink-0 animate-fade-up"
-                }
+                className="w-full shrink-0 animate-fade-up"
               />
             </div>
+          </div>
+          {/* Matches town-stats rail width so DOTD aligns with the results board. */}
+          <div className="hidden lg:block" aria-hidden />
           </div>
         </div>
       </section>

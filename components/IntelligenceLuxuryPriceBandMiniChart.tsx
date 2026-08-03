@@ -343,8 +343,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intro once per segment dataset
   }, [pointIdsKey]);
 
-  if (!ready) return null;
-
   const segmentLabel = labels[segment] ?? SEGMENT_TAB_LABEL[segment];
   const chartTitle = segmentInventoryByPriceLabel(segmentLabel);
   const linePath = points
@@ -369,9 +367,43 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     onBucketClick({ id: point.id, min: point.min, max: point.max });
   };
 
+  // Keep the carousel slide occupied while segment caches warm (avoid a blank mobile slide).
+  if (!ready) {
+    return (
+      <div className="relative flex w-full flex-col items-stretch gap-0.5 bg-transparent">
+        <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
+          <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <div
+              role="tablist"
+              aria-label="Inventory segment"
+              className="flex min-w-0 flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5"
+            >
+              {SEGMENT_ORDER.map((id) => (
+                <span
+                  key={id}
+                  className="font-mono text-[8px] tracking-[0.12em] uppercase text-navy/35"
+                >
+                  {SEGMENT_TAB_LABEL[id]}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="relative flex h-[4.5rem] w-full items-center justify-center">
+            <p className="pointer-events-none absolute right-0.5 top-0 text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black/50">
+              {LUXURY_BY_PRICE_LABEL}
+            </p>
+            <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/40">
+              Loading…
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative flex w-full max-w-md flex-col items-stretch gap-0.5 bg-transparent">
-      <div className="flex w-full min-w-0 max-w-[248px] flex-col items-stretch gap-0.5">
+    <div className="relative flex w-full flex-col items-stretch gap-0.5 bg-transparent">
+      <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
           <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <div
               role="tablist"
@@ -437,13 +469,10 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
           </div>
           {points.length > 0 ? (
           <div className="relative w-full">
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-between gap-2 px-0.5">
-              <p className="min-w-0 bg-transparent text-left font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
-                {chartTitle}
-              </p>
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-end gap-2 px-0.5">
               {/* Desktop hint; mobile carousel strip shows its own. */}
               <p
-                className={`hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
+                className={`mr-auto hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
                   showInteractiveHint
                     ? "animate-interactive-graph-hint"
                     : "opacity-0"
@@ -451,6 +480,9 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                 aria-hidden={!showInteractiveHint}
               >
                 interactive graph
+              </p>
+              <p className="min-w-0 bg-transparent text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+                {chartTitle}
               </p>
             </div>
           <svg
@@ -541,8 +573,8 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
           </svg>
           </div>
           ) : (
-            <div className="relative flex h-[4.5rem] w-full max-w-[248px] items-center justify-center">
-              <p className="pointer-events-none absolute left-0.5 top-0 font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
+            <div className="relative flex h-[4.5rem] w-full items-center justify-center">
+              <p className="pointer-events-none absolute right-0.5 top-0 text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
                 {chartTitle}
               </p>
               <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/45">
