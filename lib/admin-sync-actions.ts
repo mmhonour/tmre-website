@@ -145,6 +145,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'zip-boundaries': 'zip-maps',
   'fomc-sync': 'fomc',
   'cpi-sync': 'cpi',
+  'market-digest': 'digest',
 }
 
 /** Finalize-step → Sync History type (weekly full resync chain). */
@@ -833,6 +834,48 @@ async function runAdminSyncActionImpl(
         recordsFetched: result.updated,
         message: `CPI sync — updated ${result.updated}, fetched ${result.fetched}`,
         detail: `skipped ${result.skipped} · failed ${result.failed}`,
+      }
+    }
+    case 'market-digest': {
+      if (isServerlessRuntime()) {
+        const { queueNetlifyMarketDigest } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const queued = await queueNetlifyMarketDigest({
+          source: 'admin',
+          force: true,
+          stampWeek: true,
+        })
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? 'Monday market brief queued on Netlify background worker'
+            : `Market brief queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { sendMarketDigestEmail } = await import('@/lib/market-digest-notify')
+      const result = await sendMarketDigestEmail({
+        force: true,
+        stampWeek: true,
+      })
+      const finishedAt = new Date().toISOString()
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - t0,
+        message: result.skipped
+          ? `Market brief skipped — ${result.reason ?? 'skipped'}`
+          : `Market brief sent to ${result.to ?? 'recipient'}`,
+        detail: result.subject
+          ? `week ${result.weekKey ?? '—'} · ${result.subject}`
+          : result.reason,
       }
     }
     default: {

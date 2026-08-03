@@ -42,6 +42,11 @@ export const ADMIN_SYNC_ACTIONS = {
     description:
       'Scrape official BLS CPI news release on print day (~9:15 a.m. ET) into Postgres for /fed-analysis',
   },
+  'market-digest': {
+    label: 'Monday market brief',
+    description:
+      'Weekly Resend months-supply / inventory digest email (Mon ~8am ET) for /market-pulse',
+  },
 } as const
 
 export type AdminSyncActionId = keyof typeof ADMIN_SYNC_ACTIONS
@@ -63,7 +68,7 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'deal-of-the-day',
   'property-addresses',
   'zip-boundaries',
-  // fomc-sync / cpi-sync omitted — event-day only
+  // fomc-sync / cpi-sync / market-digest omitted — event/email jobs
 ] as const satisfies readonly AdminSyncActionId[]
 
 /** Client-side Sync all fallback — one POST per step to stay under serverless timeouts. */
@@ -86,6 +91,7 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'zip-boundaries': 7,
   'fomc-sync': 8,
   'cpi-sync': 9,
+  'market-digest': 10,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

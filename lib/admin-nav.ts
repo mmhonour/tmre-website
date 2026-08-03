@@ -832,12 +832,12 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "market-digest",
     detail:
-      "Thin Monday trigger — queues market-digest-worker (months supply brief email)",
-    schedule: "Weekly Mon ~8am ET",
+      "Thin trigger — queues market-digest-worker when Configure weekly Mon start time is due (default 08:00 ET)",
+    schedule: "Every 30 min (weekly-gated)",
   },
   {
     label: "market-digest-worker",
-    detail: "Background Monday market brief email send",
+    detail: "Background Monday market brief email send (also Admin Syncs Run)",
     schedule: "On invoke (background)",
   },
   {
@@ -912,6 +912,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         label: "POST /api/saved-searches",
         detail: "Create visitor listing alert from cookie search profile",
         href: "/latest#latest-alerts",
+      },
+      {
+        label: "GET /api/active-by-dom",
+        detail: "Active inventory counts by Goldilocks DOM day-ranges",
+        href: "/api/active-by-dom?city=Westport&kind=sale",
       },
     ],
   },

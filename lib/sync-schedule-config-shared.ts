@@ -97,6 +97,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'zip-boundaries',
       'fomc-sync',
       'cpi-sync',
+      'market-digest',
     ],
     jobs: {
       'full-resync': { frequency: 'weekly', startTimeEt: '05:00' },
@@ -108,6 +109,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'zip-boundaries': { frequency: 'monthly', startTimeEt: '06:00' },
       'fomc-sync': { frequency: 'event', startTimeEt: '15:15' },
       'cpi-sync': { frequency: 'event', startTimeEt: '09:15' },
+      'market-digest': { frequency: 'weekly', startTimeEt: '08:00' },
     },
   }
 }
@@ -164,7 +166,7 @@ function isSyncAllActionableJob(
     jobId === 'deal-of-the-day' ||
     jobId === 'property-addresses' ||
     jobId === 'zip-boundaries'
-    // fomc-sync / cpi-sync are event-day only — not part of Sync all
+    // fomc-sync / cpi-sync / market-digest — not part of Sync all
   )
 }
 

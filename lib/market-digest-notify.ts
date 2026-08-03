@@ -24,12 +24,16 @@ export type MarketDigestSendResult = {
 /**
  * Build and send the Monday months-supply / inventory digest via Resend.
  * When `force` is false, skips if disabled, already sent this ET week, or no API key.
- * Admin "Send test now" uses `force: true` (same subject template; does not stamp the week).
+ * Admin "Send test now" uses `force: true` (does not stamp the week).
+ * Admin Syncs Run uses `force: true, stampWeek: true` so the watermark advances.
  */
 export async function sendMarketDigestEmail(opts?: {
   force?: boolean
+  /** Defaults to `!force`. Syncs dashboard Run sets true so Next/overdue clear. */
+  stampWeek?: boolean
 }): Promise<MarketDigestSendResult> {
   const force = opts?.force === true
+  const stampWeek = opts?.stampWeek ?? !force
   const config = await getMarketDigestConfigFresh()
   const weekKey = marketDigestWeekKey()
 
@@ -95,12 +99,14 @@ export async function sendMarketDigestEmail(opts?: {
     throw new Error(`Resend API ${res.status}${detail ? `: ${detail}` : ''}`)
   }
 
-  if (!force) {
+  if (stampWeek) {
     await markMarketDigestSent(weekKey)
   }
 
   console.info(
-    `[market-digest] sent to ${config.email} week=${weekKey}${force ? ' (test)' : ''}`,
+    `[market-digest] sent to ${config.email} week=${weekKey}${
+      force && !stampWeek ? ' (test)' : force ? ' (admin)' : ''
+    }`,
   )
   return {
     ok: true,

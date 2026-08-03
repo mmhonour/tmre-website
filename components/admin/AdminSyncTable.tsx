@@ -554,6 +554,7 @@ export type PanelStatus = {
   zipBoundariesSyncStartedAt?: string | null;
   fomcLastSyncedAt?: string | null;
   cpiLastSyncedAt?: string | null;
+  marketDigestLastSentAt?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   /** Admin-set Next times that preempt the natural schedule. */
@@ -834,6 +835,8 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
       return { started: null, finished: status.fomcLastSyncedAt ?? null };
     case "cpi-sync":
       return { started: null, finished: status.cpiLastSyncedAt ?? null };
+    case "market-digest":
+      return { started: null, finished: status.marketDigestLastSentAt ?? null };
     default:
       return { started: null, finished: null };
   }
@@ -1043,6 +1046,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "zip-boundaries": "zip-boundaries",
   "fomc-sync": "fomc-sync",
   "cpi-sync": "cpi-sync",
+  "market-digest": "market-digest",
 };
 
 function pauseJobForSyncAllAction(
@@ -2626,7 +2630,8 @@ export default function AdminSyncTable({
               const showSingleTimestamp =
                 row.id === "latest-mls" ||
                 row.id === "property-addresses" ||
-                row.id === "zip-boundaries";
+                row.id === "zip-boundaries" ||
+                row.id === "market-digest";
               const nextRunAt = nextRunForRow(row, status);
               // Configure is schedule/setup only — no live status colors.
               const visual = isConfigure

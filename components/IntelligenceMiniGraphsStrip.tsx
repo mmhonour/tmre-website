@@ -33,9 +33,9 @@ export type IntelligenceMiniGraphSlot = {
 
 export type MiniGraphsCarouselApi = {
   paused: boolean;
-  /** True when the mobile one-at-a-time carousel is active. */
+  /** True when mobile (1-up) or desktop (3-up window) carousel is active. */
   isCarousel: boolean;
-  /** Key of the currently visible slide (null when not in carousel mode). */
+  /** Key of the currently focused slide (null when not in carousel mode). */
   activeKey: string | null;
   pause: () => void;
   resume: () => void;
@@ -51,10 +51,14 @@ export function useMiniGraphsCarousel(): MiniGraphsCarouselApi | null {
   return useContext(MiniGraphsCarouselContext);
 }
 
+/** How many mini-graphs show at once on desktop before the strip carousels. */
+const DESKTOP_VISIBLE = 3;
+
 /**
- * Desktop: Median | Inventory by price | Market-band inventory by price in one row.
- * Mobile: one chart at a time; slides left through 1→2→3, then continues as
- * 2→3→1, 3→1→2, … until paused. Hide toggle often lives outside (left of board).
+ * Desktop: up to 3 charts in a row; when there are more, rotate a 3-wide window
+ * (same pause / dwell controls as mobile).
+ * Mobile: one chart at a time until paused.
+ * Hide toggle often lives outside (left of board).
  */
 export default function IntelligenceMiniGraphsStrip({
   slots,
@@ -158,15 +162,20 @@ export default function IntelligenceMiniGraphsStrip({
     [controlled, onHiddenChange, setAutoHideSuspended],
   );
 
+  const desktopCarousel =
+    !isNarrow && items.length > DESKTOP_VISIBLE;
+  const isCarousel =
+    (isNarrow && items.length > 1) || desktopCarousel;
+
   const activeKey =
-    isNarrow && items.length > 0
-      ? (items[activeIndex]?.key ?? null)
+    isCarousel && items.length > 0
+      ? (items[activeIndex % items.length]?.key ?? null)
       : null;
 
   const carouselApi = useMemo<MiniGraphsCarouselApi>(
     () => ({
       paused,
-      isCarousel: isNarrow && items.length > 1,
+      isCarousel,
       activeKey,
       pause: () => {
         setPaused(true);
@@ -181,7 +190,7 @@ export default function IntelligenceMiniGraphsStrip({
         bumpActivity();
       },
     }),
-    [paused, isNarrow, items.length, activeKey, bumpActivity],
+    [paused, isCarousel, activeKey, bumpActivity],
   );
 
   useEffect(() => {
@@ -254,7 +263,7 @@ export default function IntelligenceMiniGraphsStrip({
   );
 
   useEffect(() => {
-    if (!prefReady || hidden || !isNarrow || paused || itemCount <= 1) {
+    if (!prefReady || hidden || paused || !isCarousel) {
       return;
     }
     const dwellMs = ROTATE_MS * activeDwellSteps;
@@ -266,8 +275,8 @@ export default function IntelligenceMiniGraphsStrip({
   }, [
     prefReady,
     hidden,
-    isNarrow,
     paused,
+    isCarousel,
     itemCount,
     activeIndex,
     activeDwellSteps,
@@ -348,15 +357,69 @@ export default function IntelligenceMiniGraphsStrip({
     </p>
   );
 
+  const safeActiveIndex =
+    itemCount > 0 ? activeIndex % itemCount : 0;
+
   const carouselCount =
-    renderItems.length > 1 ? (
+    isCarousel && renderItems.length > 1 ? (
       <span
         className="font-mono text-[9px] tracking-[0.12em] uppercase tabular-nums text-navy/55"
         aria-live="polite"
       >
-        {activeIndex + 1} of {renderItems.length}
+        {safeActiveIndex + 1} of {renderItems.length}
+        {desktopCarousel ? ` · ${DESKTOP_VISIBLE} shown` : ""}
       </span>
     ) : null;
+
+  const desktopWindow = desktopCarousel
+    ? [0, 1, 2].map((offset) => {
+        const idx = (safeActiveIndex + offset) % renderItems.length;
+        return { item: renderItems[idx]!, idx, offset };
+      })
+    : null;
+
+  const carouselChrome = isCarousel ? (
+    <div className="mt-1.5 flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2">
+        {carouselCount}
+        <div
+          className="flex items-center gap-1.5"
+          role="tablist"
+          aria-label="Mini graphs"
+        >
+          {renderItems.map((item, i) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={i === safeActiveIndex}
+              aria-label={`Show graph ${i + 1} of ${renderItems.length}`}
+              className={`h-1.5 rounded-full transition-all ${
+                i === safeActiveIndex
+                  ? "w-4 bg-navy"
+                  : "w-1.5 bg-navy/25 hover:bg-navy/45"
+              }`}
+              onClick={() => {
+                bumpActivity();
+                setActiveIndex(i);
+                setPaused(true);
+              }}
+            />
+          ))}
+        </div>
+        {pauseToggle}
+        {isNarrow ? interactiveHint : null}
+      </div>
+      {isNarrow && carouselTrailing ? (
+        <div className="ml-auto shrink-0">{carouselTrailing}</div>
+      ) : null}
+    </div>
+  ) : isNarrow && carouselTrailing ? (
+    <div className="mt-1.5 flex items-center gap-2">
+      <div className="min-w-0 flex-1" />
+      <div className="ml-auto shrink-0">{carouselTrailing}</div>
+    </div>
+  ) : null;
 
   return (
     <MiniGraphsCarouselContext.Provider value={carouselApi}>
@@ -390,10 +453,7 @@ export default function IntelligenceMiniGraphsStrip({
         ) : null}
 
         {!hidden ? (
-          <div
-            className="w-full"
-            onPointerDownCapture={bumpActivity}
-          >
+          <div className="w-full" onPointerDownCapture={bumpActivity}>
             <div
               className={
                 isNarrow
@@ -409,85 +469,57 @@ export default function IntelligenceMiniGraphsStrip({
                     }
                   : undefined
               }
-              aria-roledescription={
-                isNarrow && renderItems.length > 1 ? "carousel" : undefined
-              }
+              aria-roledescription={isCarousel ? "carousel" : undefined}
               aria-label={
                 isNarrow && renderItems.length > 1
                   ? "Mini graphs — swipe left or right to change"
-                  : undefined
+                  : desktopCarousel
+                    ? "Mini graphs — three visible; rotates through all"
+                    : undefined
               }
             >
-              <div
-                className={
-                  isNarrow
-                    ? "flex transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-                    : "flex flex-row items-start gap-4"
-                }
-                style={
-                  isNarrow
-                    ? { transform: `translateX(-${activeIndex * 100}%)` }
-                    : undefined
-                }
-              >
-                {renderItems.map((item, i) => (
-                  <div
-                    key={item.key}
-                    className={
-                      isNarrow
-                        ? "w-full min-w-full shrink-0 flex justify-start"
-                        : "w-full min-w-0 max-w-md flex-1"
-                    }
-                    aria-hidden={isNarrow ? i !== activeIndex : undefined}
-                  >
-                    {item.node}
-                  </div>
-                ))}
-              </div>
+              {desktopWindow ? (
+                <div className="flex flex-row items-start gap-4">
+                  {desktopWindow.map(({ item, idx, offset }) => (
+                    <div
+                      key={`${item.key}-${offset}-${idx}`}
+                      className="w-full min-w-0 max-w-md flex-1"
+                    >
+                      {item.node}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className={
+                    isNarrow
+                      ? "flex transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+                      : "flex flex-row items-start gap-4"
+                  }
+                  style={
+                    isNarrow
+                      ? { transform: `translateX(-${safeActiveIndex * 100}%)` }
+                      : undefined
+                  }
+                >
+                  {renderItems.map((item, i) => (
+                    <div
+                      key={item.key}
+                      className={
+                        isNarrow
+                          ? "w-full min-w-full shrink-0 flex justify-start"
+                          : "w-full min-w-0 max-w-md flex-1"
+                      }
+                      aria-hidden={isNarrow ? i !== safeActiveIndex : undefined}
+                    >
+                      {item.node}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {isNarrow && (renderItems.length > 1 || carouselTrailing) ? (
-              <div className="mt-1.5 flex items-center gap-2">
-                {renderItems.length > 1 ? (
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2">
-                    {carouselCount}
-                    <div
-                      className="flex items-center gap-1.5"
-                      role="tablist"
-                      aria-label="Mini graphs"
-                    >
-                      {renderItems.map((item, i) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          role="tab"
-                          aria-selected={i === activeIndex}
-                          aria-label={`Show graph ${i + 1} of ${renderItems.length}`}
-                          className={`h-1.5 rounded-full transition-all ${
-                            i === activeIndex
-                              ? "w-4 bg-navy"
-                              : "w-1.5 bg-navy/25 hover:bg-navy/45"
-                          }`}
-                          onClick={() => {
-                            bumpActivity();
-                            setActiveIndex(i);
-                            // Stay on the chosen graph while working with it.
-                            setPaused(true);
-                          }}
-                        />
-                      ))}
-                    </div>
-                    {pauseToggle}
-                    {interactiveHint}
-                  </div>
-                ) : (
-                  <div className="min-w-0 flex-1" />
-                )}
-                {carouselTrailing ? (
-                  <div className="ml-auto shrink-0">{carouselTrailing}</div>
-                ) : null}
-              </div>
-            ) : null}
+            {carouselChrome}
           </div>
         ) : null}
       </div>

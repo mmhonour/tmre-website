@@ -327,6 +327,7 @@ export default async function AdminPage() {
   const zipBoundariesSyncStartedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_STARTED_KEY);
   const fomcLastSyncedAt = getSyncMeta("fomc_last_synced_at");
   const cpiLastSyncedAt = getSyncMeta("cpi_last_synced_at");
+  const marketDigestLastSentAt = getSyncMeta("market_digest_last_sent_at");
   const zipInventory = await safe(
     "zip-boundaries-inventory",
     () => zipBoundariesInventory(),
@@ -505,6 +506,17 @@ export default async function AdminPage() {
       actionId: "cpi-sync",
       nextRunAt: nextRuns["cpi-sync"],
     },
+    {
+      id: "market-digest",
+      label: "Monday market brief",
+      value: formatTimestamp(marketDigestLastSentAt),
+      finishedAt: marketDigestLastSentAt,
+      sortMs: timestampSortMs(marketDigestLastSentAt),
+      detail:
+        "Weekly Resend months-supply / inventory digest (Mon ~8am ET) — Configure on Syncs; content settings under Communications",
+      actionId: "market-digest",
+      nextRunAt: nextRuns["market-digest"],
+    },
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
@@ -522,6 +534,7 @@ export default async function AdminPage() {
     zipBoundariesSyncStartedAt,
     fomcLastSyncedAt,
     cpiLastSyncedAt,
+    marketDigestLastSentAt,
     stats: {
       total: stats.total,
       lastFullSync: stats.lastFullSync,

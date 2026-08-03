@@ -305,9 +305,15 @@ export function queueNetlifyZipBoundariesSync(): Promise<NetlifyFunctionQueueRes
   })
 }
 
-export function queueNetlifyMarketDigest(): Promise<NetlifyFunctionQueueResult> {
+export function queueNetlifyMarketDigest(options?: {
+  source?: 'admin' | 'netlify-sync-trigger'
+  force?: boolean
+  stampWeek?: boolean
+}): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/market-digest-worker', {
-    source: 'netlify-sync-trigger',
+    source: options?.source ?? 'netlify-sync-trigger',
+    force: options?.force === true,
+    stampWeek: options?.stampWeek === true,
   })
 }
 

@@ -203,7 +203,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email via its own Netlify cron (market-digest, Mon 12:00 UTC ≈ 8am ET) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Admin → Communications → Monday market brief: recipient, subject template ({date}), optional social-profiles footer (off by default), Send test now.',
+      'Weekly Resend email via Netlify market-digest cron (every 30m, gated to Configure weekly Mon ~8am ET) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Run / pause / schedule on Admin → Syncs; content settings + Send test now on Communications → Monday market brief (recipient, subject template `{date}`, optional social-profiles footer off by default).',
   },
   {
     term: 'Deploy notifications',

@@ -5,6 +5,7 @@ import {
   DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
   type MarketDigestConfig,
 } from "@/lib/market-digest-shared";
+import { adminSectionHref } from "@/lib/admin-nav";
 
 function isValidEmail(value: string): boolean {
   const trimmed = value.trim();
@@ -20,7 +21,7 @@ function previewSubject(template: string): string {
 
 /**
  * Monday morning months-supply / inventory email + Deal of the Week note.
- * Cron: Netlify market-digest (Mon ~8am ET) — separate from MLS incremental sync.
+ * Schedule / Run live on Admin → Syncs; this panel is content + test send.
  */
 export default function AdminMarketDigestPanel({
   initial,
@@ -165,9 +166,15 @@ export default function AdminMarketDigestPanel({
           Monday market brief
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
-          Weekly HTML email every Monday morning (~8am Eastern) via its own
-          Netlify cron — not the MLS incremental sync. Inventory / months-supply
-          bars, DOTW card, plain-text fallback. Requires{" "}
+          Content settings for the weekly HTML brief (inventory / months-supply
+          bars, DOTW card). Schedule, pause, and Run are on{" "}
+          <a
+            href={adminSectionHref("admin-sync", "syncs")}
+            className="text-navy underline-offset-2 hover:underline"
+          >
+            Syncs → Dashboard
+          </a>
+          . Send test now does not advance the weekly watermark. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
         </p>
       </div>

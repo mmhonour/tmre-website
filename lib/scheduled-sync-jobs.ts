@@ -18,4 +18,5 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'zip-boundaries': 'zip-boundaries',
   'fomc-sync': 'fomc-sync',
   'cpi-sync': 'cpi-sync',
+  'market-digest': 'market-digest',
 }

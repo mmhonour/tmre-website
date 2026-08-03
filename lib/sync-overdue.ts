@@ -70,6 +70,7 @@ function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
     case 'zip-boundaries':
     case 'fomc-sync':
     case 'cpi-sync':
+    case 'market-digest':
       return job
     case 'edge-scores':
       return 'listing-scores'
@@ -91,6 +92,7 @@ const EXECUTION_ORDER: OverdueSyncJob[] = [
   'zip-boundaries',
   'fomc-sync',
   'cpi-sync',
+  'market-digest',
   'edge-scores',
 ]
 
@@ -174,6 +176,10 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
 
   if (isScheduledJobDue('cpi-sync', now, schedule)) {
     overdue.add('cpi-sync')
+  }
+
+  if (isScheduledJobDue('market-digest', now, schedule)) {
+    overdue.add('market-digest')
   }
 
   // Edge scores follow listing-scores cadence when that job is due.

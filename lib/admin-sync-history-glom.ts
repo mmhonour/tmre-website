@@ -33,6 +33,9 @@ const SYNC_TYPE_LABELS: Record<string, string> = {
   addresses: 'Addresses',
   'zip-maps': 'Zip boundaries',
   snapshot: 'Snapshot',
+  fomc: 'FOMC',
+  cpi: 'CPI',
+  digest: 'Market brief',
 }
 
 /** Display label for the Bucket column / subgroup (adds sync type on lifecycle rows). */

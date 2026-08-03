@@ -402,6 +402,8 @@ function lastFinishedForJob(
       return getSyncMeta('fomc_last_synced_at')
     case 'cpi-sync':
       return getSyncMeta('cpi_last_synced_at')
+    case 'market-digest':
+      return getSyncMeta('market_digest_last_sent_at')
     default:
       return null
   }
@@ -487,6 +489,10 @@ export function buildAdminSyncNextRuns(
     cpiTarget?.at.toISOString() ?? null,
     SCHEDULED_SYNC_JOB_BY_ROW['cpi-sync'],
   )
+  const nextMarketDigestIso = applySyncNextOverride(
+    naturalFor('market-digest'),
+    SCHEDULED_SYNC_JOB_BY_ROW['market-digest'],
+  )
 
   const nextIncrementalDate = nextIncrementalIso ? new Date(nextIncrementalIso) : null
   const nextFullResyncDate = nextFullResyncIso ? new Date(nextFullResyncIso) : null
@@ -504,6 +510,7 @@ export function buildAdminSyncNextRuns(
     'zip-boundaries': nextZipBoundariesIso,
     'fomc-sync': nextFomcSyncIso,
     'cpi-sync': nextCpiSyncIso,
+    'market-digest': nextMarketDigestIso,
   }
 }
 

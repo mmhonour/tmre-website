@@ -91,6 +91,8 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'fomc_last_synced_at'
     case 'cpi-sync':
       return 'cpi_last_synced_at'
+    case 'market-digest':
+      return 'market_digest_last_sent_at'
     default: {
       const _exhaustive: never = jobId
       return _exhaustive

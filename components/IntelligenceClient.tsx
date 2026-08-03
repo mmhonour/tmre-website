@@ -26,7 +26,9 @@ import IntelligenceVintageStats from "@/components/IntelligenceVintageStats";
 import IntelligenceVintageMedianMiniChart from "@/components/IntelligenceVintageMedianMiniChart";
 import IntelligencePriceBandMiniChart from "@/components/IntelligencePriceBandMiniChart";
 import IntelligenceLuxuryPriceBandMiniChart from "@/components/IntelligenceLuxuryPriceBandMiniChart";
+import IntelligenceDomBandMiniChart from "@/components/IntelligenceDomBandMiniChart";
 import IntelligenceMiniGraphsStrip from "@/components/IntelligenceMiniGraphsStrip";
+import { listingMatchesDomBand } from "@/lib/intel-dom-bands";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
 import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
@@ -805,6 +807,8 @@ function filterBoardListings(
   maxVintage = VINTAGE_FILTER_MAX,
   minSqft = 0,
   maxSqft: number | null = null,
+  minDomDays: number | null = null,
+  maxDomDays: number | null = null,
 ): DisplayListing[] {
   return rows.filter((l) => {
     if (tx === "sale" && l.isRental) return false;
@@ -844,6 +848,12 @@ function filterBoardListings(
       (minPrice > 0 || maxPrice != null) &&
       !(tx === "all" && l.isRental) &&
       !listingMatchesIntelPriceRange(l.price, minPrice, maxPrice)
+    ) {
+      return false;
+    }
+    if (
+      minDomDays != null &&
+      !listingMatchesDomBand(l.dom, minDomDays, maxDomDays)
     ) {
       return false;
     }
@@ -1711,6 +1721,9 @@ export default function IntelligenceClient({
   const [activeLuxuryPriceBandId, setActiveLuxuryPriceBandId] = useState<
     string | null
   >(null);
+  const [activeDomBandId, setActiveDomBandId] = useState<string | null>(null);
+  const [domBandMinDays, setDomBandMinDays] = useState<number | null>(null);
+  const [domBandMaxDays, setDomBandMaxDays] = useState<number | null>(null);
   const [priceSliderActive, setPriceSliderActive] = useHeldSliderActive();
   const [bedSliderActive, setBedSliderActive] = useHeldSliderActive();
   const [bathSliderActive, setBathSliderActive] = useHeldSliderActive();
@@ -2238,6 +2251,9 @@ export default function IntelligenceClient({
       setMaxSqftIndex(INTEL_SQFT_MAX_INDEX);
       setActivePriceBandId(null);
       setActiveLuxuryPriceBandId(null);
+      setActiveDomBandId(null);
+      setDomBandMinDays(null);
+      setDomBandMaxDays(null);
       priceRangeCustomizedRef.current = false;
       sqftRangeCustomizedRef.current = false;
     } else {
@@ -2816,6 +2832,9 @@ export default function IntelligenceClient({
       priceFilterContextRef.current = priceFilterContextKey;
       setActivePriceBandId(null);
       setActiveLuxuryPriceBandId(null);
+      setActiveDomBandId(null);
+      setDomBandMinDays(null);
+      setDomBandMaxDays(null);
       priceRangeCustomizedRef.current = false;
     }
   }, [priceFilterContextKey]);
@@ -3112,8 +3131,10 @@ export default function IntelligenceClient({
         maxVintage,
         minSqft,
         maxSqft,
+        domBandMinDays,
+        domBandMaxDays,
       ),
-    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft],
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, domBandMinDays, domBandMaxDays],
   );
 
   const rankedListings = useMemo(() => rankListingsByScore(listings), [listings]);
@@ -3495,7 +3516,8 @@ export default function IntelligenceClient({
     furnishedFilter !== "all" ||
     zip != null ||
     boardStatusFilter !== "all" ||
-    priceFilterActive;
+    priceFilterActive ||
+    activeDomBandId != null;
   const showZipFilters = active !== "All" && availableZips.length > 1;
   const townNeedsMobileZipPick =
     isMobileViewport &&
@@ -3609,6 +3631,9 @@ export default function IntelligenceClient({
     setMaxPriceIndex(showPriceFilter ? boardPriceMaxIdx : INTEL_PRICE_MAX_INDEX);
     setActivePriceBandId(null);
     setActiveLuxuryPriceBandId(null);
+    setActiveDomBandId(null);
+    setDomBandMinDays(null);
+    setDomBandMaxDays(null);
     setBoardStatusFilter("all");
     setFurnishedFilter("all");
     setBoardPage(1);
@@ -5437,6 +5462,30 @@ export default function IntelligenceClient({
                           />
                         ) : null,
                     },
+                    {
+                      key: "inventory-dom",
+                      node: (
+                        <IntelligenceDomBandMiniChart
+                          city={active === "All" ? "All" : active}
+                          kind={tx === "rental" ? "rental" : "sale"}
+                          activeBucketId={activeDomBandId}
+                          filterActive={activeDomBandId != null}
+                          onInteract={pauseMiniGraphsRotation}
+                          onBucketClick={(bucket) => {
+                            setActiveDomBandId(bucket.id);
+                            setDomBandMinDays(bucket.minDays);
+                            setDomBandMaxDays(bucket.maxDays);
+                            setBoardPage(1);
+                          }}
+                          onResetFilter={() => {
+                            setActiveDomBandId(null);
+                            setDomBandMinDays(null);
+                            setDomBandMaxDays(null);
+                            setBoardPage(1);
+                          }}
+                        />
+                      ),
+                    },
                   ]}
                 />
               </div>
@@ -5477,6 +5526,9 @@ export default function IntelligenceClient({
               setBoardStatusFilter("all");
               setMinVintageFilter("0");
               setMaxVintageFilter("6");
+              setActiveDomBandId(null);
+              setDomBandMinDays(null);
+              setDomBandMaxDays(null);
             }}
             onScoreClick={(listing) => {
               if (listing.scoreBreakdown) {

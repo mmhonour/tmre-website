@@ -10,6 +10,7 @@ export type AdminSyncPanelRowId =
   | 'zip-boundaries'
   | 'fomc-sync'
   | 'cpi-sync'
+  | 'market-digest'
 
 /** Format next sync time; includes weekday + date when more than 24h away. */
 export function formatAdminNextSyncAt(iso: string | null | undefined, now = new Date()): string {
