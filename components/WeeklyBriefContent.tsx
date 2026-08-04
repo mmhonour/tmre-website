@@ -324,7 +324,7 @@ const COMBINED_METRICS = [
   },
 ] as const;
 
-/** One row per town with four colored metric bars (each normalized to its own max). */
+/** One town block with four stacked metric bars (each normalized to its own max). */
 function CombinedMetricsChart({
   title,
   rows,
@@ -410,7 +410,7 @@ function CombinedMetricsChart({
                   {label}
                 </span>
               )}
-              <div className="grid grid-cols-4 gap-1.5">
+              <ul className="space-y-1.5">
                 {COMBINED_METRICS.map((m, metricIndex) => {
                   const v = m.valueOf(row);
                   const max = maxByMetric[metricIndex] ?? 0;
@@ -438,12 +438,15 @@ function CombinedMetricsChart({
                         : fmtActive(display);
                   const calc = m.calcOf(row);
                   return (
-                    <div
+                    <li
                       key={m.id}
-                      className="group relative min-w-0"
+                      className="group relative grid grid-cols-[3.25rem_1fr_3.25rem] items-center gap-2"
                       title={`${m.label}: ${valueText}`}
                     >
-                      <div className="h-3.5 rounded-sm bg-black/10 overflow-visible">
+                      <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.08em] uppercase text-[var(--mp-muted-text)] truncate">
+                        {m.short}
+                      </span>
+                      <div className="h-3 rounded-sm bg-black/10 overflow-visible">
                         <div className="h-full overflow-hidden rounded-sm">
                           <div
                             className={`h-full rounded-sm transition-[width] ease-out ${widthTransition} ${m.barClassName}`}
@@ -464,14 +467,13 @@ function CombinedMetricsChart({
                           />
                         </div>
                       </div>
-                      <p className="mt-0.5 [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-[var(--mp-muted-text)] truncate">
-                        <span className="uppercase tracking-wide">{m.short}</span>{" "}
+                      <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)] text-right">
                         {valueText}
-                      </p>
-                    </div>
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </li>
           );
         })}

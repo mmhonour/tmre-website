@@ -21,6 +21,11 @@ import {
   resolveJobScheduler,
   shouldSkipScheduledJobWrongProviderFresh,
 } from '@/lib/sync-schedule-config'
+import { setSyncMetaDurable } from '@/lib/db/sync-meta-store'
+import { stampIncrementalSyncLive } from '@/lib/incremental-sync-live'
+import { stampIncrementalQueuedStepLog } from '@/lib/incremental-sync-step-log'
+import { recordIncrementalQueueAudit } from '@/lib/db/listings-repo'
+import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export type EventBridgeDispatchResult = {
   ok: boolean
@@ -116,11 +121,43 @@ export async function dispatchEventBridgeScheduledJob(
       queue = await queueNetlifyIncrementalSync(startedAt, {
         source: 'eventbridge',
       })
+      // AWS ingress path must stamp Start/live itself. Admin Sync now stamps
+      // after dispatch returns — skip here to avoid double audit rows.
+      if (!options?.fromAdminSyncNow) {
+        await recordIncrementalQueueAudit({
+          startedAt,
+          source: 'eventbridge',
+          queued: queue.ok,
+          detail: queue.ok
+            ? `${queue.base ?? 'site'} HTTP ${queue.status ?? '—'}`
+            : queue.error ?? 'unknown queue error',
+        })
+        if (queue.ok) {
+          await setSyncMetaDurable('last_incremental_sync_started', startedAt)
+          await stampIncrementalSyncLive({
+            phase: 'queued',
+            town: null,
+            townIndex: null,
+            townCount: TMRE_TOWNS.length,
+            updatedAt: startedAt,
+            statusScope: 'all',
+          })
+          await stampIncrementalQueuedStepLog(
+            'eventbridge',
+            queue.base
+              ? `${queue.base} HTTP ${queue.status ?? '—'}`
+              : 'background worker',
+          )
+        }
+      }
       break
     case 'stats-cache':
       queue = await queueNetlifyStatsCacheRebuild(startedAt, {
         source: 'eventbridge',
       })
+      if (queue.ok && !options?.fromAdminSyncNow) {
+        await setSyncMetaDurable('last_stats_cache_started', startedAt)
+      }
       break
     case 'full-resync':
       queue = await queueNetlifyFullSync()
