@@ -334,6 +334,10 @@ export function marketPulseThemeCssVars(theme: MarketPulseTheme) {
     "--mp-muted-text": theme.mutedText,
     "--mp-inventory-bar": theme.inventoryBar,
     "--mp-months-supply-bar": theme.monthsSupplyBar,
+    /** Avg DOM — sage (distinct from inventory / MOS). */
+    "--mp-avg-dom-bar": "#5B8A72",
+    /** Closed sales — warm coral. */
+    "--mp-closed-bar": "#C45C4A",
     "--mp-heading-font": MARKET_PULSE_FONT_OPTIONS[theme.headingFont].value,
     "--mp-body-font": MARKET_PULSE_FONT_OPTIONS[theme.bodyFont].value,
     "--mp-mono-font": MARKET_PULSE_FONT_OPTIONS[theme.monoFont].value,

@@ -226,6 +226,15 @@ export default function AdminPageStylesPanel() {
                   <div className="h-2 w-1/2 rounded bg-[var(--mp-months-supply-bar)]" />
                 </div>
               </div>
+              <div className="col-span-2">
+                <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase text-[var(--mp-muted-text)]">
+                  Avg DOM · Closed
+                </p>
+                <div className="mt-2 flex gap-1">
+                  <div className="h-2 flex-1 rounded bg-[var(--mp-avg-dom-bar,#5B8A72)]" />
+                  <div className="h-2 flex-1 rounded bg-[var(--mp-closed-bar,#C45C4A)]" />
+                </div>
+              </div>
             </div>
           </div>
         </section>
