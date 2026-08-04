@@ -351,7 +351,7 @@ export default function IntelligenceVintageStats({
               }`}
             >
               <p
-                className={`flex-1 min-w-0 flex items-center justify-center gap-2 font-mono uppercase text-gold font-bold truncate ${
+                className={`flex-1 min-w-0 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-center font-mono uppercase text-gold font-bold leading-snug ${
                   showExpanded
                     ? "text-[10px] tracking-[0.2em]"
                     : "text-[9px] tracking-[0.18em]"
@@ -377,7 +377,9 @@ export default function IntelligenceVintageStats({
                     <span className="tabular-nums text-white">—</span>
                   )}
                 </span>
-                <span className="truncate">{snapshot.label}</span>
+                <span className="min-w-0 break-words whitespace-normal">
+                  {snapshot.label}
+                </span>
                 <span className="shrink-0">Vintage</span>
               </p>
               {collapsible && onToggleExpanded ? (

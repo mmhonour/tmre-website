@@ -391,7 +391,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Ingress (EventBridge)',
     category: 'sync-admin',
     definition:
-      'The HTTPS doorway from AWS into TMRE: Netlify function `eventbridge-sync-ingress` at `/.netlify/functions/eventbridge-sync-ingress`. EventBridge Scheduler cannot POST to an arbitrary URL by itself in the templated-target UI, so the usual path is Scheduler → PutEvents → bus Rule → API destination → this ingress. Ingress checks Bearer SYNC_CRON_SECRET, requires Configure Scheduler = EventBridge for that job, then queues the same *-worker Netlify cron would (or skips/pauses). Not an AWS product name — “ingress” here means our receive endpoint. Distinct from Admin Sync now (which can use the EventBridge *dispatch* path in-app without crossing AWS) and from Netlify thin cron.',
+      'The HTTPS doorway from AWS into TMRE: Netlify function `eventbridge-sync-ingress` at `/.netlify/functions/eventbridge-sync-ingress`. EventBridge Scheduler cannot POST to an arbitrary URL by itself in the templated-target UI, so the usual path is Scheduler → PutEvents → bus Rule → API destination → this ingress. Ingress checks Bearer SYNC_CRON_SECRET, requires Configure Scheduler = EventBridge for that job, then queues sync-listings-worker with source=eventbridge. The worker must treat that source like Admin (bypass Configure “not due”) — EventBridge is the clock; re-checking due after queue was a Day-1 failure mode that left Dashboard on “queued — no End yet”. Not an AWS product name — “ingress” here means our receive endpoint.',
   },
   {
     term: 'Thin scheduling',

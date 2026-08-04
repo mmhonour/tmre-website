@@ -225,7 +225,7 @@ export default function LatestIntelligenceTownSnapshot({
   return (
     <div className="overflow-hidden rounded-2xl border border-charcoal/[0.06] bg-white">
       <div className="navy-gradient border-b border-white/10 px-5 py-4">
-        <p className="truncate text-center font-mono text-[10px] font-bold tracking-[0.2em] uppercase text-gold">
+        <p className="text-center font-mono text-[10px] font-bold tracking-[0.2em] uppercase leading-snug break-words whitespace-normal text-gold">
           {snapshot.title}
         </p>
       </div>

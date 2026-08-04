@@ -7701,9 +7701,9 @@ function TownSnapshotPanel({
         }`}
       >
         <p
-          className={`flex-1 min-w-0 font-mono uppercase text-gold font-bold truncate ${
+          className={`flex-1 min-w-0 text-center font-mono uppercase text-gold font-bold leading-snug break-words whitespace-normal ${
             showExpanded
-              ? "text-[10px] tracking-[0.2em] text-center"
+              ? "text-[10px] tracking-[0.2em]"
               : "text-[9px] tracking-[0.18em]"
           }`}
         >

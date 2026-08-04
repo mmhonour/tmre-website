@@ -79,9 +79,10 @@ export type IncrementalSyncWorkOptions = {
    */
   statsCacheOnly?: boolean
   /**
-   * Admin Syncs "Incremental" / watchdog / manual queue — full RETS + digests.
-   * Does not stamp the 30-minute cron heartbeat, and ignores schedule pause /
-   * Next-override defer (explicit heal / admin intent).
+   * Who queued the worker.
+   * - admin / watchdog / eventbridge: full RETS; bypass Configure “not due”
+   *   (and pause/Next — caller already gated those). No cron heartbeat stamp.
+   * - cron / netlify-sync-trigger: thin-schedule path; honors pause / Next / due.
    */
   source?: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog' | 'eventbridge'
   /** Adhoc Admin town scope; omit = all towns. */
@@ -149,9 +150,15 @@ export async function runIncrementalSyncListingsWork(
   process.env.NETLIFY_SYNC_HANDLER = '1'
   const sideWorkOnly = options.sideWorkOnly === true
   const statsCacheOnly = options.statsCacheOnly === true
-  /** Admin click or stale-sync watchdog — bypass pause/defer; don't stamp cron tick. */
-  const fromAdmin =
-    options.source === 'admin' || options.source === 'watchdog'
+  /**
+   * Explicit runs (Admin, watchdog heal, AWS EventBridge): EventBridge is the
+   * alarm clock — must not re-apply Configure “not due” after ingress queued us.
+   * Also bypass pause/Next (dispatch already checked) and skip cron heartbeat.
+   */
+  const fromExplicitRun =
+    options.source === 'admin' ||
+    options.source === 'watchdog' ||
+    options.source === 'eventbridge'
 
   try {
     await hydrateSyncMetaStore()
@@ -205,11 +212,14 @@ export async function runIncrementalSyncListingsWork(
       }
     }
 
-    const logSource = fromAdmin
-      ? options.source === 'watchdog'
+    const logSource =
+      options.source === 'watchdog'
         ? 'watchdog'
-        : 'admin-worker'
-      : options.source ?? 'cron-worker'
+        : options.source === 'admin'
+          ? 'admin-worker'
+          : options.source === 'eventbridge'
+            ? 'eventbridge-worker'
+            : options.source ?? 'cron-worker'
 
     const clearLiveOnSkip = async (reason: string) => {
       try {
@@ -221,10 +231,24 @@ export async function runIncrementalSyncListingsWork(
       } catch (err) {
         console.warn('[sync-listings-work] clear live on skip failed', err)
       }
+      // Drop open Start so Dashboard cannot stay on “queued — no End” after a skip.
+      if (options.source === 'eventbridge') {
+        try {
+          const { deleteSyncMetaDurable } = await import(
+            '@/lib/db/sync-meta-store'
+          )
+          await deleteSyncMetaDurable('last_incremental_sync_started')
+        } catch (err) {
+          console.warn(
+            '[sync-listings-work] clear EB Start on skip failed',
+            err,
+          )
+        }
+      }
     }
 
     // Pause / defer BEFORE catch-up so a paused schedule cannot spawn more work.
-    if (!fromAdmin && (await isScheduledSyncJobPausedFresh('incremental'))) {
+    if (!fromExplicitRun && (await isScheduledSyncJobPausedFresh('incremental'))) {
       await beginIncrementalStepLog(logSource)
       await appendIncrementalStep('skip', 'incremental scheduled sync paused by admin')
       await finishIncrementalStepLog('skipped — paused by admin')
@@ -246,7 +270,7 @@ export async function runIncrementalSyncListingsWork(
       }
     }
 
-    if (!fromAdmin && shouldDeferScheduledJob('incremental')) {
+    if (!fromExplicitRun && shouldDeferScheduledJob('incremental')) {
       await beginIncrementalStepLog(logSource)
       await appendIncrementalStep(
         'skip',
@@ -271,7 +295,8 @@ export async function runIncrementalSyncListingsWork(
       }
     }
 
-    if (!fromAdmin && shouldSkipScheduledJobNotDue('incremental')) {
+    // Netlify thin cron only — EventBridge already decided to fire (it is the clock).
+    if (!fromExplicitRun && shouldSkipScheduledJobNotDue('incremental')) {
       await beginIncrementalStepLog(logSource)
       await appendIncrementalStep(
         'skip',
@@ -296,8 +321,8 @@ export async function runIncrementalSyncListingsWork(
       }
     }
 
-    // Cron heartbeat is for the */30 schedule only — Admin/watchdog must not stamp it.
-    if (!fromAdmin) {
+    // Cron heartbeat is for the */30 schedule only — Admin/watchdog/EB must not stamp it.
+    if (!fromExplicitRun) {
       await setSyncMetaDurable(LAST_INCREMENTAL_CRON_TICK_KEY, startedAt)
     }
 
@@ -305,8 +330,18 @@ export async function runIncrementalSyncListingsWork(
     // Never put 'incremental' through catch-up: that calls runAdminSyncAction which
     // on serverless re-queues another worker (nested 202) without doing RETS.
     // This worker runs syncIncrementalListings below instead.
-    const catchup = fromAdmin
-      ? { skipped: true as const, reason: 'admin-manual', plan: [] as const, steps: [] as const }
+    const catchup = fromExplicitRun
+      ? {
+          skipped: true as const,
+          reason:
+            options.source === 'eventbridge'
+              ? 'eventbridge'
+              : options.source === 'watchdog'
+                ? 'watchdog'
+                : 'admin-manual',
+          plan: [] as const,
+          steps: [] as const,
+        }
       : await runOverdueSyncCatchup({
           reason: 'netlify/sync-listings-worker',
           onlyJobs: ['stats-cache', 'publish-snapshot'],
@@ -390,7 +425,7 @@ export async function runIncrementalSyncListingsWork(
           .filter((row) => !row.ok)
           .map((row) => `${row.town}: ${row.error ?? 'failed'}`)
           .join('; ') || null
-    if (!fromAdmin) {
+    if (!fromExplicitRun) {
       await recordIncrementalCronTick({
         startedAt: result.startedAt || startedAt,
         ok: okTowns,
@@ -440,7 +475,9 @@ export async function runIncrementalSyncListingsWork(
         ok,
         ...result,
         sideWorkOnly: false,
-        source: fromAdmin ? 'admin' : options.source ?? 'cron',
+        source: fromExplicitRun
+          ? (options.source ?? 'admin')
+          : (options.source ?? 'cron'),
         savedSearchAlerts,
         stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped
@@ -457,14 +494,16 @@ export async function runIncrementalSyncListingsWork(
           ? 'watchdog'
           : options.source === 'admin'
             ? 'admin-worker'
-            : options.source ?? 'cron-worker',
+            : options.source === 'eventbridge'
+              ? 'eventbridge-worker'
+              : options.source ?? 'cron-worker',
       )
       await appendIncrementalStep('fatal', message)
       await finishIncrementalStepLog(`fatal: ${message}`)
     } catch {
       /* ignore */
     }
-    if (!fromAdmin) {
+    if (!fromExplicitRun) {
       await recordIncrementalCronTick({
         startedAt,
         ok: false,
