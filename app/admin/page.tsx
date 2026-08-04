@@ -435,7 +435,9 @@ export default async function AdminPage() {
       startedAt: lastRefreshStarted,
       finishedAt: refreshFinishedAt,
       sortMs: timestampSortMs(refreshFinishedAt),
-      detail: refresh.refreshing ? "A refresh is currently in progress" : "Marks the most recent completed MLS refresh into Postgres",
+      detail: refresh.refreshing
+        ? "A refresh is currently in progress"
+        : "Stamps the most recent completed MLS refresh; APIs read Neon Postgres directly",
       actionId: "publish-snapshot",
       nextRunAt: nextRuns["refresh-finished"],
     },

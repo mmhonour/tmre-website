@@ -253,7 +253,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'listings.db / listings.read.db / listings.bundle.db',
     category: 'sync-admin',
     definition:
-      'Historical SQLite paths: write DB, read snapshot for APIs during sync, and deploy-bundled seed. Production inventory is now Postgres.',
+      'Retired local SQLite paths (write DB / read replica / deploy seed). Production inventory and API reads use Neon Postgres only — Syncs “Refresh finished” stamps completion, it does not copy a SQLite file.',
   },
   {
     term: 'Upsert',
@@ -340,10 +340,28 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Host for the Next.js app and serverless functions. Not the same as photo storage (R2) or the Postgres host (Neon).',
   },
   {
+    term: 'Thin scheduling',
+    category: 'sync-admin',
+    definition:
+      'Dense Netlify cron alarms (usually `*/30` = every 30 minutes) that mostly wake a short-lived “thin” function, check Admin Configure (due? paused? Next override?), and often exit without doing the real job. Real work is supposed to happen on a separate background *-worker. Distinct from giving each Sync Dashboard job its own true cadence on an external scheduler. See also Thin schedule → *-worker and Piggybacking.',
+  },
+  {
     term: 'Thin schedule → *-worker (thin worker pattern)',
     category: 'sync-admin',
     definition:
-      'Netlify cron split: a thin scheduled function (≤~30s, schedule only — no background flag) does almost nothing except queue a matching *-worker background function (≤~15m, background = true — no schedule). Example: market-digest → market-digest-worker; sync-listings-full → sync-listings-full-worker. Reason: Netlify forbids schedule + background on the same function (silent no-op / Day-1 failure). The thin half is the alarm clock; the worker does the real RETS/stats/digest work. sync-listings is a special case: the thin cron also runs a lean in-process RETS pull so inventory freshness does not depend on the worker hop succeeding.',
+      'Netlify cron split: a thin scheduled function (≤~30s, schedule only — no background flag) does almost nothing except queue a matching *-worker background function (≤~15m, background = true — no schedule). Example: market-digest → market-digest-worker; sync-listings-full → sync-listings-full-worker. Reason: Netlify forbids schedule + background on the same function (silent no-op / Day-1 failure). The thin half is the alarm clock; the worker does the real RETS/stats/digest work. sync-listings is a special case: the thin cron also runs a lean in-process RETS pull so inventory freshness does not depend on the worker hop succeeding. Part of thin scheduling.',
+  },
+  {
+    term: 'Piggybacking (sync)',
+    category: 'sync-admin',
+    definition:
+      'When a Sync Dashboard job has no dedicated cron of its own and only runs inside another job’s worker. Main example: stats-cache and publish-snapshot (Refresh finished) are offered only via overdue catch-up inside the incremental sync-listings-worker (`onlyJobs: [\'stats-cache\', \'publish-snapshot\']`), not a standalone scheduled function. If the incremental hop is paused, skipped, or the nested queue fails, the piggybacked job can stay Overdue for days even though Configure says it is due. Incremental post-hooks that rebuild stats only for towns with upserts are a softer form of the same dependence.',
+  },
+  {
+    term: 'Watchdog (sync)',
+    category: 'sync-admin',
+    definition:
+      'A second (or third) scheduled checker that re-queues work when the primary thin schedule → worker path failed silently — e.g. sync-listings-watchdog (`*/15`) queues incremental with source=watchdog if last sync is stale and the job is not paused. Useful as a safety net; in this codebase it is also a patch over a bad architecture (dense Netlify cron, HTTP hop to background workers, pause/defer/not-due gates, piggybacked jobs). Prefer a durable external scheduler + worker per job so freshness does not depend on a watchdog covering up missed ticks. See Thin scheduling and Piggybacking.',
   },
   {
     term: 'Background worker (*-worker)',

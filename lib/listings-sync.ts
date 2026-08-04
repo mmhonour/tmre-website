@@ -881,7 +881,7 @@ async function finalizeStepPersist(finishedAt: string): Promise<{ totalListings:
   return { totalListings }
 }
 
-/** Post–town-loop cache rebuilds and read snapshot (monolithic full sync only). */
+/** Post–town-loop cache rebuilds and refresh stamp (monolithic full sync only). */
 async function applyFullSyncPostamble(finishedAt: string): Promise<void> {
   try {
     await finalizeStepScores(finishedAt)

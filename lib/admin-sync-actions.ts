@@ -621,8 +621,8 @@ async function runAdminSyncActionImpl(
         startedAt,
         finishedAt,
         durationMs: Date.now() - t0,
-        message: 'Read snapshot published',
-        detail: `Postgres read path active — ${stats.total.toLocaleString()} listings available to read APIs (SQLite read snapshot retired)`,
+        message: 'Refresh finished stamped',
+        detail: `Neon Postgres read path — ${stats.total.toLocaleString()} listings available to read APIs`,
       }
     }
     case 'stats-cache': {
@@ -975,7 +975,7 @@ export async function runAdminSyncAllCaches(): Promise<AdminSyncAllResult> {
       startedAt,
       finishedAt: new Date().toISOString(),
       durationMs: Date.now() - t0,
-      message: 'Sync all stopped at publish read snapshot',
+      message: 'Sync all stopped at refresh finished',
       detail: snapshot.detail ?? snapshot.message,
       steps,
     }

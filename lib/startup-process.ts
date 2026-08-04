@@ -173,7 +173,7 @@ export function describeStartupProcess(): {
           title: "Stats + Deal of the Day caches",
           timing: "after superlatives",
           detail:
-            "rebuildStatsCache (market stats, sales-by-month, active-by-month, vintage, price, avg-score-by-vintage) + Deal of the Day/Week caches + If estimates + comps edges + edge scores, then publish read snapshot.",
+            "rebuildStatsCache (market stats, sales-by-month, active-by-month, vintage, price, avg-score-by-vintage) + Deal of the Day/Week caches + If estimates + comps edges + edge scores, then stamp refresh finished.",
           status: startupFullEnabled ? "scheduled" : "skipped",
           statusLabel: startupFullEnabled ? "Chained" : "—",
         },
@@ -257,7 +257,7 @@ export function describeStartupProcess(): {
           id: "weekly-mon-5am",
           title: "Full reload @ 5:00 AM Monday America/New_York",
           timing: "weekly",
-          detail: "syncAllTownListings() → scores → superlatives → stats/DOTD caches → read snapshot. Admin step 1 for manual mid-week runs. Skips when Pause is checked on Full resync.",
+          detail: "syncAllTownListings() → scores → superlatives → stats/DOTD caches → refresh finished stamp. Admin step 1 for manual mid-week runs. Skips when Pause is checked on Full resync.",
           status: fullReloadEnabled ? "scheduled" : "skipped",
           statusLabel: fullReloadEnabled ? "Armed" : "Disabled",
         },

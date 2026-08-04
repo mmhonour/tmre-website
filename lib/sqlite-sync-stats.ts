@@ -233,7 +233,7 @@ export async function collectAdminDatabaseSyncStats(): Promise<AdminDatabaseSync
     sizeBytes: null,
     available: true,
     tables: [],
-    summary: 'Retired — public read APIs query Neon Postgres directly (no SQLite read snapshot)',
+    summary: 'Public read APIs query Neon Postgres listings directly',
   }
 
   return [postgresStats, readStats]

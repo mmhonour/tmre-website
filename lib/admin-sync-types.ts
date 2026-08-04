@@ -1,7 +1,7 @@
 export const ADMIN_SYNC_ACTIONS = {
   'full-resync': {
     label: 'Full resync',
-    description: 'Complete MLS → SQLite reload for all towns',
+    description: 'Complete MLS → Neon Postgres reload for all towns',
   },
   incremental: {
     label: 'Incremental update',
@@ -12,8 +12,9 @@ export const ADMIN_SYNC_ACTIONS = {
     description: 'Re-score every Active listing',
   },
   'publish-snapshot': {
-    label: 'Publish read snapshot',
-    description: 'Copy listings.db → listings.read.db',
+    label: 'Refresh finished',
+    description:
+      'Stamp last MLS refresh complete and confirm Neon Postgres listings are readable by APIs',
   },
   'stats-cache': {
     label: 'Stats cache rebuild',
@@ -137,7 +138,7 @@ export const FULL_RESYNC_FINALIZE_STEP_LABELS: Record<FullResyncFinalizeStepId, 
   spotlight: 'spotlight caches',
   'if-estimates': 'IF value estimates',
   'edge-scores': 'edge scores',
-  persist: 'read snapshot + persisting to storage',
+  persist: 'refresh stamp + persisting to storage',
 }
 
 export type AdminSyncAllActionId = 'sync-all-caches'

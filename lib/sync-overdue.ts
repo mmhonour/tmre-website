@@ -155,7 +155,7 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     (overdue.has('incremental') || overdue.has('full-resync')) &&
     !shouldDeferScheduledJob('incremental', now)
   ) {
-    // Refresh-finished / read snapshot when MLS refresh itself is due.
+    // Refresh-finished stamp when MLS refresh itself is due.
     overdue.add('publish-snapshot')
   }
 

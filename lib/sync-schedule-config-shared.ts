@@ -182,7 +182,7 @@ export function orderNumberByRow(
 
 /**
  * Sync All client steps from Configure order.
- * Always appends publish-snapshot last (refresh finished / read snapshot).
+ * Always appends publish-snapshot last (refresh-finished stamp).
  */
 export function syncAllClientStepsFromConfig(
   config: SyncScheduleConfig,
