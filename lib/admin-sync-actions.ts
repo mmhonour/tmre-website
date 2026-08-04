@@ -1147,24 +1147,6 @@ export async function readAdminSyncPanelStatus() {
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
   const { readSyncScheduleConfig } = await import('@/lib/sync-schedule-config')
   const scheduleConfig = readSyncScheduleConfig()
-  const nextRuns = buildAdminSyncNextRuns(
-    {
-      lastFullSyncStarted: stats.lastFullSyncStarted,
-      lastFullSync: stats.lastFullSync,
-      lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
-      lastIncrementalSync: stats.lastIncrementalSync,
-      lastListingScoresStarted: stats.lastListingScoresStarted,
-      lastListingScores: stats.lastListingScores,
-      lastRefreshStarted,
-      lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
-      lastStatsCacheStarted: stats.lastStatsCacheStarted,
-      lastStatsCache: stats.lastStatsCache,
-      lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
-      lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
-    },
-    new Date(),
-    scheduleConfig,
-  )
   const scheduleHints = buildAdminSyncScheduleHints()
   // Tick is Admin-truth — Fresh covers any race after hydrate.
   const lastIncrementalCronTick =
@@ -1180,6 +1162,26 @@ export async function readAdminSyncPanelStatus() {
   const lastEventbridgeIngressResult =
     (await getSyncMetaFresh(eventbridgeIngressResultKey('incremental'))) ??
     getSyncMeta(eventbridgeIngressResultKey('incremental'))
+  // Next for EventBridge Incremental anchors on last AWS ingress — read first.
+  const nextRuns = buildAdminSyncNextRuns(
+    {
+      lastFullSyncStarted: stats.lastFullSyncStarted,
+      lastFullSync: stats.lastFullSync,
+      lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
+      lastIncrementalSync: stats.lastIncrementalSync,
+      lastListingScoresStarted: stats.lastListingScoresStarted,
+      lastListingScores: stats.lastListingScores,
+      lastRefreshStarted,
+      lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
+      lastStatsCacheStarted: stats.lastStatsCacheStarted,
+      lastStatsCache: stats.lastStatsCache,
+      lastDealOfTheDayCacheStarted: stats.lastDealOfTheDayCacheStarted,
+      lastDealOfTheDayCache: stats.lastDealOfTheDayCache,
+      lastEventbridgeIngressAt,
+    },
+    new Date(),
+    scheduleConfig,
+  )
   const nextOverrides = readSyncNextOverrides()
   const {
     clearIncrementalSyncLiveIfStale,

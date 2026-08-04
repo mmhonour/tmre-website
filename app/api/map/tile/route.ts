@@ -1,41 +1,29 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
- * Proxy a single OpenStreetMap raster tile by z/x/y.
- * Used by ListingLocationMap’s mosaic so non-square panels never show blank bands.
+ * Legacy query-string tile URL. Kept only to 308 → path form.
+ * Do not serve PNG bodies here: Netlify Edge cached one response for all
+ * `?z=&x=&y=` variants (Netlify-Vary omits those query keys).
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const z = Number(searchParams.get("z"));
-  const x = Number(searchParams.get("x"));
-  const y = Number(searchParams.get("y"));
+  const z = searchParams.get("z");
+  const x = searchParams.get("x");
+  const y = searchParams.get("y");
 
-  if (!Number.isInteger(z) || z < 1 || z > 18) {
-    return NextResponse.json({ error: "invalid zoom" }, { status: 400 });
-  }
-  const n = 2 ** z;
-  if (!Number.isInteger(x) || !Number.isInteger(y) || y < 0 || y >= n) {
+  if (z == null || x == null || y == null) {
     return NextResponse.json({ error: "invalid tile" }, { status: 400 });
   }
-  const wrappedX = ((x % n) + n) % n;
 
-  const tileUrl = `https://tile.openstreetmap.org/${z}/${wrappedX}/${y}.png`;
-  const res = await fetch(tileUrl, {
-    headers: { "User-Agent": "TMRE Website map preview" },
-    next: { revalidate: 86400 },
-  });
-
-  if (!res.ok) {
-    return NextResponse.json({ error: "tile fetch failed" }, { status: 502 });
-  }
-
-  const buf = await res.arrayBuffer();
-  return new NextResponse(buf, {
+  const target = new URL(`/api/map/tile/${z}/${x}/${y}`, req.url);
+  return NextResponse.redirect(target, {
+    status: 308,
     headers: {
-      "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+      // Avoid re-poisoning the query-string edge key with another PNG body.
+      "Cache-Control": "private, no-store",
     },
   });
 }

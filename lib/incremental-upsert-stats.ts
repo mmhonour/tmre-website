@@ -94,7 +94,7 @@ export async function persistIncrementalUpsertStats(
 
 export function formatIncrementalUpsertStats(
   stats: IncrementalUpsertStats | null,
-): string {
-  if (!stats) return '(no incremental upsert stats yet)'
+): string | null {
+  if (!stats) return null
   return `${stats.upserted} upserts (${stats.inserted} new, ${stats.updated} updated)`
 }

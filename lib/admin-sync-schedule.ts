@@ -15,6 +15,7 @@ import {
   defaultSyncScheduleConfig,
   frequencyIntervalMs,
   parseStartTimeEt,
+  resolveJobScheduler,
   resolveWeekdayEt,
   type SyncJobScheduleConfig,
   type SyncScheduleConfig,
@@ -46,6 +47,8 @@ type BuildNextRunsInput = {
   lastStatsCache: string | null
   lastDealOfTheDayCacheStarted: string | null
   lastDealOfTheDayCache: string | null
+  /** When Incremental Scheduler is EventBridge, Next anchors on AWS fires. */
+  lastEventbridgeIngressAt?: string | null
 }
 
 const ET = 'America/New_York'
@@ -479,11 +482,24 @@ export function buildAdminSyncNextRuns(
 
   const naturalFor = (jobId: ScheduledSyncJobId): string => {
     const job = config.jobs[jobId]
-    let natural = computeNaturalNextRunIso(
-      job,
-      lastFinishedForJob(jobId, input),
-      now,
-    )
+    let lastAnchor = lastFinishedForJob(jobId, input)
+    // EventBridge Incremental: Next is a real wall clock from the AWS fire
+    // cadence (ingress), not a vague “AWS · ~30m”. Prefer the newer of End vs
+    // last ingress so a queued-but-unfinished hop still advances Next.
+    if (
+      jobId === 'incremental' &&
+      resolveJobScheduler(job) === 'eventbridge'
+    ) {
+      const ingressAt =
+        input.lastEventbridgeIngressAt ??
+        getSyncMeta('last_eventbridge_ingress_at_incremental')
+      const finMs = parseIsoMs(lastAnchor)
+      const ingMs = parseIsoMs(ingressAt)
+      if (ingMs != null && (finMs == null || ingMs >= finMs)) {
+        lastAnchor = ingressAt
+      }
+    }
+    let natural = computeNaturalNextRunIso(job, lastAnchor, now)
     // Post-deploy full resync still wins when scheduled.
     if (
       jobId === 'full-resync' &&

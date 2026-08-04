@@ -1120,6 +1120,49 @@ function formatAgeAgo(iso: string | null | undefined, nowMs = Date.now()): strin
   return `${days}d ago`;
 }
 
+/** Glance-friendly ingress outcome — drop HTTP 200 noise; keep error codes. */
+function humanizeEventBridgeIngressResult(
+  result: string | null | undefined,
+): string | null {
+  const raw = result?.trim();
+  if (!raw) return null;
+  return raw.replace(/\s*·\s*HTTP\s*20[04]\s*$/i, "").trim() || raw;
+}
+
+/**
+ * Open Incremental Start with no matching End — usually a queue that never
+ * finished. Prefer blank Start over a 19h ghost clock next to a fresh AWS line.
+ */
+function isOrphanIncrementalStart(
+  timing: SyncTiming,
+  ingressAt: string | null | undefined,
+  liveNow: boolean,
+  nowMs: number,
+): boolean {
+  if (liveNow) return false;
+  const startMs = parseIsoMs(timing.started);
+  if (startMs == null) return false;
+  const endMs = parseIsoMs(timing.finished);
+  if (endMs != null && endMs >= startMs) return false;
+  const ingressMs = parseIsoMs(ingressAt);
+  if (ingressMs != null && ingressMs > startMs + 60_000) return true;
+  return nowMs - startMs >= HANG_THRESHOLD_MS;
+}
+
+/** AWS accepted a queue but End never landed after that ingress. */
+function isEventBridgeQueuedWithoutEnd(
+  ingressAt: string | null | undefined,
+  ingressResult: string | null | undefined,
+  finishedAt: string | null | undefined,
+): boolean {
+  const ingressMs = parseIsoMs(ingressAt);
+  if (ingressMs == null) return false;
+  const result = ingressResult?.trim() ?? "";
+  if (!/^queued\b/i.test(result)) return false;
+  const endMs = parseIsoMs(finishedAt);
+  return endMs == null || endMs < ingressMs;
+}
+
 function isTimingInProgress(timing: SyncTiming, nowMs: number): boolean {
   const startedMs = parseIsoMs(timing.started);
   if (startedMs == null) return false;
@@ -1193,6 +1236,13 @@ function resolveSyncRowVisualStatus(options: {
   fullResyncInProgress: boolean;
   error?: string;
   nowMs: number;
+  /**
+   * EventBridge Incremental: ignore open Start hang (AWS owns the alarm; a
+   * stale Start without End is Status text, not a Netlify Hung row).
+   */
+  ignoreTimingHang?: boolean;
+  /** Explicit problem (e.g. AWS queued with no End after the hang window). */
+  forceAlert?: boolean;
 }): SyncRowVisualStatus {
   const {
     row,
@@ -1205,6 +1255,8 @@ function resolveSyncRowVisualStatus(options: {
     fullResyncInProgress,
     error,
     nowMs,
+    ignoreTimingHang = false,
+    forceAlert = false,
   } = options;
 
   // During a full resync the full-resync row (Step 1) is the single source of
@@ -1241,9 +1293,11 @@ function resolveSyncRowVisualStatus(options: {
   if (inProgress && !refreshRowHung) return "running";
 
   const failed = isSyncErrorText(error);
-  const hung = refreshRowHung || isTimingHung(timing, nowMs);
+  const hung =
+    refreshRowHung ||
+    (!ignoreTimingHang && isTimingHung(timing, nowMs));
 
-  if (failed || hung) return "alert";
+  if (failed || hung || forceAlert) return "alert";
 
   // "Latest MLS listing update" is a read-only diagnostic — it has no sync
   // action of its own so it should never turn green regardless of its timestamp.
@@ -2759,6 +2813,45 @@ export default function AdminSyncTable({
               const jobSchedule = pauseJob
                 ? scheduleConfig.jobs[pauseJob]
                 : null;
+              const incrementalLiveNow =
+                row.id === "incremental" &&
+                Boolean(
+                  status?.incrementalLiveStatus || status?.incrementalLive,
+                );
+              // Open Start without End (within hang window) = in flight even if
+              // the live breadcrumb was cleared — Postgres Start is the signal.
+              const incrementalOpenInFlight =
+                row.id === "incremental" && isTimingInProgress(timing, nowMs);
+              const incrementalRunningNow =
+                incrementalLiveNow || incrementalOpenInFlight;
+              const incrementalOnEventBridge =
+                row.id === "incremental" &&
+                jobSchedule != null &&
+                resolveJobScheduler(jobSchedule) === "eventbridge";
+              const orphanIncrementalStart =
+                row.id === "incremental" &&
+                isOrphanIncrementalStart(
+                  timing,
+                  status?.lastEventbridgeIngressAt,
+                  incrementalRunningNow,
+                  nowMs,
+                );
+              const eventBridgeQueuedNoEnd =
+                incrementalOnEventBridge &&
+                !incrementalRunningNow &&
+                isEventBridgeQueuedWithoutEnd(
+                  status?.lastEventbridgeIngressAt,
+                  status?.lastEventbridgeIngressResult,
+                  timing.finished,
+                );
+              const eventBridgeQueuedStale =
+                eventBridgeQueuedNoEnd &&
+                (() => {
+                  const ingressMs = parseIsoMs(status?.lastEventbridgeIngressAt);
+                  return (
+                    ingressMs != null && nowMs - ingressMs >= HANG_THRESHOLD_MS
+                  );
+                })();
               // Configure is schedule/setup only — no live status colors.
               const visual = isConfigure
                 ? ("idle" as const)
@@ -2773,6 +2866,8 @@ export default function AdminSyncTable({
                     fullResyncInProgress,
                     error: rowError,
                     nowMs,
+                    ignoreTimingHang: incrementalOnEventBridge,
+                    forceAlert: eventBridgeQueuedStale,
                   });
               const scheduleBreached =
                 isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
@@ -2795,40 +2890,31 @@ export default function AdminSyncTable({
                 rowPaused && !isRunning && !isWaiting ? ("idle" as const) : visual;
               const stickyBg = stickyCellBg(displayVisual, stripe);
 
-              const incrementalLiveNow =
-                row.id === "incremental" &&
-                Boolean(
-                  status?.incrementalLiveStatus || status?.incrementalLive,
-                );
               // Queue stamps Start but leaves prior End — don't present that End
               // as if this run finished. Same when Start is newer than End.
               const incrementalPriorEnd =
                 row.id === "incremental" &&
                 Boolean(timing.finished) &&
-                (incrementalLiveNow ||
+                (incrementalRunningNow ||
                   (() => {
                     const s = parseIsoMs(timing.started);
                     const e = parseIsoMs(timing.finished);
                     return s != null && (e == null || s > e);
                   })());
-              const incrementalOnEventBridge =
-                row.id === "incremental" &&
-                jobSchedule != null &&
-                resolveJobScheduler(jobSchedule) === "eventbridge";
 
-              /** One glance line for AWS hits — shown on Dashboard Status, not buried in Configure. */
+              /** One glance line for AWS hits — shown on Dashboard Status when idle. */
               const eventbridgePulseLine = (() => {
                 if (!incrementalOnEventBridge) return null;
                 if (!status?.lastEventbridgeIngressAt) {
-                  return "AWS: never fired (check schedule / Send events / API destination)";
+                  return "AWS: never fired";
                 }
                 const when =
                   formatAgeAgo(status.lastEventbridgeIngressAt, nowMs) ??
                   formatTimestamp(status.lastEventbridgeIngressAt);
-                const result = status.lastEventbridgeIngressResult?.trim();
-                return result
-                  ? `AWS: ${when} · ${result}`
-                  : `AWS: last fired ${when}`;
+                const result = humanizeEventBridgeIngressResult(
+                  status.lastEventbridgeIngressResult,
+                );
+                return result ? `AWS ${when} · ${result}` : `AWS ${when}`;
               })();
 
               const statusText = (() => {
@@ -2840,45 +2926,54 @@ export default function AdminSyncTable({
                     )
                   );
                 }
-                if (isRunning || syncAllRunning || incrementalLiveNow) {
+                if (isRunning || syncAllRunning || incrementalRunningNow) {
                   const live =
                     status?.incrementalLiveStatus ??
                     formatIncrementalSyncLiveStatus(status?.incrementalLive) ??
                     descriptions[row.id] ??
-                    "Running…";
-                  // Plain English first — don't make operators decode Start/End/Hung.
-                  const head = incrementalLiveNow
-                    ? `RUNNING · ${live}`
-                    : live;
-                  return eventbridgePulseLine
-                    ? `${head}\n${eventbridgePulseLine}`
-                    : head;
+                    null;
+                  if (incrementalRunningNow) {
+                    return live
+                      ? `RUNNING · ${live}`
+                      : "RUNNING · started (waiting for End…)";
+                  }
+                  return live ?? "Running…";
                 }
                 // Prefer durable server truth over localStorage “Queued…” leftovers.
                 if (row.id === "incremental") {
+                  if (eventBridgeQueuedNoEnd) {
+                    const when =
+                      formatAgeAgo(status?.lastEventbridgeIngressAt, nowMs) ??
+                      "recently";
+                    return `Not running · AWS ${when}: queued — no End yet`;
+                  }
                   const idleBits: string[] = [];
+                  if (timing.finished) {
+                    const age =
+                      formatAgeAgo(timing.finished, nowMs) ??
+                      formatDateShort(timing.finished);
+                    idleBits.push(`Idle · ended ${age}`);
+                  } else {
+                    idleBits.push("Idle · not running");
+                  }
                   if (eventbridgePulseLine) idleBits.push(eventbridgePulseLine);
-                  if (status?.lastIncrementalUpsertsLabel) {
-                    const when = status.lastIncrementalUpserts?.finishedAt
+                  const upsertLabel =
+                    status?.lastIncrementalUpsertsLabel?.trim() || null;
+                  if (upsertLabel) {
+                    const when = status?.lastIncrementalUpserts?.finishedAt
                       ? ` · ${formatAgeAgo(status.lastIncrementalUpserts.finishedAt, nowMs) ?? ""}`
                       : "";
-                    idleBits.push(
-                      `Last pull: ${status.lastIncrementalUpsertsLabel}${when}`,
-                    );
-                  } else if (status?.incrementalStepLog?.summary) {
+                    idleBits.push(`Last pull: ${upsertLabel}${when}`);
+                  } else if (
+                    !incrementalOnEventBridge &&
+                    status?.incrementalStepLog?.summary
+                  ) {
                     const src = status.incrementalStepLog.source
                       ? `${status.incrementalStepLog.source}: `
                       : "";
                     idleBits.push(
                       `${src}${status.incrementalStepLog.summary}`,
                     );
-                  } else if (timing.finished) {
-                    const age =
-                      formatAgeAgo(timing.finished, nowMs) ??
-                      formatDateShort(timing.finished);
-                    idleBits.push(`Idle · last End ${age}`);
-                  } else {
-                    idleBits.push("Idle · no finished End yet");
                   }
                   if (
                     !incrementalOnEventBridge &&
@@ -2915,18 +3010,22 @@ export default function AdminSyncTable({
                     : incrementalOnEventBridge
                       ? `Modified-since RETS pull (EventBridge)${
                           status?.lastEventbridgeIngressAt
-                            ? ` · EventBridge last fired ${
+                            ? ` · last fired ${
                                 formatAgeAgo(
                                   status.lastEventbridgeIngressAt,
                                   nowMs,
                                 ) ??
                                 formatTimestamp(status.lastEventbridgeIngressAt)
                               }${
-                                status.lastEventbridgeIngressResult
-                                  ? ` · ${status.lastEventbridgeIngressResult}`
+                                humanizeEventBridgeIngressResult(
+                                  status.lastEventbridgeIngressResult,
+                                )
+                                  ? ` · ${humanizeEventBridgeIngressResult(
+                                      status.lastEventbridgeIngressResult,
+                                    )}`
                                   : ""
                               }`
-                            : " · EventBridge last fired: never (no ingress hit yet — AWS schedule / Send events / API destination)"
+                            : " · last fired: never"
                         }`
                       : `Modified-since RETS pull (every 30 minutes)${
                           status?.lastIncrementalCronTick
@@ -2947,9 +3046,10 @@ export default function AdminSyncTable({
                 (Boolean(rowError) ||
                   isRunning ||
                   isWaiting ||
-                  incrementalLiveNow ||
-                  scheduleBreached ||
-                  Boolean(statusText && statusText.length > 56));
+                  incrementalRunningNow ||
+                  eventBridgeQueuedNoEnd ||
+                  (!incrementalOnEventBridge && scheduleBreached) ||
+                  Boolean(statusText && statusText.includes("\n")));
               const cellPad = rowExpands ? TD_EXPAND : TD;
 
               return (
@@ -3054,56 +3154,47 @@ export default function AdminSyncTable({
                   {isDashboard ? (
                     <td className={cellPad}>
                       {row.id === "incremental" ? (
-                        <div className="flex flex-col gap-px">
+                        <div
+                          className="flex flex-col gap-0.5"
+                          title="Optional town / listing-status scope for Sync now"
+                        >
                           <span className="font-mono text-[7px] tracking-[0.08em] uppercase text-charcoal/40 leading-none">
-                            Next Sync scope
+                            Scope
                           </span>
-                          <label className="flex flex-col gap-px">
-                            <span className="font-mono text-[7px] tracking-[0.1em] uppercase text-charcoal/45 leading-none">
-                              Towns
-                            </span>
-                            <select
-                              value={incrementalTownScope}
-                              disabled={disabled}
-                              onChange={(e) =>
-                                setIncrementalTownScope(e.target.value)
-                              }
-                              className="w-full max-w-[4.75rem] h-4 rounded border border-charcoal/15 bg-white px-1 py-0 font-mono text-[8px] leading-none text-navy disabled:opacity-40"
-                              aria-label="Incremental town scope"
-                            >
-                              <option value="">All Towns</option>
-                              {TMRE_TOWNS.map((town) => (
-                                <option key={town} value={town}>
-                                  {town}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="flex flex-col gap-px">
-                            <span className="font-mono text-[7px] tracking-[0.1em] uppercase text-charcoal/45 leading-none">
-                              Status
-                            </span>
-                            <select
-                              value={incrementalStatusScope}
-                              disabled={disabled}
-                              onChange={(e) =>
-                                setIncrementalStatusScope(
-                                  e.target.value as
-                                    | "all"
-                                    | "active"
-                                    | "closed",
-                                )
-                              }
-                              className="w-full max-w-[4.75rem] h-4 rounded border border-charcoal/15 bg-white px-1 py-0 font-mono text-[8px] leading-none text-navy disabled:opacity-40"
-                              aria-label="Incremental status scope"
-                            >
-                              <option value="all">
-                                All (Active+Closed)
+                          <select
+                            value={incrementalTownScope}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              setIncrementalTownScope(e.target.value)
+                            }
+                            className="w-full max-w-[5.25rem] h-4 rounded border border-charcoal/15 bg-white px-1 py-0 font-mono text-[8px] leading-none text-navy disabled:opacity-40"
+                            aria-label="Incremental town scope"
+                          >
+                            <option value="">All Towns</option>
+                            {TMRE_TOWNS.map((town) => (
+                              <option key={town} value={town}>
+                                {town}
                               </option>
-                              <option value="active">Active family</option>
-                              <option value="closed">Closed only</option>
-                            </select>
-                          </label>
+                            ))}
+                          </select>
+                          <select
+                            value={incrementalStatusScope}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              setIncrementalStatusScope(
+                                e.target.value as
+                                  | "all"
+                                  | "active"
+                                  | "closed",
+                              )
+                            }
+                            className="w-full max-w-[5.25rem] h-4 rounded border border-charcoal/15 bg-white px-1 py-0 font-mono text-[8px] leading-none text-navy disabled:opacity-40"
+                            aria-label="Incremental status scope"
+                          >
+                            <option value="all">All statuses</option>
+                            <option value="active">Active family</option>
+                            <option value="closed">Closed only</option>
+                          </select>
                         </div>
                       ) : null}
                     </td>
@@ -3382,11 +3473,10 @@ export default function AdminSyncTable({
                           row.id === "full-resync" &&
                           status?.scheduleHints?.fullResyncSource ===
                             "post-deploy";
-                        // Live Incremental must never read as Hung — Status already
-                        // says RUNNING. EventBridge owns the clock; Netlify Next
-                        // math is not authoritative.
+                        // Live / open-Start Incremental must never read as Hung —
+                        // Status already says RUNNING.
                         const hungNext =
-                          !incrementalLiveNow &&
+                          !incrementalRunningNow &&
                           !incrementalOnEventBridge &&
                           (isTimingHung(timing, nowMs) ||
                             (row.id === "refresh-finished" &&
@@ -3397,8 +3487,9 @@ export default function AdminSyncTable({
                           nextStatusText = "Post-deploy";
                           nextStatusClass = "text-gold";
                         } else if (incrementalOnEventBridge) {
-                          nextStatusText = null;
-                          nextStatusClass = "text-navy/70";
+                          // Real wall clock below; label who owns the alarm.
+                          nextStatusText = "AWS";
+                          nextStatusClass = "text-navy/55";
                         } else if (hungNext) {
                           nextStatusText = "Hung";
                           nextStatusClass = "text-rose-600/80";
@@ -3406,13 +3497,11 @@ export default function AdminSyncTable({
                           nextStatusText = "Overdue";
                           nextStatusClass = "text-rose-600/80";
                         }
-                        const nextTimeText = incrementalOnEventBridge
-                          ? "AWS · ~30m"
-                          : isPostDeployNext
-                            ? formatAdminNextSyncCountdown(nextRunAt, now)
-                            : nextSameDay
-                              ? formatTimeOnly(nextRunAt)
-                              : formatAdminNextSyncAt(nextRunAt, now);
+                        const nextTimeText = isPostDeployNext
+                          ? formatAdminNextSyncCountdown(nextRunAt, now)
+                          : nextSameDay
+                            ? formatTimeOnly(nextRunAt)
+                            : formatAdminNextSyncAt(nextRunAt, now);
                         const nextJobId =
                           SCHEDULED_SYNC_JOB_BY_ROW[
                             row.id as AdminSyncPanelRowId
@@ -3455,6 +3544,7 @@ export default function AdminSyncTable({
 
                         const startValue = (() => {
                           if (showSingleTimestamp || !timing.started) return "—";
+                          if (orphanIncrementalStart) return "—";
                           const time = formatTimeOnly(timing.started);
                           if (row.id !== "incremental") return time;
                           const age = formatAgeAgo(timing.started, nowMs);
@@ -3469,13 +3559,15 @@ export default function AdminSyncTable({
                               <span
                                 className="block min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words text-navy font-semibold"
                                 title={
-                                  timing.started
-                                    ? `${dateLabel ?? ""} ${formatTimeOnly(timing.started)}${
-                                        incrementalLiveNow
-                                          ? " · queue/start (End updates when worker finishes)"
-                                          : ""
-                                      }`.trim()
-                                    : undefined
+                                  orphanIncrementalStart
+                                    ? "Prior Start cleared — queue never reached End (see Status)"
+                                    : timing.started
+                                      ? `${dateLabel ?? ""} ${formatTimeOnly(timing.started)}${
+                                          incrementalRunningNow
+                                            ? " · in flight (End updates when worker finishes)"
+                                            : ""
+                                        }`.trim()
+                                      : undefined
                                 }
                               >
                                 {startValue}
@@ -3484,7 +3576,7 @@ export default function AdminSyncTable({
                             <td className={cellPad}>
                               <span
                                 className={`block min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words font-semibold ${
-                                  !incrementalLiveNow &&
+                                  !incrementalRunningNow &&
                                   (scheduleBreached || incrementalPriorEnd)
                                     ? "text-rose-700"
                                     : "text-navy"
@@ -3497,33 +3589,23 @@ export default function AdminSyncTable({
                             <td className={cellPad}>
                               <div className="flex min-w-0 max-w-full flex-wrap items-start gap-x-1 gap-y-0.5">
                                 <span
-                                  className={`min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words font-semibold ${
-                                    incrementalOnEventBridge
-                                      ? "text-navy"
-                                      : nextTimeClass
-                                  }`}
+                                  className={`min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words font-semibold ${nextTimeClass}`}
                                   title={
                                     incrementalOnEventBridge
-                                      ? "Next fire is owned by AWS EventBridge Scheduler (not Netlify cron math)"
+                                      ? "Next cadence from Configure Frequency, anchored on last AWS EventBridge fire (Postgres)"
                                       : nextStatusText
                                         ? `${nextTimeText} (${nextStatusText})`
                                         : nextTimeText
                                   }
                                 >
-                                  {incrementalOnEventBridge
-                                    ? nextTimeText
-                                    : nextRunAt != null
-                                      ? nextTimeText
-                                      : "—"}
-                                  {!incrementalOnEventBridge &&
-                                  nextStatusText ? (
+                                  {nextRunAt != null ? nextTimeText : "—"}
+                                  {nextStatusText ? (
                                     <span
                                       className={`ml-1 font-normal ${nextStatusClass}`}
                                     >
                                       {nextStatusText}
                                     </span>
-                                  ) : !incrementalOnEventBridge &&
-                                    hasNextOverride ? (
+                                  ) : hasNextOverride ? (
                                     <span className="ml-1 font-normal text-gold">
                                       set
                                     </span>
@@ -3558,13 +3640,15 @@ export default function AdminSyncTable({
                         <StatusCell
                           text={statusText}
                           isRunning={
-                            isRunning || syncAllRunning || incrementalLiveNow
+                            isRunning ||
+                            syncAllRunning ||
+                            incrementalRunningNow
                           }
                           isWaiting={isWaiting}
                           allowWrap={
                             rowExpands ||
-                            incrementalOnEventBridge ||
-                            incrementalLiveNow
+                            incrementalRunningNow ||
+                            eventBridgeQueuedNoEnd
                           }
                         />
                       </td>

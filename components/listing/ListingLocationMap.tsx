@@ -33,7 +33,9 @@ function hasValidCoords(
 }
 
 function mapTileUrl(z: number, x: number, y: number): string {
-  return `/api/map/tile?z=${z}&x=${x}&y=${y}`;
+  // Path segments (not query): Netlify Edge does not vary this route on z/x/y
+  // query params, so `?z=&x=&y=` served one cached PNG for every tile.
+  return `/api/map/tile/${z}/${x}/${y}`;
 }
 
 type MosaicTile = {

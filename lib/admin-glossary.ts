@@ -385,7 +385,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'EventBridge last fired',
     category: 'sync-admin',
     definition:
-      'Admin → Syncs → Dashboard Incremental row when Scheduler is EventBridge. Stamped on every HTTP hit to eventbridge-sync-ingress (success, Configure skip, pause, 401, bad JSON). Shows age + result line (e.g. queued · HTTP 200, skipped: job scheduler is netlify · HTTP 200, unauthorized · HTTP 401). Distinct from Cron last fired (Netlify */30 only). Meta keys: last_eventbridge_ingress_at_incremental, last_eventbridge_ingress_result_incremental.',
+      'Admin → Syncs → Dashboard Incremental when Scheduler is EventBridge. Every HTTP hit to eventbridge-sync-ingress stamps Postgres (last_eventbridge_ingress_*), and a successful queue also stamps Start + incremental_sync_live. The worker writes End (last_incremental_sync) and clears live. Dashboard polls Postgres (~5s while Start is open, ~60s when idle) — that is how EventBridge and Netlify “talk.” Next shows a real wall clock (cadence from Configure Frequency, anchored on last AWS fire), with an AWS label — not “AWS · ~30m”. Status is RUNNING while Start is open or live is set; Idle · not running / Idle · ended otherwise. If AWS queued but End never arrives past the hang window: “Not running · queued — no End yet.”',
   },
   {
     term: 'Ingress (EventBridge)',
