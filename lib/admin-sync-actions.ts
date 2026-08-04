@@ -25,7 +25,8 @@ import {
 import {
   formatIncrementalUpsertStats,
   readIncrementalUpsertHistory,
-  readLastIncrementalUpsertStats,
+  readLastIncrementalUpsertStatsFresh,
+  upsertLabelFromStepSummary,
 } from '@/lib/incremental-upsert-stats'
 import {
   clearChunkedFullResyncProgress,
@@ -1211,8 +1212,11 @@ export async function readAdminSyncPanelStatus() {
     /* feed optional for panel */
   }
 
-  const lastIncrementalUpserts = readLastIncrementalUpsertStats()
+  const lastIncrementalUpserts = await readLastIncrementalUpsertStatsFresh()
   const incrementalUpsertHistory = readIncrementalUpsertHistory()
+  const lastIncrementalUpsertsLabel =
+    formatIncrementalUpsertStats(lastIncrementalUpserts) ??
+    upsertLabelFromStepSummary(incrementalStepLog?.summary)
 
   return {
     stats,
@@ -1232,7 +1236,7 @@ export async function readAdminSyncPanelStatus() {
     latestFeedNewestMls,
     latestFeedRowCount,
     lastIncrementalUpserts,
-    lastIncrementalUpsertsLabel: formatIncrementalUpsertStats(lastIncrementalUpserts),
+    lastIncrementalUpsertsLabel,
     incrementalUpsertHistory,
   }
 }

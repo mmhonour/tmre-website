@@ -7,12 +7,15 @@ import {
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
-import { readLatestGlobalFeedCache } from '@/lib/latest-feed-cache'
+import {
+  isLatestFeedCacheYoung,
+  readLatestGlobalFeedCache,
+} from '@/lib/latest-feed-cache'
 import { warmLatestHeroPhotosDeferred } from '@/lib/latest-hero-photo-warm'
 
 export const LATEST_TOWN_FEED_LIMIT = 30
-// v4: BOM includes Coming Soon → Active; fill today then prior Eastern day.
-export const LATEST_TOWN_FEED_CACHE_PREFIX = 'latest-town-feed:v5'
+// v6: UC excluded; event clocks ignore ModificationTimestamp; cache max-age.
+export const LATEST_TOWN_FEED_CACHE_PREFIX = 'latest-town-feed:v6'
 /** Single stats_cache row for all town feeds (~7 × 30 listings). */
 export const LATEST_TOWN_FEEDS_BUNDLE_KEY = `${LATEST_TOWN_FEED_CACHE_PREFIX}:bundle`
 
@@ -46,7 +49,12 @@ export async function readAllLatestTownFeedCaches(
   if (bundleRow?.payload) {
     try {
       const parsed = JSON.parse(bundleRow.payload) as LatestTownFeedsBundlePayload
-      if (parsed?.version === 1 && parsed.towns && typeof parsed.towns === 'object') {
+      if (
+        parsed?.version === 1 &&
+        parsed.towns &&
+        typeof parsed.towns === 'object' &&
+        isLatestFeedCacheYoung(parsed.generatedAt)
+      ) {
         const out: Record<string, LatestListingRow[]> = {}
         for (const [town, rows] of Object.entries(parsed.towns)) {
           if (Array.isArray(rows) && rows.length > 0) {
@@ -92,6 +100,7 @@ export async function readLatestTownFeedCache(
   try {
     const parsed = JSON.parse(row.payload) as LatestTownFeedCachePayload
     if (parsed?.version !== 1 || !Array.isArray(parsed.listings)) return null
+    if (!isLatestFeedCacheYoung(parsed.generatedAt)) return null
     return parsed.listings.slice(0, Math.min(Math.max(limit, 1), 250))
   } catch {
     return null
@@ -131,7 +140,7 @@ async function rebuildSingleTownFeedCache(
 }
 
 /**
- * Rebuild Latest town feeds (top N by modification time) into stats_cache.
+ * Rebuild Latest town feeds (top N event rows) into stats_cache.
  * SQLite listing feeds only on the critical path; bounded hero thumbnails warm afterward.
  * Also refreshes the default (no-town) global Latest ticker cache.
  */

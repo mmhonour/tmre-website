@@ -2941,13 +2941,32 @@ export default function AdminSyncTable({
                 }
                 // Prefer durable server truth over localStorage “Queued…” leftovers.
                 if (row.id === "incremental") {
+                  const upsertLabel =
+                    status?.lastIncrementalUpsertsLabel?.trim() || null;
+                  const upsertWhen = status?.lastIncrementalUpserts?.finishedAt
+                    ? formatAgeAgo(
+                        status.lastIncrementalUpserts.finishedAt,
+                        nowMs,
+                      )
+                    : null;
+                  const upsertLine = upsertLabel
+                    ? upsertWhen && upsertWhen !== "just now"
+                      ? `${upsertLabel} · ${upsertWhen}`
+                      : upsertLabel
+                    : timing.finished
+                      ? "Upserts: — (last End had no count recorded)"
+                      : "Upserts: — (waiting for a finished pull)";
+
                   if (eventBridgeQueuedNoEnd) {
                     const when =
                       formatAgeAgo(status?.lastEventbridgeIngressAt, nowMs) ??
                       "recently";
-                    return `Not running · AWS ${when}: queued — no End yet`;
+                    return [
+                      upsertLine,
+                      `Not running · AWS ${when}: queued — no End yet`,
+                    ].join("\n");
                   }
-                  const idleBits: string[] = [];
+                  const idleBits: string[] = [upsertLine];
                   if (timing.finished) {
                     const age =
                       formatAgeAgo(timing.finished, nowMs) ??
@@ -2957,14 +2976,8 @@ export default function AdminSyncTable({
                     idleBits.push("Idle · not running");
                   }
                   if (eventbridgePulseLine) idleBits.push(eventbridgePulseLine);
-                  const upsertLabel =
-                    status?.lastIncrementalUpsertsLabel?.trim() || null;
-                  if (upsertLabel) {
-                    const when = status?.lastIncrementalUpserts?.finishedAt
-                      ? ` · ${formatAgeAgo(status.lastIncrementalUpserts.finishedAt, nowMs) ?? ""}`
-                      : "";
-                    idleBits.push(`Last pull: ${upsertLabel}${when}`);
-                  } else if (
+                  if (
+                    !upsertLabel &&
                     !incrementalOnEventBridge &&
                     status?.incrementalStepLog?.summary
                   ) {
@@ -2982,7 +2995,7 @@ export default function AdminSyncTable({
                   ) {
                     idleBits.push("overdue vs Netlify schedule");
                   }
-                  if (idleBits.length > 0) return idleBits.join("\n");
+                  return idleBits.join("\n");
                 }
                 const prior =
                   descriptions[row.id] ??

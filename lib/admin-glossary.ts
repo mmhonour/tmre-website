@@ -149,7 +149,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Modification timestamp',
     category: 'mls-data',
     definition:
-      'MLS field (ModificationTimestamp) stored per listing — advertising/legal freshness (remarks/photos/meta). Shown small on listing/Spotlight property facts. Drives incremental RETS “what changed” pulls. Not the /latest Reduced/Increased event clock (that is PriceChangeTimestamp). Often UTC in the feed.',
+      'MLS field (ModificationTimestamp) stored per listing — advertising/legal freshness (remarks/photos/meta). Shown small on listing/Spotlight property facts. Drives incremental RETS “what changed” pulls. Never a /latest badge qualifier and never the /latest ranking clock (that is PriceChangeTimestamp / status change / list date). Often UTC in the feed.',
   },
   {
     term: 'UTC / GMT',
@@ -679,7 +679,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Latest',
     category: 'product',
     definition:
-      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h (not ModificationTimestamp bumps). Fills today’s Eastern-day events first (event clock desc), then the prior day. Plain Active and Pending never appear. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
+      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h. New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Thin corpus (Find)',

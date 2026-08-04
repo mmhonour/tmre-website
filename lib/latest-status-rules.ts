@@ -95,7 +95,7 @@ export const LATEST_STATUS_PRECEDENCE: readonly LatestStatusRuleRow[] = [
     status: 'New',
     badge: 'New',
     event: true,
-    rule: `Days on market ≤ ${NEW_LISTING_MAX_DOM}, or list date within the last ${NEW_LISTING_MAX_DOM} days (and not already Back on Market).`,
+    rule: `Currently Active (not Pending / Under Contract), days on market ≤ ${NEW_LISTING_MAX_DOM}, or list date within the last ${NEW_LISTING_MAX_DOM} days (and not already Back on Market). Ranking clock is list date — not ModificationTimestamp.`,
   },
   {
     order: 4,
@@ -125,7 +125,7 @@ export const LATEST_FEED_RANKING: readonly LatestRankingStep[] = [
     order: 1,
     label: 'Keep event rows only',
     detail:
-      'Coming Soon, New, Back on Market, Reduced, and Increased. Pending and plain Active (remarks/photos/minor edits) never appear.',
+      'Coming Soon, New, Back on Market, Reduced, and Increased. Pending, Under Contract / UC-CTS, and plain Active (remarks/photos/minor edits) never appear.',
   },
   {
     order: 2,
@@ -137,7 +137,7 @@ export const LATEST_FEED_RANKING: readonly LatestRankingStep[] = [
     order: 3,
     label: 'Fill by Eastern calendar day, then event timestamp',
     detail:
-      'Take all qualifying events from today (America/New_York), newest event clock first (PriceChangeTimestamp for Reduced/Increased; status/list clocks for other badges). If fewer than 30, fill from the prior day the same way, then any older days. Cap at 30. MLS ModificationTimestamp is advertising/legal freshness — not the /latest event clock. /latest does not call RETS on page view — it reads this feed cache (or Postgres when the cache is rejected as stale).',
+      'Take all qualifying events from today (America/New_York), newest event clock first (PriceChangeTimestamp for Reduced/Increased; status-change for Coming Soon / Back on Market; list date for New). If fewer than 30, fill from the prior day the same way, then any older days. Cap at 30. MLS ModificationTimestamp is advertising/legal freshness — never the /latest event clock. /latest does not call RETS on page view — it reads this feed cache (max ~45m) or rebuilds from Postgres when the cache is rejected.',
   },
 ]
 
@@ -182,6 +182,6 @@ export const LATEST_STATUS_INPUTS: readonly {
     field: 'modification_timestamp',
     source: 'MLS ModificationTimestamp (legal/advertising freshness)',
     usedFor:
-      'Shown on listing/Spotlight property facts; used for New when fresher than list date — not a Reduced/Increased qualifier',
+      'Shown on listing/Spotlight property facts only — never a /latest badge qualifier and never the feed ranking clock',
   },
 ]

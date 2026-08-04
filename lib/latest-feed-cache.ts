@@ -8,9 +8,22 @@ import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */
-// v6: BOM includes Coming Soon → Active; fill today then prior Eastern day.
-export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v7:global'
+// v8: UC excluded; New/CS/BOM clocks ignore ModificationTimestamp; cache max-age.
+export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v8:global'
 export const LATEST_GLOBAL_FEED_LIMIT = 30
+/** Serve warm cache only while fresher than the incremental warm cadence. */
+export const LATEST_FEED_CACHE_MAX_AGE_MS = 45 * 60 * 1000
+
+export function isLatestFeedCacheYoung(
+  generatedAt: string | null | undefined,
+  maxAgeMs = LATEST_FEED_CACHE_MAX_AGE_MS,
+  nowMs = Date.now(),
+): boolean {
+  if (!generatedAt?.trim()) return false
+  const t = Date.parse(generatedAt)
+  if (Number.isNaN(t)) return false
+  return nowMs - t <= maxAgeMs
+}
 
 export type LatestGlobalFeedCachePayload = {
   version: 1
@@ -29,6 +42,7 @@ export async function readLatestGlobalFeedCache(
     const parsed = JSON.parse(row.payload) as LatestGlobalFeedCachePayload
     if (parsed?.version !== 1 || !Array.isArray(parsed.listings)) return null
     if (parsed.listings.length === 0) return null
+    if (!isLatestFeedCacheYoung(parsed.generatedAt)) return null
     return parsed.listings.slice(0, Math.min(Math.max(limit, 1), 250))
   } catch {
     return null

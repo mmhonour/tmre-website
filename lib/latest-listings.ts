@@ -14,6 +14,7 @@ import {
   UNDER_CONTRACT_MLS_STATUS,
   fetchActiveListingsForCity,
 } from '@/lib/listings-store'
+import { isUnderContractStatus } from '@/lib/listing-status'
 import type { ScoreBreakdown } from '@/lib/goldilocks'
 import type { Listing } from '@/lib/rets'
 import {
@@ -24,7 +25,7 @@ import {
   type TmreTown,
 } from '@/lib/tmre-towns'
 import { coerceLotAcres, parseLotAcresFromRaw } from '@/lib/listing-lot-acres'
-import { latestActivityIso, latestRowActivityMs } from '@/lib/latest-activity'
+import { latestRowActivityMs } from '@/lib/latest-activity'
 import { mlsTimestampMs } from '@/lib/mls-time'
 import {
   LATEST_FRESH_WINDOW_MS,
@@ -70,7 +71,8 @@ export type LatestListingRow = {
   listDate: string | null
   /**
    * Badge-specific event clock for ranking/day headers:
-   * Reduced/Increased → PriceChangeTimestamp; CS/BOM → status change; New → mod/list.
+   * Reduced/Increased → PriceChangeTimestamp; CS/BOM → status change;
+   * New → list date. Never ModificationTimestamp alone.
    */
   eventAt: string | null
   syncedAt: string
@@ -177,6 +179,9 @@ function deriveStatus(
 ): LatestBadgeStatus | null {
   const status = listing.status?.trim().toLowerCase() ?? ''
   if (status === 'pending' || status === 'p') return null
+  // UC / UC-CTS sit in the Active bucket but are not /latest events — a mod
+  // bump on an under-contract rental must not resurface as "New".
+  if (isUnderContractStatus(listing.status)) return null
   if (status === 'coming soon' || status === 'cs') return 'Coming Soon'
   if (
     isBackOnMarket(
@@ -203,18 +208,29 @@ function deriveStatus(
 function resolveEventAt(
   status: LatestBadgeStatus,
   listing: Listing,
-  modificationTimestamp: string | null,
+  previousStatusChangedAt: string | null = null,
 ): string | null {
   if (status === 'Reduced' || status === 'Increased') {
     return listing.priceChangeTimestamp?.trim() || null
   }
-  if (status === 'Coming Soon' || status === 'Back on Market') {
+  if (status === 'Coming Soon') {
     return (
       listing.statusChangeTimestamp?.trim() ||
-      latestActivityIso(modificationTimestamp, listing.listDate)
+      listing.listDate?.trim() ||
+      null
     )
   }
-  return latestActivityIso(modificationTimestamp, listing.listDate)
+  if (status === 'Back on Market') {
+    return (
+      previousStatusChangedAt?.trim() ||
+      listing.statusChangeTimestamp?.trim() ||
+      listing.listDate?.trim() ||
+      null
+    )
+  }
+  // New — list date is the event. ModificationTimestamp is advertising/legal
+  // freshness and must not pull a DOM-eligible row into "today".
+  return listing.listDate?.trim() || null
 }
 
 function townForListing(listing: Listing): TmreTown | null {
@@ -286,7 +302,7 @@ function toLatestRow(
   )
   if (!status || !isLatestEventStatus(status)) return null
 
-  const eventAt = resolveEventAt(status, listing, modificationTimestamp)
+  const eventAt = resolveEventAt(status, listing, previousStatusChangedAt)
   if (!eventAt) return null
 
   return {

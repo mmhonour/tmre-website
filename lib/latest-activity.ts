@@ -4,12 +4,9 @@ import { mlsTimestampMs } from '@/lib/mls-time'
  * Freshest clock for Latest ranking / day headers.
  *
  * Prefer `eventAt` when the row already resolved a badge-specific clock
- * (PriceChangeTimestamp for Reduced/Increased, status change for BOM/CS, etc.).
- * Otherwise: MLS mod vs list date — brand-new inventory often has a newer
- * listDate than ModificationTimestamp.
- *
- * ModificationTimestamp alone is advertising/legal freshness and is not the
- * source of truth for a price-event row.
+ * (PriceChangeTimestamp for Reduced/Increased, status/list for CS/BOM/New).
+ * Without eventAt, fall back to list date only — never ModificationTimestamp.
+ * Mod bumps (remarks/photos/legal) are not /latest ranking signals.
  */
 export function latestActivityIso(
   modificationTimestamp: string | null | undefined,
@@ -19,15 +16,10 @@ export function latestActivityIso(
   const event = eventAt?.trim() || null
   if (event) return event
 
-  const mod = modificationTimestamp?.trim() || null
-  const listed = listDate?.trim() || null
-  if (!mod) return listed
-  if (!listed) return mod
-  const modMs = mlsTimestampMs(mod)
-  const listMs = mlsTimestampMs(listed)
-  if (Number.isNaN(modMs)) return listed
-  if (Number.isNaN(listMs)) return mod
-  return listMs > modMs ? listed : mod
+  // modificationTimestamp intentionally unused — kept in the signature so
+  // existing LatestListingRow call sites stay stable.
+  void modificationTimestamp
+  return listDate?.trim() || null
 }
 
 export function latestActivityMs(
