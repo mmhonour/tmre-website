@@ -1,13 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import type { InventorySnapshot } from "@/lib/db/listings-repo";
 
 type RowStatus = "match" | "low" | "empty" | "missing" | "no-snapshot";
 
-type SortKey = "table" | "current" | "snapshot" | "delta";
+type SortKey =
+  | "table"
+  | "current"
+  | "snapshot"
+  | "delta"
+  | "upserted60m"
+  | "lastUpdated";
 
 type SortDir = "asc" | "desc";
+
+type TableActivity = {
+  table: string;
+  timestampColumn: string | null;
+  upsertedLast60m: number | null;
+  lastUpdated: string | null;
+};
+
+type TableSample = {
+  table: string;
+  timestampColumn: string | null;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  limit: number;
+};
 
 function rowStatus(current: number, ref: number | undefined): RowStatus {
   if (ref === undefined) return "no-snapshot";
@@ -32,9 +53,33 @@ function statusDot(s: RowStatus) {
   );
 }
 
+function formatLastUpdated(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(t));
+}
+
+function formatCell(value: unknown): string {
+  if (value == null) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * Compares live Neon table row counts to the snapshot taken after the last
- * successful full resync. Health check: empty / large drops after sync.
+ * successful full resync. Also shows upserts in the last 60 minutes and
+ * on-demand sample rows (+/−).
  */
 export default function AdminInventoryComparisonPanel({
   initialSnapshot = null,
@@ -43,6 +88,7 @@ export default function AdminInventoryComparisonPanel({
 }) {
   const [open, setOpen] = useState(true);
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  const [activity, setActivity] = useState<Record<string, TableActivity>>({});
   const [snapshotCounts, setSnapshotCounts] = useState<Record<string, number>>(
     initialSnapshot?.counts ?? {},
   );
@@ -51,67 +97,127 @@ export default function AdminInventoryComparisonPanel({
   );
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("table");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [refreshing, setRefreshing] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("upserted60m");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [samples, setSamples] = useState<Record<string, TableSample>>({});
+  const [sampleLoading, setSampleLoading] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [sampleError, setSampleError] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    let cancelled = false;
-    const REFRESH_MS = 30 * 60 * 1000;
-
-    async function load() {
-      try {
-        const res = await fetch("/api/admin/inventory-snapshot", {
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          if (!cancelled) {
-            setLoadError(`Refresh failed (HTTP ${res.status})`);
-          }
-          return;
-        }
-        const data = (await res.json()) as {
-          snapshot: InventorySnapshot | null;
-          liveCounts: Record<string, number>;
-          at: string;
-          error?: string;
-        };
-        if (cancelled) return;
-        setLiveCounts(data.liveCounts ?? {});
-        setSnapshotCounts(data.snapshot?.counts ?? {});
-        setCapturedAt(data.snapshot?.capturedAt ?? null);
-        setLastRefreshedAt(data.at);
-        setLoadError(null);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : "Refresh failed");
-        }
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    setLoadError(null);
+    try {
+      const res = await fetch("/api/admin/inventory-snapshot", {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setLoadError(`Refresh failed (HTTP ${res.status})`);
+        return;
       }
+      const data = (await res.json()) as {
+        snapshot: InventorySnapshot | null;
+        liveCounts: Record<string, number>;
+        activity?: Record<string, TableActivity>;
+        at: string;
+        error?: string;
+      };
+      setLiveCounts(data.liveCounts ?? {});
+      setActivity(data.activity ?? {});
+      setSnapshotCounts(data.snapshot?.counts ?? {});
+      setCapturedAt(data.snapshot?.capturedAt ?? null);
+      setLastRefreshedAt(data.at);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Refresh failed");
+    } finally {
+      setRefreshing(false);
     }
-
-    void load();
-    const id = window.setInterval(load, REFRESH_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
   }, []);
+
+  const loadSample = useCallback(async (table: string) => {
+    setSampleLoading((prev) => ({ ...prev, [table]: true }));
+    setSampleError((prev) => {
+      const next = { ...prev };
+      delete next[table];
+      return next;
+    });
+    try {
+      const params = new URLSearchParams({ table, limit: "100" });
+      const res = await fetch(
+        `/api/admin/inventory-table-rows?${params.toString()}`,
+        { cache: "no-store" },
+      );
+      const body = (await res.json()) as {
+        sample?: TableSample;
+        error?: string;
+      };
+      if (!res.ok || !body.sample) {
+        setSampleError((prev) => ({
+          ...prev,
+          [table]: body.error ?? `HTTP ${res.status}`,
+        }));
+        return;
+      }
+      setSamples((prev) => ({ ...prev, [table]: body.sample! }));
+    } catch (err) {
+      setSampleError((prev) => ({
+        ...prev,
+        [table]: err instanceof Error ? err.message : "Failed to load rows",
+      }));
+    } finally {
+      setSampleLoading((prev) => ({ ...prev, [table]: false }));
+    }
+  }, []);
+
+  const toggleExpand = useCallback(
+    (table: string) => {
+      const opening = !expanded.has(table);
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (opening) next.add(table);
+        else next.delete(table);
+        return next;
+      });
+      if (opening && !samples[table] && !sampleLoading[table]) {
+        void loadSample(table);
+      }
+    },
+    [expanded, loadSample, sampleLoading, samples],
+  );
 
   const hasSnapshot = capturedAt != null;
 
-  const allTables = useMemo(
-    () =>
-      Array.from(
-        new Set([...Object.keys(liveCounts), ...Object.keys(snapshotCounts)]),
-      ),
-    [liveCounts, snapshotCounts],
-  );
+  const allTables = useMemo(() => {
+    if (Object.keys(liveCounts).length > 0 || Object.keys(activity).length > 0) {
+      return Array.from(
+        new Set([
+          ...Object.keys(liveCounts),
+          ...Object.keys(snapshotCounts),
+          ...Object.keys(activity),
+        ]),
+      );
+    }
+    return Object.keys(snapshotCounts);
+  }, [liveCounts, snapshotCounts, activity]);
 
   const sortedTables = useMemo(() => {
     const rows = allTables.map((table) => {
       const current = liveCounts[table] ?? 0;
       const snapshot = snapshotCounts[table];
       const delta = snapshot !== undefined ? current - snapshot : null;
-      return { table, current, snapshot, delta };
+      const act = activity[table];
+      return {
+        table,
+        current,
+        snapshot,
+        delta,
+        upserted60m: act?.upsertedLast60m ?? null,
+        lastUpdated: act?.lastUpdated ?? null,
+        timestampColumn: act?.timestampColumn ?? null,
+      };
     });
     const dir = sortDir === "asc" ? 1 : -1;
     rows.sort((a, b) => {
@@ -135,12 +241,24 @@ export default function AdminInventoryComparisonPanel({
           cmp = av - bv;
           break;
         }
+        case "upserted60m": {
+          const av = a.upserted60m ?? Number.NEGATIVE_INFINITY;
+          const bv = b.upserted60m ?? Number.NEGATIVE_INFINITY;
+          cmp = av - bv;
+          break;
+        }
+        case "lastUpdated": {
+          const av = a.lastUpdated ? Date.parse(a.lastUpdated) : Number.NEGATIVE_INFINITY;
+          const bv = b.lastUpdated ? Date.parse(b.lastUpdated) : Number.NEGATIVE_INFINITY;
+          cmp = av - bv;
+          break;
+        }
       }
       if (cmp !== 0) return cmp * dir;
       return a.table.localeCompare(b.table);
     });
     return rows;
-  }, [allTables, liveCounts, snapshotCounts, sortKey, sortDir]);
+  }, [allTables, liveCounts, snapshotCounts, activity, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -169,17 +287,19 @@ export default function AdminInventoryComparisonPanel({
     <span className="w-1.5 h-1.5 rounded-full bg-sage inline-block" />
   );
 
+  const colSpan = 8;
+
   return (
     <div
       id="admin-inventory-comparison"
       className="scroll-mt-24 rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04] overflow-hidden"
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-4 px-5 sm:px-6 py-4 text-left hover:bg-cream/30 transition-colors"
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center justify-between gap-4 px-5 sm:px-6 py-4">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2.5 min-w-0 text-left hover:opacity-90 transition-opacity"
+        >
           {overallDot}
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             Inventory comparison
@@ -199,20 +319,31 @@ export default function AdminInventoryComparisonPanel({
               no snapshot yet — run a full resync
             </span>
           )}
-        </div>
-        <span className="font-mono text-[10px] text-charcoal/40 shrink-0">
-          {open ? "−" : "+"}
-        </span>
-      </button>
+          <span className="font-mono text-[10px] text-charcoal/40 shrink-0">
+            {open ? "−" : "+"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={refreshing}
+          className="shrink-0 rounded-full border border-charcoal/15 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/60 transition-colors hover:border-charcoal/30 hover:text-navy disabled:opacity-40"
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
 
       {open && (
         <div className="border-t border-charcoal/[0.06]">
           <p className="px-5 sm:px-6 py-3 text-sm text-charcoal/65 leading-relaxed w-full">
-            After each successful full resync, Admin saves exact row counts for
-            every public Neon table. This panel compares those saved numbers to
-            live <span className="font-mono text-[11px]">COUNT(*)</span> totals
-            so you can spot emptied or shrunken tables. It is not MLS Active
-            inventory by town — that is Listings by town.
+            Live Neon table counts vs the post–full-resync snapshot, plus how many
+            rows were written in the last 60 minutes (by{" "}
+            <span className="font-mono text-[11px]">synced_at</span> /{" "}
+            <span className="font-mono text-[11px]">updated_at</span> when
+            present). Use{" "}
+            <span className="font-mono text-[11px]">+</span> /{" "}
+            <span className="font-mono text-[11px]">−</span> to load up to 100
+            newest rows on demand — nothing is polled in the background.
           </p>
           {loadError ? (
             <p className="px-5 sm:px-6 pb-2 font-mono text-[10px] text-coral">
@@ -220,23 +351,36 @@ export default function AdminInventoryComparisonPanel({
             </p>
           ) : null}
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
+            <table className="w-full border-collapse text-left min-w-[960px]">
               <thead>
                 <tr className="bg-cream/40">
-                  <th className="px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 w-4" />
+                  <th className="px-3 sm:px-4 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 w-8" />
+                  <th className="px-2 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-charcoal/40 w-8">
+                    Rows
+                  </th>
                   {(
                     [
                       { key: "table", label: "Table", align: "left" },
                       { key: "current", label: "Current", align: "right" },
                       { key: "snapshot", label: "Snapshot", align: "right" },
                       { key: "delta", label: "Δ", align: "right" },
+                      {
+                        key: "upserted60m",
+                        label: "Upserted 60m",
+                        align: "right",
+                      },
+                      {
+                        key: "lastUpdated",
+                        label: "Last updated",
+                        align: "right",
+                      },
                     ] as const
                   ).map((col) => {
                     const active = sortKey === col.key;
                     return (
                       <th
                         key={col.key}
-                        className={`px-4 sm:px-5 py-2 font-mono text-[9px] tracking-[0.16em] uppercase ${
+                        className={`px-3 sm:px-4 py-2 font-mono text-[9px] tracking-[0.16em] uppercase ${
                           col.align === "right" ? "text-right tabular-nums" : ""
                         }`}
                       >
@@ -270,81 +414,218 @@ export default function AdminInventoryComparisonPanel({
                 {sortedTables.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={colSpan}
                       className="px-5 sm:px-6 py-6 text-sm text-charcoal/50"
                     >
-                      Loading live table counts…
+                      {Object.keys(snapshotCounts).length === 0
+                        ? "Click Refresh to load live table counts and 60‑minute upsert activity."
+                        : "Snapshot only — click Refresh for live counts and upsert activity."}
                     </td>
                   </tr>
                 ) : (
-                  sortedTables.map(({ table, current, snapshot: ref, delta }) => {
-                    const s = rowStatus(current, ref);
-                    return (
-                      <tr
-                        key={table}
-                        className={
-                          s === "empty"
-                            ? "bg-coral/[0.04]"
-                            : s === "low"
-                              ? "bg-gold/[0.04]"
-                              : ""
-                        }
-                      >
-                        <td className="pl-4 sm:pl-5 pr-2 py-2">
-                          {statusDot(s)}
-                        </td>
-                        <td className="px-4 sm:px-5 py-2 font-mono text-[11px] text-navy">
-                          {table}
-                        </td>
-                        <td
-                          className={`px-4 sm:px-5 py-2 font-mono text-[11px] tabular-nums text-right ${
-                            s === "empty"
-                              ? "text-coral font-semibold"
-                              : s === "low"
-                                ? "text-gold font-semibold"
-                                : "text-charcoal/70"
-                          }`}
-                        >
-                          {current.toLocaleString()}
-                        </td>
-                        <td className="px-4 sm:px-5 py-2 font-mono text-[11px] tabular-nums text-right text-charcoal/45">
-                          {ref !== undefined ? ref.toLocaleString() : "—"}
-                        </td>
-                        <td
-                          className={`px-4 sm:px-5 py-2 font-mono text-[11px] tabular-nums text-right ${
-                            delta === null
-                              ? "text-charcoal/25"
-                              : delta < 0
-                                ? "text-coral"
-                                : delta > 0
-                                  ? "text-sage"
-                                  : "text-charcoal/35"
-                          }`}
-                        >
-                          {delta === null
-                            ? "—"
-                            : delta === 0
-                              ? "="
-                              : delta > 0
-                                ? `+${delta.toLocaleString()}`
-                                : delta.toLocaleString()}
-                        </td>
-                      </tr>
-                    );
-                  })
+                  sortedTables.map(
+                    ({
+                      table,
+                      current,
+                      snapshot: ref,
+                      delta,
+                      upserted60m,
+                      lastUpdated,
+                      timestampColumn,
+                    }) => {
+                      const s = rowStatus(current, ref);
+                      const isOpen = expanded.has(table);
+                      const sample = samples[table];
+                      return (
+                        <Fragment key={table}>
+                          <tr
+                            className={
+                              s === "empty"
+                                ? "bg-coral/[0.04]"
+                                : s === "low"
+                                  ? "bg-gold/[0.04]"
+                                  : ""
+                            }
+                          >
+                            <td className="pl-3 sm:pl-4 pr-1 py-2">
+                              {statusDot(s)}
+                            </td>
+                            <td className="px-1 py-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(table)}
+                                className="inline-flex h-6 w-6 items-center justify-center rounded border border-charcoal/15 font-mono text-[12px] leading-none text-navy hover:border-navy/40 hover:bg-cream/50"
+                                aria-expanded={isOpen}
+                                aria-label={
+                                  isOpen
+                                    ? `Hide sample rows for ${table}`
+                                    : `Show sample rows for ${table}`
+                                }
+                                title={
+                                  isOpen
+                                    ? "Hide sample rows"
+                                    : "Show up to 100 newest rows"
+                                }
+                              >
+                                {isOpen ? "−" : "+"}
+                              </button>
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 font-mono text-[11px] text-navy">
+                              {table}
+                            </td>
+                            <td
+                              className={`px-3 sm:px-4 py-2 font-mono text-[11px] tabular-nums text-right ${
+                                s === "empty"
+                                  ? "text-coral font-semibold"
+                                  : s === "low"
+                                    ? "text-gold font-semibold"
+                                    : "text-charcoal/70"
+                              }`}
+                            >
+                              {Object.keys(liveCounts).length > 0
+                                ? current.toLocaleString()
+                                : "—"}
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 font-mono text-[11px] tabular-nums text-right text-charcoal/45">
+                              {ref !== undefined ? ref.toLocaleString() : "—"}
+                            </td>
+                            <td
+                              className={`px-3 sm:px-4 py-2 font-mono text-[11px] tabular-nums text-right ${
+                                delta === null
+                                  ? "text-charcoal/25"
+                                  : delta < 0
+                                    ? "text-coral"
+                                    : delta > 0
+                                      ? "text-sage"
+                                      : "text-charcoal/35"
+                              }`}
+                            >
+                              {delta === null
+                                ? "—"
+                                : delta === 0
+                                  ? "="
+                                  : delta > 0
+                                    ? `+${delta.toLocaleString()}`
+                                    : delta.toLocaleString()}
+                            </td>
+                            <td
+                              className={`px-3 sm:px-4 py-2 font-mono text-[11px] tabular-nums text-right ${
+                                upserted60m != null && upserted60m > 0
+                                  ? "text-navy font-semibold"
+                                  : "text-charcoal/45"
+                              }`}
+                              title={
+                                timestampColumn
+                                  ? `COUNT where ${timestampColumn} ≥ now() − 60 minutes`
+                                  : "No synced_at / updated_at column on this table"
+                              }
+                            >
+                              {upserted60m == null
+                                ? "—"
+                                : upserted60m.toLocaleString()}
+                            </td>
+                            <td
+                              className="px-3 sm:px-4 py-2 font-mono text-[11px] tabular-nums text-right text-charcoal/60"
+                              title={lastUpdated ?? undefined}
+                            >
+                              {formatLastUpdated(lastUpdated)}
+                            </td>
+                          </tr>
+                          {isOpen ? (
+                            <tr className="bg-cream/[0.35]">
+                              <td colSpan={colSpan} className="px-4 sm:px-5 py-3">
+                                {sampleLoading[table] ? (
+                                  <p className="font-mono text-[10px] text-charcoal/50">
+                                    Loading up to 100 rows…
+                                  </p>
+                                ) : sampleError[table] ? (
+                                  <p className="font-mono text-[10px] text-coral">
+                                    {sampleError[table]}
+                                  </p>
+                                ) : sample ? (
+                                  <div className="space-y-2">
+                                    <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
+                                      {sample.rows.length.toLocaleString()} row
+                                      {sample.rows.length === 1 ? "" : "s"}
+                                      {sample.timestampColumn
+                                        ? ` · newest by ${sample.timestampColumn}`
+                                        : " · unordered (no timestamp column)"}
+                                    </p>
+                                    <div className="max-h-[28rem] overflow-auto rounded-lg border border-charcoal/[0.08] bg-white">
+                                      <table className="w-full border-collapse text-left min-w-max">
+                                        <thead className="sticky top-0 bg-cream/90">
+                                          <tr>
+                                            {sample.columns.map((col) => (
+                                              <th
+                                                key={col}
+                                                className="px-2.5 py-1.5 font-mono text-[9px] tracking-[0.1em] uppercase text-charcoal/45 border-b border-charcoal/[0.08] whitespace-nowrap"
+                                              >
+                                                {col}
+                                              </th>
+                                            ))}
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {sample.rows.length === 0 ? (
+                                            <tr>
+                                              <td
+                                                colSpan={Math.max(
+                                                  sample.columns.length,
+                                                  1,
+                                                )}
+                                                className="px-2.5 py-4 font-mono text-[10px] text-charcoal/45"
+                                              >
+                                                Table is empty.
+                                              </td>
+                                            </tr>
+                                          ) : (
+                                            sample.rows.map((row, idx) => (
+                                              <tr
+                                                key={`${table}-r-${idx}`}
+                                                className="border-b border-charcoal/[0.04] last:border-0"
+                                              >
+                                                {sample.columns.map((col) => (
+                                                  <td
+                                                    key={col}
+                                                    className="px-2.5 py-1 font-mono text-[10px] text-charcoal/70 max-w-[16rem] truncate"
+                                                    title={formatCell(row[col])}
+                                                  >
+                                                    {formatCell(row[col])}
+                                                  </td>
+                                                ))}
+                                              </tr>
+                                            ))
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="font-mono text-[10px] text-charcoal/45">
+                                    No rows loaded yet.
+                                  </p>
+                                )}
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    },
+                  )
                 )}
               </tbody>
             </table>
           </div>
           <p className="px-5 sm:px-6 py-3 font-mono text-[9px] text-charcoal/35 border-t border-charcoal/[0.04]">
             Snapshot = exact counts after last successful full resync · Current =
-            live exact COUNT(*) · Auto-refreshes every 30 min
+            live exact COUNT(*) · Upserted 60m / Last updated = on Refresh · Sample
+            rows = on + only
             {lastRefreshedAt
-              ? ` · updated ${new Date(lastRefreshedAt).toLocaleTimeString(
+              ? ` · refreshed ${new Date(lastRefreshedAt).toLocaleTimeString(
                   "en-US",
                   { hour: "numeric", minute: "2-digit" },
                 )}`
-              : ""}
+              : " · not refreshed yet"}
           </p>
         </div>
       )}
