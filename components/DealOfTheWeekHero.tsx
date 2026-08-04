@@ -784,14 +784,18 @@ export default function DealOfTheWeekHero({
                       <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
                         {loadingState && !showing
                           ? dayTxFilter === "rental"
-                            ? "Loading rental picks…"
-                            : `Loading ${dayClassLabel}for-sale picks…`
+                            ? carousel.currentTown
+                              ? `Loading rental pick in ${carousel.currentTown}…`
+                              : "Loading rental picks…"
+                            : carousel.currentTown
+                              ? `Loading ${dayClassLabel}for-sale pick in ${carousel.currentTown}…`
+                              : `Loading ${dayClassLabel}for-sale picks…`
                           : dayTxFilter === "rental"
-                            ? city
-                              ? `No below-median rental pick in ${city} right now.`
+                            ? carousel.currentTown || city
+                              ? `No below-median rental pick in ${carousel.currentTown || city} right now.`
                               : "No below-median rental picks available right now."
-                            : city
-                              ? `No below-median ${dayClassLabel}for-sale pick in ${city} right now.`
+                            : carousel.currentTown || city
+                              ? `No below-median ${dayClassLabel}for-sale pick in ${carousel.currentTown || city} right now.`
                               : `No below-median ${dayClassLabel}for-sale picks available right now.`}
                       </p>
                     </div>

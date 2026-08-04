@@ -1813,16 +1813,19 @@ export default function IntelligenceClient({
     setFilterChromePeeks((prev) => prev.filter((k) => k !== key));
   /**
    * Bumped on filter-chrome interaction so the peek idle timer restarts.
-   * Also clears Market Intelligence / triangle auto-dismiss.
+   * Pass `revealMarketIntel` for Edit-all / triangle — descriptor peeks stay quiet.
    */
   const [filterPeekActivityEpoch, setFilterPeekActivityEpoch] = useState(0);
-  /** After idle: hide “Market Intelligence” + triangle until a filter is triggered. */
+  /** After idle: hide “Market Intelligence” + triangle until Edit-all / triangle. */
   const [marketIntelChromeDismissed, setMarketIntelChromeDismissed] =
     useState(false);
-  const bumpFilterPeekActivity = useCallback(() => {
-    setFilterPeekActivityEpoch((n) => n + 1);
-    setMarketIntelChromeDismissed(false);
-  }, []);
+  const bumpFilterPeekActivity = useCallback(
+    (opts?: { revealMarketIntel?: boolean }) => {
+      setFilterPeekActivityEpoch((n) => n + 1);
+      if (opts?.revealMarketIntel) setMarketIntelChromeDismissed(false);
+    },
+    [],
+  );
   /** Phone: slide-overs for town Stats / vintages (desktop keeps the sidebar). */
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [vintageStatsOpen, setVintageStatsOpen] = useState(false);
@@ -3865,7 +3868,7 @@ export default function IntelligenceClient({
 
   /** Open the filter chrome/sliders that the descriptor line summarizes. */
   function handleEditFilters() {
-    bumpFilterPeekActivity();
+    bumpFilterPeekActivity({ revealMarketIntel: true });
     setFilterChromeCollapsed(false);
     setFilterChromePeeks([]);
     setFiltersExpanded(true);
@@ -4202,9 +4205,8 @@ export default function IntelligenceClient({
   const showTxChrome = !filterChromeCollapsed || isPeeking("tx");
   const showSliderChrome = !filterChromeCollapsed || isPeeking("sliders");
   /**
-   * Market Intelligence + triangle: driven by idle dismiss flag.
-   * Cleared on filter activity; idle effect sets/clears it so the row
-   * reappears when peeks collapse (no chrome) or when a filter is triggered.
+   * Market Intelligence + triangle: idle-dismissed while quiet / peeking.
+   * Reappears via Edit-all / triangle, or when peeks auto-clear after idle.
    */
   const showMarketIntelChrome = !marketIntelChromeDismissed;
 
@@ -4258,7 +4260,7 @@ export default function IntelligenceClient({
     }
   };
   const toggleFilterChrome = () => {
-    bumpFilterPeekActivity();
+    bumpFilterPeekActivity({ revealMarketIntel: true });
     setFilterChromeCollapsed(!filterChromeCollapsed);
     setFilterChromePeeks([]);
   };
@@ -4365,9 +4367,9 @@ export default function IntelligenceClient({
   /** Live header bottom — nav is taller than pt-20/24 (multi-line logo, badges). */
   const [navOffsetPx, setNavOffsetPx] = useState(96);
 
-  // Pin descriptors under the fixed nav once their in-flow row would sit
-  // underneath it. Critical on desktop after hero intro / MI chrome idle-hide:
-  // the transparent header still steals clicks even though the links show through.
+  // Phone: pin descriptors under the nav once their in-flow row scrolls away.
+  // Desktop stays in-flow — padding clears the fixed header so peeks sit under
+  // the descriptor row instead of jumping into a sticky bar / blank gap.
   useEffect(() => {
     const sentinel = descriptorSentinelRef.current;
     if (!sentinel) {
@@ -4378,6 +4380,10 @@ export default function IntelligenceClient({
     const update = () => {
       const offset = header?.getBoundingClientRect().bottom ?? 96;
       setNavOffsetPx(offset);
+      if (window.matchMedia("(min-width: 1024px)").matches) {
+        setDescriptorsPinned(false);
+        return;
+      }
       const top = sentinel.getBoundingClientRect().top;
       setDescriptorsPinned(top < offset + 1);
     };
@@ -4406,8 +4412,14 @@ export default function IntelligenceClient({
     marketIntelChromeDismissed,
   ]);
 
-  /** Peeked pill / slider chrome portals into the pinned nav panel. */
+  /** Peeked pill / slider chrome portals into the pinned nav panel (phone). */
   const pinFilterChromeToNav = descriptorsPinned;
+  /** Minimized desktop: hug the nav instead of the tall hero padding. */
+  const compactHeroTop =
+    heroIntroDismissed && filterChromeCollapsed && !isMobileViewport;
+  const heroPaddingTopPx = compactHeroTop
+    ? Math.max(Math.round(navOffsetPx) + 8, 72)
+    : null;
 
   const closeTownStats = () => setTownStatsOpen(false);
   const closeVintageStats = () => setVintageStatsOpen(false);
@@ -4620,7 +4632,7 @@ export default function IntelligenceClient({
         style={{ top: navOffsetPx }}
         data-intel-slider-context-blurb-pinned
         data-intel-pinned-filter-panel
-        onPointerDownCapture={bumpFilterPeekActivity}
+        onPointerDownCapture={() => bumpFilterPeekActivity()}
       >
         <div className="mx-auto max-w-7xl px-6 lg:px-10 py-2">
           <p
@@ -4647,9 +4659,12 @@ export default function IntelligenceClient({
     >
       {pinnedDescriptorBar}
       <section
-        className={`navy-gradient text-white pt-28 lg:pt-32 relative overflow-hidden transition-[padding] duration-300 ease-out ${
-          filtersExpanded ? "pb-1 lg:pb-1" : "pb-1"
-        }`}
+        style={
+          heroPaddingTopPx != null ? { paddingTop: heroPaddingTopPx } : undefined
+        }
+        className={`navy-gradient text-white relative overflow-hidden transition-[padding] duration-300 ease-out ${
+          heroPaddingTopPx != null ? "" : "pt-28 lg:pt-32"
+        } ${filtersExpanded ? "pb-1 lg:pb-1" : "pb-1"}`}
       >
         <div
           className="pointer-events-none absolute inset-0 hero-grid opacity-40"
@@ -4661,10 +4676,14 @@ export default function IntelligenceClient({
         */}
         <div className="relative mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
-          <div className="flex min-w-0 flex-col gap-y-2 transition-[gap] duration-300 ease-out lg:flex-row lg:items-end lg:gap-x-5">
+          <div
+            className={`flex min-w-0 flex-col transition-[gap] duration-300 ease-out lg:flex-row lg:items-end lg:gap-x-5 ${
+              compactHeroTop ? "gap-y-1" : "gap-y-2"
+            }`}
+          >
             <div
               className="min-w-0 flex-1"
-              onPointerDownCapture={bumpFilterPeekActivity}
+              onPointerDownCapture={() => bumpFilterPeekActivity()}
             >
               {showMarketIntelChrome ? (
               <div className="flex items-center gap-3 min-w-0">
@@ -4674,7 +4693,7 @@ export default function IntelligenceClient({
                 <button
                   type="button"
                   onClick={toggleFilterChrome}
-                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center text-white/70 hover:text-gold transition-colors"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-white/70 hover:text-gold transition-colors"
                   aria-expanded={!filterChromeCollapsed}
                   aria-label={
                     filterChromeCollapsed
@@ -4687,7 +4706,7 @@ export default function IntelligenceClient({
                 >
                   <svg
                     viewBox="0 0 12 12"
-                    className="h-12 w-12"
+                    className="h-5 w-5"
                     fill="currentColor"
                     aria-hidden
                   >
@@ -4703,7 +4722,7 @@ export default function IntelligenceClient({
               <div
                 className={`grid transition-[grid-template-rows] duration-700 ease-in-out ${
                   heroIntroDismissed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
-                }`}
+                } ${heroIntroDismissed ? "pointer-events-none" : ""}`}
                 aria-hidden={heroIntroDismissed}
               >
                 <div
@@ -4735,226 +4754,16 @@ export default function IntelligenceClient({
                   heroIntroDismissed ? "mt-0" : "mt-1"
                 }`}
               >
-                {showClsChrome ? (
-                  <IntelChromePortal
-                    pin={pinFilterChromeToNav}
-                    host={pinnedFilterChromeHost}
-                  >
-                  <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start">
-                    <div data-intel-cls-filter-chrome>
-                      <FilterGroup
-                        label=""
-                        value={cls}
-                        onChange={setCls}
-                        options={[
-                          { value: "all", label: "All" },
-                          { value: "residential", label: "Residential" },
-                          { value: "commercial", label: "Commercial" },
-                        ]}
-                      />
-                    </div>
-                  </div>
-                  </IntelChromePortal>
-                ) : null}
-
-                {showTownChrome && (showMobileTownPills || showMobileZipPills) ? (
-                  <IntelChromePortal
-                    pin={pinFilterChromeToNav}
-                    host={pinnedFilterChromeHost}
-                  >
-                  <div className="flex flex-col gap-1.5 items-start min-w-0 w-full">
-                    <div
-                      className={
-                        inlineTownZip
-                          ? "flex flex-wrap items-center gap-x-3 gap-y-1 w-full min-w-0"
-                          : "w-full min-w-0"
-                      }
-                    >
-                      {showMobileTownPills ? (
-                      <div
-                        ref={townFilterAnchorRef}
-                        className={
-                          inlineTownZip
-                            ? "min-w-0 shrink-0"
-                            : "flex flex-wrap gap-1 self-start w-full min-w-0"
-                        }
-                      >
-                        <TownFilterPills
-                          towns={orderedCities}
-                          selected={active}
-                          onSelect={(city) => {
-                            setActive(city);
-                            setZip(null);
-                            setMobileZipConfirmed(false);
-                            setBoardStatusFilter("all");
-                            setTownLinksExpanded(false);
-                            setZipLinksExpanded(false);
-                            if (city === "All") {
-                              setExpandedSnapshotKeys(new Set());
-                            }
-                            // Phone: single-zip towns settle immediately; multi-zip
-                            // stays open (peek) until All zips / a zip is tapped.
-                            if (isMobileViewport && city !== "All") {
-                              setFilterChromeCollapsed(true);
-                              setFilterChromePeeks(
-                                townHasMultipleZips(city) ? ["towns"] : [],
-                              );
-                            }
-                            flashTownMapOnSelect(city);
-                          }}
-                          onTownMouseEnter={(town, el) => {
-                            if (townHoverClearTimer.current) {
-                              clearTimeout(townHoverClearTimer.current);
-                              townHoverClearTimer.current = null;
-                            }
-                            clearZipMapFlashTimer();
-                            setFlashedZip(null);
-                            prefetchTownBoundaries(town);
-                            setHoveredZip(null);
-                            setHoveredZipEl(null);
-                            setHoveredTown(town);
-                            setHoveredTownEl(el);
-                          }}
-                          onAllMouseEnter={(el) => {
-                            if (townHoverClearTimer.current) {
-                              clearTimeout(townHoverClearTimer.current);
-                              townHoverClearTimer.current = null;
-                            }
-                            clearZipMapFlashTimer();
-                            setFlashedZip(null);
-                            prefetchAllTownBoundaries();
-                            setHoveredZip(null);
-                            setHoveredZipEl(null);
-                            setHoveredTown("All");
-                            setHoveredTownEl(el);
-                          }}
-                          onTownMouseLeave={() => {
-                            if (townHoverClearTimer.current) {
-                              clearTimeout(townHoverClearTimer.current);
-                            }
-                            townHoverClearTimer.current = setTimeout(() => {
-                              setHoveredTown(null);
-                              setHoveredTownEl(null);
-                              townHoverClearTimer.current = null;
-                            }, 120);
-                          }}
-                          counts={townCounts}
-                          allLabel="All Towns"
-                          appearance="zip"
-                          layout="promoted"
-                          townLinksExpanded={townLinksExpanded}
-                          onTownLinksExpandedChange={setTownLinksExpanded}
-                          size="compact"
-                          className={inlineTownZip ? "min-w-0" : "w-full min-w-0"}
-                          promotedInline={inlineTownZip}
-                        />
-                      </div>
-                      ) : null}
-
-                      {showMobileZipPills && inlineTownZip ? (
-                        <div ref={zipFilterAnchorRef} className="min-w-0 shrink-0">
-                          <ZipFilterPills
-                            zips={availableZips}
-                            selected={zip}
-                            onSelect={(next) => {
-                              setZip(next);
-                              setMobileZipConfirmed(true);
-                              setZipLinksExpanded(false);
-                              if (isMobileViewport) {
-                                setFilterChromeCollapsed(true);
-                                setFilterChromePeeks([]);
-                              }
-                              flashZipMapOnSelect(next);
-                            }}
-                            counts={zipCounts}
-                            allCount={zipAllCount}
-                            allLabel={`Search all zips for ${active}`}
-                            townName={active}
-                            zipLinksExpanded={zipLinksExpanded}
-                            onZipLinksExpandedChange={setZipLinksExpanded}
-                            onZipMouseEnter={(z, el) => {
-                              clearZipMapFlashTimer();
-                              setFlashedZip(null);
-                              clearTownMapFlashTimer();
-                              setFlashedTown(null);
-                              setHoveredTown(null);
-                              setHoveredTownEl(null);
-                              prefetchZipBoundaries([
-                                z,
-                                ...availableZips.filter((zipCode) => zipCode !== z),
-                              ]);
-                              setHoveredZip(z);
-                              setHoveredZipEl(el);
-                            }}
-                            onZipMouseLeave={() => {
-                              setHoveredZip(null);
-                              setHoveredZipEl(null);
-                            }}
-                            className="min-w-0"
-                            promotedInline
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {showMobileZipPills && showZipFilters && !inlineTownZip ? (
-                      <div ref={zipFilterAnchorRef} className="self-start w-full min-w-0">
-                        <ZipFilterPills
-                          zips={availableZips}
-                          selected={zip}
-                          onSelect={(next) => {
-                            setZip(next);
-                            setMobileZipConfirmed(true);
-                            setZipLinksExpanded(false);
-                            if (isMobileViewport) {
-                              setFilterChromeCollapsed(true);
-                              setFilterChromePeeks([]);
-                            }
-                            flashZipMapOnSelect(next);
-                          }}
-                          counts={zipCounts}
-                          allCount={zipAllCount}
-                          allLabel={`Search all zips for ${active}`}
-                          townName={active}
-                          zipLinksExpanded={zipLinksExpanded}
-                          onZipLinksExpandedChange={setZipLinksExpanded}
-                          onZipMouseEnter={(z, el) => {
-                            clearZipMapFlashTimer();
-                            setFlashedZip(null);
-                            clearTownMapFlashTimer();
-                            setFlashedTown(null);
-                            setHoveredTown(null);
-                            setHoveredTownEl(null);
-                            prefetchZipBoundaries([
-                              z,
-                              ...availableZips.filter((zipCode) => zipCode !== z),
-                            ]);
-                            setHoveredZip(z);
-                            setHoveredZipEl(el);
-                          }}
-                          onZipMouseLeave={() => {
-                            setHoveredZip(null);
-                            setHoveredZipEl(null);
-                          }}
-                          className="w-full min-w-0"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                  </IntelChromePortal>
-                ) : null}
-
               {/*
-                Town context (town · For Sale|Rentals · tagline · months supply)
-                above slider descriptors on mobile always, and on desktop when
-                filters are minimized. Desktop expanded keeps DOM order
-                (descriptors first) via lg:order-none.
+                Collapsed peek order: descriptor row → class/town/tx peeks →
+                slider labels → slider chrome. Peeks must sit directly under the
+                town · For Sale · Residential links (not above them).
               */}
               <div className="flex flex-col items-start min-w-0 w-full gap-1.5">
-              {/* Slider range labels; pin on scroll. */}
+              {/* Slider range labels; pin on scroll (phone). */}
               <div
-                className={`w-full min-w-0 order-2 ${
-                  filterChromeCollapsed ? "" : "lg:order-none"
+                className={`w-full min-w-0 ${
+                  filterChromeCollapsed ? "order-5" : "order-3"
                 }`}
               >
               <div ref={descriptorSentinelRef} className="h-0 w-full" aria-hidden />
@@ -4980,9 +4789,7 @@ export default function IntelligenceClient({
                   >
                   <div
                     data-intel-tx-filter-chrome
-                    className={`flex flex-wrap items-center gap-2 min-w-0 self-start w-full order-3 ${
-                      filterChromeCollapsed ? "" : "lg:order-none"
-                    }`}
+                    className="flex flex-wrap items-center gap-2 min-w-0 self-start w-full order-4"
                   >
                     <FilterGroup
                       label=""
@@ -5045,8 +4852,8 @@ export default function IntelligenceClient({
                     host={pinnedFilterChromeHost}
                   >
                 <div
-                  className={`w-full min-w-0 order-4 ${
-                    filterChromeCollapsed ? "" : "lg:order-none"
+                  className={`w-full min-w-0 ${
+                    filterChromeCollapsed ? "order-6" : "order-5"
                   }`}
                 >
                 <IntelFilterControlsRow
@@ -5129,8 +4936,8 @@ export default function IntelligenceClient({
                   </IntelChromePortal>
               ) : null}
               <div
-                className={`w-full min-w-0 order-1 ${
-                  filterChromeCollapsed ? "" : "lg:order-none"
+                className={`w-full min-w-0 ${
+                  filterChromeCollapsed ? "order-1" : "order-6"
                 } ${
                   descriptorsPinned ? "invisible pointer-events-none" : ""
                 }`}
@@ -5209,6 +5016,236 @@ export default function IntelligenceClient({
                 </p>
               )}
               </div>
+
+                {showClsChrome ? (
+                  <IntelChromePortal
+                    pin={pinFilterChromeToNav}
+                    host={pinnedFilterChromeHost}
+                  >
+                    <div
+                      className={`flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start ${
+                        filterChromeCollapsed ? "order-2" : "order-1"
+                      }`}
+                    >
+                      <div data-intel-cls-filter-chrome>
+                        <FilterGroup
+                          label=""
+                          value={cls}
+                          onChange={setCls}
+                          options={[
+                            { value: "all", label: "All" },
+                            { value: "residential", label: "Residential" },
+                            { value: "commercial", label: "Commercial" },
+                          ]}
+                        />
+                      </div>
+                    </div>
+                  </IntelChromePortal>
+                ) : null}
+
+                {showTownChrome &&
+                (showMobileTownPills || showMobileZipPills) ? (
+                  <IntelChromePortal
+                    pin={pinFilterChromeToNav}
+                    host={pinnedFilterChromeHost}
+                  >
+                    <div
+                      className={`flex flex-col gap-1.5 items-start min-w-0 w-full ${
+                        filterChromeCollapsed ? "order-3" : "order-2"
+                      }`}
+                    >
+                      <div
+                        className={
+                          inlineTownZip
+                            ? "flex flex-wrap items-center gap-x-3 gap-y-1 w-full min-w-0"
+                            : "w-full min-w-0"
+                        }
+                      >
+                        {showMobileTownPills ? (
+                          <div
+                            ref={townFilterAnchorRef}
+                            className={
+                              inlineTownZip
+                                ? "min-w-0 shrink-0"
+                                : "flex flex-wrap gap-1 self-start w-full min-w-0"
+                            }
+                          >
+                            <TownFilterPills
+                              towns={orderedCities}
+                              selected={active}
+                              onSelect={(city) => {
+                                setActive(city);
+                                setZip(null);
+                                setMobileZipConfirmed(false);
+                                setBoardStatusFilter("all");
+                                setTownLinksExpanded(false);
+                                setZipLinksExpanded(false);
+                                if (city === "All") {
+                                  setExpandedSnapshotKeys(new Set());
+                                }
+                                if (isMobileViewport && city !== "All") {
+                                  setFilterChromeCollapsed(true);
+                                  setFilterChromePeeks(
+                                    townHasMultipleZips(city) ? ["towns"] : [],
+                                  );
+                                }
+                                flashTownMapOnSelect(city);
+                              }}
+                              onTownMouseEnter={(town, el) => {
+                                if (townHoverClearTimer.current) {
+                                  clearTimeout(townHoverClearTimer.current);
+                                  townHoverClearTimer.current = null;
+                                }
+                                clearZipMapFlashTimer();
+                                setFlashedZip(null);
+                                prefetchTownBoundaries(town);
+                                setHoveredZip(null);
+                                setHoveredZipEl(null);
+                                setHoveredTown(town);
+                                setHoveredTownEl(el);
+                              }}
+                              onAllMouseEnter={(el) => {
+                                if (townHoverClearTimer.current) {
+                                  clearTimeout(townHoverClearTimer.current);
+                                  townHoverClearTimer.current = null;
+                                }
+                                clearZipMapFlashTimer();
+                                setFlashedZip(null);
+                                prefetchAllTownBoundaries();
+                                setHoveredZip(null);
+                                setHoveredZipEl(null);
+                                setHoveredTown("All");
+                                setHoveredTownEl(el);
+                              }}
+                              onTownMouseLeave={() => {
+                                if (townHoverClearTimer.current) {
+                                  clearTimeout(townHoverClearTimer.current);
+                                }
+                                townHoverClearTimer.current = setTimeout(() => {
+                                  setHoveredTown(null);
+                                  setHoveredTownEl(null);
+                                  townHoverClearTimer.current = null;
+                                }, 120);
+                              }}
+                              counts={townCounts}
+                              allLabel="All Towns"
+                              appearance="zip"
+                              layout="promoted"
+                              townLinksExpanded={townLinksExpanded}
+                              onTownLinksExpandedChange={setTownLinksExpanded}
+                              size="compact"
+                              className={
+                                inlineTownZip ? "min-w-0" : "w-full min-w-0"
+                              }
+                              promotedInline={inlineTownZip}
+                            />
+                          </div>
+                        ) : null}
+
+                        {showMobileZipPills && inlineTownZip ? (
+                          <div
+                            ref={zipFilterAnchorRef}
+                            className="min-w-0 shrink-0"
+                          >
+                            <ZipFilterPills
+                              zips={availableZips}
+                              selected={zip}
+                              onSelect={(next) => {
+                                setZip(next);
+                                setMobileZipConfirmed(true);
+                                setZipLinksExpanded(false);
+                                if (isMobileViewport) {
+                                  setFilterChromeCollapsed(true);
+                                  setFilterChromePeeks([]);
+                                }
+                                flashZipMapOnSelect(next);
+                              }}
+                              counts={zipCounts}
+                              allCount={zipAllCount}
+                              allLabel={`Search all zips for ${active}`}
+                              townName={active}
+                              zipLinksExpanded={zipLinksExpanded}
+                              onZipLinksExpandedChange={setZipLinksExpanded}
+                              onZipMouseEnter={(z, el) => {
+                                clearZipMapFlashTimer();
+                                setFlashedZip(null);
+                                clearTownMapFlashTimer();
+                                setFlashedTown(null);
+                                setHoveredTown(null);
+                                setHoveredTownEl(null);
+                                prefetchZipBoundaries([
+                                  z,
+                                  ...availableZips.filter(
+                                    (zipCode) => zipCode !== z,
+                                  ),
+                                ]);
+                                setHoveredZip(z);
+                                setHoveredZipEl(el);
+                              }}
+                              onZipMouseLeave={() => {
+                                setHoveredZip(null);
+                                setHoveredZipEl(null);
+                              }}
+                              className="min-w-0"
+                              promotedInline
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {showMobileZipPills &&
+                      showZipFilters &&
+                      !inlineTownZip ? (
+                        <div
+                          ref={zipFilterAnchorRef}
+                          className="self-start w-full min-w-0"
+                        >
+                          <ZipFilterPills
+                            zips={availableZips}
+                            selected={zip}
+                            onSelect={(next) => {
+                              setZip(next);
+                              setMobileZipConfirmed(true);
+                              setZipLinksExpanded(false);
+                              if (isMobileViewport) {
+                                setFilterChromeCollapsed(true);
+                                setFilterChromePeeks([]);
+                              }
+                              flashZipMapOnSelect(next);
+                            }}
+                            counts={zipCounts}
+                            allCount={zipAllCount}
+                            allLabel={`Search all zips for ${active}`}
+                            townName={active}
+                            zipLinksExpanded={zipLinksExpanded}
+                            onZipLinksExpandedChange={setZipLinksExpanded}
+                            onZipMouseEnter={(z, el) => {
+                              clearZipMapFlashTimer();
+                              setFlashedZip(null);
+                              clearTownMapFlashTimer();
+                              setFlashedTown(null);
+                              setHoveredTown(null);
+                              setHoveredTownEl(null);
+                              prefetchZipBoundaries([
+                                z,
+                                ...availableZips.filter(
+                                  (zipCode) => zipCode !== z,
+                                ),
+                              ]);
+                              setHoveredZip(z);
+                              setHoveredZipEl(el);
+                            }}
+                            onZipMouseLeave={() => {
+                              setHoveredZip(null);
+                              setHoveredZipEl(null);
+                            }}
+                            className="w-full min-w-0"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  </IntelChromePortal>
+                ) : null}
               </div>
               </div>
             </div>

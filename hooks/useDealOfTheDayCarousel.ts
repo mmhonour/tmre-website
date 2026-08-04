@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { prefetchDealCarouselImages, prefetchListingImages } from "@/lib/prefetch-listing-images";
@@ -293,9 +300,13 @@ export function useDealOfTheDayCarousel(options?: {
   const [loading, setLoading] = useState(() => !seededDeals);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  /** True while the document/tab is in the background — stop auto-rotate churn. */
+  const [tabHidden, setTabHidden] = useState(false);
   const [slideDir, setSlideDir] = useState<SlideDirection>(null);
-  /** Manual town pin from pill click — cleared when filters change or rotate stops. */
+  /** Manual town pin from pill click — cleared when URL pin / rotate mode changes. */
   const [selectedTown, setSelectedTown] = useState<TmreTown | null>(null);
+  /** Last on-screen town — kept across sale↔rental / subtype filter changes. */
+  const townKeepRef = useRef<TmreTown | null>(null);
 
   const filterCacheRef = useRef<Map<string, DealsByTown>>(
     (() => {
@@ -341,11 +352,28 @@ export function useDealOfTheDayCarousel(options?: {
   const pinnedListingId = options?.pinnedListingId?.trim() || null;
   const activeFilterKey = filterCacheKey(kindParam, propertyClassParam);
 
-  // URL/city pin takes priority over in-page town pill selection.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const sync = () => setTabHidden(document.hidden);
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
+
+  // URL / rotate-mode changes reset the in-page town pin.
   useEffect(() => {
     setSelectedTown(null);
     setSlideDir(null);
-  }, [kindParam, propertyClassParam, pinnedListingId, options?.initialTown, rotate]);
+  }, [pinnedListingId, options?.initialTown, rotate]);
+
+  // Sale↔rental (and Homes/Multi/Condos): keep the town the user is on so the
+  // matching deal can paint immediately instead of jumping back to Norwalk.
+  // useLayoutEffect so the pin lands before paint (avoids a one-frame index→Norwalk flash).
+  useLayoutEffect(() => {
+    setSlideDir(null);
+    const keep = townKeepRef.current;
+    if (keep) setSelectedTown(keep);
+  }, [kindParam, propertyClassParam]);
 
   useEffect(() => {
     if (!enabled) {
@@ -519,8 +547,17 @@ export function useDealOfTheDayCarousel(options?: {
   ]);
 
   // Warm other filter bundles so pills swap instantly (no admin sync required for UX).
+  // Skip while the tab is hidden — background fetch churn can trip browser "unusual activity".
   useEffect(() => {
-    if (!enabled || !rotate || pinnedListingId || prefetchStartedRef.current) return;
+    if (
+      !enabled ||
+      !rotate ||
+      pinnedListingId ||
+      tabHidden ||
+      prefetchStartedRef.current
+    ) {
+      return;
+    }
     if (!Object.values(dealsByTown).some(hasListing)) return;
     prefetchStartedRef.current = true;
     const towns = [...townsToFetch];
@@ -534,7 +571,7 @@ export function useDealOfTheDayCarousel(options?: {
         }
       }
     })();
-  }, [enabled, rotate, pinnedListingId, dealsByTown, townsToFetch]);
+  }, [enabled, rotate, pinnedListingId, tabHidden, dealsByTown, townsToFetch]);
 
   const filteredDealsByTown = useMemo(() => {
     const strict = filterDealsByTown(
@@ -567,7 +604,7 @@ export function useDealOfTheDayCarousel(options?: {
   useEffect(() => {
     setIndex(0);
     setSlideDir(null);
-  }, [rotate, options?.initialTown, kindParam, propertyClassParam, pinnedListingId]);
+  }, [rotate, options?.initialTown, pinnedListingId]);
 
   useEffect(() => {
     if (pinnedTown || selectedTown || carouselTowns.length === 0) return;
@@ -592,6 +629,10 @@ export function useDealOfTheDayCarousel(options?: {
     pinnedTown ?? selectedTown ?? carouselTowns[safeIndex] ?? null;
   const currentDeal = currentTown ? filteredDealsByTown[currentTown] ?? null : null;
 
+  useEffect(() => {
+    if (currentTown) townKeepRef.current = currentTown;
+  }, [currentTown]);
+
   // If state still holds a prior filter's deals, keep the loading chrome up
   // (don't paint a sale/homes listing under a Rentals or Condos selection) —
   // unless surfaceAnyPick intentionally keeps a cross-kind fallback visible.
@@ -603,9 +644,18 @@ export function useDealOfTheDayCarousel(options?: {
   const displayLoading = loading || hasStaleDeal;
 
   useEffect(() => {
-    if (!enabled || displayLoading || carouselTowns.length === 0) return;
+    if (!enabled || displayLoading || tabHidden || carouselTowns.length === 0) {
+      return;
+    }
     prefetchDealCarouselImages(carouselTowns, filteredDealsByTown, safeIndex);
-  }, [enabled, displayLoading, carouselTowns, filteredDealsByTown, safeIndex]);
+  }, [
+    enabled,
+    displayLoading,
+    tabHidden,
+    carouselTowns,
+    filteredDealsByTown,
+    safeIndex,
+  ]);
 
   const goNext = useCallback(() => {
     if (carouselTowns.length <= 1) return;
@@ -640,10 +690,10 @@ export function useDealOfTheDayCarousel(options?: {
   );
 
   useEffect(() => {
-    if (!rotate || paused || carouselTowns.length <= 1) return;
+    if (!rotate || paused || tabHidden || carouselTowns.length <= 1) return;
     const id = window.setInterval(goNext, DEAL_CAROUSEL_MS);
     return () => window.clearInterval(id);
-  }, [rotate, paused, carouselTowns.length, goNext, safeIndex]);
+  }, [rotate, paused, tabHidden, carouselTowns.length, goNext, safeIndex]);
 
   return {
     loading: displayLoading,
