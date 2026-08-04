@@ -33,15 +33,19 @@ import {
 import {
   SYNC_SCHEDULE_FREQUENCIES,
   SYNC_SCHEDULE_WEEKDAYS,
+  SYNC_SCHEDULER_PROVIDERS,
   defaultSyncScheduleConfig,
   frequencyIntervalMs,
   frequencyLabel,
   orderNumberByRow,
+  resolveJobScheduler,
   resolveWeekdayEt,
+  schedulerProviderLabel,
   syncAllClientStepsFromConfig,
   type SyncScheduleConfig,
   type SyncScheduleFrequencyId,
   type SyncScheduleWeekdayEt,
+  type SyncSchedulerProvider,
 } from "@/lib/sync-schedule-config-shared";
 import {
   TMRE_SYNC_SCHEDULE_CHANGED,
@@ -1657,6 +1661,7 @@ export default function AdminSyncTable({
         | { jobId: ScheduledSyncJobId; frequency: SyncScheduleFrequencyId }
         | { jobId: ScheduledSyncJobId; startTimeEt: string }
         | { jobId: ScheduledSyncJobId; weekdayEt: SyncScheduleWeekdayEt }
+        | { jobId: ScheduledSyncJobId; scheduler: SyncSchedulerProvider }
         | { moveJobId: ScheduledSyncJobId; direction: "up" | "down" },
     ) => {
       const savingKey =
@@ -2501,13 +2506,16 @@ export default function AdminSyncTable({
           ) : (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-2xl">
-                Pause skips Sync all and cron. Frequency and Start time (ET) set when
-                cron may run the job. Next start is computed and read-only. ▲/▼ on
-                Order sets Sync all priority (including Incremental).
+                Pause skips Sync all and cron. Scheduler radio picks Netlify cron vs
+                EventBridge (one authoritative alarm per job). Frequency and Start
+                time (ET) set when that alarm may run the job. Next start is
+                computed and read-only. ▲/▼ on Order sets Sync all priority
+                (including Incremental).
               </p>
               <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-                Netlify wakes every 30 minutes; each tick runs a job only when due for
-                its Frequency + Start time. Live run status stays on Dashboard.
+                Netlify still wakes every 30 minutes but skips jobs whose Scheduler
+                is EventBridge. Flip Incremental first when cutting over. Live run
+                status stays on Dashboard.
               </p>
             </>
           )}
@@ -2564,8 +2572,10 @@ export default function AdminSyncTable({
             {isConfigure ? <col /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
             {isConfigure ? <col className="w-[8.5rem]" /> : null}
+            {isConfigure ? <col className="w-[8rem]" /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
             {isConfigure ? <col className="w-[9rem]" /> : null}
+            {isDashboard ? <col className="w-[6.5rem]" /> : null}
             {isDashboard ? <col className="w-[5.5rem]" /> : null}
             {isDashboard ? <col className="w-[6.5rem]" /> : null}
             {isDashboard ? <col className="w-[7.5rem]" /> : null}
@@ -2610,6 +2620,22 @@ export default function AdminSyncTable({
                   title="Cadence from Configure (interval, daily/weekly, or calendar event day)"
                 >
                   Frequency
+                </th>
+              ) : null}
+              {isConfigure ? (
+                <th
+                  className={TH}
+                  title="Authoritative alarm clock — Netlify cron or AWS EventBridge"
+                >
+                  Scheduler
+                </th>
+              ) : null}
+              {isDashboard ? (
+                <th
+                  className={TH}
+                  title="Authoritative alarm from Configure (read-only)"
+                >
+                  Scheduler
                 </th>
               ) : null}
               {isConfigure ? (
@@ -3046,6 +3072,20 @@ export default function AdminSyncTable({
                       </p>
                     </td>
                   ) : null}
+                  {isDashboard ? (
+                    <td className={cellPad}>
+                      <p
+                        className="font-mono text-[10px] tracking-wide text-navy/80 leading-snug"
+                        title="Set under Configure — sticky per job"
+                      >
+                        {jobSchedule
+                          ? schedulerProviderLabel(
+                              resolveJobScheduler(jobSchedule),
+                            )
+                          : "—"}
+                      </p>
+                    </td>
+                  ) : null}
                   {isConfigure ? (
                     <td className={TD_EXPAND}>
                       <p className="text-sm leading-snug text-slate">
@@ -3084,6 +3124,50 @@ export default function AdminSyncTable({
                         <p className="font-mono text-[11px] tracking-wide text-charcoal/45 leading-snug">
                           {derivedScheduleHint ?? "—"}
                         </p>
+                      )}
+                    </td>
+                  ) : null}
+                  {isConfigure ? (
+                    <td className={TD_EXPAND}>
+                      {jobSchedule && pauseJob ? (
+                        <div
+                          className="flex flex-col gap-1 min-w-0"
+                          role="radiogroup"
+                          aria-label={`Scheduler for ${row.label}`}
+                        >
+                          {SYNC_SCHEDULER_PROVIDERS.map((provider) => {
+                            const selected =
+                              resolveJobScheduler(jobSchedule) === provider;
+                            return (
+                              <label
+                                key={provider}
+                                className={`inline-flex items-center gap-1.5 font-mono text-[10px] tracking-wide cursor-pointer ${
+                                  selected ? "text-navy" : "text-charcoal/55"
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`scheduler-${pauseJob}`}
+                                  value={provider}
+                                  checked={selected}
+                                  disabled={scheduleSavingJob === pauseJob}
+                                  className="accent-navy"
+                                  onChange={() =>
+                                    void patchScheduleConfig({
+                                      jobId: pauseJob,
+                                      scheduler: provider,
+                                    })
+                                  }
+                                />
+                                {schedulerProviderLabel(provider)}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span className="font-mono text-[10px] tracking-wide text-charcoal/30">
+                          —
+                        </span>
                       )}
                     </td>
                   ) : null}

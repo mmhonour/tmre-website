@@ -4210,12 +4210,10 @@ export default function IntelligenceClient({
    */
   const showMarketIntelChrome = !marketIntelChromeDismissed;
 
-  const anyFilterChromeOpen =
-    showTownChrome || showClsChrome || showTxChrome || showSliderChrome;
-  useEffect(() => {
-    if (anyFilterChromeOpen) setDotdForceExpanded(false);
-  }, [anyFilterChromeOpen]);
-  const desktopDotdSingleLine = !dotdForceExpanded && !anyFilterChromeOpen;
+  // DOTD chrome is independent of filter peeks / Edit-all. Peeking “All towns”
+  // must not expand DOTD — that used to stretch the hero column via lg:items-end
+  // and leave a tall empty band above Market Intelligence.
+  const desktopDotdSingleLine = !dotdForceExpanded;
 
   /** DOTD follows Intelligence town + Sale/Rental (All tx → sale picks). */
   const dotdKind = tx === "rental" ? "rental" : "sale";
@@ -4677,7 +4675,7 @@ export default function IntelligenceClient({
         <div className="relative mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10">
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:gap-5 lg:items-start">
           <div
-            className={`flex min-w-0 flex-col transition-[gap] duration-300 ease-out lg:flex-row lg:items-end lg:gap-x-5 ${
+            className={`flex min-w-0 flex-col transition-[gap] duration-300 ease-out lg:flex-row lg:items-start lg:gap-x-5 ${
               compactHeroTop ? "gap-y-1" : "gap-y-2"
             }`}
           >
@@ -4755,15 +4753,15 @@ export default function IntelligenceClient({
                 }`}
               >
               {/*
-                Collapsed peek order: descriptor row → class/town/tx peeks →
-                slider labels → slider chrome. Peeks must sit directly under the
-                town · For Sale · Residential links (not above them).
+                Order (collapsed + expanded): descriptor → towns → cls → tx →
+                slider labels → slider chrome. Towns above Sale/Residential on
+                desktop (matches mobile).
               */}
               <div className="flex flex-col items-start min-w-0 w-full gap-1.5">
               {/* Slider range labels; pin on scroll (phone). */}
               <div
                 className={`w-full min-w-0 ${
-                  filterChromeCollapsed ? "order-5" : "order-3"
+                  filterChromeCollapsed ? "order-5" : "order-4"
                 }`}
               >
               <div ref={descriptorSentinelRef} className="h-0 w-full" aria-hidden />
@@ -4789,7 +4787,9 @@ export default function IntelligenceClient({
                   >
                   <div
                     data-intel-tx-filter-chrome
-                    className="flex flex-wrap items-center gap-2 min-w-0 self-start w-full order-4"
+                    className={`flex flex-wrap items-center gap-2 min-w-0 self-start w-full ${
+                      filterChromeCollapsed ? "order-4" : "order-3"
+                    }`}
                   >
                     <FilterGroup
                       label=""
@@ -5024,7 +5024,7 @@ export default function IntelligenceClient({
                   >
                     <div
                       className={`flex flex-wrap items-center gap-1.5 min-w-0 w-full self-start ${
-                        filterChromeCollapsed ? "order-2" : "order-1"
+                        filterChromeCollapsed ? "order-3" : "order-2"
                       }`}
                     >
                       <div data-intel-cls-filter-chrome>
@@ -5051,7 +5051,7 @@ export default function IntelligenceClient({
                   >
                     <div
                       className={`flex flex-col gap-1.5 items-start min-w-0 w-full ${
-                        filterChromeCollapsed ? "order-3" : "order-2"
+                        filterChromeCollapsed ? "order-2" : "order-1"
                       }`}
                     >
                       <div
@@ -5277,8 +5277,8 @@ export default function IntelligenceClient({
             <div
               className={
                 mobileHeroCompactChrome
-                  ? "hidden lg:block lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-end"
-                  : "w-full lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-end"
+                  ? "hidden lg:block lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-start"
+                  : "w-full lg:w-[17rem] lg:max-w-[17rem] lg:shrink-0 lg:self-start"
               }
             >
               <DealOfTheDayFrame

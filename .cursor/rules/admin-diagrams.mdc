@@ -26,11 +26,17 @@ The Admin page (`/admin`) shows two operational diagrams. When you change databa
 ## Incremental cron architecture diagram (hand-maintained)
 
 - Syncs → Dashboard shows `describeIncrementalSyncArchitecture()` from `lib/incremental-sync-architecture.ts`, rendered by `components/admin/AdminIncrementalArchitectureDiagram.tsx`.
-- When Incremental queue/worker/watchdog/clock semantics change (`sync-listings*.ts`, `incremental-sync-watchdog.ts`, `incremental-sync-live*.ts`, Admin Start/End/Status), update that source in the same change.
+- When Incremental queue/worker/watchdog/clock semantics change (`sync-listings*.ts`, `incremental-sync-watchdog.ts`, `incremental-sync-live*.ts`, Admin Start/End/Status), or EventBridge ownership / ingress (`eventbridge-sync-ingress.ts`, `eventbridge-sync-dispatch.ts`, Configure Scheduler radio), update that source in the same change.
+
+## Site architecture diagram (hand-maintained)
+
+- Architecture → Site architecture uses `lib/site-architecture.ts` + `components/admin/AdminSiteArchitecturePanel.tsx`.
+- When adding a production dependency or sync alarm (e.g. AWS EventBridge), add the node/edge and SVG box in the same change.
 
 ## Checklist before finishing related work
 
 1. Schema or new DB? → `lib/sqlite-schema-diagram.ts` registers/opens correctly.
 2. Startup/cron/build sync changed? → `lib/startup-process.ts` matches behavior.
-3. Incremental hop / Dashboard clocks changed? → `lib/incremental-sync-architecture.ts` matches behavior.
-4. Spot-check `/admin` (after password unlock) shows the expected DBs and boot lanes.
+3. Incremental hop / Dashboard clocks / EventBridge path changed? → `lib/incremental-sync-architecture.ts` matches behavior.
+4. New host/service on the site map? → `lib/site-architecture.ts` + `AdminSiteArchitecturePanel.tsx`.
+5. Spot-check `/admin` (after password unlock) shows the expected DBs and boot lanes.

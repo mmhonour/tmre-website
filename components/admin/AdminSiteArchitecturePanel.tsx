@@ -265,17 +265,28 @@ export default function AdminSiteArchitecturePanel() {
                 title="Some setups point the domain straight at Netlify without a CDN proxy."
               />
 
-              {/* App host */}
+              {/* App host + optional AWS alarm */}
               <Box
                 id="netlify"
-                x={280}
+                x={120}
                 y={264}
-                w={420}
+                w={360}
                 h={60}
                 label="Netlify"
                 role="Next.js · functions · crons · Blobs"
                 kind="core"
-                title="Netlify — Next.js site, serverless API routes, scheduled sync jobs, Netlify Blobs."
+                title="Netlify — Next.js site, serverless API routes, scheduled sync jobs, Netlify Blobs. Thin crons skip jobs whose Configure Scheduler is EventBridge."
+              />
+              <Box
+                id="eventbridge"
+                x={520}
+                y={264}
+                w={360}
+                h={60}
+                label="AWS EventBridge"
+                role="Scheduler · optional alarm clock"
+                kind="optional"
+                title="AWS EventBridge Scheduler — side-by-side with Netlify cron. Per-job radio on Admin → Syncs → Configure. HTTP POST eventbridge-sync-ingress with SYNC_CRON_SECRET + { job }."
               />
 
               {/* Data plane */}
@@ -388,28 +399,37 @@ export default function AdminSiteArchitecturePanel() {
               <Arrow x1={490} y1={108} x2={230} y2={160} label="DNS" dashed />
               <Arrow x1={490} y1={108} x2={530} y2={160} dashed />
               <Arrow x1={490} y1={108} x2={820} y2={160} dashed />
-              <Arrow x1={230} y1={212} x2={480} y2={264} dashed />
-              <Arrow x1={530} y1={212} x2={490} y2={264} label="HTTPS" />
-              <Arrow x1={820} y1={212} x2={560} y2={264} dashed />
+              <Arrow x1={230} y1={212} x2={280} y2={264} dashed />
+              <Arrow x1={530} y1={212} x2={300} y2={264} label="HTTPS" />
+              <Arrow x1={820} y1={212} x2={340} y2={264} dashed />
 
-              <Arrow x1={380} y1={324} x2={158} y2={392} label="SQL" />
-              <Arrow x1={490} y1={324} x2={380} y2={400} label="sync" />
-              <Arrow x1={560} y1={324} x2={612} y2={400} label="photos" />
-              <Arrow x1={620} y1={324} x2={830} y2={400} dashed />
+              <Arrow
+                x1={700}
+                y1={294}
+                x2={480}
+                y2={294}
+                label="ingress"
+                dashed
+              />
 
-              <Arrow x1={360} y1={324} x2={123} y2={576} />
-              <Arrow x1={400} y1={324} x2={286} y2={576} dashed />
-              <Arrow x1={450} y1={324} x2={449} y2={576} />
-              <Arrow x1={520} y1={324} x2={607} y2={576} />
-              <Arrow x1={580} y1={324} x2={750} y2={576} dashed />
-              <Arrow x1={640} y1={324} x2={888} y2={576} dashed />
+              <Arrow x1={240} y1={324} x2={158} y2={392} label="SQL" />
+              <Arrow x1={300} y1={324} x2={380} y2={400} label="sync" />
+              <Arrow x1={360} y1={324} x2={612} y2={400} label="photos" />
+              <Arrow x1={400} y1={324} x2={830} y2={400} dashed />
+
+              <Arrow x1={220} y1={324} x2={123} y2={576} />
+              <Arrow x1={260} y1={324} x2={286} y2={576} dashed />
+              <Arrow x1={300} y1={324} x2={449} y2={576} />
+              <Arrow x1={340} y1={324} x2={607} y2={576} />
+              <Arrow x1={380} y1={324} x2={750} y2={576} dashed />
+              <Arrow x1={420} y1={324} x2={888} y2={576} dashed />
             </svg>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <NoteCard
               title="In your list"
-              body="Netlify (host + functions), Neon (Postgres — shared by Netlify + local when DATABASE_URL points here), Cloudflare R2 (photos), Resend (email). GoDaddy / Cloudflare DNS are edge pieces outside the repo — shown dashed if you use them for the domain."
+              body="Netlify (host + functions + crons), Neon (Postgres — shared by Netlify + local when DATABASE_URL points here), Cloudflare R2 (photos), Resend (email). GoDaddy / Cloudflare DNS are edge pieces outside the repo — shown dashed if you use them for the domain."
             />
             <NoteCard
               title="Also in production paths"
@@ -417,7 +437,7 @@ export default function AdminSiteArchitecturePanel() {
             />
             <NoteCard
               title="Optional / config"
-              body="ipapi.co (visitor town), Vision Appraisal (assessor), GreatSchools, OpenAI. Social profile slots are stored in Admin but posting APIs are not wired."
+              body="AWS EventBridge Scheduler (side-by-side sync alarm — Configure Scheduler radio; HTTP to eventbridge-sync-ingress). ipapi.co, Vision Appraisal, GreatSchools, OpenAI. Social profile slots are stored in Admin but posting APIs are not wired."
             />
           </div>
 

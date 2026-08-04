@@ -46,6 +46,16 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     label: "Netlify",
     role: "Next.js host, serverless functions, crons, Blobs",
     kind: "core",
+    note:
+      "Thin crons skip jobs whose Configure Scheduler is EventBridge; ingress lands on eventbridge-sync-ingress.",
+  },
+  {
+    id: "eventbridge",
+    label: "AWS EventBridge",
+    role: "Optional sync alarm clock (Scheduler)",
+    kind: "optional",
+    note:
+      "Side-by-side with Netlify cron. Admin Configure Scheduler radio per job; hits eventbridge-sync-ingress with SYNC_CRON_SECRET. Migrate Incremental first.",
   },
   {
     id: "neon",
@@ -128,6 +138,11 @@ export const SITE_ARCH_EDGES: SiteArchEdge[] = [
   { from: "godaddy", to: "cloudflare-edge", label: "nameservers (if proxied)" },
   { from: "cloudflare-edge", to: "netlify", label: "HTTPS" },
   { from: "visitors", to: "netlify", label: "direct / CDN→origin" },
+  {
+    from: "eventbridge",
+    to: "netlify",
+    label: "HTTPS ingress (jobs on EventBridge)",
+  },
   { from: "netlify", to: "neon", label: "SQL" },
   { from: "netlify", to: "rets", label: "RETS sync" },
   { from: "netlify", to: "r2", label: "photos" },

@@ -16,6 +16,7 @@ import {
   shouldDeferScheduledJob,
 } from '../../lib/sync-next-override'
 import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
+import { thinCronSkipIfEventBridgeOwns } from '../../lib/netlify-thin-cron'
 
 /**
  * Scheduled incremental trigger (NO background flag) — must finish in ~26–30s.
@@ -66,6 +67,19 @@ export default async function handler() {
         }),
         { status: 500, headers: { 'content-type': 'application/json' } },
       )
+    }
+
+    {
+      const owned = await thinCronSkipIfEventBridgeOwns('incremental')
+      if (owned) {
+        await recordIncrementalCronTick({
+          startedAt,
+          ok: false,
+          skipped: true,
+          error: 'scheduler is EventBridge — Netlify cron ignored',
+        })
+        return owned
+      }
     }
 
     if (await isScheduledSyncJobPausedFresh('incremental')) {

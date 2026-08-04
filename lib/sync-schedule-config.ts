@@ -12,7 +12,9 @@ import {
 import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   mergeSyncScheduleConfig,
+  resolveJobScheduler,
   type SyncScheduleConfig,
+  type SyncSchedulerProvider,
 } from '@/lib/sync-schedule-config-shared'
 import {
   isJobDueBySchedule,
@@ -29,21 +31,26 @@ export type {
   SyncScheduleConfig,
   SyncScheduleFrequencyId,
   SyncScheduleWeekdayEt,
+  SyncSchedulerProvider,
 } from '@/lib/sync-schedule-config-shared'
 
 export {
   SYNC_SCHEDULE_FREQUENCIES,
   SYNC_SCHEDULE_WEEKDAYS,
+  SYNC_SCHEDULER_PROVIDERS,
   defaultSyncScheduleConfig,
   frequencyLabel,
   frequencyIntervalMs,
   isSyncScheduleFrequencyId,
   isSyncScheduleWeekdayEt,
+  isSyncSchedulerProvider,
   isValidStartTimeEt,
   normalizeStartTimeEt,
   orderNumberByJob,
   orderNumberByRow,
+  resolveJobScheduler,
   resolveWeekdayEt,
+  schedulerProviderLabel,
   syncAllClientStepsFromConfig,
   mergeSyncScheduleConfig,
   parseStartTimeEt,
@@ -160,4 +167,25 @@ export function shouldSkipScheduledJobNotDue(
   now = new Date(),
 ): boolean {
   return !isScheduledJobDue(jobId, now)
+}
+
+/**
+ * True when this alarm clock must not start the job (Configure radio points
+ * at the other provider). Netlify thin crons pass `'netlify'`; EventBridge
+ * ingress passes `'eventbridge'`.
+ */
+export function shouldSkipScheduledJobWrongProvider(
+  jobId: ScheduledSyncJobId,
+  caller: SyncSchedulerProvider,
+  config = readSyncScheduleConfig(),
+): boolean {
+  return resolveJobScheduler(config.jobs[jobId]) !== caller
+}
+
+export async function shouldSkipScheduledJobWrongProviderFresh(
+  jobId: ScheduledSyncJobId,
+  caller: SyncSchedulerProvider,
+): Promise<boolean> {
+  const config = await readSyncScheduleConfigFresh()
+  return resolveJobScheduler(config.jobs[jobId]) !== caller
 }

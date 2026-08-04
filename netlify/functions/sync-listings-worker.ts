@@ -17,7 +17,13 @@ export default async function handler(req: Request, _context: Context) {
   let startedAt = new Date().toISOString()
   let sideWorkOnly = false
   let statsCacheOnly = false
-  let source: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog' | undefined
+  let source:
+    | 'admin'
+    | 'cron'
+    | 'netlify-sync-trigger'
+    | 'watchdog'
+    | 'eventbridge'
+    | undefined
   let towns: string[] | undefined
   let statusScope: 'all' | 'active' | 'closed' | undefined
   try {
@@ -38,7 +44,8 @@ export default async function handler(req: Request, _context: Context) {
       body?.source === 'admin' ||
       body?.source === 'cron' ||
       body?.source === 'netlify-sync-trigger' ||
-      body?.source === 'watchdog'
+      body?.source === 'watchdog' ||
+      body?.source === 'eventbridge'
     ) {
       source = body.source
     }

@@ -232,6 +232,7 @@ export type IncrementalQueueSource =
   | 'cron'
   | 'netlify-sync-trigger'
   | 'watchdog'
+  | 'eventbridge'
 
 export function queueNetlifyIncrementalSync(
   startedAt?: string,
@@ -306,7 +307,7 @@ export function queueNetlifyZipBoundariesSync(): Promise<NetlifyFunctionQueueRes
 }
 
 export function queueNetlifyMarketDigest(options?: {
-  source?: 'admin' | 'netlify-sync-trigger'
+  source?: 'admin' | 'netlify-sync-trigger' | 'eventbridge'
   force?: boolean
   stampWeek?: boolean
 }): Promise<NetlifyFunctionQueueResult> {
@@ -318,7 +319,7 @@ export function queueNetlifyMarketDigest(options?: {
 }
 
 export function queueNetlifyFomcSync(options?: {
-  source?: 'admin' | 'netlify-sync-trigger'
+  source?: 'admin' | 'netlify-sync-trigger' | 'eventbridge'
 }): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/sync-fomc-worker', {
     source: options?.source ?? 'netlify-sync-trigger',
@@ -326,7 +327,7 @@ export function queueNetlifyFomcSync(options?: {
 }
 
 export function queueNetlifyCpiSync(options?: {
-  source?: 'admin' | 'netlify-sync-trigger'
+  source?: 'admin' | 'netlify-sync-trigger' | 'eventbridge'
 }): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/sync-cpi-worker', {
     source: options?.source ?? 'netlify-sync-trigger',

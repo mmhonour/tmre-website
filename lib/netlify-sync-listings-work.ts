@@ -83,7 +83,7 @@ export type IncrementalSyncWorkOptions = {
    * Does not stamp the 30-minute cron heartbeat, and ignores schedule pause /
    * Next-override defer (explicit heal / admin intent).
    */
-  source?: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog'
+  source?: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog' | 'eventbridge'
   /** Adhoc Admin town scope; omit = all towns. */
   towns?: readonly string[]
   /** Adhoc Admin status filter; omit = all (Active family + Closed). */

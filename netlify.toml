@@ -102,3 +102,7 @@
 [functions."sync-cpi-worker"]
   included_files = []
   background = true
+
+# AWS EventBridge Scheduler HTTP target (no Netlify schedule).
+[functions."eventbridge-sync-ingress"]
+  included_files = []

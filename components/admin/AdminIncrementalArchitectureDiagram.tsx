@@ -10,7 +10,7 @@ const LANE_STYLES: Record<
     bg: "bg-navy/[0.04]",
   },
   cron: {
-    label: "Netlify schedule",
+    label: "Schedule (Netlify / EventBridge)",
     border: "border-gold/40",
     bg: "bg-gold/[0.08]",
   },

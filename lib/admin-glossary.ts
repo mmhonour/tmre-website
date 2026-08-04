@@ -277,7 +277,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Next override (spinner)',
     category: 'sync-admin',
     definition:
-      'Admin Syncs → Configure: Frequency picklist + Start time (ET) persist in sync_meta (sync_schedule_config). Netlify wakes every 30m; handlers run only when due. Next start is read-only (computed). Order ▲/▼ sets Sync all priority — Incremental is included. Dashboard Next ▲/▼ still writes one-time sync_next_override_<job> (clears after a successful run).',
+      'Admin Syncs → Configure: Frequency picklist + Start time (ET) + per-job Scheduler radio (Netlify cron | EventBridge) persist in sync_meta (sync_schedule_config). Netlify wakes every 30m; handlers run only when due and only when Scheduler is Netlify. EventBridge jobs use eventbridge-sync-ingress instead. Next start is read-only (computed). Order ▲/▼ sets Sync all priority — Incremental is included. Dashboard shows Scheduler read-only; Next ▲/▼ still writes one-time sync_next_override_<job> (clears after a successful run).',
   },
   {
     term: 'Smart sync',
@@ -338,6 +338,30 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'sync-admin',
     definition:
       'Host for the Next.js app and serverless functions. Not the same as photo storage (R2) or the Postgres host (Neon).',
+  },
+  {
+    term: 'MFA',
+    category: 'sync-admin',
+    definition:
+      'Multi-factor authentication — a second proof of identity (usually a one-time code from an authenticator app) after password. Required when hardening the AWS account used for EventBridge Scheduler: enable MFA on the AWS root user (account email → Security credentials → Assign MFA device), then on any IAM admin user you create for day-to-day console work. Not a TMRE app login feature.',
+  },
+  {
+    term: 'Canonical user ID',
+    category: 'sync-admin',
+    definition:
+      'AWS account identifier shown on the root (or account) Security credentials page — a long hex string unique to the account (not your email, not the 12-digit Account ID). Used mainly when granting S3 / object-storage access by account (ACLs, cross-account policies) so the other party can name your account unambiguously. Not needed for day-to-day EventBridge Scheduler setup; different from IAM User ID and from the 12-digit AWS Account ID.',
+  },
+  {
+    term: 'SNS',
+    category: 'sync-admin',
+    definition:
+      'Amazon Simple Notification Service — AWS pub/sub topics that fan out messages to subscribers (email, SMS, Lambda, HTTPS, etc.). Optional on AWS Budgets threshold alerts: you can paste an SNS topic ARN instead of (or in addition to) plain email recipients, but that needs a topic, subscription confirmation, and a topic policy allowing budgets.amazonaws.com to publish. For TMRE’s EventBridge cost guardrail, skip SNS and use Budget email recipients only unless you later want Slack/Lambda automation from the same alert.',
+  },
+  {
+    term: 'EventBridge Scheduler',
+    category: 'sync-admin',
+    definition:
+      'AWS alarm clock that can start TMRE sync jobs instead of (or beside) Netlify cron. Admin → Syncs → Configure has a sticky per-job Scheduler radio (Netlify cron | EventBridge); Dashboard shows it read-only. When a job is on EventBridge, Netlify thin crons skip that job. AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`. Migrate Incremental first; full-resync stays doomsday-only.',
   },
   {
     term: 'Thin scheduling',

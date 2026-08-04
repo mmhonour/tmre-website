@@ -283,7 +283,7 @@ export const ADMIN_ARCHITECTURE_PANELS: {
     id: "map",
     label: "Site architecture",
     subtitle:
-      "Visual map of Netlify, Neon, RETS, R2, DNS/CDN, Resend, and related services",
+      "Visual map of Netlify, EventBridge, Neon, RETS, R2, DNS/CDN, Resend, and related services",
   },
   {
     id: "status-logic",
@@ -763,7 +763,19 @@ export const ADMIN_REPO_DOCS: AdminRepoDoc[] = [
   {
     label: "incremental-sync-architecture.ts",
     path: "lib/incremental-sync-architecture.ts",
-    description: "Incremental cron vs Admin Dashboard clocks diagram source",
+    description:
+      "Incremental cron / EventBridge / Admin Dashboard clocks diagram source",
+  },
+  {
+    label: "eventbridge-sync-dispatch.ts",
+    path: "lib/eventbridge-sync-dispatch.ts",
+    description:
+      "EventBridge ingress job dispatch (provider/pause/Next gates → worker queue)",
+  },
+  {
+    label: "site-architecture.ts",
+    path: "lib/site-architecture.ts",
+    description: "Admin → Architecture → Site architecture component roster",
   },
   {
     label: "sqlite-schema-diagram.ts",
@@ -863,6 +875,12 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     detail:
       "Background BLS CPI news-release scrape → Postgres for /fed-analysis (official BLS text, not AI)",
     schedule: "On invoke (background)",
+  },
+  {
+    label: "eventbridge-sync-ingress",
+    detail:
+      "AWS EventBridge Scheduler HTTP target — Bearer SYNC_CRON_SECRET + JSON { job }. Queues the matching *-worker when Configure Scheduler is EventBridge. No Netlify schedule.",
+    schedule: "On invoke (EventBridge)",
   },
 ];
 

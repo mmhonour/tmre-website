@@ -1,6 +1,8 @@
 import 'server-only'
 
 import type { NetlifyFunctionQueueResult } from '@/lib/netlify-sync-trigger'
+import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
+import { shouldSkipScheduledJobWrongProviderFresh } from '@/lib/sync-schedule-config'
 
 /** Shared JSON response for thin scheduled → background worker handoff. */
 export function thinCronResponse(
@@ -31,6 +33,18 @@ export function thinCronSkipped(reason: string): Response {
     }),
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
+}
+
+/** When Configure radio is EventBridge, Netlify thin cron must not start work. */
+export async function thinCronSkipIfEventBridgeOwns(
+  jobId: ScheduledSyncJobId,
+): Promise<Response | null> {
+  if (await shouldSkipScheduledJobWrongProviderFresh(jobId, 'netlify')) {
+    return thinCronSkipped(
+      'scheduler is EventBridge — Netlify cron ignored',
+    )
+  }
+  return null
 }
 
 export function thinCronError(label: string, err: unknown): Response {

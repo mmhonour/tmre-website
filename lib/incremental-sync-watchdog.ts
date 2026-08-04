@@ -25,6 +25,7 @@ export type IncrementalWatchdogResult = {
   action:
     | 'fresh'
     | 'paused'
+    | 'skipped_provider'
     | 'queued'
     | 'queue_failed'
     | 'cooldown'
@@ -81,6 +82,20 @@ export async function runIncrementalSyncWatchdog(
       lastIncrementalSync,
       ageMs,
       detail: 'incremental paused in Admin → Syncs → Configure',
+    }
+  }
+
+  {
+    const { shouldSkipScheduledJobWrongProviderFresh } = await import(
+      '@/lib/sync-schedule-config'
+    )
+    if (await shouldSkipScheduledJobWrongProviderFresh('incremental', 'netlify')) {
+      return {
+        action: 'skipped_provider',
+        lastIncrementalSync,
+        ageMs,
+        detail: 'scheduler is EventBridge — Netlify watchdog ignored',
+      }
     }
   }
 

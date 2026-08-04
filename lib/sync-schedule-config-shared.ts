@@ -39,6 +39,29 @@ export const SYNC_SCHEDULE_WEEKDAYS = [
 
 export type SyncScheduleWeekdayEt = (typeof SYNC_SCHEDULE_WEEKDAYS)[number]['id']
 
+/** Which alarm clock is allowed to start this job. */
+export const SYNC_SCHEDULER_PROVIDERS = ['netlify', 'eventbridge'] as const
+export type SyncSchedulerProvider = (typeof SYNC_SCHEDULER_PROVIDERS)[number]
+
+export function isSyncSchedulerProvider(
+  value: unknown,
+): value is SyncSchedulerProvider {
+  return (
+    typeof value === 'string' &&
+    (SYNC_SCHEDULER_PROVIDERS as readonly string[]).includes(value)
+  )
+}
+
+export function schedulerProviderLabel(provider: SyncSchedulerProvider): string {
+  switch (provider) {
+    case 'eventbridge':
+      return 'EventBridge'
+    case 'netlify':
+    default:
+      return 'Netlify cron'
+  }
+}
+
 export type SyncJobScheduleConfig = {
   frequency: SyncScheduleFrequencyId
   /** HH:MM America/New_York — wall-clock for daily/weekly/monthly; phase for intervals. */
@@ -48,6 +71,11 @@ export type SyncJobScheduleConfig = {
    * Ignored unless frequency is `weekly`. Defaults to Monday when omitted.
    */
   weekdayEt?: SyncScheduleWeekdayEt
+  /**
+   * Authoritative alarm: Netlify scheduled functions vs AWS EventBridge Scheduler.
+   * Default netlify — migrate one job at a time via Admin Configure radio.
+   */
+  scheduler?: SyncSchedulerProvider
 }
 
 export function isSyncScheduleWeekdayEt(
@@ -141,22 +169,70 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'market-digest',
     ],
     jobs: {
-      'full-resync': { frequency: 'weekly', startTimeEt: '05:00', weekdayEt: 1 },
-      incremental: { frequency: '30m', startTimeEt: '00:00' },
-      'listing-scores': { frequency: 'weekly', startTimeEt: '05:00', weekdayEt: 1 },
-      'stats-cache': { frequency: '30m', startTimeEt: '00:00' },
-      'deal-of-the-day': { frequency: 'weekly', startTimeEt: '05:00', weekdayEt: 1 },
+      'full-resync': {
+        frequency: 'weekly',
+        startTimeEt: '05:00',
+        weekdayEt: 1,
+        scheduler: 'netlify',
+      },
+      incremental: {
+        frequency: '30m',
+        startTimeEt: '00:00',
+        scheduler: 'netlify',
+      },
+      'listing-scores': {
+        frequency: 'weekly',
+        startTimeEt: '05:00',
+        weekdayEt: 1,
+        scheduler: 'netlify',
+      },
+      'stats-cache': {
+        frequency: '30m',
+        startTimeEt: '00:00',
+        scheduler: 'netlify',
+      },
+      'deal-of-the-day': {
+        frequency: 'weekly',
+        startTimeEt: '05:00',
+        weekdayEt: 1,
+        scheduler: 'netlify',
+      },
       'property-addresses': {
         frequency: 'weekly',
         startTimeEt: '01:00',
         weekdayEt: 1,
+        scheduler: 'netlify',
       },
-      'zip-boundaries': { frequency: 'monthly', startTimeEt: '06:00' },
-      'fomc-sync': { frequency: 'event', startTimeEt: '15:15' },
-      'cpi-sync': { frequency: 'event', startTimeEt: '09:15' },
-      'market-digest': { frequency: 'weekly', startTimeEt: '08:00', weekdayEt: 1 },
+      'zip-boundaries': {
+        frequency: 'monthly',
+        startTimeEt: '06:00',
+        scheduler: 'netlify',
+      },
+      'fomc-sync': {
+        frequency: 'event',
+        startTimeEt: '15:15',
+        scheduler: 'netlify',
+      },
+      'cpi-sync': {
+        frequency: 'event',
+        startTimeEt: '09:15',
+        scheduler: 'netlify',
+      },
+      'market-digest': {
+        frequency: 'weekly',
+        startTimeEt: '08:00',
+        weekdayEt: 1,
+        scheduler: 'netlify',
+      },
     },
   }
+}
+
+/** Resolved provider for a job (missing/legacy → netlify). */
+export function resolveJobScheduler(
+  job: Pick<SyncJobScheduleConfig, 'scheduler'> | null | undefined,
+): SyncSchedulerProvider {
+  return isSyncSchedulerProvider(job?.scheduler) ? job.scheduler : 'netlify'
 }
 
 export function orderNumberByJob(
@@ -238,6 +314,13 @@ export function mergeSyncScheduleConfig(
           next.weekdayEt = row.weekdayEt
         } else if (frequency === 'weekly') {
           next.weekdayEt = resolveWeekdayEt(defaults.jobs[jobId])
+        }
+        if (isSyncSchedulerProvider(row.scheduler)) {
+          next.scheduler = row.scheduler
+        } else if (isSyncSchedulerProvider(defaults.jobs[jobId]?.scheduler)) {
+          next.scheduler = defaults.jobs[jobId]!.scheduler
+        } else {
+          next.scheduler = 'netlify'
         }
         jobs[jobId] = next
       }

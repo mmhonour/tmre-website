@@ -197,7 +197,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "On Netlify: sync-listings (*/30) stamps last_incremental_cron_tick and queue-firsts sync-listings-worker for full RETS (≤15m). HTTP 202 stamps Start + Status Queued (preserves first queuedAt — re-stamps must not reset the stale clock). Lean in-process RETS if the hop fails or Queued is dead (~8m). Pause / Next override / Configure frequency can skip a tick (ok:false in Sync history). See Syncs → Dashboard diagram. Local Node: setInterval with the same cadence.",
+            "On Netlify: sync-listings (*/30) stamps last_incremental_cron_tick and queue-firsts sync-listings-worker for full RETS (≤15m) unless Configure Scheduler is EventBridge (then skip after heartbeat). HTTP 202 stamps Start + Status Queued. Lean in-process RETS if the hop fails or Queued is dead (~8m). Pause / Next override / Configure frequency can skip a tick. Optional AWS EventBridge → eventbridge-sync-ingress with the same worker. See Syncs → Dashboard diagram.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
@@ -206,7 +206,7 @@ export function describeStartupProcess(): {
           title: "Stale incremental watchdog",
           timing: "every 15 min + Admin open",
           detail:
-            "If last_incremental_sync (End) is older than ~70m and Incremental is not paused: clear any dead Queued live breadcrumb, then queue sync-listings-worker (source=watchdog, bypasses Next-defer). Do not treat queue-only Start as in-progress forever. Diagram: Syncs → Dashboard → Incremental update.",
+            "If last_incremental_sync (End) is older than ~70m, Incremental is not paused, and Scheduler is still Netlify: clear any dead Queued live breadcrumb, then queue sync-listings-worker (source=watchdog, bypasses Next-defer). Skips when EventBridge owns Incremental. Diagram: Syncs → Dashboard → Incremental update.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
@@ -399,7 +399,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Jobs with Configure Scheduler=EventBridge are skipped by Netlify thin crons; AWS hits eventbridge-sync-ingress instead.`,
           status: "info",
           statusLabel: "Cron",
         },

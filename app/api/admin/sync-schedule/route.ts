@@ -6,6 +6,7 @@ import { isScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   isSyncScheduleFrequencyId,
   isSyncScheduleWeekdayEt,
+  isSyncSchedulerProvider,
   normalizeStartTimeEt,
   readSyncScheduleConfigFresh,
   writeSyncScheduleConfig,
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
  *   { jobId, frequency }
  *   { jobId, startTimeEt: "HH:MM" }
  *   { jobId, weekdayEt: 0-6 }  // weekly send day (ET)
+ *   { jobId, scheduler: "netlify" | "eventbridge" }
  *   { order: ScheduledSyncJobId[] }
  *   { moveJobId, direction: "up" | "down" }
  */
@@ -80,6 +82,7 @@ export async function PATCH(req: NextRequest) {
     frequency?: unknown
     startTimeEt?: unknown
     weekdayEt?: unknown
+    scheduler?: unknown
     order?: unknown
     moveJobId?: unknown
     direction?: unknown
@@ -117,10 +120,21 @@ export async function PATCH(req: NextRequest) {
     const hasFrequency = typeof raw.frequency === 'string'
     const hasStart = typeof raw.startTimeEt === 'string'
     const hasWeekday = raw.weekdayEt !== undefined && raw.weekdayEt !== null
+    const hasScheduler = raw.scheduler !== undefined && raw.scheduler !== null
 
-    if (!hasFrequency && !hasStart && !hasWeekday) {
+    if (!hasFrequency && !hasStart && !hasWeekday && !hasScheduler) {
       return NextResponse.json(
-        { error: 'Provide frequency, startTimeEt, and/or weekdayEt' },
+        {
+          error:
+            'Provide frequency, startTimeEt, weekdayEt, and/or scheduler',
+        },
+        { status: 400 },
+      )
+    }
+
+    if (hasScheduler && !isSyncSchedulerProvider(raw.scheduler)) {
+      return NextResponse.json(
+        { error: 'scheduler must be netlify or eventbridge' },
         { status: 400 },
       )
     }
@@ -152,13 +166,20 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    if (hasFrequency || (raw.jobId !== 'market-digest' && (hasStart || hasWeekday))) {
+    if (
+      hasFrequency ||
+      hasScheduler ||
+      (raw.jobId !== 'market-digest' && (hasStart || hasWeekday))
+    ) {
       const job = { ...config.jobs[raw.jobId] }
       if (hasFrequency) {
         if (!isSyncScheduleFrequencyId(String(raw.frequency))) {
           return NextResponse.json({ error: 'Invalid frequency' }, { status: 400 })
         }
         job.frequency = raw.frequency as typeof job.frequency
+      }
+      if (hasScheduler && isSyncSchedulerProvider(raw.scheduler)) {
+        job.scheduler = raw.scheduler
       }
       if (raw.jobId !== 'market-digest') {
         if (hasStart) {
@@ -184,7 +205,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Provide { jobId, frequency|startTimeEt|weekdayEt }, { order }, or { moveJobId, direction }',
+          'Provide { jobId, frequency|startTimeEt|weekdayEt|scheduler }, { order }, or { moveJobId, direction }',
       },
       { status: 400 },
     )
