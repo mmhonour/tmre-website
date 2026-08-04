@@ -90,10 +90,16 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Next.js 16 default bundler for next dev (replaces the older webpack default for local development).',
   },
   {
+    term: 'Heredoc',
+    category: 'tooling',
+    definition:
+      'Short for “here document”: a way to embed a multi-line text block in a shell script or one-liner without escape hell. The shell reads every line after an opener like `<<EOF` (or `<<\'EOF\'`) until it sees a line that is only the closing marker (`EOF`). That block becomes stdin for a command, or (when wrapped in `$(…)`) a string argument. Why it exists: commit messages, SQL, JSON, and email bodies often need real newlines and quotes; putting them in `"…"` or `\'…\'` gets ugly fast. Quoting the marker matters: `<<\'EOF\'` / `<<"EOF"` = literal text (no `$var` expansion); `<<EOF` = expand variables and `$(…)` inside the body. The marker must sit alone at the start of the closing line (no spaces before it unless you used `<<-`, which strips leading tabs). Common pattern in agent/git docs: `git commit -m "$(cat <<\'EOF\'` … message … `EOF` `)"`. Not a git feature — pure shell. Bash, zsh, Git Bash, and WSL support heredocs. Windows PowerShell does not: `<<` is invalid there. On this PC use a PowerShell here-string (`@"… "@`) written to a file then `git commit -F thatfile`, or multiple `git commit -m` flags. See also Bash heredoc (same idea, bash-focused wording).',
+  },
+  {
     term: 'Bash heredoc',
     category: 'tooling',
     definition:
-      'A shell quoting form that feeds a multi-line block as stdin or as an argument, commonly written `<<\'EOF\'` … `EOF` (or `<<EOF` when variables should expand). Agents and docs often use it for `git commit -m "$(cat <<\'EOF\' … EOF)"` so the message keeps newlines without messy escaping. Bash / Git Bash / WSL understand heredocs; Windows PowerShell does not — there `<<` is a redirection/parse error. On this PC use a here-string instead, e.g. `@"… "@ | Set-Content …` then `git commit -F file`, or pass multiple `-m` flags.',
+      'Heredoc syntax as used in bash (`<<\'EOF\'` … `EOF`). Same concept as Heredoc — multi-line literal fed to a command or captured with `$(cat <<\'EOF\' …)`. Preferred in Linux/macOS/Git Bash scripts; agents often paste this form for commit messages. Does not work in Windows PowerShell (use a here-string + `git commit -F` instead).',
   },
   {
     term: 'UI kit (tab styles)',
@@ -361,7 +367,31 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'EventBridge Scheduler',
     category: 'sync-admin',
     definition:
-      'AWS alarm clock that can start TMRE sync jobs instead of (or beside) Netlify cron. Admin → Syncs → Configure has a sticky per-job Scheduler radio (Netlify cron | EventBridge); Dashboard shows it read-only. When a job is on EventBridge, Netlify thin crons skip that job. AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`. Migrate Incremental first; full-resync stays doomsday-only.',
+      'AWS alarm clock that can start TMRE sync jobs instead of (or beside) Netlify cron. Admin → Syncs → Configure has a sticky per-job Scheduler radio (Netlify cron | EventBridge); Dashboard shows it read-only. When a job is on EventBridge, Netlify thin crons skip that job. AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`. Every ingress hit stamps EventBridge last fired + result on the Dashboard (including skips and 401). Migrate Incremental first; full-resync stays doomsday-only.',
+  },
+  {
+    term: 'EventBridge PutEvents',
+    category: 'sync-admin',
+    definition:
+      'AWS API that drops one custom event onto an EventBridge event bus (source, detail-type, detail JSON). In EventBridge Scheduler’s target picker it is the EventBridge choice for TMRE: Scheduler cannot POST straight to an external HTTPS URL, so the schedule uses PutEvents, then a bus Rule matches that event and invokes an API destination (our Netlify ingress). Different from the other Scheduler “EventBridge” / templated APIs (and from Lambda Invoke, SQS SendMessage, SNS Publish, Step Functions StartExecution, etc.): those call a concrete AWS resource you already own; PutEvents only publishes onto a bus and does nothing useful until a Rule + target (API destination) exist. Also different from classic EventBridge scheduled Rules, which can target an API destination in one hop without PutEvents. TMRE fields: source `tmre.sync`, detail-type `ScheduledSync`, detail `{ "job": "incremental" }`.',
+  },
+  {
+    term: 'Sync now (scheduler-aware)',
+    category: 'sync-admin',
+    definition:
+      'Admin → Syncs → Dashboard Sync now button. Uses Configure Scheduler per job: when EventBridge, queues via the EventBridge dispatch path (source=eventbridge; same worker handoff AWS uses after ingress); on queue failure falls back to the Netlify admin queue. When Netlify, queues as admin directly. Scoped Incremental (town/status picker) always uses the admin queue. Does not call AWS PutEvents — that only happens from EventBridge Scheduler or the AWS Send events console. Watch Start/End after Sync now; message text says which path queued.',
+  },
+  {
+    term: 'EventBridge last fired',
+    category: 'sync-admin',
+    definition:
+      'Admin → Syncs → Dashboard Incremental row when Scheduler is EventBridge. Stamped on every HTTP hit to eventbridge-sync-ingress (success, Configure skip, pause, 401, bad JSON). Shows age + result line (e.g. queued · HTTP 200, skipped: job scheduler is netlify · HTTP 200, unauthorized · HTTP 401). Distinct from Cron last fired (Netlify */30 only). Meta keys: last_eventbridge_ingress_at_incremental, last_eventbridge_ingress_result_incremental.',
+  },
+  {
+    term: 'Ingress (EventBridge)',
+    category: 'sync-admin',
+    definition:
+      'The HTTPS doorway from AWS into TMRE: Netlify function `eventbridge-sync-ingress` at `/.netlify/functions/eventbridge-sync-ingress`. EventBridge Scheduler cannot POST to an arbitrary URL by itself in the templated-target UI, so the usual path is Scheduler → PutEvents → bus Rule → API destination → this ingress. Ingress checks Bearer SYNC_CRON_SECRET, requires Configure Scheduler = EventBridge for that job, then queues the same *-worker Netlify cron would (or skips/pauses). Not an AWS product name — “ingress” here means our receive endpoint. Distinct from Admin Sync now (which can use the EventBridge *dispatch* path in-app without crossing AWS) and from Netlify thin cron.',
   },
   {
     term: 'Thin scheduling',

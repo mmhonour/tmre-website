@@ -561,6 +561,10 @@ export type PanelStatus = {
   latestListingUpdate: string | null;
   /** Last Netlify sync-listings cron tick (even when work was skipped). */
   lastIncrementalCronTick?: string | null;
+  /** Last HTTP hit to eventbridge-sync-ingress for Incremental (incl. skips / 401). */
+  lastEventbridgeIngressAt?: string | null;
+  /** Outcome line: queued / skipped: … / unauthorized · HTTP n. */
+  lastEventbridgeIngressResult?: string | null;
   propertyAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
@@ -2492,8 +2496,11 @@ export default function AdminSyncTable({
           {isDashboard ? (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-xl">
-                Tap Sync now (or Sync all). Running jobs stay on top. Pause and schedule
-                edits live under Configure. Incremental fills Postgres; the{" "}
+                Tap Sync now (or Sync all). Sync now follows each job’s Configure
+                Scheduler: EventBridge path when that radio is selected, otherwise
+                Netlify queue (EventBridge falls back to Netlify if the queue fails).
+                Running jobs stay on top. Pause and schedule edits live under
+                Configure. Incremental fills Postgres; the{" "}
                 <a
                   href="#admin-latest-page"
                   className="text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
@@ -2855,20 +2862,41 @@ export default function AdminSyncTable({
                 return prior;
               })();
 
+              const incrementalOnEventBridge =
+                row.id === "incremental" &&
+                jobSchedule != null &&
+                resolveJobScheduler(jobSchedule) === "eventbridge";
               const descriptionText =
                 row.id === "incremental"
                   ? isConfigure
                     ? "Modified-since RETS pull across all towns"
-                    : `Modified-since RETS pull (every 30 minutes)${
-                        status?.lastIncrementalCronTick
-                          ? ` · Cron last fired ${
-                              formatAgeAgo(
-                                status.lastIncrementalCronTick,
-                                nowMs,
-                              ) ?? formatTimestamp(status.lastIncrementalCronTick)
-                            }`
-                          : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
-                      }`
+                    : incrementalOnEventBridge
+                      ? `Modified-since RETS pull (EventBridge)${
+                          status?.lastEventbridgeIngressAt
+                            ? ` · EventBridge last fired ${
+                                formatAgeAgo(
+                                  status.lastEventbridgeIngressAt,
+                                  nowMs,
+                                ) ??
+                                formatTimestamp(status.lastEventbridgeIngressAt)
+                              }${
+                                status.lastEventbridgeIngressResult
+                                  ? ` · ${status.lastEventbridgeIngressResult}`
+                                  : ""
+                              }`
+                            : " · EventBridge last fired: never (no ingress hit yet — AWS schedule / Send events / API destination)"
+                        }`
+                      : `Modified-since RETS pull (every 30 minutes)${
+                          status?.lastIncrementalCronTick
+                            ? ` · Cron last fired ${
+                                formatAgeAgo(
+                                  status.lastIncrementalCronTick,
+                                  nowMs,
+                                ) ??
+                                formatTimestamp(status.lastIncrementalCronTick)
+                              }`
+                            : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
+                        }`
                   : (row.detail ?? "");
 
               // Compact single-line rows unless status/error needs room to wrap.
@@ -2962,6 +2990,12 @@ export default function AdminSyncTable({
                           type="button"
                           onClick={() => runSync(row)}
                           disabled={disabled}
+                          title={
+                            jobSchedule &&
+                            resolveJobScheduler(jobSchedule) === "eventbridge"
+                              ? "Sync now via EventBridge path (falls back to Netlify queue if needed)"
+                              : "Sync now via Netlify worker queue"
+                          }
                           className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
                         >
                           {isRunning

@@ -36,6 +36,15 @@ function parseJobId(raw: unknown): ScheduledSyncJobId | null {
   return isScheduledSyncJobId(trimmed) ? trimmed : null
 }
 
+export type DispatchEventBridgeOptions = {
+  /**
+   * Admin Dashboard Sync now when Configure Scheduler is EventBridge.
+   * Still requires scheduler === eventbridge; skips pause / Next defer so the
+   * button always means “run now” (same as Netlify Sync now).
+   */
+  fromAdminSyncNow?: boolean
+}
+
 /**
  * EventBridge Scheduler → queue the same Netlify *-worker the thin cron would.
  * Honors Configure scheduler radio, pause, and Next override defer.
@@ -43,6 +52,7 @@ function parseJobId(raw: unknown): ScheduledSyncJobId | null {
  */
 export async function dispatchEventBridgeScheduledJob(
   rawJob: unknown,
+  options?: DispatchEventBridgeOptions,
 ): Promise<EventBridgeDispatchResult> {
   const jobId = parseJobId(rawJob)
   if (!jobId) {
@@ -60,21 +70,23 @@ export async function dispatchEventBridgeScheduledJob(
     }
   }
 
-  if (await isScheduledSyncJobPausedFresh(jobId)) {
-    return {
-      ok: false,
-      skipped: true,
-      jobId,
-      reason: 'paused by admin',
+  if (!options?.fromAdminSyncNow) {
+    if (await isScheduledSyncJobPausedFresh(jobId)) {
+      return {
+        ok: false,
+        skipped: true,
+        jobId,
+        reason: 'paused by admin',
+      }
     }
-  }
 
-  if (shouldDeferScheduledJob(jobId)) {
-    return {
-      ok: false,
-      skipped: true,
-      jobId,
-      reason: 'Admin Next override — not due yet',
+    if (shouldDeferScheduledJob(jobId)) {
+      return {
+        ok: false,
+        skipped: true,
+        jobId,
+        reason: 'Admin Next override — not due yet',
+      }
     }
   }
 
@@ -123,7 +135,13 @@ export async function dispatchEventBridgeScheduledJob(
       queue = await queueNetlifyZipBoundariesSync()
       break
     case 'market-digest':
-      queue = await queueNetlifyMarketDigest({ source: 'eventbridge' })
+      queue = await queueNetlifyMarketDigest({
+        source: 'eventbridge',
+        // Admin Sync now must send even off-cadence; scheduled EB keeps weekly gates.
+        ...(options?.fromAdminSyncNow
+          ? { force: true, stampWeek: true }
+          : {}),
+      })
       break
     case 'fomc-sync':
       queue = await queueNetlifyFomcSync({ source: 'eventbridge' })

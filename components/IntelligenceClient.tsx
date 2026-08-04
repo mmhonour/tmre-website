@@ -2055,7 +2055,8 @@ export default function IntelligenceClient({
   const [heroIntroDismissed, setHeroIntroDismissed] = useState(false);
   /**
    * Phone only: 5s after the hero intro collapses, replace the DOTD card with a
-   * left “deal of the day” control and right-aligned months supply.
+   * left “Deal of the Day” control and right-aligned Months supply (same mono
+   * idle size / title case as the descriptor line).
    * Tapping the control restores the DOTD preview (and descriptor months supply).
    */
   const [mobileHeroCompactChrome, setMobileHeroCompactChrome] = useState(false);
@@ -4412,9 +4413,12 @@ export default function IntelligenceClient({
 
   /** Peeked pill / slider chrome portals into the pinned nav panel (phone). */
   const pinFilterChromeToNav = descriptorsPinned;
-  /** Minimized desktop: hug the nav instead of the tall hero padding. */
-  const compactHeroTop =
-    heroIntroDismissed && filterChromeCollapsed && !isMobileViewport;
+  /**
+   * Minimized hero (intro gone + filters collapsed): hug the live nav bottom
+   * instead of tall pt-28/32 — mobile and desktop. Stops a large empty navy
+   * band above Town / Sale / Residential descriptors.
+   */
+  const compactHeroTop = heroIntroDismissed && filterChromeCollapsed;
   const heroPaddingTopPx = compactHeroTop
     ? Math.max(Math.round(navOffsetPx) + 8, 72)
     : null;
@@ -5257,11 +5261,13 @@ export default function IntelligenceClient({
                     setMobileHeroCompactChrome(false);
                     setMobileHeroCompactSuspended(true);
                   }}
-                  className="shrink-0 font-mono text-[11px] tracking-[0.12em] lowercase text-gold underline underline-offset-2 decoration-gold/45 transition-colors hover:text-gold-light hover:decoration-gold"
+                  className={`shrink-0 font-mono tracking-wide text-gold underline underline-offset-2 decoration-gold/45 transition-colors hover:text-gold-light hover:decoration-gold ${INTEL_DESCRIPTOR_IDLE_TEXT}`}
                 >
-                  deal of the day
+                  Deal of the Day
                 </button>
-                <span className="min-w-0 text-right">
+                <span
+                  className={`min-w-0 text-right font-mono tracking-wide ${INTEL_DESCRIPTOR_IDLE_TEXT}`}
+                >
                   <IntelMonthsSupplyInline
                     monthsSupply={
                       active === "All"
@@ -5269,7 +5275,6 @@ export default function IntelligenceClient({
                         : activeTownMonthsSupply
                     }
                     monthlySalesLoaded={monthlySalesLoaded}
-                    label="months supply"
                   />
                 </span>
               </div>

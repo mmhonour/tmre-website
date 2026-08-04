@@ -43,7 +43,14 @@ export function describeIncrementalSyncArchitecture(): {
         label: 'Cron last fired',
         metaKey: 'last_incremental_cron_tick',
         meaning:
-          'Thin */30 schedule woke up (heartbeat). Does not mean RETS finished or End moved. Still stamps when Scheduler is EventBridge (skip after heartbeat).',
+          'Thin */30 schedule woke up (heartbeat). Does not mean RETS finished or End moved. Still stamps when Scheduler is EventBridge (skip after heartbeat). Hidden on Dashboard when Scheduler is EventBridge — see EventBridge last fired instead.',
+      },
+      {
+        id: 'eventbridge-ingress',
+        label: 'EventBridge last fired',
+        metaKey: 'last_eventbridge_ingress_at_incremental',
+        meaning:
+          'HTTP hit to eventbridge-sync-ingress for Incremental (AWS schedule, Send events, or API destination). Stamps even on skip / 401. Companion result line: last_eventbridge_ingress_result_incremental (queued / skipped: … / unauthorized · HTTP n).',
       },
       {
         id: 'start',

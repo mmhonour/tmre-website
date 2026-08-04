@@ -262,6 +262,8 @@ export default async function AdminPage() {
     scheduleHints,
     scheduleConfig,
     lastIncrementalCronTick,
+    lastEventbridgeIngressAt,
+    lastEventbridgeIngressResult,
     nextOverrides,
   } = await readAdminSyncPanelStatus();
   const latestListingUpdate = await safe(
@@ -531,6 +533,8 @@ export default async function AdminPage() {
     lastRefreshStarted: lastRefreshStarted,
     latestListingUpdate: latestListingUpdate,
     lastIncrementalCronTick: lastIncrementalCronTick ?? null,
+    lastEventbridgeIngressAt: lastEventbridgeIngressAt ?? null,
+    lastEventbridgeIngressResult: lastEventbridgeIngressResult ?? null,
     propertyAddressesSyncedAt: propertyAddressesSyncedAt,
     zipBoundariesSyncedAt,
     zipBoundariesSyncStartedAt,

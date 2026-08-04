@@ -69,6 +69,41 @@ import {
   FULL_RESYNC_FINALIZE_STEPS,
   isFullResyncFinalizeStepId,
 } from '@/lib/admin-sync-types'
+import { isScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
+import {
+  readSyncScheduleConfigFresh,
+  resolveJobScheduler,
+} from '@/lib/sync-schedule-config'
+import type { NetlifyFunctionQueueResult } from '@/lib/netlify-sync-trigger'
+
+/**
+ * Sync now: when Configure Scheduler is EventBridge, queue via the EventBridge
+ * dispatch path (source=eventbridge). On failure, fall back to the admin queue.
+ * Scoped Incremental (town / status) always uses the admin queue.
+ */
+async function queueSyncNowPreferringScheduler(
+  jobId: string,
+  adminQueue: () => Promise<NetlifyFunctionQueueResult>,
+  opts?: { allowEventBridge?: boolean },
+): Promise<{ queued: NetlifyFunctionQueueResult; via: 'eventbridge' | 'admin' }> {
+  const allowEventBridge = opts?.allowEventBridge !== false
+  if (allowEventBridge && isScheduledSyncJobId(jobId)) {
+    const config = await readSyncScheduleConfigFresh()
+    if (resolveJobScheduler(config.jobs[jobId]) === 'eventbridge') {
+      const { dispatchEventBridgeScheduledJob } = await import(
+        '@/lib/eventbridge-sync-dispatch'
+      )
+      const eb = await dispatchEventBridgeScheduledJob(jobId, {
+        fromAdminSyncNow: true,
+      })
+      if (eb.ok && eb.queue) {
+        return { queued: eb.queue, via: 'eventbridge' }
+      }
+      // Queue failed (or DOTD in-process ok without queue) — fall back below.
+    }
+  }
+  return { queued: await adminQueue(), via: 'admin' }
+}
 
 export type { AdminSyncActionId } from '@/lib/admin-sync-types'
 export {
@@ -505,19 +540,28 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyIncrementalSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        const queued = await queueNetlifyIncrementalSync(startedAt, {
-          source: 'admin',
-          ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
-          ...(statusScope !== 'all' ? { statusScope } : {}),
-        })
+        // Town/status scope is Admin-only — EventBridge schedule is all-towns.
+        const scoped =
+          scopedTowns.length > 0 || statusScope !== 'all'
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'incremental',
+          () =>
+            queueNetlifyIncrementalSync(startedAt, {
+              source: 'admin',
+              ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
+              ...(statusScope !== 'all' ? { statusScope } : {}),
+            }),
+          { allowEventBridge: !scoped },
+        )
+        const queueSource = via === 'eventbridge' ? 'eventbridge' : 'admin'
         // Always write Sync history — queue ack alone never created town sync_runs,
         // which left "last run" stuck at the prior real RETS batch (e.g. 2:47pm).
         await recordIncrementalQueueAudit({
           startedAt,
-          source: 'admin',
+          source: queueSource,
           queued: queued.ok,
           detail: queued.ok
-            ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'} · ${scopeLabel}`
+            ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'} · ${scopeLabel}${via === 'eventbridge' ? ' · via EventBridge' : ''}`
             : queued.error ?? 'unknown queue error',
         })
         if (queued.ok) {
@@ -535,11 +579,15 @@ async function runAdminSyncActionImpl(
             statusScope,
           })
           await stampIncrementalQueuedStepLog(
-            'admin-queue',
+            via === 'eventbridge' ? 'eventbridge-admin' : 'admin-queue',
             queued.base
               ? `${queued.base} HTTP ${queued.status ?? '—'} · ${scopeLabel}`
               : `background worker · ${scopeLabel}`,
           )
+          const viaLabel =
+            via === 'eventbridge'
+              ? 'EventBridge path'
+              : 'background worker'
           return {
             ok: true,
             action,
@@ -547,10 +595,10 @@ async function runAdminSyncActionImpl(
             finishedAt: startedAt,
             durationMs: Date.now() - t0,
             backgroundQueued: true,
-            message: `Incremental queued for ${scopeLabel} (background worker)`,
+            message: `Incremental queued for ${scopeLabel} (${viaLabel})`,
             detail: queued.base
-              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}) · ${scopeLabel}. Dashboard Status will show progress as the worker pulls MLS.`
-              : `Queued on background worker · ${scopeLabel}. Dashboard Status will show progress as the worker pulls MLS.`,
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}) · ${scopeLabel}${via === 'eventbridge' ? ' · EventBridge dispatch' : ''}. Dashboard Status will show progress as the worker pulls MLS.`
+              : `Queued on ${viaLabel} · ${scopeLabel}. Dashboard Status will show progress as the worker pulls MLS.`,
           }
         }
         const finishedAt = new Date().toISOString()
@@ -632,9 +680,13 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyStatsCacheRebuild } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        const queued = await queueNetlifyStatsCacheRebuild(startedAt, {
-          source: 'admin',
-        })
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'stats-cache',
+          () =>
+            queueNetlifyStatsCacheRebuild(startedAt, {
+              source: 'admin',
+            }),
+        )
         // History: Queued/stats now; worker writes Done|Failed/stats when finished.
         // (backgroundQueued skips auditDashboardSyncResult — same as Incremental.)
         try {
@@ -647,8 +699,8 @@ async function runAdminSyncActionImpl(
             listingsCount: 0,
             ok: queued.ok,
             error: queued.ok
-              ? `queued background worker (admin) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
-              : `queue failed (admin) — ${queued.error ?? 'Could not reach background worker'}`,
+              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
           })
         } catch {
           /* audit best-effort */
@@ -663,7 +715,9 @@ async function runAdminSyncActionImpl(
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              'Stats cache queued (background worker) — End updates when rebuild finishes',
+              via === 'eventbridge'
+                ? 'Stats cache queued (EventBridge path) — End updates when rebuild finishes'
+                : 'Stats cache queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Steals a stuck rebuild lock if needed.`
               : 'Queued on background worker. Steals a stuck rebuild lock if needed.',
@@ -777,7 +831,10 @@ async function runAdminSyncActionImpl(
     case 'fomc-sync': {
       if (isServerlessRuntime()) {
         const { queueNetlifyFomcSync } = await import('@/lib/netlify-sync-trigger')
-        const queued = await queueNetlifyFomcSync({ source: 'admin' })
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'fomc-sync',
+          () => queueNetlifyFomcSync({ source: 'admin' }),
+        )
         return {
           ok: queued.ok,
           action,
@@ -786,7 +843,9 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? 'FOMC sync queued on Netlify background worker'
+            ? via === 'eventbridge'
+              ? 'FOMC sync queued via EventBridge path'
+              : 'FOMC sync queued on Netlify background worker'
             : `FOMC sync queue failed: ${queued.error ?? 'unknown'}`,
         }
       }
@@ -819,7 +878,10 @@ async function runAdminSyncActionImpl(
     case 'cpi-sync': {
       if (isServerlessRuntime()) {
         const { queueNetlifyCpiSync } = await import('@/lib/netlify-sync-trigger')
-        const queued = await queueNetlifyCpiSync({ source: 'admin' })
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'cpi-sync',
+          () => queueNetlifyCpiSync({ source: 'admin' }),
+        )
         return {
           ok: queued.ok,
           action,
@@ -828,7 +890,9 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? 'CPI sync queued on Netlify background worker'
+            ? via === 'eventbridge'
+              ? 'CPI sync queued via EventBridge path'
+              : 'CPI sync queued on Netlify background worker'
             : `CPI sync queue failed: ${queued.error ?? 'unknown'}`,
         }
       }
@@ -863,11 +927,15 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyMarketDigest } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        const queued = await queueNetlifyMarketDigest({
-          source: 'admin',
-          force: true,
-          stampWeek: true,
-        })
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'market-digest',
+          () =>
+            queueNetlifyMarketDigest({
+              source: 'admin',
+              force: true,
+              stampWeek: true,
+            }),
+        )
         return {
           ok: queued.ok,
           action,
@@ -876,7 +944,9 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? 'Monday market brief queued on Netlify background worker'
+            ? via === 'eventbridge'
+              ? 'Monday market brief queued via EventBridge path'
+              : 'Monday market brief queued on Netlify background worker'
             : `Market brief queue failed: ${queued.error ?? 'unknown'}`,
         }
       }
@@ -1100,6 +1170,16 @@ export async function readAdminSyncPanelStatus() {
   const lastIncrementalCronTick =
     (await getSyncMetaFresh('last_incremental_cron_tick')) ??
     getSyncMeta('last_incremental_cron_tick')
+  const {
+    eventbridgeIngressAtKey,
+    eventbridgeIngressResultKey,
+  } = await import('@/lib/eventbridge-ingress-stamp')
+  const lastEventbridgeIngressAt =
+    (await getSyncMetaFresh(eventbridgeIngressAtKey('incremental'))) ??
+    getSyncMeta(eventbridgeIngressAtKey('incremental'))
+  const lastEventbridgeIngressResult =
+    (await getSyncMetaFresh(eventbridgeIngressResultKey('incremental'))) ??
+    getSyncMeta(eventbridgeIngressResultKey('incremental'))
   const nextOverrides = readSyncNextOverrides()
   const {
     clearIncrementalSyncLiveIfStale,
@@ -1139,6 +1219,8 @@ export async function readAdminSyncPanelStatus() {
     scheduleHints,
     scheduleConfig,
     lastIncrementalCronTick,
+    lastEventbridgeIngressAt,
+    lastEventbridgeIngressResult,
     nextOverrides,
     incrementalLive,
     incrementalLiveStatus: formatIncrementalSyncLiveStatus(incrementalLive),
