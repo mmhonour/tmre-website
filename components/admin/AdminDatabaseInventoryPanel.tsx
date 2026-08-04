@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminDatabaseSyncStats } from "@/lib/admin-sync-types";
 import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
 
@@ -18,14 +18,47 @@ type TableActivity = {
 type TableSample = {
   table: string;
   timestampColumn: string | null;
+  orderBy?: {
+    column: string;
+    direction: "desc";
+    source: "preferred" | "timestamp" | "identity";
+  } | null;
   columns: string[];
   rows: Record<string, unknown>[];
   limit: number;
 };
 
+function sampleOrderLabel(sample: TableSample): string {
+  const col = sample.orderBy?.column ?? sample.timestampColumn;
+  if (!col) return " · unordered (no timestamp or identity column)";
+  const via =
+    sample.orderBy?.source === "identity"
+      ? "identity"
+      : sample.orderBy?.source === "timestamp"
+        ? "timestamp"
+        : null;
+  return via
+    ? ` · newest by ${col} DESC (${via})`
+    : ` · newest by ${col} DESC`;
+}
+
+function parseActivityMs(iso: string | null | undefined): number {
+  if (!iso) return NaN;
+  const direct = Date.parse(iso);
+  if (!Number.isNaN(direct)) return direct;
+  // Tolerate Postgres-style "YYYY-MM-DD HH:MM:SS+00" if any slip through.
+  const spaced = iso.includes("T") ? iso : iso.trim().replace(" ", "T");
+  const withColonTz = spaced.replace(/([+-]\d{2})$/, "$1:00");
+  for (const candidate of [spaced, withColonTz]) {
+    const ms = Date.parse(candidate);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return NaN;
+}
+
 function formatLastUpdated(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const t = Date.parse(iso);
+  const t = parseActivityMs(iso);
   if (Number.isNaN(t)) return iso;
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -53,7 +86,7 @@ function newestActivityIso(
   let bestMs = -1;
   for (const row of Object.values(activity)) {
     if (!row.lastUpdated) continue;
-    const ms = Date.parse(row.lastUpdated);
+    const ms = parseActivityMs(row.lastUpdated);
     if (!Number.isNaN(ms) && ms > bestMs) {
       bestMs = ms;
       best = row.lastUpdated;
@@ -64,11 +97,14 @@ function newestActivityIso(
 
 export default function AdminDatabaseInventoryPanel({
   initial,
+  initialActivity = {},
 }: {
   initial: AdminDatabaseSyncStats[];
+  initialActivity?: Record<string, TableActivity>;
 }) {
   const [databaseStats, setDatabaseStats] = useState(initial);
-  const [activity, setActivity] = useState<Record<string, TableActivity>>({});
+  const [activity, setActivity] =
+    useState<Record<string, TableActivity>>(initialActivity);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -129,13 +165,32 @@ export default function AdminDatabaseInventoryPanel({
     [expanded, loadSample, sampleLoading, samples],
   );
 
+  const loadActivity = useCallback(async (): Promise<boolean> => {
+    const activityRes = await fetch("/api/admin/inventory-table-activity", {
+      cache: "no-store",
+    });
+    const activityBody = (await activityRes.json()) as {
+      activity?: Record<string, TableActivity>;
+      error?: string;
+    };
+    if (!activityRes.ok) {
+      setError(
+        activityBody.error ??
+          `Last updated failed (HTTP ${activityRes.status})`,
+      );
+      return false;
+    }
+    setActivity(activityBody.activity ?? {});
+    return true;
+  }, []);
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
-      const [syncRes, activityRes] = await Promise.all([
+      const [syncRes, activityOk] = await Promise.all([
         fetch("/api/admin/sync", { cache: "no-store" }),
-        fetch("/api/admin/inventory-snapshot", { cache: "no-store" }),
+        loadActivity(),
       ]);
       const syncBody = (await syncRes.json()) as {
         databaseStats?: AdminDatabaseSyncStats[];
@@ -146,19 +201,21 @@ export default function AdminDatabaseInventoryPanel({
         return;
       }
       if (syncBody.databaseStats) setDatabaseStats(syncBody.databaseStats);
-
-      if (activityRes.ok) {
-        const activityBody = (await activityRes.json()) as {
-          activity?: Record<string, TableActivity>;
-        };
-        setActivity(activityBody.activity ?? {});
+      if (!activityOk && syncRes.ok) {
+        /* loadActivity already set error */
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Refresh failed");
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [loadActivity]);
+
+  // Populate last-updated / 60m upserts once if SSR missed them (no polling).
+  useEffect(() => {
+    if (Object.keys(initialActivity).length > 0) return;
+    void loadActivity();
+  }, [initialActivity, loadActivity]);
 
   const neonTables = useMemo(() => {
     const neon = databaseStats.find((db) => db.id === "listings");
@@ -187,8 +244,8 @@ export default function AdminDatabaseInventoryPanel({
             Database inventory
           </p>
           <p className="mt-1 max-w-2xl text-sm text-charcoal/65">
-            Connected stores and Neon table activity. Refresh loads upserts in
-            the last 60 minutes and last-updated clocks;{" "}
+            Connected stores and Neon table activity. Last updated and upserts
+            in the last 60 minutes load with the page (Refresh to reload).{" "}
             <span className="font-mono text-[11px]">+</span> /{" "}
             <span className="font-mono text-[11px]">−</span> loads up to 100
             newest rows on demand.
@@ -279,7 +336,7 @@ export default function AdminDatabaseInventoryPanel({
           <p className="mb-3 font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45">
             Neon tables
             {Object.keys(activity).length === 0
-              ? " · click Refresh for 60m upserts + last updated"
+              ? " · loading last updated…"
               : ""}
           </p>
           <div className="overflow-x-auto">
@@ -382,9 +439,7 @@ export default function AdminDatabaseInventoryPanel({
                                 <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
                                   {sample.rows.length.toLocaleString()} row
                                   {sample.rows.length === 1 ? "" : "s"}
-                                  {sample.timestampColumn
-                                    ? ` · newest by ${sample.timestampColumn}`
-                                    : " · unordered (no timestamp column)"}
+                                  {sampleOrderLabel(sample)}
                                 </p>
                                 <div className="max-h-[28rem] overflow-auto rounded-lg border border-charcoal/[0.08] bg-white">
                                   <table className="w-full border-collapse text-left min-w-max">

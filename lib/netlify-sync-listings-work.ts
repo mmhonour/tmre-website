@@ -255,14 +255,14 @@ export async function runIncrementalSyncListingsWork(
       await clearLiveOnSkip('paused')
       await recordIncrementalCronTick({
         startedAt,
-        ok: false,
+        ok: true,
         skipped: true,
         error: 'incremental scheduled sync paused by admin',
       })
       return {
         status: 200,
         body: {
-          ok: false,
+          ok: true,
           skipped: true,
           reason: 'incremental scheduled sync paused by admin',
           sideWorkOnly,
@@ -280,14 +280,14 @@ export async function runIncrementalSyncListingsWork(
       await clearLiveOnSkip('Next override defer')
       await recordIncrementalCronTick({
         startedAt,
-        ok: false,
+        ok: true,
         skipped: true,
         error: 'deferred — Admin Next override is still in the future',
       })
       return {
         status: 200,
         body: {
-          ok: false,
+          ok: true,
           skipped: true,
           reason: 'Admin Next override — not due yet',
           sideWorkOnly,
@@ -306,14 +306,14 @@ export async function runIncrementalSyncListingsWork(
       await clearLiveOnSkip('not due')
       await recordIncrementalCronTick({
         startedAt,
-        ok: false,
+        ok: true,
         skipped: true,
         error: 'not due yet — Configure frequency / start time',
       })
       return {
         status: 200,
         body: {
-          ok: false,
+          ok: true,
           skipped: true,
           reason: 'not due yet — Configure frequency / start time',
           sideWorkOnly,

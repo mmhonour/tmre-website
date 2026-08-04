@@ -14,6 +14,7 @@ import {
   ADMIN_SYNC_HISTORY_MAX_LIMIT,
   formatSyncHistoryBucketLabel,
   glomSyncHistoryRuns,
+  syncHistoryStatusLabel,
   type SyncHistoryRawRow,
 } from "@/lib/admin-sync-history-glom";
 
@@ -551,18 +552,35 @@ export default function AdminSyncHistoryPanel({
                                         {formatRunDuration(run.durationMs)}
                                       </td>
                                       <td className="px-4 py-2.5 align-top min-w-[10rem]">
-                                        <p
-                                          className={`font-mono text-[10px] tracking-[0.1em] uppercase ${
-                                            run.ok ? "text-sage" : "text-coral"
-                                          }`}
-                                        >
-                                          {run.ok ? "OK" : "Failed"}
-                                        </p>
-                                        {run.error ? (
-                                          <p className="mt-0.5 font-mono text-[10px] leading-snug text-coral break-words whitespace-pre-line">
-                                            {run.error}
-                                          </p>
-                                        ) : null}
+                                        {(() => {
+                                          const status = syncHistoryStatusLabel(run);
+                                          return (
+                                            <>
+                                              <p
+                                                className={`font-mono text-[10px] tracking-[0.1em] uppercase ${
+                                                  status === "Failed"
+                                                    ? "text-coral"
+                                                    : status === "Skipped"
+                                                      ? "text-charcoal/55"
+                                                      : "text-sage"
+                                                }`}
+                                              >
+                                                {status}
+                                              </p>
+                                              {run.error ? (
+                                                <p
+                                                  className={`mt-0.5 font-mono text-[10px] leading-snug break-words whitespace-pre-line ${
+                                                    status === "Failed"
+                                                      ? "text-coral"
+                                                      : "text-charcoal/50"
+                                                  }`}
+                                                >
+                                                  {run.error}
+                                                </p>
+                                              ) : null}
+                                            </>
+                                          );
+                                        })()}
                                       </td>
                                     </tr>
                                   ))

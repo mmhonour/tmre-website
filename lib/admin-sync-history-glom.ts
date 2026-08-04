@@ -69,7 +69,38 @@ export function normalizeSyncType(bucket: string | null | undefined): string {
 /** Synthetic all-town audit rows (queue ack, worker start) — keep OK detail text. */
 function isSyntheticAuditTown(town: string | null | undefined): boolean {
   const t = (town ?? '').trim().toLowerCase()
-  return t === '(all)' || t === '(cron)'
+  return t === '(all)' || t === '(cron)' || t === '(watchdog)'
+}
+
+/**
+ * Intentional Configure / scheduler skips (not RETS failures). Older rows were
+ * written with ok=false; treat the message as Skipped in History either way.
+ */
+export function isSyncHistorySkipMessage(
+  error: string | null | undefined,
+): boolean {
+  const e = (error ?? '').trim().toLowerCase()
+  if (!e) return false
+  return (
+    e.includes('netlify cron ignored') ||
+    e.includes('netlify watchdog ignored') ||
+    e.includes('scheduler is eventbridge') ||
+    e.includes('paused by admin') ||
+    e.includes('not due yet') ||
+    e.includes('deferred —') ||
+    e.includes('prior queue still waiting') ||
+    e === 'skipped' ||
+    e.startsWith('skipped')
+  )
+}
+
+/** Status chip for Sync History: OK | Skipped | Failed. */
+export function syncHistoryStatusLabel(run: {
+  ok: boolean
+  error: string | null
+}): 'OK' | 'Skipped' | 'Failed' {
+  if (isSyncHistorySkipMessage(run.error)) return 'Skipped'
+  return run.ok ? 'OK' : 'Failed'
 }
 
 /** "Westport (12), Norwalk (8)". */
@@ -211,13 +242,23 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
         }, [])
         .sort((a, b) => a.town.localeCompare(b.town))
 
-      const ok = rows.every((r) => r.ok)
-      const errors = rows
-        .filter((r) => !r.ok && r.error)
+      // Intentional skips (EventBridge owns Netlify cron, not-due, paused, …)
+      // may have been stored with ok=false — treat them as non-failures for
+      // History Status / Failed filter noise.
+      const effectiveOk = rows.every(
+        (r) => r.ok || isSyncHistorySkipMessage(r.error),
+      )
+      const failErrors = rows
+        .filter((r) => !r.ok && !isSyncHistorySkipMessage(r.error) && r.error)
         .map((r) => `${r.town ?? '?'}: ${r.error}`)
-      // Queue/worker audits store the human note in `error` even when ok=true.
-      const okDetails = rows
-        .filter((r) => r.ok && r.error && isSyntheticAuditTown(r.town))
+      // Queue/worker/cron audits store the human note in `error` even when ok.
+      const noteDetails = rows
+        .filter(
+          (r) =>
+            r.error &&
+            isSyntheticAuditTown(r.town) &&
+            (r.ok || isSyncHistorySkipMessage(r.error)),
+        )
         .map((r) => r.error!.trim())
         .filter(Boolean)
       const listingsCount = towns.reduce((sum, t) => sum + t.count, 0)
@@ -234,12 +275,12 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
         bucket,
         townsLabel: formatTownCountsGlom(towns),
         listingsCount,
-        ok,
+        ok: effectiveOk,
         error:
-          errors.length > 0
-            ? errors.join('\n')
-            : okDetails.length > 0
-              ? [...new Set(okDetails)].join('\n')
+          failErrors.length > 0
+            ? failErrors.join('\n')
+            : noteDetails.length > 0
+              ? [...new Set(noteDetails)].join('\n')
               : null,
         durationMs:
           Number.isFinite(startedMs) && Number.isFinite(finishedMs) && finishedMs >= startedMs

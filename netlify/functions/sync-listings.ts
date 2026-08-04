@@ -72,9 +72,10 @@ export default async function handler() {
     {
       const owned = await thinCronSkipIfEventBridgeOwns('incremental')
       if (owned) {
+        // ok:true — intentional Configure skip, not a failed pull (History ≠ Failed).
         await recordIncrementalCronTick({
           startedAt,
-          ok: false,
+          ok: true,
           skipped: true,
           error: 'scheduler is EventBridge — Netlify cron ignored',
         })
@@ -85,13 +86,13 @@ export default async function handler() {
     if (await isScheduledSyncJobPausedFresh('incremental')) {
       await recordIncrementalCronTick({
         startedAt,
-        ok: false,
+        ok: true,
         skipped: true,
         error: 'incremental scheduled sync paused by admin',
       })
       return new Response(
         JSON.stringify({
-          ok: false,
+          ok: true,
           mode: 'scheduled-queue',
           skipped: true,
           reason: 'incremental scheduled sync paused by admin',
@@ -103,7 +104,7 @@ export default async function handler() {
     if (shouldDeferScheduledJob('incremental')) {
       await recordIncrementalCronTick({
         startedAt,
-        ok: false,
+        ok: true,
         skipped: true,
         error: 'deferred — Admin Next override is still in the future',
       })
@@ -118,7 +119,7 @@ export default async function handler() {
       }
       return new Response(
         JSON.stringify({
-          ok: false,
+          ok: true,
           mode: 'scheduled-queue',
           skipped: true,
           reason: 'Admin Next override — not due yet',
@@ -130,13 +131,13 @@ export default async function handler() {
     if (shouldSkipScheduledJobNotDue('incremental')) {
       await recordIncrementalCronTick({
         startedAt,
-        ok: false,
+        ok: true,
         skipped: true,
         error: 'not due yet — Configure frequency / start time',
       })
       return new Response(
         JSON.stringify({
-          ok: false,
+          ok: true,
           mode: 'scheduled-queue',
           skipped: true,
           reason: 'not due yet — Configure frequency / start time',

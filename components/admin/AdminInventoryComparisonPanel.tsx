@@ -25,10 +25,29 @@ type TableActivity = {
 type TableSample = {
   table: string;
   timestampColumn: string | null;
+  orderBy?: {
+    column: string;
+    direction: "desc";
+    source: "preferred" | "timestamp" | "identity";
+  } | null;
   columns: string[];
   rows: Record<string, unknown>[];
   limit: number;
 };
+
+function sampleOrderLabel(sample: TableSample): string {
+  const col = sample.orderBy?.column ?? sample.timestampColumn;
+  if (!col) return " · unordered (no timestamp or identity column)";
+  const via =
+    sample.orderBy?.source === "identity"
+      ? "identity"
+      : sample.orderBy?.source === "timestamp"
+        ? "timestamp"
+        : null;
+  return via
+    ? ` · newest by ${col} DESC (${via})`
+    : ` · newest by ${col} DESC`;
+}
 
 function rowStatus(current: number, ref: number | undefined): RowStatus {
   if (ref === undefined) return "no-snapshot";
@@ -547,9 +566,7 @@ export default function AdminInventoryComparisonPanel({
                                     <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
                                       {sample.rows.length.toLocaleString()} row
                                       {sample.rows.length === 1 ? "" : "s"}
-                                      {sample.timestampColumn
-                                        ? ` · newest by ${sample.timestampColumn}`
-                                        : " · unordered (no timestamp column)"}
+                                      {sampleOrderLabel(sample)}
                                     </p>
                                     <div className="max-h-[28rem] overflow-auto rounded-lg border border-charcoal/[0.08] bg-white">
                                       <table className="w-full border-collapse text-left min-w-max">

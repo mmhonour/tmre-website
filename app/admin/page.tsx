@@ -152,6 +152,7 @@ import { describeRunningSqliteDatabases } from "@/lib/sqlite-schema-diagram";
 import { describeStartupProcess } from "@/lib/startup-process";
 import { readAdminSyncPanelStatus } from "@/lib/admin-sync-actions";
 import { collectAdminDatabaseSyncStats } from "@/lib/sqlite-sync-stats";
+import { readAllTableActivity } from "@/lib/db/inventory-table-activity";
 
 export const dynamic = "force-dynamic";
 
@@ -348,6 +349,11 @@ export default async function AdminPage() {
     "database-sync-stats",
     () => collectAdminDatabaseSyncStats(),
     [],
+  );
+  const inventoryTableActivity = await safe(
+    "inventory-table-activity",
+    () => readAllTableActivity(),
+    {},
   );
   const syncRunHistory = await safe(
     "sync-run-history",
@@ -739,7 +745,10 @@ export default async function AdminPage() {
           <AdminInventoryComparisonPanel
             initialSnapshot={inventorySnapshot}
           />
-          <AdminDatabaseInventoryPanel initial={databaseStats} />
+          <AdminDatabaseInventoryPanel
+            initial={databaseStats}
+            initialActivity={inventoryTableActivity}
+          />
         </>
       }
       townCounts={townCountsPanel}
