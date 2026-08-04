@@ -32,14 +32,21 @@ import {
 } from "@/lib/sync-next-override-shared";
 import {
   SYNC_SCHEDULE_FREQUENCIES,
+  SYNC_SCHEDULE_WEEKDAYS,
   defaultSyncScheduleConfig,
   frequencyIntervalMs,
   frequencyLabel,
   orderNumberByRow,
+  resolveWeekdayEt,
   syncAllClientStepsFromConfig,
   type SyncScheduleConfig,
   type SyncScheduleFrequencyId,
+  type SyncScheduleWeekdayEt,
 } from "@/lib/sync-schedule-config-shared";
+import {
+  TMRE_SYNC_SCHEDULE_CHANGED,
+  dispatchSyncScheduleChanged,
+} from "@/lib/admin-schedule-events";
 import Link from "next/link";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import {
@@ -1234,16 +1241,9 @@ function resolveSyncRowVisualStatus(options: {
   // action of its own so it should never turn green regardless of its timestamp.
   if (row.id === "latest-mls") return "idle";
 
-  // Successful End → green when still on schedule. Alert when Next is past *or*
-  // End is older than Configure cadence (daily Next can stay future for hours
-  // while End is days stale — that must not stay sage).
+  // Successful End → green. Missed cadence is called out in Status text only —
+  // painting every overdue row pink made the Dashboard unreadable.
   if (timing.finished) {
-    if (
-      isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
-      isFinishPastCadence(timing.finished, nextRunAt, jobFrequency, nowMs)
-    ) {
-      return "alert";
-    }
     return "ok";
   }
 
@@ -1656,6 +1656,7 @@ export default function AdminSyncTable({
       body:
         | { jobId: ScheduledSyncJobId; frequency: SyncScheduleFrequencyId }
         | { jobId: ScheduledSyncJobId; startTimeEt: string }
+        | { jobId: ScheduledSyncJobId; weekdayEt: SyncScheduleWeekdayEt }
         | { moveJobId: ScheduledSyncJobId; direction: "up" | "down" },
     ) => {
       const savingKey =
@@ -1705,6 +1706,7 @@ export default function AdminSyncTable({
                 nextRuns: payload.nextRuns,
               },
         );
+        dispatchSyncScheduleChanged("sync-dashboard");
       } catch (err) {
         console.warn("[admin sync-schedule]", err);
       } finally {
@@ -1713,6 +1715,37 @@ export default function AdminSyncTable({
     },
     [],
   );
+
+  useEffect(() => {
+    const onScheduleChanged = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ source?: string }>).detail;
+      if (detail?.source === "sync-dashboard") return;
+      void fetch("/api/admin/sync-schedule", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then(
+          (payload: {
+            scheduleConfig?: SyncScheduleConfig;
+            nextRuns?: PanelStatus["nextRuns"];
+          } | null) => {
+            if (!payload?.scheduleConfig) return;
+            setStatus((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    scheduleConfig: payload.scheduleConfig,
+                    ...(payload.nextRuns ? { nextRuns: payload.nextRuns } : {}),
+                  }
+                : prev,
+            );
+          },
+        )
+        .catch(() => {});
+    };
+    window.addEventListener(TMRE_SYNC_SCHEDULE_CHANGED, onScheduleChanged);
+    return () => {
+      window.removeEventListener(TMRE_SYNC_SCHEDULE_CHANGED, onScheduleChanged);
+    };
+  }, []);
 
   const patchNextOverride = useCallback(
     async (
@@ -2573,9 +2606,9 @@ export default function AdminSyncTable({
               {isConfigure ? (
                 <th
                   className={TH}
-                  title="Time of day in America/New_York when this job should run (anchor for intervals)"
+                  title="Weekly send day + time of day in America/New_York (day applies when Frequency is Weekly)"
                 >
-                  Start time
+                  Day / Start
                 </th>
               ) : null}
               {isConfigure ? (
@@ -2776,9 +2809,13 @@ export default function AdminSyncTable({
                   const age =
                     formatAgeAgo(timing.finished, nowMs) ??
                     formatDateShort(timing.finished);
+                  // Keep prior detail when short; don't bury it under "overdue".
+                  if (prior && prior.length <= 48) {
+                    return `${prior} · overdue (${age})`;
+                  }
                   return prior
-                    ? `Last refresh ${age} — overdue. Prior: ${prior}`
-                    : `Last refresh ${age} — overdue (expected run missed)`;
+                    ? `Overdue — last End ${age}`
+                    : `Overdue — last End ${age} (expected run missed)`;
                 }
                 return prior;
               })();
@@ -2907,6 +2944,9 @@ export default function AdminSyncTable({
                     <td className={cellPad}>
                       {row.id === "incremental" ? (
                         <div className="flex flex-col gap-px">
+                          <span className="font-mono text-[7px] tracking-[0.08em] uppercase text-charcoal/40 leading-none">
+                            Next Sync scope
+                          </span>
                           <label className="flex flex-col gap-px">
                             <span className="font-mono text-[7px] tracking-[0.1em] uppercase text-charcoal/45 leading-none">
                               Towns
@@ -3021,19 +3061,43 @@ export default function AdminSyncTable({
                   {isConfigure ? (
                     <td className={TD_EXPAND}>
                       {jobSchedule && pauseJob ? (
-                        <input
-                          type="time"
-                          className="w-full max-w-[8rem] rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] tabular-nums text-navy disabled:opacity-40"
-                          value={jobSchedule.startTimeEt}
-                          disabled={scheduleSavingJob === pauseJob}
-                          aria-label={`Start time (ET) for ${row.label}`}
-                          onChange={(e) =>
-                            void patchScheduleConfig({
-                              jobId: pauseJob,
-                              startTimeEt: e.target.value,
-                            })
-                          }
-                        />
+                        <div className="flex flex-col gap-1 min-w-0">
+                          {jobSchedule.frequency === "weekly" ? (
+                            <select
+                              className="w-full max-w-[8.5rem] rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] text-navy disabled:opacity-40"
+                              value={resolveWeekdayEt(jobSchedule)}
+                              disabled={scheduleSavingJob === pauseJob}
+                              aria-label={`Send day (ET) for ${row.label}`}
+                              onChange={(e) =>
+                                void patchScheduleConfig({
+                                  jobId: pauseJob,
+                                  weekdayEt: Number(
+                                    e.target.value,
+                                  ) as SyncScheduleWeekdayEt,
+                                })
+                              }
+                            >
+                              {SYNC_SCHEDULE_WEEKDAYS.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.short}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
+                          <input
+                            type="time"
+                            className="w-full max-w-[8rem] rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] tabular-nums text-navy disabled:opacity-40"
+                            value={jobSchedule.startTimeEt}
+                            disabled={scheduleSavingJob === pauseJob}
+                            aria-label={`Start time (ET) for ${row.label}`}
+                            onChange={(e) =>
+                              void patchScheduleConfig({
+                                jobId: pauseJob,
+                                startTimeEt: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
                       ) : (
                         <span className="font-mono text-[10px] tracking-wide text-charcoal/30">
                           —
@@ -3092,7 +3156,9 @@ export default function AdminSyncTable({
                               <p className="font-mono text-[8px] tracking-wide text-charcoal/40 leading-snug">
                                 {freq}
                                 {jobSchedule
-                                  ? ` · ${jobSchedule.startTimeEt} ET`
+                                  ? jobSchedule.frequency === "weekly"
+                                    ? ` · ${SYNC_SCHEDULE_WEEKDAYS[resolveWeekdayEt(jobSchedule)]?.short ?? "Mon"} ${jobSchedule.startTimeEt} ET`
+                                    : ` · ${jobSchedule.startTimeEt} ET`
                                   : null}
                               </p>
                             ) : null}

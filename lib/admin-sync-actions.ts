@@ -526,9 +526,13 @@ async function runAdminSyncActionImpl(
           await setSyncMetaDurable('last_incremental_sync_started', startedAt)
           await stampIncrementalSyncLive({
             phase: 'queued',
-            town: scopedTowns.length === 1 ? scopedTowns[0] : null,
+            town: scopedTowns.length === 1 ? scopedTowns[0]! : null,
             townIndex: null,
+            townCount:
+              scopedTowns.length > 0 ? scopedTowns.length : TMRE_TOWNS.length,
             updatedAt: startedAt,
+            ...(scopedTowns.length > 0 ? { scopeTowns: [...scopedTowns] } : {}),
+            statusScope,
           })
           await stampIncrementalQueuedStepLog(
             'admin-queue',

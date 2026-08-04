@@ -20,10 +20,14 @@ const INTERACTIVE_HINT_MS = 10_000;
 const AUTO_HIDE_IDLE_MS = 10_000;
 /** Horizontal finger swipe distance to change mobile carousel slide. */
 const SWIPE_MIN_PX = 48;
-/** Desktop 3-up window: slow L↔R slide (transform only). */
+/** Desktop 3-up window: slow L→R slide (transform only). */
 const DESKTOP_SLIDE_MS = 1_400;
 /** Tailwind gap-4 between desktop slides. */
 const DESKTOP_GAP_PX = 16;
+/** How many mini-graphs show at once on desktop before the strip carousels. */
+const DESKTOP_VISIBLE = 3;
+/** Extra leading clones so the wrap seam can slide without a jump. */
+const DESKTOP_CLONE_COUNT = DESKTOP_VISIBLE;
 
 export type IntelligenceMiniGraphSlot = {
   key: string;
@@ -57,12 +61,11 @@ export function useMiniGraphsCarousel(): MiniGraphsCarouselApi | null {
   return useContext(MiniGraphsCarouselContext);
 }
 
-/** How many mini-graphs show at once on desktop before the strip carousels. */
-const DESKTOP_VISIBLE = 3;
-
 /**
- * Desktop: up to 3 charts in a row; when there are more, rotate the 3-wide
- * window continuously (…→(1,2,3)→(4,1,2)→(3,4,1)→…) — same pause / dwell as mobile.
+ * Desktop: up to 3 charts in a row; when there are more, slide the 3-wide
+ * window continuously L→R ((1,2,3)→(2,3,4)→(3,4,1)→…) via transform — same
+ * pause / dwell as mobile. Clones at the end of the track keep the wrap seam
+ * animated (no remount / fade).
  * Mobile: one chart at a time until paused.
  * Hide toggle often lives outside (left of board).
  */
@@ -141,6 +144,12 @@ export default function IntelligenceMiniGraphsStrip({
       : false,
   );
   const [activeIndex, setActiveIndex] = useState(0);
+  /**
+   * Desktop track position on an extended strip (items + leading clones).
+   * Advances 0 → n, then snaps back to 0 without animation at the seam.
+   */
+  const [desktopSlideIndex, setDesktopSlideIndex] = useState(0);
+  const [desktopSlideNoAnim, setDesktopSlideNoAnim] = useState(false);
   const [paused, setPaused] = useState(false);
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   /** Bumped on real user interaction so the idle auto-hide timer restarts. */
@@ -151,6 +160,8 @@ export default function IntelligenceMiniGraphsStrip({
   useEffect(() => {
     setPaused(false);
     setActiveIndex(0);
+    setDesktopSlideIndex(0);
+    setDesktopSlideNoAnim(false);
   }, []);
 
   const bumpActivity = useCallback(() => {
@@ -176,11 +187,17 @@ export default function IntelligenceMiniGraphsStrip({
     !isNarrow && items.length > DESKTOP_VISIBLE;
   const isCarousel =
     (isNarrow && items.length > 1) || desktopCarousel;
+  const itemCountForSlide = items.length;
 
   const safeActiveIndex = useMemo(() => {
     if (items.length === 0) return 0;
+    if (desktopCarousel) {
+      return (
+        ((desktopSlideIndex % items.length) + items.length) % items.length
+      );
+    }
     return ((activeIndex % items.length) + items.length) % items.length;
-  }, [activeIndex, items.length]);
+  }, [activeIndex, desktopCarousel, desktopSlideIndex, items.length]);
 
   const activeKey =
     isCarousel && items.length > 0
@@ -199,6 +216,42 @@ export default function IntelligenceMiniGraphsStrip({
     },
     [isCarousel, isNarrow, items, safeActiveIndex],
   );
+
+  // Keep desktop track index in range when the slot count changes.
+  useEffect(() => {
+    if (!desktopCarousel || itemCountForSlide === 0) return;
+    setDesktopSlideIndex((prev) => {
+      if (prev >= 0 && prev <= itemCountForSlide) return prev;
+      return ((prev % itemCountForSlide) + itemCountForSlide) % itemCountForSlide;
+    });
+  }, [desktopCarousel, itemCountForSlide]);
+
+  // After sliding into the cloned tail, snap back to the real head with no anim.
+  useEffect(() => {
+    if (!desktopSlideNoAnim) return;
+    let inner = 0;
+    const outer = window.requestAnimationFrame(() => {
+      inner = window.requestAnimationFrame(() => setDesktopSlideNoAnim(false));
+    });
+    return () => {
+      window.cancelAnimationFrame(outer);
+      window.cancelAnimationFrame(inner);
+    };
+  }, [desktopSlideNoAnim]);
+
+  // prefers-reduced-motion skips transform transitions — still seam-snap.
+  useEffect(() => {
+    if (!desktopCarousel || itemCountForSlide === 0) return;
+    if (desktopSlideIndex < itemCountForSlide) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    setDesktopSlideNoAnim(true);
+    setDesktopSlideIndex(desktopSlideIndex % itemCountForSlide);
+  }, [desktopCarousel, desktopSlideIndex, itemCountForSlide]);
 
   const carouselApi = useMemo<MiniGraphsCarouselApi>(
     () => ({
@@ -274,6 +327,23 @@ export default function IntelligenceMiniGraphsStrip({
     return max;
   })();
 
+  const goDesktopSlide = useCallback(
+    (nextLogical: number, { animate }: { animate: boolean }) => {
+      if (itemCount === 0) return;
+      const logical =
+        ((nextLogical % itemCount) + itemCount) % itemCount;
+      if (!animate) {
+        setDesktopSlideNoAnim(true);
+        setDesktopSlideIndex(logical);
+        return;
+      }
+      const cur = desktopSlideIndex % itemCount;
+      if (logical === cur && desktopSlideIndex < itemCount) return;
+      setDesktopSlideIndex(logical);
+    },
+    [desktopSlideIndex, itemCount],
+  );
+
   const onCarouselTouchStart = useCallback(
     (e: ReactTouchEvent) => {
       if (!isNarrow || itemCount <= 1) return;
@@ -311,8 +381,8 @@ export default function IntelligenceMiniGraphsStrip({
     const dwellMs = ROTATE_MS * activeDwellSteps;
     const id = window.setTimeout(() => {
       if (desktopCarousel) {
-        // Continuous wrap: (1,2,3) → (4,1,2) → (3,4,1) → …
-        setActiveIndex((prev) => (prev - 1 + itemCount) % itemCount);
+        // Continuous L→R: (1,2,3) → (2,3,4) → (3,4,1) → … via extended track.
+        setDesktopSlideIndex((prev) => prev + 1);
         return;
       }
       setActiveIndex((prev) => (prev + 1) % itemCount);
@@ -327,12 +397,13 @@ export default function IntelligenceMiniGraphsStrip({
     desktopCarousel,
     itemCount,
     activeIndex,
+    desktopSlideIndex,
     activeDwellSteps,
   ]);
 
-  // Mobile: "interactive graph" hint beside the carousel controls.
+  // One "INTERACTIVE GRAPHS" cue (mobile beside controls; desktop once, right-aligned).
   useEffect(() => {
-    if (!prefReady || hidden || !isNarrow || items.length === 0) {
+    if (!prefReady || hidden || items.length === 0) {
       setShowInteractiveHint(false);
       return;
     }
@@ -342,7 +413,7 @@ export default function IntelligenceMiniGraphsStrip({
       INTERACTIVE_HINT_MS,
     );
     return () => window.clearTimeout(id);
-  }, [prefReady, hidden, isNarrow, items.length]);
+  }, [prefReady, hidden, items.length]);
 
   // Auto-hide after idle — skipped when user explicitly clicked Show graphs.
   useEffect(() => {
@@ -394,7 +465,7 @@ export default function IntelligenceMiniGraphsStrip({
     </button>
   );
 
-  const interactiveHint = (
+  const interactiveHintMobile = (
     <p
       className={`pointer-events-none shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out ${
         showInteractiveHint ? "animate-interactive-graph-hint" : "opacity-0"
@@ -405,9 +476,30 @@ export default function IntelligenceMiniGraphsStrip({
     </p>
   );
 
-  const desktopWindowEnd = desktopCarousel
-    ? Math.min(renderItems.length, safeActiveIndex + DESKTOP_VISIBLE)
+  /** Desktop: single cue, bottom-aligned with count row, right edge of listings column. */
+  const interactiveHintDesktop = (
+    <p
+      className={`pointer-events-none shrink-0 self-end font-mono text-[9px] leading-none tracking-[0.12em] uppercase text-navy/55 transition-opacity duration-700 ease-in-out ${
+        showInteractiveHint ? "animate-interactive-graph-hint" : "opacity-0"
+      }`}
+      aria-hidden={!showInteractiveHint}
+    >
+      Interactive graphs
+    </p>
+  );
+
+  const desktopWindowEndExclusive = desktopCarousel
+    ? safeActiveIndex + DESKTOP_VISIBLE
     : 0;
+  const desktopRangeLabel = (() => {
+    if (!desktopCarousel || renderItems.length === 0) return "";
+    const start = safeActiveIndex + 1;
+    if (desktopWindowEndExclusive <= renderItems.length) {
+      return `${start}–${desktopWindowEndExclusive}`;
+    }
+    const wrapEnd = desktopWindowEndExclusive - renderItems.length;
+    return `${start}–${renderItems.length} · 1–${wrapEnd}`;
+  })();
 
   const carouselCount =
     isCarousel && renderItems.length > 1 ? (
@@ -416,7 +508,7 @@ export default function IntelligenceMiniGraphsStrip({
         aria-live="polite"
       >
         {desktopCarousel
-          ? `${safeActiveIndex + 1}–${desktopWindowEnd} of ${renderItems.length}`
+          ? `${desktopRangeLabel} of ${renderItems.length}`
           : `${safeActiveIndex + 1} of ${renderItems.length}`}
         {desktopCarousel ? ` · ${DESKTOP_VISIBLE} shown` : ""}
       </span>
@@ -433,7 +525,9 @@ export default function IntelligenceMiniGraphsStrip({
         >
           {renderItems.map((item, i) => {
             const selected = desktopCarousel
-              ? i >= safeActiveIndex && i < safeActiveIndex + DESKTOP_VISIBLE
+              ? Array.from({ length: DESKTOP_VISIBLE }, (_, o) =>
+                  (safeActiveIndex + o) % renderItems.length,
+                ).includes(i)
               : i === safeActiveIndex;
             return (
               <button
@@ -449,24 +543,34 @@ export default function IntelligenceMiniGraphsStrip({
                 }`}
                 onClick={() => {
                   bumpActivity();
-                  setActiveIndex(i);
                   setPaused(true);
+                  if (desktopCarousel) {
+                    goDesktopSlide(i, { animate: true });
+                  } else {
+                    setActiveIndex(i);
+                  }
                 }}
               />
             );
           })}
         </div>
         {pauseToggle}
-        {isNarrow ? interactiveHint : null}
+        {isNarrow ? interactiveHintMobile : null}
       </div>
+      {!isNarrow ? (
+        <div className="ml-auto shrink-0">{interactiveHintDesktop}</div>
+      ) : null}
       {isNarrow && carouselTrailing ? (
         <div className="ml-auto shrink-0">{carouselTrailing}</div>
       ) : null}
     </div>
-  ) : isNarrow && carouselTrailing ? (
+  ) : !isNarrow || carouselTrailing ? (
     <div className="mt-1.5 flex items-center gap-2">
       <div className="min-w-0 flex-1" />
-      <div className="ml-auto shrink-0">{carouselTrailing}</div>
+      {!isNarrow ? interactiveHintDesktop : null}
+      {isNarrow && carouselTrailing ? (
+        <div className="ml-auto shrink-0">{carouselTrailing}</div>
+      ) : null}
     </div>
   ) : null;
 
@@ -523,30 +627,51 @@ export default function IntelligenceMiniGraphsStrip({
                 isNarrow && renderItems.length > 1
                   ? "Mini graphs — swipe left or right to change"
                   : desktopCarousel
-                    ? "Mini graphs — three visible; rotates continuously"
+                    ? "Mini graphs — three visible; slides continuously left to right"
                     : undefined
               }
             >
               {desktopCarousel ? (
                 <div
-                  className="flex flex-row items-start gap-4"
-                  key={safeActiveIndex}
+                  className={`flex flex-row items-start gap-4 will-change-transform ease-in-out motion-reduce:transition-none ${
+                    desktopSlideNoAnim
+                      ? "transition-none"
+                      : "transition-transform"
+                  }`}
+                  style={{
+                    // 100cqi = strip width; slot = one card + gap.
+                    transform: `translateX(calc(-${desktopSlideIndex} * (100cqi + ${DESKTOP_GAP_PX}px) / ${DESKTOP_VISIBLE}))`,
+                    transitionDuration: desktopSlideNoAnim
+                      ? "0ms"
+                      : `${DESKTOP_SLIDE_MS}ms`,
+                  }}
+                  onTransitionEnd={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.propertyName !== "transform") return;
+                    if (itemCount === 0) return;
+                    if (desktopSlideIndex < itemCount) return;
+                    // Landed on clones — snap to the equivalent real index.
+                    setDesktopSlideNoAnim(true);
+                    setDesktopSlideIndex(desktopSlideIndex % itemCount);
+                  }}
                 >
-                  {Array.from({ length: DESKTOP_VISIBLE }, (_, o) => {
-                    const idx =
-                      (safeActiveIndex + o) % Math.max(renderItems.length, 1);
-                    const item = renderItems[idx];
-                    if (!item) return null;
+                  {[
+                    ...renderItems,
+                    ...renderItems.slice(0, DESKTOP_CLONE_COUNT),
+                  ].map((item, i) => {
+                    const logical = i % Math.max(renderItems.length, 1);
+                    const visible =
+                      logical === safeActiveIndex ||
+                      Array.from({ length: DESKTOP_VISIBLE }, (_, o) =>
+                        (safeActiveIndex + o) % renderItems.length,
+                      ).includes(logical);
                     const cardW = `calc((100cqi - ${(DESKTOP_VISIBLE - 1) * DESKTOP_GAP_PX}px) / ${DESKTOP_VISIBLE})`;
                     return (
                       <div
-                        key={`${item.key}-${o}`}
-                        className="min-w-0 shrink-0 animate-fade-up motion-reduce:animate-none"
-                        style={{
-                          width: cardW,
-                          flex: `0 0 ${cardW}`,
-                          animationDuration: `${DESKTOP_SLIDE_MS}ms`,
-                        }}
+                        key={`${item.key}-${i}`}
+                        className="min-w-0 shrink-0"
+                        style={{ width: cardW, flex: `0 0 ${cardW}` }}
+                        aria-hidden={!visible}
                       >
                         {item.node}
                       </div>

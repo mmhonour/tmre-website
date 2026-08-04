@@ -15,8 +15,10 @@ import {
   defaultSyncScheduleConfig,
   frequencyIntervalMs,
   parseStartTimeEt,
+  resolveWeekdayEt,
   type SyncJobScheduleConfig,
   type SyncScheduleConfig,
+  type SyncScheduleWeekdayEt,
 } from '@/lib/sync-schedule-config-shared'
 import { getSyncMeta } from '@/lib/db/sync-meta-store'
 
@@ -110,26 +112,40 @@ export function lastPastDailySlotEt(
   return candidate
 }
 
-/** Most recent Monday wall time in America/New_York that is on or before `before`. */
-export function lastPastMondaySlotEt(
+/** Most recent weekly wall time on `weekdayEt` in America/New_York on or before `before`. */
+export function lastPastWeekdaySlotEt(
+  weekdayEt: SyncScheduleWeekdayEt,
   hour: number,
   minute: number,
   before = new Date(),
 ): Date {
   const weekAgo = new Date(before.getTime() - 7 * 24 * 60 * 60 * 1000)
-  const nextSlot = nextMondayTimeEt(hour, minute, weekAgo)
+  const nextSlot = nextWeekdayTimeEt(weekdayEt, hour, minute, weekAgo)
   if (nextSlot.getTime() > before.getTime()) {
     return new Date(nextSlot.getTime() - 7 * 24 * 60 * 60 * 1000)
   }
   return nextSlot
 }
 
-/** Milliseconds until the next Monday HH:MM America/New_York (EST/EDT). */
-export function msUntilNextMondayTimeEt(
+/** @deprecated use lastPastWeekdaySlotEt(1, …) */
+export function lastPastMondaySlotEt(
+  hour: number,
+  minute: number,
+  before = new Date(),
+): Date {
+  return lastPastWeekdaySlotEt(1, hour, minute, before)
+}
+
+/**
+ * Milliseconds until the next `weekdayEt` HH:MM America/New_York (0=Sun … 6=Sat).
+ */
+export function msUntilNextWeekdayTimeEt(
+  weekdayEt: SyncScheduleWeekdayEt,
   hour: number,
   minute: number,
   from = new Date(),
 ): number {
+  const targetWeekday = ((weekdayEt % 7) + 7) % 7
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: ET,
     year: 'numeric',
@@ -163,18 +179,18 @@ export function msUntilNextMondayTimeEt(
   const dayOfWeek = weekdayIndex[weekday] ?? 0
   const etAsUtc = Date.UTC(y, m - 1, d, etHour, etMinute, etSecond)
 
-  let daysUntilMonday = (8 - dayOfWeek) % 7
-  if (dayOfWeek === 1) {
-    const mondaySlot = Date.UTC(y, m - 1, d, hour, minute, 0)
-    if (etAsUtc < mondaySlot) {
-      return Math.max(60_000, mondaySlot - etAsUtc)
+  let daysUntil = (targetWeekday - dayOfWeek + 7) % 7
+  if (dayOfWeek === targetWeekday) {
+    const todaySlot = Date.UTC(y, m - 1, d, hour, minute, 0)
+    if (etAsUtc < todaySlot) {
+      return Math.max(60_000, todaySlot - etAsUtc)
     }
-    daysUntilMonday = 7
-  } else if (daysUntilMonday === 0) {
-    daysUntilMonday = 7
+    daysUntil = 7
+  } else if (daysUntil === 0) {
+    daysUntil = 7
   }
 
-  const targetDate = new Date(Date.UTC(y, m - 1, d + daysUntilMonday, hour, minute, 0))
+  const targetDate = new Date(Date.UTC(y, m - 1, d + daysUntil, hour, minute, 0))
   const targetAsUtc = Date.UTC(
     targetDate.getUTCFullYear(),
     targetDate.getUTCMonth(),
@@ -187,12 +203,32 @@ export function msUntilNextMondayTimeEt(
   return Math.max(60_000, targetAsUtc - etAsUtc)
 }
 
+/** Milliseconds until the next Monday HH:MM America/New_York (EST/EDT). */
+export function msUntilNextMondayTimeEt(
+  hour: number,
+  minute: number,
+  from = new Date(),
+): number {
+  return msUntilNextWeekdayTimeEt(1, hour, minute, from)
+}
+
+export function nextWeekdayTimeEt(
+  weekdayEt: SyncScheduleWeekdayEt,
+  hour: number,
+  minute: number,
+  from = new Date(),
+): Date {
+  return new Date(
+    from.getTime() + msUntilNextWeekdayTimeEt(weekdayEt, hour, minute, from),
+  )
+}
+
 export function nextMondayTimeEt(
   hour: number,
   minute: number,
   from = new Date(),
 ): Date {
-  return new Date(from.getTime() + msUntilNextMondayTimeEt(hour, minute, from))
+  return nextWeekdayTimeEt(1, hour, minute, from)
 }
 
 /** Next Monday 5:00 AM America/New_York — weekly full MLS reload slot. */
@@ -223,16 +259,27 @@ export function isDailySyncOverdue(
   return lastMs < dueSlot.getTime()
 }
 
-export function isWeeklyMondaySyncOverdue(
+export function isWeeklyWeekdaySyncOverdue(
   lastFinishedIso: string | null | undefined,
+  weekdayEt: SyncScheduleWeekdayEt,
   hour: number,
   minute: number,
   now = new Date(),
 ): boolean {
   const lastMs = parseIsoMs(lastFinishedIso)
   if (lastMs == null) return false
-  const dueSlot = lastPastMondaySlotEt(hour, minute, now)
+  const dueSlot = lastPastWeekdaySlotEt(weekdayEt, hour, minute, now)
   return lastMs < dueSlot.getTime()
+}
+
+/** @deprecated use isWeeklyWeekdaySyncOverdue(…, 1, …) */
+export function isWeeklyMondaySyncOverdue(
+  lastFinishedIso: string | null | undefined,
+  hour: number,
+  minute: number,
+  now = new Date(),
+): boolean {
+  return isWeeklyWeekdaySyncOverdue(lastFinishedIso, 1, hour, minute, now)
 }
 
 function latestIntervalMs(): number {
@@ -323,7 +370,12 @@ export function computeNaturalNextRunIso(
     return nextDailyTimeEt(hour, minute, now).toISOString()
   }
   if (job.frequency === 'weekly') {
-    return nextMondayTimeEt(hour, minute, now).toISOString()
+    return nextWeekdayTimeEt(
+      resolveWeekdayEt(job),
+      hour,
+      minute,
+      now,
+    ).toISOString()
   }
   if (job.frequency === 'event') {
     // Event-day jobs (FOMC / CPI) compute next run from calendars — callers
@@ -352,7 +404,13 @@ export function isJobDueBySchedule(
   }
   if (job.frequency === 'weekly') {
     if (lastMs == null) return true
-    return isWeeklyMondaySyncOverdue(lastFinishedIso, hour, minute, now)
+    return isWeeklyWeekdaySyncOverdue(
+      lastFinishedIso,
+      resolveWeekdayEt(job),
+      hour,
+      minute,
+      now,
+    )
   }
   if (job.frequency === 'event') {
     // Handled by isScheduledJobDue → fed-event-sync-schedule.

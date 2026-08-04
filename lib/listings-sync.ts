@@ -391,6 +391,11 @@ export async function syncIncrementalListings(
 
   beginListingsRefresh('incremental')
 
+  const liveStatusScope =
+    statusScope === 'active' || statusScope === 'closed' ? statusScope : 'all'
+  const liveScopeTowns =
+    townsToRun.length < TMRE_TOWNS.length ? [...townsToRun] : undefined
+
   try {
     for (let i = 0; i < townsToRun.length; i++) {
       const town = townsToRun[i]
@@ -399,6 +404,9 @@ export async function syncIncrementalListings(
         phase: 'town',
         town,
         townIndex: i + 1,
+        townCount: townsToRun.length,
+        ...(liveScopeTowns ? { scopeTowns: liveScopeTowns } : {}),
+        statusScope: liveStatusScope,
       })
       await appendIncrementalStep(
         'town-start',
@@ -434,6 +442,9 @@ export async function syncIncrementalListings(
         phase: 'post-hooks',
         town: null,
         townIndex: null,
+        townCount: townsToRun.length,
+        ...(liveScopeTowns ? { scopeTowns: liveScopeTowns } : {}),
+        statusScope: liveStatusScope,
       })
       await appendIncrementalStep('post-hooks-start')
       // Town feeds for /latest — bounded hero thumbnails warm chained inside rebuild.

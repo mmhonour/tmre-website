@@ -212,6 +212,9 @@ export default async function handler() {
               town: null,
               townIndex: null,
               updatedAt: startedAt,
+              // Explicit clear — do not inherit a prior Admin Ridgefield queue.
+              scopeTowns: undefined,
+              statusScope: 'all',
             })
           } catch (err) {
             console.warn('[netlify/sync-listings] live progress stamp failed', err)

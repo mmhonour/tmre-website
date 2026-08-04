@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  TMRE_SYNC_SCHEDULE_CHANGED,
+  dispatchSyncScheduleChanged,
+} from "@/lib/admin-schedule-events";
 import {
   DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  defaultMarketDigestSubjectTemplate,
   type MarketDigestConfig,
 } from "@/lib/market-digest-shared";
 import { adminSectionHref } from "@/lib/admin-nav";
+import {
+  SYNC_SCHEDULE_WEEKDAYS,
+  weekdayEtLabel,
+  type SyncScheduleWeekdayEt,
+} from "@/lib/sync-schedule-config-shared";
 
 function isValidEmail(value: string): boolean {
   const trimmed = value.trim();
@@ -13,22 +23,40 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
-function previewSubject(template: string): string {
-  const sample = "Monday, August 3, 2026";
-  const base = template.trim() || DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE;
+function sampleDateForWeekday(weekdayEt: SyncScheduleWeekdayEt): string {
+  // Fixed sample week (Sun Aug 2 – Sat Aug 8 2026) so preview day matches selection.
+  const day = 2 + weekdayEt;
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2026, 7, day)));
+}
+
+function previewSubject(
+  template: string,
+  weekdayEt: SyncScheduleWeekdayEt,
+): string {
+  const sample = sampleDateForWeekday(weekdayEt);
+  const base =
+    template.trim() || defaultMarketDigestSubjectTemplate(weekdayEt);
   return base.replaceAll("{date}", sample);
 }
 
 /**
- * Monday morning months-supply / inventory email + Deal of the Week note.
- * Schedule / Run live on Admin → Syncs; this panel is content + test send.
+ * Weekly market brief content + schedule (day/time shared with Sync Dashboard
+ * via Postgres sync_schedule_config).
  */
 export default function AdminMarketDigestPanel({
   initial,
 }: {
   initial?: MarketDigestConfig;
 }) {
-  const [config, setConfig] = useState<MarketDigestConfig | null>(initial ?? null);
+  const [config, setConfig] = useState<MarketDigestConfig | null>(
+    initial ?? null,
+  );
   const [email, setEmail] = useState(initial?.email ?? "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [subjectTemplate, setSubjectTemplate] = useState(
@@ -37,35 +65,62 @@ export default function AdminMarketDigestPanel({
   const [includeSocialProfiles, setIncludeSocialProfiles] = useState(
     initial?.includeSocialProfiles ?? false,
   );
+  const [weekdayEt, setWeekdayEt] = useState<SyncScheduleWeekdayEt>(
+    initial?.weekdayEt ?? 1,
+  );
+  const [startTimeEt, setStartTimeEt] = useState(
+    initial?.startTimeEt ?? "08:00",
+  );
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const applyConfig = useCallback((body: MarketDigestConfig) => {
+    setConfig(body);
+    setEmail(body.email);
+    setEnabled(body.enabled);
+    setSubjectTemplate(body.subjectTemplate);
+    setIncludeSocialProfiles(body.includeSocialProfiles);
+    setWeekdayEt(body.weekdayEt);
+    setStartTimeEt(body.startTimeEt);
+  }, []);
+
+  const refreshFromServer = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/market-digest", { cache: "no-store" });
+      if (!res.ok) return;
+      const body = (await res.json()) as MarketDigestConfig;
+      applyConfig(body);
+    } catch {
+      /* ignore */
+    }
+  }, [applyConfig]);
+
   useEffect(() => {
     if (initial) return;
-    let cancelled = false;
-    fetch("/api/admin/market-digest", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body: MarketDigestConfig | null) => {
-        if (cancelled || !body) return;
-        setConfig(body);
-        setEmail(body.email);
-        setEnabled(body.enabled);
-        setSubjectTemplate(body.subjectTemplate);
-        setIncludeSocialProfiles(body.includeSocialProfiles);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
+    void refreshFromServer();
+  }, [initial, refreshFromServer]);
+
+  useEffect(() => {
+    const onScheduleChanged = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ source?: string }>).detail;
+      if (detail?.source === "market-digest") return;
+      void refreshFromServer();
     };
-  }, [initial]);
+    window.addEventListener(TMRE_SYNC_SCHEDULE_CHANGED, onScheduleChanged);
+    return () => {
+      window.removeEventListener(TMRE_SYNC_SCHEDULE_CHANGED, onScheduleChanged);
+    };
+  }, [refreshFromServer]);
 
   const dirty =
     config != null &&
     (config.email !== email.trim() ||
       config.enabled !== enabled ||
       config.subjectTemplate !== subjectTemplate.trim() ||
-      config.includeSocialProfiles !== includeSocialProfiles);
+      config.includeSocialProfiles !== includeSocialProfiles ||
+      config.weekdayEt !== weekdayEt ||
+      config.startTimeEt !== startTimeEt);
 
   const save = async () => {
     const trimmed = email.trim();
@@ -84,6 +139,8 @@ export default function AdminMarketDigestPanel({
           enabled,
           subjectTemplate: subjectTemplate.trim(),
           includeSocialProfiles,
+          weekdayEt,
+          startTimeEt,
         }),
       });
       const body = (await res.json()) as MarketDigestConfig & {
@@ -94,15 +151,13 @@ export default function AdminMarketDigestPanel({
         setMessage(body.error ?? "Save failed");
         return;
       }
-      setConfig(body);
-      setEmail(body.email);
-      setEnabled(body.enabled);
-      setSubjectTemplate(body.subjectTemplate);
-      setIncludeSocialProfiles(body.includeSocialProfiles);
+      applyConfig(body);
+      dispatchSyncScheduleChanged("market-digest");
+      const day = weekdayEtLabel(body.weekdayEt);
       setMessage(
         body.enabled
-          ? `Saved — Monday brief goes to ${body.email}`
-          : "Saved — Monday brief paused",
+          ? `Saved — ${day} brief goes to ${body.email} at ${body.startTimeEt} ET`
+          : `Saved — ${day} brief paused`,
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Save failed");
@@ -142,6 +197,8 @@ export default function AdminMarketDigestPanel({
                   body.subjectTemplate ?? prev.subjectTemplate,
                 includeSocialProfiles:
                   body.includeSocialProfiles ?? prev.includeSocialProfiles,
+                weekdayEt: body.weekdayEt ?? prev.weekdayEt,
+                startTimeEt: body.startTimeEt ?? prev.startTimeEt,
               }
             : (body as MarketDigestConfig),
         );
@@ -156,6 +213,29 @@ export default function AdminMarketDigestPanel({
     }
   };
 
+  const onWeekdayChange = (next: SyncScheduleWeekdayEt) => {
+    setWeekdayEt(next);
+    setSubjectTemplate((prev) => {
+      const from = weekdayEt;
+      const fromDefault = defaultMarketDigestSubjectTemplate(from);
+      const toDefault = defaultMarketDigestSubjectTemplate(next);
+      const trimmed = prev.trim();
+      if (
+        !trimmed ||
+        trimmed === fromDefault ||
+        trimmed === DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE
+      ) {
+        return toDefault;
+      }
+      const re =
+        /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)(\s+market brief\b)/i;
+      if (re.test(trimmed)) {
+        return trimmed.replace(re, `${weekdayEtLabel(next)}$2`);
+      }
+      return prev;
+    });
+  };
+
   return (
     <div
       id="admin-market-digest"
@@ -166,20 +246,53 @@ export default function AdminMarketDigestPanel({
           Monday market brief
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
-          Content settings for the weekly HTML brief (inventory / months-supply
-          bars, DOTW card). Schedule, pause, and Run are on{" "}
+          Weekly HTML brief (inventory / months-supply bars, DOTW card). Day and
+          start time are shared with{" "}
           <a
             href={adminSectionHref("admin-sync", "syncs")}
             className="text-navy underline-offset-2 hover:underline"
           >
-            Syncs → Dashboard
-          </a>
-          . Send test now does not advance the weekly watermark. Requires{" "}
+            Syncs → Configure
+          </a>{" "}
+          (Postgres <span className="font-mono text-[11px]">sync_schedule_config</span>
+          ). Pause / Run also live on Syncs. Send test now does not advance the
+          weekly watermark. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
         </p>
       </div>
       <div className="px-5 sm:px-6 py-4 space-y-4">
         <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
+              Send day (ET)
+            </span>
+            <select
+              value={weekdayEt}
+              onChange={(e) =>
+                onWeekdayChange(Number(e.target.value) as SyncScheduleWeekdayEt)
+              }
+              className="w-40 max-w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm text-navy focus:border-navy focus:outline-none"
+              aria-label="Weekly send day Eastern"
+            >
+              {SYNC_SCHEDULE_WEEKDAYS.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
+              Start time (ET)
+            </span>
+            <input
+              type="time"
+              value={startTimeEt}
+              onChange={(e) => setStartTimeEt(e.target.value)}
+              className="w-36 max-w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm tabular-nums text-navy focus:border-navy focus:outline-none"
+              aria-label="Weekly start time Eastern"
+            />
+          </label>
           <label className="flex flex-col gap-1">
             <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
               Digest email
@@ -230,13 +343,14 @@ export default function AdminMarketDigestPanel({
             type="text"
             value={subjectTemplate}
             onChange={(e) => setSubjectTemplate(e.target.value)}
-            placeholder={DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE}
+            placeholder={defaultMarketDigestSubjectTemplate(weekdayEt)}
             className="w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm text-navy focus:border-navy focus:outline-none"
           />
           <span className="font-mono text-[10px] text-charcoal/40">
-            Use {"{date}"} for the Eastern long date. Preview:{" "}
+            Use {"{date}"} for the Eastern long date. Changing send day updates
+            the day name in the default subject. Preview:{" "}
             <span className="text-charcoal/65">
-              {previewSubject(subjectTemplate)}
+              {previewSubject(subjectTemplate, weekdayEt)}
             </span>
           </span>
         </label>
@@ -261,7 +375,8 @@ export default function AdminMarketDigestPanel({
 
         {config ? (
           <p className="font-mono text-[10px] text-charcoal/45">
-            last sent{" "}
+            Scheduled {weekdayEtLabel(config.weekdayEt)}s at {config.startTimeEt}{" "}
+            ET · last sent{" "}
             {config.lastSentAt
               ? new Date(config.lastSentAt).toLocaleString()
               : "never"}

@@ -28,21 +28,26 @@ export type {
   SyncJobScheduleConfig,
   SyncScheduleConfig,
   SyncScheduleFrequencyId,
+  SyncScheduleWeekdayEt,
 } from '@/lib/sync-schedule-config-shared'
 
 export {
   SYNC_SCHEDULE_FREQUENCIES,
+  SYNC_SCHEDULE_WEEKDAYS,
   defaultSyncScheduleConfig,
   frequencyLabel,
   frequencyIntervalMs,
   isSyncScheduleFrequencyId,
+  isSyncScheduleWeekdayEt,
   isValidStartTimeEt,
   normalizeStartTimeEt,
   orderNumberByJob,
   orderNumberByRow,
+  resolveWeekdayEt,
   syncAllClientStepsFromConfig,
   mergeSyncScheduleConfig,
   parseStartTimeEt,
+  weekdayEtLabel,
 } from '@/lib/sync-schedule-config-shared'
 
 function parseStoredConfig(raw: string | null | undefined): SyncScheduleConfig {

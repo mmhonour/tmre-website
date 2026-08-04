@@ -10,11 +10,24 @@ import {
 } from '@/lib/contact-notify-config'
 import {
   DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  defaultMarketDigestSubjectTemplate,
   type MarketDigestConfig,
 } from '@/lib/market-digest-shared'
+import {
+  readSyncScheduleConfig,
+  readSyncScheduleConfigFresh,
+} from '@/lib/sync-schedule-config'
+import {
+  resolveWeekdayEt,
+  type SyncScheduleWeekdayEt,
+} from '@/lib/sync-schedule-config-shared'
 
 export type { MarketDigestConfig } from '@/lib/market-digest-shared'
-export { DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE } from '@/lib/market-digest-shared'
+export {
+  DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  defaultMarketDigestSubjectTemplate,
+  subjectTemplateForWeekdayChange,
+} from '@/lib/market-digest-shared'
 
 export const MARKET_DIGEST_EMAIL_KEY = 'market_digest_email'
 export const MARKET_DIGEST_ENABLED_KEY = 'market_digest_enabled'
@@ -41,10 +54,13 @@ function resolveEmail(raw: string | null | undefined, fallback: string): string 
   return fallback
 }
 
-function resolveSubjectTemplate(raw: string | null | undefined): string {
+function resolveSubjectTemplate(
+  raw: string | null | undefined,
+  weekdayEt: SyncScheduleWeekdayEt,
+): string {
   const trimmed = raw?.trim()
   if (trimmed && trimmed.length <= SUBJECT_MAX) return trimmed
-  return DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE
+  return defaultMarketDigestSubjectTemplate(weekdayEt)
 }
 
 function buildConfig(parts: {
@@ -55,6 +71,8 @@ function buildConfig(parts: {
   subjectRaw: string | null | undefined
   socialRaw: string | null | undefined
   fallbackEmail: string
+  weekdayEt: SyncScheduleWeekdayEt
+  startTimeEt: string
 }): MarketDigestConfig {
   return {
     email: resolveEmail(parts.emailRaw, parts.fallbackEmail),
@@ -62,13 +80,28 @@ function buildConfig(parts: {
     lastSentAt: parts.lastSent?.trim() || null,
     lastWeekKey: parts.lastWeek?.trim() || null,
     defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
-    subjectTemplate: resolveSubjectTemplate(parts.subjectRaw),
+    subjectTemplate: resolveSubjectTemplate(parts.subjectRaw, parts.weekdayEt),
     includeSocialProfiles: parseIncludeSocial(parts.socialRaw),
+    weekdayEt: parts.weekdayEt,
+    startTimeEt: parts.startTimeEt,
+  }
+}
+
+function scheduleFieldsFromConfig(schedule: {
+  jobs: { 'market-digest': { weekdayEt?: SyncScheduleWeekdayEt; startTimeEt: string } }
+}): { weekdayEt: SyncScheduleWeekdayEt; startTimeEt: string } {
+  const job = schedule.jobs['market-digest']
+  return {
+    weekdayEt: resolveWeekdayEt(job),
+    startTimeEt: job.startTimeEt || '08:00',
   }
 }
 
 /** Cached config for hydrated Next server. */
 export function getMarketDigestConfig(): MarketDigestConfig {
+  const { weekdayEt, startTimeEt } = scheduleFieldsFromConfig(
+    readSyncScheduleConfig(),
+  )
   return buildConfig({
     emailRaw: getSyncMeta(MARKET_DIGEST_EMAIL_KEY),
     enabledRaw: getSyncMeta(MARKET_DIGEST_ENABLED_KEY),
@@ -77,14 +110,16 @@ export function getMarketDigestConfig(): MarketDigestConfig {
     subjectRaw: getSyncMeta(MARKET_DIGEST_SUBJECT_KEY),
     socialRaw: getSyncMeta(MARKET_DIGEST_INCLUDE_SOCIAL_KEY),
     fallbackEmail: getContactNotifyEmail(),
+    weekdayEt,
+    startTimeEt,
   })
 }
 
-/** Authoritative Postgres read. */
+/** Authoritative Postgres read (content keys + shared sync_schedule_config day/time). */
 export async function getMarketDigestConfigFresh(): Promise<MarketDigestConfig> {
   const fallback = await getContactNotifyEmailFresh()
   try {
-    const [emailRaw, enabledRaw, lastSent, lastWeek, subjectRaw, socialRaw] =
+    const [emailRaw, enabledRaw, lastSent, lastWeek, subjectRaw, socialRaw, schedule] =
       await Promise.all([
         getSyncMetaFresh(MARKET_DIGEST_EMAIL_KEY),
         getSyncMetaFresh(MARKET_DIGEST_ENABLED_KEY),
@@ -92,7 +127,9 @@ export async function getMarketDigestConfigFresh(): Promise<MarketDigestConfig> 
         getSyncMetaFresh(MARKET_DIGEST_LAST_WEEK_KEY),
         getSyncMetaFresh(MARKET_DIGEST_SUBJECT_KEY),
         getSyncMetaFresh(MARKET_DIGEST_INCLUDE_SOCIAL_KEY),
+        readSyncScheduleConfigFresh(),
       ])
+    const { weekdayEt, startTimeEt } = scheduleFieldsFromConfig(schedule)
     return buildConfig({
       emailRaw,
       enabledRaw,
@@ -101,6 +138,8 @@ export async function getMarketDigestConfigFresh(): Promise<MarketDigestConfig> 
       subjectRaw,
       socialRaw,
       fallbackEmail: fallback,
+      weekdayEt,
+      startTimeEt,
     })
   } catch {
     return buildConfig({
@@ -111,6 +150,8 @@ export async function getMarketDigestConfigFresh(): Promise<MarketDigestConfig> 
       subjectRaw: null,
       socialRaw: null,
       fallbackEmail: fallback,
+      weekdayEt: 1,
+      startTimeEt: '08:00',
     })
   }
 }
@@ -133,7 +174,8 @@ export async function setMarketDigestSubjectTemplate(
   const trimmed = value.trim()
   if (!trimmed) {
     await setSyncMetaDurable(MARKET_DIGEST_SUBJECT_KEY, '')
-    return DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE
+    const { weekdayEt } = scheduleFieldsFromConfig(await readSyncScheduleConfigFresh())
+    return defaultMarketDigestSubjectTemplate(weekdayEt)
   }
   if (trimmed.length > SUBJECT_MAX) {
     throw new Error(`Subject template must be ≤ ${SUBJECT_MAX} characters`)
@@ -159,14 +201,25 @@ export async function markMarketDigestSent(weekKey: string): Promise<void> {
 export function renderMarketDigestSubject(
   template: string,
   etDate: string,
+  weekdayEt: SyncScheduleWeekdayEt = 1,
 ): string {
-  const base = resolveSubjectTemplate(template)
+  const base = resolveSubjectTemplate(template, weekdayEt)
   const rendered = base.replaceAll('{date}', etDate).trim()
-  return rendered || DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE.replace('{date}', etDate)
+  return (
+    rendered ||
+    defaultMarketDigestSubjectTemplate(weekdayEt).replace('{date}', etDate)
+  )
 }
 
-/** Monday date key in America/New_York (YYYY-MM-DD of that week's Monday). */
-export function marketDigestWeekKey(now: Date = new Date()): string {
+/**
+ * Send-day date key in America/New_York (YYYY-MM-DD of that week's configured
+ * weekday — Monday by default). Used as the once-per-week watermark.
+ */
+export function marketDigestWeekKey(
+  now: Date = new Date(),
+  weekdayEt: SyncScheduleWeekdayEt = 1,
+): string {
+  const targetWeekday = ((weekdayEt % 7) + 7) % 7
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
@@ -193,12 +246,12 @@ export function marketDigestWeekKey(now: Date = new Date()): string {
     Sat: 6,
   }
   const wd = weekdayIndex[parts.weekday] ?? 1
-  const daysFromMonday = wd === 0 ? 6 : wd - 1
+  const daysFromTarget = (wd - targetWeekday + 7) % 7
   // Civil-date arithmetic in UTC so DST does not shift the calendar day.
-  const mondayMs = Date.UTC(y, m - 1, d) - daysFromMonday * 86_400_000
-  const monday = new Date(mondayMs)
-  const my = monday.getUTCFullYear()
-  const mm = String(monday.getUTCMonth() + 1).padStart(2, '0')
-  const md = String(monday.getUTCDate()).padStart(2, '0')
-  return `${my}-${mm}-${md}`
+  const targetMs = Date.UTC(y, m - 1, d) - daysFromTarget * 86_400_000
+  const target = new Date(targetMs)
+  const ty = target.getUTCFullYear()
+  const tm = String(target.getUTCMonth() + 1).padStart(2, '0')
+  const td = String(target.getUTCDate()).padStart(2, '0')
+  return `${ty}-${tm}-${td}`
 }

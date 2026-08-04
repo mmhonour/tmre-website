@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { hydrateSyncMetaStore } from '@/lib/db/sync-meta-store'
+import { updateMarketDigestSchedule } from '@/lib/market-digest-schedule'
 import { isScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   isSyncScheduleFrequencyId,
+  isSyncScheduleWeekdayEt,
   normalizeStartTimeEt,
   readSyncScheduleConfigFresh,
   writeSyncScheduleConfig,
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
  * PATCH body (one of):
  *   { jobId, frequency }
  *   { jobId, startTimeEt: "HH:MM" }
+ *   { jobId, weekdayEt: 0-6 }  // weekly send day (ET)
  *   { order: ScheduledSyncJobId[] }
  *   { moveJobId, direction: "up" | "down" }
  */
@@ -76,6 +79,7 @@ export async function PATCH(req: NextRequest) {
     jobId?: unknown
     frequency?: unknown
     startTimeEt?: unknown
+    weekdayEt?: unknown
     order?: unknown
     moveJobId?: unknown
     direction?: unknown
@@ -85,7 +89,10 @@ export async function PATCH(req: NextRequest) {
   let config = await readSyncScheduleConfigFresh()
 
   if (Array.isArray(raw.order)) {
-    config = await writeSyncScheduleConfig({ ...config, order: raw.order as SyncScheduleConfig['order'] })
+    config = await writeSyncScheduleConfig({
+      ...config,
+      order: raw.order as SyncScheduleConfig['order'],
+    })
   } else if (
     typeof raw.moveJobId === 'string' &&
     isScheduledSyncJobId(raw.moveJobId) &&
@@ -107,38 +114,77 @@ export async function PATCH(req: NextRequest) {
     ;[order[idx], order[swapWith]] = [order[swapWith]!, order[idx]!]
     config = await writeSyncScheduleConfig({ ...config, order })
   } else if (typeof raw.jobId === 'string' && isScheduledSyncJobId(raw.jobId)) {
-    const job = { ...config.jobs[raw.jobId] }
-    if (typeof raw.frequency === 'string') {
-      if (!isSyncScheduleFrequencyId(raw.frequency)) {
-        return NextResponse.json({ error: 'Invalid frequency' }, { status: 400 })
-      }
-      job.frequency = raw.frequency
-    }
-    if (typeof raw.startTimeEt === 'string') {
-      const normalized = normalizeStartTimeEt(raw.startTimeEt)
-      if (!normalized) {
-        return NextResponse.json(
-          { error: 'startTimeEt must be HH:MM' },
-          { status: 400 },
-        )
-      }
-      job.startTimeEt = normalized
-    }
-    if (raw.frequency == null && raw.startTimeEt == null) {
+    const hasFrequency = typeof raw.frequency === 'string'
+    const hasStart = typeof raw.startTimeEt === 'string'
+    const hasWeekday = raw.weekdayEt !== undefined && raw.weekdayEt !== null
+
+    if (!hasFrequency && !hasStart && !hasWeekday) {
       return NextResponse.json(
-        { error: 'Provide frequency and/or startTimeEt' },
+        { error: 'Provide frequency, startTimeEt, and/or weekdayEt' },
         { status: 400 },
       )
     }
-    config = await writeSyncScheduleConfig({
-      ...config,
-      jobs: { ...config.jobs, [raw.jobId]: job },
-    })
+
+    if (hasWeekday) {
+      const wd = Number(raw.weekdayEt)
+      if (!isSyncScheduleWeekdayEt(wd)) {
+        return NextResponse.json(
+          { error: 'weekdayEt must be 0–6 (Sun–Sat)' },
+          { status: 400 },
+        )
+      }
+    }
+
+    // Market digest day/time lives on sync_schedule_config and also rewrites
+    // the email subject day name when weekday changes.
+    if (raw.jobId === 'market-digest' && (hasWeekday || hasStart)) {
+      try {
+        const wd = hasWeekday ? Number(raw.weekdayEt) : undefined
+        config = await updateMarketDigestSchedule({
+          ...(isSyncScheduleWeekdayEt(wd) ? { weekdayEt: wd } : {}),
+          ...(hasStart ? { startTimeEt: String(raw.startTimeEt) } : {}),
+        })
+      } catch (err) {
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : 'Invalid schedule' },
+          { status: 400 },
+        )
+      }
+    }
+
+    if (hasFrequency || (raw.jobId !== 'market-digest' && (hasStart || hasWeekday))) {
+      const job = { ...config.jobs[raw.jobId] }
+      if (hasFrequency) {
+        if (!isSyncScheduleFrequencyId(String(raw.frequency))) {
+          return NextResponse.json({ error: 'Invalid frequency' }, { status: 400 })
+        }
+        job.frequency = raw.frequency as typeof job.frequency
+      }
+      if (raw.jobId !== 'market-digest') {
+        if (hasStart) {
+          const normalized = normalizeStartTimeEt(String(raw.startTimeEt))
+          if (!normalized) {
+            return NextResponse.json(
+              { error: 'startTimeEt must be HH:MM' },
+              { status: 400 },
+            )
+          }
+          job.startTimeEt = normalized
+        }
+        if (hasWeekday) {
+          job.weekdayEt = Number(raw.weekdayEt) as typeof job.weekdayEt
+        }
+      }
+      config = await writeSyncScheduleConfig({
+        ...config,
+        jobs: { ...config.jobs, [raw.jobId]: job },
+      })
+    }
   } else {
     return NextResponse.json(
       {
         error:
-          'Provide { jobId, frequency|startTimeEt }, { order }, or { moveJobId, direction }',
+          'Provide { jobId, frequency|startTimeEt|weekdayEt }, { order }, or { moveJobId, direction }',
       },
       { status: 400 },
     )

@@ -16,6 +16,8 @@ export const INCREMENTAL_SYNC_LIVE_STALE_MS = 20 * 60 * 1000
  */
 export const INCREMENTAL_SYNC_QUEUED_STALE_MS = 8 * 60 * 1000
 
+export type IncrementalLiveStatusScope = 'all' | 'active' | 'closed'
+
 export type IncrementalSyncLiveProgress = {
   phase: 'queued' | 'town' | 'post-hooks'
   town: string | null
@@ -24,6 +26,34 @@ export type IncrementalSyncLiveProgress = {
   updatedAt: string
   /** First time this hop entered `queued` — preserved across cron re-stamps. */
   queuedAt?: string
+  /**
+   * Towns this run will pull (empty / omit = all TMRE towns).
+   * Set at queue so Status can describe scope before the worker starts, and so
+   * the worker can recover scope if the POST body drops `towns`.
+   */
+  scopeTowns?: string[]
+  /** Status family for this run (omit / all = Active family + Closed). */
+  statusScope?: IncrementalLiveStatusScope
+}
+
+function statusScopeLabel(
+  scope: IncrementalLiveStatusScope | undefined,
+): string | null {
+  if (!scope || scope === 'all') return null
+  if (scope === 'active') return 'Active family'
+  return 'Closed only'
+}
+
+function scopeTownsLabel(
+  progress: IncrementalSyncLiveProgress,
+): string | null {
+  const towns = progress.scopeTowns?.filter(Boolean) ?? []
+  if (towns.length === 1) return towns[0]!
+  if (towns.length > 1 && towns.length < progress.townCount) {
+    return `${towns.length} towns`
+  }
+  if (progress.townCount === 1 && progress.town) return progress.town
+  return null
 }
 
 export function incrementalSyncLiveAgeMs(
@@ -74,22 +104,34 @@ export function formatIncrementalSyncLiveStatus(
   if (!progress) return null
   const ageMs = incrementalSyncLiveAgeMs(progress, nowMs)
   const stale = isIncrementalSyncLiveStale(progress, nowMs)
+  const statusBit = statusScopeLabel(progress.statusScope)
+  const townsBit = scopeTownsLabel(progress)
+  const scopeSuffix = [townsBit, statusBit].filter(Boolean).join(' · ')
+
   if (progress.phase === 'queued') {
     if (stale) {
       const mins = Math.max(1, Math.round((ageMs ?? 0) / 60_000))
-      return `Queue stale — worker never started (~${mins}m ago). Watchdog/cron should re-queue or lean-fallback; End is still the last finished pull.`
+      return `Queue stale — worker never started (~${mins}m ago). End is still the last finished pull.`
     }
-    return 'Queued — waiting for background worker to start town pulls…'
+    return scopeSuffix
+      ? `Queued — ${scopeSuffix} (waiting for worker)…`
+      : 'Queued — all towns (waiting for worker)…'
   }
   if (stale) {
     const mins = Math.max(1, Math.round((ageMs ?? 0) / 60_000))
     return `Live status stale (~${mins}m) — worker likely died mid-run. End is still the last finished pull.`
   }
   if (progress.phase === 'post-hooks') {
-    return 'Towns done — running post-hooks (board / stats)…'
+    return scopeSuffix
+      ? `Towns done (${scopeSuffix}) — post-hooks (board / stats)…`
+      : 'Towns done — post-hooks (board / stats)…'
   }
   if (progress.phase === 'town' && progress.town && progress.townIndex != null) {
-    return `Fetching ${progress.town} from MLS… town ${progress.townIndex}/${progress.townCount}`
+    const statusParen = statusBit ? ` · ${statusBit}` : ''
+    if (progress.townCount <= 1) {
+      return `Fetching ${progress.town} from MLS${statusParen}…`
+    }
+    return `Fetching ${progress.town} from MLS (${progress.townIndex}/${progress.townCount})${statusParen}…`
   }
   return null
 }
@@ -111,6 +153,17 @@ export function parseIncrementalSyncLive(
     ) {
       return null
     }
+    const scopeTowns = Array.isArray(parsed.scopeTowns)
+      ? parsed.scopeTowns.filter(
+          (t): t is string => typeof t === 'string' && t.trim().length > 0,
+        )
+      : undefined
+    const statusScope =
+      parsed.statusScope === 'active' ||
+      parsed.statusScope === 'closed' ||
+      parsed.statusScope === 'all'
+        ? parsed.statusScope
+        : undefined
     return {
       phase: parsed.phase,
       town: typeof parsed.town === 'string' ? parsed.town : null,
@@ -118,6 +171,8 @@ export function parseIncrementalSyncLive(
       townCount: parsed.townCount,
       updatedAt: parsed.updatedAt,
       queuedAt: typeof parsed.queuedAt === 'string' ? parsed.queuedAt : undefined,
+      ...(scopeTowns && scopeTowns.length > 0 ? { scopeTowns } : {}),
+      ...(statusScope ? { statusScope } : {}),
     }
   } catch {
     return null

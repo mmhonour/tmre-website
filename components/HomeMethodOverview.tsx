@@ -13,8 +13,21 @@ import { dealOfTheDayHref } from "@/lib/listing-url";
 import { prefetchTabJson } from "@/lib/tab-data-prefetch";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
-/** Same cadence as the Deal of the Day score town swap. */
-const SCORE_ROTATE_MS = 1100;
+/**
+ * Hero score ↔ interesting-stat beat (one town at a time).
+ * Score holds → fades out → town stat holds → fades out → next town score.
+ */
+const HERO_FADE_MS = 700;
+const HERO_SCORE_HOLD_MS = 2_600;
+const HERO_STAT_HOLD_MS = 3_200;
+
+type HeroBeat =
+  | "score-in"
+  | "score-hold"
+  | "score-out"
+  | "stat-in"
+  | "stat-hold"
+  | "stat-out";
 
 type ScoreSample = {
   town: TmreTown;
@@ -192,6 +205,7 @@ export default function HomeMethodOverview({
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [samples, setSamples] = useState<ScoreSample[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
+  const [heroBeat, setHeroBeat] = useState<HeroBeat>("score-in");
   const [interestingEntries, setInterestingEntries] = useState<InterestingStat[]>(
     [],
   );
@@ -376,18 +390,11 @@ export default function HomeMethodOverview({
     };
   }, []);
 
-  useEffect(() => {
-    if (samples.length < 2) return;
-    const id = window.setInterval(() => {
-      setSampleIndex((i) => (i + 1) % samples.length);
-    }, SCORE_ROTATE_MS);
-    return () => window.clearInterval(id);
-  }, [samples.length]);
-
   // Keep index in range when the sample list grows/shrinks.
   useEffect(() => {
     if (samples.length === 0) {
       setSampleIndex(0);
+      setHeroBeat("score-in");
       return;
     }
     setSampleIndex((i) => (i >= samples.length ? 0 : i));
@@ -402,6 +409,72 @@ export default function HomeMethodOverview({
         pulseTowns,
       )
     : interestingEntries[0] ?? null;
+
+  const hasTownStat = interestingStat != null;
+
+  // Score → fade → interesting-stat → fade → next town (slower, one focus at a time).
+  useEffect(() => {
+    if (samples.length === 0) return;
+
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const fadeMs = reduceMotion ? 0 : HERO_FADE_MS;
+    const scoreHoldMs = reduceMotion ? 1_600 : HERO_SCORE_HOLD_MS;
+    const statHoldMs = reduceMotion ? 1_800 : HERO_STAT_HOLD_MS;
+
+    let cancelled = false;
+    let timer: number | null = null;
+    const schedule = (ms: number, fn: () => void) => {
+      timer = window.setTimeout(() => {
+        if (!cancelled) fn();
+      }, ms);
+    };
+
+    const advanceTown = () => {
+      setSampleIndex((i) =>
+        samples.length <= 1 ? 0 : (i + 1) % samples.length,
+      );
+      setHeroBeat("score-in");
+    };
+
+    // *-in mounts at opacity 0; next beat (*-hold) flips opaque so CSS fades in.
+    if (heroBeat === "score-in") {
+      schedule(40, () => setHeroBeat("score-hold"));
+    } else if (heroBeat === "score-hold") {
+      schedule(fadeMs + scoreHoldMs, () => setHeroBeat("score-out"));
+    } else if (heroBeat === "score-out") {
+      schedule(fadeMs, () => {
+        if (hasTownStat) setHeroBeat("stat-in");
+        else advanceTown();
+      });
+    } else if (heroBeat === "stat-in") {
+      schedule(40, () => setHeroBeat("stat-hold"));
+    } else if (heroBeat === "stat-hold") {
+      schedule(fadeMs + statHoldMs, () => setHeroBeat("stat-out"));
+    } else {
+      schedule(fadeMs, () => advanceTown());
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [heroBeat, samples.length, hasTownStat]);
+
+  // Opaque only on *-hold so *-in starts at 0 and CSS can fade in.
+  const scoreOpaque = heroBeat === "score-hold";
+  const statOpaque = heroBeat === "stat-hold";
+  // Keep elements mounted during fade-in/out so opacity can ease.
+  const scoreShown =
+    heroBeat === "score-in" ||
+    heroBeat === "score-hold" ||
+    heroBeat === "score-out";
+  const statShown =
+    hasTownStat &&
+    (heroBeat === "stat-in" ||
+      heroBeat === "stat-hold" ||
+      heroBeat === "stat-out");
 
   useEffect(() => {
     if (!interestingStat?.kind) return;
@@ -495,8 +568,17 @@ export default function HomeMethodOverview({
                 <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2 sm:text-right">
                   Actual home · rotating towns
                 </p>
-                <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] sm:gap-5 lg:gap-6">
-                  <div className="flex min-h-0 min-w-0 flex-col justify-center border border-transparent px-3 py-3 sm:px-4 sm:py-3.5 sm:text-right">
+                {/* Score and interesting-stat share one stage — fade one at a time. */}
+                <div className="relative min-h-[11.5rem] w-full sm:min-h-[13.5rem] sm:text-right">
+                  <div
+                    className={`absolute inset-0 flex min-h-0 min-w-0 flex-col justify-center border border-transparent px-3 py-3 transition-opacity ease-in-out sm:px-4 sm:py-3.5 motion-reduce:transition-none ${
+                      scoreOpaque
+                        ? "opacity-100"
+                        : "pointer-events-none opacity-0"
+                    } ${scoreShown ? "" : "invisible"}`}
+                    style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
+                    aria-hidden={!scoreOpaque || undefined}
+                  >
                     {live ? (
                       <Link
                         href={dealOfTheDayHref(live.town, {
@@ -505,12 +587,13 @@ export default function HomeMethodOverview({
                           kind: "sale",
                           propertyClass: "homes",
                         })}
+                        tabIndex={scoreOpaque ? 0 : -1}
                         className="group block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
                         aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
                       >
                         <p
                           key={`${live.town}-${live.score}-${live.mlsId}`}
-                          className="home-score-swap font-serif italic gold-shimmer text-[3.75rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[6.25rem] lg:text-[7.5rem]"
+                          className="font-serif italic gold-shimmer text-[3.75rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[6.25rem] lg:text-[7.5rem]"
                         >
                           {live.score.toFixed(1)}.
                         </p>
@@ -537,6 +620,7 @@ export default function HomeMethodOverview({
                   {interestingStat ? (
                     <Link
                       href={interestingStat.href}
+                      tabIndex={statOpaque ? 0 : -1}
                       onMouseEnter={() => {
                         if (!interestingStat.kind) return;
                         for (const url of interestingStatWarmUrls(
@@ -546,7 +630,13 @@ export default function HomeMethodOverview({
                           prefetchTabJson(url);
                         }
                       }}
-                      className="group/stat flex min-h-0 min-w-0 flex-col justify-center border border-transparent bg-transparent px-3 py-3 text-left transition-colors hover:border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark sm:px-4 sm:py-3.5"
+                      className={`absolute inset-0 flex min-h-0 min-w-0 flex-col justify-center border border-transparent bg-transparent px-3 py-3 text-left transition-opacity ease-in-out hover:border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark motion-reduce:transition-none sm:px-4 sm:py-3.5 sm:text-right ${
+                        statOpaque
+                          ? "opacity-100"
+                          : "pointer-events-none opacity-0"
+                      } ${statShown ? "" : "invisible"}`}
+                      style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
+                      aria-hidden={!statOpaque || undefined}
                       title={
                         interestingStat.kind === "best-vintage" ||
                         interestingStat.kind === "vintage-gap"
@@ -559,15 +649,19 @@ export default function HomeMethodOverview({
                       </span>
                       <span
                         key={`${interestingStat.value}-${interestingStat.detail}-${live?.town ?? ""}`}
-                        className="home-score-swap mt-1.5 block break-words font-serif italic text-2xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.85rem]"
+                        className="mt-1.5 block break-words font-serif italic text-2xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.85rem] lg:text-[2.15rem]"
                       >
                         {interestingStat.value}
                       </span>
-                      <span className="mt-1.5 block break-words text-xs leading-snug text-white/60">
+                      <span className="mt-1.5 block break-words text-xs leading-snug text-white/60 sm:ml-auto sm:max-w-sm">
                         {interestingStat.detail}
                       </span>
                     </Link>
                   ) : null}
+                </div>
+                {/* Desktop: moving objective pills sit under the rotating town score. */}
+                <div className="mt-4 hidden w-full min-w-0 lg:mt-5 lg:block lg:[&_.home-objective-pills]:ml-auto lg:[&_.home-objective-pills]:justify-end">
+                  <HomeObjectivePills />
                 </div>
               </div>
             </div>
@@ -581,7 +675,10 @@ export default function HomeMethodOverview({
           </p>
 
           <HomeSurfaceStage />
-          <HomeObjectivePills />
+          {/* Tablet only — desktop pills live under the town score above. */}
+          <div className="lg:hidden">
+            <HomeObjectivePills />
+          </div>
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-navy-dark/45 px-4 py-3 backdrop-blur-md sm:mt-10 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none lg:mt-12">
@@ -850,7 +947,7 @@ function HomeObjectivePills() {
   }, []);
 
   return (
-    <div className="relative mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-3 max-w-3xl min-h-[3.75rem] content-center">
+    <div className="home-objective-pills relative mt-1 flex max-w-3xl min-h-[3.75rem] flex-wrap content-center items-center gap-x-2.5 gap-y-3">
       {FILTER_SIGNALS.map((pill, idx) => {
         if (!visible[idx]) return null;
         return (

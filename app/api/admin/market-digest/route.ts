@@ -8,7 +8,12 @@ import {
   setMarketDigestIncludeSocialProfiles,
   setMarketDigestSubjectTemplate,
 } from '@/lib/market-digest-config'
+import { updateMarketDigestSchedule } from '@/lib/market-digest-schedule'
 import { sendMarketDigestEmail } from '@/lib/market-digest-notify'
+import {
+  isSyncScheduleWeekdayEt,
+  normalizeStartTimeEt,
+} from '@/lib/sync-schedule-config'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -41,6 +46,8 @@ export async function PATCH(req: NextRequest) {
     enabled?: unknown
     subjectTemplate?: unknown
     includeSocialProfiles?: unknown
+    weekdayEt?: unknown
+    startTimeEt?: unknown
   }
   try {
     if (typeof o.email === 'string') {
@@ -55,12 +62,45 @@ export async function PATCH(req: NextRequest) {
     if (typeof o.enabled === 'boolean') {
       await setMarketDigestEnabled(o.enabled)
     }
-    if (typeof o.subjectTemplate === 'string') {
-      await setMarketDigestSubjectTemplate(o.subjectTemplate)
-    }
     if (typeof o.includeSocialProfiles === 'boolean') {
       await setMarketDigestIncludeSocialProfiles(o.includeSocialProfiles)
     }
+
+    const schedulePatch: {
+      weekdayEt?: 0 | 1 | 2 | 3 | 4 | 5 | 6
+      startTimeEt?: string
+    } = {}
+    if (o.weekdayEt !== undefined && o.weekdayEt !== null) {
+      const wd = Number(o.weekdayEt)
+      if (!isSyncScheduleWeekdayEt(wd)) {
+        return NextResponse.json(
+          { error: 'weekdayEt must be 0–6 (Sun–Sat)' },
+          { status: 400 },
+        )
+      }
+      schedulePatch.weekdayEt = wd
+    }
+    if (typeof o.startTimeEt === 'string') {
+      if (!normalizeStartTimeEt(o.startTimeEt)) {
+        return NextResponse.json(
+          { error: 'startTimeEt must be HH:MM' },
+          { status: 400 },
+        )
+      }
+      schedulePatch.startTimeEt = o.startTimeEt
+    }
+    if (
+      schedulePatch.weekdayEt != null ||
+      schedulePatch.startTimeEt != null
+    ) {
+      await updateMarketDigestSchedule(schedulePatch)
+    }
+
+    // Subject after weekday so a same-request custom subject wins over auto day rename.
+    if (typeof o.subjectTemplate === 'string') {
+      await setMarketDigestSubjectTemplate(o.subjectTemplate)
+    }
+
     return NextResponse.json({ ok: true, ...(await payload()) })
   } catch (err) {
     return NextResponse.json(

@@ -156,6 +156,8 @@ export async function runIncrementalSyncWatchdog(
       town: null,
       townIndex: null,
       updatedAt: startedAt,
+      scopeTowns: undefined,
+      statusScope: 'all',
     })
     try {
       const { stampIncrementalQueuedStepLog } = await import(

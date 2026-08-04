@@ -45,7 +45,7 @@ export const ADMIN_SYNC_ACTIONS = {
   'market-digest': {
     label: 'Monday market brief',
     description:
-      'Weekly Resend months-supply / inventory digest email (Mon ~8am ET) for /market-pulse',
+      'Weekly Resend months-supply / inventory digest email (Configure day + start time ET) for /market-pulse',
   },
 } as const
 

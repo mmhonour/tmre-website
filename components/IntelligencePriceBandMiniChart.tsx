@@ -45,7 +45,6 @@ const HEIGHT = 72;
 const PAD_TOP = 22;
 const PAD_BOTTOM = 18;
 
-const INTERACTIVE_HINT_MS = 10_000;
 const ORIGINAL_VIEW_FLASH_MS = 5_000;
 
 function withDollar(label: string): string {
@@ -111,10 +110,8 @@ export default function IntelligencePriceBandMiniChart({
   onInteract?: () => void;
 }) {
   const [buckets, setBuckets] = useState<ApiBucket[]>([]);
-  const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(() => new Set());
-  const introStartedRef = useRef(false);
   const originalFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -124,7 +121,6 @@ export default function IntelligencePriceBandMiniChart({
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    introStartedRef.current = false;
     setBuckets([]);
     setExtraCallouts(new Set());
 
@@ -186,21 +182,6 @@ export default function IntelligencePriceBandMiniChart({
   }, [buckets, kind]);
 
   const glowIds = useRandomMiniGraphGlow(points.map((p) => p.id));
-  const pointIdsKey = points.map((p) => p.id).join("|");
-
-  useEffect(() => {
-    if (points.length === 0 || introStartedRef.current) return;
-    introStartedRef.current = true;
-    setShowInteractiveHint(true);
-    const hintTimer = window.setTimeout(
-      () => setShowInteractiveHint(false),
-      INTERACTIVE_HINT_MS,
-    );
-    return () => {
-      window.clearTimeout(hintTimer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intro only
-  }, [pointIdsKey]);
 
   useEffect(() => {
     return () => {
@@ -252,17 +233,6 @@ export default function IntelligencePriceBandMiniChart({
       <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
           <div className="relative w-full">
             <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-end gap-2 px-0.5">
-              {/* Desktop hint; mobile carousel strip shows its own. */}
-              <p
-                className={`mr-auto hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
-                  showInteractiveHint
-                    ? "animate-interactive-graph-hint"
-                    : "opacity-0"
-                }`}
-                aria-hidden={!showInteractiveHint}
-              >
-                interactive graph
-              </p>
               <p className="min-w-0 bg-transparent text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
                 {chartTitle}
               </p>

@@ -67,8 +67,6 @@ const HEIGHT = 72;
 const PAD_TOP = 22;
 const PAD_BOTTOM = 18;
 
-const INTERACTIVE_HINT_MS = 10_000;
-
 function withDollar(label: string): string {
   const t = label.trim();
   if (!t || t.startsWith("$")) return t;
@@ -192,18 +190,15 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         ),
     ),
   );
-  const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(
     () => new Set(),
   );
-  const introStartedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    introStartedRef.current = false;
     setBandPaused(false);
     setSegment("luxury");
 
@@ -275,7 +270,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   useEffect(() => {
     if (!isActiveCarouselSlide) return;
     setSegment("luxury");
-    introStartedRef.current = false;
     setExtraCallouts(new Set());
   }, [isActiveCarouselSlide]);
 
@@ -287,7 +281,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         const idx = SEGMENT_ORDER.indexOf(prev);
         return SEGMENT_ORDER[(idx + 1) % SEGMENT_ORDER.length]!;
       });
-      introStartedRef.current = false;
       setExtraCallouts(new Set());
     }, BAND_ROTATE_MS);
     return () => window.clearInterval(timer);
@@ -329,22 +322,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     // so off-screen slides don't burn timers — other graphs still glow on their own.
     isActiveCarouselSlide,
   );
-  const pointIdsKey = `${segment}|${points.map((p) => p.id).join("|")}`;
-
-  useEffect(() => {
-    if (points.length === 0 || introStartedRef.current) return;
-    introStartedRef.current = true;
-    setShowInteractiveHint(true);
-    const hintTimer = window.setTimeout(
-      () => setShowInteractiveHint(false),
-      INTERACTIVE_HINT_MS,
-    );
-    return () => {
-      window.clearTimeout(hintTimer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intro once per segment dataset
-  }, [pointIdsKey]);
-
   const segmentLabel = labels[segment] ?? SEGMENT_TAB_LABEL[segment];
   const chartTitle = segmentInventoryByPriceLabel(segmentLabel);
   const linePath = points
@@ -424,7 +401,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
                     onClick={() => {
                       pauseBandRotation();
                       setSegment(id);
-                      introStartedRef.current = false;
                       setExtraCallouts(new Set());
                     }}
                     className={`font-mono text-[8px] tracking-[0.12em] uppercase transition-colors ${
@@ -472,17 +448,6 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
           {points.length > 0 ? (
           <div className="relative w-full">
             <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex items-start justify-end gap-2 px-0.5">
-              {/* Desktop hint; mobile carousel strip shows its own. */}
-              <p
-                className={`mr-auto hidden shrink-0 italic text-[10px] leading-snug text-slate/55 transition-opacity duration-700 ease-in-out sm:block ${
-                  showInteractiveHint
-                    ? "animate-interactive-graph-hint"
-                    : "opacity-0"
-                }`}
-                aria-hidden={!showInteractiveHint}
-              >
-                interactive graph
-              </p>
               <p className="min-w-0 bg-transparent text-right font-mono text-[8px] leading-snug tracking-[0.14em] uppercase text-black">
                 {chartTitle}
               </p>

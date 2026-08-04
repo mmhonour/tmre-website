@@ -25,10 +25,50 @@ export const SYNC_SCHEDULE_FREQUENCIES = [
 
 export type SyncScheduleFrequencyId = (typeof SYNC_SCHEDULE_FREQUENCIES)[number]['id']
 
+/** America/New_York weekday: 0 = Sunday … 6 = Saturday (JS Date convention). */
+export const SYNC_SCHEDULE_WEEKDAYS = [
+  { id: 0, short: 'Sun', label: 'Sunday' },
+  { id: 1, short: 'Mon', label: 'Monday' },
+  { id: 2, short: 'Tue', label: 'Tuesday' },
+  { id: 3, short: 'Wed', label: 'Wednesday' },
+  { id: 4, short: 'Thu', label: 'Thursday' },
+  { id: 5, short: 'Fri', label: 'Friday' },
+  { id: 6, short: 'Sat', label: 'Saturday' },
+] as const
+
+export type SyncScheduleWeekdayEt = (typeof SYNC_SCHEDULE_WEEKDAYS)[number]['id']
+
 export type SyncJobScheduleConfig = {
   frequency: SyncScheduleFrequencyId
   /** HH:MM America/New_York — wall-clock for daily/weekly/monthly; phase for intervals. */
   startTimeEt: string
+  /**
+   * Weekly send day in America/New_York (0=Sun … 6=Sat).
+   * Ignored unless frequency is `weekly`. Defaults to Monday when omitted.
+   */
+  weekdayEt?: SyncScheduleWeekdayEt
+}
+
+export function isSyncScheduleWeekdayEt(
+  value: unknown,
+): value is SyncScheduleWeekdayEt {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 6
+  )
+}
+
+/** Default weekly day when unset — Monday (historical full-resync / digest slot). */
+export function resolveWeekdayEt(
+  job: Pick<SyncJobScheduleConfig, 'weekdayEt'> | null | undefined,
+): SyncScheduleWeekdayEt {
+  return isSyncScheduleWeekdayEt(job?.weekdayEt) ? job.weekdayEt : 1
+}
+
+export function weekdayEtLabel(weekdayEt: SyncScheduleWeekdayEt): string {
+  return SYNC_SCHEDULE_WEEKDAYS[weekdayEt]?.label ?? 'Monday'
 }
 
 export type SyncScheduleConfig = {
@@ -100,16 +140,20 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'market-digest',
     ],
     jobs: {
-      'full-resync': { frequency: 'weekly', startTimeEt: '05:00' },
+      'full-resync': { frequency: 'weekly', startTimeEt: '05:00', weekdayEt: 1 },
       incremental: { frequency: '30m', startTimeEt: '00:00' },
-      'listing-scores': { frequency: 'weekly', startTimeEt: '05:00' },
+      'listing-scores': { frequency: 'weekly', startTimeEt: '05:00', weekdayEt: 1 },
       'stats-cache': { frequency: '30m', startTimeEt: '00:00' },
-      'deal-of-the-day': { frequency: 'weekly', startTimeEt: '05:00' },
-      'property-addresses': { frequency: 'weekly', startTimeEt: '01:00' },
+      'deal-of-the-day': { frequency: 'weekly', startTimeEt: '05:00', weekdayEt: 1 },
+      'property-addresses': {
+        frequency: 'weekly',
+        startTimeEt: '01:00',
+        weekdayEt: 1,
+      },
       'zip-boundaries': { frequency: 'monthly', startTimeEt: '06:00' },
       'fomc-sync': { frequency: 'event', startTimeEt: '15:15' },
       'cpi-sync': { frequency: 'event', startTimeEt: '09:15' },
-      'market-digest': { frequency: 'weekly', startTimeEt: '08:00' },
+      'market-digest': { frequency: 'weekly', startTimeEt: '08:00', weekdayEt: 1 },
     },
   }
 }
@@ -188,7 +232,13 @@ export function mergeSyncScheduleConfig(
         isSyncScheduleFrequencyId(frequency) &&
         startTimeEt
       ) {
-        jobs[jobId] = { frequency, startTimeEt }
+        const next: SyncJobScheduleConfig = { frequency, startTimeEt }
+        if (isSyncScheduleWeekdayEt(row.weekdayEt)) {
+          next.weekdayEt = row.weekdayEt
+        } else if (frequency === 'weekly') {
+          next.weekdayEt = resolveWeekdayEt(defaults.jobs[jobId])
+        }
+        jobs[jobId] = next
       }
     }
   }

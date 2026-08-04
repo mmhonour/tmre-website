@@ -347,13 +347,36 @@ export async function runIncrementalSyncListingsWork(
 
     const { isTmreTown } = await import('@/lib/tmre-towns')
     type TmreTown = import('@/lib/tmre-towns').TmreTown
-    const scopedTowns = (options.towns ?? [])
+    // Recover Admin scope from the queue breadcrumb if the POST body lost towns
+    // (Netlify background hops have dropped fields before).
+    const { readIncrementalSyncLive } = await import(
+      '@/lib/incremental-sync-live'
+    )
+    const queuedLive = readIncrementalSyncLive()
+    const bodyTowns = (options.towns ?? [])
       .map((t) => t.trim())
       .filter((t): t is TmreTown => isTmreTown(t))
+    const liveTowns = (queuedLive?.scopeTowns ?? [])
+      .map((t) => t.trim())
+      .filter((t): t is TmreTown => isTmreTown(t))
+    const scopedTowns = bodyTowns.length > 0 ? bodyTowns : liveTowns
     const statusScope =
       options.statusScope === 'active' || options.statusScope === 'closed'
         ? options.statusScope
-        : undefined
+        : queuedLive?.statusScope === 'active' ||
+            queuedLive?.statusScope === 'closed'
+          ? queuedLive.statusScope
+          : undefined
+    if (
+      bodyTowns.length === 0 &&
+      liveTowns.length > 0 &&
+      queuedLive?.phase === 'queued'
+    ) {
+      console.info(
+        '[sync-listings-work] recovered town scope from live breadcrumb',
+        liveTowns.join(', '),
+      )
+    }
     const result = await syncIncrementalListings({
       postHooks: true,
       ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),

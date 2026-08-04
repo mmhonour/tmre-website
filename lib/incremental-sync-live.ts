@@ -12,10 +12,11 @@ import {
   isIncrementalSyncLiveStale,
   isIncrementalSyncQueuedDead,
   parseIncrementalSyncLive,
+  type IncrementalLiveStatusScope,
   type IncrementalSyncLiveProgress,
 } from '@/lib/incremental-sync-live-shared'
 
-export type { IncrementalSyncLiveProgress }
+export type { IncrementalSyncLiveProgress, IncrementalLiveStatusScope }
 export {
   formatIncrementalSyncLiveStatus,
   INCREMENTAL_SYNC_LIVE_KEY,
@@ -45,12 +46,19 @@ export async function clearIncrementalSyncLiveIfStale(
 /**
  * Stamp live progress. Re-queue while already `queued` preserves the original
  * `queuedAt` so cron 202 acks cannot reset the stale clock every 30 minutes.
+ * Scope fields (`scopeTowns` / `statusScope` / `townCount`) carry forward when
+ * omitted so town ticks keep the queue's Ridgefield-only (etc.) context.
  */
 export async function stampIncrementalSyncLive(
-  progress: Omit<IncrementalSyncLiveProgress, 'updatedAt' | 'townCount' | 'queuedAt'> & {
+  progress: Omit<
+    IncrementalSyncLiveProgress,
+    'updatedAt' | 'townCount' | 'queuedAt' | 'scopeTowns' | 'statusScope'
+  > & {
     townCount?: number
     updatedAt?: string
     queuedAt?: string
+    scopeTowns?: string[]
+    statusScope?: IncrementalLiveStatusScope
   },
 ): Promise<void> {
   const existing = readIncrementalSyncLive()
@@ -66,11 +74,38 @@ export async function stampIncrementalSyncLive(
     }
   }
 
+  // Queued stamps that omit scope = full all-towns run (clear prior Admin scope).
+  // Town / post-hooks ticks inherit scope when omitted so Ridgefield-only stays.
+  const scopeExplicit = Object.prototype.hasOwnProperty.call(
+    progress,
+    'scopeTowns',
+  )
+  const statusExplicit = Object.prototype.hasOwnProperty.call(
+    progress,
+    'statusScope',
+  )
+  const scopeTowns = scopeExplicit
+    ? progress.scopeTowns
+    : progress.phase === 'queued'
+      ? undefined
+      : existing?.scopeTowns
+  const statusScope = statusExplicit
+    ? progress.statusScope
+    : progress.phase === 'queued'
+      ? undefined
+      : existing?.statusScope
+  const townCount =
+    progress.townCount ??
+    (scopeTowns && scopeTowns.length > 0 ? scopeTowns.length : undefined) ??
+    (progress.phase === 'queued' ? TMRE_TOWNS.length : undefined) ??
+    existing?.townCount ??
+    TMRE_TOWNS.length
+
   const payload: IncrementalSyncLiveProgress = {
     phase: progress.phase,
     town: progress.town,
     townIndex: progress.townIndex,
-    townCount: progress.townCount ?? TMRE_TOWNS.length,
+    townCount,
     // For re-queue of an already-queued hop, keep updatedAt = first queue too
     // so ageMs stays honest even if a reader ignores queuedAt.
     updatedAt:
@@ -78,6 +113,8 @@ export async function stampIncrementalSyncLive(
         ? queuedAt ?? existing.updatedAt
         : nowIso,
     queuedAt,
+    ...(scopeTowns && scopeTowns.length > 0 ? { scopeTowns } : {}),
+    ...(statusScope ? { statusScope } : {}),
   }
   await setSyncMetaDurable(INCREMENTAL_SYNC_LIVE_KEY, JSON.stringify(payload))
 }

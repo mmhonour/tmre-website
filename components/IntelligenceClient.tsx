@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  Fragment,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -263,7 +264,11 @@ function intelFilterDescriptorParts({
   return parts;
 }
 
-/** When pinned, move filter chrome into the fixed nav panel (keeps one React tree). */
+/**
+ * When pinned, move filter chrome into the fixed nav panel.
+ * If the host isn’t mounted yet, render nothing — never paint peeks in the
+ * scrolled-away hero (that looked like “descriptors do nothing”).
+ */
 function IntelChromePortal({
   pin,
   host,
@@ -273,8 +278,9 @@ function IntelChromePortal({
   host: HTMLElement | null;
   children: ReactNode;
 }) {
-  if (pin && host) return createPortal(children, host);
-  return <>{children}</>;
+  if (!pin) return <>{children}</>;
+  if (!host) return null;
+  return createPortal(children, host);
 }
 
 function IntelDescriptorContext({
@@ -304,12 +310,15 @@ function IntelDescriptorContext({
                 ? onClsClick
                 : undefined;
         return (
-          <span key={`${part.kind}-${part.label}-${index}`} className="contents">
+          <Fragment key={`${part.kind}-${part.label}-${index}`}>
             {interactive && onClick ? (
               <button
                 type="button"
-                onClick={onClick}
-                className="text-white/45 hover:text-gold underline underline-offset-2 decoration-white/25 hover:decoration-gold/50 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick();
+                }}
+                className="cursor-pointer text-white/45 hover:text-gold underline underline-offset-2 decoration-white/25 hover:decoration-gold/50 transition-colors"
               >
                 {part.label}
               </button>
@@ -317,7 +326,7 @@ function IntelDescriptorContext({
               <span className="text-white/45">{part.label}</span>
             )}
             <IntelFilterDescriptorDot />
-          </span>
+          </Fragment>
         );
       })}
     </>
@@ -4358,19 +4367,24 @@ export default function IntelligenceClient({
   const descriptorSentinelRef = useRef<HTMLDivElement>(null);
   const [descriptorsPinned, setDescriptorsPinned] = useState(false);
 
-  // Pin descriptors under the site nav once their in-flow row scrolls away.
-  // (Hero `overflow-hidden` prevents CSS sticky from spanning the deal board.)
+  // Phone only: pin descriptors under the nav once their in-flow row scrolls
+  // away. Desktop keeps descriptors in normal document flow so they scroll
+  // off with the hero (same as before the sticky panel).
   useEffect(() => {
     const sentinel = descriptorSentinelRef.current;
     if (!sentinel) {
       setDescriptorsPinned(false);
       return;
     }
-    const navOffsetPx = () =>
-      window.matchMedia("(min-width: 1024px)").matches ? 96 : 80;
+    const isDesktop = () => window.matchMedia("(min-width: 1024px)").matches;
+    const navOffsetPx = 80;
     const update = () => {
+      if (isDesktop()) {
+        setDescriptorsPinned(false);
+        return;
+      }
       const top = sentinel.getBoundingClientRect().top;
-      setDescriptorsPinned(top < navOffsetPx());
+      setDescriptorsPinned(top < navOffsetPx);
     };
     update();
     window.addEventListener("scroll", update, { passive: true });
@@ -4389,8 +4403,8 @@ export default function IntelligenceClient({
     filterChromePeeks,
   ]);
 
-  const pinFilterChromeToNav =
-    descriptorsPinned && pinnedFilterChromeHost != null;
+  /** Mobile sticky bar only — desktop peeks stay in-flow with the hero. */
+  const pinFilterChromeToNav = descriptorsPinned;
 
   const closeTownStats = () => setTownStatsOpen(false);
   const closeVintageStats = () => setVintageStatsOpen(false);

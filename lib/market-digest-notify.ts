@@ -35,7 +35,7 @@ export async function sendMarketDigestEmail(opts?: {
   const force = opts?.force === true
   const stampWeek = opts?.stampWeek ?? !force
   const config = await getMarketDigestConfigFresh()
-  const weekKey = marketDigestWeekKey()
+  const weekKey = marketDigestWeekKey(new Date(), config.weekdayEt)
 
   if (!force && !config.enabled) {
     return { ok: true, skipped: true, reason: 'market digest disabled in admin' }

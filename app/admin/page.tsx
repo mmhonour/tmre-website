@@ -590,6 +590,8 @@ export default async function AdminPage() {
       subjectTemplate:
         "Monday market brief — months supply & inventory ({date})",
       includeSocialProfiles: false,
+      weekdayEt: 1,
+      startTimeEt: "08:00",
     },
   )
   const deployNotify = await safe(
