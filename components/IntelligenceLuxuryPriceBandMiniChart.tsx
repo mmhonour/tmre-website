@@ -266,7 +266,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   ).join("|");
 
   // When this slide becomes active on the mobile carousel, restart at Luxury
-  // so the parent’s 4× dwell shows all bands before advancing to #1.
+  // so the parent’s 4× dwell shows all bands before advancing.
   useEffect(() => {
     if (!isActiveCarouselSlide) return;
     setSegment("luxury");
@@ -351,11 +351,11 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     return (
       <div className="relative flex w-full flex-col items-stretch gap-0.5 bg-transparent">
         <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
-          <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 lg:justify-end">
             <div
               role="tablist"
               aria-label="Inventory segment"
-              className="flex min-w-0 flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5"
+              className="flex min-w-0 flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5 lg:justify-end"
             >
               {SEGMENT_ORDER.map((id) => (
                 <span
@@ -383,11 +383,11 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   return (
     <div className="relative flex w-full flex-col items-stretch gap-0.5 bg-transparent">
       <div className="flex w-full min-w-0 flex-col items-stretch gap-0.5">
-          <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 lg:justify-end">
             <div
               role="tablist"
               aria-label="Inventory segment"
-              className="flex min-w-0 flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5"
+              className="flex min-w-0 flex-wrap items-center justify-start gap-x-2.5 gap-y-0.5 lg:justify-end"
             >
               {SEGMENT_ORDER.map((id) => {
                 const active = segment === id;

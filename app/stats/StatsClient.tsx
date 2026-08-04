@@ -14,10 +14,7 @@ import { TOWN_LIST, STATS_CITIES, STATS_KINDS, type StatsCity, type StatsKind, t
 import { formatTownList } from "@/lib/tmre-towns";
 import type { TownCountMap } from "@/lib/town-listing-counts";
 import TownFilterPills from "@/components/TownFilterPills";
-import {
-  filterPillButtonClass,
-  filterPillContainerClass,
-} from "@/lib/filter-pill-styles";
+import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
 import { usePersistedFilter, usePersistedNullableFilter } from "@/hooks/usePersistedFilter";
 import MedianPriceListingsTable, {
   type MedianListingRow,
@@ -216,6 +213,7 @@ export default function StatsClient() {
   const tableRef = useRef<HTMLDivElement>(null);
   const townKindResetReady = useRef(false);
   const orderedTowns = usePersonalizedTowns(TOWN_LIST);
+  const kindTabKit = useTabKitSegmentedStyle("pill-seg-dark-default");
   const deepLinkApplied = useRef(false);
   const chartScrollApplied = useRef(false);
 
@@ -684,14 +682,14 @@ export default function StatsClient() {
           </div>
 
           <div className="mt-3.5 flex flex-wrap items-center gap-2.5 animate-fade-up-delay-2">
-            <div className={filterPillContainerClass("default", { wrap: false })}>
+            <div className={kindTabKit.containerClass({ wrap: false })}>
               {STATS_KINDS.map((kind) => (
                 <button
                   key={kind}
                   type="button"
                   onClick={() => setStatsKind(kind)}
                   aria-pressed={statsKind === kind}
-                  className={`${filterPillButtonClass(statsKind === kind)} capitalize`}
+                  className={`${kindTabKit.buttonClass(statsKind === kind)} capitalize`}
                 >
                   {kind === "sale" ? "For Sale" : "Rentals"}
                 </button>

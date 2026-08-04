@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HomeMarketPulseTown } from "@/lib/home-market-pulse-types";
 import {
   interestingStatHref,
@@ -15,19 +15,22 @@ import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 /**
  * Hero score ↔ interesting-stat beat (one town at a time).
- * Score holds → fades out → town stat holds → fades out → next town score.
+ * Score fades in → holds → crossfades out as same-town stat fades in →
+ * stat holds → crossfades out as next town’s score fades in.
+ * Desktop: score stays in its top slot; stat in the slot below (no overlay).
  */
-const HERO_FADE_MS = 700;
+const HERO_FADE_MS = 1_050; // 700 × 1.5 — 50% slower fades
 const HERO_SCORE_HOLD_MS = 2_600;
 const HERO_STAT_HOLD_MS = 3_200;
 
 type HeroBeat =
   | "score-in"
   | "score-hold"
-  | "score-out"
-  | "stat-in"
+  /** Score fading out while same-town stat fades in. */
+  | "cross-to-stat"
   | "stat-hold"
-  | "stat-out";
+  /** Stat fading out while next town’s score fades in. */
+  | "cross-to-score";
 
 type ScoreSample = {
   town: TmreTown;
@@ -209,6 +212,8 @@ export default function HomeMethodOverview({
   const [interestingEntries, setInterestingEntries] = useState<InterestingStat[]>(
     [],
   );
+  /** Freeze outgoing town’s stat while the next town’s score fades in. */
+  const [pinnedStat, setPinnedStat] = useState<InterestingStat | null>(null);
 
   // Scores first — photo + interesting-stat wait until we have a sample (or the
   // score fetch finished empty) so the hero number is never starved by other APIs.
@@ -410,9 +415,16 @@ export default function HomeMethodOverview({
       )
     : interestingEntries[0] ?? null;
 
-  const hasTownStat = interestingStat != null;
+  /** During cross-to-score, keep fading out the previous town’s stat. */
+  const displayStat =
+    heroBeat === "cross-to-score" && pinnedStat
+      ? pinnedStat
+      : interestingStat;
+  // Ref so beat timers can pin the live stat without re-running on every object identity.
+  const interestingStatRef = useRef(interestingStat);
+  interestingStatRef.current = interestingStat;
 
-  // Score → fade → interesting-stat → fade → next town (slower, one focus at a time).
+  // Score in → hold → crossfade to same-town stat → hold → crossfade to next score.
   useEffect(() => {
     if (samples.length === 0) return;
 
@@ -435,46 +447,80 @@ export default function HomeMethodOverview({
       setSampleIndex((i) =>
         samples.length <= 1 ? 0 : (i + 1) % samples.length,
       );
-      setHeroBeat("score-in");
     };
 
-    // *-in mounts at opacity 0; next beat (*-hold) flips opaque so CSS fades in.
+    // *-in / cross mounts at opacity 0; next tick flips opaque so CSS fades in.
     if (heroBeat === "score-in") {
+      setPinnedStat(null);
       schedule(40, () => setHeroBeat("score-hold"));
     } else if (heroBeat === "score-hold") {
-      schedule(fadeMs + scoreHoldMs, () => setHeroBeat("score-out"));
-    } else if (heroBeat === "score-out") {
-      schedule(fadeMs, () => {
-        if (hasTownStat) setHeroBeat("stat-in");
-        else advanceTown();
+      setPinnedStat(null);
+      schedule(fadeMs + scoreHoldMs, () => {
+        if (interestingStatRef.current) setHeroBeat("cross-to-stat");
+        else {
+          advanceTown();
+          setHeroBeat("score-in");
+        }
       });
-    } else if (heroBeat === "stat-in") {
-      schedule(40, () => setHeroBeat("stat-hold"));
+    } else if (heroBeat === "cross-to-stat") {
+      schedule(fadeMs, () => setHeroBeat("stat-hold"));
     } else if (heroBeat === "stat-hold") {
-      schedule(fadeMs + statHoldMs, () => setHeroBeat("stat-out"));
+      schedule(fadeMs + statHoldMs, () => {
+        // Pin this town’s stat, then advance so the next score can fade in.
+        setPinnedStat(interestingStatRef.current);
+        advanceTown();
+        setHeroBeat("cross-to-score");
+      });
     } else {
-      schedule(fadeMs, () => advanceTown());
+      // cross-to-score — next town’s score is already mounted; land on hold.
+      schedule(fadeMs, () => {
+        setPinnedStat(null);
+        setHeroBeat("score-hold");
+      });
     }
 
     return () => {
       cancelled = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [heroBeat, samples.length, hasTownStat]);
+  }, [heroBeat, samples.length]);
 
-  // Opaque only on *-hold so *-in starts at 0 and CSS can fade in.
-  const scoreOpaque = heroBeat === "score-hold";
-  const statOpaque = heroBeat === "stat-hold";
-  // Keep elements mounted during fade-in/out so opacity can ease.
+  // Score opaque on hold and while fading in during cross-to-score (after paint).
+  const [crossScoreLit, setCrossScoreLit] = useState(false);
+  const [crossStatLit, setCrossStatLit] = useState(false);
+  useEffect(() => {
+    if (heroBeat === "cross-to-stat") {
+      setCrossStatLit(false);
+      const id = window.setTimeout(() => setCrossStatLit(true), 40);
+      return () => window.clearTimeout(id);
+    }
+    if (heroBeat === "cross-to-score") {
+      setCrossScoreLit(false);
+      const id = window.setTimeout(() => setCrossScoreLit(true), 40);
+      return () => window.clearTimeout(id);
+    }
+    setCrossScoreLit(false);
+    setCrossStatLit(false);
+    return undefined;
+  }, [heroBeat]);
+
+  const scoreOpaque =
+    heroBeat === "score-hold" ||
+    (heroBeat === "cross-to-score" && crossScoreLit);
+  const statOpaque =
+    heroBeat === "stat-hold" ||
+    (heroBeat === "cross-to-stat" && crossStatLit);
+
   const scoreShown =
     heroBeat === "score-in" ||
     heroBeat === "score-hold" ||
-    heroBeat === "score-out";
+    heroBeat === "cross-to-stat" ||
+    heroBeat === "cross-to-score";
   const statShown =
-    hasTownStat &&
-    (heroBeat === "stat-in" ||
+    displayStat != null &&
+    (heroBeat === "cross-to-stat" ||
       heroBeat === "stat-hold" ||
-      heroBeat === "stat-out");
+      heroBeat === "cross-to-score");
 
   useEffect(() => {
     if (!interestingStat?.kind) return;
@@ -568,14 +614,20 @@ export default function HomeMethodOverview({
                 <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2 sm:text-right">
                   Actual home · rotating towns
                 </p>
-                {/* Score and interesting-stat share one stage — fade one at a time. */}
-                <div className="relative min-h-[11.5rem] w-full sm:min-h-[13.5rem] sm:text-right">
+                {/*
+                  Score keeps its top slot; same-town stat fades in underneath.
+                  Crossfade handoff (no stacked absolute overlay). Slight Y drift
+                  sells the handoff so the # and the market beat stay connected.
+                */}
+                <div className="flex w-full min-w-0 flex-col sm:text-right">
                   <div
-                    className={`absolute inset-0 flex min-h-0 min-w-0 flex-col justify-center border border-transparent px-3 py-3 transition-opacity ease-in-out sm:px-4 sm:py-3.5 motion-reduce:transition-none ${
+                    className={`min-w-0 overflow-hidden border border-transparent px-3 transition-[opacity,transform,max-height,padding] ease-in-out motion-reduce:transition-none sm:px-4 ${
                       scoreOpaque
-                        ? "opacity-100"
-                        : "pointer-events-none opacity-0"
-                    } ${scoreShown ? "" : "invisible"}`}
+                        ? "max-h-[28rem] translate-y-0 py-3 opacity-100 sm:py-3.5"
+                        : scoreShown
+                          ? "pointer-events-none max-h-0 -translate-y-3 py-0 opacity-0"
+                          : "pointer-events-none max-h-0 translate-y-0 py-0 opacity-0"
+                    }`}
                     style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
                     aria-hidden={!scoreOpaque || undefined}
                   >
@@ -617,44 +669,52 @@ export default function HomeMethodOverview({
                     </p>
                   </div>
 
-                  {interestingStat ? (
+                  {displayStat ? (
                     <Link
-                      href={interestingStat.href}
+                      href={displayStat.href}
                       tabIndex={statOpaque ? 0 : -1}
                       onMouseEnter={() => {
-                        if (!interestingStat.kind) return;
+                        if (!displayStat.kind) return;
                         for (const url of interestingStatWarmUrls(
-                          interestingStat.kind,
-                          interestingStat.town ?? null,
+                          displayStat.kind,
+                          displayStat.town ?? null,
                         )) {
                           prefetchTabJson(url);
                         }
                       }}
-                      className={`absolute inset-0 flex min-h-0 min-w-0 flex-col justify-center border border-transparent bg-transparent px-3 py-3 text-left transition-opacity ease-in-out hover:border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark motion-reduce:transition-none sm:px-4 sm:py-3.5 sm:text-right ${
+                      className={`min-w-0 overflow-hidden border border-transparent bg-transparent px-3 text-left transition-[opacity,transform,max-height,padding] ease-in-out hover:border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark motion-reduce:transition-none sm:px-4 sm:text-right ${
                         statOpaque
-                          ? "opacity-100"
-                          : "pointer-events-none opacity-0"
-                      } ${statShown ? "" : "invisible"}`}
+                          ? "max-h-[16rem] translate-y-0 py-3 opacity-100 sm:py-3.5"
+                          : statShown
+                            ? "pointer-events-none max-h-0 translate-y-3 py-0 opacity-0"
+                            : "pointer-events-none max-h-0 translate-y-0 py-0 opacity-0"
+                      }`}
                       style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
                       aria-hidden={!statOpaque || undefined}
                       title={
-                        interestingStat.kind === "best-vintage" ||
-                        interestingStat.kind === "vintage-gap"
+                        displayStat.kind === "best-vintage" ||
+                        displayStat.kind === "vintage-gap"
                           ? "Learn how scoring works"
                           : "Open this chart on Statistics"
                       }
                     >
                       <span className="block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-                        {interestingStat.eyebrow}
+                        {displayStat.eyebrow}
+                        {displayStat.town ? (
+                          <span className="text-gold/70">
+                            {" "}
+                            · {displayStat.town}
+                          </span>
+                        ) : null}
                       </span>
                       <span
-                        key={`${interestingStat.value}-${interestingStat.detail}-${live?.town ?? ""}`}
+                        key={`${displayStat.value}-${displayStat.detail}-${displayStat.town ?? ""}`}
                         className="mt-1.5 block break-words font-serif italic text-2xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.85rem] lg:text-[2.15rem]"
                       >
-                        {interestingStat.value}
+                        {displayStat.value}
                       </span>
                       <span className="mt-1.5 block break-words text-xs leading-snug text-white/60 sm:ml-auto sm:max-w-sm">
-                        {interestingStat.detail}
+                        {displayStat.detail}
                       </span>
                     </Link>
                   ) : null}

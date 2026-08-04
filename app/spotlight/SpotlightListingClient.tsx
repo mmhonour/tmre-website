@@ -12,6 +12,7 @@ import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { spotlightPropertySearchParam } from "@/lib/spotlight-listing";
 import { spotlightSectionHref } from "@/lib/spotlight-url";
+import { isRentalListing } from "@/lib/listing-kind";
 
 export default function SpotlightListingClient() {
   const {
@@ -108,6 +109,10 @@ export default function SpotlightListingClient() {
           routeBase="spotlight"
           propertyParam={propertyParam}
           mode="panel"
+          isRental={isRentalListing({
+            propertyType: display.propertyType,
+            raw: mlsListing?.raw,
+          })}
         />
       }
       sidebar={<ListingSidebar details={details} />}

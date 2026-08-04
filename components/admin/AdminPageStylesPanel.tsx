@@ -234,17 +234,54 @@ export default function AdminPageStylesPanel() {
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
             Built-in presets
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {builtinPresets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => setDraft(cloneMarketPulseTheme(preset.theme))}
-                className="rounded-full border border-navy/20 bg-cream/40 px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase text-navy transition-colors hover:border-gold hover:bg-cream"
-              >
-                {preset.label}
-              </button>
-            ))}
+          <p className="mt-1 text-xs text-slate">
+            Click a style to load it into the draft — preview updates above.
+            Save when you want Market Pulse to use it.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {builtinPresets.map((preset) => {
+              const t = preset.theme;
+              const selected =
+                draft &&
+                JSON.stringify(draft) === JSON.stringify(preset.theme);
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setDraft(cloneMarketPulseTheme(preset.theme))}
+                  className={`flex flex-col gap-2 rounded-xl border px-3 py-3 text-left transition-colors ${
+                    selected
+                      ? "border-gold bg-cream/60 ring-1 ring-gold/40"
+                      : "border-charcoal/[0.12] bg-cream/20 hover:border-navy/30 hover:bg-cream/50"
+                  }`}
+                >
+                  <span className="flex gap-1" aria-hidden>
+                    {[
+                      t.pageBackground,
+                      t.surface,
+                      t.accent,
+                      t.inventoryBar,
+                      t.monthsSupplyBar,
+                    ].map((color, i) => (
+                      <span
+                        key={`${preset.id}-${i}`}
+                        className="h-5 w-5 rounded-full border border-charcoal/10"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </span>
+                  <span className="font-mono text-[10px] tracking-[0.1em] uppercase text-navy">
+                    {preset.label}
+                  </span>
+                  <span className="font-mono text-[9px] tracking-[0.06em] text-charcoal/45">
+                    {
+                      MARKET_PULSE_FONT_OPTIONS[t.headingFont].label
+                    }{" "}
+                    · {MARKET_PULSE_FONT_OPTIONS[t.bodyFont].label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -317,27 +354,56 @@ export default function AdminPageStylesPanel() {
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
             Palette
           </p>
+          <p className="mt-1 text-xs text-slate">
+            Revert restores that swatch to the TMRE default page style.
+          </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {COLOR_FIELDS.map(({ key, label }) => (
-              <label
-                key={key}
-                className="flex items-center gap-3 rounded-lg border border-charcoal/[0.1] p-3"
-              >
-                <input
-                  type="color"
-                  value={draft[key] as string}
-                  onChange={(event) => patch(key, event.target.value.toUpperCase() as never)}
-                  className="h-8 w-8 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
-                  aria-label={`${label} color`}
-                />
-                <span className="min-w-0">
-                  <span className="block font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
-                    {label}
-                  </span>
-                  <span className="font-mono text-xs text-navy">{draft[key] as string}</span>
-                </span>
-              </label>
-            ))}
+            {COLOR_FIELDS.map(({ key, label }) => {
+              const value = draft[key] as string;
+              const defaultValue = defaults?.[key] as string | undefined;
+              const changed =
+                defaultValue != null &&
+                value.toUpperCase() !== defaultValue.toUpperCase();
+              return (
+                <div
+                  key={key}
+                  className="flex items-center gap-3 rounded-lg border border-charcoal/[0.1] p-3"
+                >
+                  <label className="flex min-w-0 flex-1 items-center gap-3">
+                    <input
+                      type="color"
+                      value={value}
+                      onChange={(event) =>
+                        patch(key, event.target.value.toUpperCase() as never)
+                      }
+                      className="h-8 w-8 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+                      aria-label={`${label} color`}
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
+                        {label}
+                      </span>
+                      <span className="font-mono text-xs text-navy">{value}</span>
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      defaultValue != null && patch(key, defaultValue as never)
+                    }
+                    disabled={!changed}
+                    className="shrink-0 font-mono text-[9px] tracking-[0.1em] uppercase text-charcoal/45 underline underline-offset-2 transition-colors hover:text-navy disabled:pointer-events-none disabled:no-underline disabled:opacity-30"
+                    title={
+                      defaultValue
+                        ? `Revert to default ${defaultValue}`
+                        : "Revert to default"
+                    }
+                  >
+                    Revert
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -345,31 +411,61 @@ export default function AdminPageStylesPanel() {
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
             Type
           </p>
+          <p className="mt-1 text-xs text-slate">
+            Revert restores that role to the TMRE default font.
+          </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {[
-              ["headingFont", "Heading"],
-              ["bodyFont", "Body"],
-              ["monoFont", "Mono"],
-            ].map(([key, label]) => (
-              <label key={key} className="flex flex-col gap-1.5">
-                <span className="font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
-                  {label}
-                </span>
-                <select
-                  value={draft[key as keyof MarketPulseTheme] as string}
-                  onChange={(event) =>
-                    patch(key as keyof MarketPulseTheme, event.target.value as MarketPulseFontId)
-                  }
-                  className="rounded-lg border border-charcoal/15 bg-white px-3 py-2 text-sm text-navy focus:border-navy focus:outline-none"
-                >
-                  {Object.entries(MARKET_PULSE_FONT_OPTIONS).map(([id, font]) => (
-                    <option key={id} value={id}>
-                      {font.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
+            {(
+              [
+                ["headingFont", "Heading"],
+                ["bodyFont", "Body"],
+                ["monoFont", "Mono"],
+              ] as const
+            ).map(([key, label]) => {
+              const value = draft[key];
+              const defaultValue = defaults?.[key];
+              const changed =
+                defaultValue != null && value !== defaultValue;
+              return (
+                <div key={key} className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
+                      {label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        defaultValue != null && patch(key, defaultValue)
+                      }
+                      disabled={!changed}
+                      className="font-mono text-[9px] tracking-[0.1em] uppercase text-charcoal/45 underline underline-offset-2 transition-colors hover:text-navy disabled:pointer-events-none disabled:no-underline disabled:opacity-30"
+                      title={
+                        defaultValue
+                          ? `Revert to ${MARKET_PULSE_FONT_OPTIONS[defaultValue].label}`
+                          : "Revert to default"
+                      }
+                    >
+                      Revert
+                    </button>
+                  </div>
+                  <select
+                    value={value}
+                    onChange={(event) =>
+                      patch(key, event.target.value as MarketPulseFontId)
+                    }
+                    className="rounded-lg border border-charcoal/15 bg-white px-3 py-2 text-sm text-navy focus:border-navy focus:outline-none"
+                  >
+                    {Object.entries(MARKET_PULSE_FONT_OPTIONS).map(
+                      ([id, font]) => (
+                        <option key={id} value={id}>
+                          {font.label}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </div>
+              );
+            })}
           </div>
         </section>
 

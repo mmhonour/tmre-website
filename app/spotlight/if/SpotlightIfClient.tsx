@@ -8,6 +8,7 @@ import { useSpotlightListing } from "@/hooks/useSpotlightListing";
 import { ListingShell } from "@/components/listing/ListingShell";
 import { formatMlsStatus, fmtMoney } from "@/lib/listing-history";
 import { buildSpotlightDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { isRentalListing } from "@/lib/listing-kind";
 
 export default function SpotlightIfClient() {
   const {
@@ -63,6 +64,10 @@ export default function SpotlightIfClient() {
           addressHint={presentation.ifAddressHint}
           townHint={presentation.townHint}
           routeBase="spotlight"
+          isRental={isRentalListing({
+            propertyType: display.propertyType,
+            raw: mlsListing?.raw,
+          })}
         />
       }
       sidebar={<ListingSidebar details={details} />}

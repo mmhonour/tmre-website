@@ -18,6 +18,7 @@ import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import { listingHeaderScoreProps } from "@/lib/listing-header-score-props";
 import { ListingShell } from "@/components/listing/ListingShell";
+import { isRentalListing } from "@/lib/listing-kind";
 
 type Schools = {
   elementary: string | null;
@@ -215,6 +216,7 @@ export default function ListingIfClient({
             mlsId={listing.mlsId}
             addressHint={street || addressHint}
             townHint={resolvedTown}
+            isRental={isRentalListing(listing)}
           />
         }
       />

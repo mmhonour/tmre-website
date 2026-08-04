@@ -26,6 +26,7 @@ import {
   peekTabJson,
 } from "@/lib/tab-data-prefetch";
 import { listingPhotosHref } from "@/lib/listing-url";
+import { isRentalListing } from "@/lib/listing-kind";
 
 type Schools = {
   elementary: string | null;
@@ -288,6 +289,7 @@ export default function ListingDetailClient({
             addressHint={street || addressHint}
             townHint={townHint || l.address.city}
             mode="panel"
+            isRental={isRentalListing(l)}
           />
         }
         sidebar={<ListingSidebar details={details} />}

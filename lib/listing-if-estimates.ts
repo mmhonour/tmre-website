@@ -732,6 +732,8 @@ export type ListingIfPayload = {
   locationPremiumLabels?: string[]
   subjectVintageLabel?: string | null
   subjectSqft?: number | null
+  /** Subject listing is a rental — mobile What if defaults to “If you rent”. */
+  subjectIsRental?: boolean
   /** Admin Market Bands — attached by `/if` API for sale midpoint labeling. */
   inventorySegmentBands?: InventorySegmentBandsConfig
 }

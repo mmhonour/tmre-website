@@ -1527,18 +1527,25 @@ function ScenarioPanel({
   );
 }
 
+function mobileScenarioDefault(isRental: boolean | null | undefined): "sale" | "rent" {
+  return isRental ? "rent" : "sale";
+}
+
 export function ListingIfPageContent({
   mlsId,
   addressHint,
   townHint,
   routeBase = "listing",
   suppressPageChrome = false,
+  isRental = null,
 }: {
   mlsId: string;
   addressHint?: string | null;
   townHint?: string | null;
   routeBase?: "listing" | "spotlight";
   suppressPageChrome?: boolean;
+  /** Subject listing transaction — mobile What if defaults to matching scenario. */
+  isRental?: boolean | null;
 }) {
   return (
     <ListingIfPanel
@@ -1548,6 +1555,7 @@ export function ListingIfPageContent({
       routeBase={routeBase}
       variant="page"
       suppressPageChrome={suppressPageChrome}
+      isRental={isRental}
     />
   );
 }
@@ -1559,6 +1567,7 @@ export default function ListingIfPanel({
   routeBase: _routeBase = "listing",
   variant = "panel",
   suppressPageChrome = false,
+  isRental = null,
 }: {
   mlsId: string;
   addressHint?: string | null;
@@ -1566,6 +1575,8 @@ export default function ListingIfPanel({
   routeBase?: "listing" | "spotlight";
   variant?: "panel" | "page";
   suppressPageChrome?: boolean;
+  /** Subject listing transaction — mobile What if defaults to matching scenario. */
+  isRental?: boolean | null;
 }) {
   void _routeBase;
   void suppressPageChrome;
@@ -1582,8 +1593,9 @@ export default function ListingIfPanel({
     useState<CriteriaStepFeedback | null>(null);
   /** Mobile: which sell/rent scenario tab is active. */
   const [mobileScenarioLead, setMobileScenarioLead] = useState<"sale" | "rent">(
-    "sale",
+    () => mobileScenarioDefault(isRental),
   );
+  const scenarioSeededForMlsRef = useRef<string | null>(null);
   const siteUnlocked = useSiteUnlocked();
   const [emailOpen, setEmailOpen] = useState(false);
   /** Shared across sell/rent panels and the email dialog (no re-pick in email). */
@@ -1621,7 +1633,9 @@ export default function ListingIfPanel({
     setBaselineMatch(null);
     setSessionSeeded(false);
     setCriteriaStepFeedback(null);
-    setMobileScenarioLead("sale");
+    scenarioSeededForMlsRef.current = null;
+    setMobileScenarioLead(mobileScenarioDefault(isRental));
+    if (isRental != null) scenarioSeededForMlsRef.current = mlsId;
     setEmailOpen(false);
     setMidpointMethod(IF_DEFAULT_MIDPOINT_METHOD);
     setSkipRangeAnimation(hasIfRangeAnimSeen(mlsId));
@@ -1629,7 +1643,15 @@ export default function ListingIfPanel({
       clearTimeout(criteriaFeedbackTimerRef.current);
       criteriaFeedbackTimerRef.current = null;
     }
-  }, [mlsId]);
+  }, [mlsId, isRental]);
+
+  // When parent didn't pass isRental, seed mobile tab from /if payload once.
+  useEffect(() => {
+    if (scenarioSeededForMlsRef.current === mlsId) return;
+    if (data?.subjectIsRental == null) return;
+    setMobileScenarioLead(mobileScenarioDefault(data.subjectIsRental));
+    scenarioSeededForMlsRef.current = mlsId;
+  }, [data?.subjectIsRental, mlsId]);
 
   useEffect(() => {
     return () => {

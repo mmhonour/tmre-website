@@ -19,6 +19,7 @@ import {
   type ListingIfPayload,
 } from '@/lib/listing-if-estimates'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
+import { isRentalListing } from '@/lib/listing-kind'
 import {
   getPricingMatchingConfig,
   getPricingMatchingConfigFresh,
@@ -235,6 +236,7 @@ export async function cacheIfEstimatesForListing(
     locationPremiumLabels,
     subjectVintageLabel,
     subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
+    subjectIsRental: isRentalListing(subject),
   }
 
   if (id) {
@@ -331,6 +333,7 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
         ).labels,
         subjectVintageLabel: vintageLabel(subjectVintageFromYear(subject.yearBuilt)),
         subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
+        subjectIsRental: isRentalListing(subject),
       }
       await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
         () => undefined,
@@ -380,6 +383,7 @@ async function persistIfPayload(
     locationPremiumLabels: parts.locationPremiumLabels,
     subjectVintageLabel: parts.subjectVintageLabel,
     subjectSqft: listing.sqft != null && listing.sqft > 0 ? listing.sqft : null,
+    subjectIsRental: isRentalListing(listing),
   }
   if (id) {
     await upsertListingIfEstimate({
@@ -408,7 +412,10 @@ export async function resolveListingIfPayload(
   listing: Listing,
 ): Promise<ListingIfPayload> {
   const cached = await readCachedListingIfPayload(listing)
-  if (cached) return cached
+  if (cached) {
+    if (cached.subjectIsRental != null) return cached
+    return { ...cached, subjectIsRental: isRentalListing(listing) }
+  }
 
   // Prefer warm Sales/Rentals edges — avoids loading every Closed+Active row
   // for the town when the matcher already ranked comps for this subject.

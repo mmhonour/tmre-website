@@ -118,10 +118,11 @@ export const ADMIN_TAB_KIT: readonly AdminTabKitEntry[] = [
     id: 'underline-listing',
     group: 'Underline tab strips',
     title: 'Listing subnav underline',
-    where: 'Listing + Spotlight subnav (ListingSubnav)',
+    where:
+      'Listing + Spotlight subnav (ListingSubnav) — Overview / Photos / Sold / Rented / Under Agreement / What if / History',
     surface: 'dark',
     viewport: 'both',
-    note: 'Desktop full strip; mobile drops edge tabs (What if / Map → edge pills).',
+    note: 'Desktop full strip (comps group expanded shows Sold · Rented · Under Agreement); mobile drops edge tabs (What if / Map → edge pills).',
   },
   {
     id: 'underline-admin-primary',

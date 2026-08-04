@@ -55,6 +55,8 @@ type Props = {
   routeBase?: "listing" | "spotlight";
   /** Spotlight property query (`property=…`) for comps / UAG APIs. */
   propertyParam?: string | null;
+  /** Subject listing is a rental — mobile What if defaults to “If you rent”. */
+  isRental?: boolean | null;
   /**
    * `stack` — continuous page sections (legacy /test).
    * `panel` — show/hide a single section inside the slide-up overlay.
@@ -159,6 +161,7 @@ export function ListingMobileScrollSections({
   townHint,
   routeBase = "listing",
   propertyParam = null,
+  isRental = null,
   mode = "stack",
   activeTab = null,
 }: Props) {
@@ -236,6 +239,7 @@ export function ListingMobileScrollSections({
             townHint={townHint}
             routeBase={routeBase}
             suppressPageChrome={isPanel}
+            isRental={isRental}
           />
         ) : null}
       </Section>

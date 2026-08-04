@@ -22,10 +22,7 @@ import {
   formatScoreWeightPct,
   useSiteUnlocked,
 } from "@/components/SiteUnlockProvider";
-import {
-  filterPillButtonClass,
-  filterPillContainerClass,
-} from "@/lib/filter-pill-styles";
+import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
 import {
   deriveDealSuperlatives,
   type DealSuperlativeInput,
@@ -1044,13 +1041,14 @@ function DealTransactionFilterPills({
   value: "sale" | "rental";
   onChange: (value: "sale" | "rental") => void;
 }) {
+  const tabKit = useTabKitSegmentedStyle("pill-seg-unbordered-compact");
   const options = [
     { value: "sale" as const, label: "For Sale" },
     { value: "rental" as const, label: "Rentals" },
   ];
   return (
     <div
-      className={`${filterPillContainerClass("compact", { wrap: false, bordered: false })} shrink-0`}
+      className={`${tabKit.containerClass({ wrap: false })} shrink-0`}
       role="group"
       aria-label="Listing type"
     >
@@ -1060,7 +1058,7 @@ function DealTransactionFilterPills({
           type="button"
           onClick={() => onChange(opt.value)}
           aria-pressed={value === opt.value}
-          className={filterPillButtonClass(value === opt.value, "compact")}
+          className={tabKit.buttonClass(value === opt.value)}
         >
           {opt.label}
         </button>
@@ -1076,6 +1074,7 @@ function DealPropertyClassFilterPills({
   value: DealSalePropertyClass;
   onChange: (value: DealSalePropertyClass) => void;
 }) {
+  const tabKit = useTabKitSegmentedStyle("pill-seg-unbordered-compact");
   const options: { value: DealSalePropertyClass; label: string }[] = [
     { value: "homes", label: "Homes" },
     { value: "multi", label: "Multi" },
@@ -1083,7 +1082,7 @@ function DealPropertyClassFilterPills({
   ];
   return (
     <div
-      className={`${filterPillContainerClass("compact", { wrap: false, bordered: false })} shrink-0 opacity-90`}
+      className={`${tabKit.containerClass({ wrap: false })} shrink-0 opacity-90`}
       role="group"
       aria-label="Property type"
     >
@@ -1093,7 +1092,7 @@ function DealPropertyClassFilterPills({
           type="button"
           onClick={() => onChange(opt.value)}
           aria-pressed={value === opt.value}
-          className={filterPillButtonClass(value === opt.value, "compact")}
+          className={tabKit.buttonClass(value === opt.value)}
         >
           {opt.label}
         </button>

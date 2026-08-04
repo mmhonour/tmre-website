@@ -99,7 +99,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'UI kit (tab styles)',
     category: 'ui-tabs',
     definition:
-      'Admin → Web server → UI kit — live catalog of every distinct tab/pill visual system with stable IDs (e.g. pill-seg-dark-compact, underline-listing, edge-listing-mobile). Source list in lib/admin-tab-kit.ts; previews reuse production class helpers from lib/filter-pill-styles.ts.',
+      'Admin → Web server → UI kit — catalog grouped by style family (segmented gold, independent, zip/town, underline, edge, folder, status). Each surface card shows native preview + Use style draft with After preview and per-row Save (sync_meta tab_kit_assignments). Segmented/independent remaps paint Market Pulse, Stats Sale/Rental, Intelligence filters, Deal of the Week, and Fixer Uppers via useTabKitSegmentedStyle.',
   },
   {
     term: '“This is not the Next.js you know”',
@@ -626,6 +626,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'product',
     definition:
       'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h (not ModificationTimestamp bumps). Fills today’s Eastern-day events first (event clock desc), then the prior day. Plain Active and Pending never appear. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
+  },
+  {
+    term: 'Thin corpus (Find)',
+    category: 'product',
+    definition:
+      'When /find typeahead can only match a narrow searchable set — today mostly MLS rows already in the listings table — so suggestions feel sparse (“no / few hits”) even if the API is fast. Caveat from the Find typeahead options discussion: #3 (client-side index) and #4 (hybrid client+server) win on latency (keystroke → dropdown) but do not fix a thin corpus; they only search what you already shipped. Thickening the corpus means expanding what is searchable (e.g. #1 property-address directory covering off-market / never-listed homes), not only speeding listings-only search (#2). Not the same as thin scheduling (Netlify cron alarm clocks).',
   },
   {
     term: 'Intelligence',

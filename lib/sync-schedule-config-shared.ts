@@ -10,17 +10,18 @@ import {
 import type { AdminSyncActionId } from '@/lib/admin-sync-types'
 
 export const SYNC_SCHEDULE_FREQUENCIES = [
+  { id: '15m', label: '15 mins', intervalMs: 15 * 60 * 1000 },
   { id: '30m', label: '30 mins', intervalMs: 30 * 60 * 1000 },
-  { id: '60m', label: '60 mins', intervalMs: 60 * 60 * 1000 },
-  { id: '2h', label: '2 hr', intervalMs: 2 * 60 * 60 * 1000 },
-  { id: '4h', label: '4 hr', intervalMs: 4 * 60 * 60 * 1000 },
-  { id: '8h', label: '8 hr', intervalMs: 8 * 60 * 60 * 1000 },
-  { id: '16h', label: '16 hr', intervalMs: 16 * 60 * 60 * 1000 },
+  { id: '60m', label: '1 hour', intervalMs: 60 * 60 * 1000 },
+  { id: '2h', label: '2 hours', intervalMs: 2 * 60 * 60 * 1000 },
+  { id: '4h', label: '4 hrs', intervalMs: 4 * 60 * 60 * 1000 },
+  { id: '8h', label: '8 hrs', intervalMs: 8 * 60 * 60 * 1000 },
+  { id: '16h', label: '16 hrs', intervalMs: 16 * 60 * 60 * 1000 },
   { id: 'daily', label: 'Daily', intervalMs: null },
   { id: 'weekly', label: 'Weekly', intervalMs: null },
   { id: 'monthly', label: 'Monthly', intervalMs: null },
   /** Calendar event day (FOMC decision / CPI release) — start time still applies. */
-  { id: 'event', label: 'Event day', intervalMs: null },
+  { id: 'event', label: 'Calendar scheduled', intervalMs: null },
 ] as const
 
 export type SyncScheduleFrequencyId = (typeof SYNC_SCHEDULE_FREQUENCIES)[number]['id']

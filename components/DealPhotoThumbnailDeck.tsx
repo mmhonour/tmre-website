@@ -11,6 +11,8 @@ const DECK_STAGGER_Y = 48;
 
 /** Fallback until the first thumb reports its intrinsic size (common MLS landscape). */
 const DEFAULT_PHOTO_ASPECT = 4 / 3;
+/** Show photos 2–6 beside the hero (skip index 0). */
+const STRIP_THUMB_COUNT = 5;
 
 export default function DealPhotoThumbnailDeck({
   mlsId,
@@ -30,25 +32,33 @@ export default function DealPhotoThumbnailDeck({
   variant?: "strip" | "deck";
 }) {
   // Skip photo 0 — same image as the hero; show photos 2–6 (indices 1–5).
-  const thumbs = listingPhotoThumbUrls(mlsId, photoCount, 5, 1);
+  const thumbs = listingPhotoThumbUrls(
+    mlsId,
+    photoCount,
+    STRIP_THUMB_COUNT,
+    1,
+  );
   const stripRef = useRef<HTMLAnchorElement>(null);
-  const [stripHeight, setStripHeight] = useState(0);
+  /** Height of the hero+strip row (parent), not the strip itself — strip used to
+   *  measure its own h-full box which collapsed to 0 and hid all thumbs. */
+  const [rowHeight, setRowHeight] = useState(0);
   /** width / height from the first decoded listing photo. */
   const [photoAspect, setPhotoAspect] = useState(DEFAULT_PHOTO_ASPECT);
 
   useLayoutEffect(() => {
     if (variant !== "strip") return;
     const el = stripRef.current;
-    if (!el) return;
+    const parent = el?.parentElement;
+    if (!parent) return;
     const sync = () => {
-      const h = el.getBoundingClientRect().height;
-      if (h > 0) setStripHeight(h);
+      const h = parent.getBoundingClientRect().height;
+      if (h > 0) setRowHeight(h);
     };
     sync();
     const ro = new ResizeObserver(sync);
-    ro.observe(el);
+    ro.observe(parent);
     return () => ro.disconnect();
-  }, [variant, thumbs.length]);
+  }, [variant, thumbs.length, mlsId]);
 
   if (thumbs.length === 0) return null;
 
@@ -99,18 +109,18 @@ export default function DealPhotoThumbnailDeck({
   }
 
   const n = thumbs.length;
-  // Column width so each thumb is photoAspect (w/h) at equal height shares of the hero.
+  // Column width so each thumb keeps photoAspect (w/h) at equal shares of row height.
   const stripWidth =
-    stripHeight > 0 && n > 0
-      ? Math.max(1, (stripHeight / n) * photoAspect)
-      : undefined;
+    rowHeight > 0 && n > 0
+      ? Math.max(48, (rowHeight / n) * photoAspect)
+      : 72;
 
   return (
     <Link
       ref={stripRef}
       href={photosHref}
-      className="group/strip flex h-full min-h-0 shrink-0 flex-col gap-0 self-stretch focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
-      style={stripWidth != null ? { width: stripWidth } : { width: "4.5rem" }}
+      className="group/strip relative z-20 flex min-h-0 shrink-0 flex-col gap-0 self-stretch focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+      style={{ width: stripWidth }}
       aria-label={`View all ${photoCount ?? thumbs.length} photos of ${address}`}
       onClick={(e) => e.stopPropagation()}
     >

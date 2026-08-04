@@ -7,11 +7,7 @@ import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { formatTownList, listingInTmreCoverage, listingZipMatchesTown, normalizeTownName, TMRE_TOWNS, townForZip, type TmreTown } from "@/lib/tmre-towns";
 import { countListingsByTown } from "@/lib/town-listing-counts";
 import TownFilterPills from "@/components/TownFilterPills";
-import {
-  filterPillButtonClass,
-  filterPillContainerClass,
-  filterPillSeparatorClass,
-} from "@/lib/filter-pill-styles";
+import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { prefetchMlsPhotoThumbs } from "@/lib/prefetch-listing-images";
@@ -159,6 +155,7 @@ export default function FixerUppersClient({
     FIXER_CATEGORY_VALUES,
   );
   const orderedTowns = usePersonalizedTowns(TOWN_NAMES);
+  const categoryTabKit = useTabKitSegmentedStyle("pill-seg-dark-default");
 
   useEffect(() => {
     let cancelled = false;
@@ -258,16 +255,19 @@ export default function FixerUppersClient({
               counts={loadState === "ready" ? townCounts : undefined}
             />
 
-            <div className={`hidden sm:block ${filterPillSeparatorClass()}`} aria-hidden />
+            <div
+              className={`hidden sm:block ${categoryTabKit.separatorClass()}`}
+              aria-hidden
+            />
 
-            <div className={filterPillContainerClass()}>
+            <div className={categoryTabKit.containerClass()}>
               {CATEGORY_FILTERS.map((f) => (
                 <button
                   key={f.value}
                   type="button"
                   onClick={() => setCategoryFilter(f.value)}
                   aria-pressed={categoryFilter === f.value}
-                  className={filterPillButtonClass(categoryFilter === f.value)}
+                  className={categoryTabKit.buttonClass(categoryFilter === f.value)}
                 >
                   {f.label}
                 </button>

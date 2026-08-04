@@ -20,12 +20,15 @@ const INTERACTIVE_HINT_MS = 10_000;
 const AUTO_HIDE_IDLE_MS = 10_000;
 /** Horizontal finger swipe distance to change mobile carousel slide. */
 const SWIPE_MIN_PX = 48;
-/** Desktop 3-up window: slow L→R slide (transform only). */
+/** Desktop multi-up window: slow L→R slide (transform only). */
 const DESKTOP_SLIDE_MS = 1_400;
 /** Tailwind gap-4 between desktop slides. */
 const DESKTOP_GAP_PX = 16;
-/** How many mini-graphs show at once on desktop before the strip carousels. */
-const DESKTOP_VISIBLE = 3;
+/**
+ * How many mini-graphs show at once on desktop before the strip carousels.
+ * 4 = vintage + inventory + DOM + Luxury/Mid/Value/Discount all visible.
+ */
+const DESKTOP_VISIBLE = 4;
 /** Extra leading clones so the wrap seam can slide without a jump. */
 const DESKTOP_CLONE_COUNT = DESKTOP_VISIBLE;
 
@@ -41,11 +44,11 @@ export type IntelligenceMiniGraphSlot = {
 
 export type MiniGraphsCarouselApi = {
   paused: boolean;
-  /** True when mobile (1-up) or desktop (3-up window) carousel is active. */
+  /** True when mobile (1-up) or desktop (windowed) carousel is active. */
   isCarousel: boolean;
   /** Key of the currently focused slide (null when not in carousel mode). */
   activeKey: string | null;
-  /** True when this graph is on-screen (mobile active slide or desktop 3-up window). */
+  /** True when this graph is on-screen (mobile active slide or desktop window). */
   isKeyVisible: (key: string) => boolean;
   pause: () => void;
   resume: () => void;
@@ -62,10 +65,9 @@ export function useMiniGraphsCarousel(): MiniGraphsCarouselApi | null {
 }
 
 /**
- * Desktop: up to 3 charts in a row; when there are more, slide the 3-wide
- * window continuously L→R ((1,2,3)→(2,3,4)→(3,4,1)→…) via transform — same
- * pause / dwell as mobile. Clones at the end of the track keep the wrap seam
- * animated (no remount / fade).
+ * Desktop: up to DESKTOP_VISIBLE charts in a row; when there are more, slide
+ * that window continuously L→R via transform — same pause / dwell as mobile.
+ * Clones at the end of the track keep the wrap seam animated (no remount / fade).
  * Mobile: one chart at a time until paused.
  * Hide toggle often lives outside (left of board).
  */
@@ -154,6 +156,10 @@ export default function IntelligenceMiniGraphsStrip({
   const [showInteractiveHint, setShowInteractiveHint] = useState(false);
   /** Bumped on real user interaction so the idle auto-hide timer restarts. */
   const [activityEpoch, setActivityEpoch] = useState(0);
+  /** Mobile: keys already shown in the carousel — idle hide waits for a full tour. */
+  const [seenCarouselKeys, setSeenCarouselKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Fresh visit / remount after navigating away — always start rotating.
@@ -162,6 +168,7 @@ export default function IntelligenceMiniGraphsStrip({
     setActiveIndex(0);
     setDesktopSlideIndex(0);
     setDesktopSlideNoAnim(false);
+    setSeenCarouselKeys(new Set());
   }, []);
 
   const bumpActivity = useCallback(() => {
@@ -287,8 +294,8 @@ export default function IntelligenceMiniGraphsStrip({
   }, [controlled]);
 
   useEffect(() => {
-    // Match Tailwind `lg`: phones + tablets get 1-up so all graphs (incl. DOM)
-    // are reachable. Desktop `lg+` keeps the 3-wide sliding window.
+    // Match Tailwind `lg`: phones + tablets get 1-up so all graphs are reachable.
+    // Desktop `lg+` shows up to DESKTOP_VISIBLE in a row (carousels if more).
     const mq = window.matchMedia("(max-width: 1023px)");
     const sync = () => setIsNarrow(mq.matches);
     sync();
@@ -415,9 +422,34 @@ export default function IntelligenceMiniGraphsStrip({
     return () => window.clearTimeout(id);
   }, [prefReady, hidden, items.length]);
 
+  // Mark on-screen carousel slides as seen (mobile 1-up + desktop window).
+  useEffect(() => {
+    if (hidden || items.length === 0) return;
+    if (!isCarousel) {
+      setSeenCarouselKeys(new Set(items.map((s) => s.key)));
+      return;
+    }
+    setSeenCarouselKeys((prev) => {
+      const next = new Set(prev);
+      if (isNarrow) {
+        const key = items[safeActiveIndex]?.key;
+        if (key) next.add(key);
+      } else {
+        for (let o = 0; o < DESKTOP_VISIBLE; o++) {
+          const key = items[(safeActiveIndex + o) % items.length]?.key;
+          if (key) next.add(key);
+        }
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [hidden, isCarousel, isNarrow, items, safeActiveIndex]);
+
   // Auto-hide after idle — skipped when user explicitly clicked Show graphs.
+  // On mobile carousel, wait until every graph has been shown at least once
+  // so Luxury/Mid/Value/Discount (#4) isn’t hidden before it appears.
   useEffect(() => {
     if (!prefReady || hidden || items.length === 0 || autoHideSuspended) return;
+    if (isCarousel && seenCarouselKeys.size < items.length) return;
     const id = window.setTimeout(() => {
       setHiddenPref(true);
     }, AUTO_HIDE_IDLE_MS);
@@ -429,6 +461,8 @@ export default function IntelligenceMiniGraphsStrip({
     activityEpoch,
     autoHideSuspended,
     setHiddenPref,
+    isCarousel,
+    seenCarouselKeys,
   ]);
 
   if (renderItems.length === 0) return null;
@@ -627,7 +661,7 @@ export default function IntelligenceMiniGraphsStrip({
                 isNarrow && renderItems.length > 1
                   ? "Mini graphs — swipe left or right to change"
                   : desktopCarousel
-                    ? "Mini graphs — three visible; slides continuously left to right"
+                    ? `Mini graphs — ${DESKTOP_VISIBLE} visible; slides continuously left to right`
                     : undefined
               }
             >

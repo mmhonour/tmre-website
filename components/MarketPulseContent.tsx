@@ -15,10 +15,7 @@ import {
   marketPulseTownMonthsSupplyStatsHref,
   type MarketPulseCategoryId,
 } from "@/lib/market-pulse-shared";
-import {
-  filterPillButtonClass,
-  filterPillContainerClass,
-} from "@/lib/filter-pill-styles";
+import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
 
 const TAB_ORDER = MARKET_PULSE_CATEGORY_IDS;
 
@@ -137,15 +134,12 @@ export default function MarketPulseContent({
     marketPulseTownClosedSalesStatsHref(cityLabel, category);
   const avgDomTownHref = (cityLabel: string) =>
     marketPulseTownAvgDomStatsHref(cityLabel, category);
+  const tabKit = useTabKitSegmentedStyle("pill-seg-light-compact");
 
   return (
     <div className="mx-auto max-w-2xl">
       <div
-        className={`${filterPillContainerClass("compact", {
-          wrap: true,
-          bordered: true,
-          theme: "light",
-        })} mb-4 w-full justify-start sm:justify-center`}
+        className={`${tabKit.containerClass({ wrap: true })} mb-4 w-full justify-start sm:justify-center`}
         role="tablist"
         aria-label="Market Pulse categories"
       >
@@ -158,7 +152,7 @@ export default function MarketPulseContent({
               role="tab"
               aria-selected={selected}
               onClick={() => setCategoryId(cat.id)}
-              className={filterPillButtonClass(selected, "compact", "light")}
+              className={tabKit.buttonClass(selected)}
             >
               {cat.label}
             </button>

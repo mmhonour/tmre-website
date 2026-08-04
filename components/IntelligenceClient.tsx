@@ -65,11 +65,7 @@ import ListingHistoryModal from "./ListingHistoryModal";
 import ModalPortal, { MODAL_PANEL_CLASS } from "./ModalPortal";
 import TownFilterPills from "./TownFilterPills";
 import ZipFilterPills from "./ZipFilterPills";
-import {
-  filterPillButtonClass,
-  filterPillContainerClass,
-  filterPillSeparatorClass,
-} from "@/lib/filter-pill-styles";
+import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
 import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
@@ -1086,9 +1082,9 @@ function writeExpandedSnapshotKeys(keys: Set<string>): void {
 
 function snapshotCardTitle(snapshot: TownSnapshot, tx: TxFilter): string {
   const place = snapshotHeading(snapshot);
-  if (tx === "rental") return `${place} Rental`;
-  if (tx === "sale") return `${place} Sales`;
-  return place;
+  if (tx === "rental") return `${place} Listings for Rent`;
+  if (tx === "sale") return `${place} Listings for Sale`;
+  return `${place} Listings`;
 }
 
 function snapshotSummaryParts(snapshot: TownSnapshot): {
@@ -4366,32 +4362,37 @@ export default function IntelligenceClient({
 
   const descriptorSentinelRef = useRef<HTMLDivElement>(null);
   const [descriptorsPinned, setDescriptorsPinned] = useState(false);
+  /** Live header bottom — nav is taller than pt-20/24 (multi-line logo, badges). */
+  const [navOffsetPx, setNavOffsetPx] = useState(96);
 
-  // Phone only: pin descriptors under the nav once their in-flow row scrolls
-  // away. Desktop keeps descriptors in normal document flow so they scroll
-  // off with the hero (same as before the sticky panel).
+  // Pin descriptors under the fixed nav once their in-flow row would sit
+  // underneath it. Critical on desktop after hero intro / MI chrome idle-hide:
+  // the transparent header still steals clicks even though the links show through.
   useEffect(() => {
     const sentinel = descriptorSentinelRef.current;
     if (!sentinel) {
       setDescriptorsPinned(false);
       return;
     }
-    const isDesktop = () => window.matchMedia("(min-width: 1024px)").matches;
-    const navOffsetPx = 80;
+    const header = document.querySelector("header");
     const update = () => {
-      if (isDesktop()) {
-        setDescriptorsPinned(false);
-        return;
-      }
+      const offset = header?.getBoundingClientRect().bottom ?? 96;
+      setNavOffsetPx(offset);
       const top = sentinel.getBoundingClientRect().top;
-      setDescriptorsPinned(top < navOffsetPx);
+      setDescriptorsPinned(top < offset + 1);
     };
     update();
     window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
+    const ro =
+      header && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(update)
+        : null;
+    if (header && ro) ro.observe(header);
     return () => {
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      ro?.disconnect();
     };
   }, [
     showPriceFilter,
@@ -4401,9 +4402,11 @@ export default function IntelligenceClient({
     collapsedSlidersOpen,
     filterChromeCollapsed,
     filterChromePeeks,
+    heroIntroDismissed,
+    marketIntelChromeDismissed,
   ]);
 
-  /** Mobile sticky bar only — desktop peeks stay in-flow with the hero. */
+  /** Peeked pill / slider chrome portals into the pinned nav panel. */
   const pinFilterChromeToNav = descriptorsPinned;
 
   const closeTownStats = () => setTownStatsOpen(false);
@@ -4613,7 +4616,8 @@ export default function IntelligenceClient({
   const pinnedDescriptorBar =
     descriptorsPinned && typeof document !== "undefined" ? (
       <div
-        className="fixed top-20 lg:top-24 inset-x-0 z-40 max-h-[min(70vh,36rem)] overflow-y-auto border-b border-white/10 bg-[#1B2A4A]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md"
+        className="fixed inset-x-0 z-40 max-h-[min(70vh,36rem)] overflow-y-auto border-b border-white/10 bg-[#1B2A4A]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md"
+        style={{ top: navOffsetPx }}
         data-intel-slider-context-blurb-pinned
         data-intel-pinned-filter-panel
         onPointerDownCapture={bumpFilterPeekActivity}
@@ -4643,7 +4647,7 @@ export default function IntelligenceClient({
     >
       {pinnedDescriptorBar}
       <section
-        className={`navy-gradient text-white pt-20 lg:pt-24 relative overflow-hidden transition-[padding] duration-300 ease-out ${
+        className={`navy-gradient text-white pt-28 lg:pt-32 relative overflow-hidden transition-[padding] duration-300 ease-out ${
           filtersExpanded ? "pb-1 lg:pb-1" : "pb-1"
         }`}
       >
@@ -4997,10 +5001,7 @@ export default function IntelligenceClient({
                     */}
                     {tx !== "rental" ? (
                       <>
-                        <div
-                          className={`hidden sm:block ${filterPillSeparatorClass("compact")}`}
-                          aria-hidden
-                        />
+                        <IntelFilterSep />
                         <FilterGroup
                           label=""
                           value={saleProperty}
@@ -5016,10 +5017,7 @@ export default function IntelligenceClient({
                     ) : null}
                     {!filterChromeCollapsed ? (
                       <>
-                        <div
-                          className={`hidden sm:block ${filterPillSeparatorClass("compact")}`}
-                          aria-hidden
-                        />
+                        <IntelFilterSep />
                         <FilterGroup
                           label=""
                           value={newConstructionFilter}
@@ -5567,6 +5565,31 @@ export default function IntelligenceClient({
                       ) : null,
                     },
                     {
+                      key: "inventory-dom",
+                      node: (
+                        <IntelligenceDomBandMiniChart
+                          city={active === "All" ? "All" : active}
+                          kind={tx === "rental" ? "rental" : "sale"}
+                          activeBucketId={activeDomBandId}
+                          filterActive={activeDomBandId != null}
+                          onInteract={pauseMiniGraphsRotation}
+                          onBucketClick={(bucket) => {
+                            setActiveDomBandId(bucket.id);
+                            setDomBandMinDays(bucket.minDays);
+                            setDomBandMaxDays(bucket.maxDays);
+                            setBoardPage(1);
+                          }}
+                          onResetFilter={() => {
+                            setActiveDomBandId(null);
+                            setDomBandMinDays(null);
+                            setDomBandMaxDays(null);
+                            setBoardPage(1);
+                          }}
+                        />
+                      ),
+                    },
+                    {
+                      // Graph #4 — Luxury / Mid-market / Value / Discount.
                       key: "luxury-inventory-price",
                       // Mobile: hold this slide through Luxury → Mid → Value → Discount.
                       carouselDwellSteps: 4,
@@ -5615,30 +5638,6 @@ export default function IntelligenceClient({
                             }}
                           />
                         ) : null,
-                    },
-                    {
-                      key: "inventory-dom",
-                      node: (
-                        <IntelligenceDomBandMiniChart
-                          city={active === "All" ? "All" : active}
-                          kind={tx === "rental" ? "rental" : "sale"}
-                          activeBucketId={activeDomBandId}
-                          filterActive={activeDomBandId != null}
-                          onInteract={pauseMiniGraphsRotation}
-                          onBucketClick={(bucket) => {
-                            setActiveDomBandId(bucket.id);
-                            setDomBandMinDays(bucket.minDays);
-                            setDomBandMaxDays(bucket.maxDays);
-                            setBoardPage(1);
-                          }}
-                          onResetFilter={() => {
-                            setActiveDomBandId(null);
-                            setDomBandMinDays(null);
-                            setDomBandMaxDays(null);
-                            setBoardPage(1);
-                          }}
-                        />
-                      ),
                     },
                   ]}
                 />
@@ -7575,6 +7574,17 @@ function PriceRangeInputs({
   );
 }
 
+function IntelFilterSep() {
+  const sepKit = useTabKitSegmentedStyle("pill-seg-dark-compact-sep");
+  if (!sepKit.withSep) return null;
+  return (
+    <div
+      className={`hidden sm:block ${sepKit.separatorClass()}`}
+      aria-hidden
+    />
+  );
+}
+
 function FilterGroup<T extends string>({
   label,
   value,
@@ -7586,6 +7596,7 @@ function FilterGroup<T extends string>({
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
 }) {
+  const tabKit = useTabKitSegmentedStyle("pill-seg-dark-compact");
   return (
     <div className="flex items-center gap-3">
       {label && (
@@ -7593,18 +7604,14 @@ function FilterGroup<T extends string>({
           {label}
         </span>
       )}
-      <div className={filterPillContainerClass("compact", { wrap: false })}>
+      <div className={tabKit.containerClass({ wrap: false })}>
         {options.map((opt) => (
           <button
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
             aria-pressed={value === opt.value}
-            className={filterPillButtonClass(
-              value === opt.value,
-              "compact",
-              "dark",
-            )}
+            className={tabKit.buttonClass(value === opt.value)}
           >
             {opt.label}
           </button>

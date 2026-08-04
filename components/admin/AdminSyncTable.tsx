@@ -2551,7 +2551,7 @@ export default function AdminSyncTable({
       <div className="overflow-x-auto">
         <table
           className={`w-full border-collapse table-fixed ${
-            isDashboard ? "min-w-[820px] md:min-w-[980px]" : "min-w-[880px]"
+            isDashboard ? "min-w-[900px] md:min-w-[1080px]" : "min-w-[880px]"
           }`}
         >
           <colgroup>
@@ -2560,6 +2560,7 @@ export default function AdminSyncTable({
             {isDashboard ? <col className="w-[5.5rem]" /> : null}
             {isDashboard ? <col className="w-[5.25rem]" /> : null}
             <col className={isDashboard ? "w-[7.5rem]" : "w-[9rem]"} />
+            {isDashboard ? <col className="w-[6.25rem]" /> : null}
             {isConfigure ? <col /> : null}
             {isConfigure ? <col className="w-[7rem]" /> : null}
             {isConfigure ? <col className="w-[8.5rem]" /> : null}
@@ -2603,6 +2604,14 @@ export default function AdminSyncTable({
               {isConfigure ? <th className={TH}>Description</th> : null}
               {isConfigure ? <th className={TH}>Pages</th> : null}
               {isConfigure ? <th className={TH}>Frequency</th> : null}
+              {isDashboard ? (
+                <th
+                  className={TH}
+                  title="Cadence from Configure (interval, daily/weekly, or calendar event day)"
+                >
+                  Frequency
+                </th>
+              ) : null}
               {isConfigure ? (
                 <th
                   className={TH}
@@ -3017,6 +3026,26 @@ export default function AdminSyncTable({
                       </p>
                     ) : null}
                   </td>
+                  {isDashboard ? (
+                    <td className={cellPad}>
+                      <p
+                        className="font-mono text-[10px] tracking-wide text-navy/80 leading-snug"
+                        title={
+                          jobSchedule
+                            ? jobSchedule.frequency === "event"
+                              ? "Runs on FOMC / CPI calendar release days at the Configure start time (ET)"
+                              : jobSchedule.frequency === "weekly"
+                                ? `${frequencyLabel(jobSchedule.frequency)} · ${SYNC_SCHEDULE_WEEKDAYS[resolveWeekdayEt(jobSchedule)]?.short ?? "Mon"} ${jobSchedule.startTimeEt} ET`
+                                : `${frequencyLabel(jobSchedule.frequency)} · ${jobSchedule.startTimeEt} ET`
+                            : (derivedScheduleHint ?? undefined)
+                        }
+                      >
+                        {jobSchedule
+                          ? frequencyLabel(jobSchedule.frequency)
+                          : (derivedScheduleHint ?? "—")}
+                      </p>
+                    </td>
+                  ) : null}
                   {isConfigure ? (
                     <td className={TD_EXPAND}>
                       <p className="text-sm leading-snug text-slate">
