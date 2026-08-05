@@ -5,8 +5,8 @@
 
 [build]
 builder = "NIXPACKS"
-# Node 20 + python/g++ via nixpacks.toml (node-expat / better-sqlite3 native build).
-buildCommand = "npm ci"
+# Install = nixpacks.toml `npm ci` only. Do not set buildCommand to npm ci —
+# a second run hits EBUSY on /app/node_modules/.cache (Railway cache mount).
 nixpacksConfigPath = "nixpacks.toml"
 
 [deploy]

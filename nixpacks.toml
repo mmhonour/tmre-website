@@ -1,9 +1,19 @@
-# Railway mls-sync build: Node 20 + toolchain for node-gyp (node-expat / better-sqlite3).
-# AWS SDK EBADENGINE warnings were from Nixpacks defaulting to Node 18.
+# Railway mls-sync: Node 20 + toolchain for node-gyp (node-expat / better-sqlite3).
+# Install runs once here — do NOT also set railway.toml buildCommand to `npm ci`
+# (duplicate npm ci → EBUSY rmdir on node_modules/.cache).
 
 [variables]
 NIXPACKS_NODE_VERSION = "20"
+# Keep tsx (devDependency) available for `npm run start:mls-sync`.
+NPM_CONFIG_PRODUCTION = "false"
 
 [phases.setup]
 nixPkgs = ["...", "python311", "gcc"]
 aptPkgs = ["build-essential", "libexpat1-dev"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+# No Next.js build — this service only runs services/mls-sync/server.ts.
+[phases.build]
+cmds = ["echo mls-sync: skip app build"]

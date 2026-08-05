@@ -20,8 +20,10 @@ Push the mls-sync cutover to the branch Railway will deploy (usually `main`)
 before creating the project. Root [`railway.toml`](../../railway.toml) +
 [`nixpacks.toml`](../../nixpacks.toml) must be present (`startCommand = npm run
 start:mls-sync`, healthcheck `/health`, **Node 20** + python/g++ for
-`node-expat` native build). If the build fails on Node 18 / “Could not find any
-Python”, redeploy after those files are on `main`.
+`node-expat` native build). `npm ci` runs only in the Nixpacks **install**
+phase — never again as `buildCommand` (that causes EBUSY on
+`node_modules/.cache`). If the build fails on Node 18 / Python / EBUSY,
+redeploy after those files are on `main`.
 
 ### 1. Railway project
 
