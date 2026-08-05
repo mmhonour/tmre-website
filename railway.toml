@@ -5,7 +5,9 @@
 
 [build]
 builder = "NIXPACKS"
+# Node 20 + python/g++ via nixpacks.toml (node-expat / better-sqlite3 native build).
 buildCommand = "npm ci"
+nixpacksConfigPath = "nixpacks.toml"
 
 [deploy]
 startCommand = "npm run start:mls-sync"

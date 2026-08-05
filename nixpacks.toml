@@ -1,0 +1,9 @@
+# Railway mls-sync build: Node 20 + toolchain for node-gyp (node-expat / better-sqlite3).
+# AWS SDK EBADENGINE warnings were from Nixpacks defaulting to Node 18.
+
+[variables]
+NIXPACKS_NODE_VERSION = "20"
+
+[phases.setup]
+nixPkgs = ["...", "python311", "gcc"]
+aptPkgs = ["build-essential", "libexpat1-dev"]

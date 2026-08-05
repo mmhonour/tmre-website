@@ -2,6 +2,9 @@
   "name": "tmre-website",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "ensure:db": "node scripts/ensure-postgres.mjs",
     "predev": "npm run ensure:db",
