@@ -31,15 +31,18 @@ type TableSample = {
 function sampleOrderLabel(sample: TableSample): string {
   const col = sample.orderBy?.column ?? sample.timestampColumn;
   if (!col) return " · unordered (no timestamp or identity column)";
+  // listings.synced_at = when Neon last upserted the row (system write clock).
   const via =
-    sample.orderBy?.source === "identity"
-      ? "identity"
-      : sample.orderBy?.source === "timestamp"
-        ? "timestamp"
-        : null;
+    col === "synced_at"
+      ? "DB write"
+      : sample.orderBy?.source === "identity"
+        ? "identity"
+        : sample.orderBy?.source === "timestamp"
+          ? "timestamp"
+          : null;
   return via
-    ? ` · newest by ${col} DESC (${via})`
-    : ` · newest by ${col} DESC`;
+    ? ` · default sort ${col} DESC (${via})`
+    : ` · default sort ${col} DESC`;
 }
 
 function parseActivityMs(iso: string | null | undefined): number {
@@ -82,7 +85,7 @@ function formatCell(value: unknown): string {
 function SampleCell({ value }: { value: unknown }) {
   const text = formatCell(value);
   return (
-    <td className="px-2.5 py-1 align-top font-mono text-[10px] text-charcoal/70 min-w-[8rem] max-w-[28rem]">
+    <td className="px-2.5 py-1 align-top font-mono text-[10px] text-charcoal/70 min-w-[7rem] max-w-[20rem]">
       <pre
         className="m-0 max-h-40 overflow-auto whitespace-pre-wrap break-all leading-snug"
         title={text.length > 500 ? text.slice(0, 2000) : text}
@@ -90,6 +93,167 @@ function SampleCell({ value }: { value: unknown }) {
         {text}
       </pre>
     </td>
+  );
+}
+
+/** Put DB/MLS clocks first; shove large jsonb to the end so timestamps aren’t off-screen. */
+const SAMPLE_COLUMN_PRIORITY = [
+  "synced_at",
+  "modification_timestamp",
+  "status_change_timestamp",
+  "price_change_timestamp",
+  "list_date",
+  "close_date",
+  "id",
+  "mls_id",
+  "listing_key",
+  "town",
+  "status_bucket",
+  "mls_status",
+] as const;
+
+const SAMPLE_COLUMN_TAIL = ["data", "raw"] as const;
+
+function orderSampleColumns(columns: string[]): string[] {
+  const set = new Set(columns);
+  const head = SAMPLE_COLUMN_PRIORITY.filter((c) => set.has(c));
+  const tail = SAMPLE_COLUMN_TAIL.filter((c) => set.has(c));
+  const skip = new Set<string>([...head, ...tail]);
+  const mid = columns.filter((c) => !skip.has(c));
+  return [...head, ...mid, ...tail];
+}
+
+function sampleCellSortMs(value: unknown): number {
+  if (value == null) return Number.NEGATIVE_INFINITY;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "string") {
+    const t = parseActivityMs(value);
+    if (!Number.isNaN(t)) return t;
+    const n = Number(value);
+    if (Number.isFinite(n) && value.trim() !== "") return n;
+    return Number.NEGATIVE_INFINITY;
+  }
+  return Number.NEGATIVE_INFINITY;
+}
+
+function compareSampleCells(a: unknown, b: unknown): number {
+  const am = sampleCellSortMs(a);
+  const bm = sampleCellSortMs(b);
+  if (am !== Number.NEGATIVE_INFINITY || bm !== Number.NEGATIVE_INFINITY) {
+    if (am !== bm) return am - bm;
+  }
+  const as = formatCell(a);
+  const bs = formatCell(b);
+  return as.localeCompare(bs, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function SampleRowsTable({ sample }: { sample: TableSample }) {
+  const columns = useMemo(
+    () => orderSampleColumns(sample.columns),
+    [sample.columns],
+  );
+  const defaultCol =
+    sample.orderBy?.column ?? sample.timestampColumn ?? columns[0] ?? null;
+  const [sortCol, setSortCol] = useState<string | null>(defaultCol);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  useEffect(() => {
+    setSortCol(defaultCol);
+    setSortDir("desc");
+  }, [sample.table, defaultCol]);
+
+  const rows = useMemo(() => {
+    if (!sortCol) return sample.rows;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...sample.rows].sort(
+      (ra, rb) => dir * compareSampleCells(ra[sortCol], rb[sortCol]),
+    );
+  }, [sample.rows, sortCol, sortDir]);
+
+  const onSort = (col: string) => {
+    if (sortCol === col) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+      return;
+    }
+    setSortCol(col);
+    setSortDir("desc");
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
+        {sample.rows.length.toLocaleString()} row
+        {sample.rows.length === 1 ? "" : "s"}
+        {" · "}
+        {sample.columns.length.toLocaleString()} column
+        {sample.columns.length === 1 ? "" : "s"}
+        {sampleOrderLabel(sample)}
+        {" · click headers to sort · scroll horizontally for all fields"}
+        {" · large jsonb capped at 64k chars/cell"}
+      </p>
+      {/* max-w-0 on the outer flex child forces a bounded scrollport inside the td */}
+      <div className="max-h-[36rem] w-full max-w-full overflow-x-scroll overflow-y-auto overscroll-contain rounded-lg border border-charcoal/[0.08] bg-white [scrollbar-gutter:stable]">
+        <table className="border-collapse text-left w-max min-w-full">
+          <thead className="sticky top-0 bg-cream/95 z-[1]">
+            <tr>
+              {columns.map((col) => {
+                const active = sortCol === col;
+                const hint =
+                  col === "synced_at"
+                    ? "Neon last upsert (DB write time)"
+                    : col.endsWith("_timestamp") || col.endsWith("_date")
+                      ? "MLS / listing clock"
+                      : undefined;
+                return (
+                  <th
+                    key={col}
+                    className="px-2.5 py-1.5 font-mono text-[9px] tracking-[0.1em] uppercase text-charcoal/45 border-b border-charcoal/[0.08] whitespace-nowrap"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSort(col)}
+                      title={hint}
+                      className={`inline-flex items-center gap-1 hover:text-navy ${
+                        active ? "text-navy" : ""
+                      }`}
+                    >
+                      {col}
+                      <span className="tabular-nums text-[8px] opacity-70">
+                        {active ? (sortDir === "desc" ? "↓" : "↑") : "↕"}
+                      </span>
+                    </button>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={Math.max(columns.length, 1)}
+                  className="px-2.5 py-4 font-mono text-[10px] text-charcoal/45"
+                >
+                  Table is empty.
+                </td>
+              </tr>
+            ) : (
+              rows.map((sampleRow, idx) => (
+                <tr
+                  key={`${sample.table}-r-${idx}`}
+                  className="border-b border-charcoal/[0.04] last:border-0"
+                >
+                  {columns.map((col) => (
+                    <SampleCell key={col} value={sampleRow[col]} />
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -250,7 +414,7 @@ export default function AdminDatabaseInventoryPanel({
   return (
     <div
       id="admin-database-inventory"
-      className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
+      className="scroll-mt-24 overflow-x-clip rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-charcoal/[0.08] bg-cream/40 px-5 py-4 sm:px-6">
         <div>
@@ -258,11 +422,13 @@ export default function AdminDatabaseInventoryPanel({
             Database inventory
           </p>
           <p className="mt-1 max-w-2xl text-sm text-charcoal/65">
-            Connected stores and Neon table activity. Last updated and upserts
-            in the last 60 minutes load with the page (Refresh to reload).{" "}
+            Connected stores and Neon table activity. Last updated / 60m upserts
+            use each table’s write clock (for listings:{" "}
+            <span className="font-mono text-[11px]">synced_at</span>
+            ).{" "}
             <span className="font-mono text-[11px]">+</span> /{" "}
             <span className="font-mono text-[11px]">−</span> loads up to 100
-            newest rows on demand.
+            newest rows; sample columns are sortable and scroll horizontally.
           </p>
         </div>
         <button
@@ -439,7 +605,7 @@ export default function AdminDatabaseInventoryPanel({
                       </tr>
                       {isOpen ? (
                         <tr className="bg-cream/[0.35]">
-                          <td colSpan={5} className="px-3 py-3">
+                          <td colSpan={5} className="max-w-0 px-3 py-3">
                             {sampleLoading[row.table] ? (
                               <p className="font-mono text-[10px] text-charcoal/50">
                                 Loading up to 100 rows…
@@ -449,62 +615,7 @@ export default function AdminDatabaseInventoryPanel({
                                 {sampleError[row.table]}
                               </p>
                             ) : sample ? (
-                              <div className="space-y-2">
-                                <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
-                                  {sample.rows.length.toLocaleString()} row
-                                  {sample.rows.length === 1 ? "" : "s"}
-                                  {" · "}
-                                  {sample.columns.length.toLocaleString()} column
-                                  {sample.columns.length === 1 ? "" : "s"}
-                                  {sampleOrderLabel(sample)}
-                                  {" · all fields (large jsonb capped at 64k chars/cell)"}
-                                </p>
-                                <div className="max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08] bg-white">
-                                  <table className="w-full border-collapse text-left min-w-max">
-                                    <thead className="sticky top-0 bg-cream/90 z-[1]">
-                                      <tr>
-                                        {sample.columns.map((col) => (
-                                          <th
-                                            key={col}
-                                            className="px-2.5 py-1.5 font-mono text-[9px] tracking-[0.1em] uppercase text-charcoal/45 border-b border-charcoal/[0.08] whitespace-nowrap"
-                                          >
-                                            {col}
-                                          </th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {sample.rows.length === 0 ? (
-                                        <tr>
-                                          <td
-                                            colSpan={Math.max(
-                                              sample.columns.length,
-                                              1,
-                                            )}
-                                            className="px-2.5 py-4 font-mono text-[10px] text-charcoal/45"
-                                          >
-                                            Table is empty.
-                                          </td>
-                                        </tr>
-                                      ) : (
-                                        sample.rows.map((sampleRow, idx) => (
-                                          <tr
-                                            key={`${row.table}-r-${idx}`}
-                                            className="border-b border-charcoal/[0.04] last:border-0"
-                                          >
-                                            {sample.columns.map((col) => (
-                                              <SampleCell
-                                                key={col}
-                                                value={sampleRow[col]}
-                                              />
-                                            ))}
-                                          </tr>
-                                        ))
-                                      )}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
+                              <SampleRowsTable sample={sample} />
                             ) : (
                               <p className="font-mono text-[10px] text-charcoal/45">
                                 No rows loaded yet.
