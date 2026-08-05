@@ -2853,6 +2853,8 @@ export default function AdminSyncTable({
                   );
                 })();
               // Configure is schedule/setup only — no live status colors.
+              // Stale EB “queued — no End” is Status text only (server heals the
+              // ingress stamp) — do not keep the row pink forever after toggle.
               const visual = isConfigure
                 ? ("idle" as const)
                 : resolveSyncRowVisualStatus({
@@ -2867,7 +2869,7 @@ export default function AdminSyncTable({
                     error: rowError,
                     nowMs,
                     ignoreTimingHang: incrementalOnEventBridge,
-                    forceAlert: eventBridgeQueuedStale,
+                    forceAlert: false,
                   });
               const scheduleBreached =
                 isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
@@ -2963,7 +2965,9 @@ export default function AdminSyncTable({
                       "recently";
                     return [
                       upsertLine,
-                      `Not running · AWS ${when}: queued — no End yet`,
+                      eventBridgeQueuedStale
+                        ? `Idle · AWS ${when}: queued with no End (stale — Sync now to recover)`
+                        : `Not running · AWS ${when}: queued — waiting for End`,
                     ].join("\n");
                   }
                   const idleBits: string[] = [upsertLine];

@@ -13,6 +13,7 @@ import {
 } from '@/lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '@/lib/sync-next-override'
 import {
+  isListingEdgeScoresDue,
   isScheduledJobDue,
   readSyncScheduleConfig,
 } from '@/lib/sync-schedule-config'
@@ -182,8 +183,9 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.add('market-digest')
   }
 
-  // Edge scores follow listing-scores cadence when that job is due.
-  if (overdue.has('listing-scores')) {
+  // Edge scores share listing-scores Configure cadence but their own finish
+  // stamp — due whenever edges are stale, even if Goldilocks just ran.
+  if (isListingEdgeScoresDue(now, schedule)) {
     overdue.add('edge-scores')
   }
 

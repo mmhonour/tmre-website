@@ -1142,6 +1142,15 @@ export async function readAdminSyncPanelStatus() {
   // per-process cache (would show "never" after a real Netlify */30 tick).
   await hydrateSyncMetaStore()
 
+  const {
+    eventbridgeIngressAtKey,
+    eventbridgeIngressResultKey,
+    healStaleEventBridgeQueuedIncremental,
+  } = await import('@/lib/eventbridge-ingress-stamp')
+  // Drop forever-pink “queued — no End” after the hang window (EB toggle Day-1).
+  // Run before stats so cleared Start is reflected in this poll.
+  const healedEb = await healStaleEventBridgeQueuedIncremental()
+
   const stats = await readListingsDbStats()
   const refresh = readListingsRefreshStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
@@ -1153,14 +1162,12 @@ export async function readAdminSyncPanelStatus() {
   const lastIncrementalCronTick =
     (await getSyncMetaFresh('last_incremental_cron_tick')) ??
     getSyncMeta('last_incremental_cron_tick')
-  const {
-    eventbridgeIngressAtKey,
-    eventbridgeIngressResultKey,
-  } = await import('@/lib/eventbridge-ingress-stamp')
   const lastEventbridgeIngressAt =
+    healedEb.at ??
     (await getSyncMetaFresh(eventbridgeIngressAtKey('incremental'))) ??
     getSyncMeta(eventbridgeIngressAtKey('incremental'))
   const lastEventbridgeIngressResult =
+    healedEb.result ??
     (await getSyncMetaFresh(eventbridgeIngressResultKey('incremental'))) ??
     getSyncMeta(eventbridgeIngressResultKey('incremental'))
   // Next for EventBridge Incremental anchors on last AWS ingress — read first.

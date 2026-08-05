@@ -385,7 +385,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'EventBridge last fired',
     category: 'sync-admin',
     definition:
-      'Admin → Syncs → Dashboard Incremental when Scheduler is EventBridge. Every HTTP hit to eventbridge-sync-ingress stamps Postgres (last_eventbridge_ingress_*), and a successful queue also stamps Start + incremental_sync_live. The worker writes End (last_incremental_sync) and clears live. Dashboard polls Postgres (~5s while Start is open, ~60s when idle) — that is how EventBridge and Netlify “talk.” Next shows a real wall clock (cadence from Configure Frequency, anchored on last AWS fire), with an AWS label — not “AWS · ~30m”. Status is RUNNING while Start is open or live is set; Idle · not running / Idle · ended otherwise. If AWS queued but End never arrives past the hang window: “Not running · queued — no End yet.”',
+      'Admin → Syncs → Dashboard Incremental when Scheduler is EventBridge. Every HTTP hit to eventbridge-sync-ingress stamps Postgres (last_eventbridge_ingress_*), and a successful queue also stamps Start + incremental_sync_live. The worker writes End (last_incremental_sync) and clears live. Dashboard polls Postgres (~5s while Start is open, ~60s when idle) — that is how EventBridge and Netlify “talk.” Next shows a real wall clock (cadence from Configure Frequency, anchored on last AWS fire), with an AWS label — not “AWS · ~30m”. Status is RUNNING while Start is open or live is set; Idle · not running / Idle · ended otherwise. If AWS queued but End never arrives past ~45m, Admin heals the ingress stamp to orphaned (clears open Start/live) so the row does not stay pink — Sync now recovers the pull.',
   },
   {
     term: 'Ingress (EventBridge)',
@@ -525,7 +525,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Edge score',
     category: 'scoring',
     definition:
-      'Similarity/fit score from metadata (town, zip, year, beds, baths, sqft, condition signals) used to rank comps; stored in listing_edge_scores.',
+      'Similarity/fit score from metadata (town, zip, year, beds, baths, sqft, condition signals) used to rank comps; stored in listing_edge_scores. Weekly rebuild via Netlify sync-listing-edge-scores (listing-scores Configure cadence) keyed off last_listing_edge_scores — not Goldilocks last_listing_scores. Also runs after full resync. Instrumentation Mon 2am ET only helps long-lived Node hosts, not Netlify.',
   },
   {
     term: 'Superlatives',

@@ -73,10 +73,24 @@ function formatCell(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(value, null, 0);
   } catch {
     return String(value);
   }
+}
+
+function SampleCell({ value }: { value: unknown }) {
+  const text = formatCell(value);
+  return (
+    <td className="px-2.5 py-1 align-top font-mono text-[10px] text-charcoal/70 min-w-[8rem] max-w-[28rem]">
+      <pre
+        className="m-0 max-h-40 overflow-auto whitespace-pre-wrap break-all leading-snug"
+        title={text.length > 500 ? text.slice(0, 2000) : text}
+      >
+        {text}
+      </pre>
+    </td>
+  );
 }
 
 function newestActivityIso(
@@ -439,11 +453,15 @@ export default function AdminDatabaseInventoryPanel({
                                 <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
                                   {sample.rows.length.toLocaleString()} row
                                   {sample.rows.length === 1 ? "" : "s"}
+                                  {" · "}
+                                  {sample.columns.length.toLocaleString()} column
+                                  {sample.columns.length === 1 ? "" : "s"}
                                   {sampleOrderLabel(sample)}
+                                  {" · all fields (large jsonb capped at 64k chars/cell)"}
                                 </p>
-                                <div className="max-h-[28rem] overflow-auto rounded-lg border border-charcoal/[0.08] bg-white">
+                                <div className="max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08] bg-white">
                                   <table className="w-full border-collapse text-left min-w-max">
-                                    <thead className="sticky top-0 bg-cream/90">
+                                    <thead className="sticky top-0 bg-cream/90 z-[1]">
                                       <tr>
                                         {sample.columns.map((col) => (
                                           <th
@@ -475,13 +493,10 @@ export default function AdminDatabaseInventoryPanel({
                                             className="border-b border-charcoal/[0.04] last:border-0"
                                           >
                                             {sample.columns.map((col) => (
-                                              <td
+                                              <SampleCell
                                                 key={col}
-                                                className="px-2.5 py-1 font-mono text-[10px] text-charcoal/70 max-w-[16rem] truncate"
-                                                title={formatCell(sampleRow[col])}
-                                              >
-                                                {formatCell(sampleRow[col])}
-                                              </td>
+                                                value={sampleRow[col]}
+                                              />
                                             ))}
                                           </tr>
                                         ))

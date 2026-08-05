@@ -209,16 +209,30 @@ async function assertPublicTable(table: string): Promise<string> {
   return name
 }
 
+/** Soft cap so 100× listings.raw cannot blow the Admin JSON response. */
+const SAMPLE_CELL_MAX_CHARS = 64_000
+
 function cellValue(value: unknown): unknown {
   if (value == null) return null
   if (value instanceof Date) return value.toISOString()
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) {
+    const text = value.toString('utf8')
+    return text.length > SAMPLE_CELL_MAX_CHARS
+      ? `${text.slice(0, SAMPLE_CELL_MAX_CHARS)}…[truncated ${text.length.toLocaleString()} chars]`
+      : text
+  }
   if (typeof value === 'string') {
-    return value.length > 240 ? `${value.slice(0, 240)}…` : value
+    return value.length > SAMPLE_CELL_MAX_CHARS
+      ? `${value.slice(0, SAMPLE_CELL_MAX_CHARS)}…[truncated ${value.length.toLocaleString()} chars]`
+      : value
   }
   if (typeof value === 'object') {
     try {
       const json = JSON.stringify(value)
-      return json.length > 240 ? `${json.slice(0, 240)}…` : JSON.parse(json)
+      if (json.length > SAMPLE_CELL_MAX_CHARS) {
+        return `${json.slice(0, SAMPLE_CELL_MAX_CHARS)}…[truncated ${json.length.toLocaleString()} chars]`
+      }
+      return JSON.parse(json) as unknown
     } catch {
       return String(value)
     }
@@ -349,14 +363,12 @@ export async function readTableSampleRows(
     ? `ORDER BY ${quoteIdent(orderBy.column)} DESC NULLS LAST`
     : ''
 
+  // All public columns in schema order (SELECT *), including nulls.
+  const columns = (await readTableColumnMeta(table)).map((c) => c.column_name)
+
   const rows = await query<Record<string, unknown>>(
     `SELECT * FROM ${qTable} ${orderSql} LIMIT ${cap}`,
   )
-
-  const columns =
-    rows.length > 0
-      ? Object.keys(rows[0])
-      : (await readTableColumnMeta(table)).map((c) => c.column_name)
 
   const mapped = rows.map((row) => {
     const out: Record<string, unknown> = {}

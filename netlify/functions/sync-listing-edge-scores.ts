@@ -3,26 +3,23 @@ import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { queueNetlifyListingEdgeScoreSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
-import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
+import { shouldSkipListingEdgeScoresNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfEventBridgeOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
  * Thin edge-score trigger (NO background).
- * Dense every-30m cron; Configure Frequency/Start time gate the work.
+ * Dense every-30m cron; listing-scores Configure Frequency/Start gate the work,
+ * but due-ness uses last_listing_edge_scores (not Goldilocks End). Always
+ * Netlify-owned — EventBridge on listing-scores must not suppress this cron.
  * Queues sync-listing-edge-scores-worker.
  */
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfEventBridgeOwns('listing-scores')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('listing-scores')) {
       return thinCronSkipped('listing-scores scheduled sync paused by admin')
     }
@@ -31,8 +28,10 @@ export default async function handler() {
         'deferred — Admin Next override is still in the future',
       )
     }
-    if (shouldSkipScheduledJobNotDue('listing-scores')) {
-      return thinCronSkipped('not due yet — Configure frequency / start time')
+    if (shouldSkipListingEdgeScoresNotDue()) {
+      return thinCronSkipped(
+        'not due yet — edge scores cadence (last_listing_edge_scores)',
+      )
     }
     const queued = await queueNetlifyListingEdgeScoreSync()
     if (!queued.ok) {

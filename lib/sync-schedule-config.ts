@@ -170,6 +170,31 @@ export function shouldSkipScheduledJobNotDue(
 }
 
 /**
+ * Edge-score weekly rebuild due check.
+ *
+ * Uses the Goldilocks / listing-scores Configure cadence (weekday + start),
+ * but the finish stamp is `last_listing_edge_scores` — never Goldilocks
+ * `last_listing_scores`. Piggybacking on Goldilocks End left edges stuck for
+ * weeks whenever scores ran without an edge rebuild.
+ */
+export function isListingEdgeScoresDue(
+  now = new Date(),
+  config = readSyncScheduleConfig(),
+): boolean {
+  if (shouldDeferScheduledJob('listing-scores', now)) return false
+  if (isSyncNextOverrideDue('listing-scores', now)) return true
+  return isJobDueBySchedule(
+    config.jobs['listing-scores'],
+    getSyncMeta('last_listing_edge_scores'),
+    now,
+  )
+}
+
+export function shouldSkipListingEdgeScoresNotDue(now = new Date()): boolean {
+  return !isListingEdgeScoresDue(now)
+}
+
+/**
  * True when this alarm clock must not start the job (Configure radio points
  * at the other provider). Netlify thin crons pass `'netlify'`; EventBridge
  * ingress passes `'eventbridge'`.
