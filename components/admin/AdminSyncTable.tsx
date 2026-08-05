@@ -2963,9 +2963,25 @@ export default function AdminSyncTable({
                     descriptions[row.id] ??
                     null;
                   if (incrementalRunningNow) {
-                    return live
-                      ? `RUNNING · ${live}`
-                      : "RUNNING · started (waiting for End…)";
+                    const bits = [
+                      live
+                        ? `RUNNING · ${live}`
+                        : "RUNNING · started (waiting for End…)",
+                    ];
+                    // Peace of mind while in flight — End/heartbeat, not only town tick.
+                    if (timing.finished) {
+                      const endAge =
+                        formatAgeAgo(timing.finished, nowMs) ??
+                        formatTimestamp(timing.finished);
+                      bits.push(`last End ${endAge}`);
+                    } else {
+                      bits.push("last End missing");
+                    }
+                    if (railwayPulseLine) bits.push(railwayPulseLine);
+                    else if (incrementalOnRailway) {
+                      bits.push("Railway: no heartbeat yet");
+                    }
+                    return bits.join("\n");
                   }
                   return live ?? "Running…";
                 }

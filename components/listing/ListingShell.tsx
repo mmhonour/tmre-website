@@ -7,7 +7,6 @@ import {
   DEFAULT_RETURN_NAV,
   LISTING_RETURN_STORAGE_KEY,
   type ReturnNav,
-  parseReturnFromSearchParams,
   persistReturnNav,
   resolveReturnNav,
 } from "@/lib/listing-return-nav";
@@ -26,11 +25,8 @@ function ListingBackLinkInner({ className = "mb-10" }: { className?: string }) {
       origin: window.location.origin,
     });
     setNav(resolved);
-
-    if (fromParam) {
-      const fromNav = parseReturnFromSearchParams(searchParams);
-      if (fromNav) persistReturnNav(fromNav);
-    }
+    // Persist so listing→listing / refresh keep the on-site origin page.
+    persistReturnNav(resolved);
   }, [searchParams]);
 
   return (

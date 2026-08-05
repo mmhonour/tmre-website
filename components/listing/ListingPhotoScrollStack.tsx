@@ -177,13 +177,13 @@ export default function ListingPhotoScrollStack({
           />
         );
 
-        // Prefer photoHref → /photos (hero + thumbnail strip). In-page photos
-        // mode is carousel-only and is used only when no gallery href is set.
+        // Prefer in-page Photos mode (exact index) when Overview context exists;
+        // otherwise photoHref → /photos?photo=N (standalone gallery route).
         const href = photoHref?.(index);
         const activate =
           onPhotoActivate != null
             ? () => onPhotoActivate(index)
-            : !href && photosMode
+            : photosMode
               ? () => photosMode.enter(index)
               : null;
 

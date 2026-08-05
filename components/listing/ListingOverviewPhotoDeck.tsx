@@ -7,7 +7,8 @@ import ListingPhotoScrollStack, {
 /**
  * Overview tab body: full-width hero stack.
  * Remarks: desktop side panel + mobile teaser/drawer in ListingHeroPanels.
- * Clicking a photo enters Photos mode (reveals Photos tab, collapses panel).
+ * Clicking a photo enters Photos mode at that index (reveals Photos tab,
+ * carousel shows the clicked frame — not always the hero).
  */
 export function ListingOverviewPhotoDeck({
   mlsId,

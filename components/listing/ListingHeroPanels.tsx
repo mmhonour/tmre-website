@@ -551,9 +551,11 @@ export default function ListingHeroPanels({
     setPhotosTabVisible(true);
     setPanelTab(null);
     if (typeof photoIndex === "number" && Number.isFinite(photoIndex)) {
+      const idx = Math.max(Math.trunc(photoIndex), 0);
       const count = photosModeCountRef.current;
-      const max = count > 0 ? count - 1 : 0;
-      setPhotosModeIndex(Math.min(Math.max(Math.trunc(photoIndex), 0), max));
+      // Don't clamp to 0 when count isn't registered yet — registerPhotoCount
+      // will bound the index once the stack reports photoCount.
+      setPhotosModeIndex(count > 0 ? Math.min(idx, count - 1) : idx);
     }
     const url = new URL(window.location.href);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);

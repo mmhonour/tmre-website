@@ -146,6 +146,7 @@ export function resolveReturnNav(opts: {
   referrer?: string | null;
   origin?: string | null;
 }): ReturnNav {
+  // 1) Explicit ?from= on the listing URL (in-app links).
   if (opts.fromParam) {
     let href: string;
     try {
@@ -158,6 +159,16 @@ export function resolveReturnNav(opts: {
     }
   }
 
+  // 2) Same-origin document.referrer — where the user actually came from
+  // this navigation. Beats stale sessionStorage (e.g. prior Deal board visit).
+  if (opts.referrer) {
+    const href = parseSameOriginReferrer(opts.referrer, opts.origin);
+    if (href) {
+      return { href, label: labelForReturnPath(href) };
+    }
+  }
+
+  // 3) sessionStorage — listing→listing hops (referrer is another listing) or refresh.
   if (opts.storedJson) {
     try {
       const stored = JSON.parse(opts.storedJson) as Partial<ReturnNav>;
@@ -174,13 +185,7 @@ export function resolveReturnNav(opts: {
     }
   }
 
-  if (opts.referrer) {
-    const href = parseSameOriginReferrer(opts.referrer, opts.origin);
-    if (href) {
-      return { href, label: labelForReturnPath(href) };
-    }
-  }
-
+  // 4) External / empty referrer — default Deal board.
   return { ...DEFAULT_RETURN_NAV };
 }
 

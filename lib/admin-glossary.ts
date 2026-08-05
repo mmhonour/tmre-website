@@ -361,7 +361,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Netlify',
     category: 'sync-admin',
     definition:
-      'Host for the Next.js app and serverless functions. Not the same as photo storage (R2) or the Postgres host (Neon).',
+      'Host for the public Next.js site (tmrebuilder.com) and serverless functions — not photo storage (R2), not Postgres (Neon), and not the Incremental RETS puller (Railway mls-sync). Watches GitHub `main` with its own pipeline: Netlify build (`build:netlify` / Next plugin from netlify.toml + UI settings). Does not read railway.toml / railpack.json. See Same-repo dual deploy (Netlify + Railway).',
   },
   {
     term: 'MFA',
@@ -502,10 +502,16 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Legacy Incremental puller: Netlify background Lambda at /.netlify/functions/sync-listings-worker. Being replaced by Railway mls-sync for Incremental. A 202 “queued” only meant the wake was accepted; success is End + rows in listings. Prefer Railway service (scheduler radio).',
   },
   {
+    term: 'Same-repo dual deploy (Netlify + Railway)',
+    category: 'sync-admin',
+    definition:
+      'One GitHub repo (`tmre-website` / `main`), two independent deploy pipelines — they do not share a build brain. Netlify (site): watches main → Netlify build (`build:netlify` / Next plugin from netlify.toml / UI) → tmrebuilder.com. Railway (mls-sync): watches the same repo → railway.toml + railpack.json (Railpack builder) → install deps → start `npm run start:mls-sync` — no Next site build. Push to main can trigger both. Netlify ignores Railway config; Railway ignores netlify.toml. See Netlify, Railway mls-sync, Railpack.',
+  },
+  {
     term: 'Railway mls-sync',
     category: 'sync-admin',
     definition:
-      'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify, DATABASE_URL + RETS_* + SYNC_CRON_SECRET on Railway. Smoke: npm run smoke:incremental -- --mls=…. Decommission EventBridge Incremental schedules after cutover. Build uses Nixpacks — must be Node 20 + native toolchain; see node-expat, npm ci.',
+      'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify; on Railway Variables: DATABASE_URL + RETS_* + SYNC_CRON_SECRET (+ optional MLS_SYNC_INTERVAL_MS). Smoke: npm run smoke:incremental -- --mls=…. Build: Railpack + railpack.json (Node 20, npm install, skip Next) + railway.toml start/health — not a Netlify/Next deploy. See Same-repo dual deploy (Netlify + Railway), Railpack.',
   },
   {
     term: 'MLS_SYNC_SERVICE_URL',
@@ -517,31 +523,31 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Railpack',
     category: 'sync-admin',
     definition:
-      'Railway’s current default image builder (successor to Nixpacks). UI shows Builder = Railpack. Config: root railpack.json (+ railway.toml start/health). For mls-sync: Node 20, python/build-essential for node-expat, install via npm install (not npm ci), build = skip Next.js, start = npm run start:mls-sync. Cache mounts under node_modules/.cache cannot be deleted by install scripts — that is the EBUSY failure. Leave UI Build Command empty or echo-skip; never npm ci. See EBUSY node_modules/.cache (Railway), npm ci.',
+      'Railway’s current default image builder (UI: Builder = Railpack). Successor to Nixpacks — when Railpack is selected, root nixpacks.toml is ignored; use railpack.json (+ railway.toml for start/health). Docs call out that cache mounts cannot be cleared by install scripts (EBUSY if you try). For mls-sync: Node 20, python/build-essential for node-expat, install = npm install (not npm ci), build = echo skip (must not run Next `npm run build`), start = npm run start:mls-sync. Leave UI Build Command empty or echo-skip; never npm ci. See EBUSY node_modules/.cache (Railway), Same-repo dual deploy (Netlify + Railway).',
   },
   {
     term: 'Nixpacks',
     category: 'sync-admin',
     definition:
-      'Older Railway/app image builder (now maintenance mode; Railway UI defaults to Railpack). Root nixpacks.toml may still exist in the repo but is ignored while Builder = Railpack. Prefer Railpack + railpack.json for mls-sync. See Railpack.',
+      'Older Railway image builder (maintenance mode). Day-1 mls-sync mistake: assuming nixpacks.toml + railway.toml builder=NIXPACKS controlled the deploy while the UI showed Builder = Railpack — Railpack won and ignored Nixpacks config (including npm ci / Node pinning attempts). Prefer Railpack + railpack.json. See Railpack.',
   },
   {
     term: 'EBUSY node_modules/.cache (Railway)',
     category: 'sync-admin',
     definition:
-      'Build fail (errno -16) when npm tries to rmdir /app/node_modules/.cache while Railway has that path locked as a cache mount. Common triggers: (1) `npm ci` in Build Command (UI or railway.toml) after install already ran, (2) `npm ci` itself wiping node_modules against that mount. Fix for mls-sync: nixpacks install = `npm install` with NPM_CONFIG_CACHE=/tmp/npm-cache; buildCommand = echo skip; clear any UI Build Command that still says npm ci. Optional one-shot: service variable NO_CACHE=1 then redeploy. Same log filename timestamp as an earlier fail often means you’re reading an old deployment — check the commit SHA on the deploy card.',
+      'Build fail (errno -16) when a script tries to rmdir /app/node_modules/.cache while Railpack has that path locked as a cache mount — Railpack docs warn about this. Common trigger: npm ci (wipes node_modules). Fix for mls-sync: railpack.json install = npm install; build = skip Next; never put npm ci in UI Build Command. Optional one-shot: NO_CACHE=1 then redeploy. Same log filename timestamp as an earlier fail often means an old deployment — check the commit SHA on the deploy card. See Railpack, npm ci.',
   },
   {
     term: 'node-expat',
     category: 'sync-admin',
     definition:
-      'Native Node addon (C++/node-gyp) used for XML parsing on the SmartMLS RETS path (dependency of rets-client). npm ci must compile it on the host — needs Python + a C++ toolchain, not just Node. On Railway, missing Python is a hard build fail; AWS SDK “Unsupported engine” lines in the same log are usually warnings. See Nixpacks, npm ci.',
+      'Native Node addon (C++/node-gyp) used for XML parsing on the SmartMLS RETS path (dependency of rets-client). Install must compile it on the host — needs Python + a C++ toolchain, not just Node. On Railway, missing Python is a hard build fail; AWS SDK “Unsupported engine” lines in the same log are usually warnings. See Railpack, npm ci.',
   },
   {
     term: 'EBADENGINE (npm)',
     category: 'sync-admin',
     definition:
-      'npm warning that the current Node version is below a package’s engines field (e.g. @aws-sdk/* wanting ≥20 while the builder is on 18). Often non-fatal by itself — the Railway mls-sync Day-1 red herring next to the real node-expat / Python failure. Fix by pinning Node 20 in Nixpacks, not by removing the AWS SDK.',
+      'npm warning that the current Node version is below a package’s engines field (e.g. @aws-sdk/* wanting ≥20 while the builder is on 18). Often non-fatal by itself — the Railway mls-sync Day-1 red herring next to the real node-expat / Python failure. Fix by pinning Node 20 in railpack.json (Railpack), not by removing the AWS SDK.',
   },
   {
     term: 'Lambda / serverless function',

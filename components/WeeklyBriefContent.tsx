@@ -12,6 +12,10 @@ import {
 } from "@/lib/market-digest-types";
 import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
 import {
+  sortRowsByBuyerFriendlyScore,
+  type MarketPulseFavorSort,
+} from "@/lib/market-pulse-favorability";
+import {
   MARKET_PULSE_SETTLE_IDLE,
   randomBarPercents,
   settleBarPercent,
@@ -23,8 +27,7 @@ import type { StatsValueCalc } from "@/lib/stats-compute";
 import { splitSentences } from "@/lib/split-sentences";
 
 type ChartLayout = "separate" | "combined";
-/** Sellers = tightest (low MOS) first; buyers = loosest (high MOS) first. */
-type FavorSort = "default" | "sellers" | "buyers";
+type FavorSort = MarketPulseFavorSort;
 
 const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
@@ -76,28 +79,6 @@ function cityKey(city: string): string {
 function isAllTownsCity(city: string): boolean {
   const t = cityKey(city);
   return t === "all" || t === "all towns";
-}
-
-/** Sort towns by months supply (seller vs buyer favorability). All towns stays first. */
-function sortRowsByFavor<T extends { city: string }>(
-  rows: T[],
-  monthsSupplyOf: (row: T) => number | null | undefined,
-  favor: FavorSort,
-): T[] {
-  if (favor === "default") return rows;
-  const head = rows.filter((r) => isAllTownsCity(r.city));
-  const rest = rows.filter((r) => !isAllTownsCity(r.city));
-  const sorted = [...rest].sort((a, b) => {
-    const ma = monthsSupplyOf(a);
-    const mb = monthsSupplyOf(b);
-    const aOk = ma != null && Number.isFinite(ma);
-    const bOk = mb != null && Number.isFinite(mb);
-    if (!aOk && !bOk) return 0;
-    if (!aOk) return 1;
-    if (!bOk) return -1;
-    return favor === "sellers" ? ma! - mb! : mb! - ma!;
-  });
-  return [...head, ...sorted];
 }
 
 type CombinedTownRow = {
@@ -574,30 +555,54 @@ export default function WeeklyBriefContent({
     return map;
   }, [inventoryRows]);
 
+  const domByCity = useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const row of domRows) {
+      map.set(cityKey(row.city), row.avgDaysOnMarket ?? null);
+    }
+    return map;
+  }, [domRows]);
+
   const sortedInventory = useMemo(
     () =>
-      sortRowsByFavor(inventoryRows, (r) => r.monthsSupply, favorSort),
-    [inventoryRows, favorSort],
+      sortRowsByBuyerFriendlyScore(
+        inventoryRows,
+        (r) => ({
+          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
+          avgDaysOnMarket: domByCity.get(cityKey(r.city)) ?? null,
+        }),
+        favorSort,
+        (r) => isAllTownsCity(r.city),
+      ),
+    [inventoryRows, favorSort, mosByCity, domByCity],
   );
 
   const sortedDom = useMemo(
     () =>
-      sortRowsByFavor(
+      sortRowsByBuyerFriendlyScore(
         domRows,
-        (r) => mosByCity.get(cityKey(r.city)) ?? null,
+        (r) => ({
+          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
+          avgDaysOnMarket: r.avgDaysOnMarket ?? null,
+        }),
         favorSort,
+        (r) => isAllTownsCity(r.city),
       ),
-    [domRows, mosByCity, favorSort],
+    [domRows, favorSort, mosByCity],
   );
 
   const sortedClosed = useMemo(
     () =>
-      sortRowsByFavor(
+      sortRowsByBuyerFriendlyScore(
         closedRows,
-        (r) => mosByCity.get(cityKey(r.city)) ?? null,
+        (r) => ({
+          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
+          avgDaysOnMarket: domByCity.get(cityKey(r.city)) ?? null,
+        }),
         favorSort,
+        (r) => isAllTownsCity(r.city),
       ),
-    [closedRows, mosByCity, favorSort],
+    [closedRows, favorSort, mosByCity, domByCity],
   );
 
   const combinedRows = useMemo(() => {
@@ -606,7 +611,15 @@ export default function WeeklyBriefContent({
       domRows,
       closedRows,
     );
-    return sortRowsByFavor(built, (r) => r.monthsSupply, favorSort);
+    return sortRowsByBuyerFriendlyScore(
+      built,
+      (r) => ({
+        monthsSupply: r.monthsSupply,
+        avgDaysOnMarket: r.avgDaysOnMarket,
+      }),
+      favorSort,
+      (r) => isAllTownsCity(r.city),
+    );
   }, [inventoryRows, domRows, closedRows, favorSort]);
 
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
@@ -705,28 +718,29 @@ export default function WeeklyBriefContent({
               className={controlBtn(favorSort === "sellers")}
               aria-pressed={favorSort === "sellers"}
               onClick={() => setFavorSort("sellers")}
-              title="Lowest months supply first — tightest / most seller-favorable"
+              title="Composite: lower months supply + shorter DOM first (more seller friendly). Planned: inventory/homes + closings/24mo."
             >
-              Sellers first
+              Seller Friendly
             </button>
             <button
               type="button"
               className={controlBtn(favorSort === "buyers")}
               aria-pressed={favorSort === "buyers"}
               onClick={() => setFavorSort("buyers")}
-              title="Highest months supply first — loosest / most buyer-favorable"
+              title="Composite: higher months supply + longer DOM first (more buyer friendly). Planned: inventory/homes + closings/24mo."
             >
-              Buyers first
+              Buyer Friendly
             </button>
           </div>
         </div>
         {favorSort !== "default" ? (
           <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)] -mt-5">
-            Sorted by months supply
+            Sorted by buyer/seller friendly composite (months supply + avg DOM
             {favorSort === "sellers"
-              ? " (low → high = sellers)"
-              : " (high → low = buyers)"}
-            . All towns stays on top.
+              ? "; lower = more seller friendly"
+              : "; higher = more buyer friendly"}
+            ). Planned next: inventory per home + closings/24mo per home from
+            Town stats. All towns stays on top.
           </p>
         ) : null}
 

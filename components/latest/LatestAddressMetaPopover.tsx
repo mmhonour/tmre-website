@@ -9,6 +9,7 @@ import {
   DealBoardStatusBadge,
   listingDetailHref,
 } from "@/components/intelligence/deal-board/deal-board-shared";
+import { useCurrentReturnPath } from "@/components/listing/ListingReturnLink";
 import type { LatestListingRow } from "@/lib/latest-listings";
 
 const POPOVER_WIDTH = 272;
@@ -93,10 +94,12 @@ export default function LatestAddressMetaPopover({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [anchorEl, listing.key, onRequestClose]);
 
+  const returnPath = useCurrentReturnPath();
+
   if (!pos || typeof document === "undefined") return null;
 
   const lines = metaLines(listing);
-  const detailHref = listingDetailHref(listing);
+  const detailHref = listingDetailHref(listing, returnPath);
 
   return createPortal(
     <div

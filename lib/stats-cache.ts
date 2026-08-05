@@ -437,6 +437,20 @@ export type TownStatsBundle = {
   medianListings: StatsListingRow[]
 }
 
+/**
+ * Planned Town stats catalogue (most current year we have) for Market Pulse
+ * Buyer/Seller Friendly ratios — not persisted yet.
+ * See lib/market-pulse-favorability.ts + glossary “Town housing unit count”.
+ */
+export type TownStatsHousingCatalogue = {
+  /** Calendar year of the housing count source (e.g. ACS vintage). */
+  housingYear: number
+  housingUnits: number
+  /** Closed sales in trailing 24 months (MLS), for ÷ housingUnits. */
+  closedTrailing24Months: number
+  generatedAt: string
+}
+
 function buildMedianListingRows(
   closed: Listing[],
   town: string,

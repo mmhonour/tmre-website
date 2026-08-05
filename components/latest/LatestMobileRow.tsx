@@ -8,6 +8,7 @@ import {
   DealBoardStatusBadge,
   listingDetailHref,
 } from "@/components/intelligence/deal-board/deal-board-shared";
+import { useCurrentReturnPath } from "@/components/listing/ListingReturnLink";
 import type { LatestListingRow } from "@/lib/latest-listings";
 import { latestRowActivityIso } from "@/lib/latest-activity";
 import { mlsTimestampMs } from "@/lib/mls-time";
@@ -73,7 +74,8 @@ function LatestMobileRow({
   const listingTownName = l.town?.trim() || l.city?.trim() || null;
   const showZip =
     Boolean(l.zip) && (showZipMap || townHasMultipleZips(listingTownName));
-  const detailHref = listingDetailHref(l);
+  const returnPath = useCurrentReturnPath();
+  const detailHref = listingDetailHref(l, returnPath);
   const updatedAt = formatMobileUpdatedAt(latestRowActivityIso(l));
   const ppsf =
     !l.isRental && l.pricePerSqft != null

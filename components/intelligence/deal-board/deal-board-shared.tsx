@@ -174,15 +174,19 @@ export function dealBoardDomWithType(
   return parts.join(" · ");
 }
 
-export function listingDetailHref(l: DealBoardListing): string {
+export function listingDetailHref(
+  l: DealBoardListing,
+  /** Override Back target; default is deal board + row anchor. */
+  returnPath?: string,
+): string {
   const base = listingDetailHrefForListing({
     mlsId: l.key,
     listingKey: l.listingKey,
     address: { street: l.address, full: l.address },
     city: l.city,
   });
-  // Back to deal board → same row (#deal-…); also used by ListingShell “Back”.
-  return appendReturnToHref(base, dealBoardReturnPath(l.key));
+  // Back to deal board → same row (#deal-…); callers (e.g. Latest) pass their page.
+  return appendReturnToHref(base, returnPath ?? dealBoardReturnPath(l.key));
 }
 
 export function DealBoardAddressWithInsight({
