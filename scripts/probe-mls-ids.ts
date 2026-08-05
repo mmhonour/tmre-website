@@ -1,59 +1,78 @@
-#!/usr/bin/env node
 /**
- * Reconciliation primitive: given MLS numbers from an MLS-generated list, report
- * exactly what Postgres holds for each — or that it is missing.
- *
- *   npx tsx --require ./scripts/stub-server-only.cjs scripts/probe-mls-ids.ts 24195349 24194745 ...
+ * One-shot: look up MLS ids in SmartMLS RETS (not Neon).
+ * Usage: npx tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/probe-mls-ids.ts 24196609 24196740
+ * Optional: --town-pull Weston Active 2026-08-03T00:00:00.000Z
  */
-import { existsSync } from 'node:fs'
-import { query } from '../lib/db/postgres'
+import {
+  getListingByMlsId,
+  isRetsConfigured,
+  type Listing,
+} from '../lib/rets'
+import { searchMarketListingsForTown } from '../lib/listings-store'
+import type { TmreTown } from '../lib/tmre-towns'
 
-if (existsSync('.env.local')) {
-  process.loadEnvFile('.env.local')
+function addrLine(L: Listing): string {
+  const a = L.address
+  if (!a) return '?'
+  if (a.full?.trim()) return a.full.trim()
+  return [a.street, a.city, a.state, a.postalCode].filter(Boolean).join(', ') || '?'
 }
 
 async function main() {
-  const ids = process.argv.slice(2).filter((a) => /^\d+$/.test(a))
-  if (ids.length === 0) {
-    console.error('usage: probe-mls-ids.ts <mlsId> [mlsId ...]')
-    process.exit(1)
-  }
-
-  const rows = await query<{
-    mls_id: string
-    town: string
-    mls_status: string | null
-    status_bucket: string
-    address_full: string | null
-    price: number | null
-    list_date: string | null
-    modification_timestamp: string | null
-    status_change_timestamp: string | null
-  }>(
-    `SELECT mls_id, town, mls_status, status_bucket, address_full, price,
-            list_date::text, modification_timestamp::text, status_change_timestamp::text
-       FROM listings
-      WHERE mls_id = ANY($1::text[])`,
-    [ids],
-  )
-
-  const byId = new Map(rows.map((r) => [r.mls_id, r]))
-  console.info(`checked ${ids.length} MLS numbers against Postgres\n`)
-  for (const id of ids) {
-    const row = byId.get(id)
-    if (!row) {
-      console.info(`${id}  MISSING from Postgres`)
-      continue
+  const argv = process.argv.slice(2)
+  const townPullIdx = argv.indexOf('--town-pull')
+  if (townPullIdx >= 0) {
+    const town = argv[townPullIdx + 1] as TmreTown
+    const status = argv[townPullIdx + 2] ?? 'Active'
+    const modifiedAfter =
+      argv[townPullIdx + 3] ??
+      new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+    console.log('town-pull', { town, status, modifiedAfter })
+    const rows = await searchMarketListingsForTown(town, status, 500, {
+      modifiedAfter,
+    })
+    console.log(`hits=${rows.length}`)
+    for (const id of ['24196609', '24196740', '24184227']) {
+      const hit = rows.find((r) => r.mlsId === id)
+      console.log(id, hit ? `IN PULL · ${hit.status} · ${addrLine(hit)}` : 'not in this pull')
     }
-    console.info(
-      `${id}  ${row.status_bucket}/${row.mls_status ?? '—'}  ${row.town}  ${(row.address_full ?? '').slice(0, 34).padEnd(34)} list=${(row.list_date ?? '—').slice(0, 10)} statusChg=${(row.status_change_timestamp ?? '—').slice(0, 16)} mod=${(row.modification_timestamp ?? '—').slice(0, 16)}`,
-    )
+    return
   }
 
-  const missing = ids.filter((id) => !byId.has(id))
-  console.info(
-    `\npresent ${byId.size}/${ids.length}${missing.length ? ` — missing: ${missing.join(', ')}` : ' — all present'}`,
-  )
+  const ids = argv.filter((a) => !a.startsWith('-'))
+  if (ids.length === 0) {
+    console.error('Usage: scripts/probe-mls-ids.ts <mlsId>…')
+    process.exit(2)
+  }
+  console.log('RETS configured:', isRetsConfigured())
+  for (const id of ids) {
+    try {
+      const L = await getListingByMlsId(id)
+      if (!L) {
+        console.log(`${id}\tRETS: NOT FOUND`)
+        continue
+      }
+      const city =
+        typeof L.address === 'object' && L.address
+          ? (L.address.city ?? '?')
+          : '?'
+      console.log(
+        [
+          id,
+          city,
+          addrLine(L),
+          L.status ?? '?',
+          `mod=${L.modificationTimestamp ?? '?'}`,
+          `list=${L.listDate ?? '?'}`,
+          `type=${L.propertyType ?? '?'}`,
+        ].join('\t'),
+      )
+    } catch (err) {
+      console.log(
+        `${id}\tERR\t${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
 }
 
 main().catch((err) => {

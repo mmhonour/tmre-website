@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 import {
+  defaultStatsMonthCompareYears,
+  statsMonthChartYears,
+} from "@/lib/stats-month-years";
+import {
   statsByMonthTitle,
   statsClosedLabel,
   statsVolumeNoun,
@@ -21,7 +25,10 @@ type CachedMonthsSupply = {
 };
 
 const CURRENT_YEAR = new Date().getFullYear();
-const TREND_YEARS = [CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR] as const;
+/** Full chart pool (2019 → current) for year pills. */
+const ALL_TREND_YEARS = statsMonthChartYears();
+/** Default selection: last three calendar years. */
+const DEFAULT_TREND_YEARS = defaultStatsMonthCompareYears();
 
 function trailingAvg(data: MonthlyCount[]): number | null {
   const now = new Date();
@@ -82,9 +89,9 @@ export default function SalesTrendChart({
       apiPath="/api/sales-by-month"
       title={statsByMonthTitle(kind)}
       volumeNoun={statsVolumeNoun(kind)}
-      compareYears={TREND_YEARS}
-      defaultCompareYears={TREND_YEARS}
-      yearSelectionEnabled={false}
+      compareYears={ALL_TREND_YEARS}
+      defaultCompareYears={DEFAULT_TREND_YEARS}
+      yearSelectionEnabled
       timelineModeEnabled
       headerActiveCount={headerActiveCount}
       footerNote={`${statsClosedLabel(kind)} · ${cityLabel} · ${CURRENT_YEAR} partial year`}

@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CtCountyMiniMap from "@/components/admin/CtCountyMiniMap";
 import CtCoverageTownsMap from "@/components/admin/CtCoverageTownsMap";
+import AdminTownActivationPlaybookPanel, {
+  type TownActivationPlaybookMode,
+  type TownActivationPlaybookTarget,
+} from "@/components/admin/AdminTownActivationPlaybookPanel";
 
 type TownRow = {
   id: string;
@@ -28,6 +32,11 @@ type CoveragePayload = {
   error?: string;
 };
 
+type PlaybookState = {
+  town: TownActivationPlaybookTarget;
+  mode: TownActivationPlaybookMode;
+};
+
 export default function AdminCtCoveragePanel() {
   const [counties, setCounties] = useState<CountyRow[]>([]);
   const [note, setNote] = useState<string | null>(null);
@@ -37,6 +46,7 @@ export default function AdminCtCoveragePanel() {
   /** Collapsed county ids — default: collapse counties with zero active towns. */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [initializedCollapse, setInitializedCollapse] = useState(false);
+  const [playbook, setPlaybook] = useState<PlaybookState | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +105,23 @@ export default function AdminCtCoveragePanel() {
     });
   };
 
+  const openPlaybook = (
+    county: CountyRow,
+    town: TownRow,
+    mode: TownActivationPlaybookMode,
+  ) => {
+    setPlaybook({
+      mode,
+      town: {
+        id: town.id,
+        name: town.name,
+        countyName: county.name,
+        active: town.active,
+        mlsCityCode: town.mlsCityCode,
+      },
+    });
+  };
+
   const setTownActive = async (townId: string, active: boolean) => {
     setSavingId(townId);
     setError(null);
@@ -128,6 +155,7 @@ export default function AdminCtCoveragePanel() {
       }
       if (body.counties) setCounties(body.counties);
       setNote(body.note ?? null);
+      setPlaybook(null);
     } catch (err) {
       setCounties(prev);
       setError(err instanceof Error ? err.message : "Save failed");
@@ -146,14 +174,13 @@ export default function AdminCtCoveragePanel() {
           CT coverage
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
-          All Connecticut counties and municipalities. Activate a town for
-          future site-wide coverage —{" "}
-          <span className="text-navy/80">
-            not wired into public pages or RETS yet
-          </span>
-          . The large map matches Intelligence &ldquo;All towns&rdquo; (ZCTA
-          outlines): click a town to zoom in, All towns or the same town again
-          to zoom out. Per-county thumbnails stay on each county row.
+          All Connecticut counties and municipalities. Checking Activate opens
+          the{" "}
+          <span className="text-navy/80">canonical town-activation playbook</span>{" "}
+          first — Phase 0 only flips the Postgres flag today (not wired into
+          public pages or RETS yet). The large map matches Intelligence
+          &ldquo;All towns&rdquo; (ZCTA outlines): click a town to zoom in, All
+          towns or the same town again to zoom out.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading
@@ -220,11 +247,16 @@ export default function AdminCtCoveragePanel() {
                           type="checkbox"
                           checked={town.active}
                           disabled={savingId === town.id || loading}
-                          onChange={(e) =>
-                            void setTownActive(town.id, e.target.checked)
-                          }
+                          onChange={(e) => {
+                            // Controlled: stay unchecked/checked until playbook confirms.
+                            if (e.target.checked) {
+                              openPlaybook(county, town, "activate");
+                            } else {
+                              openPlaybook(county, town, "deactivate");
+                            }
+                          }}
                           className="h-3.5 w-3.5 rounded border-charcoal/30 text-navy focus:ring-navy/40 disabled:opacity-40"
-                          aria-label={`Activate ${town.name}`}
+                          aria-label={`Activate ${town.name} — opens playbook first`}
                         />
                         <span
                           className={`text-sm truncate ${
@@ -239,6 +271,14 @@ export default function AdminCtCoveragePanel() {
                           MLS {town.mlsCityCode}
                         </span>
                       ) : null}
+                      <button
+                        type="button"
+                        onClick={() => openPlaybook(county, town, "review")}
+                        className="shrink-0 font-mono text-[9px] tracking-[0.1em] uppercase text-gold/80 hover:text-gold underline underline-offset-2"
+                        title={`Open activation playbook for ${town.name}`}
+                      >
+                        Playbook
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -247,6 +287,24 @@ export default function AdminCtCoveragePanel() {
           );
         })}
       </div>
+
+      {playbook ? (
+        <AdminTownActivationPlaybookPanel
+          town={playbook.town}
+          mode={playbook.mode}
+          busy={savingId === playbook.town.id}
+          onClose={() => {
+            if (savingId) return;
+            setPlaybook(null);
+          }}
+          onConfirmActivate={() => {
+            void setTownActive(playbook.town.id, true);
+          }}
+          onConfirmDeactivate={() => {
+            void setTownActive(playbook.town.id, false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

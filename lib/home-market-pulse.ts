@@ -14,6 +14,10 @@ import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 export type { HomeMarketPulseTown } from '@/lib/home-market-pulse-types'
 
+const TREND_4W = 'Past 4 weeks'
+const TREND_4W_VOLUME = 'Sum of close prices · 4w'
+const TREND_4W_NONE = 'None in 4 weeks'
+
 /**
  * Fallback numerics (and sale-to-list until we cache that ratio) — same ballpark
  * as the former hardcoded home cards / Intelligence mock.
@@ -27,15 +31,15 @@ const SEED: Record<
     daysOnMarket: 12,
     saleToList: 102.8,
     monthsSupply: 1.7,
-    closedThisWeek: null,
-    closedThisWeekVolume: null,
+    closedLast4Weeks: null,
+    closedLast4WeeksVolume: null,
     trends: {
       medianPrice: '+4.2% YoY',
       daysOnMarket: '−3 vs Q1',
       saleToList: 'Premium market',
       monthsSupply: "Seller's market",
-      closedThisWeek: 'Past 7 days',
-      closedThisWeekVolume: 'Past 7 days',
+      closedLast4Weeks: TREND_4W,
+      closedLast4WeeksVolume: TREND_4W,
     },
   },
   'New Canaan': {
@@ -43,15 +47,15 @@ const SEED: Record<
     daysOnMarket: 11,
     saleToList: 101.1,
     monthsSupply: 2.2,
-    closedThisWeek: null,
-    closedThisWeekVolume: null,
+    closedLast4Weeks: null,
+    closedLast4WeeksVolume: null,
     trends: {
       medianPrice: '+5.1% YoY',
       daysOnMarket: 'Moving fast',
       saleToList: 'Above ask',
       monthsSupply: 'Lean',
-      closedThisWeek: 'Past 7 days',
-      closedThisWeekVolume: 'Past 7 days',
+      closedLast4Weeks: TREND_4W,
+      closedLast4WeeksVolume: TREND_4W,
     },
   },
   Westport: {
@@ -59,15 +63,15 @@ const SEED: Record<
     daysOnMarket: 8,
     saleToList: 101.9,
     monthsSupply: 2.1,
-    closedThisWeek: null,
-    closedThisWeekVolume: null,
+    closedLast4Weeks: null,
+    closedLast4WeeksVolume: null,
     trends: {
       medianPrice: '+6.1% YoY',
       daysOnMarket: '−2 vs Q1',
       saleToList: 'Premium market',
       monthsSupply: 'Tight inventory',
-      closedThisWeek: 'Past 7 days',
-      closedThisWeekVolume: 'Past 7 days',
+      closedLast4Weeks: TREND_4W,
+      closedLast4WeeksVolume: TREND_4W,
     },
   },
   Wilton: {
@@ -75,15 +79,15 @@ const SEED: Record<
     daysOnMarket: 14,
     saleToList: 100.6,
     monthsSupply: 2.4,
-    closedThisWeek: null,
-    closedThisWeekVolume: null,
+    closedLast4Weeks: null,
+    closedLast4WeeksVolume: null,
     trends: {
       medianPrice: '+4.8% YoY',
       daysOnMarket: '−1 vs Q1',
       saleToList: 'At ask',
       monthsSupply: 'Moderate',
-      closedThisWeek: 'Past 7 days',
-      closedThisWeekVolume: 'Past 7 days',
+      closedLast4Weeks: TREND_4W,
+      closedLast4WeeksVolume: TREND_4W,
     },
   },
   Weston: {
@@ -91,15 +95,15 @@ const SEED: Record<
     daysOnMarket: 16,
     saleToList: 99.8,
     monthsSupply: 2.8,
-    closedThisWeek: null,
-    closedThisWeekVolume: null,
+    closedLast4Weeks: null,
+    closedLast4WeeksVolume: null,
     trends: {
       medianPrice: '+3.9% YoY',
       daysOnMarket: 'Steady',
       saleToList: 'At ask',
       monthsSupply: 'Moderate',
-      closedThisWeek: 'Past 7 days',
-      closedThisWeekVolume: 'Past 7 days',
+      closedLast4Weeks: TREND_4W,
+      closedLast4WeeksVolume: TREND_4W,
     },
   },
   Fairfield: {
@@ -107,15 +111,15 @@ const SEED: Record<
     daysOnMarket: 10,
     saleToList: 101.5,
     monthsSupply: 1.9,
-    closedThisWeek: null,
-    closedThisWeekVolume: null,
+    closedLast4Weeks: null,
+    closedLast4WeeksVolume: null,
     trends: {
       medianPrice: '+5.3% YoY',
       daysOnMarket: '−2 vs Q1',
       saleToList: 'Above ask',
       monthsSupply: "Seller's market",
-      closedThisWeek: 'Past 7 days',
-      closedThisWeekVolume: 'Past 7 days',
+      closedLast4Weeks: TREND_4W,
+      closedLast4WeeksVolume: TREND_4W,
     },
   },
   Ridgefield: {
@@ -123,15 +127,15 @@ const SEED: Record<
     daysOnMarket: 15,
     saleToList: 100.2,
     monthsSupply: 2.5,
-    closedThisWeek: null,
-    closedThisWeekVolume: null,
+    closedLast4Weeks: null,
+    closedLast4WeeksVolume: null,
     trends: {
       medianPrice: '+4.5% YoY',
       daysOnMarket: 'Steady',
       saleToList: 'At ask',
       monthsSupply: 'Moderate',
-      closedThisWeek: 'Past 7 days',
-      closedThisWeekVolume: 'Past 7 days',
+      closedLast4Weeks: TREND_4W,
+      closedLast4WeeksVolume: TREND_4W,
     },
   },
 }
@@ -184,26 +188,24 @@ async function enrichTown(town: TmreTown): Promise<HomeMarketPulseTown> {
               : "Buyer's market",
       }
     }
-    if (sales && typeof sales.closedThisWeek === 'number') {
-      base.closedThisWeek = sales.closedThisWeek
+    if (sales && typeof sales.closedLast4Weeks === 'number') {
+      base.closedLast4Weeks = sales.closedLast4Weeks
       base.trends = {
         ...base.trends,
-        closedThisWeek:
-          sales.closedThisWeek > 0 ? 'Past 7 days' : 'None this week',
+        closedLast4Weeks:
+          sales.closedLast4Weeks > 0 ? TREND_4W : TREND_4W_NONE,
       }
     }
     if (
       sales &&
-      typeof sales.closedThisWeekVolume === 'number' &&
-      Number.isFinite(sales.closedThisWeekVolume)
+      typeof sales.closedLast4WeeksVolume === 'number' &&
+      Number.isFinite(sales.closedLast4WeeksVolume)
     ) {
-      base.closedThisWeekVolume = sales.closedThisWeekVolume
+      base.closedLast4WeeksVolume = sales.closedLast4WeeksVolume
       base.trends = {
         ...base.trends,
-        closedThisWeekVolume:
-          sales.closedThisWeekVolume > 0
-            ? 'Sum of close prices · 7d'
-            : 'None this week',
+        closedLast4WeeksVolume:
+          sales.closedLast4WeeksVolume > 0 ? TREND_4W_VOLUME : TREND_4W_NONE,
       }
     }
   } catch {

@@ -1,0 +1,15 @@
+# Railway service: mls-sync (RETS → Neon). Deploy from this repo root.
+# Set env: DATABASE_URL, RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD,
+# SYNC_CRON_SECRET, optional MLS_SYNC_INTERVAL_MS (default 1800000 = 30m).
+# On Netlify site env set MLS_SYNC_SERVICE_URL=https://<this-service>.up.railway.app
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm ci"
+
+[deploy]
+startCommand = "npm run start:mls-sync"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+healthcheckPath = "/health"
+healthcheckTimeout = 30

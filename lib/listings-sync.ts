@@ -371,7 +371,10 @@ export async function syncIncrementalListings(
   const modifiedAfter = incrementalWatermark()
   const startedAt = new Date().toISOString()
   await setSyncMetaDurable('last_incremental_sync_started', startedAt)
-  deleteSyncMeta('last_incremental_sync')
+  // Do NOT delete last_incremental_sync here. Start/live mean "in flight"; End
+  // stays on the last finished pull until setSyncMetaDurable below. Wiping End
+  // made Latest/Admin fall back to last_full_sync (July) whenever a worker died
+  // mid-run — and under EventBridge the Netlify watchdog refused to heal.
   const t0 = Date.now()
   const towns: TownSyncResult[] = []
   const townsLabel =

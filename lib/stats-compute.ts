@@ -101,6 +101,13 @@ export type SalesByMonthPayload = {
    * Closings without a usable close/list price are counted but add $0.
    */
   closedThisWeekVolume: number
+  /** Closings with CloseDate in the past 28 days (home Market Pulse). */
+  closedLast4Weeks: number
+  /**
+   * Sum of close prices for {@link closedLast4Weeks} (dollar volume).
+   * Closings without a usable close/list price are counted but add $0.
+   */
+  closedLast4WeeksVolume: number
   /** Active UC / UC-CTS whose StatusChangeTimestamp falls in the past 7 days (from Postgres, not RETS). */
   wentToContractThisWeek: number
   wentToContractThisWeekByZip: Record<string, number>
@@ -322,6 +329,8 @@ export function computeMarketStats(
 }
 
 export const CLOSED_THIS_WEEK_DAYS = 7
+/** Trailing window for home Market Pulse Volume closed / Closings. */
+export const CLOSED_LAST_4_WEEKS_DAYS = 28
 
 export function isClosedWithinDays(iso: string | null, days: number): boolean {
   if (!iso) return false
@@ -335,6 +344,31 @@ function listingZip(l: Listing): string | null {
   return zip || null
 }
 
+function computeClosedWithinDaysCounts(
+  listings: Listing[],
+  kind: ListingKind,
+  days: number,
+): { count: number; volume: number; byZip: Record<string, number> } {
+  const filtered = filterListingsByKind(listings, kind)
+  let count = 0
+  let volume = 0
+  const byZip: Record<string, number> = {}
+
+  for (const l of filtered) {
+    const { closeDate } = closeFieldsFromListing(l)
+    if (!isClosedWithinDays(closeDate, days)) continue
+    count += 1
+    const price = closedKindPrice(l, kind)
+    if (price != null) volume += price
+    const zip = listingZip(l)
+    if (zip) {
+      byZip[zip] = (byZip[zip] ?? 0) + 1
+    }
+  }
+
+  return { count, volume, byZip }
+}
+
 export function computeClosedThisWeekCounts(
   listings: Listing[],
   kind: ListingKind,
@@ -342,24 +376,31 @@ export function computeClosedThisWeekCounts(
   SalesByMonthPayload,
   'closedThisWeek' | 'closedThisWeekByZip' | 'closedThisWeekVolume'
 > {
-  const filtered = filterListingsByKind(listings, kind)
-  let closedThisWeek = 0
-  let closedThisWeekVolume = 0
-  const closedThisWeekByZip: Record<string, number> = {}
-
-  for (const l of filtered) {
-    const { closeDate } = closeFieldsFromListing(l)
-    if (!isClosedWithinDays(closeDate, CLOSED_THIS_WEEK_DAYS)) continue
-    closedThisWeek += 1
-    const price = closedKindPrice(l, kind)
-    if (price != null) closedThisWeekVolume += price
-    const zip = listingZip(l)
-    if (zip) {
-      closedThisWeekByZip[zip] = (closedThisWeekByZip[zip] ?? 0) + 1
-    }
+  const r = computeClosedWithinDaysCounts(
+    listings,
+    kind,
+    CLOSED_THIS_WEEK_DAYS,
+  )
+  return {
+    closedThisWeek: r.count,
+    closedThisWeekByZip: r.byZip,
+    closedThisWeekVolume: r.volume,
   }
+}
 
-  return { closedThisWeek, closedThisWeekByZip, closedThisWeekVolume }
+export function computeClosedLast4WeeksCounts(
+  listings: Listing[],
+  kind: ListingKind,
+): Pick<SalesByMonthPayload, 'closedLast4Weeks' | 'closedLast4WeeksVolume'> {
+  const r = computeClosedWithinDaysCounts(
+    listings,
+    kind,
+    CLOSED_LAST_4_WEEKS_DAYS,
+  )
+  return {
+    closedLast4Weeks: r.count,
+    closedLast4WeeksVolume: r.volume,
+  }
 }
 
 /**
@@ -424,6 +465,7 @@ export function computeSalesByMonth(
     kind,
     data,
     ...computeClosedThisWeekCounts(listings, kind),
+    ...computeClosedLast4WeeksCounts(listings, kind),
     wentToContractThisWeek: 0,
     wentToContractThisWeekByZip: {},
   }

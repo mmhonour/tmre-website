@@ -173,6 +173,8 @@ export async function readAggregatedSalesByMonth(
     closedThisWeek: 0,
     closedThisWeekByZip: {},
     closedThisWeekVolume: 0,
+    closedLast4Weeks: 0,
+    closedLast4WeeksVolume: 0,
     wentToContractThisWeek: 0,
     wentToContractThisWeekByZip: {},
     generatedAt,

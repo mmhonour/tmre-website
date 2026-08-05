@@ -7,14 +7,15 @@ import {
   relativeStatColorStyle,
   type StatScaleDirection,
 } from "@/lib/stat-scale-color";
+import { statsSalesTrendHref } from "@/lib/stats-url";
 
 type SortKey =
   | "medianPrice"
   | "daysOnMarket"
   | "saleToList"
   | "monthsSupply"
-  | "closedThisWeekVolume"
-  | "closedThisWeek";
+  | "closedLast4WeeksVolume"
+  | "closedLast4Weeks";
 
 const SORT_FIELDS: {
   key: SortKey;
@@ -26,8 +27,8 @@ const SORT_FIELDS: {
   { key: "daysOnMarket", label: "Days on market", natural: "desc" },
   { key: "saleToList", label: "Sale-to-list", natural: "asc" },
   { key: "monthsSupply", label: "Months supply", natural: "desc" },
-  { key: "closedThisWeekVolume", label: "Volume closed", natural: "desc" },
-  { key: "closedThisWeek", label: "Closings", natural: "desc" },
+  { key: "closedLast4WeeksVolume", label: "Volume closed", natural: "desc" },
+  { key: "closedLast4Weeks", label: "Closings", natural: "desc" },
 ];
 
 function formatPrice(n: number | null): string {
@@ -75,8 +76,8 @@ export default function HomeMarketPulse({
       daysOnMarket: towns.map((t) => t.daysOnMarket),
       saleToList: towns.map((t) => t.saleToList),
       monthsSupply: towns.map((t) => t.monthsSupply),
-      closedThisWeekVolume: towns.map((t) => t.closedThisWeekVolume),
-      closedThisWeek: towns.map((t) => t.closedThisWeek),
+      closedLast4WeeksVolume: towns.map((t) => t.closedLast4WeeksVolume),
+      closedLast4Weeks: towns.map((t) => t.closedLast4Weeks),
     }),
     [towns],
   );
@@ -200,16 +201,18 @@ function CityCard({
     daysOnMarket: (number | null)[];
     saleToList: (number | null)[];
     monthsSupply: (number | null)[];
-    closedThisWeekVolume: (number | null)[];
-    closedThisWeek: (number | null)[];
+    closedLast4WeeksVolume: (number | null)[];
+    closedLast4Weeks: (number | null)[];
   };
 }) {
+  const statsSalesHref = statsSalesTrendHref({ city: town.town });
   const stats: {
     key: SortKey;
     label: string;
     value: string;
     trend: string;
     style: { color: string } | undefined;
+    href?: string;
   }[] = [
     {
       key: "medianPrice",
@@ -252,26 +255,28 @@ function CityCard({
       ),
     },
     {
-      key: "closedThisWeekVolume",
+      key: "closedLast4WeeksVolume",
       label: "Volume closed",
-      value: formatPrice(town.closedThisWeekVolume),
-      trend: town.trends.closedThisWeekVolume,
+      value: formatPrice(town.closedLast4WeeksVolume),
+      trend: town.trends.closedLast4WeeksVolume,
       style: relativeStatColorStyle(
-        town.closedThisWeekVolume,
-        peers.closedThisWeekVolume,
+        town.closedLast4WeeksVolume,
+        peers.closedLast4WeeksVolume,
         "asc",
       ),
+      href: statsSalesHref,
     },
     {
-      key: "closedThisWeek",
+      key: "closedLast4Weeks",
       label: "Closings",
-      value: formatCount(town.closedThisWeek),
-      trend: town.trends.closedThisWeek,
+      value: formatCount(town.closedLast4Weeks),
+      trend: town.trends.closedLast4Weeks,
       style: relativeStatColorStyle(
-        town.closedThisWeek,
-        peers.closedThisWeek,
+        town.closedLast4Weeks,
+        peers.closedLast4Weeks,
         "asc",
       ),
+      href: statsSalesHref,
     },
   ];
 
@@ -287,12 +292,23 @@ function CityCard({
             <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/50 mb-1.5">
               {stat.label}
             </p>
-            <p
-              className="font-mono text-2xl font-medium tabular-nums"
-              style={stat.style ?? { color: "rgb(255 255 255)" }}
-            >
-              {stat.value}
-            </p>
+            {stat.href ? (
+              <Link
+                href={stat.href}
+                className="font-mono text-2xl font-medium tabular-nums underline-offset-4 hover:underline"
+                style={stat.style ?? { color: "rgb(255 255 255)" }}
+                title="Closed sales by month on Stats"
+              >
+                {stat.value}
+              </Link>
+            ) : (
+              <p
+                className="font-mono text-2xl font-medium tabular-nums"
+                style={stat.style ?? { color: "rgb(255 255 255)" }}
+              >
+                {stat.value}
+              </p>
+            )}
             <p className="text-[11px] text-white/45 mt-1">{stat.trend}</p>
           </div>
         ))}

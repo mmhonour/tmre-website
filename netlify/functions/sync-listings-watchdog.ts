@@ -4,9 +4,10 @@ import { runIncrementalSyncWatchdog } from '../../lib/incremental-sync-watchdog'
 /**
  * Stale-incremental healer (every 15 minutes).
  *
- * If `last_incremental_sync` is older than ~70 minutes and Incremental is not
- * paused, queues sync-listings-worker with source=watchdog. This closes the loop
- * when the every-30m thin cron stamps a heartbeat but the worker never finishes.
+ * If `last_incremental_sync` is older than ~70 minutes (or missing) and
+ * Incremental is not paused, queues sync-listings-worker with source=watchdog.
+ * Runs even when Configure Scheduler is EventBridge — EB ticks alone must not
+ * leave End null while Netlify recovery is skipped.
  */
 export default async function handler() {
   process.env.NETLIFY_SYNC_HANDLER = '1'

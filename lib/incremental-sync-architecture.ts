@@ -71,7 +71,7 @@ export function describeIncrementalSyncArchitecture(): {
         label: 'End / Last pull',
         metaKey: 'last_incremental_sync',
         meaning:
-          'Last finished RETS pull. This is the clock that must move ~every 30m. Health check trusts this + /latest feed.',
+          'Last finished RETS pull — must move ~every 30m. Never cleared at queue/start (only overwritten on finish). Null/stale End = broken Incremental; AWS “last fired” alone is not success. /latest Last pull uses this key only (no Jul full-sync fallback).',
       },
     ],
     nodes: [

@@ -36,6 +36,7 @@
     "lib/**/*.tsx",
     "netlify/**/*.ts",
     "scripts/**/*.ts",
+    "services/**/*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],

@@ -196,8 +196,9 @@ export function shouldSkipListingEdgeScoresNotDue(now = new Date()): boolean {
 
 /**
  * True when this alarm clock must not start the job (Configure radio points
- * at the other provider). Netlify thin crons pass `'netlify'`; EventBridge
- * ingress passes `'eventbridge'`.
+ * at another provider). Netlify thin crons pass `'netlify'`; EventBridge
+ * ingress passes `'eventbridge'`. Railway mls-sync is never these callers —
+ * when Scheduler is railway, both Netlify and EB skip.
  */
 export function shouldSkipScheduledJobWrongProvider(
   jobId: ScheduledSyncJobId,

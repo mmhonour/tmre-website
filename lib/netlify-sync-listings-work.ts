@@ -80,11 +80,17 @@ export type IncrementalSyncWorkOptions = {
   statsCacheOnly?: boolean
   /**
    * Who queued the worker.
-   * - admin / watchdog / eventbridge: full RETS; bypass Configure “not due”
+   * - admin / watchdog / eventbridge / railway: full RETS; bypass Configure “not due”
    *   (and pause/Next — caller already gated those). No cron heartbeat stamp.
    * - cron / netlify-sync-trigger: thin-schedule path; honors pause / Next / due.
    */
-  source?: 'admin' | 'cron' | 'netlify-sync-trigger' | 'watchdog' | 'eventbridge'
+  source?:
+    | 'admin'
+    | 'cron'
+    | 'netlify-sync-trigger'
+    | 'watchdog'
+    | 'eventbridge'
+    | 'railway'
   /** Adhoc Admin town scope; omit = all towns. */
   towns?: readonly string[]
   /** Adhoc Admin status filter; omit = all (Active family + Closed). */
@@ -151,14 +157,14 @@ export async function runIncrementalSyncListingsWork(
   const sideWorkOnly = options.sideWorkOnly === true
   const statsCacheOnly = options.statsCacheOnly === true
   /**
-   * Explicit runs (Admin, watchdog heal, AWS EventBridge): EventBridge is the
-   * alarm clock — must not re-apply Configure “not due” after ingress queued us.
-   * Also bypass pause/Next (dispatch already checked) and skip cron heartbeat.
+   * Explicit runs (Admin, watchdog, EventBridge, Railway mls-sync): must not
+   * re-apply Configure “not due”. Bypass pause/Next; skip cron heartbeat.
    */
   const fromExplicitRun =
     options.source === 'admin' ||
     options.source === 'watchdog' ||
-    options.source === 'eventbridge'
+    options.source === 'eventbridge' ||
+    options.source === 'railway'
 
   try {
     await hydrateSyncMetaStore()
@@ -219,7 +225,9 @@ export async function runIncrementalSyncListingsWork(
           ? 'admin-worker'
           : options.source === 'eventbridge'
             ? 'eventbridge-worker'
-            : options.source ?? 'cron-worker'
+            : options.source === 'railway'
+              ? 'railway-mls-sync'
+              : options.source ?? 'cron-worker'
 
     const clearLiveOnSkip = async (reason: string) => {
       try {
@@ -496,7 +504,9 @@ export async function runIncrementalSyncListingsWork(
             ? 'admin-worker'
             : options.source === 'eventbridge'
               ? 'eventbridge-worker'
-              : options.source ?? 'cron-worker',
+              : options.source === 'railway'
+                ? 'railway-mls-sync'
+                : options.source ?? 'cron-worker',
       )
       await appendIncrementalStep('fatal', message)
       await finishIncrementalStepLog(`fatal: ${message}`)

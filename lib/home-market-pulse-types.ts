@@ -8,16 +8,16 @@ export type HomeMarketPulseTown = {
   daysOnMarket: number | null
   saleToList: number | null
   monthsSupply: number | null
-  /** Closings with CloseDate in the past 7 days (from sales-by-month cache). */
-  closedThisWeek: number | null
+  /** Closings with CloseDate in the past 28 days (from sales-by-month cache). */
+  closedLast4Weeks: number | null
   /** Sum of close prices for those closings (dollar volume). */
-  closedThisWeekVolume: number | null
+  closedLast4WeeksVolume: number | null
   trends: {
     medianPrice: string
     daysOnMarket: string
     saleToList: string
     monthsSupply: string
-    closedThisWeek: string
-    closedThisWeekVolume: string
+    closedLast4Weeks: string
+    closedLast4WeeksVolume: string
   }
 }

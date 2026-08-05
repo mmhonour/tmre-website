@@ -565,6 +565,8 @@ export type PanelStatus = {
   lastEventbridgeIngressAt?: string | null;
   /** Outcome line: queued / skipped: … / unauthorized · HTTP n. */
   lastEventbridgeIngressResult?: string | null;
+  /** Railway mls-sync process heartbeat (Neon). */
+  lastMlsSyncHeartbeat?: string | null;
   propertyAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
@@ -2567,16 +2569,16 @@ export default function AdminSyncTable({
           ) : (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-2xl">
-                Pause skips Sync all and cron. Scheduler radio picks Netlify cron vs
-                EventBridge (one authoritative alarm per job). Frequency and Start
-                time (ET) set when that alarm may run the job. Next start is
-                computed and read-only. ▲/▼ on Order sets Sync all priority
-                (including Incremental).
+                Pause skips Sync all and cron. Scheduler radio picks the alarm:
+                Netlify cron, EventBridge (legacy), or Railway mls-sync
+                (Incremental RETS→Neon — recommended). Frequency and Start time
+                (ET) apply to Netlify/EB; Railway uses its own interval. Next
+                start is read-only for Netlify/EB.
               </p>
               <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-                Netlify still wakes every 30 minutes but skips jobs whose Scheduler
-                is EventBridge. Flip Incremental first when cutting over. Live run
-                status stays on Dashboard.
+                Set Incremental → Railway after deploying mls-sync; Netlify/EB
+                stop pulling. Dashboard polls Neon End for peace of mind. Decommission
+                AWS EventBridge schedules for Incremental once smoke passes.
               </p>
             </>
           )}
@@ -2828,6 +2830,10 @@ export default function AdminSyncTable({
                 row.id === "incremental" &&
                 jobSchedule != null &&
                 resolveJobScheduler(jobSchedule) === "eventbridge";
+              const incrementalOnRailway =
+                row.id === "incremental" &&
+                jobSchedule != null &&
+                resolveJobScheduler(jobSchedule) === "railway";
               const orphanIncrementalStart =
                 row.id === "incremental" &&
                 isOrphanIncrementalStart(
@@ -2852,9 +2858,17 @@ export default function AdminSyncTable({
                     ingressMs != null && nowMs - ingressMs >= HANG_THRESHOLD_MS
                   );
                 })();
+              // End missing or older than ~70m = Incremental is not delivering —
+              // surface pink even under EventBridge (AWS fire ≠ finished RETS).
+              const incrementalEndBroken =
+                row.id === "incremental" &&
+                !incrementalRunningNow &&
+                (() => {
+                  const endMs = parseIsoMs(timing.finished);
+                  if (endMs == null) return true;
+                  return nowMs - endMs >= 70 * 60 * 1000;
+                })();
               // Configure is schedule/setup only — no live status colors.
-              // Stale EB “queued — no End” is Status text only (server heals the
-              // ingress stamp) — do not keep the row pink forever after toggle.
               const visual = isConfigure
                 ? ("idle" as const)
                 : resolveSyncRowVisualStatus({
@@ -2868,8 +2882,10 @@ export default function AdminSyncTable({
                     fullResyncInProgress,
                     error: rowError,
                     nowMs,
-                    ignoreTimingHang: incrementalOnEventBridge,
-                    forceAlert: false,
+                    ignoreTimingHang:
+                      incrementalOnEventBridge || incrementalOnRailway,
+                    forceAlert:
+                      incrementalEndBroken || eventBridgeQueuedStale,
                   });
               const scheduleBreached =
                 isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
@@ -2919,6 +2935,18 @@ export default function AdminSyncTable({
                 return result ? `AWS ${when} · ${result}` : `AWS ${when}`;
               })();
 
+              /** Railway mls-sync heartbeat — peace of mind when Scheduler is Railway. */
+              const railwayPulseLine = (() => {
+                if (!incrementalOnRailway) return null;
+                if (!status?.lastMlsSyncHeartbeat) {
+                  return "Railway: no heartbeat yet";
+                }
+                const when =
+                  formatAgeAgo(status.lastMlsSyncHeartbeat, nowMs) ??
+                  formatTimestamp(status.lastMlsSyncHeartbeat);
+                return `Railway heartbeat ${when}`;
+              })();
+
               const statusText = (() => {
                 if (isWaiting) {
                   return (
@@ -2966,23 +2994,34 @@ export default function AdminSyncTable({
                     return [
                       upsertLine,
                       eventBridgeQueuedStale
-                        ? `Idle · AWS ${when}: queued with no End (stale — Sync now to recover)`
+                        ? `BROKEN · AWS ${when}: queued with no End (stale — Sync now)`
                         : `Not running · AWS ${when}: queued — waiting for End`,
                     ].join("\n");
                   }
                   const idleBits: string[] = [upsertLine];
-                  if (timing.finished) {
+                  if (!timing.finished) {
+                    idleBits.push(
+                      "BROKEN · End missing (last_incremental_sync null) — Latest cannot show Last pull · Sync now",
+                    );
+                  } else if (incrementalEndBroken) {
+                    const age =
+                      formatAgeAgo(timing.finished, nowMs) ??
+                      formatDateShort(timing.finished);
+                    idleBits.push(
+                      `BROKEN · End stale (${age}) — Incremental not finishing · Sync now`,
+                    );
+                  } else {
                     const age =
                       formatAgeAgo(timing.finished, nowMs) ??
                       formatDateShort(timing.finished);
                     idleBits.push(`Idle · ended ${age}`);
-                  } else {
-                    idleBits.push("Idle · not running");
                   }
                   if (eventbridgePulseLine) idleBits.push(eventbridgePulseLine);
+                  if (railwayPulseLine) idleBits.push(railwayPulseLine);
                   if (
                     !upsertLabel &&
                     !incrementalOnEventBridge &&
+                    !incrementalOnRailway &&
                     status?.incrementalStepLog?.summary
                   ) {
                     const src = status.incrementalStepLog.source
@@ -2994,6 +3033,7 @@ export default function AdminSyncTable({
                   }
                   if (
                     !incrementalOnEventBridge &&
+                    !incrementalOnRailway &&
                     scheduleBreached &&
                     timing.finished
                   ) {
@@ -3319,7 +3359,12 @@ export default function AdminSyncTable({
                           role="radiogroup"
                           aria-label={`Scheduler for ${row.label}`}
                         >
-                          {SYNC_SCHEDULER_PROVIDERS.map((provider) => {
+                          {(pauseJob === "incremental"
+                            ? SYNC_SCHEDULER_PROVIDERS
+                            : SYNC_SCHEDULER_PROVIDERS.filter(
+                                (p) => p !== "railway",
+                              )
+                          ).map((provider) => {
                             const selected =
                               resolveJobScheduler(jobSchedule) === provider;
                             return (

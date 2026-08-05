@@ -385,7 +385,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'EventBridge last fired',
     category: 'sync-admin',
     definition:
-      'Admin → Syncs → Dashboard Incremental when Scheduler is EventBridge. Every HTTP hit to eventbridge-sync-ingress stamps Postgres (last_eventbridge_ingress_*), and a successful queue also stamps Start + incremental_sync_live. The worker writes End (last_incremental_sync) and clears live. Dashboard polls Postgres (~5s while Start is open, ~60s when idle) — that is how EventBridge and Netlify “talk.” Next shows a real wall clock (cadence from Configure Frequency, anchored on last AWS fire), with an AWS label — not “AWS · ~30m”. Status is RUNNING while Start is open or live is set; Idle · not running / Idle · ended otherwise. If AWS queued but End never arrives past ~45m, Admin heals the ingress stamp to orphaned (clears open Start/live) so the row does not stay pink — Sync now recovers the pull.',
+      'Dashboard stamp that AWS rang our doorbell (ingress HTTP hit). Not proof listings updated. Success = End moved + new MLS rows in Neon. See End (Incremental), Smoke test (sync).',
   },
   {
     term: 'Ingress (EventBridge)',
@@ -406,6 +406,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Netlify cron split: a thin scheduled function (≤~30s, schedule only — no background flag) does almost nothing except queue a matching *-worker background function (≤~15m, background = true — no schedule). Example: market-digest → market-digest-worker; sync-listings-full → sync-listings-full-worker. Reason: Netlify forbids schedule + background on the same function (silent no-op / Day-1 failure). The thin half is the alarm clock; the worker does the real RETS/stats/digest work. sync-listings is a special case: the thin cron also runs a lean in-process RETS pull so inventory freshness does not depend on the worker hop succeeding. Part of thin scheduling.',
   },
   {
+    term: 'Why cron is not inside the Netlify host',
+    category: 'sync-admin',
+    definition:
+      'The public site on Netlify is not an always-on Node process you can hang a setInterval/cron on. Each page/API hit is a short-lived serverless invocation that dies when the request ends — there is no durable “host” left running between visitors. Netlify’s scheduler therefore wakes a separate scheduled function (thin cron), which is itself another short Lambda (~26–30s wall clock). Heavy RETS/stats work needs a second hop: a background *-worker (~15m). You cannot put schedule + background on one function (silent no-op). That is why “cron inside the website host” is not available here, and why the thin → worker split (or Railway mls-sync) exists. See Thin schedule → *-worker, Background worker (*-worker), Disposable 202-queued, SSR request budget.',
+  },
+  {
     term: 'Piggybacking (sync)',
     category: 'sync-admin',
     definition:
@@ -415,13 +421,79 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Watchdog (sync)',
     category: 'sync-admin',
     definition:
-      'A second (or third) scheduled checker that re-queues work when the primary thin schedule → worker path failed silently — e.g. sync-listings-watchdog (`*/15`) queues incremental with source=watchdog if last sync is stale and the job is not paused. Useful as a safety net; in this codebase it is also a patch over a bad architecture (dense Netlify cron, HTTP hop to background workers, pause/defer/not-due gates, piggybacked jobs). Prefer a durable external scheduler + worker per job so freshness does not depend on a watchdog covering up missed ticks. See Thin scheduling and Piggybacking.',
+      'A Netlify schedule (every ~15 minutes) that re-queues Incremental if the finished-pull clock (End) is missing or older than ~70 minutes. Plain English: if the main alarm/worker path did not finish, try again. It is a safety net — if you need it constantly, the primary path is broken. Under EventBridge it must still run when End is stale (standing it down left End null with no recovery). See End (Incremental), Smoke test (sync).',
+  },
+  {
+    term: 'Start (Incremental)',
+    category: 'sync-admin',
+    definition:
+      'Dashboard clock: when a pull was last queued (Admin Sync now, cron, EventBridge, or watchdog). Advancing Start only means “we asked for a run,” not that MLS data landed. Pair with End.',
+  },
+  {
+    term: 'End (Incremental)',
+    category: 'sync-admin',
+    definition:
+      'Dashboard / /latest “Last pull” clock: when an Incremental RETS pull last finished writing to Neon (sync_meta last_incremental_sync). This is the only success stamp that matters for “are we pulling data?” If End is missing or hours old, treat Incremental as down — even if EventBridge last fired looks recent.',
+  },
+  {
+    term: 'End wipe',
+    category: 'sync-admin',
+    definition:
+      'Bug/pattern where code deleted last_incremental_sync at the start of a pull so the Dashboard looked “in flight,” then never wrote a new End if the worker died. Left End null and made /latest fall back to an old full-sync time (looked like July). Fixed by keeping the prior End until a new finish overwrites it. See End (Incremental).',
+  },
+  {
+    term: 'State heal / orphan heal',
+    category: 'sync-admin',
+    definition:
+      'Cleanup when Admin shows a stuck “queued” or open Start after AWS/Netlify accepted a job but no End arrived — clear the stale “in progress” flags and mark ingress as orphaned so the row is not pink forever. Healing the UI is not the same as pulling MLS data; Sync now or the watchdog must still run a real finish. See Watchdog (sync).',
+  },
+  {
+    term: 'Hard broken state (BROKEN)',
+    category: 'sync-admin',
+    definition:
+      'Admin Incremental Status when End is missing or older than ~70 minutes (or AWS queued with no End past the hang window). Pink alert on purpose: do not read “Idle” as healthy. Means we are not finishing pulls into Neon. Operator action: Sync now, then confirm End moved and a known new MLS# appears.',
+  },
+  {
+    term: 'Last pull (Latest page)',
+    category: 'sync-admin',
+    definition:
+      '/latest header label for End (last_incremental_sync) only. Must not fall back to last full sync — that hid a broken Incremental behind a July date. If End is null, the page should say Last pull MISSING, not invent an old time. “Newest MLS update” is a different clock (listing event times in the feed), not proof of a fresh pull.',
+  },
+  {
+    term: 'Smoke test (sync)',
+    category: 'sync-admin',
+    definition:
+      'Go-live check after changing Incremental scheduler (e.g. to EventBridge): within one cycle, (1) End moves to minutes ago, (2) a known brand-new MLS# from SmartMLS appears in Neon//latest. AWS “last fired” alone is not a pass. CLI: `npm run smoke:incremental -- --mls=24196609,24196740` (optional `--max-age-min=70`, `--require-eb`). Exit 0 only when End is fresh and every MLS# is in Neon. Fail either check → do not call the cutover successful.',
   },
   {
     term: 'Background worker (*-worker)',
     category: 'sync-admin',
     definition:
       'A Netlify function with background = true and no schedule. Invoked by its thin scheduled twin (or Admin Run). Has up to ~15 minutes for heavy work (full sync, address geocode, edge scores, zip boundaries, market digest, board/stats warm). Not the same as the Admin Syncs client FIFO queue.',
+  },
+  {
+    term: 'Disposable 202-queued',
+    category: 'sync-admin',
+    definition:
+      'HTTP 202 Accepted (“queued”) from Netlify/EventBridge ingress or a thin cron wake. Only means the doorbell rang / the background invoke was accepted — not that RETS ran or Neon got rows. Disposable as a health signal: ignore it for peace of mind. Trust End (last_incremental_sync), upsert counts, a known new MLS# in listings, and (on Railway) last_mls_sync_heartbeat. Smoke test (sync) is the pass/fail check.',
+  },
+  {
+    term: 'sync-listings-worker',
+    category: 'sync-admin',
+    definition:
+      'Legacy Incremental puller: Netlify background Lambda at /.netlify/functions/sync-listings-worker. Being replaced by Railway mls-sync for Incremental. A 202 “queued” only meant the wake was accepted; success is End + rows in listings. Prefer Railway service (scheduler radio).',
+  },
+  {
+    term: 'Railway mls-sync',
+    category: 'sync-admin',
+    definition:
+      'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify, DATABASE_URL + RETS_* + SYNC_CRON_SECRET on Railway. Smoke: npm run smoke:incremental -- --mls=…. Decommission EventBridge Incremental schedules after cutover.',
+  },
+  {
+    term: 'MLS_SYNC_SERVICE_URL',
+    category: 'sync-admin',
+    definition:
+      'Netlify env var: public base URL of the Railway mls-sync service (no trailing slash). Admin Sync now POSTs /run here when Incremental Scheduler is Railway.',
   },
   {
     term: 'Lambda / serverless function',
@@ -749,7 +821,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'CT coverage',
     category: 'product',
     definition:
-      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Toggle active to prepare future site-wide coverage. County thumbnails use Census TIGER county outlines (same TIGERweb family as Intelligence ZCTA maps), zoomed to that county. Public pages still use hardcoded TMRE_TOWNS until wired.',
+      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Checking Activate opens the canonical town-activation playbook side panel before Phase 0 can save (flag only — not RETS/public yet). Each town also has a Playbook link. County thumbnails use Census TIGER outlines. Public pages still use hardcoded TMRE_TOWNS until wired.',
+  },
+  {
+    term: 'Town activation playbook',
+    category: 'product',
+    definition:
+      'Canonical Admin checklist for every town going forward (Phases 0–5): Activate flag → catalog/MLS codes → runtime town list → RETS + warm → product surfaces → public gate. Same process for Easton or any later county town; only Phase 0 is implemented as a save today.',
   },
   {
     term: 'BHHS',

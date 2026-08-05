@@ -51,6 +51,9 @@ function parseAgeMs(iso: string | null, nowMs: number): number | null {
  * job is not paused, queue the background worker with source=watchdog (bypasses
  * Next-override defer) so inventory keeps moving without Admin button clicks.
  *
+ * Also heals when Scheduler is EventBridge — EB owns the alarm clock, but a
+ * queued-with-no-End / wiped-End failure still needs this Netlify 15m backstop.
+ *
  * Dead "Queued…" hops (worker never reached town pulls) are cleared so a fresh
  * queue can land — cron 202 acks must not forever look "in progress".
  */
@@ -86,21 +89,24 @@ export async function runIncrementalSyncWatchdog(
   }
 
   {
-    const { shouldSkipScheduledJobWrongProviderFresh } = await import(
+    const { readSyncScheduleConfigFresh, resolveJobScheduler } = await import(
       '@/lib/sync-schedule-config'
     )
-    if (await shouldSkipScheduledJobWrongProviderFresh('incremental', 'netlify')) {
+    const config = await readSyncScheduleConfigFresh()
+    if (resolveJobScheduler(config.jobs.incremental) === 'railway') {
+      // Railway mls-sync owns the schedule + heal. Do not queue Netlify workers.
       return {
         action: 'skipped_provider',
         lastIncrementalSync,
         ageMs,
-        detail: 'scheduler is EventBridge — Netlify watchdog ignored',
+        detail:
+          'scheduler is Railway mls-sync — Netlify watchdog ignored (service pulls RETS→Neon)',
       }
     }
   }
 
-  // End is already stale (>70m) when we get here. A Queued breadcrumb with a
-  // stale End means the worker never finished RETS — clear and re-queue.
+  // End is already stale (>70m or never) when we get here. A Queued breadcrumb
+  // with a stale End means the worker never finished RETS — clear and re-queue.
   // (Do not treat queue-only Start stamps as "in progress"; that was the
   // forever-Queued deadlock when */30 cron kept refreshing Start.)
   const live = readIncrementalSyncLive()

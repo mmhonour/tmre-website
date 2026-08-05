@@ -39,8 +39,17 @@ export const SYNC_SCHEDULE_WEEKDAYS = [
 
 export type SyncScheduleWeekdayEt = (typeof SYNC_SCHEDULE_WEEKDAYS)[number]['id']
 
-/** Which alarm clock is allowed to start this job. */
-export const SYNC_SCHEDULER_PROVIDERS = ['netlify', 'eventbridge'] as const
+/**
+ * Which alarm clock is allowed to start this job.
+ * - netlify: Netlify scheduled functions
+ * - eventbridge: AWS EventBridge (legacy; Incremental should move to Railway)
+ * - railway: always-on mls-sync service (RETS→Neon; Netlify only polls)
+ */
+export const SYNC_SCHEDULER_PROVIDERS = [
+  'netlify',
+  'eventbridge',
+  'railway',
+] as const
 export type SyncSchedulerProvider = (typeof SYNC_SCHEDULER_PROVIDERS)[number]
 
 export function isSyncSchedulerProvider(
@@ -56,6 +65,8 @@ export function schedulerProviderLabel(provider: SyncSchedulerProvider): string 
   switch (provider) {
     case 'eventbridge':
       return 'EventBridge'
+    case 'railway':
+      return 'Railway service'
     case 'netlify':
     default:
       return 'Netlify cron'
@@ -72,8 +83,8 @@ export type SyncJobScheduleConfig = {
    */
   weekdayEt?: SyncScheduleWeekdayEt
   /**
-   * Authoritative alarm: Netlify scheduled functions vs AWS EventBridge Scheduler.
-   * Default netlify — migrate one job at a time via Admin Configure radio.
+   * Authoritative alarm: Netlify cron | EventBridge | Railway mls-sync service.
+   * Default netlify — migrate Incremental to railway via Admin Configure.
    */
   scheduler?: SyncSchedulerProvider
 }

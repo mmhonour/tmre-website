@@ -78,19 +78,45 @@ import {
 import type { NetlifyFunctionQueueResult } from '@/lib/netlify-sync-trigger'
 
 /**
- * Sync now: when Configure Scheduler is EventBridge, queue via the EventBridge
- * dispatch path (source=eventbridge). On failure, fall back to the admin queue.
- * Scoped Incremental (town / status) always uses the admin queue.
+ * Sync now handoff order:
+ * 1) Railway mls-sync when Configure Scheduler is railway (Incremental)
+ * 2) EventBridge dispatch when Configure says eventbridge
+ * 3) Netlify admin background queue
  */
 async function queueSyncNowPreferringScheduler(
   jobId: string,
   adminQueue: () => Promise<NetlifyFunctionQueueResult>,
-  opts?: { allowEventBridge?: boolean },
-): Promise<{ queued: NetlifyFunctionQueueResult; via: 'eventbridge' | 'admin' }> {
-  const allowEventBridge = opts?.allowEventBridge !== false
-  if (allowEventBridge && isScheduledSyncJobId(jobId)) {
+  opts?: {
+    allowEventBridge?: boolean
+    railwayBody?: {
+      startedAt: string
+      towns?: string[]
+      statusScope?: 'all' | 'active' | 'closed'
+    }
+  },
+): Promise<{
+  queued: NetlifyFunctionQueueResult
+  via: 'railway' | 'eventbridge' | 'admin'
+}> {
+  if (isScheduledSyncJobId(jobId)) {
     const config = await readSyncScheduleConfigFresh()
-    if (resolveJobScheduler(config.jobs[jobId]) === 'eventbridge') {
+    const scheduler = resolveJobScheduler(config.jobs[jobId])
+
+    if (scheduler === 'railway') {
+      const { queueMlsSyncServiceRun } = await import(
+        '@/lib/mls-sync-service-client'
+      )
+      const queued = await queueMlsSyncServiceRun({
+        startedAt: opts?.railwayBody?.startedAt,
+        source: 'admin',
+        towns: opts?.railwayBody?.towns,
+        statusScope: opts?.railwayBody?.statusScope,
+      })
+      return { queued, via: 'railway' }
+    }
+
+    const allowEventBridge = opts?.allowEventBridge !== false
+    if (allowEventBridge && scheduler === 'eventbridge') {
       const { dispatchEventBridgeScheduledJob } = await import(
         '@/lib/eventbridge-sync-dispatch'
       )
@@ -100,9 +126,9 @@ async function queueSyncNowPreferringScheduler(
       if (eb.ok && eb.queue) {
         return { queued: eb.queue, via: 'eventbridge' }
       }
-      // Queue failed (or DOTD in-process ok without queue) — fall back below.
     }
   }
+
   return { queued: await adminQueue(), via: 'admin' }
 }
 
@@ -552,9 +578,21 @@ async function runAdminSyncActionImpl(
               ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
               ...(statusScope !== 'all' ? { statusScope } : {}),
             }),
-          { allowEventBridge: !scoped },
+          {
+            allowEventBridge: !scoped,
+            railwayBody: {
+              startedAt,
+              ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
+              ...(statusScope !== 'all' ? { statusScope } : {}),
+            },
+          },
         )
-        const queueSource = via === 'eventbridge' ? 'eventbridge' : 'admin'
+        const queueSource =
+          via === 'eventbridge'
+            ? 'eventbridge'
+            : via === 'railway'
+              ? 'admin'
+              : 'admin'
         // Always write Sync history — queue ack alone never created town sync_runs,
         // which left "last run" stuck at the prior real RETS batch (e.g. 2:47pm).
         await recordIncrementalQueueAudit({
@@ -562,12 +600,18 @@ async function runAdminSyncActionImpl(
           source: queueSource,
           queued: queued.ok,
           detail: queued.ok
-            ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'} · ${scopeLabel}${via === 'eventbridge' ? ' · via EventBridge' : ''}`
+            ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'} · ${scopeLabel}${
+                via === 'railway'
+                  ? ' · via Railway mls-sync'
+                  : via === 'eventbridge'
+                    ? ' · via EventBridge'
+                    : ''
+              }`
             : queued.error ?? 'unknown queue error',
         })
         if (queued.ok) {
           // Mark Start immediately — End stays on the prior success until the
-          // worker finishes (instant HTTP response is expected, not a real sync).
+          // pull finishes (instant HTTP response is expected, not a real sync).
           await setSyncMetaDurable('last_incremental_sync_started', startedAt)
           await stampIncrementalSyncLive({
             phase: 'queued',
@@ -580,15 +624,21 @@ async function runAdminSyncActionImpl(
             statusScope,
           })
           await stampIncrementalQueuedStepLog(
-            via === 'eventbridge' ? 'eventbridge-admin' : 'admin-queue',
+            via === 'railway'
+              ? 'railway-admin'
+              : via === 'eventbridge'
+                ? 'eventbridge-admin'
+                : 'admin-queue',
             queued.base
               ? `${queued.base} HTTP ${queued.status ?? '—'} · ${scopeLabel}`
               : `background worker · ${scopeLabel}`,
           )
           const viaLabel =
-            via === 'eventbridge'
-              ? 'EventBridge path'
-              : 'background worker'
+            via === 'railway'
+              ? 'Railway mls-sync'
+              : via === 'eventbridge'
+                ? 'EventBridge path'
+                : 'Netlify background worker'
           return {
             ok: true,
             action,
@@ -598,8 +648,10 @@ async function runAdminSyncActionImpl(
             backgroundQueued: true,
             message: `Incremental queued for ${scopeLabel} (${viaLabel})`,
             detail: queued.base
-              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}) · ${scopeLabel}${via === 'eventbridge' ? ' · EventBridge dispatch' : ''}. Dashboard Status will show progress as the worker pulls MLS.`
-              : `Queued on ${viaLabel} · ${scopeLabel}. Dashboard Status will show progress as the worker pulls MLS.`,
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}) · ${scopeLabel}${
+                  via === 'railway' ? ' · Railway' : via === 'eventbridge' ? ' · EventBridge' : ''
+                }. Dashboard Status updates when End moves in Neon.`
+              : `Queued on ${viaLabel} · ${scopeLabel}. Dashboard Status updates when End moves in Neon.`,
           }
         }
         const finishedAt = new Date().toISOString()
@@ -609,10 +661,12 @@ async function runAdminSyncActionImpl(
           startedAt,
           finishedAt,
           durationMs: Date.now() - t0,
-          message: 'Could not queue background incremental sync',
+          message: 'Could not queue incremental sync',
           detail:
             queued.error ??
-            'No site URL or worker rejected the queue. Check SYNC_CRON_SECRET / URL env and Netlify function logs.',
+            (via === 'railway'
+              ? 'Set MLS_SYNC_SERVICE_URL + SYNC_CRON_SECRET (Railway mls-sync).'
+              : 'No site URL or worker rejected the queue. Check SYNC_CRON_SECRET / URL env and Netlify function logs.'),
         }
       }
       const result = await syncIncrementalListings({
@@ -1170,6 +1224,9 @@ export async function readAdminSyncPanelStatus() {
     healedEb.result ??
     (await getSyncMetaFresh(eventbridgeIngressResultKey('incremental'))) ??
     getSyncMeta(eventbridgeIngressResultKey('incremental'))
+  const lastMlsSyncHeartbeat =
+    (await getSyncMetaFresh('last_mls_sync_heartbeat')) ??
+    getSyncMeta('last_mls_sync_heartbeat')
   // Next for EventBridge Incremental anchors on last AWS ingress — read first.
   const nextRuns = buildAdminSyncNextRuns(
     {
@@ -1234,6 +1291,7 @@ export async function readAdminSyncPanelStatus() {
     lastIncrementalCronTick,
     lastEventbridgeIngressAt,
     lastEventbridgeIngressResult,
+    lastMlsSyncHeartbeat,
     nextOverrides,
     incrementalLive,
     incrementalLiveStatus: formatIncrementalSyncLiveStatus(incrementalLive),

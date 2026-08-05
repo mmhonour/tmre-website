@@ -341,7 +341,8 @@ export default function LatestClient({
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = (await res.json()) as ApiResponse;
-    setLastSync(body.lastIncrementalSync ?? body.lastFullSync);
+    // Never fall back to lastFullSync — that hid a broken End as "Jul 12".
+    setLastSync(body.lastIncrementalSync ?? null);
     setTownStats(body.townStats ?? []);
 
     if (options.since) {
@@ -739,14 +740,20 @@ export default function LatestClient({
                 Newest MLS update {newestMlsLabel}
               </span>
             ) : null}
-            {syncLabel ? (
-              <span
-                className="tracking-[0.08em] uppercase text-white/35"
-                title="When the last Incremental RETS pull finished writing last_incremental_sync — can advance even if MLS had no new mods"
-              >
-                Last pull {syncLabel}
-              </span>
-            ) : null}
+            <span
+              className={`tracking-[0.08em] uppercase ${
+                syncLabel ? "text-white/35" : "text-coral/90"
+              }`}
+              title={
+                syncLabel
+                  ? "When the last Incremental RETS pull finished (last_incremental_sync)"
+                  : "last_incremental_sync is missing — Incremental End never stamped; feed may be stale"
+              }
+            >
+              {syncLabel
+                ? `Last pull ${syncLabel}`
+                : "Last pull MISSING — Incremental End broken"}
+            </span>
           </div>
         </div>
       </section>
