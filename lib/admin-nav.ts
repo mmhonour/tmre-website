@@ -29,6 +29,7 @@ export type AdminDataControlsPanelId =
 /** Sub-panels under Admin → Web server. */
 export type AdminServerPanelId =
   | "api-routes"
+  | "site-menu"
   | "page-styles"
   | "ui-kit"
   | "intel-descriptor-sizes";
@@ -112,7 +113,7 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     id: "site",
     label: "Site controls",
     subtitle:
-      "Photos, contact, brokerage, site menu, mortgage page, and deploy notifications",
+      "Photos, contact, brokerage, mortgage page, and deploy notifications",
   },
   {
     id: "spotlight",
@@ -180,6 +181,12 @@ export const ADMIN_SERVER_PANELS: {
     id: "api-routes",
     label: "API routes",
     subtitle: "Next.js route handlers under app/api/",
+  },
+  {
+    id: "site-menu",
+    label: "Site menu",
+    subtitle:
+      "Public header nav — rename, reorder, show/hide, add or remove top-level links and Explore groups",
   },
   {
     id: "page-styles",
@@ -398,7 +405,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "server",
     label: "Web server",
-    subtitle: "API routes and Market Pulse page styles",
+    subtitle: "API routes, site menu, and Market Pulse page styles",
   },
   {
     id: "glossary",
@@ -538,8 +545,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-site-nav",
     label: "Site menu",
-    tab: "data-controls",
-    panel: "site",
+    tab: "server",
+    panel: "site-menu",
   },
   {
     id: "admin-mortgage-page",
@@ -1063,6 +1070,7 @@ export function isAdminServerPanelId(
 ): value is AdminServerPanelId {
   return (
     value === "api-routes" ||
+    value === "site-menu" ||
     value === "page-styles" ||
     value === "ui-kit" ||
     value === "intel-descriptor-sizes"

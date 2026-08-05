@@ -48,6 +48,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Clean install: deletes node_modules (when present) and installs exactly from package-lock.json — reproducible CI/deploy installs, unlike npm install which may mutate the lockfile. On Railway Railpack, prefer npm install for mls-sync: npm ci’s wipe hits EBUSY on the locked node_modules/.cache mount. Needs Node + (for native addons like node-expat) Python/g++. See Railpack, EBUSY node_modules/.cache (Railway).',
   },
   {
+    term: 'package-lock.json',
+    category: 'tooling',
+    definition:
+      'npm’s generated record of the exact dependency tree actually installed: every direct and transitive package, its resolved version, and an integrity hash. package.json states intent (often a range like ^16.0.0); the lockfile states the resolution. Committed to git here (lockfileVersion 3, npm 7+) and it must be, because it is the only thing making the two hosts agree: Netlify builds this repo with npm run build:netlify and Railway builds the same repo for mls-sync with npm install --no-audit --no-fund (see railpack.json), so without the lockfile the site and the sync service could resolve different versions of shared libs like pg or rets-client. Never hand-edit it; to change a version edit package.json and re-run npm install, and resolve merge conflicts by taking either side then re-running npm install. A matching lockfile still does not guarantee a working install of native addons (node-expat, better-sqlite3) — those compile per platform, which is why Netlify sets NPM_CONFIG_BUILD_FROM_SOURCE=false and Windows needs Visual Studio Build Tools. See npm ci, Railpack, Visual Studio Build Tools.',
+  },
+  {
+    term: 'errno (E-prefixed codes)',
+    category: 'tooling',
+    definition:
+      'The E on ENOSPC, EBUSY, ENOENT, EACCES and friends: POSIX error constants from C’s <errno.h>, where E means “error” and the rest is a 1970s-style squeezed abbreviation of the condition — not an initialism, so there is no letter-by-letter expansion. ENOSPC = no space (28), EBUSY = resource busy (16), ENOENT = no such directory ENTry, i.e. file or path not found (2), EACCES = access denied (13), EMFILE = too many open files (24). Node exposes the macro name as err.code, so checks read `if (err.code === \'ENOENT\')`, while libuv often reports the number negated — which is why a Railway build log says “errno -16” for EBUSY. See ENOSPC, EBUSY node_modules/.cache (Railway).',
+  },
+  {
     term: 'tsc',
     category: 'tooling',
     definition:
@@ -197,7 +209,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'jsonb / raw',
     category: 'mls-data',
     definition:
-      'Postgres JSON column holding the flat RETS field map per listing for flexible MLS attributes.',
+      'The two jsonb payload columns on listings. `raw` is the full flat RETS field map — the catch-all that lets a new MLS field arrive without a schema migration. `data` is the normalized Listing object without raw, used to hydrate the app’s Listing type on read. Anything queried often is promoted to a real typed column instead; the payloads are for flexible or rarely-filtered MLS attributes. See jsonb (Postgres type).',
   },
   {
     term: 'AGENT_MLS_ID',
@@ -215,7 +227,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Site menu',
     category: 'sync-admin',
     definition:
-      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide. Hrefs stay fixed to known site pages. Editable in Admin → Data controls → Site controls → Site menu; stored in sync_meta key site_nav (lib/site-nav-config.ts). Defaults match the previous hardcoded Navigation.tsx catalog.',
+      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide. Hrefs stay fixed to known site pages. Editable in Admin → Web server → Site menu; stored in sync_meta key site_nav (lib/site-nav-config.ts). Defaults match the previous hardcoded Navigation.tsx catalog.',
   },
   {
     term: 'Mortgage page',
@@ -410,6 +422,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'sync-admin',
     definition:
       'AWS alarm clock that can start TMRE sync jobs instead of (or beside) Netlify cron. Admin → Syncs → Configure has a sticky per-job Scheduler radio (Netlify cron | EventBridge); Dashboard shows it read-only. When a job is on EventBridge, Netlify thin crons skip that job. AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`. Every ingress hit stamps EventBridge last fired + result on the Dashboard (including skips and 401). Migrate Incremental first; full-resync stays doomsday-only.',
+  },
+  {
+    term: 'EventBridge event bus',
+    category: 'sync-admin',
+    definition:
+      'The router in the middle of AWS EventBridge: a named channel that accepts event JSON and hands each event to whichever Rules match it. Every account starts with one bus named `default` (it also receives the events AWS services emit about themselves); you can add custom buses to isolate traffic, and SaaS vendors can feed partner buses. A bus is not a queue and holds no state — nothing is stored, retried, or replayable unless you attach an Archive, and an event that matches no Rule is dropped silently. That last part is the usual reason a PutEvents call reports success while nothing happens downstream. Events carry an envelope (source, detail-type, detail, time, account, region) and a Rule matches on that shape with an event pattern, then invokes its targets. TMRE chain: EventBridge Scheduler → PutEvents onto the bus → a Rule matching source `tmre.sync` / detail-type `ScheduledSync` → API destination → the Netlify `eventbridge-sync-ingress` function. Bus, Rule, and API destination live only in the AWS console — nothing in this repo names them, so they cannot be reviewed in a diff. Cost is negligible at a 30-minute cadence (AWS-service events on the default bus are free; your own published events bill per million). Being deprecated: Incremental now runs on the always-on Railway mls-sync service and this path is slated for removal. See EventBridge PutEvents, EventBridge Scheduler, Ingress (EventBridge), Railway mls-sync.',
   },
   {
     term: 'EventBridge PutEvents',
@@ -607,7 +625,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'ENOSPC',
     category: 'sync-admin',
     definition:
-      '“No space left on device.” Hit when /tmp (~512 MB on Netlify) couldn’t hold write DB + read-snapshot at once.',
+      '“No space left on device.” Letters: E + NOSPC, where the E is just “error” (the prefix on every POSIX errno macro) and NOSPC is a squeezed “no space” — errno 28 on Linux, which libuv/Node may report negated as -28. Not an acronym; see errno (E-prefixed codes). On TMRE it was hit when /tmp (~512 MB on Netlify) couldn’t hold write DB + read-snapshot at once.',
   },
   {
     term: 'GLIBC mismatch',
@@ -616,16 +634,34 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Native modules built on a newer Linux than Lambda supports — SQLite/RETS fail even with good credentials.',
   },
   {
+    term: 'jsonb (Postgres type)',
+    category: 'sync-admin',
+    definition:
+      'Postgres’ binary, decomposed JSON type — parsed and stored as a structure rather than as the text you sent. Costs slightly more on write than the plain `json` type, and is far faster to read, operate on, and index, which is why every JSON column here is jsonb. Trade-off versus `json`: jsonb discards insignificant whitespace, does not preserve key order, and keeps only the last of duplicate keys, so it is not a byte-exact round trip of the original document. Operators in daily use: `->` returns jsonb, `->>` returns text (the form all over lib/db/listings-repo.ts, e.g. raw->>\'ParcelNumber\'), `#>` / `#>>` walk a path, `@>` tests containment, `?` tests key existence. Indexing options are GIN for containment/existence across arbitrary keys (jsonb_path_ops is smaller and faster but supports only @>) or a plain B-tree expression index on one extracted key such as ((raw->>\'ParcelNumber\')) — usually the cheaper answer. TMRE deliberately runs NO GIN index on listings.raw: 0001_init.sql leaves idx_listings_raw_gin commented out because B-tree indexes on promoted typed columns cover every current query. Write semantics worth knowing: there is no partial in-place update. jsonb_set builds a whole new document, so touching one key rewrites the entire value, which defeats HOT and drives bloat — and values over roughly 2 KB get TOASTed (compressed and stored out-of-line in a side table). Columns here: listings.data + listings.raw, stats_cache.payload, visitors.geo / pages, zip_boundaries.rings, saved_search_alerts.criteria, plus the scoring breakdowns. See jsonb / raw, GIN (Postgres), Heap-only tuple (HOT).',
+  },
+  {
     term: 'GIN (Postgres)',
     category: 'sync-admin',
     definition:
       'Generalized Inverted Index on jsonb. Helps containment/search; costly on frequent RETS upserts if overused.',
   },
   {
+    term: 'Heap-only tuple (HOT)',
+    category: 'sync-admin',
+    definition:
+      'Heap = a table’s own storage pages (as opposed to its indexes). Tuple = one physical version of a row. A heap-only tuple is a new row version written into the same heap page as the version it replaces, linked from it by a pointer (t_ctid), with NO new index entries added — the existing index entries still point at the original tuple and readers follow the chain inside the page. It is “heap-only” because that version exists solely in the heap and no index knows it is there. Requirements: the UPDATE changed no indexed column, and the new version fits on the same page (hence fillfactor). Break either and you get an ordinary update plus a fresh entry in every index on the table, which is where index bloat and write amplification come from. Bonus: dead HOT versions can be reclaimed by page pruning during ordinary reads and writes, without waiting for VACUUM. Check the ratio with n_tup_hot_upd against n_tup_upd in pg_stat_user_tables. On TMRE this matters because Incremental upserts (ON CONFLICT DO UPDATE) rewrite listings rows every ~30 minutes against a table carrying several indexes. See HOT update, GIN (Postgres), Why “update a tuple” is not a contradiction.',
+  },
+  {
+    term: 'Why “update a tuple” is not a contradiction',
+    category: 'sync-admin',
+    definition:
+      'It does sound like one, and the instinct behind the objection is correct: a tuple really is immutable once written. Postgres never modifies a row in place. Under MVCC (multi-version concurrency control) an UPDATE writes a brand-new tuple and merely stamps the old one as dead (xmax = the updating transaction), so transactions that started earlier keep reading the old version and no reader is ever blocked by a writer. What gets updated is therefore the ROW — a logical identity that may be represented by many tuples over its lifetime — while each TUPLE is a single immutable snapshot of that row. “Tuple update” is shorthand for “an update to a row, which produced another tuple”. Postgres docs frequently say “row version” instead of tuple for exactly this reason, and the word tuple itself is inherited from relational theory, not from Python’s immutable tuple type (which happens to carry the same immutability, differently motivated). Two consequences worth remembering: an UPDATE costs about as much as an INSERT, and dead versions accumulate until VACUUM or page pruning reclaims them, which is what table bloat is. See Heap-only tuple (HOT).',
+  },
+  {
     term: 'HOT update',
     category: 'sync-admin',
     definition:
-      'Postgres heap-only tuple update that skips index maintenance when indexed columns don’t change. Rewriting raw jsonb often prevents HOT.',
+      'Postgres heap-only tuple update that skips index maintenance when indexed columns don’t change. Rewriting raw jsonb often prevents HOT. See Heap-only tuple (HOT) for the mechanism.',
   },
   {
     term: 'EAV',

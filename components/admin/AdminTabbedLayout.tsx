@@ -143,6 +143,18 @@ function normalizeLegacyNestedTabUrls() {
     return;
   }
 
+  // Former Data controls → Site controls → Site menu → Web server → Site menu.
+  // Keyed on the hash, not the panel: panel=site still hosts other cards.
+  if (
+    queryTab === "data-controls" &&
+    url.hash.replace(/^#/, "") === "admin-site-nav"
+  ) {
+    url.searchParams.set("tab", "server");
+    url.searchParams.set("panel", "site-menu");
+    window.history.replaceState(null, "", url);
+    return;
+  }
+
   // Former Architecture → UI kit → Web server → UI kit.
   if (queryTab === "architecture" && panel === "ui-kit") {
     url.searchParams.set("tab", "server");

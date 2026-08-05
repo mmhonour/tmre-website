@@ -2895,6 +2895,27 @@ export default function AdminSyncTable({
                   jobSchedule?.frequency,
                   nowMs,
                 );
+              // An open Start with no End belongs in Errors, not in Next: Next
+              // answers "when does this run again", not "how did the last run
+              // end". Reported as evidence (Start clock + age), never as a claim
+              // about a Postgres value we did not read.
+              const rowHung =
+                !incrementalRunningNow &&
+                !incrementalOnEventBridge &&
+                (isTimingHung(timing, nowMs) ||
+                  (row.id === "refresh-finished" &&
+                    Boolean(status?.refreshing)));
+              const hangNotice = (() => {
+                if (!rowHung) return null;
+                const startedAt =
+                  timing.started ?? status?.lastRefreshStarted ?? null;
+                if (!startedAt) return "Hung · no End recorded";
+                const age = formatAgeAgo(startedAt, nowMs);
+                const clock = formatTimeOnly(startedAt);
+                return age && age !== "just now"
+                  ? `Hung · no End since ${clock} · ${age}`
+                  : `Hung · no End since ${clock}`;
+              })();
               const manualOrder =
                 orderByRow[row.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
               const rowPaused = Boolean(pauseJob && pausedJobs[pauseJob]);
@@ -3117,6 +3138,7 @@ export default function AdminSyncTable({
               const rowExpands =
                 isDashboard &&
                 (Boolean(rowError) ||
+                  Boolean(hangNotice) ||
                   isRunning ||
                   isWaiting ||
                   incrementalRunningNow ||
@@ -3286,9 +3308,13 @@ export default function AdminSyncTable({
                         </span>
                       ) : null}
                     </p>
-                    {isDashboard && rowError && rowExpands ? (
-                      <p className="mt-1 md:hidden font-mono text-[9px] leading-snug text-coral break-words whitespace-pre-line">
-                        {rowError}
+                    {isDashboard && (rowError || hangNotice) && rowExpands ? (
+                      <p
+                        className={`mt-1 md:hidden font-mono text-[9px] leading-snug break-words whitespace-pre-line ${
+                          rowError ? "text-coral" : "text-rose-600/80"
+                        }`}
+                      >
+                        {rowError ?? hangNotice}
                       </p>
                     ) : null}
                   </td>
@@ -3551,14 +3577,6 @@ export default function AdminSyncTable({
                           row.id === "full-resync" &&
                           status?.scheduleHints?.fullResyncSource ===
                             "post-deploy";
-                        // Live / open-Start Incremental must never read as Hung —
-                        // Status already says RUNNING.
-                        const hungNext =
-                          !incrementalRunningNow &&
-                          !incrementalOnEventBridge &&
-                          (isTimingHung(timing, nowMs) ||
-                            (row.id === "refresh-finished" &&
-                              status?.refreshing));
                         let nextStatusText: string | null = null;
                         let nextStatusClass = "text-sage/80";
                         if (isPostDeployNext) {
@@ -3568,9 +3586,6 @@ export default function AdminSyncTable({
                           // Real wall clock below; label who owns the alarm.
                           nextStatusText = "AWS";
                           nextStatusClass = "text-navy/55";
-                        } else if (hungNext) {
-                          nextStatusText = "Hung";
-                          nextStatusClass = "text-rose-600/80";
                         } else if (scheduleBreached) {
                           nextStatusText = "Overdue";
                           nextStatusClass = "text-rose-600/80";
@@ -3588,7 +3603,7 @@ export default function AdminSyncTable({
                           nextJobId && status?.nextOverrides?.[nextJobId],
                         );
                         const nextTimeClass =
-                          scheduleBreached || hungNext
+                          scheduleBreached
                             ? "text-rose-700"
                             : hasNextOverride
                               ? "text-gold"
@@ -3733,17 +3748,19 @@ export default function AdminSyncTable({
                       <td
                         className={`${cellPad} border-r-0 hidden md:table-cell`}
                       >
-                        {rowError ? (
+                        {rowError || hangNotice ? (
                           <div className="space-y-1 min-w-0">
                             <p
-                              className={`font-mono text-[9px] text-coral ${
+                              className={`font-mono text-[9px] ${
+                                rowError ? "text-coral" : "text-rose-600/80"
+                              } ${
                                 rowExpands
                                   ? "leading-snug break-words whitespace-pre-line"
                                   : "truncate whitespace-nowrap"
                               }`}
-                              title={rowError}
+                              title={rowError ?? hangNotice ?? undefined}
                             >
-                              {rowError}
+                              {rowError ?? hangNotice}
                             </p>
                             {row.actionId &&
                             !isRunning &&

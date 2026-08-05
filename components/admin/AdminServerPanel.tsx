@@ -27,11 +27,13 @@ function panelFromLocation(): AdminServerPanelId {
 
 export default function AdminServerPanel({
   apiRoutes,
+  siteMenu,
   pageStyles,
   uiKit,
   intelDescriptorSizes,
 }: {
   apiRoutes: ReactNode;
+  siteMenu: ReactNode;
   pageStyles: ReactNode;
   uiKit: ReactNode;
   intelDescriptorSizes: ReactNode;
@@ -60,6 +62,7 @@ export default function AdminServerPanel({
 
   const panels: Record<AdminServerPanelId, ReactNode> = {
     "api-routes": apiRoutes,
+    "site-menu": siteMenu,
     "page-styles": pageStyles,
     "ui-kit": uiKit,
     "intel-descriptor-sizes": intelDescriptorSizes,

@@ -796,8 +796,6 @@ export default async function AdminPage() {
         }}
       />
 
-      <AdminSiteNavPanel initial={siteNav ?? undefined} />
-
       <AdminMortgagePagePanel />
 
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
@@ -905,6 +903,7 @@ export default async function AdminPage() {
   const serverPanel = (
     <AdminServerPanel
       apiRoutes={<AdminServerFunctionsPanel />}
+      siteMenu={<AdminSiteNavPanel initial={siteNav ?? undefined} />}
       pageStyles={<AdminPageStylesPanel />}
       uiKit={<AdminUiKitPanel />}
       intelDescriptorSizes={<AdminIntelligenceDescriptorSizesPanel />}

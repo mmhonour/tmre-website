@@ -5,10 +5,63 @@ import {
   DEFAULT_SITE_NAV,
   moveItem,
   normalizeSiteNav,
+  siteNavAddablePages,
+  siteNavLinkForPage,
   type SiteNavConfig,
   type SiteNavExploreGroup,
   type SiteNavTopItem,
 } from "@/lib/site-nav-shared";
+import { findSitePage, type SitePage } from "@/lib/site-pages";
+
+/** Add page picker — shown for the top level and for each Explore group. */
+function AddPageRow({
+  pages,
+  onAdd,
+}: {
+  pages: SitePage[];
+  onAdd: (page: SitePage) => void;
+}) {
+  const [path, setPath] = useState("");
+
+  if (pages.length === 0) {
+    return (
+      <p className="font-mono text-[10px] text-charcoal/40">
+        Every page in lib/site-pages.ts is already in the menu.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={path}
+        onChange={(e) => setPath(e.target.value)}
+        aria-label="Page to add"
+        className="rounded border border-charcoal/15 px-2 py-1.5 text-sm text-navy"
+      >
+        <option value="">Add a page…</option>
+        {pages.map((page) => (
+          <option key={page.path} value={page.path}>
+            {page.label} · {page.path}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        disabled={!path}
+        onClick={() => {
+          const page = findSitePage(path);
+          if (!page) return;
+          onAdd(page);
+          setPath("");
+        }}
+        className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/30 text-navy bg-cream/40 hover:bg-cream disabled:opacity-40 disabled:pointer-events-none transition-colors"
+      >
+        + Add
+      </button>
+    </div>
+  );
+}
 
 function RowChrome({
   children,
@@ -177,6 +230,45 @@ export default function AdminSiteNavPanel({
     });
   };
 
+  const addablePages = siteNavAddablePages(config);
+
+  const addTopPage = (page: SitePage) => {
+    setConfig((prev) => ({
+      ...prev,
+      topLevel: [
+        ...prev.topLevel,
+        { kind: "link" as const, ...siteNavLinkForPage(page) },
+      ],
+    }));
+  };
+
+  const addGroupPage = (gi: number, page: SitePage) => {
+    setConfig((prev) => ({
+      ...prev,
+      exploreGroups: prev.exploreGroups.map((g, i) =>
+        i === gi ? { ...g, links: [...g.links, siteNavLinkForPage(page)] } : g,
+      ),
+    }));
+  };
+
+  /** Only added rows can be deleted — catalog rows are hidden with Show
+   *  instead, because normalizeSiteNav re-appends anything from the catalog. */
+  const removeTop = (index: number) => {
+    setConfig((prev) => ({
+      ...prev,
+      topLevel: prev.topLevel.filter((_, i) => i !== index),
+    }));
+  };
+
+  const removeGroupLink = (gi: number, li: number) => {
+    setConfig((prev) => ({
+      ...prev,
+      exploreGroups: prev.exploreGroups.map((g, i) =>
+        i === gi ? { ...g, links: g.links.filter((_, j) => j !== li) } : g,
+      ),
+    }));
+  };
+
   return (
     <div
       id="admin-site-nav"
@@ -188,8 +280,11 @@ export default function AdminSiteNavPanel({
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
           Organize the public header: top-level links, Explore dropdown groups,
-          labels, order, and show/hide. Hrefs stay fixed to existing site pages
-          — no redeploy required after save.
+          labels, order, show/hide, and adding or removing pages. The picker
+          offers real site pages only (lib/site-pages.ts, the same list behind
+          sitemap.xml), so a menu edit cannot create a dead link. Catalog links
+          hide rather than delete — only pages you added here can be removed. No
+          redeploy required after save.
         </p>
       </div>
 
@@ -236,8 +331,18 @@ export default function AdminSiteNavPanel({
               <span className="font-mono text-[10px] text-charcoal/40">
                 {item.kind === "explore" ? "Explore menu" : item.href}
               </span>
+              {item.kind === "link" && item.custom ? (
+                <button
+                  type="button"
+                  onClick={() => removeTop(i)}
+                  className="font-mono text-[10px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral hover:bg-rose-50 transition-colors"
+                >
+                  Remove
+                </button>
+              ) : null}
             </RowChrome>
           ))}
+          <AddPageRow pages={addablePages} onAdd={addTopPage} />
         </section>
 
         <section className="space-y-4">
@@ -336,8 +441,21 @@ export default function AdminSiteNavPanel({
                     <span className="font-mono text-[10px] text-charcoal/40">
                       {link.href}
                     </span>
+                    {link.custom ? (
+                      <button
+                        type="button"
+                        onClick={() => removeGroupLink(gi, li)}
+                        className="font-mono text-[10px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral hover:bg-rose-50 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                   </RowChrome>
                 ))}
+                <AddPageRow
+                  pages={addablePages}
+                  onAdd={(page) => addGroupPage(gi, page)}
+                />
               </div>
             </div>
           ))}

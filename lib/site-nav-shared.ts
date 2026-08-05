@@ -1,7 +1,15 @@
 /**
  * Public header nav config (client-safe).
- * Admin can rename / reorder / show-hide; hrefs stay fixed to known site pages.
+ * Admin can rename / reorder / show-hide / add / remove; hrefs stay fixed to
+ * known site pages (lib/site-pages.ts) so a menu edit cannot create a 404.
  */
+
+import {
+  customNavIdForPath,
+  findSitePage,
+  SITE_PAGES,
+  type SitePage,
+} from '@/lib/site-pages'
 
 export type SiteNavLinkFlags = {
   bold?: boolean
@@ -16,6 +24,8 @@ export type SiteNavTopLink = {
   href: string
   label: string
   visible: boolean
+  /** Added by Admin rather than shipped in the catalog below. */
+  custom?: true
 } & SiteNavLinkFlags
 
 export type SiteNavTopExplore = {
@@ -33,6 +43,8 @@ export type SiteNavExploreLink = {
   label: string
   visible: boolean
   requiresUnlock?: boolean
+  /** Added by Admin rather than shipped in the catalog below. */
+  custom?: true
 }
 
 export type SiteNavExploreGroup = {
@@ -167,6 +179,56 @@ function asBool(raw: unknown, fallback: boolean): boolean {
   return typeof raw === 'boolean' ? raw : fallback
 }
 
+/**
+ * An Admin-added row has no catalog fallback, so its href comes from the stored
+ * value — and is only kept when it resolves to a real page in SITE_PAGES. That
+ * keeps "hrefs are always valid" true while still allowing additions.
+ */
+function normalizeCustomNavLink(
+  raw: Record<string, unknown>,
+  id: string,
+  used: Set<string>,
+): SiteNavExploreLink | null {
+  if (raw.custom !== true) return null
+  const href = typeof raw.href === 'string' ? raw.href : ''
+  const page = findSitePage(href)
+  if (!page) return null
+  const candidate = /^[a-z0-9-]{1,64}$/.test(id)
+    ? id
+    : customNavIdForPath(page.path)
+  if (used.has(candidate)) return null
+  return {
+    id: candidate,
+    href: page.path,
+    label: clampLabel(raw.label, page.label),
+    visible: asBool(raw.visible, true),
+    custom: true,
+  }
+}
+
+/** Pages not already linked anywhere in the menu — the Add page picker list. */
+export function siteNavAddablePages(config: SiteNavConfig): SitePage[] {
+  const used = new Set<string>()
+  for (const item of config.topLevel) {
+    if (item.kind === 'link') used.add(item.href)
+  }
+  for (const group of config.exploreGroups) {
+    for (const link of group.links) used.add(link.href)
+  }
+  return SITE_PAGES.filter((page) => !used.has(page.path))
+}
+
+/** New menu row for a picked page (Admin “Add page”). */
+export function siteNavLinkForPage(page: SitePage): SiteNavExploreLink {
+  return {
+    id: customNavIdForPath(page.path),
+    href: page.path,
+    label: page.label,
+    visible: true,
+    custom: true,
+  }
+}
+
 function indexById<T extends { id: string }>(rows: T[]): Map<string, T> {
   const m = new Map<string, T>()
   for (const row of rows) m.set(row.id, row)
@@ -196,7 +258,15 @@ export function normalizeSiteNav(raw: unknown): SiteNavConfig {
     const r = row as Record<string, unknown>
     const id = typeof r.id === 'string' ? r.id : ''
     const fallback = defaultTopById.get(id)
-    if (!fallback || usedTop.has(id)) continue
+    if (!fallback) {
+      const added = normalizeCustomNavLink(r, id, usedTop)
+      if (added) {
+        usedTop.add(added.id)
+        topLevel.push({ kind: 'link', ...added })
+      }
+      continue
+    }
+    if (usedTop.has(id)) continue
     usedTop.add(id)
     if (fallback.kind === 'explore') {
       topLevel.push({
@@ -246,7 +316,15 @@ export function normalizeSiteNav(raw: unknown): SiteNavConfig {
       const l = lRow as Record<string, unknown>
       const lid = typeof l.id === 'string' ? l.id : ''
       const lFallback = defaultLinkById.get(lid)
-      if (!lFallback || usedLinks.has(lid)) continue
+      if (!lFallback) {
+        const added = normalizeCustomNavLink(l, lid, usedLinks)
+        if (added) {
+          usedLinks.add(added.id)
+          links.push(added)
+        }
+        continue
+      }
+      if (usedLinks.has(lid)) continue
       usedLinks.add(lid)
       links.push({
         id: lFallback.id,
