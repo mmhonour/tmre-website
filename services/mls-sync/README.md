@@ -16,14 +16,17 @@ Always-on service: **SmartMLS RETS → Neon**. Netlify is **not** in the pull pa
 
 ### 0. Code on GitHub
 
-Push the mls-sync cutover to the branch Railway will deploy (usually `main`)
-before creating the project. Root [`railway.toml`](../../railway.toml) +
-[`nixpacks.toml`](../../nixpacks.toml) must be present (`startCommand = npm run
-start:mls-sync`, healthcheck `/health`, **Node 20** + python/g++ for
-`node-expat` native build). `npm ci` runs only in the Nixpacks **install**
-phase — never again as `buildCommand` (that causes EBUSY on
-`node_modules/.cache`). If the build fails on Node 18 / Python / EBUSY,
-redeploy after those files are on `main`.
+Push the mls-sync cutover to the branch Railway will deploy (usually `main`).
+Railway’s default builder is **Railpack** (not Nixpacks) — config lives in
+[`railpack.json`](../../railpack.json) + [`railway.toml`](../../railway.toml).
+
+**UI (Settings → Build):** leave Builder = **Railpack**. Build Command empty or
+`echo mls-sync: skip app build` — never `npm ci`. Start command =
+`npm run start:mls-sync` (also in railway.toml).
+
+Railpack mounts cache dirs; `npm ci` trying to wipe `node_modules/.cache` →
+**EBUSY**. We use `npm install` + Node 20 + python/build-essential for
+`node-expat`. Optional one-shot: variable `NO_CACHE=1`, redeploy, then remove.
 
 ### 1. Railway project
 

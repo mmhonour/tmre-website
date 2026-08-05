@@ -1,13 +1,17 @@
 # Railway service: mls-sync (RETS → Neon). Deploy from this repo root.
+# Builder is Railpack (Railway default). Config: railpack.json
 # Set env: DATABASE_URL, RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD,
 # SYNC_CRON_SECRET, optional MLS_SYNC_INTERVAL_MS (default 1800000 = 30m).
 # On Netlify site env set MLS_SYNC_SERVICE_URL=https://<this-service>.up.railway.app
+#
+# In Railway UI Build settings:
+#   Builder = Railpack (keep)
+#   Build Command = echo mls-sync: skip app build  (or leave empty if railpack.json applies)
+# Do NOT set Build Command to npm ci.
 
 [build]
-builder = "NIXPACKS"
-# Install = nixpacks.toml `npm ci` only. Do not set buildCommand to npm ci —
-# a second run hits EBUSY on /app/node_modules/.cache (Railway cache mount).
-nixpacksConfigPath = "nixpacks.toml"
+builder = "RAILPACK"
+buildCommand = "echo mls-sync: skip app build"
 
 [deploy]
 startCommand = "npm run start:mls-sync"

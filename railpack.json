@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "20",
+    "python": "3.12"
+  },
+  "buildAptPackages": ["build-essential", "libexpat1-dev", "python3"],
+  "steps": {
+    "install": {
+      "commands": [
+        { "src": "package.json", "dest": "package.json" },
+        { "src": "package-lock.json", "dest": "package-lock.json" },
+        { "src": "vendor", "dest": "vendor" },
+        {
+          "cmd": "npm install --no-audit --no-fund",
+          "customName": "npm install (not ci — avoids EBUSY on node_modules/.cache)"
+        },
+        { "path": "node_modules/.bin" }
+      ]
+    },
+    "build": {
+      "inputs": [{ "step": "install" }],
+      "commands": ["echo mls-sync: skip next build"]
+    }
+  },
+  "deploy": {
+    "startCommand": "npm run start:mls-sync",
+    "variables": {
+      "NPM_CONFIG_PRODUCTION": "false"
+    }
+  }
+}

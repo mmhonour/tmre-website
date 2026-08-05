@@ -42,6 +42,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Commonly understood as “Node Package Manager” (maintainers say it’s not officially an acronym). Installs JavaScript dependencies and runs scripts like npm run dev or npm run sync:listings.',
   },
   {
+    term: 'npm ci',
+    category: 'tooling',
+    definition:
+      'Clean install: deletes node_modules (when present) and installs exactly from package-lock.json — reproducible CI/deploy installs, unlike npm install which may mutate the lockfile. On Railway Railpack, prefer npm install for mls-sync: npm ci’s wipe hits EBUSY on the locked node_modules/.cache mount. Needs Node + (for native addons like node-expat) Python/g++. See Railpack, EBUSY node_modules/.cache (Railway).',
+  },
+  {
     term: 'tsc',
     category: 'tooling',
     definition:
@@ -210,6 +216,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'product',
     definition:
       'Weekly Resend email via Netlify market-digest cron (every 30m, gated to Configure weekly day + start time ET — default Mon 08:00) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Send day/time live on Syncs → Configure and Communications → Monday market brief (shared Postgres sync_schedule_config); changing the day rewrites the subject day name. Run / pause on Syncs; recipient, subject `{date}`, optional social footer on Communications.',
+  },
+  {
+    term: 'Buyer / Seller Friendly (Market Pulse)',
+    category: 'product',
+    definition:
+      'Market Pulse town sort (not Default order). Composite buyer-friendly score: higher months supply + longer avg DOM rank higher for Buyer Friendly (reverse for Seller Friendly). Months supply is one factor, not the only one. Planned factors (catalogue on Town stats for the most current year we have): active inventory ÷ housing unit count, and closings in trailing 24 months ÷ housing unit count — both higher → more buyer friendly. Scoring lives in lib/market-pulse-favorability.ts; missing planned inputs are skipped until housing counts exist.',
+  },
+  {
+    term: 'Town housing unit count',
+    category: 'product',
+    definition:
+      'Planned Town stats field: number of homes/housing units in a municipality (Census/ACS or curated), tagged with the most current year available. Used as the denominator for Market Pulse inventory-per-home and closings-24mo-per-home favorability factors. Not in Neon yet.',
   },
   {
     term: 'Deploy notifications',
@@ -487,13 +505,43 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Railway mls-sync',
     category: 'sync-admin',
     definition:
-      'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify, DATABASE_URL + RETS_* + SYNC_CRON_SECRET on Railway. Smoke: npm run smoke:incremental -- --mls=…. Decommission EventBridge Incremental schedules after cutover.',
+      'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify, DATABASE_URL + RETS_* + SYNC_CRON_SECRET on Railway. Smoke: npm run smoke:incremental -- --mls=…. Decommission EventBridge Incremental schedules after cutover. Build uses Nixpacks — must be Node 20 + native toolchain; see node-expat, npm ci.',
   },
   {
     term: 'MLS_SYNC_SERVICE_URL',
     category: 'sync-admin',
     definition:
       'Netlify env var: public base URL of the Railway mls-sync service (no trailing slash). Admin Sync now POSTs /run here when Incremental Scheduler is Railway.',
+  },
+  {
+    term: 'Railpack',
+    category: 'sync-admin',
+    definition:
+      'Railway’s current default image builder (successor to Nixpacks). UI shows Builder = Railpack. Config: root railpack.json (+ railway.toml start/health). For mls-sync: Node 20, python/build-essential for node-expat, install via npm install (not npm ci), build = skip Next.js, start = npm run start:mls-sync. Cache mounts under node_modules/.cache cannot be deleted by install scripts — that is the EBUSY failure. Leave UI Build Command empty or echo-skip; never npm ci. See EBUSY node_modules/.cache (Railway), npm ci.',
+  },
+  {
+    term: 'Nixpacks',
+    category: 'sync-admin',
+    definition:
+      'Older Railway/app image builder (now maintenance mode; Railway UI defaults to Railpack). Root nixpacks.toml may still exist in the repo but is ignored while Builder = Railpack. Prefer Railpack + railpack.json for mls-sync. See Railpack.',
+  },
+  {
+    term: 'EBUSY node_modules/.cache (Railway)',
+    category: 'sync-admin',
+    definition:
+      'Build fail (errno -16) when npm tries to rmdir /app/node_modules/.cache while Railway has that path locked as a cache mount. Common triggers: (1) `npm ci` in Build Command (UI or railway.toml) after install already ran, (2) `npm ci` itself wiping node_modules against that mount. Fix for mls-sync: nixpacks install = `npm install` with NPM_CONFIG_CACHE=/tmp/npm-cache; buildCommand = echo skip; clear any UI Build Command that still says npm ci. Optional one-shot: service variable NO_CACHE=1 then redeploy. Same log filename timestamp as an earlier fail often means you’re reading an old deployment — check the commit SHA on the deploy card.',
+  },
+  {
+    term: 'node-expat',
+    category: 'sync-admin',
+    definition:
+      'Native Node addon (C++/node-gyp) used for XML parsing on the SmartMLS RETS path (dependency of rets-client). npm ci must compile it on the host — needs Python + a C++ toolchain, not just Node. On Railway, missing Python is a hard build fail; AWS SDK “Unsupported engine” lines in the same log are usually warnings. See Nixpacks, npm ci.',
+  },
+  {
+    term: 'EBADENGINE (npm)',
+    category: 'sync-admin',
+    definition:
+      'npm warning that the current Node version is below a package’s engines field (e.g. @aws-sdk/* wanting ≥20 while the builder is on 18). Often non-fatal by itself — the Railway mls-sync Day-1 red herring next to the real node-expat / Python failure. Fix by pinning Node 20 in Nixpacks, not by removing the AWS SDK.',
   },
   {
     term: 'Lambda / serverless function',
