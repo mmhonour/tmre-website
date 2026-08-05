@@ -174,6 +174,7 @@ export default function MarketPulseContent({
         closedSalesTownHref={closedSalesTownHref}
         avgDomTownHref={avgDomTownHref}
         settle={settle}
+        closedPending={closedByCategory[category] === undefined}
       />
     </div>
   );

@@ -49,6 +49,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/latest': 'Latest',
   '/list-with-me': 'List with me',
   '/market-pulse': 'Market Pulse',
+  '/mortgage-rates': 'Mortgage rates',
   '/new-construction': 'New construction',
   '/spotlight': 'Spotlight',
   '/stats': 'Stats',

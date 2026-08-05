@@ -53,6 +53,7 @@ import {
   MONTHS_SUPPLY_INDEX_KEY,
   rebuildMonthsSupplyCache,
 } from '@/lib/months-supply-cache'
+import { rebuildMarketPulseClosedCache } from '@/lib/market-pulse-closed-cache'
 import {
   SqliteWriteStatsCollector,
   type TableWriteStats,
@@ -671,6 +672,14 @@ async function writeAllAggregateStats(
   ])
   const allScoredActive = await scoredActiveRows(allActive)
   for (const kind of LISTING_KINDS) {
+    // All-towns market stats: the only source for the Market Pulse avg-DOM
+    // "All towns" bar (lib/market-digest.ts reads market-stats:All:{kind}).
+    await writeStatsCache('market-stats', 'All', kind, {
+      ...computeMarketStats(allActive, 'All', kind, allClosed),
+      generatedAt,
+    })
+    written += 1
+
     await writeStatsCache('sales-by-vintage', 'All', kind, {
       ...computeSalesByVintage(allClosed, 'All', kind),
       generatedAt,
@@ -816,6 +825,13 @@ export async function rebuildStatsCache(
       console.error('[stats-cache] months-supply rebuild failed', err)
     }
 
+    try {
+      const closed = await rebuildMarketPulseClosedCache()
+      written += closed.written
+    } catch (err) {
+      console.error('[stats-cache] market-pulse closed rebuild failed', err)
+    }
+
     // Only stamp End when something actually landed — empty writes must not
     // paint the Admin row green or advance Next.
     if (written > 0) {
@@ -941,6 +957,16 @@ export async function rebuildStatsCacheForTowns(
       written += ms.written
     } catch (err) {
       console.error('[stats-cache] months-supply rebuild failed (per-town)', err)
+    }
+
+    try {
+      const closed = await rebuildMarketPulseClosedCache()
+      written += closed.written
+    } catch (err) {
+      console.error(
+        '[stats-cache] market-pulse closed rebuild failed (per-town)',
+        err,
+      )
     }
 
     if (written > 0) {

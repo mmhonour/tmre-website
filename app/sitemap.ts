@@ -16,6 +16,7 @@ const ROUTES: Array<{ path: string; priority: number; changeFrequency: MetadataR
   { path: '/find', priority: 0.6, changeFrequency: 'weekly' },
   { path: '/latest', priority: 0.6, changeFrequency: 'daily' },
   { path: '/list-with-me', priority: 0.6, changeFrequency: 'monthly' },
+  { path: '/mortgage-rates', priority: 0.6, changeFrequency: 'weekly' },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' },
   { path: '/terms', priority: 0.3, changeFrequency: 'yearly' },
 ]

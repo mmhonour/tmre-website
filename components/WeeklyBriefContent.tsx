@@ -26,7 +26,7 @@ import {
 import type { StatsValueCalc } from "@/lib/stats-compute";
 import { splitSentences } from "@/lib/split-sentences";
 
-type ChartLayout = "separate" | "combined";
+type ChartLayout = "unstacked" | "stacked";
 type FavorSort = MarketPulseFavorSort;
 
 const METRIC_COLORS = {
@@ -518,6 +518,7 @@ export default function WeeklyBriefContent({
   closedSalesTownHref,
   avgDomTownHref,
   settle = MARKET_PULSE_SETTLE_IDLE,
+  closedPending = false,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -539,8 +540,10 @@ export default function WeeklyBriefContent({
   avgDomTownHref?: (cityLabel: string) => string;
   /** Shared settle clock from Market Pulse (scramble → count-up). */
   settle?: MarketPulseSettleState;
+  /** Closed totals still in flight — otherwise empty means "cache not built". */
+  closedPending?: boolean;
 }) {
-  const [chartLayout, setChartLayout] = useState<ChartLayout>("separate");
+  const [chartLayout, setChartLayout] = useState<ChartLayout>("stacked");
   const [favorSort, setFavorSort] = useState<FavorSort>("default");
 
   const inventoryRows = useMemo(() => chartRows(snapshot), [snapshot]);
@@ -684,19 +687,19 @@ export default function WeeklyBriefContent({
           >
             <button
               type="button"
-              className={controlBtn(chartLayout === "separate")}
-              aria-pressed={chartLayout === "separate"}
-              onClick={() => setChartLayout("separate")}
+              className={controlBtn(chartLayout === "stacked")}
+              aria-pressed={chartLayout === "stacked"}
+              onClick={() => setChartLayout("stacked")}
             >
-              Separate charts
+              STACKED
             </button>
             <button
               type="button"
-              className={controlBtn(chartLayout === "combined")}
-              aria-pressed={chartLayout === "combined"}
-              onClick={() => setChartLayout("combined")}
+              className={controlBtn(chartLayout === "unstacked")}
+              aria-pressed={chartLayout === "unstacked"}
+              onClick={() => setChartLayout("unstacked")}
             >
-              Combined (4 bars)
+              UNSTACKED
             </button>
           </div>
           <div
@@ -744,9 +747,9 @@ export default function WeeklyBriefContent({
           </p>
         ) : null}
 
-        {chartLayout === "combined" ? (
+        {chartLayout === "stacked" ? (
           <CombinedMetricsChart
-            title={`Town metrics combined (${titleScope})`}
+            title={`Town metrics stacked (${titleScope})`}
             rows={combinedRows}
             townHref={townHref}
             settle={settle}
@@ -795,7 +798,11 @@ export default function WeeklyBriefContent({
           valueOf={(r) => r.count}
           valueKind="int"
           barClassName={METRIC_COLORS.closed}
-          emptyMessage="Loading closed sales…"
+          emptyMessage={
+            closedPending
+              ? "Loading closed sales…"
+              : "Closed totals land with the next stats cache rebuild."
+          }
           townHref={closedSalesTownHref}
           settle={settle}
           calcOf={(r) => r.calc}

@@ -111,7 +111,8 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   {
     id: "site",
     label: "Site controls",
-    subtitle: "Photos, contact, brokerage, and deploy notifications",
+    subtitle:
+      "Photos, contact, brokerage, site menu, mortgage page, and deploy notifications",
   },
   {
     id: "spotlight",
@@ -531,6 +532,18 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-brokerage-name",
     label: "Brokerage name",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-site-nav",
+    label: "Site menu",
+    tab: "data-controls",
+    panel: "site",
+  },
+  {
+    id: "admin-mortgage-page",
+    label: "Mortgage page",
     tab: "data-controls",
     panel: "site",
   },

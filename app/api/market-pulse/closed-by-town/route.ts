@@ -5,14 +5,13 @@ import { readMarketPulseClosedCounts } from '@/lib/market-pulse-closed-cache'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-/** Two-year Closed aggregate — slower than the rest of Market Pulse. */
-export const maxDuration = 26
-
 /**
  * GET /api/market-pulse/closed-by-town?kind=sale&property=condos
  * GET /api/market-pulse/closed-by-town?commercial=1
  *
- * Fetched by the Market Pulse tabs so the page render never waits on it.
+ * Reads the stats_cache rows written by the stats cache rebuild — the two-year
+ * Closed aggregate never runs during a request. `needsRebuild` means the cache
+ * has not been populated for this scope yet.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
@@ -20,7 +19,7 @@ export async function GET(req: NextRequest) {
   const kind = parseListingKindParam(searchParams.get('kind'))
 
   try {
-    const { payload, cached } = await readMarketPulseClosedCounts({
+    const { payload, cached, needsRebuild } = await readMarketPulseClosedCounts({
       kind,
       propertyClass: commercialOnly
         ? undefined
@@ -28,7 +27,7 @@ export async function GET(req: NextRequest) {
       commercialOnly,
     })
     return NextResponse.json(
-      { ...payload, cached },
+      { ...payload, cached, needsRebuild: needsRebuild ?? false },
       { headers: { 'Cache-Control': 'public, max-age=300, must-revalidate' } },
     )
   } catch (err) {

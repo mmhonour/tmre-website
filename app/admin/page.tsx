@@ -13,6 +13,8 @@ import AdminDbTuningPanel from "@/components/admin/AdminDbTuningPanel";
 import AdminPhotoHealthPanel from "@/components/admin/AdminPhotoHealthPanel";
 import AdminPhotoTtlPanel from "@/components/admin/AdminPhotoTtlPanel";
 import AdminBrokeragePanel from "@/components/admin/AdminBrokeragePanel";
+import AdminSiteNavPanel from "@/components/admin/AdminSiteNavPanel";
+import AdminMortgagePagePanel from "@/components/admin/AdminMortgagePagePanel";
 import AdminContactEmailPanel from "@/components/admin/AdminContactEmailPanel";
 import AdminContactPhonePanel from "@/components/admin/AdminContactPhonePanel";
 import AdminCommunicationsPanel from "@/components/admin/AdminCommunicationsPanel";
@@ -80,6 +82,7 @@ import {
   getBrokerageNameFresh,
   DEFAULT_BROKERAGE_NAME,
 } from "@/lib/brokerage-config";
+import { getSiteNavFresh } from "@/lib/site-nav-config";
 import {
   getContactPhoneFresh,
   DEFAULT_CONTACT_PHONE_DIGITS,
@@ -631,6 +634,7 @@ export default async function AdminPage() {
     () => getBrokerageNameFresh(),
     DEFAULT_BROKERAGE_NAME,
   )
+  const siteNav = await safe("site-nav", () => getSiteNavFresh(), null)
   const contactPhone = await safe(
     "contact-phone",
     () => getContactPhoneFresh(),
@@ -791,6 +795,10 @@ export default async function AdminPage() {
           default: DEFAULT_BROKERAGE_NAME,
         }}
       />
+
+      <AdminSiteNavPanel initial={siteNav ?? undefined} />
+
+      <AdminMortgagePagePanel />
 
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <AdminContactEmailPanel

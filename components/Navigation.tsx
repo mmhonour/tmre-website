@@ -5,6 +5,12 @@ import { useSiteUnlockActions, useSiteUnlocked } from "./SiteUnlockProvider";
 import VisitorLocationBadge from "./VisitorLocationBadge";
 import PhoneCta from "./PhoneCta";
 import { AGENT_MLS_ID, DEFAULT_BROKERAGE_NAME } from "@/lib/business-info";
+import {
+  DEFAULT_SITE_NAV,
+  resolvePublicExploreGroups,
+  type SiteNavConfig,
+  type SiteNavTopLink,
+} from "@/lib/site-nav-shared";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -42,8 +48,6 @@ function BhhsAgentProfileLink({ brokerageName }: { brokerageName: string }) {
   );
 }
 
-type NavItem = { href: string; label: string; bold?: boolean; bolt?: boolean };
-
 function LightningBolt({ className }: { className?: string }) {
   return (
     <svg
@@ -77,58 +81,6 @@ function MagnifyingGlassIcon({ className }: { className?: string }) {
       <path d="m20 20-3.5-3.5" />
     </svg>
   );
-}
-
-const primaryLinks: NavItem[] = [
-  { href: "/deal-of-the-day", label: "Deal of the Day", bold: true },
-  { href: "/intelligence", label: "Intelligence", bolt: true },
-  { href: "/spotlight", label: "Spotlight" },
-];
-
-const lookeyLink: NavItem = { href: "/lookey", label: "Looked at..." };
-const listWithMeLink: NavItem = { href: "/list-with-me", label: "List With Me" };
-
-type ExploreLink = {
-  href: string;
-  label: string;
-  requiresUnlock?: boolean;
-};
-
-type ExploreGroup = {
-  title: string;
-  links: ExploreLink[];
-};
-
-const exploreGroupsBase: ExploreGroup[] = [
-  {
-    title: "Properties",
-    links: [
-      { href: "/latest", label: "Latest" },
-      { href: "/open-houses", label: "Open Houses" },
-      { href: "/new-construction", label: "New Construction" },
-      { href: "/new-construction/expired-listings", label: "Expired Listings" },
-      { href: "/fixer-uppers", label: "Fixer Uppers" },
-      { href: "/find", label: "Find" },
-    ],
-  },
-  {
-    title: "Research",
-    links: [
-      { href: "/stats", label: "Stats" },
-      { href: "/town-budget", label: "Town Budget" },
-      { href: "/score", label: "Score" },
-      { href: "/owner-history", label: "Owner History" },
-    ],
-  },
-];
-
-function getExploreGroups(siteUnlocked: boolean): ExploreGroup[] {
-  return exploreGroupsBase
-    .map((group) => ({
-      title: group.title,
-      links: group.links.filter((link) => !link.requiresUnlock || siteUnlocked),
-    }))
-    .filter((group) => group.links.length > 0);
 }
 
 const navItemClass =
@@ -184,15 +136,19 @@ function ExploreMenu({
   onNavigate,
   variant = "desktop",
   siteUnlocked = false,
+  navConfig,
+  exploreLabel = "Explore",
 }: {
   pathname: string;
   onNavigate?: () => void;
   variant?: "desktop" | "mobile";
   siteUnlocked?: boolean;
+  navConfig: SiteNavConfig;
+  exploreLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const exploreGroups = getExploreGroups(siteUnlocked);
+  const exploreGroups = resolvePublicExploreGroups(navConfig, siteUnlocked);
   const exploreActive = exploreGroups.some((group) =>
     group.links.some((link) => pathname === link.href),
   );
@@ -226,7 +182,7 @@ function ExploreMenu({
               : "text-white/85 hover:text-white hover:bg-white/5"
           }`}
         >
-          <span>Explore</span>
+          <span>{exploreLabel}</span>
           <svg
             className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
             viewBox="0 0 12 12"
@@ -279,7 +235,7 @@ function ExploreMenu({
         }`}
       >
         <span className={navLabelClass}>
-          Explore
+          {exploreLabel}
           <svg
             className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
             viewBox="0 0 12 12"
@@ -330,38 +286,128 @@ function ExploreMenu({
 function DesktopNav({
   pathname,
   siteUnlocked,
+  navConfig,
 }: {
   pathname: string;
   siteUnlocked: boolean;
+  navConfig: SiteNavConfig;
 }) {
+  const exploreItem = navConfig.topLevel.find((i) => i.kind === "explore");
+  const exploreGroups = resolvePublicExploreGroups(navConfig, siteUnlocked);
+  const showExplore =
+    Boolean(exploreItem?.visible) && exploreGroups.length > 0;
+
   return (
     <nav
       aria-label="Main"
       className="max-md:hidden shrink-0 flex items-end gap-5 lg:gap-6 xl:gap-8"
     >
-      {primaryLinks.map((link) => (
-        <NavLink
-          key={link.href}
-          href={link.href}
-          label={link.label}
-          active={pathname === link.href}
-          bold={link.bold}
-          bolt={link.bolt}
-        />
-      ))}
-      <NavLink
-        href={lookeyLink.href}
-        label={lookeyLink.label}
-        active={pathname === lookeyLink.href}
-        magnifier
-      />
-      <NavLink
-        href={listWithMeLink.href}
-        label={listWithMeLink.label}
-        active={pathname === listWithMeLink.href}
-      />
-      <ExploreMenu pathname={pathname} siteUnlocked={siteUnlocked} />
+      {navConfig.topLevel.map((item) => {
+        if (item.kind === "explore") {
+          if (!showExplore) return null;
+          return (
+            <ExploreMenu
+              key="explore"
+              pathname={pathname}
+              siteUnlocked={siteUnlocked}
+              navConfig={navConfig}
+              exploreLabel={item.label}
+            />
+          );
+        }
+        if (!item.visible) return null;
+        return (
+          <NavLink
+            key={item.id}
+            href={item.href}
+            label={item.label}
+            active={pathname === item.href}
+            bold={item.bold}
+            bolt={item.bolt}
+            magnifier={item.magnifier}
+          />
+        );
+      })}
     </nav>
+  );
+}
+
+function MobileNavLinks({
+  pathname,
+  siteUnlocked,
+  navConfig,
+  onNavigate,
+}: {
+  pathname: string;
+  siteUnlocked: boolean;
+  navConfig: SiteNavConfig;
+  onNavigate: () => void;
+}) {
+  const exploreItem = navConfig.topLevel.find((i) => i.kind === "explore");
+  const exploreGroups = resolvePublicExploreGroups(navConfig, siteUnlocked);
+  const showExplore =
+    Boolean(exploreItem?.visible) && exploreGroups.length > 0;
+
+  return (
+    <>
+      {navConfig.topLevel.map((item) => {
+        if (item.kind === "explore") {
+          if (!showExplore || !exploreItem) return null;
+          return (
+            <ExploreMenu
+              key="explore"
+              pathname={pathname}
+              variant="mobile"
+              siteUnlocked={siteUnlocked}
+              navConfig={navConfig}
+              exploreLabel={exploreItem.label}
+              onNavigate={onNavigate}
+            />
+          );
+        }
+        if (!item.visible) return null;
+        return (
+          <MobileTopLink
+            key={item.id}
+            link={item}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function MobileTopLink({
+  link,
+  pathname,
+  onNavigate,
+}: {
+  link: SiteNavTopLink;
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link
+      href={link.href}
+      onClick={onNavigate}
+      className={`inline-flex items-center gap-1.5 px-2 py-3 text-sm rounded-md transition-colors ${
+        link.bold ? "font-bold" : ""
+      } ${
+        pathname === link.href
+          ? "text-gold bg-white/5"
+          : "text-white/85 hover:text-white hover:bg-white/5"
+      }`}
+    >
+      {link.bolt ? (
+        <LightningBolt className="w-3.5 h-3.5 shrink-0 text-gold drop-shadow-sm" />
+      ) : null}
+      {link.magnifier ? (
+        <MagnifyingGlassIcon className="w-3.5 h-3.5 shrink-0 text-gold drop-shadow-sm" />
+      ) : null}
+      {link.label}
+    </Link>
   );
 }
 
@@ -461,10 +507,12 @@ export default function Navigation({
   siteUnlocked = false,
   phone,
   brokerageName = DEFAULT_BROKERAGE_NAME,
+  navConfig = DEFAULT_SITE_NAV,
 }: {
   siteUnlocked?: boolean;
   phone?: { tel: string; display: string };
   brokerageName?: string;
+  navConfig?: SiteNavConfig;
 }) {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
@@ -523,7 +571,11 @@ export default function Navigation({
               </Link>
             </div>
 
-            <DesktopNav pathname={pathname} siteUnlocked={siteUnlocked} />
+            <DesktopNav
+              pathname={pathname}
+              siteUnlocked={siteUnlocked}
+              navConfig={navConfig}
+            />
           </div>
 
           <div className="hidden md:flex items-start gap-2 shrink-0">
@@ -576,49 +628,10 @@ export default function Navigation({
 
         {mobileOpen && (
           <nav className="md:hidden flex flex-col gap-1 border-t border-white/10 pt-4 pb-6 bg-navy max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain">
-            {primaryLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`inline-flex items-center gap-1.5 px-2 py-3 text-sm rounded-md transition-colors ${
-                  link.bold ? "font-bold" : ""
-                } ${
-                  pathname === link.href
-                    ? "text-gold bg-white/5"
-                    : "text-white/85 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                {link.bolt ? (
-                  <LightningBolt className="w-3.5 h-3.5 shrink-0 text-gold drop-shadow-sm" />
-                ) : null}
-                {link.label}
-              </Link>
-            ))}
-            <Link
-              href={lookeyLink.href}
-              className={`inline-flex items-center gap-1.5 px-2 py-3 text-sm rounded-md transition-colors ${
-                pathname === lookeyLink.href
-                  ? "text-gold bg-white/5"
-                  : "text-white/85 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <MagnifyingGlassIcon className="w-3.5 h-3.5 shrink-0 text-gold drop-shadow-sm" />
-              {lookeyLink.label}
-            </Link>
-            <Link
-              href={listWithMeLink.href}
-              className={`inline-flex items-center gap-1.5 px-2 py-3 text-sm rounded-md transition-colors ${
-                pathname === listWithMeLink.href
-                  ? "text-gold bg-white/5"
-                  : "text-white/85 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              {listWithMeLink.label}
-            </Link>
-            <ExploreMenu
+            <MobileNavLinks
               pathname={pathname}
-              variant="mobile"
               siteUnlocked={siteUnlocked}
+              navConfig={navConfig}
               onNavigate={() => setMobileOpen(false)}
             />
             <div className="mt-3 flex flex-wrap items-start gap-2">

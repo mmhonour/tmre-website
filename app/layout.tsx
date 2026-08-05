@@ -19,6 +19,7 @@ import {
 } from "@/lib/business-info";
 import { getBrokerageNameFresh } from "@/lib/brokerage-config";
 import { getContactPhoneFresh } from "@/lib/phone-config";
+import { getSiteNavFresh } from "@/lib/site-nav-config";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -117,6 +118,7 @@ export default async function RootLayout({
   const siteUnlocked = jar.get(SITE_PASSWORD_COOKIE)?.value === "1";
   const phone = await getContactPhoneFresh();
   const brokerageName = await getBrokerageNameFresh();
+  const navConfig = await getSiteNavFresh();
 
   return (
     <html
@@ -145,6 +147,7 @@ export default async function RootLayout({
             siteUnlocked={siteUnlocked}
             phone={phone}
             brokerageName={brokerageName}
+            navConfig={navConfig}
           />
           <main className="flex-1">{children}</main>
           <Footer brokerageName={brokerageName} />

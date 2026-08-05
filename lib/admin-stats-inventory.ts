@@ -181,6 +181,19 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'months-supply:' },
   },
   {
+    id: 'market-pulse-closed',
+    name: 'Market Pulse closed totals',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern:
+      'market-pulse-closed:{sale|rental}:{all|homes|condos|commercial}:24m:v3',
+    owner: 'lib/market-pulse-closed-cache.ts',
+    notes:
+      'Trailing 24-month Closed counts per town plus the leading All towns roll-up, one row per Market Pulse tab. Written by rebuildStatsCache (and the per-town rebuild); the page and /api/market-pulse/closed-by-town read only — the two-year aggregate never runs during a request. The Monday email may recount if the cache is cold.',
+    live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-closed:' },
+  },
+  {
     id: 'months-supply-by-month',
     name: 'Months supply by month',
     category: 'market',

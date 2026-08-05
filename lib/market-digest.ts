@@ -123,7 +123,10 @@ async function closedTrailingCounts(options: {
   commercialOnly?: boolean
 }): Promise<MarketDigestClosedTownCount[]> {
   try {
-    const { payload } = await readMarketPulseClosedCounts(options)
+    // Email only: allowed to recount if the stats cache has not run yet.
+    const { payload } = await readMarketPulseClosedCounts(options, {
+      allowCompute: true,
+    })
     return payload.rows
   } catch (err) {
     console.warn(

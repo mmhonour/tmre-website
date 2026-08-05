@@ -212,6 +212,30 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Public sponsoring-brokerage display string (default Berkshire Hathaway Home Services NE). Editable in Admin → Site without redeploy; stored in sync_meta key brokerage_name (lib/brokerage-config.ts).',
   },
   {
+    term: 'Site menu',
+    category: 'sync-admin',
+    definition:
+      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide. Hrefs stay fixed to known site pages. Editable in Admin → Data controls → Site controls → Site menu; stored in sync_meta key site_nav (lib/site-nav-config.ts). Defaults match the previous hardcoded Navigation.tsx catalog.',
+  },
+  {
+    term: 'Mortgage page',
+    category: 'sync-admin',
+    definition:
+      'Admin content for /mortgage-rates: market / buyer / seller commentary, an optional hand-entered spot quote, and the conforming loan-limit table. Stored in sync_meta key mortgage_page (lib/mortgage-page-config.ts). Rate history is not stored here — it comes from FRED into the mortgage_rates table.',
+  },
+  {
+    term: 'FRED (mortgage rate series)',
+    category: 'sync-admin',
+    definition:
+      'St. Louis Fed data API behind /mortgage-rates. Needs FRED_API_KEY. Series pulled into Postgres table mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie Mac PMMS weekly averages), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue conforming vs jumbo 30-yr locks, daily), DGS10 (10-yr Treasury). No cron: the page refreshes lazily when stored data is over 12h old, and Admin → Data controls → Site controls → Mortgage page has a manual “Refresh rates from FRED” button.',
+  },
+  {
+    term: 'Conforming vs jumbo',
+    category: 'product',
+    definition:
+      'Conforming = loan amount at or under the FHFA limit for the county, so Fannie/Freddie can buy it. Jumbo = above the limit, priced by banks and private investors. FHFA sets a baseline one-unit limit plus a high-cost ceiling (150% of baseline) each year; the figures shown on /mortgage-rates are Admin-editable because FHFA revises them annually.',
+  },
+  {
     term: 'Monday market brief',
     category: 'product',
     definition:
