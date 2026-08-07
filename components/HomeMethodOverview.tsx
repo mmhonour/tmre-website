@@ -15,45 +15,62 @@ import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 /**
  * Hero score ↔ interesting-stat beat (one town at a time).
- * Score fades in (left) → holds → fades out as same-town stat fades up+in (right) →
- * stat holds → fades out as next town’s score fades in (left).
- * Mobile and desktop share the same left/right panes — no stacked overlay.
+ * Sequential handoff (not a simultaneous crossfade):
+ *   score hold → stat fades up/in (score stays) → then score fades out →
+ *   stat hold → next town’s score fades in (stat stays) → then stat fades out.
+ * Mobile and desktop share left (score) / right (stat) panes.
  */
-const HERO_FADE_MS = 1_575; // 1050 × 1.5 — another 50% slower crossfade
+const HERO_FADE_MS = 2_100; // slower fade-ins / fade-outs for the sequential handoff
 const HERO_SCORE_HOLD_MS = 2_600;
 const HERO_STAT_HOLD_MS = 3_200;
 
-/** Hero body copy — collapses bottom→top until only the H1 remains. */
-const HERO_COPY_LINES = [
-  {
-    id: "giving",
-    text: "Giving buyers and owners a single, town-calibrated measure. Relative value, market context, and deal shape — scored and synthesized so you spend time effectively.",
-  },
-  {
-    id: "use",
-    text: 'Use Market Intelligence, Statistics, and "What If" scenarios to read the room.',
-  },
-  {
-    id: "high",
-    text: "High means the home clears the bar against what's active nearby. Softer means dig deeper — or price with eyes open if you are selling. Same yardstick everywhere on the site.",
-  },
-] as const;
+/**
+ * Hero body copy as short phrases (visual wrap ≈ a few words at a time).
+ * Collapses last→first until only the H1 remains; reopen via “Giving buyers…”.
+ */
+const HERO_COPY_PARAS: readonly (readonly string[])[] = [
+  [
+    "Giving buyers and owners",
+    "a single, town-calibrated measure.",
+    "Relative value, market context,",
+    "and deal shape — scored and synthesized",
+    "so you spend time effectively.",
+  ],
+  [
+    "Use Market Intelligence, Statistics,",
+    'and "What If" scenarios',
+    "to read the room.",
+  ],
+  [
+    "High means the home clears the bar",
+    "against what's active nearby.",
+    "Softer means dig deeper —",
+    "or price with eyes open if you are selling.",
+    "Same yardstick everywhere on the site.",
+  ],
+];
+
+const HERO_COPY_PHRASES: readonly string[] = HERO_COPY_PARAS.flat();
 
 /** Pause after first paint so the full copy can be read once. */
 const HERO_COPY_READ_MS = 4_200;
-/** Per-line fade-out duration. */
-const HERO_COPY_LINE_FADE_MS = 900;
-/** Gap after a line finishes before the next (reverse) line starts fading. */
-const HERO_COPY_LINE_STAGGER_MS = 280;
+/** Per-phrase fade-out duration. */
+const HERO_COPY_PHRASE_FADE_MS = 700;
+/** Gap after a phrase finishes before the previous one starts fading. */
+const HERO_COPY_PHRASE_STAGGER_MS = 160;
 
 type HeroBeat =
   | "score-in"
   | "score-hold"
-  /** Score fading out while same-town stat fades in. */
-  | "cross-to-stat"
+  /** Score stays full; same-town stat fades up and in. */
+  | "stat-in"
+  /** Stat is full; town score fades out. */
+  | "score-out"
   | "stat-hold"
-  /** Stat fading out while next town’s score fades in. */
-  | "cross-to-score";
+  /** Next town’s score fades in; previous town’s stat stays full. */
+  | "score-in-next"
+  /** New score is full; previous stat fades out. */
+  | "stat-out";
 
 type ScoreSample = {
   town: TmreTown;
@@ -438,16 +455,15 @@ export default function HomeMethodOverview({
       )
     : interestingEntries[0] ?? null;
 
-  /** During cross-to-score, keep fading out the previous town’s stat. */
+  /** Keep the outgoing town’s stat while the next score fades in, then out. */
   const displayStat =
-    heroBeat === "cross-to-score" && pinnedStat
+    (heroBeat === "score-in-next" || heroBeat === "stat-out") && pinnedStat
       ? pinnedStat
       : interestingStat;
-  // Ref so beat timers can pin the live stat without re-running on every object identity.
   const interestingStatRef = useRef(interestingStat);
   interestingStatRef.current = interestingStat;
 
-  // Score in → hold → crossfade to same-town stat → hold → crossfade to next score.
+  // Sequential: score hold → stat in → score out → stat hold → next score in → stat out.
   useEffect(() => {
     if (samples.length === 0) return;
 
@@ -472,30 +488,33 @@ export default function HomeMethodOverview({
       );
     };
 
-    // *-in / cross mounts at opacity 0; next tick flips opaque so CSS fades in.
     if (heroBeat === "score-in") {
       setPinnedStat(null);
       schedule(40, () => setHeroBeat("score-hold"));
     } else if (heroBeat === "score-hold") {
       setPinnedStat(null);
       schedule(fadeMs + scoreHoldMs, () => {
-        if (interestingStatRef.current) setHeroBeat("cross-to-stat");
+        if (interestingStatRef.current) setHeroBeat("stat-in");
         else {
           advanceTown();
           setHeroBeat("score-in");
         }
       });
-    } else if (heroBeat === "cross-to-stat") {
+    } else if (heroBeat === "stat-in") {
+      // Stat finishes fading in, then score may leave.
+      schedule(fadeMs, () => setHeroBeat("score-out"));
+    } else if (heroBeat === "score-out") {
       schedule(fadeMs, () => setHeroBeat("stat-hold"));
     } else if (heroBeat === "stat-hold") {
-      schedule(fadeMs + statHoldMs, () => {
-        // Pin this town’s stat, then advance so the next score can fade in.
+      schedule(statHoldMs, () => {
         setPinnedStat(interestingStatRef.current);
         advanceTown();
-        setHeroBeat("cross-to-score");
+        setHeroBeat("score-in-next");
       });
+    } else if (heroBeat === "score-in-next") {
+      schedule(fadeMs, () => setHeroBeat("stat-out"));
     } else {
-      // cross-to-score — next town’s score is already mounted; land on hold.
+      // stat-out — previous stat gone; land on the new town’s score hold.
       schedule(fadeMs, () => {
         setPinnedStat(null);
         setHeroBeat("score-hold");
@@ -508,42 +527,55 @@ export default function HomeMethodOverview({
     };
   }, [heroBeat, samples.length]);
 
-  // Score opaque on hold and while fading in during cross-to-score (after paint).
-  const [crossScoreLit, setCrossScoreLit] = useState(false);
-  const [crossStatLit, setCrossStatLit] = useState(false);
+  /** Drive CSS fades: start off, flip on next tick (or the reverse for outs). */
+  const [scoreLit, setScoreLit] = useState(true);
+  const [statLit, setStatLit] = useState(false);
   useEffect(() => {
-    if (heroBeat === "cross-to-stat") {
-      setCrossStatLit(false);
-      const id = window.setTimeout(() => setCrossStatLit(true), 40);
-      return () => window.clearTimeout(id);
+    let id: number | null = null;
+    if (heroBeat === "score-in" || heroBeat === "score-in-next") {
+      setScoreLit(false);
+      id = window.setTimeout(() => setScoreLit(true), 40);
+    } else if (heroBeat === "score-hold" || heroBeat === "stat-in") {
+      setScoreLit(true);
+    } else if (heroBeat === "score-out") {
+      setScoreLit(true);
+      id = window.setTimeout(() => setScoreLit(false), 40);
+    } else if (heroBeat === "stat-hold" || heroBeat === "stat-out") {
+      setScoreLit(heroBeat === "stat-out");
     }
-    if (heroBeat === "cross-to-score") {
-      setCrossScoreLit(false);
-      const id = window.setTimeout(() => setCrossScoreLit(true), 40);
-      return () => window.clearTimeout(id);
+
+    if (heroBeat === "stat-in") {
+      setStatLit(false);
+      const statId = window.setTimeout(() => setStatLit(true), 40);
+      return () => {
+        if (id != null) window.clearTimeout(id);
+        window.clearTimeout(statId);
+      };
     }
-    setCrossScoreLit(false);
-    setCrossStatLit(false);
-    return undefined;
+    if (
+      heroBeat === "score-out" ||
+      heroBeat === "stat-hold" ||
+      heroBeat === "score-in-next"
+    ) {
+      setStatLit(true);
+    } else if (heroBeat === "stat-out") {
+      setStatLit(true);
+      const statId = window.setTimeout(() => setStatLit(false), 40);
+      return () => {
+        if (id != null) window.clearTimeout(id);
+        window.clearTimeout(statId);
+      };
+    } else if (heroBeat === "score-in" || heroBeat === "score-hold") {
+      setStatLit(false);
+    }
+
+    return () => {
+      if (id != null) window.clearTimeout(id);
+    };
   }, [heroBeat]);
 
-  const scoreOpaque =
-    heroBeat === "score-hold" ||
-    (heroBeat === "cross-to-score" && crossScoreLit);
-  const statOpaque =
-    heroBeat === "stat-hold" ||
-    (heroBeat === "cross-to-stat" && crossStatLit);
-
-  const scoreShown =
-    heroBeat === "score-in" ||
-    heroBeat === "score-hold" ||
-    heroBeat === "cross-to-stat" ||
-    heroBeat === "cross-to-score";
-  const statShown =
-    displayStat != null &&
-    (heroBeat === "cross-to-stat" ||
-      heroBeat === "stat-hold" ||
-      heroBeat === "cross-to-score");
+  const scoreOpaque = scoreLit;
+  const statOpaque = Boolean(displayStat) && statLit;
 
   useEffect(() => {
     if (!interestingStat?.kind) return;
@@ -764,17 +796,15 @@ export default function HomeMethodOverview({
 type HeroCopyMode = "full" | "collapsing" | "collapsed" | "expanded";
 
 /**
- * Hero body copy: after a read pause, lines fade out bottom→top until only the
- * H1 remains. Collapsed state offers “Giving buyers…” to restore the full text.
- * Content below (CTAs) rises as line height collapses.
+ * Hero body copy: after a read pause, phrases fade out last→first (approx.
+ * wrapped visual lines). Collapsed: click “Giving buyers…” to restore.
  */
 function HomeHeroCopy() {
   const [mode, setMode] = useState<HeroCopyMode>("full");
-  /** Index into HERO_COPY_LINES that is currently fading out (-1 = none). */
   const [fadingIndex, setFadingIndex] = useState(-1);
-  /** Lines still taking space (opacity may be mid-fade). */
+  /** Phrases with index < visibleThrough still occupy flow (may be mid-fade). */
   const [visibleThrough, setVisibleThrough] = useState<number>(
-    HERO_COPY_LINES.length,
+    HERO_COPY_PHRASES.length,
   );
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -793,7 +823,10 @@ function HomeHeroCopy() {
       }, Math.min(HERO_COPY_READ_MS, 1_200));
       return () => window.clearTimeout(id);
     }
-    const startId = window.setTimeout(() => setMode("collapsing"), HERO_COPY_READ_MS);
+    const startId = window.setTimeout(
+      () => setMode("collapsing"),
+      HERO_COPY_READ_MS,
+    );
     return () => window.clearTimeout(startId);
   }, [mode, reduceMotion]);
 
@@ -817,19 +850,20 @@ function HomeHeroCopy() {
         setFadingIndex(-1);
         timer = window.setTimeout(
           () => fadeNext(fromIndex - 1),
-          HERO_COPY_LINE_STAGGER_MS,
+          HERO_COPY_PHRASE_STAGGER_MS,
         );
-      }, HERO_COPY_LINE_FADE_MS);
+      }, HERO_COPY_PHRASE_FADE_MS);
     };
 
-    fadeNext(HERO_COPY_LINES.length - 1);
+    fadeNext(HERO_COPY_PHRASES.length - 1);
     return () => {
       cancelled = true;
       if (timer != null) window.clearTimeout(timer);
     };
   }, [mode]);
 
-  const showFull = mode === "full" || mode === "expanded" || mode === "collapsing";
+  const showFull =
+    mode === "full" || mode === "expanded" || mode === "collapsing";
 
   return (
     <div className="min-w-0">
@@ -842,7 +876,7 @@ function HomeHeroCopy() {
         <button
           type="button"
           onClick={() => {
-            setVisibleThrough(HERO_COPY_LINES.length);
+            setVisibleThrough(HERO_COPY_PHRASES.length);
             setFadingIndex(-1);
             setMode("expanded");
           }}
@@ -853,29 +887,52 @@ function HomeHeroCopy() {
       ) : null}
 
       {showFull
-        ? HERO_COPY_LINES.map((line, index) => {
-            const inFlow = index < visibleThrough;
-            const fading = fadingIndex === index;
-            if (!inFlow && !fading) return null;
-            const opaque = inFlow && !fading;
-            const isMuted = line.id === "high";
+        ? HERO_COPY_PARAS.map((para, paraIndex) => {
+            const start = HERO_COPY_PARAS.slice(0, paraIndex).reduce(
+              (n, p) => n + p.length,
+              0,
+            );
+            const phrases = para.map((text, i) => {
+              const index = start + i;
+              return {
+                text,
+                index,
+                inFlow: index < visibleThrough,
+                fading: fadingIndex === index,
+              };
+            });
+            const anyVisible = phrases.some((p) => p.inFlow || p.fading);
+            if (!anyVisible) return null;
+            const isMuted = paraIndex === HERO_COPY_PARAS.length - 1;
             return (
               <p
-                key={line.id}
-                className={`max-w-xl overflow-hidden transition-[opacity,margin,max-height] ease-out motion-reduce:transition-none ${
-                  index === 0 ? "mt-3 sm:mt-5" : "mt-3 sm:mt-4"
+                key={`para-${paraIndex}`}
+                className={`max-w-xl ${
+                  paraIndex === 0 ? "mt-3 sm:mt-5" : "mt-3 sm:mt-4"
                 } ${
                   isMuted
-                    ? "text-sm leading-relaxed text-white/55 sm:text-sm"
+                    ? "text-sm leading-relaxed text-white/55"
                     : "text-[0.92rem] leading-relaxed text-white/75 sm:text-base lg:text-lg"
-                } ${opaque ? "opacity-100" : "opacity-0"}`}
-                style={{
-                  transitionDuration: `${HERO_COPY_LINE_FADE_MS}ms`,
-                  maxHeight: opaque || fading ? "12rem" : "0",
-                  marginTop: opaque || fading ? undefined : 0,
-                }}
+                }`}
               >
-                {line.text}
+                {phrases.map((p, i) => {
+                  if (!p.inFlow && !p.fading) return null;
+                  const opaque = p.inFlow && !p.fading;
+                  return (
+                    <span
+                      key={`${paraIndex}-${i}`}
+                      className={`inline transition-opacity ease-out motion-reduce:transition-none ${
+                        opaque ? "opacity-100" : "opacity-0"
+                      }`}
+                      style={{
+                        transitionDuration: `${HERO_COPY_PHRASE_FADE_MS}ms`,
+                      }}
+                    >
+                      {p.text}
+                      {i < phrases.length - 1 ? " " : null}
+                    </span>
+                  );
+                })}
               </p>
             );
           })
@@ -884,9 +941,7 @@ function HomeHeroCopy() {
       {mode === "expanded" ? (
         <button
           type="button"
-          onClick={() => {
-            setMode("collapsing");
-          }}
+          onClick={() => setMode("collapsing")}
           className="mt-2 font-mono text-[10px] tracking-[0.14em] uppercase text-white/45 transition-colors hover:text-gold"
         >
           Collapse

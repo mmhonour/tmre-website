@@ -24,6 +24,7 @@ export default function LatestTownMapHover({
     anchorEl,
     isOpen,
     exiting,
+    fineHover,
     open,
     scheduleClose,
     toggle,
@@ -34,8 +35,10 @@ export default function LatestTownMapHover({
     return <span className={className}>{children ?? townName}</span>;
   }
 
+  const warm = () => prefetchTownBoundaries(town);
+
   const show = () => {
-    prefetchTownBoundaries(town);
+    warm();
     open();
   };
 
@@ -44,18 +47,26 @@ export default function LatestTownMapHover({
       <span
         ref={anchorRef}
         className={`cursor-help underline decoration-charcoal/25 decoration-dotted underline-offset-2 hover:text-navy ${className}`}
-        onMouseEnter={show}
-        onMouseLeave={scheduleClose}
-        onFocus={show}
-        onBlur={scheduleClose}
-        onClick={() => {
-          prefetchTownBoundaries(town);
+        onPointerDown={(event) => {
+          // Nested inside sticky collapse buttons on Latest — keep the map
+          // tap from also collapsing the group.
+          event.stopPropagation();
+          warm();
+        }}
+        onMouseEnter={fineHover ? show : undefined}
+        onMouseLeave={fineHover ? scheduleClose : undefined}
+        onFocus={fineHover ? show : undefined}
+        onBlur={fineHover ? scheduleClose : undefined}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          warm();
           toggle();
         }}
         tabIndex={0}
         role="button"
-        aria-expanded={isOpen}
-        aria-label={`${isOpen ? "Hide" : "Show"} map for ${town}`}
+        aria-expanded={isOpen || exiting}
+        aria-label={`${isOpen || exiting ? "Hide" : "Show"} map for ${town}`}
       >
         {children ?? townName}
       </span>

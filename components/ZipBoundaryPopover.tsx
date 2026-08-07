@@ -301,15 +301,27 @@ export default function ZipBoundaryPopover({
       setPos(null);
       return;
     }
-    const rect = anchorEl.getBoundingClientRect();
-    const popH = H + 48;
-    const placeAbove = rect.top >= popH + 8;
-    const top = placeAbove ? rect.top - popH - 8 : rect.bottom + 8;
-    const left = Math.min(
-      Math.max(8, rect.left + rect.width / 2 - W / 2),
-      window.innerWidth - W - 8,
-    );
-    setPos({ top, left, placeAbove });
+    const update = () => {
+      const rect = anchorEl.getBoundingClientRect();
+      const popH = H + 48;
+      const gap = 8;
+      // Always float above the link/pill so the map stacks over filter chrome
+      // instead of opening downward into the pill row. Clamp to the viewport top
+      // when space is tight (common on mobile sticky headers).
+      const top = Math.max(gap, rect.top - popH - gap);
+      const left = Math.min(
+        Math.max(gap, rect.left + rect.width / 2 - W / 2),
+        window.innerWidth - W - gap,
+      );
+      setPos({ top, left, placeAbove: true });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
   }, [anchorEl]);
 
   const onSettledRef = useRef(onSettled);
@@ -492,8 +504,15 @@ export default function ZipBoundaryPopover({
     <div
       ref={popoverRef}
       role="tooltip"
-      style={{ top: pos.top, left: pos.left, width: W, zIndex: 9999 }}
-      className={`fixed pointer-events-none transition-opacity duration-300 ${
+      style={{
+        top: pos.top,
+        left: pos.left,
+        width: W,
+        // Above sticky Latest/Intel filter chrome (z-10) and status pills.
+        zIndex: 11000,
+        transitionDuration: "220ms",
+      }}
+      className={`fixed pointer-events-none transition-opacity ease-out ${
         exiting ? "opacity-0" : "opacity-100"
       }`}
     >

@@ -19,6 +19,11 @@ import {
   latestRowActivityMs,
 } from "@/lib/latest-activity";
 import { ensureMinOneListingPerTmreTown } from "@/lib/latest-town-coverage";
+import {
+  patchLatestViewScrollY,
+  readLatestViewState,
+  writeLatestViewState,
+} from "@/lib/latest-view-state";
 import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 
 type ApiResponse = {
@@ -277,6 +282,8 @@ export default function LatestClient({
     Partial<Record<string, LatestListingRow["status"]>>
   >({});
   const [topTownBackfill, setTopTownBackfill] = useState<Record<string, LatestListingRow[]>>({});
+  /** False until session view (if any) has been applied — avoids writing defaults over it. */
+  const [viewHydrated, setViewHydrated] = useState(false);
   const watermarkRef = useRef<string | null>(
     initialListings.length > 0 ? newestModification(initialListings) : null,
   );
@@ -287,10 +294,103 @@ export default function LatestClient({
   const townCacheRef = useRef(seedTownCache(initialTownFeeds));
   const townInFlightRef = useRef<Map<string, Promise<LatestListingRow[]>>>(new Map());
   const photoPrefetchCancelRef = useRef<(() => void) | null>(null);
+  const pendingScrollY = useRef(0);
 
   useEffect(() => {
     if (!groupByTown) setGroupByZip(false);
   }, [groupByTown]);
+
+  // Restore grouping / filters after listing Back (or any remount).
+  useLayoutEffect(() => {
+    const stored = readLatestViewState();
+    if (stored) {
+      setGroupByTown(stored.groupByTown);
+      setGroupByZip(stored.groupByZip);
+      setTownStatsOpen(stored.townStatsOpen);
+      setSelectedTown(stored.selectedTown);
+      setCollapsedGroups(new Set(stored.collapsedGroups));
+      setExpandedGroups(new Set(stored.expandedGroups));
+      setGroupStatusFilter(stored.groupStatusFilter);
+      pendingScrollY.current = stored.scrollY;
+    }
+    setViewHydrated(true);
+  }, []);
+
+  // Scroll restore waits until the feed has painted (height exists to scroll into).
+  useLayoutEffect(() => {
+    const y = pendingScrollY.current;
+    if (!viewHydrated || y < 1) return;
+    if (loading) return;
+    if (selectedTown && townLoading && townListings.length === 0) return;
+
+    const restore = () =>
+      window.scrollTo({ top: y, left: 0, behavior: "auto" });
+    restore();
+    const raf = window.requestAnimationFrame(restore);
+    const t0 = window.setTimeout(restore, 0);
+    const t1 = window.setTimeout(() => {
+      restore();
+      // Stop retrying once the page is tall enough (or we gave it a beat).
+      if (document.documentElement.scrollHeight >= y + window.innerHeight * 0.5) {
+        pendingScrollY.current = 0;
+      }
+    }, 180);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [viewHydrated, loading, selectedTown, townLoading, townListings.length, groupByTown]);
+
+  useEffect(() => {
+    if (!viewHydrated) return;
+    writeLatestViewState({
+      groupByTown,
+      groupByZip: groupByTown && groupByZip,
+      selectedTown,
+      townStatsOpen,
+      collapsedGroups: [...collapsedGroups],
+      expandedGroups: [...expandedGroups],
+      groupStatusFilter,
+      scrollY:
+        typeof window !== "undefined"
+          ? window.scrollY || window.pageYOffset || 0
+          : 0,
+    });
+  }, [
+    viewHydrated,
+    groupByTown,
+    groupByZip,
+    selectedTown,
+    townStatsOpen,
+    collapsedGroups,
+    expandedGroups,
+    groupStatusFilter,
+  ]);
+
+  useEffect(() => {
+    if (!viewHydrated) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        patchLatestViewScrollY(window.scrollY || window.pageYOffset || 0);
+      });
+    };
+    const flush = () => {
+      patchLatestViewScrollY(window.scrollY || window.pageYOffset || 0);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flush);
+    };
+  }, [viewHydrated]);
 
   const fetchAllTownFeeds = useCallback(async (): Promise<void> => {
     const res = await fetch("/api/listings/latest/towns", { cache: "no-store" });

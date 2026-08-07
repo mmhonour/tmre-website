@@ -1917,14 +1917,24 @@ export default function IntelligenceClient({
   const [hoveredTown, setHoveredTown] = useState<TmreTown | "All" | null>(null);
   const [hoveredTownEl, setHoveredTownEl] = useState<HTMLElement | null>(null);
   const townHoverClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Desktop hover flash hold; touch uses the shorter touch constants below. */
   const TOWN_MAP_FLASH_MS = 1_000;
-  const ZIP_MAP_FLASH_MS = 2_000;
+  const ZIP_MAP_FLASH_MS = 1_500;
+  const TOWN_MAP_FLASH_MS_TOUCH = 900;
+  const ZIP_MAP_FLASH_MS_TOUCH = 1_200;
+  const MAP_FADE_MS = 220;
   const [flashedTown, setFlashedTown] = useState<TmreTown | null>(null);
   const townFilterAnchorRef = useRef<HTMLDivElement>(null);
   const townMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [flashedZip, setFlashedZip] = useState<string | null>(null);
   const zipFilterAnchorRef = useRef<HTMLDivElement>(null);
   const zipMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [boundaryMapExiting, setBoundaryMapExiting] = useState(false);
+  const boundaryMapFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const prefersFineHover = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   const clearTownMapFlashTimer = () => {
     if (townMapFlashTimerRef.current) {
@@ -1940,9 +1950,28 @@ export default function IntelligenceClient({
     }
   };
 
+  const clearBoundaryMapFadeTimer = () => {
+    if (boundaryMapFadeTimerRef.current) {
+      clearTimeout(boundaryMapFadeTimerRef.current);
+      boundaryMapFadeTimerRef.current = null;
+    }
+  };
+
+  const fadeClearBoundaryMaps = (clear: () => void) => {
+    clearBoundaryMapFadeTimer();
+    setBoundaryMapExiting(true);
+    boundaryMapFadeTimerRef.current = setTimeout(() => {
+      clear();
+      setBoundaryMapExiting(false);
+      boundaryMapFadeTimerRef.current = null;
+    }, MAP_FADE_MS);
+  };
+
   const flashTownMapOnSelect = (city: TmreTown | "All") => {
     clearTownMapFlashTimer();
     clearZipMapFlashTimer();
+    clearBoundaryMapFadeTimer();
+    setBoundaryMapExiting(false);
     setFlashedZip(null);
     if (city === "All") {
       setFlashedTown(null);
@@ -1950,15 +1979,18 @@ export default function IntelligenceClient({
     }
     prefetchTownBoundaries(city);
     setFlashedTown(city);
+    const holdMs = prefersFineHover() ? TOWN_MAP_FLASH_MS : TOWN_MAP_FLASH_MS_TOUCH;
     townMapFlashTimerRef.current = setTimeout(() => {
-      setFlashedTown(null);
       townMapFlashTimerRef.current = null;
-    }, TOWN_MAP_FLASH_MS);
+      fadeClearBoundaryMaps(() => setFlashedTown(null));
+    }, holdMs);
   };
 
   const flashZipMapOnSelect = (nextZip: string | null) => {
     clearZipMapFlashTimer();
     clearTownMapFlashTimer();
+    clearBoundaryMapFadeTimer();
+    setBoundaryMapExiting(false);
     setFlashedTown(null);
     setHoveredTown(null);
     setHoveredTownEl(null);
@@ -1975,10 +2007,11 @@ export default function IntelligenceClient({
     setHoveredZip(null);
     setHoveredZipEl(null);
     setFlashedZip(nextZip);
+    const holdMs = prefersFineHover() ? ZIP_MAP_FLASH_MS : ZIP_MAP_FLASH_MS_TOUCH;
     zipMapFlashTimerRef.current = setTimeout(() => {
-      setFlashedZip(null);
       zipMapFlashTimerRef.current = null;
-    }, ZIP_MAP_FLASH_MS);
+      fadeClearBoundaryMaps(() => setFlashedZip(null));
+    }, holdMs);
   };
   const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
   const [scoreBreakdownListing, setScoreBreakdownListing] = useState<DisplayListing | null>(null);
@@ -5096,11 +5129,14 @@ export default function IntelligenceClient({
                                 flashTownMapOnSelect(city);
                               }}
                               onTownMouseEnter={(town, el) => {
+                                if (!prefersFineHover()) return;
                                 if (townHoverClearTimer.current) {
                                   clearTimeout(townHoverClearTimer.current);
                                   townHoverClearTimer.current = null;
                                 }
                                 clearZipMapFlashTimer();
+                                clearBoundaryMapFadeTimer();
+                                setBoundaryMapExiting(false);
                                 setFlashedZip(null);
                                 prefetchTownBoundaries(town);
                                 setHoveredZip(null);
@@ -5109,11 +5145,14 @@ export default function IntelligenceClient({
                                 setHoveredTownEl(el);
                               }}
                               onAllMouseEnter={(el) => {
+                                if (!prefersFineHover()) return;
                                 if (townHoverClearTimer.current) {
                                   clearTimeout(townHoverClearTimer.current);
                                   townHoverClearTimer.current = null;
                                 }
                                 clearZipMapFlashTimer();
+                                clearBoundaryMapFadeTimer();
+                                setBoundaryMapExiting(false);
                                 setFlashedZip(null);
                                 prefetchAllTownBoundaries();
                                 setHoveredZip(null);
@@ -5122,13 +5161,16 @@ export default function IntelligenceClient({
                                 setHoveredTownEl(el);
                               }}
                               onTownMouseLeave={() => {
+                                if (!prefersFineHover()) return;
                                 if (townHoverClearTimer.current) {
                                   clearTimeout(townHoverClearTimer.current);
                                 }
                                 townHoverClearTimer.current = setTimeout(() => {
-                                  setHoveredTown(null);
-                                  setHoveredTownEl(null);
                                   townHoverClearTimer.current = null;
+                                  fadeClearBoundaryMaps(() => {
+                                    setHoveredTown(null);
+                                    setHoveredTownEl(null);
+                                  });
                                 }, 120);
                               }}
                               counts={townCounts}
@@ -5171,7 +5213,10 @@ export default function IntelligenceClient({
                               zipLinksExpanded={zipLinksExpanded}
                               onZipLinksExpandedChange={setZipLinksExpanded}
                               onZipMouseEnter={(z, el) => {
+                                if (!prefersFineHover()) return;
                                 clearZipMapFlashTimer();
+                                clearBoundaryMapFadeTimer();
+                                setBoundaryMapExiting(false);
                                 setFlashedZip(null);
                                 clearTownMapFlashTimer();
                                 setFlashedTown(null);
@@ -5187,8 +5232,11 @@ export default function IntelligenceClient({
                                 setHoveredZipEl(el);
                               }}
                               onZipMouseLeave={() => {
-                                setHoveredZip(null);
-                                setHoveredZipEl(null);
+                                if (!prefersFineHover()) return;
+                                fadeClearBoundaryMaps(() => {
+                                  setHoveredZip(null);
+                                  setHoveredZipEl(null);
+                                });
                               }}
                               className="min-w-0"
                               promotedInline
@@ -5224,7 +5272,10 @@ export default function IntelligenceClient({
                             zipLinksExpanded={zipLinksExpanded}
                             onZipLinksExpandedChange={setZipLinksExpanded}
                             onZipMouseEnter={(z, el) => {
+                              if (!prefersFineHover()) return;
                               clearZipMapFlashTimer();
+                              clearBoundaryMapFadeTimer();
+                              setBoundaryMapExiting(false);
                               setFlashedZip(null);
                               clearTownMapFlashTimer();
                               setFlashedTown(null);
@@ -5240,8 +5291,11 @@ export default function IntelligenceClient({
                               setHoveredZipEl(el);
                             }}
                             onZipMouseLeave={() => {
-                              setHoveredZip(null);
-                              setHoveredZipEl(null);
+                              if (!prefersFineHover()) return;
+                              fadeClearBoundaryMaps(() => {
+                                setHoveredZip(null);
+                                setHoveredZipEl(null);
+                              });
                             }}
                             className="w-full min-w-0"
                           />
@@ -5986,17 +6040,20 @@ export default function IntelligenceClient({
           <ZipBoundaryPopover
             highlightAllTowns
             anchorEl={hoveredTownEl}
+            exiting={boundaryMapExiting}
           />
         ) : (
           <ZipBoundaryPopover
             highlightTown={hoveredTown}
             anchorEl={hoveredTownEl}
+            exiting={boundaryMapExiting}
           />
         )
       ) : flashedTown && townFilterAnchorRef.current ? (
         <ZipBoundaryPopover
           highlightTown={flashedTown}
           anchorEl={townFilterAnchorRef.current}
+          exiting={boundaryMapExiting}
         />
       ) : null}
       {hoveredZip && hoveredZipEl ? (
@@ -6004,12 +6061,14 @@ export default function IntelligenceClient({
           highlightZip={hoveredZip}
           contextZips={availableZips.filter((z) => z !== hoveredZip)}
           anchorEl={hoveredZipEl}
+          exiting={boundaryMapExiting}
         />
       ) : flashedZip && zipFilterAnchorRef.current ? (
         <ZipBoundaryPopover
           highlightZip={flashedZip}
           contextZips={availableZips.filter((z) => z !== flashedZip)}
           anchorEl={zipFilterAnchorRef.current}
+          exiting={boundaryMapExiting}
         />
       ) : null}
     </div>
