@@ -15,14 +15,36 @@ import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 /**
  * Hero score ↔ interesting-stat beat (one town at a time).
- * Score fades in → holds → crossfades out as same-town stat fades in →
- * stat holds → crossfades out as next town’s score fades in.
- * Desktop: equal left (score) / right (stat) panes — opacity crossfade only.
- * Mobile: same beat, stacked overlay fade (no slide / height collapse).
+ * Score fades in (left) → holds → fades out as same-town stat fades up+in (right) →
+ * stat holds → fades out as next town’s score fades in (left).
+ * Mobile and desktop share the same left/right panes — no stacked overlay.
  */
-const HERO_FADE_MS = 1_050; // 700 × 1.5 — 50% slower fades
+const HERO_FADE_MS = 1_575; // 1050 × 1.5 — another 50% slower crossfade
 const HERO_SCORE_HOLD_MS = 2_600;
 const HERO_STAT_HOLD_MS = 3_200;
+
+/** Hero body copy — collapses bottom→top until only the H1 remains. */
+const HERO_COPY_LINES = [
+  {
+    id: "giving",
+    text: "Giving buyers and owners a single, town-calibrated measure. Relative value, market context, and deal shape — scored and synthesized so you spend time effectively.",
+  },
+  {
+    id: "use",
+    text: 'Use Market Intelligence, Statistics, and "What If" scenarios to read the room.',
+  },
+  {
+    id: "high",
+    text: "High means the home clears the bar against what's active nearby. Softer means dig deeper — or price with eyes open if you are selling. Same yardstick everywhere on the site.",
+  },
+] as const;
+
+/** Pause after first paint so the full copy can be read once. */
+const HERO_COPY_READ_MS = 4_200;
+/** Per-line fade-out duration. */
+const HERO_COPY_LINE_FADE_MS = 900;
+/** Gap after a line finishes before the next (reverse) line starts fading. */
+const HERO_COPY_LINE_STAGGER_MS = 280;
 
 type HeroBeat =
   | "score-in"
@@ -569,29 +591,9 @@ export default function HomeMethodOverview({
         */}
         <div className="min-w-0">
           <div className="grid min-w-0 items-start gap-4 sm:gap-10 lg:grid-cols-12 lg:gap-8">
-            {/* Copy column */}
+            {/* Copy column — lines collapse bottom→top; CTAs rise with the fold */}
             <div className="min-w-0 lg:col-span-6">
-              <h1 className="animate-fade-up break-words font-serif text-[1.85rem] leading-[1.12] text-white sm:text-5xl sm:leading-[1.05] lg:text-[3.35rem]">
-                Cut through the noise.{" "}
-                <span className="italic text-gold-light">One clear score.</span>
-              </h1>
-
-              <p className="mt-3 max-w-xl animate-fade-up-delay-1 text-[0.92rem] leading-relaxed text-white/75 sm:mt-5 sm:text-base lg:text-lg">
-                Giving buyers and owners a single, town-calibrated measure.
-                Relative value, market context, and deal shape — scored and
-                synthesized so you spend time effectively.
-              </p>
-
-              <p className="mt-3 max-w-xl animate-fade-up-delay-1 text-[0.92rem] leading-relaxed text-white/75 sm:mt-4 sm:text-base lg:text-lg">
-                Use Market Intelligence, Statistics, and &ldquo;What If&rdquo;
-                scenarios to read the room.
-              </p>
-
-              <p className="mt-3 hidden max-w-xl animate-fade-up-delay-1 text-sm leading-relaxed text-white/55 sm:mt-4 sm:block">
-                High means the home clears the bar against what&rsquo;s active
-                nearby. Softer means dig deeper — or price with eyes open if you
-                are selling. Same yardstick everywhere on the site.
-              </p>
+              <HomeHeroCopy />
 
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2 sm:mt-7">
                 <Link
@@ -616,18 +618,15 @@ export default function HomeMethodOverview({
                   Actual home · rotating towns
                 </p>
                 {/*
-                  Desktop: equal left (score) / right (stat) panes — opacity
-                  crossfade only (no slide / height collapse). Borders invisible.
-                  Mobile: overlay stack, same opacity-only handoff.
+                  Mobile + desktop: left (score) / right (stat). Score fades out
+                  while the same-town stat fades up and in on the right.
                 */}
-                <div className="relative w-full min-w-0 min-h-[14.5rem] sm:min-h-[16.5rem] lg:grid lg:min-h-[18rem] lg:grid-cols-2 lg:gap-8 lg:items-stretch">
+                <div className="grid w-full min-w-0 min-h-[11.5rem] grid-cols-2 items-stretch gap-3 sm:min-h-[16.5rem] sm:gap-6 lg:min-h-[18rem] lg:gap-8">
                   <div
-                    className={`flex h-full min-h-[14.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-1 py-2 transition-opacity ease-in-out motion-reduce:transition-none sm:min-h-[16.5rem] sm:px-2 lg:min-h-[18rem] lg:px-3 ${
+                    className={`flex h-full min-h-[11.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-0.5 py-2 transition-opacity ease-in-out motion-reduce:transition-none sm:min-h-[16.5rem] sm:px-2 lg:min-h-[18rem] lg:px-3 ${
                       scoreOpaque
-                        ? "relative z-10 opacity-100"
-                        : scoreShown
-                          ? "pointer-events-none absolute inset-0 z-0 opacity-0 lg:relative lg:inset-auto"
-                          : "pointer-events-none absolute inset-0 z-0 opacity-0 lg:relative lg:inset-auto"
+                        ? "z-10 opacity-100"
+                        : "pointer-events-none z-0 opacity-0"
                     }`}
                     style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
                     aria-hidden={!scoreOpaque || undefined}
@@ -646,37 +645,35 @@ export default function HomeMethodOverview({
                       >
                         <p
                           key={`${live.town}-${live.score}-${live.mlsId}`}
-                          className="font-serif italic gold-shimmer text-[3.75rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[6.25rem] lg:text-[6.5rem]"
+                          className="font-serif italic gold-shimmer text-[2.65rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[5.5rem] lg:text-[6.5rem]"
                         >
                           {live.score.toFixed(1)}.
                         </p>
-                        <p className="mt-1 font-serif italic text-xl text-white/90 transition-colors group-hover:text-gold sm:mt-2 sm:text-3xl">
+                        <p className="mt-1 font-serif italic text-lg text-white/90 transition-colors group-hover:text-gold sm:mt-2 sm:text-3xl">
                           {live.town}
                         </p>
                       </Link>
                     ) : (
                       <>
-                        <p className="font-serif italic text-[3.75rem] leading-none tracking-tight text-white/40 sm:text-[6.25rem] lg:text-[6.5rem]">
+                        <p className="font-serif italic text-[2.65rem] leading-none tracking-tight text-white/40 sm:text-[5.5rem] lg:text-[6.5rem]">
                           —.—
                         </p>
-                        <p className="mt-1 font-serif italic text-xl text-white/90 sm:mt-2 sm:text-3xl">
+                        <p className="mt-1 font-serif italic text-lg text-white/90 sm:mt-2 sm:text-3xl">
                           Scanning markets…
                         </p>
                       </>
                     )}
-                    <p className="mt-2 max-w-sm text-xs leading-relaxed text-white/45 sm:mt-3">
+                    <p className="mt-2 max-w-sm text-[10px] leading-relaxed text-white/45 sm:mt-3 sm:text-xs">
                       Today&apos;s pick in each town — tap the score to open that
                       deal. Same yardstick as Deal of the Week.
                     </p>
                   </div>
 
                   <div
-                    className={`flex h-full min-h-[14.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-1 py-2 transition-opacity ease-in-out motion-reduce:transition-none sm:min-h-[16.5rem] sm:px-2 lg:min-h-[18rem] lg:px-3 ${
+                    className={`flex h-full min-h-[11.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-0.5 py-2 transition-[opacity,transform] ease-out motion-reduce:transition-none sm:min-h-[16.5rem] sm:px-2 lg:min-h-[18rem] lg:px-3 ${
                       displayStat && statOpaque
-                        ? "relative z-10 opacity-100"
-                        : displayStat && statShown
-                          ? "pointer-events-none absolute inset-0 z-0 opacity-0 lg:relative lg:inset-auto"
-                          : "pointer-events-none absolute inset-0 z-0 opacity-0 lg:relative lg:inset-auto"
+                        ? "z-10 translate-y-0 opacity-100"
+                        : "pointer-events-none z-0 translate-y-3 opacity-0"
                     }`}
                     style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
                     aria-hidden={!statOpaque || undefined}
@@ -702,7 +699,7 @@ export default function HomeMethodOverview({
                             : "Open this chart on Statistics"
                         }
                       >
-                        <span className="block font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                        <span className="block font-mono text-[9px] tracking-[0.2em] uppercase text-gold sm:text-[10px]">
                           {displayStat.eyebrow}
                           {displayStat.town ? (
                             <span className="text-gold/70">
@@ -713,11 +710,11 @@ export default function HomeMethodOverview({
                         </span>
                         <span
                           key={`${displayStat.value}-${displayStat.detail}-${displayStat.town ?? ""}`}
-                          className="mt-1.5 block break-words font-serif italic text-2xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.85rem] lg:text-[2.35rem]"
+                          className="mt-1.5 block break-words font-serif italic text-xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.85rem] lg:text-[2.35rem]"
                         >
                           {displayStat.value}
                         </span>
-                        <span className="mt-1.5 block break-words text-xs leading-snug text-white/60 sm:max-w-sm">
+                        <span className="mt-1.5 block break-words text-[11px] leading-snug text-white/60 sm:text-xs sm:max-w-sm">
                           {displayStat.detail}
                         </span>
                       </Link>
@@ -761,6 +758,141 @@ export default function HomeMethodOverview({
         </div>
       </div>
     </section>
+  );
+}
+
+type HeroCopyMode = "full" | "collapsing" | "collapsed" | "expanded";
+
+/**
+ * Hero body copy: after a read pause, lines fade out bottom→top until only the
+ * H1 remains. Collapsed state offers “Giving buyers…” to restore the full text.
+ * Content below (CTAs) rises as line height collapses.
+ */
+function HomeHeroCopy() {
+  const [mode, setMode] = useState<HeroCopyMode>("full");
+  /** Index into HERO_COPY_LINES that is currently fading out (-1 = none). */
+  const [fadingIndex, setFadingIndex] = useState(-1);
+  /** Lines still taking space (opacity may be mid-fade). */
+  const [visibleThrough, setVisibleThrough] = useState<number>(
+    HERO_COPY_LINES.length,
+  );
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    setReduceMotion(
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "full") return;
+    if (reduceMotion) {
+      const id = window.setTimeout(() => {
+        setVisibleThrough(0);
+        setMode("collapsed");
+      }, Math.min(HERO_COPY_READ_MS, 1_200));
+      return () => window.clearTimeout(id);
+    }
+    const startId = window.setTimeout(() => setMode("collapsing"), HERO_COPY_READ_MS);
+    return () => window.clearTimeout(startId);
+  }, [mode, reduceMotion]);
+
+  useEffect(() => {
+    if (mode !== "collapsing") return;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const fadeNext = (fromIndex: number) => {
+      if (cancelled) return;
+      if (fromIndex < 0) {
+        setFadingIndex(-1);
+        setVisibleThrough(0);
+        setMode("collapsed");
+        return;
+      }
+      setFadingIndex(fromIndex);
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        setVisibleThrough(fromIndex);
+        setFadingIndex(-1);
+        timer = window.setTimeout(
+          () => fadeNext(fromIndex - 1),
+          HERO_COPY_LINE_STAGGER_MS,
+        );
+      }, HERO_COPY_LINE_FADE_MS);
+    };
+
+    fadeNext(HERO_COPY_LINES.length - 1);
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [mode]);
+
+  const showFull = mode === "full" || mode === "expanded" || mode === "collapsing";
+
+  return (
+    <div className="min-w-0">
+      <h1 className="animate-fade-up break-words font-serif text-[1.85rem] leading-[1.12] text-white sm:text-5xl sm:leading-[1.05] lg:text-[3.35rem]">
+        Cut through the noise.{" "}
+        <span className="italic text-gold-light">One clear score.</span>
+      </h1>
+
+      {mode === "collapsed" ? (
+        <button
+          type="button"
+          onClick={() => {
+            setVisibleThrough(HERO_COPY_LINES.length);
+            setFadingIndex(-1);
+            setMode("expanded");
+          }}
+          className="mt-3 max-w-xl text-left text-[0.92rem] leading-relaxed text-white/70 underline decoration-white/30 underline-offset-4 transition-colors hover:text-gold hover:decoration-gold/50 sm:mt-5 sm:text-base lg:text-lg"
+        >
+          Giving buyers&hellip;
+        </button>
+      ) : null}
+
+      {showFull
+        ? HERO_COPY_LINES.map((line, index) => {
+            const inFlow = index < visibleThrough;
+            const fading = fadingIndex === index;
+            if (!inFlow && !fading) return null;
+            const opaque = inFlow && !fading;
+            const isMuted = line.id === "high";
+            return (
+              <p
+                key={line.id}
+                className={`max-w-xl overflow-hidden transition-[opacity,margin,max-height] ease-out motion-reduce:transition-none ${
+                  index === 0 ? "mt-3 sm:mt-5" : "mt-3 sm:mt-4"
+                } ${
+                  isMuted
+                    ? "text-sm leading-relaxed text-white/55 sm:text-sm"
+                    : "text-[0.92rem] leading-relaxed text-white/75 sm:text-base lg:text-lg"
+                } ${opaque ? "opacity-100" : "opacity-0"}`}
+                style={{
+                  transitionDuration: `${HERO_COPY_LINE_FADE_MS}ms`,
+                  maxHeight: opaque || fading ? "12rem" : "0",
+                  marginTop: opaque || fading ? undefined : 0,
+                }}
+              >
+                {line.text}
+              </p>
+            );
+          })
+        : null}
+
+      {mode === "expanded" ? (
+        <button
+          type="button"
+          onClick={() => {
+            setMode("collapsing");
+          }}
+          className="mt-2 font-mono text-[10px] tracking-[0.14em] uppercase text-white/45 transition-colors hover:text-gold"
+        >
+          Collapse
+        </button>
+      ) : null}
+    </div>
   );
 }
 
