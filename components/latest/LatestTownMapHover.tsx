@@ -1,13 +1,11 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode } from "react";
 import ZipBoundaryPopover, {
   prefetchTownBoundaries,
 } from "@/components/ZipBoundaryPopover";
+import { useMapPopoverAnchor } from "@/hooks/useMapPopoverAnchor";
 import { resolveListingTown } from "@/lib/tmre-towns";
-
-/** Show town map immediately; hide 1s after pointer leaves (matches zip hover). */
-const TOWN_MAP_HIDE_DELAY_MS = 1_000;
 
 type LatestTownMapHoverProps = {
   townName: string;
@@ -21,36 +19,25 @@ export default function LatestTownMapHover({
   children,
 }: LatestTownMapHoverProps) {
   const town = resolveListingTown(townName);
-  const anchorRef = useRef<HTMLSpanElement>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-
-  const clearHideTimer = () => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  };
-
-  const show = () => {
-    if (!town) return;
-    clearHideTimer();
-    prefetchTownBoundaries(town);
-    setAnchorEl(anchorRef.current);
-  };
-
-  const scheduleHide = () => {
-    clearHideTimer();
-    hideTimerRef.current = setTimeout(() => {
-      setAnchorEl(null);
-    }, TOWN_MAP_HIDE_DELAY_MS);
-  };
-
-  useEffect(() => () => clearHideTimer(), []);
+  const {
+    anchorRef,
+    anchorEl,
+    isOpen,
+    exiting,
+    open,
+    scheduleClose,
+    toggle,
+    notifySettled,
+  } = useMapPopoverAnchor();
 
   if (!town) {
     return <span className={className}>{children ?? townName}</span>;
   }
+
+  const show = () => {
+    prefetchTownBoundaries(town);
+    open();
+  };
 
   return (
     <>
@@ -58,20 +45,27 @@ export default function LatestTownMapHover({
         ref={anchorRef}
         className={`cursor-help underline decoration-charcoal/25 decoration-dotted underline-offset-2 hover:text-navy ${className}`}
         onMouseEnter={show}
-        onMouseLeave={scheduleHide}
+        onMouseLeave={scheduleClose}
         onFocus={show}
-        onBlur={scheduleHide}
-        onTouchStart={show}
-        onTouchEnd={scheduleHide}
-        onTouchCancel={scheduleHide}
+        onBlur={scheduleClose}
+        onClick={() => {
+          prefetchTownBoundaries(town);
+          toggle();
+        }}
         tabIndex={0}
         role="button"
-        aria-label={`Show map for ${town}`}
+        aria-expanded={isOpen}
+        aria-label={`${isOpen ? "Hide" : "Show"} map for ${town}`}
       >
         {children ?? townName}
       </span>
       {anchorEl ? (
-        <ZipBoundaryPopover highlightTown={town} anchorEl={anchorEl} />
+        <ZipBoundaryPopover
+          highlightTown={town}
+          anchorEl={anchorEl}
+          exiting={exiting}
+          onSettled={notifySettled}
+        />
       ) : null}
     </>
   );

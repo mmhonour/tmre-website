@@ -1,17 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import ZipBoundaryPopover, {
   prefetchZipBoundaries,
 } from "@/components/ZipBoundaryPopover";
-import {
-  isTmreTown,
-  resolveListingTown,
-  zipsForTown,
-} from "@/lib/tmre-towns";
-
-/** Show zip map immediately; hide 1s after pointer leaves. */
-const ZIP_MAP_HIDE_DELAY_MS = 1_000;
+import { useMapPopoverAnchor } from "@/hooks/useMapPopoverAnchor";
+import { isTmreTown, resolveListingTown, zipsForTown } from "@/lib/tmre-towns";
 
 type LatestZipMapHoverProps = {
   zip: string;
@@ -24,9 +18,16 @@ export default function LatestZipMapHover({
   townName,
   className = "",
 }: LatestZipMapHoverProps) {
-  const anchorRef = useRef<HTMLSpanElement>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const {
+    anchorRef,
+    anchorEl,
+    isOpen,
+    exiting,
+    open,
+    scheduleClose,
+    toggle,
+    notifySettled,
+  } = useMapPopoverAnchor();
 
   const contextZips = useMemo(() => {
     const town = townName ? resolveListingTown(townName) : null;
@@ -34,27 +35,12 @@ export default function LatestZipMapHover({
     return zipsForTown(town).filter((z) => z !== zip);
   }, [townName, zip]);
 
-  const clearHideTimer = () => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  };
+  const warm = () => prefetchZipBoundaries([zip, ...contextZips]);
 
   const show = () => {
-    clearHideTimer();
-    prefetchZipBoundaries([zip, ...contextZips]);
-    setAnchorEl(anchorRef.current);
+    warm();
+    open();
   };
-
-  const scheduleHide = () => {
-    clearHideTimer();
-    hideTimerRef.current = setTimeout(() => {
-      setAnchorEl(null);
-    }, ZIP_MAP_HIDE_DELAY_MS);
-  };
-
-  useEffect(() => () => clearHideTimer(), []);
 
   return (
     <>
@@ -62,15 +48,17 @@ export default function LatestZipMapHover({
         ref={anchorRef}
         className={`cursor-help underline decoration-charcoal/25 decoration-dotted underline-offset-2 hover:text-navy ${className}`}
         onMouseEnter={show}
-        onMouseLeave={scheduleHide}
+        onMouseLeave={scheduleClose}
         onFocus={show}
-        onBlur={scheduleHide}
-        onTouchStart={show}
-        onTouchEnd={scheduleHide}
-        onTouchCancel={scheduleHide}
+        onBlur={scheduleClose}
+        onClick={() => {
+          warm();
+          toggle();
+        }}
         tabIndex={0}
         role="button"
-        aria-label={`Show map for zip ${zip}`}
+        aria-expanded={isOpen}
+        aria-label={`${isOpen ? "Hide" : "Show"} map for zip ${zip}`}
       >
         {zip}
       </span>
@@ -79,6 +67,8 @@ export default function LatestZipMapHover({
           highlightZip={zip}
           contextZips={contextZips}
           anchorEl={anchorEl}
+          exiting={exiting}
+          onSettled={notifySettled}
         />
       ) : null}
     </>

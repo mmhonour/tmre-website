@@ -8,6 +8,9 @@ import { recordSyncRun } from '../../lib/db/listings-repo'
  * - Admin Syncs "Incremental": full RETS + digests (source=admin)
  * - Thin `sync-listings` schedule: queues this for full RETS (source=cron)
  * - Legacy sideWorkOnly: board/stats + digests only
+ * - Railway mls-sync handoff: sideWorkOnly warm after its RETS→Neon write
+ *   (source=railway — must stay in the whitelist below or it demotes to cron
+ *   and gets skipped as "not due")
  * Not scheduled itself — pairing schedule+background on one function was silent.
  *
  * Netlify returns 202 to the invoker before this handler runs. Auth failures and
@@ -23,6 +26,7 @@ export default async function handler(req: Request, _context: Context) {
     | 'netlify-sync-trigger'
     | 'watchdog'
     | 'eventbridge'
+    | 'railway'
     | undefined
   let towns: string[] | undefined
   let statusScope: 'all' | 'active' | 'closed' | undefined
@@ -45,7 +49,8 @@ export default async function handler(req: Request, _context: Context) {
       body?.source === 'cron' ||
       body?.source === 'netlify-sync-trigger' ||
       body?.source === 'watchdog' ||
-      body?.source === 'eventbridge'
+      body?.source === 'eventbridge' ||
+      body?.source === 'railway'
     ) {
       source = body.source
     }

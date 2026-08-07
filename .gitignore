@@ -42,6 +42,13 @@ data/leads.json
 # local dump / probe scratch (not for commit)
 .tmp-*
 .tmp
+tmp-khe-pta*.csv
+tmp-pta-*.csv
+tmp-pta-*.json
+tmp-cms-scrape*.js
+tmp-scrape-expr*.js
+tmp-*.txt
+tmp-*.json
 
 # debug
 *.log

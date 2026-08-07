@@ -19,6 +19,13 @@ if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
 }
 
+/**
+ * Marks this process as the RETS→Neon puller, whoever asked for the run. The
+ * sync work reads it to keep site-cache warm (deal board / latest / heroes /
+ * stats) out of here entirely — that warm is what Node-OOMed this service.
+ */
+process.env.MLS_SYNC_SERVICE = '1'
+
 const PORT = Number(process.env.PORT ?? '8080')
 const INTERVAL_MS = Math.max(
   60_000,

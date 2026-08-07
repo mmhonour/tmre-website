@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  boundaryZipsForAllTowns,
+  boundaryZipsForNeighborTowns,
+  boundaryZipsForTown,
+  hasZctaBoundary,
   neighborTownsFor,
   TMRE_TOWNS,
   type TmreTown,
-  zipsForAllTowns,
-  zipsForNeighborTowns,
+  townForZip,
   zipsForTown,
 } from "@/lib/tmre-towns";
 
@@ -34,7 +37,9 @@ export async function loadZipBoundariesForZips(
 async function fetchBoundariesBatch(zips: readonly string[]): Promise<Map<string, Ring[]>> {
   const out = new Map<string, Ring[]>();
   const missing: string[] = [];
-  for (const zip of zips) {
+  // PO-box zips have no ZCTA polygon; requesting them used to cost a Census
+  // timeout on the hover path, which is why maps sometimes never painted.
+  for (const zip of zips.filter(hasZctaBoundary)) {
     const hit = cache.get(zip);
     if (hit?.length) out.set(zip, hit);
     else missing.push(zip);
@@ -70,19 +75,22 @@ async function fetchBoundary(zip: string): Promise<Ring[]> {
 
 /** Warm the module cache for town zip pills (fire-and-forget). */
 export function prefetchZipBoundaries(zips: readonly string[]): void {
-  const missing = zips.filter((zip) => !cache.has(zip));
+  const missing = zips.filter((zip) => hasZctaBoundary(zip) && !cache.has(zip));
   if (missing.length === 0) return;
   fetchBoundariesBatch(missing).catch(() => {});
 }
 
 /** Prefetch a town plus bordering town zips before the popover opens. */
 export function prefetchTownBoundaries(town: TmreTown): void {
-  prefetchZipBoundaries([...zipsForTown(town), ...zipsForNeighborTowns(town)]);
+  prefetchZipBoundaries([
+    ...boundaryZipsForTown(town),
+    ...boundaryZipsForNeighborTowns(town),
+  ]);
 }
 
 /** Prefetch all TMRE town zips (Intelligence “All Towns” hover). */
 export function prefetchAllTownBoundaries(): void {
-  prefetchZipBoundaries(zipsForAllTowns());
+  prefetchZipBoundaries(boundaryZipsForAllTowns());
 }
 
 function ringBBoxCenter(rings: Ring[]): Coord | null {
@@ -213,6 +221,10 @@ interface Props {
   /** Other zips to show in grey behind the highlight (zip mode only). */
   contextZips?: readonly string[];
   anchorEl: HTMLElement | null;
+  /** Fade out instead of vanishing (owner is dismissing us). */
+  exiting?: boolean;
+  /** Fires once the boundary has painted or definitively failed. */
+  onSettled?: () => void;
 }
 
 export default function ZipBoundaryPopover({
@@ -221,19 +233,33 @@ export default function ZipBoundaryPopover({
   highlightAllTowns = false,
   contextZips = [],
   anchorEl,
+  exiting = false,
+  onSettled,
 }: Props) {
+  /**
+   * A PO-box zip has no polygon of its own, so highlight its town instead of
+   * showing "Boundary unavailable" for an address that plainly exists.
+   */
+  const zipFallbackTown = useMemo(
+    () =>
+      highlightZip && !hasZctaBoundary(highlightZip) ? townForZip(highlightZip) : null,
+    [highlightZip],
+  );
+
   const highlightZipSet = useMemo(() => {
-    if (highlightAllTowns) return new Set<string>(zipsForAllTowns());
-    if (highlightTown) return new Set<string>(zipsForTown(highlightTown));
-    if (highlightZip) return new Set([highlightZip]);
+    if (highlightAllTowns) return new Set<string>(boundaryZipsForAllTowns());
+    if (highlightTown) return new Set<string>(boundaryZipsForTown(highlightTown));
+    if (zipFallbackTown) return new Set<string>(boundaryZipsForTown(zipFallbackTown));
+    if (highlightZip && hasZctaBoundary(highlightZip)) return new Set([highlightZip]);
     return new Set<string>();
-  }, [highlightAllTowns, highlightTown, highlightZip]);
+  }, [highlightAllTowns, highlightTown, highlightZip, zipFallbackTown]);
 
   const resolvedContextZips = useMemo(() => {
     if (highlightAllTowns) return [];
-    if (highlightTown) return zipsForNeighborTowns(highlightTown);
-    return contextZips.filter((z) => !highlightZipSet.has(z));
-  }, [highlightAllTowns, highlightTown, contextZips, highlightZipSet]);
+    if (highlightTown) return boundaryZipsForNeighborTowns(highlightTown);
+    if (zipFallbackTown) return boundaryZipsForNeighborTowns(zipFallbackTown);
+    return contextZips.filter((z) => hasZctaBoundary(z) && !highlightZipSet.has(z));
+  }, [highlightAllTowns, highlightTown, contextZips, highlightZipSet, zipFallbackTown]);
 
   const loadKey = highlightAllTowns
     ? "all-towns"
@@ -254,8 +280,11 @@ export default function ZipBoundaryPopover({
     : highlightTown
       ? neighborTownsFor(highlightTown)
       : [];
-  const zipFooterSubtext =
-    resolvedContextZips.length > 0 ? "Surrounding areas in grey" : "Coverage area";
+  const zipFooterSubtext = zipFallbackTown
+    ? `${zipFallbackTown} coverage area`
+    : resolvedContextZips.length > 0
+      ? "Surrounding areas in grey"
+      : "Coverage area";
 
   const primaryZips = useMemo((): readonly string[] => {
     if (highlightTown) return zipsForTown(highlightTown);
@@ -283,20 +312,38 @@ export default function ZipBoundaryPopover({
     setPos({ top, left, placeAbove });
   }, [anchorEl]);
 
+  const onSettledRef = useRef(onSettled);
+  useEffect(() => {
+    onSettledRef.current = onSettled;
+  }, [onSettled]);
+
+  useEffect(() => {
+    if (boundary.status === "ready" || boundary.status === "error") {
+      onSettledRef.current?.();
+    }
+  }, [boundary.status]);
+
   const contextKey = contextZips.join(",");
 
   useEffect(() => {
     if (!loadKey) return;
 
+    // Derived from primitives only: `contextZips` arrives as a fresh array on
+    // every parent render, so the effect keys off `contextKey` instead.
     const highlightZips = highlightAllTowns
-      ? [...zipsForAllTowns()]
+      ? [...boundaryZipsForAllTowns()]
       : highlightTown
-        ? [...zipsForTown(highlightTown)]
-        : highlightZip
-          ? [highlightZip]
-          : [];
+        ? [...boundaryZipsForTown(highlightTown)]
+        : zipFallbackTown
+          ? [...boundaryZipsForTown(zipFallbackTown)]
+          : highlightZip && hasZctaBoundary(highlightZip)
+            ? [highlightZip]
+            : [];
     const highlightSet = new Set(highlightZips);
-    if (highlightSet.size === 0) return;
+    if (highlightSet.size === 0) {
+      setBoundary({ status: "error" });
+      return;
+    }
 
     const bundled = boundaryBundleCache.get(loadKey);
     if (bundled) {
@@ -307,8 +354,10 @@ export default function ZipBoundaryPopover({
     const contextList = highlightAllTowns
       ? []
       : highlightTown
-        ? [...zipsForNeighborTowns(highlightTown)]
-        : contextZips.filter((z) => !highlightSet.has(z));
+        ? [...boundaryZipsForNeighborTowns(highlightTown)]
+        : zipFallbackTown
+          ? [...boundaryZipsForNeighborTowns(zipFallbackTown)]
+          : contextZips.filter((z) => hasZctaBoundary(z) && !highlightSet.has(z));
     const zipsToLoad = [
       ...highlightZips,
       ...contextList.filter((z) => !highlightSet.has(z)),
@@ -378,7 +427,14 @@ export default function ZipBoundaryPopover({
     return () => {
       cancelled = true;
     };
-  }, [loadKey, highlightAllTowns, highlightTown, highlightZip, contextKey]);
+  }, [
+    loadKey,
+    highlightAllTowns,
+    highlightTown,
+    highlightZip,
+    zipFallbackTown,
+    contextKey,
+  ]);
 
   if (!pos || typeof document === "undefined") return null;
 
@@ -437,7 +493,9 @@ export default function ZipBoundaryPopover({
       ref={popoverRef}
       role="tooltip"
       style={{ top: pos.top, left: pos.left, width: W, zIndex: 9999 }}
-      className="fixed pointer-events-none"
+      className={`fixed pointer-events-none transition-opacity duration-300 ${
+        exiting ? "opacity-0" : "opacity-100"
+      }`}
     >
       <div className="rounded-2xl bg-white border border-charcoal/10 shadow-2xl shadow-black/25 overflow-hidden">
         <div className="relative bg-slate-50" style={{ height: H }}>

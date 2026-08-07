@@ -877,10 +877,17 @@ async function runAdminSyncActionImpl(
         durationMs: result.durationMs || Date.now() - t0,
         recordsFetched: result.written,
         message: `${result.written.toLocaleString()} zip boundaries synced`,
-        detail:
+        detail: [
           result.failed.length > 0
             ? `Wrote ${result.written}; failed: ${result.failed.join(', ')}`
-            : `All TMRE town ZCTAs from Census TIGERweb → zip_boundaries`,
+            : `All mappable TMRE town ZCTAs from Census TIGERweb → zip_boundaries`,
+          // PO-box zips have no ZCTA. Reported, not counted as failures.
+          result.skipped.length > 0
+            ? `no ZCTA (expected): ${result.skipped.join(', ')}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
       }
     }
     case 'fomc-sync': {

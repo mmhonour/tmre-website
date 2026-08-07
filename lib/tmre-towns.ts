@@ -73,6 +73,43 @@ const ALL_TMRE_ZIPS = new Set<string>(
   TMRE_TOWNS.flatMap((town) => TOWN_ZIPS[town]),
 )
 
+/**
+ * PO-box-only ZIPs. Census ZCTAs are built from populated delivery areas, so
+ * these have no polygon and never will — asking TIGERweb for them costs a
+ * timeout per map hover and marks the boundary sync permanently failed.
+ * They remain valid postal codes for listings, addresses, and labels.
+ */
+export const ZIPS_WITHOUT_ZCTA: ReadonlySet<string> = new Set([
+  '06852', // Norwalk PO boxes
+  '06856', // Norwalk PO boxes
+  '06881', // Westport PO boxes
+  '06838', // Greens Farms (Westport) PO boxes
+  '06828', // Greenfield Hill (Fairfield) PO boxes
+  '06879', // Branchville (Ridgefield) PO boxes
+])
+
+/** True when Census publishes a ZCTA polygon for this zip. */
+export function hasZctaBoundary(zip: string | null | undefined): boolean {
+  const normalized = normalizeZip(zip)
+  if (!normalized) return false
+  return !ZIPS_WITHOUT_ZCTA.has(normalized)
+}
+
+/** Town zips that can actually be drawn on a map. */
+export function boundaryZipsForTown(town: TmreTown): readonly string[] {
+  return TOWN_ZIPS[town].filter(hasZctaBoundary)
+}
+
+/** Bordering-town zips that can actually be drawn on a map. */
+export function boundaryZipsForNeighborTowns(town: TmreTown): readonly string[] {
+  return neighborTownsFor(town).flatMap((t) => boundaryZipsForTown(t))
+}
+
+/** Every mappable zip across TMRE coverage. */
+export function boundaryZipsForAllTowns(): readonly string[] {
+  return [...ALL_TMRE_ZIPS].filter(hasZctaBoundary)
+}
+
 export function normalizeZip(postal: string | null | undefined): string | null {
   const zip = postal?.trim().slice(0, 5)
   return zip && /^\d{5}$/.test(zip) ? zip : null

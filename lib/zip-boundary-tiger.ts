@@ -43,11 +43,28 @@ export function tigerwebZctaQueryUrl(zip: string): string {
   )
 }
 
+/**
+ * Census answered but has no polygon for this zip — a permanent fact, not a
+ * transient failure, so callers record it instead of retrying forever.
+ */
+export class ZctaGeometryMissingError extends Error {
+  readonly zip: string
+
+  constructor(zip: string) {
+    super(`No TIGERweb geometry for ${zip}`)
+    this.name = 'ZctaGeometryMissingError'
+    this.zip = zip
+  }
+}
+
 /** Fetch + parse outer rings from Census TIGERweb (network). */
-export async function fetchTigerwebZctaRings(zip: string): Promise<ZipBoundaryRing[]> {
+export async function fetchTigerwebZctaRings(
+  zip: string,
+  options: { timeoutMs?: number } = {},
+): Promise<ZipBoundaryRing[]> {
   const res = await fetch(tigerwebZctaQueryUrl(zip), {
     cache: 'no-store',
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
   })
   if (!res.ok) throw new Error(`TIGERweb HTTP ${res.status} for ${zip}`)
   const data = (await res.json()) as {
@@ -67,6 +84,6 @@ export async function fetchTigerwebZctaRings(zip: string): Promise<ZipBoundaryRi
       }
     }
   }
-  if (rings.length === 0) throw new Error(`No TIGERweb geometry for ${zip}`)
+  if (rings.length === 0) throw new ZctaGeometryMissingError(zip)
   return rings
 }

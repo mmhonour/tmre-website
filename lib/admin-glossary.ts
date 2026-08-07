@@ -137,6 +137,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     definition:
       'Safe to run again with the same result — a second (or tenth) run does not duplicate data or break what’s already there. Example: SQL `CREATE TABLE IF NOT EXISTS` and `INSERT … ON CONFLICT DO NOTHING/UPDATE`. TMRE uses this for db migrations (`npm run db:migrate`) and for Admin CT coverage, which creates `ct_counties` / `ct_towns` on first open if Netlify never ran the migration. Opposite of a one-shot script that fails or doubles rows if you re-run it.',
   },
+  {
+    term: 'Seam',
+    category: 'tooling',
+    definition:
+      'A place where two jobs or two owners meet in the code — the boundary you should name before refactoring, not bury inside “reuse the existing helper.” If one function does more than one job (e.g. pull RETS, write Neon, then warm deal board / latest / heroes / stats), each job-to-job join is a seam. Crossing a seam without an explicit switch is how architecture decays: Railway mls-sync called the old Netlify mega-path with `postHooks: true`, so site-cache warm stayed glued to the RETS→Neon worker and Node-OOMed production. Healthy refactors make seams visible (ownership table + a flag like `postHooks: false` when `source === \'railway\'`) so you can still see “who owns what” after the change. See Railway mls-sync, Node OOM, Same-repo dual deploy (Netlify + Railway).',
+  },
 
   // —— MLS / data ——
   {
@@ -553,7 +559,31 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Railway mls-sync',
     category: 'sync-admin',
     definition:
-      'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify; on Railway Variables: DATABASE_URL + RETS_* + SYNC_CRON_SECRET (+ optional MLS_SYNC_INTERVAL_MS). Smoke: npm run smoke:incremental -- --mls=…. Build: Railpack + railpack.json (Node 20, npm install, skip Next) + railway.toml start/health — not a Netlify/Next deploy. See Same-repo dual deploy (Netlify + Railway), Railpack.',
+      'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Its job stops at the Neon write: the process sets `MLS_SYNC_SERVICE=1` at boot and `runIncrementalSyncListingsWork` reads that to force `postHooks: false`, so deal board / latest feeds / heroes / stats never warm inside this process no matter who asked for the run — Admin “Sync now” and the watchdog POST /run with their own `source`, and those runs stay just as lean. It instead queues a Side-work-only worker on Netlify to do that warm. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify; on Railway Variables: DATABASE_URL + RETS_* + SYNC_CRON_SECRET (+ optional MLS_SYNC_INTERVAL_MS, + NEXT_PUBLIC_SITE_URL so the warm handoff can find the site). RETS sessions close themselves — every call goes through the library’s auto-logout client, so there is no lingering login to clean up. Smoke: npm run smoke:incremental -- --mls=…. Build: Railpack + railpack.json (Node 20, npm install, skip Next) + railway.toml start/health — not a Netlify/Next deploy. If /health returns Railway’s 502 “Application failed to respond,” check deploy logs for Node OOM before assuming a bad PORT bind. Note the Admin pause / Next / “not due” gates do not apply to it: Railway counts as an explicit run and is its own clock. See Same-repo dual deploy (Netlify + Railway), Railpack, Node OOM, postHooks, Side-work-only.',
+  },
+  {
+    term: 'OOM',
+    category: 'sync-admin',
+    definition:
+      'Out of memory — the process (or host) ran out of RAM and was killed or crashed. Generic term; on this project the usual form on Railway mls-sync is a Node OOM (V8 JavaScript heap), not the Linux OOM killer. Symptom chain: process dies → nothing listens on PORT → Railway edge 502 “Application failed to respond” → restart → often “refresh already in progress” skip + false ok=true until the lock clears. Fix by lowering peak memory (stop loading huge JSON / board+hero warm in the sync worker) or raising RAM / NODE_OPTIONS --max-old-space-size. See Node OOM, Railway mls-sync.',
+  },
+  {
+    term: 'Node OOM',
+    category: 'sync-admin',
+    definition:
+      'Node.js / V8 JavaScript heap exhaustion: log line `FATAL ERROR: … Allocation failed - JavaScript heap out of memory` (often “Ineffective mark-compacts near heap limit”), with GC chatter around ~475–490 MB and a native stack through `JsonParse` / `Builtin_JsonParse`. Distinct from the OS OOM killer. On Railway mls-sync this has crashed the process after heavy post-pull warm (deal-board ~1450 listings, latest-hero RETS fetches) while the same heap still holds sync payloads — process restarts, /health 502s until listen is back, and boot ticks can skip Incremental because a refresh lock was left held. Prefer stripping or hard-capping warm work on mls-sync (RETS→Neon only) over only bumping heap size — which is now what the code does: `postHooks: false` on `source === \'railway\'` keeps board/stats warm out of the puller entirely, so the heap only ever holds one job’s payloads. See OOM, Railway mls-sync, postHooks.',
+  },
+  {
+    term: 'postHooks',
+    category: 'sync-admin',
+    definition:
+      'The switch on `syncIncrementalListings` that decides whether site caches warm in the same process that just pulled RETS. `true` (Netlify worker, Admin) runs the warm chain after the Neon upserts: latest town feeds, hero thumbnails, intelligence deal board, per-town stats cache. `false` stops at the Neon write and logs a `post-hooks-skip` step. It is the seam between “get the data” and “make the site fast,” and the reason the two now live in different hosts: Railway mls-sync sets it false so its heap only ever holds the pull, which is what ended the Node OOM crash loop. Netlify’s ≤30s scheduled fallback also sets it false for a different reason — no time. See Railway mls-sync, Node OOM, Side-work-only, Seam.',
+  },
+  {
+    term: 'Side-work-only',
+    category: 'sync-admin',
+    definition:
+      'A worker run that skips RETS entirely and does just the warm and digest half: latest town feeds, intelligence deal board, stats cache, spotlight statuses, saved-search alerts. Queued as `sideWorkOnly: true` on `/.netlify/functions/sync-listings-worker`. Two callers use it — Netlify’s thin cron after a lean in-process pull, and Railway mls-sync handing warm back to Netlify once its Neon write is done. If that handoff fails (missing NEXT_PUBLIC_SITE_URL / SYNC_CRON_SECRET on Railway, or a password gate), nothing breaks permanently: boards rebuild on the next stale read and digests catch up on the following run. Look for a `warm-handoff` step in the incremental step log to see which way it went. See postHooks, Railway mls-sync.',
   },
   {
     term: 'MLS_SYNC_SERVICE_URL',
@@ -960,6 +990,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'product',
     definition:
       'Email API used to deliver contact / list-with-me notifications.',
+  },
+  {
+    term: 'MX (Mail Exchanger)',
+    category: 'product',
+    definition:
+      'DNS record that tells the internet where to deliver mail for a domain — “Mail Exchanger,” not “mailbox.” Format is priority + hostname (lowest priority number wins). Separate from an inbox: the MX only routes; Gmail, Microsoft, Cloudflare Email Routing, etc. sit behind it. TMRE uses Resend to send (SPF/DKIM TXT records); receiving at fred@tmrebuilder.com is a different path and needs an MX that points at a receiver (Cloudflare Email Routing adds its own MX). Enabling Email Routing on the root domain replaces or competes with any existing MX — don’t enable it if that MX already feeds a real mailbox you care about. See Resend, DMARC.',
   },
   {
     term: 'DMARC',

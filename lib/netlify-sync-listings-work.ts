@@ -20,6 +20,7 @@ import {
   continueOrBeginIncrementalStepLog,
   finishIncrementalStepLog,
 } from '@/lib/incremental-sync-step-log'
+import type { NetlifyFunctionQueueResult } from '@/lib/netlify-sync-trigger'
 
 export const LAST_INCREMENTAL_CRON_TICK_KEY = 'last_incremental_cron_tick'
 
@@ -143,6 +144,52 @@ async function runIncrementalSideWork(): Promise<{
     console.warn('[sync-listings-work] stats cache rebuild failed', err)
   }
   return runSpotlightAndAlerts()
+}
+
+/**
+ * Lane 3 handoff — the Neon write is the boundary, so once Railway has upserted
+ * we ask Netlify to warm its own caches and run digests in its own process.
+ *
+ * Non-fatal by design: if the hop fails, stale-read rebuilds still refresh boards
+ * on first request and the next Netlify run picks up digests. Inventory truth is
+ * already in Neon either way.
+ */
+async function handOffWarmToNetlify(
+  startedAt: string,
+): Promise<NetlifyFunctionQueueResult> {
+  try {
+    const { queueNetlifyIncrementalSync } = await import(
+      '@/lib/netlify-sync-trigger'
+    )
+    const result = await queueNetlifyIncrementalSync(startedAt, {
+      sideWorkOnly: true,
+      source: 'railway',
+    })
+    if (result.ok) {
+      console.info(
+        `[sync-listings-work] warm handed off to Netlify via ${result.base}`,
+      )
+      await appendIncrementalStep('warm-handoff', `queued on ${result.base}`)
+      return result
+    }
+    console.warn(
+      `[sync-listings-work] warm handoff failed — ${result.error ?? 'unknown'} (set NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway; stale-read rebuild will cover boards)`,
+    )
+    await appendIncrementalStep(
+      'warm-handoff',
+      `failed — ${result.error ?? 'unknown'} · stale-read rebuild covers boards`,
+    )
+    return result
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    console.warn('[sync-listings-work] warm handoff threw', err)
+    try {
+      await appendIncrementalStep('warm-handoff', `failed — ${error}`)
+    } catch {
+      /* step log is best-effort */
+    }
+    return { ok: false, status: null, base: null, error }
+  }
 }
 
 /** Full incremental path — runs in the background worker (up to ~15 min). */
@@ -346,7 +393,9 @@ export async function runIncrementalSyncListingsWork(
               ? 'eventbridge'
               : options.source === 'watchdog'
                 ? 'watchdog'
-                : 'admin-manual',
+                : options.source === 'railway'
+                  ? 'railway-mls-sync'
+                  : 'admin-manual',
           plan: [] as const,
           steps: [] as const,
         }
@@ -420,8 +469,19 @@ export async function runIncrementalSyncListingsWork(
         liveTowns.join(', '),
       )
     }
+    /**
+     * Lane boundary. Railway mls-sync pulls RETS, writes Neon, and stops there:
+     * warming deal board / latest feeds / heroes / stats in the always-on puller
+     * is what Node-OOMed production. Netlify owns warm — see the handoff below.
+     *
+     * Keyed on the host process, not just the caller: Admin "Sync now" and the
+     * watchdog both POST /run on Railway with their own source, and those runs
+     * must stay just as lean as the service's own interval tick.
+     */
+    const inMlsSyncService = process.env.MLS_SYNC_SERVICE === '1'
+    const warmInProcess = !inMlsSyncService && options.source !== 'railway'
     const result = await syncIncrementalListings({
-      postHooks: true,
+      postHooks: warmInProcess,
       ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
       ...(statusScope ? { statusScope } : {}),
     })
@@ -470,8 +530,21 @@ export async function runIncrementalSyncListingsWork(
       console.warn('[sync-listings-work] Done/incremental audit failed', err)
     }
 
-    // RETS path already ran postHooks (board/stats); only digests remain.
-    const { savedSearchAlerts } = await runSpotlightAndAlerts()
+    // On Netlify the RETS path already ran postHooks (board/stats), so only
+    // digests remain. On Railway neither ran here — both belong to Netlify.
+    let savedSearchAlerts: {
+      checked: number
+      sent: number
+      listings: number
+    } | null = null
+    let warmHandoff: NetlifyFunctionQueueResult | null = null
+    if (warmInProcess) {
+      ;({ savedSearchAlerts } = await runSpotlightAndAlerts())
+    } else {
+      warmHandoff = await handOffWarmToNetlify(
+        result.finishedAt || new Date().toISOString(),
+      )
+    }
 
     const ok = result.towns.length === 0 || result.towns.every((row) => row.ok)
     if (ok && !skippedEmpty) {
@@ -486,6 +559,8 @@ export async function runIncrementalSyncListingsWork(
         source: fromExplicitRun
           ? (options.source ?? 'admin')
           : (options.source ?? 'cron'),
+        warmedInProcess: warmInProcess,
+        ...(warmHandoff ? { warmHandoff } : {}),
         savedSearchAlerts,
         stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped

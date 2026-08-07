@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getZipBoundaryRings } from '@/lib/zip-boundary-cache'
+import { hasZctaBoundary } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
  * Serve ZCTA outer rings from Postgres (`zip_boundaries`).
- * Missing zips are fetched once from Census TIGERweb and upserted.
+ * Genuine gaps are filled from Census TIGERweb within a short budget; zips
+ * without a ZCTA (PO-box zips) are reported as unmappable rather than fetched.
  *
  * GET /api/zip-boundaries?zips=06880,06840
  */
@@ -26,19 +28,26 @@ export async function GET(req: NextRequest) {
 
   // Cap to keep response/size bounded (All Towns + neighbors is well under this).
   const limited = zips.slice(0, 40)
-  const map = await getZipBoundaryRings(limited, { fetchMissing: true })
+  const unmappable = limited.filter((zip) => !hasZctaBoundary(zip))
+  const { rings, missing, complete } = await getZipBoundaryRings(limited, {
+    fetchMissing: true,
+  })
+
   const boundaries: Record<string, [number, number][][]> = {}
-  for (const [zip, rings] of map) {
-    boundaries[zip] = rings
+  for (const [zip, ringList] of rings) {
+    boundaries[zip] = ringList
   }
 
   return NextResponse.json(
-    { boundaries },
+    { boundaries, unmappable, missing },
     {
       headers: {
-        // Boundaries change rarely; browsers/CDN may cache briefly. Source of
-        // truth is Postgres; monthly sync refreshes rows.
-        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+        // Boundaries change rarely, so a complete answer caches hard. An
+        // incomplete one must not be pinned for a day — that turned a single
+        // slow Census call into 24 hours of blank maps.
+        'Cache-Control': complete
+          ? 'public, max-age=86400, stale-while-revalidate=604800'
+          : 'no-store',
       },
     },
   )

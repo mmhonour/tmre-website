@@ -233,6 +233,8 @@ export type IncrementalQueueSource =
   | 'netlify-sync-trigger'
   | 'watchdog'
   | 'eventbridge'
+  /** Railway mls-sync asking Netlify to warm site caches after its Neon write. */
+  | 'railway'
 
 export function queueNetlifyIncrementalSync(
   startedAt?: string,
@@ -311,11 +313,24 @@ export function queueNetlifyMarketDigest(options?: {
   force?: boolean
   stampWeek?: boolean
 }): Promise<NetlifyFunctionQueueResult> {
-  return queueNetlifyFunction('/.netlify/functions/market-digest-worker', {
+  const body: {
+    source: string
+    force?: boolean
+    stampWeek?: boolean
+  } = {
     source: options?.source ?? 'netlify-sync-trigger',
-    force: options?.force === true,
-    stampWeek: options?.stampWeek === true,
-  })
+  }
+  // Only send these when callers set them. Defaulting stampWeek:false made the
+  // scheduled digest send without writing market_digest_last_week_key, so the
+  // */30 cron re-sent every half hour all day.
+  if (options?.force === true) body.force = true
+  if (typeof options?.stampWeek === 'boolean') {
+    body.stampWeek = options.stampWeek
+  }
+  return queueNetlifyFunction(
+    '/.netlify/functions/market-digest-worker',
+    body,
+  )
 }
 
 export function queueNetlifyFomcSync(options?: {
