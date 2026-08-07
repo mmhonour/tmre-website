@@ -47,7 +47,15 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     role: "Next.js host, serverless functions, crons, Blobs",
     kind: "core",
     note:
-      "Thin crons skip jobs whose Configure Scheduler is EventBridge; ingress lands on eventbridge-sync-ingress.",
+      "Lane 3: site-cache warm + digests (sideWorkOnly after Railway handoff). Not the preferred Incremental RETS puller — that is Railway mls-sync.",
+  },
+  {
+    id: "railway",
+    label: "Railway mls-sync",
+    role: "Always-on Incremental RETS → Neon puller",
+    kind: "core",
+    note:
+      "Lane 1: RETS pull only (MLS_SYNC_SERVICE=1, postHooks:false). Lane 2 handoff is the Neon End/heartbeat write. Queues Netlify sideWorkOnly for Lane 3 warm.",
   },
   {
     id: "eventbridge",
@@ -55,20 +63,22 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     role: "Optional sync alarm clock (Scheduler)",
     kind: "optional",
     note:
-      "Side-by-side with Netlify cron. Admin Configure Scheduler radio per job; hits eventbridge-sync-ingress with SYNC_CRON_SECRET. Migrate Incremental first.",
+      "Legacy side-by-side with Netlify cron. Prefer Configure → Incremental → Railway. Hits eventbridge-sync-ingress with SYNC_CRON_SECRET.",
   },
   {
     id: "neon",
     label: "Neon Postgres",
     role: "Listings, sync_meta, stats_cache, visitors, alerts",
     kind: "core",
-    note: "Shared by Netlify + local when DATABASE_URL points here",
+    note:
+      "Lane 2 handoff — inventory truth for Netlify + local. Shared when DATABASE_URL points here. Website never needs Railway up to know what’s listed.",
   },
   {
     id: "rets",
     label: "SmartMLS RETS",
     role: "MLS listings, photos metadata, history",
     kind: "core",
+    note: "Pulled by Railway mls-sync (preferred). Netlify worker RETS is legacy/fallback.",
   },
   {
     id: "r2",
@@ -141,10 +151,16 @@ export const SITE_ARCH_EDGES: SiteArchEdge[] = [
   {
     from: "eventbridge",
     to: "netlify",
-    label: "HTTPS ingress (jobs on EventBridge)",
+    label: "HTTPS ingress (legacy jobs)",
   },
-  { from: "netlify", to: "neon", label: "SQL" },
-  { from: "netlify", to: "rets", label: "RETS sync" },
+  { from: "railway", to: "rets", label: "Lane 1 RETS pull" },
+  { from: "railway", to: "neon", label: "Lane 2 upsert · End · heartbeat" },
+  {
+    from: "railway",
+    to: "netlify",
+    label: "Lane 3 warm handoff (sideWorkOnly)",
+  },
+  { from: "netlify", to: "neon", label: "SQL · warm caches · digests" },
   { from: "netlify", to: "r2", label: "photos" },
   { from: "netlify", to: "blobs", label: "checkpoint" },
   { from: "netlify", to: "resend", label: "email" },

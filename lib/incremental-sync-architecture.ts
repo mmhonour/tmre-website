@@ -1,7 +1,13 @@
 /**
  * Hand-maintained Incremental architecture for Admin → Syncs → Dashboard.
- * Keep in sync with netlify/functions/sync-listings*.ts, incremental-sync-watchdog.ts,
- * eventbridge-sync-ingress.ts, and the Dashboard clocks (Start / End / Status / Cron last fired).
+ * Keep in sync with services/mls-sync/server.ts, lib/netlify-sync-listings-work.ts,
+ * netlify/functions/sync-listings*.ts, incremental-sync-watchdog.ts,
+ * eventbridge-sync-ingress.ts, and the Dashboard clocks.
+ *
+ * Ownership (Aug 2026 lean split):
+ *   Lane 1 — Railway mls-sync: RETS → Neon only (postHooks:false via MLS_SYNC_SERVICE=1)
+ *   Lane 2 — Neon write is the handoff (End / heartbeat); site never needs Railway for truth
+ *   Lane 3 — Netlify owns warm (sideWorkOnly after handoff, or stale-read rebuild)
  */
 
 export type IncrementalArchNode = {
@@ -9,7 +15,7 @@ export type IncrementalArchNode = {
   title: string
   detail: string
   /** Visual lane for the diagram. */
-  lane: 'admin' | 'cron' | 'worker' | 'data' | 'public'
+  lane: 'admin' | 'railway' | 'cron' | 'worker' | 'data' | 'public'
 }
 
 export type IncrementalArchEdge = {
@@ -25,53 +31,95 @@ export type IncrementalArchClock = {
   meaning: string
 }
 
+export type IncrementalArchOwnershipLane = {
+  id: string
+  title: string
+  host: string
+  owns: string
+  doesNot: string
+}
+
 export function describeIncrementalSyncArchitecture(): {
   title: string
   subtitle: string
+  ownership: IncrementalArchOwnershipLane[]
   clocks: IncrementalArchClock[]
   nodes: IncrementalArchNode[]
   edges: IncrementalArchEdge[]
   notes: string[]
 } {
   return {
-    title: 'Incremental update — cron vs Admin vs EventBridge',
+    title: 'Incremental update — Railway pull · Neon handoff · Netlify warm',
     subtitle:
-      'How Netlify schedules and (optionally) AWS EventBridge pull MLS, what the Dashboard clocks mean, and what Sync now does.',
+      'Preferred path: Railway mls-sync pulls RETS into Neon (Lane 1), Neon End/heartbeat is inventory truth (Lane 2), Netlify warms boards/feeds/stats and digests (Lane 3). Netlify cron / EventBridge remain legacy fallbacks.',
+    ownership: [
+      {
+        id: 'lane-1',
+        title: 'Lane 1 — RETS pull',
+        host: 'Railway mls-sync',
+        owns: 'Open RETS → modified-since pull (7 towns) → upsert listings → stamp End + last_mls_sync_heartbeat → logout (auto). Admin Sync now / watchdog POST /run stay lean via MLS_SYNC_SERVICE=1.',
+        doesNot:
+          'Deal board, latest town feeds, hero thumbnails, stats_cache rebuild, spotlight/alerts digests — those Node-OOMed this process when postHooks stayed true.',
+      },
+      {
+        id: 'lane-2',
+        title: 'Lane 2 — Neon handoff',
+        host: 'Neon Postgres',
+        owns: 'listings rows + sync_meta (last_incremental_sync End, last_incremental_sync_started, last_mls_sync_heartbeat). Website and Admin read inventory truth here only — never need Railway up for “what’s on the market.”',
+        doesNot:
+          'Site-cache warm. A healthy End with a quiet Railway still means Neon is the source of truth until the next pull.',
+      },
+      {
+        id: 'lane-3',
+        title: 'Lane 3 — Site warm',
+        host: 'Netlify',
+        owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses, saved-search alerts. Also stale-read rebuild if the handoff hop fails.',
+        doesNot:
+          'Primary Incremental RETS pull when Scheduler is Railway. Thin cron / EventBridge / Netlify worker RETS paths are legacy or fallback only.',
+      },
+    ],
     clocks: [
+      {
+        id: 'railway-heartbeat',
+        label: 'Railway heartbeat',
+        metaKey: 'last_mls_sync_heartbeat',
+        meaning:
+          'mls-sync process stamped Neon (boot + each run). Peace-of-mind that Railway is alive — not the same as End advancing with upserts.',
+      },
       {
         id: 'cron-tick',
         label: 'Cron last fired',
         metaKey: 'last_incremental_cron_tick',
         meaning:
-          'Thin */30 schedule woke up (heartbeat). Does not mean RETS finished or End moved. Still stamps when Scheduler is EventBridge (skip after heartbeat). Hidden on Dashboard when Scheduler is EventBridge — see EventBridge last fired instead.',
+          'Thin */30 schedule woke up (heartbeat). Legacy when Scheduler is Railway — does not mean RETS finished. Hidden on Dashboard when Scheduler is EventBridge.',
       },
       {
         id: 'eventbridge-ingress',
         label: 'EventBridge last fired',
         metaKey: 'last_eventbridge_ingress_at_incremental',
         meaning:
-          'HTTP hit to eventbridge-sync-ingress for Incremental (AWS schedule, Send events, or API destination). Stamps even on skip / 401. Companion result line: last_eventbridge_ingress_result_incremental (queued / skipped: … / unauthorized · HTTP n).',
+          'HTTP hit to eventbridge-sync-ingress for Incremental (legacy optional alarm). Prefer Railway service for Incremental.',
       },
       {
         id: 'start',
         label: 'Start',
         metaKey: 'last_incremental_sync_started',
         meaning:
-          'When a worker was last queued (or Sync now pressed). Can advance on a 202 ack even if town pulls never start.',
+          'When a pull last began (Railway /run or queued worker). Can advance before town upserts finish.',
       },
       {
         id: 'status-live',
         label: 'Status (live)',
         metaKey: 'incremental_sync_live',
         meaning:
-          'Queued… / Fetching {town}… / post-hooks. Cleared when RETS finishes, or when Queued is dead (~8m) / End is stale.',
+          'Queued… / Fetching {town}… / post-hooks / warm-handoff. Cleared when the run finishes, or when Queued is dead (~8m) / End is stale.',
       },
       {
         id: 'end',
         label: 'End / Last pull',
         metaKey: 'last_incremental_sync',
         meaning:
-          'Last finished RETS pull — must move ~every 30m. Never cleared at queue/start (only overwritten on finish). Null/stale End = broken Incremental; AWS “last fired” alone is not success. /latest Last pull uses this key only (no Jul full-sync fallback).',
+          'Last finished RETS→Neon write — must move on the Railway interval (~30m). Trust this for inventory freshness. /latest Last pull uses this key only.',
       },
     ],
     nodes: [
@@ -80,90 +128,100 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'admin',
         title: 'You (Admin Dashboard)',
         detail:
-          'Read Start / End / Status / Scheduler. Sync now queues the same background worker (source=admin) and bypasses pause / Next-defer / frequency / provider gates.',
+          'Read Start / End / Status / Railway heartbeat / Scheduler. Sync now POSTs Railway /run when Scheduler is Railway (source=admin) — pull stays lean; warm still hands off to Netlify.',
       },
       {
         id: 'configure',
         lane: 'admin',
         title: 'Configure',
         detail:
-          'Pause, Scheduler radio (Netlify cron | EventBridge), frequency, Start time (ET), Next override. Only the chosen alarm may start the job.',
+          'Scheduler radio: Railway service (preferred) | Netlify cron | EventBridge. Pause / Next / frequency apply to Netlify/EB paths; Railway is its own clock (interval + /run).',
+      },
+      {
+        id: 'railway',
+        lane: 'railway',
+        title: 'Railway mls-sync (Lane 1)',
+        detail:
+          'Always-on Node (services/mls-sync). Sets MLS_SYNC_SERVICE=1 → runIncrementalSyncListingsWork with postHooks:false. Interval (~30m) + POST /run. Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, NEXT_PUBLIC_SITE_URL (warm handoff).',
+      },
+      {
+        id: 'handoff',
+        lane: 'railway',
+        title: 'Warm handoff',
+        detail:
+          'After Neon upserts: queue Netlify sync-listings-worker with sideWorkOnly + source=railway. Non-fatal — look for warm-handoff in the step log. Needs NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway.',
       },
       {
         id: 'thin-cron',
         lane: 'cron',
-        title: 'sync-listings (*/30)',
+        title: 'sync-listings (*/30) — legacy',
         detail:
-          '≤30s. Stamp Cron last fired → skip if Scheduler=EventBridge → due gates → POST sync-listings-worker. On 202: stamp Start + Status Queued.',
+          '≤30s Netlify path when Scheduler is still Netlify. Stamp Cron last fired → queue worker. Skips Incremental work when Scheduler is Railway/EventBridge (after heartbeat where applicable).',
       },
       {
         id: 'eventbridge',
         lane: 'cron',
-        title: 'AWS EventBridge Scheduler',
+        title: 'AWS EventBridge — legacy optional',
         detail:
-          'Optional alarm (us-east-1). HTTP POST eventbridge-sync-ingress with Bearer SYNC_CRON_SECRET + { "job": "incremental" }. Runs only when Configure Scheduler is EventBridge.',
-      },
-      {
-        id: 'ingress',
-        lane: 'cron',
-        title: 'eventbridge-sync-ingress',
-        detail:
-          'Auth → provider/pause/Next gates → queue sync-listings-worker (source=eventbridge). No Frequency re-check — EventBridge is the clock.',
+          'Optional alarm → eventbridge-sync-ingress → queue worker. Prefer flipping Configure → Railway instead of dual-firing with mls-sync.',
       },
       {
         id: 'watchdog',
         lane: 'cron',
         title: 'sync-listings-watchdog (*/15)',
         detail:
-          'If End older than ~70m and not paused and Scheduler is still Netlify: clear dead Queued, re-queue worker (source=watchdog). Skips when EventBridge owns Incremental.',
+          'If End older than ~70m and Scheduler is Netlify: re-queue worker. When Scheduler is Railway, heal via mls-sync /run or Admin Sync now — not this Netlify watchdog.',
       },
       {
-        id: 'worker',
+        id: 'worker-warm',
         lane: 'worker',
-        title: 'sync-listings-worker (background)',
+        title: 'sync-listings-worker sideWorkOnly (Lane 3)',
         detail:
-          '≤~15m. Auth with SYNC_CRON_SECRET → syncIncrementalListings (7 towns modified-since) → digests / board / stats warm. Clears live Status in finally.',
+          'Netlify background ≤~15m. No RETS. Latest feeds, deal board, stats cache, spotlight + saved-search digests. Queued by Railway handoff (source=railway) or thin-cron lean fallback.',
       },
       {
-        id: 'lean',
+        id: 'worker-rets',
         lane: 'worker',
-        title: 'Lean fallback (in thin cron)',
+        title: 'sync-listings-worker full RETS — legacy',
         detail:
-          'RETS without heavy post-hooks when the HTTP queue hop fails or a dead Queued hop is detected — keeps End moving (Netlify path).',
+          'Netlify background with postHooks:true when Scheduler is still Netlify/EventBridge. Not the preferred Incremental path once Railway owns the pull.',
       },
       {
         id: 'neon',
         lane: 'data',
-        title: 'Neon Postgres',
+        title: 'Neon Postgres (Lane 2)',
         detail:
-          'listings upserts + sync_meta clocks (incl. sync_schedule_config.scheduler) + sync_runs history. Survives deploys.',
+          'listings upserts + sync_meta clocks (End, Start, heartbeat, schedule) + sync_runs. Survives deploys. Inventory truth for the website.',
       },
       {
         id: 'latest',
         lane: 'public',
-        title: '/latest (30 on 30)',
+        title: '/latest · /intelligence',
         detail:
-          'Reads Postgres / warm feed cache — never calls RETS on page view. Fresh only after End advances and caches rebuild.',
+          'Read Neon + warm caches — never call RETS on page view. Boards refresh from Lane 3 warm or stale-read rebuild after End advances.',
       },
     ],
     edges: [
-      { from: 'you', to: 'worker', label: 'Sync now → queue (admin)' },
-      { from: 'configure', to: 'thin-cron', label: 'pause / due / Next / provider' },
-      { from: 'configure', to: 'eventbridge', label: 'Scheduler = EventBridge' },
-      { from: 'thin-cron', to: 'worker', label: 'HTTP 202 queue (cron)' },
-      { from: 'thin-cron', to: 'lean', label: 'queue fail or dead Queued' },
-      { from: 'eventbridge', to: 'ingress', label: 'HTTPS + secret' },
-      { from: 'ingress', to: 'worker', label: 'queue (eventbridge)' },
-      { from: 'watchdog', to: 'worker', label: 're-queue if End stale (Netlify only)' },
-      { from: 'worker', to: 'neon', label: 'RETS → upsert → End' },
-      { from: 'lean', to: 'neon', label: 'RETS lean → End' },
-      { from: 'neon', to: 'latest', label: 'feed warm / page read' },
+      { from: 'you', to: 'railway', label: 'Sync now → POST /run (admin)' },
+      { from: 'configure', to: 'railway', label: 'Scheduler = Railway' },
+      { from: 'configure', to: 'thin-cron', label: 'Scheduler = Netlify (legacy)' },
+      { from: 'configure', to: 'eventbridge', label: 'Scheduler = EventBridge (legacy)' },
+      { from: 'railway', to: 'neon', label: 'Lane 1: RETS → upsert → End + heartbeat' },
+      { from: 'railway', to: 'handoff', label: 'postHooks skip' },
+      { from: 'handoff', to: 'worker-warm', label: 'Lane 3: sideWorkOnly queue' },
+      { from: 'worker-warm', to: 'neon', label: 'stats_cache / digests write' },
+      { from: 'thin-cron', to: 'worker-rets', label: 'HTTP 202 queue (legacy)' },
+      { from: 'eventbridge', to: 'worker-rets', label: 'ingress → queue (legacy)' },
+      { from: 'watchdog', to: 'worker-rets', label: 're-queue if End stale (Netlify only)' },
+      { from: 'worker-rets', to: 'neon', label: 'RETS + postHooks (legacy)' },
+      { from: 'neon', to: 'latest', label: 'Lane 2→public: feed / board read' },
     ],
     notes: [
-      '202 Accepted ≠ RETS ran. Status can say Queued… while End stays on the prior finished pull.',
-      'Cron last fired can look healthy every 30m even when End is hours old — trust End for inventory freshness.',
-      'When Scheduler is EventBridge, Netlify thin cron and watchdog must not also queue Incremental (no dual-fire). Flip radio back to Netlify to fall back.',
-      'Netlify is serverless: redeploy ships code; it does not clear sync_meta. Use Sync now or wait for watchdog/cron/EventBridge heal.',
+      'Lane boundary: MLS_SYNC_SERVICE=1 on Railway forces postHooks:false for every /run (Admin, watchdog, interval) — source alone was not enough.',
+      '202 Accepted / warm-handoff failed ≠ inventory loss. Trust End + listings rows; boards rebuild on stale read if the hop fails.',
+      'Prefer Configure → Incremental → Railway. Avoid dual-fire with Netlify cron or EventBridge while mls-sync is the clock.',
+      'Admin Pause / Next / not-due do not stop Railway’s interval today — Railway is an explicit run. Policy gap tracked separately.',
+      'People / PTA migrations on main are inert until db:migrate runs against Neon — Netlify does not auto-migrate on deploy.',
     ],
   }
 }

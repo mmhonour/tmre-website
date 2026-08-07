@@ -1,7 +1,7 @@
 import { describeIncrementalSyncArchitecture } from "@/lib/incremental-sync-architecture";
 
 const LANE_STYLES: Record<
-  "admin" | "cron" | "worker" | "data" | "public",
+  "admin" | "railway" | "cron" | "worker" | "data" | "public",
   { label: string; border: string; bg: string }
 > = {
   admin: {
@@ -9,18 +9,23 @@ const LANE_STYLES: Record<
     border: "border-navy/25",
     bg: "bg-navy/[0.04]",
   },
+  railway: {
+    label: "Lane 1 — Railway mls-sync (RETS → Neon)",
+    border: "border-coral/35",
+    bg: "bg-coral/[0.07]",
+  },
   cron: {
-    label: "Schedule (Netlify / EventBridge)",
+    label: "Legacy schedule (Netlify / EventBridge)",
     border: "border-gold/40",
     bg: "bg-gold/[0.08]",
   },
   worker: {
-    label: "Background / RETS",
+    label: "Lane 3 — Netlify warm / legacy RETS worker",
     border: "border-sage/35",
     bg: "bg-sage/[0.08]",
   },
   data: {
-    label: "Postgres",
+    label: "Lane 2 — Neon Postgres (handoff / truth)",
     border: "border-sky/35",
     bg: "bg-sky/[0.08]",
   },
@@ -32,12 +37,13 @@ const LANE_STYLES: Record<
 };
 
 /**
- * Syncs → Dashboard diagram: Incremental clocks, cron hop, and Admin Sync now.
+ * Syncs → Dashboard diagram: Railway lean pull, Neon handoff, Netlify warm.
  */
 export default function AdminIncrementalArchitectureDiagram() {
   const arch = describeIncrementalSyncArchitecture();
   const byLane = {
     admin: arch.nodes.filter((n) => n.lane === "admin"),
+    railway: arch.nodes.filter((n) => n.lane === "railway"),
     cron: arch.nodes.filter((n) => n.lane === "cron"),
     worker: arch.nodes.filter((n) => n.lane === "worker"),
     data: arch.nodes.filter((n) => n.lane === "data"),
@@ -57,6 +63,36 @@ export default function AdminIncrementalArchitectureDiagram() {
       </div>
 
       <div className="space-y-6 px-5 py-5 sm:px-6">
+        {/* Ownership lanes 1 / 2 / 3 */}
+        <div>
+          <p className="mb-2 font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45">
+            Ownership split (who does what)
+          </p>
+          <ul className="grid gap-2 lg:grid-cols-3">
+            {arch.ownership.map((lane) => (
+              <li
+                key={lane.id}
+                className="rounded-xl border border-charcoal/[0.08] bg-cream/30 px-3.5 py-3"
+              >
+                <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
+                  {lane.title}
+                </p>
+                <p className="mt-1 font-mono text-[10px] tracking-[0.08em] uppercase text-gold">
+                  {lane.host}
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-slate">
+                  <span className="font-medium text-navy/80">Owns: </span>
+                  {lane.owns}
+                </p>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate/80">
+                  <span className="font-medium text-coral/90">Does not: </span>
+                  {lane.doesNot}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         {/* Dashboard clocks */}
         <div>
           <p className="mb-2 font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45">
@@ -91,7 +127,14 @@ export default function AdminIncrementalArchitectureDiagram() {
           </p>
           <div className="space-y-3">
             {(
-              ["admin", "cron", "worker", "data", "public"] as const
+              [
+                "admin",
+                "railway",
+                "data",
+                "worker",
+                "cron",
+                "public",
+              ] as const
             ).map((lane) => {
               const style = LANE_STYLES[lane];
               const nodes = byLane[lane];
@@ -136,7 +179,9 @@ export default function AdminIncrementalArchitectureDiagram() {
                   key={`${edge.from}-${edge.to}-${edge.label}`}
                   className="font-mono text-[11px] leading-snug text-navy/85"
                 >
-                  <span className="text-charcoal/45">{from?.title ?? edge.from}</span>
+                  <span className="text-charcoal/45">
+                    {from?.title ?? edge.from}
+                  </span>
                   <span className="mx-1.5 text-gold">→</span>
                   <span>{to?.title ?? edge.to}</span>
                   <span className="mt-0.5 block text-[10px] font-sans normal-case tracking-normal text-slate">

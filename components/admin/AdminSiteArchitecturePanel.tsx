@@ -214,7 +214,7 @@ export default function AdminSiteArchitecturePanel() {
 
               <LaneLabel x={36} y={58} text="CLIENTS" />
               <LaneLabel x={36} y={162} text="EDGE · DOMAIN / CDN" />
-              <LaneLabel x={36} y={266} text="APP HOST" />
+              <LaneLabel x={36} y={266} text="APP HOST · PULLER" />
               <LaneLabel x={36} y={382} text="DATA · MLS · PHOTOS" />
               <LaneLabel x={36} y={558} text="NOTIFY · GEO · ENRICHMENT" />
 
@@ -265,28 +265,39 @@ export default function AdminSiteArchitecturePanel() {
                 title="Some setups point the domain straight at Netlify without a CDN proxy."
               />
 
-              {/* App host + optional AWS alarm */}
+              {/* App host: Netlify (Lane 3) · Railway (Lane 1) · EventBridge (legacy) */}
               <Box
                 id="netlify"
-                x={120}
-                y={264}
-                w={360}
-                h={60}
+                x={40}
+                y={258}
+                w={280}
+                h={72}
                 label="Netlify"
-                role="Next.js · functions · crons · Blobs"
+                role="Lane 3 · site · warm · digests"
                 kind="core"
-                title="Netlify — Next.js site, serverless API routes, scheduled sync jobs, Netlify Blobs. Thin crons skip jobs whose Configure Scheduler is EventBridge."
+                title="Netlify — Next.js site, serverless functions, Blobs. Lane 3: sideWorkOnly warm (latest feeds, deal board, stats, digests) after Railway handoff. Not the preferred Incremental RETS puller."
+              />
+              <Box
+                id="railway"
+                x={350}
+                y={258}
+                w={300}
+                h={72}
+                label="Railway mls-sync"
+                role="Lane 1 · RETS → Neon only"
+                kind="core"
+                title="Railway mls-sync — always-on Incremental puller. MLS_SYNC_SERVICE=1 forces postHooks:false. Writes Neon End/heartbeat (Lane 2), then queues Netlify sideWorkOnly for warm (Lane 3)."
               />
               <Box
                 id="eventbridge"
-                x={520}
-                y={264}
-                w={360}
-                h={60}
+                x={680}
+                y={258}
+                w={260}
+                h={72}
                 label="AWS EventBridge"
-                role="Scheduler · optional alarm clock"
+                role="Legacy optional alarm"
                 kind="optional"
-                title="AWS EventBridge Scheduler — side-by-side with Netlify cron. Per-job radio on Admin → Syncs → Configure. HTTP POST eventbridge-sync-ingress with SYNC_CRON_SECRET + { job }."
+                title="AWS EventBridge Scheduler — legacy side-by-side with Netlify cron. Prefer Configure → Incremental → Railway."
               />
 
               {/* Data plane */}
@@ -297,9 +308,9 @@ export default function AdminSiteArchitecturePanel() {
                 w={220}
                 h={72}
                 label="Neon"
-                role="Postgres · Netlify + local"
+                role="Lane 2 · inventory truth"
                 kind="core"
-                title="Neon Postgres — shared by Netlify + local when DATABASE_URL points here. Listings, sync_meta, stats_cache, visitors, alerts."
+                title="Neon Postgres — Lane 2 handoff. listings + sync_meta End/heartbeat. Shared by Netlify + local + Railway when DATABASE_URL points here. Website never needs Railway up to know what’s listed."
               />
               <Box
                 id="rets"
@@ -308,8 +319,9 @@ export default function AdminSiteArchitecturePanel() {
                 w={200}
                 h={56}
                 label="SmartMLS RETS"
-                role="MLS listings feed"
+                role="MLS · pulled by Railway"
                 kind="core"
+                title="SmartMLS RETS — pulled by Railway mls-sync (preferred). Netlify worker RETS is legacy/fallback."
               />
               <Box
                 id="r2"
@@ -399,45 +411,53 @@ export default function AdminSiteArchitecturePanel() {
               <Arrow x1={490} y1={108} x2={230} y2={160} label="DNS" dashed />
               <Arrow x1={490} y1={108} x2={530} y2={160} dashed />
               <Arrow x1={490} y1={108} x2={820} y2={160} dashed />
-              <Arrow x1={230} y1={212} x2={280} y2={264} dashed />
-              <Arrow x1={530} y1={212} x2={300} y2={264} label="HTTPS" />
-              <Arrow x1={820} y1={212} x2={340} y2={264} dashed />
+              <Arrow x1={230} y1={212} x2={180} y2={258} dashed />
+              <Arrow x1={530} y1={212} x2={180} y2={258} label="HTTPS" />
+              <Arrow x1={820} y1={212} x2={200} y2={258} dashed />
 
               <Arrow
-                x1={700}
+                x1={680}
                 y1={294}
-                x2={480}
+                x2={320}
                 y2={294}
-                label="ingress"
+                label="ingress (legacy)"
                 dashed
               />
+              <Arrow
+                x1={350}
+                y1={294}
+                x2={320}
+                y2={294}
+                label="warm handoff"
+              />
 
-              <Arrow x1={240} y1={324} x2={158} y2={392} label="SQL" />
-              <Arrow x1={300} y1={324} x2={380} y2={400} label="sync" />
-              <Arrow x1={360} y1={324} x2={612} y2={400} label="photos" />
-              <Arrow x1={400} y1={324} x2={830} y2={400} dashed />
+              <Arrow x1={180} y1={330} x2={158} y2={392} label="SQL · warm" />
+              <Arrow x1={500} y1={330} x2={158} y2={392} label="Lane 2 End" />
+              <Arrow x1={500} y1={330} x2={380} y2={400} label="Lane 1 RETS" />
+              <Arrow x1={200} y1={330} x2={612} y2={400} label="photos" />
+              <Arrow x1={220} y1={330} x2={830} y2={400} dashed />
 
-              <Arrow x1={220} y1={324} x2={123} y2={576} />
-              <Arrow x1={260} y1={324} x2={286} y2={576} dashed />
-              <Arrow x1={300} y1={324} x2={449} y2={576} />
-              <Arrow x1={340} y1={324} x2={607} y2={576} />
-              <Arrow x1={380} y1={324} x2={750} y2={576} dashed />
-              <Arrow x1={420} y1={324} x2={888} y2={576} dashed />
+              <Arrow x1={160} y1={330} x2={123} y2={576} />
+              <Arrow x1={180} y1={330} x2={286} y2={576} dashed />
+              <Arrow x1={200} y1={330} x2={449} y2={576} />
+              <Arrow x1={220} y1={330} x2={607} y2={576} />
+              <Arrow x1={240} y1={330} x2={750} y2={576} dashed />
+              <Arrow x1={260} y1={330} x2={888} y2={576} dashed />
             </svg>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <NoteCard
+              title="Lane split (Incremental)"
+              body="Lane 1 Railway mls-sync: RETS → Neon only (postHooks:false). Lane 2 Neon: End/heartbeat is inventory truth — the site never needs Railway up to know what’s listed. Lane 3 Netlify: sideWorkOnly warm (feeds, deal board, stats, digests) after the handoff."
+            />
+            <NoteCard
               title="In your list"
-              body="Netlify (host + functions + crons), Neon (Postgres — shared by Netlify + local when DATABASE_URL points here), Cloudflare R2 (photos), Resend (email). GoDaddy / Cloudflare DNS are edge pieces outside the repo — shown dashed if you use them for the domain."
+              body="Netlify (site + Lane 3 warm), Railway mls-sync (Lane 1 pull), Neon (Lane 2 truth), Cloudflare R2 (photos), Resend (email). GoDaddy / Cloudflare DNS are edge pieces outside the repo."
             />
             <NoteCard
-              title="Also in production paths"
-              body="SmartMLS RETS (MLS), Census TIGERweb (zip rings), OpenStreetMap tiles, Netlify Blobs (legacy photo/progress), Twilio (deploy SMS when enabled)."
-            />
-            <NoteCard
-              title="Optional / config"
-              body="AWS EventBridge Scheduler (side-by-side sync alarm — Configure Scheduler radio; HTTP to eventbridge-sync-ingress). ipapi.co, Vision Appraisal, GreatSchools, OpenAI. Social profile slots are stored in Admin but posting APIs are not wired."
+              title="Also / optional"
+              body="SmartMLS RETS (pulled by Railway), Census TIGERweb, OSM tiles, Netlify Blobs, Twilio. EventBridge is a legacy optional alarm — prefer Configure → Incremental → Railway. ipapi, Vision, GreatSchools, OpenAI remain optional enrichment."
             />
           </div>
 
