@@ -37,7 +37,7 @@ export type AllTownsDescriptorRequest = {
     minBedrooms: number;
     minBathrooms: number;
     exactBeds: boolean;
-    newConstructionOnly: boolean;
+    newConstructionFilter: string;
     minPrice?: number;
     maxPrice?: number | null;
   };
@@ -183,7 +183,11 @@ export async function generateAllTownsDescriptorWithAI(
     payload.filterContext.saleProperty !== "all"
       ? payload.filterContext.saleProperty
       : null,
-    payload.filterContext.newConstructionOnly ? "new construction" : null,
+    payload.filterContext.newConstructionFilter === "new"
+      ? "new construction"
+      : payload.filterContext.newConstructionFilter === "not-new"
+        ? "not new construction"
+        : null,
     payload.filterContext.minBedrooms > 0 ? "bedrooms filtered" : null,
     payload.filterContext.minBathrooms > 0 ? "bathrooms filtered" : null,
     payload.filterContext.minPrice && payload.filterContext.minPrice > 0

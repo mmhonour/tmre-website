@@ -162,7 +162,7 @@ const CLS_VALUES = ["all", "residential", "commercial"] as const;
 const MIN_BED_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
 const MIN_BATH_VALUES = ["0", "1", "2", "3", "4", "5", "6"] as const;
 const SALE_PROPERTY_VALUES = ["all", "homes", "multi", "condos"] as const;
-const NEW_CONSTRUCTION_VALUES = ["all", "new"] as const;
+const NEW_CONSTRUCTION_VALUES = ["all", "new", "not-new"] as const;
 const FURNISHED_FILTER_VALUES = ["all", ...LISTING_FURNISHED_VALUES] as const;
 const FURNISHED_SLIDER_MAX = FURNISHED_FILTER_VALUES.length - 1;
 
@@ -194,7 +194,7 @@ type IntelCity = (typeof INTEL_CITIES)[number];
 /** Market positioning copy — separate from offline mock data. */
 const TOWN_TAGLINES = TOWN_MARKET_TAGLINES;
 
-type IntelDescriptorPartKind = "town" | "tx" | "cls" | "plain";
+type IntelDescriptorPartKind = "town" | "tx" | "cls" | "construction" | "plain";
 
 type IntelDescriptorPart = {
   kind: IntelDescriptorPartKind;
@@ -207,7 +207,7 @@ function intelFilterDescriptorParts({
   tx,
   cls,
   saleProperty,
-  newConstructionOnly,
+  newConstructionFilter,
   boardStatusFilter,
   furnishedFilter,
 }: {
@@ -216,7 +216,7 @@ function intelFilterDescriptorParts({
   tx: TxFilter;
   cls: ClsFilter;
   saleProperty: SalePropertyFilter;
-  newConstructionOnly: boolean;
+  newConstructionFilter: NewConstructionFilter;
   boardStatusFilter: BoardStatusFilter;
   furnishedFilter: FurnishedFilter;
 }): IntelDescriptorPart[] {
@@ -248,7 +248,11 @@ function intelFilterDescriptorParts({
     parts.push({ kind: "plain", label: furnishedFilter });
   }
 
-  if (newConstructionOnly) parts.push({ kind: "plain", label: "New construction" });
+  if (newConstructionFilter === "new") {
+    parts.push({ kind: "construction", label: "New" });
+  } else if (newConstructionFilter === "not-new") {
+    parts.push({ kind: "construction", label: "Not New" });
+  }
 
   if (boardStatusFilter === "new") parts.push({ kind: "plain", label: "New listings" });
   else if (boardStatusFilter === "reduced") {
@@ -284,11 +288,13 @@ function IntelDescriptorContext({
   onTownClick,
   onTxClick,
   onClsClick,
+  onConstructionClick,
 }: {
   parts: IntelDescriptorPart[];
   onTownClick?: () => void;
   onTxClick?: () => void;
   onClsClick?: () => void;
+  onConstructionClick?: () => void;
 }) {
   return (
     <>
@@ -296,7 +302,8 @@ function IntelDescriptorContext({
         const interactive =
           (part.kind === "town" && onTownClick != null) ||
           (part.kind === "tx" && onTxClick != null) ||
-          (part.kind === "cls" && onClsClick != null);
+          (part.kind === "cls" && onClsClick != null) ||
+          (part.kind === "construction" && onConstructionClick != null);
         const onClick =
           part.kind === "town"
             ? onTownClick
@@ -304,7 +311,9 @@ function IntelDescriptorContext({
               ? onTxClick
               : part.kind === "cls"
                 ? onClsClick
-                : undefined;
+                : part.kind === "construction"
+                  ? onConstructionClick
+                  : undefined;
         return (
           <Fragment key={`${part.kind}-${part.label}-${index}`}>
             {interactive && onClick ? (
@@ -455,7 +464,7 @@ type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft" | "furnishe
 type ExposedIntelSliders = "all" | IntelSliderKind[] | null;
 
 /** Pill groups the descriptor line can peek open while the chrome is collapsed. */
-type FilterChromePeek = "towns" | "tx" | "cls" | "sliders";
+type FilterChromePeek = "towns" | "tx" | "cls" | "construction" | "sliders";
 
 function availableIntelSliderKinds(opts: {
   showPriceFilter: boolean;
@@ -816,7 +825,7 @@ function filterBoardListings(
   maxBeds = BED_BATH_MAX,
   minBaths = 0,
   maxBaths = BED_BATH_MAX,
-  newConstructionOnly = false,
+  newConstructionFilter: NewConstructionFilter = "all",
   furnishedFilter: FurnishedFilter = "all",
   exactBeds = false,
   minPrice = 0,
@@ -875,7 +884,11 @@ function filterBoardListings(
     ) {
       return false;
     }
-    if (newConstructionOnly && !matchesNewConstruction(l.yearBuilt, l.propertyType)) return false;
+    if (newConstructionFilter === "new") {
+      if (!matchesNewConstruction(l.yearBuilt, l.propertyType)) return false;
+    } else if (newConstructionFilter === "not-new") {
+      if (matchesNewConstruction(l.yearBuilt, l.propertyType)) return false;
+    }
     if (zip && l.zip !== zip) return false;
     if (statusFilter === "new" && !isNewThisWeek(l)) return false;
     if (statusFilter === "reduced" && l.status !== "Reduced") return false;
@@ -1766,7 +1779,6 @@ export default function IntelligenceClient({
       "all",
       NEW_CONSTRUCTION_VALUES,
     );
-  const newConstructionOnly = newConstructionFilter === "new";
   const [furnishedFilter, setFurnishedFilter] = usePersistedFilter<FurnishedFilter>(
     "tmre_intel_furnished",
     "all",
@@ -2055,7 +2067,12 @@ export default function IntelligenceClient({
             ? null
             : Number(maxBathsFilter),
         zip,
-        newConstruction: newConstructionOnly ? true : null,
+        newConstruction:
+          newConstructionFilter === "new"
+            ? true
+            : newConstructionFilter === "not-new"
+              ? false
+              : null,
         boardStatus: boardStatusFilter === "all" ? null : boardStatusFilter,
       });
     }, 800);
@@ -2070,7 +2087,7 @@ export default function IntelligenceClient({
     minBathsFilter,
     maxBathsFilter,
     zip,
-    newConstructionOnly,
+    newConstructionFilter,
     boardStatusFilter,
   ]);
 
@@ -2355,7 +2372,13 @@ export default function IntelligenceClient({
       if (urlSearch.vintageMax != null) {
         setMaxVintageFilter(String(urlSearch.vintageMax) as VintageIndexFilter);
       }
-      setNewConstructionFilter(urlSearch.newConstruction ? "new" : "all");
+      setNewConstructionFilter(
+        urlSearch.newConstruction === true
+          ? "new"
+          : urlSearch.newConstruction === false
+            ? "not-new"
+            : "all",
+      );
       if (urlSearch.status) {
         setBoardStatusFilter(urlSearch.status as BoardStatusFilter);
       }
@@ -2393,7 +2416,7 @@ export default function IntelligenceClient({
           ? undefined
           : (urlSearch.vintageMax ?? undefined),
         newConstruction: urlSearch.resetMinor
-          ? false
+          ? null
           : urlSearch.newConstruction,
         status: urlSearch.resetMinor
           ? undefined
@@ -2850,7 +2873,7 @@ export default function IntelligenceClient({
         maxBedrooms,
         minBathrooms,
         maxBathrooms,
-        newConstructionOnly,
+        newConstructionFilter,
         furnishedFilter,
         false,
         0,
@@ -2858,7 +2881,7 @@ export default function IntelligenceClient({
         minVintage,
         maxVintage,
       ),
-    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minVintage, maxVintage],
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minVintage, maxVintage],
   );
 
   const boardPriceSteps = useMemo(
@@ -2885,7 +2908,7 @@ export default function IntelligenceClient({
         maxBedrooms,
         minBathrooms,
         maxBathrooms,
-        newConstructionOnly ? "1" : "0",
+        newConstructionFilter,
         furnishedFilter,
       ].join("|"),
     [
@@ -2899,7 +2922,7 @@ export default function IntelligenceClient({
       maxBedrooms,
       minBathrooms,
       maxBathrooms,
-      newConstructionOnly,
+      newConstructionFilter,
       furnishedFilter,
     ],
   );
@@ -2960,7 +2983,7 @@ export default function IntelligenceClient({
         maxBedrooms,
         minBathrooms,
         maxBathrooms,
-        newConstructionOnly,
+        newConstructionFilter,
         furnishedFilter,
         false,
         minPrice,
@@ -2979,7 +3002,7 @@ export default function IntelligenceClient({
       maxBedrooms,
       minBathrooms,
       maxBathrooms,
-      newConstructionOnly,
+      newConstructionFilter,
       furnishedFilter,
       minPrice,
       maxPrice,
@@ -3012,7 +3035,7 @@ export default function IntelligenceClient({
         maxBedrooms,
         minBathrooms,
         maxBathrooms,
-        newConstructionOnly ? "1" : "0",
+        newConstructionFilter,
         furnishedFilter,
         minVintage,
         maxVintage,
@@ -3030,7 +3053,7 @@ export default function IntelligenceClient({
       maxBedrooms,
       minBathrooms,
       maxBathrooms,
-      newConstructionOnly,
+      newConstructionFilter,
       furnishedFilter,
       minVintage,
       maxVintage,
@@ -3092,7 +3115,12 @@ export default function IntelligenceClient({
       bathsMax: maxBathrooms,
       vintageMin: minVintage,
       vintageMax: maxVintage,
-      newConstruction: newConstructionOnly,
+      newConstruction:
+        newConstructionFilter === "new"
+          ? true
+          : newConstructionFilter === "not-new"
+            ? false
+            : null,
       status: boardStatusFilter,
       sort: sortKey,
       dir: sortDir,
@@ -3114,7 +3142,7 @@ export default function IntelligenceClient({
       maxBathrooms,
       minVintage,
       maxVintage,
-      newConstructionOnly,
+      newConstructionFilter,
       boardStatusFilter,
       sortKey,
       sortDir,
@@ -3178,7 +3206,7 @@ export default function IntelligenceClient({
   useEffect(() => {
     setMiddleTierExpanded(false);
     setBoardPage(1);
-  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionOnly, furnishedFilter, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex]);
+  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionFilter, furnishedFilter, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex]);
 
   // Sort changes only reset page — keep middle-tier state so we don't force a
   // full remount of ~100 photo cards when leaving score/desc.
@@ -3199,7 +3227,7 @@ export default function IntelligenceClient({
         maxBedrooms,
         minBathrooms,
         maxBathrooms,
-        newConstructionOnly,
+        newConstructionFilter,
         furnishedFilter,
         false,
         minPrice,
@@ -3211,7 +3239,7 @@ export default function IntelligenceClient({
         domBandMinDays,
         domBandMaxDays,
       ),
-    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, domBandMinDays, domBandMaxDays],
+    [allListings, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, domBandMinDays, domBandMaxDays],
   );
 
   const rankedListings = useMemo(() => rankListingsByScore(listings), [listings]);
@@ -3528,7 +3556,7 @@ export default function IntelligenceClient({
         maxBedrooms,
         minBathrooms,
         maxBathrooms,
-        newConstructionOnly,
+        newConstructionFilter,
         furnishedFilter,
         false,
         minPrice,
@@ -3542,7 +3570,7 @@ export default function IntelligenceClient({
       all += n;
     }
     return { ...counts, All: all };
-  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
+  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
 
   const { zipCounts, zipAllCount } = useMemo(() => {
     if (active === "All") {
@@ -3560,7 +3588,7 @@ export default function IntelligenceClient({
       maxBedrooms,
       minBathrooms,
       maxBathrooms,
-      newConstructionOnly,
+      newConstructionFilter,
       furnishedFilter,
       false,
       minPrice,
@@ -3576,7 +3604,7 @@ export default function IntelligenceClient({
       zipCounts.set(l.zip, (zipCounts.get(l.zip) ?? 0) + 1);
     });
     return { zipCounts, zipAllCount: filtered.length };
-  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
+  }, [allListings, active, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
 
   const scoreRankByKey = useMemo(() => buildScoreRankMap(rankedListings), [rankedListings]);
   const filtersActive =
@@ -3589,7 +3617,7 @@ export default function IntelligenceClient({
     maxBathrooms < BED_BATH_MAX ||
     vintageFilterActive(minVintage, maxVintage) ||
     sqftFilterActive ||
-    newConstructionOnly ||
+    newConstructionFilter !== "all" ||
     furnishedFilter !== "all" ||
     zip != null ||
     boardStatusFilter !== "all" ||
@@ -3928,7 +3956,7 @@ export default function IntelligenceClient({
       maxBedrooms,
       minBathrooms,
       maxBathrooms,
-      newConstructionOnly,
+      newConstructionFilter,
       furnishedFilter,
       false,
       minPrice,
@@ -3939,7 +3967,7 @@ export default function IntelligenceClient({
       maxSqft,
     ).length;
     return computeMonthsSupply(count, monthlySales[active]);
-  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionOnly, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, monthlySales]);
+  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, monthlySales]);
 
   const showVintageStats = listings.length > 0;
   const vintageStatsTitle =
@@ -3964,7 +3992,7 @@ export default function IntelligenceClient({
           maxBedrooms,
           minBathrooms,
           maxBathrooms,
-          newConstructionOnly,
+          newConstructionFilter,
           furnishedFilter,
           false,
           minPrice,
@@ -3986,7 +4014,7 @@ export default function IntelligenceClient({
       maxBedrooms,
       minBathrooms,
       maxBathrooms,
-      newConstructionOnly,
+      newConstructionFilter,
       furnishedFilter,
       minPrice,
       maxPrice,
@@ -4013,7 +4041,7 @@ export default function IntelligenceClient({
       minVintage,
       maxVintage,
       exactBeds: false,
-      newConstructionOnly,
+      newConstructionFilter,
       furnishedFilter,
       minPrice,
       maxPrice,
@@ -4033,7 +4061,7 @@ export default function IntelligenceClient({
         maxBedrooms,
         minBathrooms,
         maxBathrooms,
-        newConstructionOnly,
+        newConstructionFilter,
         furnishedFilter,
         false,
         minPrice,
@@ -4127,7 +4155,7 @@ export default function IntelligenceClient({
     maxBathrooms,
     minVintage,
     maxVintage,
-    newConstructionOnly,
+    newConstructionFilter,
     furnishedFilter,
     minPrice,
     maxPrice,
@@ -4186,7 +4214,7 @@ export default function IntelligenceClient({
       minVintage,
       maxVintage,
       exactBeds: false,
-      newConstructionOnly,
+      newConstructionFilter,
       minPrice,
       maxPrice,
       minSqft,
@@ -4202,7 +4230,7 @@ export default function IntelligenceClient({
       maxBathrooms,
       minVintage,
       maxVintage,
-      newConstructionOnly,
+      newConstructionFilter,
       minPrice,
       maxPrice,
       minSqft,
@@ -4218,7 +4246,7 @@ export default function IntelligenceClient({
         tx,
         cls,
         saleProperty,
-        newConstructionOnly,
+        newConstructionFilter,
         boardStatusFilter,
         furnishedFilter,
       }),
@@ -4228,7 +4256,7 @@ export default function IntelligenceClient({
       tx,
       cls,
       saleProperty,
-      newConstructionOnly,
+      newConstructionFilter,
       boardStatusFilter,
       furnishedFilter,
     ],
@@ -4237,6 +4265,8 @@ export default function IntelligenceClient({
   const showTownChrome = !filterChromeCollapsed || isPeeking("towns");
   const showClsChrome = !filterChromeCollapsed || isPeeking("cls");
   const showTxChrome = !filterChromeCollapsed || isPeeking("tx");
+  const showConstructionChrome =
+    !filterChromeCollapsed || isPeeking("construction");
   const showSliderChrome = !filterChromeCollapsed || isPeeking("sliders");
   /**
    * Market Intelligence + triangle: idle-dismissed while quiet / peeking.
@@ -4291,6 +4321,7 @@ export default function IntelligenceClient({
       addFilterChromePeek("towns");
     }
   };
+  const peekConstructionPills = () => peekPills("construction");
   const toggleFilterChrome = () => {
     bumpFilterPeekActivity({ revealMarketIntel: true });
     setFilterChromeCollapsed(!filterChromeCollapsed);
@@ -4303,6 +4334,7 @@ export default function IntelligenceClient({
       onTownClick={peekTownPills}
       onTxClick={peekTxPills}
       onClsClick={peekClsPills}
+      onConstructionClick={peekConstructionPills}
     />
   );
 
@@ -4817,7 +4849,7 @@ export default function IntelligenceClient({
               </p>
               </div>
 
-                {showTxChrome ? (
+                {showTxChrome || showConstructionChrome ? (
                   <IntelChromePortal
                     pin={pinFilterChromeToNav}
                     host={pinnedFilterChromeHost}
@@ -4828,22 +4860,24 @@ export default function IntelligenceClient({
                       filterChromeCollapsed ? "order-4" : "order-3"
                     }`}
                   >
-                    <FilterGroup
-                      label=""
-                      value={tx}
-                      onChange={setTx}
-                      options={[
-                        { value: "all", label: "All" },
-                        { value: "sale", label: "For Sale" },
-                        { value: "rental", label: "Rentals" },
-                      ]}
-                    />
+                    {showTxChrome ? (
+                      <FilterGroup
+                        label=""
+                        value={tx}
+                        onChange={setTx}
+                        options={[
+                          { value: "all", label: "All" },
+                          { value: "sale", label: "For Sale" },
+                          { value: "rental", label: "Rentals" },
+                        ]}
+                      />
+                    ) : null}
                     {/*
                       Show property-type pills whenever tx chrome is open —
                       including descriptor peek (collapsed) — so Homes / Rentals
                       descriptor clicks actually reveal their filter group.
                     */}
-                    {tx !== "rental" ? (
+                    {showTxChrome && tx !== "rental" ? (
                       <>
                         <IntelFilterSep />
                         <FilterGroup
@@ -4859,24 +4893,30 @@ export default function IntelligenceClient({
                         />
                       </>
                     ) : null}
-                    {!filterChromeCollapsed ? (
+                    {showConstructionChrome ? (
                       <>
-                        <IntelFilterSep />
+                        {showTxChrome ? <IntelFilterSep /> : null}
                         <FilterGroup
                           label=""
                           value={newConstructionFilter}
                           onChange={setNewConstructionFilter}
                           options={[
-                            { value: "all", label: "Any age" },
-                            { value: "new", label: "New construction" },
+                            {
+                              value: "all",
+                              label: "Construction Type (Any)",
+                            },
+                            { value: "new", label: "New" },
+                            { value: "not-new", label: "Not New" },
                           ]}
                         />
-                        <IntelFiltersToggle
-                          expanded={filtersExpanded}
-                          filtersActive={slidersCustomized}
-                          onToggle={() => setFiltersExpanded(!filtersExpanded)}
-                        />
                       </>
+                    ) : null}
+                    {!filterChromeCollapsed ? (
+                      <IntelFiltersToggle
+                        expanded={filtersExpanded}
+                        filtersActive={slidersCustomized}
+                        onToggle={() => setFiltersExpanded(!filtersExpanded)}
+                      />
                     ) : null}
                   </div>
                   </IntelChromePortal>

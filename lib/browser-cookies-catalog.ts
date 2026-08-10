@@ -118,7 +118,7 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
     "intelligence",
   ),
   tmre_intel_new_construction: pref(
-    "Intelligence — new-construction filter on/off",
+    "Intelligence — construction type filter (any / new / not-new)",
     "intelligence",
   ),
   tmre_intel_furnished: pref(

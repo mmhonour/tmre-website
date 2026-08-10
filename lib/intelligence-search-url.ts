@@ -80,7 +80,8 @@ export type ParsedIntelligenceSearch = {
   tx: 'all' | 'sale' | 'rental' | null
   cls: 'all' | 'residential' | 'commercial' | null
   property: 'all' | 'homes' | 'multi' | 'condos' | null
-  newConstruction: boolean
+  /** true = New, false = Not New, null = any */
+  newConstruction: boolean | null
   exactBeds: boolean
   status: 'all' | 'new' | 'reduced' | 'active' | null
   sort: string | null
@@ -107,7 +108,8 @@ export type IntelligenceShareState = {
   bathsMax?: number
   vintageMin?: number
   vintageMax?: number
-  newConstruction?: boolean
+  /** true = New, false = Not New, null/omit = any */
+  newConstruction?: boolean | null
   status?: 'all' | 'new' | 'reduced' | 'active'
   sort?: string
   dir?: 'asc' | 'desc'
@@ -222,7 +224,8 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
     params.set('v', formatRange(vMin, vMax))
   }
 
-  if (state.newConstruction) params.set('nc', '1')
+  if (state.newConstruction === true) params.set('nc', '1')
+  else if (state.newConstruction === false) params.set('nc', '0')
   if (state.status && state.status !== 'all') params.set('st', state.status)
 
   // Always encode sort + dir so shared links preserve the sharer's board order
@@ -363,7 +366,8 @@ export function buildIntelligenceShareTitle(state: IntelligenceShareState): stri
   )
   if (vintage) parts.push(vintage)
 
-  if (state.newConstruction) parts.push('NewConstruction')
+  if (state.newConstruction === true) parts.push('NewConstruction')
+  else if (state.newConstruction === false) parts.push('NotNewConstruction')
 
   if (state.status === 'new') parts.push('NewListings')
   else if (state.status === 'reduced') parts.push('Reduced')
@@ -426,7 +430,7 @@ export function intelligenceSearchHrefFromCriteria(c: CriteriaLike): string {
     bedsMax: c.maxBeds ?? undefined,
     bathsMin: c.minBaths ?? undefined,
     bathsMax: c.maxBaths ?? undefined,
-    newConstruction: c.newConstruction === true,
+    newConstruction: c.newConstruction,
     resetMinor: true,
   })
 }
@@ -588,8 +592,12 @@ export function parseIntelligenceSearchParams(
     tx,
     cls,
     property,
-    newConstruction:
-      searchParams.get('nc') === '1' || searchParams.get('new') === '1',
+    newConstruction: (() => {
+      const nc = searchParams.get('nc')
+      if (nc === '1' || searchParams.get('new') === '1') return true
+      if (nc === '0') return false
+      return null
+    })(),
     exactBeds,
     status,
     sort,
