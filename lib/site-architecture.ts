@@ -1,6 +1,8 @@
 /**
  * Visual inventory for Admin → Architecture → Site architecture.
- * Evidence-based roles — GoDaddy/Cloudflare DNS are edge assumptions outside app code.
+ * DNS truth (checked 10 Aug 2026): authoritative nameservers are Netlify DNS
+ * (NS1: dns*.p08.nsone.net). Cloudflare is R2 photos — not the DNS host.
+ * Cloudflare Email Routing cannot receive while NS stay on Netlify.
  */
 
 export type SiteArchNodeKind = "core" | "optional" | "edge" | "client";
@@ -30,16 +32,34 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
   {
     id: "godaddy",
     label: "GoDaddy",
-    role: "Domain registrar / DNS (typical)",
+    role: "Domain registrar (typical)",
     kind: "edge",
-    note: "Not referenced in app code — include if this is where tmre.com is registered",
+    note:
+      "Where the domain is registered. Nameservers should point at Netlify DNS — GoDaddy is not the live DNS host for tmrebuilder.com.",
+  },
+  {
+    id: "netlify-dns",
+    label: "Netlify DNS",
+    role: "Authoritative nameservers (NS1)",
+    kind: "edge",
+    note:
+      "Live NS: dns1–4.p08.nsone.net. Apex A/CNAME, Resend SPF/DKIM TXT, and inbound MX (mail forwarder) are edited here — not in Cloudflare DNS.",
   },
   {
     id: "cloudflare-edge",
     label: "Cloudflare",
-    role: "DNS / CDN / proxy (if enabled)",
+    role: "R2 photos — not authoritative DNS",
     kind: "edge",
-    note: "App code uses Cloudflare R2 for photos; DNS/CDN is configured outside the repo",
+    note:
+      "Photo storage (R2) is Cloudflare. A Cloudflare zone may exist, but Email Routing / CF MX do not receive mail while nameservers stay on Netlify. Do not treat CF as the DNS catalogue for this site.",
+  },
+  {
+    id: "mail-forward",
+    label: "Inbound mail forwarder",
+    role: "MX for fred@ (etc.) → personal inbox",
+    kind: "optional",
+    note:
+      "Path B: ImprovMX / Forward Email / similar. Add their MX (+ SPF merge) in Netlify DNS. Resend is outbound only. Cloudflare Email Routing is the wrong tool while NS = Netlify.",
   },
   {
     id: "netlify",
@@ -47,7 +67,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     role: "Next.js host, serverless functions, crons, Blobs",
     kind: "core",
     note:
-      "Lane 3: site-cache warm + digests (sideWorkOnly after Railway handoff). Not the preferred Incremental RETS puller — that is Railway mls-sync.",
+      "Lane 3: site-cache warm + digests (sideWorkOnly after Railway handoff). Not the preferred Incremental RETS puller — that is Railway mls-sync. DNS for the domain is the sibling Netlify DNS node.",
   },
   {
     id: "railway",
@@ -96,8 +116,10 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
   {
     id: "resend",
     label: "Resend",
-    role: "Contact, market digest, deploy email, search alerts",
+    role: "Outbound email only (send API)",
     kind: "core",
+    note:
+      "notifications@tmrebuilder.com etc. Auth via SPF/DKIM TXT on Netlify DNS. Does not give you an inbox for fred@ — that needs inbound MX (mail-forward).",
   },
   {
     id: "twilio",
@@ -144,10 +166,11 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
 ];
 
 export const SITE_ARCH_EDGES: SiteArchEdge[] = [
-  { from: "visitors", to: "godaddy", label: "DNS lookup" },
-  { from: "godaddy", to: "cloudflare-edge", label: "nameservers (if proxied)" },
-  { from: "cloudflare-edge", to: "netlify", label: "HTTPS" },
-  { from: "visitors", to: "netlify", label: "direct / CDN→origin" },
+  { from: "godaddy", to: "netlify-dns", label: "nameservers → Netlify DNS" },
+  { from: "visitors", to: "netlify-dns", label: "DNS lookup" },
+  { from: "netlify-dns", to: "netlify", label: "apex → site" },
+  { from: "netlify-dns", to: "mail-forward", label: "MX inbound (fred@)" },
+  { from: "visitors", to: "netlify", label: "HTTPS → site" },
   {
     from: "eventbridge",
     to: "netlify",
@@ -163,7 +186,7 @@ export const SITE_ARCH_EDGES: SiteArchEdge[] = [
   { from: "netlify", to: "neon", label: "SQL · warm caches · digests" },
   { from: "netlify", to: "r2", label: "photos" },
   { from: "netlify", to: "blobs", label: "checkpoint" },
-  { from: "netlify", to: "resend", label: "email" },
+  { from: "netlify", to: "resend", label: "outbound email" },
   { from: "netlify", to: "twilio", label: "SMS" },
   { from: "netlify", to: "census", label: "monthly" },
   { from: "netlify", to: "osm", label: "tiles" },

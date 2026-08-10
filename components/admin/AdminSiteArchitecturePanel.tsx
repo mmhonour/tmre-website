@@ -213,7 +213,7 @@ export default function AdminSiteArchitecturePanel() {
               <rect x={20} y={536} width={940} height={160} rx={14} fill="rgba(200,169,81,0.05)" />
 
               <LaneLabel x={36} y={58} text="CLIENTS" />
-              <LaneLabel x={36} y={162} text="EDGE · DOMAIN / CDN" />
+              <LaneLabel x={36} y={162} text="EDGE · REGISTRAR / DNS / MAIL" />
               <LaneLabel x={36} y={266} text="APP HOST · PULLER" />
               <LaneLabel x={36} y={382} text="DATA · MLS · PHOTOS" />
               <LaneLabel x={36} y={558} text="NOTIFY · GEO · ENRICHMENT" />
@@ -230,39 +230,50 @@ export default function AdminSiteArchitecturePanel() {
                 kind="client"
               />
 
-              {/* Edge */}
+              {/* Edge — live NS are Netlify DNS (checked 10 Aug 2026) */}
               <Box
                 id="godaddy"
-                x={120}
+                x={40}
+                y={160}
+                w={160}
+                h={52}
+                label="GoDaddy"
+                role="Registrar only"
+                kind="edge"
+                title="GoDaddy — domain registrar. Nameservers point at Netlify DNS; GoDaddy is not the live DNS host."
+              />
+              <Box
+                id="netlify-dns"
+                x={230}
                 y={160}
                 w={220}
                 h={52}
-                label="GoDaddy"
-                role="Registrar / DNS (typical)"
+                label="Netlify DNS"
+                role="Authoritative NS (NS1)"
                 kind="edge"
-                title="GoDaddy — domain registrar / DNS. Not referenced in app code; include if this is where the domain is registered."
+                title="Netlify DNS — live nameservers dns1–4.p08.nsone.net. Edit A/CNAME, Resend TXT, and inbound MX here."
+              />
+              <Box
+                id="mail-forward"
+                x={480}
+                y={160}
+                w={220}
+                h={52}
+                label="Mail forwarder"
+                role="MX · fred@ → inbox"
+                kind="optional"
+                title="Inbound MX forwarder (ImprovMX / Forward Email / etc.) for fred@tmrebuilder.com. Add MX in Netlify DNS. Cloudflare Email Routing does not work while NS stay on Netlify."
               />
               <Box
                 id="cloudflare-edge"
-                x={400}
+                x={730}
                 y={160}
-                w={260}
+                w={210}
                 h={52}
                 label="Cloudflare"
-                role="DNS / CDN proxy (if enabled)"
+                role="R2 — not DNS host"
                 kind="edge"
-                title="Cloudflare edge — DNS/CDN if nameservers point here. Photo storage uses R2 separately (below)."
-              />
-              <Box
-                id="direct"
-                x={720}
-                y={160}
-                w={200}
-                h={52}
-                label="Direct DNS"
-                role="Apex → Netlify"
-                kind="optional"
-                title="Some setups point the domain straight at Netlify without a CDN proxy."
+                title="Cloudflare — R2 photo storage. Not authoritative DNS for tmrebuilder.com. Email Routing UI can look Active but never receives while NS are Netlify."
               />
 
               {/* App host: Netlify (Lane 3) · Railway (Lane 1) · EventBridge (legacy) */}
@@ -407,13 +418,12 @@ export default function AdminSiteArchitecturePanel() {
                 title="Vision Appraisal (assessor), GreatSchools (optional), OpenAI (optional finish/descriptor)."
               />
 
-              {/* Flows */}
-              <Arrow x1={490} y1={108} x2={230} y2={160} label="DNS" dashed />
-              <Arrow x1={490} y1={108} x2={530} y2={160} dashed />
-              <Arrow x1={490} y1={108} x2={820} y2={160} dashed />
-              <Arrow x1={230} y1={212} x2={180} y2={258} dashed />
-              <Arrow x1={530} y1={212} x2={180} y2={258} label="HTTPS" />
-              <Arrow x1={820} y1={212} x2={200} y2={258} dashed />
+              {/* Flows — DNS via Netlify DNS; site HTTPS to Netlify host */}
+              <Arrow x1={200} y1={186} x2={230} y2={186} label="NS" dashed />
+              <Arrow x1={450} y1={186} x2={480} y2={186} label="MX" dashed />
+              <Arrow x1={490} y1={108} x2={340} y2={160} label="DNS" dashed />
+              <Arrow x1={340} y1={212} x2={180} y2={258} label="apex" />
+              <Arrow x1={490} y1={108} x2={180} y2={258} label="HTTPS" />
 
               <Arrow
                 x1={680}
@@ -452,12 +462,12 @@ export default function AdminSiteArchitecturePanel() {
               body="Lane 1 Railway mls-sync: RETS → Neon only (postHooks:false). Lane 2 Neon: End/heartbeat is inventory truth — the site never needs Railway up to know what’s listed. Lane 3 Netlify: sideWorkOnly warm (feeds, deal board, stats, digests) after the handoff."
             />
             <NoteCard
-              title="In your list"
-              body="Netlify (site + Lane 3 warm), Railway mls-sync (Lane 1 pull), Neon (Lane 2 truth), Cloudflare R2 (photos), Resend (email). GoDaddy / Cloudflare DNS are edge pieces outside the repo."
+              title="Nameservers / DNS"
+              body="Authoritative DNS is Netlify DNS (NS1: dns*.p08.nsone.net) — not Cloudflare. GoDaddy is registrar only. Edit apex, Resend TXT, and inbound MX (fred@ forwarder) in Netlify DNS. Cloudflare R2 is photos only; CF Email Routing cannot receive while NS stay on Netlify."
             />
             <NoteCard
-              title="Also / optional"
-              body="SmartMLS RETS (pulled by Railway), Census TIGERweb, OSM tiles, Netlify Blobs, Twilio. EventBridge is a legacy optional alarm — prefer Configure → Incremental → Railway. ipapi, Vision, GreatSchools, OpenAI remain optional enrichment."
+              title="In your list"
+              body="Netlify (site + Lane 3 warm + DNS), Railway mls-sync (Lane 1 pull), Neon (Lane 2 truth), Cloudflare R2 (photos), Resend (outbound email). Optional inbound mail forwarder for fred@. SmartMLS RETS, Census, OSM, Blobs, Twilio, EventBridge (legacy), ipapi / Vision / GreatSchools / OpenAI as before."
             />
           </div>
 

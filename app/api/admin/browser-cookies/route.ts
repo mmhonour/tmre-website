@@ -9,11 +9,16 @@ import {
   type CookieLocationInfo,
 } from '@/lib/browser-cookies-catalog'
 import { SITE_PASSWORD_COOKIE } from '@/lib/site-password'
+import { SITE_USER_SESSION_COOKIE } from '@/lib/site-user-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const HTTPONLY_NAMES = new Set([SITE_PASSWORD_COOKIE, SITE_VISITOR_COOKIE])
+const HTTPONLY_NAMES = new Set([
+  SITE_PASSWORD_COOKIE,
+  SITE_VISITOR_COOKIE,
+  SITE_USER_SESSION_COOKIE,
+])
 
 type CookieRow = {
   name: string
@@ -109,7 +114,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     cookies: rows,
     note:
-      'Location shows Path / host / SameSite (from catalog or Cookie Store). Full values appear when Show values is on — unlock cookie value stays redacted.',
+      'Location shows Path / host / SameSite (from catalog or Cookie Store). Admin → Cookies “Show catalog” lists every known purpose from lib/browser-cookies-catalog.ts; Show values reveals contents (unlock stays redacted). Pref cookies last ~1 year via lib/client-prefs.ts.',
   })
 }
 

@@ -53,18 +53,38 @@ function withDollar(label: string): string {
   return `$${t}`;
 }
 
-function shortBandLabel(label: string, kind: "sale" | "rental"): string {
+function shortBandLabel(
+  label: string,
+  kind: "sale" | "rental",
+  min?: number,
+): string {
   const s = label.replace(/\/mo/gi, "").trim();
   if (kind === "rental") {
-    const m = s.match(/\$?([\d,.]+)\s*[Kk]?\+?/);
-    if (/\+/.test(s)) {
-      return withDollar(`${(m?.[1] ?? "12").replace(/,.*/, "")}k+`);
+    // Prefer band min so "$2K–$3,999" becomes "$2k" (not "$2") — every
+    // rental callout keeps the k unit, including $0k and $12k+.
+    if (typeof min === "number" && Number.isFinite(min) && min >= 0) {
+      const k = Math.round(min / 1000);
+      return withDollar(/\+/.test(s) ? `${k}k+` : `${k}k`);
     }
-    const lo = s.match(/\$?([\d,.]+)/);
+    const plus = s.match(/\$?\s*([\d,.]+)\s*[Kk]\+/);
+    if (plus || /\+/.test(s)) {
+      const n = (plus?.[1] ?? s.match(/\$?\s*([\d,.]+)/)?.[1] ?? "12").replace(
+        /,.*/,
+        "",
+      );
+      return withDollar(`${n}k+`);
+    }
+    const withK = s.match(/\$?\s*([\d,.]+)\s*[Kk]/);
+    if (withK) {
+      return withDollar(`${withK[1].replace(/,.*/, "")}k`);
+    }
+    const lo = s.match(/\$?\s*([\d,.]+)/);
     if (lo) {
       const n = Number(lo[1].replace(/,/g, ""));
       if (Number.isFinite(n)) {
-        return withDollar(n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+        return withDollar(
+          n >= 1000 ? `${Math.round(n / 1000)}k` : `${Math.round(n)}k`,
+        );
       }
     }
   }
@@ -169,7 +189,7 @@ export default function IntelligencePriceBandMiniChart({
       return {
         id: b.id,
         label: b.label,
-        shortLabel: shortBandLabel(b.label, kind),
+        shortLabel: shortBandLabel(b.label, kind, b.min),
         count: b.count,
         min: b.min,
         max: b.max,

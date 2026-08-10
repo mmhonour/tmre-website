@@ -291,7 +291,7 @@ export const ADMIN_ARCHITECTURE_PANELS: {
     id: "map",
     label: "Site architecture",
     subtitle:
-      "Visual map of Netlify, EventBridge, Neon, RETS, R2, DNS/CDN, Resend, and related services",
+      "Visual map of Netlify DNS/nameservers, site host, Railway, Neon, R2, Resend, mail forwarder, and related services",
   },
   {
     id: "status-logic",
@@ -384,7 +384,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "cookies",
     label: "Cookies",
     subtitle:
-      "See and delete cookies for this browser (prefs, visitor id, unlock)",
+      "Catalog of cookie purposes + live jar (prefs, visitor id, unlock) and browser storage",
   },
   {
     id: "architecture",
@@ -640,7 +640,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   {
     id: "admin-browser-cookies",
-    label: "Browser cookies",
+    label: "Browser cookies + storage catalog",
     tab: "cookies",
   },
   {

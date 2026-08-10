@@ -295,7 +295,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Browser cookies (Admin)',
     category: 'sync-admin',
     definition:
-      'Admin → Cookies (top-level tab): view location (Path/host/SameSite + set-by), contents (Show values), and delete cookies for your browser only (filter prefs, tmre_vid visitor id, tmre_site_pass unlock). HttpOnly cookies are listed/cleared via /api/admin/browser-cookies; unlock value stays redacted; clearing unlock logs you out.',
+      'Admin → Cookies (top-level tab). Live jar for this browser + Show catalog lists every known cookie purpose from lib/browser-cookies-catalog.ts even when absent. Pref cookies (Intelligence/Stats/OH/NC/etc.) are written by lib/client-prefs.ts (~1 year, Path=/, SameSite=Lax). HttpOnly: tmre_site_pass (Admin unlock), tmre_vid (anonymous visitor id), tmre_user_session (magic-link). Same tab also documents sessionStorage/localStorage keys that are not cookies (e.g. tmre_latest_view for Latest Back restore, listing-return-nav). Clear all / Delete act on this browser only; clearing unlock logs you out. Catalog purposes must be updated when new writeClientPref keys ship.',
+  },
+  {
+    term: 'Client prefs (cookies)',
+    category: 'sync-admin',
+    definition:
+      'Durable UI filter settings stored as non-HttpOnly cookies via lib/client-prefs.ts (readClientPref / writeClientPref). Used heavily on Intelligence, Stats, Open Houses, New Construction, Expired, Fixer-uppers, Deal of the Day, Find. Survives tab close for ~1 year. Distinct from sessionStorage (tab-local, e.g. Latest view chrome) and from HttpOnly session cookies (tmre_site_pass / tmre_vid). See Admin → Cookies catalog.',
   },
   {
     term: 'Market Bands',
@@ -992,10 +998,22 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Email API used to deliver contact / list-with-me notifications.',
   },
   {
+    term: 'Netlify DNS',
+    category: 'product',
+    definition:
+      'Authoritative nameservers for tmrebuilder.com (live check 10 Aug 2026: dns1–4.p08.nsone.net / NS1). This is where apex A/CNAME, Resend SPF/DKIM TXT, and inbound MX for a mail forwarder are published. Distinct from Netlify the app host (site + Lane 3). Not Cloudflare — a Cloudflare zone may exist for R2/Email Routing UI, but the public internet does not use Cloudflare as DNS while NS stay here. See Admin → Architecture → Site architecture.',
+  },
+  {
     term: 'MX (Mail Exchanger)',
     category: 'product',
     definition:
-      'DNS record that tells the internet where to deliver mail for a domain — “Mail Exchanger,” not “mailbox.” Format is priority + hostname (lowest priority number wins). Separate from an inbox: the MX only routes; Gmail, Microsoft, Cloudflare Email Routing, etc. sit behind it. TMRE uses Resend to send (SPF/DKIM TXT records); receiving at fred@tmrebuilder.com is a different path and needs an MX that points at a receiver (Cloudflare Email Routing adds its own MX). Enabling Email Routing on the root domain replaces or competes with any existing MX — don’t enable it if that MX already feeds a real mailbox you care about. See Resend, DMARC.',
+      'DNS record that tells the internet where to deliver mail for a domain — “Mail Exchanger,” not “mailbox.” Format is priority + hostname (lowest priority number wins). TMRE uses Resend to send (SPF/DKIM TXT on Netlify DNS). Receiving at fred@tmrebuilder.com needs inbound MX on Netlify DNS pointing at a forwarder (ImprovMX / Forward Email / etc.) — Path B. Cloudflare Email Routing only works when Cloudflare is authoritative DNS; with Netlify DNS it can show Active in the CF UI and still never receive. See Netlify DNS, Resend, DMARC.',
+  },
+  {
+    term: 'fred@tmrebuilder.com',
+    category: 'product',
+    definition:
+      'Branded address intended for the FRED (St. Louis Fed) API account — unique email, not a personal mailbox. Forward to tmarkst@aol.com (or similar). Setup: inbound MX forwarder on Netlify DNS (not Cloudflare Email Routing while NS = Netlify). After confirm, store FRED_API_KEY on Netlify and use Admin → Mortgage → Refresh from FRED. See Netlify DNS, MX.',
   },
   {
     term: 'DMARC',

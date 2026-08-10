@@ -283,7 +283,7 @@ export default function IntelligenceDomBandMiniChart({
                       className="fill-black font-mono text-[8px] uppercase"
                       style={{ fontSize: 8, letterSpacing: "0.04em" }}
                     >
-                      {point.shortLabel}
+                      {point.shortLabel} DOM
                     </text>
                   ) : null}
                   <text

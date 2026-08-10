@@ -45,6 +45,21 @@ function shortVintageLabel(label: string): string {
   return label;
 }
 
+/** Callouts are tight against neighbors — wrap so labels aren’t clipped. */
+const CALLOUT_WRAP_CHARS = 4;
+const CALLOUT_LINE_HEIGHT = 9;
+
+function wrapCalloutLines(text: string, maxChars = CALLOUT_WRAP_CHARS): string[] {
+  const t = text.trim();
+  if (!t) return [];
+  if (t.length <= maxChars) return [t];
+  const lines: string[] = [];
+  for (let i = 0; i < t.length; i += maxChars) {
+    lines.push(t.slice(i, i + maxChars));
+  }
+  return lines;
+}
+
 /**
  * Mini median-price-by-vintage sparkline above the Intelligence deal board.
  * Uses the same bucket medians as Sales/Rentals by vintage; dots set that
@@ -192,10 +207,20 @@ export default function IntelligenceVintageMedianMiniChart({
                 point.callout || extraCallouts.has(point.id);
               const glowing = glowIds.has(point.id);
               const priceLabel = formatVintageHeaderPrice(point.medianPrice, kind);
+              const priceLines = wrapCalloutLines(priceLabel);
+              const vintageLines = wrapCalloutLines(
+                shortVintageLabel(point.label),
+              );
               const isFirst = i === 0;
               const isLast = i === points.length - 1;
               const anchor = isFirst ? "start" : isLast ? "end" : "middle";
-              const priceY = Math.max(9, point.y - 9);
+              // Stack price lines upward so the last line stays near the dot.
+              const priceY = Math.max(
+                8,
+                point.y -
+                  9 -
+                  Math.max(0, priceLines.length - 1) * CALLOUT_LINE_HEIGHT,
+              );
               const vintageY = Math.min(HEIGHT - 3, point.y + 14);
 
               return (
@@ -212,7 +237,15 @@ export default function IntelligenceVintageMedianMiniChart({
                         className="fill-black font-mono text-[9px] tabular-nums"
                         style={{ fontSize: 9 }}
                       >
-                        {priceLabel}
+                        {priceLines.map((line, li) => (
+                          <tspan
+                            key={`p-${li}`}
+                            x={point.x}
+                            dy={li === 0 ? 0 : CALLOUT_LINE_HEIGHT}
+                          >
+                            {line}
+                          </tspan>
+                        ))}
                       </text>
                       <text
                         x={point.x}
@@ -221,7 +254,15 @@ export default function IntelligenceVintageMedianMiniChart({
                         className="fill-black font-mono text-[8px] uppercase"
                         style={{ fontSize: 8, letterSpacing: "0.04em" }}
                       >
-                        {shortVintageLabel(point.label)}
+                        {vintageLines.map((line, li) => (
+                          <tspan
+                            key={`v-${li}`}
+                            x={point.x}
+                            dy={li === 0 ? 0 : CALLOUT_LINE_HEIGHT - 1}
+                          >
+                            {line}
+                          </tspan>
+                        ))}
                       </text>
                     </>
                   ) : null}

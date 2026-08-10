@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  COOKIE_CATEGORY_LABELS,
+  cookieCategory,
+  cookieLifetime,
   cookieLocationFromCatalog,
   cookiePurpose,
   deleteDocumentCookie,
   formatCookieLocation,
+  KNOWN_BROWSER_STORAGE,
+  listKnownSiteCookies,
   parseDocumentCookies,
   previewCookieValue,
   readCookieStoreEntries,
@@ -31,14 +36,16 @@ type MergedRow = {
   value: string | null;
   preview: string;
   httpOnly: boolean;
-  sources: Array<"document" | "server" | "cookieStore">;
+  sources: Array<"document" | "server" | "cookieStore" | "catalog">;
   present: boolean;
   location: CookieLocationInfo;
+  lifetime: string | null;
+  categoryLabel: string | null;
 };
 
 /**
  * Admin → Cookies.
- * See location + contents for this browser only (prefs + HttpOnly session/visitor).
+ * Live jar for this browser + catalog of every known cookie purpose.
  */
 export default function AdminBrowserCookiesPanel() {
   const router = useRouter();
@@ -53,8 +60,11 @@ export default function AdminBrowserCookiesPanel() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [showValues, setShowValues] = useState(false);
+  /** Include catalog rows that are not set in this browser (purpose reference). */
+  const [showCatalog, setShowCatalog] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [storageTick, setStorageTick] = useState(0);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -78,6 +88,7 @@ export default function AdminBrowserCookiesPanel() {
       setStoreRows(store);
       setNote(data.note ?? null);
       setDocTick((n) => n + 1);
+      setStorageTick((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load cookies");
     } finally {
@@ -96,84 +107,110 @@ export default function AdminBrowserCookiesPanel() {
     );
     const byName = new Map<string, MergedRow>();
 
+    const baseRow = (name: string): MergedRow => ({
+      name,
+      purpose: cookiePurpose(name),
+      value: null,
+      preview: "(not set)",
+      httpOnly: false,
+      sources: [],
+      present: false,
+      location: cookieLocationFromCatalog(name),
+      lifetime: cookieLifetime(name),
+      categoryLabel: (() => {
+        const cat = cookieCategory(name);
+        return cat ? COOKIE_CATEGORY_LABELS[cat] : null;
+      })(),
+    });
+
     for (const c of doc) {
-      byName.set(c.name, {
-        name: c.name,
-        purpose: cookiePurpose(c.name),
-        value: c.value,
-        preview: previewCookieValue(c.value),
-        httpOnly: false,
-        sources: ["document"],
-        present: true,
-        location: cookieLocationFromCatalog(c.name),
-      });
+      const row = baseRow(c.name);
+      row.value = c.value;
+      row.preview = previewCookieValue(c.value);
+      row.sources = ["document"];
+      row.present = true;
+      byName.set(c.name, row);
     }
 
     for (const s of storeRows) {
-      const existing = byName.get(s.name);
-      if (existing) {
-        existing.location = s.location;
-        existing.value = s.value;
-        existing.preview = previewCookieValue(s.value);
-        if (!existing.sources.includes("cookieStore")) {
-          existing.sources.push("cookieStore");
-        }
-      } else {
-        byName.set(s.name, {
-          name: s.name,
-          purpose: cookiePurpose(s.name),
-          value: s.value,
-          preview: previewCookieValue(s.value),
-          httpOnly: false,
-          sources: ["cookieStore"],
-          present: true,
-          location: s.location,
-        });
+      const existing = byName.get(s.name) ?? baseRow(s.name);
+      existing.location = s.location;
+      existing.value = s.value;
+      existing.preview = previewCookieValue(s.value);
+      existing.present = true;
+      if (!existing.sources.includes("cookieStore")) {
+        existing.sources.push("cookieStore");
       }
+      byName.set(s.name, existing);
     }
 
     for (const s of serverRows) {
-      const existing = byName.get(s.name);
+      const existing = byName.get(s.name) ?? baseRow(s.name);
       const serverLoc = s.location ?? cookieLocationFromCatalog(s.name);
-      if (existing) {
-        existing.httpOnly = existing.httpOnly || s.httpOnly;
-        if (!existing.sources.includes("server")) {
-          existing.sources.push("server");
-        }
-        if (s.httpOnly) {
-          existing.value = s.value;
-          existing.preview = s.preview;
-          existing.purpose = s.purpose;
-          existing.location = {
-            ...serverLoc,
-            // Keep Cookie Store path/domain when we already observed them.
-            path: existing.location.observed
-              ? existing.location.path
-              : serverLoc.path,
-            domain: existing.location.domain ?? serverLoc.domain,
-            observed: existing.location.observed,
-          };
-        } else if (existing.value == null && s.value != null) {
-          existing.value = s.value;
-          existing.preview = s.preview;
-        }
-        existing.present = existing.present || s.present;
-      } else {
-        byName.set(s.name, {
-          name: s.name,
-          purpose: s.purpose,
-          value: s.value,
-          preview: s.preview,
-          httpOnly: s.httpOnly,
-          sources: ["server"],
-          present: s.present,
-          location: serverLoc,
-        });
+      existing.httpOnly = existing.httpOnly || s.httpOnly;
+      if (!existing.sources.includes("server")) {
+        existing.sources.push("server");
+      }
+      if (s.httpOnly) {
+        existing.value = s.value;
+        existing.preview = s.preview;
+        existing.purpose = s.purpose;
+        existing.location = {
+          ...serverLoc,
+          path: existing.location.observed
+            ? existing.location.path
+            : serverLoc.path,
+          domain: existing.location.domain ?? serverLoc.domain,
+          observed: existing.location.observed,
+        };
+      } else if (existing.value == null && s.value != null) {
+        existing.value = s.value;
+        existing.preview = s.preview;
+      }
+      existing.present = existing.present || s.present;
+      byName.set(s.name, existing);
+    }
+
+    if (showCatalog) {
+      for (const { name, info } of listKnownSiteCookies()) {
+        if (byName.has(name)) continue;
+        const row = baseRow(name);
+        row.httpOnly = Boolean(info.httpOnly);
+        row.sources = ["catalog"];
+        row.purpose = info.purpose;
+        byName.set(name, row);
       }
     }
 
     return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [serverRows, storeRows, docTick]);
+  }, [serverRows, storeRows, docTick, showCatalog]);
+
+  const storageRows = useMemo(() => {
+    void storageTick;
+    if (typeof window === "undefined") {
+      return KNOWN_BROWSER_STORAGE.map((entry) => ({
+        ...entry,
+        present: false,
+        preview: "(n/a)",
+      }));
+    }
+    return KNOWN_BROWSER_STORAGE.map((entry) => {
+      let raw: string | null = null;
+      try {
+        raw =
+          entry.kind === "sessionStorage"
+            ? sessionStorage.getItem(entry.key)
+            : localStorage.getItem(entry.key);
+      } catch {
+        raw = null;
+      }
+      return {
+        ...entry,
+        present: raw != null && raw !== "",
+        preview: raw == null ? "(not set)" : previewCookieValue(raw, 72),
+      };
+    });
+  }, [storageTick]);
 
   async function deleteNames(names: string[], confirmAll = false) {
     if (names.length === 0) return;
@@ -235,219 +272,326 @@ export default function AdminBrowserCookiesPanel() {
     }
   }
 
-  const presentCount = rows.filter((r) => r.present).length;
+  const presentCookieCount = rows.filter((r) => r.present).length;
 
   return (
     <div
       id="admin-browser-cookies"
-      className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm"
+      className="scroll-mt-24 space-y-6"
     >
-      <div className="border-b border-charcoal/[0.08] bg-cream/20 px-5 py-4 sm:px-6">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Browser cookies
-        </p>
-        <p className="mt-1 max-w-2xl text-sm text-slate">
-          Cookies for <span className="font-medium text-navy">this browser
-          only</span> — filter prefs, visitor id, and your Admin unlock. Location
-          shows Path / host / SameSite; turn on{" "}
-          <span className="font-medium text-navy">Show values</span> for full
-          contents (unlock cookie stays redacted).
-        </p>
-      </div>
-
-      <div className="space-y-4 px-5 py-5 sm:px-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={loading || busy != null}
-            className="rounded-lg border border-charcoal/15 bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:border-gold/40 hover:text-gold disabled:opacity-50"
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              void deleteNames(
-                rows.filter((r) => r.present).map((r) => r.name),
-                true,
-              )
-            }
-            disabled={loading || busy != null || presentCount === 0}
-            className="rounded-lg border border-coral/30 bg-coral/5 px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-coral transition-colors hover:bg-coral/10 disabled:opacity-50"
-          >
-            Clear all
-          </button>
-          <label className="ml-auto inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
-            <input
-              type="checkbox"
-              checked={showValues}
-              onChange={(e) => setShowValues(e.target.checked)}
-              className="rounded border-charcoal/25"
-            />
-            Show values
-          </label>
+      <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm">
+        <div className="border-b border-charcoal/[0.08] bg-cream/20 px-5 py-4 sm:px-6">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            Browser cookies
+          </p>
+          <p className="mt-1 max-w-3xl text-sm text-slate">
+            What this site stores in cookies for{" "}
+            <span className="font-medium text-navy">this browser only</span>.
+            Filter prefs are written via{" "}
+            <span className="font-mono text-[11px] text-navy/80">
+              lib/client-prefs.ts
+            </span>{" "}
+            (~1 year, Path=/, SameSite=Lax). HttpOnly session cookies (
+            <span className="font-mono text-[11px]">tmre_site_pass</span>,{" "}
+            <span className="font-mono text-[11px]">tmre_vid</span>,{" "}
+            <span className="font-mono text-[11px]">tmre_user_session</span>) are
+            set by the server. Turn on{" "}
+            <span className="font-medium text-navy">Show catalog</span> to list
+            every known cookie purpose even when not set;{" "}
+            <span className="font-medium text-navy">Show values</span> reveals
+            contents (unlock stays redacted).
+          </p>
         </div>
 
-        {error ? (
-          <p className="font-mono text-[11px] text-coral">{error}</p>
-        ) : null}
-        {note ? (
-          <p className="text-xs leading-snug text-charcoal/50">{note}</p>
-        ) : null}
+        <div className="space-y-4 px-5 py-5 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading || busy != null}
+              className="rounded-lg border border-charcoal/15 bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:border-gold/40 hover:text-gold disabled:opacity-50"
+            >
+              {loading ? "Loading…" : "Refresh"}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                void deleteNames(
+                  rows.filter((r) => r.present).map((r) => r.name),
+                  true,
+                )
+              }
+              disabled={loading || busy != null || presentCookieCount === 0}
+              className="rounded-lg border border-coral/30 bg-coral/5 px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-coral transition-colors hover:bg-coral/10 disabled:opacity-50"
+            >
+              Clear all
+            </button>
+            <label className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
+              <input
+                type="checkbox"
+                checked={showCatalog}
+                onChange={(e) => setShowCatalog(e.target.checked)}
+                className="rounded border-charcoal/25"
+              />
+              Show catalog
+            </label>
+            <label className="ml-auto inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.1em] uppercase text-charcoal/55">
+              <input
+                type="checkbox"
+                checked={showValues}
+                onChange={(e) => setShowValues(e.target.checked)}
+                className="rounded border-charcoal/25"
+              />
+              Show values
+            </label>
+          </div>
 
-        <div className="overflow-x-auto rounded-xl border border-charcoal/[0.1]">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-cream/40 font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/50">
-              <tr>
-                <th className="px-3 py-2.5 font-medium">Name</th>
-                <th className="px-3 py-2.5 font-medium">Purpose</th>
-                <th className="px-3 py-2.5 font-medium">Location</th>
-                <th className="px-3 py-2.5 font-medium">Value</th>
-                <th className="px-3 py-2.5 font-medium">Flags</th>
-                <th className="px-3 py-2.5 font-medium text-right"> </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-charcoal/[0.08]">
-              {rows.length === 0 && !loading ? (
+          {error ? (
+            <p className="font-mono text-[11px] text-coral">{error}</p>
+          ) : null}
+          {note ? (
+            <p className="text-xs leading-snug text-charcoal/50">{note}</p>
+          ) : null}
+          <p className="font-mono text-[10px] tracking-[0.08em] text-charcoal/45">
+            {presentCookieCount} set
+            {showCatalog ? ` · ${rows.length} in catalog view` : ""}
+          </p>
+
+          <div className="overflow-x-auto rounded-xl border border-charcoal/[0.1]">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-cream/40 font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/50">
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-3 py-6 text-center text-sm text-slate"
-                  >
-                    No cookies found for this browser.
-                  </td>
+                  <th className="px-3 py-2.5 font-medium">Name</th>
+                  <th className="px-3 py-2.5 font-medium">Purpose</th>
+                  <th className="px-3 py-2.5 font-medium">Location</th>
+                  <th className="px-3 py-2.5 font-medium">Value</th>
+                  <th className="px-3 py-2.5 font-medium">Flags</th>
+                  <th className="px-3 py-2.5 font-medium text-right"> </th>
                 </tr>
-              ) : null}
-              {rows.map((row) => {
-                const locLabel = formatCookieLocation(row.location);
-                const isExpanded = expanded === row.name;
-                const displayValue = !row.present
-                  ? "(not set)"
-                  : showValues
-                    ? row.value ?? row.preview
-                    : "••••";
-                const canExpand =
-                  showValues &&
-                  row.present &&
-                  row.value != null &&
-                  row.value.length > 48;
-                const canCopy =
-                  showValues && row.present && row.value != null && row.value !== "";
+              </thead>
+              <tbody className="divide-y divide-charcoal/[0.08]">
+                {rows.length === 0 && !loading ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-6 text-center text-sm text-slate"
+                    >
+                      No cookies found for this browser.
+                    </td>
+                  </tr>
+                ) : null}
+                {rows.map((row) => {
+                  const locLabel = formatCookieLocation(row.location);
+                  const isExpanded = expanded === row.name;
+                  const displayValue = !row.present
+                    ? "(not set)"
+                    : showValues
+                      ? row.value ?? row.preview
+                      : "••••";
+                  const canExpand =
+                    showValues &&
+                    row.present &&
+                    row.value != null &&
+                    row.value.length > 48;
+                  const canCopy =
+                    showValues &&
+                    row.present &&
+                    row.value != null &&
+                    row.value !== "";
 
-                return (
+                  return (
+                    <tr
+                      key={row.name}
+                      className={row.present ? "bg-white" : "bg-charcoal/[0.02]"}
+                    >
+                      <td className="px-3 py-2.5 align-top">
+                        <span className="font-mono text-[11px] text-navy">
+                          {row.name}
+                        </span>
+                        {row.categoryLabel ? (
+                          <p className="mt-0.5 font-mono text-[9px] tracking-[0.08em] uppercase text-charcoal/40">
+                            {row.categoryLabel}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2.5 align-top text-xs text-slate">
+                        <p>{row.purpose}</p>
+                        {row.lifetime ? (
+                          <p className="mt-1 font-mono text-[9px] text-charcoal/40">
+                            {row.lifetime}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="max-w-[16rem] px-3 py-2.5 align-top">
+                        <p className="break-words font-mono text-[10px] text-charcoal/70 leading-snug">
+                          {locLabel}
+                        </p>
+                        {row.location.setBy ? (
+                          <p className="mt-1 break-words font-mono text-[9px] text-charcoal/40 leading-snug">
+                            {row.location.setBy}
+                            {row.location.observed ? " · observed" : ""}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="max-w-[18rem] px-3 py-2.5 align-top">
+                        <span
+                          className={`break-all font-mono text-[10px] text-charcoal/70 ${
+                            isExpanded ? "whitespace-pre-wrap" : ""
+                          }`}
+                        >
+                          {isExpanded && row.value != null
+                            ? row.value
+                            : canExpand && !isExpanded
+                              ? previewCookieValue(displayValue, 48)
+                              : displayValue}
+                        </span>
+                        {canExpand || canCopy ? (
+                          <div className="mt-1.5 flex flex-wrap gap-2">
+                            {canExpand ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpanded((cur) =>
+                                    cur === row.name ? null : row.name,
+                                  )
+                                }
+                                className="font-mono text-[9px] tracking-[0.1em] uppercase text-navy/70 underline decoration-navy/25 underline-offset-2 hover:text-navy"
+                              >
+                                {isExpanded ? "Collapse" : "Expand"}
+                              </button>
+                            ) : null}
+                            {canCopy ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void copyValue(row.name, row.value!)
+                                }
+                                className="font-mono text-[9px] tracking-[0.1em] uppercase text-navy/70 underline decoration-navy/25 underline-offset-2 hover:text-navy"
+                              >
+                                {copied === row.name ? "Copied" : "Copy"}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2.5 align-top">
+                        <div className="flex flex-wrap gap-1">
+                          {row.httpOnly ? (
+                            <span className="rounded border border-charcoal/15 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/55">
+                              HttpOnly
+                            </span>
+                          ) : null}
+                          {row.sources.includes("document") ||
+                          row.sources.includes("cookieStore") ? (
+                            <span className="rounded border border-charcoal/15 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/55">
+                              JS
+                            </span>
+                          ) : null}
+                          {row.sources.includes("server") ? (
+                            <span className="rounded border border-charcoal/15 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/55">
+                              Server
+                            </span>
+                          ) : null}
+                          {row.sources.includes("catalog") && !row.present ? (
+                            <span className="rounded border border-charcoal/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/40">
+                              Catalog
+                            </span>
+                          ) : null}
+                          {!row.present ? (
+                            <span className="rounded border border-charcoal/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/40">
+                              Absent
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 align-top text-right">
+                        <button
+                          type="button"
+                          disabled={!row.present || busy != null}
+                          onClick={() => void deleteNames([row.name])}
+                          className="font-mono text-[10px] tracking-[0.12em] uppercase text-coral/80 underline decoration-coral/30 underline-offset-2 transition-colors hover:text-coral disabled:opacity-40 disabled:no-underline"
+                        >
+                          {busy === row.name ? "…" : "Delete"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-xs leading-snug text-charcoal/45">
+            Clearing <span className="font-mono">tmre_site_pass</span> ends your
+            Admin session. Clearing{" "}
+            <span className="font-mono">tmre_vid</span> mints a new visitor id on
+            the next page view. Does not affect other browsers or users. Cookie
+            Store path/domain is used when the browser exposes it (Chromium);
+            otherwise catalog defaults apply. Dynamic Stats chart keys (
+            <span className="font-mono">tmre_stats_sales_by_town_*</span>) appear
+            only when set — they share the Stats purpose pattern.
+          </p>
+        </div>
+      </div>
+
+      <div
+        id="admin-browser-storage"
+        className="scroll-mt-24 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm"
+      >
+        <div className="border-b border-charcoal/[0.08] bg-cream/20 px-5 py-4 sm:px-6">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+            Browser storage (not cookies)
+          </p>
+          <p className="mt-1 max-w-3xl text-sm text-slate">
+            <span className="font-medium text-navy">sessionStorage</span> and{" "}
+            <span className="font-medium text-navy">localStorage</span> keys the
+            app uses for prefs or navigation. These are{" "}
+            <span className="font-medium text-navy">not</span> cookies — they are
+            never attached to HTTP requests. Latest view restore uses
+            sessionStorage on purpose (tab-local; survives listing Back, not a
+            new browser session).
+          </p>
+        </div>
+        <div className="px-5 py-5 sm:px-6">
+          <div className="overflow-x-auto rounded-xl border border-charcoal/[0.1]">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-cream/40 font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/50">
+                <tr>
+                  <th className="px-3 py-2.5 font-medium">Key</th>
+                  <th className="px-3 py-2.5 font-medium">Kind</th>
+                  <th className="px-3 py-2.5 font-medium">Purpose</th>
+                  <th className="px-3 py-2.5 font-medium">Value</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-charcoal/[0.08]">
+                {storageRows.map((row) => (
                   <tr
-                    key={row.name}
+                    key={`${row.kind}:${row.key}`}
                     className={row.present ? "bg-white" : "bg-charcoal/[0.02]"}
                   >
                     <td className="px-3 py-2.5 align-top">
                       <span className="font-mono text-[11px] text-navy">
-                        {row.name}
+                        {row.key}
                       </span>
+                      <p className="mt-0.5 font-mono text-[9px] tracking-[0.08em] uppercase text-charcoal/40">
+                        {row.category}
+                      </p>
+                    </td>
+                    <td className="px-3 py-2.5 align-top font-mono text-[10px] text-charcoal/60">
+                      {row.kind}
                     </td>
                     <td className="px-3 py-2.5 align-top text-xs text-slate">
                       {row.purpose}
                     </td>
-                    <td className="max-w-[16rem] px-3 py-2.5 align-top">
-                      <p className="break-words font-mono text-[10px] text-charcoal/70 leading-snug">
-                        {locLabel}
-                      </p>
-                      {row.location.setBy ? (
-                        <p className="mt-1 break-words font-mono text-[9px] text-charcoal/40 leading-snug">
-                          {row.location.setBy}
-                          {row.location.observed ? " · observed" : ""}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="max-w-[18rem] px-3 py-2.5 align-top">
-                      <span
-                        className={`break-all font-mono text-[10px] text-charcoal/70 ${
-                          isExpanded ? "whitespace-pre-wrap" : ""
-                        }`}
-                      >
-                        {isExpanded && row.value != null
-                          ? row.value
-                          : canExpand && !isExpanded
-                            ? previewCookieValue(displayValue, 48)
-                            : displayValue}
-                      </span>
-                      {canExpand || canCopy ? (
-                        <div className="mt-1.5 flex flex-wrap gap-2">
-                          {canExpand ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpanded((cur) =>
-                                  cur === row.name ? null : row.name,
-                                )
-                              }
-                              className="font-mono text-[9px] tracking-[0.1em] uppercase text-navy/70 underline decoration-navy/25 underline-offset-2 hover:text-navy"
-                            >
-                              {isExpanded ? "Collapse" : "Expand"}
-                            </button>
-                          ) : null}
-                          {canCopy ? (
-                            <button
-                              type="button"
-                              onClick={() => void copyValue(row.name, row.value!)}
-                              className="font-mono text-[9px] tracking-[0.1em] uppercase text-navy/70 underline decoration-navy/25 underline-offset-2 hover:text-navy"
-                            >
-                              {copied === row.name ? "Copied" : "Copy"}
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2.5 align-top">
-                      <div className="flex flex-wrap gap-1">
-                        {row.httpOnly ? (
-                          <span className="rounded border border-charcoal/15 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/55">
-                            HttpOnly
-                          </span>
-                        ) : null}
-                        {row.sources.includes("document") ||
-                        row.sources.includes("cookieStore") ? (
-                          <span className="rounded border border-charcoal/15 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/55">
-                            JS
-                          </span>
-                        ) : null}
-                        {row.sources.includes("server") ? (
-                          <span className="rounded border border-charcoal/15 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/55">
-                            Server
-                          </span>
-                        ) : null}
-                        {!row.present ? (
-                          <span className="rounded border border-charcoal/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-charcoal/40">
-                            Absent
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 align-top text-right">
-                      <button
-                        type="button"
-                        disabled={!row.present || busy != null}
-                        onClick={() => void deleteNames([row.name])}
-                        className="font-mono text-[10px] tracking-[0.12em] uppercase text-coral/80 underline decoration-coral/30 underline-offset-2 transition-colors hover:text-coral disabled:opacity-40 disabled:no-underline"
-                      >
-                        {busy === row.name ? "…" : "Delete"}
-                      </button>
+                    <td className="max-w-[18rem] px-3 py-2.5 align-top break-all font-mono text-[10px] text-charcoal/70">
+                      {showValues ? row.preview : row.present ? "••••" : "(not set)"}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-
-        <p className="text-xs leading-snug text-charcoal/45">
-          Clearing <span className="font-mono">tmre_site_pass</span> ends your
-          Admin session. Clearing{" "}
-          <span className="font-mono">tmre_vid</span> mints a new visitor id on
-          the next page view. Does not affect other browsers or users. Cookie
-          Store path/domain is used when the browser exposes it (Chromium);
-          otherwise catalog defaults apply.
-        </p>
       </div>
     </div>
   );
