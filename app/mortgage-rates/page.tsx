@@ -21,6 +21,7 @@ import {
   jumboConformingSpread,
   MORTGAGE_HEADLINE_SERIES,
   MORTGAGE_SERIES_BY_ID,
+  MORTGAGE_TREASURY_SERIES,
 } from "@/lib/mortgage-rates-shared";
 
 export const dynamic = "force-dynamic";
@@ -219,6 +220,47 @@ export default async function MortgageRatesPage() {
                 </p>
               </div>
             ) : null}
+
+            <div className="mt-8">
+              <p className={sectionLabel}>Treasury benchmarks</p>
+              <p className={`${body} mb-4 max-w-2xl`}>
+                Constant-maturity Treasury yields (H.15) — the usual
+                “on-the-run equivalent” stack for mortgage tenors. Freddie Mac
+                only publishes live national averages for 30- and 15-year fixed;
+                there is no live 10-year mortgage average, and the 5/1 ARM survey
+                ended in 2022.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {MORTGAGE_TREASURY_SERIES.map((id) => {
+                  const meta = MORTGAGE_SERIES_BY_ID[id];
+                  const data = series[id];
+                  const delta = formatRateDelta(
+                    data.yearAgo?.value ?? null,
+                    data.latest?.value ?? null,
+                  );
+                  return (
+                    <div
+                      key={id}
+                      className="rounded-2xl border border-charcoal/[0.08] bg-white p-5"
+                    >
+                      <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
+                        {meta.label}
+                      </p>
+                      <p className="mt-1 font-mono text-3xl tabular-nums text-navy">
+                        {formatRatePct(data.latest?.value ?? null)}
+                      </p>
+                      <p className="mt-1 font-mono text-[10px] text-charcoal/50">
+                        {data.latest?.date ?? "—"}
+                        {delta ? ` · ${delta} vs a year ago` : ""}
+                      </p>
+                      <p className="mt-3 text-xs leading-relaxed text-charcoal/60">
+                        {meta.description}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="mt-4">
               <Commentary note={content.marketNote} heading="Market note" />

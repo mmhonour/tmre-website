@@ -8,7 +8,10 @@ export type MortgageSeriesId =
   | 'MORTGAGE15US'
   | 'OBMMIC30YF'
   | 'OBMMIJUMBO30YF'
+  | 'DGS30'
+  | 'DGS15'
   | 'DGS10'
+  | 'DGS5'
 
 export type MortgageSeriesMeta = {
   id: MortgageSeriesId
@@ -22,6 +25,11 @@ export type MortgageSeriesMeta = {
   cadence: 'weekly' | 'daily'
 }
 
+/**
+ * Freddie Mac PMMS only publishes live national averages for 30-yr and 15-yr
+ * fixed. There is no live MORTGAGE10US; MORTGAGE5US (5/1 ARM) was discontinued
+ * Nov 2022. Pair mortgages with Treasury CMT yields (DGS*) of matching tenor.
+ */
 export const MORTGAGE_SERIES: readonly MortgageSeriesMeta[] = [
   {
     id: 'MORTGAGE30US',
@@ -56,11 +64,35 @@ export const MORTGAGE_SERIES: readonly MortgageSeriesMeta[] = [
     cadence: 'daily',
   },
   {
+    id: 'DGS30',
+    label: '30-yr Treasury',
+    description:
+      'Constant-maturity 30-year Treasury yield (H.15) — the long-bond benchmark that pairs with 30-year fixed mortgages.',
+    source: 'U.S. Treasury CMT via FRED',
+    cadence: 'daily',
+  },
+  {
+    id: 'DGS15',
+    label: '15-yr Treasury',
+    description:
+      'Constant-maturity 15-year Treasury yield (H.15) — pairs with 15-year fixed mortgages.',
+    source: 'U.S. Treasury CMT via FRED',
+    cadence: 'daily',
+  },
+  {
     id: 'DGS10',
     label: '10-yr Treasury',
     description:
-      'Market yield on the 10-year Treasury — the benchmark mortgage pricing tracks far more closely than the fed funds rate.',
-    source: 'U.S. Treasury via FRED',
+      'Constant-maturity 10-year Treasury yield (H.15) — the tenor mortgage pricing tracks most closely day to day (no live national 10-yr mortgage average on FRED).',
+    source: 'U.S. Treasury CMT via FRED',
+    cadence: 'daily',
+  },
+  {
+    id: 'DGS5',
+    label: '5-yr Treasury',
+    description:
+      'Constant-maturity 5-year Treasury yield (H.15) — short/intermediate benchmark (Freddie’s 5/1 ARM survey was discontinued Nov 2022).',
+    source: 'U.S. Treasury CMT via FRED',
     cadence: 'daily',
   },
 ]
@@ -81,7 +113,17 @@ export const MORTGAGE_HEADLINE_SERIES: readonly MortgageSeriesId[] = [
   'MORTGAGE30US',
   'MORTGAGE15US',
   'OBMMIJUMBO30YF',
+]
+
+/**
+ * On-the-run–equivalent Treasury constant maturities (H.15 / DGS*).
+ * Shown as the duration stack opposite live mortgage tenors.
+ */
+export const MORTGAGE_TREASURY_SERIES: readonly MortgageSeriesId[] = [
+  'DGS30',
+  'DGS15',
   'DGS10',
+  'DGS5',
 ]
 
 /** Series drawn on the jumbo-vs-conforming chart. */

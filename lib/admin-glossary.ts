@@ -245,7 +245,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'FRED (mortgage rate series)',
     category: 'sync-admin',
     definition:
-      'St. Louis Fed data API behind /mortgage-rates. Needs FRED_API_KEY. Series pulled into Postgres table mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie Mac PMMS weekly averages), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue conforming vs jumbo 30-yr locks, daily), DGS10 (10-yr Treasury). No cron: the page refreshes lazily when stored data is over 12h old, and Admin → Data controls → Site controls → Mortgage page has a manual “Refresh rates from FRED” button.',
+      'St. Louis Fed data API behind /mortgage-rates. Needs FRED_API_KEY. Series in Postgres mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie PMMS — only live national fixed averages; no live 10-yr mortgage; MORTGAGE5US 5/1 ARM discontinued Nov 2022), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue 30-yr locks), DGS30/DGS15/DGS10/DGS5 (Treasury constant-maturity / on-the-run equivalents). Lazy refresh when data >12h old; Admin → Mortgage page has “Refresh rates from FRED”.',
   },
   {
     term: 'Conforming vs jumbo',
