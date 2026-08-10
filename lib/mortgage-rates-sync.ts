@@ -17,26 +17,18 @@ export const MORTGAGE_RATES_LAST_SYNC_KEY = 'mortgage_rates_last_synced_at'
 export const MORTGAGE_RATES_LAST_RESULT_KEY = 'mortgage_rates_last_sync_result'
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations'
-const FETCH_TIMEOUT_MS = 12_000
-/** Page charts five years; pull a little extra so YoY math never runs dry. */
-const HISTORY_YEARS = 6
+const FETCH_TIMEOUT_MS = 25_000
+/**
+ * Pull as far back as FRED will give for each series. OBMMI starts ~2015;
+ * Freddie PMMS and Treasury CMTs go decades earlier. Chart lookback is filtered
+ * client-side (1Y / 5Y / Max).
+ */
+const HISTORY_START = '1971-04-02'
 /** Re-pull at most this often on a page view (publishers update daily/weekly). */
 const LAZY_REFRESH_MS = 12 * 60 * 60 * 1000
 
 export function isFredConfigured(): boolean {
   return Boolean(process.env.FRED_API_KEY?.trim())
-}
-
-function historyStartDate(now = new Date()): string {
-  const d = new Date(now)
-  d.setUTCFullYear(d.getUTCFullYear() - HISTORY_YEARS)
-  return d.toISOString().slice(0, 10)
-}
-
-function chartStartDate(now = new Date()): string {
-  const d = new Date(now)
-  d.setUTCFullYear(d.getUTCFullYear() - 5)
-  return d.toISOString().slice(0, 10)
 }
 
 type FredObservationsResponse = {
@@ -118,10 +110,9 @@ export async function syncMortgageRatesFromFred(): Promise<MortgageRatesSyncResu
     }
   }
 
-  const start = historyStartDate()
   const series: MortgageRatesSyncResult['series'] = []
   for (const meta of MORTGAGE_SERIES) {
-    const fetched = await fetchFredSeries(meta.id, apiKey, start)
+    const fetched = await fetchFredSeries(meta.id, apiKey, HISTORY_START)
     if (!fetched.ok) {
       series.push({ seriesId: meta.id, ok: false, rows: 0, reason: fetched.reason })
       continue
@@ -206,16 +197,15 @@ function pickYearAgo(
   return bestGap <= 35 * 24 * 60 * 60 * 1000 ? best : null
 }
 
-/** Five years of every catalog series, read from Neon (no FRED call). */
+/** Full stored history for every catalog series, read from Neon (no FRED call). */
 export async function readMortgageRateSeries(): Promise<
   Record<MortgageSeriesId, MortgageSeriesData>
 > {
-  const since = chartStartDate()
   const entries = await Promise.all(
     MORTGAGE_SERIES.map(async (meta) => {
       let observations: MortgageObservation[] = []
       try {
-        observations = await readMortgageSeries(meta.id, since)
+        observations = await readMortgageSeries(meta.id, HISTORY_START)
       } catch (err) {
         console.warn(`[mortgage-rates] read ${meta.id} failed`, err)
       }

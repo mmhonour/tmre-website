@@ -11,6 +11,7 @@ import {
 import { useCurrentReturnPath } from "@/components/listing/ListingReturnLink";
 import type { LatestListingRow } from "@/lib/latest-listings";
 import { latestRowActivityIso } from "@/lib/latest-activity";
+import { formatPriceChangeLabel } from "@/lib/listing-price-change";
 import { mlsTimestampMs } from "@/lib/mls-time";
 import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -85,6 +86,17 @@ function LatestMobileRow({
   const acres = dealBoardAcresLabel(l.lotAcres);
   const specsLabel = [bedBath, ppsf, acres].filter(Boolean).join(" · ");
   const priceLabel = `$${l.price.toLocaleString()}`;
+  const priceChangeLabel =
+    l.priceChange &&
+    (l.status === "Reduced" || l.status === "Increased")
+      ? formatPriceChangeLabel(l.priceChange)
+      : null;
+  const priceChangeClass =
+    l.priceChange?.direction === "increased"
+      ? "text-sky"
+      : l.priceChange?.direction === "reduced"
+        ? "text-coral"
+        : "text-slate";
 
   return (
     <div
@@ -144,6 +156,18 @@ function LatestMobileRow({
           <span className="font-mono text-[14px] tabular-nums font-semibold text-navy">
             {priceLabel}
           </span>
+          {priceChangeLabel ? (
+            <span
+              className={`font-mono text-[11px] tabular-nums ${priceChangeClass}`}
+              title={
+                l.priceChange
+                  ? `Was $${l.priceChange.previousPrice.toLocaleString()}`
+                  : undefined
+              }
+            >
+              {priceChangeLabel}
+            </span>
+          ) : null}
           {specsLabel ? (
             <span className="font-mono text-[11px] tabular-nums text-slate truncate">
               {specsLabel}

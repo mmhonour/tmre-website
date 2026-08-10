@@ -31,10 +31,12 @@ export default function AdminCommunicationsPanel({
   marketDigest,
   socialProfiles,
   listingAlerts,
+  mortgagePage,
 }: {
   marketDigest: ReactNode;
   socialProfiles: ReactNode;
   listingAlerts: ReactNode;
+  mortgagePage: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminCommunicationsPanelId>("market-digest");
 
@@ -62,6 +64,7 @@ export default function AdminCommunicationsPanel({
     "market-digest": marketDigest,
     "social-profiles": socialProfiles,
     "listing-alerts": listingAlerts,
+    "mortgage-page": mortgagePage,
   };
   const active = ADMIN_COMMUNICATIONS_PANELS.find((item) => item.id === panel);
 

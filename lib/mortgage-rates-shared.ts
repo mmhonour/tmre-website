@@ -25,6 +25,21 @@ export type MortgageSeriesMeta = {
   cadence: 'weekly' | 'daily'
 }
 
+/** Publisher page for the Optimal Blue Mortgage Market Indices (OBMMI). */
+export const OPTIMAL_BLUE_MMI_URL = 'https://www2.optimalblue.com/obmmi'
+
+/** St. Louis Fed series page for a catalog id. */
+export function fredSeriesUrl(seriesId: MortgageSeriesId): string {
+  return `https://fred.stlouisfed.org/series/${seriesId}`
+}
+
+/**
+ * One-line footnote: OBMMI is lock-based (PPE), not a lender survey like PMMS.
+ * Optimal Blue aggregates ~1/3 of U.S. residential rate locks through its PPE.
+ */
+export const OPTIMAL_BLUE_MMI_NOTE =
+  'Optimal Blue Mortgage Market Index (OBMMI): daily average of actual consumer rate locks submitted through Optimal Blue’s product-and-pricing engine (roughly one-third of U.S. residential locks), filtered to owner-occupied single-family purchase and rate/term refinance loans — not a survey of quoted rates.'
+
 /**
  * Freddie Mac PMMS only publishes live national averages for 30-yr and 15-yr
  * fixed. There is no live MORTGAGE10US; MORTGAGE5US (5/1 ARM) was discontinued
@@ -51,7 +66,7 @@ export const MORTGAGE_SERIES: readonly MortgageSeriesMeta[] = [
     id: 'OBMMIC30YF',
     label: '30-yr conforming',
     description:
-      'Optimal Blue Mortgage Market Index — rate locks on 30-year fixed loans at or under the conforming limit.',
+      'Optimal Blue MMI — average of same-day rate locks on 30-year fixed loans at or under the conforming limit.',
     source: 'Optimal Blue via FRED',
     cadence: 'daily',
   },
@@ -59,7 +74,7 @@ export const MORTGAGE_SERIES: readonly MortgageSeriesMeta[] = [
     id: 'OBMMIJUMBO30YF',
     label: '30-yr jumbo',
     description:
-      'Optimal Blue Mortgage Market Index — rate locks on 30-year fixed loans above the conforming limit.',
+      'Optimal Blue MMI — average of same-day rate locks on 30-year fixed loans above the conforming limit.',
     source: 'Optimal Blue via FRED',
     cadence: 'daily',
   },
@@ -112,6 +127,7 @@ export const MORTGAGE_SERIES_BY_ID: Record<
 export const MORTGAGE_HEADLINE_SERIES: readonly MortgageSeriesId[] = [
   'MORTGAGE30US',
   'MORTGAGE15US',
+  'OBMMIC30YF',
   'OBMMIJUMBO30YF',
 ]
 
@@ -130,6 +146,27 @@ export const MORTGAGE_TREASURY_SERIES: readonly MortgageSeriesId[] = [
 export const MORTGAGE_SPREAD_SERIES: readonly MortgageSeriesId[] = [
   'OBMMIC30YF',
   'OBMMIJUMBO30YF',
+]
+
+/**
+ * Treasury CMTs offered as optional overlays on the jumbo/conforming chart.
+ * 30-yr matches the mortgage tenor; 10-yr is the day-to-day pricing anchor.
+ */
+export const MORTGAGE_CHART_CMT_SERIES: readonly MortgageSeriesId[] = [
+  'DGS30',
+  'DGS10',
+]
+
+/** Chart lookback presets (client filters stored history). */
+export type MortgageChartRange = '1y' | '5y' | 'max'
+
+export const MORTGAGE_CHART_RANGES: readonly {
+  id: MortgageChartRange
+  label: string
+}[] = [
+  { id: '1y', label: '1Y' },
+  { id: '5y', label: '5Y' },
+  { id: 'max', label: 'Max' },
 ]
 
 export type MortgageObservation = {

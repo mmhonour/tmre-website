@@ -59,7 +59,8 @@ export async function clearStatsCache(): Promise<number> {
     `DELETE FROM stats_cache
       WHERE cache_key NOT LIKE 'deal-of-the-day:%'
         AND cache_key NOT LIKE 'latest-town-feed:%'
-        AND cache_key NOT LIKE 'latest-feed:%'`,
+        AND cache_key NOT LIKE 'latest-feed:%'
+        AND cache_key NOT LIKE 'listing-price-change:%'`,
   )
 }
 

@@ -102,14 +102,14 @@ export const LATEST_STATUS_PRECEDENCE: readonly LatestStatusRuleRow[] = [
     status: 'Reduced',
     badge: 'Reduced',
     event: true,
-    rule: `List price is lower than original list price, and MLS PriceChangeTimestamp is within the last ${PRICE_CHANGE_EVENT_WINDOW_HOURS} hours. ModificationTimestamp-only bumps (remarks/photos/legal freshness) do not qualify.`,
+    rule: `Most recent list-price move is a cut vs the prior ask (not cumulative from original list), and MLS PriceChangeTimestamp is within the last ${PRICE_CHANGE_EVENT_WINDOW_HOURS} hours. A later raise/cut replaces the prior $/% calc. ModificationTimestamp-only bumps do not qualify.`,
   },
   {
     order: 5,
     status: 'Increased',
     badge: 'Increased',
     event: true,
-    rule: `List price is higher than original list price, and MLS PriceChangeTimestamp is within the last ${PRICE_CHANGE_EVENT_WINDOW_HOURS} hours. ModificationTimestamp-only bumps do not qualify.`,
+    rule: `Most recent list-price move is a raise vs the prior ask (not cumulative from original list), and MLS PriceChangeTimestamp is within the last ${PRICE_CHANGE_EVENT_WINDOW_HOURS} hours. A later raise/cut replaces the prior $/% calc. ModificationTimestamp-only bumps do not qualify.`,
   },
 ]
 

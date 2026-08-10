@@ -8,8 +8,8 @@ import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */
-// v8: UC excluded; New/CS/BOM clocks ignore ModificationTimestamp; cache max-age.
-export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v8:global'
+// v9: temporal priceChange ($/%) on Reduced/Increased rows.
+export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v9:global'
 export const LATEST_GLOBAL_FEED_LIMIT = 30
 /** Serve warm cache only while fresher than the incremental warm cadence. */
 export const LATEST_FEED_CACHE_MAX_AGE_MS = 45 * 60 * 1000

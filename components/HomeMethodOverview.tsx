@@ -20,9 +20,13 @@ import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
  *   stat hold → next town’s score fades in (stat stays) → then stat fades out.
  * Mobile and desktop share left (score) / right (stat) panes.
  */
-const HERO_FADE_MS = 2_100; // slower fade-ins / fade-outs for the sequential handoff
+const HERO_FADE_MS = 2_100; // desktop fade-ins / fade-outs
 const HERO_SCORE_HOLD_MS = 2_600;
 const HERO_STAT_HOLD_MS = 3_200;
+/** Mobile: same sequence, longer so the handoff is readable on a small screen. */
+const HERO_FADE_MS_MOBILE = 3_000;
+const HERO_SCORE_HOLD_MS_MOBILE = 4_000;
+const HERO_STAT_HOLD_MS_MOBILE = 4_800;
 
 /**
  * Hero body copy as short phrases (visual wrap ≈ a few words at a time).
@@ -118,6 +122,11 @@ const PILL_TILTS = [-3.6, 2.4, -1.8, 3.2, -2.7, 1.5, -3.1, 2.8, -1.2, 2.0] as co
 const PILL_Y = [-6, 8, 1, 10, -4, 7, -8, 4, 9, -3] as const;
 const PILL_MIN_VISIBLE = 3;
 const PILL_MAX_VISIBLE = 5;
+/** Match hero-ish fades so pills don’t pop faster than score/stat. */
+const PILL_FADE_MS = 2_100;
+const PILL_FADE_MS_MOBILE = 2_800;
+const PILL_HOLD_MS = 2_400;
+const PILL_HOLD_MS_MOBILE = 3_600;
 
 const SURFACES: SurfaceMock[] = [
   {
@@ -254,6 +263,20 @@ export default function HomeMethodOverview({
   );
   /** Freeze outgoing town’s stat while the next town’s score fades in. */
   const [pinnedStat, setPinnedStat] = useState<InterestingStat | null>(null);
+  const [heroIsMobile, setHeroIsMobile] = useState(false);
+  const [heroFadeMs, setHeroFadeMs] = useState(HERO_FADE_MS);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const sync = () => {
+      const mobile = mq.matches;
+      setHeroIsMobile(mobile);
+      setHeroFadeMs(mobile ? HERO_FADE_MS_MOBILE : HERO_FADE_MS);
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   // Scores first — photo + interesting-stat wait until we have a sample (or the
   // score fetch finished empty) so the hero number is never starved by other APIs.
@@ -470,9 +493,17 @@ export default function HomeMethodOverview({
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const fadeMs = reduceMotion ? 0 : HERO_FADE_MS;
-    const scoreHoldMs = reduceMotion ? 1_600 : HERO_SCORE_HOLD_MS;
-    const statHoldMs = reduceMotion ? 1_800 : HERO_STAT_HOLD_MS;
+    const fadeMs = reduceMotion ? 0 : heroFadeMs;
+    const scoreHoldMs = reduceMotion
+      ? 1_600
+      : heroIsMobile
+        ? HERO_SCORE_HOLD_MS_MOBILE
+        : HERO_SCORE_HOLD_MS;
+    const statHoldMs = reduceMotion
+      ? 1_800
+      : heroIsMobile
+        ? HERO_STAT_HOLD_MS_MOBILE
+        : HERO_STAT_HOLD_MS;
 
     let cancelled = false;
     let timer: number | null = null;
@@ -525,7 +556,7 @@ export default function HomeMethodOverview({
       cancelled = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [heroBeat, samples.length]);
+  }, [heroBeat, samples.length, heroFadeMs, heroIsMobile]);
 
   /** Drive CSS fades: start off, flip on next tick (or the reverse for outs). */
   const [scoreLit, setScoreLit] = useState(true);
@@ -660,7 +691,7 @@ export default function HomeMethodOverview({
                         ? "z-10 opacity-100"
                         : "pointer-events-none z-0 opacity-0"
                     }`}
-                    style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
+                    style={{ transitionDuration: `${heroFadeMs}ms` }}
                     aria-hidden={!scoreOpaque || undefined}
                   >
                     {live ? (
@@ -707,7 +738,7 @@ export default function HomeMethodOverview({
                         ? "z-10 translate-y-0 opacity-100"
                         : "pointer-events-none z-0 translate-y-3 opacity-0"
                     }`}
-                    style={{ transitionDuration: `${HERO_FADE_MS}ms` }}
+                    style={{ transitionDuration: `${heroFadeMs}ms` }}
                     aria-hidden={!statOpaque || undefined}
                   >
                     {displayStat ? (
@@ -753,8 +784,11 @@ export default function HomeMethodOverview({
                     ) : null}
                   </div>
                 </div>
-                {/* Desktop: moving objective pills under the two panes. */}
-                <div className="mt-4 hidden w-full min-w-0 lg:mt-5 lg:block">
+                {/*
+                  Invisible reserved panel (transparent border/bg) so pill fade
+                  in/out never collapses layout — same under score on all sizes.
+                */}
+                <div className="mt-3 w-full min-w-0 border border-transparent bg-transparent sm:mt-4 lg:mt-5">
                   <HomeObjectivePills />
                 </div>
               </div>
@@ -769,17 +803,10 @@ export default function HomeMethodOverview({
           </p>
 
           <HomeSurfaceStage />
-          {/* Tablet only — desktop pills live under the town score above. */}
-          <div className="lg:hidden">
-            <HomeObjectivePills />
-          </div>
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-navy-dark/45 px-4 py-3 backdrop-blur-md sm:mt-10 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none lg:mt-12">
-          <div className="sm:hidden">
-            <HomeObjectivePills />
-          </div>
-          <div className="mt-3 flex flex-col gap-1.5 border-t border-white/10 pt-3 sm:mt-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:border-t sm:border-white/10 sm:pt-6">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:border-t sm:border-white/10 sm:pt-6">
             <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
               This week&rsquo;s one listing
             </p>

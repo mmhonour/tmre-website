@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import MarketsPageTabs from "@/components/markets/MarketsPageTabs";
 import MortgageSpreadChart from "@/components/mortgage/MortgageSpreadChart";
 import { getMortgagePageContentFresh } from "@/lib/mortgage-page-config";
 import {
@@ -18,10 +19,14 @@ import {
   formatRateDelta,
   formatRatePct,
   formatUsd,
+  fredSeriesUrl,
   jumboConformingSpread,
+  MORTGAGE_CHART_CMT_SERIES,
   MORTGAGE_HEADLINE_SERIES,
   MORTGAGE_SERIES_BY_ID,
   MORTGAGE_TREASURY_SERIES,
+  OPTIMAL_BLUE_MMI_NOTE,
+  OPTIMAL_BLUE_MMI_URL,
 } from "@/lib/mortgage-rates-shared";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +40,20 @@ export const metadata: Metadata = {
 
 const FREDDIE_PMMS_URL = "https://www.freddiemac.com/pmms";
 const FRED_URL = "https://fred.stlouisfed.org/series/MORTGAGE30US";
+
+function formatRatesUpdatedAt(iso: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 const eyebrow = "font-mono text-[11px] tracking-[0.2em] uppercase text-gold";
 const sectionLabel =
@@ -107,9 +126,24 @@ export default async function MortgageRatesPage() {
     },
   ];
 
+  // Overlay CMTs only where OBMMI exists — keeps the client payload small and
+  // matches the jumbo/conforming window (OBMMI starts ~2015 on FRED).
+  const obmmiStart =
+    conforming.observations[0]?.date ?? jumbo.observations[0]?.date ?? null;
+  const cmtChartLines = MORTGAGE_CHART_CMT_SERIES.map((id, i) => ({
+    id,
+    label: MORTGAGE_SERIES_BY_ID[id].label,
+    color: i === 0 ? "#5b7a99" : "#8a9aab",
+    observations: obmmiStart
+      ? series[id].observations.filter((obs) => obs.date >= obmmiStart)
+      : series[id].observations,
+  }));
+
+  const ratesUpdatedLabel = formatRatesUpdatedAt(ratesMeta.lastSyncedAt);
+
   return (
     <>
-      <section className="navy-gradient relative overflow-hidden pt-20 pb-8 text-white lg:pt-28 lg:pb-12">
+      <section className="navy-gradient relative overflow-hidden pt-20 pb-0 text-white lg:pt-28">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className={`${eyebrow} mb-3 animate-fade-up`}>Markets</p>
@@ -121,30 +155,46 @@ export default async function MortgageRatesPage() {
             for buying, selling, or downsizing in Fairfield County. Averages are
             published survey and lock data — not a quote from me.
           </p>
-          <p className="mt-4 flex flex-wrap gap-x-4 gap-y-2 animate-fade-up-delay-2">
-            <Link
-              href="/fed-analysis"
-              className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
-            >
-              Fed analysis
-            </Link>
-            <a
-              href={FREDDIE_PMMS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
-            >
-              Freddie Mac PMMS
-            </a>
-            <a
-              href={FHFA_LOAN_LIMITS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
-            >
-              FHFA loan limits
-            </a>
-          </p>
+          <div className="mt-4 space-y-1.5 animate-fade-up-delay-2">
+            <p className="flex flex-wrap gap-x-4 gap-y-2">
+              <a
+                href={FREDDIE_PMMS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+              >
+                Freddie Mac PMMS
+              </a>
+              <a
+                href={OPTIMAL_BLUE_MMI_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+              >
+                Optimal Blue MMI
+              </a>
+              <a
+                href={FHFA_LOAN_LIMITS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+              >
+                FHFA loan limits
+              </a>
+              <Link
+                href="/fed-analysis"
+                className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+              >
+                Fed analysis
+              </Link>
+            </p>
+            <p className="font-mono text-[10px] tracking-[0.1em] uppercase text-white/45">
+              {ratesUpdatedLabel
+                ? `Rates last updated ${ratesUpdatedLabel} ET`
+                : "Rates not synced yet"}
+            </p>
+          </div>
+          <MarketsPageTabs active="mortgage-rates" />
         </div>
       </section>
 
@@ -165,39 +215,79 @@ export default async function MortgageRatesPage() {
                 </p>
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {MORTGAGE_HEADLINE_SERIES.map((id) => {
-                  const meta = MORTGAGE_SERIES_BY_ID[id];
-                  const data = series[id];
-                  const delta = formatRateDelta(
-                    data.yearAgo?.value ?? null,
-                    data.latest?.value ?? null,
-                  );
-                  return (
-                    <div
-                      key={id}
-                      className="rounded-2xl border border-charcoal/[0.08] bg-white p-5"
-                    >
-                      <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
-                        {meta.label}
-                      </p>
-                      <p className="mt-1 font-mono text-3xl tabular-nums text-navy">
-                        {formatRatePct(data.latest?.value ?? null)}
-                      </p>
-                      <p className="mt-1 font-mono text-[10px] text-charcoal/50">
-                        {data.latest?.date ?? "—"}
-                        {delta ? ` · ${delta} vs a year ago` : ""}
-                      </p>
-                      <p className="mt-3 text-xs leading-relaxed text-charcoal/60">
-                        {meta.description}
-                      </p>
-                      <p className="mt-2 font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/35">
-                        {meta.source}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
+              <>
+                <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+                  {MORTGAGE_HEADLINE_SERIES.map((id) => {
+                    const meta = MORTGAGE_SERIES_BY_ID[id];
+                    const data = series[id];
+                    const delta = formatRateDelta(
+                      data.yearAgo?.value ?? null,
+                      data.latest?.value ?? null,
+                    );
+                    const isObmmi =
+                      id === "OBMMIC30YF" || id === "OBMMIJUMBO30YF";
+                    return (
+                      <div
+                        key={id}
+                        className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
+                        title={meta.description}
+                      >
+                        <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
+                          {meta.label}
+                          {isObmmi ? (
+                            <a
+                              href="#optimal-blue-note"
+                              className="ml-0.5 text-gold no-underline hover:underline"
+                              aria-label="What is Optimal Blue MMI?"
+                            >
+                              *
+                            </a>
+                          ) : null}
+                        </p>
+                        <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
+                          {formatRatePct(data.latest?.value ?? null)}
+                        </p>
+                        <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
+                          {data.latest?.date ?? "—"}
+                          {delta ? ` · ${delta} YoY` : ""}
+                        </p>
+                        <a
+                          href={fredSeriesUrl(id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1.5 inline-block font-mono text-[8px] tracking-[0.1em] uppercase text-charcoal/35 underline decoration-charcoal/20 underline-offset-2 hover:text-navy"
+                        >
+                          {meta.source}
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p
+                  id="optimal-blue-note"
+                  className="mt-3 text-[11px] leading-relaxed text-charcoal/55"
+                >
+                  <span className="font-mono text-gold">*</span>{" "}
+                  {OPTIMAL_BLUE_MMI_NOTE}{" "}
+                  <a
+                    href={OPTIMAL_BLUE_MMI_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                  >
+                    Optimal Blue MMI
+                  </a>
+                  {" · "}
+                  <a
+                    href={fredSeriesUrl("OBMMIC30YF")}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                  >
+                    FRED OBMMIC30YF
+                  </a>
+                </p>
+              </>
             )}
 
             {showSpot ? (
@@ -230,7 +320,7 @@ export default async function MortgageRatesPage() {
                 there is no live 10-year mortgage average, and the 5/1 ARM survey
                 ended in 2022.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
                 {MORTGAGE_TREASURY_SERIES.map((id) => {
                   const meta = MORTGAGE_SERIES_BY_ID[id];
                   const data = series[id];
@@ -241,20 +331,18 @@ export default async function MortgageRatesPage() {
                   return (
                     <div
                       key={id}
-                      className="rounded-2xl border border-charcoal/[0.08] bg-white p-5"
+                      className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
+                      title={meta.description}
                     >
-                      <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
+                      <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
                         {meta.label}
                       </p>
-                      <p className="mt-1 font-mono text-3xl tabular-nums text-navy">
+                      <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
                         {formatRatePct(data.latest?.value ?? null)}
                       </p>
-                      <p className="mt-1 font-mono text-[10px] text-charcoal/50">
+                      <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
                         {data.latest?.date ?? "—"}
-                        {delta ? ` · ${delta} vs a year ago` : ""}
-                      </p>
-                      <p className="mt-3 text-xs leading-relaxed text-charcoal/60">
-                        {meta.description}
+                        {delta ? ` · ${delta} YoY` : ""}
                       </p>
                     </div>
                   );
@@ -276,7 +364,8 @@ export default async function MortgageRatesPage() {
               </p>
               <MortgageSpreadChart
                 lines={chartLines}
-                caption="Optimal Blue 30-year fixed rate locks, last five years. Conforming = at or under the FHFA limit; jumbo = above it."
+                cmtLines={cmtChartLines}
+                caption="Optimal Blue 30-year fixed rate locks. Conforming = at or under the FHFA limit; jumbo = above it. Use 1Y / 5Y / Max for lookback; + CMT overlays 30-yr and 10-yr Treasury yields."
               />
               <p className={body}>
                 In much of Fairfield County the purchase price pushes a normal
@@ -408,32 +497,115 @@ export default async function MortgageRatesPage() {
           <div>
             <p className={sectionLabel}>Fannie Mae &amp; Freddie Mac</p>
             <div className={card}>
-              <p className={body}>
-                Both are government-sponsored enterprises that buy closed loans
-                from lenders, guarantee timely payment to investors, and package
-                them into securities. Fannie Mae dates to 1938, Freddie Mac to
-                1970 — Freddie was created to give Fannie competition. Neither
-                lends to consumers directly, and both have been in federal
-                conservatorship since 2008.
+              <p className="font-serif text-2xl leading-snug text-navy">
+                Same secondary-market job today — different origins, and a
+                reason Freddie exists at all.
               </p>
+              <p className={body}>
+                Neither lends to you directly. Both are government-sponsored
+                enterprises that buy closed conforming loans from lenders,
+                guarantee timely payment to investors, and package them into
+                mortgage-backed securities so cash can flow back into new
+                originations. Both have been in federal conservatorship since
+                2008. The interesting part is why Congress built a second one.
+              </p>
+
               <div className="grid gap-4 sm:grid-cols-2">
-                {[
-                  [
-                    "What they do",
-                    "Buy conforming loans, guarantee the payments, and sell the resulting bonds — keeping cash flowing back to lenders.",
-                  ],
-                  [
-                    "Why you feel them",
-                    "Their guidelines set the credit, income, appraisal, and property standards behind most quoted rates.",
-                  ],
-                ].map(([title, text]) => (
-                  <div key={title}>
-                    <p className="mb-1 font-medium text-navy">{title}</p>
-                    <p className="text-sm leading-relaxed text-charcoal/70">
-                      {text}
-                    </p>
-                  </div>
-                ))}
+                <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 p-4 space-y-2">
+                  <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
+                    Fannie Mae · 1938
+                  </p>
+                  <p className="font-medium text-navy">
+                    Create a national secondary market after the Depression
+                  </p>
+                  <p className="text-sm leading-relaxed text-charcoal/70">
+                    Chartered as the Federal National Mortgage Association to
+                    make sure lenders could sell mortgages and keep lending —
+                    first mainly government-backed (FHA/VA) loans, later
+                    conventional conforming loans as well. For decades it was
+                    the dominant buyer, working most naturally with larger
+                    commercial banks and mortgage companies.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 p-4 space-y-2">
+                  <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
+                    Freddie Mac · 1970
+                  </p>
+                  <p className="font-medium text-navy">
+                    Break Fannie&rsquo;s monopoly and serve the thrift channel
+                  </p>
+                  <p className="text-sm leading-relaxed text-charcoal/70">
+                    Created by the Emergency Home Finance Act as the Federal
+                    Home Loan Mortgage Corporation. The point was not a
+                    different product for borrowers — it was competition for
+                    Fannie, and a secondary-market outlet for savings &amp;
+                    loans and smaller thrifts that had been under-served when
+                    Fannie was the only large buyer. Same era also let both GSEs
+                    buy conventional (non-FHA/VA) mortgages more broadly.
+                  </p>
+                </div>
+              </div>
+
+              <p className={body}>
+                So Freddie does not exist to serve a separate class of homebuyer
+                (different credit scores, different loan types). It was built to
+                serve a separate slice of the <em>lender</em> side — thrifts and
+                smaller institutions — and to keep one GSE from setting the
+                entire secondary-market price of conforming credit. Over time
+                those channels blurred: both buy from banks, credit unions, and
+                mortgage companies, both guarantee MBS, and both sit under the
+                same FHFA conservatorship and conforming-loan rules.
+              </p>
+
+              <div className="space-y-3 border-t border-charcoal/[0.06] pt-4">
+                <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
+                  Key distinctions that still matter
+                </p>
+                <ul className="space-y-2.5 text-sm leading-relaxed text-charcoal/75">
+                  <li>
+                    <span className="font-medium text-navy">Origin story.</span>{" "}
+                    Fannie = Depression-era liquidity for a national mortgage
+                    market. Freddie = 1970 competition + thrift access so Fannie
+                    was not the only buyer.
+                  </li>
+                  <li>
+                    <span className="font-medium text-navy">
+                      Who they historically bought from.
+                    </span>{" "}
+                    Fannie leaned toward large commercial banks and mortgage
+                    companies; Freddie toward savings &amp; loans and smaller
+                    thrifts. Today both buy across channels — the old split is
+                    history, not a hard wall.
+                  </li>
+                  <li>
+                    <span className="font-medium text-navy">
+                      Same borrower product, not a different market segment.
+                    </span>{" "}
+                    For you, a “Fannie loan” and a “Freddie loan” are both
+                    conforming agency loans under shared FHFA limits and similar
+                    credit/LTV/occupancy rules. Your rate difference is usually
+                    lender execution and pricing, not a different GSE mission.
+                  </li>
+                  <li>
+                    <span className="font-medium text-navy">
+                      Where they diverge from Ginnie Mae.
+                    </span>{" "}
+                    Ginnie Mae (also 1968-era) guarantees securities backed by
+                    government loans (FHA, VA, USDA). Fannie and Freddie are the
+                    conventional conforming channel — private credit risk with an
+                    implicit/explicit federal backstop via conservatorship, not
+                    full-faith government insurance on the loan itself.
+                  </li>
+                  <li>
+                    <span className="font-medium text-navy">
+                      Why you still feel both.
+                    </span>{" "}
+                    Their selling guides and automated underwriting set most of
+                    the credit, income, appraisal, and property standards behind
+                    quoted conforming rates. Jumbo is everything above the FHFA
+                    limit — outside this Fannie/Freddie buy box.
+                  </li>
+                </ul>
               </div>
             </div>
           </div>

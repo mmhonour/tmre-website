@@ -136,46 +136,47 @@ export default function MarketPulseContent({
     marketPulseTownAvgDomStatsHref(cityLabel, category);
   const tabKit = useTabKitSegmentedStyle("pill-seg-light-compact");
 
-  return (
-    <div className="mx-auto max-w-2xl">
-      <div
-        className={`${tabKit.containerClass({ wrap: true })} mb-4 w-full justify-start sm:justify-center`}
-        role="tablist"
-        aria-label="Market Pulse categories"
-      >
-        {categories.map((cat) => {
-          const selected = active?.id === cat.id;
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() => setCategoryId(cat.id)}
-              className={tabKit.buttonClass(selected)}
-            >
-              {cat.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <WeeklyBriefContent
-        snapshot={viewSnapshot}
-        etDate={etDate}
-        scopeLabel={active?.scopeLabel ?? "sales"}
-        selectionLabel={active?.selectionLabel ?? active?.scopeLabel ?? "sales"}
-        showDealOfTheWeek
-        dealHeading={
-          active?.id === "all" ? "Deal of the Week" : "Featured deal"
-        }
-        townHref={townHref}
-        monthsSupplyTownHref={monthsSupplyTownHref}
-        closedSalesTownHref={closedSalesTownHref}
-        avgDomTownHref={avgDomTownHref}
-        settle={settle}
-        closedPending={closedByCategory[category] === undefined}
-      />
+  const categoryFilter = (
+    <div
+      className={`${tabKit.containerClass({ wrap: true })} w-full justify-start`}
+      role="tablist"
+      aria-label="Market Pulse property type"
+    >
+      {categories.map((cat) => {
+        const selected = active?.id === cat.id;
+        return (
+          <button
+            key={cat.id}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => setCategoryId(cat.id)}
+            className={tabKit.buttonClass(selected)}
+          >
+            {cat.label}
+          </button>
+        );
+      })}
     </div>
+  );
+
+  return (
+    <WeeklyBriefContent
+      snapshot={viewSnapshot}
+      etDate={etDate}
+      scopeLabel={active?.scopeLabel ?? "sales"}
+      selectionLabel={active?.selectionLabel ?? active?.scopeLabel ?? "sales"}
+      showDealOfTheWeek
+      dealHeading={
+        active?.id === "all" ? "Deal of the Week" : "Featured deal"
+      }
+      townHref={townHref}
+      monthsSupplyTownHref={monthsSupplyTownHref}
+      closedSalesTownHref={closedSalesTownHref}
+      avgDomTownHref={avgDomTownHref}
+      settle={settle}
+      closedPending={closedByCategory[category] === undefined}
+      categoryFilter={categoryFilter}
+    />
   );
 }

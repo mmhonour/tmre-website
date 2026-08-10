@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
 import {
   INTEL_MINI_GRAPH_WIDTH,
   miniGraphPointX,
@@ -154,8 +153,9 @@ export default function IntelligenceDomBandMiniChart({
     });
   }, [buckets]);
 
-  const glowIds = useRandomMiniGraphGlow(points.map((p) => p.id));
   const pointIdsKey = points.map((p) => p.id).join("|");
+  /** Flash the same point whose band label is currently showing — not random. */
+  const glowingId = points[calloutLabelIndex]?.id ?? null;
 
   useEffect(() => {
     setCalloutLabelIndex(0);
@@ -257,7 +257,7 @@ export default function IntelligenceDomBandMiniChart({
             />
             {points.map((point, i) => {
               const active = activeBucketId === point.id;
-              const glowing = glowIds.has(point.id);
+              const glowing = glowingId === point.id;
               const showBandLabel =
                 i === calloutLabelIndex ||
                 active ||

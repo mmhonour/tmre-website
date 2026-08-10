@@ -11,6 +11,7 @@ import {
 import { useCurrentReturnPath } from "@/components/listing/ListingReturnLink";
 import type { LatestListingRow } from "@/lib/latest-listings";
 import { latestRowActivityIso } from "@/lib/latest-activity";
+import { formatPriceChangeLabel } from "@/lib/listing-price-change";
 import { mlsTimestampMs } from "@/lib/mls-time";
 import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -132,6 +133,17 @@ function LatestLineRow({
   const acres = dealBoardAcresLabel(l.lotAcres);
   const specsLabel = [bedBath, ppsf, acres].filter(Boolean).join(" · ");
   const priceLabel = `$${l.price.toLocaleString()}`;
+  const priceChangeLabel =
+    l.priceChange &&
+    (l.status === "Reduced" || l.status === "Increased")
+      ? formatPriceChangeLabel(l.priceChange)
+      : null;
+  const priceChangeClass =
+    l.priceChange?.direction === "increased"
+      ? "text-sky"
+      : l.priceChange?.direction === "reduced"
+        ? "text-coral"
+        : "text-slate";
 
   /** Invisible borders keep columns aligned like a table without showing grid lines. */
   const metaColClass =
@@ -232,7 +244,19 @@ function LatestLineRow({
         <div
           className={`${metaColClass} w-[7.5rem] shrink-0 font-mono text-[13px] tabular-nums text-navy`}
         >
-          {priceLabel}
+          <div>{priceLabel}</div>
+          {priceChangeLabel ? (
+            <div
+              className={`mt-0.5 text-[10px] leading-none ${priceChangeClass}`}
+              title={
+                l.priceChange
+                  ? `Was $${l.priceChange.previousPrice.toLocaleString()}`
+                  : undefined
+              }
+            >
+              {priceChangeLabel}
+            </div>
+          ) : null}
         </div>
         <div
           className={`${metaColClass} min-w-0 flex-1 basis-0 truncate font-mono text-[13px] tabular-nums text-slate`}

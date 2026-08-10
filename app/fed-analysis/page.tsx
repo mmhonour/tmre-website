@@ -5,6 +5,7 @@ import FedPolicySnapshot from "@/components/fed-analysis/FedPolicySnapshot";
 import FedRecentCpi from "@/components/fed-analysis/FedRecentCpi";
 import FedRecentDecisions from "@/components/fed-analysis/FedRecentDecisions";
 import FedTimelinePair from "@/components/fed-analysis/FedTimelinePair";
+import MarketsPageTabs from "@/components/markets/MarketsPageTabs";
 import { CPI_SCHEDULE_URL } from "@/lib/cpi-calendar";
 import { getCpiReleasesFresh } from "@/lib/cpi-release-sync";
 import {
@@ -36,7 +37,7 @@ export default async function FedAnalysisPage() {
 
   return (
     <>
-      <section className="navy-gradient relative overflow-hidden pt-20 pb-10 text-white lg:pt-28 lg:pb-14">
+      <section className="navy-gradient relative overflow-hidden pt-20 pb-0 text-white lg:pt-28">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="mb-3 font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
@@ -67,7 +68,14 @@ export default async function FedAnalysisPage() {
             >
               BLS CPI schedule
             </a>
+            <Link
+              href="/mortgage-rates"
+              className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+            >
+              Mortgage rates
+            </Link>
           </p>
+          <MarketsPageTabs active="fed-analysis" />
         </div>
       </section>
 

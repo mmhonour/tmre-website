@@ -796,8 +796,6 @@ export default async function AdminPage() {
         }}
       />
 
-      <AdminMortgagePagePanel />
-
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <AdminContactEmailPanel
           initial={{
@@ -829,6 +827,7 @@ export default async function AdminPage() {
       listingAlerts={
         <AdminListingAlertsPanel initial={listingAlerts ?? undefined} />
       }
+      mortgagePage={<AdminMortgagePagePanel />}
     />
   );
 

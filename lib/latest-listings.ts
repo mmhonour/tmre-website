@@ -39,6 +39,20 @@ import {
   isLatestEventStatus,
   type LatestBadgeStatus,
 } from '@/lib/latest-status-rules'
+import { computeListingPriceChange } from '@/lib/listing-price-change'
+import {
+  resolveListingPriceChanges,
+  type ListingPriceChangeCachePayload,
+} from '@/lib/listing-price-change-cache'
+
+export type LatestListingPriceChange = {
+  previousPrice: number
+  /** Signed dollars: current − previous (negative = reduction). */
+  amount: number
+  /** Signed percent of previous (negative = reduction). */
+  percent: number
+  direction: 'reduced' | 'increased'
+}
 
 export type LatestListingRow = {
   key: string
@@ -52,6 +66,11 @@ export type LatestListingRow = {
   zip: string | null
   type: string
   price: number
+  /**
+   * Most recent list-price move ($ + %). Replaced on each subsequent change —
+   * not cumulative from original list price.
+   */
+  priceChange: LatestListingPriceChange | null
   pricePerSqft: number | null
   sqft: number | null
   lotAcres: number | null
@@ -168,10 +187,13 @@ function isFreshPriceChange(
 /**
  * Badge for a /latest row, or null when the listing is not feed-eligible
  * (Pending, plain Active, Withdrawn returns, etc.).
+ *
+ * `signedPriceChangePercent` is (current − previous) / previous × 100 —
+ * negative means Reduced, positive means Increased.
  */
 function deriveStatus(
   listing: Listing,
-  priceChangePercent: number | null,
+  signedPriceChangePercent: number | null,
   daysOnMarket: number | null,
   previousMlsStatus: string | null,
   previousStatusChangedAt: string | null,
@@ -195,13 +217,42 @@ function deriveStatus(
   }
   if (isNewInventory(daysOnMarket, listing.listDate ?? null, nowMs)) return 'New'
   if (
-    priceChangePercent != null &&
-    priceChangePercent !== 0 &&
+    signedPriceChangePercent != null &&
+    signedPriceChangePercent !== 0 &&
     isFreshPriceChange(listing.priceChangeTimestamp, nowMs)
   ) {
-    return priceChangePercent > 0 ? 'Reduced' : 'Increased'
+    return signedPriceChangePercent < 0 ? 'Reduced' : 'Increased'
   }
   return null
+}
+
+function toLatestPriceChange(
+  change: ListingPriceChangeCachePayload | null | undefined,
+): LatestListingPriceChange | null {
+  if (!change) return null
+  return {
+    previousPrice: change.previousPrice,
+    amount: change.amount,
+    percent: change.percent,
+    direction: change.direction,
+  }
+}
+
+/**
+ * Prefer the temporal last-move from stats_cache / history; fall back to
+ * originalListPrice vs current (signed) when no ladder edge is stored yet.
+ */
+function resolveSignedPriceChangePercent(
+  listing: Listing,
+  lastChange: ListingPriceChangeCachePayload | null | undefined,
+): number | null {
+  if (lastChange) return lastChange.percent
+  const fallback = computeListingPriceChange(
+    listing.originalListPrice,
+    listing.price,
+    listing.priceChangeTimestamp ?? null,
+  )
+  return fallback?.percent ?? null
 }
 
 /** Per-badge event clock used for /latest ranking and day headers. */
@@ -260,6 +311,7 @@ function toLatestRow(
   /** Null for rows built straight from a RETS Listing (no stored history). */
   previousMlsStatus: string | null = null,
   previousStatusChangedAt: string | null = null,
+  lastPriceChange: ListingPriceChangeCachePayload | null = null,
 ): LatestListingRow | null {
   if (listing.price == null || listing.price <= 0) return null
   const rental = isRentalType(listing.propertyType)
@@ -271,13 +323,27 @@ function toLatestRow(
     listing.dom != null
       ? listing.dom
       : daysBetween(listing.listDate ?? listing.modificationTimestamp)
-  const priceChangePercent =
-    listing.originalListPrice &&
-    listing.price &&
-    listing.originalListPrice > 0 &&
-    listing.originalListPrice !== listing.price
-      ? ((listing.originalListPrice - listing.price) / listing.originalListPrice) * 100
-      : null
+  const signedPriceChangePercent = resolveSignedPriceChangePercent(
+    listing,
+    lastPriceChange,
+  )
+  const priceChange =
+    toLatestPriceChange(lastPriceChange) ??
+    (() => {
+      const fallback = computeListingPriceChange(
+        listing.originalListPrice,
+        listing.price,
+        listing.priceChangeTimestamp ?? null,
+      )
+      return fallback
+        ? {
+            previousPrice: fallback.previousPrice,
+            amount: fallback.amount,
+            percent: fallback.percent,
+            direction: fallback.direction,
+          }
+        : null
+    })()
 
   const composite =
     score?.composite ??
@@ -295,7 +361,7 @@ function toLatestRow(
 
   const status = deriveStatus(
     listing,
-    priceChangePercent,
+    signedPriceChangePercent,
     daysOnMarket,
     previousMlsStatus,
     previousStatusChangedAt,
@@ -317,6 +383,8 @@ function toLatestRow(
     zip,
     type: shortType(listing.propertyType),
     price: listing.price,
+    priceChange:
+      status === 'Reduced' || status === 'Increased' ? priceChange : null,
     pricePerSqft,
     sqft: listing.sqft,
     lotAcres:
@@ -337,12 +405,18 @@ function toLatestRow(
   }
 }
 
-function mapStoredLatestRows(
+async function mapStoredLatestRows(
   rows: Awaited<ReturnType<typeof readRecentlyUpdatedListings>>,
-): LatestListingRow[] {
+): Promise<LatestListingRow[]> {
+  const ids = rows
+    .map((row) => listingRowId(row.listing))
+    .filter((id): id is string => Boolean(id))
+  const priceChanges = await resolveListingPriceChanges(ids)
+
   const out: LatestListingRow[] = []
   for (const row of rows) {
     const stored = parseStoredBreakdown(row.goldilocksBreakdown)
+    const id = listingRowId(row.listing)
     const mapped = toLatestRow(
       row.listing,
       stored,
@@ -352,6 +426,7 @@ function mapStoredLatestRows(
       row.goldilocksScore,
       row.previousMlsStatus,
       row.previousStatusChangedAt,
+      id ? priceChanges.get(id) ?? null : null,
     )
     if (mapped) out.push(mapped)
   }
@@ -364,6 +439,15 @@ async function scoreUnscoredLatestRows(
 ): Promise<LatestListingRow[]> {
   const unscoredByTown = new Map<TmreTown, typeof rows>()
   const scoredRows: LatestListingRow[] = []
+  const priceChanges = await resolveListingPriceChanges(
+    rows
+      .map((row) => listingRowId(row.listing))
+      .filter((id): id is string => Boolean(id)),
+  )
+  const changeFor = (listing: Listing) => {
+    const id = listingRowId(listing)
+    return id ? priceChanges.get(id) ?? null : null
+  }
 
   for (const row of rows) {
     const stored = parseStoredBreakdown(row.goldilocksBreakdown)
@@ -377,6 +461,7 @@ async function scoreUnscoredLatestRows(
         row.goldilocksScore,
         row.previousMlsStatus,
         row.previousStatusChangedAt,
+        changeFor(row.listing),
       )
       if (mapped) scoredRows.push(mapped)
       continue
@@ -395,6 +480,7 @@ async function scoreUnscoredLatestRows(
         null,
         row.previousMlsStatus,
         row.previousStatusChangedAt,
+        changeFor(row.listing),
       )
       if (mapped) scoredRows.push(mapped)
       continue
@@ -446,6 +532,7 @@ async function scoreUnscoredLatestRows(
         null,
         row.previousMlsStatus,
         row.previousStatusChangedAt,
+        changeFor(row.listing),
       )
       if (mapped) scoredRows.push(mapped)
     }
@@ -584,7 +671,7 @@ export async function fetchLatestUpdatedListings(options: {
   if (allowLiveScore) {
     scoredRows = await scoreUnscoredLatestRows(rows)
   } else {
-    const mapped = mapStoredLatestRows(rows)
+    const mapped = await mapStoredLatestRows(rows)
     const unscoredCount = mapped.filter((r) => !(r.score > 0)).length
     const shouldLiveScore =
       mapped.length > 0 && unscoredCount / mapped.length >= 0.4 && mapped.length <= 40

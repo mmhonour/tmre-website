@@ -372,7 +372,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'feeds',
     medium: 'postgres',
     location: 'stats_cache',
-    keyPattern: 'latest-feed:v7:global',
+    keyPattern: 'latest-feed:v9:global',
     owner: 'lib/latest-feed-cache.ts',
     live: { kind: 'stats_cache_prefix', prefix: 'latest-feed:' },
   },
@@ -386,6 +386,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     owner: 'lib/latest-town-feed-cache.ts',
     notes: 'Preserved across hourly stats_cache clears.',
     live: { kind: 'stats_cache_prefix', prefix: 'latest-town-feed:' },
+  },
+  {
+    id: 'listing-price-change',
+    name: 'Listing last price change',
+    category: 'feeds',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'listing-price-change:v1:{listingId}',
+    owner: 'lib/listing-price-change-cache.ts',
+    notes:
+      'Temporal $/% vs prior ask (not original list). Each new move overwrites. Preserved across hourly stats_cache clears. Ladder source of truth remains listing_price_history.',
+    live: { kind: 'stats_cache_prefix', prefix: 'listing-price-change:' },
   },
 
   // —— Deals ——

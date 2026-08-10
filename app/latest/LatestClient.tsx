@@ -104,6 +104,7 @@ function pickListingRow(
     ...newer,
     score,
     scoreBreakdown,
+    priceChange: newer.priceChange ?? older.priceChange ?? null,
     town: newer.town?.trim() || older.town?.trim() || newer.city || older.city || null,
     city: newer.city?.trim() || older.city?.trim() || null,
   };

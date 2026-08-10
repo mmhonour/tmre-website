@@ -37,28 +37,21 @@ const PAD_BOTTOM = 18;
 
 const ORIGINAL_VIEW_FLASH_MS = 5_000;
 
-function shortVintageLabel(label: string): string {
-  // "Pre-1900" → "Pre-1900"; "1900–1940" → "1900"; "2020–present" → "2020"
-  if (/^pre/i.test(label)) return "Pre-1900";
-  const start = label.match(/^(\d{4})/);
-  if (start) return start[1];
-  return label;
-}
-
-/** Callouts are tight against neighbors — wrap so labels aren’t clipped. */
-const CALLOUT_WRAP_CHARS = 4;
-const CALLOUT_LINE_HEIGHT = 9;
-
-function wrapCalloutLines(text: string, maxChars = CALLOUT_WRAP_CHARS): string[] {
-  const t = text.trim();
+/**
+ * Compact vintage callout — keep both ends of the range (not just the start year).
+ * "1900–1940" → two lines; "2020–present" → "2020–" / "present"; "Pre-1900" stays.
+ */
+function vintageCalloutLines(label: string): string[] {
+  const t = label.trim();
   if (!t) return [];
-  if (t.length <= maxChars) return [t];
-  const lines: string[] = [];
-  for (let i = 0; i < t.length; i += maxChars) {
-    lines.push(t.slice(i, i + maxChars));
-  }
-  return lines;
+  if (/^pre/i.test(t)) return ["Pre-1900"];
+  // Split on en-dash / hyphen so both ends of the band stay visible.
+  const dash = t.match(/^(\d{4})\s*[–-]\s*(.+)$/);
+  if (dash) return [`${dash[1]}–`, dash[2]];
+  return [t];
 }
+
+const CALLOUT_LINE_HEIGHT = 9;
 
 /**
  * Mini median-price-by-vintage sparkline above the Intelligence deal board.
@@ -207,21 +200,16 @@ export default function IntelligenceVintageMedianMiniChart({
                 point.callout || extraCallouts.has(point.id);
               const glowing = glowIds.has(point.id);
               const priceLabel = formatVintageHeaderPrice(point.medianPrice, kind);
-              const priceLines = wrapCalloutLines(priceLabel);
-              const vintageLines = wrapCalloutLines(
-                shortVintageLabel(point.label),
-              );
+              const vintageLines = vintageCalloutLines(point.label);
               const isFirst = i === 0;
               const isLast = i === points.length - 1;
               const anchor = isFirst ? "start" : isLast ? "end" : "middle";
-              // Stack price lines upward so the last line stays near the dot.
-              const priceY = Math.max(
-                8,
-                point.y -
-                  9 -
-                  Math.max(0, priceLines.length - 1) * CALLOUT_LINE_HEIGHT,
+              const priceY = Math.max(8, point.y - 9);
+              // Room for a two-line range under the dot (e.g. 1941– / 1970).
+              const vintageY = Math.min(
+                HEIGHT - 3 - Math.max(0, vintageLines.length - 1) * (CALLOUT_LINE_HEIGHT - 1),
+                point.y + 12,
               );
-              const vintageY = Math.min(HEIGHT - 3, point.y + 14);
 
               return (
                 <g key={point.id}>
@@ -237,15 +225,7 @@ export default function IntelligenceVintageMedianMiniChart({
                         className="fill-black font-mono text-[9px] tabular-nums"
                         style={{ fontSize: 9 }}
                       >
-                        {priceLines.map((line, li) => (
-                          <tspan
-                            key={`p-${li}`}
-                            x={point.x}
-                            dy={li === 0 ? 0 : CALLOUT_LINE_HEIGHT}
-                          >
-                            {line}
-                          </tspan>
-                        ))}
+                        {priceLabel}
                       </text>
                       <text
                         x={point.x}

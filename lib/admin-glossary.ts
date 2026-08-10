@@ -176,6 +176,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'MLS field (ModificationTimestamp) stored per listing — advertising/legal freshness (remarks/photos/meta). Shown small on listing/Spotlight property facts. Drives incremental RETS “what changed” pulls. Never a /latest badge qualifier and never the /latest ranking clock (that is PriceChangeTimestamp / status change / list date). Often UTC in the feed.',
   },
   {
+    term: 'Last price change ($ / %)',
+    category: 'mls-data',
+    definition:
+      'Temporal ask→ask move for a listing: dollar delta and percent of the prior ask (signed; negative = Reduced, positive = Increased). Written to stats_cache as listing-price-change:v1:{listingId} whenever sync sees a price change; a later move overwrites the prior calc (not cumulative from OriginalListPrice). Ladder of all moves stays in listing_price_history. Shown on /latest Reduced/Increased rows. Cold cache falls back to the latest history edge, then OriginalListPrice.',
+  },
+  {
     term: 'UTC / GMT',
     category: 'mls-data',
     definition:
@@ -239,13 +245,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Mortgage page',
     category: 'sync-admin',
     definition:
-      'Admin content for /mortgage-rates: market / buyer / seller commentary, an optional hand-entered spot quote, and the conforming loan-limit table. Stored in sync_meta key mortgage_page (lib/mortgage-page-config.ts). Rate history is not stored here — it comes from FRED into the mortgage_rates table.',
+      'Admin content for /mortgage-rates: market / buyer / seller commentary, an optional hand-entered spot quote, and the conforming loan-limit table. Editable in Admin → Communications → Mortgage page. Stored in sync_meta key mortgage_page (lib/mortgage-page-config.ts). Rate history is not stored here — it comes from FRED into the mortgage_rates table.',
   },
   {
     term: 'FRED (mortgage rate series)',
     category: 'sync-admin',
     definition:
-      'St. Louis Fed data API behind /mortgage-rates. Needs FRED_API_KEY. Series in Postgres mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie PMMS — only live national fixed averages; no live 10-yr mortgage; MORTGAGE5US 5/1 ARM discontinued Nov 2022), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue 30-yr locks), DGS30/DGS15/DGS10/DGS5 (Treasury constant-maturity / on-the-run equivalents). Lazy refresh when data >12h old; Admin → Mortgage page has “Refresh rates from FRED”.',
+      'St. Louis Fed data API behind /mortgage-rates. Needs FRED_API_KEY. Series in Postgres mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie PMMS — only live national fixed averages; no live 10-yr mortgage; MORTGAGE5US 5/1 ARM discontinued Nov 2022), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue MMI — daily averages of actual PPE rate locks, not a survey), DGS30/DGS15/DGS10/DGS5 (Treasury constant-maturity / on-the-run equivalents). Sync pulls from 1971 so Max lookback works (OBMMI itself starts ~2015). Lazy refresh when data >12h old; Admin → Communications → Mortgage page has “Refresh rates from FRED”.',
   },
   {
     term: 'Conforming vs jumbo',
@@ -263,7 +269,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Buyer / Seller Friendly (Market Pulse)',
     category: 'product',
     definition:
-      'Market Pulse town sort (not Default order). Composite buyer-friendly score: higher months supply + longer avg DOM rank higher for Buyer Friendly (reverse for Seller Friendly). Months supply is one factor, not the only one. Planned factors (catalogue on Town stats for the most current year we have): active inventory ÷ housing unit count, and closings in trailing 24 months ÷ housing unit count — both higher → more buyer friendly. Scoring lives in lib/market-pulse-favorability.ts; missing planned inputs are skipped until housing counts exist.',
+      'Market Pulse town sort for the stacked composite (snapshot order on load — no Default-order pill). Selecting Seller or Buyer Friendly forces STACKED. Unstacked charts sort per metric via ASC/DESC arrows on each title. Composite today: months supply + avg DOM. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units (both derived from Town Stats TBD). Scoring in lib/market-pulse-favorability.ts.',
   },
   {
     term: 'Town housing unit count',
@@ -901,7 +907,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Latest',
     category: 'product',
     definition:
-      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h. New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
+      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h and use the most recent ask→ask move (stats_cache key listing-price-change:v1:{id}, $ + %; a later move overwrites). New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Thin corpus (Find)',

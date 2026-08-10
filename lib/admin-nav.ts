@@ -55,7 +55,8 @@ export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
 export type AdminCommunicationsPanelId =
   | "market-digest"
   | "social-profiles"
-  | "listing-alerts";
+  | "listing-alerts"
+  | "mortgage-page";
 
 export type AdminSectionLink = {
   id: string;
@@ -112,8 +113,7 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   {
     id: "site",
     label: "Site controls",
-    subtitle:
-      "Photos, contact, brokerage, mortgage page, and deploy notifications",
+    subtitle: "Photos, contact, brokerage, and deploy notifications",
   },
   {
     id: "spotlight",
@@ -329,6 +329,12 @@ export const ADMIN_COMMUNICATIONS_PANELS: {
     subtitle:
       "End-user alerts from Latest — email, search criteria, cadence, and delivery status",
   },
+  {
+    id: "mortgage-page",
+    label: "Mortgage page",
+    subtitle:
+      "Commentary, spot quote, conforming loan limits, and FRED rate refresh for /mortgage-rates",
+  },
 ];
 
 export type AdminDocLink = {
@@ -378,7 +384,8 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "communications",
     label: "Communications",
-    subtitle: "Monday market brief, social profiles, and listing alerts",
+    subtitle:
+      "Monday market brief, social profiles, listing alerts, and mortgage page",
   },
   {
     id: "cookies",
@@ -551,8 +558,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-mortgage-page",
     label: "Mortgage page",
-    tab: "data-controls",
-    panel: "site",
+    tab: "communications",
+    panel: "mortgage-page",
   },
   {
     id: "admin-contact-email",
@@ -1121,7 +1128,8 @@ export function isAdminCommunicationsPanelId(
   return (
     value === "market-digest" ||
     value === "social-profiles" ||
-    value === "listing-alerts"
+    value === "listing-alerts" ||
+    value === "mortgage-page"
   );
 }
 

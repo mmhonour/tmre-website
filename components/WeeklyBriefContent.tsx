@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import { fmtMoney } from "@/lib/listing-history";
 import {
@@ -28,6 +28,7 @@ import { splitSentences } from "@/lib/split-sentences";
 
 type ChartLayout = "unstacked" | "stacked";
 type FavorSort = MarketPulseFavorSort;
+type MetricSortDir = "asc" | "desc";
 
 const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
@@ -81,6 +82,33 @@ function isAllTownsCity(city: string): boolean {
   return t === "all" || t === "all towns";
 }
 
+/** Per-metric ASC/DESC for unstacked charts — All towns always stays on top. */
+function sortRowsByMetricValue<Row extends { city: string }>(
+  rows: readonly Row[],
+  valueOf: (row: Row) => number | null,
+  dir: MetricSortDir,
+): Row[] {
+  const all: Row[] = [];
+  const rest: Row[] = [];
+  for (const row of rows) {
+    if (isAllTownsCity(row.city)) all.push(row);
+    else rest.push(row);
+  }
+  const rank = (row: Row) => {
+    const v = valueOf(row);
+    return v != null && Number.isFinite(v) ? v : null;
+  };
+  rest.sort((a, b) => {
+    const av = rank(a);
+    const bv = rank(b);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return dir === "asc" ? av - bv : bv - av;
+  });
+  return [...all, ...rest];
+}
+
 type CombinedTownRow = {
   city: string;
   activeCount: number | null;
@@ -132,6 +160,7 @@ function BarChart<Row extends { city: string }>({
   townHref,
   settle,
   calcOf,
+  sortable = false,
 }: {
   title: string;
   rows: Row[];
@@ -143,8 +172,12 @@ function BarChart<Row extends { city: string }>({
   settle: MarketPulseSettleState;
   /** Cached methodology from stats / closed cache — never computed in the client. */
   calcOf?: (row: Row) => StatsValueCalc | undefined;
+  /** Unstacked only — ASC/DESC arrows beside the title. */
+  sortable?: boolean;
 }) {
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
+  /** null = page-load / snapshot order until the visitor picks a direction. */
+  const [sortDir, setSortDir] = useState<MetricSortDir | null>(null);
 
   useEffect(() => {
     if (settle.phase !== "scramble" || rows.length === 0) {
@@ -154,12 +187,65 @@ function BarChart<Row extends { city: string }>({
     setBarScramble(randomBarPercents(rows.length));
   }, [settle.phase, settle.tick, rows.length]);
 
+  const displayRows = useMemo(() => {
+    if (!sortable || !sortDir) return rows;
+    return sortRowsByMetricValue(rows, valueOf, sortDir);
+  }, [rows, sortable, sortDir, valueOf]);
+
+  const titleRow = (
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <p className="min-w-0 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)]">
+        {title}
+      </p>
+      {sortable ? (
+        <div
+          className="inline-flex shrink-0 items-center gap-0.5"
+          role="group"
+          aria-label={`Sort ${title}`}
+        >
+          <button
+            type="button"
+            aria-label="Sort ascending"
+            aria-pressed={sortDir === "asc"}
+            title="Ascending"
+            onClick={() => setSortDir("asc")}
+            className={`flex h-6 w-6 items-center justify-center rounded border font-mono text-[10px] leading-none transition-colors ${
+              sortDir === "asc"
+                ? "border-[var(--mp-accent)] bg-[var(--mp-accent)]/15 text-[var(--mp-text)]"
+                : "border-black/10 text-[var(--mp-muted-text)] hover:border-black/20 hover:text-[var(--mp-text)]"
+            }`}
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            aria-label="Sort descending"
+            aria-pressed={sortDir === "desc"}
+            title="Descending"
+            onClick={() => setSortDir("desc")}
+            className={`flex h-6 w-6 items-center justify-center rounded border font-mono text-[10px] leading-none transition-colors ${
+              sortDir === "desc"
+                ? "border-[var(--mp-accent)] bg-[var(--mp-accent)]/15 text-[var(--mp-text)]"
+                : "border-black/10 text-[var(--mp-muted-text)] hover:border-black/20 hover:text-[var(--mp-text)]"
+            }`}
+          >
+            ▼
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+
   if (rows.length === 0) {
     return (
       <section>
-        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
-          {title}
-        </p>
+        {sortable ? (
+          titleRow
+        ) : (
+          <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
+            {title}
+          </p>
+        )}
         <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">
           {emptyMessage}
         </p>
@@ -169,7 +255,7 @@ function BarChart<Row extends { city: string }>({
 
   const max = Math.max(
     0,
-    ...rows.map((r) => {
+    ...displayRows.map((r) => {
       const v = valueOf(r);
       return v != null && Number.isFinite(v) ? v : 0;
     }),
@@ -184,11 +270,9 @@ function BarChart<Row extends { city: string }>({
 
   return (
     <section>
-      <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-4">
-        {title}
-      </p>
+      {titleRow}
       <ul className="space-y-2.5">
-        {rows.map((row, index) => {
+        {displayRows.map((row, index) => {
           const v = valueOf(row);
           const settled =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
@@ -519,6 +603,7 @@ export default function WeeklyBriefContent({
   avgDomTownHref,
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
+  categoryFilter,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -542,6 +627,11 @@ export default function WeeklyBriefContent({
   settle?: MarketPulseSettleState;
   /** Closed totals still in flight — otherwise empty means "cache not built". */
   closedPending?: boolean;
+  /**
+   * Property-type filter (All / SFR / …). Rendered inside the pulse panel,
+   * directly above the town-metrics chart title.
+   */
+  categoryFilter?: ReactNode;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>("stacked");
   const [favorSort, setFavorSort] = useState<FavorSort>("default");
@@ -655,7 +745,7 @@ export default function WeeklyBriefContent({
       </header>
 
       <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-6 py-7 sm:px-8 space-y-8 shadow-sm shadow-black/5">
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           <Kpi
             label="Market active"
             final={snapshot.market?.activeCount}
@@ -664,18 +754,11 @@ export default function WeeklyBriefContent({
             salt={1}
           />
           <Kpi
-            label="Market MOS"
+            label="All Towns MOS"
             final={snapshot.market?.monthsSupply}
             kind="mos"
             settle={settle}
             salt={2}
-          />
-          <Kpi
-            label="Westport MOS"
-            final={snapshot.westport?.monthsSupply}
-            kind="mos"
-            settle={settle}
-            salt={3}
           />
         </div>
 
@@ -697,7 +780,11 @@ export default function WeeklyBriefContent({
               type="button"
               className={controlBtn(chartLayout === "unstacked")}
               aria-pressed={chartLayout === "unstacked"}
-              onClick={() => setChartLayout("unstacked")}
+              onClick={() => {
+                setChartLayout("unstacked");
+                // Friend sorts only apply to the stacked composite — clear on unstack.
+                setFavorSort("default");
+              }}
             >
               UNSTACKED
             </button>
@@ -709,19 +796,17 @@ export default function WeeklyBriefContent({
           >
             <button
               type="button"
-              className={controlBtn(favorSort === "default")}
-              aria-pressed={favorSort === "default"}
-              onClick={() => setFavorSort("default")}
-              title="Snapshot order (All towns first)"
-            >
-              Default order
-            </button>
-            <button
-              type="button"
               className={controlBtn(favorSort === "sellers")}
               aria-pressed={favorSort === "sellers"}
-              onClick={() => setFavorSort("sellers")}
-              title="Composite: lower months supply + shorter DOM first (more seller friendly). Planned: inventory/homes + closings/24mo."
+              onClick={() => {
+                if (favorSort === "sellers") {
+                  setFavorSort("default");
+                  return;
+                }
+                setFavorSort("sellers");
+                setChartLayout("stacked");
+              }}
+              title="Composite: lower months supply + shorter DOM first (more seller friendly). Tap again to clear."
             >
               Seller Friendly
             </button>
@@ -729,8 +814,15 @@ export default function WeeklyBriefContent({
               type="button"
               className={controlBtn(favorSort === "buyers")}
               aria-pressed={favorSort === "buyers"}
-              onClick={() => setFavorSort("buyers")}
-              title="Composite: higher months supply + longer DOM first (more buyer friendly). Planned: inventory/homes + closings/24mo."
+              onClick={() => {
+                if (favorSort === "buyers") {
+                  setFavorSort("default");
+                  return;
+                }
+                setFavorSort("buyers");
+                setChartLayout("stacked");
+              }}
+              title="Composite: higher months supply + longer DOM first (more buyer friendly). Tap again to clear."
             >
               Buyer Friendly
             </button>
@@ -742,9 +834,14 @@ export default function WeeklyBriefContent({
             {favorSort === "sellers"
               ? "; lower = more seller friendly"
               : "; higher = more buyer friendly"}
-            ). Planned next: inventory per home + closings/24mo per home from
-            Town stats. All towns stays on top.
+            ). All towns stays on top.
           </p>
+        ) : null}
+
+        {categoryFilter ? (
+          <div className="space-y-3">
+            {categoryFilter}
+          </div>
         ) : null}
 
         {chartLayout === "stacked" ? (
@@ -766,6 +863,7 @@ export default function WeeklyBriefContent({
           townHref={townHref}
           settle={settle}
           calcOf={(r) => r.activeCountCalc}
+          sortable
         />
 
         <BarChart
@@ -778,6 +876,7 @@ export default function WeeklyBriefContent({
           townHref={monthsSupplyTownHref ?? townHref}
           settle={settle}
           calcOf={(r) => r.monthsSupplyCalc}
+          sortable
         />
 
         <BarChart
@@ -790,6 +889,7 @@ export default function WeeklyBriefContent({
           townHref={avgDomTownHref ?? townHref}
           settle={settle}
           calcOf={(r) => r.avgDaysOnMarketCalc}
+          sortable
         />
 
         <BarChart
@@ -797,6 +897,7 @@ export default function WeeklyBriefContent({
           rows={sortedClosed}
           valueOf={(r) => r.count}
           valueKind="int"
+          sortable
           barClassName={METRIC_COLORS.closed}
           emptyMessage={
             closedPending
@@ -926,6 +1027,11 @@ export default function WeeklyBriefContent({
         <p className="font-mono text-[11px] leading-relaxed text-slate">
           MOS = active ÷ avg monthly closings (3 prior full months). Scope:{" "}
           {scopeLabel}.
+        </p>
+        <p className="[font-family:var(--mp-mono-font)] text-[10px] leading-relaxed text-[var(--mp-muted-text)]">
+          Coming Soon: Active Listings ÷ Housing Units (Derived From Town Stats
+          TBD), and 24-Month Closings ÷ Housing Units (Derived From Town Stats
+          TBD).
         </p>
       </div>
     </article>

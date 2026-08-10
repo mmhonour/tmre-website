@@ -20,6 +20,7 @@ import {
   type ListingChangeKind,
   type ListingSnapshotEntry,
 } from '@/lib/db/listing-history-log'
+import { writeListingPriceChanges } from '@/lib/listing-price-change-cache'
 import type { PoolClient } from 'pg'
 import { ADMIN_SYNC_HISTORY_MAX_LIMIT } from '@/lib/admin-sync-history-glom'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
@@ -372,7 +373,20 @@ export async function upsertListing(
   })
 
   // Best-effort, post-commit: never let history logging affect the sync.
-  if (change) await recordListingChanges([change])
+  if (change) {
+    await recordListingChanges([change])
+    if (change.changeKind === 'price' || change.changeKind === 'price_status') {
+      await writeListingPriceChanges([
+        {
+          listingId: change.listingId,
+          mlsId: change.mlsId,
+          previousPrice: change.previousPrice,
+          currentPrice: change.price,
+          changedAt: listing.priceChangeTimestamp ?? new Date().toISOString(),
+        },
+      ])
+    }
+  }
   return result
 }
 
@@ -507,7 +521,30 @@ export async function upsertTownListings(
   })
 
   // Best-effort, post-commit: never let history logging affect the sync.
-  if (changes.length > 0) await recordListingChanges(changes)
+  if (changes.length > 0) {
+    await recordListingChanges(changes)
+    const priceMoves = changes.filter(
+      (c) => c.changeKind === 'price' || c.changeKind === 'price_status',
+    )
+    if (priceMoves.length > 0) {
+      const byId = new Map<string, Listing>()
+      for (const listing of rows) {
+        const id = listingRowId(listing)
+        if (id) byId.set(id, listing)
+      }
+      await writeListingPriceChanges(
+        priceMoves.map((c) => ({
+          listingId: c.listingId,
+          mlsId: c.mlsId,
+          previousPrice: c.previousPrice,
+          currentPrice: c.price,
+          changedAt:
+            byId.get(c.listingId)?.priceChangeTimestamp ??
+            new Date().toISOString(),
+        })),
+      )
+    }
+  }
   return result
 }
 
