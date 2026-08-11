@@ -235,34 +235,69 @@ export function describeJumboSpread(spread: number | null): string {
 export const FHFA_LOAN_LIMITS_URL =
   'https://www.fhfa.gov/data/conforming-loan-limit'
 
-export type ConformingCountyLimit = {
+/** FHFA 1–4 unit conforming ladder (agency buy box; 5+ is commercial). */
+export type ConformingUnitLimits = {
+  oneUnit: number
+  twoUnit: number
+  threeUnit: number
+  fourUnit: number
+}
+
+export const CONFORMING_UNIT_KEYS = [
+  'oneUnit',
+  'twoUnit',
+  'threeUnit',
+  'fourUnit',
+] as const satisfies readonly (keyof ConformingUnitLimits)[]
+
+export const CONFORMING_UNIT_LABELS: Record<keyof ConformingUnitLimits, string> =
+  {
+    oneUnit: '1-unit',
+    twoUnit: '2-unit',
+    threeUnit: '3-unit',
+    fourUnit: '4-unit',
+  }
+
+export type ConformingCountyLimit = ConformingUnitLimits & {
   id: string
   label: string
-  /** One-unit limit in dollars. */
-  oneUnit: number
   note: string
 }
 
 export type ConformingLoanLimits = {
   /** Limit year these figures apply to. */
   year: number
-  /** FHFA baseline one-unit limit for most of the country. */
-  baselineOneUnit: number
-  /** FHFA high-cost ceiling (150% of baseline). */
-  highCostCeiling: number
+  /** FHFA baseline ladder for contiguous US (most counties). */
+  baseline: ConformingUnitLimits
+  /** FHFA high-cost ceiling ladder (150% of baseline). */
+  highCostCeiling: ConformingUnitLimits
   counties: ConformingCountyLimit[]
 }
 
+/** 2026 FHFA contiguous-US baseline + ceiling; Western CT / Greater Bridgeport county. */
 export const DEFAULT_CONFORMING_LIMITS: ConformingLoanLimits = {
-  year: 2025,
-  baselineOneUnit: 806_500,
-  highCostCeiling: 1_209_750,
+  year: 2026,
+  baseline: {
+    oneUnit: 832_750,
+    twoUnit: 1_066_250,
+    threeUnit: 1_288_800,
+    fourUnit: 1_601_750,
+  },
+  highCostCeiling: {
+    oneUnit: 1_249_125,
+    twoUnit: 1_599_375,
+    threeUnit: 1_933_200,
+    fourUnit: 2_402_625,
+  },
   counties: [
     {
       id: 'fairfield',
-      label: 'Fairfield County, CT',
-      oneUnit: 806_500,
-      note: 'Verify against the FHFA county table each year — high-cost designations change.',
+      label: 'Western CT / Greater Bridgeport',
+      oneUnit: 977_500,
+      twoUnit: 1_251_400,
+      threeUnit: 1_512_650,
+      fourUnit: 1_879_850,
+      note: 'Former Fairfield County planning regions — verify against the FHFA county / planning-region table each year.',
     },
   ],
 }

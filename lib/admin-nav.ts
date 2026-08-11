@@ -43,7 +43,8 @@ export type AdminSyncsPanelId =
   | "history"
   | "overview"
   | "db-tuning"
-  | "rets-connection";
+  | "rets-connection"
+  | "photo-ttl";
 
 /** Sub-panels under Admin → NEON Postgres. */
 export type AdminPostgresPanelId = "schema" | "inventory" | "town-counts";
@@ -113,7 +114,7 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   {
     id: "site",
     label: "Site controls",
-    subtitle: "Photos, contact, brokerage, and deploy notifications",
+    subtitle: "Contact, brokerage, and deploy notifications",
   },
   {
     id: "spotlight",
@@ -233,7 +234,7 @@ export const ADMIN_SYNCS_PANELS: {
     id: "latest-health",
     label: "Latest health",
     subtitle:
-      "Feed freshness clocks, upsert history, and the /latest badge + ranking logic surface",
+      "Feed freshness clocks and upsert history for /latest (display rules live under Architecture → Latest rules)",
   },
   {
     id: "mls-reconcile",
@@ -255,6 +256,12 @@ export const ADMIN_SYNCS_PANELS: {
     id: "rets-connection",
     label: "RETS connection",
     subtitle: "Live SmartMLS probe and stored connection health",
+  },
+  {
+    id: "photo-ttl",
+    label: "Listing photo TTL",
+    subtitle:
+      "How long cached listing photo bytes stay fresh before re-fetch / re-encode",
   },
 ];
 
@@ -295,9 +302,9 @@ export const ADMIN_ARCHITECTURE_PANELS: {
   },
   {
     id: "status-logic",
-    label: "Status logic",
+    label: "Latest rules",
     subtitle:
-      "/latest badge precedence, feed ranking, and the fields that drive them",
+      "/latest badge precedence, feed ranking, and the fields that drive them — sourced from lib/latest-status-rules.ts",
   },
   {
     id: "docs",
@@ -396,7 +403,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
   {
     id: "architecture",
     label: "Architecture",
-    subtitle: "Site map, /latest status logic, and product docs",
+    subtitle: "Site map, /latest display rules, and product docs",
   },
   {
     id: "postgres",
@@ -540,8 +547,8 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-photo-ttl",
     label: "Listing photo TTL",
-    tab: "data-controls",
-    panel: "site",
+    tab: "syncs",
+    panel: "photo-ttl",
   },
   {
     id: "admin-brokerage-name",
@@ -629,7 +636,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   },
   {
     id: "admin-latest-status-logic",
-    label: "Status logic",
+    label: "Latest rules",
     tab: "architecture",
     panel: "status-logic",
   },
@@ -1095,7 +1102,8 @@ export function isAdminSyncsPanelId(
     value === "history" ||
     value === "overview" ||
     value === "db-tuning" ||
-    value === "rets-connection"
+    value === "rets-connection" ||
+    value === "photo-ttl"
   );
 }
 

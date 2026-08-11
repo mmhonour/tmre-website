@@ -8,9 +8,12 @@ import {
   type MortgagePageContent,
 } from "@/lib/mortgage-page-shared";
 import {
+  CONFORMING_UNIT_KEYS,
+  CONFORMING_UNIT_LABELS,
   FHFA_LOAN_LIMITS_URL,
   formatUsd,
   type ConformingCountyLimit,
+  type ConformingUnitLimits,
 } from "@/lib/mortgage-rates-shared";
 
 type RatesStatus = {
@@ -180,6 +183,20 @@ export default function AdminMortgagePagePanel({
     }));
   };
 
+  const patchUnitLadder = (
+    which: "baseline" | "highCostCeiling",
+    key: keyof ConformingUnitLimits,
+    value: number,
+  ) => {
+    setContent((prev) => ({
+      ...prev,
+      loanLimits: {
+        ...prev.loanLimits,
+        [which]: { ...prev.loanLimits[which], [key]: value },
+      },
+    }));
+  };
+
   const patchCounty = (
     index: number,
     patch: Partial<ConformingCountyLimit>,
@@ -205,7 +222,7 @@ export default function AdminMortgagePagePanel({
           {
             id: `county-${prev.loanLimits.counties.length + 1}`,
             label: "",
-            oneUnit: prev.loanLimits.baselineOneUnit,
+            ...prev.loanLimits.baseline,
             note: "",
           },
         ],
@@ -339,7 +356,7 @@ export default function AdminMortgagePagePanel({
         <section className="space-y-3">
           <h3 className={labelClass}>Conforming loan limits</h3>
           <p className="text-xs text-charcoal/55 max-w-2xl">
-            Verify against the{" "}
+            1–4 unit FHFA ladders (agency multi-family). Verify against the{" "}
             <a
               href={FHFA_LOAN_LIMITS_URL}
               target="_blank"
@@ -348,82 +365,119 @@ export default function AdminMortgagePagePanel({
             >
               official FHFA table
             </a>{" "}
-            each year — county high-cost designations change.
+            each year — county / planning-region high-cost designations change.
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Limit year</span>
-              <input
-                type="number"
-                value={content.loanLimits.year}
-                onChange={(e) => patchLimits({ year: Number(e.target.value) })}
-                className={inputClass}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Baseline (1-unit)</span>
-              <input
-                type="number"
-                value={content.loanLimits.baselineOneUnit}
-                onChange={(e) =>
-                  patchLimits({ baselineOneUnit: Number(e.target.value) })
-                }
-                className={inputClass}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>High-cost ceiling</span>
-              <input
-                type="number"
-                value={content.loanLimits.highCostCeiling}
-                onChange={(e) =>
-                  patchLimits({ highCostCeiling: Number(e.target.value) })
-                }
-                className={inputClass}
-              />
-            </label>
+          <label className="flex max-w-[10rem] flex-col gap-1">
+            <span className={labelClass}>Limit year</span>
+            <input
+              type="number"
+              value={content.loanLimits.year}
+              onChange={(e) => patchLimits({ year: Number(e.target.value) })}
+              className={inputClass}
+            />
+          </label>
+
+          <div className="overflow-x-auto rounded-lg border border-charcoal/[0.08]">
+            <table className="w-full min-w-[36rem] border-collapse text-left">
+              <thead>
+                <tr className="bg-cream/40">
+                  <th className="px-3 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
+                    Ladder
+                  </th>
+                  {CONFORMING_UNIT_KEYS.map((key) => (
+                    <th
+                      key={key}
+                      className="px-3 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45"
+                    >
+                      {CONFORMING_UNIT_LABELS[key]}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(
+                  [
+                    ["baseline", "Baseline"] as const,
+                    ["highCostCeiling", "High-cost ceiling"] as const,
+                  ] as const
+                ).map(([which, label]) => (
+                  <tr
+                    key={which}
+                    className="border-t border-charcoal/[0.06]"
+                  >
+                    <td className="px-3 py-2 font-mono text-[11px] text-navy whitespace-nowrap">
+                      {label}
+                    </td>
+                    {CONFORMING_UNIT_KEYS.map((key) => (
+                      <td key={key} className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          value={content.loanLimits[which][key]}
+                          onChange={(e) =>
+                            patchUnitLadder(which, key, Number(e.target.value))
+                          }
+                          className={inputClass}
+                          aria-label={`${label} ${CONFORMING_UNIT_LABELS[key]}`}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           <div className="space-y-2">
             {content.loanLimits.counties.map((county, i) => (
               <div
                 key={county.id}
-                className="grid gap-2 rounded-lg border border-charcoal/[0.08] bg-cream/30 p-3 sm:grid-cols-[1.2fr_0.8fr_1.5fr_auto]"
+                className="space-y-2 rounded-lg border border-charcoal/[0.08] bg-cream/30 p-3"
               >
-                <input
-                  type="text"
-                  value={county.label}
-                  placeholder="Fairfield County, CT"
-                  maxLength={120}
-                  onChange={(e) => patchCounty(i, { label: e.target.value })}
-                  className={inputClass}
-                  aria-label="County label"
-                />
-                <input
-                  type="number"
-                  value={county.oneUnit}
-                  onChange={(e) =>
-                    patchCounty(i, { oneUnit: Number(e.target.value) })
-                  }
-                  className={inputClass}
-                  aria-label="One-unit limit"
-                />
-                <input
-                  type="text"
-                  value={county.note}
-                  placeholder="Note shown under the figure"
-                  maxLength={300}
-                  onChange={(e) => patchCounty(i, { note: e.target.value })}
-                  className={inputClass}
-                  aria-label="County note"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeCounty(i)}
-                  className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-2 border border-coral/30 text-coral hover:bg-coral/[0.08] transition-colors"
-                >
-                  Remove
-                </button>
+                <div className="grid gap-2 sm:grid-cols-[1.4fr_1fr_auto]">
+                  <input
+                    type="text"
+                    value={county.label}
+                    placeholder="Western CT / Greater Bridgeport"
+                    maxLength={120}
+                    onChange={(e) => patchCounty(i, { label: e.target.value })}
+                    className={inputClass}
+                    aria-label="County label"
+                  />
+                  <input
+                    type="text"
+                    value={county.note}
+                    placeholder="Note shown under the county row"
+                    maxLength={300}
+                    onChange={(e) => patchCounty(i, { note: e.target.value })}
+                    className={inputClass}
+                    aria-label="County note"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeCounty(i)}
+                    className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-2 border border-coral/30 text-coral hover:bg-coral/[0.08] transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-4">
+                  {CONFORMING_UNIT_KEYS.map((key) => (
+                    <label key={key} className="flex flex-col gap-1">
+                      <span className={labelClass}>
+                        {CONFORMING_UNIT_LABELS[key]}
+                      </span>
+                      <input
+                        type="number"
+                        value={county[key]}
+                        onChange={(e) =>
+                          patchCounty(i, { [key]: Number(e.target.value) })
+                        }
+                        className={inputClass}
+                        aria-label={`${county.label || "County"} ${CONFORMING_UNIT_LABELS[key]}`}
+                      />
+                    </label>
+                  ))}
+                </div>
               </div>
             ))}
             <button
@@ -487,8 +541,8 @@ export default function AdminMortgagePagePanel({
           {content.updatedAt ? (
             <p className="font-mono text-[10px] text-charcoal/45">
               commentary updated{" "}
-              {new Date(content.updatedAt).toLocaleString()} · baseline{" "}
-              {formatUsd(content.loanLimits.baselineOneUnit)}
+              {new Date(content.updatedAt).toLocaleString()} · baseline 1-unit{" "}
+              {formatUsd(content.loanLimits.baseline.oneUnit)}
             </p>
           ) : null}
           {message ? (

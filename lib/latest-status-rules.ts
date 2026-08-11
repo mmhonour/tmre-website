@@ -1,7 +1,7 @@
 /**
  * Single source of truth for /latest badge rules and feed ranking.
- * Imported by the feed builder (server) and Admin → Architecture → Status
- * logic (client) so the logic surface cannot drift from the code that applies it.
+ * Imported by the feed builder (server) and Admin → Architecture → Latest
+ * rules (client) so the logic surface cannot drift from the code that applies it.
  *
  * Keep this file free of `server-only` and free of DB / RETS imports.
  */

@@ -257,7 +257,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Conforming vs jumbo',
     category: 'product',
     definition:
-      'Conforming = loan amount at or under the FHFA limit for the county, so Fannie/Freddie can buy it. Jumbo = above the limit, priced by banks and private investors. FHFA sets a baseline one-unit limit plus a high-cost ceiling (150% of baseline) each year; the figures shown on /mortgage-rates are Admin-editable because FHFA revises them annually.',
+      'Conforming = loan amount at or under the FHFA limit for the county and unit count (1–4 units), so Fannie/Freddie can buy it. Jumbo = above the limit, priced by banks and private investors. FHFA sets a baseline ladder plus a high-cost ceiling (150% of baseline) each year; the figures shown on /mortgage-rates are Admin-editable because FHFA revises them annually.',
   },
   {
     term: 'Monday market brief',
@@ -839,7 +839,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Photo TTL',
     category: 'photos-cdn',
     definition:
-      'Admin-tunable minutes for how long a warmed photo is considered fresh before the warm path may refresh it (does not delete R2 objects by itself).',
+      'Admin-tunable minutes for how long a warmed photo is considered fresh before the warm path may refresh it (does not delete R2 objects by itself). Editable under Admin → Syncs → Listing photo TTL.',
   },
   {
     term: 'File sharding',
@@ -907,7 +907,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Latest',
     category: 'product',
     definition:
-      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h and use the most recent ask→ask move (stats_cache key listing-price-change:v1:{id}, $ + %; a later move overwrites). New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Status logic). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
+      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h and use the most recent ask→ask move (stats_cache key listing-price-change:v1:{id}, $ + %; a later move overwrites). New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Latest rules). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Thin corpus (Find)',
@@ -931,7 +931,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Visitors log',
     category: 'sync-admin',
     definition:
-      'Admin → Visitors parent tab (same Admin Log in cookie). Top: Most viewed properties / pages (content_views running totals, side by side). Below: visitors log grouped by network provider → location or property → date with +/− drilldown (visitors table). Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
+      'Admin → Visitors parent tab (same Admin Log in cookie). Top: Most viewed properties / pages (content_views running totals, side by side). Most viewed properties supports +/− into who viewed each listing, grouped by network provider → location (desc by views on that property). Below: visitors log grouped by provider → location or property → date with +/− drilldown (visitors table). Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
   },
   {
     term: 'List with Me',

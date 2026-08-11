@@ -115,9 +115,15 @@ import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPane
 import AdminTrafficPanel from "@/components/admin/AdminTrafficPanel";
 import AdminVisitorsPanel from "@/components/admin/AdminVisitorsPanel";
 import AdminGlossaryPanel from "@/components/admin/AdminGlossaryPanel";
+import {
+  attachAudienceToContentViews,
+  stubVisitorRecord,
+  type ContentViewAudienceHit,
+} from "@/lib/content-view-audience";
 import { resolveViewedContent } from "@/lib/content-views";
 import {
   readContentViewTotals,
+  readContentViewVidsForKeys,
   readListingLabelsByMlsIds,
   readTopContentViews,
 } from "@/lib/db/content-views-repo";
@@ -290,6 +296,32 @@ export default async function AdminPage() {
       }),
       safe("visitor-records", () => readVisitorRecords(), []),
     ]);
+  const topPropertyAudienceRows = await safe(
+    "top-property-audience",
+    () =>
+      readContentViewVidsForKeys(
+        topViewedProperties.map((row) => row.contentKey),
+      ),
+    [],
+  );
+  const visitorsByVid = new Map(
+    visitorRecords.map((visitor) => [visitor.vid, visitor]),
+  );
+  const audienceHitsByKey = new Map<string, ContentViewAudienceHit[]>();
+  for (const row of topPropertyAudienceRows) {
+    const hit: ContentViewAudienceHit = {
+      visitor: visitorsByVid.get(row.vid) ?? stubVisitorRecord(row.vid),
+      views: row.views,
+      lastViewedAt: row.lastViewedAt,
+    };
+    const bucket = audienceHitsByKey.get(row.contentKey) ?? [];
+    bucket.push(hit);
+    audienceHitsByKey.set(row.contentKey, bucket);
+  }
+  const topViewedPropertiesWithAudience = attachAudienceToContentViews(
+    topViewedProperties,
+    audienceHitsByKey,
+  );
   const visitorProviderGroups =
     groupVisitorsByProviderThenLocation(visitorRecords);
   const visitorLoggedMlsIds = visitorRecords.flatMap((visitor) =>
@@ -311,7 +343,7 @@ export default async function AdminPage() {
       providerGroups={visitorProviderGroups}
       propertyGroups={visitorPropertyGroups}
       propertyLabels={visitorPropertyLabels}
-      topProperties={topViewedProperties}
+      topProperties={topViewedPropertiesWithAudience}
       topPages={topViewedPages}
       stats={{
         visitors: visitorRecords.length,
@@ -778,17 +810,19 @@ export default async function AdminPage() {
 
   const r2Panel = <AdminPhotoHealthPanel />;
 
+  const photoTtlPanel = (
+    <AdminPhotoTtlPanel
+      initial={{
+        ttlMinutes: photoTtlMinutes,
+        default: LISTING_PHOTO_TTL_MINUTES_DEFAULT,
+        min: LISTING_PHOTO_TTL_MINUTES_MIN,
+        max: LISTING_PHOTO_TTL_MINUTES_MAX,
+      }}
+    />
+  );
+
   const sitePanel = (
     <>
-      <AdminPhotoTtlPanel
-        initial={{
-          ttlMinutes: photoTtlMinutes,
-          default: LISTING_PHOTO_TTL_MINUTES_DEFAULT,
-          min: LISTING_PHOTO_TTL_MINUTES_MIN,
-          max: LISTING_PHOTO_TTL_MINUTES_MAX,
-        }}
-      />
-
       <AdminBrokeragePanel
         initial={{
           name: brokerageName,
@@ -896,6 +930,7 @@ export default async function AdminPage() {
       retsConnection={
         <AdminRetsConnectionPanel initial={initialStatus.rets ?? null} />
       }
+      photoTtl={photoTtlPanel}
     />
   );
 

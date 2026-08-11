@@ -379,6 +379,43 @@ export async function readVisitorContentViews(
   return attachListingDetails(rows.map(aggregateRowToSummary))
 }
 
+export type ContentViewVidRow = {
+  contentKey: string
+  vid: string
+  views: number
+  lastViewedAt: string
+}
+
+/**
+ * Per-visitor rows for the given content keys (typically the top Most-viewed
+ * properties). Used to drill into who viewed each listing.
+ */
+export async function readContentViewVidsForKeys(
+  contentKeys: readonly string[],
+): Promise<ContentViewVidRow[]> {
+  await ensureContentViewsTable()
+  const keys = [...new Set(contentKeys.map((k) => k.trim()).filter(Boolean))]
+  if (keys.length === 0) return []
+  const rows = await query<{
+    content_key: string
+    vid: string
+    views: string | number
+    last_viewed_at: Date | string
+  }>(
+    `SELECT content_key, vid, views, last_viewed_at
+     FROM content_views
+     WHERE content_key = ANY($1::text[])
+     ORDER BY views DESC, last_viewed_at DESC`,
+    [keys],
+  )
+  return rows.map((row) => ({
+    contentKey: row.content_key,
+    vid: row.vid,
+    views: toNumber(row.views),
+    lastViewedAt: tsToIso(row.last_viewed_at),
+  }))
+}
+
 /**
  * Property labels for ids appearing in a visitor log (URL id / mls_id /
  * listing_key), keyed by whichever identifier was requested.

@@ -1,5 +1,6 @@
 import MostViewedCard from "@/components/MostViewedCard";
 import VisitorsLogViews from "@/components/VisitorsLogViews";
+import type { ContentViewSummaryWithAudience } from "@/lib/content-view-audience";
 import type { ContentViewSummary } from "@/lib/content-views";
 import type { VisitorPropertyGroup } from "@/lib/visitors-property-groups";
 import type { VisitorProviderGroup } from "@/lib/visitors-types";
@@ -15,7 +16,7 @@ export default function AdminVisitorsPanel({
   providerGroups: VisitorProviderGroup[];
   propertyGroups: VisitorPropertyGroup[];
   propertyLabels: Record<string, string>;
-  topProperties: ContentViewSummary[];
+  topProperties: ContentViewSummaryWithAudience[];
   topPages: ContentViewSummary[];
   stats: {
     visitors: number;
@@ -32,7 +33,7 @@ export default function AdminVisitorsPanel({
         <MostViewedCard
           id="admin-top-properties"
           title="Most viewed properties"
-          note="Running count from content_views. Spotlight views count toward the property they featured."
+          note="Running count from content_views. + / − opens who viewed it, grouped by provider → location (views desc)."
           rows={topProperties}
           emptyMessage="No property views counted yet — run the content_views backfill or wait for the next visit."
         />

@@ -8,6 +8,7 @@ import {
   DEFAULT_CONFORMING_LIMITS,
   type ConformingCountyLimit,
   type ConformingLoanLimits,
+  type ConformingUnitLimits,
 } from '@/lib/mortgage-rates-shared'
 
 export type MortgageSpotQuote = {
@@ -75,7 +76,60 @@ function limitYear(raw: unknown, fallback: number): number {
   return year >= 2000 && year <= 2100 ? year : fallback
 }
 
-function normalizeCounties(raw: unknown): ConformingCountyLimit[] {
+/** Fill 2–4 unit cells; scale from the 1-unit figure using the fallback ladder. */
+function completeUnitLimits(
+  raw: Record<string, unknown> | null | undefined,
+  fallback: ConformingUnitLimits,
+): ConformingUnitLimits {
+  const one = dollars(raw?.oneUnit, fallback.oneUnit)
+  const scale = (target: number) =>
+    Math.round(one * (target / fallback.oneUnit))
+  return {
+    oneUnit: one,
+    twoUnit: dollars(raw?.twoUnit, scale(fallback.twoUnit)),
+    threeUnit: dollars(raw?.threeUnit, scale(fallback.threeUnit)),
+    fourUnit: dollars(raw?.fourUnit, scale(fallback.fourUnit)),
+  }
+}
+
+function asUnitRecord(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  return raw as Record<string, unknown>
+}
+
+/**
+ * Accept nested `{ oneUnit… }` or legacy top-level `baselineOneUnit` /
+ * numeric `highCostCeiling`.
+ */
+function normalizeBaseline(limits: Record<string, unknown>): ConformingUnitLimits {
+  const nested = asUnitRecord(limits.baseline)
+  if (nested) return completeUnitLimits(nested, DEFAULT_CONFORMING_LIMITS.baseline)
+  return completeUnitLimits(
+    { oneUnit: limits.baselineOneUnit },
+    DEFAULT_CONFORMING_LIMITS.baseline,
+  )
+}
+
+function normalizeHighCostCeiling(
+  limits: Record<string, unknown>,
+): ConformingUnitLimits {
+  const nested = asUnitRecord(limits.highCostCeiling)
+  if (nested) {
+    return completeUnitLimits(nested, DEFAULT_CONFORMING_LIMITS.highCostCeiling)
+  }
+  if (typeof limits.highCostCeiling === 'number') {
+    return completeUnitLimits(
+      { oneUnit: limits.highCostCeiling },
+      DEFAULT_CONFORMING_LIMITS.highCostCeiling,
+    )
+  }
+  return structuredClone(DEFAULT_CONFORMING_LIMITS.highCostCeiling)
+}
+
+function normalizeCounties(
+  raw: unknown,
+  baseline: ConformingUnitLimits,
+): ConformingCountyLimit[] {
   if (!Array.isArray(raw)) {
     return structuredClone(DEFAULT_CONFORMING_LIMITS.counties)
   }
@@ -95,10 +149,11 @@ function normalizeCounties(raw: unknown): ConformingCountyLimit[] {
         .slice(0, 40)
     if (!id || seen.has(id)) continue
     seen.add(id)
+    const units = completeUnitLimits(o, baseline)
     counties.push({
       id,
       label,
-      oneUnit: dollars(o.oneUnit, DEFAULT_CONFORMING_LIMITS.baselineOneUnit),
+      ...units,
       note: str(o.note, '', 300),
     })
   }
@@ -119,6 +174,9 @@ export function normalizeMortgagePageContent(raw: unknown): MortgagePageContent 
       ? (o.loanLimits as Record<string, unknown>)
       : {}
 
+  const baseline = normalizeBaseline(limits)
+  const highCostCeiling = normalizeHighCostCeiling(limits)
+
   return {
     marketNote: str(o.marketNote, '', MORTGAGE_NOTE_MAX),
     buyerNote: str(o.buyerNote, '', MORTGAGE_NOTE_MAX),
@@ -132,15 +190,9 @@ export function normalizeMortgagePageContent(raw: unknown): MortgagePageContent 
     },
     loanLimits: {
       year: limitYear(limits.year, DEFAULT_CONFORMING_LIMITS.year),
-      baselineOneUnit: dollars(
-        limits.baselineOneUnit,
-        DEFAULT_CONFORMING_LIMITS.baselineOneUnit,
-      ),
-      highCostCeiling: dollars(
-        limits.highCostCeiling,
-        DEFAULT_CONFORMING_LIMITS.highCostCeiling,
-      ),
-      counties: normalizeCounties(limits.counties),
+      baseline,
+      highCostCeiling,
+      counties: normalizeCounties(limits.counties, baseline),
     },
     updatedAt:
       typeof o.updatedAt === 'string' && o.updatedAt.trim()

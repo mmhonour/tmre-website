@@ -7,7 +7,7 @@ import {
 } from "@/lib/latest-status-rules";
 
 /**
- * Logic surface for /latest badges + feed ranking. Data comes from
+ * Latest display rules for badges + feed ranking. Data comes from
  * `lib/latest-status-rules.ts` — the same module the feed builder imports —
  * so this card cannot drift from production behavior.
  */
@@ -19,7 +19,7 @@ export default function AdminLatestStatusLogicPanel() {
     >
       <div className="px-4 py-3 border-b border-charcoal/[0.08] bg-cream/40">
         <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/45">
-          Status logic surface
+          Latest display rules
         </p>
         <p className="mt-1 text-sm text-navy font-medium">
           How /latest badges are assigned and which rows win the 30 slots

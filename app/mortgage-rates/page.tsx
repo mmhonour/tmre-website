@@ -14,6 +14,8 @@ import {
   readMortgageRatesSyncMeta,
 } from "@/lib/mortgage-rates-sync";
 import {
+  CONFORMING_UNIT_KEYS,
+  CONFORMING_UNIT_LABELS,
   describeJumboSpread,
   FHFA_LOAN_LIMITS_URL,
   formatRateDelta,
@@ -616,58 +618,94 @@ export default async function MortgageRatesPage() {
               Conforming loan limits · {loanLimits.year}
             </p>
             <div className={card}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 p-4">
-                  <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
-                    Baseline · 1-unit
-                  </p>
-                  <p className="mt-1 font-mono text-2xl tabular-nums text-navy">
-                    {formatUsd(loanLimits.baselineOneUnit)}
-                  </p>
-                  <p className="mt-1 text-xs text-charcoal/60">
-                    Applies across most of the country.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-charcoal/[0.08] bg-cream/40 p-4">
-                  <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
-                    High-cost ceiling
-                  </p>
-                  <p className="mt-1 font-mono text-2xl tabular-nums text-navy">
-                    {formatUsd(loanLimits.highCostCeiling)}
-                  </p>
-                  <p className="mt-1 text-xs text-charcoal/60">
-                    The most a designated high-cost county can go (150% of
-                    baseline).
-                  </p>
-                </div>
+              <p className="text-xs text-charcoal/60 -mt-1">
+                Agency buy box for 1–4 unit properties. Limits rise with unit
+                count; 5+ units are outside this conforming ladder.
+              </p>
+              <div className="overflow-x-auto rounded-xl border border-charcoal/[0.08]">
+                <table className="w-full min-w-[32rem] border-collapse text-left">
+                  <thead>
+                    <tr className="bg-cream/50">
+                      <th className="px-3 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase text-slate">
+                        Area
+                      </th>
+                      {CONFORMING_UNIT_KEYS.map((key) => (
+                        <th
+                          key={key}
+                          className="px-3 py-2.5 font-mono text-[10px] tracking-[0.14em] uppercase text-slate text-right"
+                        >
+                          {CONFORMING_UNIT_LABELS[key]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-charcoal/[0.06]">
+                      <td className="px-3 py-2.5">
+                        <p className="font-medium text-navy">Baseline</p>
+                        <p className="text-xs text-charcoal/55">
+                          Most of the country
+                        </p>
+                      </td>
+                      {CONFORMING_UNIT_KEYS.map((key) => (
+                        <td
+                          key={key}
+                          className="px-3 py-2.5 font-mono tabular-nums text-navy text-right whitespace-nowrap"
+                        >
+                          {formatUsd(loanLimits.baseline[key])}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-t border-charcoal/[0.06]">
+                      <td className="px-3 py-2.5">
+                        <p className="font-medium text-navy">
+                          High-cost ceiling
+                        </p>
+                        <p className="text-xs text-charcoal/55">
+                          Cap at 150% of baseline
+                        </p>
+                      </td>
+                      {CONFORMING_UNIT_KEYS.map((key) => (
+                        <td
+                          key={key}
+                          className="px-3 py-2.5 font-mono tabular-nums text-navy text-right whitespace-nowrap"
+                        >
+                          {formatUsd(loanLimits.highCostCeiling[key])}
+                        </td>
+                      ))}
+                    </tr>
+                    {loanLimits.counties.map((county) => (
+                      <tr
+                        key={county.id}
+                        className="border-t border-charcoal/[0.06]"
+                      >
+                        <td className="px-3 py-2.5">
+                          <p className="font-medium text-navy">
+                            {county.label}
+                          </p>
+                          {county.note ? (
+                            <p className="text-xs text-charcoal/55">
+                              {county.note}
+                            </p>
+                          ) : null}
+                        </td>
+                        {CONFORMING_UNIT_KEYS.map((key) => (
+                          <td
+                            key={key}
+                            className="px-3 py-2.5 font-mono tabular-nums text-navy text-right whitespace-nowrap"
+                          >
+                            {formatUsd(county[key])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
-              {loanLimits.counties.length > 0 ? (
-                <div className="space-y-2">
-                  {loanLimits.counties.map((county) => (
-                    <div
-                      key={county.id}
-                      className="flex flex-wrap items-baseline justify-between gap-2 border-b border-charcoal/[0.06] pb-2 last:border-0"
-                    >
-                      <span className="font-medium text-navy">
-                        {county.label}
-                      </span>
-                      <span className="font-mono tabular-nums text-navy">
-                        {formatUsd(county.oneUnit)}
-                      </span>
-                      {county.note ? (
-                        <span className="w-full text-xs text-charcoal/55">
-                          {county.note}
-                        </span>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
 
               <p className={body}>
                 FHFA resets these every year based on national home-price
-                growth. At or under the limit, the loan is{" "}
+                growth. At or under the limit for that unit count, the loan is{" "}
                 <strong className="text-navy">conforming</strong> and can be sold
                 to Fannie or Freddie. Above it, the loan is{" "}
                 <strong className="text-navy">jumbo</strong> — priced by banks
