@@ -61,6 +61,7 @@ export async function sendMarketDigestEmail(opts?: {
   const { subject, text, html } = formatMarketDigestEmail(snapshot, {
     subjectTemplate: config.subjectTemplate,
     includeSocialProfiles: config.includeSocialProfiles,
+    weekdayEt: config.weekdayEt,
   })
   const from =
     process.env.CONTACT_FROM_EMAIL?.trim() ||

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
+import { recountPriceBandsFromListings } from "@/lib/intel-mini-graph-from-listings";
 import {
   INTEL_MINI_GRAPH_WIDTH,
   miniGraphPointX,
@@ -106,13 +107,14 @@ function formatCount(n: number): string {
 
 /**
  * Mini active-inventory-by-price sparkline above the Intelligence deal board.
- * Reads precomputed stats_cache via /api/active-by-price (same bands as
- * Admin → Sales by price bands / rent buckets). Dots set the price filter —
- * same interactive pattern as Median by vintage.
+ * Band edges come from /api/active-by-price (Admin sale/rent bands); counts are
+ * recounted from the deal-board listing pool so they match current filters.
+ * Dots set the price filter — same interactive pattern as Median by vintage.
  */
 export default function IntelligencePriceBandMiniChart({
   city,
   kind,
+  listings,
   activeBucketId = null,
   filterActive = false,
   onBucketClick,
@@ -121,6 +123,8 @@ export default function IntelligencePriceBandMiniChart({
 }: {
   city: string;
   kind: "sale" | "rental";
+  /** Filtered board pool (omit price so other bands stay clickable). */
+  listings: readonly { price: number | null | undefined }[];
   /** Highlight when the price filter matches a single band. */
   activeBucketId?: string | null;
   filterActive?: boolean;
@@ -129,7 +133,7 @@ export default function IntelligencePriceBandMiniChart({
   /** Fired when a graph point is clicked (e.g. pause mobile carousel). */
   onInteract?: () => void;
 }) {
-  const [buckets, setBuckets] = useState<ApiBucket[]>([]);
+  const [bandDefs, setBandDefs] = useState<ApiBucket[]>([]);
   const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(() => new Set());
   const originalFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -141,7 +145,7 @@ export default function IntelligencePriceBandMiniChart({
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    setBuckets([]);
+    setBandDefs([]);
     setExtraCallouts(new Set());
 
     const qs = new URLSearchParams({
@@ -155,13 +159,21 @@ export default function IntelligencePriceBandMiniChart({
       })
       .then((data) => {
         if (ac.signal.aborted || !data?.buckets) return;
-        setBuckets(
-          data.buckets.filter(
-            (b) =>
-              b.id !== "unknown" &&
-              typeof b.count === "number" &&
-              Number.isFinite(b.min),
-          ),
+        // Skeleton only — counts are recomputed from `listings`.
+        setBandDefs(
+          data.buckets
+            .filter(
+              (b) =>
+                b.id !== "unknown" &&
+                Number.isFinite(b.min),
+            )
+            .map((b) => ({
+              id: b.id,
+              label: b.label,
+              min: b.min,
+              max: b.max,
+              count: 0,
+            })),
         );
       })
       .catch(() => {
@@ -171,8 +183,13 @@ export default function IntelligencePriceBandMiniChart({
     return () => ac.abort();
   }, [city, kind]);
 
+  const buckets = useMemo(
+    () => recountPriceBandsFromListings(bandDefs, listings),
+    [bandDefs, listings],
+  );
+
   const points = useMemo((): BandPoint[] => {
-    if (buckets.length === 0) return [];
+    if (buckets.length === 0 || listings.length === 0) return [];
     // ≤3 non-empty bands → drop empty slots and spread the real points.
     const plot = selectMiniGraphBucketsForLayout(buckets);
     if (plot.length === 0) return [];
@@ -199,7 +216,7 @@ export default function IntelligencePriceBandMiniChart({
         callout: true,
       };
     });
-  }, [buckets, kind]);
+  }, [buckets, kind, listings.length]);
 
   const glowIds = useRandomMiniGraphGlow(points.map((p) => p.id));
 

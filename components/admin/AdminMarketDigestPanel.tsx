@@ -7,10 +7,11 @@ import {
 } from "@/lib/admin-schedule-events";
 import {
   DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  alignSubjectTemplateToWeekday,
   defaultMarketDigestSubjectTemplate,
   type MarketDigestConfig,
 } from "@/lib/market-digest-shared";
-import { adminSectionHref } from "@/lib/admin-nav";
+import { adminSectionHref, adminSyncsHref } from "@/lib/admin-nav";
 import {
   SYNC_SCHEDULE_WEEKDAYS,
   weekdayEtLabel,
@@ -40,25 +41,49 @@ function previewSubject(
   weekdayEt: SyncScheduleWeekdayEt,
 ): string {
   const sample = sampleDateForWeekday(weekdayEt);
-  const base =
-    template.trim() || defaultMarketDigestSubjectTemplate(weekdayEt);
+  const base = alignSubjectTemplateToWeekday(
+    template.trim() || defaultMarketDigestSubjectTemplate(weekdayEt),
+    weekdayEt,
+  );
   return base.replaceAll("{date}", sample);
+}
+
+async function setMarketDigestJobPaused(paused: boolean): Promise<boolean> {
+  try {
+    const res = await fetch("/api/admin/scheduled-sync", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jobId: "market-digest", paused }),
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as {
+      jobs?: { "market-digest"?: boolean };
+    };
+    return body.jobs?.["market-digest"] === paused;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Weekly market brief content + schedule (day/time shared with Sync Dashboard
- * via Postgres sync_schedule_config).
+ * via Postgres sync_schedule_config). Enabled is tied to the Syncs Pause flag
+ * for market-digest — a paused job cannot be scheduled from here.
  */
 export default function AdminMarketDigestPanel({
   initial,
+  initialJobPaused = false,
 }: {
   initial?: MarketDigestConfig;
+  /** Syncs → Dashboard Pause for market-digest. */
+  initialJobPaused?: boolean;
 }) {
   const [config, setConfig] = useState<MarketDigestConfig | null>(
     initial ?? null,
   );
   const [email, setEmail] = useState(initial?.email ?? "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
+  const [jobPaused, setJobPaused] = useState(initialJobPaused);
   const [subjectTemplate, setSubjectTemplate] = useState(
     initial?.subjectTemplate ?? DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
   );
@@ -73,6 +98,7 @@ export default function AdminMarketDigestPanel({
   );
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [pauseSaving, setPauseSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const applyConfig = useCallback((body: MarketDigestConfig) => {
@@ -83,6 +109,23 @@ export default function AdminMarketDigestPanel({
     setIncludeSocialProfiles(body.includeSocialProfiles);
     setWeekdayEt(body.weekdayEt);
     setStartTimeEt(body.startTimeEt);
+  }, []);
+
+  const refreshPauseState = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/scheduled-sync", {
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        jobs?: { "market-digest"?: boolean };
+      };
+      if (typeof body.jobs?.["market-digest"] === "boolean") {
+        setJobPaused(body.jobs["market-digest"]);
+      }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const refreshFromServer = useCallback(async () => {
@@ -102,8 +145,13 @@ export default function AdminMarketDigestPanel({
   }, [initial, refreshFromServer]);
 
   useEffect(() => {
+    void refreshPauseState();
+  }, [refreshPauseState]);
+
+  useEffect(() => {
     const onScheduleChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<{ source?: string }>).detail;
+      void refreshPauseState();
       if (detail?.source === "market-digest") return;
       void refreshFromServer();
     };
@@ -111,7 +159,7 @@ export default function AdminMarketDigestPanel({
     return () => {
       window.removeEventListener(TMRE_SYNC_SCHEDULE_CHANGED, onScheduleChanged);
     };
-  }, [refreshFromServer]);
+  }, [refreshFromServer, refreshPauseState]);
 
   const dirty =
     config != null &&
@@ -122,21 +170,36 @@ export default function AdminMarketDigestPanel({
       config.weekdayEt !== weekdayEt ||
       config.startTimeEt !== startTimeEt);
 
+  /** Schedule controls require the Syncs job to be unpaused. */
+  const scheduleLocked = jobPaused;
+
   const save = async () => {
     const trimmed = email.trim();
     if (!isValidEmail(trimmed)) {
       setMessage("Enter a valid email address");
       return;
     }
+    // While the Syncs job is paused, schedule stays off — email/subject can still save.
+    const wasJobPaused = jobPaused;
+    const nextEnabled = wasJobPaused ? false : enabled;
     setSaving(true);
     setMessage(null);
     try {
+      // Keep Syncs Pause aligned with Enabled (paused ⇔ !enabled).
+      const pauseOk = await setMarketDigestJobPaused(!nextEnabled);
+      if (!pauseOk) {
+        setMessage("Could not update the Syncs market-digest pause flag");
+        return;
+      }
+      setJobPaused(!nextEnabled);
+      setEnabled(nextEnabled);
+
       const res = await fetch("/api/admin/market-digest", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           email: trimmed,
-          enabled,
+          enabled: nextEnabled,
           subjectTemplate: subjectTemplate.trim(),
           includeSocialProfiles,
           weekdayEt,
@@ -154,16 +217,46 @@ export default function AdminMarketDigestPanel({
       applyConfig(body);
       dispatchSyncScheduleChanged("market-digest");
       const day = weekdayEtLabel(body.weekdayEt);
-      setMessage(
-        body.enabled
-          ? `Saved — ${day} brief goes to ${body.email} at ${body.startTimeEt} ET`
-          : `Saved — ${day} brief paused`,
-      );
+      if (wasJobPaused && !body.enabled) {
+        setMessage(
+          `Saved content — schedule still locked until Syncs market-digest is unpaused`,
+        );
+      } else {
+        setMessage(
+          body.enabled
+            ? `Saved — ${day} brief goes to ${body.email} at ${body.startTimeEt} ET (Syncs job running)`
+            : `Saved — ${day} brief off (Syncs market-digest job paused)`,
+        );
+      }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
+  };
+
+  const onEnabledChange = async (next: boolean) => {
+    if (next && jobPaused) {
+      // Turning on: unpause Syncs job so the schedule can fire.
+      setPauseSaving(true);
+      setMessage(null);
+      const ok = await setMarketDigestJobPaused(false);
+      setPauseSaving(false);
+      if (!ok) {
+        setMessage(
+          "Could not unpause the Syncs market-digest job — open Syncs → Dashboard and clear Pause there.",
+        );
+        return;
+      }
+      setJobPaused(false);
+      setEnabled(true);
+      dispatchSyncScheduleChanged("market-digest");
+      setMessage(
+        "Syncs market-digest job unpaused — save to keep the brief enabled.",
+      );
+      return;
+    }
+    setEnabled(next);
   };
 
   const sendTest = async () => {
@@ -255,12 +348,39 @@ export default function AdminMarketDigestPanel({
             Syncs → Configure
           </a>{" "}
           (Postgres <span className="font-mono text-[11px]">sync_schedule_config</span>
-          ). Pause / Run also live on Syncs. Send test now does not advance the
-          weekly watermark. Requires{" "}
+          ). <strong className="font-medium text-navy">Enabled</strong> is the
+          same switch as Pause on Syncs for the{" "}
+          <span className="font-mono text-[11px]">market-digest</span> job — a
+          paused job will not send. Send test now does not advance the weekly
+          watermark. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
         </p>
       </div>
       <div className="px-5 sm:px-6 py-4 space-y-4">
+        {scheduleLocked ? (
+          <div
+            role="status"
+            className="rounded-lg border border-coral/30 bg-coral/[0.08] px-3 py-2.5 text-sm text-navy"
+          >
+            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-coral">
+              Schedule locked — Syncs job paused
+            </p>
+            <p className="mt-1 text-xs leading-snug text-slate">
+              The <span className="font-mono text-[11px]">market-digest</span>{" "}
+              job is paused on{" "}
+              <a
+                href={adminSyncsHref("dashboard")}
+                className="text-navy underline-offset-2 hover:underline"
+              >
+                Syncs → Dashboard
+              </a>
+              . The Netlify cron skips the brief while Pause is on, so you cannot
+              arm day/time or turn Enabled on from here until that job is
+              unpaused (or check Enabled below to unpause it, then Save).
+            </p>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
@@ -271,7 +391,8 @@ export default function AdminMarketDigestPanel({
               onChange={(e) =>
                 onWeekdayChange(Number(e.target.value) as SyncScheduleWeekdayEt)
               }
-              className="w-40 max-w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm text-navy focus:border-navy focus:outline-none"
+              disabled={scheduleLocked}
+              className="w-40 max-w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm text-navy focus:border-navy focus:outline-none disabled:cursor-not-allowed disabled:opacity-45"
               aria-label="Weekly send day Eastern"
             >
               {SYNC_SCHEDULE_WEEKDAYS.map((d) => (
@@ -289,7 +410,8 @@ export default function AdminMarketDigestPanel({
               type="time"
               value={startTimeEt}
               onChange={(e) => setStartTimeEt(e.target.value)}
-              className="w-36 max-w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm tabular-nums text-navy focus:border-navy focus:outline-none"
+              disabled={scheduleLocked}
+              className="w-36 max-w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm tabular-nums text-navy focus:border-navy focus:outline-none disabled:cursor-not-allowed disabled:opacity-45"
               aria-label="Weekly start time Eastern"
             />
           </label>
@@ -306,15 +428,21 @@ export default function AdminMarketDigestPanel({
               className="w-72 max-w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm text-navy focus:border-navy focus:outline-none"
             />
           </label>
-          <label className="inline-flex items-center gap-2 pb-2 cursor-pointer select-none">
+          <label
+            className={`inline-flex items-center gap-2 pb-2 select-none ${
+              pauseSaving ? "opacity-50" : "cursor-pointer"
+            }`}
+          >
             <input
               type="checkbox"
-              checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
+              checked={enabled && !jobPaused}
+              disabled={pauseSaving}
+              onChange={(e) => void onEnabledChange(e.target.checked)}
               className="rounded border-charcoal/30"
             />
             <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/70">
               Enabled
+              {jobPaused ? " (job paused)" : ""}
             </span>
           </label>
           <button
@@ -347,8 +475,9 @@ export default function AdminMarketDigestPanel({
             className="w-full rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-sm text-navy focus:border-navy focus:outline-none"
           />
           <span className="font-mono text-[10px] text-charcoal/40">
-            Use {"{date}"} for the Eastern long date. Changing send day updates
-            the day name in the default subject. Preview:{" "}
+            Use {"{date}"} for the Eastern long date of the send day (same
+            weekday as the pick list). Changing send day updates the day name
+            in the subject. Preview:{" "}
             <span className="text-charcoal/65">
               {previewSubject(subjectTemplate, weekdayEt)}
             </span>
@@ -375,8 +504,12 @@ export default function AdminMarketDigestPanel({
 
         {config ? (
           <p className="font-mono text-[10px] text-charcoal/45">
-            Scheduled {weekdayEtLabel(config.weekdayEt)}s at {config.startTimeEt}{" "}
-            ET · last sent{" "}
+            {jobPaused
+              ? "Not scheduled — Syncs market-digest job is paused · "
+              : config.enabled
+                ? `Scheduled ${weekdayEtLabel(config.weekdayEt)}s at ${config.startTimeEt} ET · `
+                : `Saved schedule ${weekdayEtLabel(config.weekdayEt)}s ${config.startTimeEt} ET but Enabled is off · `}
+            last sent{" "}
             {config.lastSentAt
               ? new Date(config.lastSentAt).toLocaleString()
               : "never"}

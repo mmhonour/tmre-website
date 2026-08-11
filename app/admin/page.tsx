@@ -854,7 +854,12 @@ export default async function AdminPage() {
 
   const communicationsPanel = (
     <AdminCommunicationsPanel
-      marketDigest={<AdminMarketDigestPanel initial={marketDigest} />}
+      marketDigest={
+        <AdminMarketDigestPanel
+          initial={marketDigest}
+          initialJobPaused={scheduledSyncPausedJobs["market-digest"]}
+        />
+      }
       socialProfiles={
         <AdminSocialProfilesPanel initial={socialProfiles ?? undefined} />
       }

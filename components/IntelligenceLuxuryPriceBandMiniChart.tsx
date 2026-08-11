@@ -5,6 +5,7 @@ import { useMiniGraphsCarousel } from "@/components/IntelligenceMiniGraphsStrip"
 import type { InventorySegmentId } from "@/lib/inventory-segment-bands-shared";
 import type { InventorySegmentChartSeed } from "@/lib/intelligence-inventory-segment-fssr";
 import { useRandomMiniGraphGlow } from "@/hooks/useRandomMiniGraphGlow";
+import { recountPriceBandsFromListings } from "@/lib/intel-mini-graph-from-listings";
 import {
   INTEL_MINI_GRAPH_WIDTH,
   miniGraphPointX,
@@ -90,18 +91,21 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-function bucketsFromSeed(
+function bandDefsFromSeed(
   seed: InventorySegmentChartSeed | null | undefined,
   segment: InventorySegmentId,
 ): ApiBucket[] {
   const row = seed?.bySegment?.[segment];
   if (!row?.buckets?.length) return [];
-  return row.buckets.filter(
-    (b) =>
-      b.id !== "unknown" &&
-      typeof b.count === "number" &&
-      Number.isFinite(b.min),
-  );
+  return row.buckets
+    .filter((b) => b.id !== "unknown" && Number.isFinite(b.min))
+    .map((b) => ({
+      id: b.id,
+      label: b.label,
+      min: b.min,
+      max: b.max,
+      count: 0,
+    }));
 }
 
 function segmentInventoryByPriceLabel(segmentLabel: string): string {
@@ -127,11 +131,12 @@ function PausePlayIcon({ paused }: { paused: boolean }) {
 /**
  * Intelligence inventory-by-price sparkline — Luxury / Mid-market / Value /
  * Discount (Admin Market Bands). Auto-cycles all bands on mobile and desktop
- * with a local pause/play control. Prefers SSR seed +
- * /api/active-by-segment-price?all=1 so all band caches are warm.
+ * with a local pause/play control. Band edges from SSR seed /
+ * /api/active-by-segment-price; counts from the filtered board pool.
  */
 export default function IntelligenceLuxuryPriceBandMiniChart({
   city,
+  listings,
   initialSeed = null,
   activeBucketId = null,
   filterActive = false,
@@ -140,6 +145,8 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   onInteract,
 }: {
   city: string;
+  /** Filtered board pool (omit price so other bands stay clickable). */
+  listings: readonly { price: number | null | undefined }[];
   initialSeed?: InventorySegmentChartSeed | null;
   activeBucketId?: string | null;
   filterActive?: boolean;
@@ -162,15 +169,15 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
       : miniCarousel.activeKey === LUXURY_CAROUSEL_SLOT_KEY);
   const [segment, setSegment] = useState<InventorySegmentId>("luxury");
   const [bandPaused, setBandPaused] = useState(false);
-  const [bySegment, setBySegment] = useState<
+  const [bandDefsBySegment, setBandDefsBySegment] = useState<
     Partial<Record<InventorySegmentId, ApiBucket[]>>
   >(() => {
     if (!initialSeed || initialSeed.city !== city) return {};
     return {
-      luxury: bucketsFromSeed(initialSeed, "luxury"),
-      mid: bucketsFromSeed(initialSeed, "mid"),
-      value: bucketsFromSeed(initialSeed, "value"),
-      discount: bucketsFromSeed(initialSeed, "discount"),
+      luxury: bandDefsFromSeed(initialSeed, "luxury"),
+      mid: bandDefsFromSeed(initialSeed, "mid"),
+      value: bandDefsFromSeed(initialSeed, "value"),
+      discount: bandDefsFromSeed(initialSeed, "discount"),
     };
   });
   const [labels, setLabels] = useState<
@@ -203,11 +210,11 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     setSegment("luxury");
 
     if (initialSeed && seedCity === city) {
-      setBySegment({
-        luxury: bucketsFromSeed(initialSeed, "luxury"),
-        mid: bucketsFromSeed(initialSeed, "mid"),
-        value: bucketsFromSeed(initialSeed, "value"),
-        discount: bucketsFromSeed(initialSeed, "discount"),
+      setBandDefsBySegment({
+        luxury: bandDefsFromSeed(initialSeed, "luxury"),
+        mid: bandDefsFromSeed(initialSeed, "mid"),
+        value: bandDefsFromSeed(initialSeed, "value"),
+        discount: bandDefsFromSeed(initialSeed, "discount"),
       });
       setLabels({
         luxury: initialSeed.bySegment.luxury?.segmentLabel,
@@ -221,7 +228,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         ),
       );
     } else {
-      setBySegment({});
+      setBandDefsBySegment({});
       setReady(false);
     }
     setExtraCallouts(new Set());
@@ -239,15 +246,18 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         for (const id of SEGMENT_ORDER) {
           const row = data.bySegment[id];
           if (!row?.buckets) continue;
-          next[id] = row.buckets.filter(
-            (b) =>
-              b.id !== "unknown" &&
-              typeof b.count === "number" &&
-              Number.isFinite(b.min),
-          );
+          next[id] = row.buckets
+            .filter((b) => b.id !== "unknown" && Number.isFinite(b.min))
+            .map((b) => ({
+              id: b.id,
+              label: b.label,
+              min: b.min,
+              max: b.max,
+              count: 0,
+            }));
           if (row.segmentLabel) nextLabels[id] = row.segmentLabel;
         }
-        setBySegment(next);
+        setBandDefsBySegment(next);
         setLabels((prev) => ({ ...prev, ...nextLabels }));
         setReady(SEGMENT_ORDER.some((id) => (next[id]?.length ?? 0) > 0));
       })
@@ -259,6 +269,16 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
     // initialSeed identity is stable from SSR for city All
     // eslint-disable-next-line react-hooks/exhaustive-deps -- city drives refetch
   }, [city, seedCity]);
+
+  const bySegment = useMemo(() => {
+    const next: Partial<Record<InventorySegmentId, ApiBucket[]>> = {};
+    for (const id of SEGMENT_ORDER) {
+      const defs = bandDefsBySegment[id];
+      if (!defs?.length) continue;
+      next[id] = recountPriceBandsFromListings(defs, listings);
+    }
+    return next;
+  }, [bandDefsBySegment, listings]);
 
   const buckets = bySegment[segment] ?? [];
   const segmentDataKey = SEGMENT_ORDER.map(
@@ -287,7 +307,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
   }, [bandPaused, ready, segmentDataKey, isActiveCarouselSlide]);
 
   const points = useMemo((): BandPoint[] => {
-    if (buckets.length === 0) return [];
+    if (buckets.length === 0 || listings.length === 0) return [];
     // ≤3 non-empty bands → drop empty slots and spread the real points.
     const plot = selectMiniGraphBucketsForLayout(buckets);
     if (plot.length === 0) return [];
@@ -314,7 +334,7 @@ export default function IntelligenceLuxuryPriceBandMiniChart({
         callout: labelAll || i % 2 === 0,
       };
     });
-  }, [buckets]);
+  }, [buckets, listings.length]);
 
   const glowIds = useRandomMiniGraphGlow(
     points.map((p) => p.id),

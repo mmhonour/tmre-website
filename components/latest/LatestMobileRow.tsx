@@ -105,25 +105,44 @@ function LatestMobileRow({
         isNew ? "bg-sage/[0.06] animate-[fadeIn_0.4s_ease-out]" : ""
       }`}
     >
-      <DealBoardPrimaryPhoto
-        listing={l}
-        isLive={isLive}
-        width={96}
-        height={72}
-        priority
-        surface="light"
-        className="rounded-lg shrink-0"
-        showPhotoCountBadge={false}
-      />
+      <div className="flex w-[6rem] shrink-0 flex-col gap-1">
+        <span
+          className="font-mono text-[10px] tabular-nums leading-tight text-navy/70 truncate"
+          title={updatedAt.title}
+        >
+          {updatedAt.label}
+        </span>
+        <DealBoardPrimaryPhoto
+          listing={l}
+          isLive={isLive}
+          width={96}
+          height={72}
+          priority
+          surface="light"
+          className="rounded-lg shrink-0"
+          showPhotoCountBadge={false}
+        />
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono text-[13px] tabular-nums font-semibold leading-tight text-navy">
+            {priceLabel}
+          </span>
+          {priceChangeLabel ? (
+            <span
+              className={`font-mono text-[10px] tabular-nums leading-tight ${priceChangeClass}`}
+              title={
+                l.priceChange
+                  ? `Was $${l.priceChange.previousPrice.toLocaleString()}`
+                  : undefined
+              }
+            >
+              {priceChangeLabel}
+            </span>
+          ) : null}
+        </div>
+      </div>
 
       <div className="min-w-0 flex-1 flex flex-col gap-1">
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className="font-mono text-[11px] tabular-nums text-navy/70 truncate"
-            title={updatedAt.title}
-          >
-            {updatedAt.label}
-          </span>
+        <div className="flex justify-end">
           <DealBoardStatusBadge status={l.status} />
         </div>
 
@@ -152,28 +171,11 @@ function LatestMobileRow({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="font-mono text-[14px] tabular-nums font-semibold text-navy">
-            {priceLabel}
+        {specsLabel ? (
+          <span className="font-mono text-[11px] tabular-nums text-slate truncate">
+            {specsLabel}
           </span>
-          {priceChangeLabel ? (
-            <span
-              className={`font-mono text-[11px] tabular-nums ${priceChangeClass}`}
-              title={
-                l.priceChange
-                  ? `Was $${l.priceChange.previousPrice.toLocaleString()}`
-                  : undefined
-              }
-            >
-              {priceChangeLabel}
-            </span>
-          ) : null}
-          {specsLabel ? (
-            <span className="font-mono text-[11px] tabular-nums text-slate truncate">
-              {specsLabel}
-            </span>
-          ) : null}
-        </div>
+        ) : null}
 
         <ClickableGoldilocksScore
           score={l.score}

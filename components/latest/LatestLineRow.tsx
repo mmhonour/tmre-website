@@ -205,7 +205,7 @@ function LatestLineRow({
       {town ? (
         <LatestTownMapHover
           townName={town}
-          className="shrink-0 font-mono text-[11px] tracking-[0.08em] uppercase text-gold font-semibold"
+          className="box-border w-[6.75rem] min-w-[6.75rem] max-w-[6.75rem] shrink-0 truncate font-mono text-[11px] tracking-[0.08em] uppercase text-gold font-semibold"
         />
       ) : null}
 

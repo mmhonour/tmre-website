@@ -6,6 +6,7 @@ import {
   MORTGAGE_NOTE_MAX,
   normalizeMortgagePageContent,
   type MortgagePageContent,
+  type MortgagePreferredLender,
 } from "@/lib/mortgage-page-shared";
 import {
   CONFORMING_UNIT_KEYS,
@@ -66,7 +67,8 @@ function NoteField({
 
 /**
  * Admin content for /mortgage-rates: commentary blocks, an optional hand-entered
- * spot quote, the conforming loan-limit table, and a manual FRED refresh.
+ * spot quote, the conforming loan-limit table, preferred lenders, and a manual
+ * FRED refresh.
  */
 export default function AdminMortgagePagePanel({
   initial,
@@ -224,6 +226,7 @@ export default function AdminMortgagePagePanel({
             label: "",
             ...prev.loanLimits.baseline,
             note: "",
+            towns: [],
           },
         ],
       },
@@ -240,6 +243,41 @@ export default function AdminMortgagePagePanel({
     }));
   };
 
+  const patchLender = (
+    index: number,
+    patch: Partial<MortgagePreferredLender>,
+  ) => {
+    setContent((prev) => ({
+      ...prev,
+      preferredLenders: prev.preferredLenders.map((row, i) =>
+        i === index ? { ...row, ...patch } : row,
+      ),
+    }));
+  };
+
+  const addLender = () => {
+    setContent((prev) => ({
+      ...prev,
+      preferredLenders: [
+        ...prev.preferredLenders,
+        {
+          id: `lender-${prev.preferredLenders.length + 1}`,
+          name: "",
+          minDownNote: "",
+          url: "",
+          note: "",
+        },
+      ],
+    }));
+  };
+
+  const removeLender = (index: number) => {
+    setContent((prev) => ({
+      ...prev,
+      preferredLenders: prev.preferredLenders.filter((_, i) => i !== index),
+    }));
+  };
+
   return (
     <div
       id="admin-mortgage-page"
@@ -250,8 +288,8 @@ export default function AdminMortgagePagePanel({
           Mortgage page
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
-          Your commentary, an optional quoted rate, and the conforming loan
-          limits shown on{" "}
+          Your commentary, an optional quoted rate, conforming loan limits,
+          high-cost town list, and preferred lenders on{" "}
           <a
             href="/mortgage-rates"
             className="underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
@@ -478,6 +516,27 @@ export default function AdminMortgagePagePanel({
                     </label>
                   ))}
                 </div>
+                <label className="flex flex-col gap-1">
+                  <span className={labelClass}>
+                    Towns (comma-separated · link to on-page descriptor)
+                  </span>
+                  <input
+                    type="text"
+                    value={(county.towns ?? []).join(", ")}
+                    placeholder="Westport, Fairfield, Norwalk…"
+                    maxLength={500}
+                    onChange={(e) =>
+                      patchCounty(i, {
+                        towns: e.target.value
+                          .split(/[,;\n]+/)
+                          .map((t) => t.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                    className={inputClass}
+                    aria-label={`${county.label || "County"} towns`}
+                  />
+                </label>
               </div>
             ))}
             <button
@@ -486,6 +545,80 @@ export default function AdminMortgagePagePanel({
               className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-charcoal/20 text-charcoal/70 hover:bg-cream/50 transition-colors"
             >
               Add county
+            </button>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className={labelClass}>Preferred lenders · lowest down</h3>
+          <p className="text-xs text-charcoal/55 max-w-2xl">
+            Shown on /mortgage-rates when at least one lender has a name. Use
+            min-down notes for products that keep loans inside the local
+            conforming limit (e.g. “3% conventional · 3.5% FHA”).
+          </p>
+          <div className="space-y-2">
+            {content.preferredLenders.map((lender, i) => (
+              <div
+                key={lender.id}
+                className="space-y-2 rounded-lg border border-charcoal/[0.08] bg-cream/30 p-3"
+              >
+                <div className="grid gap-2 sm:grid-cols-[1.2fr_1fr_auto]">
+                  <input
+                    type="text"
+                    value={lender.name}
+                    placeholder="Lender name"
+                    maxLength={120}
+                    onChange={(e) => patchLender(i, { name: e.target.value })}
+                    className={inputClass}
+                    aria-label="Lender name"
+                  />
+                  <input
+                    type="text"
+                    value={lender.minDownNote}
+                    placeholder="3% conventional · 3.5% FHA"
+                    maxLength={200}
+                    onChange={(e) =>
+                      patchLender(i, { minDownNote: e.target.value })
+                    }
+                    className={inputClass}
+                    aria-label="Min down note"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeLender(i)}
+                    className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-2 border border-coral/30 text-coral hover:bg-coral/[0.08] transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input
+                    type="url"
+                    value={lender.url}
+                    placeholder="https://…"
+                    maxLength={300}
+                    onChange={(e) => patchLender(i, { url: e.target.value })}
+                    className={inputClass}
+                    aria-label="Lender URL"
+                  />
+                  <input
+                    type="text"
+                    value={lender.note}
+                    placeholder="Optional note (jumbo desk, local LO, etc.)"
+                    maxLength={400}
+                    onChange={(e) => patchLender(i, { note: e.target.value })}
+                    className={inputClass}
+                    aria-label="Lender note"
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addLender}
+              className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-4 py-2 border border-charcoal/20 text-charcoal/70 hover:bg-cream/50 transition-colors"
+            >
+              Add lender
             </button>
           </div>
         </section>

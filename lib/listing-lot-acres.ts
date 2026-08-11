@@ -1,3 +1,5 @@
+export const SQ_FT_PER_ACRE = 43_560
+
 function num(v: string | undefined): number | null {
   if (v === undefined || v === null || v === '') return null
   const n = Number(v)
@@ -17,18 +19,33 @@ export function coerceLotAcres(value: unknown): number | null {
   return null
 }
 
-/** Display acres without padded zeros (1.50 → 1.5 ac, 2.00 → 2 ac, 0.50 → 0.5 ac). */
+function acreUnit(acres: number): 'acre' | 'acres' {
+  return acres === 1 ? 'acre' : 'acres'
+}
+
+/** Display acres without padded zeros (1.50 → 1.5 acres, 2.00 → 2 acres). */
 export function formatLotAcresLabel(acres: number | null | undefined): string | null {
   const n = coerceLotAcres(acres)
   if (n == null || n <= 0) return null
-  if (n < 0.01) return '<0.01 ac'
+  if (n < 0.01) return `<0.01 ${acreUnit(0.01)}`
   const maxFractionDigits = n < 10 ? 2 : 1
   const formatted = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: maxFractionDigits,
   }).format(n)
   const display = formatted.startsWith('0.') ? formatted.slice(1) : formatted
-  return `${display} ac`
+  return `${display} ${acreUnit(n)}`
+}
+
+/** Convert acres → rounded square feet for display (e.g. "21,780 sqft"). */
+export function formatLotSqftFromAcres(
+  acres: number | null | undefined,
+): string | null {
+  const n = coerceLotAcres(acres)
+  if (n == null || n <= 0) return null
+  const sqft = Math.round(n * SQ_FT_PER_ACRE)
+  if (sqft <= 0) return null
+  return `${sqft.toLocaleString('en-US')} sqft`
 }
 
 /** Parse lot acreage from raw RETS fields (LotSizeAcres, LotSizeArea, etc.). */

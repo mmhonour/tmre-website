@@ -140,6 +140,45 @@ export async function upsertFomcMeeting(meeting: FomcMeeting): Promise<void> {
   )
 }
 
+/**
+ * Refresh calendar schedule fields without clobbering scraped statement text.
+ * Used at the start of each FOMC sync so /fed-analysis dates stay current.
+ */
+export async function upsertFomcMeetingCalendar(meeting: FomcMeeting): Promise<void> {
+  await ensureFomcMeetingsTable()
+  await query(
+    `INSERT INTO fomc_meetings (
+       id, start_date, end_date, has_sep, decision, basis_points,
+       target_range_low, target_range_high, statement_url, note,
+       summary, excerpt, vote_note, synced_at, updated_at
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()
+     )
+     ON CONFLICT (id) DO UPDATE SET
+       start_date = EXCLUDED.start_date,
+       end_date = EXCLUDED.end_date,
+       has_sep = EXCLUDED.has_sep,
+       note = COALESCE(EXCLUDED.note, fomc_meetings.note),
+       statement_url = COALESCE(fomc_meetings.statement_url, EXCLUDED.statement_url),
+       updated_at = now()`,
+    [
+      meeting.id,
+      meeting.startDate,
+      meeting.endDate,
+      meeting.hasSep,
+      meeting.decision,
+      meeting.basisPoints,
+      meeting.targetRangeLow,
+      meeting.targetRangeHigh,
+      meeting.statementUrl,
+      meeting.note ?? null,
+      meeting.summary ?? null,
+      meeting.excerpt ?? null,
+      meeting.voteNote ?? null,
+    ],
+  )
+}
+
 export async function readFomcSyncMeta(): Promise<{
   lastSyncedAt: string | null
   lastResult: string | null

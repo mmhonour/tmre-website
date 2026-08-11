@@ -1706,6 +1706,8 @@ export default function AdminSyncTable({
           return;
         }
         setPausedJobs(body.jobs);
+        // Keep Communications → Monday market brief Enabled in sync with Pause.
+        dispatchSyncScheduleChanged("sync-dashboard");
       } catch {
         setPausedJobs(prev);
       } finally {

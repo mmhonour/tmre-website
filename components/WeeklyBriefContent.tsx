@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import { fmtMoney } from "@/lib/listing-history";
 import {
-  MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
   type MarketDigestClosedTownCount,
   type MarketDigestDomTownCount,
   type MarketDigestSnapshot,
@@ -15,6 +14,12 @@ import {
   sortRowsByBuyerFriendlyScore,
   type MarketPulseFavorSort,
 } from "@/lib/market-pulse-favorability";
+import {
+  DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  MARKET_PULSE_LOOKBACK_OPTIONS,
+  marketPulseLookbackChartLabel,
+  type MarketPulseLookbackId,
+} from "@/lib/market-pulse-lookback";
 import {
   MARKET_PULSE_SETTLE_IDLE,
   randomBarPercents,
@@ -199,7 +204,7 @@ function BarChart<Row extends { city: string }>({
       </p>
       {sortable ? (
         <div
-          className="inline-flex shrink-0 items-center gap-0.5"
+          className="inline-flex shrink-0 items-center gap-px"
           role="group"
           aria-label={`Sort ${title}`}
         >
@@ -209,10 +214,10 @@ function BarChart<Row extends { city: string }>({
             aria-pressed={sortDir === "asc"}
             title="Ascending"
             onClick={() => setSortDir("asc")}
-            className={`flex h-6 w-6 items-center justify-center rounded border font-mono text-[10px] leading-none transition-colors ${
+            className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
               sortDir === "asc"
-                ? "border-[var(--mp-accent)] bg-[var(--mp-accent)]/15 text-[var(--mp-text)]"
-                : "border-black/10 text-[var(--mp-muted-text)] hover:border-black/20 hover:text-[var(--mp-text)]"
+                ? "text-[var(--mp-accent)]"
+                : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
             }`}
           >
             ▲
@@ -223,10 +228,10 @@ function BarChart<Row extends { city: string }>({
             aria-pressed={sortDir === "desc"}
             title="Descending"
             onClick={() => setSortDir("desc")}
-            className={`flex h-6 w-6 items-center justify-center rounded border font-mono text-[10px] leading-none transition-colors ${
+            className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
               sortDir === "desc"
-                ? "border-[var(--mp-accent)] bg-[var(--mp-accent)]/15 text-[var(--mp-text)]"
-                : "border-black/10 text-[var(--mp-muted-text)] hover:border-black/20 hover:text-[var(--mp-text)]"
+                ? "text-[var(--mp-accent)]"
+                : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
             }`}
           >
             ▼
@@ -350,44 +355,42 @@ function BarChart<Row extends { city: string }>({
   );
 }
 
-const COMBINED_METRICS = [
-  {
-    id: "inventory",
-    label: "Inventory",
-    short: "Inv",
-    barClassName: METRIC_COLORS.inventory,
-    valueKind: "int" as const,
-    valueOf: (r: CombinedTownRow) => r.activeCount,
-    calcOf: (r: CombinedTownRow) => r.activeCountCalc,
-  },
-  {
-    id: "monthsSupply",
-    label: "Months supply",
-    short: "MOS",
-    barClassName: METRIC_COLORS.monthsSupply,
-    valueKind: "mos" as const,
-    valueOf: (r: CombinedTownRow) => r.monthsSupply,
-    calcOf: (r: CombinedTownRow) => r.monthsSupplyCalc,
-  },
-  {
-    id: "avgDom",
-    label: "Avg DOM",
-    short: "DOM",
-    barClassName: METRIC_COLORS.avgDom,
-    valueKind: "dom" as const,
-    valueOf: (r: CombinedTownRow) => r.avgDaysOnMarket,
-    calcOf: (r: CombinedTownRow) => r.avgDaysOnMarketCalc,
-  },
-  {
-    id: "closed",
-    label: `Closed (${MARKET_DIGEST_CLOSED_TRAILING_MONTHS}mo)`,
-    short: "Cls",
-    barClassName: METRIC_COLORS.closed,
-    valueKind: "int" as const,
-    valueOf: (r: CombinedTownRow) => r.closedCount,
-    calcOf: (r: CombinedTownRow) => r.closedCalc,
-  },
-] as const;
+function combinedMetrics(closedLookbackLabel: string) {
+  return [
+    {
+      id: "inventory",
+      label: "Inventory",
+      barClassName: METRIC_COLORS.inventory,
+      valueKind: "int" as const,
+      valueOf: (r: CombinedTownRow) => r.activeCount,
+      calcOf: (r: CombinedTownRow) => r.activeCountCalc,
+    },
+    {
+      id: "monthsSupply",
+      label: "Months supply",
+      barClassName: METRIC_COLORS.monthsSupply,
+      valueKind: "mos" as const,
+      valueOf: (r: CombinedTownRow) => r.monthsSupply,
+      calcOf: (r: CombinedTownRow) => r.monthsSupplyCalc,
+    },
+    {
+      id: "avgDom",
+      label: "Avg DOM",
+      barClassName: METRIC_COLORS.avgDom,
+      valueKind: "dom" as const,
+      valueOf: (r: CombinedTownRow) => r.avgDaysOnMarket,
+      calcOf: (r: CombinedTownRow) => r.avgDaysOnMarketCalc,
+    },
+    {
+      id: "closed",
+      label: `Closed (${closedLookbackLabel})`,
+      barClassName: METRIC_COLORS.closed,
+      valueKind: "int" as const,
+      valueOf: (r: CombinedTownRow) => r.closedCount,
+      calcOf: (r: CombinedTownRow) => r.closedCalc,
+    },
+  ] as const;
+}
 
 /** One town block with four stacked metric bars (each normalized to its own max). */
 function CombinedMetricsChart({
@@ -395,12 +398,15 @@ function CombinedMetricsChart({
   rows,
   townHref,
   settle,
+  closedLookbackLabel,
 }: {
   title: string;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
+  closedLookbackLabel: string;
 }) {
+  const metrics = combinedMetrics(closedLookbackLabel);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
 
   useEffect(() => {
@@ -408,8 +414,8 @@ function CombinedMetricsChart({
       setBarScramble(null);
       return;
     }
-    setBarScramble(randomBarPercents(rows.length * COMBINED_METRICS.length));
-  }, [settle.phase, settle.tick, rows.length]);
+    setBarScramble(randomBarPercents(rows.length * metrics.length));
+  }, [settle.phase, settle.tick, rows.length, metrics.length]);
 
   if (rows.length === 0) {
     return (
@@ -424,7 +430,7 @@ function CombinedMetricsChart({
     );
   }
 
-  const maxByMetric = COMBINED_METRICS.map((m) =>
+  const maxByMetric = metrics.map((m) =>
     Math.max(
       0,
       ...rows.map((r) => {
@@ -447,7 +453,7 @@ function CombinedMetricsChart({
         {title}
       </p>
       <ul className="mb-4 flex flex-wrap gap-x-4 gap-y-1.5">
-        {COMBINED_METRICS.map((m) => (
+        {metrics.map((m) => (
           <li
             key={m.id}
             className="inline-flex items-center gap-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.08em] uppercase text-[var(--mp-muted-text)]"
@@ -476,7 +482,7 @@ function CombinedMetricsChart({
                 </span>
               )}
               <ul className="space-y-1.5">
-                {COMBINED_METRICS.map((m, metricIndex) => {
+                {metrics.map((m, metricIndex) => {
                   const v = m.valueOf(row);
                   const max = maxByMetric[metricIndex] ?? 0;
                   const settled =
@@ -484,7 +490,7 @@ function CombinedMetricsChart({
                       ? (v / max) * 100
                       : 0;
                   const scrambleIndex =
-                    rowIndex * COMBINED_METRICS.length + metricIndex;
+                    rowIndex * metrics.length + metricIndex;
                   const pct = settleBarPercent(
                     settled,
                     scrambleIndex,
@@ -505,11 +511,11 @@ function CombinedMetricsChart({
                   return (
                     <li
                       key={m.id}
-                      className="group relative grid grid-cols-[3.25rem_1fr_3.25rem] items-center gap-2"
+                      className="group relative grid grid-cols-[6.5rem_1fr_3.25rem] items-center gap-2"
                       title={`${m.label}: ${valueText}`}
                     >
-                      <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.08em] uppercase text-[var(--mp-muted-text)] truncate">
-                        {m.short}
+                      <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
+                        {m.label}
                       </span>
                       <div className="h-3 rounded-sm bg-black/10 overflow-visible">
                         <div className="h-full overflow-hidden rounded-sm">
@@ -556,7 +562,7 @@ function Kpi({
 }: {
   label: string;
   final: number | null | undefined;
-  kind: "int" | "mos";
+  kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
   salt: number;
 }) {
@@ -564,13 +570,13 @@ function Kpi({
     kind === "mos"
       ? settleMosDisplay(final, settle, salt)
       : settleIntDisplay(final, settle, salt);
-  const text =
-    kind === "mos"
-      ? final == null && settle.phase === "done"
-        ? "—"
-        : fmtMos(display)
-      : final == null && settle.phase === "done"
-        ? "—"
+  const empty = final == null && settle.phase === "done";
+  const text = empty
+    ? "—"
+    : kind === "mos"
+      ? fmtMos(display)
+      : kind === "dom"
+        ? fmtDom(display)
         : fmtActive(display);
 
   return (
@@ -604,6 +610,8 @@ export default function WeeklyBriefContent({
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
   categoryFilter,
+  lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  onLookbackIdChange,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -632,13 +640,23 @@ export default function WeeklyBriefContent({
    * directly above the town-metrics chart title.
    */
   categoryFilter?: ReactNode;
+  /** Closed-sales lookback window (Inventory / MOS / DOM stay current). */
+  lookbackId?: MarketPulseLookbackId;
+  onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>("stacked");
   const [favorSort, setFavorSort] = useState<FavorSort>("default");
+  const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
 
   const inventoryRows = useMemo(() => chartRows(snapshot), [snapshot]);
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
+
+  const allTownsAvgDom = useMemo(() => {
+    const allRow = domRows.find((r) => isAllTownsCity(r.city));
+    const v = allRow?.avgDaysOnMarket;
+    return v != null && Number.isFinite(v) ? v : null;
+  }, [domRows]);
 
   const mosByCity = useMemo(() => {
     const map = new Map<string, number | null>();
@@ -745,7 +763,7 @@ export default function WeeklyBriefContent({
       </header>
 
       <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-6 py-7 sm:px-8 space-y-8 shadow-sm shadow-black/5">
-        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <Kpi
             label="Market active"
             final={snapshot.market?.activeCount}
@@ -760,9 +778,17 @@ export default function WeeklyBriefContent({
             settle={settle}
             salt={2}
           />
+          <Kpi
+            label="Avg days on market"
+            final={allTownsAvgDom}
+            kind="dom"
+            settle={settle}
+            salt={3}
+          />
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div
             className="inline-flex flex-wrap gap-1.5"
             role="group"
@@ -827,9 +853,38 @@ export default function WeeklyBriefContent({
               Buyer Friendly
             </button>
           </div>
+          </div>
+          {onLookbackIdChange ? (
+            <div className="space-y-1.5">
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
+                Closed lookback
+              </p>
+              <div
+                className="inline-flex flex-wrap gap-1.5"
+                role="group"
+                aria-label="Closed sales lookback period"
+              >
+                {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={controlBtn(lookbackId === opt.id)}
+                    aria-pressed={lookbackId === opt.id}
+                    onClick={() => onLookbackIdChange(opt.id)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
+                Applies to closed sales only. Inventory, months supply, and avg
+                DOM stay current.
+              </p>
+            </div>
+          ) : null}
         </div>
         {favorSort !== "default" ? (
-          <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)] -mt-5">
+          <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)] -mt-2">
             Sorted by buyer/seller friendly composite (months supply + avg DOM
             {favorSort === "sellers"
               ? "; lower = more seller friendly"
@@ -850,6 +905,7 @@ export default function WeeklyBriefContent({
             rows={combinedRows}
             townHref={townHref}
             settle={settle}
+            closedLookbackLabel={closedLookbackLabel}
           />
         ) : (
           <>
@@ -893,7 +949,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Closed sales — trailing ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} months (${titleScope})`}
+          title={`Closed sales — trailing ${closedLookbackLabel} (${titleScope})`}
           rows={sortedClosed}
           valueOf={(r) => r.count}
           valueKind="int"

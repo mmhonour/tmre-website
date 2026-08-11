@@ -22,6 +22,17 @@ export type MortgageSpotQuote = {
   asOf: string
 }
 
+/** Preferred lender card on /mortgage-rates (Admin-maintained). */
+export type MortgagePreferredLender = {
+  id: string
+  name: string
+  /** Lowest down-payment options / notes tied to CLL context. */
+  minDownNote: string
+  /** Optional outbound link. */
+  url: string
+  note: string
+}
+
 export type MortgagePageContent = {
   /** Commentary under the rate cards. */
   marketNote: string
@@ -31,6 +42,7 @@ export type MortgagePageContent = {
   sellerNote: string
   spotQuote: MortgageSpotQuote
   loanLimits: ConformingLoanLimits
+  preferredLenders: MortgagePreferredLender[]
   /** Stamped server-side on save. */
   updatedAt: string | null
 }
@@ -47,12 +59,15 @@ export const DEFAULT_MORTGAGE_PAGE_CONTENT: MortgagePageContent = {
     asOf: '',
   },
   loanLimits: DEFAULT_CONFORMING_LIMITS,
+  preferredLenders: [],
   updatedAt: null,
 }
 
 export const MORTGAGE_NOTE_MAX = 4000
 const LABEL_MAX = 120
 const COUNTY_MAX = 12
+const LENDER_MAX = 24
+const TOWN_LIST_MAX = 40
 
 function str(raw: unknown, fallback: string, max: number): string {
   if (typeof raw !== 'string') return fallback
@@ -126,6 +141,30 @@ function normalizeHighCostCeiling(
   return structuredClone(DEFAULT_CONFORMING_LIMITS.highCostCeiling)
 }
 
+function normalizeTowns(raw: unknown, fallback: readonly string[]): string[] {
+  const fromArray = Array.isArray(raw)
+    ? raw
+        .filter((t): t is string => typeof t === 'string')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : typeof raw === 'string'
+      ? raw
+          .split(/[,;\n]+/)
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : []
+  const source = fromArray.length > 0 ? fromArray : [...fallback]
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const town of source.slice(0, TOWN_LIST_MAX)) {
+    const key = town.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(town.slice(0, 60))
+  }
+  return out
+}
+
 function normalizeCounties(
   raw: unknown,
   baseline: ConformingUnitLimits,
@@ -135,6 +174,9 @@ function normalizeCounties(
   }
   const counties: ConformingCountyLimit[] = []
   const seen = new Set<string>()
+  const defaultById = new Map(
+    DEFAULT_CONFORMING_LIMITS.counties.map((c) => [c.id, c]),
+  )
   for (const row of raw.slice(0, COUNTY_MAX)) {
     if (!row || typeof row !== 'object') continue
     const o = row as Record<string, unknown>
@@ -150,14 +192,45 @@ function normalizeCounties(
     if (!id || seen.has(id)) continue
     seen.add(id)
     const units = completeUnitLimits(o, baseline)
+    const fallbackTowns = defaultById.get(id)?.towns ?? []
     counties.push({
       id,
       label,
       ...units,
       note: str(o.note, '', 300),
+      towns: normalizeTowns(o.towns, fallbackTowns),
     })
   }
   return counties
+}
+
+function normalizePreferredLenders(raw: unknown): MortgagePreferredLender[] {
+  if (!Array.isArray(raw)) return []
+  const out: MortgagePreferredLender[] = []
+  const seen = new Set<string>()
+  for (const row of raw.slice(0, LENDER_MAX)) {
+    if (!row || typeof row !== 'object') continue
+    const o = row as Record<string, unknown>
+    const name = str(o.name, '', LABEL_MAX)
+    if (!name) continue
+    const id =
+      str(o.id, '', 40) ||
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+        .slice(0, 40)
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push({
+      id,
+      name,
+      minDownNote: str(o.minDownNote, '', 200),
+      url: str(o.url, '', 300),
+      note: str(o.note, '', 400),
+    })
+  }
+  return out
 }
 
 export function normalizeMortgagePageContent(raw: unknown): MortgagePageContent {
@@ -194,11 +267,18 @@ export function normalizeMortgagePageContent(raw: unknown): MortgagePageContent 
       highCostCeiling,
       counties: normalizeCounties(limits.counties, baseline),
     },
+    preferredLenders: normalizePreferredLenders(o.preferredLenders),
     updatedAt:
       typeof o.updatedAt === 'string' && o.updatedAt.trim()
         ? o.updatedAt.trim().slice(0, 40)
         : null,
   }
+}
+
+export function hasPreferredLenders(
+  lenders: readonly MortgagePreferredLender[],
+): boolean {
+  return lenders.some((l) => l.name.trim().length > 0)
 }
 
 /** Split an Admin note into paragraphs for rendering (blank line = new block). */

@@ -262,6 +262,11 @@ export type ConformingCountyLimit = ConformingUnitLimits & {
   id: string
   label: string
   note: string
+  /**
+   * Towns in this high-cost area (shown as links to the on-page CLL descriptor).
+   * Empty = no town list on /mortgage-rates.
+   */
+  towns: string[]
 }
 
 export type ConformingLoanLimits = {
@@ -273,6 +278,22 @@ export type ConformingLoanLimits = {
   highCostCeiling: ConformingUnitLimits
   counties: ConformingCountyLimit[]
 }
+
+/** On-page anchors for the conforming loan-limits section. */
+export const MORTGAGE_HIGH_COST_CEILING_ID = 'loan-limits-ceiling'
+export const MORTGAGE_HIGH_COST_AREA_ID = 'loan-limits-high-cost'
+export const MORTGAGE_HIGH_COST_DESCRIPTOR_ID = 'high-cost-ct'
+
+/** TMRE towns in Western CT / Greater Bridgeport (2026 high-cost area, not ceiling). */
+export const DEFAULT_HIGH_COST_CT_TOWNS = [
+  'Norwalk',
+  'New Canaan',
+  'Westport',
+  'Wilton',
+  'Weston',
+  'Fairfield',
+  'Ridgefield',
+] as const
 
 /** 2026 FHFA contiguous-US baseline + ceiling; Western CT / Greater Bridgeport county. */
 export const DEFAULT_CONFORMING_LIMITS: ConformingLoanLimits = {
@@ -297,7 +318,8 @@ export const DEFAULT_CONFORMING_LIMITS: ConformingLoanLimits = {
       twoUnit: 1_251_400,
       threeUnit: 1_512_650,
       fourUnit: 1_879_850,
-      note: 'Former Fairfield County planning regions — verify against the FHFA county / planning-region table each year.',
+      note: 'Local high-cost area (elevated above baseline) — not the national high-cost ceiling. Verify against the FHFA planning-region table each year.',
+      towns: [...DEFAULT_HIGH_COST_CT_TOWNS],
     },
   ],
 }

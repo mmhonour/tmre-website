@@ -40,6 +40,22 @@ export function subjectTemplateForWeekdayChange(
   return trimmed
 }
 
+/**
+ * Force the leading day name in a subject template to match the send-day
+ * pick list (e.g. stale “Monday …” after the schedule moved to Tuesday).
+ */
+export function alignSubjectTemplateToWeekday(
+  template: string,
+  weekdayEt: SyncScheduleWeekdayEt,
+): string {
+  const trimmed = template.trim()
+  if (!trimmed) return defaultMarketDigestSubjectTemplate(weekdayEt)
+  if (DAY_NAME_RE.test(trimmed)) {
+    return trimmed.replace(DAY_NAME_RE, `${weekdayEtLabel(weekdayEt)}$2`)
+  }
+  return trimmed
+}
+
 export type MarketDigestConfig = {
   email: string
   enabled: boolean
@@ -48,8 +64,8 @@ export type MarketDigestConfig = {
   /** Fallback when digest email unset. */
   defaultEmail: string
   /**
-   * Subject line template. `{date}` → Eastern long date
-   * (e.g. Monday, August 3, 2026).
+   * Subject line template. `{date}` → Eastern long date for the configured
+   * send weekday that week (e.g. Monday, August 3, 2026) — not “today”.
    */
   subjectTemplate: string
   /** When true, append Admin social-profile handles in the email footer. */

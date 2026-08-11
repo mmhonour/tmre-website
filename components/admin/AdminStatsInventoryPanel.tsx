@@ -17,10 +17,18 @@ import {
 
 type MediumMeta = Record<StatsStorageMedium, { label: string; short: string }>;
 
+type LiveKeyFamily = {
+  family: string;
+  label: string;
+  entryId: string | null;
+  rows: number;
+};
+
 type LiveCounts = {
   measuredAt: string;
   statsCacheTotal: number;
   byEntryId: Record<string, number | null>;
+  keyFamilies?: LiveKeyFamily[];
 };
 
 type InventoryResponse = {
@@ -147,11 +155,83 @@ export default function AdminStatsInventoryPanel() {
 
   const live = data?.live;
 
+  const keyFamilies = live?.keyFamilies ?? [];
+
   return (
     <div
       id="admin-stats-inventory"
       className="scroll-mt-24 space-y-6"
     >
+      <div className="rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 sm:px-6 py-4 border-b border-charcoal/[0.08] bg-cream/20">
+          <div className="min-w-0">
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+              stats_cache today
+            </p>
+            <p className="mt-1 text-sm text-slate max-w-2xl">
+              Live key families in Postgres{" "}
+              <PostgresTableLink table="stats_cache" /> right now — category
+              names and row counts only, not the cached values.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="shrink-0 rounded-lg border border-charcoal/15 bg-cream/40 px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-navy hover:bg-cream disabled:opacity-50"
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
+        <div className="px-5 sm:px-6 py-4 space-y-3">
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-[11px] text-charcoal/65">
+            <div>
+              <dt className="inline text-charcoal/40">families: </dt>
+              <dd className="inline tabular-nums text-navy font-semibold">
+                {loading && !live ? "…" : keyFamilies.length.toLocaleString()}
+              </dd>
+            </div>
+            <div>
+              <dt className="inline text-charcoal/40">rows: </dt>
+              <dd className="inline tabular-nums text-navy font-semibold">
+                {live ? live.statsCacheTotal.toLocaleString() : loading ? "…" : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="inline text-charcoal/40">measured: </dt>
+              <dd className="inline">{formatWhen(live?.measuredAt)}</dd>
+            </div>
+          </dl>
+          {error && !data ? (
+            <p className="text-sm text-coral">{error}</p>
+          ) : null}
+          {!loading && live && keyFamilies.length === 0 ? (
+            <p className="text-sm text-charcoal/55">
+              No rows in stats_cache yet.
+            </p>
+          ) : null}
+          {keyFamilies.length > 0 ? (
+            <ul className="flex flex-wrap gap-2">
+              {keyFamilies.map((fam) => (
+                <li
+                  key={fam.family}
+                  className="inline-flex items-baseline gap-2 rounded-full border border-charcoal/[0.1] bg-cream/50 px-3 py-1"
+                  title={`${fam.family} · ${fam.rows.toLocaleString()} rows`}
+                >
+                  <span className="text-sm text-navy">{fam.label}</span>
+                  <span className="font-mono text-[10px] tracking-[0.08em] text-charcoal/45">
+                    {fam.family}
+                  </span>
+                  <span className="font-mono text-[10px] tabular-nums text-charcoal/55">
+                    {fam.rows.toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+
       <AdminInterestingStatsPanel />
 
       <AdminInventorySegmentBandsPanel />

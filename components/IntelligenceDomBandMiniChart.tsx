@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { recountDomBandsFromListings } from "@/lib/intel-mini-graph-from-listings";
 import {
   INTEL_MINI_GRAPH_WIDTH,
   miniGraphPointX,
@@ -56,11 +57,13 @@ function formatCount(n: number): string {
 
 /**
  * Mini active-inventory-by-DOM sparkline (Goldilocks day-ranges, sequential).
+ * Band edges from /api/active-by-dom; counts from the filtered board pool.
  * Click a point to filter the deal board to that DOM window.
  */
 export default function IntelligenceDomBandMiniChart({
   city,
   kind,
+  listings,
   activeBucketId = null,
   filterActive = false,
   onBucketClick,
@@ -69,6 +72,8 @@ export default function IntelligenceDomBandMiniChart({
 }: {
   city: string;
   kind: "sale" | "rental";
+  /** Filtered board pool (omit DOM so other bands stay clickable). */
+  listings: readonly { dom: number | null | undefined }[];
   activeBucketId?: string | null;
   filterActive?: boolean;
   onBucketClick: (bucket: {
@@ -79,7 +84,7 @@ export default function IntelligenceDomBandMiniChart({
   onResetFilter?: () => void;
   onInteract?: () => void;
 }) {
-  const [buckets, setBuckets] = useState<ApiBucket[]>([]);
+  const [bandDefs, setBandDefs] = useState<ApiBucket[]>([]);
   const [ready, setReady] = useState(false);
   const [showOriginalViewFlash, setShowOriginalViewFlash] = useState(false);
   const [extraCallouts, setExtraCallouts] = useState<Set<string>>(() => new Set());
@@ -95,7 +100,7 @@ export default function IntelligenceDomBandMiniChart({
     const ac = new AbortController();
     abortRef.current = ac;
     setReady(false);
-    setBuckets([]);
+    setBandDefs([]);
     setExtraCallouts(new Set());
 
     const qs = new URLSearchParams({ city, kind });
@@ -106,27 +111,38 @@ export default function IntelligenceDomBandMiniChart({
       })
       .then((data) => {
         if (ac.signal.aborted) return;
-        setBuckets(
-          (data?.buckets ?? []).filter(
-            (b) =>
-              typeof b.count === "number" &&
-              Number.isFinite(b.minDays) &&
-              b.minDays >= 0,
-          ),
+        setBandDefs(
+          (data?.buckets ?? [])
+            .filter(
+              (b) => Number.isFinite(b.minDays) && b.minDays >= 0,
+            )
+            .map((b) => ({
+              id: b.id,
+              label: b.label,
+              shortLabel: b.shortLabel,
+              minDays: b.minDays,
+              maxDays: b.maxDays,
+              count: 0,
+            })),
         );
         setReady(true);
       })
       .catch(() => {
         if (ac.signal.aborted) return;
-        setBuckets([]);
+        setBandDefs([]);
         setReady(true);
       });
 
     return () => ac.abort();
   }, [city, kind]);
 
+  const buckets = useMemo(
+    () => recountDomBandsFromListings(bandDefs, listings),
+    [bandDefs, listings],
+  );
+
   const points = useMemo((): BandPoint[] => {
-    if (buckets.length === 0) return [];
+    if (buckets.length === 0 || listings.length === 0) return [];
     const plot = selectMiniGraphBucketsForLayout(buckets);
     if (plot.length === 0) return [];
     const counts = plot.map((b) => b.count);
@@ -151,7 +167,7 @@ export default function IntelligenceDomBandMiniChart({
         callout: true,
       };
     });
-  }, [buckets]);
+  }, [buckets, listings.length]);
 
   const pointIdsKey = points.map((p) => p.id).join("|");
   /** Flash the same point whose band label is currently showing — not random. */

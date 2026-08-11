@@ -56,8 +56,8 @@ function rangeSince(
 }
 
 /**
- * Jumbo vs conforming 30-year fixed locks, with optional lookback + CMT overlays.
- * Pure SVG so it renders without a chart dependency.
+ * Jumbo / conforming 30-year fixed locks with optional CMT overlays.
+ * Title toggle strikes through CMT when the overlay is off. Pure SVG.
  */
 export default function MortgageSpreadChart({
   lines,
@@ -70,8 +70,10 @@ export default function MortgageSpreadChart({
   caption?: string;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const [range, setRange] = useState<MortgageChartRange>("5y");
-  const [showCmt, setShowCmt] = useState(false);
+  const [range, setRange] = useState<MortgageChartRange>("max");
+  const [showCmt, setShowCmt] = useState(true);
+  const cmtAvailable = cmtLines.length > 0;
+  const cmtActive = showCmt && cmtAvailable;
 
   const allDates = useMemo(() => {
     const dates = new Set<string>();
@@ -91,7 +93,7 @@ export default function MortgageSpreadChart({
       ...line,
       observations: filterSince(line.observations, since),
     }));
-    if (!showCmt || cmtLines.length === 0) return base;
+    if (!cmtActive) return base;
     return [
       ...base,
       ...cmtLines.map((line) => ({
@@ -100,7 +102,7 @@ export default function MortgageSpreadChart({
         observations: filterSince(line.observations, since),
       })),
     ];
-  }, [lines, cmtLines, since, showCmt]);
+  }, [lines, cmtLines, since, cmtActive]);
 
   const model = useMemo(() => {
     const dates = new Set<string>();
@@ -168,74 +170,100 @@ export default function MortgageSpreadChart({
       : null;
 
   const rangeLabel =
-    range === "1y" ? "last year" : range === "5y" ? "last five years" : "full history";
+    range === "1y"
+      ? "last year"
+      : range === "5y"
+        ? "last five years"
+        : "full history";
 
   return (
     <figure className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          {model.paths.map((line) => (
-            <span key={line.id} className="inline-flex items-center gap-2">
-              <span
-                className="inline-block h-0.5 w-5 rounded"
-                style={{
-                  backgroundColor: line.color,
-                  backgroundImage: line.dashed
-                    ? `repeating-linear-gradient(90deg, ${line.color} 0 3px, transparent 3px 6px)`
-                    : undefined,
-                }}
-                aria-hidden
-              />
-              <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/60">
-                {line.label}
-              </span>
-              <span className="font-mono text-xs tabular-nums text-navy">
-                {formatRatePct(line.latest?.value ?? null)}
-              </span>
-            </span>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            className="inline-flex rounded-lg border border-charcoal/[0.12] bg-cream/50 p-0.5"
-            role="group"
-            aria-label="Chart lookback"
-          >
-            {MORTGAGE_CHART_RANGES.map((opt) => {
-              const active = range === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setRange(opt.id)}
-                  className={`rounded-md px-2.5 py-1 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
-                    active
-                      ? "bg-navy text-white"
-                      : "text-charcoal/55 hover:text-navy"
-                  }`}
-                  aria-pressed={active}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-          {cmtLines.length > 0 ? (
+        <p
+          className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate"
+          aria-label={`Chart series: Jumbo, Conforming${cmtActive ? ", CMT" : ""}`}
+        >
+          <span>Jumbo</span>
+          <span className="text-charcoal/35">, </span>
+          <span>Conforming</span>
+          <span className="text-charcoal/35">, </span>
+          {cmtAvailable ? (
             <button
               type="button"
               onClick={() => setShowCmt((v) => !v)}
-              className={`rounded-lg border px-2.5 py-1 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
+              className={`tracking-[0.2em] uppercase transition-colors ${
                 showCmt
-                  ? "border-navy/30 bg-navy text-white"
-                  : "border-charcoal/[0.12] bg-cream/50 text-charcoal/55 hover:text-navy"
+                  ? "text-slate hover:text-navy"
+                  : "text-charcoal/40 line-through decoration-charcoal/40"
               }`}
               aria-pressed={showCmt}
+              aria-label={
+                showCmt
+                  ? "Hide Treasury CMT overlays"
+                  : "Show Treasury CMT overlays"
+              }
+              title={
+                showCmt
+                  ? "Hide 30-yr and 10-yr Treasury CMT overlays"
+                  : "Show 30-yr and 10-yr Treasury CMT overlays"
+              }
             >
-              + CMT
+              CMT
             </button>
-          ) : null}
+          ) : (
+            <span className="text-charcoal/40 line-through decoration-charcoal/40">
+              CMT
+            </span>
+          )}
+        </p>
+
+        <div
+          className="inline-flex rounded-lg border border-charcoal/[0.12] bg-cream/50 p-0.5"
+          role="group"
+          aria-label="Chart lookback"
+        >
+          {MORTGAGE_CHART_RANGES.map((opt) => {
+            const active = range === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setRange(opt.id)}
+                className={`rounded-md px-2.5 py-1 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
+                  active
+                    ? "bg-navy text-white"
+                    : "text-charcoal/55 hover:text-navy"
+                }`}
+                aria-pressed={active}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        {model.paths.map((line) => (
+          <span key={line.id} className="inline-flex items-center gap-2">
+            <span
+              className="inline-block h-0.5 w-5 rounded"
+              style={{
+                backgroundColor: line.color,
+                backgroundImage: line.dashed
+                  ? `repeating-linear-gradient(90deg, ${line.color} 0 3px, transparent 3px 6px)`
+                  : undefined,
+              }}
+              aria-hidden
+            />
+            <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/60">
+              {line.label}
+            </span>
+            <span className="font-mono text-xs tabular-nums text-navy">
+              {formatRatePct(line.latest?.value ?? null)}
+            </span>
+          </span>
+        ))}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white">
@@ -243,7 +271,7 @@ export default function MortgageSpreadChart({
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           className="h-auto w-full"
           role="img"
-          aria-label={`30-year jumbo and conforming mortgage rates, ${rangeLabel}${showCmt ? ", with Treasury CMT yields" : ""}`}
+          aria-label={`30-year jumbo and conforming mortgage rates, ${rangeLabel}${cmtActive ? ", with Treasury CMT yields" : ""}`}
           onMouseLeave={() => setHoverIdx(null)}
           onMouseMove={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
@@ -331,6 +359,12 @@ export default function MortgageSpreadChart({
       ) : caption ? (
         <figcaption className="text-xs text-charcoal/55">{caption}</figcaption>
       ) : null}
+
+      <p className="text-[11px] leading-relaxed text-charcoal/50">
+        Max lookback for jumbo and conforming follows Optimal Blue OBMMI on
+        FRED, which starts around 2015 — not a shorter site cutoff. Treasury
+        CMTs go back further but are clipped to the same window on this chart.
+      </p>
     </figure>
   );
 }

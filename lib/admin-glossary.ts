@@ -245,7 +245,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Mortgage page',
     category: 'sync-admin',
     definition:
-      'Admin content for /mortgage-rates: market / buyer / seller commentary, an optional hand-entered spot quote, and the conforming loan-limit table. Editable in Admin → Communications → Mortgage page. Stored in sync_meta key mortgage_page (lib/mortgage-page-config.ts). Rate history is not stored here — it comes from FRED into the mortgage_rates table.',
+      'Admin content for /mortgage-rates: market / buyer / seller commentary, an optional hand-entered spot quote, the conforming loan-limit table (with high-cost town links), and preferred lenders with min-down notes. Editable in Admin → Communications → Mortgage page. Stored in sync_meta key mortgage_page (lib/mortgage-page-config.ts). Rate history is not stored here — it comes from FRED into the mortgage_rates table.',
   },
   {
     term: 'FRED (mortgage rate series)',
@@ -257,13 +257,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Conforming vs jumbo',
     category: 'product',
     definition:
-      'Conforming = loan amount at or under the FHFA limit for the county and unit count (1–4 units), so Fannie/Freddie can buy it. Jumbo = above the limit, priced by banks and private investors. FHFA sets a baseline ladder plus a high-cost ceiling (150% of baseline) each year; the figures shown on /mortgage-rates are Admin-editable because FHFA revises them annually.',
+      'Conforming = loan amount at or under the FHFA limit for the county/planning region and unit count (1–4 units), so Fannie/Freddie can buy it. Jumbo = above the limit, priced by banks and private investors. FHFA sets a baseline ladder, local high-cost area limits (Western CT / Greater Bridgeport for TMRE towns), and a national high-cost ceiling (150% of baseline). CT towns are high-cost area — not at the ceiling. Figures on /mortgage-rates are Admin-editable because FHFA revises them annually.'
   },
   {
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email via Netlify market-digest cron (every 30m, gated to Configure weekly day + start time ET — default Mon 08:00) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Send day/time live on Syncs → Configure and Communications → Monday market brief (shared Postgres sync_schedule_config); changing the day rewrites the subject day name. Run / pause on Syncs; recipient, subject `{date}`, optional social footer on Communications.',
+      'Weekly Resend email via Netlify market-digest cron (every 30m, gated to Configure weekly day + start time ET — default Mon 08:00) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Send day/time live on Syncs → Configure and Communications → Monday market brief (shared Postgres sync_schedule_config); changing the day rewrites the subject day name. Communications Enabled is tied to Syncs Pause for market-digest — a paused job locks day/time scheduling on Communications and the cron will not send. Recipient, subject `{date}`, optional social footer on Communications.',
   },
   {
     term: 'Buyer / Seller Friendly (Market Pulse)',

@@ -8,6 +8,10 @@ import type {
   MarketDigestSnapshot,
 } from "@/lib/market-digest-types";
 import {
+  DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  type MarketPulseLookbackId,
+} from "@/lib/market-pulse-lookback";
+import {
   MARKET_PULSE_CATEGORY_IDS,
   marketPulseTownAvgDomStatsHref,
   marketPulseTownClosedSalesStatsHref,
@@ -28,6 +32,13 @@ const CLOSED_QUERY: Record<MarketPulseCategoryId, string> = {
   commercial: "commercial=1",
 };
 
+function closedCacheKey(
+  category: MarketPulseCategoryId,
+  lookbackId: MarketPulseLookbackId,
+): string {
+  return `${category}:${lookbackId}`;
+}
+
 export default function MarketPulseContent({
   snapshot,
   etDate,
@@ -36,6 +47,9 @@ export default function MarketPulseContent({
   etDate: string;
 }) {
   const [categoryId, setCategoryId] = useState<MarketPulseCategoryId>("all");
+  const [lookbackId, setLookbackId] = useState<MarketPulseLookbackId>(
+    DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  );
   /** Property types that have already played their settle animation. */
   const [animatedCategories, setAnimatedCategories] = useState(
     () => new Set<MarketPulseCategoryId>(),
@@ -76,27 +90,31 @@ export default function MarketPulseContent({
     markAnimated(category);
   });
 
-  // Two-year closed aggregate is fetched per tab: running it for five property
-  // classes during SSR is what used to time the page out on Netlify.
-  const [closedByCategory, setClosedByCategory] = useState<
-    Partial<Record<MarketPulseCategoryId, MarketDigestClosedTownCount[]>>
+  // Closed aggregate is fetched per tab × lookback. Default 24mo may be seeded
+  // from the SSR snapshot; other windows hit the API (on-demand compute).
+  const [closedByKey, setClosedByKey] = useState<
+    Record<string, MarketDigestClosedTownCount[]>
   >(() => {
-    const seeded: Partial<
-      Record<MarketPulseCategoryId, MarketDigestClosedTownCount[]>
-    > = {};
+    const seeded: Record<string, MarketDigestClosedTownCount[]> = {};
     for (const cat of snapshot.categories) {
-      if (cat.closedTrailing?.length) seeded[cat.id] = cat.closedTrailing;
+      if (cat.closedTrailing?.length) {
+        seeded[closedCacheKey(cat.id, DEFAULT_MARKET_PULSE_LOOKBACK_ID)] =
+          cat.closedTrailing;
+      }
     }
     return seeded;
   });
 
+  const closedKey = closedCacheKey(category, lookbackId);
+  const closedRows = closedByKey[closedKey];
+
   useEffect(() => {
-    if (closedByCategory[category]) return;
+    if (closedRows) return;
     let cancelled = false;
     void (async () => {
       try {
         const res = await fetch(
-          `/api/market-pulse/closed-by-town?${CLOSED_QUERY[category]}`,
+          `/api/market-pulse/closed-by-town?${CLOSED_QUERY[category]}&lookback=${lookbackId}`,
           { cache: "no-store" },
         );
         if (!res.ok) return;
@@ -104,7 +122,7 @@ export default function MarketPulseContent({
           rows?: MarketDigestClosedTownCount[];
         };
         if (cancelled || !Array.isArray(body.rows)) return;
-        setClosedByCategory((prev) => ({ ...prev, [category]: body.rows }));
+        setClosedByKey((prev) => ({ ...prev, [closedKey]: body.rows! }));
       } catch {
         /* leave the chart on its empty state */
       }
@@ -112,7 +130,7 @@ export default function MarketPulseContent({
     return () => {
       cancelled = true;
     };
-  }, [category, closedByCategory]);
+  }, [category, lookbackId, closedKey, closedRows]);
 
   const viewSnapshot: MarketDigestSnapshot = active
     ? {
@@ -120,7 +138,7 @@ export default function MarketPulseContent({
         market: active.market,
         westport: active.westport,
         towns: active.towns,
-        closedTrailing: closedByCategory[category] ?? [],
+        closedTrailing: closedRows ?? [],
         avgDomByTown: active.avgDomByTown ?? [],
         dealOfTheWeek: active.deal ?? null,
       }
@@ -175,8 +193,10 @@ export default function MarketPulseContent({
       closedSalesTownHref={closedSalesTownHref}
       avgDomTownHref={avgDomTownHref}
       settle={settle}
-      closedPending={closedByCategory[category] === undefined}
+      closedPending={closedRows === undefined}
       categoryFilter={categoryFilter}
+      lookbackId={lookbackId}
+      onLookbackIdChange={setLookbackId}
     />
   );
 }

@@ -9,6 +9,7 @@ import {
   ensureFomcMeetingsTable,
   listFomcMeetingsFromDb,
   upsertFomcMeeting,
+  upsertFomcMeetingCalendar,
 } from '@/lib/db/fomc-meetings-repo'
 import { setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import {
@@ -97,13 +98,13 @@ function mergeSeedWithDb(
   dbRows: FomcMeeting[],
 ): FomcMeeting[] {
   const byId = new Map(dbRows.map((m) => [m.id, m]))
-  return seed.map((base) => {
+  const merged = seed.map((base) => {
     const overlay = byId.get(base.id)
     if (!overlay) return { ...base }
     return {
       ...base,
       ...overlay,
-      // Keep seed calendar dates/SEP if overlay somehow omits them.
+      // Prefer Postgres dates when sync has written them; else seed.
       startDate: overlay.startDate || base.startDate,
       endDate: overlay.endDate || base.endDate,
       hasSep: overlay.hasSep ?? base.hasSep,
@@ -114,6 +115,26 @@ function mergeSeedWithDb(
       voteNote: overlay.voteNote || base.voteNote,
     }
   })
+  // Meetings that exist only in Postgres (e.g. next-year dates upserted at sync).
+  const seedIds = new Set(seed.map((m) => m.id))
+  for (const row of dbRows) {
+    if (!seedIds.has(row.id)) merged.push({ ...row })
+  }
+  return merged.sort(
+    (a, b) => parseFomcYmd(a.endDate).getTime() - parseFomcYmd(b.endDate).getTime(),
+  )
+}
+
+/** Persist seed calendar dates into Postgres so /fed-analysis stays current after sync. */
+async function upsertSeedCalendarRows(
+  seed: readonly FomcMeeting[],
+): Promise<number> {
+  let n = 0
+  for (const meeting of seed) {
+    await upsertFomcMeetingCalendar(meeting)
+    n += 1
+  }
+  return n
 }
 
 /**
@@ -150,6 +171,10 @@ export async function runFedFomcSync(options?: {
     59,
     999,
   )
+
+  // Refresh calendar rows from the seed schedule on every sync so meeting dates
+  // on /fed-analysis are not stuck on a stale static snapshot.
+  await upsertSeedCalendarRows(FOMC_MEETINGS)
 
   const existing = await listFomcMeetingsFromDb()
   const merged = mergeSeedWithDb(FOMC_MEETINGS, existing)

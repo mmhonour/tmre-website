@@ -1,4 +1,5 @@
 import type { ListingFurnished } from '@/lib/listing-furnished'
+import { formatLotAcresLabel } from '@/lib/listing-lot-acres'
 import { VINTAGE_BUCKETS, type VintageBucketId } from '@/lib/vintage-buckets'
 
 export type ComparableListing = {
@@ -163,10 +164,7 @@ export function soldWithinLookback(
 }
 
 export function fmtAcres(acres: number | null | undefined): string {
-  if (acres == null || acres <= 0) return '—'
-  if (acres < 0.01) return '<0.01 ac'
-  if (acres < 10) return `${acres.toFixed(2)} ac`
-  return `${acres.toFixed(1)} ac`
+  return formatLotAcresLabel(acres) ?? '—'
 }
 
 export function fmtSqft(sqft: number | null | undefined): string {

@@ -248,10 +248,14 @@ function intelFilterDescriptorParts({
     parts.push({ kind: "plain", label: furnishedFilter });
   }
 
+  // Always surface construction type (like Residential) so the filter stays
+  // discoverable when chrome is collapsed — click peeks Construction Type pills.
   if (newConstructionFilter === "new") {
     parts.push({ kind: "construction", label: "New" });
   } else if (newConstructionFilter === "not-new") {
     parts.push({ kind: "construction", label: "Not New" });
+  } else {
+    parts.push({ kind: "construction", label: "Construction" });
   }
 
   if (boardStatusFilter === "new") parts.push({ kind: "plain", label: "New listings" });
@@ -4001,6 +4005,8 @@ export default function IntelligenceClient({
           VINTAGE_FILTER_MAX,
           minSqft,
           maxSqft,
+          domBandMinDays,
+          domBandMaxDays,
         ),
       ),
     [
@@ -4018,6 +4024,104 @@ export default function IntelligenceClient({
       furnishedFilter,
       minPrice,
       maxPrice,
+      minSqft,
+      maxSqft,
+      domBandMinDays,
+      domBandMaxDays,
+    ],
+  );
+
+  /** Price / segment mini-graphs: all filters except price (so other bands stay clickable). */
+  const priceMiniGraphListings = useMemo(
+    () =>
+      filterBoardListings(
+        allListings,
+        tx,
+        cls,
+        zip,
+        boardStatusFilter,
+        saleProperty,
+        minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
+        newConstructionFilter,
+        furnishedFilter,
+        false,
+        0,
+        null,
+        minVintage,
+        maxVintage,
+        minSqft,
+        maxSqft,
+        domBandMinDays,
+        domBandMaxDays,
+      ),
+    [
+      allListings,
+      tx,
+      cls,
+      zip,
+      boardStatusFilter,
+      saleProperty,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      newConstructionFilter,
+      furnishedFilter,
+      minVintage,
+      maxVintage,
+      minSqft,
+      maxSqft,
+      domBandMinDays,
+      domBandMaxDays,
+    ],
+  );
+
+  /** DOM mini-graph: all filters except DOM band. */
+  const domMiniGraphListings = useMemo(
+    () =>
+      filterBoardListings(
+        allListings,
+        tx,
+        cls,
+        zip,
+        boardStatusFilter,
+        saleProperty,
+        minBedrooms,
+        maxBedrooms,
+        minBathrooms,
+        maxBathrooms,
+        newConstructionFilter,
+        furnishedFilter,
+        false,
+        minPrice,
+        maxPrice,
+        minVintage,
+        maxVintage,
+        minSqft,
+        maxSqft,
+        null,
+        null,
+      ),
+    [
+      allListings,
+      tx,
+      cls,
+      zip,
+      boardStatusFilter,
+      saleProperty,
+      minBedrooms,
+      maxBedrooms,
+      minBathrooms,
+      maxBathrooms,
+      newConstructionFilter,
+      furnishedFilter,
+      minPrice,
+      maxPrice,
+      minVintage,
+      maxVintage,
       minSqft,
       maxSqft,
     ],
@@ -5667,6 +5771,7 @@ export default function IntelligenceClient({
                         <IntelligencePriceBandMiniChart
                           city={active === "All" ? "All" : active}
                           kind={tx === "rental" ? "rental" : "sale"}
+                          listings={priceMiniGraphListings}
                           activeBucketId={activePriceBandId}
                           filterActive={
                             priceFilterActive && !activeLuxuryPriceBandId
@@ -5706,6 +5811,7 @@ export default function IntelligenceClient({
                         <IntelligenceDomBandMiniChart
                           city={active === "All" ? "All" : active}
                           kind={tx === "rental" ? "rental" : "sale"}
+                          listings={domMiniGraphListings}
                           activeBucketId={activeDomBandId}
                           filterActive={activeDomBandId != null}
                           onInteract={pauseMiniGraphsRotation}
@@ -5733,6 +5839,7 @@ export default function IntelligenceClient({
                         showPriceFilter && tx !== "rental" ? (
                           <IntelligenceLuxuryPriceBandMiniChart
                             city={active === "All" ? "All" : active}
+                            listings={priceMiniGraphListings}
                             initialSeed={
                               (active === "All" || !active
                                 ? initialInventorySegmentChart
@@ -7024,9 +7131,8 @@ function IntelDualSlider({
     };
   }, [active]);
 
-  // Show the category label on the bar only while the range spans its full
-  // extent (i.e. untouched / just reset). Any inward drag hides it.
-  const atFullRange = lo <= 0 && hi >= maxIndex;
+  // Keep the category label on the bar while thumbs move so the control stays
+  // identifiable (Price / Beds / Baths / Vintage / Sqft).
   const { thumbLo, thumbHi } = dualSliderThumbValues(lo, hi, maxIndex);
   return (
     <div className="flex items-center shrink-0">
@@ -7035,7 +7141,7 @@ function IntelDualSlider({
           aria-hidden
           className="pointer-events-none absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/20"
         />
-        {label && atFullRange ? (
+        {label ? (
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-mono text-[10px] font-medium leading-none tracking-[0.14em] uppercase text-white/75"
@@ -7226,9 +7332,6 @@ function PriceRangeSlider({
     };
   }, [active]);
 
-  // Label shows only while the price range spans its full extent (untouched /
-  // just reset); dragging either thumb inward hides it.
-  const atFullRange = lo <= 0 && hi >= maxStepIndex;
   const { thumbLo, thumbHi } = dualSliderThumbValues(lo, hi, maxStepIndex);
   return (
     <div className="flex flex-col items-stretch shrink-0">
@@ -7237,7 +7340,7 @@ function PriceRangeSlider({
           aria-hidden
           className="pointer-events-none absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/20"
         />
-        {label && atFullRange ? (
+        {label ? (
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-mono text-[10px] font-medium leading-none tracking-[0.14em] uppercase text-white/75"
@@ -7341,7 +7444,6 @@ function SqftRangeSlider({
     };
   }, [active]);
 
-  const atFullRange = lo <= 0 && hi >= maxStepIndex;
   const { thumbLo, thumbHi } = dualSliderThumbValues(lo, hi, maxStepIndex);
   return (
     <div className="flex flex-col items-stretch shrink-0">
@@ -7350,7 +7452,7 @@ function SqftRangeSlider({
           aria-hidden
           className="pointer-events-none absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/20"
         />
-        {label && atFullRange ? (
+        {label ? (
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-mono text-[10px] font-medium leading-none tracking-[0.14em] uppercase text-white/75"

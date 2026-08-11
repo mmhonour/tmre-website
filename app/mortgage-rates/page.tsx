@@ -4,6 +4,7 @@ import MarketsPageTabs from "@/components/markets/MarketsPageTabs";
 import MortgageSpreadChart from "@/components/mortgage/MortgageSpreadChart";
 import { getMortgagePageContentFresh } from "@/lib/mortgage-page-config";
 import {
+  hasPreferredLenders,
   hasSpotQuote,
   noteParagraphs,
 } from "@/lib/mortgage-page-shared";
@@ -25,6 +26,9 @@ import {
   jumboConformingSpread,
   MORTGAGE_CHART_CMT_SERIES,
   MORTGAGE_HEADLINE_SERIES,
+  MORTGAGE_HIGH_COST_AREA_ID,
+  MORTGAGE_HIGH_COST_CEILING_ID,
+  MORTGAGE_HIGH_COST_DESCRIPTOR_ID,
   MORTGAGE_SERIES_BY_ID,
   MORTGAGE_TREASURY_SERIES,
   OPTIMAL_BLUE_MMI_NOTE,
@@ -109,9 +113,13 @@ export default async function MortgageRatesPage() {
       ? thirty.latest.value - tenYear.latest.value
       : null;
 
-  const { loanLimits, spotQuote } = content;
+  const { loanLimits, spotQuote, preferredLenders } = content;
   const showSpot = hasSpotQuote(spotQuote);
+  const showLenders = hasPreferredLenders(preferredLenders);
   const noRateData = !thirty.latest && !conforming.latest;
+  const highCostTowns = loanLimits.counties.flatMap((c) =>
+    (c.towns ?? []).map((town) => ({ town, countyId: c.id, countyLabel: c.label })),
+  );
 
   const chartLines = [
     {
@@ -201,174 +209,178 @@ export default async function MortgageRatesPage() {
       </section>
 
       <section className="bg-cream py-10 lg:py-16">
-        <div className="mx-auto max-w-4xl space-y-12 px-6 lg:px-10">
-          {/* Prevailing rates */}
-          <div>
-            <p className={sectionLabel}>Prevailing rates</p>
-            {noRateData ? (
-              <div className="rounded-2xl border border-charcoal/[0.08] bg-white p-6">
-                <p className={body}>
-                  Rate history has not synced yet
-                  {isFredConfigured()
-                    ? "."
-                    : " — a FRED API key is needed on this environment."}{" "}
-                  The market background, loan limits, and strategy sections below
-                  do not depend on it.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                  {MORTGAGE_HEADLINE_SERIES.map((id) => {
-                    const meta = MORTGAGE_SERIES_BY_ID[id];
-                    const data = series[id];
-                    const delta = formatRateDelta(
-                      data.yearAgo?.value ?? null,
-                      data.latest?.value ?? null,
-                    );
-                    const isObmmi =
-                      id === "OBMMIC30YF" || id === "OBMMIJUMBO30YF";
-                    return (
-                      <div
-                        key={id}
-                        className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
-                        title={meta.description}
-                      >
-                        <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
-                          {meta.label}
-                          {isObmmi ? (
-                            <a
-                              href="#optimal-blue-note"
-                              className="ml-0.5 text-gold no-underline hover:underline"
-                              aria-label="What is Optimal Blue MMI?"
-                            >
-                              *
-                            </a>
-                          ) : null}
-                        </p>
-                        <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
-                          {formatRatePct(data.latest?.value ?? null)}
-                        </p>
-                        <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
-                          {data.latest?.date ?? "—"}
-                          {delta ? ` · ${delta} YoY` : ""}
-                        </p>
-                        <a
-                          href={fredSeriesUrl(id)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1.5 inline-block font-mono text-[8px] tracking-[0.1em] uppercase text-charcoal/35 underline decoration-charcoal/20 underline-offset-2 hover:text-navy"
-                        >
-                          {meta.source}
-                        </a>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p
-                  id="optimal-blue-note"
-                  className="mt-3 text-[11px] leading-relaxed text-charcoal/55"
-                >
-                  <span className="font-mono text-gold">*</span>{" "}
-                  {OPTIMAL_BLUE_MMI_NOTE}{" "}
-                  <a
-                    href={OPTIMAL_BLUE_MMI_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
-                  >
-                    Optimal Blue MMI
-                  </a>
-                  {" · "}
-                  <a
-                    href={fredSeriesUrl("OBMMIC30YF")}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
-                  >
-                    FRED OBMMIC30YF
-                  </a>
-                </p>
-              </>
-            )}
-
-            {showSpot ? (
-              <div className="mt-4 rounded-2xl border border-navy/20 bg-navy p-5 text-white">
-                <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-gold">
-                  {spotQuote.label}
-                </p>
-                <p className="mt-1 font-mono text-3xl tabular-nums text-white">
-                  {spotQuote.rate}
-                </p>
-                {spotQuote.terms ? (
-                  <p className="mt-2 text-sm leading-relaxed text-white/70">
-                    {spotQuote.terms}
+        <div className="mx-auto max-w-6xl space-y-12 px-6 lg:px-10">
+          {/* Chart + rate cards */}
+          <div className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-start">
+              <div className={card}>
+                {noRateData ? (
+                  <p className={body}>
+                    Rate history has not synced yet
+                    {isFredConfigured()
+                      ? "."
+                      : " — a FRED API key is needed on this environment."}{" "}
+                    The market background, loan limits, and strategy sections
+                    below do not depend on it.
                   </p>
-                ) : null}
-                <p className="mt-2 font-mono text-[10px] text-white/45">
-                  {spotQuote.asOf
-                    ? `As of ${spotQuote.asOf} · illustrative, not a commitment to lend`
-                    : "Illustrative, not a commitment to lend"}
-                </p>
+                ) : (
+                  <MortgageSpreadChart
+                    lines={chartLines}
+                    cmtLines={cmtChartLines}
+                    caption="Optimal Blue 30-year fixed rate locks. Conforming = at or under the FHFA limit; jumbo = above it. Use 1Y / 5Y / Max for lookback. Tap CMT in the title to show or hide 30-yr and 10-yr Treasury yields."
+                  />
+                )}
               </div>
-            ) : null}
 
-            <div className="mt-8">
-              <p className={sectionLabel}>Treasury benchmarks</p>
-              <p className={`${body} mb-4 max-w-2xl`}>
-                Constant-maturity Treasury yields (H.15) — the usual
-                “on-the-run equivalent” stack for mortgage tenors. Freddie Mac
-                only publishes live national averages for 30- and 15-year fixed;
-                there is no live 10-year mortgage average, and the 5/1 ARM survey
-                ended in 2022.
-              </p>
-              <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                {MORTGAGE_TREASURY_SERIES.map((id) => {
-                  const meta = MORTGAGE_SERIES_BY_ID[id];
-                  const data = series[id];
-                  const delta = formatRateDelta(
-                    data.yearAgo?.value ?? null,
-                    data.latest?.value ?? null,
-                  );
-                  return (
-                    <div
-                      key={id}
-                      className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
-                      title={meta.description}
-                    >
-                      <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
-                        {meta.label}
-                      </p>
-                      <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
-                        {formatRatePct(data.latest?.value ?? null)}
-                      </p>
-                      <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
-                        {data.latest?.date ?? "—"}
-                        {delta ? ` · ${delta} YoY` : ""}
+              <div className="space-y-6">
+                <div>
+                  <p className={sectionLabel}>Prevailing rates</p>
+                  {noRateData ? (
+                    <div className="rounded-2xl border border-charcoal/[0.08] bg-white p-5">
+                      <p className="text-sm text-charcoal/60">
+                        Waiting on FRED sync for live cards.
                       </p>
                     </div>
-                  );
-                })}
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {MORTGAGE_HEADLINE_SERIES.map((id) => {
+                          const meta = MORTGAGE_SERIES_BY_ID[id];
+                          const data = series[id];
+                          const delta = formatRateDelta(
+                            data.yearAgo?.value ?? null,
+                            data.latest?.value ?? null,
+                          );
+                          const isObmmi =
+                            id === "OBMMIC30YF" || id === "OBMMIJUMBO30YF";
+                          return (
+                            <div
+                              key={id}
+                              className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
+                              title={meta.description}
+                            >
+                              <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
+                                {meta.label}
+                                {isObmmi ? (
+                                  <a
+                                    href="#optimal-blue-note"
+                                    className="ml-0.5 text-gold no-underline hover:underline"
+                                    aria-label="What is Optimal Blue MMI?"
+                                  >
+                                    *
+                                  </a>
+                                ) : null}
+                              </p>
+                              <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
+                                {formatRatePct(data.latest?.value ?? null)}
+                              </p>
+                              <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
+                                {data.latest?.date ?? "—"}
+                                {delta ? ` · ${delta} YoY` : ""}
+                              </p>
+                              <a
+                                href={fredSeriesUrl(id)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1.5 inline-block font-mono text-[8px] tracking-[0.1em] uppercase text-charcoal/35 underline decoration-charcoal/20 underline-offset-2 hover:text-navy"
+                              >
+                                {meta.source}
+                              </a>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p
+                        id="optimal-blue-note"
+                        className="mt-3 text-[11px] leading-relaxed text-charcoal/55"
+                      >
+                        <span className="font-mono text-gold">*</span>{" "}
+                        {OPTIMAL_BLUE_MMI_NOTE}{" "}
+                        <a
+                          href={OPTIMAL_BLUE_MMI_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                        >
+                          Optimal Blue MMI
+                        </a>
+                        {" · "}
+                        <a
+                          href={fredSeriesUrl("OBMMIC30YF")}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                        >
+                          FRED OBMMIC30YF
+                        </a>
+                      </p>
+                    </>
+                  )}
+
+                  {showSpot ? (
+                    <div className="mt-4 rounded-2xl border border-navy/20 bg-navy p-5 text-white">
+                      <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-gold">
+                        {spotQuote.label}
+                      </p>
+                      <p className="mt-1 font-mono text-3xl tabular-nums text-white">
+                        {spotQuote.rate}
+                      </p>
+                      {spotQuote.terms ? (
+                        <p className="mt-2 text-sm leading-relaxed text-white/70">
+                          {spotQuote.terms}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 font-mono text-[10px] text-white/45">
+                        {spotQuote.asOf
+                          ? `As of ${spotQuote.asOf} · illustrative, not a commitment to lend`
+                          : "Illustrative, not a commitment to lend"}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div>
+                  <p className={sectionLabel}>Treasury benchmarks</p>
+                  <p className={`${body} mb-4 text-sm`}>
+                    Constant-maturity Treasury yields (H.15) — the usual
+                    “on-the-run equivalent” stack for mortgage tenors.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {MORTGAGE_TREASURY_SERIES.map((id) => {
+                      const meta = MORTGAGE_SERIES_BY_ID[id];
+                      const data = series[id];
+                      const delta = formatRateDelta(
+                        data.yearAgo?.value ?? null,
+                        data.latest?.value ?? null,
+                      );
+                      return (
+                        <div
+                          key={id}
+                          className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
+                          title={meta.description}
+                        >
+                          <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
+                            {meta.label}
+                          </p>
+                          <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
+                            {formatRatePct(data.latest?.value ?? null)}
+                          </p>
+                          <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
+                            {data.latest?.date ?? "—"}
+                            {delta ? ` · ${delta} YoY` : ""}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="mt-4">
-              <Commentary note={content.marketNote} heading="Market note" />
-            </div>
-          </div>
-
-          {/* Jumbo vs conforming */}
-          <div>
-            <p className={sectionLabel}>Jumbo vs conforming</p>
-            <div className={card}>
+            <div className={`${card} max-w-4xl`}>
               <p className="font-serif text-2xl leading-snug text-navy">
                 {describeJumboSpread(spread)}
               </p>
-              <MortgageSpreadChart
-                lines={chartLines}
-                cmtLines={cmtChartLines}
-                caption="Optimal Blue 30-year fixed rate locks. Conforming = at or under the FHFA limit; jumbo = above it. Use 1Y / 5Y / Max for lookback; + CMT overlays 30-yr and 10-yr Treasury yields."
-              />
               <p className={body}>
                 In much of Fairfield County the purchase price pushes a normal
                 20% down loan past the conforming limit, so the jumbo line is
@@ -377,9 +389,11 @@ export default async function MortgageRatesPage() {
                 and will price aggressively for strong borrowers, which is why
                 the two lines cross from time to time.
               </p>
+              <Commentary note={content.marketNote} heading="Market note" />
             </div>
           </div>
 
+          <div className="mx-auto max-w-4xl space-y-12">
           {/* How rates are set */}
           <div>
             <p className={sectionLabel}>How rates are determined</p>
@@ -622,6 +636,26 @@ export default async function MortgageRatesPage() {
                 Agency buy box for 1–4 unit properties. Limits rise with unit
                 count; 5+ units are outside this conforming ladder.
               </p>
+              {highCostTowns.length > 0 ? (
+                <p className="text-sm text-charcoal/70">
+                  <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                    High-cost CT towns ·{" "}
+                  </span>
+                  {highCostTowns.map(({ town }, i) => (
+                    <span key={`${town}-${i}`}>
+                      {i > 0 ? (
+                        <span className="text-charcoal/35"> · </span>
+                      ) : null}
+                      <a
+                        href={`#${MORTGAGE_HIGH_COST_DESCRIPTOR_ID}`}
+                        className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                      >
+                        {town}
+                      </a>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
               <div className="overflow-x-auto rounded-xl border border-charcoal/[0.08]">
                 <table className="w-full min-w-[32rem] border-collapse text-left">
                   <thead>
@@ -656,35 +690,25 @@ export default async function MortgageRatesPage() {
                         </td>
                       ))}
                     </tr>
-                    <tr className="border-t border-charcoal/[0.06]">
-                      <td className="px-3 py-2.5">
-                        <p className="font-medium text-navy">
-                          High-cost ceiling
-                        </p>
-                        <p className="text-xs text-charcoal/55">
-                          Cap at 150% of baseline
-                        </p>
-                      </td>
-                      {CONFORMING_UNIT_KEYS.map((key) => (
-                        <td
-                          key={key}
-                          className="px-3 py-2.5 font-mono tabular-nums text-navy text-right whitespace-nowrap"
-                        >
-                          {formatUsd(loanLimits.highCostCeiling[key])}
-                        </td>
-                      ))}
-                    </tr>
                     {loanLimits.counties.map((county) => (
                       <tr
                         key={county.id}
-                        className="border-t border-charcoal/[0.06]"
+                        id={
+                          county.id === "fairfield"
+                            ? MORTGAGE_HIGH_COST_AREA_ID
+                            : `loan-limits-${county.id}`
+                        }
+                        className="scroll-mt-28 border-t border-charcoal/[0.06]"
                       >
                         <td className="px-3 py-2.5">
                           <p className="font-medium text-navy">
                             {county.label}
                           </p>
+                          <p className="text-xs text-charcoal/55">
+                            Local high-cost area
+                          </p>
                           {county.note ? (
-                            <p className="text-xs text-charcoal/55">
+                            <p className="mt-1 text-xs text-charcoal/55">
                               {county.note}
                             </p>
                           ) : null}
@@ -699,8 +723,61 @@ export default async function MortgageRatesPage() {
                         ))}
                       </tr>
                     ))}
+                    <tr
+                      id={MORTGAGE_HIGH_COST_CEILING_ID}
+                      className="scroll-mt-28 border-t border-charcoal/[0.06]"
+                    >
+                      <td className="px-3 py-2.5">
+                        <p className="font-medium text-navy">
+                          High-cost ceiling
+                        </p>
+                        <p className="text-xs text-charcoal/55">
+                          National cap at 150% of baseline — not CT
+                        </p>
+                      </td>
+                      {CONFORMING_UNIT_KEYS.map((key) => (
+                        <td
+                          key={key}
+                          className="px-3 py-2.5 font-mono tabular-nums text-navy text-right whitespace-nowrap"
+                        >
+                          {formatUsd(loanLimits.highCostCeiling[key])}
+                        </td>
+                      ))}
+                    </tr>
                   </tbody>
                 </table>
+              </div>
+
+              <div
+                id={MORTGAGE_HIGH_COST_DESCRIPTOR_ID}
+                className="scroll-mt-28 space-y-3 rounded-xl border border-charcoal/[0.08] bg-cream/40 px-4 py-4"
+              >
+                <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-slate">
+                  High-cost vs ceiling
+                </p>
+                <p className={body}>
+                  TMRE towns sit in the{" "}
+                  <a
+                    href={`#${MORTGAGE_HIGH_COST_AREA_ID}`}
+                    className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                  >
+                    Western CT / Greater Bridgeport
+                  </a>{" "}
+                  <strong className="text-navy">high-cost area</strong> — an
+                  elevated conforming limit above the national baseline (1-unit{" "}
+                  {formatUsd(loanLimits.counties[0]?.oneUnit ?? null)} in{" "}
+                  {loanLimits.year}). That is{" "}
+                  <strong className="text-navy">not</strong> the{" "}
+                  <a
+                    href={`#${MORTGAGE_HIGH_COST_CEILING_ID}`}
+                    className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                  >
+                    high-cost ceiling
+                  </a>{" "}
+                  ({formatUsd(loanLimits.highCostCeiling.oneUnit)} 1-unit), which
+                  is the FHFA national maximum (150% of baseline). No Connecticut
+                  planning region is at that ceiling today.
+                </p>
               </div>
 
               <p className={body}>
@@ -723,6 +800,52 @@ export default async function MortgageRatesPage() {
               </p>
             </div>
           </div>
+
+          {showLenders ? (
+            <div>
+              <p className={sectionLabel}>Preferred lenders · lowest down</p>
+              <div className={card}>
+                <p className="text-xs text-charcoal/60 -mt-1">
+                  Lenders Tim works with who can structure low-down options
+                  while staying inside the local conforming loan limit when
+                  possible. Terms change — confirm in writing with the lender.
+                </p>
+                <ul className="space-y-3">
+                  {preferredLenders.map((lender) => (
+                    <li
+                      key={lender.id}
+                      className="rounded-xl border border-charcoal/[0.08] bg-cream/30 px-4 py-3"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        {lender.url ? (
+                          <a
+                            href={lender.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                          >
+                            {lender.name}
+                          </a>
+                        ) : (
+                          <p className="font-medium text-navy">{lender.name}</p>
+                        )}
+                        {lender.minDownNote ? (
+                          <p className="font-mono text-[11px] tracking-[0.06em] text-charcoal/70">
+                            {lender.minDownNote}
+                          </p>
+                        ) : null}
+                      </div>
+                      {lender.note ? (
+                        <p className="mt-1.5 text-sm leading-relaxed text-charcoal/65">
+                          {lender.note}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
 
           {/* Buyer strategies */}
           <div>
@@ -871,6 +994,7 @@ export default async function MortgageRatesPage() {
               ? ` · commentary updated ${new Date(content.updatedAt).toLocaleDateString("en-US", { timeZone: "America/New_York" })}`
               : ""}
           </p>
+          </div>
         </div>
       </section>
     </>

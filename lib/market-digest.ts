@@ -27,8 +27,10 @@ import {
 import { listingShareHref } from '@/lib/listing-url'
 import {
   DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  formatMarketDigestEtDateForWeekday,
   renderMarketDigestSubject,
 } from '@/lib/market-digest-config'
+import type { SyncScheduleWeekdayEt } from '@/lib/sync-schedule-config-shared'
 import { formatMarketDigestHtml } from '@/lib/market-digest-html'
 import {
   avgMonthlyClosingsFromClosed,
@@ -565,6 +567,8 @@ export async function buildMarketDigestSnapshot(options?: {
 export type FormatMarketDigestEmailOptions = {
   subjectTemplate?: string
   includeSocialProfiles?: boolean
+  /** Send-day pick list (0=Sun … 6=Sat ET). Drives subject weekday + `{date}`. */
+  weekdayEt?: SyncScheduleWeekdayEt
 }
 
 export function formatMarketDigestEmail(
@@ -575,17 +579,18 @@ export function formatMarketDigestEmail(
   text: string
   html: string
 } {
-  const etDate = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(new Date(snapshot.generatedAt))
+  const weekdayEt = options?.weekdayEt ?? 1
+  // Subject/body date = configured send weekday that week — not “today”, so a
+  // Tuesday pick list never yields “Monday, …” (or a Sunday test-send date).
+  const etDate = formatMarketDigestEtDateForWeekday(
+    new Date(snapshot.generatedAt),
+    weekdayEt,
+  )
 
   const subject = renderMarketDigestSubject(
     options?.subjectTemplate ?? DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
     etDate,
+    weekdayEt,
   )
   const includeSocial = options?.includeSocialProfiles === true
 

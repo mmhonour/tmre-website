@@ -1,5 +1,7 @@
 import FedCpiSummary from "@/components/fed-analysis/FedCpiSummary";
+import FedEventsCalendar from "@/components/fed-analysis/FedEventsCalendar";
 import FedStatementSummary from "@/components/fed-analysis/FedStatementSummary";
+import FedUpcomingDates from "@/components/fed-analysis/FedUpcomingDates";
 import {
   formatCpiPct,
   getPrevailingCpi,
@@ -17,17 +19,19 @@ const FOMC_CALENDAR_URL =
   "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
 
 /**
- * Top policy row: FOMC decision | Prevailing CPI
- * (Markets calendar and timeline live outside this card on the page.)
+ * Top policy row: FOMC decision | Prevailing CPI | Markets calendar sidebar,
+ * with next-3-months dates under the FOMC / CPI columns.
  */
 export default function FedPolicySnapshot({
   prevailingFed,
   nextMeeting,
+  meetings,
   releases,
   now = new Date(),
 }: {
   prevailingFed: PrevailingFedPolicy | null;
   nextMeeting: FomcMeeting | null;
+  meetings: readonly FomcMeeting[];
   releases: readonly CpiRelease[];
   now?: Date;
 }) {
@@ -35,7 +39,7 @@ export default function FedPolicySnapshot({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-      <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-charcoal/[0.08]">
+      <div className="grid lg:grid-cols-[1fr_1fr_minmax(15rem,18rem)]">
         <div className="flex flex-col px-5 py-5 sm:px-6 lg:px-8">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             FOMC decision
@@ -97,7 +101,7 @@ export default function FedPolicySnapshot({
           ) : null}
         </div>
 
-        <div className="flex flex-col border-t border-charcoal/[0.08] px-5 py-5 sm:px-6 lg:border-t-0 lg:px-8">
+        <div className="flex flex-col border-t border-charcoal/[0.08] px-5 py-5 sm:px-6 lg:border-t-0 lg:border-l lg:border-charcoal/[0.08] lg:px-8">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
             Prevailing CPI
           </p>
@@ -149,6 +153,24 @@ export default function FedPolicySnapshot({
               No CPI print recorded in the local calendar yet.
             </p>
           )}
+        </div>
+
+        <div className="border-t border-charcoal/[0.08] lg:row-span-2 lg:border-t-0 lg:border-l lg:border-charcoal/[0.08]">
+          <FedEventsCalendar
+            meetings={meetings}
+            cpiReleases={releases}
+            initialYear={now.getFullYear()}
+            initialMonth={now.getMonth()}
+          />
+        </div>
+
+        <div className="lg:col-span-2">
+          <FedUpcomingDates
+            meetings={meetings}
+            releases={releases}
+            now={now}
+            months={3}
+          />
         </div>
       </div>
     </div>

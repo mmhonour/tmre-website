@@ -1597,7 +1597,10 @@ export type ClosedSalesByTownRow = { town: string; count: number }
  */
 export async function readClosedCountsByTown(options: {
   towns: readonly string[]
+  /** Trailing calendar months (ignored when `days` is set). */
   months?: number
+  /** Trailing day window — preferred for Market Pulse lookback. */
+  days?: number
   kind: 'sale' | 'rental'
   /** Residential subtype; ignored when `commercialOnly` is set. */
   propertyClass?: 'all' | 'homes' | 'multi' | 'condos'
@@ -1606,7 +1609,13 @@ export async function readClosedCountsByTown(options: {
 }): Promise<ClosedSalesByTownRow[]> {
   const towns = [...options.towns]
   if (towns.length === 0) return []
-  const months = Math.max(1, Math.min(Math.round(options.months ?? 24), 120))
+  const useDays = options.days != null && Number.isFinite(options.days)
+  const days = useDays
+    ? Math.max(1, Math.min(Math.round(options.days!), 3660))
+    : null
+  const months = useDays
+    ? null
+    : Math.max(1, Math.min(Math.round(options.months ?? 24), 120))
 
   const COMMERCIAL = 'commercial|industrial|business'
   const CONDO = 'condo|condominium|co-?op|cooperative'
@@ -1627,6 +1636,10 @@ export async function readClosedCountsByTown(options: {
   const kindClause =
     options.kind === 'rental' ? `kind_hay ~* '${RENTAL}'` : `kind_hay !~* '${RENTAL}'`
 
+  const intervalSql = useDays
+    ? 'make_interval(days => $2::int)'
+    : 'make_interval(months => $2::int)'
+
   const rows = await query<{ town: string; count: number }>(
     `WITH closed AS (
        SELECT town,
@@ -1641,14 +1654,14 @@ export async function readClosedCountsByTown(options: {
         WHERE status_bucket = 'Closed'
           AND town = ANY($1::text[])
           AND COALESCE(close_date, status_change_timestamp, modification_timestamp)
-              >= NOW() - make_interval(months => $2)
+              >= NOW() - ${intervalSql}
      )
      SELECT town, count(*)::int AS count
        FROM closed
       WHERE ${kindClause} AND ${classClause}
       GROUP BY town
       ORDER BY town`,
-    [towns, months],
+    [towns, useDays ? days! : months!],
   )
   return rows
 }

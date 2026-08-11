@@ -8,6 +8,8 @@ import {
 import {
   countStatsCacheByPrefixes,
   countStatsCacheRows,
+  listStatsCacheKeyFamilies,
+  type StatsCacheKeyFamily,
 } from '@/lib/db/stats-cache-repo'
 import { queryOne } from '@/lib/db/postgres'
 
@@ -26,10 +28,33 @@ const ALLOWED_TABLES = new Set([
   'town_property_addresses',
 ])
 
+export type StatsCacheLiveFamily = StatsCacheKeyFamily & {
+  /** Friendly catalog name when the family matches a known inventory prefix. */
+  label: string
+  /** Inventory entry id when matched; null for uncatalogued keys. */
+  entryId: string | null
+}
+
 export type StatsInventoryLiveCounts = {
   measuredAt: string
   statsCacheTotal: number
   byEntryId: Record<string, number | null>
+  /** Distinct key families living in stats_cache right now (names + row counts). */
+  keyFamilies: StatsCacheLiveFamily[]
+}
+
+function labelStatsCacheFamily(family: string): {
+  label: string
+  entryId: string | null
+} {
+  const prefix = family.endsWith(':') ? family : `${family}:`
+  const entry = STATS_INVENTORY.find(
+    (e) => e.live.kind === 'stats_cache_prefix' && e.live.prefix === prefix,
+  )
+  return {
+    label: entry?.name ?? family,
+    entryId: entry?.id ?? null,
+  }
 }
 
 async function countTable(table: string): Promise<number> {
@@ -70,11 +95,18 @@ export async function loadStatsInventoryLiveCounts(): Promise<StatsInventoryLive
   const { prefixes, tables, needSyncMeta, needGoldilocksScored } =
     collectProbes(STATS_INVENTORY)
 
-  const [statsCacheTotal, prefixCounts, ...tableCounts] = await Promise.all([
-    countStatsCacheRows(),
-    countStatsCacheByPrefixes(prefixes),
-    ...tables.map((table) => countTable(table)),
-  ])
+  const [statsCacheTotal, prefixCounts, keyFamiliesRaw, ...tableCounts] =
+    await Promise.all([
+      countStatsCacheRows(),
+      countStatsCacheByPrefixes(prefixes),
+      listStatsCacheKeyFamilies(),
+      ...tables.map((table) => countTable(table)),
+    ])
+
+  const keyFamilies: StatsCacheLiveFamily[] = keyFamiliesRaw.map((row) => {
+    const { label, entryId } = labelStatsCacheFamily(row.family)
+    return { ...row, label, entryId }
+  })
 
   const tableCountByName = new Map<string, number>()
   tables.forEach((table, i) => {
@@ -114,5 +146,6 @@ export async function loadStatsInventoryLiveCounts(): Promise<StatsInventoryLive
     measuredAt: new Date().toISOString(),
     statsCacheTotal,
     byEntryId,
+    keyFamilies,
   }
 }

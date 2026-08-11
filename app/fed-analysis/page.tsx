@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import FedEventsCalendar from "@/components/fed-analysis/FedEventsCalendar";
 import FedPolicySnapshot from "@/components/fed-analysis/FedPolicySnapshot";
 import FedRecentCpi from "@/components/fed-analysis/FedRecentCpi";
 import FedRecentDecisions from "@/components/fed-analysis/FedRecentDecisions";
@@ -81,23 +80,12 @@ export default async function FedAnalysisPage() {
 
       <section className="bg-cream py-10 lg:py-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          {/* Markets calendar — upper right */}
-          <div className="mb-6 flex justify-end">
-            <div className="w-full max-w-md">
-              <FedEventsCalendar
-                meetings={meetings}
-                cpiReleases={releases}
-                initialYear={now.getFullYear()}
-                initialMonth={now.getMonth()}
-              />
-            </div>
-          </div>
-
-          {/* FOMC decision | Prevailing CPI */}
+          {/* FOMC decision | Prevailing CPI | Markets calendar sidebar */}
           <div className="mb-8">
             <FedPolicySnapshot
               prevailingFed={prevailing}
               nextMeeting={nextMeeting}
+              meetings={meetings}
               releases={releases}
               now={now}
             />

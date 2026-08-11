@@ -57,6 +57,9 @@ const STATUS_SUMMARY_ORDER: LatestListingRow["status"][] = [
   "Increased",
 ];
 
+/** Session key for status pills when sorting by latest timestamp (not by town). */
+const BY_TIME_STATUS_KEY = "__by_time__";
+
 const STATUS_PILL_CLASS: Record<LatestListingRow["status"], string> = {
   New: "bg-sage/10 text-sage border-sage/30",
   Reduced: "bg-coral/10 text-coral border-coral/30",
@@ -560,6 +563,16 @@ export default function LatestClient({
       .filter((row) => isTmreTown(row.town) || isTmreTown(row.city))
       .sort((a, b) => latestRowActivityMs(b) - latestRowActivityMs(a));
   }, [listings, selectedTown, townListings]);
+
+  const byTimeStatusCounts = useMemo(
+    () => summarizeTownStatuses(visibleListings),
+    [visibleListings],
+  );
+  const byTimeActiveStatus = groupStatusFilter[BY_TIME_STATUS_KEY] ?? null;
+  const byTimeFilteredListings = useMemo(() => {
+    if (!byTimeActiveStatus) return visibleListings;
+    return visibleListings.filter((row) => row.status === byTimeActiveStatus);
+  }, [visibleListings, byTimeActiveStatus]);
 
   // Preload all town market snapshots from SQLite so sidebar clicks are instant.
   useEffect(() => {
@@ -1108,11 +1121,11 @@ export default function LatestClient({
                                   ? `Clear ${status} filter for ${group.label}`
                                   : `Filter ${group.label} to ${status}`
                               }
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors hover:opacity-90 ${
+                              className={`inline-flex items-center gap-0.5 rounded-full border px-1 py-px font-mono text-[7px] tracking-[0.08em] uppercase transition-colors hover:opacity-90 lg:gap-1 lg:px-2 lg:py-0.5 lg:text-[11px] lg:tracking-[0.12em] ${
                                 STATUS_PILL_CLASS[status]
                               } ${
                                 selected
-                                  ? "ring-2 ring-navy/35 ring-offset-1 ring-offset-cream"
+                                  ? "ring-1 ring-navy/35 ring-offset-0 ring-offset-cream lg:ring-2 lg:ring-offset-1"
                                   : activeStatus
                                     ? "opacity-45"
                                     : ""
@@ -1171,7 +1184,7 @@ export default function LatestClient({
                                 </span>
                               </div>
                               {!collapsed && statusPills.length > 0 ? (
-                                <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                <div className="flex gap-0.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                   {statusPills}
                                 </div>
                               ) : null}
@@ -1253,38 +1266,103 @@ export default function LatestClient({
                           </div>
                         );
                       })
-                    : visibleListings.map((l, i) => {
-                          const activityIso = latestRowActivityIso(l);
-                          const key = localDateKey(activityIso);
-                          const prevKey =
-                            i > 0
-                              ? localDateKey(
-                                  latestRowActivityIso(visibleListings[i - 1]),
-                                )
-                              : null;
-                          const showHeader = key !== prevKey;
-                          return (
-                            <div key={l.key} className="latest-feed-row">
-                              {showHeader ? (
-                                <div className="sticky top-0 z-10 flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-cream/95 backdrop-blur-sm border-y border-charcoal/[0.08] font-mono text-[11px] tracking-[0.14em] uppercase text-charcoal/55">
-                                  <span
-                                    className="w-1 h-1 rounded-full bg-gold shrink-0"
-                                    aria-hidden
-                                  />
-                                  <span className="font-semibold text-navy/70">
-                                    {localDateLabel(activityIso)}
-                                  </span>
-                                </div>
+                    : (
+                        <>
+                          {byTimeStatusCounts.length > 0 ? (
+                            <div className="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 border-y border-charcoal/[0.08] bg-cream/95 px-3 py-2 backdrop-blur-sm sm:px-4 lg:gap-1 lg:py-1.5">
+                              <span className="mr-1 hidden font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45 lg:inline">
+                                Filter
+                              </span>
+                              {byTimeStatusCounts.map(({ status, count }) => {
+                                const selected = byTimeActiveStatus === status;
+                                return (
+                                  <button
+                                    key={status}
+                                    type="button"
+                                    onClick={() =>
+                                      toggleGroupStatusFilter(
+                                        BY_TIME_STATUS_KEY,
+                                        status,
+                                      )
+                                    }
+                                    aria-pressed={selected}
+                                    aria-label={
+                                      selected
+                                        ? `Clear ${status} filter`
+                                        : `Filter to ${status}`
+                                    }
+                                    className={`inline-flex items-center gap-0.5 rounded-full border px-1 py-px font-mono text-[7px] tracking-[0.08em] uppercase transition-colors hover:opacity-90 lg:gap-1 lg:px-2 lg:py-0.5 lg:text-[11px] lg:tracking-[0.12em] ${
+                                      STATUS_PILL_CLASS[status]
+                                    } ${
+                                      selected
+                                        ? "ring-1 ring-navy/35 ring-offset-0 ring-offset-cream lg:ring-2 lg:ring-offset-1"
+                                        : byTimeActiveStatus
+                                          ? "opacity-45"
+                                          : ""
+                                    }`}
+                                  >
+                                    <span className="tabular-nums font-semibold">
+                                      {count}
+                                    </span>
+                                    {formatStatusBadgeLabel(status)}
+                                  </button>
+                                );
+                              })}
+                              {byTimeActiveStatus ? (
+                                <span className="ml-auto font-mono text-[10px] tabular-nums text-charcoal/45 lg:text-[11px]">
+                                  {byTimeFilteredListings.length}
+                                  {` ${byTimeActiveStatus}`}
+                                </span>
                               ) : null}
-                              <LatestLineRow
-                                listing={l}
-                                isLive
-                                isNew={newKeys.has(l.key)}
-                                addressColumnCh={addressColumnCh}
-                              />
                             </div>
-                          );
-                        })}
+                          ) : null}
+                          {byTimeFilteredListings.length === 0 ? (
+                            <div className="px-4 py-6 text-center font-mono text-[11px] text-slate/70">
+                              {byTimeActiveStatus
+                                ? `No ${byTimeActiveStatus.toLowerCase()} listings in this view.`
+                                : "No recent updates."}
+                            </div>
+                          ) : (
+                            byTimeFilteredListings.map((l, i) => {
+                              const activityIso = latestRowActivityIso(l);
+                              const key = localDateKey(activityIso);
+                              const prevKey =
+                                i > 0
+                                  ? localDateKey(
+                                      latestRowActivityIso(
+                                        byTimeFilteredListings[i - 1],
+                                      ),
+                                    )
+                                  : null;
+                              const showHeader = key !== prevKey;
+                              return (
+                                <div key={l.key}>
+                                  {showHeader ? (
+                                    <div className="flex w-full items-center gap-2 border-b border-charcoal/[0.08] bg-cream/60 px-3 py-1.5 font-mono text-[11px] tracking-[0.14em] uppercase text-charcoal/55 sm:px-4 lg:px-4">
+                                      <span
+                                        className="h-1 w-1 shrink-0 rounded-full bg-gold"
+                                        aria-hidden
+                                      />
+                                      <span className="font-semibold text-navy/70">
+                                        {localDateLabel(activityIso)}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  {/* Same fixed desktop slot height as group-by-town ticker rows. */}
+                                  <div className="latest-feed-row latest-ticker-row-slot">
+                                    <LatestLineRow
+                                      listing={l}
+                                      isLive
+                                      isNew={newKeys.has(l.key)}
+                                      addressColumnCh={addressColumnCh}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </>
+                      )}
                 </div>
               )}
               </div>

@@ -9,7 +9,10 @@ import {
 } from "@/components/listing/listing-frame";
 import ListingDeckCardHeader from "@/components/listing/ListingDeckCardHeader";
 import { useListingDesktopDeck } from "@/components/listing/ListingDesktopDeckContext";
-import { fmtAcres } from "@/lib/listing-comparables-shared";
+import {
+  formatLotAcresLabel,
+  formatLotSqftFromAcres,
+} from "@/lib/listing-lot-acres";
 import { closedVsLastListPct } from "@/lib/listing-history";
 import { formatInsightMedianPpsf } from "@/lib/insight-median-ppsf";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
@@ -155,7 +158,12 @@ export default function ListingDetailsSchoolsPanel({
   unframed = false,
 }: ListingDetailsSchoolsPanelProps & { unframed?: boolean }) {
   const [taxModalOpen, setTaxModalOpen] = useState(false);
+  const [lotSizeInSqft, setLotSizeInSqft] = useState(false);
   const [priorListings, setPriorListings] = useState<PriorListing[]>([]);
+
+  useEffect(() => {
+    setLotSizeInSqft(false);
+  }, [mlsId]);
   const [analysisKind, setAnalysisKind] = useState<AnalysisKind>(
     isRental ? "rental" : "sale",
   );
@@ -499,7 +507,23 @@ export default function ListingDetailsSchoolsPanel({
             />
           )}
           {lotAcres != null && lotAcres > 0 ? (
-            <Stat label="Lot size" value={fmtAcres(lotAcres)} />
+            <Stat
+              label="Lot size"
+              value={
+                (lotSizeInSqft
+                  ? formatLotSqftFromAcres(lotAcres)
+                  : formatLotAcresLabel(lotAcres)) ?? "—"
+              }
+              labelButton
+              onLabelClick={() => setLotSizeInSqft((prev) => !prev)}
+              valueButton
+              onValueClick={() => setLotSizeInSqft((prev) => !prev)}
+              valueTitle={
+                lotSizeInSqft
+                  ? "Show lot size in acres"
+                  : "Show lot size in square feet"
+              }
+            />
           ) : null}
           {furnishedLabel ? (
             <Stat label="Furnishings" value={furnishedLabel} />
@@ -728,6 +752,9 @@ function Stat({
   labelButton,
   onLabelClick,
   labelHref,
+  valueButton,
+  onValueClick,
+  valueTitle,
 }: {
   label: string;
   value: string;
@@ -737,12 +764,19 @@ function Stat({
   labelButton?: boolean;
   onLabelClick?: () => void;
   labelHref?: string | null;
+  valueButton?: boolean;
+  onValueClick?: () => void;
+  valueTitle?: string;
 }) {
   const color =
     accent === "coral" ? "text-coral" : accent === "sage" ? "text-sage" : "text-white";
   const labelClass =
     "font-mono text-[9px] tracking-[0.14em] uppercase text-white/55 leading-tight";
   const labelLinkClass = `${labelClass} hover:text-gold transition-colors underline decoration-white/25 underline-offset-2`;
+  const valueClass = `shrink-0 font-mono tabular-nums leading-tight ${
+    large ? "text-lg" : "text-sm"
+  } ${color}`;
+  const valueLinkClass = `${valueClass} text-right hover:text-gold transition-colors underline decoration-white/25 underline-offset-2`;
   return (
     <div className="flex items-baseline justify-between gap-2">
       {labelHref ? (
@@ -760,14 +794,23 @@ function Stat({
       ) : (
         <span className={labelClass}>{label}</span>
       )}
-      <span
-        className={`shrink-0 font-mono tabular-nums leading-tight ${
-          large ? "text-lg" : "text-sm"
-        } ${color}`}
-      >
-        {value}
-        {sub && <span className="ml-1.5 text-[10px] text-white/50">{sub}</span>}
-      </span>
+      {valueButton && onValueClick ? (
+        <button
+          type="button"
+          onClick={onValueClick}
+          title={valueTitle}
+          aria-label={valueTitle ?? `Toggle ${label} units`}
+          className={valueLinkClass}
+        >
+          {value}
+          {sub && <span className="ml-1.5 text-[10px] text-white/50">{sub}</span>}
+        </button>
+      ) : (
+        <span className={valueClass}>
+          {value}
+          {sub && <span className="ml-1.5 text-[10px] text-white/50">{sub}</span>}
+        </span>
+      )}
     </div>
   );
 }

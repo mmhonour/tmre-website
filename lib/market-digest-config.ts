@@ -10,6 +10,7 @@ import {
 } from '@/lib/contact-notify-config'
 import {
   DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  alignSubjectTemplateToWeekday,
   defaultMarketDigestSubjectTemplate,
   type MarketDigestConfig,
 } from '@/lib/market-digest-shared'
@@ -25,6 +26,7 @@ import {
 export type { MarketDigestConfig } from '@/lib/market-digest-shared'
 export {
   DEFAULT_MARKET_DIGEST_SUBJECT_TEMPLATE,
+  alignSubjectTemplateToWeekday,
   defaultMarketDigestSubjectTemplate,
   subjectTemplateForWeekdayChange,
 } from '@/lib/market-digest-shared'
@@ -80,7 +82,10 @@ function buildConfig(parts: {
     lastSentAt: parts.lastSent?.trim() || null,
     lastWeekKey: parts.lastWeek?.trim() || null,
     defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
-    subjectTemplate: resolveSubjectTemplate(parts.subjectRaw, parts.weekdayEt),
+    subjectTemplate: alignSubjectTemplateToWeekday(
+      resolveSubjectTemplate(parts.subjectRaw, parts.weekdayEt),
+      parts.weekdayEt,
+    ),
     includeSocialProfiles: parseIncludeSocial(parts.socialRaw),
     weekdayEt: parts.weekdayEt,
     startTimeEt: parts.startTimeEt,
@@ -171,17 +176,20 @@ export async function setMarketDigestEnabled(enabled: boolean): Promise<boolean>
 export async function setMarketDigestSubjectTemplate(
   value: string,
 ): Promise<string> {
+  const { weekdayEt } = scheduleFieldsFromConfig(
+    await readSyncScheduleConfigFresh(),
+  )
   const trimmed = value.trim()
   if (!trimmed) {
     await setSyncMetaDurable(MARKET_DIGEST_SUBJECT_KEY, '')
-    const { weekdayEt } = scheduleFieldsFromConfig(await readSyncScheduleConfigFresh())
     return defaultMarketDigestSubjectTemplate(weekdayEt)
   }
   if (trimmed.length > SUBJECT_MAX) {
     throw new Error(`Subject template must be ≤ ${SUBJECT_MAX} characters`)
   }
-  await setSyncMetaDurable(MARKET_DIGEST_SUBJECT_KEY, trimmed)
-  return trimmed
+  const aligned = alignSubjectTemplateToWeekday(trimmed, weekdayEt)
+  await setSyncMetaDurable(MARKET_DIGEST_SUBJECT_KEY, aligned)
+  return aligned
 }
 
 export async function setMarketDigestIncludeSocialProfiles(
@@ -197,13 +205,44 @@ export async function markMarketDigestSent(weekKey: string): Promise<void> {
   await setSyncMetaDurable(MARKET_DIGEST_LAST_WEEK_KEY, weekKey)
 }
 
+/**
+ * Long Eastern date for the configured send weekday in `now`'s week
+ * (same calendar day as {@link marketDigestWeekKey}).
+ */
+export function formatMarketDigestEtDateForWeekday(
+  now: Date = new Date(),
+  weekdayEt: SyncScheduleWeekdayEt = 1,
+): string {
+  const weekKey = marketDigestWeekKey(now, weekdayEt)
+  const [y, m, d] = weekKey.split('-').map(Number)
+  if (!y || !m || !d) {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(now)
+  }
+  // Noon-ish UTC keeps the civil ET date stable across DST edges.
+  const date = new Date(Date.UTC(y, m - 1, d, 16, 0, 0))
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date)
+}
+
 /** Apply `{date}` (and trim) to the admin subject template. */
 export function renderMarketDigestSubject(
   template: string,
   etDate: string,
   weekdayEt: SyncScheduleWeekdayEt = 1,
 ): string {
-  const base = resolveSubjectTemplate(template, weekdayEt)
+  const resolved = resolveSubjectTemplate(template, weekdayEt)
+  const base = alignSubjectTemplateToWeekday(resolved, weekdayEt)
   const rendered = base.replaceAll('{date}', etDate).trim()
   return (
     rendered ||

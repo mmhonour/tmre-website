@@ -77,6 +77,38 @@ export async function countStatsCacheRows(): Promise<number> {
   return row?.count ?? 0
 }
 
+export type StatsCacheKeyFamily = {
+  /** Key family (usually the segment before the first `:`). */
+  family: string
+  rows: number
+}
+
+/**
+ * Distinct key families currently present in stats_cache (no payloads).
+ * `if:…` keys use the first two segments (`if:detail`) so they stay distinct
+ * from a bare `if` bucket.
+ */
+export async function listStatsCacheKeyFamilies(): Promise<StatsCacheKeyFamily[]> {
+  const rows = await query<{ family: string; rows: number }>(
+    `SELECT
+       CASE
+         WHEN cache_key LIKE 'if:%'
+           THEN split_part(cache_key, ':', 1) || ':' || split_part(cache_key, ':', 2)
+         ELSE split_part(cache_key, ':', 1)
+       END AS family,
+       count(*)::int AS rows
+     FROM stats_cache
+     GROUP BY 1
+     ORDER BY family ASC`,
+  )
+  return rows
+    .map((r) => ({
+      family: (r.family ?? '').trim(),
+      rows: r.rows ?? 0,
+    }))
+    .filter((r) => r.family.length > 0)
+}
+
 /** Count stats_cache rows whose key starts with each prefix. */
 export async function countStatsCacheByPrefixes(
   prefixes: readonly string[],

@@ -69,21 +69,31 @@ function LatestTownSidePanel({
         <button
           type="button"
           onClick={() => onTownSelect(row.town)}
-          className="flex min-w-0 flex-1 items-baseline justify-between gap-2 px-4 py-3 text-left transition-colors hover:brightness-110 lg:px-5"
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left transition-colors hover:brightness-110 lg:px-4"
           aria-pressed={selected}
+          title={`${label}: ${row.updateCount} updates in the last 24 hours. Rank #${rank} by update volume.`}
         >
           <span
-            className={`font-mono text-xs tracking-[0.18em] uppercase text-gold sm:text-sm ${
+            className={`min-w-0 truncate font-mono text-[11px] tracking-[0.14em] uppercase text-gold lg:text-xs ${
               selected ? "font-bold" : ""
             }`}
           >
-            #{rank} ·{" "}
+            <span className="text-gold/70">#{rank}</span>
+            <span className="text-gold/40"> · </span>
             <span className="underline decoration-gold/40 underline-offset-2 hover:decoration-gold">
               {label}
             </span>
           </span>
-          <span className="shrink-0 font-mono text-lg font-semibold tabular-nums text-gold">
-            {row.updateCount}
+          <span
+            className="ml-auto inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap font-mono text-gold"
+            title="Status updates in the last 24 hours"
+          >
+            <span className="text-sm font-semibold tabular-nums leading-none">
+              {row.updateCount}
+            </span>
+            <span className="text-[9px] tracking-[0.12em] uppercase text-gold/70">
+              {row.updateCount === 1 ? "update" : "updates"}
+            </span>
           </span>
         </button>
         <button
@@ -93,7 +103,7 @@ function LatestTownSidePanel({
           aria-label={
             expanded ? `Collapse ${label} market panel` : `Expand ${label} market panel`
           }
-          className="inline-flex w-10 shrink-0 items-center justify-center border-l border-white/10 text-gold/80 transition-colors hover:bg-white/5 hover:text-gold"
+          className="inline-flex w-9 shrink-0 items-center justify-center border-l border-white/10 text-gold/80 transition-colors hover:bg-white/5 hover:text-gold"
         >
           <svg
             viewBox="0 0 16 16"
@@ -116,19 +126,19 @@ function LatestTownSidePanel({
 
       {expanded ? (
         <>
-          <div className="flex items-baseline justify-between gap-2 border-b border-charcoal/[0.06] px-4 py-3 lg:px-5">
+          <div className="flex items-center justify-between gap-2 whitespace-nowrap border-b border-charcoal/[0.06] px-3 py-2 lg:px-4">
             <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
-              Latest
+              Latest update
             </span>
             {latestHref ? (
               <Link
                 href={latestHref}
-                className="text-right font-mono text-sm font-medium tabular-nums text-navy underline decoration-charcoal/20 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold"
+                className="min-w-0 truncate text-right font-mono text-xs font-medium tabular-nums text-navy underline decoration-charcoal/20 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold"
               >
                 {latestLabel}
               </Link>
             ) : (
-              <span className="text-right font-mono text-sm font-medium tabular-nums text-navy">
+              <span className="min-w-0 truncate text-right font-mono text-xs font-medium tabular-nums text-navy">
                 {latestLabel}
               </span>
             )}
