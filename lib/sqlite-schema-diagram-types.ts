@@ -10,6 +10,11 @@ export type SqliteTableInfo = {
   name: string
   rowCount: number
   columns: SqliteColumnInfo[]
+  /**
+   * False when the table is in the documented catalog but absent from the
+   * connected database (e.g. migration never applied on Neon). Default true.
+   */
+  present?: boolean
 }
 
 export type SqliteColumnRef = {

@@ -19,7 +19,6 @@ import {
   CONFORMING_UNIT_LABELS,
   describeJumboSpread,
   FHFA_LOAN_LIMITS_URL,
-  formatRateDelta,
   formatRatePct,
   formatUsd,
   fredSeriesUrl,
@@ -151,6 +150,43 @@ export default async function MortgageRatesPage() {
 
   const ratesUpdatedLabel = formatRatesUpdatedAt(ratesMeta.lastSyncedAt);
 
+  /** Compact sidebar: mortgage rates first, then Treasury — each high→low. */
+  const rateSidebarShortLabel: Partial<Record<keyof typeof series, string>> = {
+    MORTGAGE30US: "30-yr",
+    MORTGAGE15US: "15-yr",
+    OBMMIC30YF: "Conf.",
+    OBMMIJUMBO30YF: "Jumbo",
+    DGS30: "30-yr T",
+    DGS15: "15-yr T",
+    DGS10: "10-yr T",
+    DGS5: "5-yr T",
+  };
+  const rateSidebarRows = (
+    [
+      ...MORTGAGE_HEADLINE_SERIES.map((id) => ({
+        id,
+        group: "mortgage" as const,
+        value: series[id].latest?.value ?? null,
+        shortLabel: rateSidebarShortLabel[id] ?? MORTGAGE_SERIES_BY_ID[id].label,
+        description: MORTGAGE_SERIES_BY_ID[id].description,
+        obmmi: id === "OBMMIC30YF" || id === "OBMMIJUMBO30YF",
+      })),
+      ...MORTGAGE_TREASURY_SERIES.map((id) => ({
+        id,
+        group: "treasury" as const,
+        value: series[id].latest?.value ?? null,
+        shortLabel: rateSidebarShortLabel[id] ?? MORTGAGE_SERIES_BY_ID[id].label,
+        description: MORTGAGE_SERIES_BY_ID[id].description,
+        obmmi: false,
+      })),
+    ] as const
+  )
+    .filter((row) => row.value != null)
+    .sort((a, b) => {
+      if (a.group !== b.group) return a.group === "mortgage" ? -1 : 1;
+      return (b.value ?? 0) - (a.value ?? 0);
+    });
+
   return (
     <>
       <section className="navy-gradient relative overflow-hidden pt-20 pb-0 text-white lg:pt-28">
@@ -210,115 +246,87 @@ export default async function MortgageRatesPage() {
 
       <section className="bg-cream py-10 lg:py-16">
         <div className="mx-auto max-w-6xl space-y-12 px-6 lg:px-10">
-          {/* Chart + rate cards */}
+          {/* Chart + compact rate sidebar (mortgage first, then Treasury; high→low) */}
           <div className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-start">
-              <div className={card}>
-                {noRateData ? (
-                  <p className={body}>
-                    Rate history has not synced yet
-                    {isFredConfigured()
-                      ? "."
-                      : " — a FRED API key is needed on this environment."}{" "}
-                    The market background, loan limits, and strategy sections
-                    below do not depend on it.
+            <div className={card}>
+              {noRateData ? (
+                <p className={body}>
+                  Rate history has not synced yet
+                  {isFredConfigured()
+                    ? "."
+                    : " — a FRED API key is needed on this environment."}{" "}
+                  The market background, loan limits, and strategy sections
+                  below do not depend on it.
+                </p>
+              ) : (
+                <>
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_9.5rem] lg:items-start">
+                    <MortgageSpreadChart
+                      lines={chartLines}
+                      cmtLines={cmtChartLines}
+                      caption="Optimal Blue 30-year fixed rate locks. Conforming = at or under the FHFA limit; jumbo = above it. Use 1Y / 5Y / Max for lookback. Tap CMT in the title to show or hide 30-yr and 10-yr Treasury yields."
+                    />
+                    <aside
+                      className="border-t border-charcoal/[0.08] pt-4 lg:border-t-0 lg:border-l lg:pl-4 lg:pt-1"
+                      aria-label="Prevailing mortgage rates and Treasury benchmarks"
+                    >
+                      <ol className="space-y-0">
+                        {rateSidebarRows.map((row, i) => (
+                          <li
+                            key={row.id}
+                            className={`flex items-baseline justify-between gap-2 py-1.5 ${
+                              i > 0 && row.group !== rateSidebarRows[i - 1]?.group
+                                ? "mt-2 border-t border-charcoal/[0.08] pt-3"
+                                : ""
+                            }`}
+                            title={row.description}
+                          >
+                            <span className="min-w-0 truncate font-mono text-[9px] tracking-[0.1em] uppercase text-slate">
+                              {row.shortLabel}
+                              {row.obmmi ? (
+                                <a
+                                  href="#optimal-blue-note"
+                                  className="ml-0.5 text-gold no-underline hover:underline"
+                                  aria-label="What is Optimal Blue MMI?"
+                                >
+                                  *
+                                </a>
+                              ) : null}
+                            </span>
+                            <span className="shrink-0 font-mono text-base tabular-nums leading-none text-navy">
+                              {formatRatePct(row.value)}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </aside>
+                  </div>
+                  <p
+                    id="optimal-blue-note"
+                    className="text-[11px] leading-relaxed text-charcoal/55"
+                  >
+                    <span className="font-mono text-gold">*</span>{" "}
+                    {OPTIMAL_BLUE_MMI_NOTE}{" "}
+                    <a
+                      href={OPTIMAL_BLUE_MMI_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                    >
+                      Optimal Blue MMI
+                    </a>
+                    {" · "}
+                    <a
+                      href={fredSeriesUrl("OBMMIC30YF")}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
+                    >
+                      FRED OBMMIC30YF
+                    </a>
                   </p>
-                ) : (
-                  <MortgageSpreadChart
-                    lines={chartLines}
-                    cmtLines={cmtChartLines}
-                    caption="Optimal Blue 30-year fixed rate locks. Conforming = at or under the FHFA limit; jumbo = above it. Use 1Y / 5Y / Max for lookback. Tap CMT in the title to show or hide 30-yr and 10-yr Treasury yields."
-                  />
-                )}
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <p className={sectionLabel}>Prevailing rates</p>
-                  {noRateData ? (
-                    <div className="rounded-2xl border border-charcoal/[0.08] bg-white p-5">
-                      <p className="text-sm text-charcoal/60">
-                        Waiting on FRED sync for live cards.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {MORTGAGE_HEADLINE_SERIES.map((id) => {
-                          const meta = MORTGAGE_SERIES_BY_ID[id];
-                          const data = series[id];
-                          const delta = formatRateDelta(
-                            data.yearAgo?.value ?? null,
-                            data.latest?.value ?? null,
-                          );
-                          const isObmmi =
-                            id === "OBMMIC30YF" || id === "OBMMIJUMBO30YF";
-                          return (
-                            <div
-                              key={id}
-                              className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
-                              title={meta.description}
-                            >
-                              <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
-                                {meta.label}
-                                {isObmmi ? (
-                                  <a
-                                    href="#optimal-blue-note"
-                                    className="ml-0.5 text-gold no-underline hover:underline"
-                                    aria-label="What is Optimal Blue MMI?"
-                                  >
-                                    *
-                                  </a>
-                                ) : null}
-                              </p>
-                              <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
-                                {formatRatePct(data.latest?.value ?? null)}
-                              </p>
-                              <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
-                                {data.latest?.date ?? "—"}
-                                {delta ? ` · ${delta} YoY` : ""}
-                              </p>
-                              <a
-                                href={fredSeriesUrl(id)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-1.5 inline-block font-mono text-[8px] tracking-[0.1em] uppercase text-charcoal/35 underline decoration-charcoal/20 underline-offset-2 hover:text-navy"
-                              >
-                                {meta.source}
-                              </a>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <p
-                        id="optimal-blue-note"
-                        className="mt-3 text-[11px] leading-relaxed text-charcoal/55"
-                      >
-                        <span className="font-mono text-gold">*</span>{" "}
-                        {OPTIMAL_BLUE_MMI_NOTE}{" "}
-                        <a
-                          href={OPTIMAL_BLUE_MMI_URL}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
-                        >
-                          Optimal Blue MMI
-                        </a>
-                        {" · "}
-                        <a
-                          href={fredSeriesUrl("OBMMIC30YF")}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
-                        >
-                          FRED OBMMIC30YF
-                        </a>
-                      </p>
-                    </>
-                  )}
-
                   {showSpot ? (
-                    <div className="mt-4 rounded-2xl border border-navy/20 bg-navy p-5 text-white">
+                    <div className="rounded-2xl border border-navy/20 bg-navy p-5 text-white">
                       <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-gold">
                         {spotQuote.label}
                       </p>
@@ -337,44 +345,8 @@ export default async function MortgageRatesPage() {
                       </p>
                     </div>
                   ) : null}
-                </div>
-
-                <div>
-                  <p className={sectionLabel}>Treasury benchmarks</p>
-                  <p className={`${body} mb-4 text-sm`}>
-                    Constant-maturity Treasury yields (H.15) — the usual
-                    “on-the-run equivalent” stack for mortgage tenors.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {MORTGAGE_TREASURY_SERIES.map((id) => {
-                      const meta = MORTGAGE_SERIES_BY_ID[id];
-                      const data = series[id];
-                      const delta = formatRateDelta(
-                        data.yearAgo?.value ?? null,
-                        data.latest?.value ?? null,
-                      );
-                      return (
-                        <div
-                          key={id}
-                          className="rounded-xl border border-charcoal/[0.08] bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
-                          title={meta.description}
-                        >
-                          <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-slate">
-                            {meta.label}
-                          </p>
-                          <p className="mt-0.5 font-mono text-2xl tabular-nums leading-none text-navy sm:text-[1.65rem]">
-                            {formatRatePct(data.latest?.value ?? null)}
-                          </p>
-                          <p className="mt-1 font-mono text-[9px] leading-snug text-charcoal/50">
-                            {data.latest?.date ?? "—"}
-                            {delta ? ` · ${delta} YoY` : ""}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
             </div>
 
             <div className={`${card} max-w-4xl`}>

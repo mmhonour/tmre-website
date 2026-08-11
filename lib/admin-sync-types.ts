@@ -167,6 +167,11 @@ export type AdminDatabaseTableStat = {
   rowCount: number
   /** True when COUNT(*) was skipped (e.g. listing_photos uses MAX(rowid)). */
   approximate?: boolean
+  /**
+   * False when the table is in POSTGRES_KNOWN_TABLES but missing from Neon
+   * (migration not applied). Default true for live tables.
+   */
+  present?: boolean
 }
 
 export type AdminDatabaseSyncStats = {

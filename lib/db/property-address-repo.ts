@@ -52,10 +52,75 @@ const SELECT_COLUMNS = `
   listing_id, mls_id, source, verified_at, synced_at
 `
 
+let townPropertyAddressesReady = false
+let townPropertyAddressesPromise: Promise<void> | null = null
+
+/**
+ * Idempotent DDL for migration 0001 `town_property_addresses` — Netlify does
+ * not run `npm run db:migrate` on deploy, so the property-address sync / search
+ * path must create the table when Neon never got 0001's directory section.
+ * Mirrors ensureCtCoverageTables() / ensureListingPreviousStatusColumns().
+ */
+export async function ensureTownPropertyAddressesTable(): Promise<void> {
+  if (townPropertyAddressesReady) return
+  if (!townPropertyAddressesPromise) {
+    townPropertyAddressesPromise = (async () => {
+      try {
+        await query(`
+          CREATE TABLE IF NOT EXISTS town_property_addresses (
+            property_key  text PRIMARY KEY,
+            parcel_number text,
+            town          text NOT NULL,
+            street        text NOT NULL,
+            unit          text,
+            zip           text,
+            address_full  text NOT NULL,
+            address_norm  text NOT NULL,
+            listing_id    text,
+            mls_id        text,
+            source        text NOT NULL,
+            verified_at   timestamptz NOT NULL,
+            synced_at     timestamptz NOT NULL
+          )
+        `)
+        await query(`
+          CREATE INDEX IF NOT EXISTS idx_tpa_town_norm
+            ON town_property_addresses (town, address_norm)
+        `)
+        await query(`
+          CREATE INDEX IF NOT EXISTS idx_tpa_address_norm
+            ON town_property_addresses (address_norm)
+        `)
+        await query(`
+          CREATE INDEX IF NOT EXISTS idx_tpa_parcel
+            ON town_property_addresses (parcel_number)
+            WHERE parcel_number IS NOT NULL
+        `)
+        await query(`
+          CREATE INDEX IF NOT EXISTS idx_tpa_listing_id
+            ON town_property_addresses (listing_id)
+            WHERE listing_id IS NOT NULL
+        `)
+        await query(`
+          CREATE INDEX IF NOT EXISTS idx_tpa_search
+            ON town_property_addresses (lower(address_full))
+        `)
+        townPropertyAddressesReady = true
+      } catch (err) {
+        console.warn('[property-address-repo] ensure town_property_addresses skipped', err)
+      }
+    })().finally(() => {
+      townPropertyAddressesPromise = null
+    })
+  }
+  await townPropertyAddressesPromise
+}
+
 export async function findPropertyAddressByNorm(
   town: string,
   addressNorm: string,
 ): Promise<PropertyAddressRow | null> {
+  await ensureTownPropertyAddressesTable()
   const row = await queryOne<DbRow>(
     `SELECT ${SELECT_COLUMNS}
      FROM town_property_addresses
@@ -70,6 +135,7 @@ export async function upsertPropertyAddress(
   draft: Omit<PropertyAddressRow, 'verifiedAt' | 'syncedAt'>,
   syncedAt: string,
 ): Promise<void> {
+  await ensureTownPropertyAddressesTable()
   const byNorm = await findPropertyAddressByNorm(draft.town, draft.addressNorm)
   const propertyKey =
     byNorm && byNorm.propertyKey.startsWith('addr:') && draft.propertyKey.startsWith('parcel:')
@@ -146,6 +212,7 @@ let propertyAddressSearchIndexesEnsured = false
 async function ensurePropertyAddressSearchIndexes(): Promise<void> {
   if (propertyAddressSearchIndexesEnsured) return
   try {
+    await ensureTownPropertyAddressesTable()
     await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
     await query(`
       CREATE INDEX IF NOT EXISTS idx_tpa_street_trgm
@@ -228,6 +295,7 @@ export async function searchPropertyAddressesInDb(
 }
 
 export async function countPropertyAddresses(): Promise<number> {
+  await ensureTownPropertyAddressesTable()
   const row = await queryOne<{ count: string }>(
     'SELECT COUNT(*)::text AS count FROM town_property_addresses',
   )

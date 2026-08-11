@@ -117,22 +117,45 @@ function TableCard({
   table: SqliteTableInfo;
   foreignKeyColumns: Set<string>;
 }) {
+  const missing = table.present === false;
   return (
     <div
       id={`schema-table-${table.name}`}
       data-schema-table={table.name}
-      className="scroll-mt-28 min-w-[14rem] max-w-[18rem] rounded-xl border border-charcoal/[0.12] bg-cream/30 overflow-hidden shadow-sm shadow-charcoal/[0.03] target:ring-2 target:ring-navy/40 target:border-navy/30"
+      className={`scroll-mt-28 min-w-[14rem] max-w-[18rem] rounded-xl border overflow-hidden shadow-sm shadow-charcoal/[0.03] target:ring-2 target:ring-navy/40 target:border-navy/30 ${
+        missing
+          ? "border-coral/35 bg-coral/[0.04]"
+          : "border-charcoal/[0.12] bg-cream/30"
+      }`}
     >
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-charcoal/[0.1] bg-navy text-white">
+      <div
+        className={`flex items-center justify-between gap-3 px-3 py-2 border-b ${
+          missing
+            ? "border-coral/25 bg-coral text-white"
+            : "border-charcoal/[0.1] bg-navy text-white"
+        }`}
+      >
         <p className="font-mono text-[11px] tracking-[0.12em] uppercase truncate">
           {table.name}
         </p>
         <p className="font-mono text-[10px] tabular-nums text-white/60 shrink-0">
-          {table.name === "listing_photos" ? "≈" : ""}
-          {table.rowCount.toLocaleString()} rows
+          {missing
+            ? "missing"
+            : `${table.name === "listing_photos" ? "≈" : ""}${table.rowCount.toLocaleString()} rows`}
         </p>
       </div>
+      {missing ? (
+        <p className="px-3 py-2 font-mono text-[10px] leading-snug text-coral/90 border-b border-coral/15">
+          In catalog / migrations — not in this Neon database yet. Run Property
+          address directory sync (or db:migrate) to create it.
+        </p>
+      ) : null}
       <ul className="divide-y divide-charcoal/[0.06]">
+        {table.columns.length === 0 && missing ? (
+          <li className="px-3 py-2 font-mono text-[11px] text-charcoal/45">
+            No documented columns for this stub.
+          </li>
+        ) : null}
         {table.columns.map((col) => {
           const isFk = foreignKeyColumns.has(col.name);
           return (

@@ -16,6 +16,8 @@ type LatestAddressMetaHoverProps = {
   href: string;
   isLive: boolean;
   className?: string;
+  /** Classes on the outer anchor wrapper (default keeps desktop truncate layout). */
+  wrapperClassName?: string;
   children: ReactNode;
 };
 
@@ -24,6 +26,7 @@ export default function LatestAddressMetaHover({
   href,
   isLive,
   className = "",
+  wrapperClassName = "inline-flex min-w-0 max-w-full",
   children,
 }: LatestAddressMetaHoverProps) {
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -72,7 +75,7 @@ export default function LatestAddressMetaHover({
     <>
       <span
         ref={anchorRef}
-        className="inline-flex min-w-0 max-w-full"
+        className={wrapperClassName}
         onMouseEnter={show}
         onMouseLeave={scheduleHide}
         onFocus={show}
@@ -90,7 +93,9 @@ export default function LatestAddressMetaHover({
             {children}
           </Link>
         ) : (
-          <span className="min-w-0 truncate font-medium text-navy">{children}</span>
+          <span className={linkClassName || "min-w-0 truncate font-medium text-navy"}>
+            {children}
+          </span>
         )}
       </span>
       {anchorEl ? (

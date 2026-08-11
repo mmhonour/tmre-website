@@ -4,6 +4,7 @@ import type { PropertyAddressRow } from '@/lib/property-address'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import {
   countPropertyAddresses,
+  ensureTownPropertyAddressesTable,
   findPropertyAddressByNorm,
   loadMlsListingsForPropertySync,
   searchPropertyAddressesInDb,
@@ -12,6 +13,7 @@ import {
 
 export {
   countPropertyAddresses,
+  ensureTownPropertyAddressesTable,
   findPropertyAddressByNorm,
   loadMlsListingsForPropertySync,
   searchPropertyAddressesInDb,

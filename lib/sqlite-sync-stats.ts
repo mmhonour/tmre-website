@@ -215,6 +215,7 @@ export async function collectAdminDatabaseSyncStats(): Promise<AdminDatabaseSync
     tables: postgresTables.map((row) => ({
       table: row.table,
       rowCount: row.queried,
+      present: row.present,
     })),
     summary:
       listingsCount > 0

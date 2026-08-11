@@ -26,6 +26,9 @@ export type AdminDataControlsPanelId =
   | "ct-coverage"
   | "town-budget";
 
+/** Sub-panels under Admin → Cookies. */
+export type AdminCookiesPanelId = "cookies" | "ephemeral";
+
 /** Sub-panels under Admin → Web server. */
 export type AdminServerPanelId =
   | "api-routes"
@@ -63,13 +66,14 @@ export type AdminSectionLink = {
   id: string;
   label: string;
   tab: AdminTabId;
-  /** Sub-panel when the tab has nested panels (Syncs / Database / Data controls / Architecture / Communications). */
+  /** Sub-panel when the tab has nested panels (Syncs / Database / Data controls / Architecture / Communications / Cookies). */
   panel?:
     | AdminSyncsPanelId
     | AdminDataControlsPanelId
     | AdminPostgresPanelId
     | AdminArchitecturePanelId
     | AdminCommunicationsPanelId
+    | AdminCookiesPanelId
     | AdminServerPanelId;
 };
 
@@ -344,6 +348,25 @@ export const ADMIN_COMMUNICATIONS_PANELS: {
   },
 ];
 
+export const ADMIN_COOKIES_PANELS: {
+  id: AdminCookiesPanelId;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "cookies",
+    label: "Cookies",
+    subtitle:
+      "Catalog of cookie purposes + live jar (prefs, visitor id, unlock) and browser storage",
+  },
+  {
+    id: "ephemeral",
+    label: "Ephemeral",
+    subtitle:
+      "Per-instance memory caches and browser-only stores — not durable across deploys",
+  },
+];
+
 export type AdminDocLink = {
   label: string;
   href: string;
@@ -398,7 +421,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "cookies",
     label: "Cookies",
     subtitle:
-      "Catalog of cookie purposes + live jar (prefs, visitor id, unlock) and browser storage",
+      "Browser cookie jar, known cookie catalog, and ephemeral memory / browser caches",
   },
   {
     id: "architecture",
@@ -538,7 +561,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   { id: "admin-stats-photos", label: "Photo storage", tab: "stats" },
   { id: "admin-stats-sync-control", label: "Sync control & config", tab: "stats" },
   { id: "admin-stats-site-data", label: "Site form / visitor data", tab: "stats" },
-  { id: "admin-stats-ephemeral", label: "Ephemeral caches", tab: "stats" },
+  {
+    id: "admin-stats-ephemeral",
+    label: "Ephemeral caches",
+    tab: "cookies",
+    panel: "ephemeral",
+  },
   {
     id: "admin-photo-health",
     label: "Listing photo health",
@@ -656,6 +684,7 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     id: "admin-browser-cookies",
     label: "Browser cookies + storage catalog",
     tab: "cookies",
+    panel: "cookies",
   },
   {
     id: "admin-inventory-segment-bands",
@@ -1054,6 +1083,13 @@ export function adminCommunicationsPanelForSection(
   return isAdminCommunicationsPanelId(panel) ? panel : null;
 }
 
+export function adminCookiesPanelForSection(
+  sectionId: string,
+): AdminCookiesPanelId | null {
+  const panel = ADMIN_SECTION_LINKS.find((link) => link.id === sectionId)?.panel;
+  return isAdminCookiesPanelId(panel) ? panel : null;
+}
+
 export function adminServerPanelForSection(
   sectionId: string,
 ): AdminServerPanelId | null {
@@ -1141,6 +1177,12 @@ export function isAdminCommunicationsPanelId(
   );
 }
 
+export function isAdminCookiesPanelId(
+  value: string | null | undefined,
+): value is AdminCookiesPanelId {
+  return value === "cookies" || value === "ephemeral";
+}
+
 export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
   const link = ADMIN_SECTION_LINKS.find((row) => row.id === sectionId);
   const params = new URLSearchParams({ tab });
@@ -1151,11 +1193,16 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
       (tab === "postgres" && isAdminPostgresPanelId(link.panel)) ||
       (tab === "architecture" && isAdminArchitecturePanelId(link.panel)) ||
       (tab === "communications" && isAdminCommunicationsPanelId(link.panel)) ||
+      (tab === "cookies" && isAdminCookiesPanelId(link.panel)) ||
       (tab === "server" && isAdminServerPanelId(link.panel)))
   ) {
     params.set("panel", link.panel);
   }
   return `/admin?${params.toString()}#${sectionId}`;
+}
+
+export function adminCookiesHref(panel: AdminCookiesPanelId): string {
+  return `/admin?tab=cookies&panel=${panel}`;
 }
 
 export function adminServerHref(panel: AdminServerPanelId): string {

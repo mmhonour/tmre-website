@@ -68,6 +68,10 @@ const STATUS_PILL_CLASS: Record<LatestListingRow["status"], string> = {
   "Back on Market": "bg-navy/10 text-navy border-navy/30",
 };
 
+/** Status filter pills — mobile ~50% larger than the old 7px/px-1 size; desktop unchanged. */
+const STATUS_FILTER_PILL_LAYOUT =
+  "inline-flex items-center gap-[3px] rounded-full border px-1.5 py-[1.5px] font-mono text-[10.5px] tracking-[0.12em] uppercase transition-colors hover:opacity-90 lg:gap-1 lg:px-2 lg:py-0.5 lg:text-[11px]";
+
 function summarizeTownStatuses(
   rows: LatestListingRow[],
 ): { status: LatestListingRow["status"]; count: number }[] {
@@ -1121,7 +1125,7 @@ export default function LatestClient({
                                   ? `Clear ${status} filter for ${group.label}`
                                   : `Filter ${group.label} to ${status}`
                               }
-                              className={`inline-flex items-center gap-0.5 rounded-full border px-1 py-px font-mono text-[7px] tracking-[0.08em] uppercase transition-colors hover:opacity-90 lg:gap-1 lg:px-2 lg:py-0.5 lg:text-[11px] lg:tracking-[0.12em] ${
+                              className={`${STATUS_FILTER_PILL_LAYOUT} ${
                                 STATUS_PILL_CLASS[status]
                               } ${
                                 selected
@@ -1184,7 +1188,7 @@ export default function LatestClient({
                                 </span>
                               </div>
                               {!collapsed && statusPills.length > 0 ? (
-                                <div className="flex gap-0.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                <div className="flex gap-[3px] overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                   {statusPills}
                                 </div>
                               ) : null}
@@ -1269,7 +1273,7 @@ export default function LatestClient({
                     : (
                         <>
                           {byTimeStatusCounts.length > 0 ? (
-                            <div className="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 border-y border-charcoal/[0.08] bg-cream/95 px-3 py-2 backdrop-blur-sm sm:px-4 lg:gap-1 lg:py-1.5">
+                            <div className="sticky top-0 z-10 flex flex-wrap items-center gap-[3px] border-y border-charcoal/[0.08] bg-cream/95 px-3 py-2 backdrop-blur-sm sm:px-4 lg:gap-1 lg:py-1.5">
                               <span className="mr-1 hidden font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45 lg:inline">
                                 Filter
                               </span>
@@ -1291,7 +1295,7 @@ export default function LatestClient({
                                         ? `Clear ${status} filter`
                                         : `Filter to ${status}`
                                     }
-                                    className={`inline-flex items-center gap-0.5 rounded-full border px-1 py-px font-mono text-[7px] tracking-[0.08em] uppercase transition-colors hover:opacity-90 lg:gap-1 lg:px-2 lg:py-0.5 lg:text-[11px] lg:tracking-[0.12em] ${
+                                    className={`${STATUS_FILTER_PILL_LAYOUT} ${
                                       STATUS_PILL_CLASS[status]
                                     } ${
                                       selected

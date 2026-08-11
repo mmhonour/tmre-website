@@ -116,19 +116,28 @@ function SampleCell({ value }: { value: unknown }) {
  */
 export default function AdminInventoryComparisonPanel({
   initialSnapshot = null,
+  initialLiveCounts = {},
+  initialActivity = {},
 }: {
   initialSnapshot?: InventorySnapshot | null;
+  /** Exact COUNT(*) per table from admin page SSR (refreshes on full page load). */
+  initialLiveCounts?: Record<string, number>;
+  initialActivity?: Record<string, TableActivity>;
 }) {
   const [open, setOpen] = useState(true);
-  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
-  const [activity, setActivity] = useState<Record<string, TableActivity>>({});
+  const [liveCounts, setLiveCounts] =
+    useState<Record<string, number>>(initialLiveCounts);
+  const [activity, setActivity] =
+    useState<Record<string, TableActivity>>(initialActivity);
   const [snapshotCounts, setSnapshotCounts] = useState<Record<string, number>>(
     initialSnapshot?.counts ?? {},
   );
   const [capturedAt, setCapturedAt] = useState<string | null>(
     initialSnapshot?.capturedAt ?? null,
   );
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(
+    Object.keys(initialLiveCounts).length > 0 ? new Date().toISOString() : null,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("upserted60m");
@@ -369,11 +378,13 @@ export default function AdminInventoryComparisonPanel({
       {open && (
         <div className="border-t border-charcoal/[0.06]">
           <p className="px-5 sm:px-6 py-3 text-sm text-charcoal/65 leading-relaxed w-full">
-            Live Neon table counts vs the post–full-resync snapshot, plus how many
-            rows were written in the last 60 minutes (by{" "}
+            Live Neon table counts (after each table name and in Current) vs the
+            post–full-resync snapshot, plus how many rows were written in the last
+            60 minutes (by{" "}
             <span className="font-mono text-[11px]">synced_at</span> /{" "}
             <span className="font-mono text-[11px]">updated_at</span> when
-            present). Use{" "}
+            present). Counts load with the admin page; use Refresh for a fresh
+            pull without reloading. Use{" "}
             <span className="font-mono text-[11px]">+</span> /{" "}
             <span className="font-mono text-[11px]">−</span> to load up to 100
             newest rows on demand — nothing is polled in the background.
@@ -451,8 +462,8 @@ export default function AdminInventoryComparisonPanel({
                       className="px-5 sm:px-6 py-6 text-sm text-charcoal/50"
                     >
                       {Object.keys(snapshotCounts).length === 0
-                        ? "Click Refresh to load live table counts and 60‑minute upsert activity."
-                        : "Snapshot only — click Refresh for live counts and upsert activity."}
+                        ? "No Neon tables found yet — refresh the admin page after Postgres is connected."
+                        : "Snapshot only — no live tables returned. Refresh the admin page or click Refresh."}
                     </td>
                   </tr>
                 ) : (
@@ -469,6 +480,7 @@ export default function AdminInventoryComparisonPanel({
                       const s = rowStatus(current, ref);
                       const isOpen = expanded.has(table);
                       const sample = samples[table];
+                      const hasLive = Object.keys(liveCounts).length > 0;
                       return (
                         <Fragment key={table}>
                           <tr
@@ -505,6 +517,13 @@ export default function AdminInventoryComparisonPanel({
                             </td>
                             <td className="px-3 sm:px-4 py-2 font-mono text-[11px] text-navy">
                               {table}
+                              <span className="ml-2 tabular-nums text-charcoal/45">
+                                {hasLive
+                                  ? current < 0
+                                    ? "count failed"
+                                    : current.toLocaleString()
+                                  : "—"}
+                              </span>
                             </td>
                             <td
                               className={`px-3 sm:px-4 py-2 font-mono text-[11px] tabular-nums text-right ${
@@ -515,8 +534,10 @@ export default function AdminInventoryComparisonPanel({
                                     : "text-charcoal/70"
                               }`}
                             >
-                              {Object.keys(liveCounts).length > 0
-                                ? current.toLocaleString()
+                              {hasLive
+                                ? current < 0
+                                  ? "—"
+                                  : current.toLocaleString()
                                 : "—"}
                             </td>
                             <td className="px-3 sm:px-4 py-2 font-mono text-[11px] tabular-nums text-right text-charcoal/45">
@@ -650,15 +671,15 @@ export default function AdminInventoryComparisonPanel({
             </table>
           </div>
           <p className="px-5 sm:px-6 py-3 font-mono text-[9px] text-charcoal/35 border-t border-charcoal/[0.04]">
-            Snapshot = exact counts after last successful full resync · Current =
-            live exact COUNT(*) · Upserted 60m / Last updated = on Refresh · Sample
-            rows = on + only
+            Snapshot = exact counts after last successful full resync · Current /
+            name count = live exact COUNT(*) (admin page load or Refresh) ·
+            Upserted 60m / Last updated = same · Sample rows = on + only
             {lastRefreshedAt
-              ? ` · refreshed ${new Date(lastRefreshedAt).toLocaleTimeString(
+              ? ` · counts as of ${new Date(lastRefreshedAt).toLocaleTimeString(
                   "en-US",
                   { hour: "numeric", minute: "2-digit" },
                 )}`
-              : " · not refreshed yet"}
+              : " · no live counts yet"}
           </p>
         </div>
       )}

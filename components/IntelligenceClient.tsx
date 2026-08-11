@@ -251,11 +251,11 @@ function intelFilterDescriptorParts({
   // Always surface construction type (like Residential) so the filter stays
   // discoverable when chrome is collapsed — click peeks Construction Type pills.
   if (newConstructionFilter === "new") {
-    parts.push({ kind: "construction", label: "New" });
+    parts.push({ kind: "construction", label: "New Construction" });
   } else if (newConstructionFilter === "not-new") {
-    parts.push({ kind: "construction", label: "Not New" });
+    parts.push({ kind: "construction", label: "Not New Construction" });
   } else {
-    parts.push({ kind: "construction", label: "Construction" });
+    parts.push({ kind: "construction", label: "Any" });
   }
 
   if (boardStatusFilter === "new") parts.push({ kind: "plain", label: "New listings" });
@@ -5005,12 +5005,12 @@ export default function IntelligenceClient({
                           value={newConstructionFilter}
                           onChange={setNewConstructionFilter}
                           options={[
+                            { value: "all", label: "Any" },
+                            { value: "new", label: "New Construction" },
                             {
-                              value: "all",
-                              label: "Construction Type (Any)",
+                              value: "not-new",
+                              label: "Not New Construction",
                             },
-                            { value: "new", label: "New" },
-                            { value: "not-new", label: "Not New" },
                           ]}
                         />
                       </>

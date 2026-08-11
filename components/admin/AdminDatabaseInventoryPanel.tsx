@@ -1,7 +1,10 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import type { AdminDatabaseSyncStats } from "@/lib/admin-sync-types";
+import type {
+  AdminDatabaseSyncStats,
+  AdminDatabaseTableStat,
+} from "@/lib/admin-sync-types";
 import { formatBytes } from "@/lib/sqlite-schema-diagram-types";
 
 const TH =
@@ -395,7 +398,7 @@ export default function AdminDatabaseInventoryPanel({
     void loadActivity();
   }, [initialActivity, loadActivity]);
 
-  const neonTables = useMemo(() => {
+  const neonTables = useMemo((): AdminDatabaseTableStat[] => {
     const neon = databaseStats.find((db) => db.id === "listings");
     const fromStats = neon?.tables ?? [];
     if (fromStats.length > 0) {
@@ -406,6 +409,7 @@ export default function AdminDatabaseInventoryPanel({
       .map((table) => ({
         table,
         rowCount: 0,
+        present: true,
       }));
   }, [databaseStats, activity]);
 
@@ -547,6 +551,7 @@ export default function AdminDatabaseInventoryPanel({
                   const lastUpdated = act?.lastUpdated ?? null;
                   const isOpen = expanded.has(row.table);
                   const sample = samples[row.table];
+                  const missing = row.present === false;
                   return (
                     <Fragment key={row.table}>
                       <tr>
@@ -554,17 +559,22 @@ export default function AdminDatabaseInventoryPanel({
                           <button
                             type="button"
                             onClick={() => toggleExpand(row.table)}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded border border-charcoal/15 font-mono text-[12px] leading-none text-navy hover:border-navy/40 hover:bg-cream/50"
+                            disabled={missing}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded border border-charcoal/15 font-mono text-[12px] leading-none text-navy hover:border-navy/40 hover:bg-cream/50 disabled:cursor-not-allowed disabled:opacity-30"
                             aria-expanded={isOpen}
                             aria-label={
-                              isOpen
-                                ? `Hide sample rows for ${row.table}`
-                                : `Show sample rows for ${row.table}`
+                              missing
+                                ? `${row.table} is missing from Neon`
+                                : isOpen
+                                  ? `Hide sample rows for ${row.table}`
+                                  : `Show sample rows for ${row.table}`
                             }
                             title={
-                              isOpen
-                                ? "Hide sample rows"
-                                : "Show up to 100 newest rows"
+                              missing
+                                ? "Table missing from Neon"
+                                : isOpen
+                                  ? "Hide sample rows"
+                                  : "Show up to 100 newest rows"
                             }
                           >
                             {isOpen ? "−" : "+"}
@@ -572,9 +582,27 @@ export default function AdminDatabaseInventoryPanel({
                         </td>
                         <td className="px-3 py-2 font-mono text-[11px] text-navy">
                           {row.table}
+                          {row.present === false ? (
+                            <span className="ml-2 text-[9px] tracking-[0.12em] uppercase text-coral">
+                              missing
+                            </span>
+                          ) : null}
                         </td>
-                        <td className="px-3 py-2 font-mono text-[11px] tabular-nums text-right text-charcoal/70">
-                          {row.rowCount.toLocaleString()}
+                        <td
+                          className={`px-3 py-2 font-mono text-[11px] tabular-nums text-right ${
+                            row.present === false
+                              ? "text-coral/80"
+                              : "text-charcoal/70"
+                          }`}
+                          title={
+                            row.present === false
+                              ? "Known in catalog but absent from Neon — migration / ensure DDL not applied"
+                              : undefined
+                          }
+                        >
+                          {row.present === false
+                            ? "—"
+                            : row.rowCount.toLocaleString()}
                         </td>
                         <td
                           className={`px-3 py-2 font-mono text-[11px] tabular-nums text-right ${

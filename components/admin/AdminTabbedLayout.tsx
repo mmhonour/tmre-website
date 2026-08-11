@@ -6,6 +6,7 @@ import {
   ADMIN_TABS,
   adminArchitecturePanelForSection,
   adminCommunicationsPanelForSection,
+  adminCookiesPanelForSection,
   adminDataControlsPanelForSection,
   adminPostgresPanelForSection,
   adminServerPanelForSection,
@@ -13,6 +14,7 @@ import {
   adminTabForSection,
   isAdminArchitecturePanelId,
   isAdminCommunicationsPanelId,
+  isAdminCookiesPanelId,
   isAdminDataControlsPanelId,
   isAdminPostgresPanelId,
   isAdminPostgresSchemaHash,
@@ -116,7 +118,18 @@ function normalizeLegacyNestedTabUrls() {
     url.searchParams.get("panel") === "cookies"
   ) {
     url.searchParams.set("tab", "cookies");
-    url.searchParams.delete("panel");
+    url.searchParams.set("panel", "cookies");
+    window.history.replaceState(null, "", url);
+    return;
+  }
+
+  // Former Stats → Ephemeral section is now Cookies → Ephemeral.
+  if (
+    queryTab === "stats" &&
+    url.hash.replace(/^#/, "") === "admin-stats-ephemeral"
+  ) {
+    url.searchParams.set("tab", "cookies");
+    url.searchParams.set("panel", "ephemeral");
     window.history.replaceState(null, "", url);
     return;
   }
@@ -207,6 +220,13 @@ function ensureNestedPanelParam() {
       ? adminCommunicationsPanelForSection(hash)
       : null;
     url.searchParams.set("panel", fromSection ?? "market-digest");
+    window.history.replaceState(null, "", url);
+    return;
+  }
+  if (tab === "cookies") {
+    if (isAdminCookiesPanelId(url.searchParams.get("panel"))) return;
+    const fromSection = hash ? adminCookiesPanelForSection(hash) : null;
+    url.searchParams.set("panel", fromSection ?? "cookies");
     window.history.replaceState(null, "", url);
     return;
   }
@@ -306,6 +326,10 @@ export default function AdminTabbedLayout({
     } else if (next === "communications") {
       if (!isAdminCommunicationsPanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "market-digest");
+      }
+    } else if (next === "cookies") {
+      if (!isAdminCookiesPanelId(url.searchParams.get("panel"))) {
+        url.searchParams.set("panel", "cookies");
       }
     } else if (next === "server") {
       if (!isAdminServerPanelId(url.searchParams.get("panel"))) {

@@ -6,6 +6,7 @@ import {
 } from '@/lib/property-address'
 import {
   countPropertyAddresses,
+  ensureTownPropertyAddressesTable,
   loadMlsListingsForPropertySync,
   touchPropertyAddressSyncMeta,
   upsertPropertyAddress,
@@ -71,6 +72,8 @@ async function loadAssessorPropertyRows(): Promise<
 export async function syncPropertyAddresses(): Promise<PropertyAddressSyncResult> {
   const started = Date.now()
   const syncedAt = new Date().toISOString()
+
+  await ensureTownPropertyAddressesTable()
 
   const mlsRows = await loadMlsPropertyRows()
   for (const row of mlsRows) {

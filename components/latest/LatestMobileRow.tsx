@@ -101,13 +101,13 @@ function LatestMobileRow({
   return (
     <div
       {...listingHoverHandlers(isLive ? l.key : null)}
-      className={`flex gap-3 px-3 py-2.5 border-b border-charcoal/[0.08] last:border-0 ${
+      className={`flex items-start gap-3 px-3 py-2.5 border-b border-charcoal/[0.08] last:border-0 ${
         isNew ? "bg-sage/[0.06] animate-[fadeIn_0.4s_ease-out]" : ""
       }`}
     >
       <div className="flex w-[6rem] shrink-0 flex-col gap-1">
         <span
-          className="font-mono text-[10px] tabular-nums leading-tight text-navy/70 truncate"
+          className="font-mono text-[10px] tabular-nums leading-snug text-navy/70 truncate"
           title={updatedAt.title}
         >
           {updatedAt.label}
@@ -142,18 +142,21 @@ function LatestMobileRow({
       </div>
 
       <div className="min-w-0 flex-1 flex flex-col gap-1">
-        <div className="flex justify-end">
-          <DealBoardStatusBadge status={l.status} />
+        {/* Address top-aligned with timestamp; wraps before the status pill. */}
+        <div className="flex min-w-0 items-start gap-2">
+          <LatestAddressMetaHover
+            listing={l}
+            href={detailHref}
+            isLive={isLive}
+            wrapperClassName="min-w-0 flex-1"
+            className="block min-w-0 whitespace-normal break-words text-[15px] font-medium leading-snug text-navy underline decoration-charcoal/15 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold"
+          >
+            {l.address}
+          </LatestAddressMetaHover>
+          <span className="shrink-0">
+            <DealBoardStatusBadge status={l.status} />
+          </span>
         </div>
-
-        <LatestAddressMetaHover
-          listing={l}
-          href={detailHref}
-          isLive={isLive}
-          className="truncate text-[15px] font-medium leading-snug text-navy underline decoration-charcoal/15 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold"
-        >
-          {l.address}
-        </LatestAddressMetaHover>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           {town ? (

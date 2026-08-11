@@ -47,6 +47,38 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
   },
 ]
 
+/** Expected columns when a known table is absent from Neon (migrations lag). */
+const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
+  town_property_addresses: [
+    { name: 'property_key', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'parcel_number', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'town', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'street', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'unit', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'zip', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'address_full', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'address_norm', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'listing_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'mls_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'source', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'verified_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+}
+
+function sortPostgresTableNames(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    const aPriority = POSTGRES_PRIORITY_TABLES.indexOf(a)
+    const bPriority = POSTGRES_PRIORITY_TABLES.indexOf(b)
+    if (aPriority >= 0 || bPriority >= 0) {
+      if (aPriority < 0) return 1
+      if (bPriority < 0) return -1
+      return aPriority - bPriority
+    }
+    return a.localeCompare(b)
+  })
+}
+
 /** Live Neon Postgres schema for Admin diagrams. */
 export async function describePostgresDatabase(): Promise<SqliteDatabaseDiagram> {
   const base: SqliteDatabaseDiagram = {
@@ -98,22 +130,29 @@ export async function describePostgresDatabase(): Promise<SqliteDatabaseDiagram>
       columnsByTable.set(row.table_name, list)
     }
 
-    const tableNames = [...new Set(columns.map((row) => row.table_name))].sort((a, b) => {
-      const aPriority = POSTGRES_PRIORITY_TABLES.indexOf(a)
-      const bPriority = POSTGRES_PRIORITY_TABLES.indexOf(b)
-      if (aPriority >= 0 || bPriority >= 0) {
-        if (aPriority < 0) return 1
-        if (bPriority < 0) return -1
-        return aPriority - bPriority
-      }
-      return a.localeCompare(b)
-    })
+    const liveNames = new Set(columnsByTable.keys())
+    const tableNames = sortPostgresTableNames([
+      ...liveNames,
+      ...POSTGRES_PRIORITY_TABLES.filter((name) => !liveNames.has(name)),
+    ])
 
-    const tables: SqliteTableInfo[] = tableNames.map((name) => ({
-      name,
-      rowCount: countByTable.get(name) ?? 0,
-      columns: columnsByTable.get(name) ?? [],
-    }))
+    const tables: SqliteTableInfo[] = tableNames.map((name) => {
+      const present = liveNames.has(name)
+      if (present) {
+        return {
+          name,
+          present: true,
+          rowCount: countByTable.get(name) ?? 0,
+          columns: columnsByTable.get(name) ?? [],
+        }
+      }
+      return {
+        name,
+        present: false,
+        rowCount: 0,
+        columns: DOCUMENTED_POSTGRES_COLUMNS[name] ?? [],
+      }
+    })
 
     return {
       ...base,

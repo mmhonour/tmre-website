@@ -34,6 +34,8 @@ import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenceDealBoardPanel";
 import AdminIntelligenceDescriptorSizesPanel from "@/components/admin/AdminIntelligenceDescriptorSizesPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
+import AdminCookiesPanel from "@/components/admin/AdminCookiesPanel";
+import AdminEphemeralCachesPanel from "@/components/admin/AdminEphemeralCachesPanel";
 import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySegmentBandsPanel";
 import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
 import AdminTownBudgetSourcesPanel from "@/components/admin/AdminTownBudgetSourcesPanel";
@@ -144,6 +146,7 @@ import {
   readAdminSyncRunHistory,
   readInventorySnapshot,
   readLatestListingModificationTimestamp,
+  readLiveTableCounts,
   type InventorySnapshot,
 } from "@/lib/db/listings-repo";
 import { getSyncMeta } from "@/lib/db/sync-meta-store";
@@ -389,6 +392,11 @@ export default async function AdminPage() {
     "inventory-table-activity",
     () => readAllTableActivity(),
     {},
+  );
+  const inventoryLiveCounts = await safe(
+    "inventory-live-counts",
+    () => readLiveTableCounts(),
+    {} as Record<string, number>,
   );
   const syncRunHistory = await safe(
     "sync-run-history",
@@ -780,6 +788,8 @@ export default async function AdminPage() {
         <>
           <AdminInventoryComparisonPanel
             initialSnapshot={inventorySnapshot}
+            initialLiveCounts={inventoryLiveCounts}
+            initialActivity={inventoryTableActivity}
           />
           <AdminDatabaseInventoryPanel
             initial={databaseStats}
@@ -1166,7 +1176,12 @@ export default async function AdminPage() {
         visitors={visitorsPanel}
         dataControls={dataControlsPanel}
         communications={communicationsPanel}
-        cookies={<AdminBrowserCookiesPanel />}
+        cookies={
+          <AdminCookiesPanel
+            cookies={<AdminBrowserCookiesPanel />}
+            ephemeral={<AdminEphemeralCachesPanel />}
+          />
+        }
         architecture={
           <AdminArchitecturePanel
             map={<AdminSiteArchitecturePanel />}

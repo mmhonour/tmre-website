@@ -80,7 +80,7 @@ export default async function FedAnalysisPage() {
 
       <section className="bg-cream py-10 lg:py-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          {/* FOMC decision | Prevailing CPI | Markets calendar sidebar */}
+          {/* FOMC decision (+ upcoming FOMC) | Prevailing CPI (+ upcoming CPI) */}
           <div className="mb-8">
             <FedPolicySnapshot
               prevailingFed={prevailing}

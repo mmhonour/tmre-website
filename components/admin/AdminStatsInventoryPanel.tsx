@@ -136,8 +136,12 @@ export default function AdminStatsInventoryPanel() {
 
   const groups = useMemo(() => {
     if (!data?.groups) return [];
-    if (mediumFilter === "all") return data.groups;
-    return data.groups
+    // Ephemeral (memory / browser) lives under Admin → Cookies → Ephemeral.
+    const withoutEphemeral = data.groups.filter(
+      (g) => g.category.id !== "ephemeral",
+    );
+    if (mediumFilter === "all") return withoutEphemeral;
+    return withoutEphemeral
       .map((g) => ({
         ...g,
         entries: g.entries.filter((e) => e.medium === mediumFilter),
