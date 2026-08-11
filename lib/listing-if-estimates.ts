@@ -25,8 +25,12 @@ import type { InventorySegmentBandsConfig } from '@/lib/inventory-segment-bands-
 const TOP_COMP_COUNT = 8
 /** Keep comps in the same location/price tier as the subject ($/sqft band). */
 const SUBJECT_PPSF_BAND = 0.4
-const SOLD_PPSF_WEIGHT = 0.55
-const ACTIVE_PPSF_WEIGHT = 0.45
+/** Closed-pool share when blending sold + active midpoints (keep explain copy in sync). */
+export const IF_SOLD_BLEND_WEIGHT = 0.55
+/** Active-pool share when blending sold + active midpoints. */
+export const IF_ACTIVE_BLEND_WEIGHT = 0.45
+const SOLD_PPSF_WEIGHT = IF_SOLD_BLEND_WEIGHT
+const ACTIVE_PPSF_WEIGHT = IF_ACTIVE_BLEND_WEIGHT
 /** Comp spread band for If low/high range (weighted 25th–75th percentile). */
 const RANGE_LOW_PERCENTILE = 0.25
 const RANGE_HIGH_PERCENTILE = 0.75
@@ -92,6 +96,28 @@ export function ifCompWeightExplainLines(): string[] {
     `Vintage factor: same era ×${IF_VINTAGE_WEIGHT_SAME}, neighboring era ×${IF_VINTAGE_WEIGHT_ADJACENT}, farther eras ×${IF_VINTAGE_WEIGHT_FAR}. If this home’s vintage is unknown, every comp uses ×1.`,
     `Location-tier factor: compare this home’s location-premium multiplier to the comp’s. Difference ≤${IF_LOCATION_PREMIUM_TIER_1} → ×${IF_LOCATION_WEIGHT_TIER_1}; ≤${IF_LOCATION_PREMIUM_TIER_2} → ×${IF_LOCATION_WEIGHT_TIER_2}; ≤${IF_LOCATION_PREMIUM_TIER_3} → ×${IF_LOCATION_WEIGHT_TIER_3}; otherwise ×${IF_LOCATION_WEIGHT_FAR}. If this home has no location premium, every comp uses ×1.`,
     'Example: same-vintage (×4) and close location tier (×2.5) → wt 10.00. Neighboring vintage (×1.75) and far tier (×0.85) → wt 1.49.',
+  ]
+}
+
+/**
+ * How closed vs active pools are blended into the What if midpoint $/sqft.
+ * Formula: mid = soldPool × IF_SOLD_BLEND_WEIGHT + activePool × IF_ACTIVE_BLEND_WEIGHT.
+ */
+export function ifSoldActiveBlendExplainLines(
+  kind: 'sale' | 'rent' = 'sale',
+): string[] {
+  const closed = kind === 'rent' ? 'closed leases' : 'closed sales'
+  const active = kind === 'rent' ? 'active rentals' : 'active listings'
+  const soldPct = Math.round(IF_SOLD_BLEND_WEIGHT * 100)
+  const activePct = Math.round(IF_ACTIVE_BLEND_WEIGHT * 100)
+  const closedPull =
+    Math.round((IF_SOLD_BLEND_WEIGHT / IF_ACTIVE_BLEND_WEIGHT) * 100) / 100
+  return [
+    `When both ${closed} and ${active} are in the match set, What if first averages (or takes the median of) each pool on its own, then blends those two pool results:`,
+    `mid ≈ (${soldPct}% × ${closed} pool) + (${activePct}% × ${active} pool).`,
+    `So ${closed} count more: the closed-pool figure pulls about ${closedPull}× as hard as the active-pool figure (${soldPct}:${activePct}).`,
+    `If only one pool has comps, that pool is used at 100% (no blend).`,
+    `This closed/active blend applies for Median, Average, and Weighted avg. Per-comp wt (vintage × location tier) only changes how the Weighted avg builds each pool’s figure — see wt.`,
   ]
 }
 

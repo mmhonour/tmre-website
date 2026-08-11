@@ -41,6 +41,7 @@ type BuildNextRunsInput = {
   lastIncrementalSync: string | null
   lastListingScoresStarted: string | null
   lastListingScores: string | null
+  lastListingEdgeScores?: string | null
   lastRefreshStarted: string | null
   lastRefreshFinished: string | null
   lastStatsCacheStarted: string | null
@@ -406,14 +407,17 @@ export function isJobDueBySchedule(
     return isDailySyncOverdue(lastFinishedIso, hour, minute, now)
   }
   if (job.frequency === 'weekly') {
-    if (lastMs == null) return true
-    return isWeeklyWeekdaySyncOverdue(
-      lastFinishedIso,
+    // Never treat "never finished" as due on every */30 tick — require the
+    // weekly weekday+time slot to have arrived (same rule as overdue check).
+    const dueSlot = lastPastWeekdaySlotEt(
       resolveWeekdayEt(job),
       hour,
       minute,
       now,
     )
+    if (now.getTime() < dueSlot.getTime()) return false
+    if (lastMs == null) return true
+    return lastMs < dueSlot.getTime()
   }
   if (job.frequency === 'event') {
     // Handled by isScheduledJobDue → fed-event-sync-schedule.
@@ -451,6 +455,8 @@ function lastFinishedForJob(
       return input.lastIncrementalSync
     case 'listing-scores':
       return input.lastListingScores
+    case 'edge-scores':
+      return input.lastListingEdgeScores ?? getSyncMeta('last_listing_edge_scores')
     case 'stats-cache':
       return input.lastStatsCache
     case 'deal-of-the-day':
@@ -531,6 +537,10 @@ export function buildAdminSyncNextRuns(
     naturalFor('listing-scores'),
     SCHEDULED_SYNC_JOB_BY_ROW['listing-scores'],
   )
+  const nextEdgeScoresIso = applySyncNextOverride(
+    naturalFor('edge-scores'),
+    SCHEDULED_SYNC_JOB_BY_ROW['edge-scores'],
+  )
   const nextDealOfTheDayIso = applySyncNextOverride(
     naturalFor('deal-of-the-day'),
     SCHEDULED_SYNC_JOB_BY_ROW['deal-of-the-day'],
@@ -577,6 +587,7 @@ export function buildAdminSyncNextRuns(
     incremental: nextIncrementalIso,
     'latest-mls': nextIncrementalIso,
     'listing-scores': nextListingScoresIso,
+    'edge-scores': nextEdgeScoresIso,
     'refresh-finished': nextRefresh?.toISOString() ?? null,
     'stats-cache': nextStatsCacheIso,
     'deal-of-the-day': nextDealOfTheDayIso,

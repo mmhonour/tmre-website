@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import WeeklyBriefContent from "@/components/WeeklyBriefContent";
 import { useMarketPulseSettle } from "@/hooks/useMarketPulseSettle";
 import type {
@@ -38,6 +38,11 @@ function closedCacheKey(
 ): string {
   return `${category}:${lookbackId}`;
 }
+
+type ClosedFetchState = {
+  status: "loading" | "ok" | "error";
+  rows: MarketDigestClosedTownCount[];
+};
 
 export default function MarketPulseContent({
   snapshot,
@@ -90,47 +95,95 @@ export default function MarketPulseContent({
     markAnimated(category);
   });
 
-  // Closed aggregate is fetched per tab × lookback. Default 24mo may be seeded
-  // from the SSR snapshot; other windows hit the API (on-demand compute).
+  // Closed aggregate per tab × lookback. Do not treat `[]` as a loaded hit —
+  // that used to permanently skip refetch after an empty/error response.
   const [closedByKey, setClosedByKey] = useState<
-    Record<string, MarketDigestClosedTownCount[]>
+    Record<string, ClosedFetchState>
   >(() => {
-    const seeded: Record<string, MarketDigestClosedTownCount[]> = {};
+    const seeded: Record<string, ClosedFetchState> = {};
     for (const cat of snapshot.categories) {
       if (cat.closedTrailing?.length) {
-        seeded[closedCacheKey(cat.id, DEFAULT_MARKET_PULSE_LOOKBACK_ID)] =
-          cat.closedTrailing;
+        seeded[closedCacheKey(cat.id, DEFAULT_MARKET_PULSE_LOOKBACK_ID)] = {
+          status: "ok",
+          rows: cat.closedTrailing,
+        };
       }
     }
     return seeded;
   });
+  const closedByKeyRef = useRef(closedByKey);
+  closedByKeyRef.current = closedByKey;
 
   const closedKey = closedCacheKey(category, lookbackId);
-  const closedRows = closedByKey[closedKey];
+  const closedState = closedByKey[closedKey];
+  const closedRows = closedState?.status === "ok" ? closedState.rows : undefined;
+  const closedPending =
+    closedState == null || closedState.status === "loading";
+  /** Bumps when the user re-requests the same lookback after an error. */
+  const [closedFetchNonce, setClosedFetchNonce] = useState(0);
 
   useEffect(() => {
-    if (closedRows) return;
+    const existing = closedByKeyRef.current[closedKey];
+    if (existing?.status === "ok") return;
+
     let cancelled = false;
+    setClosedByKey((prev) => ({
+      ...prev,
+      [closedKey]: { status: "loading", rows: [] },
+    }));
+
     void (async () => {
       try {
         const res = await fetch(
           `/api/market-pulse/closed-by-town?${CLOSED_QUERY[category]}&lookback=${lookbackId}`,
           { cache: "no-store" },
         );
-        if (!res.ok) return;
         const body = (await res.json()) as {
           rows?: MarketDigestClosedTownCount[];
+          error?: boolean;
         };
-        if (cancelled || !Array.isArray(body.rows)) return;
-        setClosedByKey((prev) => ({ ...prev, [closedKey]: body.rows! }));
+        if (cancelled) return;
+        if (!res.ok || body.error || !Array.isArray(body.rows)) {
+          setClosedByKey((prev) => ({
+            ...prev,
+            [closedKey]: { status: "error", rows: [] },
+          }));
+          return;
+        }
+        setClosedByKey((prev) => ({
+          ...prev,
+          [closedKey]: { status: "ok", rows: body.rows! },
+        }));
       } catch {
-        /* leave the chart on its empty state */
+        if (cancelled) return;
+        setClosedByKey((prev) => ({
+          ...prev,
+          [closedKey]: { status: "error", rows: [] },
+        }));
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [category, lookbackId, closedKey, closedRows]);
+  }, [category, lookbackId, closedKey, closedFetchNonce]);
+
+  const handleLookbackIdChange = useCallback(
+    (id: MarketPulseLookbackId) => {
+      const key = closedCacheKey(category, id);
+      const cur = closedByKeyRef.current[key];
+      if (cur?.status === "error" || (id === lookbackId && cur?.status !== "ok")) {
+        setClosedByKey((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        setClosedFetchNonce((n) => n + 1);
+      }
+      setLookbackId(id);
+    },
+    [category, lookbackId],
+  );
 
   const viewSnapshot: MarketDigestSnapshot = active
     ? {
@@ -193,10 +246,10 @@ export default function MarketPulseContent({
       closedSalesTownHref={closedSalesTownHref}
       avgDomTownHref={avgDomTownHref}
       settle={settle}
-      closedPending={closedRows === undefined}
+      closedPending={closedPending}
       categoryFilter={categoryFilter}
       lookbackId={lookbackId}
-      onLookbackIdChange={setLookbackId}
+      onLookbackIdChange={handleLookbackIdChange}
     />
   );
 }

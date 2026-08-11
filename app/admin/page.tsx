@@ -470,14 +470,26 @@ export default async function AdminPage() {
     },
     {
       id: "listing-scores",
-      label: "Goldilocks score rebuild",
+      label: "Goldilocks score rebuild (3a)",
       value: formatTimestamp(stats.lastListingScores),
       startedAt: stats.lastListingScoresStarted,
       finishedAt: stats.lastListingScores,
       sortMs: timestampSortMs(stats.lastListingScores),
-      detail: "Scores written during the weekly full reload (or manual step 1)",
+      detail:
+        "Sync 3a — Active listing Goldilocks rebuild (own thin cron + worker; stamps last_listing_scores)",
       actionId: "listing-scores",
       nextRunAt: nextRuns["listing-scores"],
+    },
+    {
+      id: "edge-scores",
+      label: "Edge scores (3b)",
+      value: formatTimestamp(stats.lastListingEdgeScores),
+      finishedAt: stats.lastListingEdgeScores,
+      sortMs: timestampSortMs(stats.lastListingEdgeScores),
+      detail:
+        "Sync 3b — listing_edge_scores comps fit (own Configure + last_listing_edge_scores; uncoupled from Goldilocks)",
+      actionId: "edge-scores",
+      nextRunAt: nextRuns["edge-scores"],
     },
     {
       id: "refresh-finished",
@@ -499,7 +511,8 @@ export default async function AdminPage() {
       startedAt: stats.lastStatsCacheStarted,
       finishedAt: stats.lastStatsCache,
       sortMs: timestampSortMs(stats.lastStatsCache),
-      detail: "Market stats, sales-by-month, active-by-month, vintage, and price",
+      detail:
+        "Market stats, sales-by-month, active-by-month, vintage, and price (own thin cron + worker)",
       actionId: "stats-cache",
       nextRunAt: nextRuns["stats-cache"],
     },
@@ -510,7 +523,8 @@ export default async function AdminPage() {
       startedAt: stats.lastDealOfTheDayCacheStarted,
       finishedAt: stats.lastDealOfTheDayCache,
       sortMs: timestampSortMs(stats.lastDealOfTheDayCache),
-      detail: "Deal of the Day picks for every town and kind",
+      detail:
+        "Deal of the Day picks for every town and kind (own thin cron + worker)",
       actionId: "deal-of-the-day",
       nextRunAt: nextRuns["deal-of-the-day"],
     },
@@ -598,6 +612,7 @@ export default async function AdminPage() {
       lastIncrementalSyncStarted: stats.lastIncrementalSyncStarted,
       lastListingScores: stats.lastListingScores,
       lastListingScoresStarted: stats.lastListingScoresStarted,
+      lastListingEdgeScores: stats.lastListingEdgeScores,
       lastStatsCache: stats.lastStatsCache,
       lastStatsCacheStarted: stats.lastStatsCacheStarted,
       lastDealOfTheDayCache: stats.lastDealOfTheDayCache,

@@ -171,6 +171,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'full-resync',
       'incremental',
       'listing-scores',
+      'edge-scores',
       'stats-cache',
       'deal-of-the-day',
       'property-addresses',
@@ -192,6 +193,12 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         scheduler: 'netlify',
       },
       'listing-scores': {
+        frequency: 'weekly',
+        startTimeEt: '05:00',
+        weekdayEt: 1,
+        scheduler: 'netlify',
+      },
+      'edge-scores': {
         frequency: 'weekly',
         startTimeEt: '05:00',
         weekdayEt: 1,
@@ -294,6 +301,7 @@ function isSyncAllActionableJob(
     jobId === 'full-resync' ||
     jobId === 'incremental' ||
     jobId === 'listing-scores' ||
+    jobId === 'edge-scores' ||
     jobId === 'stats-cache' ||
     jobId === 'deal-of-the-day' ||
     jobId === 'property-addresses' ||

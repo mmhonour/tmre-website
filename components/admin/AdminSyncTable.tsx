@@ -13,8 +13,13 @@ import {
   ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL,
   FULL_RESYNC_FINALIZE_STEPS,
 } from "@/lib/admin-sync-types";
+import AdminSyncMobileHeatmap from "@/components/admin/AdminSyncMobileHeatmap";
 import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
-import { formatAdminNextSyncAt, formatAdminNextSyncCountdown } from "@/lib/admin-sync-schedule-format";
+import {
+  adminSyncOrderDisplay,
+  formatAdminNextSyncAt,
+  formatAdminNextSyncCountdown,
+} from "@/lib/admin-sync-schedule-format";
 import type { AdminSyncScheduleHints } from "@/lib/admin-sync-schedule";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
 import type { IncrementalSyncLiveProgress } from "@/lib/incremental-sync-live-shared";
@@ -543,6 +548,7 @@ type SyncStats = {
   lastIncrementalSyncStarted: string | null;
   lastListingScores: string | null;
   lastListingScoresStarted: string | null;
+  lastListingEdgeScores?: string | null;
   lastStatsCache: string | null;
   lastStatsCacheStarted: string | null;
   lastDealOfTheDayCache: string | null;
@@ -827,6 +833,11 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
         started: status.stats.lastListingScoresStarted,
         finished: status.stats.lastListingScores,
       };
+    case "edge-scores":
+      return {
+        started: null,
+        finished: status.stats.lastListingEdgeScores ?? null,
+      };
     case "refresh-finished":
       return {
         started: status.lastRefreshStarted,
@@ -1057,6 +1068,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "full-resync": "full-resync",
   incremental: "incremental",
   "listing-scores": "listing-scores",
+  "edge-scores": "edge-scores",
   "publish-snapshot": "refresh-finished",
   "stats-cache": "stats-cache",
   "deal-of-the-day": "deal-of-the-day",
@@ -1096,7 +1108,15 @@ const HANG_THRESHOLD_MS = 45 * 60 * 1000;
  * NOT flash yellow independently — the yellow is already shown on the
  * full-resync row itself. They'll turn green once the full resync completes.
  */
-const FULL_RESYNC_SUBSTEP_ROWS = new Set(["listing-scores", "stats-cache", "deal-of-the-day"]);
+const FULL_RESYNC_SUBSTEP_ROWS = new Set([
+  "listing-scores",
+  "edge-scores",
+  "stats-cache",
+  "deal-of-the-day",
+]);
+
+/** Railway mls-sync heartbeat fresher than this ⇒ process is alive. */
+const RAILWAY_HEARTBEAT_FRESH_MS = 4 * 60 * 1000;
 
 type SyncRowVisualStatus = "running" | "ok" | "alert" | "idle";
 
@@ -1764,6 +1784,7 @@ export default function AdminSyncTable({
                   lastIncrementalSyncStarted: null,
                   lastListingScores: null,
                   lastListingScoresStarted: null,
+                  lastListingEdgeScores: null,
                   lastStatsCache: null,
                   lastStatsCacheStarted: null,
                   lastDealOfTheDayCache: null,
@@ -2621,7 +2642,20 @@ export default function AdminSyncTable({
           </p>
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      {isDashboard ? (
+        <AdminSyncMobileHeatmap
+          rows={rows}
+          status={status}
+          scheduleConfig={scheduleConfig}
+          runningId={runningId}
+          errors={errors}
+          onSyncNow={(row) => {
+            const full = rows.find((r) => r.id === row.id);
+            if (full) void runSync(full);
+          }}
+        />
+      ) : null}
+      <div className={`overflow-x-auto ${isDashboard ? "hidden lg:block" : ""}`}>
         <table
           className={`w-full border-collapse table-fixed ${
             isDashboard ? "min-w-[900px] md:min-w-[1080px]" : "min-w-[880px]"
@@ -2879,7 +2913,21 @@ export default function AdminSyncTable({
                     nextRunAt,
                     jobFrequency: jobSchedule?.frequency,
                     status,
-                    isRunning: isRunning || isWaiting,
+                    isRunning:
+                      isRunning ||
+                      isWaiting ||
+                      (row.id === "incremental" &&
+                        Boolean(
+                          (() => {
+                            const hb = parseIsoMs(status?.lastMlsSyncHeartbeat);
+                            return (
+                              jobSchedule != null &&
+                              resolveJobScheduler(jobSchedule) === "railway" &&
+                              hb != null &&
+                              nowMs - hb < RAILWAY_HEARTBEAT_FRESH_MS
+                            );
+                          })(),
+                        )),
                     syncAllRunning,
                     fullResyncInProgress,
                     error: rowError,
@@ -2920,6 +2968,7 @@ export default function AdminSyncTable({
               })();
               const manualOrder =
                 orderByRow[row.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id];
+              const orderLabel = adminSyncOrderDisplay(row.id, manualOrder);
               const rowPaused = Boolean(pauseJob && pausedJobs[pauseJob]);
               const derivedScheduleHint = configureScheduleHintForRow(row.id);
               const orderIndex = pauseJob
@@ -2959,6 +3008,11 @@ export default function AdminSyncTable({
               })();
 
               /** Railway mls-sync heartbeat — peace of mind when Scheduler is Railway. */
+              const railwayHeartbeatMs = parseIsoMs(status?.lastMlsSyncHeartbeat);
+              const railwayHeartbeatFresh =
+                incrementalOnRailway &&
+                railwayHeartbeatMs != null &&
+                nowMs - railwayHeartbeatMs < RAILWAY_HEARTBEAT_FRESH_MS;
               const railwayPulseLine = (() => {
                 if (!incrementalOnRailway) return null;
                 if (!status?.lastMlsSyncHeartbeat) {
@@ -2967,7 +3021,36 @@ export default function AdminSyncTable({
                 const when =
                   formatAgeAgo(status.lastMlsSyncHeartbeat, nowMs) ??
                   formatTimestamp(status.lastMlsSyncHeartbeat);
-                return `Railway heartbeat ${when}`;
+                return `heartbeat ${when}`;
+              })();
+
+              /** Single truth strip when Incremental Scheduler = Railway. */
+              const railwayTruthStrip = (() => {
+                if (!incrementalOnRailway) return null;
+                const hb =
+                  railwayPulseLine ?? "heartbeat missing";
+                const endAge = timing.finished
+                  ? formatAgeAgo(timing.finished, nowMs) ??
+                    formatTimestamp(timing.finished)
+                  : "missing";
+                const upsertLabel =
+                  status?.lastIncrementalUpsertsLabel?.trim() || null;
+                const bits = [
+                  "Railway",
+                  hb,
+                  `End ${endAge}`,
+                ];
+                if (upsertLabel) bits.push(upsertLabel);
+                if (railwayHeartbeatFresh) {
+                  bits.unshift("RUNNING");
+                } else if (!timing.finished || incrementalEndBroken) {
+                  bits.unshift("BROKEN");
+                }
+                const live =
+                  status?.incrementalLiveStatus ??
+                  formatIncrementalSyncLiveStatus(status?.incrementalLive);
+                if (live && railwayHeartbeatFresh) bits.push(live);
+                return bits.join(" · ");
               })();
 
               const statusText = (() => {
@@ -2979,7 +3062,15 @@ export default function AdminSyncTable({
                     )
                   );
                 }
-                if (isRunning || syncAllRunning || incrementalRunningNow) {
+                if (
+                  isRunning ||
+                  syncAllRunning ||
+                  incrementalRunningNow ||
+                  railwayHeartbeatFresh
+                ) {
+                  if (row.id === "incremental" && railwayTruthStrip) {
+                    return railwayTruthStrip;
+                  }
                   const live =
                     status?.incrementalLiveStatus ??
                     formatIncrementalSyncLiveStatus(status?.incrementalLive) ??
@@ -3000,7 +3091,7 @@ export default function AdminSyncTable({
                     } else {
                       bits.push("last End missing");
                     }
-                    if (railwayPulseLine) bits.push(railwayPulseLine);
+                    if (railwayPulseLine) bits.push(`Railway ${railwayPulseLine}`);
                     else if (incrementalOnRailway) {
                       bits.push("Railway: no heartbeat yet");
                     }
@@ -3010,6 +3101,8 @@ export default function AdminSyncTable({
                 }
                 // Prefer durable server truth over localStorage “Queued…” leftovers.
                 if (row.id === "incremental") {
+                  if (railwayTruthStrip) return railwayTruthStrip;
+
                   const upsertLabel =
                     status?.lastIncrementalUpsertsLabel?.trim() || null;
                   const upsertWhen = status?.lastIncrementalUpserts?.finishedAt
@@ -3056,7 +3149,6 @@ export default function AdminSyncTable({
                     idleBits.push(`Idle · ended ${age}`);
                   }
                   if (eventbridgePulseLine) idleBits.push(eventbridgePulseLine);
-                  if (railwayPulseLine) idleBits.push(railwayPulseLine);
                   if (
                     !upsertLabel &&
                     !incrementalOnEventBridge &&
@@ -3193,13 +3285,13 @@ export default function AdminSyncTable({
                       isConfigure ? "left-[3.25rem]" : "left-0"
                     }`}
                   >
-                    {manualOrder != null && pauseJob ? (
+                    {orderLabel != null && pauseJob ? (
                       <div className="inline-flex items-center gap-1">
                         <span
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
-                          title={`Sync all step ${manualOrder}`}
+                          className="inline-flex h-7 min-w-7 px-1 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
+                          title={`Sync all step ${orderLabel}`}
                         >
-                          {manualOrder}
+                          {orderLabel}
                         </span>
                         {isConfigure ? (
                           <OrderReorderSpinner
@@ -3737,12 +3829,14 @@ export default function AdminSyncTable({
                           isRunning={
                             isRunning ||
                             syncAllRunning ||
-                            incrementalRunningNow
+                            incrementalRunningNow ||
+                            railwayHeartbeatFresh
                           }
                           isWaiting={isWaiting}
                           allowWrap={
                             rowExpands ||
                             incrementalRunningNow ||
+                            railwayHeartbeatFresh ||
                             eventBridgeQueuedNoEnd
                           }
                         />

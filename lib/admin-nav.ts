@@ -883,14 +883,47 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     schedule: "On invoke (background)",
   },
   {
+    label: "sync-listing-scores",
+    detail:
+      "Thin Goldilocks (3a) trigger — queues sync-listing-scores-worker when Configure is due",
+    schedule: "Every 30 min (weekly-gated)",
+  },
+  {
+    label: "sync-listing-scores-worker",
+    detail: "Background Goldilocks score rebuild (stamps last_listing_scores)",
+    schedule: "On invoke (background)",
+  },
+  {
     label: "sync-listing-edge-scores",
     detail:
-      "Thin weekly trigger — queues sync-listing-edge-scores-worker",
-    schedule: "Weekly Mon ~2am ET",
+      "Thin Edge scores (3b) trigger — queues sync-listing-edge-scores-worker when Configure is due",
+    schedule: "Every 30 min (weekly-gated)",
   },
   {
     label: "sync-listing-edge-scores-worker",
-    detail: "Background comparable edge-score warm pass",
+    detail: "Background comparable edge-score warm pass (stamps last_listing_edge_scores)",
+    schedule: "On invoke (background)",
+  },
+  {
+    label: "sync-stats-cache",
+    detail:
+      "Thin stats-cache trigger — queues sync-stats-cache-worker when Configure is due",
+    schedule: "Every 30 min (Configure-gated)",
+  },
+  {
+    label: "sync-stats-cache-worker",
+    detail: "Background stats_cache rebuild (market stats, months-supply, etc.)",
+    schedule: "On invoke (background)",
+  },
+  {
+    label: "sync-deal-of-the-day",
+    detail:
+      "Thin Deal of the Day trigger — queues sync-deal-of-the-day-worker when Configure is due",
+    schedule: "Every 30 min (weekly-gated)",
+  },
+  {
+    label: "sync-deal-of-the-day-worker",
+    detail: "Background Deal of the Day cache rebuild",
     schedule: "On invoke (background)",
   },
   {

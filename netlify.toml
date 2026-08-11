@@ -61,11 +61,35 @@
   included_files = []
   background = true
 
+[functions."sync-listing-scores"]
+  included_files = []
+  schedule = "*/30 * * * *"
+
+[functions."sync-listing-scores-worker"]
+  included_files = []
+  background = true
+
 [functions."sync-listing-edge-scores"]
   included_files = []
   schedule = "*/30 * * * *"
 
 [functions."sync-listing-edge-scores-worker"]
+  included_files = []
+  background = true
+
+[functions."sync-stats-cache"]
+  included_files = []
+  schedule = "*/30 * * * *"
+
+[functions."sync-stats-cache-worker"]
+  included_files = []
+  background = true
+
+[functions."sync-deal-of-the-day"]
+  included_files = []
+  schedule = "*/30 * * * *"
+
+[functions."sync-deal-of-the-day-worker"]
   included_files = []
   background = true
 

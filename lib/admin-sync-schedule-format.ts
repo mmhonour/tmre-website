@@ -3,6 +3,7 @@ export type AdminSyncPanelRowId =
   | 'incremental'
   | 'latest-mls'
   | 'listing-scores'
+  | 'edge-scores'
   | 'refresh-finished'
   | 'stats-cache'
   | 'deal-of-the-day'
@@ -11,6 +12,17 @@ export type AdminSyncPanelRowId =
   | 'fomc-sync'
   | 'cpi-sync'
   | 'market-digest'
+
+/** Order column label — 3a/3b keep Goldilocks + Edge as one conceptual step pair. */
+export function adminSyncOrderDisplay(
+  rowId: string,
+  orderNumber: number | null | undefined,
+): string | null {
+  if (orderNumber == null) return null
+  if (rowId === 'listing-scores') return '3a'
+  if (rowId === 'edge-scores') return '3b'
+  return String(orderNumber)
+}
 
 /** Format next sync time; includes weekday + date when more than 24h away. */
 export function formatAdminNextSyncAt(iso: string | null | undefined, now = new Date()): string {

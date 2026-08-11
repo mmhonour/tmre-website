@@ -38,6 +38,7 @@ import {
   IF_MIDPOINT_METHOD_LABELS,
   IF_MIDPOINT_METHODS,
   ifCompWeightExplainLines,
+  ifSoldActiveBlendExplainLines,
   roundIfRentHigh,
   roundIfRentLow,
   roundIfRentMidpoint,
@@ -643,6 +644,7 @@ function IfMathWorksheet({
   mathOpen: boolean;
 }) {
   const [showPpsf, setShowPpsf] = useState(false);
+  const [showClosedBlendExplain, setShowClosedBlendExplain] = useState(false);
 
   if (
     !mathOpen ||
@@ -671,12 +673,17 @@ function IfMathWorksheet({
   const linkClass =
     "text-gold underline decoration-gold/50 underline-offset-2 hover:text-gold-light transition-colors cursor-pointer";
 
-  const methodExplain =
-    midpointMethod === "weightedAverage"
-      ? `${ppsfLabel ?? "This midpoint"} is the weight-adjusted average $/sqft of the matched comps — closed ${isRent ? "leases" : "sales"} count more than active ${isRent ? "rentals" : "listings"}, and same-vintage, same location-tier comps pull harder (see wt).`
-      : midpointMethod === "average"
-        ? `${ppsfLabel ?? "This midpoint"} is the simple average $/sqft of the matched comps — each comp counts equally; closed ${isRent ? "leases" : "sales"} still blend heavier than actives in the market mix.`
-        : `${ppsfLabel ?? "This midpoint"} is the median $/sqft of the matched comps — the middle value after sorting, so outliers move it less than an average would.`;
+  const closedBlendLink = (label: string) => (
+    <button
+      type="button"
+      onClick={() => setShowClosedBlendExplain((v) => !v)}
+      className={linkClass}
+      title="How closed comps count more than actives"
+      aria-expanded={showClosedBlendExplain}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div
@@ -689,8 +696,9 @@ function IfMathWorksheet({
       */}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4">
         <div className="min-w-0 normal-case tracking-normal text-left space-y-3">
-          <p className="m-0">
-            25th–75th percentile excluded i.e.{" "}
+          <p className="m-0 whitespace-pre-wrap">
+            25th–75th percentile excluded
+            {"\n"}
             <IfMathBandKeyword
               label="TOP"
               band="top"
@@ -704,7 +712,8 @@ function IfMathWorksheet({
               active={showBottomBand}
               onToggle={onToggleBottomBand}
             />{" "}
-            quarter of the market with a{" "}
+            quarter of the market have a
+            {"\n"}
             <IfMathBandKeyword
               label="GREEN"
               band="top"
@@ -769,12 +778,64 @@ function IfMathWorksheet({
       </div>
 
       {showPpsf && ppsfLabel ? (
-        <p className="mt-3 normal-case tracking-normal text-white/45 text-left">
-          {methodExplain}
-          {lowPpsf && highPpsf
-            ? ` Those ${soldWord} comps range ${lowPpsf}–${highPpsf}.`
-            : ""}
-        </p>
+        <div className="mt-3 normal-case tracking-normal text-white/45 text-left">
+          <p className="m-0 whitespace-pre-wrap">
+            {midpointMethod === "weightedAverage" ? (
+              <>
+                {ppsfLabel} is the weight-adjusted average $/sqft of the matched
+                comps —{" "}
+                {closedBlendLink(
+                  `closed ${isRent ? "leases" : "sales"} count`,
+                )}{" "}
+                more than active {isRent ? "rentals" : "listings"}, and
+                same-vintage, same location-tier comps pull harder (see wt).
+                {"\n\n"}
+              </>
+            ) : midpointMethod === "average" ? (
+              <>
+                {ppsfLabel} is the simple average $/sqft of the matched comps —
+                each comp counts equally;{" "}
+                {closedBlendLink(`closed ${isRent ? "leases" : "sales"}`)} still
+                blend heavier than actives in the market mix.
+                {"\n\n"}
+              </>
+            ) : (
+              <>
+                {ppsfLabel} is the median $/sqft of the matched comps — the
+                middle value after sorting, so outliers move it less than an
+                average would.
+                {"\n\n"}
+              </>
+            )}
+          </p>
+          {showClosedBlendExplain &&
+          (midpointMethod === "weightedAverage" ||
+            midpointMethod === "average") ? (
+            <div className="mt-1 space-y-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-gold">
+                  How closed comps count more
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowClosedBlendExplain(false)}
+                  className="shrink-0 font-mono text-lg leading-none text-white/45 transition-colors hover:text-white"
+                  aria-label="Close closed-comp blend explanation"
+                >
+                  ×
+                </button>
+              </div>
+              {ifSoldActiveBlendExplainLines(kind).map((line) => (
+                <p
+                  key={line.slice(0, 48)}
+                  className="text-[11px] leading-relaxed text-white/55 normal-case tracking-normal"
+                >
+                  {line}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -1482,7 +1543,17 @@ function ScenarioPanel({
                 <IfMathLinkBar
                   kind={kind}
                   mathOpen={mathOpen}
-                  onToggle={() => setMathOpen((open) => !open)}
+                  onToggle={() =>
+                    setMathOpen((open) => {
+                      const next = !open;
+                      // Expanding Math includes green/red quarter comps by default.
+                      if (next) {
+                        setShowTopBand(true);
+                        setShowBottomBand(true);
+                      }
+                      return next;
+                    })
+                  }
                 />
               </div>
             ) : null}

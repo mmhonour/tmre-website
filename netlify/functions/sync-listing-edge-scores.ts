@@ -3,34 +3,37 @@ import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { queueNetlifyListingEdgeScoreSync } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
-import { shouldSkipListingEdgeScoresNotDue } from '../../lib/sync-schedule-config'
+import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
+  thinCronSkipIfEventBridgeOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
- * Thin edge-score trigger (NO background).
- * Dense every-30m cron; listing-scores Configure Frequency/Start gate the work,
- * but due-ness uses last_listing_edge_scores (not Goldilocks End). Always
- * Netlify-owned — EventBridge on listing-scores must not suppress this cron.
- * Queues sync-listing-edge-scores-worker.
+ * Thin edge-score trigger (NO background) — Sync 3b.
+ * Dense every-30m cron; edge-scores Configure Frequency/Start gate the work.
+ * Finish stamp is last_listing_edge_scores. Queues sync-listing-edge-scores-worker.
  */
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    if (await isScheduledSyncJobPausedFresh('listing-scores')) {
-      return thinCronSkipped('listing-scores scheduled sync paused by admin')
+    {
+      const owned = await thinCronSkipIfEventBridgeOwns('edge-scores')
+      if (owned) return owned
     }
-    if (shouldDeferScheduledJob('listing-scores')) {
+    if (await isScheduledSyncJobPausedFresh('edge-scores')) {
+      return thinCronSkipped('edge-scores scheduled sync paused by admin')
+    }
+    if (shouldDeferScheduledJob('edge-scores')) {
       return thinCronSkipped(
         'deferred — Admin Next override is still in the future',
       )
     }
-    if (shouldSkipListingEdgeScoresNotDue()) {
+    if (shouldSkipScheduledJobNotDue('edge-scores')) {
       return thinCronSkipped(
-        'not due yet — edge scores cadence (last_listing_edge_scores)',
+        'not due yet — edge-scores Configure frequency / start time',
       )
     }
     const queued = await queueNetlifyListingEdgeScoreSync()

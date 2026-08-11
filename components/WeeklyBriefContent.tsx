@@ -957,8 +957,8 @@ export default function WeeklyBriefContent({
           barClassName={METRIC_COLORS.closed}
           emptyMessage={
             closedPending
-              ? "Loading closed sales…"
-              : "Closed totals land with the next stats cache rebuild."
+              ? "Loading closed sales for this lookback…"
+              : "No closed sales in this lookback window (or the count request failed — try another period)."
           }
           townHref={closedSalesTownHref}
           settle={settle}

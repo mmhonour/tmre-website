@@ -14,6 +14,7 @@ export function syncNextOverrideStepMs(jobId: SyncNextOverrideJobId): number {
     case 'stats-cache':
       return 5 * 60_000
     case 'listing-scores':
+    case 'edge-scores':
     case 'deal-of-the-day':
     case 'property-addresses':
       return 30 * 60_000
@@ -57,6 +58,7 @@ export function nextPracticalTakeHoldIso(
       return nextHalfHourSlotAtOrAfter(base).toISOString()
     case 'full-resync':
     case 'listing-scores':
+    case 'edge-scores':
     case 'deal-of-the-day':
       return nextMondayEtSlotAtOrAfter(5, 0, base).toISOString()
     case 'property-addresses':

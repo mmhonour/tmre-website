@@ -13,12 +13,11 @@ import {
 } from '@/lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '@/lib/sync-next-override'
 import {
-  isListingEdgeScoresDue,
   isScheduledJobDue,
   readSyncScheduleConfig,
 } from '@/lib/sync-schedule-config'
 
-export type OverdueSyncJob = AdminSyncActionId | 'edge-scores'
+export type OverdueSyncJob = AdminSyncActionId
 
 export type OverdueSyncCatchupStep = {
   job: OverdueSyncJob
@@ -65,6 +64,7 @@ function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
     case 'full-resync':
     case 'incremental':
     case 'listing-scores':
+    case 'edge-scores':
     case 'stats-cache':
     case 'deal-of-the-day':
     case 'property-addresses':
@@ -73,8 +73,6 @@ function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
     case 'cpi-sync':
     case 'market-digest':
       return job
-    case 'edge-scores':
-      return 'listing-scores'
     case 'publish-snapshot':
       return null
     default:
@@ -86,6 +84,7 @@ const EXECUTION_ORDER: OverdueSyncJob[] = [
   'full-resync',
   'incremental',
   'listing-scores',
+  'edge-scores',
   'stats-cache',
   'deal-of-the-day',
   'publish-snapshot',
@@ -94,11 +93,11 @@ const EXECUTION_ORDER: OverdueSyncJob[] = [
   'fomc-sync',
   'cpi-sync',
   'market-digest',
-  'edge-scores',
 ]
 
 const CHAINED_BY_FULL_RESYNC = new Set<OverdueSyncJob>([
   'listing-scores',
+  'edge-scores',
   'stats-cache',
   'deal-of-the-day',
 ])
@@ -114,7 +113,6 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
   const executionOrder: OverdueSyncJob[] = [
     ...schedule.order,
     'publish-snapshot',
-    'edge-scores',
   ]
 
   const overdue = new Set<OverdueSyncJob>()
@@ -136,6 +134,13 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     isScheduledJobDue('listing-scores', now, schedule)
   ) {
     overdue.add('listing-scores')
+  }
+
+  if (
+    !overdue.has('full-resync') &&
+    isScheduledJobDue('edge-scores', now, schedule)
+  ) {
+    overdue.add('edge-scores')
   }
 
   if (
@@ -183,12 +188,6 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.add('market-digest')
   }
 
-  // Edge scores share listing-scores Configure cadence but their own finish
-  // stamp — due whenever edges are stale, even if Goldilocks just ran.
-  if (isListingEdgeScoresDue(now, schedule)) {
-    overdue.add('edge-scores')
-  }
-
   for (const chained of CHAINED_BY_FULL_RESYNC) {
     if (overdue.has('full-resync')) overdue.delete(chained)
   }
@@ -216,27 +215,6 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
 
 async function runOverdueJob(job: OverdueSyncJob): Promise<OverdueSyncCatchupStep> {
   const t0 = Date.now()
-  if (job === 'edge-scores') {
-    const { rebuildAllListingEdgeScores } = await import('@/lib/listing-edge-score')
-    try {
-      const result = await rebuildAllListingEdgeScores()
-      return {
-        job,
-        ok: true,
-        message: `Edge scores rebuilt — ${result.scored.toLocaleString()} listings`,
-        durationMs: result.durationMs || Date.now() - t0,
-      }
-    } catch (err) {
-      return {
-        job,
-        ok: false,
-        message: 'Edge score rebuild failed',
-        detail: err instanceof Error ? err.message : String(err),
-        durationMs: Date.now() - t0,
-      }
-    }
-  }
-
   const result = await runAdminSyncAction(job)
   return {
     job,

@@ -200,6 +200,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'full-resync': 'full',
   incremental: 'incremental',
   'listing-scores': 'goldilocks',
+  'edge-scores': 'edge',
   'publish-snapshot': 'snapshot',
   'stats-cache': 'stats',
   'deal-of-the-day': 'deal-day',
@@ -699,6 +700,61 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'listing-scores': {
+      if (isServerlessRuntime()) {
+        const { queueNetlifyListingScoresSync } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'listing-scores',
+          () =>
+            queueNetlifyListingScoresSync(startedAt, {
+              source: 'admin',
+            }),
+        )
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: queued.ok ? 'Queued/goldilocks' : 'Failed/goldilocks',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
+        if (queued.ok) {
+          await setSyncMetaDurable('last_listing_scores_started', startedAt)
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              via === 'eventbridge'
+                ? 'Goldilocks queued (EventBridge path) — End updates when rebuild finishes'
+                : 'Goldilocks queued (background worker) — End updates when rebuild finishes',
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
+              : 'Queued on background worker.',
+          }
+        }
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          message: 'Goldilocks queue failed',
+          detail: queued.error ?? 'Could not reach background worker',
+        }
+      }
       const result = await rebuildAllListingScores()
       const ok = result.towns.every((row) => row.ok)
       const finishedAt = result.finishedAt ?? new Date().toISOString()
@@ -711,6 +767,73 @@ async function runAdminSyncActionImpl(
         recordsFetched: result.totalScored,
         message: `Scored ${result.totalScored.toLocaleString()} Active listings`,
         detail: `Goldilocks scores rebuilt for ${result.totalScored.toLocaleString()} Active listings across ${result.towns.length} towns`,
+      }
+    }
+    case 'edge-scores': {
+      if (isServerlessRuntime()) {
+        const { queueNetlifyListingEdgeScoreSync } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'edge-scores',
+          () => queueNetlifyListingEdgeScoreSync(startedAt, { source: 'admin' }),
+        )
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: queued.ok ? 'Queued/edge' : 'Failed/edge',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
+        if (queued.ok) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              via === 'eventbridge'
+                ? 'Edge scores queued (EventBridge path) — End updates when rebuild finishes'
+                : 'Edge scores queued (background worker) — End updates when rebuild finishes',
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
+              : 'Queued on background worker.',
+          }
+        }
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          message: 'Edge scores queue failed',
+          detail: queued.error ?? 'Could not reach background worker',
+        }
+      }
+      const { rebuildAllListingEdgeScores } = await import(
+        '@/lib/listing-edge-score'
+      )
+      const result = await rebuildAllListingEdgeScores()
+      return {
+        ok: true,
+        action,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.scored,
+        message: `Edge scores rebuilt — ${result.scored.toLocaleString()} listings`,
+        detail: `Wrote listing_edge_scores for ${result.scored.toLocaleString()} listings`,
       }
     }
     case 'publish-snapshot': {
@@ -839,6 +962,61 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'deal-of-the-day': {
+      if (isServerlessRuntime()) {
+        const { queueNetlifyDealOfTheDayRebuild } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'deal-of-the-day',
+          () =>
+            queueNetlifyDealOfTheDayRebuild(startedAt, {
+              source: 'admin',
+            }),
+        )
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: queued.ok ? 'Queued/deal-day' : 'Failed/deal-day',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
+        if (queued.ok) {
+          await setSyncMetaDurable('last_deal_of_the_day_cache_started', startedAt)
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              via === 'eventbridge'
+                ? 'Deal of the Day queued (EventBridge path) — End updates when rebuild finishes'
+                : 'Deal of the Day queued (background worker) — End updates when rebuild finishes',
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
+              : 'Queued on background worker.',
+          }
+        }
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          message: 'Deal of the Day queue failed',
+          detail: queued.error ?? 'Could not reach background worker',
+        }
+      }
       const result = await rebuildDealOfTheDayCache()
       const finishedAt = new Date().toISOString()
       return {
@@ -1243,6 +1421,7 @@ export async function readAdminSyncPanelStatus() {
       lastIncrementalSync: stats.lastIncrementalSync,
       lastListingScoresStarted: stats.lastListingScoresStarted,
       lastListingScores: stats.lastListingScores,
+      lastListingEdgeScores: stats.lastListingEdgeScores,
       lastRefreshStarted,
       lastRefreshFinished: lastRefreshFinished ?? refresh.lastFinishedAt,
       lastStatsCacheStarted: stats.lastStatsCacheStarted,

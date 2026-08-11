@@ -8,8 +8,13 @@ export const ADMIN_SYNC_ACTIONS = {
     description: 'Modified-since RETS pull across all towns',
   },
   'listing-scores': {
-    label: 'Goldilocks score rebuild',
-    description: 'Re-score every Active listing',
+    label: 'Goldilocks score rebuild (3a)',
+    description: 'Re-score every Active listing (own thin cron + worker)',
+  },
+  'edge-scores': {
+    label: 'Edge scores (3b)',
+    description:
+      'Rebuild listing_edge_scores comps fit (own Configure cadence + last_listing_edge_scores)',
   },
   'publish-snapshot': {
     label: 'Refresh finished',
@@ -65,6 +70,7 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'full-resync',
   'incremental',
   'listing-scores',
+  'edge-scores',
   'stats-cache',
   'deal-of-the-day',
   'property-addresses',
@@ -81,24 +87,27 @@ export const ADMIN_SYNC_ALL_CLIENT_STEPS = [
 /**
  * Fallback Order # when Configure schedule has not loaded.
  * Runtime UI uses scheduleConfig.order from sync_meta.
+ * listing-scores / edge-scores render as 3a / 3b in the Order column.
  */
 export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'full-resync': 1,
   incremental: 2,
   'listing-scores': 3,
-  'stats-cache': 4,
-  'deal-of-the-day': 5,
-  'property-addresses': 6,
-  'zip-boundaries': 7,
-  'fomc-sync': 8,
-  'cpi-sync': 9,
-  'market-digest': 10,
+  'edge-scores': 4,
+  'stats-cache': 5,
+  'deal-of-the-day': 6,
+  'property-addresses': 7,
+  'zip-boundaries': 8,
+  'fomc-sync': 9,
+  'cpi-sync': 10,
+  'market-digest': 11,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */
 export const ADMIN_SYNC_STEPS_AFTER_BACKGROUND_FULL = new Set<AdminSyncActionId>([
   'incremental',
   'listing-scores',
+  'edge-scores',
   'stats-cache',
   'deal-of-the-day',
   'publish-snapshot',

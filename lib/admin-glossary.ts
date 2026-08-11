@@ -263,7 +263,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email via Netlify market-digest cron (every 30m, gated to Configure weekly day + start time ET — default Mon 08:00) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Send day/time live on Syncs → Configure and Communications → Monday market brief (shared Postgres sync_schedule_config); changing the day rewrites the subject day name. Communications Enabled is tied to Syncs Pause for market-digest — a paused job locks day/time scheduling on Communications and the cron will not send. Recipient, subject `{date}`, optional social footer on Communications.',
+      'Weekly Resend email via Netlify market-digest cron (every 30m wake, gated to Configure weekly day + start time ET — default Mon 08:00, then once-per-week watermark + send lock) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Send day/time live on Syncs → Configure and Communications → Monday market brief (shared Postgres sync_schedule_config); changing the day rewrites the subject day name. Communications Enabled is tied to Syncs Pause for market-digest — a paused job locks day/time scheduling on Communications and the cron will not send. Recipient, subject `{date}`, optional social footer on Communications.',
   },
   {
     term: 'Buyer / Seller Friendly (Market Pulse)',
@@ -472,16 +472,22 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'The HTTPS doorway from AWS into TMRE: Netlify function `eventbridge-sync-ingress` at `/.netlify/functions/eventbridge-sync-ingress`. EventBridge Scheduler cannot POST to an arbitrary URL by itself in the templated-target UI, so the usual path is Scheduler → PutEvents → bus Rule → API destination → this ingress. Ingress checks Bearer SYNC_CRON_SECRET, requires Configure Scheduler = EventBridge for that job, then queues sync-listings-worker with source=eventbridge. The worker must treat that source like Admin (bypass Configure “not due”) — EventBridge is the clock; re-checking due after queue was a Day-1 failure mode that left Dashboard on “queued — no End yet”. Not an AWS product name — “ingress” here means our receive endpoint.',
   },
   {
+    term: 'Thin cron',
+    category: 'sync-admin',
+    definition:
+      'The short Netlify scheduled function that is only an alarm clock: `schedule` in netlify.toml (often `*/30` = every 30 minutes), no `background` flag, ~26–30s budget. On each wake it hydrates sync_meta, checks Pause / Configure due / Next override / (sometimes) already-sent watermarks, then either returns skipped or queues the matching *-worker. It is not the weekly/hourly cadence itself — Configure Frequency + Start time decide whether this wake does work. Examples: `market-digest`, `sync-listing-scores` (Goldilocks 3a), `sync-listing-edge-scores` (Edge 3b), `sync-stats-cache`, `sync-deal-of-the-day`, `sync-property-addresses`. Must never also set `background: true` on the same function (silent no-op). See Thin scheduling, Thin schedule → *-worker, Disposable 202-queued.',
+  },
+  {
     term: 'Thin scheduling',
     category: 'sync-admin',
     definition:
-      'Dense Netlify cron alarms (usually `*/30` = every 30 minutes) that mostly wake a short-lived “thin” function, check Admin Configure (due? paused? Next override?), and often exit without doing the real job. Real work is supposed to happen on a separate background *-worker. Distinct from giving each Sync Dashboard job its own true cadence on an external scheduler. See also Thin schedule → *-worker and Piggybacking.',
+      'Dense Netlify cron alarms (usually `*/30` = every 30 minutes) that mostly wake a short-lived thin cron, check Admin Configure (due? paused? Next override?), and often exit without doing the real job. Real work is supposed to happen on a separate background *-worker. Distinct from giving each Sync Dashboard job its own true cadence on an external scheduler. See also Thin cron, Thin schedule → *-worker, and Piggybacking.',
   },
   {
     term: 'Thin schedule → *-worker (thin worker pattern)',
     category: 'sync-admin',
     definition:
-      'Netlify cron split: a thin scheduled function (≤~30s, schedule only — no background flag) does almost nothing except queue a matching *-worker background function (≤~15m, background = true — no schedule). Example: market-digest → market-digest-worker; sync-listings-full → sync-listings-full-worker. Reason: Netlify forbids schedule + background on the same function (silent no-op / Day-1 failure). The thin half is the alarm clock; the worker does the real RETS/stats/digest work. sync-listings is a special case: the thin cron also runs a lean in-process RETS pull so inventory freshness does not depend on the worker hop succeeding. Part of thin scheduling.',
+      'Netlify cron split: a thin cron (≤~30s, schedule only — no background flag) does almost nothing except queue a matching *-worker background function (≤~15m, background = true — no schedule). Example: market-digest → market-digest-worker; sync-listings-full → sync-listings-full-worker. Reason: Netlify forbids schedule + background on the same function (silent no-op / Day-1 failure). The thin half is the alarm clock; the worker does the real RETS/stats/digest work. sync-listings is a special case: the thin cron also runs a lean in-process RETS pull so inventory freshness does not depend on the worker hop succeeding. Part of thin scheduling.',
   },
   {
     term: 'Why cron is not inside the Netlify host',
@@ -753,7 +759,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Edge score',
     category: 'scoring',
     definition:
-      'Similarity/fit score from metadata (town, zip, year, beds, baths, sqft, condition signals) used to rank comps; stored in listing_edge_scores. Weekly rebuild via Netlify sync-listing-edge-scores (listing-scores Configure cadence) keyed off last_listing_edge_scores — not Goldilocks last_listing_scores. Also runs after full resync. Instrumentation Mon 2am ET only helps long-lived Node hosts, not Netlify.',
+      'Similarity/fit score from metadata (town, zip, year, beds, baths, sqft, condition signals) used to rank comps; stored in listing_edge_scores.',
+  },
+  {
+    term: 'Edge scores',
+    category: 'sync-admin',
+    definition:
+      'Sync Dashboard step 3b — rebuild of listing_edge_scores. Own Configure Frequency / Start / Pause / Scheduler (job id `edge-scores`), own End stamp `last_listing_edge_scores`, and Netlify thin cron `sync-listing-edge-scores` → `sync-listing-edge-scores-worker`. Uncoupled from Goldilocks (3a / `listing-scores` / `last_listing_scores`). Also runs as a full-resync finalize step. See Edge score, Thin cron, Goldilocks score.',
   },
   {
     term: 'Superlatives',

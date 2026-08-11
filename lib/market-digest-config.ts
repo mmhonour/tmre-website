@@ -205,6 +205,33 @@ export async function markMarketDigestSent(weekKey: string): Promise<void> {
   await setSyncMetaDurable(MARKET_DIGEST_LAST_WEEK_KEY, weekKey)
 }
 
+/** sync_meta lock so the every-30m thin cron cannot overlap Resend sends. */
+export const MARKET_DIGEST_SEND_LOCK_KEY = 'market_digest_send_lock'
+
+/** Background worker budget is ~15m — steal only if a prior holder died. */
+export const MARKET_DIGEST_SEND_LOCK_STALE_MS = 20 * 60 * 1000
+
+/**
+ * True when this week's brief was already stamped (once-per-week watermark).
+ * Thin cron should skip queueing when true — otherwise a slow worker plus the
+ * dense alarm re-sends all morning.
+ */
+export async function isMarketDigestAlreadySentThisWeek(
+  now = new Date(),
+): Promise<boolean> {
+  try {
+    const [lastWeek, schedule] = await Promise.all([
+      getSyncMetaFresh(MARKET_DIGEST_LAST_WEEK_KEY),
+      readSyncScheduleConfigFresh(),
+    ])
+    const { weekdayEt } = scheduleFieldsFromConfig(schedule)
+    const weekKey = marketDigestWeekKey(now, weekdayEt)
+    return Boolean(lastWeek?.trim() && lastWeek.trim() === weekKey)
+  } catch {
+    return false
+  }
+}
+
 /**
  * Long Eastern date for the configured send weekday in `now`'s week
  * (same calendar day as {@link marketDigestWeekKey}).

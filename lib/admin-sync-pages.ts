@@ -33,6 +33,11 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
     { label: "Deal of the Day", href: "/deal-of-the-day" },
     { label: "Listing score", href: "/score" },
   ],
+  "edge-scores": [
+    { label: "Intelligence", href: "/intelligence" },
+    { label: "Comparables", href: "/comparables" },
+    { label: "Listing score", href: "/score" },
+  ],
   "refresh-finished": [
     { label: "Intelligence", href: "/intelligence" },
     { label: "Latest", href: "/latest" },

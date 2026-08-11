@@ -1,5 +1,6 @@
 import type { Config } from '@netlify/functions'
 import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
+import { isMarketDigestAlreadySentThisWeek } from '../../lib/market-digest-config'
 import { queueNetlifyMarketDigest } from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
@@ -15,6 +16,9 @@ import {
  * Thin market-digest trigger (NO background).
  * Dense every-30m cron; Configure Frequency/Start time gate the work
  * (default weekly Mon 08:00 ET). Queues market-digest-worker.
+ *
+ * After a successful send, also skip on the week watermark so a long-running
+ * worker cannot be re-queued every half hour for the rest of the day.
  */
 export default async function handler() {
   try {
@@ -33,6 +37,9 @@ export default async function handler() {
     }
     if (shouldSkipScheduledJobNotDue('market-digest')) {
       return thinCronSkipped('not due yet — Configure frequency / start time')
+    }
+    if (await isMarketDigestAlreadySentThisWeek()) {
+      return thinCronSkipped('already sent for this ET week — once-per-week watermark')
     }
     const queued = await queueNetlifyMarketDigest()
     if (!queued.ok) {

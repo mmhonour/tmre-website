@@ -305,14 +305,14 @@ export async function register() {
           `[listing-edge-scores] next weekly rebuild in ${Math.round(waitMs / 60_000)} minutes (Mon 2am ET)`,
         )
         setTimeout(() => {
-          if (isScheduledSyncJobPaused('listing-scores')) {
+          if (isScheduledSyncJobPaused('edge-scores')) {
             console.info(
-              '[listing-edge-scores] weekly rebuild skipped — listing-scores paused by admin',
+              '[listing-edge-scores] weekly rebuild skipped — edge-scores paused by admin',
             )
             scheduleEdgeScoreRebuild()
             return
           }
-          if (shouldDeferScheduledJob('listing-scores')) {
+          if (shouldDeferScheduledJob('edge-scores')) {
             console.info(
               '[listing-edge-scores] weekly rebuild deferred — Admin Next override',
             )

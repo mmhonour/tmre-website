@@ -27,6 +27,7 @@ async function nextRunsPayload() {
       lastIncrementalSync: stats.lastIncrementalSync,
       lastListingScoresStarted: stats.lastListingScoresStarted,
       lastListingScores: stats.lastListingScores,
+      lastListingEdgeScores: stats.lastListingEdgeScores,
       lastRefreshStarted: getSyncMeta('last_refresh_started_at'),
       lastRefreshFinished:
         getSyncMeta('last_refresh_finished_at') ?? refresh.lastFinishedAt,

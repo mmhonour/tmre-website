@@ -91,6 +91,8 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'last_incremental_sync'
     case 'listing-scores':
       return 'last_listing_scores'
+    case 'edge-scores':
+      return 'last_listing_edge_scores'
     case 'stats-cache':
       return 'last_stats_cache'
     case 'deal-of-the-day':
@@ -170,24 +172,14 @@ export function shouldSkipScheduledJobNotDue(
 }
 
 /**
- * Edge-score weekly rebuild due check.
- *
- * Uses the Goldilocks / listing-scores Configure cadence (weekday + start),
- * but the finish stamp is `last_listing_edge_scores` — never Goldilocks
- * `last_listing_scores`. Piggybacking on Goldilocks End left edges stuck for
- * weeks whenever scores ran without an edge rebuild.
+ * Edge-score weekly rebuild due check (Sync 3b).
+ * Own Configure job (`edge-scores`) + finish stamp `last_listing_edge_scores`.
  */
 export function isListingEdgeScoresDue(
   now = new Date(),
   config = readSyncScheduleConfig(),
 ): boolean {
-  if (shouldDeferScheduledJob('listing-scores', now)) return false
-  if (isSyncNextOverrideDue('listing-scores', now)) return true
-  return isJobDueBySchedule(
-    config.jobs['listing-scores'],
-    getSyncMeta('last_listing_edge_scores'),
-    now,
-  )
+  return isScheduledJobDue('edge-scores', now, config)
 }
 
 export function shouldSkipListingEdgeScoresNotDue(now = new Date()): boolean {

@@ -12,6 +12,7 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'full-resync': 'full-resync',
   incremental: 'incremental',
   'listing-scores': 'listing-scores',
+  'edge-scores': 'edge-scores',
   'stats-cache': 'stats-cache',
   'deal-of-the-day': 'deal-of-the-day',
   'property-addresses': 'property-addresses',

@@ -1,13 +1,14 @@
 import 'server-only'
 
-import { rebuildDealOfTheDayCache } from '@/lib/deal-of-the-day-cache'
 import { isScheduledSyncJobId, type ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   queueNetlifyCpiSync,
+  queueNetlifyDealOfTheDayRebuild,
   queueNetlifyFomcSync,
   queueNetlifyFullSync,
   queueNetlifyIncrementalSync,
   queueNetlifyListingEdgeScoreSync,
+  queueNetlifyListingScoresSync,
   queueNetlifyMarketDigest,
   queueNetlifyPropertyAddressSync,
   queueNetlifyStatsCacheRebuild,
@@ -97,23 +98,6 @@ export async function dispatchEventBridgeScheduledJob(
 
   const startedAt = new Date().toISOString()
 
-  if (jobId === 'deal-of-the-day') {
-    try {
-      const result = await rebuildDealOfTheDayCache()
-      return {
-        ok: true,
-        jobId,
-        reason: `wrote ${result.written} picks`,
-      }
-    } catch (err) {
-      return {
-        ok: false,
-        jobId,
-        reason: err instanceof Error ? err.message : String(err),
-      }
-    }
-  }
-
   let queue: NetlifyFunctionQueueResult
 
   switch (jobId) {
@@ -163,7 +147,25 @@ export async function dispatchEventBridgeScheduledJob(
       queue = await queueNetlifyFullSync()
       break
     case 'listing-scores':
-      queue = await queueNetlifyListingEdgeScoreSync()
+      queue = await queueNetlifyListingScoresSync(startedAt, {
+        source: 'eventbridge',
+      })
+      if (queue.ok && !options?.fromAdminSyncNow) {
+        await setSyncMetaDurable('last_listing_scores_started', startedAt)
+      }
+      break
+    case 'edge-scores':
+      queue = await queueNetlifyListingEdgeScoreSync(startedAt, {
+        source: 'eventbridge',
+      })
+      break
+    case 'deal-of-the-day':
+      queue = await queueNetlifyDealOfTheDayRebuild(startedAt, {
+        source: 'eventbridge',
+      })
+      if (queue.ok && !options?.fromAdminSyncNow) {
+        await setSyncMetaDurable('last_deal_of_the_day_cache_started', startedAt)
+      }
       break
     case 'property-addresses':
       queue = await queueNetlifyPropertyAddressSync()

@@ -276,10 +276,31 @@ export function queueNetlifyStatsCacheRebuild(
   startedAt?: string,
   options?: { source?: IncrementalQueueSource },
 ): Promise<NetlifyFunctionQueueResult> {
-  return queueNetlifyFunction('/.netlify/functions/sync-listings-worker', {
+  return queueNetlifyFunction('/.netlify/functions/sync-stats-cache-worker', {
     source: options?.source ?? 'admin',
     startedAt: startedAt ?? new Date().toISOString(),
-    statsCacheOnly: true,
+  })
+}
+
+/** Goldilocks (3a) — dedicated worker, not piggybacked on Incremental. */
+export function queueNetlifyListingScoresSync(
+  startedAt?: string,
+  options?: { source?: IncrementalQueueSource },
+): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-listing-scores-worker', {
+    source: options?.source ?? 'netlify-sync-trigger',
+    startedAt: startedAt ?? new Date().toISOString(),
+  })
+}
+
+/** Deal of the Day cache — dedicated thin+worker. */
+export function queueNetlifyDealOfTheDayRebuild(
+  startedAt?: string,
+  options?: { source?: IncrementalQueueSource },
+): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-deal-of-the-day-worker', {
+    source: options?.source ?? 'netlify-sync-trigger',
+    startedAt: startedAt ?? new Date().toISOString(),
   })
 }
 
@@ -296,9 +317,13 @@ export function queueNetlifyPropertyAddressSync(): Promise<NetlifyFunctionQueueR
   })
 }
 
-export function queueNetlifyListingEdgeScoreSync(): Promise<NetlifyFunctionQueueResult> {
+export function queueNetlifyListingEdgeScoreSync(
+  startedAt?: string,
+  options?: { source?: IncrementalQueueSource },
+): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/sync-listing-edge-scores-worker', {
-    source: 'netlify-sync-trigger',
+    source: options?.source ?? 'netlify-sync-trigger',
+    startedAt: startedAt ?? new Date().toISOString(),
   })
 }
 
