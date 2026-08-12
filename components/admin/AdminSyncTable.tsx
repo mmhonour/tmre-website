@@ -574,6 +574,7 @@ export type PanelStatus = {
   /** Railway mls-sync process heartbeat (Neon). */
   lastMlsSyncHeartbeat?: string | null;
   propertyAddressesSyncedAt?: string | null;
+  visionAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
   fomcLastSyncedAt?: string | null;
@@ -855,6 +856,8 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
       };
     case "property-addresses":
       return { started: null, finished: status.propertyAddressesSyncedAt ?? null };
+    case "vision-addresses":
+      return { started: null, finished: status.visionAddressesSyncedAt ?? null };
     case "zip-boundaries":
       return {
         started: status.zipBoundariesSyncStartedAt ?? null,
@@ -1073,6 +1076,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "stats-cache": "stats-cache",
   "deal-of-the-day": "deal-of-the-day",
   "property-addresses": "property-addresses",
+  "vision-addresses": "vision-addresses",
   "zip-boundaries": "zip-boundaries",
   "fomc-sync": "fomc-sync",
   "cpi-sync": "cpi-sync",
@@ -2844,6 +2848,7 @@ export default function AdminSyncTable({
               const showSingleTimestamp =
                 row.id === "latest-mls" ||
                 row.id === "property-addresses" ||
+                row.id === "vision-addresses" ||
                 row.id === "zip-boundaries" ||
                 row.id === "market-digest";
               const nextRunAt = nextRunForRow(row, status);

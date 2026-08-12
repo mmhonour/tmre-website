@@ -317,6 +317,12 @@ export function queueNetlifyPropertyAddressSync(): Promise<NetlifyFunctionQueueR
   })
 }
 
+export function queueNetlifyVisionAddressSync(): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-vision-addresses-worker', {
+    source: 'netlify-sync-trigger',
+  })
+}
+
 export function queueNetlifyListingEdgeScoreSync(
   startedAt?: string,
   options?: { source?: IncrementalQueueSource },

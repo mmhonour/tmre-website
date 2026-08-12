@@ -230,6 +230,30 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Timothy Marks’s SmartMLS / brokerage agent ID (855109), stored in lib/business-info.ts and shown next to brokerage attributions.',
   },
   {
+    term: 'Cadastral',
+    category: 'mls-data',
+    definition:
+      'Relating to a municipality’s official parcel map and ownership records (the assessor’s cadastral / CAMA inventory), as opposed to MLS listing data. Keys like MBLU (Map / Block / Lot / Unit) and Vision PID (`vision_pid`) identify the land parcel; street address can be missing (vacant lots) or differ from RETS. Neon table `vision_addresses` is the cadastral index (VGSI GIS sync); `town_property_addresses` is a thinner List With Me address catalog, not the full town parcel map.',
+  },
+  {
+    term: 'MBLU',
+    category: 'mls-data',
+    definition:
+      'Map / Block / Lot / Unit — the town assessor’s cadastral parcel label (not a street address). On Westport Vision it looks like `E12/ / 045/000 /` (map sheet, optional block, lot, unit; `000` when there is no condo unit). Stronger secondary key than street number for vacant or oddly addressed parcels; formatting varies by town, so normalize before joining. Distinct from Vision’s internal PID (`vision_pid`) and from MLS `listing_id`. See Cadastral.',
+  },
+  {
+    term: 'Vision PID / vision_pid',
+    category: 'mls-data',
+    definition:
+      'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and optionally mirrored on `listings.vision_pid` after address_norm backfill so RETS + Vision can be opened together. Sync job: vision-addresses (chunked full fill → fingerprint incremental; Field Card HTML in R2).',
+  },
+  {
+    term: 'vision-addresses (sync)',
+    category: 'sync-admin',
+    definition:
+      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` + optional R2 HTML blob. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory).',
+  },
+  {
     term: 'Brokerage name',
     category: 'sync-admin',
     definition:

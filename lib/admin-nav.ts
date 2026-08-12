@@ -883,6 +883,17 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     schedule: "On invoke (background)",
   },
   {
+    label: "sync-vision-addresses",
+    detail:
+      "Thin Vision GIS trigger — queues sync-vision-addresses-worker (cadastral crawl)",
+    schedule: "Weekly Mon ~1:30am ET",
+  },
+  {
+    label: "sync-vision-addresses-worker",
+    detail: "Background vision_addresses crawl + Field Card HTML to R2",
+    schedule: "On invoke (background)",
+  },
+  {
     label: "sync-listing-scores",
     detail:
       "Thin Goldilocks (3a) trigger — queues sync-listing-scores-worker when Configure is due",

@@ -17,6 +17,7 @@ export function syncNextOverrideStepMs(jobId: SyncNextOverrideJobId): number {
     case 'edge-scores':
     case 'deal-of-the-day':
     case 'property-addresses':
+    case 'vision-addresses':
       return 30 * 60_000
     case 'full-resync':
       return 60 * 60_000
@@ -63,6 +64,8 @@ export function nextPracticalTakeHoldIso(
       return nextMondayEtSlotAtOrAfter(5, 0, base).toISOString()
     case 'property-addresses':
       return nextMondayEtSlotAtOrAfter(1, 0, base).toISOString()
+    case 'vision-addresses':
+      return nextMondayEtSlotAtOrAfter(1, 30, base).toISOString()
     case 'market-digest':
       return nextMondayEtSlotAtOrAfter(8, 0, base).toISOString()
     case 'zip-boundaries':

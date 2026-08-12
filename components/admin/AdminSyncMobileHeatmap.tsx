@@ -32,6 +32,7 @@ type HeatmapStatus = {
   latestListingUpdate?: string | null;
   lastRefreshFinished?: string | null;
   propertyAddressesSyncedAt?: string | null;
+  visionAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
   fomcLastSyncedAt?: string | null;
   cpiLastSyncedAt?: string | null;
@@ -113,6 +114,8 @@ function finishedForRow(
       return status.stats.lastDealOfTheDayCache;
     case "property-addresses":
       return status.propertyAddressesSyncedAt ?? null;
+    case "vision-addresses":
+      return status.visionAddressesSyncedAt ?? null;
     case "zip-boundaries":
       return status.zipBoundariesSyncedAt ?? null;
     case "fomc-sync":

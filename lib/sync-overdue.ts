@@ -68,6 +68,7 @@ function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
     case 'stats-cache':
     case 'deal-of-the-day':
     case 'property-addresses':
+    case 'vision-addresses':
     case 'zip-boundaries':
     case 'fomc-sync':
     case 'cpi-sync':
@@ -89,6 +90,7 @@ const EXECUTION_ORDER: OverdueSyncJob[] = [
   'deal-of-the-day',
   'publish-snapshot',
   'property-addresses',
+  'vision-addresses',
   'zip-boundaries',
   'fomc-sync',
   'cpi-sync',
@@ -170,6 +172,10 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     isRetsConfigured()
   ) {
     overdue.add('property-addresses')
+  }
+
+  if (isScheduledJobDue('vision-addresses', now, schedule)) {
+    overdue.add('vision-addresses')
   }
 
   if (isScheduledJobDue('zip-boundaries', now, schedule)) {

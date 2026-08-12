@@ -40,6 +40,12 @@ typecheck rule first, then commit and push everything outstanding.
 
 After `npx tsc --noEmit` succeeds, if `git push` (or the commit+push sequence)
 takes more than **30 seconds** or is clearly hanging / blocked on approvals /
-auth / sandbox, **stop retrying**. Hand the exact command(s) to the user so
-they can run them locally. Do not keep waiting, polling, or re-requesting
-permissions for the same push.
+auth / sandbox:
+
+1. **Stop** — do not keep waiting, polling, or re-requesting permissions.
+2. **Ask the user** to run the push locally (and to kill any hung agent
+   `git`/`tsc` processes if needed).
+3. Hand them the **exact** command(s), e.g. `git push origin HEAD` (and
+   `git status` if useful).
+
+Do not silently retry the same stuck push.

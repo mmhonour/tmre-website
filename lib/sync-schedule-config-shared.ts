@@ -175,6 +175,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'stats-cache',
       'deal-of-the-day',
       'property-addresses',
+      'vision-addresses',
       'zip-boundaries',
       'fomc-sync',
       'cpi-sync',
@@ -218,6 +219,12 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'property-addresses': {
         frequency: 'weekly',
         startTimeEt: '01:00',
+        weekdayEt: 1,
+        scheduler: 'netlify',
+      },
+      'vision-addresses': {
+        frequency: 'weekly',
+        startTimeEt: '01:30',
         weekdayEt: 1,
         scheduler: 'netlify',
       },
@@ -305,6 +312,7 @@ function isSyncAllActionableJob(
     jobId === 'stats-cache' ||
     jobId === 'deal-of-the-day' ||
     jobId === 'property-addresses' ||
+    jobId === 'vision-addresses' ||
     jobId === 'zip-boundaries'
     // fomc-sync / cpi-sync / market-digest — not part of Sync all
   )

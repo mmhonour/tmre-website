@@ -20,6 +20,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'listing_price_history',
   'listing_photo_index',
   'town_property_addresses',
+  'vision_addresses',
   'zip_boundaries',
   'visitors',
   'content_views',

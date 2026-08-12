@@ -7,8 +7,8 @@ const TABS: readonly {
   href: `/${MarketsPageTab}`;
   label: string;
 }[] = [
-  { id: "fed-analysis", href: "/fed-analysis", label: "Fed analysis" },
   { id: "mortgage-rates", href: "/mortgage-rates", label: "Mortgage rates" },
+  { id: "fed-analysis", href: "/fed-analysis", label: "Fed analysis" },
 ];
 
 /**

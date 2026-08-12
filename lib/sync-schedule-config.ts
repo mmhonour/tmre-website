@@ -99,6 +99,8 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'last_deal_of_the_day_cache'
     case 'property-addresses':
       return 'property_addresses_synced_at'
+    case 'vision-addresses':
+      return 'vision_addresses_synced_at'
     case 'zip-boundaries':
       return 'last_zip_boundaries_sync'
     case 'fomc-sync':

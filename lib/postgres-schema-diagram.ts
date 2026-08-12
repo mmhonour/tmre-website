@@ -42,6 +42,16 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
   },
   {
     from: { table: 'listings', column: 'id' },
+    to: { table: 'vision_addresses', column: 'listing_id' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'listings', column: 'vision_pid' },
+    to: { table: 'vision_addresses', column: 'vision_pid' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'listings', column: 'id' },
     to: { table: 'listing_price_history', column: 'listing_id' },
     source: 'documented',
   },
@@ -49,6 +59,21 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
 
 /** Expected columns when a known table is absent from Neon (migrations lag). */
 const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
+  vision_addresses: [
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'vision_pid', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'account_number', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'mblu', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'address_full', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'address_norm', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'listing_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'mls_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'parcel_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'field_card_r2_key', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'content_fingerprint', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'scraped_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'updated_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
   town_property_addresses: [
     { name: 'property_key', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
     { name: 'parcel_number', type: 'text', notNull: false, primaryKey: false, defaultValue: null },

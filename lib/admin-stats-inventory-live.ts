@@ -26,6 +26,7 @@ const ALLOWED_TABLES = new Set([
   'sync_meta',
   'stats_cache',
   'town_property_addresses',
+  'vision_addresses',
 ])
 
 export type StatsCacheLiveFamily = StatsCacheKeyFamily & {

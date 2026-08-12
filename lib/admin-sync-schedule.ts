@@ -463,6 +463,8 @@ function lastFinishedForJob(
       return input.lastDealOfTheDayCache
     case 'property-addresses':
       return getSyncMeta('property_addresses_synced_at')
+    case 'vision-addresses':
+      return getSyncMeta('vision_addresses_synced_at')
     case 'zip-boundaries':
       return getSyncMeta('last_zip_boundaries_sync')
     case 'fomc-sync':
@@ -549,6 +551,10 @@ export function buildAdminSyncNextRuns(
     naturalFor('property-addresses'),
     SCHEDULED_SYNC_JOB_BY_ROW['property-addresses'],
   )
+  const nextVisionAddressesIso = applySyncNextOverride(
+    naturalFor('vision-addresses'),
+    SCHEDULED_SYNC_JOB_BY_ROW['vision-addresses'],
+  )
   const nextZipBoundariesIso = applySyncNextOverride(
     naturalFor('zip-boundaries'),
     SCHEDULED_SYNC_JOB_BY_ROW['zip-boundaries'],
@@ -592,6 +598,7 @@ export function buildAdminSyncNextRuns(
     'stats-cache': nextStatsCacheIso,
     'deal-of-the-day': nextDealOfTheDayIso,
     'property-addresses': nextPropertyAddressesIso,
+    'vision-addresses': nextVisionAddressesIso,
     'zip-boundaries': nextZipBoundariesIso,
     'fomc-sync': nextFomcSyncIso,
     'cpi-sync': nextCpiSyncIso,

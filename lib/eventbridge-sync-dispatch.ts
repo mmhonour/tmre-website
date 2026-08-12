@@ -11,6 +11,7 @@ import {
   queueNetlifyListingScoresSync,
   queueNetlifyMarketDigest,
   queueNetlifyPropertyAddressSync,
+  queueNetlifyVisionAddressSync,
   queueNetlifyStatsCacheRebuild,
   queueNetlifyZipBoundariesSync,
   type NetlifyFunctionQueueResult,
@@ -169,6 +170,9 @@ export async function dispatchEventBridgeScheduledJob(
       break
     case 'property-addresses':
       queue = await queueNetlifyPropertyAddressSync()
+      break
+    case 'vision-addresses':
+      queue = await queueNetlifyVisionAddressSync()
       break
     case 'zip-boundaries':
       queue = await queueNetlifyZipBoundariesSync()

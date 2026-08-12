@@ -34,6 +34,11 @@ export const ADMIN_SYNC_ACTIONS = {
     label: 'Property address directory',
     description: 'MLS + Vision assessor verify for List With Me autocomplete',
   },
+  'vision-addresses': {
+    label: 'Vision addresses (GIS)',
+    description:
+      'VGSI cadastral crawl → vision_addresses + Field Card HTML in R2; links listings.vision_pid',
+  },
   'zip-boundaries': {
     label: 'Zip boundary maps',
     description: 'Census TIGERweb ZCTA rings → Postgres for Intelligence / Latest maps',
@@ -74,6 +79,7 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'stats-cache',
   'deal-of-the-day',
   'property-addresses',
+  'vision-addresses',
   'zip-boundaries',
   // fomc-sync / cpi-sync / market-digest omitted — event/email jobs
 ] as const satisfies readonly AdminSyncActionId[]
@@ -97,10 +103,11 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'stats-cache': 5,
   'deal-of-the-day': 6,
   'property-addresses': 7,
-  'zip-boundaries': 8,
-  'fomc-sync': 9,
-  'cpi-sync': 10,
-  'market-digest': 11,
+  'vision-addresses': 8,
+  'zip-boundaries': 9,
+  'fomc-sync': 10,
+  'cpi-sync': 11,
+  'market-digest': 12,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

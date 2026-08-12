@@ -277,6 +277,7 @@ export default async function AdminPage() {
     lastIncrementalCronTick,
     lastEventbridgeIngressAt,
     lastEventbridgeIngressResult,
+    lastMlsSyncHeartbeat,
     nextOverrides,
   } = await readAdminSyncPanelStatus();
   const latestListingUpdate = await safe(
@@ -364,6 +365,7 @@ export default async function AdminPage() {
   const lastRefreshFinished = getSyncMeta("last_refresh_finished_at");
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
+  const visionAddressesSyncedAt = getSyncMeta("vision_addresses_synced_at");
   const zipBoundariesSyncedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_KEY);
   const zipBoundariesSyncStartedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_STARTED_KEY);
   const fomcLastSyncedAt = getSyncMeta("fomc_last_synced_at");
@@ -540,6 +542,17 @@ export default async function AdminPage() {
       nextRunAt: nextRuns["property-addresses"],
     },
     {
+      id: "vision-addresses",
+      label: "Vision addresses (GIS)",
+      value: formatTimestamp(visionAddressesSyncedAt),
+      finishedAt: visionAddressesSyncedAt,
+      sortMs: timestampSortMs(visionAddressesSyncedAt),
+      detail:
+        "VGSI cadastral index → vision_addresses + Field Card HTML; links listings.vision_pid (weekly Mon 1:30am ET)",
+      actionId: "vision-addresses",
+      nextRunAt: nextRuns["vision-addresses"],
+    },
+    {
       id: "zip-boundaries",
       label: "Zip boundary maps",
       value: formatTimestamp(zipBoundariesSyncedAt),
@@ -598,7 +611,9 @@ export default async function AdminPage() {
     lastIncrementalCronTick: lastIncrementalCronTick ?? null,
     lastEventbridgeIngressAt: lastEventbridgeIngressAt ?? null,
     lastEventbridgeIngressResult: lastEventbridgeIngressResult ?? null,
+    lastMlsSyncHeartbeat: lastMlsSyncHeartbeat ?? null,
     propertyAddressesSyncedAt: propertyAddressesSyncedAt,
+    visionAddressesSyncedAt,
     zipBoundariesSyncedAt,
     zipBoundariesSyncStartedAt,
     fomcLastSyncedAt,

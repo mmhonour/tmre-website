@@ -8,6 +8,7 @@ export type AdminSyncPanelRowId =
   | 'stats-cache'
   | 'deal-of-the-day'
   | 'property-addresses'
+  | 'vision-addresses'
   | 'zip-boundaries'
   | 'fomc-sync'
   | 'cpi-sync'

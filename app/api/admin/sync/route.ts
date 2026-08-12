@@ -9,6 +9,7 @@ import {
 import { buildAdminSyncNextRuns, buildAdminSyncScheduleHints } from '@/lib/admin-sync-schedule'
 import { ensurePostDeployFullResyncScheduled } from '@/lib/deploy-full-resync-schedule'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
+import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import { getSyncMeta } from '@/lib/db/sync-meta-store'
 import { readSyncNextOverrides } from '@/lib/sync-next-override'
 import { ensureAdminListingPhotosReady } from '@/lib/listing-photos-db-persist'
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
     lastIncrementalCronTick,
     lastEventbridgeIngressAt,
     lastEventbridgeIngressResult,
+    lastMlsSyncHeartbeat,
     incrementalLive,
     incrementalLiveStatus,
     incrementalStepLog,
@@ -72,7 +74,9 @@ export async function GET(req: NextRequest) {
     lastIncrementalCronTick,
     lastEventbridgeIngressAt,
     lastEventbridgeIngressResult,
+    lastMlsSyncHeartbeat,
     propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
+    visionAddressesSyncedAt: getSyncMeta('vision_addresses_synced_at'),
     zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),
     zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),
     fomcLastSyncedAt: getSyncMeta('fomc_last_synced_at'),
@@ -205,7 +209,9 @@ export async function POST(req: NextRequest) {
       scheduleHints,
       scheduleConfig,
       latestListingUpdate: await readLatestListingModificationTimestamp(),
+      lastMlsSyncHeartbeat: await getSyncMetaFresh('last_mls_sync_heartbeat'),
       propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
+      visionAddressesSyncedAt: getSyncMeta('vision_addresses_synced_at'),
       zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),
       zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),
       fomcLastSyncedAt: getSyncMeta('fomc_last_synced_at'),

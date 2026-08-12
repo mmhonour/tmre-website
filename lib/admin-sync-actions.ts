@@ -205,6 +205,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'stats-cache': 'stats',
   'deal-of-the-day': 'deal-day',
   'property-addresses': 'addresses',
+  'vision-addresses': 'vision',
   'zip-boundaries': 'zip-maps',
   'fomc-sync': 'fomc',
   'cpi-sync': 'cpi',
@@ -1042,6 +1043,20 @@ async function runAdminSyncActionImpl(
         recordsFetched: result.totalRows,
         message: `${result.totalRows.toLocaleString()} addresses synced`,
         detail: `${result.mlsRows.toLocaleString()} MLS rows · ${result.assessorRows.toLocaleString()} assessor rows verified`,
+      }
+    }
+    case 'vision-addresses': {
+      const { syncVisionAddresses } = await import('@/lib/vision-gis-sync')
+      const result = await syncVisionAddresses()
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt: result.syncedAt,
+        durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.parcelsFetched,
+        message: `${result.town}: ${result.totalRows.toLocaleString()} vision rows (${result.phase})`,
+        detail: result.detail,
       }
     }
     case 'zip-boundaries': {

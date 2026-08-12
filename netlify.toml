@@ -61,6 +61,14 @@
   included_files = []
   background = true
 
+[functions."sync-vision-addresses"]
+  included_files = []
+  schedule = "*/30 * * * *"
+
+[functions."sync-vision-addresses-worker"]
+  included_files = []
+  background = true
+
 [functions."sync-listing-scores"]
   included_files = []
   schedule = "*/30 * * * *"

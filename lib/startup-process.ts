@@ -71,6 +71,8 @@ export function describeStartupProcess(): {
     envFlagEnabled("ENABLE_DAILY_FULL_SYNC") && (allowListingsSync || retsConfigured);
   const propertyAddressSyncEnabled =
     envFlagEnabled("ENABLE_PROPERTY_ADDRESS_SYNC") && allowListingsSync;
+  const visionAddressSyncEnabled =
+    envFlagEnabled("ENABLE_VISION_ADDRESS_SYNC") && allowListingsSync;
   const edgeScoreRebuildEnabled =
     envFlagEnabled("ENABLE_EDGE_SCORE_REBUILD") && allowListingsSync;
   const listingsIntervalMs = Number(process.env.LISTINGS_SYNC_INTERVAL_MS ?? "0");
@@ -305,6 +307,22 @@ export function describeStartupProcess(): {
       ],
     },
     {
+      id: "vision-addresses",
+      title: "Vision addresses (GIS)",
+      subtitle: "VGSI cadastral crawl · vision_addresses + Field Card HTML",
+      steps: [
+        {
+          id: "vision-address-weekly",
+          title: "Chunked crawl @ 1:30 AM Monday America/New_York",
+          timing: "weekly",
+          detail:
+            "syncVisionAddresses(): Streets→Parcel Field Card parse → Neon vision_addresses + R2 HTML; full fill then fingerprint incremental; backfills listings.vision_pid. Netlify thin sync-vision-addresses → worker. Skips when Pause is checked on Vision addresses (GIS).",
+          status: visionAddressSyncEnabled ? "scheduled" : "skipped",
+          statusLabel: visionAddressSyncEnabled ? "Armed" : "Disabled",
+        },
+      ],
+    },
+    {
       id: "stats",
       title: "Stats cache refresh",
       subtitle: "Background Intelligence / stats payload rebuild",
@@ -399,7 +417,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Jobs with Configure Scheduler=EventBridge are skipped by Netlify thin crons; AWS hits eventbridge-sync-ingress instead.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Jobs with Configure Scheduler=EventBridge are skipped by Netlify thin crons; AWS hits eventbridge-sync-ingress instead.`,
           status: "info",
           statusLabel: "Cron",
         },

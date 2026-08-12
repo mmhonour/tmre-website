@@ -294,6 +294,48 @@ export async function register() {
       schedulePropertyAddressSync()
     }
 
+    const visionAddressSyncEnabled = process.env.ENABLE_VISION_ADDRESS_SYNC !== '0'
+    if (visionAddressSyncEnabled && allowListingsSync) {
+      const { msUntilNextMonday130amEt } = await import('./lib/vision-address-schedule')
+      const { syncVisionAddresses } = await import('./lib/vision-gis-sync')
+      let visionAddressSyncRunning = false
+      const scheduleVisionAddressSync = () => {
+        const waitMs = msUntilNextMonday130amEt()
+        console.info(
+          `[vision-address-sync] next weekly chunk in ${Math.round(waitMs / 60_000)} minutes (Mon 1:30am ET)`,
+        )
+        setTimeout(() => {
+          if (isScheduledSyncJobPaused('vision-addresses')) {
+            console.info(
+              '[vision-address-sync] weekly chunk skipped — vision-addresses paused by admin',
+            )
+            scheduleVisionAddressSync()
+            return
+          }
+          if (shouldDeferScheduledJob('vision-addresses')) {
+            console.info(
+              '[vision-address-sync] weekly chunk deferred — Admin Next override',
+            )
+            scheduleVisionAddressSync()
+            return
+          }
+          if (visionAddressSyncRunning) {
+            scheduleVisionAddressSync()
+            return
+          }
+          visionAddressSyncRunning = true
+          Promise.resolve()
+            .then(() => syncVisionAddresses())
+            .catch((err) => console.error('[vision-address-sync/instrumentation]', err))
+            .finally(() => {
+              visionAddressSyncRunning = false
+              scheduleVisionAddressSync()
+            })
+        }, waitMs)
+      }
+      scheduleVisionAddressSync()
+    }
+
     const edgeScoreRebuildEnabled = process.env.ENABLE_EDGE_SCORE_REBUILD !== '0'
     if (edgeScoreRebuildEnabled && allowListingsSync) {
       const { msUntilNextMonday2amEt } = await import('./lib/listing-edge-schedule')

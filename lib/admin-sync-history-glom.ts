@@ -31,6 +31,7 @@ const SYNC_TYPE_LABELS: Record<string, string> = {
   stats: 'Stats cache',
   'deal-day': 'Deal of the Day',
   addresses: 'Addresses',
+  vision: 'Vision addresses',
   'zip-maps': 'Zip boundaries',
   snapshot: 'Refresh finished',
   fomc: 'FOMC',

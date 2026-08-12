@@ -14,6 +14,8 @@ const NETLIFY_PAUSE_BY_FN: Record<string, (typeof SCHEDULED_SYNC_JOB_IDS)[number
   "sync-listings-full-worker": "full-resync",
   "sync-property-addresses": "property-addresses",
   "sync-property-addresses-worker": "property-addresses",
+  "sync-vision-addresses": "vision-addresses",
+  "sync-vision-addresses-worker": "vision-addresses",
   "sync-listing-scores": "listing-scores",
   "sync-listing-scores-worker": "listing-scores",
   "sync-listing-edge-scores": "edge-scores",
