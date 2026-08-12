@@ -2878,6 +2878,7 @@ export default function AdminSyncTable({
           scheduleConfig={scheduleConfig}
           runningId={runningId}
           errors={errors}
+          now={now}
           onSyncNow={(row) => {
             const full = rows.find((r) => r.id === row.id);
             if (full) void runSync(full);

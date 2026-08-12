@@ -8,6 +8,9 @@ import {
 } from "@/lib/admin-sync-types";
 import {
   adminSyncOrderDisplay,
+  formatAdminNextSyncAt,
+  formatAdminNextSyncCountdown,
+  formatAdminSyncTimeOnly,
   type AdminSyncPanelRowId,
 } from "@/lib/admin-sync-schedule-format";
 import { SCHEDULED_SYNC_JOB_BY_ROW } from "@/lib/scheduled-sync-jobs";
@@ -16,8 +19,13 @@ import {
   isMlsSyncDoorbellError,
 } from "@/lib/incremental-sync-health";
 import {
+  frequencyLabel,
   orderNumberByRow,
   resolveJobScheduler,
+  resolveWeekdayEt,
+  schedulerProviderLabel,
+  SYNC_SCHEDULE_WEEKDAYS,
+  type SyncJobScheduleConfig,
   type SyncScheduleConfig,
 } from "@/lib/sync-schedule-config-shared";
 
@@ -36,19 +44,27 @@ type HeatmapStatus = {
   incrementalLiveStatus?: string | null;
   latestListingUpdate?: string | null;
   lastRefreshFinished?: string | null;
+  lastRefreshStarted?: string | null;
   propertyAddressesSyncedAt?: string | null;
   visionAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
+  zipBoundariesSyncStartedAt?: string | null;
   fomcLastSyncedAt?: string | null;
   cpiLastSyncedAt?: string | null;
   marketDigestLastSentAt?: string | null;
+  nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   stats: {
     lastFullSync: string | null;
+    lastFullSyncStarted?: string | null;
     lastIncrementalSync: string | null;
+    lastIncrementalSyncStarted?: string | null;
     lastListingScores: string | null;
+    lastListingScoresStarted?: string | null;
     lastListingEdgeScores?: string | null;
     lastStatsCache: string | null;
+    lastStatsCacheStarted?: string | null;
     lastDealOfTheDayCache: string | null;
+    lastDealOfTheDayCacheStarted?: string | null;
   };
 };
 
@@ -136,12 +152,86 @@ function finishedForRow(
   }
 }
 
+function startedForRow(
+  row: HeatmapRow,
+  status: HeatmapStatus | null,
+): string | null {
+  if (!status) return null;
+  switch (row.id) {
+    case "full-resync":
+      return status.stats.lastFullSyncStarted ?? null;
+    case "incremental":
+      return status.stats.lastIncrementalSyncStarted ?? null;
+    case "listing-scores":
+      return status.stats.lastListingScoresStarted ?? null;
+    case "refresh-finished":
+      return status.lastRefreshStarted ?? null;
+    case "stats-cache":
+      return status.stats.lastStatsCacheStarted ?? null;
+    case "deal-of-the-day":
+      return status.stats.lastDealOfTheDayCacheStarted ?? null;
+    case "zip-boundaries":
+      return status.zipBoundariesSyncStartedAt ?? null;
+    default:
+      return null;
+  }
+}
+
+function formatDurationMs(ms: number): string {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  if (sec < 60) return `${Math.max(1, sec)}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return m > 0 && h < 10 ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** Last-run duration, or time in flight when Start is open. */
+function formatRunElapsed(
+  started: string | null,
+  finished: string | null,
+  nowMs: number,
+): string | null {
+  const startMs = parseIsoMs(started);
+  const endMs = parseIsoMs(finished);
+  if (startMs == null) return null;
+  if (endMs != null && endMs >= startMs) {
+    return formatDurationMs(endMs - startMs);
+  }
+  if (endMs == null || startMs > endMs) {
+    return `${formatDurationMs(nowMs - startMs)} in`;
+  }
+  return null;
+}
+
+function formatFrequencyLine(
+  job: SyncJobScheduleConfig | null | undefined,
+): string | null {
+  if (!job) return null;
+  const freq = frequencyLabel(job.frequency);
+  const scheduler = schedulerProviderLabel(resolveJobScheduler(job));
+  if (job.frequency === "weekly") {
+    const day =
+      SYNC_SCHEDULE_WEEKDAYS[resolveWeekdayEt(job)]?.short ?? "Mon";
+    return `${freq} · ${day} ${job.startTimeEt} ET · ${scheduler}`;
+  }
+  if (
+    job.frequency === "daily" ||
+    job.frequency === "monthly" ||
+    job.frequency === "event"
+  ) {
+    return `${freq} · ${job.startTimeEt} ET · ${scheduler}`;
+  }
+  return `${freq} · ${scheduler}`;
+}
+
 export default function AdminSyncMobileHeatmap({
   rows,
   status,
   scheduleConfig,
   runningId,
   errors,
+  now,
   onSyncNow,
 }: {
   rows: HeatmapRow[];
@@ -149,10 +239,12 @@ export default function AdminSyncMobileHeatmap({
   scheduleConfig: SyncScheduleConfig;
   runningId: string | null;
   errors: Record<string, string | undefined>;
+  now?: Date;
   onSyncNow: (row: HeatmapRow & { value?: string }) => void;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const nowMs = Date.now();
+  const nowMs = (now ?? new Date()).getTime();
+  const nowDate = now ?? new Date();
   const orderByRow = orderNumberByRow(scheduleConfig);
 
   const ordered = useMemo(() => {
@@ -213,12 +305,45 @@ export default function AdminSyncMobileHeatmap({
         const autoExpand = visual === "alert" || visual === "running";
         const open = expanded[row.id] ?? autoExpand;
         const age = formatAgeAgo(finished, nowMs);
+        const started = startedForRow(row, status);
+        const runElapsed = formatRunElapsed(started, finished, nowMs);
         const pauseJob =
           SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+        const jobSchedule = pauseJob
+          ? scheduleConfig.jobs[pauseJob]
+          : null;
+        const nextRunAt =
+          status?.nextRuns && row.id in status.nextRuns
+            ? status.nextRuns[row.id as AdminSyncPanelRowId] ?? null
+            : null;
+        const nextMs = parseIsoMs(nextRunAt);
+        const nextOverdue = nextMs != null && nowMs > nextMs;
+        const nextClock = nextRunAt
+          ? nextOverdue
+            ? formatAdminSyncTimeOnly(nextRunAt)
+            : formatAdminNextSyncAt(nextRunAt, nowDate)
+          : null;
+        const nextCountdown = nextRunAt
+          ? formatAdminNextSyncCountdown(nextRunAt, nowDate)
+          : null;
+        const freqLine = formatFrequencyLine(jobSchedule);
         const actionLabel =
           row.actionId != null
             ? ADMIN_SYNC_ACTIONS[row.actionId as AdminSyncActionId]?.label
             : null;
+
+        const endBits = [
+          finished ? formatAdminSyncTimeOnly(finished) : "—",
+          runElapsed && !runElapsed.endsWith(" in") ? runElapsed : null,
+          finished ? age : null,
+          runElapsed?.endsWith(" in") ? runElapsed : null,
+        ].filter(Boolean);
+        const nextBits = nextRunAt
+          ? [
+              nextClock,
+              nextOverdue ? "overdue" : nextCountdown !== nextClock ? nextCountdown : null,
+            ].filter(Boolean)
+          : [];
 
         return (
           <div
@@ -227,7 +352,7 @@ export default function AdminSyncMobileHeatmap({
           >
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+              className="flex w-full items-start gap-2 px-3 py-2.5 text-left"
               onClick={() =>
                 setExpanded((prev) => ({
                   ...prev,
@@ -236,28 +361,99 @@ export default function AdminSyncMobileHeatmap({
               }
             >
               <span
-                className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${chipClass(visual)}`}
+                className={`mt-1.5 inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${chipClass(visual)}`}
                 aria-hidden
               />
               {orderLabel ? (
-                <span className="font-mono text-[10px] font-bold text-navy/70 w-6 shrink-0">
+                <span className="mt-0.5 font-mono text-[10px] font-bold text-navy/70 w-6 shrink-0">
                   {orderLabel}
                 </span>
               ) : (
                 <span className="w-6 shrink-0" />
               )}
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-navy">
-                {row.label.replace(/\s*\(3[ab]\)$/, "")}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-navy">
+                  {row.label.replace(/\s*\(3[ab]\)$/, "")}
+                </span>
+                <span className="mt-0.5 block font-mono text-[10px] leading-snug text-charcoal/60">
+                  End {endBits.join(" · ")}
+                </span>
+                {nextBits.length > 0 || freqLine ? (
+                  <span
+                    className={`mt-0.5 block font-mono text-[10px] leading-snug ${
+                      nextOverdue ? "text-coral/80" : "text-charcoal/55"
+                    }`}
+                  >
+                    {nextBits.length > 0
+                      ? `Next ${nextBits.join(" · ")}`
+                      : null}
+                    {nextBits.length > 0 && freqLine ? " · " : null}
+                    {freqLine}
+                  </span>
+                ) : null}
               </span>
-              <span className="shrink-0 font-mono text-[10px] text-charcoal/55">
-                {age}
-              </span>
-              <span className="shrink-0 font-mono text-[10px] text-charcoal/35">
+              <span className="mt-0.5 shrink-0 font-mono text-[10px] text-charcoal/35">
                 {open ? "▾" : "▸"}
               </span>
             </button>
             {open ? (
               <div className="border-t border-charcoal/10 px-3 py-2.5 space-y-2">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                  <div>
+                    <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-charcoal/40">
+                      End
+                    </p>
+                    <p className="font-mono text-[11px] text-navy">
+                      {finished ? formatAdminSyncTimeOnly(finished) : "—"}
+                    </p>
+                    {finished ? (
+                      <p className="font-mono text-[10px] text-charcoal/50">
+                        {age}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-charcoal/40">
+                      Elapsed
+                    </p>
+                    <p className="font-mono text-[11px] text-navy">
+                      {runElapsed
+                        ? runElapsed.endsWith(" in")
+                          ? runElapsed.replace(/ in$/, " in flight")
+                          : runElapsed
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-charcoal/40">
+                      Next start
+                    </p>
+                    <p
+                      className={`font-mono text-[11px] ${
+                        nextOverdue ? "text-coral" : "text-navy"
+                      }`}
+                    >
+                      {nextClock ?? "—"}
+                    </p>
+                    {nextRunAt && nextCountdown && nextCountdown !== nextClock ? (
+                      <p
+                        className={`font-mono text-[10px] ${
+                          nextOverdue ? "text-coral/80" : "text-charcoal/50"
+                        }`}
+                      >
+                        {nextOverdue ? "Overdue" : nextCountdown}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-charcoal/40">
+                      Frequency
+                    </p>
+                    <p className="font-mono text-[11px] leading-snug text-navy">
+                      {freqLine ?? "—"}
+                    </p>
+                  </div>
+                </div>
                 {row.detail ? (
                   <p className="text-[11px] leading-snug text-charcoal/60">
                     {row.detail}
