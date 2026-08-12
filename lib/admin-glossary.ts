@@ -251,7 +251,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision-addresses (sync)',
     category: 'sync-admin',
     definition:
-      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` + optional R2 HTML blob. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify); CLI can raise with VISION_SYNC_MAX_PARCELS up to 200. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory).',
+      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` + optional R2 HTML blob. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify, hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory).',
   },
   {
     term: 'Brokerage name',

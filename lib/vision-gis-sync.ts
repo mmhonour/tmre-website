@@ -28,9 +28,9 @@ import {
 
 const UA = 'tmre-bot/1.0 (+https://tmrebuilder.com; vision-addresses sync)'
 const DEFAULT_DELAY_MS = 500
-/** Safe Netlify / Admin chunk. CLI can raise via VISION_SYNC_MAX_PARCELS (cap 200). */
+/** Safe Netlify / Admin chunk. CLI can raise via VISION_SYNC_MAX_PARCELS (cap 1000). */
 const DEFAULT_MAX_PARCELS = 40
-const ABSOLUTE_MAX_PARCELS = 200
+const ABSOLUTE_MAX_PARCELS = 1000
 const TOWN_STATE_META_KEY = 'vision_addresses_town_state'
 const SYNCED_AT_META_KEY = 'vision_addresses_synced_at'
 const LAST_STATS_META_KEY = 'vision_addresses_last_stats'
