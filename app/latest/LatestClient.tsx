@@ -28,6 +28,7 @@ import {
   writeLatestViewState,
 } from "@/lib/latest-view-state";
 import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
+import { evaluateIncrementalHealth } from "@/lib/incremental-sync-health";
 
 type ApiResponse = {
   listings: LatestListingRow[];
@@ -35,6 +36,7 @@ type ApiResponse = {
   townStats: TownUpdateStat[];
   since: string | null;
   lastIncrementalSync: string | null;
+  lastMlsSyncHeartbeat?: string | null;
   lastFullSync: string | null;
   generatedAt: string;
 };
@@ -278,6 +280,7 @@ export default function LatestClient({
   const [loading, setLoading] = useState(initialListings.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
   const [newKeys, setNewKeys] = useState<Set<string>>(new Set());
   /** Default: chronological (by time). Group-by-town is opt-in. */
   const [groupByTown, setGroupByTown] = useState(false);
@@ -462,6 +465,7 @@ export default function LatestClient({
     const body = (await res.json()) as ApiResponse;
     // Never fall back to lastFullSync — that hid a broken End as "Jul 12".
     setLastSync(body.lastIncrementalSync ?? null);
+    setLastHeartbeat(body.lastMlsSyncHeartbeat ?? null);
     setTownStats(body.townStats ?? []);
 
     if (options.since) {
@@ -635,6 +639,11 @@ export default function LatestClient({
 
   const syncLabel = formatSync(lastSync);
   const newestMlsLabel = formatSync(newestModification(visibleListings));
+  const pullHealth = evaluateIncrementalHealth({
+    scheduler: lastHeartbeat ? "railway" : "netlify",
+    heartbeatAt: lastHeartbeat,
+    finishedAt: lastSync,
+  });
 
   const isGrouped = groupByTown;
 
@@ -882,17 +891,25 @@ export default function LatestClient({
             ) : null}
             <span
               className={`tracking-[0.08em] uppercase ${
-                syncLabel ? "text-white/35" : "text-coral/90"
+                pullHealth.inventory === "missing"
+                  ? "text-coral/90"
+                  : pullHealth.inventory === "stale"
+                    ? "text-gold/80"
+                    : "text-white/35"
               }`}
               title={
-                syncLabel
-                  ? "When the last Incremental RETS pull finished (last_incremental_sync)"
-                  : "last_incremental_sync is missing — Incremental End never stamped; feed may be stale"
+                pullHealth.inventory === "missing"
+                  ? "last_incremental_sync is missing — Incremental End never stamped; feed may be stale"
+                  : pullHealth.inventory === "stale"
+                    ? "Last Incremental End is older than ~70 minutes — inventory may be behind"
+                    : "When the last Incremental RETS pull finished (last_incremental_sync)"
               }
             >
-              {syncLabel
-                ? `Last pull ${syncLabel}`
-                : "Last pull MISSING — Incremental End broken"}
+              {pullHealth.inventory === "missing"
+                ? "Last pull MISSING"
+                : pullHealth.inventory === "stale"
+                  ? `Last pull ${syncLabel} · stale`
+                  : `Last pull ${syncLabel}`}
             </span>
           </div>
         </div>

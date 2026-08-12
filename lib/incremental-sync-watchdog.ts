@@ -14,8 +14,11 @@ import {
   stampIncrementalSyncLive,
 } from '@/lib/incremental-sync-live'
 
-/** If last successful incremental is older than this, force a worker queue. */
-export const INCREMENTAL_SYNC_STALE_MS = 70 * 60 * 1000
+import {
+  INCREMENTAL_SYNC_STALE_MS,
+} from '@/lib/incremental-sync-health'
+
+export { INCREMENTAL_SYNC_STALE_MS }
 /** Don't re-queue watchdog more often than this (avoids stampede). */
 export const INCREMENTAL_WATCHDOG_COOLDOWN_MS = 12 * 60 * 1000
 

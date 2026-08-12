@@ -19,8 +19,17 @@ import {
 } from "@/lib/market-pulse-defaults";
 import {
   sortRowsByBuyerFriendlyScore,
+  unstackedFavorSortDir,
   type MarketPulseFavorSort,
 } from "@/lib/market-pulse-favorability";
+import {
+  formatPriceDeltaLabel,
+  meanMinusMedian,
+} from "@/lib/market-pulse-price-delta";
+import {
+  marketPulseStackedMetrics,
+  type MarketPulseStackedMetricId,
+} from "@/lib/market-pulse-stacked-metrics";
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   MARKET_PULSE_LOOKBACK_OPTIONS,
@@ -50,6 +59,7 @@ const METRIC_COLORS = {
   closed: "bg-[var(--mp-closed-bar,#C45C4A)]",
   medianPrice: "bg-[var(--mp-median-bar,#6B7C9B)]",
   averagePrice: "bg-[var(--mp-average-bar,#8B6F4E)]",
+  priceDelta: "bg-[var(--mp-delta-bar,#7A6A8A)]",
 } as const;
 
 function fmtMos(n: number | null | undefined): string {
@@ -132,6 +142,8 @@ type CombinedTownRow = {
   closedCount: number | null;
   medianPrice: number | null;
   averagePrice: number | null;
+  priceDelta: number | null;
+  priceDeltaPct: number | null;
   activeCountCalc?: StatsValueCalc;
   monthsSupplyCalc?: StatsValueCalc;
   avgDaysOnMarketCalc?: StatsValueCalc;
@@ -160,6 +172,7 @@ function buildCombinedTownRows(
     const dom = domBy.get(key);
     const closed = closedBy.get(key);
     const price = priceBy.get(key);
+    const delta = meanMinusMedian(price?.averagePrice, price?.medianPrice);
     return {
       city: row.city,
       activeCount: row.activeCount ?? null,
@@ -168,6 +181,8 @@ function buildCombinedTownRows(
       closedCount: closed?.count ?? null,
       medianPrice: price?.medianPrice ?? null,
       averagePrice: price?.averagePrice ?? null,
+      priceDelta: delta.dollars,
+      priceDeltaPct: delta.pct,
       activeCountCalc: row.activeCountCalc,
       monthsSupplyCalc: row.monthsSupplyCalc,
       avgDaysOnMarketCalc: dom?.avgDaysOnMarketCalc,
@@ -199,6 +214,9 @@ function BarChart<Row extends { city: string }>({
   settle,
   calcOf,
   sortable = false,
+  favorSortDir = null,
+  sortValueOf,
+  formatValue,
 }: {
   title: string;
   rows: Row[];
@@ -212,10 +230,19 @@ function BarChart<Row extends { city: string }>({
   calcOf?: (row: Row) => StatsValueCalc | undefined;
   /** Unstacked only — ASC/DESC arrows beside the title. */
   sortable?: boolean;
+  /** Seller/Buyer Friendly per-chart direction until the visitor picks arrows. */
+  favorSortDir?: MetricSortDir | null;
+  /** Sort key when it differs from bar width (e.g. signed delta vs abs). */
+  sortValueOf?: (row: Row) => number | null;
+  formatValue?: (row: Row, display: number | null) => string;
 }) {
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
-  /** null = page-load / snapshot order until the visitor picks a direction. */
+  /** null = use favorSortDir / snapshot order until the visitor picks a direction. */
   const [sortDir, setSortDir] = useState<MetricSortDir | null>(null);
+
+  useEffect(() => {
+    setSortDir(null);
+  }, [favorSortDir]);
 
   useEffect(() => {
     if (settle.phase !== "scramble" || rows.length === 0) {
@@ -225,10 +252,13 @@ function BarChart<Row extends { city: string }>({
     setBarScramble(randomBarPercents(rows.length));
   }, [settle.phase, settle.tick, rows.length]);
 
+  const effectiveSort = sortDir ?? favorSortDir ?? null;
+  const rankOf = sortValueOf ?? valueOf;
+
   const displayRows = useMemo(() => {
-    if (!sortable || !sortDir) return rows;
-    return sortRowsByMetricValue(rows, valueOf, sortDir);
-  }, [rows, sortable, sortDir, valueOf]);
+    if (!sortable || !effectiveSort) return rows;
+    return sortRowsByMetricValue(rows, rankOf, effectiveSort);
+  }, [rows, sortable, effectiveSort, rankOf]);
 
   const titleRow = (
     <div className="mb-4 flex items-center justify-between gap-3">
@@ -244,11 +274,11 @@ function BarChart<Row extends { city: string }>({
           <button
             type="button"
             aria-label="Sort ascending"
-            aria-pressed={sortDir === "asc"}
+            aria-pressed={effectiveSort === "asc"}
             title="Ascending"
             onClick={() => setSortDir("asc")}
             className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
-              sortDir === "asc"
+              effectiveSort === "asc"
                 ? "text-[var(--mp-accent)]"
                 : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
             }`}
@@ -258,11 +288,11 @@ function BarChart<Row extends { city: string }>({
           <button
             type="button"
             aria-label="Sort descending"
-            aria-pressed={sortDir === "desc"}
+            aria-pressed={effectiveSort === "desc"}
             title="Descending"
             onClick={() => setSortDir("desc")}
             className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
-              sortDir === "desc"
+              effectiveSort === "desc"
                 ? "text-[var(--mp-accent)]"
                 : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
             }`}
@@ -326,7 +356,9 @@ function BarChart<Row extends { city: string }>({
               : settleIntDisplay(v, settle, index);
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
-          const valueText = formatMetricValue(valueKind, display);
+          const valueText = formatValue
+            ? formatValue(row, display)
+            : formatMetricValue(valueKind, display);
           const calc = calcOf?.(row);
           const metricLabel =
             valueKind === "mos"
@@ -336,14 +368,20 @@ function BarChart<Row extends { city: string }>({
                 : valueKind === "money"
                   ? title.startsWith("Average")
                     ? "Average price"
-                    : "Median price"
+                    : title.includes("median") || title.startsWith("Median")
+                      ? "Median price"
+                      : "Avg − median"
                   : title.startsWith("Closed")
                     ? "Closed sales"
                     : "Active inventory";
           return (
             <li
               key={`${row.city}-${title}`}
-              className="grid grid-cols-[7.5rem_1fr_3.5rem] items-center gap-2"
+              className={`grid items-center gap-2 ${
+                formatValue
+                  ? "grid-cols-[7.5rem_1fr_6.75rem]"
+                  : "grid-cols-[7.5rem_1fr_3.5rem]"
+              }`}
             >
               {href ? (
                 <Link
@@ -388,56 +426,57 @@ function BarChart<Row extends { city: string }>({
 }
 
 function combinedMetrics(closedLookbackLabel: string) {
-  return [
+  const chrome: Record<
+    MarketPulseStackedMetricId,
     {
-      id: "inventory",
-      label: "Inventory",
+      barClassName: string;
+      valueKind: MetricValueKind;
+      calcOf: (r: CombinedTownRow) => StatsValueCalc | undefined;
+    }
+  > = {
+    inventory: {
       barClassName: METRIC_COLORS.inventory,
-      valueKind: "int" as const,
-      valueOf: (r: CombinedTownRow) => r.activeCount,
-      calcOf: (r: CombinedTownRow) => r.activeCountCalc,
+      valueKind: "int",
+      calcOf: (r) => r.activeCountCalc,
     },
-    {
-      id: "monthsSupply",
-      label: "Months supply",
+    monthsSupply: {
       barClassName: METRIC_COLORS.monthsSupply,
-      valueKind: "mos" as const,
-      valueOf: (r: CombinedTownRow) => r.monthsSupply,
-      calcOf: (r: CombinedTownRow) => r.monthsSupplyCalc,
+      valueKind: "mos",
+      calcOf: (r) => r.monthsSupplyCalc,
     },
-    {
-      id: "avgDom",
-      label: "Avg DOM",
+    avgDom: {
       barClassName: METRIC_COLORS.avgDom,
-      valueKind: "dom" as const,
-      valueOf: (r: CombinedTownRow) => r.avgDaysOnMarket,
-      calcOf: (r: CombinedTownRow) => r.avgDaysOnMarketCalc,
+      valueKind: "dom",
+      calcOf: (r) => r.avgDaysOnMarketCalc,
     },
-    {
-      id: "closed",
-      label: `Closed (${closedLookbackLabel})`,
+    closed: {
       barClassName: METRIC_COLORS.closed,
-      valueKind: "int" as const,
-      valueOf: (r: CombinedTownRow) => r.closedCount,
-      calcOf: (r: CombinedTownRow) => r.closedCalc,
+      valueKind: "int",
+      calcOf: (r) => r.closedCalc,
     },
-    {
-      id: "medianPrice",
-      label: "Median price",
+    medianPrice: {
       barClassName: METRIC_COLORS.medianPrice,
-      valueKind: "money" as const,
-      valueOf: (r: CombinedTownRow) => r.medianPrice,
-      calcOf: (r: CombinedTownRow) => r.medianPriceCalc,
+      valueKind: "money",
+      calcOf: (r) => r.medianPriceCalc,
     },
-    {
-      id: "averagePrice",
-      label: "Average price",
+    averagePrice: {
       barClassName: METRIC_COLORS.averagePrice,
-      valueKind: "money" as const,
-      valueOf: (r: CombinedTownRow) => r.averagePrice,
-      calcOf: (r: CombinedTownRow) => r.averagePriceCalc,
+      valueKind: "money",
+      calcOf: (r) => r.averagePriceCalc,
     },
-  ] as const;
+    priceDelta: {
+      barClassName: METRIC_COLORS.priceDelta,
+      valueKind: "int",
+      calcOf: () => undefined,
+    },
+  };
+
+  return marketPulseStackedMetrics(closedLookbackLabel).map((m) => ({
+    ...m,
+    ...chrome[m.id],
+    valueOf: m.barValueOf,
+    formatOf: m.format,
+  }));
 }
 
 /** One town block with four stacked metric bars (each normalized to its own max). */
@@ -549,12 +588,15 @@ function CombinedMetricsChart({
                     m.valueKind === "mos"
                       ? settleMosDisplay(v, settle, scrambleIndex)
                       : settleIntDisplay(v, settle, scrambleIndex);
-                  const valueText = formatMetricValue(m.valueKind, display);
+                  const valueText =
+                    m.id === "priceDelta"
+                      ? m.formatOf(row)
+                      : formatMetricValue(m.valueKind, display);
                   const calc = m.calcOf(row);
                   return (
                     <li
                       key={m.id}
-                      className="group relative grid grid-cols-[6.5rem_1fr_3.25rem] items-center gap-2"
+                      className="group relative grid grid-cols-[6.5rem_1fr_5.75rem] items-center gap-2"
                       title={`${m.label}: ${valueText}`}
                     >
                       <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
@@ -714,78 +756,6 @@ export default function WeeklyBriefContent({
     return v != null && Number.isFinite(v) ? v : null;
   }, [domRows]);
 
-  const mosByCity = useMemo(() => {
-    const map = new Map<string, number | null>();
-    for (const row of inventoryRows) {
-      map.set(cityKey(row.city), row.monthsSupply ?? null);
-    }
-    return map;
-  }, [inventoryRows]);
-
-  const domByCity = useMemo(() => {
-    const map = new Map<string, number | null>();
-    for (const row of domRows) {
-      map.set(cityKey(row.city), row.avgDaysOnMarket ?? null);
-    }
-    return map;
-  }, [domRows]);
-
-  const sortedInventory = useMemo(
-    () =>
-      sortRowsByBuyerFriendlyScore(
-        inventoryRows,
-        (r) => ({
-          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
-          avgDaysOnMarket: domByCity.get(cityKey(r.city)) ?? null,
-        }),
-        favorSort,
-        (r) => isAllTownsCity(r.city),
-      ),
-    [inventoryRows, favorSort, mosByCity, domByCity],
-  );
-
-  const sortedDom = useMemo(
-    () =>
-      sortRowsByBuyerFriendlyScore(
-        domRows,
-        (r) => ({
-          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
-          avgDaysOnMarket: r.avgDaysOnMarket ?? null,
-        }),
-        favorSort,
-        (r) => isAllTownsCity(r.city),
-      ),
-    [domRows, favorSort, mosByCity],
-  );
-
-  const sortedClosed = useMemo(
-    () =>
-      sortRowsByBuyerFriendlyScore(
-        closedRows,
-        (r) => ({
-          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
-          avgDaysOnMarket: domByCity.get(cityKey(r.city)) ?? null,
-        }),
-        favorSort,
-        (r) => isAllTownsCity(r.city),
-      ),
-    [closedRows, favorSort, mosByCity, domByCity],
-  );
-
-  const sortedMedianPrice = useMemo(
-    () =>
-      sortRowsByBuyerFriendlyScore(
-        priceRows,
-        (r) => ({
-          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
-          avgDaysOnMarket: domByCity.get(cityKey(r.city)) ?? null,
-        }),
-        favorSort,
-        (r) => isAllTownsCity(r.city),
-      ),
-    [priceRows, favorSort, mosByCity, domByCity],
-  );
-
   const combinedRows = useMemo(() => {
     const built = buildCombinedTownRows(
       inventoryRows,
@@ -907,11 +877,7 @@ export default function WeeklyBriefContent({
                     type="button"
                     className={controlBtn(chartLayout === "unstacked")}
                     aria-pressed={chartLayout === "unstacked"}
-                    onClick={() => {
-                      setChartLayout("unstacked");
-                      // Friend sorts only apply to the stacked composite.
-                      setFavorSort("default");
-                    }}
+                    onClick={() => setChartLayout("unstacked")}
                   >
                     UNSTACKED
                   </button>
@@ -931,9 +897,8 @@ export default function WeeklyBriefContent({
                         return;
                       }
                       setFavorSort("sellers");
-                      setChartLayout("stacked");
                     }}
-                    title="Composite: lower months supply + shorter DOM first (more seller friendly). Tap again to clear."
+                    title="Stacked: composite MOS + DOM. Unstacked: each chart sorts on its own metric (Seller: DOM↑, closed↓, prices↓)."
                   >
                     Seller Friendly
                   </button>
@@ -947,9 +912,8 @@ export default function WeeklyBriefContent({
                         return;
                       }
                       setFavorSort("buyers");
-                      setChartLayout("stacked");
                     }}
-                    title="Composite: higher months supply + longer DOM first (more buyer friendly). Tap again to clear."
+                    title="Stacked: composite MOS + DOM. Unstacked: each chart sorts on its own metric (Buyer: DOM↓, closed↑, prices↑)."
                   >
                     Buyer Friendly
                   </button>
@@ -987,12 +951,17 @@ export default function WeeklyBriefContent({
 
               {favorSort !== "default" ? (
                 <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
-                  Sorted by buyer/seller friendly composite (months supply + avg
-                  DOM
-                  {favorSort === "sellers"
-                    ? "; lower = more seller friendly"
-                    : "; higher = more buyer friendly"}
-                  ). All towns stays on top.
+                  {chartLayout === "stacked"
+                    ? `Sorted by buyer/seller friendly composite (months supply + avg DOM${
+                        favorSort === "sellers"
+                          ? "; lower = more seller friendly"
+                          : "; higher = more buyer friendly"
+                      }). All towns stays on top.`
+                    : `Each unstacked chart sorts on its own metric (${
+                        favorSort === "sellers"
+                          ? "Seller: DOM↑, closed↓, median/avg↓"
+                          : "Buyer: DOM↓, closed↑, median/avg↑"
+                      }). All towns stays on top.`}
                 </p>
               ) : null}
             </div>
@@ -1011,7 +980,7 @@ export default function WeeklyBriefContent({
           <>
         <BarChart
           title={`Active inventory (${titleScope})`}
-          rows={sortedInventory}
+          rows={inventoryRows}
           valueOf={(r) => r.activeCount}
           valueKind="int"
           barClassName={METRIC_COLORS.inventory}
@@ -1020,11 +989,12 @@ export default function WeeklyBriefContent({
           settle={settle}
           calcOf={(r) => r.activeCountCalc}
           sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "inventory")}
         />
 
         <BarChart
           title={`Months supply (${scopeLabel})`}
-          rows={sortedInventory}
+          rows={inventoryRows}
           valueOf={(r) => r.monthsSupply}
           valueKind="mos"
           barClassName={METRIC_COLORS.monthsSupply}
@@ -1033,11 +1003,12 @@ export default function WeeklyBriefContent({
           settle={settle}
           calcOf={(r) => r.monthsSupplyCalc}
           sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
         />
 
         <BarChart
           title={`Avg days on market (${titleScope})`}
-          rows={sortedDom}
+          rows={domRows}
           valueOf={(r) => r.avgDaysOnMarket}
           valueKind="dom"
           barClassName={METRIC_COLORS.avgDom}
@@ -1046,14 +1017,16 @@ export default function WeeklyBriefContent({
           settle={settle}
           calcOf={(r) => r.avgDaysOnMarketCalc}
           sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "avgDom")}
         />
 
         <BarChart
           title={`Closed sales — trailing ${closedLookbackLabel} (${titleScope})`}
-          rows={sortedClosed}
+          rows={closedRows}
           valueOf={(r) => r.count}
           valueKind="int"
           sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "closed")}
           barClassName={METRIC_COLORS.closed}
           emptyMessage={
             closedPending
@@ -1067,10 +1040,11 @@ export default function WeeklyBriefContent({
 
         <BarChart
           title={`Median price (${titleScope})`}
-          rows={sortedMedianPrice}
+          rows={priceRows}
           valueOf={(r) => r.medianPrice}
           valueKind="money"
           sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "medianPrice")}
           barClassName={METRIC_COLORS.medianPrice}
           emptyMessage="No median price rows in cache yet (rebuild market stats)."
           townHref={townHref}
@@ -1080,15 +1054,39 @@ export default function WeeklyBriefContent({
 
         <BarChart
           title={`Average price (${titleScope})`}
-          rows={sortedMedianPrice}
+          rows={priceRows}
           valueOf={(r) => r.averagePrice}
           valueKind="money"
           sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
           barClassName={METRIC_COLORS.averagePrice}
           emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
           townHref={townHref}
           settle={settle}
           calcOf={(r) => r.averagePriceCalc}
+        />
+
+        <BarChart
+          title={`Average vs median (${titleScope})`}
+          rows={priceRows}
+          valueOf={(r) => {
+            const d = meanMinusMedian(r.averagePrice, r.medianPrice).dollars;
+            return d == null ? null : Math.abs(d);
+          }}
+          sortValueOf={(r) =>
+            meanMinusMedian(r.averagePrice, r.medianPrice).dollars
+          }
+          formatValue={(r) => {
+            const d = meanMinusMedian(r.averagePrice, r.medianPrice);
+            return formatPriceDeltaLabel(d.dollars, d.pct);
+          }}
+          valueKind="int"
+          sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "priceDelta")}
+          barClassName={METRIC_COLORS.priceDelta}
+          emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
+          townHref={townHref}
+          settle={settle}
         />
           </>
         )}

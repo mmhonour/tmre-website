@@ -28,6 +28,13 @@ import type { AdminSyncScheduleHints } from "@/lib/admin-sync-schedule";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
 import type { IncrementalSyncLiveProgress } from "@/lib/incremental-sync-live-shared";
 import { formatIncrementalSyncLiveStatus } from "@/lib/incremental-sync-live-shared";
+import {
+  INCREMENTAL_END_STALE_MS,
+  evaluateIncrementalHealth,
+  formatRailwayHealthStrip,
+  isMlsSyncDoorbellError,
+  type IncrementalHealthScheduler,
+} from "@/lib/incremental-sync-health";
 import { SCHEDULED_SYNC_JOB_BY_ROW } from "@/lib/scheduled-sync-jobs";
 import {
   emptyScheduledSyncPausedJobs,
@@ -121,6 +128,97 @@ function isSyncErrorText(text: string | undefined): boolean {
     lower.includes("gateway") ||
     lower.includes("html error") ||
     lower.includes("will retry")
+  );
+}
+
+const LEGACY_ERROR_AT_MS = 0;
+/** Legacy errors (no clock) clear only if End is still inside this window. */
+const LEGACY_ERROR_CLEAN_FINISH_MS = INCREMENTAL_END_STALE_MS;
+
+type StoredSyncErrorEntry = { text: string; at: string };
+
+function parseStoredSyncErrors(raw: string): {
+  errors: Partial<Record<string, string>>;
+  atMs: Partial<Record<string, number>>;
+} {
+  const errors: Partial<Record<string, string>> = {};
+  const atMs: Partial<Record<string, number>> = {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return { errors, atMs };
+    for (const [id, value] of Object.entries(
+      parsed as Record<string, unknown>,
+    )) {
+      if (typeof value === "string" && value.trim()) {
+        errors[id] = value;
+        atMs[id] = LEGACY_ERROR_AT_MS;
+        continue;
+      }
+      if (value && typeof value === "object" && "text" in value) {
+        const text = (value as { text?: unknown }).text;
+        const at = (value as { at?: unknown }).at;
+        if (typeof text !== "string" || !text.trim()) continue;
+        errors[id] = text;
+        const ms = typeof at === "string" ? Date.parse(at) : Number.NaN;
+        atMs[id] = Number.isNaN(ms) ? LEGACY_ERROR_AT_MS : ms;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return { errors, atMs };
+}
+
+function serializeStoredSyncErrors(
+  errors: Partial<Record<string, string>>,
+  atMs: Partial<Record<string, number>>,
+): string {
+  const out: Record<string, StoredSyncErrorEntry> = {};
+  for (const [id, text] of Object.entries(errors)) {
+    if (!text) continue;
+    const ms = atMs[id];
+    out[id] = {
+      text,
+      at:
+        ms != null && ms > LEGACY_ERROR_AT_MS
+          ? new Date(ms).toISOString()
+          : new Date().toISOString(),
+    };
+  }
+  return JSON.stringify(out);
+}
+
+function shouldClearErrorAfterCleanFinish(options: {
+  errorAtMs: number | undefined;
+  finishedAt: string | null;
+  nowMs: number;
+}): boolean {
+  const endMs = parseIsoMs(options.finishedAt);
+  if (endMs == null) return false;
+  const errorAtMs = options.errorAtMs;
+  if (errorAtMs == null) return false;
+  if (errorAtMs === LEGACY_ERROR_AT_MS) {
+    return options.nowMs - endMs < LEGACY_ERROR_CLEAN_FINISH_MS;
+  }
+  return endMs > errorAtMs;
+}
+
+function finishedAtForErrorRow(
+  rowId: string,
+  rows: AdminSyncRow[],
+  status: PanelStatus | null,
+): string | null {
+  const row = rows.find((r) => r.id === rowId) ?? {
+    id: rowId,
+    label: "",
+    value: "",
+  };
+  const finished = timingForRow(row, status).finished;
+  if (rowId !== "incremental" || !status) return finished;
+  const upserts = status.lastIncrementalUpserts;
+  return pickLaterIso(
+    finished,
+    upserts?.ok === true ? upserts.finishedAt : null,
   );
 }
 
@@ -751,13 +849,67 @@ function runLogMatchesRow(row: AdminSyncRow, snapshot: SyncRunLogSnapshot): bool
   return false;
 }
 
+function pickLaterIso(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  const am = parseIsoMs(a);
+  const bm = parseIsoMs(b);
+  if (am == null && bm == null) return a ?? b ?? null;
+  if (am == null) return b ?? null;
+  if (bm == null) return a ?? null;
+  return am >= bm ? (a ?? null) : (b ?? null);
+}
+
+function dropClientTiming(
+  prev: Partial<Record<string, SyncTiming>>,
+  rowId: string,
+): Partial<Record<string, SyncTiming>> {
+  if (!(rowId in prev)) return prev;
+  const next = { ...prev };
+  delete next[rowId];
+  return next;
+}
+
 function timingWithLogFallback(
   row: AdminSyncRow,
   status: PanelStatus | null,
   runTimings: Partial<Record<string, SyncTiming>>,
   runSnapshot: SyncRunLogSnapshot | null,
 ): SyncTiming {
-  const base = runTimings[row.id] ?? timingForRow(row, status);
+  const client = runTimings[row.id];
+  const server = timingForRow(row, status);
+
+  // Incremental End lives in Neon. A failed Sync now used to freeze Start=End
+  // in localStorage and hide later Railway finishes (pink "BROKEN" all day).
+  if (row.id === "incremental" && client) {
+    const clientStartMs = parseIsoMs(client.started);
+    const serverEndMs = parseIsoMs(server.finished);
+    const clientStartEqEnd =
+      client.finished != null &&
+      client.started != null &&
+      Math.abs(
+        (parseIsoMs(client.finished) ?? 0) - (parseIsoMs(client.started) ?? 0),
+      ) < 60_000;
+    const inFlightOverlay =
+      client.finished == null &&
+      clientStartMs != null &&
+      (serverEndMs == null || clientStartMs > serverEndMs);
+    if (inFlightOverlay) {
+      return {
+        started: pickLaterIso(client.started, server.started) ?? client.started,
+        finished: null,
+      };
+    }
+    return {
+      started: pickLaterIso(client.started, server.started),
+      finished: clientStartEqEnd
+        ? server.finished
+        : pickLaterIso(client.finished, server.finished),
+    };
+  }
+
+  const base = client ?? server;
   if (base.finished || !runSnapshot?.finishedAt) return base;
   if (!runLogMatchesRow(row, runSnapshot)) return base;
   return {
@@ -1110,13 +1262,6 @@ const FULL_RESYNC_SUBSTEP_ROWS = new Set([
   "deal-of-the-day",
 ]);
 
-/**
- * Railway mls-sync heartbeat fresher than this ⇒ process / pull is alive.
- * Heartbeat is pulsed ~60s during a run; keep a cushion so a missed pulse
- * during a long RETS town does not flash BROKEN.
- */
-const RAILWAY_HEARTBEAT_FRESH_MS = 15 * 60 * 1000;
-
 type SyncRowVisualStatus = "running" | "ok" | "alert" | "idle";
 
 function parseIsoMs(iso: string | null | undefined): number | null {
@@ -1450,11 +1595,21 @@ export default function AdminSyncTable({
   // lazy initializer would diverge and trip a hydration mismatch.
   const storageHydratedRef = useRef(false);
   // Errors are persisted to localStorage so error text and red row backgrounds
-  // survive page refreshes. Cleared automatically when a new sync starts on that row.
+  // survive page refreshes. Cleared when a new sync starts on that row, when
+  // the click succeeds, and when server End moves past the error (Railway /
+  // background finish).
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
+  const errorAtRef = useRef<Partial<Record<string, number>>>({});
   useEffect(() => {
     if (!storageHydratedRef.current) return;
-    try { localStorage.setItem("admin-sync-errors", JSON.stringify(errors)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(
+        "admin-sync-errors",
+        serializeStoredSyncErrors(errors, errorAtRef.current),
+      );
+    } catch {
+      /* ignore */
+    }
   }, [errors]);
   const [descriptions, setDescriptions] = useState<Partial<Record<string, string>>>({});
   // Persisted final status per row — survives page reloads via localStorage.
@@ -1543,7 +1698,11 @@ export default function AdminSyncTable({
   useEffect(() => {
     try {
       const rawErrors = localStorage.getItem("admin-sync-errors");
-      if (rawErrors) setErrors(JSON.parse(rawErrors) as Partial<Record<string, string>>);
+      if (rawErrors) {
+        const parsed = parseStoredSyncErrors(rawErrors);
+        errorAtRef.current = parsed.atMs;
+        setErrors(parsed.errors);
+      }
     } catch { /* ignore */ }
     try {
       const rawFinal = localStorage.getItem("admin-sync-final-statuses");
@@ -1658,6 +1817,57 @@ export default function AdminSyncTable({
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (!storageHydratedRef.current) return;
+    const nextAt = { ...errorAtRef.current };
+    const nowMs = Date.now();
+    for (const [id, text] of Object.entries(errors)) {
+      if (!text) {
+        delete nextAt[id];
+        continue;
+      }
+      if (nextAt[id] == null) nextAt[id] = nowMs;
+    }
+    for (const id of Object.keys(nextAt)) {
+      if (!errors[id]) delete nextAt[id];
+    }
+    errorAtRef.current = nextAt;
+  }, [errors]);
+
+  useEffect(() => {
+    if (!storageHydratedRef.current || !status) return;
+    const ids = Object.keys(errors).filter((id) => Boolean(errors[id]));
+    if (ids.length === 0) return;
+    const nowMs = Date.now();
+    const toClear: string[] = [];
+    for (const id of ids) {
+      if (
+        shouldClearErrorAfterCleanFinish({
+          errorAtMs: errorAtRef.current[id],
+          finishedAt: finishedAtForErrorRow(id, rows, status),
+          nowMs,
+        })
+      ) {
+        toClear.push(id);
+      }
+    }
+    if (toClear.length === 0) return;
+    for (const id of toClear) {
+      delete errorAtRef.current[id];
+      clearPendingRetry(id);
+    }
+    setErrors((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of toClear) {
+        if (next[id] == null) continue;
+        delete next[id];
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [status, errors, rows, clearPendingRetry]);
 
   useEffect(() => {
     return () => {
@@ -2060,13 +2270,17 @@ export default function AdminSyncTable({
                 status: errText,
                 error: errText,
               });
-              setRunTimings((prev) => ({
-                ...prev,
-                [row.id]: {
-                  started: body.startedAt ?? startedAt,
-                  finished: body.finishedAt ?? new Date().toISOString(),
-                },
-              }));
+              setRunTimings((prev) =>
+                row.id === "incremental"
+                  ? dropClientTiming(prev, row.id)
+                  : {
+                      ...prev,
+                      [row.id]: {
+                        started: body.startedAt ?? startedAt,
+                        finished: body.finishedAt ?? new Date().toISOString(),
+                      },
+                    },
+              );
               const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
               if (attemptsLeft <= 0) break;
               markRetryWait(errText, attempt);
@@ -2134,10 +2348,17 @@ export default function AdminSyncTable({
               status: errText,
               error: errText,
             });
-            setRunTimings((prev) => ({
-              ...prev,
-              [row.id]: { started: startedAt, finished: new Date().toISOString() },
-            }));
+            setRunTimings((prev) =>
+              row.id === "incremental"
+                ? dropClientTiming(prev, row.id)
+                : {
+                    ...prev,
+                    [row.id]: {
+                      started: startedAt,
+                      finished: new Date().toISOString(),
+                    },
+                  },
+            );
             const attemptsLeft = SYNC_MAX_ATTEMPTS - attempt;
             if (attemptsLeft <= 0) break;
             markRetryWait(errText, attempt);
@@ -2378,13 +2599,17 @@ export default function AdminSyncTable({
             const stepErr = formatSyncError(res, body, label);
             lastStepErr = stepErr;
             if (rowId) {
-              setRunTimings((prev) => ({
-                ...prev,
-                [rowId]: {
-                  started: body.startedAt ?? startedAt,
-                  finished: body.finishedAt ?? new Date().toISOString(),
-                },
-              }));
+              setRunTimings((prev) =>
+                rowId === "incremental"
+                  ? dropClientTiming(prev, rowId)
+                  : {
+                      ...prev,
+                      [rowId]: {
+                        started: body.startedAt ?? startedAt,
+                        finished: body.finishedAt ?? new Date().toISOString(),
+                      },
+                    },
+              );
             }
             appendRunLog({
               id: `sync-all-${actionId}-${stepT0}-a${attempt}`,
@@ -2928,18 +3153,39 @@ export default function AdminSyncTable({
                     ingressMs != null && nowMs - ingressMs >= HANG_THRESHOLD_MS
                   );
                 })();
-              // End missing or older than ~70m = Incremental is not delivering —
-              // surface pink even under EventBridge (AWS fire ≠ finished RETS).
-              const incrementalEndBroken =
-                row.id === "incremental" &&
-                !incrementalRunningNow &&
-                (() => {
-                  const endMs = parseIsoMs(timing.finished);
-                  if (endMs == null) return true;
-                  return nowMs - endMs >= 70 * 60 * 1000;
-                })();
+              const incrementalScheduler: IncrementalHealthScheduler =
+                incrementalOnRailway
+                  ? "railway"
+                  : incrementalOnEventBridge
+                    ? "eventbridge"
+                    : "netlify";
+              const incrementalHealth =
+                row.id === "incremental"
+                  ? evaluateIncrementalHealth({
+                      scheduler: incrementalScheduler,
+                      heartbeatAt: status?.lastMlsSyncHeartbeat,
+                      finishedAt: timing.finished,
+                      startedAt: timing.started,
+                      nowMs,
+                      openStartMaxMs: HANG_THRESHOLD_MS,
+                      liveInFlight: incrementalRunningNow,
+                    })
+                  : null;
+              const incrementalEndBroken = Boolean(
+                incrementalHealth?.inventoryStale && !incrementalRunningNow,
+              );
+              const railwayHeartbeatAlive = Boolean(
+                incrementalOnRailway && incrementalHealth?.processAlive,
+              );
+              const railwayInPull = Boolean(
+                incrementalOnRailway && incrementalHealth?.inPull,
+              );
+              const doorbellErrorOnly =
+                incrementalOnRailway &&
+                railwayHeartbeatAlive &&
+                isMlsSyncDoorbellError(rowError);
               // Configure is schedule/setup only — no live status colors.
-              const visual = isConfigure
+              const visualResolved = isConfigure
                 ? ("idle" as const)
                 : resolveSyncRowVisualStatus({
                     row,
@@ -2950,27 +3196,25 @@ export default function AdminSyncTable({
                     isRunning:
                       isRunning ||
                       isWaiting ||
-                      (row.id === "incremental" &&
-                        Boolean(
-                          (() => {
-                            const hb = parseIsoMs(status?.lastMlsSyncHeartbeat);
-                            return (
-                              jobSchedule != null &&
-                              resolveJobScheduler(jobSchedule) === "railway" &&
-                              hb != null &&
-                              nowMs - hb < RAILWAY_HEARTBEAT_FRESH_MS
-                            );
-                          })(),
-                        )),
+                      railwayInPull,
                     syncAllRunning,
                     fullResyncInProgress,
-                    error: rowError,
+                    error: doorbellErrorOnly ? undefined : rowError,
                     nowMs,
                     ignoreTimingHang:
                       incrementalOnEventBridge || incrementalOnRailway,
-                    forceAlert:
-                      incrementalEndBroken || eventBridgeQueuedStale,
+                    forceAlert: incrementalOnRailway
+                      ? incrementalHealth?.process === "dead"
+                      : incrementalEndBroken || eventBridgeQueuedStale,
                   });
+              // Stale End with a live Railway process is not success — keep the
+              // row uncolored (STALE in Status) instead of sage green.
+              const visual =
+                visualResolved === "ok" &&
+                incrementalOnRailway &&
+                incrementalEndBroken
+                  ? ("idle" as const)
+                  : visualResolved;
               const scheduleBreached =
                 isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
                 isFinishPastCadence(
@@ -2986,6 +3230,7 @@ export default function AdminSyncTable({
               const rowHung =
                 !incrementalRunningNow &&
                 !incrementalOnEventBridge &&
+                !incrementalOnRailway &&
                 (isTimingHung(timing, nowMs) ||
                   (row.id === "refresh-finished" &&
                     Boolean(status?.refreshing)));
@@ -3042,19 +3287,6 @@ export default function AdminSyncTable({
               })();
 
               /** Railway mls-sync heartbeat — peace of mind when Scheduler is Railway. */
-              const railwayHeartbeatMs = parseIsoMs(status?.lastMlsSyncHeartbeat);
-              const railwayStartMs = parseIsoMs(timing.started);
-              const railwayEndMs = parseIsoMs(timing.finished);
-              const railwayOpenStart =
-                incrementalOnRailway &&
-                railwayStartMs != null &&
-                (railwayEndMs == null || railwayStartMs > railwayEndMs) &&
-                nowMs - railwayStartMs < HANG_THRESHOLD_MS;
-              const railwayHeartbeatFresh =
-                incrementalOnRailway &&
-                ((railwayHeartbeatMs != null &&
-                  nowMs - railwayHeartbeatMs < RAILWAY_HEARTBEAT_FRESH_MS) ||
-                  railwayOpenStart);
               const railwayPulseLine = (() => {
                 if (!incrementalOnRailway) return null;
                 if (!status?.lastMlsSyncHeartbeat) {
@@ -3068,33 +3300,26 @@ export default function AdminSyncTable({
 
               /** Single truth strip when Incremental Scheduler = Railway. */
               const railwayTruthStrip = (() => {
-                if (!incrementalOnRailway) return null;
-                const hb =
-                  railwayPulseLine ?? "heartbeat missing";
-                const endAge = timing.finished
+                if (!incrementalOnRailway || !incrementalHealth) return null;
+                const heartbeatLabel = status?.lastMlsSyncHeartbeat
+                  ? `heartbeat ${
+                      formatAgeAgo(status.lastMlsSyncHeartbeat, nowMs) ??
+                      formatTimestamp(status.lastMlsSyncHeartbeat)
+                    }`
+                  : "heartbeat missing";
+                const endLabel = timing.finished
                   ? formatAgeAgo(timing.finished, nowMs) ??
                     formatTimestamp(timing.finished)
                   : "missing";
-                const upsertLabel =
-                  status?.lastIncrementalUpsertsLabel?.trim() || null;
-                const bits = [
-                  "Railway",
-                  hb,
-                  `End ${endAge}`,
-                ];
-                if (upsertLabel) bits.push(upsertLabel);
-                if (railwayHeartbeatFresh || railwayOpenStart) {
-                  bits.unshift("RUNNING");
-                } else if (!timing.finished || incrementalEndBroken) {
-                  bits.unshift("BROKEN");
-                }
-                const live =
-                  status?.incrementalLiveStatus ??
-                  formatIncrementalSyncLiveStatus(status?.incrementalLive);
-                if (live && (railwayHeartbeatFresh || railwayOpenStart)) {
-                  bits.push(live);
-                }
-                return bits.join(" · ");
+                return formatRailwayHealthStrip({
+                  health: incrementalHealth,
+                  heartbeatLabel,
+                  endLabel,
+                  upsertLabel: status?.lastIncrementalUpsertsLabel,
+                  liveStatus:
+                    status?.incrementalLiveStatus ??
+                    formatIncrementalSyncLiveStatus(status?.incrementalLive),
+                });
               })();
 
               const statusText = (() => {
@@ -3118,7 +3343,7 @@ export default function AdminSyncTable({
                   isRunning ||
                   syncAllRunning ||
                   incrementalRunningNow ||
-                  railwayHeartbeatFresh ||
+                  railwayInPull ||
                   visionLiveFresh
                 ) {
                   if (row.id === "incremental" && railwayTruthStrip) {
@@ -3883,13 +4108,13 @@ export default function AdminSyncTable({
                             isRunning ||
                             syncAllRunning ||
                             incrementalRunningNow ||
-                            railwayHeartbeatFresh
+                            railwayInPull
                           }
                           isWaiting={isWaiting}
                           allowWrap={
                             rowExpands ||
                             incrementalRunningNow ||
-                            railwayHeartbeatFresh ||
+                            railwayInPull ||
                             eventBridgeQueuedNoEnd
                           }
                         />

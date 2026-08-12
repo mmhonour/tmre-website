@@ -25,6 +25,9 @@ export async function GET(req: NextRequest) {
     const lastIncrementalSync =
       (await getSyncMetaFresh('last_incremental_sync')) ??
       getSyncMeta('last_incremental_sync')
+    const lastMlsSyncHeartbeat =
+      (await getSyncMetaFresh('last_mls_sync_heartbeat')) ??
+      getSyncMeta('last_mls_sync_heartbeat')
     const lastFullSync =
       (await getSyncMetaFresh('last_full_sync')) ?? getSyncMeta('last_full_sync')
     return NextResponse.json(
@@ -34,6 +37,7 @@ export async function GET(req: NextRequest) {
         townStats,
         since,
         lastIncrementalSync,
+        lastMlsSyncHeartbeat,
         lastFullSync,
         generatedAt: new Date().toISOString(),
       },

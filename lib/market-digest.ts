@@ -41,7 +41,8 @@ import {
   defaultMarketPulseCombinedRows,
   marketPulseAllTownsAvgDom,
 } from '@/lib/market-pulse-combined-rows'
-import { DEFAULT_MARKET_PULSE_LOOKBACK_ID } from '@/lib/market-pulse-lookback'
+import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
+import { marketPulseStackedMetrics } from '@/lib/market-pulse-stacked-metrics'
 import {
   avgMonthlyClosingsFromClosed,
   computeMonthsSupplyRatio,
@@ -693,6 +694,9 @@ export function formatMarketDigestEmail(
     `Avg days on market:  ${allDom != null ? Math.round(allDom) : 'n/a'}`,
   ]
 
+  const stackedMetrics = marketPulseStackedMetrics(
+    marketPulseLookbackChartLabel(DEFAULT_MARKET_PULSE_LOOKBACK_ID),
+  )
   const stackedLines = [
     'TOWN METRICS STACKED (sales · Seller Friendly)',
     '---------------------------------------------',
@@ -702,17 +706,12 @@ export function formatMarketDigestEmail(
           const city = row.city.trim() || '—'
           return [
             city,
-            `  Inventory      ${row.activeCount ?? '—'}`,
-            `  Months supply  ${fmtMonthsSupply(row.monthsSupply)}`,
-            `  Avg DOM        ${row.avgDaysOnMarket != null ? `${Math.round(row.avgDaysOnMarket)}d` : '—'}`,
-            `  Closed (${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} mo) ${row.closedCount ?? '—'}`,
-            `  Median price   ${fmtMoney(row.medianPrice)}`,
-            `  Average price  ${fmtMoney(row.averagePrice)}`,
+            ...stackedMetrics.map((m) => `  ${m.label.padEnd(16)} ${m.format(row)}`),
           ]
         })),
     '',
     'MOS = active ÷ avg monthly closings (3 prior full months).',
-    'Same defaults as /market-pulse (stacked · Seller Friendly · ALL · 24 mo closed).',
+    `Same defaults as /market-pulse (${filterSummary}).`,
   ]
 
   const dealLines: string[] = ['DEAL OF THE WEEK', '----------------']

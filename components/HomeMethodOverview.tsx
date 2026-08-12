@@ -15,19 +15,22 @@ import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 /**
  * Hero score ↔ interesting-stat beat (one town at a time).
- * Sequential handoff (not a simultaneous crossfade) — same on every viewport:
+ *
+ * Desktop (lg+): sequential handoff —
  *   score hold → stat fades up/in (score stays) → then score fades out →
  *   stat hold → next town’s score fades in (stat stays) → then stat fades out.
- * Left (score) / right (stat) panes everywhere. Narrow viewports use longer
- * holds so the handoff stays readable (must match hero layout < lg, not < sm).
+ *
+ * Mobile (< lg): score and stat share the screen for the same town, then
+ * both fade out and the next town’s pair fades in together.
+ *
+ * Narrow viewports use longer fades/holds (must match hero layout < lg, not < sm).
  */
 const HERO_FADE_MS = 2_100; // desktop (lg+) fade-ins / fade-outs
 const HERO_SCORE_HOLD_MS = 2_600;
 const HERO_STAT_HOLD_MS = 3_200;
-/** Narrow: same sequence, slower — small type + stacked hero need more dwell. */
 const HERO_FADE_MS_MOBILE = 3_400;
-const HERO_SCORE_HOLD_MS_MOBILE = 5_200;
-const HERO_STAT_HOLD_MS_MOBILE = 6_000;
+/** Both score + stat stay on screen together before the next town. */
+const HERO_TOGETHER_HOLD_MS_MOBILE = 7_200;
 /** Match `lg:` layout breakpoint — below this the hero is still “mobile.” */
 const HERO_NARROW_MQ = "(max-width: 1023px)";
 
@@ -496,7 +499,8 @@ export default function HomeMethodOverview({
   const interestingStatRef = useRef(interestingStat);
   interestingStatRef.current = interestingStat;
 
-  // Sequential: score hold → stat in → score out → stat hold → next score in → stat out.
+  // Desktop: score hold → stat in → score out → stat hold → next score in → stat out.
+  // Mobile: both stay for one town, then fade together into the next.
   useEffect(() => {
     if (samples.length === 0) return;
 
@@ -506,12 +510,9 @@ export default function HomeMethodOverview({
     // Skip fades when reduced-motion is on, but keep the same dwell as the
     // viewport — otherwise iOS “Reduce Motion” made mobile feel rushed.
     const fadeMs = reduceMotion ? 0 : heroFadeMs;
-    const scoreHoldMs = heroIsMobile
-      ? HERO_SCORE_HOLD_MS_MOBILE
-      : HERO_SCORE_HOLD_MS;
-    const statHoldMs = heroIsMobile
-      ? HERO_STAT_HOLD_MS_MOBILE
-      : HERO_STAT_HOLD_MS;
+    const scoreHoldMs = HERO_SCORE_HOLD_MS;
+    const statHoldMs = HERO_STAT_HOLD_MS;
+    const togetherHoldMs = HERO_TOGETHER_HOLD_MS_MOBILE;
 
     let cancelled = false;
     let timer: number | null = null;
@@ -526,6 +527,28 @@ export default function HomeMethodOverview({
         samples.length <= 1 ? 0 : (i + 1) % samples.length,
       );
     };
+
+    if (heroIsMobile) {
+      if (heroBeat === "score-in" || heroBeat === "score-in-next") {
+        setPinnedStat(null);
+        schedule(Math.max(fadeMs, 40), () => setHeroBeat("score-hold"));
+      } else if (
+        heroBeat === "score-hold" ||
+        heroBeat === "stat-in" ||
+        heroBeat === "stat-hold"
+      ) {
+        schedule(togetherHoldMs, () => setHeroBeat("score-out"));
+      } else {
+        schedule(Math.max(fadeMs, 40), () => {
+          advanceTown();
+          setHeroBeat("score-in");
+        });
+      }
+      return () => {
+        cancelled = true;
+        if (timer != null) window.clearTimeout(timer);
+      };
+    }
 
     if (heroBeat === "score-in") {
       setPinnedStat(null);
@@ -571,6 +594,32 @@ export default function HomeMethodOverview({
   const [statLit, setStatLit] = useState(false);
   useEffect(() => {
     let id: number | null = null;
+    if (heroIsMobile) {
+      const fadingIn = heroBeat === "score-in" || heroBeat === "score-in-next";
+      const fadingOut = heroBeat === "score-out" || heroBeat === "stat-out";
+      if (fadingIn) {
+        setScoreLit(false);
+        setStatLit(false);
+        id = window.setTimeout(() => {
+          setScoreLit(true);
+          setStatLit(true);
+        }, 40);
+      } else if (fadingOut) {
+        setScoreLit(true);
+        setStatLit(true);
+        id = window.setTimeout(() => {
+          setScoreLit(false);
+          setStatLit(false);
+        }, 40);
+      } else {
+        setScoreLit(true);
+        setStatLit(true);
+      }
+      return () => {
+        if (id != null) window.clearTimeout(id);
+      };
+    }
+
     if (heroBeat === "score-in" || heroBeat === "score-in-next") {
       setScoreLit(false);
       id = window.setTimeout(() => setScoreLit(true), 40);
@@ -611,7 +660,7 @@ export default function HomeMethodOverview({
     return () => {
       if (id != null) window.clearTimeout(id);
     };
-  }, [heroBeat]);
+  }, [heroBeat, heroIsMobile]);
 
   const scoreOpaque = scoreLit;
   const statOpaque = Boolean(displayStat) && statLit;
@@ -689,8 +738,8 @@ export default function HomeMethodOverview({
                   Actual home · rotating towns
                 </p>
                 {/*
-                  Mobile + desktop: left (score) / right (stat). Score fades out
-                  while the same-town stat fades up and in on the right.
+                  Left (score) / right (stat). Mobile: both stay for the same
+                  town, then fade together. Desktop: score hands off to stat.
                 */}
                 <div className="grid w-full min-w-0 min-h-[11.5rem] grid-cols-2 items-stretch gap-3 sm:min-h-[16.5rem] sm:gap-6 lg:min-h-[18rem] lg:gap-8">
                   <div

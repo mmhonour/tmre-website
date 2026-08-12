@@ -104,7 +104,7 @@ async function executeIncremental(options: {
   await hydrateSyncMetaStore()
   await stampHeartbeat(options.startedAt)
   // Keep Neon heartbeat fresh during long RETS pulls so Admin does not flash
-  // BROKEN after the 4–15m UI window while the run is still in flight.
+  // BROKEN while the run is still in flight (idle pulse is paused then).
   const pulse = setInterval(() => {
     void stampHeartbeat(new Date().toISOString()).catch((err) => {
       console.warn('[mls-sync] heartbeat pulse failed', err)
@@ -261,4 +261,12 @@ server.listen(PORT, () => {
   setInterval(() => {
     startRun({ startedAt: new Date().toISOString(), source: 'railway' })
   }, INTERVAL_MS)
+  // Process-alive signal between pulls. In-run pulse already stamps ~60s;
+  // skip while a pull is in flight so we do not double-write.
+  setInterval(() => {
+    if (runInFlight) return
+    void stampHeartbeat(new Date().toISOString()).catch((err) => {
+      console.warn('[mls-sync] idle heartbeat failed', err)
+    })
+  }, 60_000)
 })

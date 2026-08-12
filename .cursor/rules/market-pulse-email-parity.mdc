@@ -1,0 +1,32 @@
+---
+description: Market Pulse email must match /market-pulse page-load defaults
+globs: components/WeeklyBriefContent.tsx,components/MarketPulseContent.tsx,lib/market-pulse*.ts,lib/market-digest*.ts,lib/market-digest-html.ts,app/market-pulse/**
+alwaysApply: false
+---
+
+# Market Pulse email = page-load defaults
+
+Whenever `/market-pulse` default view changes, update the Monday digest in the **same change** so email matches what a visitor sees on first load — not a custom Filters session.
+
+## Page-load defaults (do not fork)
+
+Defined in `lib/market-pulse-defaults.ts` + `lib/market-pulse-lookback.ts`:
+
+- Property type: **ALL** (sales)
+- Layout: **stacked** (`DEFAULT_MARKET_PULSE_CHART_LAYOUT`)
+- Sort: **Seller Friendly** (`DEFAULT_MARKET_PULSE_FAVOR_SORT`)
+- Closed lookback: **24 mos** (`DEFAULT_MARKET_PULSE_LOOKBACK_ID`)
+- Stacked metrics: `marketPulseStackedMetrics()` in `lib/market-pulse-stacked-metrics.ts`
+
+Email HTML (`lib/market-digest-html.ts`) and plaintext (`formatMarketDigestEmail` in `lib/market-digest.ts`) must use:
+
+- `summarizeMarketPulseFilters({ selectionLabel: 'ALL', chartLayout: DEFAULT_…, favorSort: DEFAULT_…, lookbackId: DEFAULT_… })`
+- `defaultMarketPulseCombinedRows(snapshot)` (Seller Friendly composite order)
+- The **same stacked metric list** via `marketPulseStackedMetrics()` — do not keep a second metric array in the email templates
+
+## Checklist in the same PR/change
+
+1. New default filter, KPI, or stacked bar on the page? → HTML + plaintext email.
+2. New stacked metric? → add it only in `lib/market-pulse-stacked-metrics.ts`, then wire web chrome (colors) and email hex colors.
+3. Filter summary sentence changed? → email uses `summarizeMarketPulseFilters`, so keep that helper as the one-liner.
+4. Unstacked-only or in-session Filters (Buyer Friendly, lookback, property type) stay **off** the email unless they become the page-load default.

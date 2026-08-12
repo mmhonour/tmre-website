@@ -12,7 +12,12 @@ import {
 } from "@/lib/admin-sync-schedule-format";
 import { SCHEDULED_SYNC_JOB_BY_ROW } from "@/lib/scheduled-sync-jobs";
 import {
+  evaluateIncrementalHealth,
+  isMlsSyncDoorbellError,
+} from "@/lib/incremental-sync-health";
+import {
   orderNumberByRow,
+  resolveJobScheduler,
   type SyncScheduleConfig,
 } from "@/lib/sync-schedule-config-shared";
 
@@ -173,23 +178,33 @@ export default function AdminSyncMobileHeatmap({
           (row.actionId != null && runningId === row.actionId) ||
           (row.id === "incremental" &&
             Boolean(status?.incrementalLiveStatus || status?.incrementalLive));
-        const hbMs = parseIsoMs(status?.lastMlsSyncHeartbeat);
-        const railwayFresh =
-          row.id === "incremental" &&
-          hbMs != null &&
-          nowMs - hbMs < 4 * 60 * 1000;
-        const endBroken =
-          row.id === "incremental" &&
-          !isRunning &&
-          (() => {
-            const endMs = parseIsoMs(finished);
-            if (endMs == null) return true;
-            return nowMs - endMs >= 70 * 60 * 1000;
-          })();
+        const incrementalHealth =
+          row.id === "incremental"
+            ? evaluateIncrementalHealth({
+                scheduler: resolveJobScheduler(
+                  scheduleConfig.jobs.incremental,
+                ),
+                heartbeatAt: status?.lastMlsSyncHeartbeat,
+                finishedAt: finished,
+                nowMs,
+                liveInFlight: isRunning,
+              })
+            : null;
+        const doorbellOnly =
+          incrementalHealth?.processAlive === true &&
+          isMlsSyncDoorbellError(err);
 
         let visual: Visual = "idle";
-        if (isRunning || railwayFresh) visual = "running";
-        else if (err || endBroken) visual = "alert";
+        if (isRunning || incrementalHealth?.inPull) visual = "running";
+        else if (incrementalHealth) {
+          visual = doorbellOnly
+            ? incrementalHealth.row === "alert"
+              ? "idle"
+              : incrementalHealth.row
+            : err
+              ? "alert"
+              : incrementalHealth.row;
+        } else if (err) visual = "alert";
         else if (finished && row.id !== "latest-mls") visual = "ok";
 
         const orderNum =
@@ -257,6 +272,9 @@ export default function AdminSyncMobileHeatmap({
                   <p className="font-mono text-[10px] text-charcoal/65">
                     Railway heartbeat{" "}
                     {formatAgeAgo(status.lastMlsSyncHeartbeat, nowMs)}
+                    {incrementalHealth?.prefix
+                      ? ` · ${incrementalHealth.prefix}`
+                      : ""}
                     {status.lastIncrementalUpsertsLabel
                       ? ` · ${status.lastIncrementalUpsertsLabel}`
                       : ""}

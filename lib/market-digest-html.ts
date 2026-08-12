@@ -4,7 +4,6 @@ import { SITE_URL } from '@/lib/business-info'
 import { fmtMoney } from '@/lib/listing-history'
 import { splitSentences } from '@/lib/split-sentences'
 import {
-  MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
   type MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
 import {
@@ -17,7 +16,11 @@ import {
   marketPulseAllTownsAvgDom,
   type MarketPulseCombinedTownRow,
 } from '@/lib/market-pulse-combined-rows'
-import { DEFAULT_MARKET_PULSE_LOOKBACK_ID } from '@/lib/market-pulse-lookback'
+import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
+import {
+  marketPulseStackedMetrics,
+  type MarketPulseStackedMetricId,
+} from '@/lib/market-pulse-stacked-metrics'
 
 const NAVY = '#1B2A4A'
 const NAVY_DARK = '#131F38'
@@ -31,6 +34,7 @@ const BAR_DOM = '#5B8A72'
 const BAR_CLOSED = '#C45C4A'
 const BAR_MEDIAN = '#6B7C9B'
 const BAR_AVERAGE = '#8B6F4E'
+const BAR_DELTA = '#7A6A8A'
 const WHITE = '#FFFFFF'
 
 function escapeHtml(value: string): string {
@@ -102,7 +106,7 @@ function metricBarRow(
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="72" style="padding:3px 0 3px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:72px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="110" style="padding:3px 0 3px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:110px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
     </tr>`
 }
 
@@ -110,58 +114,35 @@ type StackedMetric = {
   id: string
   label: string
   color: string
-  valueOf: (row: MarketPulseCombinedTownRow) => number | null
-  format: (v: number | null) => string
+  barValueOf: (row: MarketPulseCombinedTownRow) => number | null
+  format: (row: MarketPulseCombinedTownRow) => string
+}
+
+const EMAIL_STACKED_BAR_COLOR: Record<MarketPulseStackedMetricId, string> = {
+  inventory: BAR_INVENTORY,
+  monthsSupply: BAR_MOS,
+  avgDom: BAR_DOM,
+  closed: BAR_CLOSED,
+  medianPrice: BAR_MEDIAN,
+  averagePrice: BAR_AVERAGE,
+  priceDelta: BAR_DELTA,
 }
 
 function stackedTownMetricsSection(
   rows: MarketPulseCombinedTownRow[],
-  closedLookbackMonths: number,
 ): string {
-  const metrics: StackedMetric[] = [
-    {
-      id: 'inventory',
-      label: 'Inventory',
-      color: BAR_INVENTORY,
-      valueOf: (r) => r.activeCount,
-      format: fmtActive,
-    },
-    {
-      id: 'monthsSupply',
-      label: 'Months supply',
-      color: BAR_MOS,
-      valueOf: (r) => r.monthsSupply,
-      format: fmtMosShort,
-    },
-    {
-      id: 'avgDom',
-      label: 'Avg DOM',
-      color: BAR_DOM,
-      valueOf: (r) => r.avgDaysOnMarket,
-      format: fmtDomShort,
-    },
-    {
-      id: 'closed',
-      label: `Closed (${closedLookbackMonths} mo)`,
-      color: BAR_CLOSED,
-      valueOf: (r) => r.closedCount,
-      format: (v) => (v == null ? '—' : Math.round(v).toLocaleString()),
-    },
-    {
-      id: 'medianPrice',
-      label: 'Median price',
-      color: BAR_MEDIAN,
-      valueOf: (r) => r.medianPrice,
-      format: fmtMoney,
-    },
-    {
-      id: 'averagePrice',
-      label: 'Average price',
-      color: BAR_AVERAGE,
-      valueOf: (r) => r.averagePrice,
-      format: fmtMoney,
-    },
-  ]
+  const lookbackLabel = marketPulseLookbackChartLabel(
+    DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  )
+  const metrics: StackedMetric[] = marketPulseStackedMetrics(lookbackLabel).map(
+    (m) => ({
+      id: m.id,
+      label: m.label,
+      color: EMAIL_STACKED_BAR_COLOR[m.id],
+      barValueOf: m.barValueOf,
+      format: m.format,
+    }),
+  )
 
   if (rows.length === 0) {
     return `
@@ -175,7 +156,7 @@ function stackedTownMetricsSection(
     Math.max(
       0,
       ...rows.map((r) => {
-        const v = m.valueOf(r)
+        const v = m.barValueOf(r)
         return v != null && Number.isFinite(v) ? v : 0
       }),
     ),
@@ -192,11 +173,11 @@ function stackedTownMetricsSection(
     .map((row) => {
       const metricRows = metrics
         .map((m, i) => {
-          const v = m.valueOf(row)
+          const v = m.barValueOf(row)
           const max = maxByMetric[i] ?? 0
           const pct =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0
-          return metricBarRow(m.label, m.format(v), pct, m.color)
+          return metricBarRow(m.label, m.format(row), pct, m.color)
         })
         .join('')
       return `
@@ -320,9 +301,9 @@ export type FormatMarketDigestHtmlOptions = {
 }
 
 /**
- * Email-safe HTML for the Monday market brief — mirrors default /market-pulse:
- * stacked town metrics, Seller Friendly order, ALL sales, 24-mo closed lookback,
- * KPIs (Market active / All Towns MOS / Avg DOM), median + average price bars.
+ * Email-safe HTML for the Monday market brief — same as /market-pulse on load:
+ * stacked town metrics (`marketPulseStackedMetrics`), Seller Friendly order,
+ * ALL sales, default closed lookback, KPIs, filter summary sentence.
  */
 export function formatMarketDigestHtml(
   snapshot: MarketDigestSnapshot,
@@ -416,14 +397,11 @@ export function formatMarketDigestHtml(
           <tr>
             <td style="padding:8px 22px 0 22px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${stackedTownMetricsSection(
-                  combinedRows,
-                  MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
-                )}
+                ${stackedTownMetricsSection(combinedRows)}
                 ${dealSection}
                 <tr><td style="padding:0 0 18px 0;">
                   <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.5;color:${SLATE};">
-                    Same defaults as /market-pulse: stacked · Seller Friendly · ALL sales · closed lookback ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} months. MOS = active ÷ avg monthly closings (3 prior full months).
+                    Same defaults as /market-pulse: ${escapeHtml(filterSummary)}. MOS = active ÷ avg monthly closings (3 prior full months).
                   </p>
                 </td></tr>
                 ${socialSection}

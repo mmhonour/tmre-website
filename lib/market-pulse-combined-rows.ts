@@ -8,6 +8,7 @@ import {
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
 } from '@/lib/market-pulse-defaults'
 import { sortRowsByBuyerFriendlyScore } from '@/lib/market-pulse-favorability'
+import { meanMinusMedian } from '@/lib/market-pulse-price-delta'
 import type { MonthsSupplyPayload } from '@/lib/months-supply-types'
 import type { StatsValueCalc } from '@/lib/stats-compute'
 
@@ -19,6 +20,10 @@ export type MarketPulseCombinedTownRow = {
   closedCount: number | null
   medianPrice: number | null
   averagePrice: number | null
+  /** Average − median (dollars). */
+  priceDelta: number | null
+  /** (Average − median) / median × 100. */
+  priceDeltaPct: number | null
   activeCountCalc?: StatsValueCalc
   monthsSupplyCalc?: StatsValueCalc
   avgDaysOnMarketCalc?: StatsValueCalc
@@ -65,6 +70,7 @@ export function buildMarketPulseCombinedTownRows(
     const dom = domBy.get(key)
     const closed = closedBy.get(key)
     const price = priceBy.get(key)
+    const delta = meanMinusMedian(price?.averagePrice, price?.medianPrice)
     return {
       city: row.city,
       activeCount: row.activeCount ?? null,
@@ -73,6 +79,8 @@ export function buildMarketPulseCombinedTownRows(
       closedCount: closed?.count ?? null,
       medianPrice: price?.medianPrice ?? null,
       averagePrice: price?.averagePrice ?? null,
+      priceDelta: delta.dollars,
+      priceDeltaPct: delta.pct,
       activeCountCalc: row.activeCountCalc,
       monthsSupplyCalc: row.monthsSupplyCalc,
       avgDaysOnMarketCalc: dom?.avgDaysOnMarketCalc,

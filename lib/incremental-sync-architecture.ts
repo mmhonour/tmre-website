@@ -84,7 +84,7 @@ export function describeIncrementalSyncArchitecture(): {
         label: 'Railway heartbeat',
         metaKey: 'last_mls_sync_heartbeat',
         meaning:
-          'mls-sync process stamped Neon (boot + each run). Peace-of-mind that Railway is alive — not the same as End advancing with upserts.',
+          'mls-sync process stamped Neon (~60s idle pulse + each run). Peace-of-mind that Railway is alive — not the same as End advancing with upserts. Admin pink BROKEN only when this clock is dead (~45m).',
       },
       {
         id: 'cron-tick',
@@ -128,7 +128,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'admin',
         title: 'You (Admin Dashboard)',
         detail:
-          'Read Start / End / Status / Railway heartbeat / Scheduler. Sync now POSTs Railway /run when Scheduler is Railway (source=admin) — pull stays lean; warm still hands off to Netlify.',
+          'Read Start / End / Status / Railway heartbeat / Scheduler. Pink BROKEN = heartbeat dead (~45m). STALE = process up, End not moving. Sync now doorbell failures (host-only URL) stay in Errors and do not paint the row when heartbeat is live.',
       },
       {
         id: 'configure',
@@ -142,7 +142,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'railway',
         title: 'Railway mls-sync (Lane 1)',
         detail:
-          'Always-on Node (services/mls-sync). Sets MLS_SYNC_SERVICE=1 → runIncrementalSyncListingsWork with postHooks:false. Interval (~30m) + POST /run. Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, NEXT_PUBLIC_SITE_URL (warm handoff).',
+          'Always-on Node (services/mls-sync). Sets MLS_SYNC_SERVICE=1 → runIncrementalSyncListingsWork with postHooks:false. Interval (~30m) + POST /run. Idle heartbeat ~60s so Admin can tell process-up from pull-stale. Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, NEXT_PUBLIC_SITE_URL (warm handoff).',
       },
       {
         id: 'handoff',
@@ -217,7 +217,7 @@ export function describeIncrementalSyncArchitecture(): {
       { from: 'neon', to: 'latest', label: 'Lane 2→public: feed / board read' },
     ],
     notes: [
-      'Lane boundary: MLS_SYNC_SERVICE=1 on Railway forces postHooks:false for every /run (Admin, watchdog, interval) — source alone was not enough.',
+      'Admin Incremental pink = process dead (Railway heartbeat ~45m) or End-broken on legacy Netlify/EB. STALE = process up, End not moving. Overdue Next is never row color. Evaluator: lib/incremental-sync-health.ts.',
       '202 Accepted / warm-handoff failed ≠ inventory loss. Trust End + listings rows; boards rebuild on stale read if the hop fails.',
       'Prefer Configure → Incremental → Railway. Avoid dual-fire with Netlify cron or EventBridge while mls-sync is the clock.',
       'Admin Pause / Next / not-due do not stop Railway’s interval today — Railway is an explicit run. Policy gap tracked separately.',

@@ -10,7 +10,7 @@ Always-on service: **SmartMLS RETS → Neon**. Netlify is **not** in the pull pa
 - Every ~30 minutes (or `MLS_SYNC_INTERVAL_MS`): Incremental pull + upsert
 - `POST /run` (Bearer `SYNC_CRON_SECRET`): Admin **Sync now**
 - `GET /health`: process + Neon End/Start/heartbeat for peace of mind
-- Stamps `last_incremental_sync` / `last_mls_sync_heartbeat` in Neon
+- Stamps `last_incremental_sync` on each finished pull, and `last_mls_sync_heartbeat` ~60s while idle plus during a run
 
 ## Deploy (cheapest path — demain matin)
 

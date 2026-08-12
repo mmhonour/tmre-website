@@ -17,6 +17,38 @@
 
 export type MarketPulseFavorSort = 'default' | 'sellers' | 'buyers'
 
+export type MarketPulseUnstackedMetricId =
+  | 'inventory'
+  | 'monthsSupply'
+  | 'avgDom'
+  | 'closed'
+  | 'medianPrice'
+  | 'averagePrice'
+  | 'priceDelta'
+
+/** Seller-friendly direction per unstacked chart (buyer is the reverse). */
+const SELLER_UNSTACKED_DIR: Record<MarketPulseUnstackedMetricId, 'asc' | 'desc'> =
+  {
+    inventory: 'asc',
+    monthsSupply: 'asc',
+    avgDom: 'asc',
+    closed: 'desc',
+    medianPrice: 'desc',
+    averagePrice: 'desc',
+    priceDelta: 'desc',
+  }
+
+/** Per-chart ASC/DESC when unstacked + Seller/Buyer Friendly. Null = snapshot order. */
+export function unstackedFavorSortDir(
+  favor: MarketPulseFavorSort,
+  metric: MarketPulseUnstackedMetricId,
+): 'asc' | 'desc' | null {
+  if (favor === 'default') return null
+  const seller = SELLER_UNSTACKED_DIR[metric]
+  if (favor === 'sellers') return seller
+  return seller === 'asc' ? 'desc' : 'asc'
+}
+
 /** One town’s inputs for the composite (null = factor unavailable). */
 export type MarketPulseFavorInputs = {
   monthsSupply: number | null | undefined

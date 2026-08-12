@@ -14,6 +14,12 @@ export const DEFAULT_MARKET_PULSE_CHART_LAYOUT: MarketPulseChartLayout =
 /** Default town sort — Seller Friendly (matches email). */
 export const DEFAULT_MARKET_PULSE_FAVOR_SORT: MarketPulseFavorSort = 'sellers'
 
+/**
+ * Page-load defaults. Monday email (HTML + plaintext) must use this same
+ * combination — never a visitor’s in-session Filters (unstacked, Buyer, etc.).
+ * Source of truth: these constants + `marketPulseStackedMetrics()`.
+ */
+
 export function marketPulseFavorSortLabel(
   sort: MarketPulseFavorSort,
 ): string {

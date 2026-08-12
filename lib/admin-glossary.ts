@@ -293,7 +293,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Buyer / Seller Friendly (Market Pulse)',
     category: 'product',
     definition:
-      'Market Pulse town sort for the stacked composite (snapshot order on load — no Default-order pill). Selecting Seller or Buyer Friendly forces STACKED. Unstacked charts sort per metric via ASC/DESC arrows on each title. Composite today: months supply + avg DOM. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units (both derived from Town Stats TBD). Scoring in lib/market-pulse-favorability.ts.',
+      'Market Pulse town sort. Default is Seller Friendly. STACKED uses a composite (months supply + avg DOM). UNSTACKED sorts each chart on its own metric — Seller: DOM ascending, closed sales descending, median/average price descending; Buyer is the reverse. All towns stays on top. Avg − median chart shows mean minus median in $K and as % of median. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units. Scoring in lib/market-pulse-favorability.ts.',
   },
   {
     term: 'Town housing unit count',
@@ -541,7 +541,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'End (Incremental)',
     category: 'sync-admin',
     definition:
-      'Dashboard / /latest “Last pull” clock: when an Incremental RETS pull last finished writing to Neon (sync_meta last_incremental_sync). This is the only success stamp that matters for “are we pulling data?” If End is missing or hours old, treat Incremental as down — even if EventBridge last fired looks recent.',
+      'Dashboard / /latest “Last pull” clock: when an Incremental RETS pull last finished writing to Neon (sync_meta last_incremental_sync). This is the inventory-freshness stamp. EventBridge “last fired” is not a substitute. On Railway, a live heartbeat with a stale End is STALE (process up, pull not finishing) — not the same as BROKEN (process dead).',
   },
   {
     term: 'End wipe',
@@ -556,16 +556,22 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Cleanup when Admin shows a stuck “queued” or open Start after AWS/Netlify accepted a job but no End arrived — clear the stale “in progress” flags and mark ingress as orphaned so the row is not pink forever. Healing the UI is not the same as pulling MLS data; Sync now or the watchdog must still run a real finish. See Watchdog (sync).',
   },
   {
+    term: 'Incremental health split',
+    category: 'sync-admin',
+    definition:
+      'Two clocks, not one. Process = last_mls_sync_heartbeat (Railway mls-sync up?). Inventory = last_incremental_sync End (did a pull finish?). Pink BROKEN is process-dead on Railway (~45m without heartbeat) or End-broken on legacy Netlify/EventBridge. Live process + old End is STALE, not pink. Overdue Next is text, not row color. Shared evaluator: lib/incremental-sync-health.ts. See Hard broken state (BROKEN), End (Incremental), Railway mls-sync.',
+  },
+  {
     term: 'Hard broken state (BROKEN)',
     category: 'sync-admin',
     definition:
-      'Admin Incremental Status when End is missing or older than ~70 minutes (or AWS queued with no End past the hang window). Pink alert on purpose: do not read “Idle” as healthy. Means we are not finishing pulls into Neon. Operator action: Sync now, then confirm End moved and a known new MLS# appears.',
+      'Admin Incremental pink row. EventBridge/Netlify: End missing or older than ~70 minutes, or AWS queued with no End past the hang window. Railway: pink only when last_mls_sync_heartbeat is older than ~45 minutes (process dead). A live heartbeat with a stale End is Status STALE, not pink. Overdue Next is clock text, not row color. Operator: if BROKEN, check Railway deploy /health; if STALE, the puller is up but last_incremental_sync is not moving — Sync now after MLS_SYNC_SERVICE_URL is https://…, then confirm End moved.',
   },
   {
     term: 'Last pull (Latest page)',
     category: 'sync-admin',
     definition:
-      '/latest header label for End (last_incremental_sync) only. Must not fall back to last full sync — that hid a broken Incremental behind a July date. If End is null, the page should say Last pull MISSING, not invent an old time. “Newest MLS update” is a different clock (listing event times in the feed), not proof of a fresh pull.',
+      '/latest header label for End (last_incremental_sync) only. Must not fall back to last full sync — that hid a broken Incremental behind a July date. Missing End → Last pull MISSING. End older than ~70m → Last pull {age} · stale (not “broken”). Fresh End → Last pull {age}. “Newest MLS update” is a different clock (listing event times in the feed), not proof of a fresh pull.',
   },
   {
     term: 'Smoke test (sync)',
