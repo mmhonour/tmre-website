@@ -1047,7 +1047,11 @@ async function runAdminSyncActionImpl(
     }
     case 'vision-addresses': {
       const { syncVisionAddresses } = await import('@/lib/vision-gis-sync')
-      const result = await syncVisionAddresses()
+      // Admin / Netlify default chunk 40 (safe). Override with VISION_SYNC_MAX_PARCELS.
+      const maxRaw = Number(process.env.VISION_SYNC_MAX_PARCELS ?? '')
+      const maxParcels =
+        Number.isFinite(maxRaw) && maxRaw > 0 ? Math.min(maxRaw, 200) : 40
+      const result = await syncVisionAddresses({ maxParcels })
       return {
         ok: result.ok,
         action,
@@ -1483,6 +1487,14 @@ export async function readAdminSyncPanelStatus() {
     formatIncrementalUpsertStats(lastIncrementalUpserts) ??
     upsertLabelFromStepSummary(incrementalStepLog?.summary)
 
+  const {
+    readVisionAddressesLiveProgress,
+    formatVisionAddressesLiveProgress,
+  } = await import('@/lib/vision-gis-sync')
+  const visionAddressesLive = readVisionAddressesLiveProgress()
+  const visionAddressesLiveStatus =
+    formatVisionAddressesLiveProgress(visionAddressesLive)
+
   return {
     stats,
     refresh,
@@ -1504,5 +1516,7 @@ export async function readAdminSyncPanelStatus() {
     lastIncrementalUpserts,
     lastIncrementalUpsertsLabel,
     incrementalUpsertHistory,
+    visionAddressesLive,
+    visionAddressesLiveStatus,
   }
 }

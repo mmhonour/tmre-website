@@ -14,6 +14,9 @@ export type AdminSyncPanelRowId =
   | 'cpi-sync'
   | 'market-digest'
 
+/** Wall clocks on Admin Sync (Start / End / Next / schedules). */
+export const ADMIN_SYNC_TZ = 'America/New_York'
+
 /** Order column label — 3a/3b keep Goldilocks + Edge as one conceptual step pair. */
 export function adminSyncOrderDisplay(
   rowId: string,
@@ -25,7 +28,69 @@ export function adminSyncOrderDisplay(
   return String(orderNumber)
 }
 
-/** Format next sync time; includes weekday + date when more than 24h away. */
+function parseIsoDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+/** Full timestamp for tooltips / status lines: `Mar 12, 2026, 10:47 AM ET`. */
+export function formatAdminSyncTimestamp(iso: string | null | undefined): string {
+  const date = parseIsoDate(iso)
+  if (!date) return '—'
+  const clock = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: ADMIN_SYNC_TZ,
+  }).format(date)
+  return `${clock} ET`
+}
+
+/** Compact clock for Start / End / Next cells: `10:47 AM ET`. */
+export function formatAdminSyncTimeOnly(iso: string | null | undefined): string {
+  const date = parseIsoDate(iso)
+  if (!date) return '—'
+  const clock = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: ADMIN_SYNC_TZ,
+  }).format(date)
+  return `${clock} ET`
+}
+
+/** Short calendar date in Eastern: `Mar 12, 2026`. */
+export function formatAdminSyncDateShort(iso: string | null | undefined): string {
+  const date = parseIsoDate(iso)
+  if (!date) return '—'
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: ADMIN_SYNC_TZ,
+  }).format(date)
+}
+
+/** `YYYY-MM-DD` in America/New_York — for same-day comparisons on the dashboard. */
+export function adminSyncCalendarDate(iso: string | null | undefined): string | null {
+  const date = parseIsoDate(iso)
+  if (!date) return null
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: ADMIN_SYNC_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const year = parts.find((p) => p.type === 'year')?.value
+  const month = parts.find((p) => p.type === 'month')?.value
+  const day = parts.find((p) => p.type === 'day')?.value
+  if (!year || !month || !day) return null
+  return `${year}-${month}-${day}`
+}
+
+/** Format next sync time; includes weekday + date when more than 24h away. Always Eastern. */
 export function formatAdminNextSyncAt(iso: string | null | undefined, now = new Date()): string {
   if (!iso) return '—'
   const target = new Date(iso)
@@ -36,19 +101,23 @@ export function formatAdminNextSyncAt(iso: string | null | undefined, now = new 
 
   const includeDay = msUntil > 24 * 60 * 60 * 1000
   if (includeDay) {
-    return new Intl.DateTimeFormat(undefined, {
+    const clock = new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
+      timeZone: ADMIN_SYNC_TZ,
     }).format(target)
+    return `${clock} ET`
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  const clock = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: ADMIN_SYNC_TZ,
   }).format(target)
+  return `${clock} ET`
 }
 
 /** Live countdown for near-term schedules (post-deploy warm, incremental). */

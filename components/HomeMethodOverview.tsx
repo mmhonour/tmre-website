@@ -15,18 +15,26 @@ import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
 /**
  * Hero score ↔ interesting-stat beat (one town at a time).
- * Sequential handoff (not a simultaneous crossfade):
+ * Sequential handoff (not a simultaneous crossfade) — same on every viewport:
  *   score hold → stat fades up/in (score stays) → then score fades out →
  *   stat hold → next town’s score fades in (stat stays) → then stat fades out.
- * Mobile and desktop share left (score) / right (stat) panes.
+ * Left (score) / right (stat) panes everywhere. Narrow viewports use longer
+ * holds so the handoff stays readable (must match hero layout < lg, not < sm).
  */
-const HERO_FADE_MS = 2_100; // desktop fade-ins / fade-outs
+const HERO_FADE_MS = 2_100; // desktop (lg+) fade-ins / fade-outs
 const HERO_SCORE_HOLD_MS = 2_600;
 const HERO_STAT_HOLD_MS = 3_200;
-/** Mobile: same sequence, longer so the handoff is readable on a small screen. */
-const HERO_FADE_MS_MOBILE = 3_000;
-const HERO_SCORE_HOLD_MS_MOBILE = 4_000;
-const HERO_STAT_HOLD_MS_MOBILE = 4_800;
+/** Narrow: same sequence, slower — small type + stacked hero need more dwell. */
+const HERO_FADE_MS_MOBILE = 3_400;
+const HERO_SCORE_HOLD_MS_MOBILE = 5_200;
+const HERO_STAT_HOLD_MS_MOBILE = 6_000;
+/** Match `lg:` layout breakpoint — below this the hero is still “mobile.” */
+const HERO_NARROW_MQ = "(max-width: 1023px)";
+
+function readHeroNarrowViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia(HERO_NARROW_MQ).matches;
+}
 
 /**
  * Hero body copy as short phrases (visual wrap ≈ a few words at a time).
@@ -263,15 +271,17 @@ export default function HomeMethodOverview({
   );
   /** Freeze outgoing town’s stat while the next town’s score fades in. */
   const [pinnedStat, setPinnedStat] = useState<InterestingStat | null>(null);
-  const [heroIsMobile, setHeroIsMobile] = useState(false);
-  const [heroFadeMs, setHeroFadeMs] = useState(HERO_FADE_MS);
+  const [heroIsMobile, setHeroIsMobile] = useState(readHeroNarrowViewport);
+  const [heroFadeMs, setHeroFadeMs] = useState(() =>
+    readHeroNarrowViewport() ? HERO_FADE_MS_MOBILE : HERO_FADE_MS,
+  );
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 639px)");
+    const mq = window.matchMedia(HERO_NARROW_MQ);
     const sync = () => {
-      const mobile = mq.matches;
-      setHeroIsMobile(mobile);
-      setHeroFadeMs(mobile ? HERO_FADE_MS_MOBILE : HERO_FADE_MS);
+      const narrow = mq.matches;
+      setHeroIsMobile(narrow);
+      setHeroFadeMs(narrow ? HERO_FADE_MS_MOBILE : HERO_FADE_MS);
     };
     sync();
     mq.addEventListener("change", sync);
@@ -493,17 +503,15 @@ export default function HomeMethodOverview({
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Skip fades when reduced-motion is on, but keep the same dwell as the
+    // viewport — otherwise iOS “Reduce Motion” made mobile feel rushed.
     const fadeMs = reduceMotion ? 0 : heroFadeMs;
-    const scoreHoldMs = reduceMotion
-      ? 1_600
-      : heroIsMobile
-        ? HERO_SCORE_HOLD_MS_MOBILE
-        : HERO_SCORE_HOLD_MS;
-    const statHoldMs = reduceMotion
-      ? 1_800
-      : heroIsMobile
-        ? HERO_STAT_HOLD_MS_MOBILE
-        : HERO_STAT_HOLD_MS;
+    const scoreHoldMs = heroIsMobile
+      ? HERO_SCORE_HOLD_MS_MOBILE
+      : HERO_SCORE_HOLD_MS;
+    const statHoldMs = heroIsMobile
+      ? HERO_STAT_HOLD_MS_MOBILE
+      : HERO_STAT_HOLD_MS;
 
     let cancelled = false;
     let timer: number | null = null;

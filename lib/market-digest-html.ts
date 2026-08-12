@@ -7,7 +7,17 @@ import {
   MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
   type MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
-import type { MonthsSupplyPayload } from '@/lib/months-supply-types'
+import {
+  DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+  DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  summarizeMarketPulseFilters,
+} from '@/lib/market-pulse-defaults'
+import {
+  defaultMarketPulseCombinedRows,
+  marketPulseAllTownsAvgDom,
+  type MarketPulseCombinedTownRow,
+} from '@/lib/market-pulse-combined-rows'
+import { DEFAULT_MARKET_PULSE_LOOKBACK_ID } from '@/lib/market-pulse-lookback'
 
 const NAVY = '#1B2A4A'
 const NAVY_DARK = '#131F38'
@@ -17,6 +27,10 @@ const SLATE = '#5A6578'
 const BAR_TRACK = '#E8EBF2'
 const BAR_INVENTORY = '#2A3D6B'
 const BAR_MOS = '#C8A951'
+const BAR_DOM = '#5B8A72'
+const BAR_CLOSED = '#C45C4A'
+const BAR_MEDIAN = '#6B7C9B'
+const BAR_AVERAGE = '#8B6F4E'
 const WHITE = '#FFFFFF'
 
 function escapeHtml(value: string): string {
@@ -49,37 +63,24 @@ function cityLabel(row: { city: string }): string {
   return city
 }
 
-function chartRows(snapshot: MarketDigestSnapshot): MonthsSupplyPayload[] {
-  const rows: MonthsSupplyPayload[] = []
-  if (snapshot.market) rows.push(snapshot.market)
-  for (const town of snapshot.towns) {
-    if (
-      snapshot.market &&
-      town.city.trim().toLowerCase() === snapshot.market.city.trim().toLowerCase()
-    ) {
-      continue
-    }
-    rows.push(town)
-  }
-  return rows
-}
-
 /** Fixed inner bar width — % widths on empty cells collapse in many mail clients. */
-const BAR_INNER_PX = 280
-const BAR_HEIGHT_PX = 14
+const BAR_INNER_PX = 220
+const BAR_HEIGHT_PX = 12
 
-function barRow(
-  label: string,
+function metricBarRow(
+  metricLabel: string,
   valueLabel: string,
   pct: number,
   barColor: string,
 ): string {
   const filled = Math.max(
     0,
-    Math.min(BAR_INNER_PX, Math.round((Math.max(0, Math.min(100, pct)) / 100) * BAR_INNER_PX)),
+    Math.min(
+      BAR_INNER_PX,
+      Math.round((Math.max(0, Math.min(100, pct)) / 100) * BAR_INNER_PX),
+    ),
   )
   const empty = BAR_INNER_PX - filled
-  // Spacer chars keep Outlook/Gmail from collapsing colored cells to 0 height.
   const fill =
     filled <= 0
       ? ''
@@ -95,53 +96,129 @@ function barRow(
 
   return `
     <tr>
-      <td width="110" style="padding:6px 10px 6px 0;font-family:Georgia,serif;font-size:13px;color:${NAVY};white-space:nowrap;width:110px;vertical-align:middle;">${escapeHtml(label)}</td>
-      <td style="padding:6px 8px;vertical-align:middle;">
+      <td width="96" style="padding:3px 8px 3px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${SLATE};white-space:nowrap;width:96px;vertical-align:middle;">${escapeHtml(metricLabel)}</td>
+      <td style="padding:3px 6px;vertical-align:middle;">
         <table role="presentation" width="${BAR_INNER_PX}" cellpadding="0" cellspacing="0" border="0" style="width:${BAR_INNER_PX}px;border-collapse:collapse;table-layout:fixed;">
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="64" style="padding:6px 0 6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:${NAVY};text-align:right;white-space:nowrap;width:64px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="72" style="padding:3px 0 3px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:72px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
     </tr>`
 }
 
-function barChartSection<Row extends { city: string }>(
-  title: string,
-  rows: Row[],
-  valueOf: (row: Row) => number | null,
-  formatValue: (row: Row) => string,
-  barColor: string,
-  emptyMessage: string,
+type StackedMetric = {
+  id: string
+  label: string
+  color: string
+  valueOf: (row: MarketPulseCombinedTownRow) => number | null
+  format: (v: number | null) => string
+}
+
+function stackedTownMetricsSection(
+  rows: MarketPulseCombinedTownRow[],
+  closedLookbackMonths: number,
 ): string {
+  const metrics: StackedMetric[] = [
+    {
+      id: 'inventory',
+      label: 'Inventory',
+      color: BAR_INVENTORY,
+      valueOf: (r) => r.activeCount,
+      format: fmtActive,
+    },
+    {
+      id: 'monthsSupply',
+      label: 'Months supply',
+      color: BAR_MOS,
+      valueOf: (r) => r.monthsSupply,
+      format: fmtMosShort,
+    },
+    {
+      id: 'avgDom',
+      label: 'Avg DOM',
+      color: BAR_DOM,
+      valueOf: (r) => r.avgDaysOnMarket,
+      format: fmtDomShort,
+    },
+    {
+      id: 'closed',
+      label: `Closed (${closedLookbackMonths} mo)`,
+      color: BAR_CLOSED,
+      valueOf: (r) => r.closedCount,
+      format: (v) => (v == null ? '—' : Math.round(v).toLocaleString()),
+    },
+    {
+      id: 'medianPrice',
+      label: 'Median price',
+      color: BAR_MEDIAN,
+      valueOf: (r) => r.medianPrice,
+      format: fmtMoney,
+    },
+    {
+      id: 'averagePrice',
+      label: 'Average price',
+      color: BAR_AVERAGE,
+      valueOf: (r) => r.averagePrice,
+      format: fmtMoney,
+    },
+  ]
+
   if (rows.length === 0) {
     return `
-      <tr><td style="padding:0 0 20px 0;">
-        <p style="margin:0 0 10px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">${escapeHtml(title)}</p>
-        <p style="margin:0;font-family:Georgia,serif;font-size:13px;color:${SLATE};">${escapeHtml(emptyMessage)}</p>
+      <tr><td style="padding:0 0 24px 0;">
+        <p style="margin:0 0 10px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Town metrics stacked (sales)</p>
+        <p style="margin:0;font-family:Georgia,serif;font-size:13px;color:${SLATE};">No town rows in cache yet.</p>
       </td></tr>`
   }
 
-  const max = Math.max(
-    0,
-    ...rows.map((r) => {
-      const v = valueOf(r)
-      return v != null && Number.isFinite(v) ? v : 0
-    }),
+  const maxByMetric = metrics.map((m) =>
+    Math.max(
+      0,
+      ...rows.map((r) => {
+        const v = m.valueOf(r)
+        return v != null && Number.isFinite(v) ? v : 0
+      }),
+    ),
   )
 
-  const body = rows
+  const legend = metrics
+    .map(
+      (m) =>
+        `<span style="display:inline-block;margin:0 12px 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:${SLATE};"><span style="display:inline-block;width:10px;height:8px;margin-right:5px;background-color:${m.color};vertical-align:middle;"></span>${escapeHtml(m.label)}</span>`,
+    )
+    .join('')
+
+  const towns = rows
     .map((row) => {
-      const v = valueOf(row)
-      const pct = max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0
-      return barRow(cityLabel(row), formatValue(row), pct, barColor)
+      const metricRows = metrics
+        .map((m, i) => {
+          const v = m.valueOf(row)
+          const max = maxByMetric[i] ?? 0
+          const pct =
+            max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0
+          return metricBarRow(m.label, m.format(v), pct, m.color)
+        })
+        .join('')
+      return `
+        <tr>
+          <td style="padding:14px 0 4px 0;font-family:Georgia,serif;font-size:15px;color:${NAVY};">${escapeHtml(cityLabel(row))}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 0 8px 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+              ${metricRows}
+            </table>
+          </td>
+        </tr>`
     })
     .join('')
 
   return `
     <tr><td style="padding:0 0 24px 0;">
-      <p style="margin:0 0 12px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">${escapeHtml(title)}</p>
+      <p style="margin:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Town metrics stacked (sales)</p>
+      <div style="margin:0 0 12px 0;">${legend}</div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-        ${body}
+        ${towns}
       </table>
     </td></tr>`
 }
@@ -195,7 +272,9 @@ function dealOfTheWeekSection(
     : `<div style="padding:48px 20px;text-align:center;font-family:Georgia,serif;font-size:14px;color:rgba(255,255,255,0.55);">No photo available</div>`
 
   const discount =
-    d.valueDiscountPct != null && Number.isFinite(d.valueDiscountPct) && d.valueDiscountPct > 0
+    d.valueDiscountPct != null &&
+    Number.isFinite(d.valueDiscountPct) &&
+    d.valueDiscountPct > 0
       ? `<p style="margin:0 0 10px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:${GOLD};">${escapeHtml(`${Math.round(d.valueDiscountPct)}% below town median`)}</p>`
       : ''
 
@@ -241,7 +320,9 @@ export type FormatMarketDigestHtmlOptions = {
 }
 
 /**
- * Email-safe HTML grid for the Monday market brief (table layout, inline styles).
+ * Email-safe HTML for the Monday market brief — mirrors default /market-pulse:
+ * stacked town metrics, Seller Friendly order, ALL sales, 24-mo closed lookback,
+ * KPIs (Market active / All Towns MOS / Avg DOM), median + average price bars.
  */
 export function formatMarketDigestHtml(
   snapshot: MarketDigestSnapshot,
@@ -249,14 +330,20 @@ export function formatMarketDigestHtml(
   options?: FormatMarketDigestHtmlOptions,
 ): string {
   const includeSocial = options?.includeSocialProfiles === true
-  const rows = chartRows(snapshot)
-  const marketActive = snapshot.market ? fmtActive(snapshot.market.activeCount) : '—'
+  const combinedRows = defaultMarketPulseCombinedRows(snapshot)
+  const marketActive = snapshot.market
+    ? fmtActive(snapshot.market.activeCount)
+    : '—'
   const marketMos = snapshot.market
     ? fmtMosShort(snapshot.market.monthsSupply)
     : '—'
-  const westportMos = snapshot.westport
-    ? fmtMosShort(snapshot.westport.monthsSupply)
-    : '—'
+  const allTownsDom = fmtDomShort(marketPulseAllTownsAvgDom(snapshot))
+  const filterSummary = summarizeMarketPulseFilters({
+    selectionLabel: 'ALL',
+    chartLayout: DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+    favorSort: DEFAULT_MARKET_PULSE_FAVOR_SORT,
+    lookbackId: DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  })
 
   const filledSocial = includeSocial
     ? snapshot.socialProfiles.filter((p) => p.handleOrUrl)
@@ -301,7 +388,7 @@ export function formatMarketDigestHtml(
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:${WHITE};border-collapse:collapse;">
           <tr>
             <td style="padding:22px 22px 18px 22px;background-color:${NAVY};">
-              <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:${GOLD};">TMRE Monday market brief</p>
+              <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:${GOLD};">TMRE Market Pulse</p>
               <p style="margin:0 0 8px 0;font-family:Georgia,serif;font-size:22px;line-height:1.25;color:${WHITE};">${escapeHtml(etDate)}</p>
               <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11px;">
                 <a href="${escapeHtml(`${SITE_URL}/market-pulse`)}" style="color:${GOLD};text-decoration:underline;">Read on the web</a>
@@ -315,51 +402,28 @@ export function formatMarketDigestHtml(
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:8px 0;">
                 <tr>
                   ${kpiCell('Market active', marketActive)}
-                  ${kpiCell('Market MOS', marketMos)}
-                  ${kpiCell('Westport MOS', westportMos)}
+                  ${kpiCell('All Towns MOS', marketMos)}
+                  ${kpiCell('Avg days on market', allTownsDom)}
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:12px 22px 0 22px;">
+            <td style="padding:4px 22px 8px 22px;">
+              <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:10px;line-height:1.45;color:${SLATE};">${escapeHtml(filterSummary)}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 22px 0 22px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${barChartSection(
-                  'Active inventory (sales)',
-                  rows,
-                  (r) => r.activeCount,
-                  (r) => fmtActive(r.activeCount),
-                  BAR_INVENTORY,
-                  'No inventory rows in cache yet.',
-                )}
-                ${barChartSection(
-                  'Months supply (sales)',
-                  rows,
-                  (r) => r.monthsSupply,
-                  (r) => fmtMosShort(r.monthsSupply),
-                  BAR_MOS,
-                  'No months-supply rows in cache yet.',
-                )}
-                ${barChartSection(
-                  'Avg days on market (sales)',
-                  snapshot.avgDomByTown ?? [],
-                  (r) => r.avgDaysOnMarket,
-                  (r) => fmtDomShort(r.avgDaysOnMarket),
-                  BAR_INVENTORY,
-                  'No days-on-market rows in cache yet.',
-                )}
-                ${barChartSection(
-                  `Closed sales — trailing ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} months (sales)`,
-                  snapshot.closedTrailing ?? [],
-                  (r) => r.count,
-                  (r) => r.count.toLocaleString(),
-                  BAR_INVENTORY,
-                  'No closed sales in the trailing window yet.',
+                ${stackedTownMetricsSection(
+                  combinedRows,
+                  MARKET_DIGEST_CLOSED_TRAILING_MONTHS,
                 )}
                 ${dealSection}
                 <tr><td style="padding:0 0 18px 0;">
                   <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.5;color:${SLATE};">
-                    MOS = active ÷ avg monthly closings (3 prior full months). Sale listings, all property classes.
+                    Same defaults as /market-pulse: stacked · Seller Friendly · ALL sales · closed lookback ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} months. MOS = active ÷ avg monthly closings (3 prior full months).
                   </p>
                 </td></tr>
                 ${socialSection}

@@ -55,6 +55,8 @@ export async function GET(req: NextRequest) {
     lastIncrementalUpserts,
     lastIncrementalUpsertsLabel,
     incrementalUpsertHistory,
+    visionAddressesLive,
+    visionAddressesLiveStatus,
   } = await readAdminSyncPanelStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
@@ -77,6 +79,8 @@ export async function GET(req: NextRequest) {
     lastMlsSyncHeartbeat,
     propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
     visionAddressesSyncedAt: getSyncMeta('vision_addresses_synced_at'),
+    visionAddressesLive,
+    visionAddressesLiveStatus,
     zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),
     zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),
     fomcLastSyncedAt: getSyncMeta('fomc_last_synced_at'),
@@ -212,6 +216,18 @@ export async function POST(req: NextRequest) {
       lastMlsSyncHeartbeat: await getSyncMetaFresh('last_mls_sync_heartbeat'),
       propertyAddressesSyncedAt: getSyncMeta('property_addresses_synced_at'),
       visionAddressesSyncedAt: getSyncMeta('vision_addresses_synced_at'),
+      ...(await (async () => {
+        const {
+          readVisionAddressesLiveProgress,
+          formatVisionAddressesLiveProgress,
+        } = await import('@/lib/vision-gis-sync')
+        const visionAddressesLive = readVisionAddressesLiveProgress()
+        return {
+          visionAddressesLive,
+          visionAddressesLiveStatus:
+            formatVisionAddressesLiveProgress(visionAddressesLive),
+        }
+      })()),
       zipBoundariesSyncedAt: getSyncMeta('last_zip_boundaries_sync'),
       zipBoundariesSyncStartedAt: getSyncMeta('last_zip_boundaries_sync_started'),
       fomcLastSyncedAt: getSyncMeta('fomc_last_synced_at'),

@@ -56,7 +56,7 @@ Browser-check: `https://<service>.up.railway.app/health` (JSON, `service: mls-sy
 
 | Variable | Value |
 | --- | --- |
-| `MLS_SYNC_SERVICE_URL` | `https://<service>.up.railway.app` (no trailing slash) |
+| `MLS_SYNC_SERVICE_URL` | `https://<service>.up.railway.app` (no trailing slash; host-only also OK — code adds https) |
 
 Trigger a Netlify production deploy so Admin picks up the URL.
 

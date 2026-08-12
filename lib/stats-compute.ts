@@ -81,6 +81,9 @@ export type MarketStatsPayload = {
   medianPrice: number | null
   /** Cached explanation for {@link medianPrice} (bar / KPI hover). */
   medianPriceCalc?: StatsValueCalc
+  /** Mean of the same price pool as median (closed period, else active list). */
+  averagePrice: number | null
+  averagePriceCalc?: StatsValueCalc
   avgDaysOnMarket: number | null
   avgDaysOnMarketCalc?: StatsValueCalc
   avgPricePerSqft: number | null
@@ -272,6 +275,8 @@ export function computeMarketStats(
   const beds = filteredActive.map((l) => l.beds).filter((b): b is number => b != null && b > 0)
 
   const medianPrice = median(closedPrices) ?? median(activePrices)
+  const pricePool = closedPrices.length > 0 ? closedPrices : activePrices
+  const averagePrice = mean(pricePool)
   const avgDaysOnMarket = mean(doms)
   const avgPricePerSqft = kind === 'sale' ? mean(ppsf) : null
   const activeCount = filteredActive.length
@@ -289,6 +294,32 @@ export function computeMarketStats(
       activePrices,
       activeCount,
     ),
+    averagePrice,
+    averagePriceCalc:
+      averagePrice != null
+        ? {
+            summary: `Mean ${
+              closedPrices.length > 0 ? 'close' : 'list'
+            } price across ${pricePool.length.toLocaleString()} ${
+              kind === 'rental' ? 'rentals' : 'listings'
+            } in ${city}.`,
+            detail: [
+              closedPrices.length > 0
+                ? 'Same closed-period pool as median price (mean instead of median).'
+                : 'No closed prices in period — mean of active list prices.',
+            ],
+            inputs: {
+              source:
+                closedPrices.length > 0
+                  ? 'closed-price-mean'
+                  : 'active-list-price-mean',
+              sampleSize: pricePool.length,
+              city,
+              kind,
+              averagePrice,
+            },
+          }
+        : undefined,
     avgDaysOnMarket,
     avgDaysOnMarketCalc:
       avgDaysOnMarket != null

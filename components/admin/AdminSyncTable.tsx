@@ -16,9 +16,13 @@ import {
 import AdminSyncMobileHeatmap from "@/components/admin/AdminSyncMobileHeatmap";
 import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
 import {
+  adminSyncCalendarDate,
   adminSyncOrderDisplay,
   formatAdminNextSyncAt,
   formatAdminNextSyncCountdown,
+  formatAdminSyncDateShort,
+  formatAdminSyncTimeOnly,
+  formatAdminSyncTimestamp,
 } from "@/lib/admin-sync-schedule-format";
 import type { AdminSyncScheduleHints } from "@/lib/admin-sync-schedule";
 import { adminSyncImpactedPages } from "@/lib/admin-sync-pages";
@@ -575,6 +579,20 @@ export type PanelStatus = {
   lastMlsSyncHeartbeat?: string | null;
   propertyAddressesSyncedAt?: string | null;
   visionAddressesSyncedAt?: string | null;
+  /** Temporal Vision GIS parcel progress (CLI / Admin / worker). */
+  visionAddressesLive?: {
+    town: string;
+    phase: string;
+    n: number;
+    maxParcels: number;
+    visionPid: string;
+    address: string | null;
+    street: string | null;
+    letter: string | null;
+    updatedAt: string;
+    status: "running" | "done" | "error";
+  } | null;
+  visionAddressesLiveStatus?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
   fomcLastSyncedAt?: string | null;
@@ -635,37 +653,10 @@ export type PanelStatus = {
   }[];
 };
 
-function formatTimestamp(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-/** Local-timezone calendar date string used only for equality comparisons. */
-function isoCalendarDate(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function formatTimeOnly(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(d);
-}
-
-function formatDateShort(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(d);
-}
+const formatTimestamp = formatAdminSyncTimestamp;
+const formatTimeOnly = formatAdminSyncTimeOnly;
+const formatDateShort = formatAdminSyncDateShort;
+const isoCalendarDate = adminSyncCalendarDate;
 
 /** Human-readable elapsed duration (e.g. `1m 12s`, `3s`, `2h 5m`). */
 function formatElapsed(ms: number | null): string {
@@ -1119,8 +1110,12 @@ const FULL_RESYNC_SUBSTEP_ROWS = new Set([
   "deal-of-the-day",
 ]);
 
-/** Railway mls-sync heartbeat fresher than this ⇒ process is alive. */
-const RAILWAY_HEARTBEAT_FRESH_MS = 4 * 60 * 1000;
+/**
+ * Railway mls-sync heartbeat fresher than this ⇒ process / pull is alive.
+ * Heartbeat is pulsed ~60s during a run; keep a cushion so a missed pulse
+ * during a long RETS town does not flash BROKEN.
+ */
+const RAILWAY_HEARTBEAT_FRESH_MS = 15 * 60 * 1000;
 
 type SyncRowVisualStatus = "running" | "ok" | "alert" | "idle";
 
@@ -2592,6 +2587,11 @@ export default function AdminSyncTable({
                 </a>{" "}
                 card above shows whether /latest is actually serving those updates.
               </p>
+              <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-xl">
+                Start / End / Next clocks are Eastern (America/New_York), labeled
+                ET — same zone as Configure start times. Stored meta is UTC; the
+                dashboard converts for display.
+              </p>
             </>
           ) : (
             <>
@@ -2757,9 +2757,30 @@ export default function AdminSyncTable({
                   Next start
                 </th>
               ) : null}
-              {isDashboard ? <th className={TH}>Start</th> : null}
-              {isDashboard ? <th className={TH}>End</th> : null}
-              {isDashboard ? <th className={TH}>Next</th> : null}
+              {isDashboard ? (
+                <th
+                  className={TH}
+                  title="Last run start — America/New_York (ET)"
+                >
+                  Start (ET)
+                </th>
+              ) : null}
+              {isDashboard ? (
+                <th
+                  className={TH}
+                  title="Last run end — America/New_York (ET)"
+                >
+                  End (ET)
+                </th>
+              ) : null}
+              {isDashboard ? (
+                <th
+                  className={TH}
+                  title="Next scheduled run — America/New_York (ET)"
+                >
+                  Next (ET)
+                </th>
+              ) : null}
               {isDashboard ? <th className={TH}>Status</th> : null}
               {isDashboard ? (
                 <th className={`${TH} border-r-0 hidden md:table-cell`}>Errors</th>
@@ -2829,11 +2850,19 @@ export default function AdminSyncTable({
                 return a.label.localeCompare(b.label);
               })
               .map((row, index) => {
+              const nowMs = now.getTime();
+              const visionLiveFresh =
+                row.id === "vision-addresses" &&
+                status?.visionAddressesLive?.status === "running" &&
+                (() => {
+                  const t = parseIsoMs(status.visionAddressesLive?.updatedAt);
+                  return t != null && nowMs - t < 3 * 60 * 1000;
+                })();
               const isRunning =
                 (row.actionId != null && runningId === row.actionId) ||
-                (runningId === "full-resync" && row.id === "full-resync");
+                (runningId === "full-resync" && row.id === "full-resync") ||
+                visionLiveFresh;
               const isWaiting = queuedRowIds.has(row.id);
-              const nowMs = now.getTime();
               const pendingRetry = pendingRetries[row.id];
               const rowError = pendingRetry
                 ? formatErrorWithRetry(
@@ -3014,10 +3043,18 @@ export default function AdminSyncTable({
 
               /** Railway mls-sync heartbeat — peace of mind when Scheduler is Railway. */
               const railwayHeartbeatMs = parseIsoMs(status?.lastMlsSyncHeartbeat);
+              const railwayStartMs = parseIsoMs(timing.started);
+              const railwayEndMs = parseIsoMs(timing.finished);
+              const railwayOpenStart =
+                incrementalOnRailway &&
+                railwayStartMs != null &&
+                (railwayEndMs == null || railwayStartMs > railwayEndMs) &&
+                nowMs - railwayStartMs < HANG_THRESHOLD_MS;
               const railwayHeartbeatFresh =
                 incrementalOnRailway &&
-                railwayHeartbeatMs != null &&
-                nowMs - railwayHeartbeatMs < RAILWAY_HEARTBEAT_FRESH_MS;
+                ((railwayHeartbeatMs != null &&
+                  nowMs - railwayHeartbeatMs < RAILWAY_HEARTBEAT_FRESH_MS) ||
+                  railwayOpenStart);
               const railwayPulseLine = (() => {
                 if (!incrementalOnRailway) return null;
                 if (!status?.lastMlsSyncHeartbeat) {
@@ -3046,7 +3083,7 @@ export default function AdminSyncTable({
                   `End ${endAge}`,
                 ];
                 if (upsertLabel) bits.push(upsertLabel);
-                if (railwayHeartbeatFresh) {
+                if (railwayHeartbeatFresh || railwayOpenStart) {
                   bits.unshift("RUNNING");
                 } else if (!timing.finished || incrementalEndBroken) {
                   bits.unshift("BROKEN");
@@ -3054,7 +3091,9 @@ export default function AdminSyncTable({
                 const live =
                   status?.incrementalLiveStatus ??
                   formatIncrementalSyncLiveStatus(status?.incrementalLive);
-                if (live && railwayHeartbeatFresh) bits.push(live);
+                if (live && (railwayHeartbeatFresh || railwayOpenStart)) {
+                  bits.push(live);
+                }
                 return bits.join(" · ");
               })();
 
@@ -3067,11 +3106,20 @@ export default function AdminSyncTable({
                     )
                   );
                 }
+                if (row.id === "vision-addresses" && status?.visionAddressesLiveStatus) {
+                  if (isRunning || visionLiveFresh) {
+                    return `RUNNING · ${status.visionAddressesLiveStatus}`;
+                  }
+                  if (status.visionAddressesLive?.status === "error") {
+                    return `FAILED · ${status.visionAddressesLiveStatus}`;
+                  }
+                }
                 if (
                   isRunning ||
                   syncAllRunning ||
                   incrementalRunningNow ||
-                  railwayHeartbeatFresh
+                  railwayHeartbeatFresh ||
+                  visionLiveFresh
                 ) {
                   if (row.id === "incremental" && railwayTruthStrip) {
                     return railwayTruthStrip;

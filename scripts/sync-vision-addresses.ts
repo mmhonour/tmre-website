@@ -1,6 +1,11 @@
 /**
  * CLI: chunked Vision GIS crawl → vision_addresses.
- * Usage: npm run sync:vision-addresses
+ * Usage:
+ *   $env:VISION_SYNC_TOWN='Westport'
+ *   $env:VISION_SYNC_MAX_PARCELS='200'   # default 40; hard cap 200
+ *   npm run sync:vision-addresses
+ *
+ * Per-parcel lines log as the crawl runs. scraped_at is always UTC.
  * Env: VISION_SYNC_TOWN, VISION_SYNC_MAX_PARCELS, VISION_SYNC_FORCE_FULL=1
  */
 import { existsSync } from 'node:fs'
@@ -17,8 +22,14 @@ async function main() {
   const forceFull = process.env.VISION_SYNC_FORCE_FULL === '1'
 
   console.info(
-    `[sync-vision-addresses] starting${town ? ` town=${town}` : ''} maxParcels=${maxParcels}${forceFull ? ' forceFull' : ''}…`,
+    `[sync-vision-addresses] starting${town ? ` town=${town}` : ''} maxParcels=${maxParcels}${forceFull ? ' forceFull' : ''}…` +
+      ` (each parcel logs as it runs; scraped_at = UTC)`,
   )
+  if (maxParcels === 40 && !process.env.VISION_SYNC_MAX_PARCELS?.trim()) {
+    console.info(
+      '[sync-vision-addresses] tip: set VISION_SYNC_MAX_PARCELS=200 for a larger local fill chunk (Admin/Netlify stay at 40)',
+    )
+  }
   const result = await syncVisionAddresses({
     town,
     maxParcels,

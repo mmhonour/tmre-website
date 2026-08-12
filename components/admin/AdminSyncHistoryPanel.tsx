@@ -17,6 +17,10 @@ import {
   syncHistoryStatusLabel,
   type SyncHistoryRawRow,
 } from "@/lib/admin-sync-history-glom";
+import {
+  ADMIN_SYNC_TZ,
+  formatAdminSyncDateShort,
+} from "@/lib/admin-sync-schedule-format";
 
 type SyncHistoryResponse = {
   runs: SyncHistoryRawRow[];
@@ -37,22 +41,20 @@ function formatSyncDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return iso;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(ms));
+  return formatAdminSyncDateShort(iso);
 }
 
 function formatSyncTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return iso;
-  return new Intl.DateTimeFormat(undefined, {
+  const clock = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: ADMIN_SYNC_TZ,
   }).format(new Date(ms));
+  return `${clock} ET`;
 }
 
 /**

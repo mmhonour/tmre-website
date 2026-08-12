@@ -94,13 +94,67 @@ export async function runIncrementalSyncWatchdog(
     )
     const config = await readSyncScheduleConfigFresh()
     if (resolveJobScheduler(config.jobs.incremental) === 'railway') {
-      // Railway mls-sync owns the schedule + heal. Do not queue Netlify workers.
+      // Railway owns RETS — never queue a Netlify worker. If End is stale,
+      // nudge POST /run (same as Admin Sync now) so a dead interval / bad
+      // MLS_SYNC_SERVICE_URL does not leave inventory pink forever.
+      const startIso = await getSyncMetaFresh('last_incremental_sync_started')
+      const startAgeMs = parseAgeMs(startIso, nowMs)
+      const openStart =
+        startAgeMs != null &&
+        (ageMs == null ||
+          (startIso != null &&
+            lastIncrementalSync != null &&
+            Date.parse(startIso) > Date.parse(lastIncrementalSync))) &&
+        startAgeMs < 45 * 60 * 1000
+      if (openStart) {
+        return {
+          action: 'in_progress',
+          lastIncrementalSync,
+          ageMs,
+          detail: `Railway pull in flight (Start ${Math.round((startAgeMs ?? 0) / 60_000)}m ago)`,
+        }
+      }
+
+      if (!options.force) {
+        const lastWatchdog = await getSyncMetaFresh(LAST_WATCHDOG_AT_KEY)
+        const watchdogAge = parseAgeMs(lastWatchdog, nowMs)
+        if (
+          watchdogAge != null &&
+          watchdogAge < INCREMENTAL_WATCHDOG_COOLDOWN_MS
+        ) {
+          return {
+            action: 'cooldown',
+            lastIncrementalSync,
+            ageMs,
+            detail: `Railway watchdog cooldown (${Math.round(watchdogAge / 60_000)}m ago)`,
+          }
+        }
+      }
+
+      const startedAt = new Date().toISOString()
+      await setSyncMetaDurable(LAST_WATCHDOG_AT_KEY, startedAt)
+      const { queueMlsSyncServiceRun } = await import(
+        '@/lib/mls-sync-service-client'
+      )
+      const queued = await queueMlsSyncServiceRun({
+        startedAt,
+        source: 'watchdog',
+      })
+      if (queued.ok) {
+        return {
+          action: 'queued',
+          lastIncrementalSync,
+          ageMs,
+          detail: `Railway /run accepted (HTTP ${queued.status ?? '?'})`,
+        }
+      }
       return {
-        action: 'skipped_provider',
+        action: 'queue_failed',
         lastIncrementalSync,
         ageMs,
         detail:
-          'scheduler is Railway mls-sync — Netlify watchdog ignored (service pulls RETS→Neon)',
+          queued.error ??
+          'Railway /run failed — check MLS_SYNC_SERVICE_URL (needs https://) + SYNC_CRON_SECRET',
       }
     }
   }

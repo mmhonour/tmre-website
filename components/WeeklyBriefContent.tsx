@@ -7,9 +7,16 @@ import { fmtMoney } from "@/lib/listing-history";
 import {
   type MarketDigestClosedTownCount,
   type MarketDigestDomTownCount,
+  type MarketDigestPriceTownCount,
   type MarketDigestSnapshot,
 } from "@/lib/market-digest-types";
 import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
+import {
+  DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+  DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  summarizeMarketPulseFilters,
+  type MarketPulseChartLayout,
+} from "@/lib/market-pulse-defaults";
 import {
   sortRowsByBuyerFriendlyScore,
   type MarketPulseFavorSort,
@@ -31,15 +38,18 @@ import {
 import type { StatsValueCalc } from "@/lib/stats-compute";
 import { splitSentences } from "@/lib/split-sentences";
 
-type ChartLayout = "unstacked" | "stacked";
+type ChartLayout = MarketPulseChartLayout;
 type FavorSort = MarketPulseFavorSort;
 type MetricSortDir = "asc" | "desc";
+type MetricValueKind = "int" | "mos" | "dom" | "money";
 
 const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
   monthsSupply: "bg-[var(--mp-months-supply-bar)]",
   avgDom: "bg-[var(--mp-avg-dom-bar,#5B8A72)]",
   closed: "bg-[var(--mp-closed-bar,#C45C4A)]",
+  medianPrice: "bg-[var(--mp-median-bar,#6B7C9B)]",
+  averagePrice: "bg-[var(--mp-average-bar,#8B6F4E)]",
 } as const;
 
 function fmtMos(n: number | null | undefined): string {
@@ -120,16 +130,21 @@ type CombinedTownRow = {
   monthsSupply: number | null;
   avgDaysOnMarket: number | null;
   closedCount: number | null;
+  medianPrice: number | null;
+  averagePrice: number | null;
   activeCountCalc?: StatsValueCalc;
   monthsSupplyCalc?: StatsValueCalc;
   avgDaysOnMarketCalc?: StatsValueCalc;
   closedCalc?: StatsValueCalc;
+  medianPriceCalc?: StatsValueCalc;
+  averagePriceCalc?: StatsValueCalc;
 };
 
 function buildCombinedTownRows(
   inventory: MonthsSupplyPayload[],
   domRows: MarketDigestDomTownCount[],
   closedRows: MarketDigestClosedTownCount[],
+  priceRows: MarketDigestPriceTownCount[],
 ): CombinedTownRow[] {
   const domBy = new Map(
     domRows.map((r) => [cityKey(r.city), r] as const),
@@ -137,22 +152,40 @@ function buildCombinedTownRows(
   const closedBy = new Map(
     closedRows.map((r) => [cityKey(r.city), r] as const),
   );
+  const priceBy = new Map(
+    priceRows.map((r) => [cityKey(r.city), r] as const),
+  );
   return inventory.map((row) => {
     const key = cityKey(row.city);
     const dom = domBy.get(key);
     const closed = closedBy.get(key);
+    const price = priceBy.get(key);
     return {
       city: row.city,
       activeCount: row.activeCount ?? null,
       monthsSupply: row.monthsSupply ?? null,
       avgDaysOnMarket: dom?.avgDaysOnMarket ?? null,
       closedCount: closed?.count ?? null,
+      medianPrice: price?.medianPrice ?? null,
+      averagePrice: price?.averagePrice ?? null,
       activeCountCalc: row.activeCountCalc,
       monthsSupplyCalc: row.monthsSupplyCalc,
       avgDaysOnMarketCalc: dom?.avgDaysOnMarketCalc,
       closedCalc: closed?.calc,
+      medianPriceCalc: price?.medianPriceCalc,
+      averagePriceCalc: price?.averagePriceCalc,
     };
   });
+}
+
+function formatMetricValue(
+  kind: MetricValueKind,
+  display: number | null,
+): string {
+  if (kind === "mos") return fmtMos(display);
+  if (kind === "dom") return fmtDom(display);
+  if (kind === "money") return fmtMoney(display);
+  return fmtActive(display);
 }
 
 function BarChart<Row extends { city: string }>({
@@ -170,7 +203,7 @@ function BarChart<Row extends { city: string }>({
   title: string;
   rows: Row[];
   valueOf: (row: Row) => number | null;
-  valueKind: "int" | "mos" | "dom";
+  valueKind: MetricValueKind;
   barClassName: string;
   emptyMessage: string;
   townHref?: (cityLabel: string) => string;
@@ -293,21 +326,20 @@ function BarChart<Row extends { city: string }>({
               : settleIntDisplay(v, settle, index);
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
-          const valueText =
-            valueKind === "mos"
-              ? fmtMos(display)
-              : valueKind === "dom"
-                ? fmtDom(display)
-                : fmtActive(display);
+          const valueText = formatMetricValue(valueKind, display);
           const calc = calcOf?.(row);
           const metricLabel =
             valueKind === "mos"
               ? "Months supply"
               : valueKind === "dom"
                 ? "Avg days on market"
-                : title.startsWith("Closed")
-                  ? "Closed sales"
-                  : "Active inventory";
+                : valueKind === "money"
+                  ? title.startsWith("Average")
+                    ? "Average price"
+                    : "Median price"
+                  : title.startsWith("Closed")
+                    ? "Closed sales"
+                    : "Active inventory";
           return (
             <li
               key={`${row.city}-${title}`}
@@ -388,6 +420,22 @@ function combinedMetrics(closedLookbackLabel: string) {
       valueKind: "int" as const,
       valueOf: (r: CombinedTownRow) => r.closedCount,
       calcOf: (r: CombinedTownRow) => r.closedCalc,
+    },
+    {
+      id: "medianPrice",
+      label: "Median price",
+      barClassName: METRIC_COLORS.medianPrice,
+      valueKind: "money" as const,
+      valueOf: (r: CombinedTownRow) => r.medianPrice,
+      calcOf: (r: CombinedTownRow) => r.medianPriceCalc,
+    },
+    {
+      id: "averagePrice",
+      label: "Average price",
+      barClassName: METRIC_COLORS.averagePrice,
+      valueKind: "money" as const,
+      valueOf: (r: CombinedTownRow) => r.averagePrice,
+      calcOf: (r: CombinedTownRow) => r.averagePriceCalc,
     },
   ] as const;
 }
@@ -501,12 +549,7 @@ function CombinedMetricsChart({
                     m.valueKind === "mos"
                       ? settleMosDisplay(v, settle, scrambleIndex)
                       : settleIntDisplay(v, settle, scrambleIndex);
-                  const valueText =
-                    m.valueKind === "mos"
-                      ? fmtMos(display)
-                      : m.valueKind === "dom"
-                        ? fmtDom(display)
-                        : fmtActive(display);
+                  const valueText = formatMetricValue(m.valueKind, display);
                   const calc = m.calcOf(row);
                   return (
                     <li
@@ -644,13 +687,26 @@ export default function WeeklyBriefContent({
   lookbackId?: MarketPulseLookbackId;
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
 }) {
-  const [chartLayout, setChartLayout] = useState<ChartLayout>("stacked");
-  const [favorSort, setFavorSort] = useState<FavorSort>("default");
+  const [chartLayout, setChartLayout] = useState<ChartLayout>(
+    DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+  );
+  const [favorSort, setFavorSort] = useState<FavorSort>(
+    DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  );
+  /** Filters start collapsed — summary sentence stays visible. */
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
+  const filterSummary = summarizeMarketPulseFilters({
+    selectionLabel: selectionLabel ?? scopeLabel,
+    chartLayout,
+    favorSort,
+    lookbackId,
+  });
 
   const inventoryRows = useMemo(() => chartRows(snapshot), [snapshot]);
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
+  const priceRows = snapshot.priceByTown ?? [];
 
   const allTownsAvgDom = useMemo(() => {
     const allRow = domRows.find((r) => isAllTownsCity(r.city));
@@ -716,11 +772,26 @@ export default function WeeklyBriefContent({
     [closedRows, favorSort, mosByCity, domByCity],
   );
 
+  const sortedMedianPrice = useMemo(
+    () =>
+      sortRowsByBuyerFriendlyScore(
+        priceRows,
+        (r) => ({
+          monthsSupply: mosByCity.get(cityKey(r.city)) ?? null,
+          avgDaysOnMarket: domByCity.get(cityKey(r.city)) ?? null,
+        }),
+        favorSort,
+        (r) => isAllTownsCity(r.city),
+      ),
+    [priceRows, favorSort, mosByCity, domByCity],
+  );
+
   const combinedRows = useMemo(() => {
     const built = buildCombinedTownRows(
       inventoryRows,
       domRows,
       closedRows,
+      priceRows,
     );
     return sortRowsByBuyerFriendlyScore(
       built,
@@ -731,7 +802,7 @@ export default function WeeklyBriefContent({
       favorSort,
       (r) => isAllTownsCity(r.city),
     );
-  }, [inventoryRows, domRows, closedRows, favorSort]);
+  }, [inventoryRows, domRows, closedRows, priceRows, favorSort]);
 
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
   const titleScope = selectionLabel ?? scopeLabel;
@@ -787,117 +858,146 @@ export default function WeeklyBriefContent({
           />
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <div
-            className="inline-flex flex-wrap gap-1.5"
-            role="group"
-            aria-label="Chart layout"
-          >
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <button
               type="button"
-              className={controlBtn(chartLayout === "stacked")}
-              aria-pressed={chartLayout === "stacked"}
-              onClick={() => setChartLayout("stacked")}
+              className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--mp-text)] underline decoration-[var(--mp-text)]/35 underline-offset-2 transition-colors hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((open) => !open)}
             >
-              STACKED
+              Filters
+              <span aria-hidden className="tabular-nums no-underline">
+                {filtersOpen ? "−" : "+"}
+              </span>
             </button>
-            <button
-              type="button"
-              className={controlBtn(chartLayout === "unstacked")}
-              aria-pressed={chartLayout === "unstacked"}
-              onClick={() => {
-                setChartLayout("unstacked");
-                // Friend sorts only apply to the stacked composite — clear on unstack.
-                setFavorSort("default");
-              }}
-            >
-              UNSTACKED
-            </button>
-          </div>
-          <div
-            className="inline-flex flex-wrap gap-1.5"
-            role="group"
-            aria-label="Town sort by market favorability"
-          >
-            <button
-              type="button"
-              className={controlBtn(favorSort === "sellers")}
-              aria-pressed={favorSort === "sellers"}
-              onClick={() => {
-                if (favorSort === "sellers") {
-                  setFavorSort("default");
-                  return;
-                }
-                setFavorSort("sellers");
-                setChartLayout("stacked");
-              }}
-              title="Composite: lower months supply + shorter DOM first (more seller friendly). Tap again to clear."
-            >
-              Seller Friendly
-            </button>
-            <button
-              type="button"
-              className={controlBtn(favorSort === "buyers")}
-              aria-pressed={favorSort === "buyers"}
-              onClick={() => {
-                if (favorSort === "buyers") {
-                  setFavorSort("default");
-                  return;
-                }
-                setFavorSort("buyers");
-                setChartLayout("stacked");
-              }}
-              title="Composite: higher months supply + longer DOM first (more buyer friendly). Tap again to clear."
-            >
-              Buyer Friendly
-            </button>
-          </div>
-          </div>
-          {onLookbackIdChange ? (
-            <div className="space-y-1.5">
-              <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
-                Closed lookback
+            {!filtersOpen ? (
+              <p className="min-w-0 [font-family:var(--mp-mono-font)] text-[10px] leading-snug text-[var(--mp-muted-text)]">
+                {filterSummary}
               </p>
-              <div
-                className="inline-flex flex-wrap gap-1.5"
-                role="group"
-                aria-label="Closed sales lookback period"
-              >
-                {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt) => (
+            ) : null}
+          </div>
+
+          {filtersOpen ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-black/[0.06] bg-[var(--mp-page-bg)]/60 px-3 py-3 sm:px-4">
+              {categoryFilter ? (
+                <div className="space-y-1.5">
+                  <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
+                    Property type
+                  </p>
+                  {categoryFilter}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <div
+                  className="inline-flex flex-wrap gap-1.5"
+                  role="group"
+                  aria-label="Chart layout"
+                >
                   <button
-                    key={opt.id}
                     type="button"
-                    className={controlBtn(lookbackId === opt.id)}
-                    aria-pressed={lookbackId === opt.id}
-                    onClick={() => onLookbackIdChange(opt.id)}
+                    className={controlBtn(chartLayout === "stacked")}
+                    aria-pressed={chartLayout === "stacked"}
+                    onClick={() => setChartLayout("stacked")}
                   >
-                    {opt.label}
+                    STACKED
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    className={controlBtn(chartLayout === "unstacked")}
+                    aria-pressed={chartLayout === "unstacked"}
+                    onClick={() => {
+                      setChartLayout("unstacked");
+                      // Friend sorts only apply to the stacked composite.
+                      setFavorSort("default");
+                    }}
+                  >
+                    UNSTACKED
+                  </button>
+                </div>
+                <div
+                  className="inline-flex flex-wrap gap-1.5"
+                  role="group"
+                  aria-label="Town sort by market favorability"
+                >
+                  <button
+                    type="button"
+                    className={controlBtn(favorSort === "sellers")}
+                    aria-pressed={favorSort === "sellers"}
+                    onClick={() => {
+                      if (favorSort === "sellers") {
+                        setFavorSort("default");
+                        return;
+                      }
+                      setFavorSort("sellers");
+                      setChartLayout("stacked");
+                    }}
+                    title="Composite: lower months supply + shorter DOM first (more seller friendly). Tap again to clear."
+                  >
+                    Seller Friendly
+                  </button>
+                  <button
+                    type="button"
+                    className={controlBtn(favorSort === "buyers")}
+                    aria-pressed={favorSort === "buyers"}
+                    onClick={() => {
+                      if (favorSort === "buyers") {
+                        setFavorSort("default");
+                        return;
+                      }
+                      setFavorSort("buyers");
+                      setChartLayout("stacked");
+                    }}
+                    title="Composite: higher months supply + longer DOM first (more buyer friendly). Tap again to clear."
+                  >
+                    Buyer Friendly
+                  </button>
+                </div>
               </div>
-              <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
-                Applies to closed sales only. Inventory, months supply, and avg
-                DOM stay current.
-              </p>
+
+              {onLookbackIdChange ? (
+                <div className="space-y-1.5">
+                  <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
+                    Closed lookback
+                  </p>
+                  <div
+                    className="inline-flex flex-wrap gap-1.5"
+                    role="group"
+                    aria-label="Closed sales lookback period"
+                  >
+                    {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        className={controlBtn(lookbackId === opt.id)}
+                        aria-pressed={lookbackId === opt.id}
+                        onClick={() => onLookbackIdChange(opt.id)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
+                    Applies to closed sales only. Inventory, months supply, avg
+                    DOM, and prices stay current.
+                  </p>
+                </div>
+              ) : null}
+
+              {favorSort !== "default" ? (
+                <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
+                  Sorted by buyer/seller friendly composite (months supply + avg
+                  DOM
+                  {favorSort === "sellers"
+                    ? "; lower = more seller friendly"
+                    : "; higher = more buyer friendly"}
+                  ). All towns stays on top.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
-        {favorSort !== "default" ? (
-          <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)] -mt-2">
-            Sorted by buyer/seller friendly composite (months supply + avg DOM
-            {favorSort === "sellers"
-              ? "; lower = more seller friendly"
-              : "; higher = more buyer friendly"}
-            ). All towns stays on top.
-          </p>
-        ) : null}
-
-        {categoryFilter ? (
-          <div className="space-y-3">
-            {categoryFilter}
-          </div>
-        ) : null}
 
         {chartLayout === "stacked" ? (
           <CombinedMetricsChart
@@ -963,6 +1063,32 @@ export default function WeeklyBriefContent({
           townHref={closedSalesTownHref}
           settle={settle}
           calcOf={(r) => r.calc}
+        />
+
+        <BarChart
+          title={`Median price (${titleScope})`}
+          rows={sortedMedianPrice}
+          valueOf={(r) => r.medianPrice}
+          valueKind="money"
+          sortable
+          barClassName={METRIC_COLORS.medianPrice}
+          emptyMessage="No median price rows in cache yet (rebuild market stats)."
+          townHref={townHref}
+          settle={settle}
+          calcOf={(r) => r.medianPriceCalc}
+        />
+
+        <BarChart
+          title={`Average price (${titleScope})`}
+          rows={sortedMedianPrice}
+          valueOf={(r) => r.averagePrice}
+          valueKind="money"
+          sortable
+          barClassName={METRIC_COLORS.averagePrice}
+          emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
+          townHref={townHref}
+          settle={settle}
+          calcOf={(r) => r.averagePriceCalc}
         />
           </>
         )}

@@ -1,6 +1,10 @@
 import 'server-only'
 
-import { setSyncMeta, getSyncMeta } from '@/lib/db/sync-meta-store'
+import {
+  getSyncMeta,
+  setSyncMeta,
+  setSyncMetaDurable,
+} from '@/lib/db/sync-meta-store'
 import {
   backfillVisionListingLinks,
   countVisionAddresses,
@@ -24,10 +28,71 @@ import {
 
 const UA = 'tmre-bot/1.0 (+https://tmrebuilder.com; vision-addresses sync)'
 const DEFAULT_DELAY_MS = 500
+/** Safe Netlify / Admin chunk. CLI can raise via VISION_SYNC_MAX_PARCELS (cap 200). */
 const DEFAULT_MAX_PARCELS = 40
+const ABSOLUTE_MAX_PARCELS = 200
 const TOWN_STATE_META_KEY = 'vision_addresses_town_state'
 const SYNCED_AT_META_KEY = 'vision_addresses_synced_at'
 const LAST_STATS_META_KEY = 'vision_addresses_last_stats'
+/** Temporal progress while a chunk is running (Admin Status + CLI). */
+const LIVE_META_KEY = 'vision_addresses_live'
+
+export type VisionAddressesLiveProgress = {
+  town: string
+  phase: VisionTownPhase
+  /** 1-based index within this chunk */
+  n: number
+  maxParcels: number
+  visionPid: string
+  /** Parsed Field Card address when available */
+  address: string | null
+  street: string | null
+  letter: string | null
+  /** ISO-8601 UTC */
+  updatedAt: string
+  status: 'running' | 'done' | 'error'
+}
+
+export function readVisionAddressesLiveProgress(): VisionAddressesLiveProgress | null {
+  const raw = getSyncMeta(LIVE_META_KEY)
+  if (!raw?.trim()) return null
+  try {
+    const parsed = JSON.parse(raw) as VisionAddressesLiveProgress
+    if (!parsed || typeof parsed !== 'object') return null
+    if (typeof parsed.town !== 'string' || typeof parsed.visionPid !== 'string') {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export function formatVisionAddressesLiveProgress(
+  live: VisionAddressesLiveProgress | null | undefined,
+): string | null {
+  if (!live) return null
+  if (live.status === 'done') {
+    return `${live.town}: done ${live.n}/${live.maxParcels} parcels this chunk`
+  }
+  if (live.status === 'error') {
+    return `${live.town}: error after ${live.n}/${live.maxParcels} · pid ${live.visionPid}`
+  }
+  const where =
+    live.address?.trim() ||
+    (live.street ? `${live.street}${live.letter ? ` (${live.letter})` : ''}` : null) ||
+    `pid ${live.visionPid}`
+  return `${live.town} ${live.phase}: ${live.n}/${live.maxParcels} · ${where}`
+}
+
+function stampLiveProgress(live: VisionAddressesLiveProgress): void {
+  const payload = JSON.stringify(live)
+  // In-process + Neon so Admin poll sees CLI / worker progress.
+  setSyncMeta(LIVE_META_KEY, payload)
+  void setSyncMetaDurable(LIVE_META_KEY, payload).catch((err) => {
+    console.warn('[vision-gis-sync] live progress stamp failed', err)
+  })
+}
 
 export type VisionTownPhase = 'full' | 'incremental'
 
@@ -116,6 +181,12 @@ async function ingestParcel(
     neu: number
     r2: number
   },
+  ctx: {
+    phase: VisionTownPhase
+    maxParcels: number
+    street: string | null
+    letter: string | null
+  },
 ): Promise<void> {
   const html = await fetchText(`${cfg.baseUrl}/Parcel.aspx?pid=${visionPid}`)
   const parsed = parseVisionParcelHtml(html, {
@@ -132,6 +203,33 @@ async function ingestParcel(
   if (changed) counts.changed += 1
   else counts.unchanged += 1
 
+  const address =
+    parsed.addressFull?.trim() ||
+    [parsed.streetNo, parsed.streetName].filter(Boolean).join(' ').trim() ||
+    null
+  const n = counts.fetched
+  // scraped_at is always ISO-8601 UTC (…Z / Postgres timestamptz +00).
+  const scrapedAt = new Date().toISOString()
+  stampLiveProgress({
+    town: cfg.town,
+    phase: ctx.phase,
+    n,
+    maxParcels: ctx.maxParcels,
+    visionPid,
+    address,
+    street: ctx.street,
+    letter: ctx.letter,
+    updatedAt: scrapedAt,
+    status: 'running',
+  })
+  console.info(
+    `[vision-gis-sync] ${n}/${ctx.maxParcels} pid=${visionPid}` +
+      (address ? ` · ${address}` : '') +
+      (ctx.street && !address ? ` · ${ctx.street}` : '') +
+      ` · ${cfg.town} ${ctx.phase}` +
+      (isNew ? ' · new' : changed ? ' · changed' : ' · unchanged'),
+  )
+
   let r2Key: string | null = null
   let rewriteBlob = false
   if (changed && isR2VisionStoreConfigured()) {
@@ -142,7 +240,6 @@ async function ingestParcel(
     }
   }
 
-  const scrapedAt = new Date().toISOString()
   await upsertVisionAddress(parsed, {
     scrapedAt,
     fieldCardR2Key: r2Key,
@@ -190,7 +287,7 @@ export async function syncVisionAddresses(
 
   const maxParcels = Math.max(
     1,
-    Math.min(options.maxParcels ?? DEFAULT_MAX_PARCELS, 200),
+    Math.min(options.maxParcels ?? DEFAULT_MAX_PARCELS, ABSOLUTE_MAX_PARCELS),
   )
   const delayMs = Math.max(200, options.delayMs ?? DEFAULT_DELAY_MS)
 
@@ -210,6 +307,22 @@ export async function syncVisionAddresses(
     r2: 0,
   }
   let townComplete = false
+  console.info(
+    `[vision-gis-sync] start town=${cfg.town} phase=${state.phase} maxParcels=${maxParcels} delayMs=${delayMs}` +
+      ` (scraped_at timestamps are UTC)`,
+  )
+  stampLiveProgress({
+    town: cfg.town,
+    phase: state.phase,
+    n: 0,
+    maxParcels,
+    visionPid: '',
+    address: null,
+    street: null,
+    letter: null,
+    updatedAt: syncedAt,
+    status: 'running',
+  })
 
   try {
     if (state.phase === 'full') {
@@ -219,11 +332,17 @@ export async function syncVisionAddresses(
       ) {
         const letter = VISION_GIS_STREET_LETTERS[state.letterIndex]!
         if (!state.streetsForLetter) {
+          console.info(
+            `[vision-gis-sync] letter ${letter} · loading streets…`,
+          )
           const letterHtml = await fetchText(
             `${cfg.baseUrl}/Streets.aspx?Letter=${encodeURIComponent(letter)}`,
           )
           state.streetsForLetter = streetNamesFromLetterHtml(letterHtml)
           state.streetIndex = 0
+          console.info(
+            `[vision-gis-sync] letter ${letter} · ${state.streetsForLetter.length} streets`,
+          )
           await sleep(delayMs)
         }
 
@@ -236,6 +355,9 @@ export async function syncVisionAddresses(
         }
 
         const street = streets[state.streetIndex]!
+        console.info(
+          `[vision-gis-sync] street ${street} (${letter}) · fetching parcels…`,
+        )
         const streetHtml = await fetchText(
           `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`,
         )
@@ -244,7 +366,12 @@ export async function syncVisionAddresses(
 
         for (const link of links) {
           if (counts.fetched >= maxParcels) break
-          await ingestParcel(cfg, link.visionPid, delayMs, counts)
+          await ingestParcel(cfg, link.visionPid, delayMs, counts, {
+            phase: state.phase,
+            maxParcels,
+            street,
+            letter,
+          })
         }
 
         state.streetIndex += 1
@@ -284,13 +411,23 @@ export async function syncVisionAddresses(
           await sleep(delayMs)
           for (const link of links) {
             if (counts.fetched >= maxParcels) break
-            await ingestParcel(cfg, link.visionPid, delayMs, counts)
+            await ingestParcel(cfg, link.visionPid, delayMs, counts, {
+              phase: state.phase,
+              maxParcels,
+              street,
+              letter: 'A',
+            })
           }
         }
       } else {
         for (const pid of pids) {
           if (counts.fetched >= maxParcels) break
-          await ingestParcel(cfg, pid, delayMs, counts)
+          await ingestParcel(cfg, pid, delayMs, counts, {
+            phase: state.phase,
+            maxParcels,
+            street: null,
+            letter: null,
+          })
           state.incrementalAfterPid = pid
         }
       }
@@ -301,6 +438,18 @@ export async function syncVisionAddresses(
     writeTownStateMap(stateMap)
     const totalRows = await countVisionAddresses(cfg.town)
     const detail = err instanceof Error ? err.message : String(err)
+    stampLiveProgress({
+      town: cfg.town,
+      phase: state.phase,
+      n: counts.fetched,
+      maxParcels,
+      visionPid: '',
+      address: null,
+      street: null,
+      letter: null,
+      updatedAt: new Date().toISOString(),
+      status: 'error',
+    })
     const result: VisionAddressesSyncResult = {
       ok: false,
       town: cfg.town,
@@ -371,5 +520,18 @@ export async function syncVisionAddresses(
 
   setSyncMeta(SYNCED_AT_META_KEY, syncedAt)
   setSyncMeta(LAST_STATS_META_KEY, JSON.stringify(result))
+  stampLiveProgress({
+    town: cfg.town,
+    phase: state.phase,
+    n: counts.fetched,
+    maxParcels,
+    visionPid: '',
+    address: null,
+    street: null,
+    letter: null,
+    updatedAt: new Date().toISOString(),
+    status: 'done',
+  })
+  console.info(`[vision-gis-sync] ${detail} · ${result.durationMs}ms`)
   return result
 }

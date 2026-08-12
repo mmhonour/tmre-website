@@ -33,6 +33,16 @@ import {
 import type { SyncScheduleWeekdayEt } from '@/lib/sync-schedule-config-shared'
 import { formatMarketDigestHtml } from '@/lib/market-digest-html'
 import {
+  DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+  DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  summarizeMarketPulseFilters,
+} from '@/lib/market-pulse-defaults'
+import {
+  defaultMarketPulseCombinedRows,
+  marketPulseAllTownsAvgDom,
+} from '@/lib/market-pulse-combined-rows'
+import { DEFAULT_MARKET_PULSE_LOOKBACK_ID } from '@/lib/market-pulse-lookback'
+import {
   avgMonthlyClosingsFromClosed,
   computeMonthsSupplyRatio,
   monthsSupplyValueCalcs,
@@ -45,6 +55,7 @@ import type {
   MarketDigestClosedTownCount,
   MarketDigestDealOfTheWeek,
   MarketDigestDomTownCount,
+  MarketDigestPriceTownCount,
   MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
 import { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
@@ -61,6 +72,7 @@ export type {
   MarketDigestClosedTownCount,
   MarketDigestDealOfTheWeek,
   MarketDigestDomTownCount,
+  MarketDigestPriceTownCount,
   MarketDigestSnapshot,
 } from '@/lib/market-digest-types'
 export { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
@@ -191,6 +203,48 @@ async function avgDomByTownFromStats(
   }
 }
 
+/** Median + average price from stats_cache market-stats (All + each TMRE town). */
+async function priceByTownFromStats(
+  kind: ListingKind,
+): Promise<MarketDigestPriceTownCount[]> {
+  try {
+    const cities = ['All', ...TMRE_TOWNS] as const
+    const rows = await Promise.all(
+      cities.map(async (city) => {
+        const cached = await readStatsCacheRow(
+          statsCacheKey('market-stats', city, kind),
+        )
+        const market = parseMarketStatsPayload(cached)
+        if (!market) return null
+        const median =
+          market.medianPrice != null && Number.isFinite(market.medianPrice)
+            ? market.medianPrice
+            : null
+        const average =
+          market.averagePrice != null && Number.isFinite(market.averagePrice)
+            ? market.averagePrice
+            : null
+        if (median == null && average == null) return null
+        const row: MarketDigestPriceTownCount = {
+          city: String(city),
+          medianPrice: median,
+          averagePrice: average,
+          medianPriceCalc: market.medianPriceCalc,
+          averagePriceCalc: market.averagePriceCalc,
+        }
+        return row
+      }),
+    )
+    return rows.filter((r): r is MarketDigestPriceTownCount => r != null)
+  } catch (err) {
+    console.warn(
+      '[market-digest] price by town failed',
+      err instanceof Error ? err.message : err,
+    )
+    return []
+  }
+}
+
 function isCommercialListing(listing: Listing): boolean {
   return isCommercialPropertyType(propertyClassHaystack(listing))
 }
@@ -312,7 +366,7 @@ async function buildCachedCategorySlice(
   spec: CachedCategorySpec,
   includeClosedTrailing = false,
 ): Promise<MarketDigestCategorySlice> {
-  const [closedTrailing, avgDomByTown, market, westport, ...townRows] =
+  const [closedTrailing, avgDomByTown, priceByTown, market, westport, ...townRows] =
     await Promise.all([
       includeClosedTrailing
         ? closedTrailingCounts({
@@ -321,6 +375,7 @@ async function buildCachedCategorySlice(
           })
         : Promise.resolve<MarketDigestClosedTownCount[]>([]),
       avgDomByTownFromStats(spec.kind),
+      priceByTownFromStats(spec.kind),
       readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
       readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
       ...TMRE_TOWNS.map((town) =>
@@ -340,6 +395,7 @@ async function buildCachedCategorySlice(
     towns,
     closedTrailing,
     avgDomByTown,
+    priceByTown,
     deal: null,
   }
 }
@@ -359,7 +415,49 @@ function emptyCommercialCategorySlice(
     towns: [],
     closedTrailing: [],
     avgDomByTown: [],
+    priceByTown: [],
     deal: null,
+  }
+}
+
+function priceRowFromListings(
+  city: string,
+  listings: readonly Listing[],
+): MarketDigestPriceTownCount | null {
+  const prices = listings
+    .map((l) => l.price)
+    .filter((p): p is number => p != null && Number.isFinite(p) && p > 0)
+    .sort((a, b) => a - b)
+  if (prices.length === 0) return null
+  const mid = Math.floor(prices.length / 2)
+  const medianPrice =
+    prices.length % 2 === 0
+      ? (prices[mid - 1]! + prices[mid]!) / 2
+      : prices[mid]!
+  const averagePrice =
+    prices.reduce((a, b) => a + b, 0) / prices.length
+  return {
+    city,
+    medianPrice,
+    averagePrice,
+    medianPriceCalc: {
+      summary: `Median list price across ${prices.length.toLocaleString()} active commercial listings in ${city}.`,
+      inputs: {
+        source: 'commercial-active-list-median',
+        sampleSize: prices.length,
+        city,
+        medianPrice,
+      },
+    },
+    averagePriceCalc: {
+      summary: `Mean list price across ${prices.length.toLocaleString()} active commercial listings in ${city}.`,
+      inputs: {
+        source: 'commercial-active-list-mean',
+        sampleSize: prices.length,
+        city,
+        averagePrice,
+      },
+    },
   }
 }
 
@@ -436,11 +534,16 @@ async function buildCommercialCategorySlice(
       })
     }
     pushCommercialDom('All', commercialActive)
+    const priceByTown: MarketDigestPriceTownCount[] = []
+    const allPrice = priceRowFromListings('All', commercialActive)
+    if (allPrice) priceByTown.push(allPrice)
     for (const row of perTown) {
       const townActive = row.active
         .filter(isCommercialListing)
         .filter((l) => !isRentalListing(l))
       pushCommercialDom(row.payload.city, townActive)
+      const townPrice = priceRowFromListings(row.payload.city, townActive)
+      if (townPrice) priceByTown.push(townPrice)
     }
     let deal: MarketDigestDealOfTheWeek | null = null
     try {
@@ -464,6 +567,7 @@ async function buildCommercialCategorySlice(
         ? await closedTrailingCounts({ kind: 'sale', commercialOnly: true })
         : [],
       avgDomByTown,
+      priceByTown,
       deal,
     }
   } catch (err) {
@@ -475,30 +579,6 @@ async function buildCommercialCategorySlice(
 function fmtMonthsSupply(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return 'n/a'
   return `${n.toFixed(1)} mo`
-}
-
-function fmtAvgClosings(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return 'n/a'
-  return n % 1 === 0 ? String(n) : n.toFixed(1)
-}
-
-function pad(value: string, width: number): string {
-  if (value.length >= width) return value
-  return value + ' '.repeat(width - value.length)
-}
-
-function townTableLines(rows: MonthsSupplyPayload[]): string[] {
-  if (rows.length === 0) return ['(no town rows in cache yet)']
-  const header = `${pad('Town', 14)} ${pad('Active', 8)} ${pad('Avg/mo', 8)} MOS`
-  const lines = [header, '-'.repeat(header.length)]
-  for (const row of rows) {
-    const town =
-      row.city.trim().toLowerCase() === 'all' ? 'All towns' : row.city.trim()
-    lines.push(
-      `${pad(town, 14)} ${pad(String(row.activeCount), 8)} ${pad(fmtAvgClosings(row.avgMonthlyClosings), 8)} ${fmtMonthsSupply(row.monthsSupply)}`,
-    )
-  }
-  return lines
 }
 
 /**
@@ -555,6 +635,7 @@ export async function buildMarketDigestSnapshot(options?: {
     towns: townRows,
     closedTrailing: allSlice?.closedTrailing ?? [],
     avgDomByTown: allSlice?.avgDomByTown ?? [],
+    priceByTown: allSlice?.priceByTown ?? [],
     categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({
@@ -594,44 +675,44 @@ export function formatMarketDigestEmail(
   )
   const includeSocial = options?.includeSocialProfiles === true
 
-  const tableRows: MonthsSupplyPayload[] = []
-  if (snapshot.market) tableRows.push(snapshot.market)
-  for (const town of snapshot.towns) {
-    if (
-      snapshot.market &&
-      town.city.trim().toLowerCase() === snapshot.market.city.trim().toLowerCase()
-    ) {
-      continue
-    }
-    tableRows.push(town)
-  }
+  const filterSummary = summarizeMarketPulseFilters({
+    selectionLabel: 'ALL',
+    chartLayout: DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+    favorSort: DEFAULT_MARKET_PULSE_FAVOR_SORT,
+    lookbackId: DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  })
+  const combined = defaultMarketPulseCombinedRows(snapshot)
+  const allDom = marketPulseAllTownsAvgDom(snapshot)
 
   const kpiLines = [
     'SUMMARY',
     '-------',
-    `Market active: ${snapshot.market ? snapshot.market.activeCount : 'n/a'}`,
-    `Market MOS:    ${snapshot.market ? fmtMonthsSupply(snapshot.market.monthsSupply) : 'n/a'}`,
-    `Westport MOS:  ${snapshot.westport ? fmtMonthsSupply(snapshot.westport.monthsSupply) : 'n/a'}`,
+    `Filters: ${filterSummary}`,
+    `Market active:       ${snapshot.market ? snapshot.market.activeCount : 'n/a'}`,
+    `All Towns MOS:       ${snapshot.market ? fmtMonthsSupply(snapshot.market.monthsSupply) : 'n/a'}`,
+    `Avg days on market:  ${allDom != null ? Math.round(allDom) : 'n/a'}`,
   ]
 
-  const inventoryLines = [
-    'ACTIVE INVENTORY & MONTHS SUPPLY (sales)',
-    '---------------------------------------',
-    ...townTableLines(tableRows),
+  const stackedLines = [
+    'TOWN METRICS STACKED (sales · Seller Friendly)',
+    '---------------------------------------------',
+    ...(combined.length === 0
+      ? ['(no town rows in cache yet)']
+      : combined.flatMap((row) => {
+          const city = row.city.trim() || '—'
+          return [
+            city,
+            `  Inventory      ${row.activeCount ?? '—'}`,
+            `  Months supply  ${fmtMonthsSupply(row.monthsSupply)}`,
+            `  Avg DOM        ${row.avgDaysOnMarket != null ? `${Math.round(row.avgDaysOnMarket)}d` : '—'}`,
+            `  Closed (${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} mo) ${row.closedCount ?? '—'}`,
+            `  Median price   ${fmtMoney(row.medianPrice)}`,
+            `  Average price  ${fmtMoney(row.averagePrice)}`,
+          ]
+        })),
     '',
     'MOS = active ÷ avg monthly closings (3 prior full months).',
-    'Sale listings, all property classes.',
-  ]
-
-  const closedRows = snapshot.closedTrailing ?? []
-  const closedLines = [
-    `CLOSED SALES — TRAILING ${MARKET_DIGEST_CLOSED_TRAILING_MONTHS} MONTHS (sales)`,
-    '-------------------------------------------------',
-    ...(closedRows.length === 0
-      ? ['(no closed sales in the trailing window yet)']
-      : closedRows.map(
-          (row) => `${pad(row.city.trim() || '—', 14)} ${row.count.toLocaleString()}`,
-        )),
+    'Same defaults as /market-pulse (stacked · Seller Friendly · ALL · 24 mo closed).',
   ]
 
   const dealLines: string[] = ['DEAL OF THE WEEK', '----------------']
@@ -683,16 +764,14 @@ export function formatMarketDigestEmail(
   }
 
   const text = [
-    'TMRE Monday market brief',
+    'TMRE Market Pulse',
     etDate,
     `Web: ${SITE_URL}/market-pulse`,
     `Stats: ${SITE_URL}/stats`,
     '',
     ...kpiLines,
     '',
-    ...inventoryLines,
-    '',
-    ...closedLines,
+    ...stackedLines,
     '',
     ...dealLines,
     '',

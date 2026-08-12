@@ -38,6 +38,15 @@ export type MarketDigestDomTownCount = {
   avgDaysOnMarketCalc?: StatsValueCalc
 }
 
+/** Median / average price for one town (from market-stats cache). */
+export type MarketDigestPriceTownCount = {
+  city: string
+  medianPrice: number | null
+  averagePrice: number | null
+  medianPriceCalc?: StatsValueCalc
+  averagePriceCalc?: StatsValueCalc
+}
+
 export type MarketDigestCategorySlice = {
   id: MarketPulseCategoryId
   label: string
@@ -52,6 +61,8 @@ export type MarketDigestCategorySlice = {
   closedTrailing: MarketDigestClosedTownCount[]
   /** Avg DOM per town for the Market Pulse bar chart. */
   avgDomByTown: MarketDigestDomTownCount[]
+  /** Median + average price per town (Market Pulse price bars). */
+  priceByTown: MarketDigestPriceTownCount[]
   /** Featured deal for this tab (DOTW for ALL; DOTD-aligned for other types). */
   deal: MarketDigestDealOfTheWeek | null
 }
@@ -69,6 +80,8 @@ export type MarketDigestSnapshot = {
   closedTrailing: MarketDigestClosedTownCount[]
   /** ALL-sales avg DOM per town (default Market Pulse tab). */
   avgDomByTown: MarketDigestDomTownCount[]
+  /** ALL-sales median / average price per town (default Market Pulse tab). */
+  priceByTown: MarketDigestPriceTownCount[]
   /** Market Pulse tabs (ALL / SFR / Condo / Rentals / Commercial). */
   categories: MarketDigestCategorySlice[]
   dealOfTheWeek: MarketDigestDealOfTheWeek | null

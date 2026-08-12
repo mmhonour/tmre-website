@@ -6,7 +6,7 @@ import {
 } from '@/lib/stats-url'
 import { isTmreTown, normalizeTownName } from '@/lib/tmre-towns'
 
-/** Market Pulse category tabs (web). Email stays on ALL sales. */
+/** Market Pulse category tabs (web). Email mirrors default page: ALL sales, stacked, Seller Friendly. */
 export const MARKET_PULSE_CATEGORY_IDS = [
   'all',
   'sfr',

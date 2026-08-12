@@ -44,6 +44,7 @@ import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminUiKitPanel from "@/components/admin/AdminUiKitPanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import AdminLatestStatusLogicPanel from "@/components/admin/AdminLatestStatusLogicPanel";
+import { formatAdminSyncTimestamp } from "@/lib/admin-sync-schedule-format";
 import { readDeployBuildInfo } from "@/lib/deploy-build-info";
 import { emptyScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 import {
@@ -174,13 +175,7 @@ export const metadata = {
 };
 
 function formatTimestamp(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatAdminSyncTimestamp(iso);
 }
 
 function formatMlsTimestamp(iso: string | null | undefined): string {
@@ -366,6 +361,13 @@ export default async function AdminPage() {
   const lastRefreshStarted = getSyncMeta("last_refresh_started_at");
   const propertyAddressesSyncedAt = getSyncMeta("property_addresses_synced_at");
   const visionAddressesSyncedAt = getSyncMeta("vision_addresses_synced_at");
+  const {
+    readVisionAddressesLiveProgress,
+    formatVisionAddressesLiveProgress,
+  } = await import("@/lib/vision-gis-sync");
+  const visionAddressesLive = readVisionAddressesLiveProgress();
+  const visionAddressesLiveStatus =
+    formatVisionAddressesLiveProgress(visionAddressesLive);
   const zipBoundariesSyncedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_KEY);
   const zipBoundariesSyncStartedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_STARTED_KEY);
   const fomcLastSyncedAt = getSyncMeta("fomc_last_synced_at");
@@ -614,6 +616,8 @@ export default async function AdminPage() {
     lastMlsSyncHeartbeat: lastMlsSyncHeartbeat ?? null,
     propertyAddressesSyncedAt: propertyAddressesSyncedAt,
     visionAddressesSyncedAt,
+    visionAddressesLive,
+    visionAddressesLiveStatus,
     zipBoundariesSyncedAt,
     zipBoundariesSyncStartedAt,
     fomcLastSyncedAt,

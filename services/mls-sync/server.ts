@@ -103,27 +103,38 @@ async function executeIncremental(options: {
 
   await hydrateSyncMetaStore()
   await stampHeartbeat(options.startedAt)
+  // Keep Neon heartbeat fresh during long RETS pulls so Admin does not flash
+  // BROKEN after the 4–15m UI window while the run is still in flight.
+  const pulse = setInterval(() => {
+    void stampHeartbeat(new Date().toISOString()).catch((err) => {
+      console.warn('[mls-sync] heartbeat pulse failed', err)
+    })
+  }, 60_000)
 
-  const result = await runIncrementalSyncListingsWork(options.startedAt, {
-    source: options.source,
-    ...(options.towns?.length ? { towns: options.towns } : {}),
-    ...(options.statusScope && options.statusScope !== 'all'
-      ? { statusScope: options.statusScope }
-      : {}),
-  })
+  try {
+    const result = await runIncrementalSyncListingsWork(options.startedAt, {
+      source: options.source,
+      ...(options.towns?.length ? { towns: options.towns } : {}),
+      ...(options.statusScope && options.statusScope !== 'all'
+        ? { statusScope: options.statusScope }
+        : {}),
+    })
 
-  lastRunFinishedAt = new Date().toISOString()
-  lastRunOk = result.status >= 200 && result.status < 300
-  lastRunError = lastRunOk
-    ? null
-    : typeof result.body?.reason === 'string'
-      ? result.body.reason
-      : `HTTP ${result.status}`
+    lastRunFinishedAt = new Date().toISOString()
+    lastRunOk = result.status >= 200 && result.status < 300
+    lastRunError = lastRunOk
+      ? null
+      : typeof result.body?.reason === 'string'
+        ? result.body.reason
+        : `HTTP ${result.status}`
 
-  await stampHeartbeat(lastRunFinishedAt)
-  console.info(
-    `[mls-sync] run finished ok=${lastRunOk} status=${result.status} at=${lastRunFinishedAt}`,
-  )
+    await stampHeartbeat(lastRunFinishedAt)
+    console.info(
+      `[mls-sync] run finished ok=${lastRunOk} status=${result.status} at=${lastRunFinishedAt}`,
+    )
+  } finally {
+    clearInterval(pulse)
+  }
 }
 
 function startRun(options: {
@@ -145,6 +156,7 @@ function startRun(options: {
       lastRunOk = false
       lastRunError = err instanceof Error ? err.message : String(err)
       console.error('[mls-sync] run failed', err)
+      void stampHeartbeat(lastRunFinishedAt).catch(() => {})
     })
     .finally(() => {
       runInFlight = null

@@ -251,7 +251,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision-addresses (sync)',
     category: 'sync-admin',
     definition:
-      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` + optional R2 HTML blob. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory).',
+      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` + optional R2 HTML blob. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify); CLI can raise with VISION_SYNC_MAX_PARCELS up to 200. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory).',
   },
   {
     term: 'Brokerage name',
@@ -631,7 +631,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'MLS_SYNC_SERVICE_URL',
     category: 'sync-admin',
     definition:
-      'Netlify env var: public base URL of the Railway mls-sync service (no trailing slash). Admin Sync now POSTs /run here when Incremental Scheduler is Railway.',
+      'Netlify env var: public base URL of the Railway mls-sync service (no trailing slash). Prefer `https://…up.railway.app`. Host-only values are accepted and normalized to https. Admin Sync now and the Incremental watchdog POST /run here when Incremental Scheduler is Railway.',
   },
   {
     term: 'Railpack',
