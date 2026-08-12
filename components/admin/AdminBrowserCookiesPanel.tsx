@@ -548,8 +548,8 @@ export default function AdminBrowserCookiesPanel() {
             app uses for prefs or navigation. These are{" "}
             <span className="font-medium text-navy">not</span> cookies — they are
             never attached to HTTP requests. Latest view restore uses
-            sessionStorage on purpose (tab-local; survives listing Back, not a
-            new browser session).
+            sessionStorage on purpose (tab-local; survives listing Back, skipped
+            on hard refresh, not a new browser session).
           </p>
         </div>
         <div className="px-5 py-5 sm:px-6">

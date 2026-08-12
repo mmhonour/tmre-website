@@ -18,7 +18,10 @@ import {
   latestRowActivityIso,
   latestRowActivityMs,
 } from "@/lib/latest-activity";
-import { ensureMinOneListingPerTmreTown } from "@/lib/latest-town-coverage";
+import {
+  ensureMinOneListingPerTmreTown,
+  feedCoversAllTmreTowns,
+} from "@/lib/latest-town-coverage";
 import {
   patchLatestViewScrollY,
   readLatestViewState,
@@ -308,18 +311,26 @@ export default function LatestClient({
     if (!groupByTown) setGroupByZip(false);
   }, [groupByTown]);
 
-  // Restore grouping / filters after listing Back (or any remount).
+  // Restore grouping / filters after listing Back (soft remount). Skip on hard
+  // refresh — sessionStorage survives reload and was re-applying a town filter
+  // (often Westport) after SSR painted the full multi-town ticker.
   useLayoutEffect(() => {
-    const stored = readLatestViewState();
-    if (stored) {
-      setGroupByTown(stored.groupByTown);
-      setGroupByZip(stored.groupByZip);
-      setTownStatsOpen(stored.townStatsOpen);
-      setSelectedTown(stored.selectedTown);
-      setCollapsedGroups(new Set(stored.collapsedGroups));
-      setExpandedGroups(new Set(stored.expandedGroups));
-      setGroupStatusFilter(stored.groupStatusFilter);
-      pendingScrollY.current = stored.scrollY;
+    const nav = performance.getEntriesByType(
+      "navigation",
+    )[0] as PerformanceNavigationTiming | undefined;
+    const isReload = nav?.type === "reload";
+    if (!isReload) {
+      const stored = readLatestViewState();
+      if (stored) {
+        setGroupByTown(stored.groupByTown);
+        setGroupByZip(stored.groupByZip);
+        setTownStatsOpen(stored.townStatsOpen);
+        setSelectedTown(stored.selectedTown);
+        setCollapsedGroups(new Set(stored.collapsedGroups));
+        setExpandedGroups(new Set(stored.expandedGroups));
+        setGroupStatusFilter(stored.groupStatusFilter);
+        pendingScrollY.current = stored.scrollY;
+      }
     }
     setViewHydrated(true);
   }, []);
@@ -483,8 +494,19 @@ export default function LatestClient({
         ),
         LATEST_LIMIT,
       );
-      setListings(capped);
-      watermarkRef.current = newestModification(capped);
+      // Keep SSR / prior multi-town ticker if the API returned a partial mix
+      // (stale incomplete global cache) so refresh does not collapse to one town.
+      setListings((current) => {
+        if (
+          current.length > 0 &&
+          feedCoversAllTmreTowns(current) &&
+          !feedCoversAllTmreTowns(capped)
+        ) {
+          return current;
+        }
+        watermarkRef.current = newestModification(capped);
+        return capped;
+      });
     }
   }, [fetchAllTownFeeds]);
 

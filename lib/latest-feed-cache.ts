@@ -4,6 +4,7 @@ import {
   fetchLatestUpdatedListings,
   type LatestListingRow,
 } from '@/lib/latest-listings'
+import { feedCoversAllTmreTowns } from '@/lib/latest-town-coverage'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
@@ -49,7 +50,7 @@ export async function readLatestGlobalFeedCache(
   }
 }
 
-/** Persist only non-empty feeds so a bad warm cannot wipe the last good ticker. */
+/** Persist only non-empty, all-town feeds so a bad warm cannot wipe the last good ticker. */
 export async function writeLatestGlobalFeedCache(
   listings: LatestListingRow[],
 ): Promise<boolean> {
@@ -61,6 +62,11 @@ export async function writeLatestGlobalFeedCache(
       )
       return false
     }
+  } else if (!feedCoversAllTmreTowns(listings)) {
+    console.warn(
+      '[latest-feed] skipped incomplete-town global write — need every TMRE town represented',
+    )
+    return false
   }
 
   const payload: LatestGlobalFeedCachePayload = {

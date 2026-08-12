@@ -245,7 +245,7 @@ export const KNOWN_BROWSER_STORAGE: readonly KnownBrowserStorageInfo[] = [
     key: "tmre_latest_view",
     kind: "sessionStorage",
     purpose:
-      "Latest — group-by-town/zip, selected town, collapsed/expanded groups, status pills, scrollY (restored after listing Back; cleared when the tab closes)",
+      "Latest — group-by-town/zip, selected town, collapsed/expanded groups, status pills, scrollY (restored after listing Back; skipped on hard refresh; cleared when the tab closes)",
     category: "Latest",
   },
   {

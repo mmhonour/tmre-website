@@ -30,6 +30,7 @@ import { mlsTimestampMs } from '@/lib/mls-time'
 import {
   LATEST_FRESH_WINDOW_MS,
   ensureMinOneListingPerTmreTown,
+  feedCoversAllTmreTowns,
   rankLatestFeedRows,
 } from '@/lib/latest-town-coverage'
 import {
@@ -614,13 +615,15 @@ export async function fetchLatestUpdatedListings(options: {
   // Instant path for default /latest: last warm from the 30-minute DB refresh.
   // Reject cache that has no MLS activity in the last 24h so stale warm cannot
   // hide brand-new / freshly modified inventory sitting in Postgres.
-  // Town coverage is best-effort: quiet towns with no event rows are omitted.
+  // Require full TMRE town coverage — same gate as app/latest/page.tsx — so a
+  // Westport-heavy warm cannot replace the SSR multi-town ticker on client refresh.
   if (!town && !options.since && !options.bypassGlobalFeedCache) {
     const { readLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
     const cached = await readLatestGlobalFeedCache(cap)
     if (
       cached &&
       feedIsTmreOnly(cached) &&
+      feedCoversAllTmreTowns(cached) &&
       cached.every((row) => isLatestEventStatus(row.status)) &&
       feedHasUpdateWithinWindow(cached, LATEST_FRESH_WINDOW_MS, nowMs)
     ) {
@@ -690,12 +693,14 @@ export async function fetchLatestUpdatedListings(options: {
       )
 
   // Seed durable global ticker from this SQLite hit so the next load is instant.
+  // Never persist an incomplete town mix — that poisons client refresh after SSR.
   if (
     !town &&
     !options.since &&
     !options.bypassGlobalFeedCache &&
     !allowLiveScore &&
-    sorted.length > 0
+    sorted.length > 0 &&
+    feedCoversAllTmreTowns(sorted)
   ) {
     try {
       const { writeLatestGlobalFeedCache } = await import('@/lib/latest-feed-cache')
