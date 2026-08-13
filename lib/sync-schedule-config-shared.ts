@@ -5,6 +5,7 @@
 
 import {
   SCHEDULED_SYNC_JOB_IDS,
+  isRetiredScheduledSyncJob,
   type ScheduledSyncJobId,
 } from '@/lib/scheduled-sync-jobs-shared'
 import type { AdminSyncActionId } from '@/lib/admin-sync-types'
@@ -264,9 +265,12 @@ export function orderNumberByJob(
   config: SyncScheduleConfig,
 ): Record<ScheduledSyncJobId, number> {
   const out = {} as Record<ScheduledSyncJobId, number>
-  config.order.forEach((jobId, index) => {
-    out[jobId] = index + 1
-  })
+  let n = 0
+  for (const jobId of config.order) {
+    if (isRetiredScheduledSyncJob(jobId)) continue
+    n += 1
+    out[jobId] = n
+  }
   return out
 }
 
@@ -291,6 +295,7 @@ export function syncAllClientStepsFromConfig(
 ): AdminSyncActionId[] {
   const steps: AdminSyncActionId[] = []
   for (const jobId of config.order) {
+    if (isRetiredScheduledSyncJob(jobId)) continue
     if (isSyncAllActionableJob(jobId)) {
       steps.push(jobId)
     }
@@ -305,7 +310,6 @@ function isSyncAllActionableJob(
   jobId: ScheduledSyncJobId,
 ): jobId is Extract<ScheduledSyncJobId, AdminSyncActionId> {
   return (
-    jobId === 'full-resync' ||
     jobId === 'incremental' ||
     jobId === 'listing-scores' ||
     jobId === 'edge-scores' ||

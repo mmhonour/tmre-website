@@ -113,49 +113,34 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
   const schedule = readSyncScheduleConfig()
   // Prefer Configure Order for catch-up sequencing.
   const executionOrder: OverdueSyncJob[] = [
-    ...schedule.order,
+    ...schedule.order.filter((id) => id !== 'full-resync'),
     'publish-snapshot',
   ]
 
   const overdue = new Set<OverdueSyncJob>()
 
-  if (isScheduledJobDue('full-resync', now, schedule) && isRetsConfigured()) {
-    overdue.add('full-resync')
-  }
+  // Full resync is retired — never catch it up (bucket replace deletes older MLS rows).
 
   if (
-    !overdue.has('full-resync') &&
     isScheduledJobDue('incremental', now, schedule) &&
     isRetsConfigured()
   ) {
     overdue.add('incremental')
   }
 
-  if (
-    !overdue.has('full-resync') &&
-    isScheduledJobDue('listing-scores', now, schedule)
-  ) {
+  if (isScheduledJobDue('listing-scores', now, schedule)) {
     overdue.add('listing-scores')
   }
 
-  if (
-    !overdue.has('full-resync') &&
-    isScheduledJobDue('edge-scores', now, schedule)
-  ) {
+  if (isScheduledJobDue('edge-scores', now, schedule)) {
     overdue.add('edge-scores')
   }
 
-  if (
-    !overdue.has('full-resync') &&
-    isScheduledJobDue('stats-cache', now, schedule)
-  ) {
+  if (isScheduledJobDue('stats-cache', now, schedule)) {
     overdue.add('stats-cache')
   }
 
-  if (
-    !overdue.has('full-resync') &&
-    isScheduledJobDue('deal-of-the-day', now, schedule)
-  ) {
+  if (isScheduledJobDue('deal-of-the-day', now, schedule)) {
     overdue.add('deal-of-the-day')
   }
 

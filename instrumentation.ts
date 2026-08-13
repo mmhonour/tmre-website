@@ -28,6 +28,7 @@ export async function register() {
     const { getSyncMeta } = await import('./lib/db/sync-meta-store')
     const { isScheduledSyncJobPaused } = await import('./lib/scheduled-sync-toggle')
     const { shouldDeferScheduledJob } = await import('./lib/sync-next-override')
+    const { isFullResyncRetired } = await import('./lib/scheduled-sync-jobs-shared')
     const { isRetsConfigured } = await import('./lib/rets')
 
     const retsConfigured = isRetsConfigured()
@@ -69,7 +70,8 @@ export async function register() {
       process.env.ENABLE_STARTUP_FULL_SYNC !== '0' &&
       !overdueCatchupEnabled &&
       retsConfigured &&
-      process.env.NETLIFY !== 'true'
+      process.env.NETLIFY !== 'true' &&
+      !isFullResyncRetired()
     if (startupFullEnabled) {
       const startupDelayMs = Math.max(
         2_000,
@@ -133,7 +135,9 @@ export async function register() {
     // Netlify uses netlify/functions/sync-listings-full.ts for production; this covers
     // long-lived Node processes (local:dev / non-serverless hosts).
     const fullReloadEnabled =
-      process.env.ENABLE_DAILY_FULL_SYNC !== '0' && (allowListingsSync || retsConfigured)
+      process.env.ENABLE_DAILY_FULL_SYNC !== '0' &&
+      (allowListingsSync || retsConfigured) &&
+      !isFullResyncRetired()
     if (fullReloadEnabled) {
       const { msUntilNextMondayTimeEt } = await import('./lib/admin-sync-schedule')
       const scheduleNextFullReload = () => {

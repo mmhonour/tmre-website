@@ -10,6 +10,7 @@ import {
   thinCronSkipIfEventBridgeOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
+import { isFullResyncRetired, FULL_RESYNC_RETIRED_MESSAGE } from '../../lib/scheduled-sync-jobs-shared'
 
 /**
  * Thin full-reload trigger (NO background) — must finish in ~30s.
@@ -23,6 +24,9 @@ export default async function handler() {
 
   try {
     await hydrateSyncMetaStore()
+    if (isFullResyncRetired()) {
+      return thinCronSkipped(FULL_RESYNC_RETIRED_MESSAGE)
+    }
     {
       const owned = await thinCronSkipIfEventBridgeOwns('full-resync')
       if (owned) return owned

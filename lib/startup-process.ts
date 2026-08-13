@@ -1,5 +1,5 @@
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
-import { postDeployDelayLabel } from "@/lib/deploy-full-resync-schedule";
+import { isFullResyncRetired } from "@/lib/scheduled-sync-jobs-shared";
 
 export type StartupStepStatus = "active" | "scheduled" | "skipped" | "info";
 
@@ -64,11 +64,13 @@ export function describeStartupProcess(): {
     Number(process.env.OVERDUE_SYNC_CATCHUP_DELAY_MS ?? '120000'),
   )
   const startupFullEnabled =
-    envFlagEnabled('ENABLE_STARTUP_FULL_SYNC') && retsConfigured && !netlify && !overdueCatchupEnabled
+    envFlagEnabled('ENABLE_STARTUP_FULL_SYNC') &&
+    retsConfigured &&
+    !netlify &&
+    !overdueCatchupEnabled &&
+    !isFullResyncRetired()
   const latestSyncEnabled =
     envFlagEnabled("ENABLE_LATEST_SYNC") && (allowListingsSync || retsConfigured);
-  const fullReloadEnabled =
-    envFlagEnabled("ENABLE_DAILY_FULL_SYNC") && (allowListingsSync || retsConfigured);
   const propertyAddressSyncEnabled =
     envFlagEnabled("ENABLE_PROPERTY_ADDRESS_SYNC") && allowListingsSync;
   const visionAddressSyncEnabled =
@@ -93,7 +95,7 @@ export function describeStartupProcess(): {
           title: "Detect overdue admin sync windows",
           timing: `+${Math.round(overdueCatchupDelayMs / 1000)}s`,
           detail:
-            "buildOverdueSyncPlan(): full resync, incremental, scores, stats, DOTD, snapshot, addresses, edge scores — one run each, not every missed interval.",
+            "buildOverdueSyncPlan(): incremental, scores, stats, DOTD, snapshot, addresses, edge scores — one run each. Full resync is retired and is never caught up.",
           status: overdueCatchupEnabled ? "scheduled" : "skipped",
           statusLabel: overdueCatchupEnabled ? "Scheduled" : "Disabled",
         },
@@ -143,7 +145,7 @@ export function describeStartupProcess(): {
           title: "Schedule full MLS → Postgres",
           timing: `+${Math.round(startupDelayMs / 1000)}s`,
           detail:
-            "syncAllTownListings(): Active → Closed → Expired for every TMRE town.",
+            "syncAllTownListings() is retired from startup. Incremental / overdue catch-up keep inventory without deleting older MLS rows.",
           status: startupFullEnabled ? "scheduled" : "skipped",
           statusLabel: startupFullEnabled
             ? "Scheduled"
@@ -253,15 +255,16 @@ export function describeStartupProcess(): {
     {
       id: "weekly",
       title: "Weekly full reload",
-      subtitle: "Long-lived Node processes; Netlify also has sync-listings-full cron",
+      subtitle: "Retired — Incremental preserves older MLS rows",
       steps: [
         {
           id: "weekly-mon-5am",
           title: "Full reload @ 5:00 AM Monday America/New_York",
-          timing: "weekly",
-          detail: "syncAllTownListings() → scores → superlatives → stats/DOTD caches → refresh finished stamp. Admin step 1 for manual mid-week runs. Skips when Pause is checked on Full resync.",
-          status: fullReloadEnabled ? "scheduled" : "skipped",
-          statusLabel: fullReloadEnabled ? "Armed" : "Disabled",
+          timing: "retired",
+          detail:
+            "syncAllTownListings() remains as a CLI stub (FULL_RESYNC_CONFIRM=1). Hidden from Admin. Bucket replace would delete listings RETS no longer returns.",
+          status: "skipped",
+          statusLabel: "Retired",
         },
       ],
     },
@@ -284,9 +287,9 @@ export function describeStartupProcess(): {
           title: "Rebuild after full sync",
           timing: "after comps edges",
           detail:
-            "rebuildAllListingEdgeScores() runs synchronously during syncAllTownListings() so bundled DB + API reads have scores immediately.",
-          status: fullReloadEnabled ? "scheduled" : "skipped",
-          statusLabel: fullReloadEnabled ? "Chained" : "—",
+            "rebuildAllListingEdgeScores() used to run during full resync; that job is retired. Edge scores run on their own Configure cadence.",
+          status: "skipped",
+          statusLabel: "Retired",
         },
       ],
     },
@@ -378,12 +381,12 @@ export function describeStartupProcess(): {
         : [
             {
               id: "smart-warm",
-              title: "Schedule post-deploy full warm",
-              timing: "+8s",
+              title: "Post-deploy full warm",
+              timing: "retired",
               detail:
-                "When Postgres has no listings after a deploy, schedules background full reload (~2 min). Countdown appears on admin Full resync row.",
-              status: netlifyWarmEnabled ? "scheduled" : "skipped",
-              statusLabel: netlifyWarmEnabled ? "Scheduled" : "—",
+                "Would schedule a background full MLS reload when Postgres is empty after deploy. Retired so older listings are not deleted. Use Incremental if inventory is empty.",
+              status: "skipped",
+              statusLabel: "Retired",
             },
           ],
     });
@@ -407,11 +410,11 @@ export function describeStartupProcess(): {
         {
           id: "deploy-cron",
           title: "Post-deploy full warm",
-          timing: `~${postDeployDelayLabel()} after first request`,
+          timing: "retired",
           detail:
-            "After each Netlify deploy, the first serverless request schedules a background full MLS reload when Postgres has no listings yet. Admin Full resync row shows a live countdown until then.",
-          status: "info",
-          statusLabel: "Warm",
+            "Formerly queued a background full MLS reload after deploy when Postgres had no listings. Retired — Incremental is the live inventory path.",
+          status: "skipped",
+          statusLabel: "Retired",
         },
         {
           id: "deploy-cron-daily",

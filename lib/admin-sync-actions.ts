@@ -70,7 +70,7 @@ import {
   FULL_RESYNC_FINALIZE_STEPS,
   isFullResyncFinalizeStepId,
 } from '@/lib/admin-sync-types'
-import { isScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
+import { isScheduledSyncJobId, isFullResyncRetired, FULL_RESYNC_RETIRED_MESSAGE } from '@/lib/scheduled-sync-jobs-shared'
 import {
   readSyncScheduleConfigFresh,
   resolveJobScheduler,
@@ -272,6 +272,18 @@ async function runAdminSyncActionImpl(
 
   switch (action) {
     case 'full-resync': {
+      if (isFullResyncRetired()) {
+        const finishedAt = new Date().toISOString()
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - t0,
+          message: 'Full resync is retired',
+          detail: FULL_RESYNC_RETIRED_MESSAGE,
+        }
+      }
       if (!isRetsConfigured()) {
         const finishedAt = new Date().toISOString()
         return {

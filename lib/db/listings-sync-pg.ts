@@ -27,6 +27,10 @@ import {
   type SearchParams,
 } from '@/lib/rets'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+import {
+  FULL_RESYNC_RETIRED_MESSAGE,
+  isFullResyncRetired,
+} from '@/lib/scheduled-sync-jobs-shared'
 
 // ---------------------------------------------------------------------------
 // Postgres sync orchestration — Phase 3 of the SQLite → Postgres move.
@@ -188,6 +192,11 @@ export async function syncAllTownListingsPg(
 ): Promise<FullSyncResult> {
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
+
+  if (isFullResyncRetired() && process.env.FULL_RESYNC_CONFIRM !== '1') {
+    console.warn(`[listings-sync-pg] ${FULL_RESYNC_RETIRED_MESSAGE}`)
+    return { startedAt, finishedAt: startedAt, durationMs: 0, towns: [], totalUpserted: 0 }
+  }
 
   if (!isRetsConfigured()) {
     console.info('[listings-sync-pg] skipped full sync — RETS not configured')

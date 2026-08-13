@@ -20,6 +20,10 @@ import {
 import { persistIncrementalUpsertStats } from '@/lib/incremental-upsert-stats'
 import { beginListingsRefresh, endListingsRefresh } from '@/lib/listings-refresh-status'
 import {
+  isFullResyncRetired,
+  FULL_RESYNC_RETIRED_MESSAGE,
+} from '@/lib/scheduled-sync-jobs-shared'
+import {
   fetchClosedListingsForTownYearWindows,
   fetchExpiredListingsForTownYearWindows,
 } from '@/lib/closed-listings-rets'
@@ -575,10 +579,14 @@ export async function syncListingsSmart(): Promise<FullSyncResult | IncrementalS
     }
   }
   if (shouldRunFullSync()) {
-    if (isServerlessRuntime()) {
-      console.info(
-        '[listings-sync] serverless — skipping monolithic full sync (use admin chunked resync)',
-      )
+    if (isFullResyncRetired() || isServerlessRuntime()) {
+      if (isFullResyncRetired()) {
+        console.info('[listings-sync] full resync retired — incremental instead')
+      } else {
+        console.info(
+          '[listings-sync] serverless — skipping monolithic full sync (use incremental)',
+        )
+      }
       return syncIncrementalListings()
     }
     console.info('[listings-sync] running scheduled full sync')
@@ -1057,6 +1065,18 @@ export async function finalizeChunkedFullResync(): Promise<FullSyncResult> {
 
 /** Iteratively sync every TMRE town — Active first, then Closed sales since 2019. */
 export async function syncAllTownListings(): Promise<FullSyncResult> {
+  if (isFullResyncRetired() && process.env.FULL_RESYNC_CONFIRM !== '1') {
+    const now = new Date().toISOString()
+    console.warn(`[listings-sync] ${FULL_RESYNC_RETIRED_MESSAGE}`)
+    return {
+      startedAt: now,
+      finishedAt: now,
+      durationMs: 0,
+      towns: [],
+      totalUpserted: 0,
+    }
+  }
+
   if (!isRetsConfigured()) {
     const now = new Date().toISOString()
     console.info('[listings-sync] skipped full sync — RETS not configured')

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSyncStatus, syncAllTownListings } from '@/lib/listings-sync'
+import { FULL_RESYNC_RETIRED_MESSAGE, isFullResyncRetired } from '@/lib/scheduled-sync-jobs-shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (isFullResyncRetired() && process.env.FULL_RESYNC_CONFIRM !== '1') {
+      return NextResponse.json(
+        { ok: false, skipped: true, error: FULL_RESYNC_RETIRED_MESSAGE },
+        { status: 410 },
+      )
+    }
     const result = await syncAllTownListings()
     return NextResponse.json({
       ok: result.towns.every((row) => row.ok),

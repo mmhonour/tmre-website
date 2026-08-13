@@ -29,7 +29,7 @@ export function marketPulseFavorSortLabel(
 }
 
 /**
- * One-line summary of filters in play when the Filters panel is collapsed.
+ * One-line summary of page-load filters (email + collapsed-row copy).
  * Example: "ALL · stacked · Seller Friendly · closed lookback 24 mos."
  */
 export function summarizeMarketPulseFilters(options: {

@@ -219,11 +219,11 @@ export default function MarketPulseContent({
     marketPulseTownClosedSalesStatsHref(cityLabel, category);
   const avgDomTownHref = (cityLabel: string) =>
     marketPulseTownAvgDomStatsHref(cityLabel, category);
-  const tabKit = useTabKitSegmentedStyle("pill-seg-light-compact");
+  const tabKit = useTabKitSegmentedStyle("pill-ind-light-compact");
 
   const categoryFilter = (
     <div
-      className={`${tabKit.containerClass({ wrap: true })} w-full justify-start`}
+      className={`${tabKit.containerClass({ wrap: true })} !gap-2 w-full justify-start`}
       role="tablist"
       aria-label="Market Pulse property type"
     >

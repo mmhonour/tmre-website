@@ -4,6 +4,7 @@ import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { getSyncStatus, syncAllTownListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
+import { isFullResyncRetired, FULL_RESYNC_RETIRED_MESSAGE } from '../../lib/scheduled-sync-jobs-shared'
 
 /**
  * Background full MLS → Postgres reload (up to ~15 min).
@@ -22,6 +23,17 @@ export default async function handler(req: Request, _context: Context) {
 
   try {
     await hydrateSyncMetaStore()
+    if (isFullResyncRetired()) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: 'full',
+          skipped: true,
+          reason: FULL_RESYNC_RETIRED_MESSAGE,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
     const catchup = await runOverdueSyncCatchup({
       reason: 'netlify/sync-listings-full-worker',
     })

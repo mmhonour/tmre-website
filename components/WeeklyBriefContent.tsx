@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
+import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import { fmtMoney } from "@/lib/listing-history";
 import {
   type MarketDigestClosedTownCount,
@@ -15,7 +16,7 @@ import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
-  summarizeMarketPulseFilters,
+  marketPulseFavorSortLabel,
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
 import {
@@ -71,6 +72,65 @@ const METRIC_COLORS = {
   averagePrice: "bg-[var(--mp-average-bar,#8B6F4E)]",
   priceDelta: "bg-[var(--mp-delta-bar,#7A6A8A)]",
 } as const;
+
+function FilterDisclosure({
+  label,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--mp-text)] underline decoration-[var(--mp-text)]/35 underline-offset-2 transition-colors hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
+          aria-expanded={open}
+          onClick={onToggle}
+        >
+          {label}
+          <span aria-hidden className="tabular-nums no-underline">
+            {open ? "−" : "+"}
+          </span>
+        </button>
+        {!open ? (
+          <span className="min-w-0 [font-family:var(--mp-mono-font)] text-[10px] leading-snug text-[var(--mp-muted-text)]">
+            {summary}
+          </span>
+        ) : null}
+      </div>
+      {open ? children : null}
+    </div>
+  );
+}
+
+function marketPulseSortExplain(
+  chartLayout: ChartLayout,
+  favorSort: FavorSort,
+): string {
+  if (favorSort === "default") {
+    return "Towns stay in default town order. All towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
+  }
+  if (chartLayout === "stacked") {
+    return `Sorted by buyer/seller friendly composite (months supply + avg DOM${
+      favorSort === "sellers"
+        ? "; lower = more seller friendly"
+        : "; higher = more buyer friendly"
+    }). All towns stays on top.`;
+  }
+  return `Each unstacked chart sorts on its own metric (${
+    favorSort === "sellers"
+      ? "Seller: DOM↑, closed↓, median/avg↓"
+      : "Buyer: DOM↓, closed↑, median/avg↑"
+  }). All towns stays on top.`;
+}
 
 function fmtMos(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "n/a";
@@ -531,7 +591,7 @@ function CombinedMetricsChart({
   closedPending = false,
   closedBarMax = 0,
 }: {
-  title: string;
+  title: ReactNode;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
@@ -554,7 +614,7 @@ function CombinedMetricsChart({
   if (rows.length === 0) {
     return (
       <section>
-        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
+        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1">
           {title}
         </p>
         <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">
@@ -686,7 +746,7 @@ function CombinedMetricsChart({
 
   return (
     <section>
-      <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
+      <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1">
         {title}
       </p>
       <ul className="space-y-3">
@@ -821,8 +881,7 @@ export default function WeeklyBriefContent({
   /** Closed totals still in flight — otherwise empty means "cache not built". */
   closedPending?: boolean;
   /**
-   * Property-type filter (All / SFR / …). Rendered inside the pulse panel,
-   * directly above the town-metrics chart title.
+   * Property-type pills (All / SFR / …). Own +/- disclosure — not a boxed panel.
    */
   categoryFilter?: ReactNode;
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
@@ -837,17 +896,14 @@ export default function WeeklyBriefContent({
   const [favorSort, setFavorSort] = useState<FavorSort>(
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
-  /** Filters start collapsed — summary sentence stays visible. */
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [lookbackOpen, setLookbackOpen] = useState(false);
+  const [propertyTypeOpen, setPropertyTypeOpen] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [sortExplainOpen, setSortExplainOpen] = useState(false);
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
   const lookbackDays = marketPulseLookbackById(lookbackId).days;
   const lookbackDrivesMos = lookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
-  const filterSummary = summarizeMarketPulseFilters({
-    selectionLabel: selectionLabel ?? scopeLabel,
-    chartLayout,
-    favorSort,
-    lookbackId,
-  });
 
   const inventoryRows = useMemo(() => {
     const rows = chartRows(snapshot);
@@ -927,11 +983,25 @@ export default function WeeklyBriefContent({
   const titleScope = selectionLabel ?? scopeLabel;
 
   const controlBtn = (active: boolean) =>
-    `font-mono text-[10px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border transition-colors ${
+    `shrink-0 font-mono text-[10px] tracking-[0.1em] uppercase rounded-full px-3 py-1.5 border transition-colors ${
       active
         ? "border-[var(--mp-accent)] bg-[var(--mp-accent)]/15 text-[var(--mp-text)]"
-        : "border-black/10 text-[var(--mp-muted-text)] hover:border-black/20 hover:text-[var(--mp-text)]"
+        : "border-black/15 text-[var(--mp-muted-text)] hover:border-black/25 hover:text-[var(--mp-text)]"
     }`;
+  const pillRow = "flex flex-wrap items-center gap-2";
+  const townMetricsTitle = (
+    <>
+      Town metrics
+      <button
+        type="button"
+        className="ml-0.5 align-super font-mono text-[12px] leading-none text-[var(--mp-accent)] hover:text-[var(--mp-text)]"
+        aria-label="How towns are sorted"
+        onClick={() => setSortExplainOpen(true)}
+      >
+        *
+      </button>
+    </>
+  );
 
   return (
     <article className="mx-auto max-w-2xl">
@@ -982,40 +1052,15 @@ export default function WeeklyBriefContent({
           />
         </div>
 
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--mp-text)] underline decoration-[var(--mp-text)]/35 underline-offset-2 transition-colors hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
-              aria-expanded={filtersOpen}
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              Filters
-              <span aria-hidden className="tabular-nums no-underline">
-                {filtersOpen ? "−" : "+"}
-              </span>
-            </button>
-            {!filtersOpen ? (
-              <button
-                type="button"
-                className="min-w-0 text-left [font-family:var(--mp-mono-font)] text-[10px] leading-snug text-[var(--mp-muted-text)] underline decoration-[var(--mp-muted-text)]/30 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/40"
-                onClick={() => setFiltersOpen(true)}
-              >
-                {filterSummary}
-              </button>
-            ) : null}
-          </div>
-
+        <div className="space-y-3">
           {onLookbackIdChange ? (
-            <div className="space-y-1.5">
-              <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
-                Closed lookback
-              </p>
-              <div
-                className="inline-flex flex-wrap gap-1.5"
-                role="group"
-                aria-label="Closed sales lookback period"
-              >
+            <FilterDisclosure
+              label="Closed lookback"
+              summary={closedLookbackLabel}
+              open={lookbackOpen}
+              onToggle={() => setLookbackOpen((open) => !open)}
+            >
+              <div className={pillRow} role="group" aria-label="Closed sales lookback period">
                 {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
@@ -1033,103 +1078,97 @@ export default function WeeklyBriefContent({
                 prices stay current.
                 {closedPending ? " Loading closed counts…" : ""}
               </p>
-            </div>
+            </FilterDisclosure>
           ) : null}
 
-          {filtersOpen ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-black/[0.06] bg-[var(--mp-page-bg)]/60 px-3 py-3 sm:px-4">
-              {categoryFilter ? (
-                <div className="space-y-1.5">
-                  <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
-                    Property type
-                  </p>
-                  {categoryFilter}
-                </div>
-              ) : null}
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                <div
-                  className="inline-flex flex-wrap gap-1.5"
-                  role="group"
-                  aria-label="Chart layout"
-                >
-                  <button
-                    type="button"
-                    className={controlBtn(chartLayout === "stacked")}
-                    aria-pressed={chartLayout === "stacked"}
-                    onClick={() => setChartLayout("stacked")}
-                  >
-                    STACKED
-                  </button>
-                  <button
-                    type="button"
-                    className={controlBtn(chartLayout === "unstacked")}
-                    aria-pressed={chartLayout === "unstacked"}
-                    onClick={() => setChartLayout("unstacked")}
-                  >
-                    UNSTACKED
-                  </button>
-                </div>
-                <div
-                  className="inline-flex flex-wrap gap-1.5"
-                  role="group"
-                  aria-label="Town sort by market favorability"
-                >
-                  <button
-                    type="button"
-                    className={controlBtn(favorSort === "sellers")}
-                    aria-pressed={favorSort === "sellers"}
-                    onClick={() => {
-                      if (favorSort === "sellers") {
-                        setFavorSort("default");
-                        return;
-                      }
-                      setFavorSort("sellers");
-                    }}
-                    title="Stacked: composite MOS + DOM. Unstacked: each chart sorts on its own metric (Seller: DOM↑, closed↓, prices↓)."
-                  >
-                    Seller Friendly
-                  </button>
-                  <button
-                    type="button"
-                    className={controlBtn(favorSort === "buyers")}
-                    aria-pressed={favorSort === "buyers"}
-                    onClick={() => {
-                      if (favorSort === "buyers") {
-                        setFavorSort("default");
-                        return;
-                      }
-                      setFavorSort("buyers");
-                    }}
-                    title="Stacked: composite MOS + DOM. Unstacked: each chart sorts on its own metric (Buyer: DOM↓, closed↑, prices↑)."
-                  >
-                    Buyer Friendly
-                  </button>
-                </div>
-              </div>
-
-              {favorSort !== "default" ? (
-                <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
-                  {chartLayout === "stacked"
-                    ? `Sorted by buyer/seller friendly composite (months supply + avg DOM${
-                        favorSort === "sellers"
-                          ? "; lower = more seller friendly"
-                          : "; higher = more buyer friendly"
-                      }). All towns stays on top.`
-                    : `Each unstacked chart sorts on its own metric (${
-                        favorSort === "sellers"
-                          ? "Seller: DOM↑, closed↓, median/avg↓"
-                          : "Buyer: DOM↓, closed↑, median/avg↑"
-                      }). All towns stays on top.`}
-                </p>
-              ) : null}
-            </div>
+          {categoryFilter ? (
+            <FilterDisclosure
+              label="Property type"
+              summary={(selectionLabel ?? scopeLabel).trim() || "ALL"}
+              open={propertyTypeOpen}
+              onToggle={() => setPropertyTypeOpen((open) => !open)}
+            >
+              {categoryFilter}
+            </FilterDisclosure>
           ) : null}
+
+          <FilterDisclosure
+            label="Layout"
+            summary={chartLayout}
+            open={layoutOpen}
+            onToggle={() => setLayoutOpen((open) => !open)}
+          >
+            <div className={pillRow} role="group" aria-label="Chart layout">
+              <button
+                type="button"
+                className={controlBtn(chartLayout === "stacked")}
+                aria-pressed={chartLayout === "stacked"}
+                onClick={() => setChartLayout("stacked")}
+              >
+                STACKED
+              </button>
+              <button
+                type="button"
+                className={controlBtn(chartLayout === "unstacked")}
+                aria-pressed={chartLayout === "unstacked"}
+                onClick={() => setChartLayout("unstacked")}
+              >
+                UNSTACKED
+              </button>
+            </div>
+          </FilterDisclosure>
+
+          <FilterDisclosure
+            label="Sort"
+            summary={marketPulseFavorSortLabel(favorSort)}
+            open={sortOpen}
+            onToggle={() => setSortOpen((open) => !open)}
+          >
+            <div
+              className={pillRow}
+              role="group"
+              aria-label="Town sort by market favorability"
+            >
+              <button
+                type="button"
+                className={controlBtn(favorSort === "sellers")}
+                aria-pressed={favorSort === "sellers"}
+                onClick={() => {
+                  if (favorSort === "sellers") {
+                    setFavorSort("default");
+                    return;
+                  }
+                  setFavorSort("sellers");
+                }}
+              >
+                Seller Friendly
+              </button>
+              <button
+                type="button"
+                className={controlBtn(favorSort === "buyers")}
+                aria-pressed={favorSort === "buyers"}
+                onClick={() => {
+                  if (favorSort === "buyers") {
+                    setFavorSort("default");
+                    return;
+                  }
+                  setFavorSort("buyers");
+                }}
+              >
+                Buyer Friendly
+              </button>
+            </div>
+          </FilterDisclosure>
         </div>
 
         {chartLayout === "stacked" ? (
           <CombinedMetricsChart
-            title={`Town metrics stacked (${titleScope})`}
+            title={
+              <>
+                {townMetricsTitle}
+                {` stacked (${titleScope})`}
+              </>
+            }
             rows={combinedRows}
             townHref={townHref}
             settle={settle}
@@ -1139,6 +1178,9 @@ export default function WeeklyBriefContent({
           />
         ) : (
           <>
+        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-1 inline-flex flex-wrap items-baseline gap-x-1">
+          {townMetricsTitle}
+        </p>
         <BarChart
           title={`Active inventory (${titleScope})`}
           rows={inventoryRows}
@@ -1398,6 +1440,31 @@ export default function WeeklyBriefContent({
           TBD).
         </p>
       </div>
+
+      {sortExplainOpen ? (
+        <ModalPortal
+          open
+          onClose={() => setSortExplainOpen(false)}
+          ariaLabel="How towns are sorted"
+        >
+          <div className={MODAL_PANEL_CLASS} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h2 className="font-serif text-2xl text-navy">Town metrics</h2>
+              <button
+                type="button"
+                onClick={() => setSortExplainOpen(false)}
+                className="text-slate hover:text-navy transition-colors font-mono text-lg leading-none mt-1"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <p className="text-sm text-charcoal leading-relaxed">
+              {marketPulseSortExplain(chartLayout, favorSort)}
+            </p>
+          </div>
+        </ModalPortal>
+      ) : null}
     </article>
   );
 }

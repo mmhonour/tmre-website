@@ -367,7 +367,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Full sync / full resync',
     category: 'sync-admin',
     definition:
-      'Pulls full Active / Closed / Expired buckets per town, then rebuilds scores and caches. Heavier than incremental; often run on a schedule or via Admin Sync all.',
+      'Retired from Admin and schedules: it replaces each town/status bucket and deletes MLS rows RETS no longer returns, which would drop older Closed/Expired history. Incremental is the live path. Code remains as a CLI stub: `npm run sync:listings` with FULL_RESYNC_CONFIRM=1.',
   },
   {
     term: 'Incremental sync',
@@ -463,7 +463,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'EventBridge Scheduler',
     category: 'sync-admin',
     definition:
-      'AWS alarm clock that can start TMRE sync jobs instead of (or beside) Netlify cron. Admin → Syncs → Configure has a sticky per-job Scheduler radio (Netlify cron | EventBridge); Dashboard shows it read-only. When a job is on EventBridge, Netlify thin crons skip that job. AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`. Every ingress hit stamps EventBridge last fired + result on the Dashboard (including skips and 401). Migrate Incremental first; full-resync stays doomsday-only.',
+      'AWS alarm clock that can start TMRE sync jobs instead of (or beside) Netlify cron. Admin → Syncs → Configure has a sticky per-job Scheduler radio (Netlify cron | EventBridge); Dashboard shows it read-only. When a job is on EventBridge, Netlify thin crons skip that job. AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`. Every ingress hit stamps EventBridge last fired + result on the Dashboard (including skips and 401). Full resync is retired and is not dispatched.',
   },
   {
     term: 'EventBridge event bus',

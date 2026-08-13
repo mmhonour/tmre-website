@@ -27,6 +27,32 @@ const STREET_SUFFIX: Record<string, string> = {
   trl: 'trl',
   highway: 'hwy',
   hwy: 'hwy',
+  parkway: 'pkwy',
+  pkwy: 'pkwy',
+  pky: 'pkwy',
+  pkway: 'pkwy',
+  square: 'sq',
+  sq: 'sq',
+  turnpike: 'tpke',
+  tpke: 'tpke',
+  extension: 'ext',
+  ext: 'ext',
+  north: 'n',
+  n: 'n',
+  south: 's',
+  s: 's',
+  east: 'e',
+  e: 'e',
+  west: 'w',
+  w: 'w',
+  northeast: 'ne',
+  ne: 'ne',
+  northwest: 'nw',
+  nw: 'nw',
+  southeast: 'se',
+  se: 'se',
+  southwest: 'sw',
+  sw: 'sw',
 }
 
 export type PropertyAddressSource = 'mls' | 'assessor' | 'both'
@@ -61,6 +87,7 @@ export function normalizeStreetLine(street: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .split(' ')
+    .filter(Boolean)
     .map((token) => STREET_SUFFIX[token] ?? token)
     .join(' ')
     .trim()
@@ -74,12 +101,16 @@ export function normalizePropertyAddress(town: string, street: string, zip?: str
 }
 
 /**
- * Join key for Vision ↔ listings. Vision GIS usually has no zip, MLS usually
- * does; strip a trailing `|06880` so `2 baker ave|westport` matches
- * `2 baker ave|westport|06880`.
+ * Join key for Vision ↔ listings. Re-runs street-token canonicalization so a
+ * stored Vision `28 bulkley ave north|westport` matches MLS `28 BULKLEY AVE N`.
+ * Also strips a trailing `|06880` (Vision usually has no zip, MLS usually does).
  */
 export function addressMatchKey(addressNorm: string): string {
-  return addressNorm.replace(/\|\d{5}$/, '')
+  const stripped = addressNorm.replace(/\|\d{5}$/, '')
+  const [street, town, ...rest] = stripped.split('|')
+  const canonStreet = normalizeStreetLine(street ?? '')
+  const canonTown = (town ?? '').trim().toLowerCase()
+  return [canonStreet, canonTown, ...rest].filter((part) => part.length > 0).join('|')
 }
 
 export function propertyKeyFromParcel(parcel: string | null | undefined): string | null {

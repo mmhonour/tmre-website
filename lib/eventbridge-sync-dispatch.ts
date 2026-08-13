@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { isScheduledSyncJobId, type ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
+import { isScheduledSyncJobId, isFullResyncRetired, FULL_RESYNC_RETIRED_MESSAGE, type ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   queueNetlifyCpiSync,
   queueNetlifyDealOfTheDayRebuild,
@@ -64,6 +64,15 @@ export async function dispatchEventBridgeScheduledJob(
   const jobId = parseJobId(rawJob)
   if (!jobId) {
     return { ok: false, reason: 'job must be a ScheduledSyncJobId' }
+  }
+
+  if (isFullResyncRetired() && jobId === 'full-resync') {
+    return {
+      ok: true,
+      skipped: true,
+      jobId,
+      reason: FULL_RESYNC_RETIRED_MESSAGE,
+    }
   }
 
   if (await shouldSkipScheduledJobWrongProviderFresh(jobId, 'eventbridge')) {

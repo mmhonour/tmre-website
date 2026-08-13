@@ -438,17 +438,6 @@ export default async function AdminPage() {
 
   const rows: StatusRow[] = [
     {
-      id: "full-resync",
-      label: "Full resync",
-      value: formatTimestamp(stats.lastFullSync),
-      startedAt: stats.lastFullSyncStarted,
-      finishedAt: pairSyncFinished(stats.lastFullSyncStarted, stats.lastFullSync),
-      sortMs: timestampSortMs(stats.lastFullSync),
-      detail: "Complete MLS → Postgres reload (scheduled weekly Mon ~5am ET; run step 1 manually when needed)",
-      actionId: "full-resync",
-      nextRunAt: nextRuns["full-resync"],
-    },
-    {
       id: "incremental",
       label: "Incremental update",
       value: formatTimestamp(stats.lastIncrementalSync),
@@ -1116,7 +1105,7 @@ export default async function AdminPage() {
                 {refresh.refreshing
                   ? "Refresh in progress"
                   : listingsDbEmpty
-                    ? "⚠ 0 listings — run Full resync"
+                    ? "⚠ 0 listings — run Incremental"
                     : `${stats.total.toLocaleString()} listings in Postgres`}
               </span>
             </span>
@@ -1162,8 +1151,8 @@ export default async function AdminPage() {
                   Listing database is empty
                 </p>
                 <p className="text-sm text-charcoal/70 leading-snug max-w-3xl">
-                  Neon Postgres has 0 listings — run a <strong>Full Resync</strong> (step 1 in the
-                  Database sync panel) or wait for the scheduled sync to pull MLS data.
+                  Neon Postgres has 0 listings — run <strong>Incremental update</strong> in
+                  the Database sync panel. Full resync is retired so older MLS rows are not deleted.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
                   <span className="font-mono text-[10px] text-charcoal/50">

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { isFullResyncRetired } from '@/lib/scheduled-sync-jobs-shared'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import { nextMonday5amEt, parseIsoMs } from '@/lib/admin-sync-schedule'
@@ -52,6 +53,17 @@ function shouldTrackPostDeployWarm(): boolean {
 
 /** Read-only view for admin schedule + countdown. */
 export function readPostDeployFullResyncStatus(now = new Date()): PostDeployFullResyncStatus {
+  if (isFullResyncRetired()) {
+    return {
+      deployId: readNetlifyDeployId(),
+      scheduledAt: null,
+      triggeredAt: null,
+      completedDeployId: getSyncMeta(COMPLETED_DEPLOY_ID_KEY),
+      pending: false,
+      source: null,
+      nextAt: null,
+    }
+  }
   const deployId = readNetlifyDeployId()
   const scheduledAt = getSyncMeta(SCHEDULED_AT_KEY)
   const scheduledDeployId = getSyncMeta(DEPLOY_ID_KEY)
@@ -97,6 +109,7 @@ export function readPostDeployFullResyncStatus(now = new Date()): PostDeployFull
 
 /** Schedule and optionally trigger post-deploy full warm (idempotent per deploy). */
 export async function ensurePostDeployFullResyncScheduled(now = new Date()): Promise<void> {
+  if (isFullResyncRetired()) return
   if (!shouldTrackPostDeployWarm()) return
 
   const deployId = readNetlifyDeployId()

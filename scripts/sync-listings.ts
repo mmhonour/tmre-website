@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs'
 import { shouldSkipListingsSyncAtBuild } from '../lib/build-sync-gate'
 import { syncAllTownListings, warmActiveListingPhotos } from '../lib/listings-sync'
+import { FULL_RESYNC_RETIRED_MESSAGE, isFullResyncRetired } from '../lib/scheduled-sync-jobs-shared'
 
 if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
@@ -13,6 +14,11 @@ async function main() {
       '[sync-listings] skipping full town sync on Netlify build (use scheduled functions or run locally)',
     )
     return
+  }
+
+  if (isFullResyncRetired() && process.env.FULL_RESYNC_CONFIRM !== '1') {
+    console.error(`[sync-listings] ${FULL_RESYNC_RETIRED_MESSAGE}`)
+    process.exit(1)
   }
 
   console.info('[sync-listings] starting full town sync…')

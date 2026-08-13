@@ -1,7 +1,8 @@
 export const ADMIN_SYNC_ACTIONS = {
   'full-resync': {
     label: 'Full resync',
-    description: 'Complete MLS → Neon Postgres reload for all towns',
+    description:
+      'Retired stub — complete MLS bucket replace. Hidden from Admin; would delete older listings RETS no longer returns.',
   },
   incremental: {
     label: 'Incremental update',
@@ -72,7 +73,6 @@ export function isAdminSyncActionId(value: string): value is AdminSyncActionId {
  * Incremental is included — Order # / Sync All priority is Admin-configurable.
  */
 export const ADMIN_SYNC_ALL_SEQUENCE = [
-  'full-resync',
   'incremental',
   'listing-scores',
   'edge-scores',
@@ -82,6 +82,7 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'vision-addresses',
   'zip-boundaries',
   // fomc-sync / cpi-sync / market-digest omitted — event/email jobs
+  // full-resync omitted — retired (bucket replace deletes older MLS rows)
 ] as const satisfies readonly AdminSyncActionId[]
 
 /** Client-side Sync all fallback — one POST per step to stay under serverless timeouts. */
@@ -96,18 +97,17 @@ export const ADMIN_SYNC_ALL_CLIENT_STEPS = [
  * listing-scores / edge-scores render as 3a / 3b in the Order column.
  */
 export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
-  'full-resync': 1,
-  incremental: 2,
-  'listing-scores': 3,
-  'edge-scores': 4,
-  'stats-cache': 5,
-  'deal-of-the-day': 6,
-  'property-addresses': 7,
-  'vision-addresses': 8,
-  'zip-boundaries': 9,
-  'fomc-sync': 10,
-  'cpi-sync': 11,
-  'market-digest': 12,
+  incremental: 1,
+  'listing-scores': 2,
+  'edge-scores': 3,
+  'stats-cache': 4,
+  'deal-of-the-day': 5,
+  'property-addresses': 6,
+  'vision-addresses': 7,
+  'zip-boundaries': 8,
+  'fomc-sync': 9,
+  'cpi-sync': 10,
+  'market-digest': 11,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

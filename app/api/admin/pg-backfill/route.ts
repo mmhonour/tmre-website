@@ -10,6 +10,7 @@ import {
 } from '@/lib/db/listings-repo'
 import { syncAllTownListingsPg } from '@/lib/db/listings-sync-pg'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+import { FULL_RESYNC_RETIRED_MESSAGE, isFullResyncRetired } from '@/lib/scheduled-sync-jobs-shared'
 
 // Internal Phase-3 backfill/verify endpoint (NOT user-facing). Runs the RETS →
 // Postgres resync scoped by town/bucket so a one-time backfill stays inside the
@@ -79,6 +80,13 @@ export async function POST(req: NextRequest) {
     }
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+
+  if (isFullResyncRetired() && process.env.FULL_RESYNC_CONFIRM !== '1') {
+    return NextResponse.json(
+      { ok: false, skipped: true, error: FULL_RESYNC_RETIRED_MESSAGE },
+      { status: 410 },
+    )
   }
 
   try {

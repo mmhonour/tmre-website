@@ -49,10 +49,10 @@ export const ADMIN_TAB_KIT: readonly AdminTabKitEntry[] = [
     id: 'pill-seg-light-compact',
     group: 'Segmented gold pills',
     title: 'Segmented tray · light · compact',
-    where: 'Market Pulse category tabs',
+    where: 'Light segmented trays (available remap)',
     surface: 'light',
     viewport: 'both',
-    note: 'Compact + light theme.',
+    note: 'Compact + light theme. Market Pulse property type now uses independent pills.',
   },
   {
     id: 'pill-seg-dark-compact-sep',
@@ -87,10 +87,10 @@ export const ADMIN_TAB_KIT: readonly AdminTabKitEntry[] = [
     id: 'pill-ind-light-compact',
     group: 'Independent bordered pills',
     title: 'Independent border · light · compact',
-    where: 'Same helpers on light surfaces',
+    where: 'Market Pulse property type (All / SFR / Condo / Rentals / Commercial)',
     surface: 'light',
     viewport: 'both',
-    note: 'Independent pills on cream / white.',
+    note: 'Independent pills on cream / white — mutually exclusive, each with its own border.',
   },
 
   // —— Intelligence town / zip ——

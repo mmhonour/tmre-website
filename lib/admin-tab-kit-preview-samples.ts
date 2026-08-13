@@ -63,7 +63,7 @@ const SAMPLES: Record<AdminTabKitId, TabKitPreviewSample> = {
     labels: ['Sale', 'Rent'],
   },
   'pill-ind-light-compact': {
-    labels: ['Sale', 'Rent'],
+    labels: ['ALL', 'SFR', 'Condo', 'Rentals', 'Commercial'],
   },
   'pill-zip-button': {
     labels: ['All', '06880', '06840'],
