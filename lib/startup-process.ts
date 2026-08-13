@@ -316,7 +316,7 @@ export function describeStartupProcess(): {
           title: "Chunked crawl @ 1:30 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "syncVisionAddresses(): Streets→Parcel Field Card parse → Neon vision_addresses + R2 HTML; full fill then fingerprint incremental; backfills listings.vision_pid. Netlify thin sync-vision-addresses → worker. Skips when Pause is checked on Vision addresses (GIS).",
+            "syncVisionAddresses(): Streets→Parcel Field Card parse → Neon vision_addresses + R2 HTML; full fill then fingerprint incremental; then unique address_norm join listings ↔ vision_addresses (vision_pid / listing_id). Same join: npm run match:vision-listings. Netlify thin sync-vision-addresses → worker. Skips when Pause is checked on Vision addresses (GIS).",
           status: visionAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: visionAddressSyncEnabled ? "Armed" : "Disabled",
         },

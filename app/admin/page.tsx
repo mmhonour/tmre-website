@@ -33,6 +33,7 @@ import AdminInventoryComparisonPanel from "@/components/admin/AdminInventoryComp
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenceDealBoardPanel";
 import AdminIntelligenceDescriptorSizesPanel from "@/components/admin/AdminIntelligenceDescriptorSizesPanel";
+import AdminStackCostsPanel from "@/components/admin/AdminStackCostsPanel";
 import AdminBrowserCookiesPanel from "@/components/admin/AdminBrowserCookiesPanel";
 import AdminCookiesPanel from "@/components/admin/AdminCookiesPanel";
 import AdminEphemeralCachesPanel from "@/components/admin/AdminEphemeralCachesPanel";
@@ -990,6 +991,7 @@ export default async function AdminPage() {
       pageStyles={<AdminPageStylesPanel />}
       uiKit={<AdminUiKitPanel />}
       intelDescriptorSizes={<AdminIntelligenceDescriptorSizesPanel />}
+      apiCosts={<AdminStackCostsPanel />}
     />
   );
 

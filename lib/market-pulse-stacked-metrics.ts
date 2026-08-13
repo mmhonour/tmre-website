@@ -1,6 +1,9 @@
 import { fmtMoney } from '@/lib/listing-history'
 import type { MarketPulseCombinedTownRow } from '@/lib/market-pulse-combined-rows'
-import { formatPriceDeltaLabel } from '@/lib/market-pulse-price-delta'
+import {
+  formatPriceDeltaK,
+  formatPriceDeltaPct,
+} from '@/lib/market-pulse-price-delta'
 
 /**
  * Stacked town-metric order for default /market-pulse AND the Monday email.
@@ -22,6 +25,8 @@ export type MarketPulseStackedMetricId =
 export type MarketPulseStackedMetricDef = {
   id: MarketPulseStackedMetricId
   label: string
+  /** Left-column label when it includes a per-row suffix (Delta + %). */
+  labelOf?: (row: MarketPulseCombinedTownRow) => string
   /** Bar width (absolute value for signed deltas). */
   barValueOf: (row: MarketPulseCombinedTownRow) => number | null
   format: (row: MarketPulseCombinedTownRow) => string
@@ -90,8 +95,9 @@ export function marketPulseStackedMetrics(
     {
       id: 'priceDelta',
       label: 'Delta',
+      labelOf: (r) => `Delta ${formatPriceDeltaPct(r.priceDeltaPct)}`,
       barValueOf: (r) => absOrNull(r.priceDelta),
-      format: (r) => formatPriceDeltaLabel(r.priceDelta, r.priceDeltaPct),
+      format: (r) => formatPriceDeltaK(r.priceDelta),
     },
   ]
 }

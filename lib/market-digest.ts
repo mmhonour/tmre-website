@@ -690,7 +690,7 @@ export function formatMarketDigestEmail(
     '-------',
     `Filters: ${filterSummary}`,
     `Market active:       ${snapshot.market ? snapshot.market.activeCount : 'n/a'}`,
-    `All Towns MOS:       ${snapshot.market ? fmtMonthsSupply(snapshot.market.monthsSupply) : 'n/a'}`,
+    `All Town Months Inventory: ${snapshot.market ? fmtMonthsSupply(snapshot.market.monthsSupply) : 'n/a'}`,
     `Avg days on market:  ${allDom != null ? Math.round(allDom) : 'n/a'}`,
   ]
 
@@ -706,7 +706,7 @@ export function formatMarketDigestEmail(
           const city = row.city.trim() || '—'
           return [
             city,
-            ...stackedMetrics.map((m) => `  ${m.label.padEnd(16)} ${m.format(row)}`),
+            ...stackedMetrics.map((m) => `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${m.format(row)}`),
           ]
         })),
     '',

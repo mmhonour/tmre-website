@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
+import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { fmtMoney } from "@/lib/listing-history";
 import {
   type MarketDigestClosedTownCount,
@@ -23,8 +24,10 @@ import {
   type MarketPulseFavorSort,
 } from "@/lib/market-pulse-favorability";
 import {
-  formatPriceDeltaLabel,
+  formatPriceDeltaK,
+  formatPriceDeltaPct,
   meanMinusMedian,
+  PRICE_DELTA_EXPLAIN,
 } from "@/lib/market-pulse-price-delta";
 import {
   isMarketPulsePriceScaleMetric,
@@ -219,6 +222,8 @@ function BarChart<Row extends { city: string }>({
   favorSortDir = null,
   sortValueOf,
   formatValue,
+  formatValueAside,
+  explainDelta = false,
   scaleMax,
 }: {
   title: string;
@@ -238,6 +243,10 @@ function BarChart<Row extends { city: string }>({
   /** Sort key when it differs from bar width (e.g. signed delta vs abs). */
   sortValueOf?: (row: Row) => number | null;
   formatValue?: (row: Row, display: number | null) => string;
+  /** Percent (or other) shown next to the town, not beside the dollar amount. */
+  formatValueAside?: (row: Row) => string;
+  /** Title “Delta” is a link with the mean-vs-median popup. */
+  explainDelta?: boolean;
   /** When set (Median / Avg / Delta), bars share one dollar axis. */
   scaleMax?: number;
 }) {
@@ -268,7 +277,14 @@ function BarChart<Row extends { city: string }>({
   const titleRow = (
     <div className="mb-4 flex items-center justify-between gap-3">
       <p className="min-w-0 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)]">
-        {title}
+        {explainDelta ? (
+          <>
+            <MarketPulseDeltaLabel />
+            {title.replace(/^Delta/, "")}
+          </>
+        ) : (
+          title
+        )}
       </p>
       {sortable ? (
         <div
@@ -387,9 +403,11 @@ function BarChart<Row extends { city: string }>({
             <li
               key={`${row.city}-${title}`}
               className={`grid items-center gap-2 ${
-                formatValue
-                  ? "grid-cols-[7.5rem_1fr_6.75rem]"
-                  : "grid-cols-[7.5rem_1fr_3.5rem]"
+                formatValueAside
+                  ? "grid-cols-[6.5rem_3.25rem_1fr_4.25rem]"
+                  : formatValue
+                    ? "grid-cols-[7.5rem_1fr_4.5rem]"
+                    : "grid-cols-[7.5rem_1fr_3.5rem]"
               }`}
             >
               {href ? (
@@ -404,6 +422,11 @@ function BarChart<Row extends { city: string }>({
                   {label}
                 </span>
               )}
+              {formatValueAside ? (
+                <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-muted-text)]">
+                  {formatValueAside(row)}
+                </span>
+              ) : null}
               <div className="group relative h-3.5 rounded-sm bg-black/10 overflow-visible">
                 <div className="h-full overflow-hidden rounded-sm">
                   <div
@@ -476,7 +499,12 @@ function combinedMetrics(closedLookbackLabel: string) {
     priceDelta: {
       barClassName: METRIC_COLORS.priceDelta,
       valueKind: "int",
-      calcOf: () => undefined,
+      calcOf: (r) => ({
+        summary: PRICE_DELTA_EXPLAIN,
+        detail: [
+          `Avg ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
+        ],
+      }),
     },
   };
 
@@ -576,12 +604,18 @@ function CombinedMetricsChart({
     return (
       <li
         key={m.id}
-        className="group relative grid grid-cols-[6.5rem_1fr_5.75rem] items-center gap-2"
-        title={`${m.label}: ${valueText}`}
+        className="group relative grid grid-cols-[8.25rem_1fr_4.25rem] items-center gap-2"
+        title={m.id === "priceDelta" ? undefined : `${m.label}: ${valueText}`}
       >
+        {m.id === "priceDelta" ? (
         <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
-          {m.label}
+          <MarketPulseDeltaLabel pctLabel={formatPriceDeltaPct(row.priceDeltaPct)} />
         </span>
+        ) : (
+          <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
+            {m.label}
+          </span>
+        )}
         <div className="h-3 rounded-sm bg-black/10 overflow-visible">
           <div className="h-full overflow-hidden rounded-sm">
             <div
@@ -691,7 +725,7 @@ function Kpi({
 
   return (
     <div className="rounded-lg border border-black/[0.08] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
-      <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase text-[var(--mp-muted-text)] mb-1.5">
+      <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
         {label}
       </p>
       <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight tabular-nums">
@@ -839,7 +873,7 @@ export default function WeeklyBriefContent({
             salt={1}
           />
           <Kpi
-            label="All Towns MOS"
+            label="All Town Months Inventory"
             final={snapshot.market?.monthsSupply}
             kind="mos"
             settle={settle}
@@ -1106,8 +1140,14 @@ export default function WeeklyBriefContent({
           }
           formatValue={(r) => {
             const d = meanMinusMedian(r.averagePrice, r.medianPrice);
-            return formatPriceDeltaLabel(d.dollars, d.pct);
+            return formatPriceDeltaK(d.dollars);
           }}
+          formatValueAside={(r) =>
+            formatPriceDeltaPct(
+              meanMinusMedian(r.averagePrice, r.medianPrice).pct,
+            )
+          }
+          explainDelta
           valueKind="int"
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "priceDelta")}
@@ -1115,6 +1155,12 @@ export default function WeeklyBriefContent({
           emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
           townHref={townHref}
           settle={settle}
+          calcOf={(r) => ({
+            summary: PRICE_DELTA_EXPLAIN,
+            detail: [
+              `Avg ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
+            ],
+          })}
           scaleMax={priceBarMax}
         />
           </>

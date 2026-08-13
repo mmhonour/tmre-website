@@ -765,7 +765,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Goldilocks score',
     category: 'scoring',
     definition:
-      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools, DOM) — “not too cheap, not overpriced.” Persisted on listings and read by pages. DOM bands are editable in Admin → Data controls → Goldilocks.',
+      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools, DOM) — “not too cheap, not overpriced.” Persisted on listings.goldilocks_* and read by Intelligence. DOTD currently rescores a 500-listing peer cap into a frozen cache (deal-of-the-day:v7) on its own schedule — same formula, different snapshot. Consolidation: DOTD should pick from the Intelligence-scored board instead of scoring twice.',
   },
   {
     term: 'PPSF',
@@ -961,7 +961,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Intelligence',
     category: 'ui-tabs',
     definition:
-      'Market / deal board with filters, town snapshots, scored listings, and Deal of the Day.',
+      'Market / deal board with filters, town snapshots, scored listings, and Deal of the Day. Board scores come from listings.goldilocks_* (Lane 3 warm). Homepage / DOTD page read a separate frozen cache that is not rebuilt on that warm — that is why the same MLS can show two numbers.',
   },
   {
     term: 'Intelligence middle tier',

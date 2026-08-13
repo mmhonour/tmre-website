@@ -13,6 +13,10 @@ export function meanMinusMedian(
   return { dollars, pct }
 }
 
+/** Shown in the Delta label popup on Market Pulse. */
+export const PRICE_DELTA_EXPLAIN =
+  'Delta is average minus median. Average is pulled up by a few high-end sales, so it usually sits above the typical (median) sale. The percent is that dollar gap as a share of the median — not a month-over-month change.'
+
 function signedAbs(n: number, digits: number): string {
   const sign = n > 0 ? '+' : n < 0 ? '−' : ''
   return `${sign}${Math.abs(n).toFixed(digits)}`

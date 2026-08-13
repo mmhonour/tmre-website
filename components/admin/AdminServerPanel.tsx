@@ -31,12 +31,14 @@ export default function AdminServerPanel({
   pageStyles,
   uiKit,
   intelDescriptorSizes,
+  apiCosts,
 }: {
   apiRoutes: ReactNode;
   siteMenu: ReactNode;
   pageStyles: ReactNode;
   uiKit: ReactNode;
   intelDescriptorSizes: ReactNode;
+  apiCosts: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminServerPanelId>("api-routes");
 
@@ -66,6 +68,7 @@ export default function AdminServerPanel({
     "page-styles": pageStyles,
     "ui-kit": uiKit,
     "intel-descriptor-sizes": intelDescriptorSizes,
+    "api-costs": apiCosts,
   };
   const active = ADMIN_SERVER_PANELS.find((item) => item.id === panel);
 

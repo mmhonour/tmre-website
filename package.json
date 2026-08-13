@@ -36,6 +36,7 @@
     "sync:spotlight-status": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-spotlight-status.ts",
     "sync:property-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-property-addresses.ts",
     "sync:vision-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-vision-addresses.ts",
+    "match:vision-listings": "tsx --require ./scripts/stub-server-only.cjs scripts/match-vision-listings.ts",
     "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts"
   },
   "dependencies": {

@@ -268,11 +268,40 @@ export async function listVisionPidsForTown(
   return rows.map((r) => r.vision_pid)
 }
 
-/** Bidirectional listing join for rows that have a street number + unique address_norm. */
-export async function backfillVisionListingLinks(town: string): Promise<{
+export type VisionListingLinkSample = {
+  addressNorm: string
+  visionPid: string
+  listingId: string
+  mlsId: string | null
+}
+
+export type VisionListingLinkReport = {
+  town: string
+  dryRun: boolean
+  visionCandidates: number
+  listingCandidates: number
+  uniqueMatches: number
+  alreadyLinked: number
   visionLinked: number
   listingsLinked: number
-}> {
+  skippedAmbiguous: number
+  skippedMultiListing: number
+  unmatchedListings: number
+  unmatchedVision: number
+  samples: {
+    matched: VisionListingLinkSample[]
+    ambiguous: { addressNorm: string; visionPids: number; listings: number }[]
+  }
+}
+
+/** Bidirectional listing join for rows that have a street number + unique address_norm. */
+export async function backfillVisionListingLinks(
+  town: string,
+  options?: { dryRun?: boolean; sampleLimit?: number },
+): Promise<VisionListingLinkReport> {
+  const dryRun = options?.dryRun === true
+  const sampleLimit = options?.sampleLimit ?? 12
+
   const visionRows = await query<{
     vision_pid: string
     address_norm: string | null
@@ -302,48 +331,131 @@ export async function backfillVisionListingLinks(town: string): Promise<{
     [town],
   )
 
-  const visionByNorm = new Map<string, string[]>()
+  const visionByNorm = new Map<
+    string,
+    { visionPid: string; listingId: string | null }[]
+  >()
   for (const v of visionRows) {
     if (!v.address_norm) continue
     const list = visionByNorm.get(v.address_norm) ?? []
-    list.push(v.vision_pid)
+    list.push({ visionPid: v.vision_pid, listingId: v.listing_id })
     visionByNorm.set(v.address_norm, list)
   }
 
-  const listingByNorm = new Map<string, { id: string; mls_id: string | null }[]>()
+  const listingByNorm = new Map<
+    string,
+    { id: string; mls_id: string | null; visionPid: string | null }[]
+  >()
   for (const l of listingRows) {
     if (!l.address_street) continue
     const norm = normalizePropertyAddress(town, l.address_street, l.postal_code)
     const list = listingByNorm.get(norm) ?? []
-    list.push({ id: l.id, mls_id: l.mls_id })
+    list.push({ id: l.id, mls_id: l.mls_id, visionPid: l.vision_pid })
     listingByNorm.set(norm, list)
   }
 
+  let uniqueMatches = 0
+  let alreadyLinked = 0
   let visionLinked = 0
   let listingsLinked = 0
+  let skippedAmbiguous = 0
+  let skippedMultiListing = 0
+  const matchedSamples: VisionListingLinkSample[] = []
+  const ambiguousSamples: { addressNorm: string; visionPids: number; listings: number }[] =
+    []
+
+  const matchedNorms = new Set<string>()
 
   for (const [norm, pids] of visionByNorm) {
-    if (pids.length !== 1) continue
-    const listings = listingByNorm.get(norm)
-    if (!listings || listings.length !== 1) continue
-    const visionPid = pids[0]!
+    const listings = listingByNorm.get(norm) ?? []
+    if (pids.length !== 1) {
+      skippedAmbiguous += 1
+      if (ambiguousSamples.length < sampleLimit) {
+        ambiguousSamples.push({
+          addressNorm: norm,
+          visionPids: pids.length,
+          listings: listings.length,
+        })
+      }
+      continue
+    }
+    if (listings.length !== 1) {
+      if (listings.length > 1) {
+        skippedMultiListing += 1
+        if (ambiguousSamples.length < sampleLimit) {
+          ambiguousSamples.push({
+            addressNorm: norm,
+            visionPids: pids.length,
+            listings: listings.length,
+          })
+        }
+      }
+      continue
+    }
+
+    uniqueMatches += 1
+    matchedNorms.add(norm)
+    const vision = pids[0]!
     const listing = listings[0]!
+    if (matchedSamples.length < sampleLimit) {
+      matchedSamples.push({
+        addressNorm: norm,
+        visionPid: vision.visionPid,
+        listingId: listing.id,
+        mlsId: listing.mls_id,
+      })
+    }
+
+    const visionAlready = vision.listingId === listing.id
+    const listingAlready =
+      listing.visionPid != null && listing.visionPid !== '' && listing.visionPid === vision.visionPid
+    if (visionAlready && listingAlready) {
+      alreadyLinked += 1
+      continue
+    }
+
+    if (dryRun) continue
 
     visionLinked += await execute(
       `UPDATE vision_addresses
           SET listing_id = $3, mls_id = COALESCE($4, mls_id)
         WHERE town = $1 AND vision_pid = $2 AND listing_id IS NULL`,
-      [town, visionPid, listing.id, listing.mls_id],
+      [town, vision.visionPid, listing.id, listing.mls_id],
     )
     listingsLinked += await execute(
       `UPDATE listings
           SET vision_pid = $2
         WHERE id = $1 AND (vision_pid IS NULL OR vision_pid = '')`,
-      [listing.id, visionPid],
+      [listing.id, vision.visionPid],
     )
   }
 
-  return { visionLinked, listingsLinked }
+  let unmatchedVision = 0
+  for (const [norm, pids] of visionByNorm) {
+    if (pids.length !== 1) continue
+    if (!matchedNorms.has(norm)) unmatchedVision += 1
+  }
+  let unmatchedListings = 0
+  for (const [norm, listings] of listingByNorm) {
+    if (listings.length !== 1) continue
+    if (!matchedNorms.has(norm)) unmatchedListings += 1
+  }
+
+  return {
+    town,
+    dryRun,
+    visionCandidates: visionRows.length,
+    listingCandidates: listingRows.length,
+    uniqueMatches,
+    alreadyLinked,
+    visionLinked: dryRun ? 0 : visionLinked,
+    listingsLinked: dryRun ? 0 : listingsLinked,
+    skippedAmbiguous,
+    skippedMultiListing,
+    unmatchedListings,
+    unmatchedVision,
+    samples: { matched: matchedSamples, ambiguous: ambiguousSamples },
+  }
 }
 
 export type VisionAddressRecord = {

@@ -35,7 +35,8 @@ export type AdminServerPanelId =
   | "site-menu"
   | "page-styles"
   | "ui-kit"
-  | "intel-descriptor-sizes";
+  | "intel-descriptor-sizes"
+  | "api-costs";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -209,6 +210,11 @@ export const ADMIN_SERVER_PANELS: {
     label: "Filter text",
     subtitle:
       "Mobile vs desktop idle size for Intelligence filter descriptors",
+  },
+  {
+    id: "api-costs",
+    label: "API costs",
+    subtitle: "Jun/Jul stack spend via vendor APIs where they exist; paste the rest from invoices",
   },
 ];
 
@@ -710,6 +716,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "intel-descriptor-sizes",
   },
   {
+    id: "admin-api-costs",
+    label: "Jun/Jul API cost rollup",
+    tab: "server",
+    panel: "api-costs",
+  },
+  {
     id: "admin-startup",
     label: "Startup schedule",
     tab: "syncs",
@@ -776,7 +788,7 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
   {
     label: "Find",
     href: "/find",
-    description: "Address and MLS search across TMRE towns",
+    description: "Westport Vision GIS address lookup and parcel page",
   },
   {
     label: "List with me",
@@ -1010,6 +1022,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
           "Address / MLS text search (rets=0 for DB-only typeahead; indexed search_text)",
         href: "/api/listings/find?q=treadwell&rets=0",
       },
+      {
+        label: "GET /api/addresses/lookup",
+        detail: "Westport Vision GIS typeahead (Find)",
+        href: "/api/addresses/lookup?town=Westport&q=main",
+      },
       { label: "GET /api/addresses/search", detail: "Property directory autocomplete", href: "/api/addresses/search?q=kings" },
       { label: "GET /api/addresses/resolve", detail: "Single address → MLS id (persists)", href: "/api/addresses/resolve?q=87+Kings+Highway+South,+Westport" },
       { label: "GET /api/listings/[mlsId]", detail: "Listing detail payload", href: "/api/listings/24152517" },
@@ -1065,6 +1082,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       { label: "POST /api/admin/rets-credentials", detail: "Save RETS credentials and probe login" },
       { label: "GET /api/admin/sync", detail: "Trigger sync actions", href: "/api/admin/sync" },
       { label: "GET /api/admin/spotlight-privacy", detail: "Spotlight privacy overrides", href: "/api/admin/spotlight-privacy" },
+      {
+        label: "GET /api/admin/stack-costs",
+        detail: "Jun/Jul vendor API cost rollup (Admin → Web server → API costs)",
+        href: "/api/admin/stack-costs",
+      },
       { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
       {
         label: "GET /api/admin/intelligence-descriptor-sizes",
@@ -1167,7 +1189,8 @@ export function isAdminServerPanelId(
     value === "site-menu" ||
     value === "page-styles" ||
     value === "ui-kit" ||
-    value === "intel-descriptor-sizes"
+    value === "intel-descriptor-sizes" ||
+    value === "api-costs"
   );
 }
 

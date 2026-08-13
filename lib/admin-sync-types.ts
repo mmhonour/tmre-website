@@ -37,7 +37,7 @@ export const ADMIN_SYNC_ACTIONS = {
   'vision-addresses': {
     label: 'Vision addresses (GIS)',
     description:
-      'VGSI cadastral crawl → vision_addresses + Field Card HTML in R2; links listings.vision_pid',
+      'VGSI cadastral crawl → vision_addresses + Field Card HTML in R2; unique address_norm join listings.vision_pid',
   },
   'zip-boundaries': {
     label: 'Zip boundary maps',

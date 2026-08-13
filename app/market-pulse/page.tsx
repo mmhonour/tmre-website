@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import LeadForm from "@/components/LeadForm";
 import MarketPulseContent from "@/components/MarketPulseContent";
+import MarketPulseHero from "@/components/MarketPulseHero";
 import { buildMarketDigestSnapshot } from "@/lib/market-digest";
 import {
   getMarketPulseThemeFresh,
@@ -35,25 +36,7 @@ export default async function MarketPulsePage() {
 
   return (
     <>
-      <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
-        <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
-        <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
-          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
-            Markets
-          </p>
-          <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
-            Market <span className="italic gold-shimmer">Pulse.</span>
-          </h1>
-          <p className="mt-3 text-sm lg:text-base text-white/70 max-w-2xl leading-relaxed animate-fade-up-delay-1">
-            The live web edition of the Monday brief for {TMRE_CORE_TOWNS_LABEL}{" "}
-            — active inventory, months supply, and closed sales across the
-            trailing two years, by town and property type, plus Deal of the Week.
-          </p>
-          <p className="mt-4 font-mono text-[10px] tracking-[0.14em] uppercase text-white/45 animate-fade-up-delay-2">
-            As of {etDate} ET
-          </p>
-        </div>
-      </section>
+      <MarketPulseHero etDate={etDate} townsLabel={TMRE_CORE_TOWNS_LABEL} />
 
       <main
         style={marketPulseThemeCssVars(theme) as CSSProperties}

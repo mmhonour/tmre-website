@@ -104,7 +104,7 @@ function metricBarRow(
   const padY = opts?.tight ? '0' : '3px'
   return `
     <tr>
-      <td width="96" style="padding:${padY} 8px ${padY} 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${SLATE};white-space:nowrap;width:96px;vertical-align:middle;">${escapeHtml(metricLabel)}</td>
+      <td width="120" style="padding:${padY} 8px ${padY} 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${SLATE};white-space:nowrap;width:120px;vertical-align:middle;">${escapeHtml(metricLabel)}</td>
       <td style="padding:${padY} 6px;vertical-align:middle;">
         <table role="presentation" width="${BAR_INNER_PX}" cellpadding="0" cellspacing="0" border="0" style="width:${BAR_INNER_PX}px;border-collapse:collapse;table-layout:fixed;">
           <tr>${barCell}</tr>
@@ -117,6 +117,7 @@ function metricBarRow(
 type StackedMetric = {
   id: MarketPulseStackedMetricId
   label: string
+  labelOf?: (row: MarketPulseCombinedTownRow) => string
   color: string
   barValueOf: (row: MarketPulseCombinedTownRow) => number | null
   format: (row: MarketPulseCombinedTownRow) => string
@@ -142,6 +143,7 @@ function stackedTownMetricsSection(
     (m) => ({
       id: m.id,
       label: m.label,
+      labelOf: m.labelOf,
       color: EMAIL_STACKED_BAR_COLOR[m.id],
       barValueOf: m.barValueOf,
       format: m.format,
@@ -178,7 +180,9 @@ function stackedTownMetricsSection(
           const pct =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0
           const tight = m.id === 'medianPrice' || m.id === 'averagePrice'
-          return metricBarRow(m.label, m.format(row), pct, m.color, { tight })
+          const metricLabel =
+            m.labelOf?.(row) ?? m.label
+          return metricBarRow(metricLabel, m.format(row), pct, m.color, { tight })
         })
         .join('')
       return `
@@ -383,7 +387,7 @@ export function formatMarketDigestHtml(
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:8px 0;">
                 <tr>
                   ${kpiCell('Market active', marketActive)}
-                  ${kpiCell('All Towns MOS', marketMos)}
+                  ${kpiCell('All Town Months Inventory', marketMos)}
                   ${kpiCell('Avg days on market', allTownsDom)}
                 </tr>
               </table>
