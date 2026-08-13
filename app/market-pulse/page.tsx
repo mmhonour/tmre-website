@@ -43,7 +43,7 @@ export default async function MarketPulsePage() {
         className="market-pulse-theme min-h-[50vh] bg-[var(--mp-page-bg)] [font-family:var(--mp-body-font)]"
       >
         <section className="pt-8 pb-6 lg:pt-10 lg:pb-8">
-          <div className="px-4 sm:px-6 lg:px-10 pb-12">
+          <div className="px-2 sm:px-6 lg:px-10 pb-12">
             <MarketPulseContent snapshot={snapshot} etDate={etDate} />
           </div>
         </section>

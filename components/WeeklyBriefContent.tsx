@@ -40,6 +40,7 @@ import {
   MARKET_PULSE_LOOKBACK_OPTIONS,
   marketPulseLookbackById,
   marketPulseLookbackChartLabel,
+  marketPulseLookbackClosedPrefix,
   formatClosedCountWithLookback,
   monthsSupplyFromLookbackWindow,
   type MarketPulseLookbackId,
@@ -406,12 +407,12 @@ function BarChart<Row extends { city: string }>({
           return (
             <li
               key={`${row.city}-${title}`}
-              className={`grid items-center gap-2 ${
+              className={`grid items-center gap-1.5 sm:gap-2 ${
                 formatValueAside
-                  ? "grid-cols-[6.5rem_3.25rem_1fr_4.25rem]"
+                  ? "grid-cols-[4.5rem_2.35rem_1fr_2.6rem] sm:grid-cols-[6.5rem_3.25rem_1fr_4.25rem]"
                   : formatValue
-                    ? "grid-cols-[7.5rem_1fr_4.5rem]"
-                    : "grid-cols-[7.5rem_1fr_3.5rem]"
+                    ? "grid-cols-[4.75rem_1fr_3rem] sm:grid-cols-[7.5rem_1fr_4.5rem]"
+                    : "grid-cols-[4.75rem_1fr_2.6rem] sm:grid-cols-[7.5rem_1fr_3.5rem]"
               }`}
             >
               {href ? (
@@ -528,6 +529,7 @@ function CombinedMetricsChart({
   settle,
   closedLookbackLabel,
   closedPending = false,
+  closedBarMax = 0,
 }: {
   title: string;
   rows: CombinedTownRow[];
@@ -535,6 +537,8 @@ function CombinedMetricsChart({
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   closedPending?: boolean;
+  /** 24-month Closed max — 7d bars stay a slice of this, not 100%. */
+  closedBarMax?: number;
 }) {
   const metrics = combinedMetrics(closedLookbackLabel);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
@@ -586,9 +590,12 @@ function CombinedMetricsChart({
     metricIndex: number,
   ) {
     const v = m.valueOf(row);
-    const max = isMarketPulsePriceScaleMetric(m.id)
-      ? priceMax
-      : (maxByMetric[metricIndex] ?? 0);
+    const max =
+      m.id === "closed" && closedBarMax > 0
+        ? closedBarMax
+        : isMarketPulsePriceScaleMetric(m.id)
+          ? priceMax
+          : (maxByMetric[metricIndex] ?? 0);
     const settled =
       max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
     const scrambleIndex = rowIndex * metrics.length + metricIndex;
@@ -610,22 +617,23 @@ function CombinedMetricsChart({
       m.id === "priceDelta"
         ? settleSignedNumber(row.priceDeltaPct, settle, scrambleIndex + 19, 1)
         : null;
+    const closedCountText =
+      m.id === "closed"
+        ? closedPending
+          ? "…"
+          : formatMetricValue(m.valueKind, display)
+        : null;
     const valueText =
-      closedPending && m.id === "closed"
-        ? formatClosedCountWithLookback(closedLookbackLabel, "…")
+      closedCountText != null
+        ? formatClosedCountWithLookback(closedLookbackLabel, closedCountText)
         : m.id === "priceDelta"
           ? formatPriceDeltaK(deltaDollars)
-          : m.id === "closed"
-            ? formatClosedCountWithLookback(
-                closedLookbackLabel,
-                formatMetricValue(m.valueKind, display),
-              )
-            : formatMetricValue(m.valueKind, display);
+          : formatMetricValue(m.valueKind, display);
     const calc = m.calcOf(row);
     return (
       <li
         key={m.id}
-        className="group relative grid grid-cols-[8.25rem_1fr_7.25rem] items-center gap-2"
+        className="group relative grid grid-cols-[4.75rem_1fr_2.75rem] items-center gap-1.5 sm:grid-cols-[8.25rem_1fr_7.25rem] sm:gap-2"
         title={m.id === "priceDelta" ? undefined : `${m.label}: ${valueText}`}
       >
         {m.id === "priceDelta" ? (
@@ -661,7 +669,16 @@ function CombinedMetricsChart({
           </div>
         </div>
         <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)] text-right">
-          {valueText}
+          {closedCountText != null ? (
+            <>
+              <span className="hidden sm:inline">
+                {marketPulseLookbackClosedPrefix(closedLookbackLabel)} -{" "}
+              </span>
+              {closedCountText}
+            </>
+          ) : (
+            valueText
+          )}
         </span>
       </li>
     );
@@ -779,6 +796,7 @@ export default function WeeklyBriefContent({
   categoryFilter,
   lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   onLookbackIdChange,
+  closedBarMax = 0,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -810,6 +828,8 @@ export default function WeeklyBriefContent({
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
   lookbackId?: MarketPulseLookbackId;
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
+  /** 24-month Closed max so 7d bars stay ~1% of that axis. */
+  closedBarMax?: number;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>(
     DEFAULT_MARKET_PULSE_CHART_LAYOUT,
@@ -915,7 +935,7 @@ export default function WeeklyBriefContent({
 
   return (
     <article className="mx-auto max-w-2xl">
-      <header className="rounded-t-2xl bg-[var(--mp-surface)] px-6 py-7 sm:px-8">
+      <header className="rounded-t-2xl bg-[var(--mp-surface)] px-3 py-6 sm:px-8 sm:py-7">
         <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] uppercase text-[var(--mp-accent)] mb-2">
           {eyebrow}
         </p>
@@ -932,7 +952,7 @@ export default function WeeklyBriefContent({
         </p>
       </header>
 
-      <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-6 py-7 sm:px-8 space-y-8 shadow-sm shadow-black/5">
+      <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-8 shadow-sm shadow-black/5">
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <Kpi
             label="Market active"
@@ -1115,6 +1135,7 @@ export default function WeeklyBriefContent({
             settle={settle}
             closedLookbackLabel={closedLookbackLabel}
             closedPending={closedPending}
+            closedBarMax={closedBarMax}
           />
         ) : (
           <>
@@ -1176,6 +1197,7 @@ export default function WeeklyBriefContent({
           townHref={closedSalesTownHref}
           settle={settle}
           calcOf={(r) => r.calc}
+          scaleMax={closedBarMax > 0 ? closedBarMax : undefined}
         />
 
         <BarChart

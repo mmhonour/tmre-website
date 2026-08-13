@@ -62,6 +62,19 @@ export function formatClosedCountWithLookback(
   return `${marketPulseLookbackClosedPrefix(lookbackLabel)} - ${countText}`
 }
 
+/** 24-month Closed axis — shorter lookbacks stay a slice of this max, not 100%. */
+export function closedCountBarMax(
+  rows: Array<{ count: number | null | undefined }>,
+): number {
+  let max = 0
+  for (const r of rows) {
+    if (r.count != null && Number.isFinite(r.count) && r.count > max) {
+      max = r.count
+    }
+  }
+  return max
+}
+
 /**
  * Current actives ÷ (closings in this window, expressed as a monthly rate).
  * Used when the visitor picks a non-default Closed lookback.

@@ -1,5 +1,8 @@
 /**
- * CLI: unique address_norm join listings ↔ vision_addresses.
+ * CLI: address_norm join listings ↔ vision_addresses.
+ *
+ * One Vision PID at a key stamps `vision_pid` on every listing at that
+ * address (re-lists included). Two or more Vision PIDs stay unmatched.
  *
  * Same join Vision GIS already runs after each crawl. Use this to dry-run
  * (default) on localhost, then apply, then promote with VISION_SYNC_TARGET=neon.
@@ -124,7 +127,7 @@ async function main() {
   }
 
   console.info(
-    `[match-vision-listings] town=${town} mode=${apply ? 'APPLY' : 'dry-run'} · unique address_norm only`,
+    `[match-vision-listings] town=${town} mode=${apply ? 'APPLY' : 'dry-run'} · 1 PID → all listings`,
   )
 
   const report = await backfillVisionListingLinks(town, { dryRun: !apply })

@@ -289,6 +289,9 @@ export type VisionListingLinkReport = {
   visionLinked: number
   listingsLinked: number
   skippedAmbiguous: number
+  /** Keys with 1 Vision PID and 2+ listings — now stamped, not skipped. */
+  multiListingKeys: number
+  /** @deprecated Always 0. Re-lists are stamped; use multiListingKeys. */
   skippedMultiListing: number
   unmatchedListings: number
   unmatchedVision: number
@@ -298,7 +301,42 @@ export type VisionListingLinkReport = {
   }
 }
 
-/** Bidirectional listing join for rows that have a street number + unique address_norm. */
+type ListingLinkRow = {
+  id: string
+  mls_id: string | null
+  visionPid: string | null
+  statusBucket: string | null
+  modifiedAt: Date | string | null
+}
+
+function listingStatusRank(bucket: string | null | undefined): number {
+  switch (bucket) {
+    case 'Active':
+      return 0
+    case 'Closed':
+      return 1
+    case 'Expired':
+      return 2
+    default:
+      return 3
+  }
+}
+
+function pickPreferredListing(listings: ListingLinkRow[]): ListingLinkRow {
+  return listings.slice().sort((a, b) => {
+    const rank = listingStatusRank(a.statusBucket) - listingStatusRank(b.statusBucket)
+    if (rank !== 0) return rank
+    const at = a.modifiedAt ? new Date(a.modifiedAt).getTime() : 0
+    const bt = b.modifiedAt ? new Date(b.modifiedAt).getTime() : 0
+    return bt - at
+  })[0]!
+}
+
+/**
+ * Join listings ↔ vision when the address has exactly one Vision PID.
+ * Every listing at that address gets `vision_pid` (re-lists included).
+ * Two or more Vision PIDs at the same key stay unmatched (condos / split lots).
+ */
 export async function backfillVisionListingLinks(
   town: string,
   options?: { dryRun?: boolean; sampleLimit?: number },
@@ -326,8 +364,11 @@ export async function backfillVisionListingLinks(
     address_street: string | null
     postal_code: string | null
     vision_pid: string | null
+    status_bucket: string | null
+    modification_timestamp: Date | string | null
   }>(
-    `SELECT id, mls_id, address_street, postal_code, vision_pid
+    `SELECT id, mls_id, address_street, postal_code, vision_pid,
+            status_bucket, modification_timestamp
        FROM listings
       WHERE lower(town) = lower($1)
         AND address_street IS NOT NULL
@@ -347,16 +388,19 @@ export async function backfillVisionListingLinks(
     visionByNorm.set(key, list)
   }
 
-  const listingByNorm = new Map<
-    string,
-    { id: string; mls_id: string | null; visionPid: string | null }[]
-  >()
+  const listingByNorm = new Map<string, ListingLinkRow[]>()
   for (const l of listingRows) {
     if (!l.address_street) continue
     const norm = normalizePropertyAddress(town, l.address_street, l.postal_code)
     const key = addressMatchKey(norm)
     const list = listingByNorm.get(key) ?? []
-    list.push({ id: l.id, mls_id: l.mls_id, visionPid: l.vision_pid })
+    list.push({
+      id: l.id,
+      mls_id: l.mls_id,
+      visionPid: l.vision_pid,
+      statusBucket: l.status_bucket,
+      modifiedAt: l.modification_timestamp,
+    })
     listingByNorm.set(key, list)
   }
 
@@ -365,7 +409,7 @@ export async function backfillVisionListingLinks(
   let visionLinked = 0
   let listingsLinked = 0
   let skippedAmbiguous = 0
-  let skippedMultiListing = 0
+  let multiListingKeys = 0
   const matchedSamples: VisionListingLinkSample[] = []
   const ambiguousSamples: { addressNorm: string; visionPids: number; listings: number }[] =
     []
@@ -385,37 +429,31 @@ export async function backfillVisionListingLinks(
       }
       continue
     }
-    if (listings.length !== 1) {
-      if (listings.length > 1) {
-        skippedMultiListing += 1
-        if (ambiguousSamples.length < sampleLimit) {
-          ambiguousSamples.push({
-            addressNorm: norm,
-            visionPids: pids.length,
-            listings: listings.length,
-          })
-        }
-      }
-      continue
-    }
+    if (listings.length === 0) continue
+
+    if (listings.length > 1) multiListingKeys += 1
 
     uniqueMatches += 1
     matchedNorms.add(norm)
     const vision = pids[0]!
-    const listing = listings[0]!
+    const preferred = pickPreferredListing(listings)
     if (matchedSamples.length < sampleLimit) {
       matchedSamples.push({
         addressNorm: norm,
         visionPid: vision.visionPid,
-        listingId: listing.id,
-        mlsId: listing.mls_id,
+        listingId: preferred.id,
+        mlsId: preferred.mls_id,
       })
     }
 
-    const visionAlready = vision.listingId === listing.id
-    const listingAlready =
-      listing.visionPid != null && listing.visionPid !== '' && listing.visionPid === vision.visionPid
-    if (visionAlready && listingAlready) {
+    const visionAlready = vision.listingId === preferred.id
+    const listingsAlready = listings.every(
+      (listing) =>
+        listing.visionPid != null &&
+        listing.visionPid !== '' &&
+        listing.visionPid === vision.visionPid,
+    )
+    if (visionAlready && listingsAlready) {
       alreadyLinked += 1
       continue
     }
@@ -425,14 +463,15 @@ export async function backfillVisionListingLinks(
     visionLinked += await execute(
       `UPDATE vision_addresses
           SET listing_id = $3, mls_id = COALESCE($4, mls_id)
-        WHERE town = $1 AND vision_pid = $2 AND listing_id IS NULL`,
-      [town, vision.visionPid, listing.id, listing.mls_id],
+        WHERE town = $1 AND vision_pid = $2`,
+      [town, vision.visionPid, preferred.id, preferred.mls_id],
     )
     listingsLinked += await execute(
       `UPDATE listings
           SET vision_pid = $2
-        WHERE id = $1 AND (vision_pid IS NULL OR vision_pid = '')`,
-      [listing.id, vision.visionPid],
+        WHERE id = ANY($1::text[])
+          AND (vision_pid IS NULL OR vision_pid = '')`,
+      [listings.map((listing) => listing.id), vision.visionPid],
     )
   }
 
@@ -443,8 +482,9 @@ export async function backfillVisionListingLinks(
   }
   let unmatchedListings = 0
   for (const [norm, listings] of listingByNorm) {
-    if (listings.length !== 1) continue
-    if (!matchedNorms.has(norm)) unmatchedListings += 1
+    const pids = visionByNorm.get(norm) ?? []
+    if (pids.length === 1) continue
+    unmatchedListings += listings.length
   }
 
   return {
@@ -457,7 +497,8 @@ export async function backfillVisionListingLinks(
     visionLinked: dryRun ? 0 : visionLinked,
     listingsLinked: dryRun ? 0 : listingsLinked,
     skippedAmbiguous,
-    skippedMultiListing,
+    multiListingKeys,
+    skippedMultiListing: 0,
     unmatchedListings,
     unmatchedVision,
     samples: { matched: matchedSamples, ambiguous: ambiguousSamples },
@@ -492,6 +533,9 @@ export type VisionAddressRecord = {
   lastSalePrice: number | null
   lastSaleDate: string | null
   lastSaleBookPage: string | null
+  buildingCount: number | null
+  totalRooms: number | null
+  model: string | null
   photoUrl: string | null
   parcelUrl: string
   listingId: string | null
@@ -526,6 +570,9 @@ type VisionAddressSqlRow = {
   last_sale_price: number | string | null
   last_sale_date: string | null
   last_sale_book_page: string | null
+  building_count: number | string | null
+  total_rooms: number | string | null
+  model: string | null
   photo_url: string | null
   parcel_url: string
   listing_id: string | null
@@ -567,6 +614,9 @@ function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
     lastSalePrice: numOrNull(row.last_sale_price),
     lastSaleDate: row.last_sale_date,
     lastSaleBookPage: row.last_sale_book_page,
+    buildingCount: numOrNull(row.building_count),
+    totalRooms: numOrNull(row.total_rooms),
+    model: row.model,
     photoUrl: row.photo_url,
     parcelUrl: row.parcel_url,
     listingId: row.listing_id,
@@ -580,6 +630,7 @@ const VISION_SELECT = `
   owner_name, assessed_value, appraisal_value, year_built, living_area_sqft,
   beds, full_baths, half_baths, style, acres, zoning,
   last_sale_price, last_sale_date, last_sale_book_page,
+  building_count, total_rooms, model,
   photo_url, parcel_url, listing_id, mls_id
 `
 

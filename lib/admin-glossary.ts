@@ -245,7 +245,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Vision PID / vision_pid',
     category: 'mls-data',
     definition:
-      'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and optionally mirrored on `listings.vision_pid` after address_norm backfill so RETS + Vision can be opened together. Sync job: vision-addresses (chunked full fill → fingerprint incremental; Field Card HTML in R2).',
+      'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and mirrored onto every `listings.vision_pid` at that address when the match key has exactly one Vision PID (re-lists included; 2+ PIDs stay unmatched). Sync job: vision-addresses (chunked full fill → fingerprint incremental; Field Card HTML in R2).',
   },
   {
     term: 'vision-addresses (sync)',
@@ -955,7 +955,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Thin corpus (Find)',
     category: 'product',
     definition:
-      'When /find typeahead can only match a narrow searchable set — historically MLS rows in the listings table — so suggestions feel sparse even if the API is fast. /find is now Westport Lookup: typeahead is vision_addresses (cadastral) for Westport, prefix on address_norm, no live RETS on keystrokes. Off-market parcels open /find/westport/{vision_pid}; on-market rows merge listing-wins + Vision gap-fill. Incomplete GIS fill shows up as missing streets, not a thin MLS-only corpus. Not the same as thin scheduling (Netlify cron alarm clocks).',
+      'When /find typeahead can only match a narrow searchable set — historically MLS rows in the listings table — so suggestions feel sparse even if the API is fast. /find is Westport Lookup: typeahead is vision_addresses (cadastral) plus Westport MLS streets that GIS has not ingested yet. Off-market parcels open /find/westport/{vision_pid} with the Vision field card on the page; on-market rows merge listing-wins + Vision gap-fill. Incomplete GIS fill no longer hides MLS addresses. Not the same as thin scheduling (Netlify cron alarm clocks).',
   },
   {
     term: 'Intelligence',

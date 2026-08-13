@@ -7,10 +7,18 @@ import {
   type VisionAddressRecord,
 } from '@/lib/db/vision-addresses-repo'
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
-import { queryOne } from '@/lib/db/postgres'
+import { query, queryOne } from '@/lib/db/postgres'
 import { buildListingPhotoProxyUrls } from '@/lib/listing-photos-cache'
 import { listingDetailHref } from '@/lib/listing-url'
+import {
+  addressMatchKey,
+  normalizePropertyAddress,
+  normalizeStreetLine,
+} from '@/lib/property-address'
+import { getVisionFieldCardHtml } from '@/lib/r2-vision-store'
 import type { Listing } from '@/lib/rets'
+import { prepareVisionFieldCardSrcDoc } from '@/lib/vision-field-card-html'
+import { visionGisTownConfig } from '@/lib/vision-gis-towns'
 
 export const WESTPORT_LOOKUP_TOWN = 'Westport'
 
@@ -32,6 +40,31 @@ export type MergedField<T> = {
   source: 'listing' | 'vision' | null
 }
 
+export type WestportFieldCard = {
+  accountNumber: string | null
+  mblu: string | null
+  useCode: string | null
+  useCodeDescription: string | null
+  ownerName: string | null
+  assessedValue: number | null
+  appraisalValue: number | null
+  yearBuilt: number | null
+  livingAreaSqft: number | null
+  beds: number | null
+  baths: number | null
+  totalRooms: number | null
+  style: string | null
+  model: string | null
+  acres: number | null
+  zoning: string | null
+  lastSalePrice: number | null
+  lastSaleDate: string | null
+  lastSaleBookPage: string | null
+  photoUrl: string | null
+  html: string | null
+  parcelUrl: string
+}
+
 export type WestportMergedProperty = {
   town: string
   visionPid: string
@@ -39,6 +72,7 @@ export type WestportMergedProperty = {
   street: string
   mblu: string | null
   parcelUrl: string | null
+  fieldCard: WestportFieldCard
   siblings: WestportLookupHit[]
   listing: {
     mlsId: string
@@ -119,6 +153,24 @@ function hitFromVision(
 async function listingForVision(
   v: VisionAddressRecord,
 ): Promise<Listing | null> {
+  const byPid = await queryOne<{ id: string }>(
+    `SELECT id FROM listings
+      WHERE vision_pid = $1 AND lower(town) = lower($2)
+      ORDER BY
+        CASE status_bucket
+          WHEN 'Active' THEN 0
+          WHEN 'Closed' THEN 1
+          WHEN 'Expired' THEN 2
+          ELSE 3
+        END,
+        modification_timestamp DESC NULLS LAST
+      LIMIT 1`,
+    [v.visionPid, v.town],
+  )
+  if (byPid?.id) {
+    const listing = await readListingByIdFromDb(byPid.id)
+    if (listing) return listing
+  }
   if (v.listingId) {
     const byId = await readListingByIdFromDb(v.listingId)
     if (byId) return byId
@@ -127,14 +179,56 @@ async function listingForVision(
     const byMls = await readListingByIdFromDb(v.mlsId)
     if (byMls) return byMls
   }
-  const row = await queryOne<{ id: string }>(
-    `SELECT id FROM listings
-      WHERE vision_pid = $1 AND lower(town) = lower($2)
-      LIMIT 1`,
-    [v.visionPid, v.town],
+  return null
+}
+
+type WestportListingSearchRow = {
+  id: string
+  mls_id: string | null
+  address_street: string | null
+  address_full: string | null
+  status_bucket: string | null
+  price: number | string | null
+  vision_pid: string | null
+}
+
+async function searchWestportListingRows(
+  q: string,
+  limit: number,
+): Promise<WestportListingSearchRow[]> {
+  const street = normalizeStreetLine(q)
+  if (street.length < 2) return []
+  const tokens = street.split(/\s+/).filter(Boolean)
+  const prefix = `${street}%`
+  const tokenPattern = `%${tokens.join('%')}%`
+  return query<WestportListingSearchRow>(
+    `SELECT id, mls_id, address_street, address_full, status_bucket, price, vision_pid
+       FROM listings
+      WHERE lower(town) = lower($1)
+        AND (
+          lower(coalesce(address_street, '')) LIKE $2
+          OR lower(coalesce(address_full, '')) LIKE $2
+          OR lower(coalesce(address_street, '')) LIKE $3
+          OR lower(coalesce(address_full, '')) LIKE $3
+        )
+      ORDER BY
+        CASE status_bucket
+          WHEN 'Active' THEN 0
+          WHEN 'Closed' THEN 1
+          WHEN 'Expired' THEN 2
+          ELSE 3
+        END,
+        modification_timestamp DESC NULLS LAST
+      LIMIT $4`,
+    [WESTPORT_LOOKUP_TOWN, prefix, tokenPattern, Math.min(Math.max(limit * 3, 8), 48)],
   )
-  if (!row?.id) return null
-  return readListingByIdFromDb(row.id)
+}
+
+function listingRowStatusRank(bucket: string | null): number {
+  if (bucket === 'Active') return 0
+  if (bucket === 'Closed') return 1
+  if (bucket === 'Expired') return 2
+  return 3
 }
 
 export async function searchWestportLookup(
@@ -167,6 +261,83 @@ export async function searchWestportLookup(
       ),
     )
   })
+
+  const seenPids = new Set(out.map((h) => h.visionPid).filter(Boolean))
+  const seenMls = new Set(
+    out.flatMap((h) => [h.mlsId, h.listingId].filter((v): v is string => Boolean(v))),
+  )
+  const seenNorms = new Set(
+    visionHits
+      .map((v) => (v.addressNorm ? addressMatchKey(v.addressNorm) : ''))
+      .filter(Boolean),
+  )
+
+  const listingRows = await searchWestportListingRows(q, limit)
+  const groups = new Map<string, WestportListingSearchRow[]>()
+  for (const row of listingRows) {
+    const street = row.address_street || row.address_full || ''
+    if (!street.trim()) continue
+    const key = addressMatchKey(
+      normalizePropertyAddress(WESTPORT_LOOKUP_TOWN, street, null),
+    )
+    const list = groups.get(key) ?? []
+    list.push(row)
+    groups.set(key, list)
+  }
+
+  for (const [key, group] of groups) {
+    if (out.length >= limit) break
+    if (seenNorms.has(key)) continue
+    const preferred = group.slice().sort((a, b) => {
+      return listingRowStatusRank(a.status_bucket) - listingRowStatusRank(b.status_bucket)
+    })[0]!
+    if (preferred.vision_pid && seenPids.has(preferred.vision_pid)) continue
+    if (preferred.mls_id && seenMls.has(preferred.mls_id)) continue
+    if (seenMls.has(preferred.id)) continue
+
+    if (preferred.vision_pid) {
+      const vision = await getVisionAddress(WESTPORT_LOOKUP_TOWN, preferred.vision_pid)
+      if (vision) {
+        const listing = await listingForVision(vision)
+        out.push(
+          hitFromVision(
+            vision,
+            listing
+              ? { status: listing.status, price: listing.price }
+              : {
+                  status: preferred.status_bucket,
+                  price:
+                    preferred.price == null ? null : Number(preferred.price),
+                },
+            group.length,
+          ),
+        )
+        seenPids.add(vision.visionPid)
+        seenNorms.add(key)
+        continue
+      }
+    }
+
+    const priceNum =
+      preferred.price == null || preferred.price === ''
+        ? null
+        : Number(preferred.price)
+    out.push({
+      visionPid: preferred.vision_pid ?? '',
+      addressFull: preferred.address_full || `${preferred.address_street}, Westport`,
+      street: preferred.address_street || preferred.address_full || 'Westport listing',
+      mblu: null,
+      ownerName: null,
+      listingId: preferred.id,
+      mlsId: preferred.mls_id,
+      status: preferred.status_bucket,
+      price: Number.isFinite(priceNum) ? priceNum : null,
+      siblingCount: group.length,
+    })
+    if (preferred.mls_id) seenMls.add(preferred.mls_id)
+    seenMls.add(preferred.id)
+    seenNorms.add(key)
+  }
 
   const looksLikeMls = /^[A-Za-z0-9-]{5,}$/.test(q.trim()) && !/\s/.test(q.trim())
   if (looksLikeMls && out.length < limit) {
@@ -210,12 +381,15 @@ export async function mergeWestportProperty(
     : []
 
   const mlsId = listing?.mlsId ?? vision.mlsId
-  const photos =
-    listing && mlsId
+  const mlsPhotos =
+    listing && mlsId && (listing.photoCount ?? 0) > 0
       ? buildListingPhotoProxyUrls(mlsId, Math.min(listing.photoCount ?? 0, 8))
-      : vision.photoUrl
-        ? [vision.photoUrl]
-        : []
+      : []
+  const photos = mlsPhotos.length > 0
+    ? mlsPhotos
+    : vision.photoUrl
+      ? [vision.photoUrl]
+      : []
 
   const listingHref = listing
     ? listingDetailHref(
@@ -224,6 +398,17 @@ export async function mergeWestportProperty(
         listing.address.city,
       )
     : null
+
+  const gis = visionGisTownConfig(WESTPORT_LOOKUP_TOWN)
+  let fieldCardHtml: string | null = null
+  try {
+    const raw = await getVisionFieldCardHtml(WESTPORT_LOOKUP_TOWN, vision.visionPid)
+    if (raw && gis) {
+      fieldCardHtml = prepareVisionFieldCardSrcDoc(raw, gis.baseUrl)
+    }
+  } catch (err) {
+    console.warn('[westport-lookup] field card HTML unavailable', err)
+  }
 
   return {
     town: WESTPORT_LOOKUP_TOWN,
@@ -235,6 +420,30 @@ export async function mergeWestportProperty(
     street: listing?.address.street || streetLine(vision),
     mblu: vision.mblu,
     parcelUrl: vision.parcelUrl,
+    fieldCard: {
+      accountNumber: vision.accountNumber,
+      mblu: vision.mblu,
+      useCode: vision.useCode,
+      useCodeDescription: vision.useCodeDescription,
+      ownerName: vision.ownerName,
+      assessedValue: vision.assessedValue,
+      appraisalValue: vision.appraisalValue,
+      yearBuilt: vision.yearBuilt,
+      livingAreaSqft: vision.livingAreaSqft,
+      beds: vision.beds,
+      baths: bathsFromVision(vision),
+      totalRooms: vision.totalRooms,
+      style: vision.style,
+      model: vision.model,
+      acres: vision.acres,
+      zoning: vision.zoning,
+      lastSalePrice: vision.lastSalePrice,
+      lastSaleDate: vision.lastSaleDate,
+      lastSaleBookPage: vision.lastSaleBookPage,
+      photoUrl: vision.photoUrl,
+      html: fieldCardHtml,
+      parcelUrl: vision.parcelUrl,
+    },
     siblings,
     listing: listing
       ? {

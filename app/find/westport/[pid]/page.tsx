@@ -64,6 +64,29 @@ function FieldRow<T extends string | number>({
   );
 }
 
+function CardRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+}) {
+  const text =
+    value == null || value === ""
+      ? "—"
+      : typeof value === "number"
+        ? String(value)
+        : value;
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-2 border-b border-charcoal/[0.06]">
+      <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate/70">
+        {label}
+      </dt>
+      <dd className="font-mono text-sm text-navy tabular-nums text-right">{text}</dd>
+    </div>
+  );
+}
+
 export default async function WestportParcelPage({
   params,
 }: {
@@ -78,6 +101,10 @@ export default async function WestportParcelPage({
     property.beds.value != null && property.baths.value != null
       ? `${property.beds.value}BR/${property.baths.value}BA`
       : null;
+  const card = property.fieldCard;
+  const useLabel = [card.useCode, card.useCodeDescription]
+    .filter(Boolean)
+    .join(" — ");
 
   return (
     <>
@@ -137,67 +164,107 @@ export default async function WestportParcelPage({
               </div>
             ) : null}
 
-            {property.remarks.value ? (
-              <p className="font-serif text-base leading-relaxed text-charcoal/80 mb-8">
-                {property.remarks.value}
-              </p>
+            {property.listing ? (
+              <>
+                {property.remarks.value ? (
+                  <p className="font-serif text-base leading-relaxed text-charcoal/80 mb-8">
+                    {property.remarks.value}
+                  </p>
+                ) : null}
+                <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
+                  MLS
+                </h2>
+                <dl className="mb-10">
+                  <FieldRow label="Status" field={property.status} />
+                  <FieldRow
+                    label="Price"
+                    field={property.price}
+                    format={(v) => fmtMoney(Number(v))}
+                  />
+                  <FieldRow label="DOM" field={property.dom} format={(v) => `${v}d`} />
+                  <FieldRow label="Beds" field={property.beds} />
+                  <FieldRow label="Baths" field={property.baths} />
+                  <FieldRow
+                    label="Sqft"
+                    field={property.sqft}
+                    format={(v) => Number(v).toLocaleString()}
+                  />
+                  <FieldRow label="Year" field={property.yearBuilt} />
+                  <FieldRow label="Style" field={property.style} />
+                </dl>
+              </>
             ) : null}
 
+            <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
+              Vision field card
+            </h2>
             <dl>
-              <FieldRow label="Status" field={property.status} />
-              <FieldRow label="Price" field={property.price} format={(v) => fmtMoney(Number(v))} />
-              <FieldRow label="DOM" field={property.dom} format={(v) => `${v}d`} />
-              <FieldRow label="Beds" field={property.beds} />
-              <FieldRow label="Baths" field={property.baths} />
-              <FieldRow
-                label="Sqft"
-                field={property.sqft}
-                format={(v) => Number(v).toLocaleString()}
-              />
-              <FieldRow label="Year" field={property.yearBuilt} />
-              <FieldRow
-                label="Acres"
-                field={property.acres}
-                format={(v) => fmtNum(Number(v))}
-              />
-              <FieldRow label="Zoning" field={property.zoning} />
-              <FieldRow label="Owner" field={property.ownerName} />
-              <FieldRow
+              <CardRow label="Owner" value={card.ownerName} />
+              <CardRow label="MBLU" value={card.mblu} />
+              <CardRow label="Account" value={card.accountNumber} />
+              <CardRow label="PID" value={property.visionPid} />
+              <CardRow label="Use" value={useLabel || null} />
+              <CardRow label="Zoning" value={card.zoning} />
+              <CardRow
                 label="Assessed"
-                field={property.assessedValue}
-                format={(v) => fmtMoney(Number(v))}
+                value={card.assessedValue != null ? fmtMoney(card.assessedValue) : null}
               />
-              <FieldRow
+              <CardRow
+                label="Appraisal"
+                value={card.appraisalValue != null ? fmtMoney(card.appraisalValue) : null}
+              />
+              <CardRow
+                label="Acres"
+                value={card.acres != null ? fmtNum(card.acres) : null}
+              />
+              <CardRow label="Year built" value={card.yearBuilt} />
+              <CardRow
+                label="Living area"
+                value={
+                  card.livingAreaSqft != null
+                    ? `${card.livingAreaSqft.toLocaleString()} sf`
+                    : null
+                }
+              />
+              <CardRow label="Beds" value={card.beds} />
+              <CardRow label="Baths" value={card.baths} />
+              <CardRow label="Rooms" value={card.totalRooms} />
+              <CardRow label="Style" value={card.style} />
+              <CardRow label="Model" value={card.model} />
+              <CardRow
                 label="Last sale"
-                field={property.lastSalePrice}
-                format={(v) => fmtMoney(Number(v))}
+                value={card.lastSalePrice != null ? fmtMoney(card.lastSalePrice) : null}
               />
-              <FieldRow label="Last sale date" field={property.lastSaleDate} />
-              <FieldRow label="Style" field={property.style} />
+              <CardRow label="Last sale date" value={card.lastSaleDate} />
+              <CardRow label="Book / page" value={card.lastSaleBookPage} />
             </dl>
 
-            {property.mblu ? (
+            {card.html ? (
+              <div className="mt-8">
+                <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-slate/50 mb-2">
+                  Stored field card
+                </p>
+                <iframe
+                  title={`Vision field card ${property.street}`}
+                  sandbox=""
+                  srcDoc={card.html}
+                  className="w-full min-h-[70vh] rounded-xl border border-charcoal/[0.08] bg-white"
+                />
+              </div>
+            ) : null}
+
+            {card.parcelUrl ? (
               <p className="mt-4 font-mono text-[10px] text-slate/50">
-                MBLU {property.mblu} · PID {property.visionPid}
-                {property.parcelUrl ? (
-                  <>
-                    {" · "}
-                    <a
-                      href={property.parcelUrl}
-                      className="underline underline-offset-2 hover:text-navy"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Vision card
-                    </a>
-                  </>
-                ) : null}
+                <a
+                  href={card.parcelUrl}
+                  className="underline underline-offset-2 hover:text-navy"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open on Vision GIS
+                </a>
               </p>
-            ) : (
-              <p className="mt-4 font-mono text-[10px] text-slate/50">
-                PID {property.visionPid}
-              </p>
-            )}
+            ) : null}
           </div>
 
           {property.siblings.length > 0 ? (

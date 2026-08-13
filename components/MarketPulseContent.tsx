@@ -10,6 +10,7 @@ import type {
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   type MarketPulseLookbackId,
+  closedCountBarMax,
 } from "@/lib/market-pulse-lookback";
 import {
   MARKET_PULSE_CATEGORY_IDS,
@@ -202,6 +203,14 @@ export default function MarketPulseContent({
       }
     : snapshot;
 
+  const closedBarMax = closedCountBarMax(
+    closedByKey[closedCacheKey(category, DEFAULT_MARKET_PULSE_LOOKBACK_ID)]
+      ?.rows ??
+      active?.closedTrailing ??
+      snapshot.closedTrailing ??
+      [],
+  );
+
   const townHref = (cityLabel: string) =>
     marketPulseTownIntelligenceHref(cityLabel, category);
   const monthsSupplyTownHref = (cityLabel: string) =>
@@ -255,6 +264,7 @@ export default function MarketPulseContent({
       categoryFilter={categoryFilter}
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}
+      closedBarMax={closedBarMax}
     />
   );
 }

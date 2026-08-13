@@ -81,9 +81,16 @@ export default function FindClient() {
         });
         const res = await fetch(`/api/addresses/lookup?${params}`, {
           signal: ac.signal,
+          cache: "no-store",
         });
         const data = (await res.json()) as ApiResponse;
         if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        if (
+          data.query &&
+          data.query.trim().toLowerCase() !== q.toLowerCase()
+        ) {
+          return;
+        }
 
         setSuggestions(data.addresses.slice(0, 10));
         setSuggestOpen(data.addresses.length > 0);
@@ -162,9 +169,8 @@ export default function FindClient() {
             <span className="italic gold-shimmer">Lookup.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Type a street address. Matches come from the Westport parcel map —
-            on-market and off-market. Streets not in GIS yet simply will not
-            appear.
+            Type a street address. Westport parcels from the town map, plus
+            MLS addresses that GIS has not ingested yet.
           </p>
 
           <div className="relative z-30 mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl animate-fade-up-delay-2">
@@ -267,8 +273,8 @@ export default function FindClient() {
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           {loadState === "idle" && (
             <p className="text-charcoal/60 font-mono text-sm">
-              Start typing a Westport address — on-market and off-market
-              parcels appear as you type.
+              Start typing a Westport address — parcels and MLS listings
+              appear as you type.
             </p>
           )}
 
@@ -282,10 +288,8 @@ export default function FindClient() {
 
           {loadState === "ready" && results.length === 0 && (
             <p className="text-charcoal/60 font-mono text-sm">
-              No Westport parcels matched
-              {submittedQuery ? ` “${submittedQuery}”` : " your search"}. If
-              the street is missing from GIS, it will not appear until the
-              Vision fill includes it.
+              No Westport parcels or listings matched
+              {submittedQuery ? ` “${submittedQuery}”` : " your search"}.
             </p>
           )}
 
@@ -332,7 +336,7 @@ function FindCard({ hit }: { hit: LookupHit }) {
           {fmtMoney(hit.price)}
         </span>
         <span className="font-mono text-[10px] text-slate/60">
-          {hit.listingId || hit.mlsId ? "On market" : "Off market"}
+          {hit.status ?? (hit.listingId || hit.mlsId ? "Listed" : "Off market")}
         </span>
       </div>
     </article>
