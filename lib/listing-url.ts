@@ -14,6 +14,10 @@ export function listingShareHref(id: string): string {
   return `/listings/${encodeURIComponent(id.trim())}`;
 }
 
+export function westportParcelHref(visionPid: string): string {
+  return `/find/westport/${encodeURIComponent(visionPid.trim())}`;
+}
+
 /** Absolute short share URL for clipboard / Web Share (browser or given origin). */
 export function listingShareUrl(id: string, origin?: string): string {
   const path = listingShareHref(id);

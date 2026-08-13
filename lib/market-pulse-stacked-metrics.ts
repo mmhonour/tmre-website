@@ -77,21 +77,43 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'medianPrice',
-      label: 'Median price',
+      label: 'Median',
       barValueOf: (r) => r.medianPrice,
       format: (r) => fmtMoney(r.medianPrice),
     },
     {
       id: 'averagePrice',
-      label: 'Average price',
+      label: 'Avg',
       barValueOf: (r) => r.averagePrice,
       format: (r) => fmtMoney(r.averagePrice),
     },
     {
       id: 'priceDelta',
-      label: 'Avg − median',
+      label: 'Delta',
       barValueOf: (r) => absOrNull(r.priceDelta),
       format: (r) => formatPriceDeltaLabel(r.priceDelta, r.priceDeltaPct),
     },
   ]
+}
+
+/** Shared dollar axis for Median, Avg, and Delta (do not scale Delta to its own max). */
+export function marketPulsePriceBarMax(
+  rows: Array<{
+    medianPrice: number | null
+    averagePrice: number | null
+  }>,
+): number {
+  let max = 0
+  for (const r of rows) {
+    for (const v of [r.medianPrice, r.averagePrice]) {
+      if (v != null && Number.isFinite(v) && v > max) max = v
+    }
+  }
+  return max
+}
+
+export function isMarketPulsePriceScaleMetric(
+  id: MarketPulseStackedMetricId,
+): boolean {
+  return id === 'medianPrice' || id === 'averagePrice' || id === 'priceDelta'
 }

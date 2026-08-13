@@ -706,164 +706,150 @@ export default function HomeMethodOverview({
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
         {/*
-          No frosted card on mobile — copy/score sit on the photo atmosphere
-          (same open treatment as desktop). min-w-0 keeps long lines wrapping.
+          Single stack: copy → scoring / Intelligence → rooms → DOTD.
+          The old 6/6 split left a vacant right column once copy collapsed.
         */}
         <div className="min-w-0">
-          <div className="grid min-w-0 items-start gap-4 sm:gap-10 lg:grid-cols-12 lg:gap-8">
-            {/* Copy column — lines collapse bottom→top; CTAs rise with the fold */}
-            <div className="min-w-0 lg:col-span-6">
-              <HomeHeroCopy />
+          <HomeHeroCopy />
 
-              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2 sm:mt-7">
-                <Link
-                  href="/score"
-                  className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 transition-colors hover:text-gold"
-                >
-                  How scoring works
-                </Link>
-                <Link
-                  href="/intelligence"
-                  className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark transition-colors hover:bg-gold-light"
-                >
-                  Open Intelligence →
-                </Link>
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2 sm:mt-6">
+            <Link
+              href="/score"
+              className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 transition-colors hover:text-gold"
+            >
+              How scoring works
+            </Link>
+            <Link
+              href="/intelligence"
+              className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark transition-colors hover:bg-gold-light"
+            >
+              Open Intelligence →
+            </Link>
+          </div>
+
+          <div className="relative mt-6 animate-fade-up-delay-2 sm:mt-8">
+            <p className="mb-2 font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 sm:mb-3">
+              Same measure · different rooms of the site
+            </p>
+            <HomeSurfaceStage />
+          </div>
+
+          <div className="mt-2 flex min-w-0 flex-col items-stretch text-left animate-fade-up-delay-1 sm:mt-4">
+            <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2">
+              Deal of the Day · rotating towns
+            </p>
+            {/*
+              Left (score) / right (stat). Mobile: both stay for the same
+              town, then fade together. Desktop: score hands off to stat.
+            */}
+            <div className="grid w-full min-w-0 min-h-[8.5rem] grid-cols-2 items-stretch gap-3 sm:min-h-[11rem] sm:gap-6 lg:min-h-[12.5rem] lg:gap-8">
+              <div
+                className={`flex h-full min-h-[8.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-0.5 py-1.5 transition-opacity ease-in-out motion-reduce:transition-none sm:min-h-[11rem] sm:px-2 lg:min-h-[12.5rem] lg:px-3 ${
+                  scoreOpaque
+                    ? "z-10 opacity-100"
+                    : "pointer-events-none z-0 opacity-0"
+                }`}
+                style={{ transitionDuration: `${heroFadeMs}ms` }}
+                aria-hidden={!scoreOpaque || undefined}
+              >
+                {live ? (
+                  <Link
+                    href={dealOfTheDayHref(live.town, {
+                      mlsId: live.mlsId,
+                      listingKey: live.listingKey,
+                      kind: "sale",
+                      propertyClass: "homes",
+                    })}
+                    tabIndex={scoreOpaque ? 0 : -1}
+                    className="group block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
+                    aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
+                  >
+                    <p
+                      key={`${live.town}-${live.score}-${live.mlsId}`}
+                      className="font-serif italic gold-shimmer text-[2.35rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[4.25rem] lg:text-[5rem]"
+                    >
+                      {live.score.toFixed(1)}.
+                    </p>
+                    <p className="mt-1 font-serif italic text-lg text-white/90 transition-colors group-hover:text-gold sm:mt-1.5 sm:text-2xl">
+                      {live.town}
+                    </p>
+                  </Link>
+                ) : (
+                  <>
+                    <p className="font-serif italic text-[2.35rem] leading-none tracking-tight text-white/40 sm:text-[4.25rem] lg:text-[5rem]">
+                      —.—
+                    </p>
+                    <p className="mt-1 font-serif italic text-lg text-white/90 sm:mt-1.5 sm:text-2xl">
+                      Scanning markets…
+                    </p>
+                  </>
+                )}
+                <p className="mt-1.5 max-w-sm text-[10px] leading-relaxed text-white/45 sm:mt-2 sm:text-xs">
+                  Today&apos;s pick in each town — tap the score to open that
+                  deal. Same yardstick as Deal of the Week.
+                </p>
+              </div>
+
+              <div
+                className={`flex h-full min-h-[8.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-0.5 py-1.5 transition-[opacity,transform] ease-out motion-reduce:transition-none sm:min-h-[11rem] sm:px-2 lg:min-h-[12.5rem] lg:px-3 ${
+                  displayStat && statOpaque
+                    ? "z-10 translate-y-0 opacity-100"
+                    : "pointer-events-none z-0 translate-y-3 opacity-0"
+                }`}
+                style={{ transitionDuration: `${heroFadeMs}ms` }}
+                aria-hidden={!statOpaque || undefined}
+              >
+                {displayStat ? (
+                  <Link
+                    href={displayStat.href}
+                    tabIndex={statOpaque ? 0 : -1}
+                    onMouseEnter={() => {
+                      if (!displayStat.kind) return;
+                      for (const url of interestingStatWarmUrls(
+                        displayStat.kind,
+                        displayStat.town ?? null,
+                      )) {
+                        prefetchTabJson(url);
+                      }
+                    }}
+                    className="group/stat block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
+                    title={
+                      displayStat.kind === "best-vintage" ||
+                      displayStat.kind === "vintage-gap"
+                        ? "Learn how scoring works"
+                        : "Open this chart on Statistics"
+                    }
+                  >
+                    <span className="block font-mono text-[9px] tracking-[0.2em] uppercase text-gold sm:text-[10px]">
+                      {displayStat.eyebrow}
+                      {displayStat.town ? (
+                        <span className="text-gold/70">
+                          {" "}
+                          · {displayStat.town}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span
+                      key={`${displayStat.value}-${displayStat.detail}-${displayStat.town ?? ""}`}
+                      className="mt-1.5 block break-words font-serif italic text-xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.65rem] lg:text-[2rem]"
+                    >
+                      {displayStat.value}
+                    </span>
+                    <span className="mt-1.5 block break-words text-[11px] leading-snug text-white/60 sm:text-xs sm:max-w-sm">
+                      {displayStat.detail}
+                    </span>
+                  </Link>
+                ) : null}
               </div>
             </div>
-
-            {/* Deal of the Day score + matched town interesting-stat */}
-            <div className="flex min-w-0 flex-col items-stretch text-left animate-fade-up-delay-1 lg:col-span-6">
-              <div className="w-full min-w-0 lg:max-w-none">
-                <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold/80 sm:mb-2 lg:text-left">
-                  Actual home · rotating towns
-                </p>
-                {/*
-                  Left (score) / right (stat). Mobile: both stay for the same
-                  town, then fade together. Desktop: score hands off to stat.
-                */}
-                <div className="grid w-full min-w-0 min-h-[11.5rem] grid-cols-2 items-stretch gap-3 sm:min-h-[16.5rem] sm:gap-6 lg:min-h-[18rem] lg:gap-8">
-                  <div
-                    className={`flex h-full min-h-[11.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-0.5 py-2 transition-opacity ease-in-out motion-reduce:transition-none sm:min-h-[16.5rem] sm:px-2 lg:min-h-[18rem] lg:px-3 ${
-                      scoreOpaque
-                        ? "z-10 opacity-100"
-                        : "pointer-events-none z-0 opacity-0"
-                    }`}
-                    style={{ transitionDuration: `${heroFadeMs}ms` }}
-                    aria-hidden={!scoreOpaque || undefined}
-                  >
-                    {live ? (
-                      <Link
-                        href={dealOfTheDayHref(live.town, {
-                          mlsId: live.mlsId,
-                          listingKey: live.listingKey,
-                          kind: "sale",
-                          propertyClass: "homes",
-                        })}
-                        tabIndex={scoreOpaque ? 0 : -1}
-                        className="group block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
-                        aria-label={`Open ${live.town} Deal of the Day, score ${live.score.toFixed(1)}`}
-                      >
-                        <p
-                          key={`${live.town}-${live.score}-${live.mlsId}`}
-                          className="font-serif italic gold-shimmer text-[2.65rem] leading-none tracking-tight transition-opacity group-hover:opacity-90 sm:text-[5.5rem] lg:text-[6.5rem]"
-                        >
-                          {live.score.toFixed(1)}.
-                        </p>
-                        <p className="mt-1 font-serif italic text-lg text-white/90 transition-colors group-hover:text-gold sm:mt-2 sm:text-3xl">
-                          {live.town}
-                        </p>
-                      </Link>
-                    ) : (
-                      <>
-                        <p className="font-serif italic text-[2.65rem] leading-none tracking-tight text-white/40 sm:text-[5.5rem] lg:text-[6.5rem]">
-                          —.—
-                        </p>
-                        <p className="mt-1 font-serif italic text-lg text-white/90 sm:mt-2 sm:text-3xl">
-                          Scanning markets…
-                        </p>
-                      </>
-                    )}
-                    <p className="mt-2 max-w-sm text-[10px] leading-relaxed text-white/45 sm:mt-3 sm:text-xs">
-                      Today&apos;s pick in each town — tap the score to open that
-                      deal. Same yardstick as Deal of the Week.
-                    </p>
-                  </div>
-
-                  <div
-                    className={`flex h-full min-h-[11.5rem] w-full min-w-0 flex-col justify-center border-0 bg-transparent px-0.5 py-2 transition-[opacity,transform] ease-out motion-reduce:transition-none sm:min-h-[16.5rem] sm:px-2 lg:min-h-[18rem] lg:px-3 ${
-                      displayStat && statOpaque
-                        ? "z-10 translate-y-0 opacity-100"
-                        : "pointer-events-none z-0 translate-y-3 opacity-0"
-                    }`}
-                    style={{ transitionDuration: `${heroFadeMs}ms` }}
-                    aria-hidden={!statOpaque || undefined}
-                  >
-                    {displayStat ? (
-                      <Link
-                        href={displayStat.href}
-                        tabIndex={statOpaque ? 0 : -1}
-                        onMouseEnter={() => {
-                          if (!displayStat.kind) return;
-                          for (const url of interestingStatWarmUrls(
-                            displayStat.kind,
-                            displayStat.town ?? null,
-                          )) {
-                            prefetchTabJson(url);
-                          }
-                        }}
-                        className="group/stat block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-navy-dark"
-                        title={
-                          displayStat.kind === "best-vintage" ||
-                          displayStat.kind === "vintage-gap"
-                            ? "Learn how scoring works"
-                            : "Open this chart on Statistics"
-                        }
-                      >
-                        <span className="block font-mono text-[9px] tracking-[0.2em] uppercase text-gold sm:text-[10px]">
-                          {displayStat.eyebrow}
-                          {displayStat.town ? (
-                            <span className="text-gold/70">
-                              {" "}
-                              · {displayStat.town}
-                            </span>
-                          ) : null}
-                        </span>
-                        <span
-                          key={`${displayStat.value}-${displayStat.detail}-${displayStat.town ?? ""}`}
-                          className="mt-1.5 block break-words font-serif italic text-xl leading-tight text-white underline decoration-gold/35 underline-offset-4 transition-opacity group-hover/stat:opacity-90 sm:text-[1.85rem] lg:text-[2.35rem]"
-                        >
-                          {displayStat.value}
-                        </span>
-                        <span className="mt-1.5 block break-words text-[11px] leading-snug text-white/60 sm:text-xs sm:max-w-sm">
-                          {displayStat.detail}
-                        </span>
-                      </Link>
-                    ) : null}
-                  </div>
-                </div>
-                {/*
-                  Invisible reserved panel (transparent border/bg) so pill fade
-                  in/out never collapses layout — same under score on all sizes.
-                */}
-                <div className="mt-3 w-full min-w-0 border border-transparent bg-transparent sm:mt-4 lg:mt-5">
-                  <HomeObjectivePills />
-                </div>
-              </div>
+            <div className="mt-2 w-full min-w-0 border border-transparent bg-transparent sm:mt-3">
+              <HomeObjectivePills />
             </div>
           </div>
         </div>
 
-        {/* Surface previews are tall — keep them off the first mobile screen. */}
-        <div className="relative mt-6 hidden animate-fade-up-delay-2 sm:mt-12 sm:block lg:mt-16">
-          <p className="mb-3 font-mono text-[10px] tracking-[0.18em] uppercase text-white/40 sm:mb-4">
-            Same measure · different rooms of the site
-          </p>
-
-          <HomeSurfaceStage />
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-white/10 bg-navy-dark/45 px-4 py-3 backdrop-blur-md sm:mt-10 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none lg:mt-12">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:border-t sm:border-white/10 sm:pt-6">
+        <div className="mt-4 rounded-2xl border border-white/10 bg-navy-dark/45 px-4 py-3 backdrop-blur-md sm:mt-8 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:border-t sm:border-white/10 sm:pt-5">
             <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
               This week&rsquo;s one listing
             </p>
@@ -1125,7 +1111,7 @@ function HomeSurfaceStage() {
   const showCard = phase !== "teaser" || cardOpacity > 0;
 
   return (
-    <div className="relative mb-6 min-h-[14.5rem] sm:min-h-[16rem]">
+    <div className="relative mb-1 min-h-[13rem] sm:min-h-[14.5rem]">
       <div
         className="absolute left-0 right-0 top-0 z-20 flex h-10 items-center"
         aria-live="polite"

@@ -1,10 +1,9 @@
 import FindClient from "./FindClient";
-import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
 
 export const metadata = {
-  title: "Find — TMRE",
+  title: "Find — Westport Lookup — TMRE",
   description:
-    `Search active listings by address, street, MLS number, or zip across ${TMRE_TOWNS_LABEL}.`,
+    "Look up any Westport address from the town parcel map. On-market listings merge MLS with Vision; off-market parcels open a property page.",
 };
 
 export default function FindPage() {

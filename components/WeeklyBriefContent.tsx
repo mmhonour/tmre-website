@@ -27,6 +27,8 @@ import {
   meanMinusMedian,
 } from "@/lib/market-pulse-price-delta";
 import {
+  isMarketPulsePriceScaleMetric,
+  marketPulsePriceBarMax,
   marketPulseStackedMetrics,
   type MarketPulseStackedMetricId,
 } from "@/lib/market-pulse-stacked-metrics";
@@ -217,6 +219,7 @@ function BarChart<Row extends { city: string }>({
   favorSortDir = null,
   sortValueOf,
   formatValue,
+  scaleMax,
 }: {
   title: string;
   rows: Row[];
@@ -235,6 +238,8 @@ function BarChart<Row extends { city: string }>({
   /** Sort key when it differs from bar width (e.g. signed delta vs abs). */
   sortValueOf?: (row: Row) => number | null;
   formatValue?: (row: Row, display: number | null) => string;
+  /** When set (Median / Avg / Delta), bars share one dollar axis. */
+  scaleMax?: number;
 }) {
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
   /** null = use favorSortDir / snapshot order until the visitor picks a direction. */
@@ -321,13 +326,17 @@ function BarChart<Row extends { city: string }>({
     );
   }
 
-  const max = Math.max(
+  const ownMax = Math.max(
     0,
     ...displayRows.map((r) => {
       const v = valueOf(r);
       return v != null && Number.isFinite(v) ? v : 0;
     }),
   );
+  const max =
+    scaleMax != null && Number.isFinite(scaleMax) && scaleMax > 0
+      ? scaleMax
+      : ownMax;
 
   const widthTransition =
     settle.phase === "scramble"
@@ -366,11 +375,11 @@ function BarChart<Row extends { city: string }>({
               : valueKind === "dom"
                 ? "Avg days on market"
                 : valueKind === "money"
-                  ? title.startsWith("Average")
-                    ? "Average price"
-                    : title.includes("median") || title.startsWith("Median")
-                      ? "Median price"
-                      : "Avg − median"
+                  ? title.startsWith("Avg")
+                    ? "Avg"
+                    : title.startsWith("Median")
+                      ? "Median"
+                      : "Delta"
                   : title.startsWith("Closed")
                     ? "Closed sales"
                     : "Active inventory";
@@ -526,6 +535,7 @@ function CombinedMetricsChart({
       }),
     ),
   );
+  const priceMax = marketPulsePriceBarMax(rows);
 
   const widthTransition =
     settle.phase === "scramble"
@@ -534,22 +544,77 @@ function CombinedMetricsChart({
         ? "duration-75"
         : "duration-150";
 
+  function metricRow(
+    row: CombinedTownRow,
+    rowIndex: number,
+    townLabel: string,
+    m: (typeof metrics)[number],
+    metricIndex: number,
+  ) {
+    const v = m.valueOf(row);
+    const max = isMarketPulsePriceScaleMetric(m.id)
+      ? priceMax
+      : (maxByMetric[metricIndex] ?? 0);
+    const settled =
+      max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
+    const scrambleIndex = rowIndex * metrics.length + metricIndex;
+    const pct = settleBarPercent(
+      settled,
+      scrambleIndex,
+      settle,
+      barScramble,
+    );
+    const display =
+      m.valueKind === "mos"
+        ? settleMosDisplay(v, settle, scrambleIndex)
+        : settleIntDisplay(v, settle, scrambleIndex);
+    const valueText =
+      m.id === "priceDelta"
+        ? m.formatOf(row)
+        : formatMetricValue(m.valueKind, display);
+    const calc = m.calcOf(row);
+    return (
+      <li
+        key={m.id}
+        className="group relative grid grid-cols-[6.5rem_1fr_5.75rem] items-center gap-2"
+        title={`${m.label}: ${valueText}`}
+      >
+        <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
+          {m.label}
+        </span>
+        <div className="h-3 rounded-sm bg-black/10 overflow-visible">
+          <div className="h-full overflow-hidden rounded-sm">
+            <div
+              className={`h-full rounded-sm transition-[width] ease-out ${widthTransition} ${m.barClassName}`}
+              style={{
+                width: `${Math.max(0, Math.min(100, pct))}%`,
+              }}
+            />
+          </div>
+          <div
+            className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+            role="tooltip"
+          >
+            <StatsCalcTooltipShell
+              label={townLabel}
+              valueLine={`${valueText} · ${m.label}`}
+              calc={calc}
+              theme="light"
+            />
+          </div>
+        </div>
+        <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)] text-right">
+          {valueText}
+        </span>
+      </li>
+    );
+  }
+
   return (
     <section>
       <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
         {title}
       </p>
-      <ul className="mb-4 flex flex-wrap gap-x-4 gap-y-1.5">
-        {metrics.map((m) => (
-          <li
-            key={m.id}
-            className="inline-flex items-center gap-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.08em] uppercase text-[var(--mp-muted-text)]"
-          >
-            <span className={`h-2 w-2.5 rounded-sm ${m.barClassName}`} aria-hidden />
-            {m.label}
-          </li>
-        ))}
-      </ul>
       <ul className="space-y-3">
         {rows.map((row, rowIndex) => {
           const label = cityLabel(row);
@@ -570,64 +635,24 @@ function CombinedMetricsChart({
               )}
               <ul className="space-y-1.5">
                 {metrics.map((m, metricIndex) => {
-                  const v = m.valueOf(row);
-                  const max = maxByMetric[metricIndex] ?? 0;
-                  const settled =
-                    max > 0 && v != null && Number.isFinite(v)
-                      ? (v / max) * 100
-                      : 0;
-                  const scrambleIndex =
-                    rowIndex * metrics.length + metricIndex;
-                  const pct = settleBarPercent(
-                    settled,
-                    scrambleIndex,
-                    settle,
-                    barScramble,
-                  );
-                  const display =
-                    m.valueKind === "mos"
-                      ? settleMosDisplay(v, settle, scrambleIndex)
-                      : settleIntDisplay(v, settle, scrambleIndex);
-                  const valueText =
-                    m.id === "priceDelta"
-                      ? m.formatOf(row)
-                      : formatMetricValue(m.valueKind, display);
-                  const calc = m.calcOf(row);
-                  return (
-                    <li
-                      key={m.id}
-                      className="group relative grid grid-cols-[6.5rem_1fr_5.75rem] items-center gap-2"
-                      title={`${m.label}: ${valueText}`}
-                    >
-                      <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
-                        {m.label}
-                      </span>
-                      <div className="h-3 rounded-sm bg-black/10 overflow-visible">
-                        <div className="h-full overflow-hidden rounded-sm">
-                          <div
-                            className={`h-full rounded-sm transition-[width] ease-out ${widthTransition} ${m.barClassName}`}
-                            style={{
-                              width: `${Math.max(0, Math.min(100, pct))}%`,
-                            }}
-                          />
-                        </div>
-                        <div
-                          className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                          role="tooltip"
-                        >
-                          <StatsCalcTooltipShell
-                            label={label}
-                            valueLine={`${valueText} · ${m.label}`}
-                            calc={calc}
-                            theme="light"
-                          />
-                        </div>
-                      </div>
-                      <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)] text-right">
-                        {valueText}
-                      </span>
-                    </li>
-                  );
+                  if (m.id === "averagePrice") return null;
+                  if (m.id === "medianPrice") {
+                    const avg = metrics.find((x) => x.id === "averagePrice");
+                    const avgIndex = metrics.findIndex(
+                      (x) => x.id === "averagePrice",
+                    );
+                    return (
+                      <li key="price-sandwich" className="space-y-0">
+                        <ul className="space-y-0">
+                          {metricRow(row, rowIndex, label, m, metricIndex)}
+                          {avg
+                            ? metricRow(row, rowIndex, label, avg, avgIndex)
+                            : null}
+                        </ul>
+                      </li>
+                    );
+                  }
+                  return metricRow(row, rowIndex, label, m, metricIndex);
                 })}
               </ul>
             </li>
@@ -749,6 +774,7 @@ export default function WeeklyBriefContent({
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
   const priceRows = snapshot.priceByTown ?? [];
+  const priceBarMax = marketPulsePriceBarMax(priceRows);
 
   const allTownsAvgDom = useMemo(() => {
     const allRow = domRows.find((r) => isAllTownsCity(r.city));
@@ -1039,7 +1065,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Median price (${titleScope})`}
+          title={`Median (${titleScope})`}
           rows={priceRows}
           valueOf={(r) => r.medianPrice}
           valueKind="money"
@@ -1050,10 +1076,11 @@ export default function WeeklyBriefContent({
           townHref={townHref}
           settle={settle}
           calcOf={(r) => r.medianPriceCalc}
+          scaleMax={priceBarMax}
         />
 
         <BarChart
-          title={`Average price (${titleScope})`}
+          title={`Avg (${titleScope})`}
           rows={priceRows}
           valueOf={(r) => r.averagePrice}
           valueKind="money"
@@ -1064,10 +1091,11 @@ export default function WeeklyBriefContent({
           townHref={townHref}
           settle={settle}
           calcOf={(r) => r.averagePriceCalc}
+          scaleMax={priceBarMax}
         />
 
         <BarChart
-          title={`Average vs median (${titleScope})`}
+          title={`Delta (${titleScope})`}
           rows={priceRows}
           valueOf={(r) => {
             const d = meanMinusMedian(r.averagePrice, r.medianPrice).dollars;
@@ -1087,6 +1115,7 @@ export default function WeeklyBriefContent({
           emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
           townHref={townHref}
           settle={settle}
+          scaleMax={priceBarMax}
         />
           </>
         )}

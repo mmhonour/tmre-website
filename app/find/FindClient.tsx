@@ -2,52 +2,29 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
-import {
-  formatTownList,
-  resolveListingTown,
-  TMRE_TOWNS,
-  type TmreTown,
-} from "@/lib/tmre-towns";
-import { countListingsByTown } from "@/lib/town-listing-counts";
-import TownFilterPills from "@/components/TownFilterPills";
-import { listingDetailHref } from "@/lib/listing-url";
-import { listingHoverHandlers, warmListingCache } from "@/lib/warm-listing-cache";
-import { usePersistedFilter } from "@/hooks/usePersistedFilter";
+import { useEffect, useRef, useState } from "react";
+import { listingDetailHref, westportParcelHref } from "@/lib/listing-url";
 
-const FIND_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
-
-type FindListing = {
-  mlsId: string;
-  propertyType: string;
-  style: string;
-  address: {
-    street: string;
-    city: string;
-    state: string;
-    postalCode: string;
-    full: string;
-  };
+type LookupHit = {
+  visionPid: string;
+  addressFull: string;
+  street: string;
+  mblu: string | null;
+  ownerName: string | null;
+  listingId: string | null;
+  mlsId: string | null;
+  status: string | null;
   price: number | null;
-  beds: number | null;
-  baths: number | null;
-  sqft: number | null;
-  yearBuilt: number | null;
-  dom: number | null;
-  photoCount: number | null;
-  status: string;
-  pricePerSqft: number | null;
+  siblingCount: number;
 };
 
 type ApiResponse = {
   query: string;
   count: number;
-  listings: FindListing[];
+  addresses: LookupHit[];
   error?: string;
 };
 
-type TownFilter = "All" | TmreTown;
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 function fmtMoney(n: number | null): string {
@@ -56,58 +33,27 @@ function fmtMoney(n: number | null): string {
   return `$${n.toLocaleString()}`;
 }
 
-function listingHref(l: FindListing): string {
-  return listingDetailHref(
-    l.mlsId,
-    l.address.street || l.address.full,
-    resolveListingTown(l.address.city) || l.address.city,
-  );
+function hitHref(hit: LookupHit): string {
+  if (hit.visionPid) return westportParcelHref(hit.visionPid);
+  if (hit.mlsId) {
+    return listingDetailHref(hit.mlsId, hit.street, "Westport");
+  }
+  return "/find";
 }
 
 export default function FindClient() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const [townFilter, setTownFilter] = usePersistedFilter<TownFilter>(
-    "tmre_find_town",
-    "All",
-    FIND_TOWN_VALUES,
-  );
-  const [results, setResults] = useState<FindListing[]>([]);
+  const [results, setResults] = useState<LookupHit[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<FindListing[]>([]);
+  const [suggestions, setSuggestions] = useState<LookupHit[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
-  const [includedClosed, setIncludedClosed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const suggestRef = useRef<HTMLUListElement>(null);
-  const orderedTowns = usePersonalizedTowns(TMRE_TOWNS);
 
-  const filtered = useMemo(() => {
-    if (townFilter === "All") return results;
-    return results.filter(
-      (l) => l.address.city.toLowerCase() === townFilter.toLowerCase(),
-    );
-  }, [results, townFilter]);
-
-  const townCounts = useMemo(() => {
-    if (loadState !== "ready" || results.length === 0) return {};
-    return countListingsByTown(results);
-  }, [results, loadState]);
-
-  const hiddenByTown =
-    loadState === "ready" &&
-    townFilter !== "All" &&
-    filtered.length === 0 &&
-    results.length > 0;
-
-  /**
-   * Live typeahead + results — no Search click required.
-   * Always query all towns; town pills only filter the result cards so a
-   * persisted town can't blank out a match like "42 Treadwell" in Westport.
-   */
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
@@ -117,7 +63,6 @@ export default function FindClient() {
       setHighlightIndex(-1);
       setResults([]);
       setSubmittedQuery("");
-      setIncludedClosed(false);
       setLoadState("idle");
       setError(null);
       return;
@@ -131,45 +76,26 @@ export default function FindClient() {
       try {
         const params = new URLSearchParams({
           q,
-          limit: "24",
-          rets: "0",
-          scope: "active",
+          town: "Westport",
+          limit: "16",
         });
-        let res = await fetch(`/api/listings/find?${params}`, {
+        const res = await fetch(`/api/addresses/lookup?${params}`, {
           signal: ac.signal,
         });
-        let data = (await res.json()) as ApiResponse;
+        const data = (await res.json()) as ApiResponse;
         if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
 
-        let closedFallback = false;
-        if (data.listings.length === 0) {
-          const allParams = new URLSearchParams({
-            q,
-            limit: "24",
-            rets: "0",
-            scope: "all",
-          });
-          res = await fetch(`/api/listings/find?${allParams}`, {
-            signal: ac.signal,
-          });
-          data = (await res.json()) as ApiResponse;
-          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-          closedFallback = data.listings.length > 0;
-        }
-
-        setSuggestions(data.listings.slice(0, 8));
-        setSuggestOpen(data.listings.length > 0);
+        setSuggestions(data.addresses.slice(0, 10));
+        setSuggestOpen(data.addresses.length > 0);
         setHighlightIndex(-1);
-        setResults(data.listings);
+        setResults(data.addresses);
         setSubmittedQuery(q);
-        setIncludedClosed(closedFallback);
         setLoadState("ready");
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setSuggestions([]);
         setSuggestOpen(false);
         setResults([]);
-        setIncludedClosed(false);
         setError(err instanceof Error ? err.message : "Search failed");
         setLoadState("error");
       } finally {
@@ -183,10 +109,10 @@ export default function FindClient() {
     };
   }, [query]);
 
-  function pickSuggestion(listing: FindListing) {
+  function pickSuggestion(hit: LookupHit) {
     setSuggestOpen(false);
     inputRef.current?.blur();
-    router.push(listingHref(listing));
+    router.push(hitHref(hit));
   }
 
   function onInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -197,10 +123,9 @@ export default function FindClient() {
     }
 
     if (!suggestOpen || suggestions.length === 0) {
-      // Enter with a single live match → open it (no Search button needed).
-      if (e.key === "Enter" && filtered.length === 1) {
+      if (e.key === "Enter" && results.length === 1) {
         e.preventDefault();
-        pickSuggestion(filtered[0]!);
+        pickSuggestion(results[0]!);
       }
       return;
     }
@@ -230,15 +155,16 @@ export default function FindClient() {
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
-            Find
+            Find · Westport
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
-            Search active{" "}
-            <span className="italic gold-shimmer">listings.</span>
+            Westport{" "}
+            <span className="italic gold-shimmer">Lookup.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Type an address, street, MLS number, or zip across{" "}
-            {formatTownList(TMRE_TOWNS)}. Matches appear as you type.
+            Type a street address. Matches come from the Westport parcel map —
+            on-market and off-market. Streets not in GIS yet simply will not
+            appear.
           </p>
 
           <div className="relative z-30 mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl animate-fade-up-delay-2">
@@ -264,40 +190,44 @@ export default function FindClient() {
                     ? `find-suggestion-${highlightIndex}`
                     : undefined
                 }
-                placeholder="Address, street, MLS #, zip…"
+                placeholder="Westport street address…"
                 autoComplete="off"
                 className="w-full rounded-full border border-white/15 bg-white/5 px-5 py-3 font-mono text-sm text-white placeholder-white/35 focus:border-gold/50 focus:outline-none transition-colors"
               />
               {(suggestOpen || suggestLoading) && query.trim().length >= 2 && (
                 <ul
-                  ref={suggestRef}
                   id="find-suggestions"
                   role="listbox"
                   className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-72 overflow-y-auto rounded-2xl border border-white/10 bg-navy/95 backdrop-blur-md shadow-2xl shadow-navy/40 py-1"
                 >
                   {suggestLoading && suggestions.length === 0 && (
                     <li className="px-4 py-3 font-mono text-[11px] text-white/50">
-                      Looking up listings…
+                      Looking up Westport parcels…
                     </li>
                   )}
-                  {suggestions.map((l, i) => {
-                    const line = l.address.street || l.address.full;
-                    const meta = [l.address.city, l.address.postalCode, l.status]
+                  {suggestions.map((hit, i) => {
+                    const meta = [
+                      hit.status ?? "Off market",
+                      hit.mblu ? `MBLU ${hit.mblu}` : null,
+                      hit.siblingCount > 1
+                        ? `${hit.siblingCount} parcels`
+                        : null,
+                    ]
                       .filter(Boolean)
                       .join(" · ");
                     return (
-                      <li key={l.mlsId} role="presentation">
+                      <li
+                        key={hit.visionPid || hit.mlsId || `${hit.street}-${i}`}
+                        role="presentation"
+                      >
                         <button
                           type="button"
                           id={`find-suggestion-${i}`}
                           role="option"
                           aria-selected={highlightIndex === i}
                           onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => pickSuggestion(l)}
-                          onMouseEnter={() => {
-                            setHighlightIndex(i);
-                            warmListingCache(l.mlsId);
-                          }}
+                          onClick={() => pickSuggestion(hit)}
+                          onMouseEnter={() => setHighlightIndex(i)}
                           className={`w-full px-4 py-3 text-left transition-colors ${
                             highlightIndex === i
                               ? "bg-gold/15"
@@ -305,12 +235,12 @@ export default function FindClient() {
                           }`}
                         >
                           <span className="block text-sm font-medium text-white">
-                            {line}
+                            {hit.street}
                           </span>
                           <span className="mt-0.5 flex items-center justify-between gap-3 font-mono text-[10px] text-white/45">
                             <span>{meta}</span>
                             <span className="text-gold tabular-nums shrink-0">
-                              {fmtMoney(l.price)}
+                              {fmtMoney(hit.price)}
                             </span>
                           </span>
                         </button>
@@ -322,37 +252,14 @@ export default function FindClient() {
             </div>
           </div>
 
-          <div className="relative z-10 mt-5 flex flex-wrap items-center gap-3 animate-fade-up-delay-2">
-            <TownFilterPills
-              towns={orderedTowns}
-              selected={townFilter}
-              onSelect={setTownFilter}
-              counts={townCounts}
-            />
-          </div>
-
           {loadState === "ready" && (
             <p className="mt-4 font-mono text-[10px] tracking-[0.15em] uppercase text-white/40">
-              {filtered.length} result{filtered.length === 1 ? "" : "s"}
+              {results.length} result{results.length === 1 ? "" : "s"}
               {submittedQuery ? ` for “${submittedQuery}”` : ""}
-              {townFilter !== "All" ? ` in ${townFilter}` : ""}
-              {includedClosed ? " · including closed / expired" : ""}
+              {" · Westport"}
               {suggestLoading ? " · updating…" : ""}
             </p>
           )}
-          {hiddenByTown ? (
-            <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-gold/80">
-              {results.length} match
-              {results.length === 1 ? "" : "es"} outside {townFilter}.{" "}
-              <button
-                type="button"
-                onClick={() => setTownFilter("All")}
-                className="underline underline-offset-2 hover:text-gold"
-              >
-                Show all towns
-              </button>
-            </p>
-          ) : null}
         </div>
       </section>
 
@@ -360,8 +267,8 @@ export default function FindClient() {
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           {loadState === "idle" && (
             <p className="text-charcoal/60 font-mono text-sm">
-              Start typing an address or MLS number — suggestions and results
-              update as you type.
+              Start typing a Westport address — on-market and off-market
+              parcels appear as you type.
             </p>
           )}
 
@@ -373,18 +280,22 @@ export default function FindClient() {
             <p className="text-coral font-mono text-sm">{error}</p>
           )}
 
-          {loadState === "ready" && filtered.length === 0 && !hiddenByTown && (
+          {loadState === "ready" && results.length === 0 && (
             <p className="text-charcoal/60 font-mono text-sm">
-              No listings matched
-              {submittedQuery ? ` “${submittedQuery}”` : " your search"}
-              {townFilter !== "All" ? ` in ${townFilter}` : ""}.
+              No Westport parcels matched
+              {submittedQuery ? ` “${submittedQuery}”` : " your search"}. If
+              the street is missing from GIS, it will not appear until the
+              Vision fill includes it.
             </p>
           )}
 
-          {filtered.length > 0 && (
+          {results.length > 0 && (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
-              {filtered.map((l) => (
-                <FindCard key={l.mlsId} listing={l} />
+              {results.map((hit, i) => (
+                <FindCard
+                  key={hit.visionPid || hit.mlsId || `${hit.street}-${i}`}
+                  hit={hit}
+                />
               ))}
             </div>
           )}
@@ -394,44 +305,35 @@ export default function FindClient() {
   );
 }
 
-function FindCard({ listing: l }: { listing: FindListing }) {
-  const typeLine = [
-    l.propertyType.replace(/ For (Sale|Lease)$/i, ""),
-    l.beds && l.baths ? `${l.beds}BR/${l.baths}BA` : null,
-    l.sqft ? `${l.sqft.toLocaleString()} sqft` : null,
-    l.status && l.status !== "Active" ? l.status : null,
+function FindCard({ hit }: { hit: LookupHit }) {
+  const status = hit.status ?? "Off market";
+  const meta = [
+    status,
+    hit.mblu ? `MBLU ${hit.mblu}` : null,
+    hit.ownerName,
   ]
     .filter(Boolean)
     .join(" · ");
 
   return (
-    <article
-      {...listingHoverHandlers(l.mlsId)}
-      className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 transition-all hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5"
-    >
+    <article className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 transition-all hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5">
       <Link
-        href={listingHref(l)}
+        href={hitHref(hit)}
         className="font-medium text-navy text-base leading-tight hover:text-gold transition-colors block"
       >
-        {l.address.street || l.address.full}
+        {hit.street}
       </Link>
-      <p className="text-sm text-slate mt-1">
-        {[l.address.city, l.address.state, l.address.postalCode]
-          .filter(Boolean)
-          .join(" ")}
-      </p>
+      <p className="text-sm text-slate mt-1">Westport, CT</p>
       <p className="font-mono text-[10px] tracking-[0.1em] uppercase text-slate/60 mt-2">
-        {typeLine}
+        {meta}
       </p>
       <div className="flex items-baseline justify-between gap-3 mt-4 pt-4 border-t border-charcoal/[0.06]">
         <span className="font-mono text-lg text-gold tabular-nums">
-          {fmtMoney(l.price)}
+          {fmtMoney(hit.price)}
         </span>
-        {l.dom != null && (
-          <span className="font-mono text-[10px] text-slate/60">
-            {l.dom}d on market
-          </span>
-        )}
+        <span className="font-mono text-[10px] text-slate/60">
+          {hit.listingId || hit.mlsId ? "On market" : "Off market"}
+        </span>
       </div>
     </article>
   );

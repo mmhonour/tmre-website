@@ -263,7 +263,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Site menu',
     category: 'sync-admin',
     definition:
-      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide. Hrefs stay fixed to known site pages. Editable in Admin → Web server → Site menu; stored in sync_meta key site_nav (lib/site-nav-config.ts). Defaults match the previous hardcoded Navigation.tsx catalog.',
+      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide, add/remove. The Add page picker is every stable public path in lib/site-pages.ts that is not already in the menu (same list as sitemap.xml) — Market Pulse, Fed Analysis, Deal Model, etc. Dynamic listing/spotlight URLs, /admin, /visitors, and /test stay out so a menu edit cannot 404. Catalog rows hide rather than delete. Stored in sync_meta key site_nav (lib/site-nav-config.ts).',
   },
   {
     term: 'Mortgage page',
@@ -293,7 +293,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Buyer / Seller Friendly (Market Pulse)',
     category: 'product',
     definition:
-      'Market Pulse town sort. Default is Seller Friendly. STACKED uses a composite (months supply + avg DOM). UNSTACKED sorts each chart on its own metric — Seller: DOM ascending, closed sales descending, median/average price descending; Buyer is the reverse. All towns stays on top. Avg − median chart shows mean minus median in $K and as % of median. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units. Scoring in lib/market-pulse-favorability.ts.',
+      'Market Pulse town sort. Default is Seller Friendly. STACKED uses a composite (months supply + avg DOM). UNSTACKED sorts each chart on its own metric — Seller: DOM ascending, closed sales descending, median/average price descending; Buyer is the reverse. All towns stays on top. Median and Avg are sandwiched (no gap); Delta is mean minus median in $K and as % of median, drawn on the same dollar scale as Median/Avg. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units. Scoring in lib/market-pulse-favorability.ts.',
   },
   {
     term: 'Town housing unit count',
@@ -955,7 +955,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Thin corpus (Find)',
     category: 'product',
     definition:
-      'When /find typeahead can only match a narrow searchable set — today mostly MLS rows already in the listings table — so suggestions feel sparse (“no / few hits”) even if the API is fast. Caveat from the Find typeahead options discussion: #3 (client-side index) and #4 (hybrid client+server) win on latency (keystroke → dropdown) but do not fix a thin corpus; they only search what you already shipped. Thickening the corpus means expanding what is searchable (e.g. #1 property-address directory covering off-market / never-listed homes), not only speeding listings-only search (#2). Not the same as thin scheduling (Netlify cron alarm clocks).',
+      'When /find typeahead can only match a narrow searchable set — historically MLS rows in the listings table — so suggestions feel sparse even if the API is fast. /find is now Westport Lookup: typeahead is vision_addresses (cadastral) for Westport, prefix on address_norm, no live RETS on keystrokes. Off-market parcels open /find/westport/{vision_pid}; on-market rows merge listing-wins + Vision gap-fill. Incomplete GIS fill shows up as missing streets, not a thin MLS-only corpus. Not the same as thin scheduling (Netlify cron alarm clocks).',
   },
   {
     term: 'Intelligence',

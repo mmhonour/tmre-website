@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { execute, query, queryOne } from '@/lib/db/postgres'
-import { normalizePropertyAddress } from '@/lib/property-address'
+import { normalizePropertyAddress, normalizeStreetLine } from '@/lib/property-address'
 import type { VisionParcelParse } from '@/lib/vision-gis-parse'
 
 let visionAddressesReady = false
@@ -344,4 +344,184 @@ export async function backfillVisionListingLinks(town: string): Promise<{
   }
 
   return { visionLinked, listingsLinked }
+}
+
+export type VisionAddressRecord = {
+  town: string
+  visionPid: string
+  accountNumber: string | null
+  mblu: string | null
+  useCode: string | null
+  useCodeDescription: string | null
+  addressFull: string | null
+  addressNorm: string | null
+  streetNo: string | null
+  streetName: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  ownerName: string | null
+  assessedValue: number | null
+  appraisalValue: number | null
+  yearBuilt: number | null
+  livingAreaSqft: number | null
+  beds: number | null
+  fullBaths: number | null
+  halfBaths: number | null
+  style: string | null
+  acres: number | null
+  zoning: string | null
+  lastSalePrice: number | null
+  lastSaleDate: string | null
+  lastSaleBookPage: string | null
+  photoUrl: string | null
+  parcelUrl: string
+  listingId: string | null
+  mlsId: string | null
+}
+
+type VisionAddressSqlRow = {
+  town: string
+  vision_pid: string
+  account_number: string | null
+  mblu: string | null
+  use_code: string | null
+  use_code_description: string | null
+  address_full: string | null
+  address_norm: string | null
+  street_no: string | null
+  street_name: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  owner_name: string | null
+  assessed_value: number | string | null
+  appraisal_value: number | string | null
+  year_built: number | string | null
+  living_area_sqft: number | string | null
+  beds: number | string | null
+  full_baths: number | string | null
+  half_baths: number | string | null
+  style: string | null
+  acres: number | string | null
+  zoning: string | null
+  last_sale_price: number | string | null
+  last_sale_date: string | null
+  last_sale_book_page: string | null
+  photo_url: string | null
+  parcel_url: string
+  listing_id: string | null
+  mls_id: string | null
+}
+
+function numOrNull(v: number | string | null | undefined): number | null {
+  if (v == null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
+  return {
+    town: row.town,
+    visionPid: row.vision_pid,
+    accountNumber: row.account_number,
+    mblu: row.mblu,
+    useCode: row.use_code,
+    useCodeDescription: row.use_code_description,
+    addressFull: row.address_full,
+    addressNorm: row.address_norm,
+    streetNo: row.street_no,
+    streetName: row.street_name,
+    city: row.city,
+    state: row.state,
+    zip: row.zip,
+    ownerName: row.owner_name,
+    assessedValue: numOrNull(row.assessed_value),
+    appraisalValue: numOrNull(row.appraisal_value),
+    yearBuilt: numOrNull(row.year_built),
+    livingAreaSqft: numOrNull(row.living_area_sqft),
+    beds: numOrNull(row.beds),
+    fullBaths: numOrNull(row.full_baths),
+    halfBaths: numOrNull(row.half_baths),
+    style: row.style,
+    acres: numOrNull(row.acres),
+    zoning: row.zoning,
+    lastSalePrice: numOrNull(row.last_sale_price),
+    lastSaleDate: row.last_sale_date,
+    lastSaleBookPage: row.last_sale_book_page,
+    photoUrl: row.photo_url,
+    parcelUrl: row.parcel_url,
+    listingId: row.listing_id,
+    mlsId: row.mls_id,
+  }
+}
+
+const VISION_SELECT = `
+  town, vision_pid, account_number, mblu, use_code, use_code_description,
+  address_full, address_norm, street_no, street_name, city, state, zip,
+  owner_name, assessed_value, appraisal_value, year_built, living_area_sqft,
+  beds, full_baths, half_baths, style, acres, zoning,
+  last_sale_price, last_sale_date, last_sale_book_page,
+  photo_url, parcel_url, listing_id, mls_id
+`
+
+export async function getVisionAddress(
+  town: string,
+  visionPid: string,
+): Promise<VisionAddressRecord | null> {
+  await ensureVisionAddressesTable()
+  const row = await queryOne<VisionAddressSqlRow>(
+    `SELECT ${VISION_SELECT} FROM vision_addresses
+      WHERE town = $1 AND vision_pid = $2`,
+    [town, visionPid],
+  )
+  return row ? mapVisionAddressRow(row) : null
+}
+
+export async function listVisionAddressesByNorm(
+  town: string,
+  addressNorm: string,
+): Promise<VisionAddressRecord[]> {
+  await ensureVisionAddressesTable()
+  const rows = await query<VisionAddressSqlRow>(
+    `SELECT ${VISION_SELECT} FROM vision_addresses
+      WHERE town = $1 AND address_norm = $2
+      ORDER BY mblu NULLS LAST, vision_pid`,
+    [town, addressNorm],
+  )
+  return rows.map(mapVisionAddressRow)
+}
+
+/** Prefix on address_norm; street-name / address_full contains as fallback. No RETS. */
+export async function searchVisionAddresses(opts: {
+  town: string
+  q: string
+  limit?: number
+}): Promise<VisionAddressRecord[]> {
+  await ensureVisionAddressesTable()
+  const q = opts.q.trim()
+  if (q.length < 2) return []
+  const limit = Math.min(Math.max(opts.limit ?? 12, 1), 24)
+  const street = normalizeStreetLine(q)
+  const prefix = `${street}%`
+  const contains = `%${q.toLowerCase().replace(/[%_]/g, '')}%`
+  const streetLine = `${q.replace(/[%_]/g, '')}%`
+
+  const rows = await query<VisionAddressSqlRow>(
+    `SELECT ${VISION_SELECT} FROM vision_addresses
+      WHERE town = $1
+        AND (
+          address_norm LIKE $2
+          OR lower(coalesce(address_full, '')) LIKE $3
+          OR lower(coalesce(street_name, '')) LIKE $3
+          OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE $4
+        )
+      ORDER BY
+        CASE WHEN address_norm LIKE $2 THEN 0 ELSE 1 END,
+        address_full NULLS LAST,
+        vision_pid
+      LIMIT $5`,
+    [opts.town, prefix, contains, streetLine.toLowerCase(), limit],
+  )
+  return rows.map(mapVisionAddressRow)
 }

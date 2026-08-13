@@ -18,6 +18,8 @@ import {
 } from '@/lib/market-pulse-combined-rows'
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import {
+  isMarketPulsePriceScaleMetric,
+  marketPulsePriceBarMax,
   marketPulseStackedMetrics,
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
@@ -76,6 +78,7 @@ function metricBarRow(
   valueLabel: string,
   pct: number,
   barColor: string,
+  opts?: { tight?: boolean },
 ): string {
   const filled = Math.max(
     0,
@@ -98,20 +101,21 @@ function metricBarRow(
       ? `<td width="${BAR_INNER_PX}" bgcolor="${BAR_TRACK}" height="${BAR_HEIGHT_PX}" style="width:${BAR_INNER_PX}px;height:${BAR_HEIGHT_PX}px;background-color:${BAR_TRACK};font-size:0;line-height:${BAR_HEIGHT_PX}px;">&nbsp;</td>`
       : `${fill}${track}`
 
+  const padY = opts?.tight ? '0' : '3px'
   return `
     <tr>
-      <td width="96" style="padding:3px 8px 3px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${SLATE};white-space:nowrap;width:96px;vertical-align:middle;">${escapeHtml(metricLabel)}</td>
-      <td style="padding:3px 6px;vertical-align:middle;">
+      <td width="96" style="padding:${padY} 8px ${padY} 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${SLATE};white-space:nowrap;width:96px;vertical-align:middle;">${escapeHtml(metricLabel)}</td>
+      <td style="padding:${padY} 6px;vertical-align:middle;">
         <table role="presentation" width="${BAR_INNER_PX}" cellpadding="0" cellspacing="0" border="0" style="width:${BAR_INNER_PX}px;border-collapse:collapse;table-layout:fixed;">
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="110" style="padding:3px 0 3px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:110px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="110" style="padding:${padY} 0 ${padY} 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:110px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
     </tr>`
 }
 
 type StackedMetric = {
-  id: string
+  id: MarketPulseStackedMetricId
   label: string
   color: string
   barValueOf: (row: MarketPulseCombinedTownRow) => number | null
@@ -161,23 +165,20 @@ function stackedTownMetricsSection(
       }),
     ),
   )
-
-  const legend = metrics
-    .map(
-      (m) =>
-        `<span style="display:inline-block;margin:0 12px 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:${SLATE};"><span style="display:inline-block;width:10px;height:8px;margin-right:5px;background-color:${m.color};vertical-align:middle;"></span>${escapeHtml(m.label)}</span>`,
-    )
-    .join('')
+  const priceMax = marketPulsePriceBarMax(rows)
 
   const towns = rows
     .map((row) => {
       const metricRows = metrics
         .map((m, i) => {
           const v = m.barValueOf(row)
-          const max = maxByMetric[i] ?? 0
+          const max = isMarketPulsePriceScaleMetric(m.id)
+            ? priceMax
+            : (maxByMetric[i] ?? 0)
           const pct =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0
-          return metricBarRow(m.label, m.format(row), pct, m.color)
+          const tight = m.id === 'medianPrice' || m.id === 'averagePrice'
+          return metricBarRow(m.label, m.format(row), pct, m.color, { tight })
         })
         .join('')
       return `
@@ -196,8 +197,7 @@ function stackedTownMetricsSection(
 
   return `
     <tr><td style="padding:0 0 24px 0;">
-      <p style="margin:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Town metrics stacked (sales)</p>
-      <div style="margin:0 0 12px 0;">${legend}</div>
+      <p style="margin:0 0 12px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Town metrics stacked (sales)</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
         ${towns}
       </table>

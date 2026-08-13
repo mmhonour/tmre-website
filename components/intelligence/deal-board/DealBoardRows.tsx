@@ -16,7 +16,10 @@ import {
   listingDetailHref,
   listingTown,
 } from "@/components/intelligence/deal-board/deal-board-shared";
-import type { DealBoardRowProps } from "@/components/intelligence/deal-board/deal-board-types";
+import type {
+  DealBoardListing,
+  DealBoardRowProps,
+} from "@/components/intelligence/deal-board/deal-board-types";
 import { dealBoardRowDomId } from "@/lib/deal-board-focus";
 import { formatExactCompactPrice } from "@/lib/format-exact-compact-price";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
@@ -28,6 +31,10 @@ function dealBoardRowAnchorProps(mlsId: string) {
   } as const;
 }
 
+function dealBoardPriceLabel(price: number) {
+  return formatExactCompactPrice(price);
+}
+
 function dealBoardPriceMeta(l: DealBoardRowProps["listing"]) {
   const ppsf =
     !l.isRental && l.pricePerSqft != null
@@ -37,8 +44,57 @@ function dealBoardPriceMeta(l: DealBoardRowProps["listing"]) {
   return { ppsf, domType };
 }
 
-function dealBoardPriceLabel(price: number): string {
-  return formatExactCompactPrice(price);
+function DealBoardInsightHeadline({
+  listing,
+  isLive,
+  className,
+}: {
+  listing: DealBoardListing;
+  isLive: boolean;
+  className: string;
+}) {
+  if (!listing.headline) return null;
+  if (isLive) {
+    return (
+      <Link href={listingDetailHref(listing)} className={className}>
+        {listing.headline}
+      </Link>
+    );
+  }
+  return <span className={className}>{listing.headline}</span>;
+}
+
+function DealBoardMoreDataLines({
+  listing: l,
+  hideOwnershipType = false,
+}: {
+  listing: DealBoardListing;
+  hideOwnershipType?: boolean;
+}) {
+  const { ppsf } = dealBoardPriceMeta(l);
+  return (
+    <div className="min-w-0 space-y-0.5">
+      <p className="font-mono text-[10px] text-slate/80 tabular-nums">
+        {[
+          ppsf,
+          dealBoardAcresLabel(l.lotAcres),
+          l.dom != null ? `${l.dom}d DOM` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
+      {l.yearBuilt != null || (!hideOwnershipType && l.type) ? (
+        <p className="min-w-0 font-mono text-[10px] leading-snug text-slate/80 tabular-nums">
+          {[
+            dealBoardYearBuiltLabel(l.yearBuilt),
+            hideOwnershipType ? null : l.type || null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export function DealBoardPhotoLedRow({
@@ -114,6 +170,8 @@ export function DealBoardPhotoLedLineRow({
   isLive,
   showTown,
   hideOwnershipType = false,
+  showGridMeta = false,
+  showGridInsights = false,
   photoPriority,
   onScoreClick,
   onStatusClick,
@@ -193,13 +251,17 @@ export function DealBoardPhotoLedLineRow({
             l.baths != null ? `${l.baths}ba` : "—ba",
             dealBoardPriceLabel(l.price),
             dealBoardSqftLabel(l.sqft),
-            ppsf,
-            l.dom != null ? `${l.dom}d DOM` : null,
-            hideOwnershipType ? null : l.type || null,
+            ...(showGridMeta
+              ? [
+                  ppsf,
+                  l.dom != null ? `${l.dom}d DOM` : null,
+                  hideOwnershipType ? null : l.type || null,
+                ]
+              : []),
           ]}
           sqft={null}
-          yearBuilt={l.yearBuilt}
-          lotAcres={l.lotAcres}
+          yearBuilt={showGridMeta ? l.yearBuilt : null}
+          lotAcres={showGridMeta ? l.lotAcres : null}
           className="min-w-0 font-mono text-slate tabular-nums"
         />
         <DealBoardStatusPills
@@ -211,10 +273,12 @@ export function DealBoardPhotoLedLineRow({
             isLive && onStatusClick ? () => onStatusClick(l) : undefined
           }
         />
-        {l.headline ? (
-          <span className="min-w-0 basis-full text-[10px] text-charcoal/60 italic sm:basis-auto sm:max-w-[38%] sm:ml-auto sm:text-right">
-            {l.headline}
-          </span>
+        {showGridInsights && l.headline ? (
+          <DealBoardInsightHeadline
+            listing={l}
+            isLive={isLive}
+            className="min-w-0 basis-full text-[10px] text-charcoal/60 italic sm:basis-auto sm:max-w-[38%] sm:ml-auto sm:text-right underline decoration-charcoal/20 underline-offset-2 hover:text-navy hover:decoration-gold"
+          />
         ) : null}
       </div>
     </div>
@@ -227,6 +291,7 @@ export function DealBoardPhotoLedGridCard({
   rankTotal,
   isLive,
   showTown,
+  hideOwnershipType = false,
   showGridMeta = false,
   showGridInsights = false,
   photoPriority,
@@ -234,7 +299,6 @@ export function DealBoardPhotoLedGridCard({
   onStatusClick,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
-  const { ppsf } = dealBoardPriceMeta(l);
   const town = showTown ? listingTown(l) : null;
   const sqftLabel = dealBoardSqftLabel(l.sqft);
 
@@ -323,31 +387,14 @@ export function DealBoardPhotoLedGridCard({
           ) : null}
         </p>
         {showGridMeta ? (
-          <div className="min-w-0 space-y-0.5">
-            {/* Line 1 ends at DOM so SF / type isn’t truncated. */}
-            <p className="font-mono text-[10px] text-slate/80 tabular-nums">
-              {[
-                ppsf,
-                dealBoardAcresLabel(l.lotAcres),
-                l.dom != null ? `${l.dom}d DOM` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-            {/* Line 2: year + type only — insight is Insights toggle, not More data. */}
-            {l.yearBuilt != null || l.type ? (
-              <p className="min-w-0 font-mono text-[10px] leading-snug text-slate/80 tabular-nums">
-                {[dealBoardYearBuiltLabel(l.yearBuilt), l.type || null]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            ) : null}
-          </div>
+          <DealBoardMoreDataLines listing={l} hideOwnershipType={hideOwnershipType} />
         ) : null}
-        {showGridInsights && l.headline ? (
-          <p className="text-xs text-charcoal/60 italic leading-snug line-clamp-2 pt-0.5">
-            {l.headline}
-          </p>
+        {showGridInsights ? (
+          <DealBoardInsightHeadline
+            listing={l}
+            isLive={isLive}
+            className="text-xs text-charcoal/60 italic leading-snug line-clamp-2 pt-0.5 underline decoration-charcoal/20 underline-offset-2 hover:text-navy hover:decoration-gold"
+          />
         ) : null}
       </div>
     </div>
@@ -360,13 +407,16 @@ export function DealBoardPhotoLedLargeCard({
   rankTotal,
   isLive,
   showTown,
+  hideOwnershipType = false,
+  showGridMeta = false,
+  showGridInsights = false,
   photoPriority,
   onScoreClick,
   onStatusClick,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
-  const { ppsf, domType } = dealBoardPriceMeta(l);
   const town = showTown ? listingTown(l) : null;
+  const sqftLabel = dealBoardSqftLabel(l.sqft);
 
   return (
     <div
@@ -440,19 +490,26 @@ export function DealBoardPhotoLedLargeCard({
           {bedBathLabel(l.beds, l.baths)}
           {" · "}
           <span className="text-navy">{dealBoardPriceLabel(l.price)}</span>
+          {sqftLabel ? (
+            <>
+              {" · "}
+              {sqftLabel}
+            </>
+          ) : null}
         </p>
-        <DealBoardAdaptiveMetaLine
-          parts={[ppsf, domType]}
-          sqft={l.sqft}
-          yearBuilt={l.yearBuilt}
-          lotAcres={l.lotAcres}
-          className="font-mono text-[10px] text-slate/80 tabular-nums truncate"
-        />
-        <DealBoardAddressWithInsight
-          listing={l}
-          isLive={isLive}
-          showAddress={false}
-        />
+        {showGridMeta ? (
+          <DealBoardMoreDataLines
+            listing={l}
+            hideOwnershipType={hideOwnershipType}
+          />
+        ) : null}
+        {showGridInsights ? (
+          <DealBoardInsightHeadline
+            listing={l}
+            isLive={isLive}
+            className="text-[11px] text-charcoal/60 italic leading-snug line-clamp-2 pt-0.5 underline decoration-charcoal/20 underline-offset-2 hover:text-navy hover:decoration-gold"
+          />
+        ) : null}
       </div>
     </div>
   );

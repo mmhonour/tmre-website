@@ -26,7 +26,7 @@ function AddPageRow({
   if (pages.length === 0) {
     return (
       <p className="font-mono text-[10px] text-charcoal/40">
-        Every page in lib/site-pages.ts is already in the menu.
+        Every public page in the catalog is already in the menu.
       </p>
     );
   }
@@ -281,8 +281,9 @@ export default function AdminSiteNavPanel({
         <p className="mt-1 text-sm text-slate max-w-3xl">
           Organize the public header: top-level links, Explore dropdown groups,
           labels, order, show/hide, and adding or removing pages. The picker
-          offers real site pages only (lib/site-pages.ts, the same list behind
-          sitemap.xml), so a menu edit cannot create a dead link. Catalog links
+          lists every stable public page that is not already in the menu (same
+          catalog as sitemap.xml), so a menu edit cannot create a dead link.
+          Listing detail URLs, Admin, and test routes stay out. Catalog links
           hide rather than delete — only pages you added here can be removed. No
           redeploy required after save.
         </p>
