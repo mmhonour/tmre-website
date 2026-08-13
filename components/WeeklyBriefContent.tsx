@@ -38,7 +38,10 @@ import {
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   MARKET_PULSE_LOOKBACK_OPTIONS,
+  marketPulseLookbackById,
   marketPulseLookbackChartLabel,
+  formatClosedCountWithLookback,
+  monthsSupplyFromLookbackWindow,
   type MarketPulseLookbackId,
 } from "@/lib/market-pulse-lookback";
 import {
@@ -47,6 +50,7 @@ import {
   settleBarPercent,
   settleIntDisplay,
   settleMosDisplay,
+  settleSignedNumber,
   type MarketPulseSettleState,
 } from "@/lib/market-pulse-settle";
 import type { StatsValueCalc } from "@/lib/stats-compute";
@@ -242,9 +246,9 @@ function BarChart<Row extends { city: string }>({
   favorSortDir?: MetricSortDir | null;
   /** Sort key when it differs from bar width (e.g. signed delta vs abs). */
   sortValueOf?: (row: Row) => number | null;
-  formatValue?: (row: Row, display: number | null) => string;
+  formatValue?: (row: Row, display: number | null, index: number) => string;
   /** Percent (or other) shown next to the town, not beside the dollar amount. */
-  formatValueAside?: (row: Row) => string;
+  formatValueAside?: (row: Row, index: number) => string;
   /** Title “Delta” is a link with the mean-vs-median popup. */
   explainDelta?: boolean;
   /** When set (Median / Avg / Delta), bars share one dollar axis. */
@@ -382,7 +386,7 @@ function BarChart<Row extends { city: string }>({
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
           const valueText = formatValue
-            ? formatValue(row, display)
+            ? formatValue(row, display, index)
             : formatMetricValue(valueKind, display);
           const calc = calcOf?.(row);
           const metricLabel =
@@ -424,7 +428,7 @@ function BarChart<Row extends { city: string }>({
               )}
               {formatValueAside ? (
                 <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-muted-text)]">
-                  {formatValueAside(row)}
+                  {formatValueAside(row, index)}
                 </span>
               ) : null}
               <div className="group relative h-3.5 rounded-sm bg-black/10 overflow-visible">
@@ -523,12 +527,14 @@ function CombinedMetricsChart({
   townHref,
   settle,
   closedLookbackLabel,
+  closedPending = false,
 }: {
   title: string;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
+  closedPending?: boolean;
 }) {
   const metrics = combinedMetrics(closedLookbackLabel);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
@@ -596,20 +602,37 @@ function CombinedMetricsChart({
       m.valueKind === "mos"
         ? settleMosDisplay(v, settle, scrambleIndex)
         : settleIntDisplay(v, settle, scrambleIndex);
-    const valueText =
+    const deltaDollars =
       m.id === "priceDelta"
-        ? m.formatOf(row)
-        : formatMetricValue(m.valueKind, display);
+        ? settleSignedNumber(row.priceDelta, settle, scrambleIndex, 0)
+        : null;
+    const deltaPct =
+      m.id === "priceDelta"
+        ? settleSignedNumber(row.priceDeltaPct, settle, scrambleIndex + 19, 1)
+        : null;
+    const valueText =
+      closedPending && m.id === "closed"
+        ? formatClosedCountWithLookback(closedLookbackLabel, "…")
+        : m.id === "priceDelta"
+          ? formatPriceDeltaK(deltaDollars)
+          : m.id === "closed"
+            ? formatClosedCountWithLookback(
+                closedLookbackLabel,
+                formatMetricValue(m.valueKind, display),
+              )
+            : formatMetricValue(m.valueKind, display);
     const calc = m.calcOf(row);
     return (
       <li
         key={m.id}
-        className="group relative grid grid-cols-[8.25rem_1fr_4.25rem] items-center gap-2"
+        className="group relative grid grid-cols-[8.25rem_1fr_7.25rem] items-center gap-2"
         title={m.id === "priceDelta" ? undefined : `${m.label}: ${valueText}`}
       >
         {m.id === "priceDelta" ? (
         <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
-          <MarketPulseDeltaLabel pctLabel={formatPriceDeltaPct(row.priceDeltaPct)} />
+          <MarketPulseDeltaLabel
+            pctLabel={formatPriceDeltaPct(deltaPct)}
+          />
         </span>
         ) : (
           <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
@@ -784,7 +807,7 @@ export default function WeeklyBriefContent({
    * directly above the town-metrics chart title.
    */
   categoryFilter?: ReactNode;
-  /** Closed-sales lookback window (Inventory / MOS / DOM stay current). */
+  /** Closed-sales lookback window (Inventory / avg DOM stay current). */
   lookbackId?: MarketPulseLookbackId;
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
 }) {
@@ -797,6 +820,8 @@ export default function WeeklyBriefContent({
   /** Filters start collapsed — summary sentence stays visible. */
   const [filtersOpen, setFiltersOpen] = useState(false);
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
+  const lookbackDays = marketPulseLookbackById(lookbackId).days;
+  const lookbackDrivesMos = lookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
   const filterSummary = summarizeMarketPulseFilters({
     selectionLabel: selectionLabel ?? scopeLabel,
     chartLayout,
@@ -804,7 +829,51 @@ export default function WeeklyBriefContent({
     lookbackId,
   });
 
-  const inventoryRows = useMemo(() => chartRows(snapshot), [snapshot]);
+  const inventoryRows = useMemo(() => {
+    const rows = chartRows(snapshot);
+    if (!lookbackDrivesMos || closedPending) return rows;
+    const closedBy = new Map(
+      (snapshot.closedTrailing ?? []).map(
+        (r) => [cityKey(r.city), r.count] as const,
+      ),
+    );
+    return rows.map((row) => {
+      const closedCount = closedBy.get(cityKey(row.city)) ?? null;
+      const monthsSupply = monthsSupplyFromLookbackWindow(
+        row.activeCount,
+        closedCount,
+        lookbackDays,
+      );
+      return {
+        ...row,
+        monthsSupply,
+        monthsSupplyCalc: {
+          summary:
+            monthsSupply == null
+              ? `No months supply for this ${closedLookbackLabel} window (no closings).`
+              : `${row.activeCount.toLocaleString()} active ÷ ${(closedCount ?? 0).toLocaleString()} closed over ${closedLookbackLabel} (as a monthly rate) = ${monthsSupply.toFixed(1)} mo supply in ${row.city}.`,
+          detail: [
+            "Inventory stays current. Months supply uses closed sales in the selected lookback.",
+          ],
+          inputs: {
+            city: row.city,
+            activeCount: row.activeCount,
+            closedCount,
+            days: lookbackDays,
+            lookbackId,
+            monthsSupply,
+          },
+        },
+      };
+    });
+  }, [
+    snapshot,
+    lookbackDrivesMos,
+    lookbackDays,
+    closedLookbackLabel,
+    lookbackId,
+    closedPending,
+  ]);
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
   const priceRows = snapshot.priceByTown ?? [];
@@ -874,7 +943,12 @@ export default function WeeklyBriefContent({
           />
           <Kpi
             label="All Town Months Inventory"
-            final={snapshot.market?.monthsSupply}
+            final={
+              lookbackDrivesMos
+                ? (inventoryRows.find((r) => isAllTownsCity(r.city))
+                    ?.monthsSupply ?? null)
+                : snapshot.market?.monthsSupply
+            }
             kind="mos"
             settle={settle}
             salt={2}
@@ -902,11 +976,45 @@ export default function WeeklyBriefContent({
               </span>
             </button>
             {!filtersOpen ? (
-              <p className="min-w-0 [font-family:var(--mp-mono-font)] text-[10px] leading-snug text-[var(--mp-muted-text)]">
+              <button
+                type="button"
+                className="min-w-0 text-left [font-family:var(--mp-mono-font)] text-[10px] leading-snug text-[var(--mp-muted-text)] underline decoration-[var(--mp-muted-text)]/30 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/40"
+                onClick={() => setFiltersOpen(true)}
+              >
                 {filterSummary}
-              </p>
+              </button>
             ) : null}
           </div>
+
+          {onLookbackIdChange ? (
+            <div className="space-y-1.5">
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
+                Closed lookback
+              </p>
+              <div
+                className="inline-flex flex-wrap gap-1.5"
+                role="group"
+                aria-label="Closed sales lookback period"
+              >
+                {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={controlBtn(lookbackId === opt.id)}
+                    aria-pressed={lookbackId === opt.id}
+                    onClick={() => onLookbackIdChange(opt.id)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
+                Sets closed sales and months supply. Inventory, avg DOM, and
+                prices stay current.
+                {closedPending ? " Loading closed counts…" : ""}
+              </p>
+            </div>
+          ) : null}
 
           {filtersOpen ? (
             <div className="flex flex-col gap-3 rounded-xl border border-black/[0.06] bg-[var(--mp-page-bg)]/60 px-3 py-3 sm:px-4">
@@ -980,35 +1088,6 @@ export default function WeeklyBriefContent({
                 </div>
               </div>
 
-              {onLookbackIdChange ? (
-                <div className="space-y-1.5">
-                  <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
-                    Closed lookback
-                  </p>
-                  <div
-                    className="inline-flex flex-wrap gap-1.5"
-                    role="group"
-                    aria-label="Closed sales lookback period"
-                  >
-                    {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        className={controlBtn(lookbackId === opt.id)}
-                        aria-pressed={lookbackId === opt.id}
-                        onClick={() => onLookbackIdChange(opt.id)}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
-                    Applies to closed sales only. Inventory, months supply, avg
-                    DOM, and prices stay current.
-                  </p>
-                </div>
-              ) : null}
-
               {favorSort !== "default" ? (
                 <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
                   {chartLayout === "stacked"
@@ -1035,6 +1114,7 @@ export default function WeeklyBriefContent({
             townHref={townHref}
             settle={settle}
             closedLookbackLabel={closedLookbackLabel}
+            closedPending={closedPending}
           />
         ) : (
           <>
@@ -1138,13 +1218,20 @@ export default function WeeklyBriefContent({
           sortValueOf={(r) =>
             meanMinusMedian(r.averagePrice, r.medianPrice).dollars
           }
-          formatValue={(r) => {
+          formatValue={(r, _display, index) => {
             const d = meanMinusMedian(r.averagePrice, r.medianPrice);
-            return formatPriceDeltaK(d.dollars);
+            return formatPriceDeltaK(
+              settleSignedNumber(d.dollars, settle, index, 0),
+            );
           }}
-          formatValueAside={(r) =>
+          formatValueAside={(r, index) =>
             formatPriceDeltaPct(
-              meanMinusMedian(r.averagePrice, r.medianPrice).pct,
+              settleSignedNumber(
+                meanMinusMedian(r.averagePrice, r.medianPrice).pct,
+                settle,
+                index + 19,
+                1,
+              ),
             )
           }
           explainDelta

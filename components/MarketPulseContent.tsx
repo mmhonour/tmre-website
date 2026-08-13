@@ -140,10 +140,16 @@ export default function MarketPulseContent({
         );
         const body = (await res.json()) as {
           rows?: MarketDigestClosedTownCount[];
+          lookbackId?: MarketPulseLookbackId;
           error?: boolean;
         };
         if (cancelled) return;
-        if (!res.ok || body.error || !Array.isArray(body.rows)) {
+        if (
+          !res.ok ||
+          body.error ||
+          !Array.isArray(body.rows) ||
+          (body.lookbackId != null && body.lookbackId !== lookbackId)
+        ) {
           setClosedByKey((prev) => ({
             ...prev,
             [closedKey]: { status: "error", rows: [] },
@@ -171,18 +177,16 @@ export default function MarketPulseContent({
   const handleLookbackIdChange = useCallback(
     (id: MarketPulseLookbackId) => {
       const key = closedCacheKey(category, id);
-      const cur = closedByKeyRef.current[key];
-      if (cur?.status === "error" || (id === lookbackId && cur?.status !== "ok")) {
-        setClosedByKey((prev) => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-        setClosedFetchNonce((n) => n + 1);
-      }
+      setClosedByKey((prev) => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setClosedFetchNonce((n) => n + 1);
       setLookbackId(id);
     },
-    [category, lookbackId],
+    [category],
   );
 
   const viewSnapshot: MarketDigestSnapshot = active

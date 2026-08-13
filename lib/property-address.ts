@@ -73,6 +73,15 @@ export function normalizePropertyAddress(town: string, street: string, zip?: str
   return parts.join('|')
 }
 
+/**
+ * Join key for Vision ↔ listings. Vision GIS usually has no zip, MLS usually
+ * does; strip a trailing `|06880` so `2 baker ave|westport` matches
+ * `2 baker ave|westport|06880`.
+ */
+export function addressMatchKey(addressNorm: string): string {
+  return addressNorm.replace(/\|\d{5}$/, '')
+}
+
 export function propertyKeyFromParcel(parcel: string | null | undefined): string | null {
   const normalized = normalizeParcelNumber(parcel)
   return normalized ? `parcel:${normalized}` : null

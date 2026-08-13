@@ -110,7 +110,7 @@ function metricBarRow(
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="110" style="padding:${padY} 0 ${padY} 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:110px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="128" style="padding:${padY} 0 ${padY} 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:128px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
     </tr>`
 }
 

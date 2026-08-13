@@ -69,7 +69,7 @@ function cacheKey(scope: MarketPulseClosedScope): string {
   if (lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID) {
     return `market-pulse-closed:${scope.kind}:${slice}:${MARKET_DIGEST_CLOSED_TRAILING_MONTHS}m:v3`
   }
-  return `market-pulse-closed:${scope.kind}:${slice}:${lookback.days}d:v4`
+  return `market-pulse-closed:${scope.kind}:${slice}:${lookback.days}d:v5`
 }
 
 function windowCopy(days: number, label: string): string {

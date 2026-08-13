@@ -33,6 +33,27 @@ export function randomBarPercents(count: number): number[] {
   return Array.from({ length: count }, () => 12 + Math.random() * 88);
 }
 
+/** Signed number (Delta $ or %) — scramble, count up through zero, then land. */
+export function settleSignedNumber(
+  final: number | null | undefined,
+  settle: MarketPulseSettleState,
+  salt = 0,
+  decimals = 0,
+): number | null {
+  if (final == null || !Number.isFinite(final)) return null;
+  const round = (n: number) =>
+    decimals <= 0 ? Math.round(n) : Number(n.toFixed(decimals));
+  if (settle.phase === "done") return round(final);
+  if (settle.phase === "countup") return round(final * settle.countT);
+  // Dollars need a wide span so scramble isn't stuck at ±$0.0K.
+  const minSpan = decimals > 0 ? 12 : 50_000;
+  const span = Math.max(Math.abs(final) * 2.4, minSpan);
+  const mag =
+    Math.abs(Math.sin((settle.tick + 1) * 12.9898 + salt * 78.233)) * span;
+  const sign = Math.sin((settle.tick + 1) * 7.13 + salt * 3.1) < 0 ? -1 : 1;
+  return round(mag * sign);
+}
+
 /** Integer display during scramble / countup / done. */
 export function settleIntDisplay(
   final: number | null | undefined,

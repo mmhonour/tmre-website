@@ -1,5 +1,6 @@
 import { fmtMoney } from '@/lib/listing-history'
 import type { MarketPulseCombinedTownRow } from '@/lib/market-pulse-combined-rows'
+import { formatClosedCountWithLookback } from '@/lib/market-pulse-lookback'
 import {
   formatPriceDeltaK,
   formatPriceDeltaPct,
@@ -76,9 +77,13 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'closed',
-      label: `Closed (${closedLookbackLabel})`,
+      label: 'Closed',
       barValueOf: (r) => r.closedCount,
-      format: (r) => fmtActive(r.closedCount),
+      format: (r) =>
+        formatClosedCountWithLookback(
+          closedLookbackLabel,
+          fmtActive(r.closedCount),
+        ),
     },
     {
       id: 'medianPrice',

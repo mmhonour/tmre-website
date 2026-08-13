@@ -1640,6 +1640,11 @@ export async function readClosedCountsByTown(options: {
     ? 'make_interval(days => $2::int)'
     : 'make_interval(months => $2::int)'
 
+  // CloseDate first. StatusChangeTimestamp only when CloseDate is missing.
+  // Never modification_timestamp — MLS sync stamps that on old Closed rows,
+  // which made 7d and 24mo look the same.
+  const closedAtSql = 'COALESCE(close_date, status_change_timestamp)'
+
   const rows = await query<{ town: string; count: number }>(
     `WITH closed AS (
        SELECT town,
@@ -1653,8 +1658,8 @@ export async function readClosedCountsByTown(options: {
          FROM listings
         WHERE status_bucket = 'Closed'
           AND town = ANY($1::text[])
-          AND COALESCE(close_date, status_change_timestamp, modification_timestamp)
-              >= NOW() - ${intervalSql}
+          AND ${closedAtSql} IS NOT NULL
+          AND ${closedAtSql} >= NOW() - ${intervalSql}
      )
      SELECT town, count(*)::int AS count
        FROM closed

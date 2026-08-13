@@ -1,7 +1,11 @@
 import 'server-only'
 
 import { execute, query, queryOne } from '@/lib/db/postgres'
-import { normalizePropertyAddress, normalizeStreetLine } from '@/lib/property-address'
+import {
+  addressMatchKey,
+  normalizePropertyAddress,
+  normalizeStreetLine,
+} from '@/lib/property-address'
 import type { VisionParcelParse } from '@/lib/vision-gis-parse'
 
 let visionAddressesReady = false
@@ -337,9 +341,10 @@ export async function backfillVisionListingLinks(
   >()
   for (const v of visionRows) {
     if (!v.address_norm) continue
-    const list = visionByNorm.get(v.address_norm) ?? []
+    const key = addressMatchKey(v.address_norm)
+    const list = visionByNorm.get(key) ?? []
     list.push({ visionPid: v.vision_pid, listingId: v.listing_id })
-    visionByNorm.set(v.address_norm, list)
+    visionByNorm.set(key, list)
   }
 
   const listingByNorm = new Map<
@@ -349,9 +354,10 @@ export async function backfillVisionListingLinks(
   for (const l of listingRows) {
     if (!l.address_street) continue
     const norm = normalizePropertyAddress(town, l.address_street, l.postal_code)
-    const list = listingByNorm.get(norm) ?? []
+    const key = addressMatchKey(norm)
+    const list = listingByNorm.get(key) ?? []
     list.push({ id: l.id, mls_id: l.mls_id, visionPid: l.vision_pid })
-    listingByNorm.set(norm, list)
+    listingByNorm.set(key, list)
   }
 
   let uniqueMatches = 0

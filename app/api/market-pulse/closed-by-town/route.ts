@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     )
     return NextResponse.json(
       { ...payload, cached, needsRebuild: needsRebuild ?? false },
-      { headers: { 'Cache-Control': 'public, max-age=300, must-revalidate' } },
+      { headers: { 'Cache-Control': 'private, no-store' } },
     )
   } catch (err) {
     console.error('[/api/market-pulse/closed-by-town]', err)

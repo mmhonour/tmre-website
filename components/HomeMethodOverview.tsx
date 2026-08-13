@@ -41,7 +41,8 @@ function readHeroNarrowViewport(): boolean {
 
 /**
  * Hero body copy as short phrases (visual wrap ≈ a few words at a time).
- * Collapses last→first until only the H1 remains; reopen via “Giving buyers…”.
+ * On mobile, collapses last→first until only the H1 remains; reopen via
+ * “Giving buyers…”. Desktop keeps the full copy.
  */
 const HERO_COPY_PARAS: readonly (readonly string[])[] = [
   [
@@ -711,28 +712,26 @@ export default function HomeMethodOverview({
         */}
         <div className="min-w-0">
           {/*
-            Copy first on every size. Desktop then puts How scoring / Open
-            Intelligence on the same row as rotating score + stat; mobile
-            keeps the original stack (copy → CTAs → score).
+            Mobile: copy (collapses) → CTAs → score. Desktop: copy + CTAs
+            left, rotating score + interesting stat top-right beside copy.
           */}
-          <div className="lg:max-w-3xl">
-            <HomeHeroCopy />
-          </div>
-
-          <div className="mt-4 grid min-w-0 items-center gap-4 sm:mt-7 sm:gap-10 lg:grid-cols-12 lg:gap-8">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2 lg:col-span-6">
-              <Link
-                href="/score"
-                className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 transition-colors hover:text-gold"
-              >
-                How scoring works
-              </Link>
-              <Link
-                href="/intelligence"
-                className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark transition-colors hover:bg-gold-light"
-              >
-                Open Intelligence →
-              </Link>
+          <div className="grid min-w-0 items-start gap-4 sm:gap-7 lg:grid-cols-12 lg:gap-8">
+            <div className="min-w-0 lg:col-span-6">
+              <HomeHeroCopy />
+              <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3 animate-fade-up-delay-2 sm:mt-7">
+                <Link
+                  href="/score"
+                  className="font-mono text-[11px] tracking-[0.14em] uppercase text-white/70 transition-colors hover:text-gold"
+                >
+                  How scoring works
+                </Link>
+                <Link
+                  href="/intelligence"
+                  className="inline-flex items-center rounded-lg bg-gold px-4 py-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-navy-dark transition-colors hover:bg-gold-light"
+                >
+                  Open Intelligence →
+                </Link>
+              </div>
             </div>
 
             {/* Deal of the Day score + matched town interesting-stat */}
@@ -884,8 +883,8 @@ export default function HomeMethodOverview({
 type HeroCopyMode = "full" | "collapsing" | "collapsed" | "expanded";
 
 /**
- * Hero body copy: after a read pause, phrases fade out last→first (approx.
- * wrapped visual lines). Collapsed: click “Giving buyers…” to restore.
+ * Hero body copy. Mobile: after a read pause, phrases fade out last→first;
+ * collapsed state is “Giving buyers…”. Desktop keeps the full copy.
  */
 function HomeHeroCopy() {
   const [mode, setMode] = useState<HeroCopyMode>("full");
@@ -895,6 +894,7 @@ function HomeHeroCopy() {
     HERO_COPY_PHRASES.length,
   );
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [collapseEnabled, setCollapseEnabled] = useState(readHeroNarrowViewport);
 
   useEffect(() => {
     setReduceMotion(
@@ -903,6 +903,23 @@ function HomeHeroCopy() {
   }, []);
 
   useEffect(() => {
+    const mq = window.matchMedia(HERO_NARROW_MQ);
+    const sync = () => {
+      const narrow = mq.matches;
+      setCollapseEnabled(narrow);
+      if (!narrow) {
+        setFadingIndex(-1);
+        setVisibleThrough(HERO_COPY_PHRASES.length);
+        setMode("full");
+      }
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!collapseEnabled) return;
     if (mode !== "full") return;
     if (reduceMotion) {
       const id = window.setTimeout(() => {
@@ -916,9 +933,10 @@ function HomeHeroCopy() {
       HERO_COPY_READ_MS,
     );
     return () => window.clearTimeout(startId);
-  }, [mode, reduceMotion]);
+  }, [mode, reduceMotion, collapseEnabled]);
 
   useEffect(() => {
+    if (!collapseEnabled) return;
     if (mode !== "collapsing") return;
     let cancelled = false;
     let timer: number | null = null;
@@ -948,7 +966,7 @@ function HomeHeroCopy() {
       cancelled = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [mode]);
+  }, [mode, collapseEnabled]);
 
   const showFull =
     mode === "full" || mode === "expanded" || mode === "collapsing";
@@ -960,7 +978,7 @@ function HomeHeroCopy() {
         <span className="italic text-gold-light">One clear score.</span>
       </h1>
 
-      {mode === "collapsed" ? (
+      {collapseEnabled && mode === "collapsed" ? (
         <button
           type="button"
           onClick={() => {
@@ -1026,7 +1044,7 @@ function HomeHeroCopy() {
           })
         : null}
 
-      {mode === "expanded" ? (
+      {collapseEnabled && mode === "expanded" ? (
         <button
           type="button"
           onClick={() => setMode("collapsing")}
