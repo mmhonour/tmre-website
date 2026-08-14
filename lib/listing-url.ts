@@ -18,6 +18,11 @@ export function westportParcelHref(visionPid: string): string {
   return `/find/westport/${encodeURIComponent(visionPid.trim())}`;
 }
 
+/** Archived Field Card HTML — open in a new tab, not an iframe. */
+export function westportFieldCardHref(visionPid: string): string {
+  return `${westportParcelHref(visionPid)}/field-card`;
+}
+
 /** Absolute short share URL for clipboard / Web Share (browser or given origin). */
 export function listingShareUrl(id: string, origin?: string): string {
   const path = listingShareHref(id);

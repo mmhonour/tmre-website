@@ -902,7 +902,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   },
   {
     label: "sync-vision-addresses-worker",
-    detail: "Background vision_addresses crawl + Field Card HTML to R2",
+    detail: "Background vision_addresses crawl → field_card JSON + R2 HTML pointer",
     schedule: "On invoke (background)",
   },
   {

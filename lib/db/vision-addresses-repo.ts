@@ -6,7 +6,10 @@ import {
   normalizePropertyAddress,
   normalizeStreetLine,
 } from '@/lib/property-address'
-import type { VisionParcelParse } from '@/lib/vision-gis-parse'
+import type {
+  VisionFieldCardJson,
+  VisionParcelParse,
+} from '@/lib/vision-gis-parse'
 
 let visionAddressesReady = false
 let visionAddressesPromise: Promise<void> | null = null
@@ -54,6 +57,7 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             field_card_r2_key        text,
             field_card_content_type  text,
             field_card_scraped_at    timestamptz,
+            field_card               jsonb,
             listing_id               text,
             mls_id                   text,
             content_fingerprint      text,
@@ -85,6 +89,19 @@ export async function ensureVisionAddressesTable(): Promise<void> {
           CREATE INDEX IF NOT EXISTS idx_listings_vision_pid
             ON listings (vision_pid)
             WHERE vision_pid IS NOT NULL
+        `)
+        await query(`
+          ALTER TABLE vision_addresses
+            ADD COLUMN IF NOT EXISTS field_card jsonb
+        `)
+        await query(`
+          CREATE INDEX IF NOT EXISTS idx_vision_addr_field_card_gin
+            ON vision_addresses USING gin (field_card)
+        `)
+        await query(`
+          CREATE INDEX IF NOT EXISTS idx_vision_addr_field_card_search
+            ON vision_addresses
+            USING gin (to_tsvector('simple', coalesce(field_card->>'searchText', '')))
         `)
         visionAddressesReady = true
       } catch (err) {
@@ -123,6 +140,7 @@ export async function upsertVisionAddress(
     changed: boolean
   },
 ): Promise<void> {
+  await ensureVisionAddressesTable()
   await execute(
     `
     INSERT INTO vision_addresses (
@@ -132,11 +150,12 @@ export async function upsertVisionAddress(
       living_area_sqft, beds, full_baths, half_baths, total_rooms, style, model,
       acres, zoning, last_sale_price, last_sale_date, last_sale_book_page,
       photo_url, parcel_url, field_card_r2_key, field_card_content_type,
-      field_card_scraped_at, content_fingerprint, source_host, scraped_at, updated_at
+      field_card_scraped_at, content_fingerprint, source_host, scraped_at, updated_at,
+      field_card
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
       $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
-      $35,$36,$37,$38,$39
+      $35,$36,$37,$38,$39,$40::jsonb
     )
     ON CONFLICT (town, vision_pid) DO UPDATE SET
       account_number = EXCLUDED.account_number,
@@ -170,22 +189,23 @@ export async function upsertVisionAddress(
       photo_url = EXCLUDED.photo_url,
       parcel_url = EXCLUDED.parcel_url,
       field_card_r2_key = CASE
-        WHEN $40 THEN EXCLUDED.field_card_r2_key
+        WHEN $41 THEN EXCLUDED.field_card_r2_key
         ELSE COALESCE(vision_addresses.field_card_r2_key, EXCLUDED.field_card_r2_key)
       END,
       field_card_content_type = CASE
-        WHEN $40 THEN EXCLUDED.field_card_content_type
+        WHEN $41 THEN EXCLUDED.field_card_content_type
         ELSE COALESCE(vision_addresses.field_card_content_type, EXCLUDED.field_card_content_type)
       END,
       field_card_scraped_at = CASE
-        WHEN $40 THEN EXCLUDED.field_card_scraped_at
+        WHEN $41 THEN EXCLUDED.field_card_scraped_at
         ELSE COALESCE(vision_addresses.field_card_scraped_at, EXCLUDED.field_card_scraped_at)
       END,
+      field_card = EXCLUDED.field_card,
       content_fingerprint = EXCLUDED.content_fingerprint,
       source_host = EXCLUDED.source_host,
       scraped_at = EXCLUDED.scraped_at,
       updated_at = CASE
-        WHEN $41 THEN EXCLUDED.updated_at
+        WHEN $42 THEN EXCLUDED.updated_at
         ELSE vision_addresses.updated_at
       END
     `,
@@ -229,9 +249,24 @@ export async function upsertVisionAddress(
       parsed.sourceHost,
       opts.scrapedAt,
       opts.scrapedAt,
+      JSON.stringify(parsed.fieldCard),
       opts.rewriteBlob,
       opts.changed,
     ],
+  )
+}
+
+export async function persistVisionFieldCardJson(
+  town: string,
+  visionPid: string,
+  fieldCard: VisionFieldCardJson,
+): Promise<void> {
+  await ensureVisionAddressesTable()
+  await execute(
+    `UPDATE vision_addresses
+        SET field_card = $3::jsonb
+      WHERE town = $1 AND vision_pid = $2`,
+    [town, visionPid, JSON.stringify(fieldCard)],
   )
 }
 
@@ -540,6 +575,8 @@ export type VisionAddressRecord = {
   parcelUrl: string
   listingId: string | null
   mlsId: string | null
+  fieldCard: VisionFieldCardJson | null
+  fieldCardR2Key: string | null
 }
 
 type VisionAddressSqlRow = {
@@ -577,12 +614,31 @@ type VisionAddressSqlRow = {
   parcel_url: string
   listing_id: string | null
   mls_id: string | null
+  field_card: VisionFieldCardJson | string | null
+  field_card_r2_key: string | null
 }
 
 function numOrNull(v: number | string | null | undefined): number | null {
   if (v == null || v === '') return null
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(n) ? n : null
+}
+
+function coerceFieldCard(
+  raw: VisionAddressSqlRow['field_card'],
+): VisionFieldCardJson | null {
+  if (raw == null) return null
+  try {
+    const obj = typeof raw === 'string' ? (JSON.parse(raw) as VisionFieldCardJson) : raw
+    if (!obj || !Array.isArray(obj.fields)) return null
+    return {
+      version: 1,
+      fields: obj.fields,
+      searchText: typeof obj.searchText === 'string' ? obj.searchText : '',
+    }
+  } catch {
+    return null
+  }
 }
 
 function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
@@ -621,6 +677,8 @@ function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
     parcelUrl: row.parcel_url,
     listingId: row.listing_id,
     mlsId: row.mls_id,
+    fieldCard: coerceFieldCard(row.field_card),
+    fieldCardR2Key: row.field_card_r2_key,
   }
 }
 
@@ -631,7 +689,8 @@ const VISION_SELECT = `
   beds, full_baths, half_baths, style, acres, zoning,
   last_sale_price, last_sale_date, last_sale_book_page,
   building_count, total_rooms, model,
-  photo_url, parcel_url, listing_id, mls_id
+  photo_url, parcel_url, listing_id, mls_id,
+  field_card, field_card_r2_key
 `
 
 export async function getVisionAddress(
@@ -684,6 +743,7 @@ export async function searchVisionAddresses(opts: {
           OR lower(coalesce(address_full, '')) LIKE $3
           OR lower(coalesce(street_name, '')) LIKE $3
           OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE $4
+          OR lower(coalesce(field_card->>'searchText', '')) LIKE $3
         )
       ORDER BY
         CASE WHEN address_norm LIKE $2 THEN 0 ELSE 1 END,

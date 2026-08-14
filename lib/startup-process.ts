@@ -312,14 +312,14 @@ export function describeStartupProcess(): {
     {
       id: "vision-addresses",
       title: "Vision addresses (GIS)",
-      subtitle: "VGSI cadastral crawl · vision_addresses + Field Card HTML",
+      subtitle: "VGSI cadastral crawl · vision_addresses JSON + Field Card HTML pointer",
       steps: [
         {
           id: "vision-address-weekly",
           title: "Chunked crawl @ 1:30 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "syncVisionAddresses(): Streets→Parcel Field Card parse → Neon vision_addresses + R2 HTML; full fill then fingerprint incremental; then 1-PID address_norm join stamps listings.vision_pid on every listing at that address (re-lists included). Same join: npm run match:vision-listings. Netlify thin sync-vision-addresses → worker. Skips when Pause is checked on Vision addresses (GIS).",
+            "syncVisionAddresses(): Streets→Parcel Field Card parse → Neon vision_addresses.field_card JSON + R2 HTML pointer; full fill then fingerprint incremental; then 1-PID address_norm join stamps listings.vision_pid on every listing at that address (re-lists included). Same join: npm run match:vision-listings. Netlify thin sync-vision-addresses → worker. Skips when Pause is checked on Vision addresses (GIS).",
           status: visionAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: visionAddressSyncEnabled ? "Armed" : "Disabled",
         },

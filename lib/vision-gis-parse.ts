@@ -36,7 +36,46 @@ export type VisionParcelParse = {
   parcelUrl: string
   sourceHost: string
   contentFingerprint: string
+  fieldCard: VisionFieldCardJson
 }
+
+export type VisionFieldCardField = {
+  section: string
+  label: string
+  value: string
+}
+
+/** Parsed Field Card for Neon jsonb — display, processing, and Find text search. */
+export type VisionFieldCardJson = {
+  version: 1
+  fields: VisionFieldCardField[]
+  searchText: string
+}
+
+const CONTROL_ID_META: Record<string, { section: string; label: string }> = {
+  MainContent_lblLocation: { section: 'Parcel', label: 'Location' },
+  MainContent_lblMblu: { section: 'Parcel', label: 'MBLU' },
+  MainContent_lblAcctNum: { section: 'Parcel', label: 'Account' },
+  MainContent_lblPid: { section: 'Parcel', label: 'PID' },
+  MainContent_lblGenOwner: { section: 'Parcel', label: 'Owner' },
+  MainContent_lblCoOwner: { section: 'Parcel', label: 'Co-owner' },
+  MainContent_lblAddr1: { section: 'Parcel', label: 'Owner address' },
+  MainContent_lblAddr2: { section: 'Parcel', label: 'Owner address 2' },
+  MainContent_lblGenAssessment: { section: 'Valuation', label: 'Assessment' },
+  MainContent_lblGenAppraisal: { section: 'Valuation', label: 'Appraisal' },
+  MainContent_lblBldCount: { section: 'Building', label: 'Buildings' },
+  MainContent_lblUseCode: { section: 'Parcel', label: 'Use code' },
+  MainContent_lblUseCodeDescription: { section: 'Parcel', label: 'Use' },
+  MainContent_lblZone: { section: 'Parcel', label: 'Zoning' },
+  MainContent_lblLndSize: { section: 'Land', label: 'Acres' },
+  MainContent_lblSaleDate: { section: 'Sale', label: 'Sale date' },
+  MainContent_lblPrice: { section: 'Sale', label: 'Sale price' },
+  MainContent_lblBp: { section: 'Sale', label: 'Book / page' },
+  MainContent_lblNbhd: { section: 'Parcel', label: 'Neighborhood' },
+  MainContent_lblLUC: { section: 'Parcel', label: 'LUC' },
+}
+
+const SKIP_CONTROL_RE = /(img|btn|hyp|menu|script|link|panel|tab|grid)/i
 
 function decodeHtml(s: string): string {
   return s
@@ -110,6 +149,152 @@ export function streetNamesFromLetterHtml(html: string): string[] {
     }
   }
   return [...names].filter(Boolean).sort((a, b) => a.localeCompare(b))
+}
+
+function humanizeControlId(id: string): string {
+  const tail = id
+    .replace(/^MainContent_/i, '')
+    .replace(/^ctl\d+_/i, '')
+    .replace(/^lbl/i, '')
+  return tail
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+}
+
+function inferSectionAt(html: string, index: number): string {
+  const before = html.slice(Math.max(0, index - 1200), index)
+  const matches = [
+    ...before.matchAll(
+      /<(?:h[1-6]|legend|caption|th)[^>]*>\s*([^<]{2,60}?)\s*<\/(?:h[1-6]|legend|caption|th)>/gi,
+    ),
+  ]
+  const last = matches.at(-1)?.[1]
+  if (!last) return 'Field card'
+  const label = decodeHtml(last.replace(/<[^>]+>/g, ' '))
+  if (!label || /javascript|click here|more info/i.test(label)) return 'Field card'
+  return label
+}
+
+function isUsefulFieldValue(value: string): boolean {
+  const v = value.trim()
+  if (!v || v === '-' || v === '—' || v === '.') return false
+  if (/^javascript:/i.test(v)) return false
+  if (/^https?:\/\/images\.vgsi\.com/i.test(v)) return false
+  return v.length <= 240
+}
+
+function pushField(
+  fields: VisionFieldCardField[],
+  seen: Set<string>,
+  section: string,
+  label: string,
+  value: string,
+) {
+  const cleanLabel = decodeHtml(label).replace(/:\s*$/, '').trim()
+  const cleanValue = decodeHtml(value)
+  if (!cleanLabel || !isUsefulFieldValue(cleanValue)) return
+  if (/^(more|click|view map|print)$/i.test(cleanLabel)) return
+  const key = `${section.toLowerCase()}|${cleanLabel.toLowerCase()}|${cleanValue.toLowerCase()}`
+  if (seen.has(key)) return
+  seen.add(key)
+  fields.push({ section, label: cleanLabel, value: cleanValue })
+}
+
+/** All labeled Field Card pairs — stored as jsonb for display and Find search. */
+export function parseVisionFieldCardJson(html: string): VisionFieldCardJson {
+  const fields: VisionFieldCardField[] = []
+  const seen = new Set<string>()
+
+  const idRe =
+    /id=["'](MainContent_[^"']+)["'][^>]*>([\s\S]*?)<\/(?:span|a|div|td|label)>/gi
+  let m: RegExpExecArray | null
+  while ((m = idRe.exec(html)) !== null) {
+    const id = m[1] ?? ''
+    if (SKIP_CONTROL_RE.test(id)) continue
+    const raw = decodeHtml((m[2] ?? '').replace(/<[^>]+>/g, ' '))
+    const meta = CONTROL_ID_META[id]
+    const section = meta?.section ?? inferSectionAt(html, m.index)
+    const label = meta?.label ?? humanizeControlId(id)
+    pushField(fields, seen, section, label, raw)
+  }
+
+  const tdRe =
+    /<td[^>]*>\s*([^<]{1,80}?)\s*:?\s*<\/td>\s*<td[^>]*>\s*([^<]+)\s*<\/td>/gi
+  while ((m = tdRe.exec(html)) !== null) {
+    const label = m[1] ?? ''
+    const value = m[2] ?? ''
+    pushField(fields, seen, inferSectionAt(html, m.index), label, value)
+  }
+
+  const searchText = fields
+    .map((f) => `${f.label} ${f.value}`)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 8000)
+
+  return { version: 1, fields, searchText }
+}
+
+export function fieldCardFromTypedVision(row: {
+  visionPid?: string | null
+  accountNumber?: string | null
+  mblu?: string | null
+  useCode?: string | null
+  useCodeDescription?: string | null
+  ownerName?: string | null
+  assessedValue?: number | null
+  appraisalValue?: number | null
+  yearBuilt?: number | null
+  livingAreaSqft?: number | null
+  beds?: number | null
+  fullBaths?: number | null
+  halfBaths?: number | null
+  totalRooms?: number | null
+  style?: string | null
+  model?: string | null
+  acres?: number | null
+  zoning?: string | null
+  lastSalePrice?: number | null
+  lastSaleDate?: string | null
+  lastSaleBookPage?: string | null
+  buildingCount?: number | null
+  addressFull?: string | null
+}): VisionFieldCardJson {
+  const pairs: [string, string, string | number | null | undefined][] = [
+    ['Parcel', 'Location', row.addressFull],
+    ['Parcel', 'Owner', row.ownerName],
+    ['Parcel', 'MBLU', row.mblu],
+    ['Parcel', 'Account', row.accountNumber],
+    ['Parcel', 'PID', row.visionPid],
+    ['Parcel', 'Use code', row.useCode],
+    ['Parcel', 'Use', row.useCodeDescription],
+    ['Parcel', 'Zoning', row.zoning],
+    ['Valuation', 'Assessment', row.assessedValue],
+    ['Valuation', 'Appraisal', row.appraisalValue],
+    ['Land', 'Acres', row.acres],
+    ['Building', 'Buildings', row.buildingCount],
+    ['Building', 'Year built', row.yearBuilt],
+    ['Building', 'Living area', row.livingAreaSqft],
+    ['Building', 'Beds', row.beds],
+    ['Building', 'Full baths', row.fullBaths],
+    ['Building', 'Half baths', row.halfBaths],
+    ['Building', 'Rooms', row.totalRooms],
+    ['Building', 'Style', row.style],
+    ['Building', 'Model', row.model],
+    ['Sale', 'Sale price', row.lastSalePrice],
+    ['Sale', 'Sale date', row.lastSaleDate],
+    ['Sale', 'Book / page', row.lastSaleBookPage],
+  ]
+  const fields: VisionFieldCardField[] = []
+  const seen = new Set<string>()
+  for (const [section, label, value] of pairs) {
+    if (value == null || value === '') continue
+    pushField(fields, seen, section, label, String(value))
+  }
+  const searchText = fields.map((f) => `${f.label} ${f.value}`).join(' ')
+  return { version: 1, fields, searchText }
 }
 
 function fingerprintFromFields(fields: Record<string, unknown>): string {
@@ -224,5 +409,6 @@ export function parseVisionParcelHtml(
     parcelUrl: `${opts.baseUrl}/Parcel.aspx?pid=${opts.visionPid}`,
     sourceHost: opts.sourceHost,
     contentFingerprint,
+    fieldCard: parseVisionFieldCardJson(html),
   }
 }

@@ -3,6 +3,7 @@ import 'server-only'
 import {
   getVisionAddress,
   listVisionAddressesByNorm,
+  persistVisionFieldCardJson,
   searchVisionAddresses,
   type VisionAddressRecord,
 } from '@/lib/db/vision-addresses-repo'
@@ -17,8 +18,11 @@ import {
 } from '@/lib/property-address'
 import { getVisionFieldCardHtml } from '@/lib/r2-vision-store'
 import type { Listing } from '@/lib/rets'
-import { prepareVisionFieldCardSrcDoc } from '@/lib/vision-field-card-html'
-import { visionGisTownConfig } from '@/lib/vision-gis-towns'
+import {
+  fieldCardFromTypedVision,
+  parseVisionFieldCardJson,
+  type VisionFieldCardField,
+} from '@/lib/vision-gis-parse'
 
 export const WESTPORT_LOOKUP_TOWN = 'Westport'
 
@@ -41,28 +45,10 @@ export type MergedField<T> = {
 }
 
 export type WestportFieldCard = {
-  accountNumber: string | null
-  mblu: string | null
-  useCode: string | null
-  useCodeDescription: string | null
-  ownerName: string | null
-  assessedValue: number | null
-  appraisalValue: number | null
-  yearBuilt: number | null
-  livingAreaSqft: number | null
-  beds: number | null
-  baths: number | null
-  totalRooms: number | null
-  style: string | null
-  model: string | null
-  acres: number | null
-  zoning: string | null
-  lastSalePrice: number | null
-  lastSaleDate: string | null
-  lastSaleBookPage: string | null
+  fields: VisionFieldCardField[]
   photoUrl: string | null
-  html: string | null
   parcelUrl: string
+  r2Key: string | null
 }
 
 export type WestportMergedProperty = {
@@ -129,6 +115,41 @@ function bathsFromVision(v: VisionAddressRecord): number | null {
   const half = v.halfBaths
   if (full == null && half == null) return null
   return (full ?? 0) + (half ?? 0) * 0.5
+}
+
+async function resolveWestportFieldCard(
+  vision: VisionAddressRecord,
+): Promise<WestportFieldCard> {
+  let json = vision.fieldCard
+  if (!json || json.fields.length === 0) {
+    try {
+      const raw = await getVisionFieldCardHtml(
+        WESTPORT_LOOKUP_TOWN,
+        vision.visionPid,
+      )
+      if (raw) {
+        json = parseVisionFieldCardJson(raw)
+        if (json.fields.length > 0) {
+          await persistVisionFieldCardJson(
+            WESTPORT_LOOKUP_TOWN,
+            vision.visionPid,
+            json,
+          )
+        }
+      }
+    } catch (err) {
+      console.warn('[westport-lookup] field card JSON backfill failed', err)
+    }
+  }
+  if (!json || json.fields.length === 0) {
+    json = fieldCardFromTypedVision(vision)
+  }
+  return {
+    fields: json.fields,
+    photoUrl: vision.photoUrl,
+    parcelUrl: vision.parcelUrl,
+    r2Key: vision.fieldCardR2Key,
+  }
 }
 
 function hitFromVision(
@@ -399,16 +420,7 @@ export async function mergeWestportProperty(
       )
     : null
 
-  const gis = visionGisTownConfig(WESTPORT_LOOKUP_TOWN)
-  let fieldCardHtml: string | null = null
-  try {
-    const raw = await getVisionFieldCardHtml(WESTPORT_LOOKUP_TOWN, vision.visionPid)
-    if (raw && gis) {
-      fieldCardHtml = prepareVisionFieldCardSrcDoc(raw, gis.baseUrl)
-    }
-  } catch (err) {
-    console.warn('[westport-lookup] field card HTML unavailable', err)
-  }
+  const fieldCard = await resolveWestportFieldCard(vision)
 
   return {
     town: WESTPORT_LOOKUP_TOWN,
@@ -420,30 +432,7 @@ export async function mergeWestportProperty(
     street: listing?.address.street || streetLine(vision),
     mblu: vision.mblu,
     parcelUrl: vision.parcelUrl,
-    fieldCard: {
-      accountNumber: vision.accountNumber,
-      mblu: vision.mblu,
-      useCode: vision.useCode,
-      useCodeDescription: vision.useCodeDescription,
-      ownerName: vision.ownerName,
-      assessedValue: vision.assessedValue,
-      appraisalValue: vision.appraisalValue,
-      yearBuilt: vision.yearBuilt,
-      livingAreaSqft: vision.livingAreaSqft,
-      beds: vision.beds,
-      baths: bathsFromVision(vision),
-      totalRooms: vision.totalRooms,
-      style: vision.style,
-      model: vision.model,
-      acres: vision.acres,
-      zoning: vision.zoning,
-      lastSalePrice: vision.lastSalePrice,
-      lastSaleDate: vision.lastSaleDate,
-      lastSaleBookPage: vision.lastSaleBookPage,
-      photoUrl: vision.photoUrl,
-      html: fieldCardHtml,
-      parcelUrl: vision.parcelUrl,
-    },
+    fieldCard,
     siblings,
     listing: listing
       ? {

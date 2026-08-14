@@ -102,6 +102,8 @@ export type VisionTownCrawlState = {
   letterIndex: number
   /** Index into streets for current letter */
   streetIndex: number
+  /** Offset into the current street’s parcel list — resume here after a chunk cap. */
+  streetParcelOffset?: number
   /** Cached street names for current letter (full phase) */
   streetsForLetter?: string[]
   /** Last vision_pid completed in incremental PID walk */
@@ -154,6 +156,7 @@ function defaultTownState(): VisionTownCrawlState {
     phase: 'full',
     letterIndex: 0,
     streetIndex: 0,
+    streetParcelOffset: 0,
     streetsForLetter: undefined,
     incrementalAfterPid: null,
     lastFullCompletedAt: null,
@@ -249,6 +252,81 @@ async function ingestParcel(
   await sleep(delayMs)
 }
 
+/** Walk letter → street → parcels. Resume mid-street so a chunk cap cannot skip tails. */
+async function sweepStreets(
+  cfg: VisionGisTownConfig,
+  state: VisionTownCrawlState,
+  delayMs: number,
+  maxParcels: number,
+  counts: {
+    fetched: number
+    changed: number
+    unchanged: number
+    neu: number
+    r2: number
+  },
+): Promise<void> {
+  while (
+    counts.fetched < maxParcels &&
+    state.letterIndex < VISION_GIS_STREET_LETTERS.length
+  ) {
+    const letter = VISION_GIS_STREET_LETTERS[state.letterIndex]!
+    if (!state.streetsForLetter) {
+      console.info(`[vision-gis-sync] letter ${letter} · loading streets…`)
+      const letterHtml = await fetchText(
+        `${cfg.baseUrl}/Streets.aspx?Letter=${encodeURIComponent(letter)}`,
+      )
+      state.streetsForLetter = streetNamesFromLetterHtml(letterHtml)
+      state.streetIndex = 0
+      state.streetParcelOffset = 0
+      console.info(
+        `[vision-gis-sync] letter ${letter} · ${state.streetsForLetter.length} streets`,
+      )
+      await sleep(delayMs)
+    }
+
+    const streets = state.streetsForLetter
+    if (state.streetIndex >= streets.length) {
+      state.letterIndex += 1
+      state.streetIndex = 0
+      state.streetParcelOffset = 0
+      state.streetsForLetter = undefined
+      continue
+    }
+
+    const street = streets[state.streetIndex]!
+    const offset = state.streetParcelOffset ?? 0
+    console.info(
+      `[vision-gis-sync] street ${street} (${letter})` +
+        (offset > 0 ? ` · resume @${offset}` : '') +
+        ` · fetching parcels…`,
+    )
+    const streetHtml = await fetchText(
+      `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`,
+    )
+    const links = parcelLinksFromStreetHtml(streetHtml)
+    await sleep(delayMs)
+
+    let i = offset
+    for (; i < links.length; i++) {
+      if (counts.fetched >= maxParcels) break
+      await ingestParcel(cfg, links[i]!.visionPid, delayMs, counts, {
+        phase: state.phase,
+        maxParcels,
+        street,
+        letter,
+      })
+    }
+
+    if (i < links.length) {
+      state.streetParcelOffset = i
+      return
+    }
+    state.streetIndex += 1
+    state.streetParcelOffset = 0
+  }
+}
+
 export type SyncVisionAddressesOptions = {
   town?: string
   maxParcels?: number
@@ -326,56 +404,7 @@ export async function syncVisionAddresses(
 
   try {
     if (state.phase === 'full') {
-      while (
-        counts.fetched < maxParcels &&
-        state.letterIndex < VISION_GIS_STREET_LETTERS.length
-      ) {
-        const letter = VISION_GIS_STREET_LETTERS[state.letterIndex]!
-        if (!state.streetsForLetter) {
-          console.info(
-            `[vision-gis-sync] letter ${letter} · loading streets…`,
-          )
-          const letterHtml = await fetchText(
-            `${cfg.baseUrl}/Streets.aspx?Letter=${encodeURIComponent(letter)}`,
-          )
-          state.streetsForLetter = streetNamesFromLetterHtml(letterHtml)
-          state.streetIndex = 0
-          console.info(
-            `[vision-gis-sync] letter ${letter} · ${state.streetsForLetter.length} streets`,
-          )
-          await sleep(delayMs)
-        }
-
-        const streets = state.streetsForLetter
-        if (state.streetIndex >= streets.length) {
-          state.letterIndex += 1
-          state.streetIndex = 0
-          state.streetsForLetter = undefined
-          continue
-        }
-
-        const street = streets[state.streetIndex]!
-        console.info(
-          `[vision-gis-sync] street ${street} (${letter}) · fetching parcels…`,
-        )
-        const streetHtml = await fetchText(
-          `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`,
-        )
-        const links = parcelLinksFromStreetHtml(streetHtml)
-        await sleep(delayMs)
-
-        for (const link of links) {
-          if (counts.fetched >= maxParcels) break
-          await ingestParcel(cfg, link.visionPid, delayMs, counts, {
-            phase: state.phase,
-            maxParcels,
-            street,
-            letter,
-          })
-        }
-
-        state.streetIndex += 1
-      }
+      await sweepStreets(cfg, state, delayMs, maxParcels, counts)
 
       if (state.letterIndex >= VISION_GIS_STREET_LETTERS.length) {
         state.phase = 'incremental'
@@ -384,10 +413,12 @@ export async function syncVisionAddresses(
         state.streetsForLetter = undefined
         state.letterIndex = 0
         state.streetIndex = 0
+        state.streetParcelOffset = 0
         townComplete = true
       }
     } else {
-      // Incremental: walk known PIDs by id; when exhausted, restart + light street rediscovery
+      // Refresh known PIDs, then street-sweep remaining budget so missed
+      // tails (e.g. mid-street chunk skip) still get ingested.
       const pids = await listVisionPidsForTown(
         cfg.town,
         state.incrementalAfterPid ?? null,
@@ -396,29 +427,6 @@ export async function syncVisionAddresses(
       if (pids.length === 0) {
         state.incrementalAfterPid = null
         state.lastIncrementalPassAt = syncedAt
-        // Discover a few streets from letter A for new parcels
-        const letterHtml = await fetchText(
-          `${cfg.baseUrl}/Streets.aspx?Letter=A`,
-        )
-        const streets = streetNamesFromLetterHtml(letterHtml).slice(0, 3)
-        await sleep(delayMs)
-        for (const street of streets) {
-          if (counts.fetched >= maxParcels) break
-          const streetHtml = await fetchText(
-            `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`,
-          )
-          const links = parcelLinksFromStreetHtml(streetHtml)
-          await sleep(delayMs)
-          for (const link of links) {
-            if (counts.fetched >= maxParcels) break
-            await ingestParcel(cfg, link.visionPid, delayMs, counts, {
-              phase: state.phase,
-              maxParcels,
-              street,
-              letter: 'A',
-            })
-          }
-        }
       } else {
         for (const pid of pids) {
           if (counts.fetched >= maxParcels) break
@@ -429,6 +437,21 @@ export async function syncVisionAddresses(
             letter: null,
           })
           state.incrementalAfterPid = pid
+        }
+      }
+      if (counts.fetched < maxParcels) {
+        if (state.letterIndex >= VISION_GIS_STREET_LETTERS.length) {
+          state.letterIndex = 0
+          state.streetIndex = 0
+          state.streetParcelOffset = 0
+          state.streetsForLetter = undefined
+        }
+        await sweepStreets(cfg, state, delayMs, maxParcels, counts)
+        if (state.letterIndex >= VISION_GIS_STREET_LETTERS.length) {
+          state.letterIndex = 0
+          state.streetIndex = 0
+          state.streetParcelOffset = 0
+          state.streetsForLetter = undefined
         }
       }
     }

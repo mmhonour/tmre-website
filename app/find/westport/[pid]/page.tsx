@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
-import { westportParcelHref } from "@/lib/listing-url";
+import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +25,6 @@ function fmtMoney(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   return `$${Math.round(n).toLocaleString()}`;
-}
-
-function fmtNum(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
 function FieldRow<T extends string | number>({
@@ -78,11 +73,13 @@ function CardRow({
         ? String(value)
         : value;
   return (
-    <div className="flex items-baseline justify-between gap-3 py-2 border-b border-charcoal/[0.06]">
+    <div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-charcoal/[0.06]">
       <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate/70">
         {label}
       </dt>
-      <dd className="font-mono text-sm text-navy tabular-nums text-right">{text}</dd>
+      <dd className="font-mono text-[13px] text-navy tabular-nums text-right max-w-[65%]">
+        {text}
+      </dd>
     </div>
   );
 }
@@ -102,9 +99,17 @@ export default async function WestportParcelPage({
       ? `${property.beds.value}BR/${property.baths.value}BA`
       : null;
   const card = property.fieldCard;
-  const useLabel = [card.useCode, card.useCodeDescription]
-    .filter(Boolean)
-    .join(" — ");
+  const fieldSections = card.fields.reduce<
+    { section: string; fields: typeof card.fields }[]
+  >((acc, field) => {
+    const last = acc[acc.length - 1];
+    if (last && last.section === field.section) {
+      last.fields.push(field);
+      return acc;
+    }
+    acc.push({ section: field.section, fields: [field] });
+    return acc;
+  }, []);
 
   return (
     <>
@@ -198,73 +203,51 @@ export default async function WestportParcelPage({
             <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
               Vision field card
             </h2>
-            <dl>
-              <CardRow label="Owner" value={card.ownerName} />
-              <CardRow label="MBLU" value={card.mblu} />
-              <CardRow label="Account" value={card.accountNumber} />
-              <CardRow label="PID" value={property.visionPid} />
-              <CardRow label="Use" value={useLabel || null} />
-              <CardRow label="Zoning" value={card.zoning} />
-              <CardRow
-                label="Assessed"
-                value={card.assessedValue != null ? fmtMoney(card.assessedValue) : null}
-              />
-              <CardRow
-                label="Appraisal"
-                value={card.appraisalValue != null ? fmtMoney(card.appraisalValue) : null}
-              />
-              <CardRow
-                label="Acres"
-                value={card.acres != null ? fmtNum(card.acres) : null}
-              />
-              <CardRow label="Year built" value={card.yearBuilt} />
-              <CardRow
-                label="Living area"
-                value={
-                  card.livingAreaSqft != null
-                    ? `${card.livingAreaSqft.toLocaleString()} sf`
-                    : null
-                }
-              />
-              <CardRow label="Beds" value={card.beds} />
-              <CardRow label="Baths" value={card.baths} />
-              <CardRow label="Rooms" value={card.totalRooms} />
-              <CardRow label="Style" value={card.style} />
-              <CardRow label="Model" value={card.model} />
-              <CardRow
-                label="Last sale"
-                value={card.lastSalePrice != null ? fmtMoney(card.lastSalePrice) : null}
-              />
-              <CardRow label="Last sale date" value={card.lastSaleDate} />
-              <CardRow label="Book / page" value={card.lastSaleBookPage} />
-            </dl>
+            {fieldSections.length === 0 ? (
+              <p className="font-mono text-sm text-slate/60">
+                No parsed Field Card fields yet.
+              </p>
+            ) : (
+              fieldSections.map((group) => (
+                <div key={group.section} className="mb-5">
+                  <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate/45 mb-1">
+                    {group.section}
+                  </p>
+                  <dl>
+                    {group.fields.map((field) => (
+                      <CardRow
+                        key={`${group.section}-${field.label}-${field.value}`}
+                        label={field.label}
+                        value={field.value}
+                      />
+                    ))}
+                  </dl>
+                </div>
+              ))
+            )}
 
-            {card.html ? (
-              <div className="mt-8">
-                <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-slate/50 mb-2">
-                  Stored field card
-                </p>
-                <iframe
-                  title={`Vision field card ${property.street}`}
-                  sandbox=""
-                  srcDoc={card.html}
-                  className="w-full min-h-[70vh] rounded-xl border border-charcoal/[0.08] bg-white"
-                />
-              </div>
-            ) : null}
-
-            {card.parcelUrl ? (
-              <p className="mt-4 font-mono text-[10px] text-slate/50">
+            <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[11px] tracking-[0.08em] uppercase">
+              {card.r2Key ? (
                 <a
-                  href={card.parcelUrl}
-                  className="underline underline-offset-2 hover:text-navy"
+                  href={westportFieldCardHref(property.visionPid)}
+                  className="text-gold underline underline-offset-2 hover:text-navy"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Open on Vision GIS
+                  Open Field Card
                 </a>
-              </p>
-            ) : null}
+              ) : null}
+              {card.parcelUrl ? (
+                <a
+                  href={card.parcelUrl}
+                  className="text-slate/60 underline underline-offset-2 hover:text-navy"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Vision GIS
+                </a>
+              ) : null}
+            </p>
           </div>
 
           {property.siblings.length > 0 ? (

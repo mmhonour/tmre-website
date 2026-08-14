@@ -540,7 +540,7 @@ export default async function AdminPage() {
       finishedAt: visionAddressesSyncedAt,
       sortMs: timestampSortMs(visionAddressesSyncedAt),
       detail:
-        "VGSI cadastral index → vision_addresses + Field Card HTML; links listings.vision_pid (weekly Mon 1:30am ET)",
+        "VGSI cadastral index → vision_addresses.field_card JSON + R2 HTML pointer; links listings.vision_pid (weekly Mon 1:30am ET)",
       actionId: "vision-addresses",
       nextRunAt: nextRuns["vision-addresses"],
     },
