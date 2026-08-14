@@ -99,7 +99,12 @@ export default async function WestportParcelPage({
       ? `${property.beds.value}BR/${property.baths.value}BA`
       : null;
   const card = property.fieldCard;
-  const fieldSections = card.fields.reduce<
+  const visibleFields = card.fields.filter(
+    (field) =>
+      !/^(pan |row |grd |tbl |ctl|current Val)/i.test(field.label) &&
+      field.label.length < 48,
+  );
+  const fieldSections = visibleFields.reduce<
     { section: string; fields: typeof card.fields }[]
   >((acc, field) => {
     const last = acc[acc.length - 1];
@@ -205,7 +210,7 @@ export default async function WestportParcelPage({
             </h2>
             {card.storedJson ? (
               <p className="mb-3 font-mono text-[10px] tracking-[0.06em] text-slate/50">
-                Fields below are from vision_addresses.field_card JSON. Open Field Card is the VGSI PDF.
+                Fields below are assimilated from the VGSI Field Card (parcel page + official PDF).
               </p>
             ) : null}
             {fieldSections.length === 0 ? (

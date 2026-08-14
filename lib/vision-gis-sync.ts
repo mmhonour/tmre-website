@@ -15,6 +15,10 @@ import {
 } from '@/lib/db/vision-addresses-repo'
 import { isR2VisionStoreConfigured, putVisionFieldCardHtml } from '@/lib/r2-vision-store'
 import {
+  fetchVisionFieldCardPdfJson,
+  mergeFieldCardJson,
+} from '@/lib/vision-field-card-pdf'
+import {
   parcelLinksFromStreetHtml,
   parseVisionParcelHtml,
   streetNamesFromLetterHtml,
@@ -207,6 +211,10 @@ async function ingestParcel(
     baseUrl: cfg.baseUrl,
     sourceHost: `gis.vgsi.com/${cfg.hostSlug}`,
   })
+  const pdfCard = await fetchVisionFieldCardPdfJson(cfg.town, visionPid)
+  if (pdfCard) {
+    parsed.fieldCard = mergeFieldCardJson(parsed.fieldCard, pdfCard)
+  }
   const prev = await getVisionFingerprint(cfg.town, visionPid)
   const isNew = prev == null
   const changed = isNew || prev !== parsed.contentFingerprint

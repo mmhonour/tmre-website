@@ -151,17 +151,6 @@ export function streetNamesFromLetterHtml(html: string): string[] {
   return [...names].filter(Boolean).sort((a, b) => a.localeCompare(b))
 }
 
-function humanizeControlId(id: string): string {
-  const tail = id
-    .replace(/^MainContent_/i, '')
-    .replace(/^ctl\d+_/i, '')
-    .replace(/^lbl/i, '')
-  return tail
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .trim()
-}
-
 function inferSectionAt(html: string, index: number): string {
   const before = html.slice(Math.max(0, index - 1200), index)
   const matches = [
@@ -201,6 +190,37 @@ function pushField(
   fields.push({ section, label: cleanLabel, value: cleanValue })
 }
 
+const TABLE_LABEL_ALLOW = new Set(
+  [
+    'Style',
+    'Model',
+    'Grade',
+    'Stories',
+    'Occupancy',
+    'Exterior Wall 1',
+    'Exterior Wall 2',
+    'Roof Structure',
+    'Roof Cover',
+    'Interior Wall 1',
+    'Interior Flr 1',
+    'Heat Fuel',
+    'Heat Type',
+    'AC Type',
+    'Total Bedrooms',
+    'Total Bthrms',
+    'Total Half Baths',
+    'Total Xtra Fixtrs',
+    'Total Rooms',
+    'Bath Style',
+    'Kitchen Style',
+    'Year Built',
+    'Living Area',
+    'Kitchens',
+    'Fireplaces',
+    'Interior Cond',
+  ].map((s) => s.toLowerCase()),
+)
+
 /** All labeled Field Card pairs — stored as jsonb for display and Find search. */
 export function parseVisionFieldCardJson(html: string): VisionFieldCardJson {
   const fields: VisionFieldCardField[] = []
@@ -212,17 +232,17 @@ export function parseVisionFieldCardJson(html: string): VisionFieldCardJson {
   while ((m = idRe.exec(html)) !== null) {
     const id = m[1] ?? ''
     if (SKIP_CONTROL_RE.test(id)) continue
-    const raw = decodeHtml((m[2] ?? '').replace(/<[^>]+>/g, ' '))
     const meta = CONTROL_ID_META[id]
-    const section = meta?.section ?? inferSectionAt(html, m.index)
-    const label = meta?.label ?? humanizeControlId(id)
-    pushField(fields, seen, section, label, raw)
+    if (!meta) continue
+    const raw = decodeHtml((m[2] ?? '').replace(/<[^>]+>/g, ' '))
+    pushField(fields, seen, meta.section, meta.label, raw)
   }
 
   const tdRe =
     /<td[^>]*>\s*([^<]{1,80}?)\s*:?\s*<\/td>\s*<td[^>]*>\s*([^<]+)\s*<\/td>/gi
   while ((m = tdRe.exec(html)) !== null) {
-    const label = m[1] ?? ''
+    const label = decodeHtml(m[1] ?? '').replace(/:\s*$/, '')
+    if (!TABLE_LABEL_ALLOW.has(label.toLowerCase())) continue
     const value = m[2] ?? ''
     pushField(fields, seen, inferSectionAt(html, m.index), label, value)
   }

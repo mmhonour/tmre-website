@@ -16,6 +16,11 @@ import {
   normalizeStreetLine,
 } from '@/lib/property-address'
 import { visionListingKeys } from '@/lib/vision-listing-match'
+import {
+  fetchVisionFieldCardPdfJson,
+  fieldCardNeedsRefresh,
+  mergeFieldCardJson,
+} from '@/lib/vision-field-card-pdf'
 import { getVisionFieldCardHtml } from '@/lib/r2-vision-store'
 import type { Listing } from '@/lib/rets'
 import {
@@ -123,21 +128,26 @@ async function resolveWestportFieldCard(
   vision: VisionAddressRecord,
 ): Promise<WestportFieldCard> {
   let json = vision.fieldCard
-  if (!json || json.fields.length === 0) {
+  if (!json || json.fields.length === 0 || fieldCardNeedsRefresh(json)) {
     try {
+      const typed = fieldCardFromTypedVision(vision)
+      let htmlCard: ReturnType<typeof parseVisionFieldCardJson> | null = null
       const raw = await getVisionFieldCardHtml(
         WESTPORT_LOOKUP_TOWN,
         vision.visionPid,
       )
-      if (raw) {
-        json = parseVisionFieldCardJson(raw)
-        if (json.fields.length > 0) {
-          await persistVisionFieldCardJson(
-            WESTPORT_LOOKUP_TOWN,
-            vision.visionPid,
-            json,
-          )
-        }
+      if (raw) htmlCard = parseVisionFieldCardJson(raw)
+      const pdfCard = await fetchVisionFieldCardPdfJson(
+        WESTPORT_LOOKUP_TOWN,
+        vision.visionPid,
+      )
+      json = mergeFieldCardJson(typed, htmlCard, pdfCard)
+      if (json.fields.length > 0) {
+        await persistVisionFieldCardJson(
+          WESTPORT_LOOKUP_TOWN,
+          vision.visionPid,
+          json,
+        )
       }
     } catch (err) {
       console.warn('[westport-lookup] field card JSON backfill failed', err)
