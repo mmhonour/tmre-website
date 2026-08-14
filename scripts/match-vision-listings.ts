@@ -1,5 +1,6 @@
 /**
- * CLI: address_norm join listings ↔ vision_addresses.
+ * CLI: same Vision ↔ listings join as prod sync
+ * (`backfillVisionListingLinks` / lib/vision-listing-match.ts).
  *
  * One Vision PID at a key stamps `vision_pid` on every listing at that
  * address (re-lists included). Two or more Vision PIDs stay unmatched.

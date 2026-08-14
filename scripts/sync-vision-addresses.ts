@@ -15,7 +15,10 @@
  * Per-parcel lines log as the crawl runs. scraped_at is always UTC.
  */
 import { existsSync, readFileSync } from 'node:fs'
-import { syncVisionAddresses } from '../lib/vision-gis-sync'
+import {
+  syncVisionAddresses,
+  type VisionSyncSessionTotals,
+} from '../lib/vision-gis-sync'
 
 if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
@@ -145,6 +148,12 @@ async function main() {
     : CLI_DEFAULT_MAX_PARCELS
   const once = process.env.VISION_SYNC_ONCE === '1'
   let forceFull = process.env.VISION_SYNC_FORCE_FULL === '1'
+  const session: VisionSyncSessionTotals = {
+    checked: 0,
+    newParcels: 0,
+    changed: 0,
+    unchanged: 0,
+  }
 
   console.info(
     `[sync-vision-addresses] ${once ? 'single chunk' : `loop until town complete (max ${MAX_CHUNKS} chunks)`}` +
@@ -158,13 +167,20 @@ async function main() {
       town,
       maxParcels,
       forceFull,
+      sessionTotals: session,
     })
     forceFull = false
+    console.info(
+      `[sync-vision-addresses] running total checked=${session.checked}` +
+        ` new=${session.newParcels} changed=${session.changed}` +
+        ` unchanged=${session.unchanged} rows=${result.totalRows}`,
+    )
     console.info(JSON.stringify(result, null, 2))
     if (!result.ok) process.exit(1)
     if (result.townComplete) {
       console.info(
-        `[sync-vision-addresses] town complete after ${chunk} chunk(s) · totalRows=${result.totalRows}`,
+        `[sync-vision-addresses] town complete after ${chunk} chunk(s)` +
+          ` · checked=${session.checked} new=${session.newParcels} rows=${result.totalRows}`,
       )
       return
     }

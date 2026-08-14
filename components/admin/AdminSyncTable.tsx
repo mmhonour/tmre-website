@@ -621,6 +621,9 @@ export type AdminSyncRow = {
   label: string;
   value: string;
   detail?: string;
+  /** External source homepage (e.g. Westport VGSI GIS). */
+  sourceHref?: string;
+  sourceLabel?: string;
   actionId?: AdminSyncActionId;
   startedAt?: string | null;
   finishedAt?: string | null;
@@ -3681,6 +3684,17 @@ export default function AdminSyncTable({
                         </span>
                       ) : null}
                     </p>
+                    {row.sourceHref ? (
+                      <a
+                        href={row.sourceHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 block font-mono text-[9px] tracking-wide text-navy/70 break-all hover:underline"
+                        title="Town Vision GIS homepage"
+                      >
+                        {row.sourceLabel ?? row.sourceHref}
+                      </a>
+                    ) : null}
                     {isDashboard && (rowError || hangNotice) && rowExpands ? (
                       <p
                         className={`mt-1 md:hidden font-mono text-[9px] leading-snug break-words whitespace-pre-line ${

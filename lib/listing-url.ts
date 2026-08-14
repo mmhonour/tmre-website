@@ -1,3 +1,5 @@
+import { visionGisFieldCardPdfUrl } from "@/lib/vision-gis-towns";
+
 export function listingDetailHref(
   id: string,
   address?: string | null,
@@ -18,9 +20,12 @@ export function westportParcelHref(visionPid: string): string {
   return `/find/westport/${encodeURIComponent(visionPid.trim())}`;
 }
 
-/** Archived Field Card HTML — open in a new tab, not an iframe. */
+/** Native VGSI Field Card PDF (images.vgsi.com/cards/WestportCTCards/{pid}.pdf). */
 export function westportFieldCardHref(visionPid: string): string {
-  return `${westportParcelHref(visionPid)}/field-card`;
+  return (
+    visionGisFieldCardPdfUrl("Westport", visionPid) ??
+    `${westportParcelHref(visionPid)}/field-card`
+  );
 }
 
 /** Absolute short share URL for clipboard / Web Share (browser or given origin). */

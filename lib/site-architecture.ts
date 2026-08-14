@@ -1,3 +1,5 @@
+import { WESTPORT_VISION_GIS_HOME } from "@/lib/vision-gis-towns";
+
 /**
  * Visual inventory for Admin → Architecture → Site architecture.
  * DNS truth (checked 10 Aug 2026): authoritative nameservers are Netlify DNS
@@ -150,6 +152,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     label: "Vision Appraisal",
     role: "Assessor scrape (owners / addresses)",
     kind: "optional",
+    note: `Westport GIS homepage: ${WESTPORT_VISION_GIS_HOME} (lib/vision-gis-towns.ts). Field Cards are Parcel.aspx?pid=N on that host.`,
   },
   {
     id: "greatschools",

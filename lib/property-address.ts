@@ -55,6 +55,80 @@ const STREET_SUFFIX: Record<string, string> = {
   sw: 'sw',
 }
 
+/**
+ * Mid-name USPS-style words (not street types). MLS `BLIND BRK RD S` and
+ * VGSI `Blind Brook Rd S` must land on the same match key.
+ * Skip short/ambiguous collapses (park→pk, hill→hl, island→is, cross→xing).
+ */
+const STREET_NAME_WORDS: Record<string, string> = {
+  brook: 'brk',
+  brk: 'brk',
+  brooks: 'brks',
+  brks: 'brks',
+  mount: 'mt',
+  mt: 'mt',
+  mountain: 'mtn',
+  mtn: 'mtn',
+  heights: 'hts',
+  hts: 'hts',
+  crossing: 'xing',
+  xing: 'xing',
+  point: 'pt',
+  pt: 'pt',
+  ridge: 'rdg',
+  rdg: 'rdg',
+  harbor: 'hbr',
+  harbour: 'hbr',
+  hbr: 'hbr',
+  creek: 'crk',
+  crk: 'crk',
+  landing: 'lndg',
+  lndg: 'lndg',
+  meadow: 'mdw',
+  mdw: 'mdw',
+  meadows: 'mdws',
+  mdws: 'mdws',
+  valley: 'vly',
+  vly: 'vly',
+  center: 'ctr',
+  centre: 'ctr',
+  ctr: 'ctr',
+}
+
+/** Street types only — not compass. Used to drop a trailing `rd` VGSI omitted. */
+const STREET_TYPE_CANON = new Set([
+  'st',
+  'rd',
+  'ave',
+  'dr',
+  'ln',
+  'ct',
+  'blvd',
+  'pl',
+  'cir',
+  'way',
+  'ter',
+  'trl',
+  'hwy',
+  'pkwy',
+  'sq',
+  'tpke',
+  'ext',
+])
+
+/**
+ * Drop a final street type only (`1 hemlock hill rd` → `1 hemlock hill`).
+ * Does not strip a type before a compass (`1 kings hwy n` stays intact).
+ */
+export function stripTrailingStreetType(street: string): string {
+  const tokens = normalizeStreetLine(street).split(' ').filter(Boolean)
+  const last = tokens[tokens.length - 1]
+  if (tokens.length >= 3 && last && STREET_TYPE_CANON.has(last)) {
+    tokens.pop()
+  }
+  return tokens.join(' ')
+}
+
 export type PropertyAddressSource = 'mls' | 'assessor' | 'both'
 
 export type PropertyAddressRow = {
@@ -88,7 +162,7 @@ export function normalizeStreetLine(street: string): string {
     .trim()
     .split(' ')
     .filter(Boolean)
-    .map((token) => STREET_SUFFIX[token] ?? token)
+    .map((token) => STREET_SUFFIX[token] ?? STREET_NAME_WORDS[token] ?? token)
     .join(' ')
     .trim()
 }
@@ -102,7 +176,8 @@ export function normalizePropertyAddress(town: string, street: string, zip?: str
 
 /**
  * Join key for Vision ↔ listings. Re-runs street-token canonicalization so a
- * stored Vision `28 bulkley ave north|westport` matches MLS `28 BULKLEY AVE N`.
+ * stored Vision `28 bulkley ave north|westport` matches MLS `28 BULKLEY AVE N`,
+ * and `1 Blind Brook Rd S` matches MLS `1 BLIND BRK RD S`.
  * Also strips a trailing `|06880` (Vision usually has no zip, MLS usually does).
  */
 export function addressMatchKey(addressNorm: string): string {
@@ -111,6 +186,17 @@ export function addressMatchKey(addressNorm: string): string {
   const canonStreet = normalizeStreetLine(street ?? '')
   const canonTown = (town ?? '').trim().toLowerCase()
   return [canonStreet, canonTown, ...rest].filter((part) => part.length > 0).join('|')
+}
+
+/**
+ * Exact key with optional trailing street type removed.
+ * MLS `1 Hemlock Hill Road` ↔ VGSI `1 HEMLOCK HILL` (PID 8368).
+ */
+export function addressMatchKeyLoose(addressNorm: string): string {
+  const exact = addressMatchKey(addressNorm)
+  const [street, ...rest] = exact.split('|')
+  const looseStreet = stripTrailingStreetType(street ?? '')
+  return [looseStreet, ...rest].filter((part) => part.length > 0).join('|')
 }
 
 export function propertyKeyFromParcel(parcel: string | null | undefined): string | null {

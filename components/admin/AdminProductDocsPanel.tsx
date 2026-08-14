@@ -6,16 +6,31 @@ function ProductPageGrid() {
     <ul className="divide-y divide-charcoal/[0.08]">
       {ADMIN_PRODUCT_PAGES.map((link) => (
         <li key={link.href}>
-          <Link
-            href={link.href}
-            className="flex flex-col gap-1 px-5 py-4 transition-colors hover:bg-cream/30 sm:px-6"
-          >
-            <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
-              {link.label}
-            </span>
-            <span className="text-sm text-charcoal/65">{link.description}</span>
-            <span className="font-mono text-[10px] text-charcoal/40">{link.href}</span>
-          </Link>
+          {link.external ? (
+            <a
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col gap-1 px-5 py-4 transition-colors hover:bg-cream/30 sm:px-6"
+            >
+              <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
+                {link.label}
+              </span>
+              <span className="text-sm text-charcoal/65">{link.description}</span>
+              <span className="font-mono text-[10px] text-charcoal/40">{link.href}</span>
+            </a>
+          ) : (
+            <Link
+              href={link.href}
+              className="flex flex-col gap-1 px-5 py-4 transition-colors hover:bg-cream/30 sm:px-6"
+            >
+              <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
+                {link.label}
+              </span>
+              <span className="text-sm text-charcoal/65">{link.description}</span>
+              <span className="font-mono text-[10px] text-charcoal/40">{link.href}</span>
+            </Link>
+          )}
         </li>
       ))}
     </ul>

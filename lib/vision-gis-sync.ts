@@ -96,6 +96,14 @@ function stampLiveProgress(live: VisionAddressesLiveProgress): void {
 
 export type VisionTownPhase = 'full' | 'incremental'
 
+/** Lifetime counters across CLI chunks (not reset when a chunk cap hits). */
+export type VisionSyncSessionTotals = {
+  checked: number
+  newParcels: number
+  changed: number
+  unchanged: number
+}
+
 export type VisionTownCrawlState = {
   phase: VisionTownPhase
   /** Index into VISION_GIS_STREET_LETTERS */
@@ -189,6 +197,7 @@ async function ingestParcel(
     maxParcels: number
     street: string | null
     letter: string | null
+    session?: VisionSyncSessionTotals
   },
 ): Promise<void> {
   const html = await fetchText(`${cfg.baseUrl}/Parcel.aspx?pid=${visionPid}`)
@@ -211,6 +220,12 @@ async function ingestParcel(
     [parsed.streetNo, parsed.streetName].filter(Boolean).join(' ').trim() ||
     null
   const n = counts.fetched
+  if (ctx.session) {
+    ctx.session.checked += 1
+    if (isNew) ctx.session.newParcels += 1
+    if (changed) ctx.session.changed += 1
+    else ctx.session.unchanged += 1
+  }
   // scraped_at is always ISO-8601 UTC (…Z / Postgres timestamptz +00).
   const scrapedAt = new Date().toISOString()
   stampLiveProgress({
@@ -225,8 +240,10 @@ async function ingestParcel(
     updatedAt: scrapedAt,
     status: 'running',
   })
+  const checked = ctx.session?.checked ?? n
   console.info(
-    `[vision-gis-sync] ${n}/${ctx.maxParcels} pid=${visionPid}` +
+    `[vision-gis-sync] checked ${checked}` +
+      ` · chunk ${n}/${ctx.maxParcels} pid=${visionPid}` +
       (address ? ` · ${address}` : '') +
       (ctx.street && !address ? ` · ${ctx.street}` : '') +
       ` · ${cfg.town} ${ctx.phase}` +
@@ -252,6 +269,41 @@ async function ingestParcel(
   await sleep(delayMs)
 }
 
+export async function listVisionParcelsOnStreet(
+  town: string,
+  streetName: string,
+): Promise<{ visionPid: string; addressLabel: string }[]> {
+  const cfg = visionGisTownConfig(town)
+  if (!cfg) return []
+  const html = await fetchText(
+    `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(streetName)}`,
+  )
+  return parcelLinksFromStreetHtml(html)
+}
+
+/** Ingest one VGSI PID into vision_addresses (Field Card JSON + optional R2). */
+export async function ingestVisionParcelPid(
+  town: string,
+  visionPid: string,
+  options?: { delayMs?: number; session?: VisionSyncSessionTotals },
+): Promise<{ isNew: boolean; changed: boolean; address: string | null }> {
+  const cfg = visionGisTownConfig(town)
+  if (!cfg) throw new Error(`No VGSI host for town "${town}"`)
+  const counts = { fetched: 0, changed: 0, unchanged: 0, neu: 0, r2: 0 }
+  await ingestParcel(cfg, visionPid, options?.delayMs ?? DEFAULT_DELAY_MS, counts, {
+    phase: 'incremental',
+    maxParcels: 1,
+    street: null,
+    letter: null,
+    session: options?.session,
+  })
+  return {
+    isNew: counts.neu > 0,
+    changed: counts.changed > 0,
+    address: null,
+  }
+}
+
 /** Walk letter → street → parcels. Resume mid-street so a chunk cap cannot skip tails. */
 async function sweepStreets(
   cfg: VisionGisTownConfig,
@@ -265,6 +317,7 @@ async function sweepStreets(
     neu: number
     r2: number
   },
+  session?: VisionSyncSessionTotals,
 ): Promise<void> {
   while (
     counts.fetched < maxParcels &&
@@ -315,6 +368,7 @@ async function sweepStreets(
         maxParcels,
         street,
         letter,
+        session,
       })
     }
 
@@ -334,6 +388,8 @@ export type SyncVisionAddressesOptions = {
   /** Force restart full fill for the town */
   forceFull?: boolean
   skipListingBackfill?: boolean
+  /** CLI running totals — incremented for every parcel checked, across chunks. */
+  sessionTotals?: VisionSyncSessionTotals
 }
 
 export async function syncVisionAddresses(
@@ -404,7 +460,14 @@ export async function syncVisionAddresses(
 
   try {
     if (state.phase === 'full') {
-      await sweepStreets(cfg, state, delayMs, maxParcels, counts)
+      await sweepStreets(
+        cfg,
+        state,
+        delayMs,
+        maxParcels,
+        counts,
+        options.sessionTotals,
+      )
 
       if (state.letterIndex >= VISION_GIS_STREET_LETTERS.length) {
         state.phase = 'incremental'
@@ -435,6 +498,7 @@ export async function syncVisionAddresses(
             maxParcels,
             street: null,
             letter: null,
+            session: options.sessionTotals,
           })
           state.incrementalAfterPid = pid
         }
@@ -446,7 +510,14 @@ export async function syncVisionAddresses(
           state.streetParcelOffset = 0
           state.streetsForLetter = undefined
         }
-        await sweepStreets(cfg, state, delayMs, maxParcels, counts)
+        await sweepStreets(
+          cfg,
+          state,
+          delayMs,
+          maxParcels,
+          counts,
+          options.sessionTotals,
+        )
         if (state.letterIndex >= VISION_GIS_STREET_LETTERS.length) {
           state.letterIndex = 0
           state.streetIndex = 0

@@ -37,6 +37,8 @@
     "sync:property-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-property-addresses.ts",
     "sync:vision-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-vision-addresses.ts",
     "match:vision-listings": "tsx --require ./scripts/stub-server-only.cjs scripts/match-vision-listings.ts",
+    "match:vision-abbrev": "tsx --require ./scripts/stub-server-only.cjs scripts/match-vision-abbrev.ts",
+    "backfill:missed-vision-pids": "tsx --require ./scripts/stub-server-only.cjs scripts/backfill-missed-vision-pids.ts",
     "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts"
   },
   "dependencies": {

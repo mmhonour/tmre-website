@@ -115,6 +115,7 @@ import {
   PRICING_MATCHING_FIELD_META,
 } from "@/lib/pricing-matching-config";
 import { type AdminSyncRow, type PanelStatus } from "@/components/admin/AdminSyncTable";
+import { WESTPORT_VISION_GIS_HOME } from "@/lib/vision-gis-towns";
 import AdminStatsInventoryPanel from "@/components/admin/AdminStatsInventoryPanel";
 import AdminTrafficPanel from "@/components/admin/AdminTrafficPanel";
 import AdminVisitorsPanel from "@/components/admin/AdminVisitorsPanel";
@@ -541,6 +542,8 @@ export default async function AdminPage() {
       sortMs: timestampSortMs(visionAddressesSyncedAt),
       detail:
         "VGSI cadastral index → vision_addresses.field_card JSON + R2 HTML pointer; links listings.vision_pid (weekly Mon 1:30am ET)",
+      sourceHref: WESTPORT_VISION_GIS_HOME,
+      sourceLabel: WESTPORT_VISION_GIS_HOME,
       actionId: "vision-addresses",
       nextRunAt: nextRuns["vision-addresses"],
     },

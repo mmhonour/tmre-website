@@ -245,13 +245,25 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Vision PID / vision_pid',
     category: 'mls-data',
     definition:
-      'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and mirrored onto every `listings.vision_pid` at that address when the match key has exactly one Vision PID (re-lists included; 2+ PIDs stay unmatched). Sync job: vision-addresses (chunked full fill → fingerprint incremental; parsed Field Card in `field_card` jsonb; HTML pointer in R2 for reference).',
+      'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and mirrored onto every `listings.vision_pid` at that address when the Vision listing-match stack finds exactly one Vision PID (re-lists included; 2+ PIDs stay unmatched). See Vision listing match.',
+  },
+  {
+    term: 'Westport Vision GIS homepage',
+    category: 'sync-admin',
+    definition:
+      'VGSI town GIS root for Westport: `https://gis.vgsi.com/westportct` (Streets.aspx / search). Stored in `lib/vision-gis-towns.ts` as `WESTPORT_VISION_GIS_HOME` / `VISION_GIS_TOWNS[].baseUrl` and shown on Admin → Syncs → Dashboard (Vision addresses row) and Syncs → Overview. Not a Field Card — those are `Parcel.aspx?pid=N` under the same host.',
+  },
+  {
+    term: 'Vision listing match',
+    category: 'sync-admin',
+    definition:
+      'Ordered join from vision_addresses → listings, run at the end of every prod Vision GIS sync (`backfillVisionListingLinks` in lib/vision-listing-match.ts / vision-addresses-repo). Same function as `npm run match:vision-listings`. Steps: (1) strip trailing ZIP so Vision `…|westport` meets MLS `…|westport|06880`; (2) canonicalize street-type and compass tokens (`Avenue North` → `ave n`); (3) mid-name USPS words (`BRK`↔`brook`); (4) exact addressMatchKey; (5) optional trailing street type (`Hemlock Hill Road` = `HEMLOCK HILL`); (6) unique compact MBLU vs listing raw.ParcelNumber; (7) stamp only when exactly one Vision PID; (8) write that PID on every listing at the key (re-lists included). Near/Jaccard street similarity is diagnostic only (`npm run match:vision-abbrev`) and is not applied in prod.',
   },
   {
     term: 'vision-addresses (sync)',
     category: 'sync-admin',
     definition:
-      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify, hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory).',
+      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify, hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Each successful chunk ends with Vision listing match (same stack as prod). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory). Homepage: Westport Vision GIS homepage.',
   },
   {
     term: 'Brokerage name',

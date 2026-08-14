@@ -2,10 +2,14 @@ import 'server-only'
 
 import { execute, query, queryOne } from '@/lib/db/postgres'
 import {
-  addressMatchKey,
   normalizePropertyAddress,
   normalizeStreetLine,
 } from '@/lib/property-address'
+import {
+  addressMatchKey,
+  addressMatchKeyLoose,
+  compactMblu,
+} from '@/lib/vision-listing-match'
 import type {
   VisionFieldCardJson,
   VisionParcelParse,
@@ -340,6 +344,7 @@ type ListingLinkRow = {
   id: string
   mls_id: string | null
   visionPid: string | null
+  parcelNumber: string | null
   statusBucket: string | null
   modifiedAt: Date | string | null
 }
@@ -368,9 +373,9 @@ function pickPreferredListing(listings: ListingLinkRow[]): ListingLinkRow {
 }
 
 /**
- * Join listings ↔ vision when the address has exactly one Vision PID.
- * Every listing at that address gets `vision_pid` (re-lists included).
- * Two or more Vision PIDs at the same key stay unmatched (condos / split lots).
+ * Prod Vision ↔ listings join. Heuristic stack: lib/vision-listing-match.ts
+ * (zip strip, street type/compass, name words, exact key, trailing type, MBLU).
+ * Exactly one Vision PID stamps every listing at that key (re-lists included).
  */
 export async function backfillVisionListingLinks(
   town: string,
@@ -384,8 +389,9 @@ export async function backfillVisionListingLinks(
     address_norm: string | null
     street_no: string | null
     listing_id: string | null
+    mblu: string | null
   }>(
-    `SELECT vision_pid, address_norm, street_no, listing_id
+    `SELECT vision_pid, address_norm, street_no, listing_id, mblu
        FROM vision_addresses
       WHERE town = $1
         AND street_no IS NOT NULL
@@ -399,10 +405,12 @@ export async function backfillVisionListingLinks(
     address_street: string | null
     postal_code: string | null
     vision_pid: string | null
+    parcel_number: string | null
     status_bucket: string | null
     modification_timestamp: Date | string | null
   }>(
     `SELECT id, mls_id, address_street, postal_code, vision_pid,
+            NULLIF(btrim(raw->>'ParcelNumber'), '') AS parcel_number,
             status_bucket, modification_timestamp
        FROM listings
       WHERE lower(town) = lower($1)
@@ -433,6 +441,7 @@ export async function backfillVisionListingLinks(
       id: l.id,
       mls_id: l.mls_id,
       visionPid: l.vision_pid,
+      parcelNumber: l.parcel_number,
       statusBucket: l.status_bucket,
       modifiedAt: l.modification_timestamp,
     })
@@ -450,6 +459,7 @@ export async function backfillVisionListingLinks(
     []
 
   const matchedNorms = new Set<string>()
+  const linkedListingIds = new Set<string>()
 
   for (const [norm, pids] of visionByNorm) {
     const listings = listingByNorm.get(norm) ?? []
@@ -470,6 +480,7 @@ export async function backfillVisionListingLinks(
 
     uniqueMatches += 1
     matchedNorms.add(norm)
+    for (const listing of listings) linkedListingIds.add(listing.id)
     const vision = pids[0]!
     const preferred = pickPreferredListing(listings)
     if (matchedSamples.length < sampleLimit) {
@@ -510,16 +521,160 @@ export async function backfillVisionListingLinks(
     )
   }
 
+  const visionByLoose = new Map<
+    string,
+    { visionPid: string; listingId: string | null }[]
+  >()
+  for (const v of visionRows) {
+    if (!v.address_norm) continue
+    const loose = addressMatchKeyLoose(v.address_norm)
+    const list = visionByLoose.get(loose) ?? []
+    list.push({ visionPid: v.vision_pid, listingId: v.listing_id })
+    visionByLoose.set(loose, list)
+  }
+
+  const listingByLoose = new Map<string, ListingLinkRow[]>()
+  for (const [exact, listings] of listingByNorm) {
+    if (matchedNorms.has(exact)) continue
+    const loose = addressMatchKeyLoose(exact)
+    const list = listingByLoose.get(loose) ?? []
+    list.push(...listings)
+    listingByLoose.set(loose, list)
+  }
+
+  for (const [loose, listings] of listingByLoose) {
+    const pids = visionByLoose.get(loose) ?? []
+    const uniquePids = [...new Set(pids.map((p) => p.visionPid))]
+    if (uniquePids.length !== 1) continue
+    if (listings.length === 0) continue
+
+    uniqueMatches += 1
+    matchedNorms.add(loose)
+    for (const listing of listings) linkedListingIds.add(listing.id)
+    const vision = pids.find((p) => p.visionPid === uniquePids[0])!
+    const preferred = pickPreferredListing(listings)
+    if (matchedSamples.length < sampleLimit) {
+      matchedSamples.push({
+        addressNorm: loose,
+        visionPid: vision.visionPid,
+        listingId: preferred.id,
+        mlsId: preferred.mls_id,
+      })
+    }
+
+    const visionAlready = vision.listingId === preferred.id
+    const listingsAlready = listings.every(
+      (listing) =>
+        listing.visionPid != null &&
+        listing.visionPid !== '' &&
+        listing.visionPid === vision.visionPid,
+    )
+    if (visionAlready && listingsAlready) {
+      alreadyLinked += 1
+      continue
+    }
+
+    if (dryRun) continue
+
+    visionLinked += await execute(
+      `UPDATE vision_addresses
+          SET listing_id = $3, mls_id = COALESCE($4, mls_id)
+        WHERE town = $1 AND vision_pid = $2`,
+      [town, vision.visionPid, preferred.id, preferred.mls_id],
+    )
+    listingsLinked += await execute(
+      `UPDATE listings
+          SET vision_pid = $2
+        WHERE id = ANY($1::text[])
+          AND (vision_pid IS NULL OR vision_pid = '')`,
+      [listings.map((listing) => listing.id), vision.visionPid],
+    )
+  }
+
+  const visionByMblu = new Map<
+    string,
+    { visionPid: string; listingId: string | null }[]
+  >()
+  for (const v of visionRows) {
+    const mblu = compactMblu(v.mblu)
+    if (!mblu) continue
+    const list = visionByMblu.get(mblu) ?? []
+    list.push({ visionPid: v.vision_pid, listingId: v.listing_id })
+    visionByMblu.set(mblu, list)
+  }
+
+  const listingByMblu = new Map<string, ListingLinkRow[]>()
+  for (const listings of listingByNorm.values()) {
+    for (const listing of listings) {
+      if (linkedListingIds.has(listing.id)) continue
+      const mblu = compactMblu(listing.parcelNumber)
+      if (!mblu) continue
+      const list = listingByMblu.get(mblu) ?? []
+      list.push(listing)
+      listingByMblu.set(mblu, list)
+    }
+  }
+
+  for (const [mblu, listings] of listingByMblu) {
+    const pids = visionByMblu.get(mblu) ?? []
+    const uniquePids = [...new Set(pids.map((p) => p.visionPid))]
+    if (uniquePids.length !== 1) continue
+    if (listings.length === 0) continue
+
+    uniqueMatches += 1
+    matchedNorms.add(`mblu:${mblu}`)
+    for (const listing of listings) linkedListingIds.add(listing.id)
+    const vision = pids.find((p) => p.visionPid === uniquePids[0])!
+    const preferred = pickPreferredListing(listings)
+    if (matchedSamples.length < sampleLimit) {
+      matchedSamples.push({
+        addressNorm: `mblu:${mblu}`,
+        visionPid: vision.visionPid,
+        listingId: preferred.id,
+        mlsId: preferred.mls_id,
+      })
+    }
+
+    const visionAlready = vision.listingId === preferred.id
+    const listingsAlready = listings.every(
+      (listing) =>
+        listing.visionPid != null &&
+        listing.visionPid !== '' &&
+        listing.visionPid === vision.visionPid,
+    )
+    if (visionAlready && listingsAlready) {
+      alreadyLinked += 1
+      continue
+    }
+
+    if (dryRun) continue
+
+    visionLinked += await execute(
+      `UPDATE vision_addresses
+          SET listing_id = $3, mls_id = COALESCE($4, mls_id)
+        WHERE town = $1 AND vision_pid = $2`,
+      [town, vision.visionPid, preferred.id, preferred.mls_id],
+    )
+    listingsLinked += await execute(
+      `UPDATE listings
+          SET vision_pid = $2
+        WHERE id = ANY($1::text[])
+          AND (vision_pid IS NULL OR vision_pid = '')`,
+      [listings.map((listing) => listing.id), vision.visionPid],
+    )
+  }
+
   let unmatchedVision = 0
   for (const [norm, pids] of visionByNorm) {
     if (pids.length !== 1) continue
-    if (!matchedNorms.has(norm)) unmatchedVision += 1
+    if (matchedNorms.has(norm) || matchedNorms.has(addressMatchKeyLoose(norm))) {
+      continue
+    }
+    unmatchedVision += 1
   }
   let unmatchedListings = 0
-  for (const [norm, listings] of listingByNorm) {
-    const pids = visionByNorm.get(norm) ?? []
-    if (pids.length === 1) continue
-    unmatchedListings += listings.length
+  for (const listings of listingByNorm.values()) {
+    unmatchedListings += listings.filter((l) => !linkedListingIds.has(l.id)).length
   }
 
   return {

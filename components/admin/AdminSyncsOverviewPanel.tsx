@@ -1,6 +1,7 @@
 import AdminCronHealthPanel from "@/components/admin/AdminCronHealthPanel";
 import AdminNumberedPanel from "@/components/admin/AdminNumberedPanel";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
+import AdminVisionGisSourcesPanel from "@/components/admin/AdminVisionGisSourcesPanel";
 import AdminZipBoundariesSyncPanel from "@/components/admin/AdminZipBoundariesSyncPanel";
 import { ADMIN_NETLIFY_FUNCTIONS, adminSectionHref } from "@/lib/admin-nav";
 import type { StartupFlowLane } from "@/lib/startup-process";
@@ -153,6 +154,16 @@ export default function AdminSyncsOverviewPanel({
           lastSyncStartedAt={zipLastSyncStartedAt}
           nextRunAt={zipNextRunAt}
         />
+      </AdminNumberedPanel>
+
+      <AdminNumberedPanel
+        number={4}
+        id="admin-vision-gis"
+        title="Westport Vision GIS"
+        subtitle="VGSI cadastral homepage used by the vision-addresses crawl and Find"
+        paused={pausedJobs["vision-addresses"]}
+      >
+        <AdminVisionGisSourcesPanel />
       </AdminNumberedPanel>
     </div>
   );

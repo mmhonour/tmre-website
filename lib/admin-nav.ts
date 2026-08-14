@@ -1,3 +1,5 @@
+import { WESTPORT_VISION_GIS_HOME } from "@/lib/vision-gis-towns";
+
 export type AdminTabId =
   | "postgres"
   | "stats"
@@ -740,6 +742,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "overview",
   },
   {
+    id: "admin-vision-gis",
+    label: "Westport Vision GIS homepage",
+    tab: "syncs",
+    panel: "overview",
+  },
+  {
     id: "admin-api-routes",
     label: "API routes",
     tab: "server",
@@ -789,6 +797,13 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
     label: "Find",
     href: "/find",
     description: "Westport Vision GIS address lookup and parcel page",
+  },
+  {
+    label: "Westport Vision GIS",
+    href: WESTPORT_VISION_GIS_HOME,
+    description:
+      "VGSI cadastral homepage (Streets.aspx). Field Cards are Parcel.aspx?pid=N on this host.",
+    external: true,
   },
   {
     label: "List with me",

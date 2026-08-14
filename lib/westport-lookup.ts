@@ -12,10 +12,10 @@ import { query, queryOne } from '@/lib/db/postgres'
 import { buildListingPhotoProxyUrls } from '@/lib/listing-photos-cache'
 import { listingDetailHref } from '@/lib/listing-url'
 import {
-  addressMatchKey,
   normalizePropertyAddress,
   normalizeStreetLine,
 } from '@/lib/property-address'
+import { visionListingKeys } from '@/lib/vision-listing-match'
 import { getVisionFieldCardHtml } from '@/lib/r2-vision-store'
 import type { Listing } from '@/lib/rets'
 import {
@@ -46,6 +46,8 @@ export type MergedField<T> = {
 
 export type WestportFieldCard = {
   fields: VisionFieldCardField[]
+  /** True when `vision_addresses.field_card` jsonb already had parsed fields. */
+  storedJson: boolean
   photoUrl: string | null
   parcelUrl: string
   r2Key: string | null
@@ -146,6 +148,7 @@ async function resolveWestportFieldCard(
   }
   return {
     fields: json.fields,
+    storedJson: json.fields.length > 0,
     photoUrl: vision.photoUrl,
     parcelUrl: vision.parcelUrl,
     r2Key: vision.fieldCardR2Key,
@@ -287,28 +290,31 @@ export async function searchWestportLookup(
   const seenMls = new Set(
     out.flatMap((h) => [h.mlsId, h.listingId].filter((v): v is string => Boolean(v))),
   )
-  const seenNorms = new Set(
-    visionHits
-      .map((v) => (v.addressNorm ? addressMatchKey(v.addressNorm) : ''))
-      .filter(Boolean),
-  )
+  const seenNorms = new Set<string>()
+  for (const v of visionHits) {
+    if (!v.addressNorm) continue
+    const keys = visionListingKeys(v.addressNorm)
+    seenNorms.add(keys.exact)
+    seenNorms.add(keys.loose)
+  }
 
   const listingRows = await searchWestportListingRows(q, limit)
   const groups = new Map<string, WestportListingSearchRow[]>()
   for (const row of listingRows) {
     const street = row.address_street || row.address_full || ''
     if (!street.trim()) continue
-    const key = addressMatchKey(
+    const keys = visionListingKeys(
       normalizePropertyAddress(WESTPORT_LOOKUP_TOWN, street, null),
     )
-    const list = groups.get(key) ?? []
+    const list = groups.get(keys.exact) ?? []
     list.push(row)
-    groups.set(key, list)
+    groups.set(keys.exact, list)
   }
 
   for (const [key, group] of groups) {
     if (out.length >= limit) break
-    if (seenNorms.has(key)) continue
+    const loose = visionListingKeys(key).loose
+    if (seenNorms.has(key) || seenNorms.has(loose)) continue
     const preferred = group.slice().sort((a, b) => {
       return listingRowStatusRank(a.status_bucket) - listingRowStatusRank(b.status_bucket)
     })[0]!

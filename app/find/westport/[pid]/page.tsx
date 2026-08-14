@@ -203,6 +203,11 @@ export default async function WestportParcelPage({
             <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
               Vision field card
             </h2>
+            {card.storedJson ? (
+              <p className="mb-3 font-mono text-[10px] tracking-[0.06em] text-slate/50">
+                Fields below are from vision_addresses.field_card JSON. Open Field Card is the VGSI PDF.
+              </p>
+            ) : null}
             {fieldSections.length === 0 ? (
               <p className="font-mono text-sm text-slate/60">
                 No parsed Field Card fields yet.
@@ -227,24 +232,22 @@ export default async function WestportParcelPage({
             )}
 
             <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[11px] tracking-[0.08em] uppercase">
-              {card.r2Key ? (
+              <a
+                href={westportFieldCardHref(property.visionPid)}
+                className="text-gold underline underline-offset-2 hover:text-navy"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Field Card
+              </a>
+              {card.parcelUrl ? (
                 <a
-                  href={westportFieldCardHref(property.visionPid)}
+                  href={card.parcelUrl}
                   className="text-gold underline underline-offset-2 hover:text-navy"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Open Field Card
-                </a>
-              ) : null}
-              {card.parcelUrl ? (
-                <a
-                  href={card.parcelUrl}
-                  className="text-slate/60 underline underline-offset-2 hover:text-navy"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Vision GIS
+                  Native Field Card
                 </a>
               ) : null}
             </p>
