@@ -275,7 +275,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Site menu',
     category: 'sync-admin',
     definition:
-      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide, add/remove. Add group creates an empty custom Explore column; Remove is only on custom groups. Pages can be added to any group, including custom ones. The Add page picker is every stable public path in lib/site-pages.ts that is not already in the menu (same list as sitemap.xml) — Market Pulse, Fed Analysis, Existing Homes, Deal Model, etc. Dynamic listing/spotlight URLs, /admin, /visitors, and /test stay out so a menu edit cannot 404. Catalog rows hide rather than delete. Stored in sync_meta key site_nav (lib/site-nav-config.ts).',
+      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide, add/remove. Add group creates an empty custom Explore column; Remove is only on custom groups. Pages can be added to any group, including custom ones, and the same href may appear in more than one group. The Add page picker is every stable public path in lib/site-pages.ts that is not already in that slot (same list as sitemap.xml) — Market Pulse, Fed Analysis, Mortgage Rates, Trends, Deal Model, etc. Dynamic listing/spotlight URLs, /admin, /visitors, and /test stay out so a menu edit cannot 404. Catalog rows hide rather than delete. Stored in sync_meta key site_nav (lib/site-nav-config.ts).',
   },
   {
     term: 'Mortgage page',
@@ -287,19 +287,19 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'FRED (mortgage rate series)',
     category: 'sync-admin',
     definition:
-      'St. Louis Fed data API behind /mortgage-rates and /existing-homes. Needs FRED_API_KEY. Mortgage series in Postgres mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie PMMS — only live national fixed averages; no live 10-yr mortgage; MORTGAGE5US 5/1 ARM discontinued Nov 2022), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue MMI — daily averages of actual PPE rate locks, not a survey), DGS30/DGS15/DGS10/DGS5 (Treasury constant-maturity / on-the-run equivalents). NAR existing-home series in Postgres nar_housing: EXHOSLUSM495S, HOSINVUSM495N, HOSSUPUSM673N, HOSMEDUSM052N, plus Northeast EXHOSLUSNEM495S / HOSMEDUSNEM052N. Mortgage sync pulls from 1971 so Max lookback works (OBMMI itself starts ~2015). Both pages lazy-refresh when data >12h old; Admin → Communications → Mortgage page has “Refresh rates from FRED”. NAR Pending Home Sales is not on FRED — /existing-homes scrapes nar.realtor and stores the snapshot in sync_meta key nar_pending_phsi_v1.',
+      'St. Louis Fed data API behind /mortgage-rates and /trends. Needs FRED_API_KEY. Mortgage series in Postgres mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie PMMS — only live national fixed averages; no live 10-yr mortgage; MORTGAGE5US 5/1 ARM discontinued Nov 2022), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue MMI — daily averages of actual PPE rate locks, not a survey), DGS30/DGS15/DGS10/DGS5 (Treasury constant-maturity / on-the-run equivalents). NAR existing-home series in Postgres nar_housing: EXHOSLUSM495S, HOSINVUSM495N, HOSSUPUSM673N, HOSMEDUSM052N, plus Northeast EXHOSLUSNEM495S / HOSMEDUSNEM052N. Mortgage sync pulls from 1971 so Max lookback works (OBMMI itself starts ~2015). Both pages lazy-refresh when data >12h old; Admin → Communications → Mortgage page has “Refresh rates from FRED”. NAR Pending Home Sales is not on FRED — /trends scrapes nar.realtor and stores the snapshot in sync_meta key nar_pending_phsi_v1.',
   },
   {
-    term: 'Existing homes (Markets tab)',
+    term: 'Trends (Markets tab)',
     category: 'ui-tabs',
     definition:
-      'Public /existing-homes — official NAR existing-home sales, inventory, months of supply, and median prices via FRED, plus NAR Pending Home Sales Index (source-labeled, not FRED). Shares the Markets folder-tab bar with /mortgage-rates and /fed-analysis. Northeast sales/price are the same NAR report, census region. Table nar_housing; pending snapshot in sync_meta.',
+      'Public /trends — official NAR existing-home sales, inventory, months of supply, and median prices via FRED, plus NAR Pending Home Sales Index (source-labeled, not FRED). Shares the Markets folder-tab bar with /mortgage-rates and /fed-analysis. Northeast sales/price are the same NAR report, census region. Table nar_housing; pending snapshot in sync_meta. /existing-homes redirects here.',
   },
   {
     term: 'PHSI / Pending Home Sales',
     category: 'product',
     definition:
-      'NAR Pending Home Sales Index — signed contracts on existing homes, typically leading closings by 1–2 months. Published only on nar.realtor (not on FRED). Do not confuse with Realtor.com pending-listing counts (PENLISCOU*) on FRED. TMRE shows the NAR print on /existing-homes with an explicit NAR source label.',
+      'NAR Pending Home Sales Index — signed contracts on existing homes, typically leading closings by 1–2 months. Published only on nar.realtor (not on FRED). Do not confuse with Realtor.com pending-listing counts (PENLISCOU*) on FRED. TMRE shows the NAR print on /trends with an explicit NAR source label.',
   },
   {
     term: 'Conforming vs jumbo',
@@ -317,7 +317,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Buyer / Seller Friendly (Market Pulse)',
     category: 'product',
     definition:
-      'Market Pulse town sort. Default is Seller Friendly. STACKED uses a composite (months supply + avg DOM). UNSTACKED sorts each chart on its own metric — Seller: DOM ascending, closed sales descending, median/average price descending; Buyer is the reverse. All towns stays on top and is the only town row until it is clicked (then the other towns expand). The panel Sort ▲▼ toggles Seller / Buyer Friendly. Median, Delta, and Average are sandwiched (no gap); Delta is mean minus median in $K and as % of median, drawn as the span between the Median and Average bar ends on the same dollar scale. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units. Scoring in lib/market-pulse-favorability.ts.',
+      'Market Pulse town sort. Default is Seller Friendly. STACKED uses a composite (months supply + avg DOM). UNSTACKED sorts each chart on its own metric — Seller: DOM ascending, closed sales descending, median/average price descending; Buyer is the reverse. Click stacked / unstacked in the Town metrics heading to flip layout (no separate Layout +/- control). All towns stays on top and is the only town row until it is clicked (then the other towns expand). The panel Sort ▲▼ toggles Seller / Buyer Friendly. Median, Delta, and Average are sandwiched (no gap); Delta is mean minus median in $K and as % of median, drawn as the span between the Median and Average bar ends on the same dollar scale. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units. Scoring in lib/market-pulse-favorability.ts.',
   },
   {
     term: 'Town housing unit count',

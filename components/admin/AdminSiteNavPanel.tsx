@@ -27,7 +27,7 @@ function AddPageRow({
   if (pages.length === 0) {
     return (
       <p className="font-mono text-[10px] text-charcoal/40">
-        Every public page in the catalog is already in the menu.
+        Every public page in the catalog is already in this slot.
       </p>
     );
   }
@@ -231,7 +231,9 @@ export default function AdminSiteNavPanel({
     });
   };
 
-  const addablePages = siteNavAddablePages(config);
+  const addableTopPages = siteNavAddablePages(
+    config.topLevel.flatMap((item) => (item.kind === "link" ? [item.href] : [])),
+  );
 
   const addTopPage = (page: SitePage) => {
     setConfig((prev) => ({
@@ -302,10 +304,11 @@ export default function AdminSiteNavPanel({
           Organize the public header: top-level links, Explore dropdown groups,
           labels, order, show/hide, and adding or removing pages. Add group
           creates an empty custom column; Remove is only on those custom groups.
-          Pages can be added to any group, including custom ones. Catalog
-          groups (Properties, Research) hide rather than delete. The picker
-          lists every stable public page that is not already in the menu. No
-          redeploy required after save.
+          Pages can be added to any group, including custom ones — the same
+          page may live in more than one group (e.g. Mortgage Rates in
+          Research and in Pulse). Catalog groups (Properties, Research) hide
+          rather than delete. The picker lists every stable public page not
+          already in that slot. No redeploy required after save.
         </p>
       </div>
 
@@ -363,7 +366,7 @@ export default function AdminSiteNavPanel({
               ) : null}
             </RowChrome>
           ))}
-          <AddPageRow pages={addablePages} onAdd={addTopPage} />
+          <AddPageRow pages={addableTopPages} onAdd={addTopPage} />
         </section>
 
         <section className="space-y-4">
@@ -489,7 +492,7 @@ export default function AdminSiteNavPanel({
                   </RowChrome>
                 ))}
                 <AddPageRow
-                  pages={addablePages}
+                  pages={siteNavAddablePages(group.links.map((l) => l.href))}
                   onAdd={(page) => addGroupPage(gi, page)}
                 />
               </div>

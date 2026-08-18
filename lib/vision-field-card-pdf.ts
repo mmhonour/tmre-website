@@ -1,5 +1,11 @@
 import { inflateSync } from 'node:zlib'
-import type { VisionFieldCardField, VisionFieldCardJson } from '@/lib/vision-gis-parse'
+import {
+  formatVisionMoney,
+  parseVisionMoney,
+  type VisionFieldCardField,
+  type VisionFieldCardJson,
+  type VisionOwnershipRow,
+} from '@/lib/vision-gis-parse'
 import { visionGisFieldCardPdfUrl } from '@/lib/vision-gis-towns'
 
 const MULTI_LABELS = new Set(['comment', 'note', 'extra feature', 'transfer'])
@@ -181,14 +187,7 @@ function respaceGluedName(row: string, surnames: string[]): string {
   return spaced
 }
 
-export type VisionOwnershipRow = {
-  owner: string
-  date: string
-  price: string | null
-  bookPage: string | null
-  qualified: string | null
-  instrument: string | null
-}
+export type { VisionOwnershipRow }
 
 /** Record of Ownership block from a VGSI Field Card PDF (prototype: 3959). */
 export function ownershipFromPdf(text: string): VisionOwnershipRow[] {
@@ -237,7 +236,7 @@ export function ownershipFromPdf(text: string): VisionOwnershipRow[] {
   return dates.map((date, i) => ({
     owner: owners[i] ?? '',
     date: date.replace(/-/g, '/'),
-    price: prices[i] ? `$${prices[i]}` : null,
+    price: prices[i] ? formatVisionMoney(prices[i]) : null,
     bookPage: books[i] && pages[i] ? `${books[i]}/${pages[i]}` : null,
     qualified: qu[i] ?? null,
     instrument: vi[i] ?? null,
@@ -304,12 +303,12 @@ export function parseVisionFieldCardPdf(text: string): VisionFieldCardJson {
     seen,
     'Valuation',
     'Appraisal',
-    first(text, /Total Appraised Parcel Value(\d{1,3}(?:,\d{3})+)/),
+    formatVisionMoney(first(text, /Total Appraised Parcel Value(\d{1,3}(?:,\d{3})+)/)),
   )
   const visit = text.match(
     /VISIT \/ CHANGE HISTORY(\d{1,3}(?:,\d{3})+)(\d{1,3}(?:,\d{3})+)/,
   )
-  push(fields, seen, 'Valuation', 'Assessment', visit?.[2])
+  push(fields, seen, 'Valuation', 'Assessment', formatVisionMoney(visit?.[2]))
 
   push(
     fields,
@@ -378,7 +377,7 @@ export function parseVisionFieldCardPdf(text: string): VisionFieldCardJson {
   const book = first(text, /SALE DATE(\d{4})/)
   const page = text.match(/((?:\d{2}-\d{2}-\d{4}){2,})(\d{4})/)?.[2]
   if (saleDate) push(fields, seen, 'Sale', 'Sale date', saleDate.replace(/-/g, '/'))
-  if (salePrice) push(fields, seen, 'Sale', 'Sale price', `$${salePrice}`)
+  if (salePrice) push(fields, seen, 'Sale', 'Sale price', formatVisionMoney(salePrice))
   if (book && page) push(fields, seen, 'Sale', 'Book / page', `${book}/${page}`)
 
   if (ownership.length === 0) {
@@ -389,14 +388,23 @@ export function parseVisionFieldCardPdf(text: string): VisionFieldCardJson {
     }
   }
 
-  const searchText = fields
-    .map((f) => `${f.label} ${f.value}`)
+  const searchText = [
+    ...fields.map((f) => `${f.label} ${f.value}`),
+    ...ownership.map((r) =>
+      [r.owner, r.date, r.price, r.bookPage, r.instrument].filter(Boolean).join(' '),
+    ),
+  ]
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 8000)
 
-  return { version: 1, fields, searchText }
+  return {
+    version: 1,
+    fields,
+    searchText,
+    ownership: ownership.length > 0 ? ownership : undefined,
+  }
 }
 
 export function fieldCardLooksNoisy(json: VisionFieldCardJson | null | undefined): boolean {
@@ -414,8 +422,17 @@ export function fieldCardNeedsRefresh(json: VisionFieldCardJson | null | undefin
   const fields = json?.fields ?? []
   const labels = new Set(fields.map((f) => f.label.toLowerCase()))
   const hasBuilding = ['style', 'year built', 'living area', 'beds'].some((l) => labels.has(l))
-  const hasOwnership = fields.some((f) => f.section === 'Ownership')
+  const hasOwnership = (json?.ownership?.length ?? 0) > 0
   return !hasBuilding || !hasOwnership
+}
+
+function ownershipScore(rows: VisionOwnershipRow[]): number {
+  if (rows.length === 0) return 0
+  const priced = rows.filter((r) => {
+    const n = parseVisionMoney(r.price)
+    return n != null && n > 0
+  }).length
+  return rows.length * 10 + priced * 8
 }
 
 export function mergeFieldCardJson(
@@ -423,19 +440,31 @@ export function mergeFieldCardJson(
 ): VisionFieldCardJson {
   const fields: VisionFieldCardField[] = []
   const seen = new Set<string>()
+  let ownership: VisionOwnershipRow[] = []
   for (const card of cards) {
     for (const field of card?.fields ?? []) {
       const multi = MULTI_LABELS.has(field.label.toLowerCase())
       push(fields, seen, field.section, field.label, field.value, multi)
     }
+    const rows = card?.ownership ?? []
+    if (ownershipScore(rows) > ownershipScore(ownership)) ownership = rows
   }
-  const searchText = fields
-    .map((f) => `${f.label} ${f.value}`)
+  const searchText = [
+    ...fields.map((f) => `${f.label} ${f.value}`),
+    ...ownership.map((r) =>
+      [r.owner, r.date, r.price, r.bookPage, r.instrument].filter(Boolean).join(' '),
+    ),
+  ]
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 8000)
-  return { version: 1, fields, searchText }
+  return {
+    version: 1,
+    fields,
+    searchText,
+    ownership: ownership.length > 0 ? ownership : undefined,
+  }
 }
 
 export async function fetchVisionFieldCardPdfJson(

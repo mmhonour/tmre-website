@@ -74,10 +74,10 @@ export default async function FedAnalysisPage() {
               Mortgage rates
             </Link>
             <Link
-              href="/existing-homes"
+              href="/trends"
               className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
             >
-              Existing homes
+              Trends
             </Link>
           </p>
           <MarketsPageTabs active="fed-analysis" />
@@ -144,10 +144,10 @@ export default async function FedAnalysisPage() {
             </Link>{" "}
             for local inventory context, and{" "}
             <Link
-              href="/existing-homes"
+              href="/trends"
               className="text-navy underline underline-offset-2"
             >
-              Existing homes
+              Trends
             </Link>{" "}
             for official NAR sales and pending.
           </p>

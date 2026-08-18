@@ -94,8 +94,8 @@ export const SITE_PAGES: readonly SitePage[] = [
     changeFrequency: 'weekly',
   },
   {
-    path: '/existing-homes',
-    label: 'Existing Homes',
+    path: '/trends',
+    label: 'Trends',
     priority: 0.6,
     changeFrequency: 'weekly',
   },
@@ -129,7 +129,7 @@ export const SITE_PAGES: readonly SitePage[] = [
 ]
 
 export function findSitePage(path: string): SitePage | null {
-  const clean = path.trim()
+  const clean = path.trim() === '/existing-homes' ? '/trends' : path.trim()
   return SITE_PAGES.find((page) => page.path === clean) ?? null
 }
 

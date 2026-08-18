@@ -194,7 +194,7 @@ export const ADMIN_SERVER_PANELS: {
     id: "site-menu",
     label: "Site menu",
     subtitle:
-      "Public header nav — rename, reorder, show/hide, add custom Explore groups, add or remove pages",
+      "Public header nav — rename, reorder, show/hide, add custom Explore groups, add the same page to more than one group",
   },
   {
     id: "page-styles",

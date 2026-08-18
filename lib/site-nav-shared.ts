@@ -151,9 +151,9 @@ const DEFAULT_EXPLORE: SiteNavExploreGroup[] = [
         visible: true,
       },
       {
-        id: 'existing-homes',
-        href: '/existing-homes',
-        label: 'Existing Homes',
+        id: 'trends',
+        href: '/trends',
+        label: 'Trends',
         visible: true,
       },
       {
@@ -182,6 +182,30 @@ function clampLabel(raw: unknown, fallback: string, max = 48): string {
   if (typeof raw !== 'string') return fallback
   const t = raw.trim().slice(0, max)
   return t || fallback
+}
+
+/** Catalog id rename: stored `existing-homes` rows keep order/visibility. */
+function catalogNavLinkId(id: string): string {
+  return id === 'existing-homes' ? 'trends' : id
+}
+
+/** Drop the old default label so the rename shows without a Site menu resave. */
+function clampNavLabel(
+  raw: unknown,
+  fallback: string,
+  id: string,
+  max = 48,
+): string {
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (
+      id === 'trends' &&
+      /^existing homes$/i.test(t)
+    ) {
+      return fallback
+    }
+  }
+  return clampLabel(raw, fallback, max)
 }
 
 function asBool(raw: unknown, fallback: boolean): boolean {
@@ -215,15 +239,15 @@ function normalizeCustomNavLink(
   }
 }
 
-/** Pages not already linked anywhere in the menu — the Add page picker list. */
-export function siteNavAddablePages(config: SiteNavConfig): SitePage[] {
-  const used = new Set<string>()
-  for (const item of config.topLevel) {
-    if (item.kind === 'link') used.add(item.href)
-  }
-  for (const group of config.exploreGroups) {
-    for (const link of group.links) used.add(link.href)
-  }
+/**
+ * Pages that can be added to one menu slot (top-level or one Explore group).
+ * Only hrefs already in *that* slot are omitted — the same page may appear in
+ * Research and in a custom Pulse group.
+ */
+export function siteNavAddablePages(
+  alreadyLinkedHrefs: Iterable<string>,
+): SitePage[] {
+  const used = new Set(alreadyLinkedHrefs)
   return SITE_PAGES.filter((page) => !used.has(page.path))
 }
 
@@ -392,7 +416,7 @@ export function normalizeSiteNav(raw: unknown): SiteNavConfig {
     for (const lRow of incomingLinks) {
       if (!lRow || typeof lRow !== 'object') continue
       const l = lRow as Record<string, unknown>
-      const lid = typeof l.id === 'string' ? l.id : ''
+      const lid = catalogNavLinkId(typeof l.id === 'string' ? l.id : '')
       const lFallback = defaultLinkById.get(lid)
       if (!lFallback) {
         const added = normalizeCustomNavLink(l, lid, usedLinks)
@@ -407,7 +431,7 @@ export function normalizeSiteNav(raw: unknown): SiteNavConfig {
       links.push({
         id: lFallback.id,
         href: lFallback.href,
-        label: clampLabel(l.label, lFallback.label),
+        label: clampNavLabel(l.label, lFallback.label, lFallback.id),
         visible: asBool(l.visible, lFallback.visible),
         ...(lFallback.requiresUnlock ? { requiresUnlock: true } : {}),
       })

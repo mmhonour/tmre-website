@@ -5,8 +5,8 @@ export default function AdminVisionGisSourcesPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-charcoal/70 leading-relaxed">
-        Town GIS homepage (Streets.aspx / search). Find → Open Field Card uses the
-        VGSI PDF on images.vgsi.com, not Parcel.aspx HTML.
+        Town GIS homepage (Streets.aspx / search). Find → Field Card uses the
+        VGSI PDF on images.vgsi.com. Find → VGSI Parcel is Parcel.aspx.
       </p>
       <div>
         <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45 mb-2">

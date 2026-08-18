@@ -67,6 +67,46 @@ type FavorSort = MarketPulseFavorSort;
 type MetricSortDir = "asc" | "desc";
 type MetricValueKind = "int" | "mos" | "dom" | "money";
 
+/** Value sits on the fill (cream) vs the empty track (navy). */
+const BAR_VALUE_ON_FILL = "text-[#F6F1E8]";
+const BAR_VALUE_ON_EMPTY = "text-[var(--mp-text)]";
+
+function BarValueOverlay({
+  value,
+  asideLeft,
+  leftPct,
+  widthPct,
+}: {
+  value: ReactNode;
+  asideLeft?: ReactNode;
+  leftPct: number;
+  widthPct: number;
+}) {
+  const fillRight = leftPct + widthPct;
+  const valueOnFill = fillRight >= 82;
+  const asideOnFill = leftPct < 14 && widthPct > 0;
+  return (
+    <>
+      {asideLeft ? (
+        <span
+          className={`pointer-events-none absolute inset-y-0 left-0 z-[1] flex items-center pl-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums ${
+            asideOnFill ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY
+          }`}
+        >
+          {asideLeft}
+        </span>
+      ) : null}
+      <span
+        className={`pointer-events-none absolute inset-y-0 right-0 z-[1] flex items-center justify-end pr-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums ${
+          valueOnFill ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY
+        }`}
+      >
+        {value}
+      </span>
+    </>
+  );
+}
+
 const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
   monthsSupply: "bg-[var(--mp-months-supply-bar)]",
@@ -121,8 +161,7 @@ function ClosedLookbackSlider({
         <span>{last}</span>
       </div>
       <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
-        Sets closed sales and months supply. Inventory, avg DOM, and prices stay
-        current.
+        Closed sales and months supply only
       </p>
     </div>
   );
@@ -649,13 +688,7 @@ function BarChart<Row extends { city: string }>({
           return (
             <li
               key={`${row.city}-${title}`}
-              className={`grid items-center gap-1.5 sm:gap-2 ${
-                formatValueAside
-                  ? "grid-cols-[4.5rem_2.35rem_1fr_2.6rem] sm:grid-cols-[6.5rem_3.25rem_1fr_4.25rem]"
-                  : formatValue
-                    ? "grid-cols-[4.75rem_1fr_3rem] sm:grid-cols-[7.5rem_1fr_4.5rem]"
-                    : "grid-cols-[4.75rem_1fr_2.6rem] sm:grid-cols-[7.5rem_1fr_3.5rem]"
-              }`}
+              className="grid grid-cols-[4.75rem_1fr] items-center gap-1.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"
             >
               {onAllTownsToggle ? (
                 <TownName
@@ -677,12 +710,7 @@ function BarChart<Row extends { city: string }>({
                   {label}
                 </span>
               )}
-              {formatValueAside ? (
-                <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-muted-text)]">
-                  {formatValueAside(row, index)}
-                </span>
-              ) : null}
-              <div className="group relative h-3.5 rounded-sm bg-black/10 overflow-visible">
+              <div className="group relative h-4 rounded-sm bg-black/10 overflow-visible">
                 <div className="h-full overflow-hidden rounded-sm">
                   <div
                     className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${barClassName}`}
@@ -692,6 +720,14 @@ function BarChart<Row extends { city: string }>({
                     }}
                   />
                 </div>
+                <BarValueOverlay
+                  value={valueText}
+                  asideLeft={
+                    formatValueAside ? formatValueAside(row, index) : undefined
+                  }
+                  leftPct={aligned.leftPct}
+                  widthPct={aligned.widthPct}
+                />
                 <div
                   className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
                   role="tooltip"
@@ -704,9 +740,6 @@ function BarChart<Row extends { city: string }>({
                   />
                 </div>
               </div>
-              <span className="[font-family:var(--mp-mono-font)] text-xs text-[var(--mp-text)] text-right tabular-nums">
-                {valueText}
-              </span>
             </li>
           );
         })}
@@ -911,21 +944,19 @@ function CombinedMetricsChart({
     return (
       <li
         key={m.id}
-        className="group relative grid grid-cols-[4.75rem_1fr_2.75rem] items-center gap-1.5 sm:grid-cols-[8.25rem_1fr_7.25rem] sm:gap-2"
+        className="group relative grid grid-cols-[4.75rem_1fr] items-center gap-1.5 sm:grid-cols-[8.25rem_1fr] sm:gap-2"
         title={m.id === "priceDelta" ? undefined : `${m.label}: ${valueText}`}
       >
         {m.id === "priceDelta" ? (
         <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
-          <MarketPulseDeltaLabel
-            pctLabel={formatPriceDeltaPct(deltaPct)}
-          />
+          <MarketPulseDeltaLabel />
         </span>
         ) : (
           <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
             {m.label}
           </span>
         )}
-        <div className="h-3 rounded-sm bg-black/10 overflow-visible">
+        <div className="relative h-4 rounded-sm bg-black/10 overflow-visible">
           <div className="h-full overflow-hidden rounded-sm">
             <div
               className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${m.barClassName}`}
@@ -935,6 +966,27 @@ function CombinedMetricsChart({
               }}
             />
           </div>
+          <BarValueOverlay
+            value={
+              closedCountText != null ? (
+                <>
+                  <span className="hidden sm:inline">
+                    {marketPulseLookbackClosedPrefix(closedLookbackLabel)} -{" "}
+                  </span>
+                  {closedCountText}
+                </>
+              ) : (
+                valueText
+              )
+            }
+            asideLeft={
+              m.id === "priceDelta"
+                ? formatPriceDeltaPct(deltaPct)
+                : undefined
+            }
+            leftPct={aligned.leftPct}
+            widthPct={aligned.widthPct}
+          />
           <div
             className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
             role="tooltip"
@@ -947,18 +999,6 @@ function CombinedMetricsChart({
             />
           </div>
         </div>
-        <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)] text-right">
-          {closedCountText != null ? (
-            <>
-              <span className="hidden sm:inline">
-                {marketPulseLookbackClosedPrefix(closedLookbackLabel)} -{" "}
-              </span>
-              {closedCountText}
-            </>
-          ) : (
-            valueText
-          )}
-        </span>
       </li>
     );
   }
@@ -1126,7 +1166,6 @@ export default function WeeklyBriefContent({
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
   const [propertyTypeOpen, setPropertyTypeOpen] = useState(false);
-  const [layoutOpen, setLayoutOpen] = useState(false);
   const [townsExpanded, setTownsExpanded] = useState(false);
   const [sortExplainOpen, setSortExplainOpen] = useState(false);
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
@@ -1210,13 +1249,6 @@ export default function WeeklyBriefContent({
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
   const titleScope = selectionLabel ?? scopeLabel;
 
-  const controlBtn = (active: boolean) =>
-    `shrink-0 font-mono text-[10px] tracking-[0.1em] uppercase rounded-full px-3 py-1.5 border transition-colors ${
-      active
-        ? "border-[var(--mp-accent)] bg-[var(--mp-accent)]/15 text-[var(--mp-text)]"
-        : "border-black/15 text-[var(--mp-muted-text)] hover:border-black/25 hover:text-[var(--mp-text)]"
-    }`;
-  const pillRow = "flex flex-wrap items-center gap-2";
   const townMetricsTitle = (
     <>
       Town metrics
@@ -1280,15 +1312,28 @@ export default function WeeklyBriefContent({
           />
         </div>
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-3">
-          {onLookbackIdChange ? (
-            <ClosedLookbackSlider
-              lookbackId={lookbackId}
-              onChange={onLookbackIdChange}
-              pending={closedPending}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            {onLookbackIdChange ? (
+              <div className="min-w-0 flex-1">
+                <ClosedLookbackSlider
+                  lookbackId={lookbackId}
+                  onChange={onLookbackIdChange}
+                  pending={closedPending}
+                />
+              </div>
+            ) : (
+              <div className="min-w-0 flex-1" />
+            )}
+            <FavorSortToggle
+              favorSort={favorSort}
+              onToggle={() =>
+                setFavorSort((current) =>
+                  current === "buyers" ? "sellers" : "buyers",
+                )
+              }
             />
-          ) : null}
+          </div>
 
           {categoryFilter ? (
             <FilterDisclosure
@@ -1300,49 +1345,23 @@ export default function WeeklyBriefContent({
               {categoryFilter}
             </FilterDisclosure>
           ) : null}
-
-          <FilterDisclosure
-            label="Layout"
-            summary={chartLayout}
-            open={layoutOpen}
-            onToggle={() => setLayoutOpen((open) => !open)}
-          >
-            <div className={pillRow} role="group" aria-label="Chart layout">
-              <button
-                type="button"
-                className={controlBtn(chartLayout === "stacked")}
-                aria-pressed={chartLayout === "stacked"}
-                onClick={() => setChartLayout("stacked")}
-              >
-                STACKED
-              </button>
-              <button
-                type="button"
-                className={controlBtn(chartLayout === "unstacked")}
-                aria-pressed={chartLayout === "unstacked"}
-                onClick={() => setChartLayout("unstacked")}
-              >
-                UNSTACKED
-              </button>
-            </div>
-          </FilterDisclosure>
-          </div>
-          <FavorSortToggle
-            favorSort={favorSort}
-            onToggle={() =>
-              setFavorSort((current) =>
-                current === "buyers" ? "sellers" : "buyers",
-              )
-            }
-          />
         </div>
 
         {chartLayout === "stacked" ? (
           <CombinedMetricsChart
             title={
               <>
-                {townMetricsTitle}
-                {` stacked (${titleScope})`}
+                {townMetricsTitle}{" "}
+                <button
+                  type="button"
+                  aria-pressed={true}
+                  aria-label="Show unstacked town metrics"
+                  onClick={() => setChartLayout("unstacked")}
+                  className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
+                >
+                  stacked
+                </button>
+                {` (${titleScope})`}
               </>
             }
             rows={combinedRows}
@@ -1357,7 +1376,17 @@ export default function WeeklyBriefContent({
         ) : (
           <>
         <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-1 inline-flex flex-wrap items-baseline gap-x-1">
-          {townMetricsTitle}
+          {townMetricsTitle}{" "}
+          <button
+            type="button"
+            aria-pressed={false}
+            aria-label="Show stacked town metrics"
+            onClick={() => setChartLayout("stacked")}
+            className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
+          >
+            unstacked
+          </button>
+          {` (${titleScope})`}
         </p>
         <BarChart
           title={`Active inventory (${titleScope})`}

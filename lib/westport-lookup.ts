@@ -25,8 +25,11 @@ import { getVisionFieldCardHtml } from '@/lib/r2-vision-store'
 import type { Listing } from '@/lib/rets'
 import {
   fieldCardFromTypedVision,
+  lastSaleAsOwnership,
+  ownershipFromFieldCardFields,
   parseVisionFieldCardJson,
   type VisionFieldCardField,
+  type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
 
 export const WESTPORT_LOOKUP_TOWN = 'Westport'
@@ -51,6 +54,7 @@ export type MergedField<T> = {
 
 export type WestportFieldCard = {
   fields: VisionFieldCardField[]
+  ownership: VisionOwnershipRow[]
   /** True when `vision_addresses.field_card` jsonb already had parsed fields. */
   storedJson: boolean
   photoUrl: string | null
@@ -89,8 +93,10 @@ export type WestportMergedProperty = {
   zoning: MergedField<string>
   ownerName: MergedField<string>
   assessedValue: MergedField<number>
+  appraisalValue: MergedField<number>
   lastSalePrice: MergedField<number>
   lastSaleDate: MergedField<string>
+  lastSaleBookPage: MergedField<string>
   style: MergedField<string>
 }
 
@@ -126,6 +132,16 @@ function bathsFromVision(v: VisionAddressRecord): number | null {
   return (full ?? 0) + (half ?? 0) * 0.5
 }
 
+function resolveOwnership(
+  json: ReturnType<typeof fieldCardFromTypedVision>,
+  vision: VisionAddressRecord,
+): VisionOwnershipRow[] {
+  if (json.ownership && json.ownership.length > 0) return json.ownership
+  const fromFields = ownershipFromFieldCardFields(json.fields)
+  if (fromFields.length > 0) return fromFields
+  return lastSaleAsOwnership(vision)
+}
+
 async function resolveWestportFieldCard(
   vision: VisionAddressRecord,
 ): Promise<WestportFieldCard> {
@@ -134,10 +150,21 @@ async function resolveWestportFieldCard(
     try {
       const typed = fieldCardFromTypedVision(vision)
       let htmlCard: ReturnType<typeof parseVisionFieldCardJson> | null = null
-      const raw = await getVisionFieldCardHtml(
+      let raw = await getVisionFieldCardHtml(
         WESTPORT_LOOKUP_TOWN,
         vision.visionPid,
       )
+      if (!raw && vision.parcelUrl) {
+        try {
+          const res = await fetch(vision.parcelUrl, {
+            headers: { accept: 'text/html' },
+            cache: 'no-store',
+          })
+          if (res.ok) raw = await res.text()
+        } catch {
+          /* live VGSI HTML is optional when R2 is empty */
+        }
+      }
       if (raw) htmlCard = parseVisionFieldCardJson(raw)
       const pdfCard = await fetchVisionFieldCardPdfJson(
         WESTPORT_LOOKUP_TOWN,
@@ -160,6 +187,7 @@ async function resolveWestportFieldCard(
   }
   return {
     fields: json.fields,
+    ownership: resolveOwnership(json, vision),
     storedJson: json.fields.length > 0,
     photoUrl: vision.photoUrl,
     parcelUrl: vision.parcelUrl,
@@ -491,8 +519,10 @@ export async function mergeWestportProperty(
     zoning: visionFill(null, vision.zoning),
     ownerName: visionFill(listing?.ownerName, vision.ownerName),
     assessedValue: visionFill(listing?.assessedValue, vision.assessedValue),
+    appraisalValue: visionFill(null, vision.appraisalValue),
     lastSalePrice: visionFill(null, vision.lastSalePrice),
     lastSaleDate: visionFill(null, vision.lastSaleDate),
+    lastSaleBookPage: visionFill(null, vision.lastSaleBookPage),
     style: visionFill(listing?.style, vision.style),
   }
 }

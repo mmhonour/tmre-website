@@ -2,6 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
 import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
+import {
+  formatVisionFieldValue,
+  formatVisionMoney,
+  type VisionOwnershipRow,
+} from "@/lib/vision-gis-parse";
 
 export const dynamic = "force-dynamic";
 
@@ -60,18 +65,21 @@ function FieldRow<T extends string | number>({
 }
 
 function CardRow({
+  section,
   label,
   value,
 }: {
+  section: string;
   label: string;
   value: string | number | null | undefined;
 }) {
-  const text =
+  const raw =
     value == null || value === ""
-      ? "—"
+      ? ""
       : typeof value === "number"
         ? String(value)
         : value;
+  const text = raw ? formatVisionFieldValue(section, label, raw) : "—";
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-charcoal/[0.06]">
       <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate/70">
@@ -80,6 +88,61 @@ function CardRow({
       <dd className="font-mono text-[13px] text-navy tabular-nums text-right max-w-[65%]">
         {text}
       </dd>
+    </div>
+  );
+}
+
+function SalesHistoryTable({ rows }: { rows: VisionOwnershipRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="font-mono text-sm text-slate/60">
+        No recorded transactions on the Vision Field Card.
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[32rem] text-left">
+        <thead>
+          <tr className="border-b border-charcoal/[0.1]">
+            {["Sale date", "Owner", "Price", "Book / page", "Instr."].map(
+              (h) => (
+                <th
+                  key={h}
+                  className="py-2 pr-3 font-mono text-[10px] tracking-[0.12em] uppercase text-slate/55 font-normal"
+                >
+                  {h}
+                </th>
+              ),
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr
+              key={`${row.date}-${row.owner}-${row.bookPage}-${i}`}
+              className="border-b border-charcoal/[0.06]"
+            >
+              <td className="py-2 pr-3 font-mono text-[13px] text-navy tabular-nums whitespace-nowrap">
+                {row.date || "—"}
+              </td>
+              <td className="py-2 pr-3 font-mono text-[13px] text-navy">
+                {row.owner || "—"}
+              </td>
+              <td className="py-2 pr-3 font-mono text-[13px] text-navy tabular-nums whitespace-nowrap">
+                {formatVisionMoney(row.price) ?? row.price ?? "—"}
+              </td>
+              <td className="py-2 pr-3 font-mono text-[13px] text-navy tabular-nums whitespace-nowrap">
+                {row.bookPage || "—"}
+              </td>
+              <td className="py-2 font-mono text-[13px] text-navy tabular-nums">
+                {[row.qualified, row.instrument].filter(Boolean).join("/") ||
+                  "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -101,6 +164,7 @@ export default async function WestportParcelPage({
   const card = property.fieldCard;
   const visibleFields = card.fields.filter(
     (field) =>
+      !/^(valuation|sale|ownership)$/i.test(field.section) &&
       !/^(pan |row |grd |tbl |ctl|current Val)/i.test(field.label) &&
       field.label.length < 48,
   );
@@ -218,6 +282,40 @@ export default async function WestportParcelPage({
             ) : null}
 
             <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
+              Valuation
+            </h2>
+            <dl className="mb-10">
+              <FieldRow
+                label="Assessment"
+                field={property.assessedValue}
+                format={(v) => formatVisionMoney(Number(v)) ?? "—"}
+              />
+              <FieldRow
+                label="Appraisal"
+                field={property.appraisalValue}
+                format={(v) => formatVisionMoney(Number(v)) ?? "—"}
+              />
+              <FieldRow
+                label="Last sale"
+                field={property.lastSalePrice}
+                format={(v) => formatVisionMoney(Number(v)) ?? "—"}
+              />
+              <FieldRow label="Sale date" field={property.lastSaleDate} />
+              <FieldRow label="Book / page" field={property.lastSaleBookPage} />
+              <FieldRow label="Owner" field={property.ownerName} />
+            </dl>
+
+            <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
+              Sales history
+            </h2>
+            <p className="mb-3 font-mono text-[10px] tracking-[0.06em] text-slate/50">
+              Vision Ownership History — each transfer, not just the current owner.
+            </p>
+            <div className="mb-10">
+              <SalesHistoryTable rows={card.ownership} />
+            </div>
+
+            <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
               Vision field card
             </h2>
             {card.storedJson ? (
@@ -239,6 +337,7 @@ export default async function WestportParcelPage({
                     {group.fields.map((field) => (
                       <CardRow
                         key={`${group.section}-${field.label}-${field.value}`}
+                        section={group.section}
                         label={field.label}
                         value={field.value}
                       />
@@ -249,14 +348,6 @@ export default async function WestportParcelPage({
             )}
 
             <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[11px] tracking-[0.08em] uppercase">
-              <a
-                href={westportFieldCardHref(property.visionPid)}
-                className="text-gold underline underline-offset-2 hover:text-navy"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open Field Card
-              </a>
               {card.parcelUrl ? (
                 <a
                   href={card.parcelUrl}
@@ -264,9 +355,17 @@ export default async function WestportParcelPage({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Native Field Card
+                  VGSI Parcel
                 </a>
               ) : null}
+              <a
+                href={westportFieldCardHref(property.visionPid)}
+                className="text-gold underline underline-offset-2 hover:text-navy"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Field Card
+              </a>
             </p>
           </div>
 

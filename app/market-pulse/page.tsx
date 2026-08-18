@@ -38,7 +38,13 @@ export default async function MarketPulsePage() {
     year: "numeric",
     month: "long",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(new Date(snapshot.generatedAt));
+  const lastSentMs = digest.lastSentAt ? Date.parse(digest.lastSentAt) : NaN;
+  const lastEmailDate = Number.isFinite(lastSentMs)
+    ? formatMarketDigestNextEmailDate(new Date(lastSentMs))
+    : null;
   const nextEmailDate = formatMarketDigestNextEmailDate(
     nextMarketDigestSendAt(digest),
   );
@@ -48,6 +54,7 @@ export default async function MarketPulsePage() {
       <MarketPulseHero
         etDate={etDate}
         townsLabel={TMRE_CORE_TOWNS_LABEL}
+        lastEmailDate={lastEmailDate}
         nextEmailDate={nextEmailDate}
       />
 

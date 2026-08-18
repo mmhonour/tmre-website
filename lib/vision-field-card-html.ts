@@ -1,4 +1,7 @@
-import type { VisionFieldCardField } from '@/lib/vision-gis-parse'
+import {
+  formatVisionFieldValue,
+  type VisionFieldCardField,
+} from '@/lib/vision-gis-parse'
 
 function escapeHtml(value: string): string {
   return value
@@ -38,7 +41,7 @@ export function renderTmreFieldCardHtml(input: {
       const rows = group.fields
         .map(
           (field) =>
-            `<div class="row"><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(field.value)}</dd></div>`,
+            `<div class="row"><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(formatVisionFieldValue(field.section, field.label, field.value))}</dd></div>`,
         )
         .join('')
       return `<section><h2>${escapeHtml(group.section)}</h2><dl>${rows}</dl></section>`

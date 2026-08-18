@@ -45,11 +45,156 @@ export type VisionFieldCardField = {
   value: string
 }
 
+/** One row from VGSI Ownership History (`#MainContent_grdSales`) or the Field Card PDF. */
+export type VisionOwnershipRow = {
+  owner: string
+  date: string
+  price: string | null
+  bookPage: string | null
+  qualified: string | null
+  instrument: string | null
+}
+
 /** Parsed Field Card for Neon jsonb — display, processing, and Find text search. */
 export type VisionFieldCardJson = {
   version: 1
   fields: VisionFieldCardField[]
   searchText: string
+  ownership?: VisionOwnershipRow[]
+}
+
+export function parseVisionMoney(
+  value: string | number | null | undefined,
+): number | null {
+  if (value == null || value === '') return null
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+  const cleaned = String(value).replace(/[$,\s]/g, '')
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Assessor-style $1,234,567 (not compact $1.23M). */
+export function formatVisionMoney(
+  value: string | number | null | undefined,
+): string | null {
+  const n = parseVisionMoney(value)
+  if (n == null) return null
+  const sign = n < 0 ? '-' : ''
+  return `${sign}$${Math.round(Math.abs(n)).toLocaleString('en-US')}`
+}
+
+export function isVisionMoneyLabel(section: string, label: string): boolean {
+  const hay = `${section} ${label}`.toLowerCase()
+  if (/assessment|appraisal|sale price|appraised|assessed value|sale amount/.test(hay)) {
+    return true
+  }
+  return (
+    /(^|\s)value$/.test(label.toLowerCase()) &&
+    /valuation|land|extra|feature|sale/.test(section.toLowerCase())
+  )
+}
+
+export function formatVisionFieldValue(
+  section: string,
+  label: string,
+  value: string,
+): string {
+  if (!isVisionMoneyLabel(section, label)) return value
+  return formatVisionMoney(value) ?? value
+}
+
+export function ownershipFromVisionHtml(html: string): VisionOwnershipRow[] {
+  const table = html.match(
+    /id=["']MainContent_grdSales["'][\s\S]*?<\/table>/i,
+  )?.[0]
+  if (!table) return []
+  const rows: VisionOwnershipRow[] = []
+  const trRe =
+    /<tr[^>]*class=["'](?:RowStyle|AltRowStyle)["'][^>]*>([\s\S]*?)<\/tr>/gi
+  let m: RegExpExecArray | null
+  while ((m = trRe.exec(table)) !== null) {
+    const cells = [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) =>
+      decodeHtml((c[1] ?? '').replace(/<[^>]+>/g, ' ')).replace(/\u00a0/g, ' '),
+    )
+    if (cells.length < 5) continue
+    const [owner, price, bookPage, instrument, date] = cells
+    if (!owner && !date) continue
+    rows.push({
+      owner: owner ?? '',
+      date: date ?? '',
+      price: price && price !== '-' && price !== '—' ? price : null,
+      bookPage: bookPage && bookPage !== '-' ? bookPage : null,
+      qualified: null,
+      instrument: instrument && instrument !== '-' ? instrument : null,
+    })
+  }
+  return rows
+}
+
+export function ownershipFromFieldCardFields(
+  fields: VisionFieldCardField[],
+): VisionOwnershipRow[] {
+  const rows: VisionOwnershipRow[] = []
+  for (const field of fields) {
+    if (field.section !== 'Ownership') continue
+    if (/^not listed/i.test(field.value) || /^history$/i.test(field.label)) {
+      continue
+    }
+    const parts = field.value.split(/\s·\s/).map((s) => s.trim())
+    const dateLike = /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(field.label)
+    rows.push({
+      owner: parts[0] ?? '',
+      date: dateLike ? field.label : '',
+      price: parts[1] && parts[1] !== '—' ? parts[1] : null,
+      bookPage: parts[2] && parts[2] !== '—' ? parts[2] : null,
+      qualified: parts[3] && parts[3] !== '—' ? parts[3] : null,
+      instrument: parts[4] && parts[4] !== '—' ? parts[4] : null,
+    })
+  }
+  return rows
+}
+
+export function lastSaleAsOwnership(row: {
+  ownerName?: string | null
+  lastSalePrice?: number | null
+  lastSaleDate?: string | null
+  lastSaleBookPage?: string | null
+}): VisionOwnershipRow[] {
+  if (row.lastSaleDate == null && row.lastSalePrice == null) return []
+  return [
+    {
+      owner: row.ownerName ?? '',
+      date: row.lastSaleDate ?? '',
+      price:
+        row.lastSalePrice != null
+          ? formatVisionMoney(row.lastSalePrice)
+          : null,
+      bookPage: row.lastSaleBookPage ?? null,
+      qualified: null,
+      instrument: null,
+    },
+  ]
+}
+
+function cardSearchText(
+  fields: VisionFieldCardField[],
+  ownership: VisionOwnershipRow[] = [],
+): string {
+  return [
+    ...fields.map((f) => `${f.label} ${f.value}`),
+    ...ownership.map((r) =>
+      [r.owner, r.date, r.price, r.bookPage, r.instrument]
+        .filter(Boolean)
+        .join(' '),
+    ),
+  ]
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 8000)
 }
 
 const CONTROL_ID_META: Record<string, { section: string; label: string }> = {
@@ -247,14 +392,13 @@ export function parseVisionFieldCardJson(html: string): VisionFieldCardJson {
     pushField(fields, seen, inferSectionAt(html, m.index), label, value)
   }
 
-  const searchText = fields
-    .map((f) => `${f.label} ${f.value}`)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 8000)
-
-  return { version: 1, fields, searchText }
+  const ownership = ownershipFromVisionHtml(html)
+  return {
+    version: 1,
+    fields,
+    searchText: cardSearchText(fields, ownership),
+    ownership: ownership.length > 0 ? ownership : undefined,
+  }
 }
 
 export function fieldCardFromTypedVision(row: {
@@ -311,10 +455,19 @@ export function fieldCardFromTypedVision(row: {
   const seen = new Set<string>()
   for (const [section, label, value] of pairs) {
     if (value == null || value === '') continue
-    pushField(fields, seen, section, label, String(value))
+    const raw =
+      typeof value === 'number' && isVisionMoneyLabel(section, label)
+        ? formatVisionMoney(value) ?? String(value)
+        : String(value)
+    pushField(fields, seen, section, label, raw)
   }
-  const searchText = fields.map((f) => `${f.label} ${f.value}`).join(' ')
-  return { version: 1, fields, searchText }
+  const ownership = lastSaleAsOwnership(row)
+  return {
+    version: 1,
+    fields,
+    searchText: cardSearchText(fields, ownership),
+    ownership: ownership.length > 0 ? ownership : undefined,
+  }
 }
 
 function fingerprintFromFields(fields: Record<string, unknown>): string {

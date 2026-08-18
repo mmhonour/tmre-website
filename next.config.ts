@@ -38,6 +38,11 @@ const nextConfig: NextConfig = {
         destination: "/market-pulse",
         permanent: true,
       },
+      {
+        source: "/existing-homes",
+        destination: "/trends",
+        permanent: true,
+      },
       // Legacy singular path from early listing-alert emails.
       {
         source: "/listing/:id",

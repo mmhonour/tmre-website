@@ -202,7 +202,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'nar_housing.(series_id, obs_date)',
     owner: 'lib/db/existing-homes-repo.ts',
     notes:
-      'Official NAR existing-home sales / inventory / supply / prices republished on FRED (US + Northeast). Lazy refresh on /existing-homes when sync_meta nar_housing_last_synced_at is older than 12h. Not Realtor.com series.',
+      'Official NAR existing-home sales / inventory / supply / prices republished on FRED (US + Northeast). Lazy refresh on /trends when sync_meta nar_housing_last_synced_at is older than 12h. Not Realtor.com series.',
     live: { kind: 'postgres_table', table: 'nar_housing' },
   },
   {

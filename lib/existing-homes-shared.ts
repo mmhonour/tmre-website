@@ -1,5 +1,5 @@
 /**
- * Client-safe NAR existing-home catalog for /existing-homes.
+ * Client-safe NAR existing-home catalog for /trends.
  * Closings / inventory / supply / prices come from FRED (NAR release).
  * Pending Home Sales is NAR-only — not on FRED.
  */

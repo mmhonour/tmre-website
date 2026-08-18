@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import LatestIntelligenceTownSnapshot, {
   prefetchAllTownSnapshots,
 } from "@/components/latest/LatestIntelligenceTownSnapshot";
-import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
+import { normalizeTownName, zipAreaNickname } from "@/lib/tmre-towns";
 import { mlsTimestampMs } from "@/lib/mls-time";
 import { listingDetailHref } from "@/lib/listing-url";
 import type { ClosedTownStat } from "@/lib/closed-shared";
-import type { TownUpdateStat } from "@/lib/latest-listings";
+import type { TownUpdateStat, ZipUpdateStat } from "@/lib/latest-listings";
 
 type TownStatRow = TownUpdateStat | ClosedTownStat;
 
@@ -49,9 +49,7 @@ function LatestTownSidePanel({
   row,
   rank,
   selected,
-  selectedZip,
   onTownSelect,
-  onZipSelect,
   countNoun,
   countNounPlural,
   latestCaption,
@@ -59,9 +57,7 @@ function LatestTownSidePanel({
   row: TownStatRow;
   rank: number;
   selected: boolean;
-  selectedZip: string | null;
   onTownSelect: (town: string) => void;
-  onZipSelect?: (town: string, zip: string) => void;
   countNoun: string;
   countNounPlural: string;
   latestCaption: string;
@@ -144,31 +140,6 @@ function LatestTownSidePanel({
         </button>
       </div>
 
-      {townHasMultipleZips(row.town) && (row.zips?.length ?? 0) > 0 ? (
-        <div className="flex flex-wrap gap-1 border-b border-white/10 bg-navy px-3 py-2">
-          {(row.zips ?? []).map((zipRow) => {
-            const zipSelected = selected && selectedZip === zipRow.zip;
-            return (
-              <button
-                key={zipRow.zip}
-                type="button"
-                onClick={() => onZipSelect?.(row.town, zipRow.zip)}
-                aria-pressed={zipSelected}
-                title={`${zipRow.zip}: ${zipRow.updateCount} ${zipRow.updateCount === 1 ? countNoun : countNounPlural}`}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase transition-colors ${
-                  zipSelected
-                    ? "border-gold/50 bg-gold/20 text-gold"
-                    : "border-white/15 bg-white/5 text-gold/80 hover:border-gold/35 hover:text-gold"
-                }`}
-              >
-                <span className="tabular-nums">{zipRow.zip}</span>
-                <span className="tabular-nums text-gold/70">{zipRow.updateCount}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
       {expanded ? (
         <>
           <div className="flex items-center justify-between gap-2 whitespace-nowrap border-b border-charcoal/[0.06] px-3 py-2 lg:px-4">
@@ -195,6 +166,72 @@ function LatestTownSidePanel({
   );
 }
 
+function LatestZipSidePanel({
+  town,
+  zipRow,
+  rank,
+  selected,
+  onZipSelect,
+  countNoun,
+  countNounPlural,
+}: {
+  town: string;
+  zipRow: ZipUpdateStat;
+  rank: number;
+  selected: boolean;
+  onZipSelect?: (town: string, zip: string) => void;
+  countNoun: string;
+  countNounPlural: string;
+}) {
+  const nick = zipAreaNickname(zipRow.zip);
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl border bg-white transition-all ${
+        selected
+          ? "border-gold/40 ring-1 ring-gold/20"
+          : "border-charcoal/[0.08]"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onZipSelect?.(town, zipRow.zip)}
+        aria-pressed={selected}
+        title={`${zipRow.zip}: ${zipRow.updateCount} ${zipRow.updateCount === 1 ? countNoun : countNounPlural}`}
+        className="navy-gradient flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:brightness-110"
+      >
+        <span
+          className={`min-w-0 font-mono text-[11px] leading-tight tracking-[0.08em] uppercase text-gold ${
+            selected ? "font-bold" : ""
+          }`}
+        >
+          <span className="text-gold/70">#{rank}</span>
+          <span className="text-gold/40"> · </span>
+          <span className="tabular-nums underline decoration-gold/40 underline-offset-2 hover:decoration-gold">
+            {zipRow.zip}
+          </span>
+          {nick ? (
+            <span className="normal-case tracking-normal text-gold/70">
+              {" "}
+              · {nick}
+            </span>
+          ) : null}
+        </span>
+        <span
+          className="ml-auto inline-flex shrink-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-gold"
+          title={zipRow.updateCount === 1 ? countNoun : countNounPlural}
+        >
+          <span className="text-[11px] font-semibold tabular-nums leading-none">
+            {zipRow.updateCount}
+          </span>
+          <span className="text-[8px] tracking-[0.08em] uppercase text-gold/70">
+            {zipRow.updateCount === 1 ? countNoun : countNounPlural}
+          </span>
+        </span>
+      </button>
+    </div>
+  );
+}
+
 export default function LatestTownStats({
   stats,
   loading = false,
@@ -210,10 +247,6 @@ export default function LatestTownStats({
   latestCaption = "Latest update",
   emptyHint = "No town updates in the last 24 hours.",
 }: LatestTownStatsProps) {
-  const visibleStats = selectedTown
-    ? stats.filter((row) => row.town === selectedTown)
-    : stats;
-
   useEffect(() => {
     if (loading) return;
     void prefetchAllTownSnapshots();
@@ -242,26 +275,39 @@ export default function LatestTownStats({
       <div className={`space-y-2 ${showHeading ? "pt-4" : ""}`}>
         {loading ? (
           <div className="h-32 animate-pulse rounded-2xl border border-charcoal/[0.08] bg-white p-5" />
-        ) : visibleStats.length === 0 ? (
+        ) : stats.length === 0 ? (
           <div className="rounded-2xl border border-charcoal/[0.08] bg-white p-5">
             <p className="font-mono text-[10px] text-slate">
               {emptyHint}
             </p>
           </div>
         ) : (
-          visibleStats.map((row, index) => (
-            <LatestTownSidePanel
-              key={row.town}
-              row={row}
-              rank={selectedTown ? 1 : index + 1}
-              selected={selectedTown === row.town}
-              selectedZip={selectedZip}
-              onTownSelect={onTownSelect}
-              onZipSelect={onZipSelect}
-              countNoun={countNoun}
-              countNounPlural={countNounPlural}
-              latestCaption={latestCaption}
-            />
+          stats.map((row, index) => (
+            <Fragment key={row.town}>
+              <LatestTownSidePanel
+                row={row}
+                rank={index + 1}
+                selected={selectedTown === row.town}
+                onTownSelect={onTownSelect}
+                countNoun={countNoun}
+                countNounPlural={countNounPlural}
+                latestCaption={latestCaption}
+              />
+              {selectedTown === row.town
+                ? (row.zips ?? []).map((zipRow, zipIndex) => (
+                    <LatestZipSidePanel
+                      key={`${row.town}-${zipRow.zip}`}
+                      town={row.town}
+                      zipRow={zipRow}
+                      rank={zipIndex + 1}
+                      selected={selectedZip === zipRow.zip}
+                      onZipSelect={onZipSelect}
+                      countNoun={countNoun}
+                      countNounPlural={countNounPlural}
+                    />
+                  ))
+                : null}
+            </Fragment>
           ))
         )}
       </div>

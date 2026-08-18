@@ -228,10 +228,10 @@ export default async function MortgageRatesPage() {
                 FHFA loan limits
               </a>
               <Link
-                href="/existing-homes"
+                href="/trends"
                 className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
               >
-                Existing homes
+                Trends
               </Link>
               <Link
                 href="/fed-analysis"
@@ -417,12 +417,12 @@ export default async function MortgageRatesPage() {
                 >
                   Fed analysis
                 </Link>
-                . National existing-home sales and NAR pending live on{" "}
+                .                 National existing-home sales and NAR pending live on{" "}
                 <Link
-                  href="/existing-homes"
+                  href="/trends"
                   className="text-navy underline decoration-charcoal/25 underline-offset-2 hover:decoration-navy"
                 >
-                  Existing homes
+                  Trends
                 </Link>
                 .
               </p>

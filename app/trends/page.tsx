@@ -28,10 +28,10 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Existing Homes — TMRE",
+  title: "Trends — TMRE",
   description:
     "Official NAR existing-home sales, inventory, months of supply, and median prices via FRED, plus NAR pending home sales — national and Northeast context for Fairfield County.",
-  alternates: { canonical: "/existing-homes" },
+  alternates: { canonical: "/trends" },
 };
 
 const eyebrow = "font-mono text-[11px] tracking-[0.2em] uppercase text-gold";
@@ -198,7 +198,7 @@ function valueOn(
   return hit ? hit.value : null;
 }
 
-export default async function ExistingHomesPage() {
+export default async function TrendsPage() {
   await ensureExistingHomesFresh();
 
   const [series, pending, meta] = await Promise.all([
@@ -221,7 +221,7 @@ export default async function ExistingHomesPage() {
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className={`${eyebrow} mb-3 animate-fade-up`}>Markets</p>
           <h1 className="max-w-3xl font-serif text-4xl leading-[1.05] text-white sm:text-5xl lg:text-6xl animate-fade-up">
-            Existing <span className="italic gold-shimmer">homes.</span>
+            <span className="italic gold-shimmer">Trends.</span>
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/70 lg:text-base animate-fade-up-delay-1">
             Official NAR existing-home sales, inventory, supply, and prices —
@@ -264,7 +264,7 @@ export default async function ExistingHomesPage() {
                   : "FRED series not synced yet"}
             </p>
           </div>
-          <MarketsPageTabs active="existing-homes" />
+          <MarketsPageTabs active="trends" />
         </div>
       </section>
 

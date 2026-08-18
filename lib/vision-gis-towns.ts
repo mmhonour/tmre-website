@@ -8,7 +8,7 @@ export type VisionGisTownConfig = {
   baseUrl: string
   /**
    * VGSI printable Field Card PDF folder (no trailing slash).
-   * Open Field Card = `{fieldCardPdfBase}/{visionPid}.pdf`
+   * Field Card PDF = `{fieldCardPdfBase}/{visionPid}.pdf`
    */
   fieldCardPdfBase: string
 }

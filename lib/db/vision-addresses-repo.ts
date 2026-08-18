@@ -790,6 +790,7 @@ function coerceFieldCard(
       version: 1,
       fields: obj.fields,
       searchText: typeof obj.searchText === 'string' ? obj.searchText : '',
+      ownership: Array.isArray(obj.ownership) ? obj.ownership : undefined,
     }
   } catch {
     return null
