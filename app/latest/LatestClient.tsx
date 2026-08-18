@@ -10,6 +10,7 @@ import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
 import LatestTownStats from "@/components/latest/LatestTownStats";
 import { prefetchAllTownSnapshots } from "@/components/latest/LatestIntelligenceTownSnapshot";
+import { prefetchAllTownBoundaries } from "@/components/ZipBoundaryPopover";
 import type { LatestListingRow, TownUpdateStat } from "@/lib/latest-listings";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
@@ -288,8 +289,11 @@ export default function LatestClient({
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [selectedTown, setSelectedTown] = useState<string | null>(null);
+  const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [townListings, setTownListings] = useState<LatestListingRow[]>([]);
   const [townLoading, setTownLoading] = useState(false);
+  /** True only after a town feed fetch finished (or cache hit). Prevents empty-state flash. */
+  const [townFeedReady, setTownFeedReady] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   /** Per-group status filter from group-header pills (null / missing = all). */
   const [groupStatusFilter, setGroupStatusFilter] = useState<
@@ -329,6 +333,7 @@ export default function LatestClient({
         setGroupByZip(stored.groupByZip);
         setTownStatsOpen(stored.townStatsOpen);
         setSelectedTown(stored.selectedTown);
+        setSelectedZip(stored.selectedZip);
         setCollapsedGroups(new Set(stored.collapsedGroups));
         setExpandedGroups(new Set(stored.expandedGroups));
         setGroupStatusFilter(stored.groupStatusFilter);
@@ -370,6 +375,7 @@ export default function LatestClient({
       groupByTown,
       groupByZip: groupByTown && groupByZip,
       selectedTown,
+      selectedZip,
       townStatsOpen,
       collapsedGroups: [...collapsedGroups],
       expandedGroups: [...expandedGroups],
@@ -384,6 +390,7 @@ export default function LatestClient({
     groupByTown,
     groupByZip,
     selectedTown,
+    selectedZip,
     townStatsOpen,
     collapsedGroups,
     expandedGroups,
@@ -443,7 +450,7 @@ export default function LatestClient({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as ApiResponse;
         const rows = body.listings ?? [];
-        townCacheRef.current.set(town, rows);
+        if (rows.length > 0) townCacheRef.current.set(town, rows);
         return rows;
       })
       .finally(() => {
@@ -560,24 +567,31 @@ export default function LatestClient({
     if (!selectedTown) {
       setTownListings([]);
       setTownLoading(false);
+      setTownFeedReady(true);
       return;
     }
     let cancelled = false;
     const cached = townCacheRef.current.get(selectedTown);
-    if (cached) {
+    if (cached && cached.length > 0) {
       setTownListings(cached);
       setTownLoading(false);
+      setTownFeedReady(true);
       return;
     }
     const placeholder = listingsForTown(listings, selectedTown);
     setTownListings(placeholder);
-    setTownLoading(placeholder.length === 0);
+    setTownLoading(true);
+    setTownFeedReady(false);
     void fetchTownListings(selectedTown)
       .then((rows) => {
-        if (!cancelled) setTownListings(rows);
+        if (!cancelled) {
+          setTownListings(rows);
+          setTownFeedReady(true);
+        }
       })
       .catch(() => {
         if (!cancelled && placeholder.length === 0) setTownListings([]);
+        if (!cancelled) setTownFeedReady(true);
       })
       .finally(() => {
         if (!cancelled) setTownLoading(false);
@@ -591,8 +605,9 @@ export default function LatestClient({
     const source = selectedTown ? townListings : listings;
     return source
       .filter((row) => isTmreTown(row.town) || isTmreTown(row.city))
+      .filter((row) => !selectedZip || normalizeZip(row.zip) === selectedZip)
       .sort((a, b) => latestRowActivityMs(b) - latestRowActivityMs(a));
-  }, [listings, selectedTown, townListings]);
+  }, [listings, selectedTown, selectedZip, townListings]);
 
   const byTimeStatusCounts = useMemo(
     () => summarizeTownStatuses(visibleListings),
@@ -609,6 +624,10 @@ export default function LatestClient({
     if (loading) return;
     void prefetchAllTownSnapshots();
   }, [loading]);
+
+  useEffect(() => {
+    prefetchAllTownBoundaries();
+  }, []);
 
   // Warm hero thumbnails before paint when the feed is hydrated from SSR cache.
   useLayoutEffect(() => {
@@ -657,7 +676,7 @@ export default function LatestClient({
       const backfill = isTop ? topTownBackfill[group.label] : undefined;
       const base =
         backfill && backfill.length > group.rows.length ? backfill : group.rows;
-      if (groupByZip) {
+      if (groupByZip && !selectedZip) {
         const subGroups: FeedSubGroup[] = groupRowsByKey(base, zipGroupKey).map(
           (sub) => ({
             label: sub.label,
@@ -686,6 +705,7 @@ export default function LatestClient({
     groupByZip,
     isGrouped,
     selectedTown,
+    selectedZip,
     topTownBackfill,
   ]);
 
@@ -717,9 +737,57 @@ export default function LatestClient({
       .map((g) => g.label);
   }, [feedGroups, selectedTown, topTownBackfill, groupByTown]);
 
-  const toggleTownFilter = useCallback((town: string) => {
-    setSelectedTown((prev) => (prev === town ? null : town));
-  }, []);
+  const applyTownSelection = useCallback(
+    (town: string | null) => {
+      if (!town) {
+        setSelectedTown(null);
+        setSelectedZip(null);
+        setTownListings([]);
+        setTownLoading(false);
+        setTownFeedReady(true);
+        return;
+      }
+      setSelectedTown(town);
+      const cached = townCacheRef.current.get(town);
+      if (cached && cached.length > 0) {
+        setTownListings(cached);
+        setTownLoading(false);
+        setTownFeedReady(true);
+        return;
+      }
+      const placeholder = listingsForTown(listings, town);
+      setTownListings(placeholder);
+      setTownLoading(true);
+      setTownFeedReady(false);
+    },
+    [listings],
+  );
+
+  const toggleTownFilter = useCallback(
+    (town: string) => {
+      if (selectedTown === town) {
+        applyTownSelection(null);
+        return;
+      }
+      setSelectedZip(null);
+      applyTownSelection(town);
+    },
+    [applyTownSelection, selectedTown],
+  );
+
+  const toggleZipFilter = useCallback(
+    (town: string, zip: string) => {
+      const normalized = normalizeZip(zip);
+      if (!normalized) return;
+      if (selectedTown === town && selectedZip === normalized) {
+        setSelectedZip(null);
+        return;
+      }
+      if (selectedTown !== town) applyTownSelection(town);
+      setSelectedZip(normalized);
+    },
+    [applyTownSelection, selectedTown, selectedZip],
+  );
 
   const toggleGroupCollapsed = useCallback((label: string) => {
     setCollapsedGroups((prev) => {
@@ -917,7 +985,7 @@ export default function LatestClient({
 
       <section className="bg-cream pt-3 pb-12 lg:pt-5 lg:pb-14">
         <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-10">
-          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_248px] lg:items-start lg:gap-5">
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_292px] lg:items-start lg:gap-5">
             <div className="min-w-0">
               <div className="mb-3 space-y-2.5 lg:mb-2.5 lg:space-y-0">
                 <div className="flex items-center justify-between gap-3 font-mono text-[11px] tracking-[0.12em] uppercase">
@@ -948,6 +1016,24 @@ export default function LatestClient({
                         {selectedTown ? " · on" : ""}
                       </span>
                     </button>
+                    {selectedTown ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleTownFilter(selectedTown)}
+                        className="m-0 hidden shrink-0 cursor-pointer border-0 bg-transparent p-0 font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 lg:inline"
+                      >
+                        Clear town
+                      </button>
+                    ) : null}
+                    {selectedZip ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedZip(null)}
+                        className="m-0 hidden shrink-0 cursor-pointer border-0 bg-transparent p-0 font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 transition-colors hover:text-gold hover:decoration-gold/50 lg:inline"
+                      >
+                        Clear zip
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={activateGroupByTown}
@@ -1010,11 +1096,23 @@ export default function LatestClient({
                       Clear town
                     </button>
                   ) : null}
+                  {selectedZip ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-navy"
+                      onClick={() => setSelectedZip(null)}
+                    >
+                      Clear zip
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
               <div className="overflow-hidden rounded-xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04] lg:rounded-2xl">
-              {loading || (selectedTown && townLoading && visibleListings.length === 0) ? (
+              {loading ||
+              (selectedTown &&
+                !townFeedReady &&
+                visibleListings.length === 0) ? (
                 <div className="px-5 py-16 text-center text-slate">
                   <span className="inline-flex items-center gap-2 font-mono text-xs">
                     <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse-dot" />
@@ -1060,8 +1158,9 @@ export default function LatestClient({
                               listing={l}
                               isLive
                               isNew={newKeys.has(l.key)}
-                              hideTown={groupByTown}
-                              showZipMap={groupByZip}
+                              hideTown={groupByTown || Boolean(selectedTown)}
+                              hideZip={Boolean(selectedZip)}
+                              showZipMap={groupByZip && !selectedZip}
                               addressColumnCh={addressColumnCh}
                             />
                           </div>
@@ -1216,10 +1315,12 @@ export default function LatestClient({
                                       )}
                                     </svg>
                                   </span>
-                                  <LatestTownMapHover
-                                    townName={group.label}
-                                    className="truncate font-mono text-[12px] font-semibold tracking-[0.12em] uppercase text-navy/80"
-                                  />
+                                  {selectedTown ? null : (
+                                    <LatestTownMapHover
+                                      townName={group.label}
+                                      className="truncate font-mono text-[12px] font-semibold tracking-[0.12em] uppercase text-navy/80"
+                                    />
+                                  )}
                                 </button>
                                 <span className="shrink-0 font-mono text-[11px] tabular-nums text-charcoal/45">
                                   {filteredRows.length}
@@ -1278,10 +1379,12 @@ export default function LatestClient({
                                     )}
                                   </svg>
                                 </span>
-                                <LatestTownMapHover
-                                  townName={group.label}
-                                  className="shrink-0 font-semibold text-navy/70"
-                                />
+                                {selectedTown ? null : (
+                                  <LatestTownMapHover
+                                    townName={group.label}
+                                    className="shrink-0 font-semibold text-navy/70"
+                                  />
+                                )}
                               </button>
                               <span className="flex flex-1 flex-wrap items-center justify-center gap-1">
                                 {statusPills}
@@ -1397,6 +1500,8 @@ export default function LatestClient({
                                       listing={l}
                                       isLive
                                       isNew={newKeys.has(l.key)}
+                                      hideTown={Boolean(selectedTown)}
+                                      hideZip={Boolean(selectedZip)}
                                       addressColumnCh={addressColumnCh}
                                     />
                                   </div>
@@ -1416,7 +1521,9 @@ export default function LatestClient({
               stats={townStats}
               loading={loading}
               selectedTown={selectedTown}
+              selectedZip={selectedZip}
               onTownSelect={toggleTownFilter}
+              onZipSelect={toggleZipFilter}
             />
           </div>
         </div>
@@ -1434,8 +1541,13 @@ export default function LatestClient({
             stats={townStats}
             loading={loading}
             selectedTown={selectedTown}
+            selectedZip={selectedZip}
             onTownSelect={(town) => {
               toggleTownFilter(town);
+              setTownStatsOpen(false);
+            }}
+            onZipSelect={(town, zip) => {
+              toggleZipFilter(town, zip);
               setTownStatsOpen(false);
             }}
           />

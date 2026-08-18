@@ -36,7 +36,10 @@ import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
 import type { VintageBucketId } from "@/lib/vintage-buckets";
 import DealOfTheDayFrame from "./DealOfTheDayFrame";
 import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
-import { dealBoardSortLabel } from "@/components/intelligence/deal-board/deal-board-sort";
+import {
+  dealBoardSortLabel,
+  type DealBoardSortKey,
+} from "@/components/intelligence/deal-board/deal-board-sort";
 import type { DealBoardStatusFilter } from "@/components/intelligence/deal-board/deal-board-types";
 import {
   DEAL_BOARD_VIEW_DEFAULT,
@@ -3650,7 +3653,9 @@ export default function IntelligenceClient({
   const inlineTownZip =
     showZipFilters && !townLinksExpanded && !zipLinksExpanded;
 
-  function handleSort(key: SortKey) {
+  function handleSort(key: DealBoardSortKey) {
+    // Lookey-only column — Intelligence has no last-looked clock.
+    if (key === "looked") return;
     // Update sort state urgently so the chip/drawer respond immediately.
     // Board rows follow via useDeferredValue(boardSortKey/Dir) above.
     if (sortKey === key) {

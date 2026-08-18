@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getZipBoundaryRings } from '@/lib/zip-boundary-cache'
-import { hasZctaBoundary } from '@/lib/tmre-towns'
+import { boundaryZipsForAllTowns, hasZctaBoundary } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
  * Serve ZCTA outer rings from Postgres (`zip_boundaries`).
- * Genuine gaps are filled from Census TIGERweb within a short budget; zips
- * without a ZCTA (PO-box zips) are reported as unmappable rather than fetched.
+ * Reads only the stored `zip_boundaries` table (and the optional TMRE bundle).
+ * Census TIGERweb is never called on this path — monthly sync fills the table.
  *
  * GET /api/zip-boundaries?zips=06880,06840
  */
 export async function GET(req: NextRequest) {
+  const wantBundle = req.nextUrl.searchParams.get('bundle') === 'tmre'
   const raw = req.nextUrl.searchParams.get('zips') ?? ''
-  const zips = raw
-    .split(/[,\s]+/)
-    .map((z) => z.trim())
-    .filter((z) => /^\d{5}$/.test(z))
+  const zips = wantBundle
+    ? [...boundaryZipsForAllTowns()]
+    : raw
+        .split(/[,\s]+/)
+        .map((z) => z.trim())
+        .filter((z) => /^\d{5}$/.test(z))
 
   if (zips.length === 0) {
     return NextResponse.json(
@@ -29,8 +32,10 @@ export async function GET(req: NextRequest) {
   // Cap to keep response/size bounded (All Towns + neighbors is well under this).
   const limited = zips.slice(0, 40)
   const unmappable = limited.filter((zip) => !hasZctaBoundary(zip))
+  // Hover / page reads are cache-only. Census fills happen on the monthly
+  // zip-boundaries sync — never on a map hover.
   const { rings, missing, complete } = await getZipBoundaryRings(limited, {
-    fetchMissing: true,
+    fetchMissing: false,
   })
 
   const boundaries: Record<string, [number, number][][]> = {}

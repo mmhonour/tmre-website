@@ -19,7 +19,9 @@ import {
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import {
   isMarketPulsePriceScaleMetric,
+  marketPulseDeltaBarSpan,
   marketPulsePriceBarMax,
+  marketPulsePricePct,
   marketPulseStackedMetrics,
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
@@ -73,33 +75,31 @@ function cityLabel(row: { city: string }): string {
 const BAR_INNER_PX = 220
 const BAR_HEIGHT_PX = 12
 
+function barCellTd(widthPx: number, color: string): string {
+  if (widthPx <= 0) return ''
+  return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};font-size:0;line-height:${BAR_HEIGHT_PX}px;mso-line-height-rule:exactly;">&nbsp;</td>`
+}
+
 function metricBarRow(
   metricLabel: string,
   valueLabel: string,
   pct: number,
   barColor: string,
-  opts?: { tight?: boolean },
+  opts?: { tight?: boolean; leftPct?: number },
 ): string {
-  const filled = Math.max(
-    0,
-    Math.min(
-      BAR_INNER_PX,
-      Math.round((Math.max(0, Math.min(100, pct)) / 100) * BAR_INNER_PX),
-    ),
-  )
-  const empty = BAR_INNER_PX - filled
-  const fill =
-    filled <= 0
-      ? ''
-      : `<td width="${filled}" bgcolor="${barColor}" height="${BAR_HEIGHT_PX}" style="width:${filled}px;max-width:${filled}px;height:${BAR_HEIGHT_PX}px;background-color:${barColor};font-size:0;line-height:${BAR_HEIGHT_PX}px;mso-line-height-rule:exactly;">&nbsp;</td>`
-  const track =
-    empty <= 0
-      ? ''
-      : `<td width="${empty}" bgcolor="${BAR_TRACK}" height="${BAR_HEIGHT_PX}" style="width:${empty}px;max-width:${empty}px;height:${BAR_HEIGHT_PX}px;background-color:${BAR_TRACK};font-size:0;line-height:${BAR_HEIGHT_PX}px;mso-line-height-rule:exactly;">&nbsp;</td>`
+  const leftPct = Math.max(0, Math.min(100, opts?.leftPct ?? 0))
+  const widthPct = Math.max(0, Math.min(100 - leftPct, pct))
+  let leftPx = Math.round((leftPct / 100) * BAR_INNER_PX)
+  let filled = Math.round((widthPct / 100) * BAR_INNER_PX)
+  if (leftPx + filled > BAR_INNER_PX) filled = BAR_INNER_PX - leftPx
+  const empty = BAR_INNER_PX - leftPx - filled
+  const spacer = barCellTd(leftPx, BAR_TRACK)
+  const fill = barCellTd(filled, barColor)
+  const track = barCellTd(empty, BAR_TRACK)
   const barCell =
-    filled <= 0 && empty <= 0
-      ? `<td width="${BAR_INNER_PX}" bgcolor="${BAR_TRACK}" height="${BAR_HEIGHT_PX}" style="width:${BAR_INNER_PX}px;height:${BAR_HEIGHT_PX}px;background-color:${BAR_TRACK};font-size:0;line-height:${BAR_HEIGHT_PX}px;">&nbsp;</td>`
-      : `${fill}${track}`
+    !spacer && !fill && !track
+      ? barCellTd(BAR_INNER_PX, BAR_TRACK)
+      : `${spacer}${fill}${track}`
 
   const padY = opts?.tight ? '0' : '3px'
   return `
@@ -179,10 +179,23 @@ function stackedTownMetricsSection(
             : (maxByMetric[i] ?? 0)
           const pct =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0
-          const tight = m.id === 'medianPrice' || m.id === 'averagePrice'
+          const span =
+            m.id === 'priceDelta'
+              ? marketPulseDeltaBarSpan(
+                  marketPulsePricePct(row.medianPrice, priceMax),
+                  marketPulsePricePct(row.averagePrice, priceMax),
+                )
+              : { leftPct: 0, widthPct: pct }
+          const tight =
+            m.id === 'medianPrice' ||
+            m.id === 'averagePrice' ||
+            m.id === 'priceDelta'
           const metricLabel =
             m.labelOf?.(row) ?? m.label
-          return metricBarRow(metricLabel, m.format(row), pct, m.color, { tight })
+          return metricBarRow(metricLabel, m.format(row), span.widthPct, m.color, {
+            tight,
+            leftPct: span.leftPct,
+          })
         })
         .join('')
       return `

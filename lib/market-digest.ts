@@ -139,9 +139,15 @@ async function closedTrailingCounts(options: {
 }): Promise<MarketDigestClosedTownCount[]> {
   try {
     // Email only: allowed to recount if the stats cache has not run yet.
-    const { payload } = await readMarketPulseClosedCounts(options, {
-      allowCompute: true,
-    })
+    const { payload } = await readMarketPulseClosedCounts(
+      {
+        ...options,
+        lookbackId: DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+      },
+      {
+        allowCompute: true,
+      },
+    )
     return payload.rows
   } catch (err) {
     console.warn(

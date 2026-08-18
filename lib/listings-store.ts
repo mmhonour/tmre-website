@@ -610,7 +610,7 @@ export async function persistListingRecord(listing: Listing): Promise<boolean> {
   }
 }
 
-/** Fetch live from MLS and upsert into SQLite when available. */
+/** Fetch live from MLS and upsert into Postgres when available. */
 export async function persistListingByMlsId(
   id: string,
 ): Promise<{ cached: boolean; found: boolean; source: ListingsSource }> {

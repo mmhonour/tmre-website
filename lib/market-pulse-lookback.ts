@@ -20,8 +20,15 @@ export type MarketPulseLookbackId =
 export type MarketPulseLookbackOption =
   (typeof MARKET_PULSE_LOOKBACK_OPTIONS)[number]
 
-/** Matches the precomputed stats-cache Closed aggregate. */
-export const DEFAULT_MARKET_PULSE_LOOKBACK_ID: MarketPulseLookbackId = '24mo'
+/** Page-load + Monday email Closed window. */
+export const DEFAULT_MARKET_PULSE_LOOKBACK_ID: MarketPulseLookbackId = '12mo'
+
+/**
+ * Precomputed stats-cache Closed aggregate and Closed-bar axis ceiling.
+ * Shorter slider windows stay a slice of this max. Not the page-load default.
+ */
+export const MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID: MarketPulseLookbackId =
+  '24mo'
 
 export function parseMarketPulseLookbackId(
   raw: string | null | undefined,
@@ -42,11 +49,40 @@ export function marketPulseLookbackById(
   )
 }
 
-/** Short chart title fragment, e.g. "24 mos" or "7d". */
+/** Short chart title fragment, e.g. "12 mos" or "7d". */
 export function marketPulseLookbackChartLabel(
   id: MarketPulseLookbackId,
 ): string {
   return marketPulseLookbackById(id).label
+}
+
+export function marketPulseLookbackIndex(
+  id: MarketPulseLookbackId,
+): number {
+  const i = MARKET_PULSE_LOOKBACK_OPTIONS.findIndex((o) => o.id === id)
+  return i >= 0
+    ? i
+    : MARKET_PULSE_LOOKBACK_OPTIONS.findIndex(
+        (o) => o.id === DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+      )
+}
+
+export function marketPulseLookbackIdAt(
+  index: number,
+): MarketPulseLookbackId {
+  const opt = MARKET_PULSE_LOOKBACK_OPTIONS[index]
+  return opt?.id ?? DEFAULT_MARKET_PULSE_LOOKBACK_ID
+}
+
+/** Read lookback stamped on a Closed-cache calc payload, if present. */
+export function lookbackIdFromClosedCalc(
+  rows: Array<{ calc?: { inputs?: unknown } }>,
+): MarketPulseLookbackId | null {
+  const raw = rows[0]?.calc?.inputs
+  if (!raw || typeof raw !== 'object' || !('lookbackId' in raw)) return null
+  const id = (raw as { lookbackId?: unknown }).lookbackId
+  if (typeof id !== 'string') return null
+  return MARKET_PULSE_LOOKBACK_OPTIONS.find((o) => o.id === id)?.id ?? null
 }
 
 /** Closed value prefix: `24 mos` → `24 Mos`. */
@@ -62,7 +98,7 @@ export function formatClosedCountWithLookback(
   return `${marketPulseLookbackClosedPrefix(lookbackLabel)} - ${countText}`
 }
 
-/** 24-month Closed axis — shorter lookbacks stay a slice of this max, not 100%. */
+/** Closed-bar axis from the 24-month window — shorter lookbacks stay a slice. */
 export function closedCountBarMax(
   rows: Array<{ count: number | null | undefined }>,
 ): number {

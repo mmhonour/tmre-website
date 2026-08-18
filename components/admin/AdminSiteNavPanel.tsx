@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  createCustomExploreGroup,
   DEFAULT_SITE_NAV,
   moveItem,
   normalizeSiteNav,
@@ -269,6 +270,25 @@ export default function AdminSiteNavPanel({
     }));
   };
 
+  const addCustomGroup = () => {
+    setConfig((prev) => ({
+      ...prev,
+      exploreGroups: [
+        ...prev.exploreGroups,
+        createCustomExploreGroup(prev.exploreGroups),
+      ],
+    }));
+  };
+
+  const removeCustomGroup = (gi: number) => {
+    setConfig((prev) => ({
+      ...prev,
+      exploreGroups: prev.exploreGroups.filter(
+        (g, i) => i !== gi || g.custom !== true,
+      ),
+    }));
+  };
+
   return (
     <div
       id="admin-site-nav"
@@ -280,11 +300,11 @@ export default function AdminSiteNavPanel({
         </p>
         <p className="mt-1 text-sm text-slate max-w-3xl">
           Organize the public header: top-level links, Explore dropdown groups,
-          labels, order, show/hide, and adding or removing pages. The picker
-          lists every stable public page that is not already in the menu (same
-          catalog as sitemap.xml), so a menu edit cannot create a dead link.
-          Listing detail URLs, Admin, and test routes stay out. Catalog links
-          hide rather than delete — only pages you added here can be removed. No
+          labels, order, show/hide, and adding or removing pages. Add group
+          creates an empty custom column; Remove is only on those custom groups.
+          Pages can be added to any group, including custom ones. Catalog
+          groups (Properties, Research) hide rather than delete. The picker
+          lists every stable public page that is not already in the menu. No
           redeploy required after save.
         </p>
       </div>
@@ -390,7 +410,22 @@ export default function AdminSiteNavPanel({
                   className="min-w-[8rem] flex-1 rounded border border-charcoal/15 px-2 py-1.5 text-sm font-medium text-navy"
                   aria-label="Group title"
                 />
+                {group.custom ? (
+                  <button
+                    type="button"
+                    onClick={() => removeCustomGroup(gi)}
+                    className="font-mono text-[10px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral hover:bg-rose-50 transition-colors"
+                  >
+                    Remove
+                  </button>
+                ) : null}
               </div>
+              {group.custom && group.links.length === 0 ? (
+                <p className="font-mono text-[10px] text-charcoal/40 pl-1">
+                  Empty custom column — add a page below. Hidden on the public
+                  site until it has a visible page.
+                </p>
+              ) : null}
               <div className="space-y-1.5 pl-1">
                 {group.links.map((link, li) => (
                   <RowChrome key={link.id}>
@@ -460,6 +495,13 @@ export default function AdminSiteNavPanel({
               </div>
             </div>
           ))}
+          <button
+            type="button"
+            onClick={addCustomGroup}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/30 text-navy bg-cream/40 hover:bg-cream transition-colors"
+          >
+            + Add group
+          </button>
         </section>
 
         <div className="flex flex-wrap items-center gap-3">

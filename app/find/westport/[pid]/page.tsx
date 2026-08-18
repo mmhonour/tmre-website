@@ -11,7 +11,7 @@ export async function generateMetadata({
   params: Promise<{ pid: string }>;
 }) {
   const { pid } = await params;
-  const property = await mergeWestportProperty(pid);
+  const property = await mergeWestportProperty(pid, { ingest: false });
   const label = property?.street?.trim() || `Westport parcel ${pid}`;
   return {
     title: `${label} — Westport Lookup — TMRE`,
@@ -121,6 +121,18 @@ export default async function WestportParcelPage({
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-24 lg:pb-10 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
+          {property.listingIngested && property.listing ? (
+            <div className="mb-5 rounded-xl border border-gold/45 bg-gold/15 px-4 py-3">
+              <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-gold">
+                Listing is available
+              </p>
+              <p className="mt-1 text-sm text-white/80">
+                Pulled from RETS and stored in listings · MLS #
+                {property.listing.mlsId}
+                {property.listing.status ? ` · ${property.listing.status}` : ""}.
+              </p>
+            </div>
+          ) : null}
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
             <Link href="/find" className="hover:text-white transition-colors">
               Find · Westport

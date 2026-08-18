@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-export type MarketsPageTab = "fed-analysis" | "mortgage-rates";
+export type MarketsPageTab =
+  | "fed-analysis"
+  | "mortgage-rates"
+  | "existing-homes";
 
 const TABS: readonly {
   id: MarketsPageTab;
@@ -8,12 +11,14 @@ const TABS: readonly {
   label: string;
 }[] = [
   { id: "mortgage-rates", href: "/mortgage-rates", label: "Mortgage rates" },
+  { id: "existing-homes", href: "/existing-homes", label: "Existing homes" },
   { id: "fed-analysis", href: "/fed-analysis", label: "Fed analysis" },
 ];
 
 /**
  * folder-comps-mobile style — gold fill + navy label when selected,
- * quiet muted label when inactive. Used to twin /fed-analysis ↔ /mortgage-rates.
+ * quiet muted label when inactive. Ties /mortgage-rates, /existing-homes,
+ * and /fed-analysis.
  */
 function folderTabClass(active: boolean): string {
   const base =

@@ -14,7 +14,7 @@ export async function GET(
   const visionPid = pid.trim();
   if (!visionPid) notFound();
 
-  const property = await mergeWestportProperty(visionPid);
+  const property = await mergeWestportProperty(visionPid, { ingest: false });
   if (!property) notFound();
 
   const html = renderTmreFieldCardHtml({

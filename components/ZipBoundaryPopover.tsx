@@ -90,7 +90,20 @@ export function prefetchTownBoundaries(town: TmreTown): void {
 
 /** Prefetch all TMRE town zips (Intelligence “All Towns” hover). */
 export function prefetchAllTownBoundaries(): void {
-  prefetchZipBoundaries(boundaryZipsForAllTowns());
+  if (boundaryZipsForAllTowns().every((zip) => cache.has(zip))) return;
+  void fetch(`/api/zip-boundaries?bundle=tmre`, { cache: "force-cache" })
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        boundaries?: Record<string, Ring[]>;
+      };
+      for (const [zip, rings] of Object.entries(data.boundaries ?? {})) {
+        if (Array.isArray(rings) && rings.length > 0) cache.set(zip, rings);
+      }
+    })
+    .catch(() => {
+      prefetchZipBoundaries(boundaryZipsForAllTowns());
+    });
 }
 
 function ringBBoxCenter(rings: Ring[]): Coord | null {

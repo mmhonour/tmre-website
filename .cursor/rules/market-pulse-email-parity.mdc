@@ -15,7 +15,7 @@ Defined in `lib/market-pulse-defaults.ts` + `lib/market-pulse-lookback.ts`:
 - Property type: **ALL** (sales)
 - Layout: **stacked** (`DEFAULT_MARKET_PULSE_CHART_LAYOUT`)
 - Sort: **Seller Friendly** (`DEFAULT_MARKET_PULSE_FAVOR_SORT`)
-- Closed lookback: **24 mos** (`DEFAULT_MARKET_PULSE_LOOKBACK_ID`)
+- Closed lookback: **12 mos** (`DEFAULT_MARKET_PULSE_LOOKBACK_ID`)
 - Stacked metrics: `marketPulseStackedMetrics()` in `lib/market-pulse-stacked-metrics.ts`
 
 Email HTML (`lib/market-digest-html.ts`) and plaintext (`formatMarketDigestEmail` in `lib/market-digest.ts`) must use:

@@ -5,10 +5,13 @@ import { useEffect, useState } from "react";
 import LatestIntelligenceTownSnapshot, {
   prefetchAllTownSnapshots,
 } from "@/components/latest/LatestIntelligenceTownSnapshot";
-import { normalizeTownName } from "@/lib/tmre-towns";
+import { normalizeTownName, townHasMultipleZips } from "@/lib/tmre-towns";
 import { mlsTimestampMs } from "@/lib/mls-time";
 import { listingDetailHref } from "@/lib/listing-url";
+import type { ClosedTownStat } from "@/lib/closed-shared";
 import type { TownUpdateStat } from "@/lib/latest-listings";
+
+type TownStatRow = TownUpdateStat | ClosedTownStat;
 
 function formatLatest(iso: string | null): string {
   const t = mlsTimestampMs(iso);
@@ -22,13 +25,20 @@ function formatLatest(iso: string | null): string {
 }
 
 type LatestTownStatsProps = {
-  stats: TownUpdateStat[];
+  stats: TownStatRow[];
   loading?: boolean;
   selectedTown: string | null;
+  selectedZip?: string | null;
   onTownSelect: (town: string) => void;
+  onZipSelect?: (town: string, zip: string) => void;
   className?: string;
   /** When false, omit the Stats eyebrow (e.g. inside a titled drawer). */
   showHeading?: boolean;
+  countNoun?: string;
+  countNounPlural?: string;
+  volumeHint?: string;
+  latestCaption?: string;
+  emptyHint?: string;
 };
 
 /**
@@ -39,12 +49,22 @@ function LatestTownSidePanel({
   row,
   rank,
   selected,
+  selectedZip,
   onTownSelect,
+  onZipSelect,
+  countNoun,
+  countNounPlural,
+  latestCaption,
 }: {
-  row: TownUpdateStat;
+  row: TownStatRow;
   rank: number;
   selected: boolean;
+  selectedZip: string | null;
   onTownSelect: (town: string) => void;
+  onZipSelect?: (town: string, zip: string) => void;
+  countNoun: string;
+  countNounPlural: string;
+  latestCaption: string;
 }) {
   const label = normalizeTownName(row.town);
   const latestLabel = formatLatest(row.latestUpdate);
@@ -69,12 +89,12 @@ function LatestTownSidePanel({
         <button
           type="button"
           onClick={() => onTownSelect(row.town)}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left transition-colors hover:brightness-110 lg:px-4"
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left transition-colors hover:brightness-110"
           aria-pressed={selected}
-          title={`${label}: ${row.updateCount} updates in the last 24 hours. Rank #${rank} by update volume.`}
+          title={`${label}: ${row.updateCount} ${row.updateCount === 1 ? countNoun : countNounPlural}. Rank #${rank}.`}
         >
           <span
-            className={`min-w-0 truncate font-mono text-[11px] tracking-[0.14em] uppercase text-gold lg:text-xs ${
+            className={`min-w-0 font-mono text-[11px] leading-tight tracking-[0.08em] uppercase text-gold ${
               selected ? "font-bold" : ""
             }`}
           >
@@ -85,14 +105,14 @@ function LatestTownSidePanel({
             </span>
           </span>
           <span
-            className="ml-auto inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap font-mono text-gold"
-            title="Status updates in the last 24 hours"
+            className="ml-auto inline-flex shrink-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-gold"
+            title={row.updateCount === 1 ? countNoun : countNounPlural}
           >
-            <span className="text-sm font-semibold tabular-nums leading-none">
+            <span className="text-[11px] font-semibold tabular-nums leading-none">
               {row.updateCount}
             </span>
-            <span className="text-[9px] tracking-[0.12em] uppercase text-gold/70">
-              {row.updateCount === 1 ? "update" : "updates"}
+            <span className="text-[8px] tracking-[0.08em] uppercase text-gold/70">
+              {row.updateCount === 1 ? countNoun : countNounPlural}
             </span>
           </span>
         </button>
@@ -124,11 +144,36 @@ function LatestTownSidePanel({
         </button>
       </div>
 
+      {townHasMultipleZips(row.town) && (row.zips?.length ?? 0) > 0 ? (
+        <div className="flex flex-wrap gap-1 border-b border-white/10 bg-navy px-3 py-2">
+          {(row.zips ?? []).map((zipRow) => {
+            const zipSelected = selected && selectedZip === zipRow.zip;
+            return (
+              <button
+                key={zipRow.zip}
+                type="button"
+                onClick={() => onZipSelect?.(row.town, zipRow.zip)}
+                aria-pressed={zipSelected}
+                title={`${zipRow.zip}: ${zipRow.updateCount} ${zipRow.updateCount === 1 ? countNoun : countNounPlural}`}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase transition-colors ${
+                  zipSelected
+                    ? "border-gold/50 bg-gold/20 text-gold"
+                    : "border-white/15 bg-white/5 text-gold/80 hover:border-gold/35 hover:text-gold"
+                }`}
+              >
+                <span className="tabular-nums">{zipRow.zip}</span>
+                <span className="tabular-nums text-gold/70">{zipRow.updateCount}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {expanded ? (
         <>
           <div className="flex items-center justify-between gap-2 whitespace-nowrap border-b border-charcoal/[0.06] px-3 py-2 lg:px-4">
             <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
-              Latest update
+              {latestCaption}
             </span>
             {latestHref ? (
               <Link
@@ -154,9 +199,16 @@ export default function LatestTownStats({
   stats,
   loading = false,
   selectedTown,
+  selectedZip = null,
   onTownSelect,
+  onZipSelect,
   className = "",
   showHeading = true,
+  countNoun = "update",
+  countNounPlural = "updates",
+  volumeHint = "Towns by update volume · 24h",
+  latestCaption = "Latest update",
+  emptyHint = "No town updates in the last 24 hours.",
 }: LatestTownStatsProps) {
   const visibleStats = selectedTown
     ? stats.filter((row) => row.town === selectedTown)
@@ -177,14 +229,14 @@ export default function LatestTownStats({
           <p className="text-right font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
             {selectedTown
               ? `${normalizeTownName(selectedTown)} market`
-              : "Towns by update volume · 24h"}
+              : volumeHint}
           </p>
         </div>
       ) : (
         <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
           {selectedTown
             ? `${normalizeTownName(selectedTown)} market`
-            : "Towns by update volume · 24h"}
+            : volumeHint}
         </p>
       )}
       <div className={`space-y-2 ${showHeading ? "pt-4" : ""}`}>
@@ -193,7 +245,7 @@ export default function LatestTownStats({
         ) : visibleStats.length === 0 ? (
           <div className="rounded-2xl border border-charcoal/[0.08] bg-white p-5">
             <p className="font-mono text-[10px] text-slate">
-              No town updates in the last 24 hours.
+              {emptyHint}
             </p>
           </div>
         ) : (
@@ -203,7 +255,12 @@ export default function LatestTownStats({
               row={row}
               rank={selectedTown ? 1 : index + 1}
               selected={selectedTown === row.town}
+              selectedZip={selectedZip}
               onTownSelect={onTownSelect}
+              onZipSelect={onZipSelect}
+              countNoun={countNoun}
+              countNounPlural={countNounPlural}
+              latestCaption={latestCaption}
             />
           ))
         )}

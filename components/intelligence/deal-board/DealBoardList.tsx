@@ -46,6 +46,8 @@ export type DealBoardListProps = {
   rankTotal: number;
   isLive: boolean;
   showTown: boolean;
+  /** Lookey: expose Last looked in the sort drawer. */
+  showLookedSort?: boolean;
   /** Hide SFR/Rental/etc. in meta when Sale or Rental filter pill is active. */
   hideOwnershipType?: boolean;
   loading: boolean;
@@ -95,6 +97,7 @@ export default function DealBoardList({
   rankTotal,
   isLive,
   showTown,
+  showLookedSort = false,
   hideOwnershipType = false,
   loading,
   loadingLabel,
@@ -308,6 +311,7 @@ export default function DealBoardList({
       sortDir={sortDir}
       onSort={onSort}
       showTown={showTown}
+      showLookedSort={showLookedSort}
       scoreInfoButton={scoreInfoButton}
       embedded
       fieldPickerInToolbar={sortFieldPickerInToolbar}

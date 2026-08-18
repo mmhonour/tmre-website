@@ -9,6 +9,8 @@ import type {
 } from "@/lib/market-digest-types";
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
+  lookbackIdFromClosedCalc,
   type MarketPulseLookbackId,
   closedCountBarMax,
 } from "@/lib/market-pulse-lookback";
@@ -104,7 +106,10 @@ export default function MarketPulseContent({
     const seeded: Record<string, ClosedFetchState> = {};
     for (const cat of snapshot.categories) {
       if (cat.closedTrailing?.length) {
-        seeded[closedCacheKey(cat.id, DEFAULT_MARKET_PULSE_LOOKBACK_ID)] = {
+        const stamped =
+          lookbackIdFromClosedCalc(cat.closedTrailing) ??
+          MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID;
+        seeded[closedCacheKey(cat.id, stamped)] = {
           status: "ok",
           rows: cat.closedTrailing,
         };
@@ -175,6 +180,54 @@ export default function MarketPulseContent({
     };
   }, [category, lookbackId, closedKey, closedFetchNonce]);
 
+  const axisKey = closedCacheKey(
+    category,
+    MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
+  );
+  useEffect(() => {
+    if (lookbackId === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID) return;
+    const existing = closedByKeyRef.current[axisKey];
+    if (existing?.status === "ok" || existing?.status === "loading") return;
+    let cancelled = false;
+    setClosedByKey((prev) => ({
+      ...prev,
+      [axisKey]: { status: "loading", rows: [] },
+    }));
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/market-pulse/closed-by-town?${CLOSED_QUERY[category]}&lookback=${MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID}`,
+          { cache: "no-store" },
+        );
+        const body = (await res.json()) as {
+          rows?: MarketDigestClosedTownCount[];
+          error?: boolean;
+        };
+        if (cancelled) return;
+        if (!res.ok || body.error || !Array.isArray(body.rows)) {
+          setClosedByKey((prev) => ({
+            ...prev,
+            [axisKey]: { status: "error", rows: [] },
+          }));
+          return;
+        }
+        setClosedByKey((prev) => ({
+          ...prev,
+          [axisKey]: { status: "ok", rows: body.rows! },
+        }));
+      } catch {
+        if (cancelled) return;
+        setClosedByKey((prev) => ({
+          ...prev,
+          [axisKey]: { status: "error", rows: [] },
+        }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [axisKey, category, lookbackId]);
+
   const handleLookbackIdChange = useCallback(
     (id: MarketPulseLookbackId) => {
       const key = closedCacheKey(category, id);
@@ -203,12 +256,19 @@ export default function MarketPulseContent({
       }
     : snapshot;
 
+  const axisRows =
+    closedByKey[closedCacheKey(category, MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID)]
+      ?.rows;
+  const snapshotClosed = active?.closedTrailing ?? snapshot.closedTrailing ?? [];
+  const snapshotLookback =
+    lookbackIdFromClosedCalc(snapshotClosed) ??
+    MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID;
   const closedBarMax = closedCountBarMax(
-    closedByKey[closedCacheKey(category, DEFAULT_MARKET_PULSE_LOOKBACK_ID)]
-      ?.rows ??
-      active?.closedTrailing ??
-      snapshot.closedTrailing ??
-      [],
+    axisRows?.length
+      ? axisRows
+      : snapshotLookback === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID
+        ? snapshotClosed
+        : (closedRows ?? []),
   );
 
   const townHref = (cityLabel: string) =>

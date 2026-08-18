@@ -16,8 +16,8 @@ export const MARKET_PULSE_STACKED_METRIC_IDS = [
   'avgDom',
   'closed',
   'medianPrice',
-  'averagePrice',
   'priceDelta',
+  'averagePrice',
 ] as const
 
 export type MarketPulseStackedMetricId =
@@ -52,7 +52,7 @@ function absOrNull(n: number | null | undefined): number | null {
   return n != null && Number.isFinite(n) ? Math.abs(n) : null
 }
 
-/** Default stacked metrics (page load + email). `closedLookbackLabel` e.g. `24 mos`. */
+/** Default stacked metrics (page load + email). `closedLookbackLabel` e.g. `12 mos`. */
 export function marketPulseStackedMetrics(
   closedLookbackLabel: string,
 ): MarketPulseStackedMetricDef[] {
@@ -92,22 +92,22 @@ export function marketPulseStackedMetrics(
       format: (r) => fmtMoney(r.medianPrice),
     },
     {
-      id: 'averagePrice',
-      label: 'Avg',
-      barValueOf: (r) => r.averagePrice,
-      format: (r) => fmtMoney(r.averagePrice),
-    },
-    {
       id: 'priceDelta',
       label: 'Delta',
       labelOf: (r) => `Delta ${formatPriceDeltaPct(r.priceDeltaPct)}`,
       barValueOf: (r) => absOrNull(r.priceDelta),
       format: (r) => formatPriceDeltaK(r.priceDelta),
     },
+    {
+      id: 'averagePrice',
+      label: 'Average',
+      barValueOf: (r) => r.averagePrice,
+      format: (r) => fmtMoney(r.averagePrice),
+    },
   ]
 }
 
-/** Shared dollar axis for Median, Avg, and Delta (do not scale Delta to its own max). */
+/** Shared dollar axis for Median, Delta, and Average (do not scale Delta to its own max). */
 export function marketPulsePriceBarMax(
   rows: Array<{
     medianPrice: number | null
@@ -121,6 +121,34 @@ export function marketPulsePriceBarMax(
     }
   }
   return max
+}
+
+function clampBarPct(n: number): number {
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(100, n))
+}
+
+/** Dollar value → % of the shared Median / Average axis. */
+export function marketPulsePricePct(
+  dollars: number | null | undefined,
+  priceMax: number,
+): number {
+  if (priceMax <= 0 || dollars == null || !Number.isFinite(dollars)) return 0
+  return clampBarPct((dollars / priceMax) * 100)
+}
+
+/**
+ * Delta bar spans the gap between the median-bar end and the average-bar end
+ * on the shared dollar axis (not a bar that starts at 0).
+ */
+export function marketPulseDeltaBarSpan(
+  medianPct: number,
+  averagePct: number,
+): { leftPct: number; widthPct: number } {
+  const med = clampBarPct(medianPct)
+  const avg = clampBarPct(averagePct)
+  const leftPct = Math.min(med, avg)
+  return { leftPct, widthPct: Math.max(med, avg) - leftPct }
 }
 
 export function isMarketPulsePriceScaleMetric(

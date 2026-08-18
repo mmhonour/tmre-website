@@ -197,7 +197,7 @@ function ExploreMenu({
         {open && (
           <div className="mt-1 rounded-xl border border-white/10 bg-navy-dark px-2 py-3">
             {exploreGroups.map((group) => (
-              <div key={group.title} className="mb-3 last:mb-0">
+              <div key={group.id} className="mb-3 last:mb-0">
                 <p className="px-2 font-mono text-[9px] tracking-[0.15em] uppercase text-white/55 mb-1">
                   {group.title}
                 </p>
@@ -256,7 +256,7 @@ function ExploreMenu({
           role="menu"
         >
           {exploreGroups.map((group, i) => (
-            <div key={group.title} className={i > 0 ? "mt-3 pt-3 border-t border-white/10" : ""}>
+            <div key={group.id} className={i > 0 ? "mt-3 pt-3 border-t border-white/10" : ""}>
               <p className="px-4 font-mono text-[9px] tracking-[0.2em] uppercase text-gold/70 mb-1.5">
                 {group.title}
               </p>

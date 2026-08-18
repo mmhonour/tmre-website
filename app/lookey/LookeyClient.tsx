@@ -3,6 +3,30 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
+import GoldilocksScoreExplainModal from "@/components/GoldilocksScoreExplainModal";
+import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
+import {
+  DEAL_BOARD_SORT_DIRS,
+  DEAL_BOARD_SORT_KEYS,
+  sortDealBoardListings,
+  type DealBoardSortDir,
+  type DealBoardSortKey,
+} from "@/components/intelligence/deal-board/deal-board-sort";
+import type {
+  DealBoardListing,
+  DealBoardRowStatus,
+  DealBoardStatusFilter,
+} from "@/components/intelligence/deal-board/deal-board-types";
+import { usePersistedFilter } from "@/hooks/usePersistedFilter";
+import {
+  DEAL_BOARD_VIEW_DEFAULT,
+  DEAL_BOARD_VIEW_PREF_KEY,
+  DEAL_BOARD_VIEW_VALUES,
+  dealBoardViewDefaultForViewport,
+  type DealBoardView,
+} from "@/lib/deal-board-view";
+import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 import {
   clearLookedAtListings,
   LOOKED_AT_CHANGED_EVENT,
@@ -10,26 +34,44 @@ import {
   readLookedAtListings,
   type LookedAtEntry,
 } from "@/lib/looked-at-listings";
-import { listingPhotoProxyUrl } from "@/lib/listing-url";
-import ListingThumbImage from "@/components/ListingThumbImage";
+import { listingDetailHref } from "@/lib/listing-url";
 import { prefetchMlsPhotoThumbs } from "@/lib/prefetch-listing-images";
-import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 
-function fmtMoney(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-  return `$${Math.round(n)}`;
-}
+type BoardApiListing = {
+  key: string;
+  listingKey?: string | null;
+  mlsId?: string | null;
+  score?: number;
+  scoreBreakdown?: ScoreBreakdown | null;
+  address: string;
+  city?: string | null;
+  type: string;
+  price: number;
+  pricePerSqft?: number | null;
+  sqft?: number | null;
+  lotAcres?: number | null;
+  dom?: number | null;
+  status: DealBoardRowStatus;
+  contractStatus?: string | null;
+  isRental?: boolean;
+  beds?: number | null;
+  baths?: number | null;
+  yearBuilt?: number | null;
+  headline?: string;
+  photoCount?: number | null;
+  primaryPhotoIndex?: number | null;
+};
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
+type BoardApiResponse = {
+  towns?: Record<string, BoardApiListing[]>;
+};
+
+const STATUS_FILTERS: readonly DealBoardStatusFilter[] = [
+  "all",
+  "new",
+  "reduced",
+  "active",
+];
 
 function shortType(propertyType: string | null): string {
   if (!propertyType) return "Listing";
@@ -41,10 +83,96 @@ function shortType(propertyType: string | null): string {
   return t;
 }
 
+function idKey(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function boardToDealListing(row: BoardApiListing): DealBoardListing {
+  return {
+    key: row.mlsId?.trim() || row.key,
+    listingKey: row.listingKey ?? null,
+    score: row.score ?? 0,
+    scoreBreakdown: row.scoreBreakdown ?? null,
+    address: row.address,
+    city: row.city ?? null,
+    type: row.type,
+    price: row.price,
+    pricePerSqft: row.pricePerSqft ?? null,
+    sqft: row.sqft ?? null,
+    lotAcres: row.lotAcres ?? null,
+    dom: row.dom ?? null,
+    status: row.status,
+    contractStatus: row.contractStatus ?? null,
+    isRental: Boolean(row.isRental),
+    beds: row.beds ?? null,
+    baths: row.baths ?? null,
+    yearBuilt: row.yearBuilt ?? null,
+    headline: row.headline ?? "",
+    photoCount: row.photoCount ?? null,
+    primaryPhotoIndex: row.primaryPhotoIndex ?? null,
+  };
+}
+
+function fallbackDealListing(entry: LookedAtEntry): DealBoardListing {
+  return {
+    key: entry.id,
+    listingKey: entry.id,
+    score: 0,
+    address: entry.address,
+    city: entry.city,
+    type: shortType(entry.propertyType),
+    price: entry.price ?? 0,
+    pricePerSqft: null,
+    sqft: null,
+    dom: null,
+    status: "Active",
+    isRental: /rental|lease/i.test(entry.propertyType ?? ""),
+    headline: "",
+  };
+}
+
+function matchesStatus(
+  listing: DealBoardListing,
+  filter: DealBoardStatusFilter,
+): boolean {
+  if (filter === "all") return true;
+  if (filter === "new") return listing.status === "New";
+  if (filter === "reduced") return listing.status === "Reduced";
+  return listing.status === "Active";
+}
+
 export default function LookeyClient() {
   const [entries, setEntries] = useState<LookedAtEntry[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [boardById, setBoardById] = useState<Map<string, DealBoardListing> | null>(
+    null,
+  );
+  const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
+  const [scoreListing, setScoreListing] = useState<DealBoardListing | null>(null);
   const pathname = usePathname();
+
+  const [sortKey, setSortKey] = usePersistedFilter<DealBoardSortKey>(
+    "tmre_lookey_sort_key_v2",
+    "looked",
+    DEAL_BOARD_SORT_KEYS,
+  );
+  const [sortDir, setSortDir] = usePersistedFilter<DealBoardSortDir>(
+    "tmre_lookey_sort_dir",
+    "desc",
+    DEAL_BOARD_SORT_DIRS,
+  );
+  const [boardView, setBoardView] = usePersistedFilter<DealBoardView>(
+    DEAL_BOARD_VIEW_PREF_KEY,
+    DEAL_BOARD_VIEW_DEFAULT,
+    DEAL_BOARD_VIEW_VALUES,
+    false,
+    dealBoardViewDefaultForViewport,
+  );
+  const [statusFilter, setStatusFilter] = usePersistedFilter<DealBoardStatusFilter>(
+    "tmre_lookey_status",
+    "all",
+    STATUS_FILTERS,
+  );
 
   const refresh = useCallback(() => {
     const next = readLookedAtListings();
@@ -59,7 +187,6 @@ export default function LookeyClient() {
     const onVisible = () => {
       if (document.visibilityState === "visible") refresh();
     };
-
     const onStorage = (event: StorageEvent) => {
       if (event.key === LOOKED_AT_STORAGE_KEY || event.key === null) refresh();
     };
@@ -80,18 +207,100 @@ export default function LookeyClient() {
     if (pathname === "/lookey") refresh();
   }, [pathname, refresh]);
 
-  const orderedEntries = useMemo(
-    () =>
-      [...entries].sort(
-        (a, b) => Date.parse(b.viewedAt) - Date.parse(a.viewedAt),
-      ),
-    [entries],
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/intelligence/deal-board", {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          if (!cancelled) setBoardById(new Map());
+          return;
+        }
+        const body = (await res.json()) as BoardApiResponse;
+        const next = new Map<string, DealBoardListing>();
+        for (const rows of Object.values(body.towns ?? {})) {
+          for (const row of rows) {
+            const listing = boardToDealListing(row);
+            for (const raw of [row.mlsId, row.key, row.listingKey, listing.key]) {
+              const id = idKey(raw);
+              if (id) next.set(id, listing);
+            }
+          }
+        }
+        if (!cancelled) setBoardById(next);
+      } catch {
+        if (!cancelled) setBoardById(new Map());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const viewedAtById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entry of entries) {
+      map.set(idKey(entry.id), Date.parse(entry.viewedAt) || 0);
+    }
+    return map;
+  }, [entries]);
+
+  const viewedAtMs = (listing: DealBoardListing): number =>
+    viewedAtById.get(idKey(listing.key)) ??
+    viewedAtById.get(idKey(listing.listingKey)) ??
+    0;
+
+  const boardRows = useMemo(() => {
+    return entries.map((entry) => {
+      const fromBoard = boardById?.get(idKey(entry.id));
+      return fromBoard ?? fallbackDealListing(entry);
+    });
+  }, [entries, boardById]);
+
+  const filteredRows = useMemo(
+    () => boardRows.filter((row) => matchesStatus(row, statusFilter)),
+    [boardRows, statusFilter],
   );
+
+  const sortedRows = useMemo(() => {
+    if (sortKey === "looked") {
+      const dir = sortDir === "asc" ? 1 : -1;
+      return [...filteredRows].sort((a, b) => {
+        const cmp = viewedAtMs(a) - viewedAtMs(b);
+        if (cmp !== 0) return cmp * dir;
+        return (b.score ?? 0) - (a.score ?? 0);
+      });
+    }
+    const sorted = sortDealBoardListings(filteredRows, sortKey, sortDir);
+    if (sortKey !== "score") return sorted;
+    return [...sorted].sort((a, b) => {
+      if (a.score !== b.score) return 0;
+      return viewedAtMs(b) - viewedAtMs(a);
+    });
+  }, [filteredRows, sortKey, sortDir, viewedAtById]);
+
+  const scoreRankByKey = useMemo(() => {
+    const ranked = [...boardRows].sort((a, b) => b.score - a.score);
+    return new Map(ranked.map((row, i) => [row.key, i + 1]));
+  }, [boardRows]);
+
+  const handleSort = (key: DealBoardSortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortKey(key);
+    setSortDir("desc");
+  };
 
   const handleClear = () => {
     clearLookedAtListings();
     setEntries([]);
   };
+
+  const loadingBoard = hydrated && entries.length > 0 && boardById == null;
 
   return (
     <>
@@ -107,12 +316,12 @@ export default function LookeyClient() {
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
             Properties you&apos;ve opened are saved in your browser — up to 40
-            recent views, newest first.
+            recent views. Same board views as Intelligence.
           </p>
-          {orderedEntries.length > 0 && (
+          {entries.length > 0 && (
             <p className="mt-4 font-mono text-[10px] tracking-[0.15em] uppercase text-white/40">
-              {orderedEntries.length}{" "}
-              {orderedEntries.length === 1 ? "property" : "properties"} saved
+              {entries.length}{" "}
+              {entries.length === 1 ? "property" : "properties"} saved
             </p>
           )}
         </div>
@@ -121,21 +330,13 @@ export default function LookeyClient() {
       <section className="bg-cream py-10 lg:py-16">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           {!hydrated ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="rounded-2xl bg-white border border-charcoal/[0.06] overflow-hidden animate-pulse"
-                >
-                  <div className="aspect-[16/10] bg-charcoal/[0.06]" />
-                  <div className="p-5 space-y-3">
-                    <div className="h-4 bg-charcoal/[0.06] rounded w-3/4" />
-                    <div className="h-3 bg-charcoal/[0.04] rounded w-1/2" />
-                  </div>
-                </div>
-              ))}
+            <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-16 text-center text-slate">
+              <span className="inline-flex items-center gap-2 font-mono text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse-dot" />
+                Loading your list…
+              </span>
             </div>
-          ) : orderedEntries.length === 0 ? (
+          ) : entries.length === 0 ? (
             <div className="text-center py-28">
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-4">
                 No viewed properties yet
@@ -153,84 +354,116 @@ export default function LookeyClient() {
               </p>
             </div>
           ) : (
-            <div className="relative rounded-2xl border border-charcoal/[0.08] bg-white p-5 lg:p-8">
-              <button
-                type="button"
-                onClick={handleClear}
-                className="absolute top-5 right-5 lg:top-8 lg:right-8 font-mono text-[10px] tracking-[0.15em] uppercase text-coral/60 hover:text-coral transition-colors z-10"
-              >
-                Clear history
-              </button>
-              <div className="grid grid-flow-row grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 pt-10">
-                {orderedEntries.map((entry) => (
-                  <LookeyCard key={entry.id} entry={entry} />
-                ))}
-              </div>
-
-              <div className="mt-8 pt-6 border-t border-charcoal/[0.06]">
-                <Link
-                  href="/intelligence"
-                  className="font-mono text-[11px] tracking-[0.15em] uppercase text-navy/60 hover:text-gold transition-colors"
+            <div className="relative">
+              <div className="mb-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="font-mono text-[10px] tracking-[0.15em] uppercase text-coral/60 hover:text-coral transition-colors"
                 >
-                  ← Back to Intelligence
-                </Link>
+                  Clear history
+                </button>
               </div>
+              <DealBoardList
+                topRows={sortedRows}
+                middleRows={[]}
+                bottomRows={[]}
+                canTier={false}
+                middleTierExpanded
+                hideMiddleTierToggle
+                onMiddleTierToggle={() => {}}
+                resultCount={sortedRows.length}
+                scoreRankByKey={scoreRankByKey}
+                rankTotal={boardRows.length}
+                isLive
+                showTown
+                showLookedSort
+                loading={loadingBoard}
+                loadingLabel="Loading listing details…"
+                emptyLabel={
+                  statusFilter === "all"
+                    ? "No viewed properties match this view."
+                    : `No ${statusFilter} listings in your looked-at list.`
+                }
+                onResetFilters={() => setStatusFilter("all")}
+                onScoreClick={(listing) => {
+                  if (listing.scoreBreakdown) {
+                    setScoreListing(listing);
+                    return;
+                  }
+                  setScoreInfoOpen(true);
+                }}
+                onStatusClick={() => {}}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleSort}
+                boardView={boardView}
+                onBoardViewChange={setBoardView}
+                boardStatusFilter={statusFilter}
+                onBoardStatusFilterChange={setStatusFilter}
+                scoreInfoButton={
+                  <button
+                    type="button"
+                    onClick={() => setScoreInfoOpen(true)}
+                    aria-label="How scoring works"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-navy/20 font-mono text-[10px] text-navy/70 hover:border-navy/40 hover:text-navy"
+                  >
+                    i
+                  </button>
+                }
+                resultsSummary={
+                  <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                    {sortedRows.length.toLocaleString()} of{" "}
+                    {boardRows.length.toLocaleString()}
+                    {sortKey === "looked" ? (
+                      <span className="italic normal-case tracking-normal">
+                        , last looked
+                      </span>
+                    ) : sortKey === "score" ? (
+                      <span className="italic normal-case tracking-normal">
+                        , scored
+                      </span>
+                    ) : null}
+                  </p>
+                }
+                footer={
+                  <div className="border-t border-charcoal/[0.12] bg-cream/60 px-5 py-3">
+                    <Link
+                      href="/intelligence"
+                      className="font-mono text-[11px] tracking-[0.15em] uppercase text-navy/60 hover:text-gold transition-colors"
+                    >
+                      ← Back to Intelligence
+                    </Link>
+                  </div>
+                }
+              />
             </div>
           )}
         </div>
       </section>
-    </>
-  );
-}
 
-function LookeyCard({ entry }: { entry: LookedAtEntry }) {
-  return (
-    <article
-      {...listingHoverHandlers(entry.id)}
-      className="rounded-2xl bg-white border border-charcoal/[0.08] hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5 transition-all overflow-hidden flex flex-col"
-    >
-      <Link
-        href={entry.href}
-        className="relative block aspect-[16/10] bg-cream border-b border-charcoal/[0.06] shrink-0"
-        aria-label={`View listing: ${entry.address}`}
-      >
-        <ListingThumbImage
-          src={listingPhotoProxyUrl(entry.id, 0)}
-          className="absolute inset-0 block w-full h-full"
-          imgClassName="absolute inset-0 w-full h-full object-cover"
+      {scoreInfoOpen ? (
+        <GoldilocksScoreExplainModal
+          topic="composite"
+          context={{}}
+          onClose={() => setScoreInfoOpen(false)}
         />
-      </Link>
-
-      <div className="p-5 lg:p-6 flex flex-col gap-3 flex-1">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            href={entry.href}
-            className="font-medium text-navy text-base leading-tight hover:text-gold transition-colors block"
-          >
-            {entry.address}
-          </Link>
-          <p className="font-mono text-[10px] tracking-[0.1em] text-slate/60 mt-0.5">
-            {[entry.city, entry.zip].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-        <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/50 whitespace-nowrap shrink-0">
-          {timeAgo(entry.viewedAt)}
-        </span>
-      </div>
-
-      <div className="pt-3 border-t border-charcoal/[0.06]">
-        <Link
-          href={entry.href}
-          className="inline-block font-mono tabular-nums text-navy font-medium text-base hover:text-gold transition-colors"
-        >
-          {entry.price != null ? fmtMoney(entry.price) : "—"}
-        </Link>
-        <p className="font-mono text-[10px] text-slate/60 mt-0.5">
-          {shortType(entry.propertyType)}
-        </p>
-      </div>
-      </div>
-    </article>
+      ) : null}
+      {scoreListing?.scoreBreakdown ? (
+        <ListingScoreBreakdownModal
+          open
+          onClose={() => setScoreListing(null)}
+          score={scoreListing.scoreBreakdown}
+          title={scoreListing.address}
+          subtitle={scoreListing.city}
+          listingHref={listingDetailHref(
+            scoreListing.key,
+            scoreListing.address,
+            scoreListing.city,
+          )}
+          isRental={scoreListing.isRental}
+        />
+      ) : null}
+    </>
   );
 }

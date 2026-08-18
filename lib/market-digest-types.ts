@@ -57,7 +57,7 @@ export type MarketDigestCategorySlice = {
   market: MonthsSupplyPayload | null
   westport: MonthsSupplyPayload | null
   towns: MonthsSupplyPayload[]
-  /** Closed sales per town over `closedTrailingMonths` (empty when the query fails). */
+  /** Closed sales per town over the page-load lookback (12 mo). Empty when the query fails. */
   closedTrailing: MarketDigestClosedTownCount[]
   /** Avg DOM per town for the Market Pulse bar chart. */
   avgDomByTown: MarketDigestDomTownCount[]
@@ -67,7 +67,7 @@ export type MarketDigestCategorySlice = {
   deal: MarketDigestDealOfTheWeek | null
 }
 
-/** Trailing window for the closed-sales-by-town chart (web + email). */
+/** Precomputed 24-month Closed axis cache (bar max). Page-load default is 12 mo. */
 export const MARKET_DIGEST_CLOSED_TRAILING_MONTHS = 24
 
 export type MarketDigestSnapshot = {

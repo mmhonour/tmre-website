@@ -4,6 +4,11 @@ import Link from "next/link";
 import LeadForm from "@/components/LeadForm";
 import MarketPulseContent from "@/components/MarketPulseContent";
 import MarketPulseHero from "@/components/MarketPulseHero";
+import {
+  formatMarketDigestNextEmailDate,
+  getMarketDigestConfigFresh,
+  nextMarketDigestSendAt,
+} from "@/lib/market-digest-config";
 import { buildMarketDigestSnapshot } from "@/lib/market-digest";
 import {
   getMarketPulseThemeFresh,
@@ -22,9 +27,10 @@ export const metadata: Metadata = {
 };
 
 export default async function MarketPulsePage() {
-  const [snapshot, theme] = await Promise.all([
+  const [snapshot, theme, digest] = await Promise.all([
     buildMarketDigestSnapshot(),
     getMarketPulseThemeFresh(),
+    getMarketDigestConfigFresh(),
   ]);
   const etDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -33,10 +39,17 @@ export default async function MarketPulsePage() {
     month: "long",
     day: "numeric",
   }).format(new Date(snapshot.generatedAt));
+  const nextEmailDate = formatMarketDigestNextEmailDate(
+    nextMarketDigestSendAt(digest),
+  );
 
   return (
     <>
-      <MarketPulseHero etDate={etDate} townsLabel={TMRE_CORE_TOWNS_LABEL} />
+      <MarketPulseHero
+        etDate={etDate}
+        townsLabel={TMRE_CORE_TOWNS_LABEL}
+        nextEmailDate={nextEmailDate}
+      />
 
       <main
         style={marketPulseThemeCssVars(theme) as CSSProperties}

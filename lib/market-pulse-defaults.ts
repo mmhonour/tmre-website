@@ -30,7 +30,7 @@ export function marketPulseFavorSortLabel(
 
 /**
  * One-line summary of page-load filters (email + collapsed-row copy).
- * Example: "ALL · stacked · Seller Friendly · closed lookback 24 mos."
+ * Example: "ALL · stacked · Seller Friendly · closed lookback 12 mos."
  */
 export function summarizeMarketPulseFilters(options: {
   selectionLabel: string

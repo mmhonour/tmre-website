@@ -18,7 +18,9 @@ import {
   readSyncScheduleConfig,
   readSyncScheduleConfigFresh,
 } from '@/lib/sync-schedule-config'
+import { nextWeekdayTimeEt } from '@/lib/admin-sync-schedule'
 import {
+  parseStartTimeEt,
   resolveWeekdayEt,
   type SyncScheduleWeekdayEt,
 } from '@/lib/sync-schedule-config-shared'
@@ -320,4 +322,22 @@ export function marketDigestWeekKey(
   const tm = String(target.getUTCMonth() + 1).padStart(2, '0')
   const td = String(target.getUTCDate()).padStart(2, '0')
   return `${ty}-${tm}-${td}`
+}
+
+/** Next Configure weekly slot for the Monday market brief (America/New_York). */
+export function nextMarketDigestSendAt(
+  config: Pick<MarketDigestConfig, 'weekdayEt' | 'startTimeEt'>,
+  now = new Date(),
+): Date {
+  const { hour, minute } = parseStartTimeEt(config.startTimeEt)
+  return nextWeekdayTimeEt(config.weekdayEt, hour, minute, now)
+}
+
+export function formatMarketDigestNextEmailDate(at: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(at)
 }

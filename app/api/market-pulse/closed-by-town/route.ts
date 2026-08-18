@@ -18,8 +18,8 @@ export const maxDuration = 60
  * GET /api/market-pulse/closed-by-town?commercial=1
  * GET /api/market-pulse/closed-by-town?kind=sale&property=all&lookback=6mo
  *
- * Always allowCompute — this route is the Market Pulse lookback control.
- * Default 24mo still prefers stats_cache when fresh; cache miss computes.
+ * Always allowCompute — this route is the Market Pulse lookback slider.
+ * 24mo axis prefers stats_cache when fresh; 12mo default and shorter windows compute.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl

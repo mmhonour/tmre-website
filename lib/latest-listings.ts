@@ -1,7 +1,11 @@
 import 'server-only'
 
 import { scoreListingsWithBoardPeers } from '@/lib/board-scoring'
-import { listingRowId, type TownUpdateStat } from '@/lib/db/listings-repo'
+import {
+  listingRowId,
+  type TownUpdateStat,
+  type ZipUpdateStat,
+} from '@/lib/db/listings-repo'
 import {
   readRecentlyListedListings,
   readRecentlyUpdatedListings,
@@ -713,13 +717,32 @@ export async function fetchLatestUpdatedListings(options: {
   return sorted
 }
 
-export type { TownUpdateStat }
+export type { TownUpdateStat, ZipUpdateStat }
 
 export async function fetchTownUpdateStats(options: {
   since?: string | null
 } = {}): Promise<TownUpdateStat[]> {
   try {
-    return await readTownUpdateStats(options)
+    if (!options.since) {
+      const { readLatestTownUpdateStatsCache } = await import(
+        '@/lib/latest-town-stats-cache'
+      )
+      const cached = await readLatestTownUpdateStatsCache()
+      if (cached) return cached
+    }
+
+    const stats = await readTownUpdateStats(options)
+    if (!options.since && stats.length > 0) {
+      try {
+        const { writeLatestTownUpdateStatsCache } = await import(
+          '@/lib/latest-town-stats-cache'
+        )
+        await writeLatestTownUpdateStatsCache(stats)
+      } catch {
+        /* rebuild will persist */
+      }
+    }
+    return stats
   } catch (err) {
     console.warn(
       '[latest-listings] fetchTownUpdateStats failed',

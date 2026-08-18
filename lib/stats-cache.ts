@@ -854,6 +854,24 @@ export async function rebuildStatsCache(
     }
 
     try {
+      const { rebuildLatestTownUpdateStatsCache } = await import(
+        '@/lib/latest-town-stats-cache'
+      )
+      const latestStats = await rebuildLatestTownUpdateStatsCache()
+      written += latestStats.written
+    } catch (err) {
+      console.error('[stats-cache] latest town/zip stats rebuild failed', err)
+    }
+
+    try {
+      const { rebuildClosedDailyCache } = await import('@/lib/closed-daily-cache')
+      const closedDaily = await rebuildClosedDailyCache()
+      written += closedDaily.written
+    } catch (err) {
+      console.error('[stats-cache] closed daily buckets rebuild failed', err)
+    }
+
+    try {
       if (await refreshInterestingStat(generatedAt)) written += 1
     } catch (err) {
       console.error('[stats-cache] interesting-stat refresh failed', err)
@@ -988,6 +1006,27 @@ export async function rebuildStatsCacheForTowns(
       written += tz.written
     } catch (err) {
       console.error('[stats-cache] town-zips rebuild failed (per-town)', err)
+    }
+
+    try {
+      const { rebuildLatestTownUpdateStatsCache } = await import(
+        '@/lib/latest-town-stats-cache'
+      )
+      const latestStats = await rebuildLatestTownUpdateStatsCache()
+      written += latestStats.written
+    } catch (err) {
+      console.error(
+        '[stats-cache] latest town/zip stats rebuild failed (per-town)',
+        err,
+      )
+    }
+
+    try {
+      const { rebuildClosedDailyCache } = await import('@/lib/closed-daily-cache')
+      const closedDaily = await rebuildClosedDailyCache()
+      written += closedDaily.written
+    } catch (err) {
+      console.error('[stats-cache] closed daily buckets rebuild failed (per-town)', err)
     }
 
     try {

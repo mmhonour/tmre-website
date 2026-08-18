@@ -24,6 +24,7 @@ const columns = [
       { href: "/market-pulse", label: "Market Pulse" },
       { href: "/fed-analysis", label: "Fed Analysis" },
       { href: "/mortgage-rates", label: "Mortgage Rates" },
+      { href: "/existing-homes", label: "Existing Homes" },
       { href: "/new-construction", label: "Active Projects" },
       { href: "/investors", label: "For Investors" },
     ],

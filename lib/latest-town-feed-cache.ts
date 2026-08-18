@@ -199,6 +199,18 @@ export async function rebuildLatestTownFeedCaches(options: {
     setSyncMeta('last_latest_town_feeds', finishedAt)
   }
 
+  try {
+    const { rebuildLatestTownUpdateStatsCache } = await import(
+      '@/lib/latest-town-stats-cache'
+    )
+    await rebuildLatestTownUpdateStatsCache()
+  } catch (err) {
+    console.warn(
+      '[latest-town-feed] town/zip stats cache rebuild failed',
+      err instanceof Error ? err.message : err,
+    )
+  }
+
   const durationMs = Date.now() - t0
   console.info(
     `[latest-town-feed] warmed ${townsDone} towns / ${listingCount} listings in ${durationMs}ms`,

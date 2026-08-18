@@ -12,9 +12,11 @@ const COMPACT_AFTER_MS = 5_000;
 export default function MarketPulseHero({
   etDate,
   townsLabel,
+  nextEmailDate,
 }: {
   etDate: string;
   townsLabel: string;
+  nextEmailDate: string;
 }) {
   const [compact, setCompact] = useState(false);
 
@@ -69,9 +71,14 @@ export default function MarketPulseHero({
             </p>
           </div>
         </div>
-        <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
-          Market <span className="italic gold-shimmer">Pulse.</span>
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
+            Market <span className="italic gold-shimmer">Pulse.</span>
+          </h1>
+          <p className="shrink-0 pt-2 text-right font-mono text-[10px] tracking-[0.12em] uppercase text-white/50 animate-fade-up sm:pt-3 sm:text-[11px]">
+            Next email : {nextEmailDate}
+          </p>
+        </div>
         <div
           className={`${roll} ${compact ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}
           aria-hidden={compact || undefined}

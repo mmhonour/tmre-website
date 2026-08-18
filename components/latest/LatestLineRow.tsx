@@ -53,6 +53,25 @@ type UpdatedAtParts = {
   title: string;
 };
 
+function formatClosedDate(iso: string | null): UpdatedAtParts {
+  const t = mlsTimestampMs(iso);
+  if (Number.isNaN(t)) {
+    return { time: "—", dateDay: null, datePrefix: null, dateSuffix: null, title: "Closed —" };
+  }
+  const date = new Date(t);
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
+  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
+  const day = date.getDate();
+  const suffix = ordinalSuffix(day);
+  return {
+    time: `${weekday} ${month} ${day}`,
+    dateDay: null,
+    datePrefix: null,
+    dateSuffix: null,
+    title: `Closed ${weekday} ${month} ${day}${suffix}`,
+  };
+}
+
 function formatUpdatedAt(iso: string | null): UpdatedAtParts {
   const t = mlsTimestampMs(iso);
   if (Number.isNaN(t)) {
@@ -98,6 +117,7 @@ type LatestLineRowProps = {
   isLive: boolean;
   isNew?: boolean;
   hideTown?: boolean;
+  hideZip?: boolean;
   /** Show zip map hover whenever a zip is present (e.g. zip-grouped feed). */
   showZipMap?: boolean;
   /**
@@ -105,6 +125,10 @@ type LatestLineRowProps = {
    * so price columns left-align across rows.
    */
   addressColumnCh?: number;
+  /** Closed page — omit the Latest event badge. */
+  showStatus?: boolean;
+  /** Closed page — close date is a calendar day, not an MLS clock. */
+  dateOnlyClock?: boolean;
 };
 
 function LatestLineRow({
@@ -112,18 +136,26 @@ function LatestLineRow({
   isLive,
   isNew = false,
   hideTown = false,
+  hideZip = false,
   showZipMap = false,
   addressColumnCh = 24,
+  showStatus = true,
+  dateOnlyClock = false,
 }: LatestLineRowProps) {
   const town = hideTown ? null : displayTown(l);
   const listingTownName = l.town?.trim() || l.city?.trim() || null;
   const showZip =
-    Boolean(l.zip) && (showZipMap || townHasMultipleZips(listingTownName));
+    Boolean(l.zip) &&
+    !hideZip &&
+    (showZipMap || townHasMultipleZips(listingTownName));
   const returnPath = useCurrentReturnPath();
   const detailHref = listingDetailHref(l, returnPath);
   // Prefer fresher of mod vs list date so New inventory doesn't show an older
   // ModificationTimestamp day when listDate is today/yesterday.
-  const updatedAt = formatUpdatedAt(latestRowActivityIso(l));
+  const clockIso = latestRowActivityIso(l);
+  const updatedAt = dateOnlyClock
+    ? formatClosedDate(clockIso)
+    : formatUpdatedAt(clockIso);
   const ppsf =
     !l.isRental && l.pricePerSqft != null
       ? `$${Math.round(l.pricePerSqft)}/sf`
@@ -162,7 +194,10 @@ function LatestLineRow({
           isLive={isLive}
           isNew={isNew}
           hideTown={hideTown}
+          hideZip={hideZip}
           showZipMap={showZipMap}
+          showStatus={showStatus}
+          dateOnlyClock={dateOnlyClock}
         />
       </div>
     <div
@@ -266,9 +301,11 @@ function LatestLineRow({
         </div>
       </div>
 
-      <span className="shrink-0">
-        <DealBoardStatusBadge status={l.status} />
-      </span>
+      {showStatus ? (
+        <span className="shrink-0">
+          <DealBoardStatusBadge status={l.status} />
+        </span>
+      ) : null}
     </div>
     </>
   );

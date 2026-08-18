@@ -52,6 +52,8 @@ export type SiteNavExploreGroup = {
   title: string
   visible: boolean
   links: SiteNavExploreLink[]
+  /** Added by Admin — can be removed. Catalog groups (Properties, Research) cannot. */
+  custom?: true
 }
 
 export type SiteNavConfig = {
@@ -108,6 +110,7 @@ const DEFAULT_EXPLORE: SiteNavExploreGroup[] = [
     visible: true,
     links: [
       { id: 'latest', href: '/latest', label: 'Latest', visible: true },
+      { id: 'closed', href: '/closed', label: 'Closed', visible: true },
       {
         id: 'open-houses',
         href: '/open-houses',
@@ -145,6 +148,12 @@ const DEFAULT_EXPLORE: SiteNavExploreGroup[] = [
         id: 'mortgage-rates',
         href: '/mortgage-rates',
         label: 'Mortgage Rates',
+        visible: true,
+      },
+      {
+        id: 'existing-homes',
+        href: '/existing-homes',
+        label: 'Existing Homes',
         visible: true,
       },
       {
@@ -229,6 +238,68 @@ export function siteNavLinkForPage(page: SitePage): SiteNavExploreLink {
   }
 }
 
+const CUSTOM_GROUP_ID_RE = /^[a-z0-9-]{1,64}$/
+
+/** Next unused `custom-N` id that cannot collide with the catalog. */
+export function nextCustomExploreGroupId(existing: { id: string }[]): string {
+  const used = new Set(existing.map((g) => g.id))
+  let n = 1
+  while (used.has(`custom-${n}`)) n += 1
+  return `custom-${n}`
+}
+
+/** Empty Explore column created by Admin → Add group. */
+export function createCustomExploreGroup(
+  existing: SiteNavExploreGroup[],
+): SiteNavExploreGroup {
+  return {
+    id: nextCustomExploreGroupId(existing),
+    title: 'New group',
+    visible: true,
+    custom: true,
+    links: [],
+  }
+}
+
+function normalizeCustomExploreGroup(
+  raw: Record<string, unknown>,
+  usedGroups: Set<string>,
+  catalogIds: Set<string>,
+): SiteNavExploreGroup | null {
+  if (raw.custom !== true) return null
+  const rawId = typeof raw.id === 'string' ? raw.id : ''
+  const id =
+    CUSTOM_GROUP_ID_RE.test(rawId) &&
+    !usedGroups.has(rawId) &&
+    !catalogIds.has(rawId)
+      ? rawId
+      : nextCustomExploreGroupId(
+          [...usedGroups, ...catalogIds].map((id) => ({ id })),
+        )
+  usedGroups.add(id)
+
+  const usedLinks = new Set<string>()
+  const links: SiteNavExploreLink[] = []
+  const incomingLinks = Array.isArray(raw.links) ? raw.links : []
+  for (const lRow of incomingLinks) {
+    if (!lRow || typeof lRow !== 'object') continue
+    const l = lRow as Record<string, unknown>
+    const lid = typeof l.id === 'string' ? l.id : ''
+    const added = normalizeCustomNavLink({ ...l, custom: true }, lid, usedLinks)
+    if (!added) continue
+    usedLinks.add(added.id)
+    links.push(added)
+  }
+
+  return {
+    id,
+    title: clampLabel(raw.title, 'New group', 40),
+    visible: asBool(raw.visible, true),
+    custom: true,
+    links,
+  }
+}
+
 function indexById<T extends { id: string }>(rows: T[]): Map<string, T> {
   const m = new Map<string, T>()
   for (const row of rows) m.set(row.id, row)
@@ -237,7 +308,8 @@ function indexById<T extends { id: string }>(rows: T[]): Map<string, T> {
 
 /**
  * Merge stored JSON onto the canonical catalog.
- * Unknown ids dropped; missing catalog items appended; hrefs always from defaults.
+ * Unknown catalog ids dropped; custom Explore groups (`custom: true`) are kept
+ * even when empty. Missing catalog items appended; hrefs always from defaults.
  */
 export function normalizeSiteNav(raw: unknown): SiteNavConfig {
   const defaults = structuredClone(DEFAULT_SITE_NAV)
@@ -295,6 +367,7 @@ export function normalizeSiteNav(raw: unknown): SiteNavConfig {
 
   const incomingGroups = Array.isArray(o.exploreGroups) ? o.exploreGroups : []
   const defaultGroupById = indexById(defaults.exploreGroups)
+  const catalogGroupIds = new Set(defaults.exploreGroups.map((g) => g.id))
   const usedGroups = new Set<string>()
   const exploreGroups: SiteNavExploreGroup[] = []
 
@@ -303,7 +376,12 @@ export function normalizeSiteNav(raw: unknown): SiteNavConfig {
     const g = gRow as Record<string, unknown>
     const gid = typeof g.id === 'string' ? g.id : ''
     const gFallback = defaultGroupById.get(gid)
-    if (!gFallback || usedGroups.has(gid)) continue
+    if (!gFallback) {
+      const custom = normalizeCustomExploreGroup(g, usedGroups, catalogGroupIds)
+      if (custom) exploreGroups.push(custom)
+      continue
+    }
+    if (usedGroups.has(gid)) continue
     usedGroups.add(gid)
 
     const defaultLinkById = indexById(gFallback.links)
@@ -369,10 +447,11 @@ export function moveItem<T>(items: T[], index: number, delta: -1 | 1): T[] {
 export function resolvePublicExploreGroups(
   config: SiteNavConfig,
   siteUnlocked: boolean,
-): { title: string; links: { href: string; label: string }[] }[] {
+): { id: string; title: string; links: { href: string; label: string }[] }[] {
   return config.exploreGroups
     .filter((g) => g.visible)
     .map((g) => ({
+      id: g.id,
       title: g.title,
       links: g.links
         .filter(

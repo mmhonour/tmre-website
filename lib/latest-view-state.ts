@@ -1,4 +1,4 @@
-import { isTmreTown } from "@/lib/tmre-towns";
+import { isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 
 /** Session-only: restore /latest view after listing Back (or soft remount). */
 export const LATEST_VIEW_STORAGE_KEY = "tmre_latest_view";
@@ -17,6 +17,7 @@ export type LatestViewState = {
   groupByTown: boolean;
   groupByZip: boolean;
   selectedTown: string | null;
+  selectedZip: string | null;
   townStatsOpen: boolean;
   collapsedGroups: string[];
   expandedGroups: string[];
@@ -46,6 +47,10 @@ export function readLatestViewState(): LatestViewState | null {
       typeof parsed.selectedTown === "string" && isTmreTown(parsed.selectedTown)
         ? parsed.selectedTown
         : null;
+    const selectedZip =
+      typeof parsed.selectedZip === "string"
+        ? normalizeZip(parsed.selectedZip)
+        : null;
     const groupStatusFilter: Partial<Record<string, LatestStatus>> = {};
     if (parsed.groupStatusFilter && typeof parsed.groupStatusFilter === "object") {
       for (const [label, status] of Object.entries(parsed.groupStatusFilter)) {
@@ -57,6 +62,7 @@ export function readLatestViewState(): LatestViewState | null {
       groupByTown,
       groupByZip: groupByTown && Boolean(parsed.groupByZip),
       selectedTown,
+      selectedZip: selectedTown ? selectedZip : null,
       townStatsOpen: Boolean(parsed.townStatsOpen),
       collapsedGroups: asStringArray(parsed.collapsedGroups),
       expandedGroups: asStringArray(parsed.expandedGroups),
@@ -87,6 +93,7 @@ export function patchLatestViewScrollY(scrollY: number): void {
       groupByTown: false,
       groupByZip: false,
       selectedTown: null,
+      selectedZip: null,
       townStatsOpen: false,
       collapsedGroups: [],
       expandedGroups: [],

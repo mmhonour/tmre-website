@@ -203,7 +203,7 @@ export default function AdminPageStylesPanel() {
           >
             <div className="rounded-lg bg-[var(--mp-surface)] px-4 py-3">
               <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase text-[var(--mp-accent)]">
-                TMRE Market Pulse
+                Market Pulse
               </p>
               <p className="mt-1 [font-family:var(--mp-heading-font)] text-xl text-white">
                 A clearer read on the market

@@ -194,6 +194,30 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-closed:' },
   },
   {
+    id: 'nar-housing',
+    name: 'NAR existing-home series (FRED)',
+    category: 'market',
+    medium: 'postgres',
+    location: 'nar_housing',
+    keyPattern: 'nar_housing.(series_id, obs_date)',
+    owner: 'lib/db/existing-homes-repo.ts',
+    notes:
+      'Official NAR existing-home sales / inventory / supply / prices republished on FRED (US + Northeast). Lazy refresh on /existing-homes when sync_meta nar_housing_last_synced_at is older than 12h. Not Realtor.com series.',
+    live: { kind: 'postgres_table', table: 'nar_housing' },
+  },
+  {
+    id: 'nar-pending-phsi',
+    name: 'NAR pending home sales snapshot',
+    category: 'market',
+    medium: 'postgres',
+    location: 'sync_meta',
+    keyPattern: 'nar_pending_phsi_v1',
+    owner: 'lib/existing-homes-sync.ts',
+    notes:
+      'Scraped from nar.realtor pending-home-sales (not FRED). Stored in sync_meta so hourly stats_cache clears do not wipe it.',
+    live: { kind: 'sync_meta_count' },
+  },
+  {
     id: 'months-supply-by-month',
     name: 'Months supply by month',
     category: 'market',
@@ -386,6 +410,30 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     owner: 'lib/latest-town-feed-cache.ts',
     notes: 'Preserved across hourly stats_cache clears.',
     live: { kind: 'stats_cache_prefix', prefix: 'latest-town-feed:' },
+  },
+  {
+    id: 'latest-town-stats',
+    name: 'Latest town + zip update stats',
+    category: 'feeds',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'latest-town-stats:v1',
+    owner: 'lib/latest-town-stats-cache.ts',
+    notes:
+      '24h town and zip update counts for Latest stats pills. Written by latest town-feed warm and stats_cache rebuild; page reads only.',
+    live: { kind: 'stats_cache_prefix', prefix: 'latest-town-stats:' },
+  },
+  {
+    id: 'closed-daily-counts',
+    name: 'Closed daily town buckets',
+    category: 'feeds',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'closed-daily-counts:v1',
+    owner: 'lib/closed-daily-cache.ts',
+    notes:
+      'Sparse daily Closed counts per TMRE town + zip for the last 24 months. /closed range-sums these as the lookback slider moves — never recounts listings on the fly. Written by rebuildStatsCache; preserved across hourly stats_cache clears.',
+    live: { kind: 'stats_cache_prefix', prefix: 'closed-daily-counts:' },
   },
   {
     id: 'listing-price-change',

@@ -79,6 +79,7 @@ export const SITE_PAGES: readonly SitePage[] = [
   },
   { path: '/find', label: 'Find', priority: 0.6, changeFrequency: 'weekly' },
   { path: '/latest', label: 'Latest', priority: 0.6, changeFrequency: 'daily' },
+  { path: '/closed', label: 'Closed', priority: 0.6, changeFrequency: 'daily' },
   { path: '/lookey', label: 'Looked at...', priority: 0.5, changeFrequency: 'weekly' },
   {
     path: '/list-with-me',
@@ -89,6 +90,12 @@ export const SITE_PAGES: readonly SitePage[] = [
   {
     path: '/mortgage-rates',
     label: 'Mortgage Rates',
+    priority: 0.6,
+    changeFrequency: 'weekly',
+  },
+  {
+    path: '/existing-homes',
+    label: 'Existing Homes',
     priority: 0.6,
     changeFrequency: 'weekly',
   },

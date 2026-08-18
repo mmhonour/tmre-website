@@ -28,6 +28,17 @@ function isSameLocalDay(a: Date, b: Date): boolean {
   );
 }
 
+function formatMobileClosedDate(iso: string | null): { label: string; title: string } {
+  const t = mlsTimestampMs(iso);
+  if (Number.isNaN(t)) return { label: "—", title: "Closed —" };
+  const date = new Date(t);
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
+  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
+  const day = date.getDate();
+  const label = `${weekday} ${month} ${day}`;
+  return { label, title: `Closed ${label}` };
+}
+
 function formatMobileUpdatedAt(iso: string | null): { label: string; title: string } {
   const t = mlsTimestampMs(iso);
   if (Number.isNaN(t)) return { label: "—", title: "MLS updated —" };
@@ -58,7 +69,10 @@ type LatestMobileRowProps = {
   isLive: boolean;
   isNew?: boolean;
   hideTown?: boolean;
+  hideZip?: boolean;
   showZipMap?: boolean;
+  showStatus?: boolean;
+  dateOnlyClock?: boolean;
 };
 
 /**
@@ -69,15 +83,23 @@ function LatestMobileRow({
   isLive,
   isNew = false,
   hideTown = false,
+  hideZip = false,
   showZipMap = false,
+  showStatus = true,
+  dateOnlyClock = false,
 }: LatestMobileRowProps) {
   const town = hideTown ? null : displayTown(l);
   const listingTownName = l.town?.trim() || l.city?.trim() || null;
   const showZip =
-    Boolean(l.zip) && (showZipMap || townHasMultipleZips(listingTownName));
+    Boolean(l.zip) &&
+    !hideZip &&
+    (showZipMap || townHasMultipleZips(listingTownName));
   const returnPath = useCurrentReturnPath();
   const detailHref = listingDetailHref(l, returnPath);
-  const updatedAt = formatMobileUpdatedAt(latestRowActivityIso(l));
+  const clockIso = latestRowActivityIso(l);
+  const updatedAt = dateOnlyClock
+    ? formatMobileClosedDate(clockIso)
+    : formatMobileUpdatedAt(clockIso);
   const ppsf =
     !l.isRental && l.pricePerSqft != null
       ? `$${Math.round(l.pricePerSqft)}/sf`
@@ -122,7 +144,7 @@ function LatestMobileRow({
           className="rounded-lg shrink-0"
           showPhotoCountBadge={false}
         />
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
           <span className="font-mono text-[13px] tabular-nums font-semibold leading-tight text-navy">
             {priceLabel}
           </span>
@@ -153,9 +175,18 @@ function LatestMobileRow({
           >
             {l.address}
           </LatestAddressMetaHover>
-          <span className="shrink-0">
-            <DealBoardStatusBadge status={l.status} />
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {showStatus ? <DealBoardStatusBadge status={l.status} /> : null}
+            <ClickableGoldilocksScore
+              score={l.score}
+              breakdown={l.scoreBreakdown}
+              title={l.address}
+              subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
+              listingHref={detailHref}
+              isRental={l.isRental}
+              variant="pill"
+            />
+          </div>
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -179,16 +210,6 @@ function LatestMobileRow({
             {specsLabel}
           </span>
         ) : null}
-
-        <ClickableGoldilocksScore
-          score={l.score}
-          breakdown={l.scoreBreakdown}
-          title={l.address}
-          subtitle={[town, l.zip].filter(Boolean).join(" · ") || null}
-          listingHref={detailHref}
-          isRental={l.isRental}
-          className="inline-flex w-fit justify-start text-[12px] leading-none"
-        />
       </div>
     </div>
   );

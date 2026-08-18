@@ -32,7 +32,9 @@ import {
 } from "@/lib/market-pulse-price-delta";
 import {
   isMarketPulsePriceScaleMetric,
+  marketPulseDeltaBarSpan,
   marketPulsePriceBarMax,
+  marketPulsePricePct,
   marketPulseStackedMetrics,
   type MarketPulseStackedMetricId,
 } from "@/lib/market-pulse-stacked-metrics";
@@ -42,6 +44,8 @@ import {
   marketPulseLookbackById,
   marketPulseLookbackChartLabel,
   marketPulseLookbackClosedPrefix,
+  marketPulseLookbackIdAt,
+  marketPulseLookbackIndex,
   formatClosedCountWithLookback,
   monthsSupplyFromLookbackWindow,
   type MarketPulseLookbackId,
@@ -72,6 +76,57 @@ const METRIC_COLORS = {
   averagePrice: "bg-[var(--mp-average-bar,#8B6F4E)]",
   priceDelta: "bg-[var(--mp-delta-bar,#7A6A8A)]",
 } as const;
+
+function ClosedLookbackSlider({
+  lookbackId,
+  onChange,
+  pending,
+}: {
+  lookbackId: MarketPulseLookbackId;
+  onChange: (id: MarketPulseLookbackId) => void;
+  pending?: boolean;
+}) {
+  const index = marketPulseLookbackIndex(lookbackId);
+  const current = marketPulseLookbackChartLabel(lookbackId);
+  const first = MARKET_PULSE_LOOKBACK_OPTIONS[0]!.label;
+  const last =
+    MARKET_PULSE_LOOKBACK_OPTIONS[MARKET_PULSE_LOOKBACK_OPTIONS.length - 1]!
+      .label;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--mp-text)]">
+          Closed lookback
+        </span>
+        <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-muted-text)]">
+          {current}
+          {pending ? " …" : ""}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={MARKET_PULSE_LOOKBACK_OPTIONS.length - 1}
+        step={1}
+        value={index}
+        aria-label="Closed sales lookback period"
+        aria-valuetext={current}
+        onChange={(e) =>
+          onChange(marketPulseLookbackIdAt(Number(e.target.value)))
+        }
+        className="mp-lookback-slider h-2 w-full cursor-pointer appearance-none rounded-full bg-black/10 accent-[var(--mp-accent)]"
+      />
+      <div className="flex justify-between [font-family:var(--mp-mono-font)] text-[9px] tracking-[0.04em] uppercase text-[var(--mp-muted-text)]">
+        <span>{first}</span>
+        <span>{last}</span>
+      </div>
+      <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
+        Sets closed sales and months supply. Inventory, avg DOM, and prices stay
+        current.
+      </p>
+    </div>
+  );
+}
 
 function FilterDisclosure({
   label,
@@ -175,6 +230,106 @@ function cityKey(city: string): string {
 function isAllTownsCity(city: string): boolean {
   const t = cityKey(city);
   return t === "all" || t === "all towns";
+}
+
+function visibleTownRows<T extends { city: string }>(
+  rows: readonly T[],
+  expanded: boolean,
+): T[] {
+  if (expanded) return [...rows];
+  const all = rows.filter((r) => isAllTownsCity(r.city));
+  return all.length > 0 ? all : [...rows];
+}
+
+const TOWN_NAME_CLASS =
+  "[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors";
+
+function TownName({
+  city,
+  label,
+  href,
+  townsExpanded,
+  onAllTownsToggle,
+}: {
+  city: string;
+  label: string;
+  href?: string;
+  townsExpanded: boolean;
+  onAllTownsToggle: () => void;
+}) {
+  if (isAllTownsCity(city)) {
+    return (
+      <button
+        type="button"
+        aria-expanded={townsExpanded}
+        aria-label={
+          townsExpanded
+            ? "All towns, hide other towns"
+            : "All towns, show other towns"
+        }
+        onClick={onAllTownsToggle}
+        className={`${TOWN_NAME_CLASS} inline-flex items-baseline gap-1.5`}
+      >
+        {label}
+        <span aria-hidden className="font-mono text-[11px] no-underline tabular-nums text-[var(--mp-muted-text)]">
+          {townsExpanded ? "−" : "+"}
+        </span>
+      </button>
+    );
+  }
+  if (href) {
+    return (
+      <Link href={href} className={`${TOWN_NAME_CLASS} truncate`}>
+        {label}
+      </Link>
+    );
+  }
+  return (
+    <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
+      {label}
+    </span>
+  );
+}
+
+function FavorSortToggle({
+  favorSort,
+  onToggle,
+}: {
+  favorSort: FavorSort;
+  onToggle: () => void;
+}) {
+  const buyers = favorSort === "buyers";
+  const current =
+    favorSort === "buyers" || favorSort === "sellers"
+      ? marketPulseFavorSortLabel(favorSort)
+      : marketPulseFavorSortLabel("sellers");
+  const next = buyers ? "Seller Friendly" : "Buyer Friendly";
+  const dirMark = buyers ? "↑" : "↓";
+  return (
+    <div
+      className="inline-flex max-w-[14.5rem] min-w-0 shrink-0 items-stretch rounded-full border border-[var(--mp-text)]/20 bg-white shadow-[0_1px_0_0_rgba(28,42,58,0.1)]"
+      role="group"
+      aria-label={`Sort by ${current}`}
+    >
+      <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-l-full px-2.5 py-1">
+        <span className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase text-[var(--mp-muted-text)] shrink-0">
+          Sort
+        </span>
+        <span className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-text)] truncate">
+          {current}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onToggle}
+        title={`Flip to ${next}`}
+        aria-label={`Flip sort to ${next}`}
+        className="inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-[var(--mp-text)]/15 px-2 py-1 [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-[var(--mp-text)] hover:bg-[var(--mp-text)]/[0.04] active:translate-y-px transition-[transform,background-color]"
+      >
+        {dirMark}
+      </button>
+    </div>
+  );
 }
 
 /** Per-metric ASC/DESC for unstacked charts — All towns always stays on top. */
@@ -290,6 +445,9 @@ function BarChart<Row extends { city: string }>({
   formatValueAside,
   explainDelta = false,
   scaleMax,
+  barSpanOf,
+  townsExpanded = true,
+  onAllTownsToggle,
 }: {
   title: string;
   rows: Row[];
@@ -312,8 +470,15 @@ function BarChart<Row extends { city: string }>({
   formatValueAside?: (row: Row, index: number) => string;
   /** Title “Delta” is a link with the mean-vs-median popup. */
   explainDelta?: boolean;
-  /** When set (Median / Avg / Delta), bars share one dollar axis. */
+  /** When set (Median / Average / Delta), bars share one dollar axis. */
   scaleMax?: number;
+  /** Delta: bar starts at one price-axis end and stops at the other. */
+  barSpanOf?: (row: Row) => {
+    start: number | null;
+    end: number | null;
+  };
+  townsExpanded?: boolean;
+  onAllTownsToggle?: () => void;
 }) {
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
   /** null = use favorSortDir / snapshot order until the visitor picks a direction. */
@@ -407,6 +572,9 @@ function BarChart<Row extends { city: string }>({
     );
   }
 
+  const visibleRows = onAllTownsToggle
+    ? visibleTownRows(displayRows, townsExpanded)
+    : displayRows;
   const ownMax = Math.max(
     0,
     ...displayRows.map((r) => {
@@ -430,16 +598,30 @@ function BarChart<Row extends { city: string }>({
     <section>
       {titleRow}
       <ul className="space-y-2.5">
-        {displayRows.map((row, index) => {
+        {visibleRows.map((row, index) => {
           const v = valueOf(row);
           const settled =
             max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
-          const pct = settleBarPercent(
-            settled,
-            index,
-            settle,
-            barScramble,
-          );
+          const span = barSpanOf?.(row);
+          const startPct = span
+            ? settleBarPercent(
+                marketPulsePricePct(span.start, max),
+                index,
+                settle,
+                barScramble,
+              )
+            : 0;
+          const endPct = span
+            ? settleBarPercent(
+                marketPulsePricePct(span.end, max),
+                index,
+                settle,
+                barScramble,
+              )
+            : settleBarPercent(settled, index, settle, barScramble);
+          const aligned = span
+            ? marketPulseDeltaBarSpan(startPct, endPct)
+            : { leftPct: 0, widthPct: endPct };
           const display =
             valueKind === "mos"
               ? settleMosDisplay(v, settle, index)
@@ -456,8 +638,8 @@ function BarChart<Row extends { city: string }>({
               : valueKind === "dom"
                 ? "Avg days on market"
                 : valueKind === "money"
-                  ? title.startsWith("Avg")
-                    ? "Avg"
+                  ? title.startsWith("Average")
+                    ? "Average"
                     : title.startsWith("Median")
                       ? "Median"
                       : "Delta"
@@ -475,7 +657,15 @@ function BarChart<Row extends { city: string }>({
                     : "grid-cols-[4.75rem_1fr_2.6rem] sm:grid-cols-[7.5rem_1fr_3.5rem]"
               }`}
             >
-              {href ? (
+              {onAllTownsToggle ? (
+                <TownName
+                  city={row.city ?? label}
+                  label={label}
+                  href={href}
+                  townsExpanded={townsExpanded}
+                  onAllTownsToggle={onAllTownsToggle}
+                />
+              ) : href ? (
                 <Link
                   href={href}
                   className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors"
@@ -495,8 +685,11 @@ function BarChart<Row extends { city: string }>({
               <div className="group relative h-3.5 rounded-sm bg-black/10 overflow-visible">
                 <div className="h-full overflow-hidden rounded-sm">
                   <div
-                    className={`h-full rounded-sm transition-[width] ease-out ${widthTransition} ${barClassName}`}
-                    style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+                    className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${barClassName}`}
+                    style={{
+                      marginLeft: `${aligned.leftPct}%`,
+                      width: `${aligned.widthPct}%`,
+                    }}
                   />
                 </div>
                 <div
@@ -567,7 +760,7 @@ function combinedMetrics(closedLookbackLabel: string) {
       calcOf: (r) => ({
         summary: PRICE_DELTA_EXPLAIN,
         detail: [
-          `Avg ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
+          `Average ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
         ],
       }),
     },
@@ -590,6 +783,8 @@ function CombinedMetricsChart({
   closedLookbackLabel,
   closedPending = false,
   closedBarMax = 0,
+  townsExpanded,
+  onAllTownsToggle,
 }: {
   title: ReactNode;
   rows: CombinedTownRow[];
@@ -599,6 +794,8 @@ function CombinedMetricsChart({
   closedPending?: boolean;
   /** 24-month Closed max — 7d bars stay a slice of this, not 100%. */
   closedBarMax?: number;
+  townsExpanded: boolean;
+  onAllTownsToggle: () => void;
 }) {
   const metrics = combinedMetrics(closedLookbackLabel);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
@@ -659,12 +856,33 @@ function CombinedMetricsChart({
     const settled =
       max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
     const scrambleIndex = rowIndex * metrics.length + metricIndex;
-    const pct = settleBarPercent(
-      settled,
-      scrambleIndex,
-      settle,
-      barScramble,
-    );
+    const settledPct = (metricId: "medianPrice" | "averagePrice") => {
+      const idx = metrics.findIndex((x) => x.id === metricId);
+      return settleBarPercent(
+        marketPulsePricePct(
+          metricId === "medianPrice" ? row.medianPrice : row.averagePrice,
+          priceMax,
+        ),
+        rowIndex * metrics.length + (idx >= 0 ? idx : metricIndex),
+        settle,
+        barScramble,
+      );
+    };
+    const aligned =
+      m.id === "priceDelta"
+        ? marketPulseDeltaBarSpan(
+            settledPct("medianPrice"),
+            settledPct("averagePrice"),
+          )
+        : {
+            leftPct: 0,
+            widthPct: settleBarPercent(
+              settled,
+              scrambleIndex,
+              settle,
+              barScramble,
+            ),
+          };
     const display =
       m.valueKind === "mos"
         ? settleMosDisplay(v, settle, scrambleIndex)
@@ -710,9 +928,10 @@ function CombinedMetricsChart({
         <div className="h-3 rounded-sm bg-black/10 overflow-visible">
           <div className="h-full overflow-hidden rounded-sm">
             <div
-              className={`h-full rounded-sm transition-[width] ease-out ${widthTransition} ${m.barClassName}`}
+              className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${m.barClassName}`}
               style={{
-                width: `${Math.max(0, Math.min(100, pct))}%`,
+                marginLeft: `${aligned.leftPct}%`,
+                width: `${aligned.widthPct}%`,
               }}
             />
           </div>
@@ -750,27 +969,28 @@ function CombinedMetricsChart({
         {title}
       </p>
       <ul className="space-y-3">
-        {rows.map((row, rowIndex) => {
+        {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
           return (
             <li key={`combined-${row.city}`} className="space-y-1">
-              {href ? (
-                <Link
-                  href={href}
-                  className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors"
-                >
-                  {label}
-                </Link>
-              ) : (
-                <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)]">
-                  {label}
-                </span>
-              )}
+              <TownName
+                city={row.city ?? label}
+                label={label}
+                href={href}
+                townsExpanded={townsExpanded}
+                onAllTownsToggle={onAllTownsToggle}
+              />
               <ul className="space-y-1.5">
                 {metrics.map((m, metricIndex) => {
-                  if (m.id === "averagePrice") return null;
+                  if (m.id === "averagePrice" || m.id === "priceDelta") {
+                    return null;
+                  }
                   if (m.id === "medianPrice") {
+                    const delta = metrics.find((x) => x.id === "priceDelta");
+                    const deltaIndex = metrics.findIndex(
+                      (x) => x.id === "priceDelta",
+                    );
                     const avg = metrics.find((x) => x.id === "averagePrice");
                     const avgIndex = metrics.findIndex(
                       (x) => x.id === "averagePrice",
@@ -779,6 +999,15 @@ function CombinedMetricsChart({
                       <li key="price-sandwich" className="space-y-0">
                         <ul className="space-y-0">
                           {metricRow(row, rowIndex, label, m, metricIndex)}
+                          {delta
+                            ? metricRow(
+                                row,
+                                rowIndex,
+                                label,
+                                delta,
+                                deltaIndex,
+                              )
+                            : null}
                           {avg
                             ? metricRow(row, rowIndex, label, avg, avgIndex)
                             : null}
@@ -842,7 +1071,7 @@ function Kpi({
 export default function WeeklyBriefContent({
   snapshot,
   etDate,
-  eyebrow = "TMRE Market Pulse",
+  eyebrow = "Market Pulse",
   scopeLabel = "sales",
   showDealOfTheWeek = true,
   dealHeading = "Deal of the Week",
@@ -896,10 +1125,9 @@ export default function WeeklyBriefContent({
   const [favorSort, setFavorSort] = useState<FavorSort>(
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
-  const [lookbackOpen, setLookbackOpen] = useState(false);
   const [propertyTypeOpen, setPropertyTypeOpen] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
-  const [sortOpen, setSortOpen] = useState(false);
+  const [townsExpanded, setTownsExpanded] = useState(false);
   const [sortExplainOpen, setSortExplainOpen] = useState(false);
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
   const lookbackDays = marketPulseLookbackById(lookbackId).days;
@@ -1052,33 +1280,14 @@ export default function WeeklyBriefContent({
           />
         </div>
 
-        <div className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 space-y-3">
           {onLookbackIdChange ? (
-            <FilterDisclosure
-              label="Closed lookback"
-              summary={closedLookbackLabel}
-              open={lookbackOpen}
-              onToggle={() => setLookbackOpen((open) => !open)}
-            >
-              <div className={pillRow} role="group" aria-label="Closed sales lookback period">
-                {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    className={controlBtn(lookbackId === opt.id)}
-                    aria-pressed={lookbackId === opt.id}
-                    onClick={() => onLookbackIdChange(opt.id)}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
-                Sets closed sales and months supply. Inventory, avg DOM, and
-                prices stay current.
-                {closedPending ? " Loading closed counts…" : ""}
-              </p>
-            </FilterDisclosure>
+            <ClosedLookbackSlider
+              lookbackId={lookbackId}
+              onChange={onLookbackIdChange}
+              pending={closedPending}
+            />
           ) : null}
 
           {categoryFilter ? (
@@ -1117,48 +1326,15 @@ export default function WeeklyBriefContent({
               </button>
             </div>
           </FilterDisclosure>
-
-          <FilterDisclosure
-            label="Sort"
-            summary={marketPulseFavorSortLabel(favorSort)}
-            open={sortOpen}
-            onToggle={() => setSortOpen((open) => !open)}
-          >
-            <div
-              className={pillRow}
-              role="group"
-              aria-label="Town sort by market favorability"
-            >
-              <button
-                type="button"
-                className={controlBtn(favorSort === "sellers")}
-                aria-pressed={favorSort === "sellers"}
-                onClick={() => {
-                  if (favorSort === "sellers") {
-                    setFavorSort("default");
-                    return;
-                  }
-                  setFavorSort("sellers");
-                }}
-              >
-                Seller Friendly
-              </button>
-              <button
-                type="button"
-                className={controlBtn(favorSort === "buyers")}
-                aria-pressed={favorSort === "buyers"}
-                onClick={() => {
-                  if (favorSort === "buyers") {
-                    setFavorSort("default");
-                    return;
-                  }
-                  setFavorSort("buyers");
-                }}
-              >
-                Buyer Friendly
-              </button>
-            </div>
-          </FilterDisclosure>
+          </div>
+          <FavorSortToggle
+            favorSort={favorSort}
+            onToggle={() =>
+              setFavorSort((current) =>
+                current === "buyers" ? "sellers" : "buyers",
+              )
+            }
+          />
         </div>
 
         {chartLayout === "stacked" ? (
@@ -1175,6 +1351,8 @@ export default function WeeklyBriefContent({
             closedLookbackLabel={closedLookbackLabel}
             closedPending={closedPending}
             closedBarMax={closedBarMax}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           />
         ) : (
           <>
@@ -1190,6 +1368,8 @@ export default function WeeklyBriefContent({
           emptyMessage="No inventory rows in cache yet."
           townHref={townHref}
           settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.activeCountCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "inventory")}
@@ -1204,6 +1384,8 @@ export default function WeeklyBriefContent({
           emptyMessage="No months-supply rows in cache yet."
           townHref={monthsSupplyTownHref ?? townHref}
           settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.monthsSupplyCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
@@ -1218,6 +1400,8 @@ export default function WeeklyBriefContent({
           emptyMessage="No days-on-market rows in cache yet."
           townHref={avgDomTownHref ?? townHref}
           settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.avgDaysOnMarketCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "avgDom")}
@@ -1238,6 +1422,8 @@ export default function WeeklyBriefContent({
           }
           townHref={closedSalesTownHref}
           settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.calc}
           scaleMax={closedBarMax > 0 ? closedBarMax : undefined}
         />
@@ -1253,22 +1439,9 @@ export default function WeeklyBriefContent({
           emptyMessage="No median price rows in cache yet (rebuild market stats)."
           townHref={townHref}
           settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.medianPriceCalc}
-          scaleMax={priceBarMax}
-        />
-
-        <BarChart
-          title={`Avg (${titleScope})`}
-          rows={priceRows}
-          valueOf={(r) => r.averagePrice}
-          valueKind="money"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
-          barClassName={METRIC_COLORS.averagePrice}
-          emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
-          townHref={townHref}
-          settle={settle}
-          calcOf={(r) => r.averagePriceCalc}
           scaleMax={priceBarMax}
         />
 
@@ -1306,12 +1479,35 @@ export default function WeeklyBriefContent({
           emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
           townHref={townHref}
           settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => ({
             summary: PRICE_DELTA_EXPLAIN,
             detail: [
-              `Avg ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
+              `Average ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
             ],
           })}
+          scaleMax={priceBarMax}
+          barSpanOf={(r) => ({
+            start: r.medianPrice,
+            end: r.averagePrice,
+          })}
+        />
+
+        <BarChart
+          title={`Average (${titleScope})`}
+          rows={priceRows}
+          valueOf={(r) => r.averagePrice}
+          valueKind="money"
+          sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
+          barClassName={METRIC_COLORS.averagePrice}
+          emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
+          townHref={townHref}
+          settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+          calcOf={(r) => r.averagePriceCalc}
           scaleMax={priceBarMax}
         />
           </>

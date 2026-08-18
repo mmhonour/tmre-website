@@ -23,7 +23,12 @@ import {
 import { writeListingPriceChanges } from '@/lib/listing-price-change-cache'
 import type { PoolClient } from 'pg'
 import { ADMIN_SYNC_HISTORY_MAX_LIMIT } from '@/lib/admin-sync-history-glom'
-import { TMRE_TOWNS } from '@/lib/tmre-towns'
+import {
+  isTmreTown,
+  listingZipMatchesTown,
+  normalizeZip,
+  TMRE_TOWNS,
+} from '@/lib/tmre-towns'
 
 export {
   ADMIN_SYNC_HISTORY_DEFAULT_DAYS,
@@ -1369,12 +1374,19 @@ export async function readAddressListingsFromDb(
     })
 }
 
+export type ZipUpdateStat = {
+  zip: string
+  updateCount: number
+  latestUpdate: string | null
+}
+
 export type TownUpdateStat = {
   town: string
   updateCount: number
   latestUpdate: string | null
   latestListingId: string | null
   latestListingAddress: string | null
+  zips: ZipUpdateStat[]
 }
 
 /** Towns ranked by count of listings modified since `since` (default last 24h). */
@@ -1386,7 +1398,8 @@ export async function readTownUpdateStats(
     options.since?.trim() || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const since = new Date(sinceIso)
 
-  const rows = await query<{
+  const [rows, zipRows] = await Promise.all([
+    query<{
     town: string
     update_count: number
     latest_update: Date | null
@@ -1428,7 +1441,42 @@ export async function readTownUpdateStats(
      GROUP BY l.town
      ORDER BY update_count DESC, latest_update DESC`,
     [statusBucket, since, [...TMRE_TOWNS]],
-  )
+  ),
+    query<{
+      town: string
+      postal_code: string | null
+      update_count: number
+      latest_update: Date | null
+    }>(
+      `SELECT
+         l.town,
+         l.postal_code,
+         COUNT(*)::int AS update_count,
+         MAX(l.modification_timestamp) AS latest_update
+       FROM listings l
+       WHERE l.status_bucket = $1
+         AND l.modification_timestamp IS NOT NULL
+         AND l.modification_timestamp > $2
+         AND l.town = ANY($3::text[])
+       GROUP BY l.town, l.postal_code
+       ORDER BY update_count DESC, latest_update DESC`,
+      [statusBucket, since, [...TMRE_TOWNS]],
+    ),
+  ])
+
+  const zipsByTown = new Map<string, ZipUpdateStat[]>()
+  for (const row of zipRows) {
+    const zip = normalizeZip(row.postal_code)
+    if (!zip) continue
+    if (!isTmreTown(row.town) || !listingZipMatchesTown(zip, row.town)) continue
+    const list = zipsByTown.get(row.town) ?? []
+    list.push({
+      zip,
+      updateCount: row.update_count,
+      latestUpdate: tsToIso(row.latest_update),
+    })
+    zipsByTown.set(row.town, list)
+  }
 
   return rows.map((row) => ({
     town: row.town,
@@ -1436,6 +1484,7 @@ export async function readTownUpdateStats(
     latestUpdate: tsToIso(row.latest_update),
     latestListingId: row.latest_listing_id?.trim() || null,
     latestListingAddress: row.latest_listing_address?.trim() || null,
+    zips: zipsByTown.get(row.town) ?? [],
   }))
 }
 
@@ -1669,6 +1718,164 @@ export async function readClosedCountsByTown(options: {
     [towns, useDays ? days! : months!],
   )
   return rows
+}
+
+/**
+ * Eastern calendar day of a close. Prefer typed close_date (a date, not a
+ * midnight-UTC timestamp) so ET conversion does not roll back a day.
+ */
+const CLOSED_DAY_SQL = `CASE
+  WHEN close_date IS NOT NULL THEN close_date
+  ELSE (status_change_timestamp AT TIME ZONE 'America/New_York')::date
+END`
+
+const CLOSED_AT_SQL = 'COALESCE(close_date, status_change_timestamp)'
+
+export type ClosedDailyBucketRow = {
+  town: string
+  day: string
+  count: number
+  latestListingId: string | null
+  latestListingAddress: string | null
+  latestCloseAt: string | null
+  zip: string | null
+  zipCount: number
+}
+
+/** Sparse daily closed counts per town + zip for the last `months` (default 24). */
+export async function readClosedDailyBuckets(options: {
+  towns?: readonly string[]
+  months?: number
+} = {}): Promise<ClosedDailyBucketRow[]> {
+  const towns = [...(options.towns ?? TMRE_TOWNS)]
+  if (towns.length === 0) return []
+  const months = Math.max(1, Math.min(Math.round(options.months ?? 24), 120))
+
+  const rows = await query<{
+    town: string
+    day: Date | string
+    count: number
+    latest_listing_id: string | null
+    latest_listing_address: string | null
+    latest_close_at: Date | string | null
+    postal_code: string | null
+    zip_count: number
+  }>(
+    `WITH closed AS (
+       SELECT
+         town,
+         postal_code,
+         ${CLOSED_DAY_SQL} AS day,
+         ${CLOSED_AT_SQL} AS closed_at,
+         COALESCE(NULLIF(listing_key, ''), mls_id) AS listing_id,
+         COALESCE(
+           NULLIF(data->'address'->>'street', ''),
+           NULLIF(data->'address'->>'full', '')
+         ) AS address
+       FROM listings
+      WHERE status_bucket = 'Closed'
+        AND town = ANY($1::text[])
+        AND ${CLOSED_AT_SQL} IS NOT NULL
+        AND ${CLOSED_DAY_SQL} >= (CURRENT_DATE - make_interval(months => $2::int))::date
+     ),
+     town_days AS (
+       SELECT
+         town,
+         day,
+         count(*)::int AS count,
+         max(closed_at) AS latest_close_at
+       FROM closed
+       GROUP BY town, day
+     ),
+     town_latest AS (
+       SELECT DISTINCT ON (town, day)
+         town,
+         day,
+         listing_id,
+         address,
+         closed_at
+       FROM closed
+       ORDER BY town, day, closed_at DESC NULLS LAST, listing_id DESC
+     ),
+     zip_days AS (
+       SELECT
+         town,
+         day,
+         postal_code,
+         count(*)::int AS zip_count
+       FROM closed
+       GROUP BY town, day, postal_code
+     )
+     SELECT
+       t.town,
+       t.day,
+       t.count,
+       tl.listing_id AS latest_listing_id,
+       tl.address AS latest_listing_address,
+       t.latest_close_at,
+       z.postal_code,
+       z.zip_count
+     FROM town_days t
+     JOIN town_latest tl ON tl.town = t.town AND tl.day = t.day
+     LEFT JOIN zip_days z ON z.town = t.town AND z.day = t.day
+     ORDER BY t.town, t.day, z.zip_count DESC NULLS LAST`,
+    [towns, months],
+  )
+
+  return rows.map((row) => ({
+    town: row.town,
+    day: isoDateOnly(row.day),
+    count: row.count,
+    latestListingId: row.latest_listing_id?.trim() || null,
+    latestListingAddress: row.latest_listing_address?.trim() || null,
+    latestCloseAt: tsToIso(row.latest_close_at),
+    zip: row.postal_code,
+    zipCount: row.zip_count,
+  }))
+}
+
+function isoDateOnly(raw: Date | string): string {
+  if (raw instanceof Date) return raw.toISOString().slice(0, 10)
+  return String(raw).slice(0, 10)
+}
+
+/** Closed listings whose Eastern close day is in [fromDay, toDay] inclusive. */
+export async function readRecentlyClosedListings(options: {
+  fromDay: string
+  toDay: string
+  limit?: number
+  town?: string | null
+}): Promise<RecentlyUpdatedRow[]> {
+  const limit = Math.min(Math.max(options.limit ?? 100, 1), 500)
+  const fromDay = options.fromDay.trim()
+  const toDay = options.toDay.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDay) || !/^\d{4}-\d{2}-\d{2}$/.test(toDay)) {
+    return []
+  }
+  const start = fromDay <= toDay ? fromDay : toDay
+  const end = fromDay <= toDay ? toDay : fromDay
+  const town = options.town?.trim() || null
+
+  await ensureListingPreviousStatusColumns()
+  const conditions = [
+    `status_bucket = 'Closed'`,
+    `${CLOSED_AT_SQL} IS NOT NULL`,
+    `${CLOSED_DAY_SQL} >= $1::date`,
+    `${CLOSED_DAY_SQL} <= $2::date`,
+  ]
+  const params: unknown[] = [start, end]
+  pushTownScope(conditions, params, town)
+  params.push(limit)
+  const limitPlaceholder = `$${params.length}`
+
+  return queryRecentlyUpdatedRows(
+    (columns) => `SELECT ${columns}
+       FROM listings
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY ${CLOSED_AT_SQL} DESC NULLS LAST, id DESC
+      LIMIT ${limitPlaceholder}`,
+    params,
+  )
 }
 
 /** All listings across several towns for one bucket, priced high→low (nulls last). */

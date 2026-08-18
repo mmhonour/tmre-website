@@ -67,6 +67,8 @@ export type WestportMergedProperty = {
   parcelUrl: string | null
   fieldCard: WestportFieldCard
   siblings: WestportLookupHit[]
+  /** True when this request pulled the row from RETS into listings. */
+  listingIngested: boolean
   listing: {
     mlsId: string
     listingKey: string
@@ -378,7 +380,13 @@ export async function searchWestportLookup(
 
   const looksLikeMls = /^[A-Za-z0-9-]{5,}$/.test(q.trim()) && !/\s/.test(q.trim())
   if (looksLikeMls && out.length < limit) {
-    const listing = await readListingByIdFromDb(q.trim())
+    let listing = await readListingByIdFromDb(q.trim())
+    if (!listing) {
+      const { ingestFindListingByMlsQuery } = await import(
+        '@/lib/find-listing-ingest'
+      )
+      listing = await ingestFindListingByMlsQuery(q.trim())
+    }
     const town = listing?.address.city?.trim().toLowerCase()
     if (listing && town === 'westport') {
       const already = out.some(
@@ -406,11 +414,21 @@ export async function searchWestportLookup(
 
 export async function mergeWestportProperty(
   visionPid: string,
+  options: { ingest?: boolean } = {},
 ): Promise<WestportMergedProperty | null> {
   const vision = await getVisionAddress(WESTPORT_LOOKUP_TOWN, visionPid)
   if (!vision) return null
 
-  const listing = await listingForVision(vision)
+  let listing = await listingForVision(vision)
+  let listingIngested = false
+  if (!listing && options.ingest !== false) {
+    const { ingestFindListingIfMissing } = await import(
+      '@/lib/find-listing-ingest'
+    )
+    const pulled = await ingestFindListingIfMissing(vision, listing)
+    listing = pulled.listing
+    listingIngested = pulled.ingested
+  }
   const siblings = vision.addressNorm
     ? (await listVisionAddressesByNorm(WESTPORT_LOOKUP_TOWN, vision.addressNorm))
         .filter((s) => s.visionPid !== vision.visionPid)
@@ -450,10 +468,11 @@ export async function mergeWestportProperty(
     parcelUrl: vision.parcelUrl,
     fieldCard,
     siblings,
+    listingIngested,
     listing: listing
       ? {
           mlsId: listing.mlsId,
-          listingKey: listing.listingKey,
+          listingKey: listing.listingKey ?? listing.mlsId,
           href: listingHref!,
           status: listing.status,
           photoCount: listing.photoCount,

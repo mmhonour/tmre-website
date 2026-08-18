@@ -10,6 +10,7 @@ import {
 } from '@/lib/market-digest-types'
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
   marketPulseLookbackById,
   marketPulseLookbackChartLabel,
   type MarketPulseLookbackId,
@@ -19,8 +20,9 @@ import { TMRE_TOWNS } from '@/lib/tmre-towns'
 /**
  * Closed-sales-by-town totals are a two-year aggregate over every Closed row,
  * which measures 2–6s per property class. Market Pulse has 500'd on Netlify
- * before by doing Closed work inline, so the default 24mo window is cached here
- * and fetched by the client per tab. Shorter lookbacks compute on demand.
+ * before by doing Closed work inline, so the 24mo axis window is cached here
+ * and fetched by the client per tab. The page-load default (12mo) and shorter
+ * lookbacks compute on demand (and are also written during stats rebuild).
  */
 const TTL_MS = 6 * 60 * 60 * 1000
 
@@ -28,12 +30,12 @@ export type MarketPulseClosedScope = {
   kind: ListingKind
   propertyClass?: ListingPropertyClass
   commercialOnly?: boolean
-  /** Trailing day window; default = 24mo (730d). */
+  /** Trailing day window; default = page-load 12mo. */
   lookbackId?: MarketPulseLookbackId
 }
 
 export type MarketPulseClosedPayload = {
-  /** Legacy months field for the default 24mo cache readers. */
+  /** Legacy months field for the 24mo axis cache readers. */
   months: number
   days: number
   lookbackId: MarketPulseLookbackId
@@ -44,7 +46,7 @@ export type MarketPulseClosedPayload = {
 
 /**
  * One scope per Market Pulse tab (mirrors CLOSED_QUERY in MarketPulseContent).
- * The stats-cache rebuild precomputes the default 24mo window for each.
+ * The stats-cache rebuild precomputes the 12mo default and 24mo axis windows.
  */
 export const MARKET_PULSE_CLOSED_SCOPES: readonly MarketPulseClosedScope[] = [
   { kind: 'sale', propertyClass: 'all' },
@@ -65,8 +67,8 @@ function cacheKey(scope: MarketPulseClosedScope): string {
     ? 'commercial'
     : (scope.propertyClass ?? 'all')
   const { lookbackId, lookback } = resolveLookback(scope)
-  // Default 24mo keeps the v3 key so existing stats_cache rows still hit.
-  if (lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID) {
+  // 24mo axis keeps the v3 key so existing stats_cache rows still hit.
+  if (lookbackId === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID) {
     return `market-pulse-closed:${scope.kind}:${slice}:${MARKET_DIGEST_CLOSED_TRAILING_MONTHS}m:v3`
   }
   return `market-pulse-closed:${scope.kind}:${slice}:${lookback.days}d:v5`
@@ -85,7 +87,7 @@ async function compute(
   const days = lookback.days
   const label = lookback.label
   const months =
-    lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
+    lookbackId === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID
       ? MARKET_DIGEST_CLOSED_TRAILING_MONTHS
       : Math.max(1, Math.round(days / 30))
 
@@ -135,7 +137,7 @@ async function compute(
       summary: `${total.toLocaleString()} ${noun} across all ${townRows.length} TMRE towns over the ${win}.`,
       detail: [
         `Sum of the per-town Closed counts below (${classLabel}), same ${win} window.`,
-        lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
+        lookbackId === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID
           ? 'Precomputed by the stats cache rebuild — the page reads it, never recounts it.'
           : 'Computed on demand for this lookback window and cached for a few hours.',
       ],
@@ -169,7 +171,7 @@ function emptyPayload(
   const lookback = marketPulseLookbackById(lookbackId)
   return {
     months:
-      lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
+      lookbackId === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID
         ? MARKET_DIGEST_CLOSED_TRAILING_MONTHS
         : Math.max(1, Math.round(lookback.days / 30)),
     days: lookback.days,
@@ -181,9 +183,9 @@ function emptyPayload(
 }
 
 /**
- * Cached totals. Read-only for the default 24mo window unless `allowCompute`.
- * Non-default lookbacks always allow compute (shorter windows) so the control
- * works without a full stats rebuild for every option.
+ * Cached totals. Read-only for the 24mo axis window unless `allowCompute`.
+ * Other lookbacks (including the 12mo page default) compute on demand so the
+ * slider works without a full stats rebuild for every option.
  */
 export async function readMarketPulseClosedCounts(
   scope: MarketPulseClosedScope,
@@ -195,8 +197,8 @@ export async function readMarketPulseClosedCounts(
   needsRebuild?: boolean
 }> {
   const { lookbackId } = resolveLookback(scope)
-  const isDefault = lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
-  const allowCompute = options.allowCompute ?? !isDefault
+  const isAxis = lookbackId === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID
+  const allowCompute = options.allowCompute ?? !isAxis
   const key = cacheKey(scope)
   let stale: MarketPulseClosedPayload | null = null
 
@@ -206,10 +208,12 @@ export async function readMarketPulseClosedCounts(
       const parsed = JSON.parse(row.payload) as MarketPulseClosedPayload
       // Older v3 payloads lack days/lookbackId — normalize on read.
       if (parsed.days == null) {
-        parsed.days = marketPulseLookbackById(DEFAULT_MARKET_PULSE_LOOKBACK_ID).days
-        parsed.lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID
+        parsed.days = marketPulseLookbackById(
+          MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
+        ).days
+        parsed.lookbackId = MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID
         parsed.lookbackLabel = marketPulseLookbackChartLabel(
-          DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+          MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
         )
       }
       const age = Date.now() - Date.parse(parsed.generatedAt ?? row.computedAt)
@@ -263,25 +267,30 @@ async function computeAndCache(
 }
 
 /**
- * Precompute every Market Pulse tab's default Closed totals into stats_cache.
- * Called by the stats cache rebuild so the page only ever reads 24mo.
+ * Precompute every Market Pulse tab's 12mo default and 24mo axis Closed totals.
  */
 export async function rebuildMarketPulseClosedCache(): Promise<{
   written: number
 }> {
+  const lookbacks: MarketPulseLookbackId[] = [
+    DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+    MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
+  ]
   let written = 0
   for (const scope of MARKET_PULSE_CLOSED_SCOPES) {
-    try {
-      const payload = await computeAndCache({
-        ...scope,
-        lookbackId: DEFAULT_MARKET_PULSE_LOOKBACK_ID,
-      })
-      if (payload.rows.length > 0) written += 1
-    } catch (err) {
-      console.warn(
-        `[market-pulse-closed] rebuild failed for ${cacheKey(scope)}`,
-        err instanceof Error ? err.message : err,
-      )
+    for (const lookbackId of lookbacks) {
+      try {
+        const payload = await computeAndCache({
+          ...scope,
+          lookbackId,
+        })
+        if (payload.rows.length > 0) written += 1
+      } catch (err) {
+        console.warn(
+          `[market-pulse-closed] rebuild failed for ${cacheKey({ ...scope, lookbackId })}`,
+          err instanceof Error ? err.message : err,
+        )
+      }
     }
   }
   return { written }

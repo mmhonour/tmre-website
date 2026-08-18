@@ -55,6 +55,7 @@ export default function DealBoardSortBar({
   sortDir,
   onSort,
   showTown,
+  showLookedSort = false,
   scoreInfoButton,
   /** Inline trigger for the status-pills toolbar row (no full-width bar). */
   embedded = false,
@@ -70,6 +71,8 @@ export default function DealBoardSortBar({
   sortDir: DealBoardSortDir;
   onSort: (key: DealBoardSortKey) => void;
   showTown: boolean;
+  /** Lookey: include Last looked (cookie / localStorage viewedAt). */
+  showLookedSort?: boolean;
   scoreInfoButton: ReactNode;
   embedded?: boolean;
   fieldPickerInToolbar?: boolean;
@@ -87,7 +90,8 @@ export default function DealBoardSortBar({
   };
 
   const columns = DEAL_BOARD_SORT_COLUMNS.filter(
-    (col) => !col.townOnly || showTown,
+    (col) =>
+      (!col.townOnly || showTown) && (!col.lookeyOnly || showLookedSort),
   );
   const activeLabel = dealBoardSortLabel(sortKey);
   const dirMark = sortDir === "asc" ? "↑" : "↓";

@@ -275,7 +275,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Site menu',
     category: 'sync-admin',
     definition:
-      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide, add/remove. The Add page picker is every stable public path in lib/site-pages.ts that is not already in the menu (same list as sitemap.xml) — Market Pulse, Fed Analysis, Deal Model, etc. Dynamic listing/spotlight URLs, /admin, /visitors, and /test stay out so a menu edit cannot 404. Catalog rows hide rather than delete. Stored in sync_meta key site_nav (lib/site-nav-config.ts).',
+      'Public header nav config (top-level links + Explore groups): rename, reorder, show/hide, add/remove. Add group creates an empty custom Explore column; Remove is only on custom groups. Pages can be added to any group, including custom ones. The Add page picker is every stable public path in lib/site-pages.ts that is not already in the menu (same list as sitemap.xml) — Market Pulse, Fed Analysis, Existing Homes, Deal Model, etc. Dynamic listing/spotlight URLs, /admin, /visitors, and /test stay out so a menu edit cannot 404. Catalog rows hide rather than delete. Stored in sync_meta key site_nav (lib/site-nav-config.ts).',
   },
   {
     term: 'Mortgage page',
@@ -287,7 +287,19 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'FRED (mortgage rate series)',
     category: 'sync-admin',
     definition:
-      'St. Louis Fed data API behind /mortgage-rates. Needs FRED_API_KEY. Series in Postgres mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie PMMS — only live national fixed averages; no live 10-yr mortgage; MORTGAGE5US 5/1 ARM discontinued Nov 2022), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue MMI — daily averages of actual PPE rate locks, not a survey), DGS30/DGS15/DGS10/DGS5 (Treasury constant-maturity / on-the-run equivalents). Sync pulls from 1971 so Max lookback works (OBMMI itself starts ~2015). Lazy refresh when data >12h old; Admin → Communications → Mortgage page has “Refresh rates from FRED”.',
+      'St. Louis Fed data API behind /mortgage-rates and /existing-homes. Needs FRED_API_KEY. Mortgage series in Postgres mortgage_rates: MORTGAGE30US + MORTGAGE15US (Freddie PMMS — only live national fixed averages; no live 10-yr mortgage; MORTGAGE5US 5/1 ARM discontinued Nov 2022), OBMMIC30YF + OBMMIJUMBO30YF (Optimal Blue MMI — daily averages of actual PPE rate locks, not a survey), DGS30/DGS15/DGS10/DGS5 (Treasury constant-maturity / on-the-run equivalents). NAR existing-home series in Postgres nar_housing: EXHOSLUSM495S, HOSINVUSM495N, HOSSUPUSM673N, HOSMEDUSM052N, plus Northeast EXHOSLUSNEM495S / HOSMEDUSNEM052N. Mortgage sync pulls from 1971 so Max lookback works (OBMMI itself starts ~2015). Both pages lazy-refresh when data >12h old; Admin → Communications → Mortgage page has “Refresh rates from FRED”. NAR Pending Home Sales is not on FRED — /existing-homes scrapes nar.realtor and stores the snapshot in sync_meta key nar_pending_phsi_v1.',
+  },
+  {
+    term: 'Existing homes (Markets tab)',
+    category: 'ui-tabs',
+    definition:
+      'Public /existing-homes — official NAR existing-home sales, inventory, months of supply, and median prices via FRED, plus NAR Pending Home Sales Index (source-labeled, not FRED). Shares the Markets folder-tab bar with /mortgage-rates and /fed-analysis. Northeast sales/price are the same NAR report, census region. Table nar_housing; pending snapshot in sync_meta.',
+  },
+  {
+    term: 'PHSI / Pending Home Sales',
+    category: 'product',
+    definition:
+      'NAR Pending Home Sales Index — signed contracts on existing homes, typically leading closings by 1–2 months. Published only on nar.realtor (not on FRED). Do not confuse with Realtor.com pending-listing counts (PENLISCOU*) on FRED. TMRE shows the NAR print on /existing-homes with an explicit NAR source label.',
   },
   {
     term: 'Conforming vs jumbo',
@@ -305,7 +317,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Buyer / Seller Friendly (Market Pulse)',
     category: 'product',
     definition:
-      'Market Pulse town sort. Default is Seller Friendly. STACKED uses a composite (months supply + avg DOM). UNSTACKED sorts each chart on its own metric — Seller: DOM ascending, closed sales descending, median/average price descending; Buyer is the reverse. All towns stays on top. Median and Avg are sandwiched (no gap); Delta is mean minus median in $K and as % of median, drawn on the same dollar scale as Median/Avg. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units. Scoring in lib/market-pulse-favorability.ts.',
+      'Market Pulse town sort. Default is Seller Friendly. STACKED uses a composite (months supply + avg DOM). UNSTACKED sorts each chart on its own metric — Seller: DOM ascending, closed sales descending, median/average price descending; Buyer is the reverse. All towns stays on top and is the only town row until it is clicked (then the other towns expand). The panel Sort ▲▼ toggles Seller / Buyer Friendly. Median, Delta, and Average are sandwiched (no gap); Delta is mean minus median in $K and as % of median, drawn as the span between the Median and Average bar ends on the same dollar scale. Coming soon (footer on /market-pulse): Active Listings ÷ Housing Units and 24-Month Closings ÷ Housing Units. Scoring in lib/market-pulse-favorability.ts.',
   },
   {
     term: 'Town housing unit count',
@@ -964,10 +976,16 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h and use the most recent ask→ask move (stats_cache key listing-price-change:v1:{id}, $ + %; a later move overwrites). New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Latest rules). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
   },
   {
+    term: 'Closed (page)',
+    category: 'ui-tabs',
+    definition:
+      'Public /closed — Latest-format feed of Closed listings with a dual lookback slider (start day → end day, 24-month horizon, default last 30 days). No status pills. Town + zip counts are range-sums of precomputed daily buckets in stats_cache key closed-daily-counts:v1 (written by rebuildStatsCache / first page warm), not a live listings aggregate as the slider moves. Feed rows query Postgres for the selected close-date window (cap 30, 30 on town expand). Close day uses typed close_date, else StatusChangeTimestamp in America/New_York — never modification_timestamp.',
+  },
+  {
     term: 'Thin corpus (Find)',
     category: 'product',
     definition:
-      'When /find typeahead can only match a narrow searchable set — historically MLS rows in the listings table — so suggestions feel sparse even if the API is fast. /find is Westport Lookup: typeahead is vision_addresses (cadastral) plus Westport MLS streets that GIS has not ingested yet. Off-market parcels open /find/westport/{vision_pid} with the Vision field card on the page; on-market rows merge listing-wins + Vision gap-fill. Incomplete GIS fill no longer hides MLS addresses. Not the same as thin scheduling (Netlify cron alarm clocks).',
+      'When /find typeahead can only match a narrow searchable set — historically MLS rows in the listings table — so suggestions feel sparse even if the API is fast. /find is Westport Lookup: typeahead is vision_addresses (cadastral) plus Westport MLS streets that GIS has not ingested yet. Off-market parcels open /find/westport/{vision_pid} with the Vision field card on the page; on-market rows merge listing-wins + Vision gap-fill. If the parcel is not in listings, a one-off RETS pull (Vision MLS id/key, else one address search) upserts it permanently via persistListingByMlsId / persistListingRecord and stamps listings.vision_pid + vision_addresses.listing_id. A “Listing is available” banner shows at the top of the parcel page only on that ingest request. Typing an MLS# that is missing from listings does the same persist. Incomplete GIS fill no longer hides MLS addresses. Not the same as thin scheduling (Netlify cron alarm clocks).',
   },
   {
     term: 'Intelligence',

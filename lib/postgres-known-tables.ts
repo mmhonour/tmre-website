@@ -27,6 +27,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'fomc_meetings',
   'cpi_releases',
   'mortgage_rates',
+  'nar_housing',
   'khe_pta_households',
   'people',
   'leads',
