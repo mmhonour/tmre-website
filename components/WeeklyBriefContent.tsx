@@ -85,18 +85,42 @@ function BarValueOverlay({
   widthPct: number;
   colorClass?: string;
 }) {
+  const fillLeft = Math.min(Math.max(leftPct, 0), 100);
   const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100);
   const fontClass = "[font-family:var(--mp-mono-font)]";
   const base = `pointer-events-none absolute inset-y-0 z-[1] flex items-center text-[10px] tabular-nums whitespace-nowrap ${fontClass}`;
   // Every value right-aligns in the grey track; only a full bar puts it on the fill.
   const valueColor =
     colorClass ?? (fillRight >= 95 ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
+  /**
+   * Aside (Delta %) hugs the outside of the fill's left edge so it reads against
+   * the bar it describes. A fill starting near the track edge leaves no room, so
+   * it moves just inside the fill instead of overflowing the track.
+   */
+  const asideInsideFill = fillLeft < 14;
 
   return (
-    <span className={`${base} inset-x-0 justify-end pr-1 ${valueColor}`}>
-      {asideLeft ? <span className="pr-1">{asideLeft}</span> : null}
-      {value}
-    </span>
+    <>
+      {asideLeft ? (
+        <span
+          className={`${base} ${
+            asideInsideFill
+              ? `justify-start pl-1 ${BAR_VALUE_ON_FILL}`
+              : `justify-end pr-1 ${BAR_VALUE_ON_EMPTY}`
+          }`}
+          style={
+            asideInsideFill
+              ? { left: `${fillLeft}%`, right: 0 }
+              : { left: 0, right: `${100 - fillLeft}%` }
+          }
+        >
+          {asideLeft}
+        </span>
+      ) : null}
+      <span className={`${base} inset-x-0 justify-end pr-1 ${valueColor}`}>
+        {value}
+      </span>
+    </>
   );
 }
 
@@ -739,6 +763,9 @@ function BarChart<Row extends { city: string }>({
                   }
                   leftPct={aligned.leftPct}
                   widthPct={aligned.widthPct}
+                  // Gold months-supply fill reads fine under the standard text,
+                  // so it keeps it instead of flipping to cream.
+                  colorClass={valueKind === "mos" ? BAR_VALUE_ON_EMPTY : undefined}
                 />
                 <div
                   className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -959,12 +986,13 @@ function CombinedMetricsChart({
         className="group relative grid grid-cols-[5.75rem_1fr] items-center gap-1.5 sm:grid-cols-[9.5rem_1fr] sm:gap-2"
         title={m.id === "priceDelta" ? undefined : `${m.label}: ${valueText}`}
       >
+        {/* Labels right-align against the bar rather than flush under the town. */}
         {m.id === "priceDelta" ? (
-        <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
-          <MarketPulseDeltaLabel />
-        </span>
+          <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
+            <MarketPulseDeltaLabel />
+          </span>
         ) : (
-          <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight">
+          <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
             {m.label}
           </span>
         )}
@@ -994,6 +1022,10 @@ function CombinedMetricsChart({
             }
             leftPct={aligned.leftPct}
             widthPct={aligned.widthPct}
+            // Gold months-supply fill reads fine under the standard text.
+            colorClass={
+              m.id === "monthsSupply" ? BAR_VALUE_ON_EMPTY : undefined
+            }
           />
           <div
             className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -1121,8 +1153,6 @@ function Kpi({
 export default function WeeklyBriefContent({
   snapshot,
   etDate,
-  lastEmailDate,
-  nextEmailDate,
   eyebrow = "Market Pulse",
   scopeLabel = "sales",
   showDealOfTheWeek = true,
@@ -1141,8 +1171,6 @@ export default function WeeklyBriefContent({
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
-  lastEmailDate?: string;
-  nextEmailDate?: string;
   eyebrow?: string;
   /** Chart / footnote scope for the active category tab. */
   scopeLabel?: string;
@@ -1310,12 +1338,7 @@ export default function WeeklyBriefContent({
         <h1 className="[font-family:var(--mp-heading-font)] text-2xl sm:text-3xl text-white leading-snug">
           {etDate}
         </h1>
-        {lastEmailDate || nextEmailDate ? (
-          <div className="mt-3 font-mono text-[11px] tracking-[0.08em] uppercase text-white/55">
-            {lastEmailDate ? <p>Last email : {lastEmailDate}</p> : null}
-            {nextEmailDate ? <p>Next email : {nextEmailDate}</p> : null}
-          </div>
-        ) : null}
+        {/* Last / Next email live in MarketPulseHero — one stamp per page. */}
         <p className="mt-3 font-mono text-[11px]">
           <Link
             href="/stats"

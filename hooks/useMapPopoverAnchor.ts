@@ -106,6 +106,37 @@ export function useMapPopoverAnchor(
     maxTimer.current = setTimeout(fadeOut, maxMs);
   }, [anchorEl, clearTimers, exiting, fadeOut]);
 
+  /**
+   * Timed open for a click that also does something else (e.g. a card whose
+   * click filters the list). Unlike `toggle` it never closes an already-open
+   * map, so a hover that got there first turns into a brief look rather than
+   * vanishing on click.
+   */
+  const flash = useCallback(() => {
+    if (fadeTimer.current) return; // mid fade-out — let it finish
+    const alreadyPainted = Boolean(anchorEl);
+    clearTimers();
+    timedRef.current = true;
+    setExiting(false);
+    setAnchorEl(anchorRef.current);
+    maxTimer.current = setTimeout(
+      fadeOut,
+      prefersFineHover() ? MAX_OPEN_MS_HOVER : MAX_OPEN_MS_TOUCH,
+    );
+    /**
+     * When the map is already up, the boundary will not re-settle, so onSettled
+     * never fires again and the look would run to the hard cap. Start the
+     * visible clock here; a cold open still waits for paint via notifySettled.
+     */
+    if (alreadyPainted) {
+      dismissTimer.current = setTimeout(
+        fadeOut,
+        options.visibleMs ??
+          (prefersFineHover() ? VISIBLE_MS_HOVER : VISIBLE_MS_TOUCH),
+      );
+    }
+  }, [anchorEl, clearTimers, fadeOut, options.visibleMs]);
+
   /** Boundary painted or failed — start the auto-dismiss clock for tap mode. */
   const notifySettled = useCallback(() => {
     if (!timedRef.current || dismissTimer.current || fadeTimer.current) return;
@@ -148,6 +179,7 @@ export function useMapPopoverAnchor(
     close,
     scheduleClose,
     toggle,
+    flash,
     notifySettled,
   };
 }

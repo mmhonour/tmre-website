@@ -16,7 +16,7 @@ import {
   shouldDeferScheduledJob,
 } from '../../lib/sync-next-override'
 import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
-import { thinCronSkipIfEventBridgeOwns } from '../../lib/netlify-thin-cron'
+import { thinCronSkipIfAnotherHostOwns } from '../../lib/netlify-thin-cron'
 
 /**
  * Scheduled incremental trigger (NO background flag) — must finish in ~26–30s.
@@ -70,14 +70,23 @@ export default async function handler() {
     }
 
     {
-      const owned = await thinCronSkipIfEventBridgeOwns('incremental')
+      const owned = await thinCronSkipIfAnotherHostOwns('incremental')
       if (owned) {
         // ok:true — intentional Configure skip, not a failed pull (History ≠ Failed).
+        // Reason comes from the guard so History names the real owner (Railway
+        // or EventBridge) instead of a hardcoded guess.
+        let reason = 'another scheduler owns this job — Netlify cron ignored'
+        try {
+          const body = (await owned.clone().json()) as { reason?: unknown }
+          if (typeof body.reason === 'string' && body.reason) reason = body.reason
+        } catch {
+          /* keep fallback */
+        }
         await recordIncrementalCronTick({
           startedAt,
           ok: true,
           skipped: true,
-          error: 'scheduler is EventBridge — Netlify cron ignored',
+          error: reason,
         })
         return owned
       }

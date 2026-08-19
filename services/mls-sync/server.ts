@@ -5,6 +5,9 @@
  *   - schedules pulls every MLS_SYNC_INTERVAL_MS (default 30m)
  *   - accepts POST /run (Bearer SYNC_CRON_SECRET) for Admin Sync now
  *   - stamps last_incremental_sync / heartbeat in Neon
+ *   - owns the stats_cache rebuild: self-scheduled sweep + POST /stats. A full
+ *     rebuild takes minutes, so no Netlify function can host it, and Netlify is
+ *     refusing background invocations for the site (HTTP 429).
  *
  * Start (repo root):
  *   npm run start:mls-sync
@@ -33,11 +36,22 @@ const INTERVAL_MS = Math.max(
     30 * 60_000,
 )
 
+/** Stats sweep cadence — cheap staleness check, rebuild only when past TTL. */
+const STATS_SWEEP_MS = 10 * 60 * 1000
+const STATS_SWEEP_DELAY_MS = 2 * 60 * 1000
+
 let runInFlight: Promise<void> | null = null
 let lastRunStartedAt: string | null = null
 let lastRunFinishedAt: string | null = null
 let lastRunOk: boolean | null = null
 let lastRunError: string | null = null
+
+let statsInFlight: Promise<void> | null = null
+let lastStatsStartedAt: string | null = null
+let lastStatsFinishedAt: string | null = null
+let lastStatsOk: boolean | null = null
+let lastStatsWritten: number | null = null
+let lastStatsError: string | null = null
 
 function readBearer(req: IncomingMessage): string | null {
   const h = req.headers.authorization?.trim() ?? ''
@@ -164,6 +178,137 @@ function startRun(options: {
   return { accepted: true, alreadyRunning: false }
 }
 
+/**
+ * Full stats_cache rebuild, hosted here.
+ *
+ * A rebuild reads every town's Active/Closed/Expired inventory and rewrites ~570
+ * payloads; it does not fit a Netlify scheduled function (seconds) and Netlify
+ * is refusing background invocations for the site (HTTP 429), so no serverless
+ * slot can finish one. This process is always on, which makes it the only host
+ * that can. `force` steals the rebuild lock a frozen Lambda may have left armed.
+ */
+async function executeStatsRebuild(startedAt: string): Promise<void> {
+  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
+  const { rebuildStatsCache } = await import('../../lib/stats-cache')
+  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
+
+  await hydrateSyncMetaStore()
+  const result = await rebuildStatsCache({ trackRefresh: true, force: true })
+  const finishedAt = new Date().toISOString()
+  const ok = result.skipped !== true && result.written > 0
+
+  lastStatsFinishedAt = finishedAt
+  lastStatsOk = ok
+  lastStatsWritten = result.written
+  lastStatsError = ok ? null : (result.skipReason ?? 'wrote 0 entries')
+
+  console.info(
+    `[mls-sync] stats rebuild written=${result.written} skipped=${result.skipped ?? false} reason=${result.skipReason ?? '—'} in ${result.durationMs}ms`,
+  )
+
+  // Sync History needs the Done|Failed row — nothing else writes it for stats.
+  await recordDashboardSyncAudit({
+    startedAt,
+    finishedAt,
+    syncSuffix: 'stats',
+    listingsCount: result.written,
+    ok,
+    detail: result.skipped
+      ? `Stats cache skipped — ${result.skipReason ?? 'unknown'}`
+      : ok
+        ? `Stats cache rebuilt on Railway — ${result.written.toLocaleString()} entries`
+        : 'Stats cache rebuilt — 0 entries (check listings inventory / Neon)',
+  })
+}
+
+/**
+ * Never overlap a rebuild with a RETS pull: holding both towns' inventory and
+ * the stats payloads in one heap is what OOM-killed this service before.
+ */
+function startStatsRebuild(startedAt: string): {
+  accepted: boolean
+  alreadyRunning: boolean
+  incrementalInFlight: boolean
+} {
+  if (statsInFlight) {
+    return { accepted: false, alreadyRunning: true, incrementalInFlight: false }
+  }
+  if (runInFlight) {
+    return { accepted: false, alreadyRunning: false, incrementalInFlight: true }
+  }
+
+  lastStatsStartedAt = startedAt
+  lastStatsFinishedAt = null
+  lastStatsOk = null
+  lastStatsError = null
+  lastStatsWritten = null
+  statsInFlight = executeStatsRebuild(startedAt)
+    .catch((err) => {
+      lastStatsFinishedAt = new Date().toISOString()
+      lastStatsOk = false
+      lastStatsError = err instanceof Error ? err.message : String(err)
+      console.error('[mls-sync] stats rebuild failed', err)
+    })
+    .finally(() => {
+      statsInFlight = null
+    })
+  return { accepted: true, alreadyRunning: false, incrementalInFlight: false }
+}
+
+/**
+ * Is a stats rebuild due? Mirrors the stale check the Netlify cron used to make,
+ * and still honours the Admin pause toggle so Configure keeps working.
+ */
+async function statsRebuildIsDue(): Promise<boolean> {
+  // Configure decides the host. If it says Netlify, this process stays out.
+  const { readSyncScheduleConfigFresh } = await import(
+    '../../lib/sync-schedule-config'
+  )
+  const { resolveJobScheduler } = await import(
+    '../../lib/sync-schedule-config-shared'
+  )
+  const config = await readSyncScheduleConfigFresh()
+  if (resolveJobScheduler(config.jobs['stats-cache']) !== 'railway') return false
+
+  const { isScheduledSyncJobPausedFresh } = await import(
+    '../../lib/scheduled-sync-toggle'
+  )
+  if (await isScheduledSyncJobPausedFresh('stats-cache')) return false
+
+  const { getSyncMeta } = await import('../../lib/db/sync-meta')
+  const { STATS_CACHE_TTL_MS } = await import('../../lib/stats-cache')
+  const last = await getSyncMeta('last_stats_cache')
+  const lastMs = last ? Date.parse(last) : Number.NaN
+  if (!Number.isFinite(lastMs)) return true
+  return Date.now() - lastMs >= STATS_CACHE_TTL_MS
+}
+
+/**
+ * Self-scheduled stats sweep.
+ *
+ * Deliberately not dependent on a Netlify cron reaching us: the thin crons can
+ * only ask, and their background-worker hop is being refused site-wide. This
+ * process already owns its own pull interval, so it owns the stats clock too.
+ */
+function scheduleStatsSweep(): void {
+  const tick = async () => {
+    if (runInFlight || statsInFlight) return
+    if (!(await statsRebuildIsDue())) return
+    console.info('[mls-sync] stats cache is stale — starting rebuild')
+    startStatsRebuild(new Date().toISOString())
+  }
+  const run = () => {
+    void tick().catch((err) => {
+      console.warn('[mls-sync] stats sweep failed', err)
+    })
+  }
+  setTimeout(run, STATS_SWEEP_DELAY_MS)
+  setInterval(run, STATS_SWEEP_MS)
+  console.info(
+    `[mls-sync] stats sweep every ${Math.round(STATS_SWEEP_MS / 60_000)}m (rebuild when last_stats_cache is past TTL)`,
+  )
+}
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -186,6 +331,15 @@ async function handleRequest(
       lastRunFinishedAt,
       lastRunOk,
       lastRunError,
+      stats: {
+        inFlight: statsInFlight != null,
+        lastStatsStartedAt,
+        lastStatsFinishedAt,
+        lastStatsOk,
+        lastStatsWritten,
+        lastStatsError,
+        last_stats_cache: await getSyncMeta('last_stats_cache'),
+      },
       neon: {
         last_incremental_sync: end,
         last_incremental_sync_started: start,
@@ -236,6 +390,41 @@ async function handleRequest(
     return
   }
 
+  if (req.method === 'POST' && path === '/stats') {
+    if (!assertAuth(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      return
+    }
+    const body = await readJson(req)
+    const startedAt =
+      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
+        ? body.startedAt
+        : new Date().toISOString()
+
+    const started = startStatsRebuild(startedAt)
+    if (started.incrementalInFlight) {
+      // 409 reads as "accepted, already busy" to the caller — next tick retries.
+      sendJson(res, 409, {
+        ok: true,
+        accepted: false,
+        incrementalInFlight: true,
+        message: 'Incremental pull in flight — stats rebuild deferred to next tick',
+      })
+      return
+    }
+
+    sendJson(res, 202, {
+      ok: true,
+      accepted: started.accepted,
+      alreadyRunning: started.alreadyRunning,
+      startedAt,
+      message: started.alreadyRunning
+        ? 'Stats rebuild already running on mls-sync'
+        : 'Stats rebuild accepted on mls-sync (Railway)',
+    })
+    return
+  }
+
   sendJson(res, 404, { ok: false, error: 'not found' })
 }
 
@@ -269,4 +458,5 @@ server.listen(PORT, () => {
       console.warn('[mls-sync] idle heartbeat failed', err)
     })
   }, 60_000)
+  scheduleStatsSweep()
 })

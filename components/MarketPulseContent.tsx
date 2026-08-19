@@ -48,13 +48,9 @@ type ClosedFetchState = {
 export default function MarketPulseContent({
   snapshot,
   etDate,
-  lastEmailDate,
-  nextEmailDate,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
-  lastEmailDate: string;
-  nextEmailDate: string;
 }) {
   const [categoryId, setCategoryId] = useState<MarketPulseCategoryId>("all");
   const [lookbackId, setLookbackId] = useState<MarketPulseLookbackId>(
@@ -322,8 +318,6 @@ export default function MarketPulseContent({
     <WeeklyBriefContent
       snapshot={viewSnapshot}
       etDate={etDate}
-      lastEmailDate={lastEmailDate}
-      nextEmailDate={nextEmailDate}
       scopeLabel={active?.scopeLabel ?? "sales"}
       selectionLabel={active?.selectionLabel ?? active?.scopeLabel ?? "sales"}
       showDealOfTheWeek

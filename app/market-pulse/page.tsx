@@ -63,12 +63,7 @@ export default async function MarketPulsePage() {
       >
         <section className="pt-8 pb-6 lg:pt-10 lg:pb-8">
           <div className="px-2 sm:px-6 lg:px-10 pb-12">
-            <MarketPulseContent
-              snapshot={snapshot}
-              etDate={etDate}
-              lastEmailDate={lastEmailDate}
-              nextEmailDate={nextEmailDate}
-            />
+            <MarketPulseContent snapshot={snapshot} etDate={etDate} />
           </div>
         </section>
 

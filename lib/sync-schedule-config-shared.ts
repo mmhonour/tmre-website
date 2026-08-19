@@ -74,6 +74,33 @@ export function schedulerProviderLabel(provider: SyncSchedulerProvider): string 
   }
 }
 
+/**
+ * Jobs the always-on Railway mls-sync service can host, and the endpoint each
+ * one uses. This is the declaration, not a guess: a job absent here cannot be
+ * pointed at Railway — Configure hides the option and Sync now never invents a
+ * route. Add a job only once the service actually exposes its endpoint.
+ */
+export const RAILWAY_JOB_ENDPOINTS: Partial<Record<ScheduledSyncJobId, string>> = {
+  incremental: '/run',
+  'stats-cache': '/stats',
+}
+
+/** Endpoint on the Railway service for this job, or null when unsupported. */
+export function railwayEndpointForJob(
+  jobId: ScheduledSyncJobId | string,
+): string | null {
+  return RAILWAY_JOB_ENDPOINTS[jobId as ScheduledSyncJobId] ?? null
+}
+
+/** Scheduler choices Configure should offer — Railway only where hosted. */
+export function schedulerProvidersForJob(
+  jobId: ScheduledSyncJobId | string,
+): readonly SyncSchedulerProvider[] {
+  return railwayEndpointForJob(jobId) != null
+    ? SYNC_SCHEDULER_PROVIDERS
+    : SYNC_SCHEDULER_PROVIDERS.filter((p) => p !== 'railway')
+}
+
 export type SyncJobScheduleConfig = {
   frequency: SyncScheduleFrequencyId
   /** HH:MM America/New_York — wall-clock for daily/weekly/monthly; phase for intervals. */
@@ -207,9 +234,11 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         scheduler: 'netlify',
       },
       'stats-cache': {
+        // Railway: a full rebuild outlives any serverless slot. Flip to Netlify
+        // cron in Configure to use the background worker instead.
         frequency: '30m',
         startTimeEt: '00:00',
-        scheduler: 'netlify',
+        scheduler: 'railway',
       },
       'deal-of-the-day': {
         frequency: 'weekly',

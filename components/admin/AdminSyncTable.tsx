@@ -49,7 +49,6 @@ import {
 import {
   SYNC_SCHEDULE_FREQUENCIES,
   SYNC_SCHEDULE_WEEKDAYS,
-  SYNC_SCHEDULER_PROVIDERS,
   defaultSyncScheduleConfig,
   frequencyIntervalMs,
   frequencyLabel,
@@ -57,6 +56,7 @@ import {
   resolveJobScheduler,
   resolveWeekdayEt,
   schedulerProviderLabel,
+  schedulerProvidersForJob,
   syncAllClientStepsFromConfig,
   type SyncScheduleConfig,
   type SyncScheduleFrequencyId,
@@ -3788,12 +3788,7 @@ export default function AdminSyncTable({
                           role="radiogroup"
                           aria-label={`Scheduler for ${row.label}`}
                         >
-                          {(pauseJob === "incremental"
-                            ? SYNC_SCHEDULER_PROVIDERS
-                            : SYNC_SCHEDULER_PROVIDERS.filter(
-                                (p) => p !== "railway",
-                              )
-                          ).map((provider) => {
+                          {schedulerProvidersForJob(pauseJob).map((provider) => {
                             const selected =
                               resolveJobScheduler(jobSchedule) === provider;
                             return (

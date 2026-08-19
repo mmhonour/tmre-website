@@ -215,6 +215,14 @@ export async function register() {
           console.info('[stats-cache] skipped — listings refresh in progress')
           return
         }
+        /**
+         * A full rebuild takes minutes and cannot finish inside a request-scoped
+         * serverless invocation — but it *can* take the rebuild lock and then be
+         * frozen, which locks out every other host for the stale window and
+         * re-arms on the next boot. That deadlock kept stats frozen for days.
+         * On Netlify the always-on Railway process owns this rebuild.
+         */
+        if (isServerlessRuntime()) return
         // Stale-only: skip when last_stats_cache is within TTL (upsert rebuild, no wipe).
         void rebuildStatsCacheIfStale(false).catch((err) => {
           console.error('[stats-cache/instrumentation]', err)

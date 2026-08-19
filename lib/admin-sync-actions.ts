@@ -52,7 +52,7 @@ import {
 } from '@/lib/admin-sync-progress'
 import {
   rebuildStatsCache,
-  reasonToSkipStatsCacheEnqueue,
+  reasonToSkipStatsCacheRebuild,
   stampStatsCacheQueueBackoff,
 } from '@/lib/stats-cache'
 import { readListingsRefreshStatus, healStaleRefreshLock } from '@/lib/listings-refresh-status'
@@ -107,10 +107,11 @@ async function queueSyncNowPreferringScheduler(
     const scheduler = resolveJobScheduler(config.jobs[jobId])
 
     if (scheduler === 'railway') {
-      const { queueMlsSyncServiceRun } = await import(
+      const { queueMlsSyncServiceJob } = await import(
         '@/lib/mls-sync-service-client'
       )
-      const queued = await queueMlsSyncServiceRun({
+      // Declared host wins: no silent hop to Netlify if Railway cannot take it.
+      const queued = await queueMlsSyncServiceJob(jobId, {
         startedAt: opts?.railwayBody?.startedAt,
         source: 'admin',
         towns: opts?.railwayBody?.towns,
@@ -881,7 +882,8 @@ async function runAdminSyncActionImpl(
       // Production: full rebuild is too heavy for the Next.js request (gateway
       // 504 leaves stats_cache_rebuild_lock held → later clicks report "0 entries").
       if (shouldQueueOnServerless(options)) {
-        const skipReason = await reasonToSkipStatsCacheEnqueue()
+        // Rebuild-liveness only — the Netlify 429 backoff must not block Railway.
+        const skipReason = await reasonToSkipStatsCacheRebuild()
         if (skipReason) {
           return {
             ok: true,
@@ -929,9 +931,11 @@ async function runAdminSyncActionImpl(
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              via === 'eventbridge'
-                ? 'Stats cache queued (EventBridge path) — End updates when rebuild finishes'
-                : 'Stats cache queued (background worker) — End updates when rebuild finishes',
+              via === 'railway'
+                ? 'Stats cache queued on Railway — End updates when rebuild finishes'
+                : via === 'eventbridge'
+                  ? 'Stats cache queued (EventBridge path) — End updates when rebuild finishes'
+                  : 'Stats cache queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Steals a stuck rebuild lock if needed.`
               : 'Queued on background worker. Steals a stuck rebuild lock if needed.',

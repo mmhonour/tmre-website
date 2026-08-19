@@ -2,7 +2,14 @@ import 'server-only'
 
 import type { NetlifyFunctionQueueResult } from '@/lib/netlify-sync-trigger'
 import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
-import { shouldSkipScheduledJobWrongProviderFresh } from '@/lib/sync-schedule-config'
+import {
+  readSyncScheduleConfigFresh,
+  shouldSkipScheduledJobWrongProviderFresh,
+} from '@/lib/sync-schedule-config'
+import {
+  resolveJobScheduler,
+  schedulerProviderLabel,
+} from '@/lib/sync-schedule-config-shared'
 
 /** Shared JSON response for thin scheduled → background worker handoff. */
 export function thinCronResponse(
@@ -35,17 +42,27 @@ export function thinCronSkipped(reason: string): Response {
   )
 }
 
-/** When Configure radio is EventBridge, Netlify thin cron must not start work. */
-export async function thinCronSkipIfEventBridgeOwns(
+/**
+ * When Configure points a job at another host, the Netlify thin cron stands
+ * down. Names the host that actually owns it — the guard fires for Railway just
+ * as much as EventBridge, and a wrong label here sends you hunting the wrong
+ * scheduler.
+ */
+export async function thinCronSkipIfAnotherHostOwns(
   jobId: ScheduledSyncJobId,
 ): Promise<Response | null> {
   if (await shouldSkipScheduledJobWrongProviderFresh(jobId, 'netlify')) {
-    return thinCronSkipped(
-      'scheduler is EventBridge — Netlify cron ignored',
+    const config = await readSyncScheduleConfigFresh()
+    const owner = schedulerProviderLabel(
+      resolveJobScheduler(config.jobs[jobId]),
     )
+    return thinCronSkipped(`scheduler is ${owner} — Netlify cron ignored`)
   }
   return null
 }
+
+/** @deprecated Use thinCronSkipIfAnotherHostOwns — this name predates Railway. */
+export const thinCronSkipIfEventBridgeOwns = thinCronSkipIfAnotherHostOwns
 
 export function thinCronError(label: string, err: unknown): Response {
   console.error(`[${label}]`, err)

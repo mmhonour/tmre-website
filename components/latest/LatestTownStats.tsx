@@ -5,6 +5,8 @@ import { Fragment, useEffect, useState } from "react";
 import LatestIntelligenceTownSnapshot, {
   prefetchAllTownSnapshots,
 } from "@/components/latest/LatestIntelligenceTownSnapshot";
+import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
+import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import { normalizeTownName, zipAreaNickname } from "@/lib/tmre-towns";
 import { mlsTimestampMs } from "@/lib/mls-time";
 import { listingDetailHref } from "@/lib/listing-url";
@@ -96,9 +98,13 @@ function LatestTownSidePanel({
           >
             <span className="text-gold/70">#{rank}</span>
             <span className="text-gold/40"> · </span>
-            <span className="underline decoration-gold/40 underline-offset-2 hover:decoration-gold">
+            <LatestTownMapHover
+              townName={row.town}
+              passThroughClick
+              className="underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+            >
               {label}
-            </span>
+            </LatestTownMapHover>
           </span>
           <span
             className="ml-auto inline-flex shrink-0 items-baseline gap-0.5 whitespace-nowrap font-mono text-gold"
@@ -206,9 +212,14 @@ function LatestZipSidePanel({
         >
           <span className="text-gold/70">#{rank}</span>
           <span className="text-gold/40"> · </span>
-          <span className="tabular-nums underline decoration-gold/40 underline-offset-2 hover:decoration-gold">
+          <LatestZipMapHover
+            zip={zipRow.zip}
+            townName={town}
+            passThroughClick
+            className="tabular-nums underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
+          >
             {zipRow.zip}
-          </span>
+          </LatestZipMapHover>
           {nick ? (
             <span className="normal-case tracking-normal text-gold/70">
               {" "}

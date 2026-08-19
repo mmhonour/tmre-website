@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import ZipBoundaryPopover, {
   prefetchZipBoundaries,
 } from "@/components/ZipBoundaryPopover";
@@ -11,12 +11,22 @@ type LatestZipMapHoverProps = {
   zip: string;
   townName: string | null;
   className?: string;
+  children?: ReactNode;
+  /**
+   * Nested in a control that owns the click (e.g. the Stats card header, whose
+   * click filters the list). Hover still opens the map and a click flashes it
+   * briefly, but the click is left to bubble and this stops being its own
+   * button — nesting one inside another would be invalid markup.
+   */
+  passThroughClick?: boolean;
 };
 
 export default function LatestZipMapHover({
   zip,
   townName,
   className = "",
+  children,
+  passThroughClick = false,
 }: LatestZipMapHoverProps) {
   const {
     anchorRef,
@@ -27,6 +37,7 @@ export default function LatestZipMapHover({
     open,
     scheduleClose,
     toggle,
+    flash,
     notifySettled,
   } = useMapPopoverAnchor();
 
@@ -47,9 +58,15 @@ export default function LatestZipMapHover({
     <>
       <span
         ref={anchorRef}
-        className={`cursor-help underline decoration-charcoal/25 decoration-dotted underline-offset-2 hover:text-navy ${className}`}
+        // Pass-through sits inside already-styled chrome (gold on navy), where
+        // the default charcoal underline and navy hover would disappear.
+        className={
+          passThroughClick
+            ? className
+            : `cursor-help underline decoration-charcoal/25 decoration-dotted underline-offset-2 hover:text-navy ${className}`
+        }
         onPointerDown={(event) => {
-          event.stopPropagation();
+          if (!passThroughClick) event.stopPropagation();
           warm();
         }}
         onMouseEnter={fineHover ? show : undefined}
@@ -57,17 +74,25 @@ export default function LatestZipMapHover({
         onFocus={fineHover ? show : undefined}
         onBlur={fineHover ? scheduleClose : undefined}
         onClick={(event) => {
+          warm();
+          if (passThroughClick) {
+            flash();
+            return;
+          }
           event.preventDefault();
           event.stopPropagation();
-          warm();
           toggle();
         }}
-        tabIndex={0}
-        role="button"
-        aria-expanded={isOpen || exiting}
-        aria-label={`${isOpen || exiting ? "Hide" : "Show"} map for zip ${zip}`}
+        tabIndex={passThroughClick ? undefined : 0}
+        role={passThroughClick ? undefined : "button"}
+        aria-expanded={passThroughClick ? undefined : isOpen || exiting}
+        aria-label={
+          passThroughClick
+            ? undefined
+            : `${isOpen || exiting ? "Hide" : "Show"} map for zip ${zip}`
+        }
       >
-        {zip}
+        {children ?? zip}
       </span>
       {anchorEl ? (
         <ZipBoundaryPopover

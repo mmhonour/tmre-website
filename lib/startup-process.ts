@@ -373,7 +373,7 @@ export function describeStartupProcess(): {
           title: "Periodic rebuild if stale",
           timing: "usually every 60 min",
           detail:
-            "rebuildStatsCacheIfStale(false) — upsert-only when last_stats_cache is older than TTL (or required keys missing); skips while stats rebuild lock or listings refresh is held.",
+            "rebuildStatsCacheIfStale(false) — upsert-only when last_stats_cache is older than TTL (or required keys missing); skips while stats rebuild lock or listings refresh is held. Long-lived Node only: on Netlify this is off, because a request-scoped invocation cannot finish a rebuild but can freeze holding the lock. Who rebuilds is declared in Configure → Stats cache → Scheduler: Railway mls-sync (default; 10-min stale sweep + POST /stats) or Netlify cron (thin */30 → sync-stats-cache-worker). Exactly one host acts — each stands down when the radio names the other.",
           status: "active",
           statusLabel: "Running",
         },

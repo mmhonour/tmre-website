@@ -16,5 +16,5 @@ export function formatMlsModificationStamp(
     hour: 'numeric',
     minute: '2-digit',
   }).format(date)
-  return `MLS mod ${label}`
+  return `Last modified ${label}`
 }

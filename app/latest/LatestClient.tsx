@@ -29,7 +29,12 @@ import {
   readLatestViewState,
   writeLatestViewState,
 } from "@/lib/latest-view-state";
-import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
+import {
+  TMRE_TOWNS_LABEL,
+  isTmreTown,
+  normalizeZip,
+  townHasMultipleZips,
+} from "@/lib/tmre-towns";
 import { evaluateIncrementalHealth } from "@/lib/incremental-sync-health";
 import { latestExploreFeedUrl } from "@/lib/explore-tab-prefetch";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
@@ -1550,6 +1555,12 @@ export default function LatestClient({
             selectedZip={selectedZip}
             onTownSelect={(town) => {
               toggleTownFilter(town);
+              /**
+               * Multi-zip towns expand into their zip breakdown once selected,
+               * so closing here would hide the choice the tap just revealed.
+               * Stay put and let the header's Hide button dismiss the drawer.
+               */
+              if (townHasMultipleZips(town)) return;
               setTownStatsOpen(false);
             }}
             onZipSelect={(town, zip) => {

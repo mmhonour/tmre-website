@@ -6,6 +6,7 @@ import {
   readListingsFromDb,
 } from '@/lib/db/listings-repo'
 import {
+  deleteSyncMetaDurable,
   getSyncMeta,
   releaseTimedLock,
   setSyncMetaDurable,
@@ -68,6 +69,19 @@ export const STATS_CACHE_REBUILD_LOCK_KEY = 'stats_cache_rebuild_lock'
 /** Steal the rebuild lock if the holder has been silent this long (dead Lambda). */
 export const STATS_CACHE_REBUILD_LOCK_STALE_MS = 20 * 60 * 1000
 
+/**
+ * Liveness for the rebuild lock.
+ *
+ * The lock value is the acquire time, so a holder that is frozen mid-rebuild
+ * (serverless invocation ends, process killed) used to keep every other host out
+ * for the full 20 minutes — and each doomed retry re-armed it, which is how the
+ * stats rebuild deadlocked itself indefinitely. A live holder stamps this key
+ * while it works; a dead one stops instantly, so the lock frees in minutes.
+ */
+export const STATS_CACHE_REBUILD_HEARTBEAT_KEY = 'stats_cache_rebuild_heartbeat'
+const STATS_CACHE_REBUILD_HEARTBEAT_EVERY_MS = 45 * 1000
+const STATS_CACHE_REBUILD_HEARTBEAT_STALE_MS = 3 * 60 * 1000
+
 /** ISO time — do not POST sync-stats-cache-worker again until then (Netlify 429). */
 export const STATS_CACHE_QUEUE_BACKOFF_KEY = 'stats_cache_queue_backoff_until'
 export const STATS_CACHE_QUEUE_BACKOFF_MS = 15 * 60 * 1000
@@ -78,19 +92,29 @@ function parseMetaMs(iso: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null
 }
 
-/** Skip enqueue when a rebuild is live or Netlify just 429'd the worker hop. */
-export async function reasonToSkipStatsCacheEnqueue(
+/** True only while the lock holder is still stamping its heartbeat. */
+async function rebuildLockHolderIsAlive(now = Date.now()): Promise<boolean> {
+  const { getSyncMeta: getFresh } = await import('@/lib/db/sync-meta')
+  const beatMs = parseMetaMs(await getFresh(STATS_CACHE_REBUILD_HEARTBEAT_KEY))
+  if (beatMs == null) return false
+  return now - beatMs < STATS_CACHE_REBUILD_HEARTBEAT_STALE_MS
+}
+
+/**
+ * Host-agnostic: is a rebuild genuinely in flight right now? Used before asking
+ * any host (Railway or Netlify) to start one.
+ */
+export async function reasonToSkipStatsCacheRebuild(
   now = Date.now(),
 ): Promise<string | null> {
   const { getSyncMeta: getFresh } = await import('@/lib/db/sync-meta')
 
-  const backoffMs = parseMetaMs(await getFresh(STATS_CACHE_QUEUE_BACKOFF_KEY))
-  if (backoffMs != null && backoffMs > now) {
-    return 'skipped — Netlify rate limited (HTTP 429), waiting to retry'
-  }
-
   const lockMs = parseMetaMs(await getFresh(STATS_CACHE_REBUILD_LOCK_KEY))
-  if (lockMs != null && now - lockMs < STATS_CACHE_REBUILD_LOCK_STALE_MS) {
+  if (
+    lockMs != null &&
+    now - lockMs < STATS_CACHE_REBUILD_LOCK_STALE_MS &&
+    (await rebuildLockHolderIsAlive(now))
+  ) {
     return 'skipped — stats rebuild already running'
   }
 
@@ -99,12 +123,32 @@ export async function reasonToSkipStatsCacheEnqueue(
   if (
     startedMs != null &&
     now - startedMs < STATS_CACHE_REBUILD_LOCK_STALE_MS &&
-    (finishedMs == null || startedMs > finishedMs)
+    (finishedMs == null || startedMs > finishedMs) &&
+    (await rebuildLockHolderIsAlive(now))
   ) {
     return 'skipped — stats worker already started'
   }
 
   return null
+}
+
+/** Netlify-only: the background worker hop is in its 429 backoff window. */
+export async function isStatsCacheQueueBackedOff(
+  now = Date.now(),
+): Promise<boolean> {
+  const { getSyncMeta: getFresh } = await import('@/lib/db/sync-meta')
+  const backoffMs = parseMetaMs(await getFresh(STATS_CACHE_QUEUE_BACKOFF_KEY))
+  return backoffMs != null && backoffMs > now
+}
+
+/** Skip enqueue when a rebuild is live or Netlify just 429'd the worker hop. */
+export async function reasonToSkipStatsCacheEnqueue(
+  now = Date.now(),
+): Promise<string | null> {
+  if (await isStatsCacheQueueBackedOff(now)) {
+    return 'skipped — Netlify rate limited (HTTP 429), waiting to retry'
+  }
+  return reasonToSkipStatsCacheRebuild(now)
 }
 
 export async function stampStatsCacheQueueBackoff(now = Date.now()): Promise<void> {
@@ -154,22 +198,44 @@ function emptyKindTownAvgScoreData(): KindTownAvgScoreData {
 async function acquireStatsCacheRebuildLock(force = false): Promise<string | null> {
   const token = new Date().toISOString()
   // force=0ms stale window steals any prior holder (admin / background heal).
+  let staleAfterMs = force ? 0 : STATS_CACHE_REBUILD_LOCK_STALE_MS
+  if (!force && !(await rebuildLockHolderIsAlive())) {
+    // Holder stopped heart-beating — do not wait out the full stale window.
+    staleAfterMs = 0
+  }
   const ok = await tryAcquireTimedLock(
     STATS_CACHE_REBUILD_LOCK_KEY,
     token,
-    force ? 0 : STATS_CACHE_REBUILD_LOCK_STALE_MS,
+    staleAfterMs,
   )
   if (!ok) {
     console.info('[stats-cache] skipped — rebuild lock held')
     return null
   }
+  // Stamp before returning so a racing acquirer never sees us as dead.
+  await setSyncMetaDurable(STATS_CACHE_REBUILD_HEARTBEAT_KEY, token)
   return token
+}
+
+/** Keep the lock alive while we work. Returns the stop function. */
+function startStatsCacheRebuildHeartbeat(): () => void {
+  const timer = setInterval(() => {
+    void setSyncMetaDurable(
+      STATS_CACHE_REBUILD_HEARTBEAT_KEY,
+      new Date().toISOString(),
+    ).catch(() => {
+      /* heartbeat is best-effort; a miss only shortens our lease */
+    })
+  }, STATS_CACHE_REBUILD_HEARTBEAT_EVERY_MS)
+  timer.unref?.()
+  return () => clearInterval(timer)
 }
 
 async function releaseStatsCacheRebuildLock(token: string | null): Promise<void> {
   if (!token) return
   try {
     await releaseTimedLock(STATS_CACHE_REBUILD_LOCK_KEY, token)
+    await deleteSyncMetaDurable(STATS_CACHE_REBUILD_HEARTBEAT_KEY)
   } catch (err) {
     console.error('[stats-cache] failed to release rebuild lock', err)
   }
@@ -788,6 +854,7 @@ export async function rebuildStatsCache(
   if (!lockToken) {
     return { written: 0, durationMs: 0, skipped: true, skipReason: 'lock' }
   }
+  const stopHeartbeat = startStatsCacheRebuildHeartbeat()
 
   if (trackRefresh) beginListingsRefresh('stats-cache')
   const startedAt = new Date().toISOString()
@@ -930,6 +997,7 @@ export async function rebuildStatsCache(
 
     return { written, durationMs: Date.now() - t0 }
   } finally {
+    stopHeartbeat()
     if (trackRefresh) endListingsRefresh(new Date().toISOString())
     await releaseStatsCacheRebuildLock(lockToken)
   }
@@ -956,6 +1024,7 @@ export async function rebuildStatsCacheForTowns(
   if (!lockToken) {
     return { written: 0, durationMs: 0, skipped: true, skipReason: 'lock' }
   }
+  const stopHeartbeat = startStatsCacheRebuildHeartbeat()
 
   if (trackRefresh) beginListingsRefresh('stats-cache')
   const startedAt = new Date().toISOString()
@@ -1087,6 +1156,7 @@ export async function rebuildStatsCacheForTowns(
 
     return { written, durationMs: Date.now() - t0 }
   } finally {
+    stopHeartbeat()
     if (trackRefresh) endListingsRefresh(new Date().toISOString())
     await releaseStatsCacheRebuildLock(lockToken)
   }

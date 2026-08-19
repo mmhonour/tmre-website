@@ -28,15 +28,32 @@ function isSameLocalDay(a: Date, b: Date): boolean {
   );
 }
 
+/**
+ * Fixed-width day stamp for the 6rem clock column — `Wed19Aug`. Spaced-out
+ * labels overflowed that column and got clipped against the address, so the
+ * separators go and the day is padded to keep every row the same width.
+ */
+function compactDayStamp(date: Date): string {
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
+  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${weekday}${day}${month}`;
+}
+
+/** Roomier form for the tooltip, which has no width limit. */
+function readableDay(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
 function formatMobileClosedDate(iso: string | null): { label: string; title: string } {
   const t = mlsTimestampMs(iso);
   if (Number.isNaN(t)) return { label: "—", title: "Closed —" };
   const date = new Date(t);
-  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
-  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
-  const day = date.getDate();
-  const label = `${weekday} ${month} ${day}`;
-  return { label, title: `Closed ${label}` };
+  return { label: compactDayStamp(date), title: `Closed ${readableDay(date)}` };
 }
 
 function formatMobileUpdatedAt(iso: string | null): { label: string; title: string } {
@@ -51,11 +68,11 @@ function formatMobileUpdatedAt(iso: string | null): { label: string; title: stri
   if (isSameLocalDay(date, today)) {
     return { label: time, title: `MLS updated ${time} (your local time)` };
   }
-  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
-  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
-  const day = date.getDate();
-  const label = `${weekday} ${month} ${day} · ${time}`;
-  return { label, title: `MLS updated ${label} (your local time)` };
+  // Clock time moves to the tooltip — it is what pushed this past the column.
+  return {
+    label: compactDayStamp(date),
+    title: `MLS updated ${readableDay(date)} · ${time} (your local time)`,
+  };
 }
 
 function displayTown(l: LatestListingRow): string | null {

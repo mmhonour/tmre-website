@@ -37,6 +37,10 @@ type ClosedApiResponse = {
   daily?: ClosedDailyCachePayload | null;
 };
 
+/** Listing column + town-stats rail. Shared so the Lookback control can match
+ * the listing column exactly instead of hard-coding the rail width twice. */
+const CLOSED_COLUMNS = "lg:grid lg:grid-cols-[minmax(0,1fr)_292px] lg:gap-5";
+
 const LOCAL_DATE_KEY_FMT = new Intl.DateTimeFormat("en-CA", {
   year: "numeric",
   month: "2-digit",
@@ -414,15 +418,19 @@ export default function ClosedClient({
 
       <section className="bg-cream pt-3 pb-12 lg:pt-5 lg:pb-14">
         <div className="mx-auto max-w-7xl space-y-3 px-3 sm:px-6 lg:px-10">
-          <ClosedLookbackRangeSlider
-            days={days}
-            startIndex={startIndex}
-            endIndex={endIndex}
-            onStartChange={setStartIndex}
-            onEndChange={setEndIndex}
-          />
+          <div className={CLOSED_COLUMNS}>
+            <div className="min-w-0">
+              <ClosedLookbackRangeSlider
+                days={days}
+                startIndex={startIndex}
+                endIndex={endIndex}
+                onStartChange={setStartIndex}
+                onEndChange={setEndIndex}
+              />
+            </div>
+          </div>
 
-          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_292px] lg:items-start lg:gap-5">
+          <div className={`${CLOSED_COLUMNS} lg:items-start`}>
             <div className="min-w-0">
               <div className="mb-3 space-y-2.5 lg:mb-2.5 lg:space-y-0">
                 <div className="flex items-center justify-between gap-3 font-mono text-[11px] tracking-[0.12em] uppercase">

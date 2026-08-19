@@ -526,6 +526,30 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'The short Netlify scheduled function that is only an alarm clock: `schedule` in netlify.toml (often `*/30` = every 30 minutes), no `background` flag, ~26–30s budget. On each wake it hydrates sync_meta, checks Pause / Configure due / Next override / (sometimes) already-sent watermarks, then either returns skipped or queues the matching *-worker. It is not the weekly/hourly cadence itself — Configure Frequency + Start time decide whether this wake does work. Examples: `market-digest`, `sync-listing-scores` (Goldilocks 3a), `sync-listing-edge-scores` (Edge 3b), `sync-stats-cache`, `sync-deal-of-the-day`, `sync-property-addresses`. Must never also set `background: true` on the same function (silent no-op). See Thin scheduling, Thin schedule → *-worker, Disposable 202-queued.',
   },
   {
+    term: '*/30 fan-out',
+    category: 'sync-admin',
+    definition:
+      'Thirteen thin crons in netlify.toml all carry `schedule = "*/30 * * * *"`, so Netlify wakes them within the same second at :00 and :30 and each one POSTs its own *-worker background function. That is a burst of ~13 background invocations twice an hour before any catch-up or Admin click adds more, and it is the usage shape behind the 19 Aug 2026 outage: every worker hop came back HTTP 429 and no background function executed for over 24 hours, while the thin crons themselves stayed healthy at ~1s each. Two ways out: stagger the minute field (`5,35`, `10,40`, …) so the burst spreads, or move the job to a host that needs no invocation at all — Railway mls-sync now self-schedules the stats rebuild instead of waiting to be POSTed. See Thin cron, HTTP 429 (background invocation refused), Railway mls-sync.',
+  },
+  {
+    term: 'HTTP 429 (background invocation refused)',
+    category: 'sync-admin',
+    definition:
+      'Netlify answering the function→function hop with `429 Too Many Requests`, empty body, `Cache-Status: "Netlify Edge"; fwd=miss; fwd-status=429`. The origin refused the invocation, so the worker never starts and never writes a log line — which is why this must not be read as a rebuild failure: nothing ran, so Sync History classifies it Skipped rather than Failed (isSyncHistorySkipMessage). Confirmed site-wide on 19 Aug 2026 on a Pro account: a single cold external POST was refused instantly, `sync-stats-cache-worker` and `sync-listings-worker` had zero executions in 24h, and five crons logged `worker queue failed: HTTP 429` in the same tick, while thin crons and the SSR handler kept returning 200. Code side, netlify-sync-trigger stops trying extra site bases once it sees a 429 and stamps a backoff key rather than retrying into the wall. See */30 fan-out, Disposable 202-queued, Railway mls-sync.',
+  },
+  {
+    term: 'SSR Lambda boot',
+    category: 'sync-admin',
+    definition:
+      'A cold start of Netlify’s `___netlify-server-handler`, the single Lambda that renders every Next.js route. instrumentation.register() runs on each boot, which makes it tempting to hang background work off it — overdue catch-up, a stats refresh, a warm. The trap is that the invocation is request-scoped: it freezes once the response is sent, so any multi-minute job it started dies partway while still owning whatever lock it took. Boots are frequent and unpredictable (traffic, scale-out, redeploy), so the damage repeats rather than resolving. Both the catch-up and the stats rebuild are now gated off this path on Netlify; long-lived Node (local dev, Railway) still runs them. See 20-minute rebuild lock, Lambda / serverless function, Cold start.',
+  },
+  {
+    term: '20-minute rebuild lock',
+    category: 'sync-admin',
+    definition:
+      '`stats_cache_rebuild_lock` in sync_meta — the ISO time a stats rebuild claimed the lock, stealable only once it is older than STATS_CACHE_REBUILD_LOCK_STALE_MS (20 minutes). The value is a timestamp, not a liveness signal, and that gap produced the 19 Aug 2026 deadlock: an SSR Lambda boot started a full rebuild, froze partway, and left behind a fresh timestamp that locked every other host out for 20 minutes — then the next boot re-armed it, so `[stats-cache] skipped — rebuild lock held` repeated indefinitely and End never advanced. Now paired with `stats_cache_rebuild_heartbeat`, stamped every 45s while a rebuild is genuinely running: a holder that stops beating for 3 minutes is stolen from immediately, so a dead host costs minutes instead of days. See SSR Lambda boot, Thin cron, Railway mls-sync.',
+  },
+  {
     term: 'Thin scheduling',
     category: 'sync-admin',
     definition:
@@ -638,6 +662,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'sync-admin',
     definition:
       'Out of memory — the process (or host) ran out of RAM and was killed or crashed. Generic term; on this project the usual form on Railway mls-sync is a Node OOM (V8 JavaScript heap), not the Linux OOM killer. Symptom chain: process dies → nothing listens on PORT → Railway edge 502 “Application failed to respond” → restart → often “refresh already in progress” skip + false ok=true until the lock clears. Fix by lowering peak memory (stop loading huge JSON / board+hero warm in the sync worker) or raising RAM / NODE_OPTIONS --max-old-space-size. See Node OOM, Railway mls-sync.',
+  },
+  {
+    term: 'OOMed',
+    category: 'sync-admin',
+    definition:
+      'Verb form of OOM as used in incident notes (“warming stats inside the puller OOMed the service”): the process was killed for exhausting RAM rather than for any logic error, so the stack trace you want is the heap message, not the last request. On this project it almost always means a Node OOM (V8 heap) on Railway mls-sync, not the Linux OOM killer. See OOM, Node OOM.',
   },
   {
     term: 'Node OOM',
