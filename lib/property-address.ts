@@ -167,6 +167,76 @@ export function normalizeStreetLine(street: string): string {
     .trim()
 }
 
+/** Canon short token → spelled USPS word. RETS `*Ln*` does not hit `Lane`. */
+const STREET_TYPE_LONG: Record<string, string> = {
+  st: 'street',
+  rd: 'road',
+  ave: 'avenue',
+  dr: 'drive',
+  ln: 'lane',
+  ct: 'court',
+  blvd: 'boulevard',
+  pl: 'place',
+  cir: 'circle',
+  ter: 'terrace',
+  trl: 'trail',
+  hwy: 'highway',
+  pkwy: 'parkway',
+  sq: 'square',
+  tpke: 'turnpike',
+  ext: 'extension',
+  n: 'north',
+  s: 'south',
+  e: 'east',
+  w: 'west',
+  ne: 'northeast',
+  nw: 'northwest',
+  se: 'southeast',
+  sw: 'southwest',
+}
+
+const STREET_NAME_LONG: Record<string, string> = {
+  brk: 'brook',
+  brks: 'brooks',
+  mt: 'mount',
+  mtn: 'mountain',
+  hts: 'heights',
+  xing: 'crossing',
+  pt: 'point',
+  rdg: 'ridge',
+  hbr: 'harbor',
+  crk: 'creek',
+  lndg: 'landing',
+  mdw: 'meadow',
+  mdws: 'meadows',
+  vly: 'valley',
+  ctr: 'center',
+}
+
+/**
+ * RETS / LIKE spellings for one street: original, canon (`ln`/`rd`),
+ * and expanded (`lane`/`road`). `5 Locust Ln` and `5 Locust Lane` both
+ * produce a variant SmartMLS UnparsedAddress can contain.
+ */
+export function streetSearchVariants(street: string): string[] {
+  const original = street.replace(/\s+/g, ' ').trim()
+  const canon = normalizeStreetLine(original)
+  if (!canon) return original ? [original] : []
+  const expanded = canon
+    .split(' ')
+    .map((token) => STREET_TYPE_LONG[token] ?? STREET_NAME_LONG[token] ?? token)
+    .join(' ')
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const variant of [original, canon, expanded]) {
+    const key = variant.toLowerCase()
+    if (!variant || seen.has(key)) continue
+    seen.add(key)
+    out.push(variant)
+  }
+  return out
+}
+
 export function normalizePropertyAddress(town: string, street: string, zip?: string | null): string {
   const parts = [normalizeStreetLine(street), town.trim().toLowerCase()]
   const zip5 = zip?.trim().slice(0, 5)

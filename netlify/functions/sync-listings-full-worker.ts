@@ -3,6 +3,7 @@ import { assertSyncCronAuth } from '../../lib/netlify-cron-auth'
 import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
 import { getSyncStatus, syncAllTownListings } from '../../lib/listings-sync'
 import { runOverdueSyncCatchup } from '../../lib/sync-overdue'
+import { catchupFinishedJob } from '../../lib/sync-catchup-result'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { isFullResyncRetired, FULL_RESYNC_RETIRED_MESSAGE } from '../../lib/scheduled-sync-jobs-shared'
 
@@ -51,8 +52,7 @@ export default async function handler(req: Request, _context: Context) {
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
-    const ranFull =
-      !catchup.skipped && catchup.steps.some((step) => step.job === 'full-resync')
+    const ranFull = catchupFinishedJob(catchup, 'full-resync')
     const result = ranFull ? null : await syncAllTownListings()
     return new Response(
       JSON.stringify({

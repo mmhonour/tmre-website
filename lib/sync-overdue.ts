@@ -25,6 +25,8 @@ export type OverdueSyncCatchupStep = {
   message: string
   detail?: string
   durationMs: number
+  /** True when the action only enqueued a worker — not a finished rebuild. */
+  queued?: boolean
 }
 
 export type OverdueSyncCatchupResult = {
@@ -204,15 +206,19 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
   return ordered
 }
 
-async function runOverdueJob(job: OverdueSyncJob): Promise<OverdueSyncCatchupStep> {
+async function runOverdueJob(
+  job: OverdueSyncJob,
+  executeInProcess: boolean,
+): Promise<OverdueSyncCatchupStep> {
   const t0 = Date.now()
-  const result = await runAdminSyncAction(job)
+  const result = await runAdminSyncAction(job, { executeInProcess })
   return {
     job,
     ok: result.ok,
     message: result.message,
     detail: result.detail,
     durationMs: result.durationMs || Date.now() - t0,
+    queued: Boolean(result.backgroundQueued),
   }
 }
 
@@ -226,6 +232,13 @@ export async function runOverdueSyncCatchup(options?: {
   reason?: string
   /** When set, only these jobs may run (e.g. never full-resync on the 30m cron). */
   onlyJobs?: OverdueSyncJob[]
+  /** Dedicated worker: omit this job so catch-up cannot skip / re-queue it. */
+  exceptJob?: OverdueSyncJob
+  /**
+   * Run rebuilds in this process instead of re-queuing workers.
+   * Required on Netlify when catch-up is invoked from an already-running worker.
+   */
+  executeInProcess?: boolean
 }): Promise<OverdueSyncCatchupResult> {
   if (!overdueCatchupEnabled()) {
     return { skipped: true, reason: 'disabled', plan: [], steps: [] }
@@ -247,7 +260,10 @@ export async function runOverdueSyncCatchup(options?: {
 
   const pausedJobs = await getScheduledSyncPausedJobsFresh()
   const allow = options?.onlyJobs?.length ? new Set(options.onlyJobs) : null
+  const exceptJob = options?.exceptJob
+  const executeInProcess = options?.executeInProcess === true
   const plan = buildOverdueSyncPlan().filter((job) => {
+    if (exceptJob && job === exceptJob) return false
     if (allow && !allow.has(job)) return false
     const pauseKey = overdueJobPauseKey(job)
     return pauseKey == null || !pausedJobs[pauseKey]
@@ -270,7 +286,7 @@ export async function runOverdueSyncCatchup(options?: {
 
   try {
     for (const job of plan) {
-      const step = await runOverdueJob(job)
+      const step = await runOverdueJob(job, executeInProcess)
       steps.push(step)
       console.info(
         `[sync-overdue] ${job} ${step.ok ? 'ok' : 'failed'} in ${step.durationMs}ms — ${step.message}`,

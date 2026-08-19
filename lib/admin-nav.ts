@@ -928,7 +928,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   },
   {
     label: "sync-listing-scores-worker",
-    detail: "Background Goldilocks score rebuild (stamps last_listing_scores)",
+    detail: "Background Goldilocks score rebuild (always runs; stamps last_listing_scores)",
     schedule: "On invoke (background)",
   },
   {
@@ -939,7 +939,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   },
   {
     label: "sync-listing-edge-scores-worker",
-    detail: "Background comparable edge-score warm pass (stamps last_listing_edge_scores)",
+    detail: "Background comparable edge-score warm pass (always runs; stamps last_listing_edge_scores)",
     schedule: "On invoke (background)",
   },
   {

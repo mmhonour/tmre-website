@@ -247,6 +247,10 @@ export default function LatestTownStats({
   latestCaption = "Latest update",
   emptyHint = "No town updates in the last 24 hours.",
 }: LatestTownStatsProps) {
+  const visibleStats = selectedTown
+    ? stats.filter((row) => row.town === selectedTown)
+    : stats;
+
   useEffect(() => {
     if (loading) return;
     void prefetchAllTownSnapshots();
@@ -275,18 +279,18 @@ export default function LatestTownStats({
       <div className={`space-y-2 ${showHeading ? "pt-4" : ""}`}>
         {loading ? (
           <div className="h-32 animate-pulse rounded-2xl border border-charcoal/[0.08] bg-white p-5" />
-        ) : stats.length === 0 ? (
+        ) : visibleStats.length === 0 ? (
           <div className="rounded-2xl border border-charcoal/[0.08] bg-white p-5">
             <p className="font-mono text-[10px] text-slate">
               {emptyHint}
             </p>
           </div>
         ) : (
-          stats.map((row, index) => (
+          visibleStats.map((row, index) => (
             <Fragment key={row.town}>
               <LatestTownSidePanel
                 row={row}
-                rank={index + 1}
+                rank={selectedTown ? 1 : index + 1}
                 selected={selectedTown === row.town}
                 onTownSelect={onTownSelect}
                 countNoun={countNoun}

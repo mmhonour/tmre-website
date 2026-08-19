@@ -41,10 +41,9 @@ export default async function MarketPulsePage() {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(snapshot.generatedAt));
-  const lastSentMs = digest.lastSentAt ? Date.parse(digest.lastSentAt) : NaN;
-  const lastEmailDate = Number.isFinite(lastSentMs)
-    ? formatMarketDigestNextEmailDate(new Date(lastSentMs))
-    : null;
+  const lastEmailDate = digest.lastSentAt
+    ? formatMarketDigestNextEmailDate(digest.lastSentAt)
+    : "—";
   const nextEmailDate = formatMarketDigestNextEmailDate(
     nextMarketDigestSendAt(digest),
   );
@@ -64,7 +63,12 @@ export default async function MarketPulsePage() {
       >
         <section className="pt-8 pb-6 lg:pt-10 lg:pb-8">
           <div className="px-2 sm:px-6 lg:px-10 pb-12">
-            <MarketPulseContent snapshot={snapshot} etDate={etDate} />
+            <MarketPulseContent
+              snapshot={snapshot}
+              etDate={etDate}
+              lastEmailDate={lastEmailDate}
+              nextEmailDate={nextEmailDate}
+            />
           </div>
         </section>
 

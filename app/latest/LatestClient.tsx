@@ -9,6 +9,7 @@ import LatestSmoothScrollList from "@/components/latest/LatestSmoothScrollList";
 import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
 import LatestTownStats from "@/components/latest/LatestTownStats";
+import ExplorePageTabs from "@/components/explore/ExplorePageTabs";
 import { prefetchAllTownSnapshots } from "@/components/latest/LatestIntelligenceTownSnapshot";
 import { prefetchAllTownBoundaries } from "@/components/ZipBoundaryPopover";
 import type { LatestListingRow, TownUpdateStat } from "@/lib/latest-listings";
@@ -896,7 +897,7 @@ export default function LatestClient({
   return (
     <>
       {/* —— Mobile hero (phone / narrow) —— */}
-      <section className="navy-gradient relative overflow-hidden pt-[4.5rem] pb-4 text-white lg:hidden">
+      <section className="navy-gradient relative overflow-hidden pt-[4.5rem] pb-0 text-white lg:hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-4">
           <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
@@ -920,11 +921,12 @@ export default function LatestClient({
             />
             <span className="truncate">{summary}</span>
           </div>
+          <ExplorePageTabs active="latest" />
         </div>
       </section>
 
       {/* —— Desktop hero —— */}
-      <section className="navy-gradient relative hidden overflow-hidden pt-28 pb-6 text-white lg:block">
+      <section className="navy-gradient relative hidden overflow-hidden pt-28 pb-0 text-white lg:block">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-10">
           <p className="mb-3 font-mono text-[11px] tracking-[0.2em] uppercase text-gold animate-fade-up">
@@ -980,6 +982,7 @@ export default function LatestClient({
                   : `Last pull ${syncLabel}`}
             </span>
           </div>
+          <ExplorePageTabs active="latest" />
         </div>
       </section>
 

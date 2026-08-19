@@ -76,20 +76,46 @@ function BarValueOverlay({
   asideLeft,
   leftPct,
   widthPct,
+  place = "track-end",
+  colorClass,
+  bodyFont = false,
 }: {
   value: ReactNode;
   asideLeft?: ReactNode;
   leftPct: number;
   widthPct: number;
+  /** after-fill = immediately to the right of the colored bar. */
+  place?: "track-end" | "after-fill";
+  colorClass?: string;
+  bodyFont?: boolean;
 }) {
   const fillRight = leftPct + widthPct;
+  const fontClass = bodyFont
+    ? "[font-family:var(--mp-body-font)]"
+    : "[font-family:var(--mp-mono-font)]";
+  const base = `pointer-events-none absolute inset-y-0 z-[1] flex items-center text-[10px] tabular-nums whitespace-nowrap ${fontClass}`;
+
+  if (place === "after-fill") {
+    return (
+      <span
+        className={`${base} pl-1 ${colorClass ?? BAR_VALUE_ON_EMPTY}`}
+        style={{ left: `${Math.min(Math.max(fillRight, 0), 100)}%` }}
+      >
+        {value}
+        {asideLeft ? (
+          <span className="pl-1">{asideLeft}</span>
+        ) : null}
+      </span>
+    );
+  }
+
   const valueOnFill = fillRight >= 82;
   const asideOnFill = leftPct < 14 && widthPct > 0;
   return (
     <>
       {asideLeft ? (
         <span
-          className={`pointer-events-none absolute inset-y-0 left-0 z-[1] flex items-center pl-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums ${
+          className={`${base} left-0 pl-1 ${
             asideOnFill ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY
           }`}
         >
@@ -97,8 +123,8 @@ function BarValueOverlay({
         </span>
       ) : null}
       <span
-        className={`pointer-events-none absolute inset-y-0 right-0 z-[1] flex items-center justify-end pr-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums ${
-          valueOnFill ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY
+        className={`${base} right-0 justify-end pr-1 ${
+          colorClass ?? (valueOnFill ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY)
         }`}
       >
         {value}
@@ -280,8 +306,39 @@ function visibleTownRows<T extends { city: string }>(
   return all.length > 0 ? all : [...rows];
 }
 
+const TOWN_METRICS_HEADING_CLASS =
+  "[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1.5";
+
 const TOWN_NAME_CLASS =
   "[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors";
+
+function TownMetricsLayoutWord({
+  label,
+  selected,
+  onSelect,
+}: {
+  label: "stacked" | "unstacked";
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  if (selected) {
+    return (
+      <span className="font-semibold text-[var(--mp-accent)]" aria-current="true">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label={`Show ${label} town metrics`}
+      onClick={onSelect}
+      className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
+    >
+      {label}
+    </button>
+  );
+}
 
 function TownName({
   city,
@@ -727,6 +784,17 @@ function BarChart<Row extends { city: string }>({
                   }
                   leftPct={aligned.leftPct}
                   widthPct={aligned.widthPct}
+                  place={
+                    valueKind === "mos" || explainDelta
+                      ? "after-fill"
+                      : "track-end"
+                  }
+                  colorClass={
+                    valueKind === "mos"
+                      ? "text-[var(--mp-months-supply-bar)]"
+                      : undefined
+                  }
+                  bodyFont={valueKind === "mos"}
                 />
                 <div
                   className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -819,7 +887,7 @@ function CombinedMetricsChart({
   townsExpanded,
   onAllTownsToggle,
 }: {
-  title: ReactNode;
+  title?: ReactNode;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
@@ -844,9 +912,9 @@ function CombinedMetricsChart({
   if (rows.length === 0) {
     return (
       <section>
-        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1">
-          {title}
-        </p>
+        {title ? (
+          <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p>
+        ) : null}
         <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">
           No town rows in cache yet.
         </p>
@@ -986,6 +1054,17 @@ function CombinedMetricsChart({
             }
             leftPct={aligned.leftPct}
             widthPct={aligned.widthPct}
+            place={
+              m.id === "monthsSupply" || m.id === "priceDelta"
+                ? "after-fill"
+                : "track-end"
+            }
+            colorClass={
+              m.id === "monthsSupply"
+                ? "text-[var(--mp-months-supply-bar)]"
+                : undefined
+            }
+            bodyFont={m.id === "monthsSupply"}
           />
           <div
             className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -1005,9 +1084,7 @@ function CombinedMetricsChart({
 
   return (
     <section>
-      <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1">
-        {title}
-      </p>
+      {title ? <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p> : null}
       <ul className="space-y-3">
         {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
@@ -1111,6 +1188,8 @@ function Kpi({
 export default function WeeklyBriefContent({
   snapshot,
   etDate,
+  lastEmailDate,
+  nextEmailDate,
   eyebrow = "Market Pulse",
   scopeLabel = "sales",
   showDealOfTheWeek = true,
@@ -1129,6 +1208,8 @@ export default function WeeklyBriefContent({
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
+  lastEmailDate?: string;
+  nextEmailDate?: string;
   eyebrow?: string;
   /** Chart / footnote scope for the active category tab. */
   scopeLabel?: string;
@@ -1168,6 +1249,12 @@ export default function WeeklyBriefContent({
   const [propertyTypeOpen, setPropertyTypeOpen] = useState(false);
   const [townsExpanded, setTownsExpanded] = useState(false);
   const [sortExplainOpen, setSortExplainOpen] = useState(false);
+
+  useEffect(() => {
+    if (!townsExpanded && chartLayout !== "stacked") {
+      setChartLayout("stacked");
+    }
+  }, [townsExpanded, chartLayout]);
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
   const lookbackDays = marketPulseLookbackById(lookbackId).days;
   const lookbackDrivesMos = lookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
@@ -1247,20 +1334,36 @@ export default function WeeklyBriefContent({
   }, [inventoryRows, domRows, closedRows, priceRows, favorSort]);
 
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
-  const titleScope = selectionLabel ?? scopeLabel;
 
-  const townMetricsTitle = (
-    <>
+  const townMetricsHeading = (
+    <p className={TOWN_METRICS_HEADING_CLASS}>
       Town metrics
       <button
         type="button"
-        className="ml-0.5 align-super font-mono text-[12px] leading-none text-[var(--mp-accent)] hover:text-[var(--mp-text)]"
+        className="align-super font-mono text-[12px] leading-none text-[var(--mp-accent)] hover:text-[var(--mp-text)]"
         aria-label="How towns are sorted"
         onClick={() => setSortExplainOpen(true)}
       >
         *
       </button>
-    </>
+      {townsExpanded ? (
+        <>
+          <TownMetricsLayoutWord
+            label="stacked"
+            selected={chartLayout === "stacked"}
+            onSelect={() => setChartLayout("stacked")}
+          />
+          <span className="text-[var(--mp-accent)]/45" aria-hidden>
+            |
+          </span>
+          <TownMetricsLayoutWord
+            label="unstacked"
+            selected={chartLayout === "unstacked"}
+            onSelect={() => setChartLayout("unstacked")}
+          />
+        </>
+      ) : null}
+    </p>
   );
 
   return (
@@ -1272,6 +1375,12 @@ export default function WeeklyBriefContent({
         <h1 className="[font-family:var(--mp-heading-font)] text-2xl sm:text-3xl text-white leading-snug">
           {etDate}
         </h1>
+        {lastEmailDate || nextEmailDate ? (
+          <div className="mt-3 font-mono text-[11px] tracking-[0.08em] uppercase text-white/55">
+            {lastEmailDate ? <p>Last email : {lastEmailDate}</p> : null}
+            {nextEmailDate ? <p>Next email : {nextEmailDate}</p> : null}
+          </div>
+        ) : null}
         <p className="mt-3 font-mono text-[11px]">
           <Link
             href="/stats"
@@ -1347,23 +1456,9 @@ export default function WeeklyBriefContent({
           ) : null}
         </div>
 
-        {chartLayout === "stacked" ? (
+        {townMetricsHeading}
+        {chartLayout === "stacked" || !townsExpanded ? (
           <CombinedMetricsChart
-            title={
-              <>
-                {townMetricsTitle}{" "}
-                <button
-                  type="button"
-                  aria-pressed={true}
-                  aria-label="Show unstacked town metrics"
-                  onClick={() => setChartLayout("unstacked")}
-                  className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
-                >
-                  stacked
-                </button>
-                {` (${titleScope})`}
-              </>
-            }
             rows={combinedRows}
             townHref={townHref}
             settle={settle}
@@ -1375,21 +1470,8 @@ export default function WeeklyBriefContent({
           />
         ) : (
           <>
-        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-1 inline-flex flex-wrap items-baseline gap-x-1">
-          {townMetricsTitle}{" "}
-          <button
-            type="button"
-            aria-pressed={false}
-            aria-label="Show stacked town metrics"
-            onClick={() => setChartLayout("stacked")}
-            className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
-          >
-            unstacked
-          </button>
-          {` (${titleScope})`}
-        </p>
         <BarChart
-          title={`Active inventory (${titleScope})`}
+          title="Active inventory"
           rows={inventoryRows}
           valueOf={(r) => r.activeCount}
           valueKind="int"
@@ -1405,7 +1487,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Months supply (${scopeLabel})`}
+          title="Months supply"
           rows={inventoryRows}
           valueOf={(r) => r.monthsSupply}
           valueKind="mos"
@@ -1421,7 +1503,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Avg days on market (${titleScope})`}
+          title="Avg days on market"
           rows={domRows}
           valueOf={(r) => r.avgDaysOnMarket}
           valueKind="dom"
@@ -1437,7 +1519,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Closed sales — trailing ${closedLookbackLabel} (${titleScope})`}
+          title={`Closed sales — trailing ${closedLookbackLabel}`}
           rows={closedRows}
           valueOf={(r) => r.count}
           valueKind="int"
@@ -1458,7 +1540,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Median (${titleScope})`}
+          title="Median"
           rows={priceRows}
           valueOf={(r) => r.medianPrice}
           valueKind="money"
@@ -1475,7 +1557,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Delta (${titleScope})`}
+          title="Delta"
           rows={priceRows}
           valueOf={(r) => {
             const d = meanMinusMedian(r.averagePrice, r.medianPrice).dollars;
@@ -1524,7 +1606,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Average (${titleScope})`}
+          title="Average"
           rows={priceRows}
           valueOf={(r) => r.averagePrice}
           valueKind="money"

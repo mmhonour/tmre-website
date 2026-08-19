@@ -193,6 +193,15 @@ export type AdminSyncActionOptions = {
   finalize?: boolean
   /** One finalize step of a chunked full resync (see `FULL_RESYNC_FINALIZE_STEPS`). */
   finalizeStep?: string
+  /**
+   * Already inside a background worker / long-lived host: run the rebuild
+   * here. Do not re-queue. Admin HTTP on Netlify must leave this unset.
+   */
+  executeInProcess?: boolean
+}
+
+function shouldQueueOnServerless(options: AdminSyncActionOptions): boolean {
+  return isServerlessRuntime() && options.executeInProcess !== true
 }
 
 /** status_bucket suffix → Sync History sync-type group (see normalizeSyncType). */
@@ -577,7 +586,7 @@ async function runAdminSyncActionImpl(
 
       // Production: never await 7-town RETS in the Next.js request — Netlify
       // gateway returns HTML 504 before maxDuration. Same handoff as scheduled cron.
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyIncrementalSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
@@ -713,7 +722,7 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'listing-scores': {
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyListingScoresSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
@@ -783,7 +792,7 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'edge-scores': {
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyListingEdgeScoreSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
@@ -867,7 +876,7 @@ async function runAdminSyncActionImpl(
     case 'stats-cache': {
       // Production: full rebuild is too heavy for the Next.js request (gateway
       // 504 leaves stats_cache_rebuild_lock held → later clicks report "0 entries").
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyStatsCacheRebuild } = await import(
           '@/lib/netlify-sync-trigger'
         )
@@ -975,7 +984,7 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'deal-of-the-day': {
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyDealOfTheDayRebuild } = await import(
           '@/lib/netlify-sync-trigger'
         )
@@ -1100,7 +1109,7 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'fomc-sync': {
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyFomcSync } = await import('@/lib/netlify-sync-trigger')
         const { queued, via } = await queueSyncNowPreferringScheduler(
           'fomc-sync',
@@ -1147,7 +1156,7 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'cpi-sync': {
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyCpiSync } = await import('@/lib/netlify-sync-trigger')
         const { queued, via } = await queueSyncNowPreferringScheduler(
           'cpi-sync',
@@ -1194,7 +1203,7 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'market-digest': {
-      if (isServerlessRuntime()) {
+      if (shouldQueueOnServerless(options)) {
         const { queueNetlifyMarketDigest } = await import(
           '@/lib/netlify-sync-trigger'
         )

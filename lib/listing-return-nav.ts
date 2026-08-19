@@ -74,6 +74,7 @@ export function labelForReturnPath(href: string): string {
     return labelForIntelligenceListings(search);
   }
   if (pathname === "/latest") return "Latest";
+  if (pathname === "/closed") return "Closed";
   if (pathname === "/stats") return "Stats";
   if (pathname === "/deal-of-the-day") return "Deal of the Day";
   if (pathname === "/open-houses") return "Open Houses";

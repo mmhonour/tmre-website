@@ -14,6 +14,7 @@ import { listingDetailHref } from '@/lib/listing-url'
 import {
   normalizePropertyAddress,
   normalizeStreetLine,
+  streetSearchVariants,
 } from '@/lib/property-address'
 import { visionListingKeys } from '@/lib/vision-listing-match'
 import {
@@ -243,6 +244,14 @@ async function listingForVision(
     const byMls = await readListingByIdFromDb(v.mlsId)
     if (byMls) return byMls
   }
+  const { findListingInDbByVisionAddress, stampVisionListingLink } = await import(
+    '@/lib/find-listing-ingest'
+  )
+  const byKey = await findListingInDbByVisionAddress(v)
+  if (byKey) {
+    await stampVisionListingLink(v, byKey)
+    return byKey
+  }
   return null
 }
 
@@ -262,19 +271,23 @@ async function searchWestportListingRows(
 ): Promise<WestportListingSearchRow[]> {
   const street = normalizeStreetLine(q)
   if (street.length < 2) return []
-  const tokens = street.split(/\s+/).filter(Boolean)
-  const prefix = `${street}%`
-  const tokenPattern = `%${tokens.join('%')}%`
+  const variants = streetSearchVariants(q)
+  const prefixes = variants.map((variant) => `${variant.toLowerCase()}%`)
+  const tokenPatterns = variants.map(
+    (variant) => `%${variant.toLowerCase().split(/\s+/).filter(Boolean).join('%')}%`,
+  )
+  const patterns = [...new Set([...prefixes, ...tokenPatterns])]
+  const likes = patterns
+    .map((_, i) => {
+      const p = `$${i + 2}`
+      return `(lower(coalesce(address_street, '')) LIKE ${p} OR lower(coalesce(address_full, '')) LIKE ${p})`
+    })
+    .join(' OR ')
   return query<WestportListingSearchRow>(
     `SELECT id, mls_id, address_street, address_full, status_bucket, price, vision_pid
        FROM listings
       WHERE lower(town) = lower($1)
-        AND (
-          lower(coalesce(address_street, '')) LIKE $2
-          OR lower(coalesce(address_full, '')) LIKE $2
-          OR lower(coalesce(address_street, '')) LIKE $3
-          OR lower(coalesce(address_full, '')) LIKE $3
-        )
+        AND (${likes})
       ORDER BY
         CASE status_bucket
           WHEN 'Active' THEN 0
@@ -283,8 +296,12 @@ async function searchWestportListingRows(
           ELSE 3
         END,
         modification_timestamp DESC NULLS LAST
-      LIMIT $4`,
-    [WESTPORT_LOOKUP_TOWN, prefix, tokenPattern, Math.min(Math.max(limit * 3, 8), 48)],
+      LIMIT $${patterns.length + 2}`,
+    [
+      WESTPORT_LOOKUP_TOWN,
+      ...patterns,
+      Math.min(Math.max(limit * 3, 8), 48),
+    ],
   )
 }
 

@@ -1,11 +1,16 @@
 import 'server-only'
 
-import { execute } from '@/lib/db/postgres'
+import { execute, query } from '@/lib/db/postgres'
 import { listingRowId, readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { streetsMatch } from '@/lib/listing-history'
 import { persistListingByMlsId, persistListingRecord } from '@/lib/listings-store'
+import {
+  normalizePropertyAddress,
+  streetSearchVariants,
+} from '@/lib/property-address'
 import { getListingByMlsId, searchListings, type Listing } from '@/lib/rets'
 import type { VisionAddressRecord } from '@/lib/db/vision-addresses-repo'
+import { visionListingKeys } from '@/lib/vision-listing-match'
 
 const WESTPORT = 'Westport'
 
@@ -43,7 +48,7 @@ async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | null> {
   }
 }
 
-async function linkVisionToListing(
+export async function stampVisionListingLink(
   vision: VisionAddressRecord,
   listing: Listing,
 ): Promise<void> {
@@ -79,21 +84,91 @@ async function persistByKnownId(id: string): Promise<Listing | null> {
   return readListingByIdFromDb(id)
 }
 
-async function persistByStreet(street: string): Promise<Listing | null> {
-  const hits = await withTimeout(
-    searchListings({
-      county: 'fairfield',
-      city: WESTPORT,
-      addressContains: street,
-      limit: 12,
-    }),
-    INGEST_TIMEOUT_MS,
+function visionStreetLine(vision: VisionAddressRecord): string {
+  return (
+    [vision.streetNo, vision.streetName].filter(Boolean).join(' ').trim() ||
+    vision.addressFull?.split(',')[0]?.trim() ||
+    ''
   )
-  if (!hits || hits.length === 0) return null
+}
+
+/**
+ * Neon listings already at this Vision address (Ln↔Lane / Rd↔Road via
+ * addressMatchKey). Same stack as backfillVisionListingLinks — Find used
+ * to skip this and only RETS-search the Vision spelling (`*Locust*Ln*`),
+ * which cannot match MLS `Locust Lane`.
+ */
+export async function findListingInDbByVisionAddress(
+  vision: VisionAddressRecord,
+): Promise<Listing | null> {
+  const street = visionStreetLine(vision)
+  if (street.length < 4) return null
+  const sourceNorm =
+    vision.addressNorm ||
+    normalizePropertyAddress(WESTPORT, street, vision.zip ?? null)
+  const want = visionListingKeys(sourceNorm)
+  const house = (vision.streetNo || street.match(/^\d+[A-Za-z]?/)?.[0] || '').trim()
+  if (!house) return null
+
+  const rows = await query<{
+    id: string
+    address_street: string | null
+    postal_code: string | null
+  }>(
+    `SELECT id, address_street, postal_code
+       FROM listings
+      WHERE lower(town) = lower($1)
+        AND address_street ILIKE $2
+      ORDER BY
+        CASE status_bucket
+          WHEN 'Active' THEN 0
+          WHEN 'Closed' THEN 1
+          WHEN 'Expired' THEN 2
+          ELSE 3
+        END,
+        modification_timestamp DESC NULLS LAST
+      LIMIT 40`,
+    [WESTPORT, `${house} %`],
+  )
+
+  for (const row of rows) {
+    const listingStreet = row.address_street?.trim()
+    if (!listingStreet) continue
+    const keys = visionListingKeys(
+      normalizePropertyAddress(WESTPORT, listingStreet, row.postal_code),
+    )
+    if (keys.exact !== want.exact && keys.loose !== want.loose) continue
+    const listing = await readListingByIdFromDb(row.id)
+    if (listing) return listing
+  }
+  return null
+}
+
+async function persistByStreet(street: string): Promise<Listing | null> {
+  const hits: Listing[] = []
+  for (const variant of streetSearchVariants(street)) {
+    const batch = await withTimeout(
+      searchListings({
+        county: 'fairfield',
+        city: WESTPORT,
+        addressContains: variant,
+        limit: 12,
+      }),
+      INGEST_TIMEOUT_MS,
+    )
+    if (batch) hits.push(...batch)
+  }
+  if (hits.length === 0) return null
   const match =
-    hits.find((row) =>
-      streetsMatch(street, row.address.street || row.address.full || ''),
-    ) ?? null
+    hits.find((row) => {
+      const listingStreet = row.address.street || row.address.full || ''
+      return (
+        streetsMatch(street, listingStreet) ||
+        streetSearchVariants(street).some((variant) =>
+          streetsMatch(variant, listingStreet),
+        )
+      )
+    }) ?? null
   if (!match) return null
   const wrote = await persistListingRecord(match)
   if (!wrote) return readListingByIdFromDb(listingRowId(match) || match.mlsId)
@@ -112,21 +187,25 @@ export async function ingestFindListingIfMissing(
   if (existing) return { listing: existing, ingested: false }
 
   try {
+    const already = await findListingInDbByVisionAddress(vision)
+    if (already) {
+      await stampVisionListingLink(vision, already)
+      return { listing: already, ingested: false }
+    }
+
     for (const id of uniqueIds(vision.listingId, vision.mlsId)) {
       const listing = await persistByKnownId(id)
       if (listing) {
-        await linkVisionToListing(vision, listing)
+        await stampVisionListingLink(vision, listing)
         return { listing, ingested: true }
       }
     }
 
-    const street = [vision.streetNo, vision.streetName].filter(Boolean).join(' ').trim()
-      || vision.addressFull?.split(',')[0]?.trim()
-      || ''
+    const street = visionStreetLine(vision)
     if (street.length >= 4) {
       const listing = await persistByStreet(street)
       if (listing) {
-        await linkVisionToListing(vision, listing)
+        await stampVisionListingLink(vision, listing)
         return { listing, ingested: true }
       }
     }

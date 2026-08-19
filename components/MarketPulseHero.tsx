@@ -17,7 +17,7 @@ export default function MarketPulseHero({
 }: {
   etDate: string;
   townsLabel: string;
-  lastEmailDate: string | null;
+  lastEmailDate: string;
   nextEmailDate: string;
 }) {
   const [compact, setCompact] = useState(false);
@@ -78,9 +78,7 @@ export default function MarketPulseHero({
             Market <span className="italic gold-shimmer">Pulse.</span>
           </h1>
           <div className="shrink-0 pt-2 text-right font-mono text-[10px] tracking-[0.12em] uppercase text-white/50 animate-fade-up sm:pt-3 sm:text-[11px]">
-            {lastEmailDate ? (
-              <p>Last email : {lastEmailDate}</p>
-            ) : null}
+            <p>Last email : {lastEmailDate}</p>
             <p>Next email : {nextEmailDate}</p>
           </div>
         </div>

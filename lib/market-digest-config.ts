@@ -333,11 +333,23 @@ export function nextMarketDigestSendAt(
   return nextWeekdayTimeEt(config.weekdayEt, hour, minute, now)
 }
 
-export function formatMarketDigestNextEmailDate(at: Date): string {
+/** Date-only `YYYY-MM-DD` stays that civil ET day (UTC midnight is the prior evening). */
+export function parseMarketDigestStamp(at: Date | string): Date {
+  if (at instanceof Date) return at
+  const trimmed = at.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d, 16, 0, 0))
+  }
+  return new Date(trimmed)
+}
+
+/** `Tue, Aug 11` in America/New_York — no clock time. */
+export function formatMarketDigestNextEmailDate(at: Date | string): string {
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-  }).format(at)
+  }).format(parseMarketDigestStamp(at))
 }

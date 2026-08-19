@@ -7,6 +7,8 @@
  *
  * Gate for every auto-stamp: exactly one Vision PID. 2+ PIDs stay unmatched.
  * Near/Jaccard is diagnostic only (`match:vision-abbrev`) — not prod.
+ * Find parcel ingest uses the same keys against Neon, then RETS
+ * streetSearchVariants (Ln↔Lane, Rd↔Road) before giving up.
  */
 import {
   addressMatchKey,

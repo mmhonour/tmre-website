@@ -104,7 +104,7 @@ export function describeStartupProcess(): {
           title: "Serial catch-up execution",
           timing: "after delay",
           detail:
-            "runOverdueSyncCatchup() uses sync_meta timestamps; skips when nothing is due or when a job is Pause-checked on /admin. Netlify scheduled functions also invoke catch-up at cron start.",
+            "runOverdueSyncCatchup() uses sync_meta timestamps; skips when nothing is due or when a job is Pause-checked on /admin. A queue ack is not a finished rebuild — dedicated Goldilocks / Edge / stats / DOTD workers always execute their own job. Netlify scheduled functions queue those workers; catch-up can pass executeInProcess when already inside a worker.",
           status: overdueCatchupEnabled ? "scheduled" : "skipped",
           statusLabel: overdueCatchupEnabled ? "Chained" : "—",
         },
