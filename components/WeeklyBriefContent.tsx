@@ -77,74 +77,26 @@ function BarValueOverlay({
   asideLeft,
   leftPct,
   widthPct,
-  place = "fill-end",
   colorClass,
 }: {
   value: ReactNode;
   asideLeft?: ReactNode;
   leftPct: number;
   widthPct: number;
-  /**
-   * fill-end = right edge of the colored bar (overlays the fill).
-   * grey-after-fill = in the empty track just after the fill.
-   */
-  place?: "fill-end" | "grey-after-fill";
   colorClass?: string;
 }) {
-  const fillLeft = Math.min(Math.max(leftPct, 0), 100);
   const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100);
   const fontClass = "[font-family:var(--mp-mono-font)]";
   const base = `pointer-events-none absolute inset-y-0 z-[1] flex items-center text-[10px] tabular-nums whitespace-nowrap ${fontClass}`;
-  const onFillRight = fillRight >= 18;
+  // Every value right-aligns in the grey track; only a full bar puts it on the fill.
   const valueColor =
-    colorClass ?? (onFillRight ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
+    colorClass ?? (fillRight >= 95 ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
 
-  if (place === "grey-after-fill") {
-    const noGrey = fillRight >= 92;
-    if (noGrey) {
-      return (
-        <span
-          className={`${base} justify-end pr-1 ${valueColor}`}
-          style={{ left: 0, width: `${fillRight}%` }}
-        >
-          {value}
-        </span>
-      );
-    }
-    return (
-      <span
-        className={`${base} pl-1 ${colorClass ?? BAR_VALUE_ON_EMPTY}`}
-        style={{ left: `${fillRight}%` }}
-      >
-        {value}
-      </span>
-    );
-  }
-
-  const pctFitsInsideRight = widthPct >= 22;
-  const asideOnFillLeft = widthPct > 8;
   return (
-    <>
-      {asideLeft && !pctFitsInsideRight ? (
-        <span
-          className={`${base} pl-0.5 ${
-            asideOnFillLeft ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY
-          }`}
-          style={{ left: `${fillLeft}%` }}
-        >
-          {asideLeft}
-        </span>
-      ) : null}
-      <span
-        className={`${base} justify-end pr-0.5 ${valueColor}`}
-        style={{ left: 0, width: `${Math.max(fillRight, 0)}%` }}
-      >
-        {asideLeft && pctFitsInsideRight ? (
-          <span className="pr-1">{asideLeft}</span>
-        ) : null}
-        {value}
-      </span>
-    </>
+    <span className={`${base} inset-x-0 justify-end pr-1 ${valueColor}`}>
+      {asideLeft ? <span className="pr-1">{asideLeft}</span> : null}
+      {value}
+    </span>
   );
 }
 
@@ -787,9 +739,6 @@ function BarChart<Row extends { city: string }>({
                   }
                   leftPct={aligned.leftPct}
                   widthPct={aligned.widthPct}
-                  place={
-                    valueKind === "mos" ? "grey-after-fill" : "fill-end"
-                  }
                 />
                 <div
                   className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -1045,9 +994,6 @@ function CombinedMetricsChart({
             }
             leftPct={aligned.leftPct}
             widthPct={aligned.widthPct}
-            place={
-              m.id === "monthsSupply" ? "grey-after-fill" : "fill-end"
-            }
           />
           <div
             className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
