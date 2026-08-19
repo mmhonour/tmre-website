@@ -401,7 +401,7 @@ export async function runIncrementalSyncListingsWork(
         }
       : await runOverdueSyncCatchup({
           reason: 'netlify/sync-listings-worker',
-          onlyJobs: ['stats-cache', 'publish-snapshot'],
+          onlyJobs: ['publish-snapshot'],
         })
 
     if (sideWorkOnly) {

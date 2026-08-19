@@ -22,14 +22,31 @@ function signedAbs(n: number, digits: number): string {
   return `${sign}${Math.abs(n).toFixed(digits)}`
 }
 
-/** Compact dollars, e.g. `+$85K` / `−$12K`. */
+/**
+ * Market Pulse money: under $1M as `$850K` / `$850.5K` (one decimal only
+ * when needed). $1M+ stays `$1.25M`.
+ */
+export function formatMarketPulseMoney(
+  dollars: number | null | undefined,
+): string {
+  if (dollars == null || !Number.isFinite(dollars)) return '—'
+  const sign = dollars < 0 ? '−' : ''
+  const abs = Math.abs(dollars)
+  if (abs >= 1_000_000) {
+    return `${sign}$${(abs / 1_000_000).toFixed(2)}M`
+  }
+  const k = abs / 1000
+  const tenths = Math.round(k * 10) / 10
+  const body = Number.isInteger(tenths) ? String(tenths) : tenths.toFixed(1)
+  return `${sign}$${body}K`
+}
+
+/** Compact dollars, e.g. `+$85K` / `−$12.5K`. */
 export function formatPriceDeltaK(dollars: number | null | undefined): string {
   if (dollars == null || !Number.isFinite(dollars)) return '—'
-  const k = dollars / 1000
-  const abs = Math.abs(k)
-  const body = abs >= 10 ? String(Math.round(abs)) : abs.toFixed(1)
-  const sign = k > 0 ? '+' : k < 0 ? '−' : ''
-  return `${sign}$${body}K`
+  const body = formatMarketPulseMoney(Math.abs(dollars))
+  const sign = dollars > 0 ? '+' : dollars < 0 ? '−' : ''
+  return `${sign}${body}`
 }
 
 /** e.g. `+4.2%` / `−1.1%`. */

@@ -4,6 +4,7 @@ import { execute, query, queryOne } from '@/lib/db/postgres'
 import {
   normalizePropertyAddress,
   normalizeStreetLine,
+  streetSearchVariants,
 } from '@/lib/property-address'
 import {
   addressMatchKey,
@@ -888,25 +889,38 @@ export async function searchVisionAddresses(opts: {
   const limit = Math.min(Math.max(opts.limit ?? 12, 1), 24)
   const street = normalizeStreetLine(q)
   const prefix = `${street}%`
-  const contains = `%${q.toLowerCase().replace(/[%_]/g, '')}%`
+  const containsPatterns = [
+    ...new Set(
+      [q, street, ...streetSearchVariants(q)].map(
+        (v) => `%${v.toLowerCase().replace(/[%_]/g, '')}%`,
+      ),
+    ),
+  ]
   const streetLine = `${q.replace(/[%_]/g, '')}%`
+
+  const extraContains = containsPatterns
+    .map((_, i) => {
+      const p = `$${i + 5}`
+      return `(lower(coalesce(address_full, '')) LIKE ${p}
+        OR lower(coalesce(street_name, '')) LIKE ${p}
+        OR lower(coalesce(field_card->>'searchText', '')) LIKE ${p})`
+    })
+    .join(' OR ')
 
   const rows = await query<VisionAddressSqlRow>(
     `SELECT ${VISION_SELECT} FROM vision_addresses
       WHERE town = $1
         AND (
           address_norm LIKE $2
-          OR lower(coalesce(address_full, '')) LIKE $3
-          OR lower(coalesce(street_name, '')) LIKE $3
-          OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE $4
-          OR lower(coalesce(field_card->>'searchText', '')) LIKE $3
+          OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE $3
+          OR ${extraContains}
         )
       ORDER BY
         CASE WHEN address_norm LIKE $2 THEN 0 ELSE 1 END,
         address_full NULLS LAST,
         vision_pid
-      LIMIT $5`,
-    [opts.town, prefix, contains, streetLine.toLowerCase(), limit],
+      LIMIT $4`,
+    [opts.town, prefix, streetLine.toLowerCase(), limit, ...containsPatterns],
   )
   return rows.map(mapVisionAddressRow)
 }

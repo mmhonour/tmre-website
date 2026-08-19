@@ -66,7 +66,53 @@ export const STATS_CACHE_TTL_MS = 60 * 60 * 1000
 export const STATS_CACHE_REBUILD_LOCK_KEY = 'stats_cache_rebuild_lock'
 
 /** Steal the rebuild lock if the holder has been silent this long (dead Lambda). */
-const STATS_CACHE_REBUILD_LOCK_STALE_MS = 20 * 60 * 1000
+export const STATS_CACHE_REBUILD_LOCK_STALE_MS = 20 * 60 * 1000
+
+/** ISO time — do not POST sync-stats-cache-worker again until then (Netlify 429). */
+export const STATS_CACHE_QUEUE_BACKOFF_KEY = 'stats_cache_queue_backoff_until'
+export const STATS_CACHE_QUEUE_BACKOFF_MS = 15 * 60 * 1000
+
+function parseMetaMs(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const ms = Date.parse(iso)
+  return Number.isFinite(ms) ? ms : null
+}
+
+/** Skip enqueue when a rebuild is live or Netlify just 429'd the worker hop. */
+export async function reasonToSkipStatsCacheEnqueue(
+  now = Date.now(),
+): Promise<string | null> {
+  const { getSyncMeta: getFresh } = await import('@/lib/db/sync-meta')
+
+  const backoffMs = parseMetaMs(await getFresh(STATS_CACHE_QUEUE_BACKOFF_KEY))
+  if (backoffMs != null && backoffMs > now) {
+    return 'skipped — Netlify rate limited (HTTP 429), waiting to retry'
+  }
+
+  const lockMs = parseMetaMs(await getFresh(STATS_CACHE_REBUILD_LOCK_KEY))
+  if (lockMs != null && now - lockMs < STATS_CACHE_REBUILD_LOCK_STALE_MS) {
+    return 'skipped — stats rebuild already running'
+  }
+
+  const startedMs = parseMetaMs(await getFresh('last_stats_cache_started'))
+  const finishedMs = parseMetaMs(await getFresh('last_stats_cache'))
+  if (
+    startedMs != null &&
+    now - startedMs < STATS_CACHE_REBUILD_LOCK_STALE_MS &&
+    (finishedMs == null || startedMs > finishedMs)
+  ) {
+    return 'skipped — stats worker already started'
+  }
+
+  return null
+}
+
+export async function stampStatsCacheQueueBackoff(now = Date.now()): Promise<void> {
+  await setSyncMetaDurable(
+    STATS_CACHE_QUEUE_BACKOFF_KEY,
+    new Date(now + STATS_CACHE_QUEUE_BACKOFF_MS).toISOString(),
+  )
+}
 
 let emptyCacheRebuildAttempted = false
 let backgroundRebuildScheduled = false

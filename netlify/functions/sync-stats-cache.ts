@@ -1,6 +1,13 @@
 import type { Config } from '@netlify/functions'
 import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
-import { queueNetlifyStatsCacheRebuild } from '../../lib/netlify-sync-trigger'
+import {
+  isNetlifyQueueRateLimited,
+  queueNetlifyStatsCacheRebuild,
+} from '../../lib/netlify-sync-trigger'
+import {
+  reasonToSkipStatsCacheEnqueue,
+  stampStatsCacheQueueBackoff,
+} from '../../lib/stats-cache'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
 import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
@@ -34,8 +41,18 @@ export default async function handler() {
     if (shouldSkipScheduledJobNotDue('stats-cache')) {
       return thinCronSkipped('not due yet — Configure frequency / start time')
     }
-    const queued = await queueNetlifyStatsCacheRebuild()
+    const skipReason = await reasonToSkipStatsCacheEnqueue()
+    if (skipReason) return thinCronSkipped(skipReason)
+    const queued = await queueNetlifyStatsCacheRebuild(undefined, {
+      source: 'cron',
+    })
     if (!queued.ok) {
+      if (isNetlifyQueueRateLimited(queued)) {
+        await stampStatsCacheQueueBackoff()
+        return thinCronSkipped(
+          'skipped — Netlify rate limited (HTTP 429), waiting to retry',
+        )
+      }
       console.warn(
         `[netlify/sync-stats-cache] worker queue failed: ${queued.error}`,
       )

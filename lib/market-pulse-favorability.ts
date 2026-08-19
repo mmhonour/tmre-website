@@ -3,16 +3,14 @@
  *
  * Higher composite = more buyer-friendly. Seller Friendly sorts the reverse.
  *
- * Live factors today:
- *   1. Months supply (higher → buyer)
- *   2. Avg days on market (higher → buyer)
+ * Live factors today (buyer-friendly direction):
+ *   Months supply larger, avg DOM larger, closed smaller,
+ *   median smaller, delta smaller, average smaller.
+ * Seller Friendly is the reverse of each.
  *
  * Planned (catalogue on Town stats / most current year we have):
- *   3. Active inventory ÷ housing unit count (higher → buyer)
- *   4. Closings in trailing 24 months ÷ housing unit count (higher → buyer)
- *
- * Housing unit counts are not in Neon yet — wire from Census/ACS or a curated
- * town-stats table, then fill inventoryPerHome / closed24moPerHome.
+ *   Active inventory ÷ housing unit count (higher → buyer)
+ *   Closings in trailing 24 months ÷ housing unit count (higher → buyer)
  */
 
 export type MarketPulseFavorSort = 'default' | 'sellers' | 'buyers'
@@ -53,6 +51,10 @@ export function unstackedFavorSortDir(
 export type MarketPulseFavorInputs = {
   monthsSupply: number | null | undefined
   avgDaysOnMarket: number | null | undefined
+  closedCount?: number | null | undefined
+  medianPrice?: number | null | undefined
+  priceDelta?: number | null | undefined
+  averagePrice?: number | null | undefined
   /** Planned: active ÷ homes in town. */
   inventoryPerHome?: number | null | undefined
   /** Planned: closed trailing 24 months ÷ homes in town. */
@@ -62,6 +64,10 @@ export type MarketPulseFavorInputs = {
 export type MarketPulseFavorFactorId =
   | 'monthsSupply'
   | 'avgDaysOnMarket'
+  | 'closedCount'
+  | 'medianPrice'
+  | 'priceDelta'
+  | 'averagePrice'
   | 'inventoryPerHome'
   | 'closed24moPerHome'
 
@@ -85,6 +91,34 @@ export const MARKET_PULSE_FAVOR_FACTORS: {
     status: 'live',
     buyerDirection: 'higher',
     notes: 'Longer DOM → more buyer friendly.',
+  },
+  {
+    id: 'closedCount',
+    label: 'Closed',
+    status: 'live',
+    buyerDirection: 'higher',
+    notes: 'Fewer closings in the lookback → more buyer friendly.',
+  },
+  {
+    id: 'medianPrice',
+    label: 'Median',
+    status: 'live',
+    buyerDirection: 'higher',
+    notes: 'Lower median → more buyer friendly.',
+  },
+  {
+    id: 'priceDelta',
+    label: 'Delta',
+    status: 'live',
+    buyerDirection: 'higher',
+    notes: 'Smaller average−median gap → more buyer friendly.',
+  },
+  {
+    id: 'averagePrice',
+    label: 'Average',
+    status: 'live',
+    buyerDirection: 'higher',
+    notes: 'Lower average → more buyer friendly.',
   },
   {
     id: 'inventoryPerHome',
@@ -115,11 +149,17 @@ export function buyerFriendlyScore(
 ): number | null {
   const factors: {
     of: (i: MarketPulseFavorInputs) => number | null
+    /** True when a larger raw value is more buyer-friendly. */
+    buyerHigher: boolean
   }[] = [
-    { of: (i) => finiteOrNull(i.monthsSupply) },
-    { of: (i) => finiteOrNull(i.avgDaysOnMarket) },
-    { of: (i) => finiteOrNull(i.inventoryPerHome) },
-    { of: (i) => finiteOrNull(i.closed24moPerHome) },
+    { of: (i) => finiteOrNull(i.monthsSupply), buyerHigher: true },
+    { of: (i) => finiteOrNull(i.avgDaysOnMarket), buyerHigher: true },
+    { of: (i) => finiteOrNull(i.closedCount), buyerHigher: false },
+    { of: (i) => finiteOrNull(i.medianPrice), buyerHigher: false },
+    { of: (i) => finiteOrNull(i.priceDelta), buyerHigher: false },
+    { of: (i) => finiteOrNull(i.averagePrice), buyerHigher: false },
+    { of: (i) => finiteOrNull(i.inventoryPerHome), buyerHigher: true },
+    { of: (i) => finiteOrNull(i.closed24moPerHome), buyerHigher: true },
   ]
 
   const ranks: number[] = []
@@ -135,8 +175,8 @@ export function buyerFriendlyScore(
     if (max === min) {
       ranks.push(0.5)
     } else {
-      // Higher raw value → higher buyer-friendly rank.
-      ranks.push((self - min) / (max - min))
+      const high = (self - min) / (max - min)
+      ranks.push(factor.buyerHigher ? high : 1 - high)
     }
   }
   if (ranks.length === 0) return null

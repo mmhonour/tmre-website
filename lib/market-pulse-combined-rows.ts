@@ -106,6 +106,10 @@ export function defaultMarketPulseCombinedRows(
     (r) => ({
       monthsSupply: r.monthsSupply,
       avgDaysOnMarket: r.avgDaysOnMarket,
+      closedCount: r.closedCount,
+      medianPrice: r.medianPrice,
+      priceDelta: r.priceDelta,
+      averagePrice: r.averagePrice,
     }),
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
     (r) => isAllTownsCity(r.city),

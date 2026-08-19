@@ -90,6 +90,8 @@ export function isSyncHistorySkipMessage(
     e.includes('not due yet') ||
     e.includes('deferred —') ||
     e.includes('prior queue still waiting') ||
+    e.includes('http 429') ||
+    e.includes('rate limited') ||
     e === 'skipped' ||
     e.startsWith('skipped')
   )

@@ -25,6 +25,7 @@ import {
   type MarketPulseFavorSort,
 } from "@/lib/market-pulse-favorability";
 import {
+  formatMarketPulseMoney,
   formatPriceDeltaK,
   formatPriceDeltaPct,
   meanMinusMedian,
@@ -43,7 +44,6 @@ import {
   MARKET_PULSE_LOOKBACK_OPTIONS,
   marketPulseLookbackById,
   marketPulseLookbackChartLabel,
-  marketPulseLookbackClosedPrefix,
   marketPulseLookbackIdAt,
   marketPulseLookbackIndex,
   formatClosedCountWithLookback,
@@ -53,6 +53,7 @@ import {
 import {
   MARKET_PULSE_SETTLE_IDLE,
   randomBarPercents,
+  settleAllTownsLabel,
   settleBarPercent,
   settleIntDisplay,
   settleMosDisplay,
@@ -76,57 +77,71 @@ function BarValueOverlay({
   asideLeft,
   leftPct,
   widthPct,
-  place = "track-end",
+  place = "fill-end",
   colorClass,
-  bodyFont = false,
 }: {
   value: ReactNode;
   asideLeft?: ReactNode;
   leftPct: number;
   widthPct: number;
-  /** after-fill = immediately to the right of the colored bar. */
-  place?: "track-end" | "after-fill";
+  /**
+   * fill-end = right edge of the colored bar (overlays the fill).
+   * grey-after-fill = in the empty track just after the fill.
+   */
+  place?: "fill-end" | "grey-after-fill";
   colorClass?: string;
-  bodyFont?: boolean;
 }) {
-  const fillRight = leftPct + widthPct;
-  const fontClass = bodyFont
-    ? "[font-family:var(--mp-body-font)]"
-    : "[font-family:var(--mp-mono-font)]";
+  const fillLeft = Math.min(Math.max(leftPct, 0), 100);
+  const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100);
+  const fontClass = "[font-family:var(--mp-mono-font)]";
   const base = `pointer-events-none absolute inset-y-0 z-[1] flex items-center text-[10px] tabular-nums whitespace-nowrap ${fontClass}`;
+  const onFillRight = fillRight >= 18;
+  const valueColor =
+    colorClass ?? (onFillRight ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
 
-  if (place === "after-fill") {
+  if (place === "grey-after-fill") {
+    const noGrey = fillRight >= 92;
+    if (noGrey) {
+      return (
+        <span
+          className={`${base} justify-end pr-1 ${valueColor}`}
+          style={{ left: 0, width: `${fillRight}%` }}
+        >
+          {value}
+        </span>
+      );
+    }
     return (
       <span
         className={`${base} pl-1 ${colorClass ?? BAR_VALUE_ON_EMPTY}`}
-        style={{ left: `${Math.min(Math.max(fillRight, 0), 100)}%` }}
+        style={{ left: `${fillRight}%` }}
       >
         {value}
-        {asideLeft ? (
-          <span className="pl-1">{asideLeft}</span>
-        ) : null}
       </span>
     );
   }
 
-  const valueOnFill = fillRight >= 82;
-  const asideOnFill = leftPct < 14 && widthPct > 0;
+  const pctFitsInsideRight = widthPct >= 22;
+  const asideOnFillLeft = widthPct > 8;
   return (
     <>
-      {asideLeft ? (
+      {asideLeft && !pctFitsInsideRight ? (
         <span
-          className={`${base} left-0 pl-1 ${
-            asideOnFill ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY
+          className={`${base} pl-0.5 ${
+            asideOnFillLeft ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY
           }`}
+          style={{ left: `${fillLeft}%` }}
         >
           {asideLeft}
         </span>
       ) : null}
       <span
-        className={`${base} right-0 justify-end pr-1 ${
-          colorClass ?? (valueOnFill ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY)
-        }`}
+        className={`${base} justify-end pr-0.5 ${valueColor}`}
+        style={{ left: 0, width: `${Math.max(fillRight, 0)}%` }}
       >
+        {asideLeft && pctFitsInsideRight ? (
+          <span className="pr-1">{asideLeft}</span>
+        ) : null}
         {value}
       </span>
     </>
@@ -154,79 +169,51 @@ function ClosedLookbackSlider({
 }) {
   const index = marketPulseLookbackIndex(lookbackId);
   const current = marketPulseLookbackChartLabel(lookbackId);
-  const first = MARKET_PULSE_LOOKBACK_OPTIONS[0]!.label;
-  const last =
-    MARKET_PULSE_LOOKBACK_OPTIONS[MARKET_PULSE_LOOKBACK_OPTIONS.length - 1]!
-      .label;
+  const lastIndex = MARKET_PULSE_LOOKBACK_OPTIONS.length - 1;
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--mp-text)]">
-          Closed lookback
-        </span>
-        <span className="[font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-muted-text)]">
-          {current}
-          {pending ? " …" : ""}
-        </span>
+    <div className="flex h-40 w-8 shrink-0 flex-col items-center gap-1">
+      <span className="[font-family:var(--mp-mono-font)] text-[8px] font-semibold tracking-[0.16em] uppercase text-[var(--mp-text)]">
+        Lookback
+      </span>
+      <div className="relative flex min-h-0 flex-1 items-center justify-center">
+        <div
+          className="pointer-events-none absolute inset-y-1 left-1/2 z-0 w-px -translate-x-1/2 bg-black/15"
+          aria-hidden
+        />
+        <div className="absolute inset-y-1 right-0 z-0 flex flex-col justify-between">
+          {[...MARKET_PULSE_LOOKBACK_OPTIONS].reverse().map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              tabIndex={-1}
+              aria-label={opt.label}
+              onClick={() => onChange(opt.id)}
+              className={`pointer-events-auto h-1.5 w-1.5 shrink-0 rounded-full ${
+                opt.id === lookbackId
+                  ? "bg-[var(--mp-accent)]"
+                  : "bg-[var(--mp-text)]/25"
+              }`}
+            />
+          ))}
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={lastIndex}
+          step={1}
+          value={index}
+          aria-label="Lookback"
+          aria-valuetext={`${current}${pending ? " loading" : ""}`}
+          onChange={(e) =>
+            onChange(marketPulseLookbackIdAt(Number(e.target.value)))
+          }
+          className="mp-lookback-slider-vert relative z-[1] cursor-pointer appearance-none bg-transparent"
+        />
       </div>
-      <input
-        type="range"
-        min={0}
-        max={MARKET_PULSE_LOOKBACK_OPTIONS.length - 1}
-        step={1}
-        value={index}
-        aria-label="Closed sales lookback period"
-        aria-valuetext={current}
-        onChange={(e) =>
-          onChange(marketPulseLookbackIdAt(Number(e.target.value)))
-        }
-        className="mp-lookback-slider h-2 w-full cursor-pointer appearance-none rounded-full bg-black/10 accent-[var(--mp-accent)]"
-      />
-      <div className="flex justify-between [font-family:var(--mp-mono-font)] text-[9px] tracking-[0.04em] uppercase text-[var(--mp-muted-text)]">
-        <span>{first}</span>
-        <span>{last}</span>
-      </div>
-      <p className="[font-family:var(--mp-mono-font)] text-[10px] text-[var(--mp-muted-text)]">
-        Closed sales and months supply only
-      </p>
-    </div>
-  );
-}
-
-function FilterDisclosure({
-  label,
-  summary,
-  open,
-  onToggle,
-  children,
-}: {
-  label: string;
-  summary: string;
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--mp-text)] underline decoration-[var(--mp-text)]/35 underline-offset-2 transition-colors hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
-          aria-expanded={open}
-          onClick={onToggle}
-        >
-          {label}
-          <span aria-hidden className="tabular-nums no-underline">
-            {open ? "−" : "+"}
-          </span>
-        </button>
-        {!open ? (
-          <span className="min-w-0 [font-family:var(--mp-mono-font)] text-[10px] leading-snug text-[var(--mp-muted-text)]">
-            {summary}
-          </span>
-        ) : null}
-      </div>
-      {open ? children : null}
+      <span className="[font-family:var(--mp-mono-font)] text-[8px] tabular-nums uppercase text-[var(--mp-muted-text)]">
+        {current}
+        {pending ? "…" : ""}
+      </span>
     </div>
   );
 }
@@ -239,16 +226,16 @@ function marketPulseSortExplain(
     return "Towns stay in default town order. All towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
   }
   if (chartLayout === "stacked") {
-    return `Sorted by buyer/seller friendly composite (months supply + avg DOM${
+    return `Sorted by buyer/seller friendly composite (months supply, avg days on market, closed, median, delta, average — ${
       favorSort === "sellers"
-        ? "; lower = more seller friendly"
-        : "; higher = more buyer friendly"
+        ? "seller-friendly direction"
+        : "buyer-friendly direction"
     }). All towns stays on top.`;
   }
   return `Each unstacked chart sorts on its own metric (${
     favorSort === "sellers"
-      ? "Seller: DOM↑, closed↓, median/avg↓"
-      : "Buyer: DOM↓, closed↑, median/avg↑"
+      ? "Seller: MOS↓, DOM↓, closed↑, median/delta/avg↑"
+      : "Buyer: MOS↑, DOM↑, closed↓, median/delta/avg↓"
   }). All towns stays on top.`;
 }
 
@@ -306,6 +293,12 @@ function visibleTownRows<T extends { city: string }>(
   return all.length > 0 ? all : [...rows];
 }
 
+function rotatingTownNames(rows: readonly { city: string }[]): string[] {
+  return rows
+    .filter((row) => !isAllTownsCity(row.city))
+    .map((row) => cityLabel(row));
+}
+
 const TOWN_METRICS_HEADING_CLASS =
   "[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1.5";
 
@@ -321,21 +314,22 @@ function TownMetricsLayoutWord({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const text = label === "unstacked" ? "Unstacked" : "stacked";
   if (selected) {
     return (
       <span className="font-semibold text-[var(--mp-accent)]" aria-current="true">
-        {label}
+        {text}
       </span>
     );
   }
   return (
     <button
       type="button"
-      aria-label={`Show ${label} town metrics`}
+      aria-label={`Show ${text} town metrics`}
       onClick={onSelect}
       className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
     >
-      {label}
+      {text}
     </button>
   );
 }
@@ -346,14 +340,23 @@ function TownName({
   href,
   townsExpanded,
   onAllTownsToggle,
+  settle,
+  rotateTownNames,
 }: {
   city: string;
   label: string;
   href?: string;
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
+  settle?: MarketPulseSettleState;
+  rotateTownNames?: readonly string[];
 }) {
   if (isAllTownsCity(city)) {
+    const rotating = settleAllTownsLabel(
+      settle ?? MARKET_PULSE_SETTLE_IDLE,
+      rotateTownNames ?? [],
+    );
+    const shown = rotating ?? label;
     return (
       <button
         type="button"
@@ -366,7 +369,16 @@ function TownName({
         onClick={onAllTownsToggle}
         className={`${TOWN_NAME_CLASS} inline-flex items-baseline gap-1.5`}
       >
-        {label}
+        <span
+          key={shown}
+          className={
+            rotating
+              ? "inline-block animate-[fadeIn_0.18s_ease-out]"
+              : "inline-block"
+          }
+        >
+          {shown}
+        </span>
         <span aria-hidden className="font-mono text-[11px] no-underline tabular-nums text-[var(--mp-muted-text)]">
           {townsExpanded ? "−" : "+"}
         </span>
@@ -400,31 +412,19 @@ function FavorSortToggle({
       ? marketPulseFavorSortLabel(favorSort)
       : marketPulseFavorSortLabel("sellers");
   const next = buyers ? "Seller Friendly" : "Buyer Friendly";
-  const dirMark = buyers ? "↑" : "↓";
   return (
-    <div
-      className="inline-flex max-w-[14.5rem] min-w-0 shrink-0 items-stretch rounded-full border border-[var(--mp-text)]/20 bg-white shadow-[0_1px_0_0_rgba(28,42,58,0.1)]"
-      role="group"
-      aria-label={`Sort by ${current}`}
+    <button
+      type="button"
+      onClick={onToggle}
+      title={`Flip to ${next}`}
+      aria-label={`Sort by ${current}. Flip to ${next}`}
+      className="inline-flex min-w-0 items-baseline gap-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-text)] hover:text-[var(--mp-accent)]"
     >
-      <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-l-full px-2.5 py-1">
-        <span className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase text-[var(--mp-muted-text)] shrink-0">
-          Sort
-        </span>
-        <span className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-text)] truncate">
-          {current}
-        </span>
+      <span className="text-[var(--mp-muted-text)]">Sort</span>
+      <span className="underline decoration-[var(--mp-text)]/35 underline-offset-2">
+        {current}
       </span>
-      <button
-        type="button"
-        onClick={onToggle}
-        title={`Flip to ${next}`}
-        aria-label={`Flip sort to ${next}`}
-        className="inline-flex shrink-0 items-center justify-center rounded-r-full border-l border-[var(--mp-text)]/15 px-2 py-1 [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-[var(--mp-text)] hover:bg-[var(--mp-text)]/[0.04] active:translate-y-px transition-[transform,background-color]"
-      >
-        {dirMark}
-      </button>
-    </div>
+    </button>
   );
 }
 
@@ -520,7 +520,7 @@ function formatMetricValue(
 ): string {
   if (kind === "mos") return fmtMos(display);
   if (kind === "dom") return fmtDom(display);
-  if (kind === "money") return fmtMoney(display);
+  if (kind === "money") return formatMarketPulseMoney(display);
   return fmtActive(display);
 }
 
@@ -671,6 +671,7 @@ function BarChart<Row extends { city: string }>({
   const visibleRows = onAllTownsToggle
     ? visibleTownRows(displayRows, townsExpanded)
     : displayRows;
+  const rotateNames = rotatingTownNames(displayRows);
   const ownMax = Math.max(
     0,
     ...displayRows.map((r) => {
@@ -754,6 +755,8 @@ function BarChart<Row extends { city: string }>({
                   href={href}
                   townsExpanded={townsExpanded}
                   onAllTownsToggle={onAllTownsToggle}
+                  settle={settle}
+                  rotateTownNames={rotateNames}
                 />
               ) : href ? (
                 <Link
@@ -785,16 +788,8 @@ function BarChart<Row extends { city: string }>({
                   leftPct={aligned.leftPct}
                   widthPct={aligned.widthPct}
                   place={
-                    valueKind === "mos" || explainDelta
-                      ? "after-fill"
-                      : "track-end"
+                    valueKind === "mos" ? "grey-after-fill" : "fill-end"
                   }
-                  colorClass={
-                    valueKind === "mos"
-                      ? "text-[var(--mp-months-supply-bar)]"
-                      : undefined
-                  }
-                  bodyFont={valueKind === "mos"}
                 />
                 <div
                   className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -1012,7 +1007,7 @@ function CombinedMetricsChart({
     return (
       <li
         key={m.id}
-        className="group relative grid grid-cols-[4.75rem_1fr] items-center gap-1.5 sm:grid-cols-[8.25rem_1fr] sm:gap-2"
+        className="group relative grid grid-cols-[5.75rem_1fr] items-center gap-1.5 sm:grid-cols-[9.5rem_1fr] sm:gap-2"
         title={m.id === "priceDelta" ? undefined : `${m.label}: ${valueText}`}
       >
         {m.id === "priceDelta" ? (
@@ -1036,16 +1031,12 @@ function CombinedMetricsChart({
           </div>
           <BarValueOverlay
             value={
-              closedCountText != null ? (
-                <>
-                  <span className="hidden sm:inline">
-                    {marketPulseLookbackClosedPrefix(closedLookbackLabel)} -{" "}
-                  </span>
-                  {closedCountText}
-                </>
-              ) : (
-                valueText
-              )
+              closedCountText != null
+                ? formatClosedCountWithLookback(
+                    closedLookbackLabel,
+                    closedCountText,
+                  )
+                : valueText
             }
             asideLeft={
               m.id === "priceDelta"
@@ -1055,16 +1046,8 @@ function CombinedMetricsChart({
             leftPct={aligned.leftPct}
             widthPct={aligned.widthPct}
             place={
-              m.id === "monthsSupply" || m.id === "priceDelta"
-                ? "after-fill"
-                : "track-end"
+              m.id === "monthsSupply" ? "grey-after-fill" : "fill-end"
             }
-            colorClass={
-              m.id === "monthsSupply"
-                ? "text-[var(--mp-months-supply-bar)]"
-                : undefined
-            }
-            bodyFont={m.id === "monthsSupply"}
           />
           <div
             className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -1082,6 +1065,8 @@ function CombinedMetricsChart({
     );
   }
 
+  const rotateNames = rotatingTownNames(rows);
+
   return (
     <section>
       {title ? <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p> : null}
@@ -1097,6 +1082,8 @@ function CombinedMetricsChart({
                 href={href}
                 townsExpanded={townsExpanded}
                 onAllTownsToggle={onAllTownsToggle}
+                settle={settle}
+                rotateTownNames={rotateNames}
               />
               <ul className="space-y-1.5">
                 {metrics.map((m, metricIndex) => {
@@ -1246,7 +1233,6 @@ export default function WeeklyBriefContent({
   const [favorSort, setFavorSort] = useState<FavorSort>(
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
-  const [propertyTypeOpen, setPropertyTypeOpen] = useState(false);
   const [townsExpanded, setTownsExpanded] = useState(false);
   const [sortExplainOpen, setSortExplainOpen] = useState(false);
 
@@ -1327,6 +1313,10 @@ export default function WeeklyBriefContent({
       (r) => ({
         monthsSupply: r.monthsSupply,
         avgDaysOnMarket: r.avgDaysOnMarket,
+        closedCount: r.closedCount,
+        medianPrice: r.medianPrice,
+        priceDelta: r.priceDelta,
+        averagePrice: r.averagePrice,
       }),
       favorSort,
       (r) => isAllTownsCity(r.city),
@@ -1346,23 +1336,22 @@ export default function WeeklyBriefContent({
       >
         *
       </button>
-      {townsExpanded ? (
-        <>
-          <TownMetricsLayoutWord
-            label="stacked"
-            selected={chartLayout === "stacked"}
-            onSelect={() => setChartLayout("stacked")}
-          />
-          <span className="text-[var(--mp-accent)]/45" aria-hidden>
-            |
-          </span>
-          <TownMetricsLayoutWord
-            label="unstacked"
-            selected={chartLayout === "unstacked"}
-            onSelect={() => setChartLayout("unstacked")}
-          />
-        </>
-      ) : null}
+      <TownMetricsLayoutWord
+        label="stacked"
+        selected={chartLayout === "stacked"}
+        onSelect={() => setChartLayout("stacked")}
+      />
+      <span className="text-[var(--mp-accent)]/45" aria-hidden>
+        {"-->"}
+      </span>
+      <TownMetricsLayoutWord
+        label="unstacked"
+        selected={chartLayout === "unstacked"}
+        onSelect={() => {
+          setTownsExpanded(true);
+          setChartLayout("unstacked");
+        }}
+      />
     </p>
   );
 
@@ -1421,41 +1410,20 @@ export default function WeeklyBriefContent({
           />
         </div>
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-4">
-            {onLookbackIdChange ? (
-              <div className="min-w-0 flex-1">
-                <ClosedLookbackSlider
-                  lookbackId={lookbackId}
-                  onChange={onLookbackIdChange}
-                  pending={closedPending}
-                />
-              </div>
-            ) : (
-              <div className="min-w-0 flex-1" />
-            )}
-            <FavorSortToggle
-              favorSort={favorSort}
-              onToggle={() =>
-                setFavorSort((current) =>
-                  current === "buyers" ? "sellers" : "buyers",
-                )
-              }
-            />
-          </div>
-
-          {categoryFilter ? (
-            <FilterDisclosure
-              label="Property type"
-              summary={(selectionLabel ?? scopeLabel).trim() || "ALL"}
-              open={propertyTypeOpen}
-              onToggle={() => setPropertyTypeOpen((open) => !open)}
-            >
-              {categoryFilter}
-            </FilterDisclosure>
-          ) : null}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+          {categoryFilter}
+          <FavorSortToggle
+            favorSort={favorSort}
+            onToggle={() =>
+              setFavorSort((current) =>
+                current === "buyers" ? "sellers" : "buyers",
+              )
+            }
+          />
         </div>
 
+        <div className="flex items-start gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1 space-y-6">
         {townMetricsHeading}
         {chartLayout === "stacked" || !townsExpanded ? (
           <CombinedMetricsChart
@@ -1503,7 +1471,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title="Avg days on market"
+          title="AVG DAYS ON MARKET"
           rows={domRows}
           valueOf={(r) => r.avgDaysOnMarket}
           valueKind="dom"
@@ -1537,6 +1505,12 @@ export default function WeeklyBriefContent({
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.calc}
           scaleMax={closedBarMax > 0 ? closedBarMax : undefined}
+          formatValue={(_row, display) =>
+            formatClosedCountWithLookback(
+              closedLookbackLabel,
+              formatMetricValue("int", display),
+            )
+          }
         />
 
         <BarChart
@@ -1623,6 +1597,15 @@ export default function WeeklyBriefContent({
         />
           </>
         )}
+          </div>
+          {onLookbackIdChange ? (
+            <ClosedLookbackSlider
+              lookbackId={lookbackId}
+              onChange={onLookbackIdChange}
+              pending={closedPending}
+            />
+          ) : null}
+        </div>
 
         {deal ? (
           <section className="rounded-xl bg-[var(--mp-surface-deep)] overflow-hidden">
@@ -1737,6 +1720,21 @@ export default function WeeklyBriefContent({
           </section>
         ) : null}
 
+        <div className="space-y-2 [font-family:var(--mp-mono-font)] text-[10px] leading-relaxed text-[var(--mp-muted-text)]">
+          <p className="tracking-[0.12em] uppercase text-[var(--mp-text)]">
+            How Seller / Buyer Friendly is scored
+          </p>
+          <p>
+            Buyer Friendly ranks a town higher when months supply is larger, avg
+            days on market is larger, closed is smaller, median is smaller,
+            delta is smaller, and average is smaller.
+          </p>
+          <p>
+            Seller Friendly is the opposite of each of those — smaller months
+            supply and avg days on market, larger closed, median, delta, and
+            average.
+          </p>
+        </div>
         <p className="font-mono text-[11px] leading-relaxed text-slate">
           MOS = active ÷ avg monthly closings (3 prior full months). Scope:{" "}
           {scopeLabel}.

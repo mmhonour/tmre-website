@@ -144,35 +144,66 @@ export async function findListingInDbByVisionAddress(
   return null
 }
 
+/** MLS UnparsedAddress uses Lane/Road — pick the longest spelling for one RETS hop. */
+function preferredRetsStreet(street: string): string {
+  const variants = streetSearchVariants(street)
+  return variants.reduce(
+    (best, next) => (next.length > best.length ? next : best),
+    variants[0] ?? street,
+  )
+}
+
+function listingMatchesStreetQuery(street: string, listingStreet: string): boolean {
+  if (streetsMatch(street, listingStreet)) return true
+  return streetSearchVariants(street).some((variant) =>
+    streetsMatch(variant, listingStreet),
+  )
+}
+
 async function persistByStreet(street: string): Promise<Listing | null> {
-  const hits: Listing[] = []
-  for (const variant of streetSearchVariants(street)) {
-    const batch = await withTimeout(
-      searchListings({
-        county: 'fairfield',
-        city: WESTPORT,
-        addressContains: variant,
-        limit: 12,
-      }),
-      INGEST_TIMEOUT_MS,
-    )
-    if (batch) hits.push(...batch)
-  }
-  if (hits.length === 0) return null
+  const queryStreet = preferredRetsStreet(street)
+  const hits = await withTimeout(
+    searchListings({
+      county: 'fairfield',
+      city: WESTPORT,
+      addressContains: queryStreet,
+      limit: 24,
+    }),
+    INGEST_TIMEOUT_MS,
+  )
+  if (!hits || hits.length === 0) return null
   const match =
-    hits.find((row) => {
-      const listingStreet = row.address.street || row.address.full || ''
-      return (
-        streetsMatch(street, listingStreet) ||
-        streetSearchVariants(street).some((variant) =>
-          streetsMatch(variant, listingStreet),
-        )
-      )
-    }) ?? null
+    hits.find((row) =>
+      listingMatchesStreetQuery(
+        street,
+        row.address.street || row.address.full || '',
+      ),
+    ) ?? null
   if (!match) return null
   const wrote = await persistListingRecord(match)
   if (!wrote) return readListingByIdFromDb(listingRowId(match) || match.mlsId)
   return readListingByIdFromDb(listingRowId(match) || match.mlsId)
+}
+
+export function looksLikeStreetQuery(raw: string): boolean {
+  return /^\d+[A-Za-z]?\s+[A-Za-z]/.test(raw.trim())
+}
+
+/**
+ * Typeahead / Find: one RETS address search (Lane/Road form) when Neon
+ * and Vision have no listing yet. Persists the row so the next lookup is local.
+ */
+export async function ingestFindListingByStreetQuery(
+  raw: string,
+): Promise<Listing | null> {
+  const street = raw.trim()
+  if (!looksLikeStreetQuery(street)) return null
+  try {
+    return await persistByStreet(street)
+  } catch (err) {
+    console.warn('[find-listing-ingest] street query ingest failed', err)
+    return null
+  }
 }
 
 /**

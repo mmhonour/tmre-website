@@ -1,4 +1,5 @@
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
+import { isServerlessRuntime } from "@/lib/runtime-host";
 import { isFullResyncRetired } from "@/lib/scheduled-sync-jobs-shared";
 
 export type StartupStepStatus = "active" | "scheduled" | "skipped" | "info";
@@ -88,25 +89,45 @@ export function describeStartupProcess(): {
     {
       id: "overdue-catchup",
       title: "Missed sync catch-up",
-      subtitle: "Serial overdue jobs after host wakeup (local / Netlify process start)",
+      subtitle: isServerlessRuntime()
+        ? "Process-start catch-up is off on Netlify — thin crons and dedicated workers own it"
+        : "Serial overdue jobs after host wakeup (local / long-lived Node)",
       steps: [
         {
           id: "overdue-schedule",
           title: "Detect overdue admin sync windows",
-          timing: `+${Math.round(overdueCatchupDelayMs / 1000)}s`,
+          timing: isServerlessRuntime()
+            ? "not on process start"
+            : `+${Math.round(overdueCatchupDelayMs / 1000)}s`,
           detail:
-            "buildOverdueSyncPlan(): incremental, scores, stats, DOTD, snapshot, addresses, edge scores — one run each. Full resync is retired and is never caught up.",
-          status: overdueCatchupEnabled ? "scheduled" : "skipped",
-          statusLabel: overdueCatchupEnabled ? "Scheduled" : "Disabled",
+            "buildOverdueSyncPlan(): incremental, scores, stats, DOTD, snapshot, addresses, edge scores — one run each. Full resync is retired and is never caught up. On Netlify, every Next.js Lambda boot used to queue catch-up (via=admin) and 429-storm Stats cache when End was stale.",
+          status:
+            overdueCatchupEnabled && !isServerlessRuntime()
+              ? "scheduled"
+              : "skipped",
+          statusLabel:
+            overdueCatchupEnabled && !isServerlessRuntime()
+              ? "Scheduled"
+              : overdueCatchupEnabled
+                ? "Thin crons / workers"
+                : "Disabled",
         },
         {
           id: "overdue-run",
           title: "Serial catch-up execution",
-          timing: "after delay",
+          timing: isServerlessRuntime() ? "workers only" : "after delay",
           detail:
-            "runOverdueSyncCatchup() uses sync_meta timestamps; skips when nothing is due or when a job is Pause-checked on /admin. A queue ack is not a finished rebuild — dedicated Goldilocks / Edge / stats / DOTD workers always execute their own job. Netlify scheduled functions queue those workers; catch-up can pass executeInProcess when already inside a worker.",
-          status: overdueCatchupEnabled ? "scheduled" : "skipped",
-          statusLabel: overdueCatchupEnabled ? "Chained" : "—",
+            "runOverdueSyncCatchup() uses a Postgres timed lock (not the per-Lambda sync_meta cache) so concurrent instances cannot stampede. A queue ack is not a finished rebuild — dedicated Goldilocks / Edge / stats / DOTD workers always execute their own job. Incremental listings catch-up only stamps publish-snapshot; it does not re-queue Stats cache.",
+          status:
+            overdueCatchupEnabled && !isServerlessRuntime()
+              ? "scheduled"
+              : "skipped",
+          statusLabel:
+            overdueCatchupEnabled && !isServerlessRuntime()
+              ? "Chained"
+              : overdueCatchupEnabled
+                ? "Workers"
+                : "—",
         },
       ],
     },

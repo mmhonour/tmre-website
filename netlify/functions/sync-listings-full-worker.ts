@@ -37,6 +37,7 @@ export default async function handler(req: Request, _context: Context) {
     }
     const catchup = await runOverdueSyncCatchup({
       reason: 'netlify/sync-listings-full-worker',
+      executeInProcess: true,
     })
     if (await isScheduledSyncJobPausedFresh('full-resync')) {
       return new Response(

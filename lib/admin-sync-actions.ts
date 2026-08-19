@@ -50,7 +50,11 @@ import {
   formatFullResyncFinalizeStepDetail,
   formatTownSyncSummary,
 } from '@/lib/admin-sync-progress'
-import { rebuildStatsCache } from '@/lib/stats-cache'
+import {
+  rebuildStatsCache,
+  reasonToSkipStatsCacheEnqueue,
+  stampStatsCacheQueueBackoff,
+} from '@/lib/stats-cache'
 import { readListingsRefreshStatus, healStaleRefreshLock } from '@/lib/listings-refresh-status'
 import { buildAdminSyncNextRuns, buildAdminSyncScheduleHints } from '@/lib/admin-sync-schedule'
 import {
@@ -877,9 +881,21 @@ async function runAdminSyncActionImpl(
       // Production: full rebuild is too heavy for the Next.js request (gateway
       // 504 leaves stats_cache_rebuild_lock held → later clicks report "0 entries").
       if (shouldQueueOnServerless(options)) {
-        const { queueNetlifyStatsCacheRebuild } = await import(
-          '@/lib/netlify-sync-trigger'
-        )
+        const skipReason = await reasonToSkipStatsCacheEnqueue()
+        if (skipReason) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message: skipReason,
+            detail: 'Not a rebuild failure — worker hop skipped.',
+          }
+        }
+        const { queueNetlifyStatsCacheRebuild, isNetlifyQueueRateLimited } =
+          await import('@/lib/netlify-sync-trigger')
         const { queued, via } = await queueSyncNowPreferringScheduler(
           'stats-cache',
           () =>
@@ -889,23 +905,21 @@ async function runAdminSyncActionImpl(
         )
         // History: Queued/stats now; worker writes Done|Failed/stats when finished.
         // (backgroundQueued skips auditDashboardSyncResult — same as Incremental.)
-        try {
-          const { recordSyncRun } = await import('@/lib/db/listings-repo')
-          await recordSyncRun({
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            town: '(all)',
-            statusBucket: queued.ok ? 'Queued/stats' : 'Failed/stats',
-            listingsCount: 0,
-            ok: queued.ok,
-            error: queued.ok
-              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
-              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
-          })
-        } catch {
-          /* audit best-effort */
-        }
         if (queued.ok) {
+          try {
+            const { recordSyncRun } = await import('@/lib/db/listings-repo')
+            await recordSyncRun({
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              town: '(all)',
+              statusBucket: 'Queued/stats',
+              listingsCount: 0,
+              ok: true,
+              error: `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`,
+            })
+          } catch {
+            /* audit best-effort */
+          }
           await setSyncMetaDurable('last_stats_cache_started', startedAt)
           return {
             ok: true,
@@ -924,12 +938,56 @@ async function runAdminSyncActionImpl(
           }
         }
         const finishedAt = new Date().toISOString()
+        if (isNetlifyQueueRateLimited(queued)) {
+          await stampStatsCacheQueueBackoff()
+          try {
+            const { recordSyncRun } = await import('@/lib/db/listings-repo')
+            await recordSyncRun({
+              startedAt,
+              finishedAt,
+              town: '(all)',
+              statusBucket: 'Failed/stats',
+              listingsCount: 0,
+              ok: false,
+              error:
+                'skipped — Netlify rate limited (HTTP 429); not retrying this window',
+            })
+          } catch {
+            /* audit best-effort */
+          }
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              'skipped — Netlify rate limited (HTTP 429); not retrying this window',
+            detail: queued.error ?? 'HTTP 429',
+          }
+        }
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt,
+            town: '(all)',
+            statusBucket: 'Failed/stats',
+            listingsCount: 0,
+            ok: false,
+            error: `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
         return {
           ok: false,
           action,
           startedAt,
           finishedAt,
           durationMs: Date.now() - t0,
+          backgroundQueued: true,
           message: 'Stats cache queue failed',
           detail: queued.error ?? 'Could not reach background worker',
         }

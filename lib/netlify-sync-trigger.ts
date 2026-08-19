@@ -213,6 +213,8 @@ export async function queueNetlifyFunction(
         base,
         error: `HTTP ${status}${text ? `: ${text.slice(0, 160)}` : ''}`,
       }
+      // Extra site bases are more invokes. 429 means Netlify already said stop.
+      if (status === 429) return last
     } catch (err) {
       last = {
         ok: false,
@@ -225,6 +227,14 @@ export async function queueNetlifyFunction(
   }
 
   return last
+}
+
+/** Netlify concurrent-background / invoke cap — not a SQL or rebuild failure. */
+export function isNetlifyQueueRateLimited(
+  result: Pick<NetlifyFunctionQueueResult, 'status' | 'error'>,
+): boolean {
+  if (result.status === 429) return true
+  return /\bHTTP 429\b/.test(result.error ?? '')
 }
 
 export type IncrementalQueueSource =

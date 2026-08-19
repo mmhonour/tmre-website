@@ -9,6 +9,8 @@ import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
 import LatestTownStats from "@/components/latest/LatestTownStats";
 import ExplorePageTabs from "@/components/explore/ExplorePageTabs";
+import { closedExploreFeedUrl } from "@/lib/explore-tab-prefetch";
+import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { prefetchAllTownSnapshots } from "@/components/latest/LatestIntelligenceTownSnapshot";
 import { prefetchAllTownBoundaries } from "@/components/ZipBoundaryPopover";
 import type { LatestListingRow } from "@/lib/latest-listings";
@@ -169,20 +171,15 @@ export default function ClosedClient({
   const refresh = useCallback(
     async (opts?: { town?: string | null }) => {
       const town = opts?.town ?? null;
-      const params = new URLSearchParams({
-        from: fromDay,
-        to: toDay,
-        limit: String(town ? CLOSED_TOWN_EXPAND_LIMIT : CLOSED_FEED_LIMIT),
+      const url = closedExploreFeedUrl(fromDay, toDay, {
+        town: town ?? undefined,
+        limit: town ? CLOSED_TOWN_EXPAND_LIMIT : CLOSED_FEED_LIMIT,
+        buckets: !town && !dailyRef.current,
       });
-      if (town) params.set("town", town);
-      if (!town && !dailyRef.current) params.set("buckets", "1");
-      const res = await fetch(`/api/listings/closed?${params.toString()}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("Failed to load closed listings");
-      const body = (await res.json()) as ClosedApiResponse;
+      const body = await loadTabJson<ClosedApiResponse>(url);
+      if (!body) throw new Error("Failed to load closed listings");
       if (body.daily) setDaily(body.daily);
-      return body.listings.filter(
+      return (body.listings ?? []).filter(
         (row) => isTmreTown(row.town) || isTmreTown(row.city),
       );
     },

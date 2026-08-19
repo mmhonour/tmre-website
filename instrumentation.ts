@@ -60,8 +60,12 @@ export async function register() {
       if (!isServerlessRuntime()) {
         scheduleCatchup('node-startup')
       } else {
-        // Serverless timers may not fire; scheduled Netlify functions also invoke catch-up.
-        scheduleCatchup('netlify-process')
+        // Do not queue catch-up from every Next.js Lambda boot — that POSTs
+        // workers with via=admin and 429-storms Stats cache when End is stale.
+        // Thin crons + dedicated workers own catch-up on Netlify.
+        console.info(
+          '[sync-overdue] skipped process-start catch-up on serverless — thin crons / workers own it',
+        )
       }
     }
 

@@ -305,6 +305,10 @@ async function searchWestportListingRows(
   )
 }
 
+function looksLikeStreetQuery(raw: string): boolean {
+  return /^\d+[A-Za-z]?\s+[A-Za-z]/.test(raw.trim())
+}
+
 function listingRowStatusRank(bucket: string | null): number {
   if (bucket === 'Active') return 0
   if (bucket === 'Closed') return 1
@@ -421,6 +425,51 @@ export async function searchWestportLookup(
     if (preferred.mls_id) seenMls.add(preferred.mls_id)
     seenMls.add(preferred.id)
     seenNorms.add(key)
+  }
+
+  const hasListingHit = out.some((h) => Boolean(h.mlsId || h.listingId))
+  if (
+    !hasListingHit &&
+    looksLikeStreetQuery(q) &&
+    out.length < limit
+  ) {
+    const { ingestFindListingByStreetQuery, stampVisionListingLink } =
+      await import('@/lib/find-listing-ingest')
+    const listing = await ingestFindListingByStreetQuery(q)
+    const town = listing?.address.city?.trim().toLowerCase()
+    if (listing && town === 'westport') {
+      const street = listing.address.street || listing.address.full || q
+      const visionHit = out.find((h) => h.visionPid)
+      if (visionHit?.visionPid) {
+        const vision = await getVisionAddress(
+          WESTPORT_LOOKUP_TOWN,
+          visionHit.visionPid,
+        )
+        if (vision) await stampVisionListingLink(vision, listing)
+      }
+      const already = out.some(
+        (h) => h.mlsId === listing.mlsId || h.listingId === listing.listingKey,
+      )
+      if (!already) {
+        out.unshift({
+          visionPid: visionHit?.visionPid ?? '',
+          addressFull: listing.address.full || `${street}, Westport`,
+          street,
+          mblu: visionHit?.mblu ?? null,
+          ownerName: listing.ownerName ?? visionHit?.ownerName ?? null,
+          listingId: listing.listingKey,
+          mlsId: listing.mlsId,
+          status: listing.status,
+          price: listing.price,
+          siblingCount: 1,
+        })
+      } else if (visionHit && !visionHit.mlsId) {
+        visionHit.listingId = listing.listingKey
+        visionHit.mlsId = listing.mlsId
+        visionHit.status = listing.status
+        visionHit.price = listing.price
+      }
+    }
   }
 
   const looksLikeMls = /^[A-Za-z0-9-]{5,}$/.test(q.trim()) && !/\s/.test(q.trim())

@@ -1,4 +1,12 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import {
+  prefetchClosedExploreFeed,
+  prefetchLatestExploreFeed,
+} from "@/lib/explore-tab-prefetch";
 
 export type ExplorePageTab = "latest" | "closed";
 
@@ -29,6 +37,18 @@ export default function ExplorePageTabs({
 }: {
   active: ExplorePageTab;
 }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const sibling = active === "latest" ? "/closed" : "/latest";
+    const timer = window.setTimeout(() => {
+      router.prefetch(sibling);
+      if (active === "latest") prefetchClosedExploreFeed();
+      else prefetchLatestExploreFeed();
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [active, router]);
+
   return (
     <div className="mt-4 lg:mt-6 animate-fade-up-delay-2">
       <div

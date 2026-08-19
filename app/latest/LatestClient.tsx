@@ -31,6 +31,8 @@ import {
 } from "@/lib/latest-view-state";
 import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 import { evaluateIncrementalHealth } from "@/lib/incremental-sync-health";
+import { latestExploreFeedUrl } from "@/lib/explore-tab-prefetch";
+import { loadTabJson } from "@/lib/tab-data-prefetch";
 
 type ApiResponse = {
   listings: LatestListingRow[];
@@ -423,11 +425,10 @@ export default function LatestClient({
   }, [viewHydrated]);
 
   const fetchAllTownFeeds = useCallback(async (): Promise<void> => {
-    const res = await fetch("/api/listings/latest/towns", { cache: "no-store" });
-    if (!res.ok) return;
-    const body = (await res.json()) as {
+    const body = await loadTabJson<{
       towns?: Record<string, LatestListingRow[]>;
-    };
+    }>("/api/listings/latest/towns");
+    if (!body) return;
     for (const [town, rows] of Object.entries(body.towns ?? {})) {
       if (Array.isArray(rows) && rows.length > 0) {
         townCacheRef.current.set(town, rows);
@@ -465,12 +466,14 @@ export default function LatestClient({
     const params = new URLSearchParams();
     params.set("limit", String(LATEST_LIMIT));
     if (options.since) params.set("since", options.since);
+    const url = options.since
+      ? `/api/listings/latest?${params.toString()}`
+      : latestExploreFeedUrl();
 
-    const res = await fetch(`/api/listings/latest?${params.toString()}`, {
-      cache: "no-store",
+    const body = await loadTabJson<ApiResponse>(url, {
+      force: Boolean(options.since),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = (await res.json()) as ApiResponse;
+    if (!body) throw new Error("Failed to load latest listings");
     // Never fall back to lastFullSync — that hid a broken End as "Jul 12".
     setLastSync(body.lastIncrementalSync ?? null);
     setLastHeartbeat(body.lastMlsSyncHeartbeat ?? null);

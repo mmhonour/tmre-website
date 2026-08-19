@@ -90,7 +90,7 @@ export function marketPulseLookbackClosedPrefix(label: string): string {
   return label.replace(/\bmos\b/gi, 'Mos').replace(/\bmo\b/gi, 'Mo')
 }
 
-/** Right-of-bar Closed text, e.g. `24 Mos - 4653`. */
+/** Right-of-bar Closed text, e.g. `24 Mos - 4653` (spaces around the hyphen). */
 export function formatClosedCountWithLookback(
   lookbackLabel: string,
   countText: string,

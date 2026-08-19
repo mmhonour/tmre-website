@@ -95,6 +95,18 @@ export function settleMosDisplay(
   return step;
 }
 
+/**
+ * All Towns label while bars scramble: cycle town names, then null so the UI
+ * lands back on “All towns” for count-up / done.
+ */
+export function settleAllTownsLabel(
+  settle: MarketPulseSettleState,
+  townNames: readonly string[],
+): string | null {
+  if (settle.phase !== "scramble" || townNames.length === 0) return null;
+  return townNames[settle.tick % townNames.length] ?? null;
+}
+
 /** Bar width % — scramble from local percents, countup 0→settled, done = settled. */
 export function settleBarPercent(
   settledPct: number,

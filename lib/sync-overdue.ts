@@ -3,7 +3,13 @@ import 'server-only'
 import { runAdminSyncAction } from '@/lib/admin-sync-actions'
 import type { AdminSyncActionId } from '@/lib/admin-sync-types'
 import { parseIsoMs } from '@/lib/admin-sync-schedule'
-import { deleteSyncMeta, getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
+import {
+  deleteSyncMeta,
+  getSyncMeta,
+  releaseTimedLock,
+  setSyncMeta,
+  tryAcquireTimedLock,
+} from '@/lib/db/sync-meta-store'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import {
@@ -49,11 +55,13 @@ const CATCHUP_LOCK_MAX_MS_LONG_LIVED = 2 * 60 * 60 * 1000
 
 /** Clear a leaked overdue catch-up lock (Lambda killed mid-catch-up). */
 export function healStaleOverdueCatchupLock(now = Date.now()): boolean {
-  if (getSyncMeta(CATCHUP_LOCK_KEY) !== '1') return false
-  const startedMs = parseIsoMs(getSyncMeta(CATCHUP_STARTED_AT_KEY))
+  const lockVal = getSyncMeta(CATCHUP_LOCK_KEY)
+  if (!lockVal) return false
   const limitMs = isServerlessRuntime()
     ? CATCHUP_LOCK_MAX_MS_SERVERLESS
     : CATCHUP_LOCK_MAX_MS_LONG_LIVED
+  const startedMs =
+    parseIsoMs(lockVal) ?? parseIsoMs(getSyncMeta(CATCHUP_STARTED_AT_KEY))
   if (startedMs == null || now - startedMs > limitMs) {
     deleteSyncMeta(CATCHUP_LOCK_KEY)
     return true
@@ -254,10 +262,6 @@ export async function runOverdueSyncCatchup(options?: {
     return { skipped: true, reason: 'refresh in progress', plan: [], steps: [] }
   }
 
-  if (getSyncMeta(CATCHUP_LOCK_KEY) === '1') {
-    return { skipped: true, reason: 'catch-up already running', plan: [], steps: [] }
-  }
-
   const pausedJobs = await getScheduledSyncPausedJobsFresh()
   const allow = options?.onlyJobs?.length ? new Set(options.onlyJobs) : null
   const exceptJob = options?.exceptJob
@@ -274,7 +278,17 @@ export async function runOverdueSyncCatchup(options?: {
 
   const startedAt = new Date().toISOString()
   const t0 = Date.now()
-  setSyncMeta(CATCHUP_LOCK_KEY, '1')
+  const lockLimitMs = isServerlessRuntime()
+    ? CATCHUP_LOCK_MAX_MS_SERVERLESS
+    : CATCHUP_LOCK_MAX_MS_LONG_LIVED
+  const acquired = await tryAcquireTimedLock(
+    CATCHUP_LOCK_KEY,
+    startedAt,
+    lockLimitMs,
+  )
+  if (!acquired) {
+    return { skipped: true, reason: 'catch-up already running', plan: [], steps: [] }
+  }
   setSyncMeta(CATCHUP_STARTED_AT_KEY, startedAt)
 
   const reason = options?.reason?.trim()
@@ -309,7 +323,7 @@ export async function runOverdueSyncCatchup(options?: {
       durationMs: Date.now() - t0,
     }
   } finally {
-    deleteSyncMeta(CATCHUP_LOCK_KEY)
+    await releaseTimedLock(CATCHUP_LOCK_KEY, startedAt)
   }
 }
 

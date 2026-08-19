@@ -22,8 +22,6 @@ import {
   marketPulseTownMonthsSupplyStatsHref,
   type MarketPulseCategoryId,
 } from "@/lib/market-pulse-shared";
-import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
-
 const TAB_ORDER = MARKET_PULSE_CATEGORY_IDS;
 
 /** Closed-by-town query params per tab (mirrors the digest category specs). */
@@ -283,24 +281,35 @@ export default function MarketPulseContent({
     marketPulseTownClosedSalesStatsHref(cityLabel, category);
   const avgDomTownHref = (cityLabel: string) =>
     marketPulseTownAvgDomStatsHref(cityLabel, category);
-  const tabKit = useTabKitSegmentedStyle("pill-ind-light-compact");
-
   const categoryFilter = (
     <div
-      className={`${tabKit.containerClass({ wrap: true })} !gap-2 w-full justify-start`}
+      className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.12em] uppercase"
       role="tablist"
-      aria-label="Market Pulse property type"
+      aria-label="Property type"
     >
       {categories.map((cat) => {
         const selected = active?.id === cat.id;
+        if (selected) {
+          return (
+            <span
+              key={cat.id}
+              role="tab"
+              aria-selected
+              aria-current="page"
+              className="text-[var(--mp-text)]"
+            >
+              {cat.label}
+            </span>
+          );
+        }
         return (
           <button
             key={cat.id}
             type="button"
             role="tab"
-            aria-selected={selected}
+            aria-selected={false}
             onClick={() => setCategoryId(cat.id)}
-            className={tabKit.buttonClass(selected)}
+            className="text-[var(--mp-muted-text)] underline decoration-[var(--mp-text)]/30 underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
           >
             {cat.label}
           </button>

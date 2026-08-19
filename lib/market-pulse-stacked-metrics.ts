@@ -1,7 +1,7 @@
-import { fmtMoney } from '@/lib/listing-history'
 import type { MarketPulseCombinedTownRow } from '@/lib/market-pulse-combined-rows'
 import { formatClosedCountWithLookback } from '@/lib/market-pulse-lookback'
 import {
+  formatMarketPulseMoney,
   formatPriceDeltaK,
   formatPriceDeltaPct,
 } from '@/lib/market-pulse-price-delta'
@@ -71,7 +71,7 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'avgDom',
-      label: 'Avg DOM',
+      label: 'AVG DAYS ON MARKET',
       barValueOf: (r) => r.avgDaysOnMarket,
       format: (r) => fmtDom(r.avgDaysOnMarket),
     },
@@ -89,7 +89,7 @@ export function marketPulseStackedMetrics(
       id: 'medianPrice',
       label: 'Median',
       barValueOf: (r) => r.medianPrice,
-      format: (r) => fmtMoney(r.medianPrice),
+      format: (r) => formatMarketPulseMoney(r.medianPrice),
     },
     {
       id: 'priceDelta',
@@ -102,7 +102,7 @@ export function marketPulseStackedMetrics(
       id: 'averagePrice',
       label: 'Average',
       barValueOf: (r) => r.averagePrice,
-      format: (r) => fmtMoney(r.averagePrice),
+      format: (r) => formatMarketPulseMoney(r.averagePrice),
     },
   ]
 }
