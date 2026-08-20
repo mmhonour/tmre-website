@@ -3140,8 +3140,17 @@ export default function IntelligenceClient({
       dir: sortDir,
       view: boardView,
       furnished: furnishedFilter === "all" ? null : furnishedFilter,
-      minPrice: priceFilterActive ? minPrice : undefined,
-      maxPrice: priceFilterActive ? maxPrice : undefined,
+      minPrice:
+        showPriceFilter && priceFilterActive && minPrice > 0
+          ? minPrice
+          : undefined,
+      maxPrice:
+        showPriceFilter &&
+        priceFilterActive &&
+        maxPrice != null &&
+        Number.isFinite(maxPrice)
+          ? maxPrice
+          : undefined,
       minSqft: sqftFilterActive ? minSqft : undefined,
       maxSqft: sqftFilterActive ? maxSqft : undefined,
     }),
@@ -3163,6 +3172,7 @@ export default function IntelligenceClient({
       sortDir,
       boardView,
       furnishedFilter,
+      showPriceFilter,
       priceFilterActive,
       minPrice,
       maxPrice,

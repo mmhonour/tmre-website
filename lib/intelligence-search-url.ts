@@ -258,11 +258,14 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
     params.set('furn', state.furnished)
   }
 
-  if (state.minPrice != null && state.minPrice > 0) {
-    params.set('pmin', String(Math.round(state.minPrice)))
+  const hasMinPrice = state.minPrice != null && state.minPrice > 0
+  const hasMaxPrice =
+    state.maxPrice != null && Number.isFinite(state.maxPrice)
+  if (hasMinPrice) {
+    params.set('pmin', String(Math.round(state.minPrice!)))
   }
-  if (state.maxPrice != null && Number.isFinite(state.maxPrice)) {
-    params.set('pmax', String(Math.round(state.maxPrice)))
+  if (hasMaxPrice) {
+    params.set('pmax', String(Math.round(state.maxPrice!)))
   }
   if (state.minSqft != null && state.minSqft > 0) {
     params.set('smin', String(Math.round(state.minSqft)))
@@ -341,8 +344,7 @@ function formatShareCountRangeLabel(
 /**
  * Human-readable share title for Intelligence.
  * No narrowed filters → `TMREMarketIntelligence`.
- * Otherwise compact PascalCase, e.g. `WestportRentals2-10K`.
- * Sort order is ignored (view preference, not a content filter).
+ * Otherwise compact PascalCase, e.g. `WestportRentals2-10KPriceDesc`.
  */
 export function buildIntelligenceShareTitle(state: IntelligenceShareState): string {
   const parts: string[] = []
@@ -400,6 +402,32 @@ export function buildIntelligenceShareTitle(state: IntelligenceShareState): stri
 
   const price = formatSharePriceRangeLabel(state.minPrice, state.maxPrice)
   if (price) parts.push(price)
+
+  const sort = state.sort?.trim() || 'score'
+  const dirAsc = state.dir === 'asc'
+  if (sort !== 'score' || dirAsc) {
+    const sortWord =
+      sort === 'price'
+        ? 'Price'
+        : sort === 'ppsf'
+          ? 'Ppsf'
+          : sort === 'sqft'
+            ? 'Sqft'
+            : sort === 'dom'
+              ? 'Dom'
+              : sort === 'year'
+                ? 'Year'
+                : sort === 'town'
+                  ? 'Town'
+                  : sort === 'beds'
+                    ? 'Beds'
+                    : sort === 'baths'
+                      ? 'Baths'
+                      : sort === 'status'
+                        ? 'Status'
+                        : 'Score'
+    parts.push(`${sortWord}${dirAsc ? 'Asc' : 'Desc'}`)
+  }
 
   const sqft = formatShareSqftRangeLabel(state.minSqft, state.maxSqft)
   if (sqft) parts.push(sqft)

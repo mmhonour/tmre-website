@@ -94,6 +94,22 @@ export default function ListingShareButton({
     return `${window.location.origin}${path}`;
   };
 
+  /** Put this href in the address bar so OS share sheets that ignore `url` still send it. */
+  const syncAddressBar = (url: string) => {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      if (parsed.origin !== window.location.origin) return url;
+      const next = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (current !== next) {
+        window.history.replaceState(null, "", next);
+      }
+      return window.location.href;
+    } catch {
+      return url;
+    }
+  };
+
   const markCopied = () => {
     setStatus("copied");
     if (resetTimerRef.current != null) clearTimeout(resetTimerRef.current);
@@ -104,12 +120,14 @@ export default function ListingShareButton({
   };
 
   const handleShare = async () => {
-    const url = absoluteUrl();
+    const url = syncAddressBar(absoluteUrl());
     const shareTitle = title?.trim() || "TMRE listing";
 
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
-        await navigator.share({ title: shareTitle, url, text: shareTitle });
+        // `text: url` — iOS often drops the `url` field and shares the page
+        // (or title only). Putting the full href in text keeps query params.
+        await navigator.share({ title: shareTitle, url, text: url });
         return;
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -132,9 +150,9 @@ export default function ListingShareButton({
       onClick={() => void handleShare()}
       className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gold/85 transition-colors hover:bg-white/10 hover:text-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold/50 ${className}`}
       aria-label={
-        status === "copied" ? "Link copied" : "Share or copy short listing link"
+        status === "copied" ? "Link copied" : "Share or copy this view"
       }
-      title={status === "copied" ? "Link copied" : "Share short link"}
+      title={status === "copied" ? "Link copied" : "Share this view"}
     >
       {status === "copied" ? (
         <CopiedIcon
