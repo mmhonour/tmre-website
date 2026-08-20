@@ -2432,6 +2432,7 @@ export default function IntelligenceClient({
         dir: urlSearch.resetMinor
           ? "desc"
           : (urlSearch.dir ?? "desc"),
+        view: urlSearch.view ?? undefined,
         furnished: urlSearch.resetMinor ? null : urlSearch.furnished,
         minPrice: urlSearch.resetMinor
           ? undefined
@@ -2465,9 +2466,9 @@ export default function IntelligenceClient({
     setFurnishedFilter,
   ]);
 
-  // Sort from the share URL must beat usePersistedFilter cookie hydration.
+  // Sort / view from the share URL must beat usePersistedFilter cookie hydration.
   // Declared after those hooks' effects and re-run when urlSearch is present so
-  // a shared sort/dir is not overwritten by tmre_intel_sort_key / _dir cookies.
+  // a shared sort/dir/view is not overwritten by cookies.
   useEffect(() => {
     if (!urlSearch) return;
     if (urlSearch.resetMinor) {
@@ -2482,7 +2483,13 @@ export default function IntelligenceClient({
         : "score";
     setSortKey(key);
     setSortDir(urlSearch.dir ?? "desc");
-  }, [urlSearch, setSortKey, setSortDir]);
+    if (
+      urlSearch.view &&
+      (DEAL_BOARD_VIEW_VALUES as readonly string[]).includes(urlSearch.view)
+    ) {
+      setBoardView(urlSearch.view);
+    }
+  }, [urlSearch, setSortKey, setSortDir, setBoardView]);
 
   // Prefer cached months-supply avgs when property class / occupancy changes.
   useEffect(() => {
@@ -3131,6 +3138,7 @@ export default function IntelligenceClient({
       status: boardStatusFilter,
       sort: sortKey,
       dir: sortDir,
+      view: boardView,
       furnished: furnishedFilter === "all" ? null : furnishedFilter,
       minPrice: priceFilterActive ? minPrice : undefined,
       maxPrice: priceFilterActive ? maxPrice : undefined,
@@ -3153,6 +3161,7 @@ export default function IntelligenceClient({
       boardStatusFilter,
       sortKey,
       sortDir,
+      boardView,
       furnishedFilter,
       priceFilterActive,
       minPrice,
@@ -3170,6 +3179,17 @@ export default function IntelligenceClient({
     () => buildIntelligenceShareTitle(intelligenceShareState),
     [intelligenceShareState],
   );
+
+  // Keep the current board in the address bar so Back from a listing restores
+  // sort, view, and filters (replaceState updates this history entry).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.pathname !== "/intelligence") return;
+    const next = intelligenceShareHref;
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current === next) return;
+    window.history.replaceState(null, "", next);
+  }, [intelligenceShareHref]);
 
   // Apply price/sqft from the share URL once board step ladders are ready.
   const urlPriceSqftAppliedRef = useRef(false);

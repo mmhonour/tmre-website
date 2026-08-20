@@ -1024,15 +1024,7 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
   }
 }
 
-function CopyTextButton({
-  text,
-  label = "copy",
-  title = "Copy to clipboard",
-}: {
-  text: string;
-  label?: string;
-  title?: string;
-}) {
+function CopyRowIcon({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   if (!text.trim()) return null;
   return (
@@ -1044,10 +1036,70 @@ function CopyTextButton({
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1800);
       }}
-      className="font-mono text-[8px] text-charcoal/30 hover:text-navy"
-      title={title}
+      className="inline-flex h-3.5 w-3.5 items-center justify-center text-charcoal/35 hover:text-navy"
+      title={copied ? "Copied" : "Copy entire row"}
+      aria-label={copied ? "Copied" : "Copy entire row"}
     >
-      {copied ? "✓ copied" : label}
+      {copied ? (
+        <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden>
+          <path
+            d="M3.5 8.5 6.5 11.5 12.5 4.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+          />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden>
+          <rect
+            x="5"
+            y="5"
+            width="8"
+            height="8"
+            rx="1"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+          />
+          <path
+            d="M3 11V3h8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+          />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function ClearRowIcon({
+  onClear,
+  busy,
+}: {
+  onClear: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClear();
+      }}
+      disabled={busy}
+      className="inline-flex h-3.5 w-3.5 items-center justify-center text-charcoal/35 hover:text-navy disabled:opacity-40"
+      title="Clear Start, End, Status, and this job's locks"
+      aria-label={busy ? "Clearing row" : "Clear row"}
+    >
+      <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden>
+        <path
+          d="M4 4l8 8M12 4l-8 8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+      </svg>
     </button>
   );
 }
@@ -1083,88 +1135,39 @@ function formatDashboardRowCopy(fields: {
   return lines.filter((line): line is string => Boolean(line)).join("\n");
 }
 
-function StatusCell({
+function ClampLine({
   text,
-  isRunning,
-  isWaiting = false,
-  /** When false, clamp to a single line; when true, allow wrap (row auto-expanded). */
-  allowWrap = false,
-  rowCopyText,
-  onClear,
-  clearBusy = false,
+  className,
 }: {
   text: string | undefined;
-  isRunning: boolean;
-  isWaiting?: boolean;
-  allowWrap?: boolean;
-  rowCopyText?: string;
-  onClear?: () => void;
-  clearBusy?: boolean;
+  className: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-
-  const isLong = Boolean(text && (text.length > 72 || text.includes("\n")));
-  const emphasize = isRunning || isWaiting;
-  const showFull = allowWrap || expanded;
-
+  if (!text) {
+    return <span className="font-mono text-[9px] text-charcoal/30">—</span>;
+  }
+  const isLong = text.length > 72 || text.includes("\n");
   return (
     <div className="min-w-0">
-      {text ? (
-        <p
-          className={`text-[9px] leading-snug ${
-            emphasize
-              ? "font-mono text-gold uppercase tracking-wide"
-              : "text-slate/80"
-          } ${
-            showFull
-              ? "break-words whitespace-pre-line"
-              : "truncate whitespace-nowrap"
-          }`}
-          title={!showFull ? text : undefined}
+      <p
+        className={`text-[9px] leading-snug ${className} ${
+          expanded
+            ? "break-words whitespace-pre-line"
+            : "truncate whitespace-nowrap"
+        }`}
+        title={!expanded ? text : undefined}
+      >
+        {text}
+      </p>
+      {isLong ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-0.5 font-mono text-[8px] text-navy/40 hover:text-navy hover:underline underline-offset-1"
         >
-          {text}
-        </p>
-      ) : (
-        <span className="font-mono text-[9px] text-charcoal/30">—</span>
-      )}
-      <div className="flex items-center gap-2 mt-0.5">
-        {isLong && !allowWrap ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="font-mono text-[8px] text-navy/40 hover:text-navy hover:underline underline-offset-1"
-          >
-            {expanded ? "less" : "more"}
-          </button>
-        ) : null}
-        {text && (allowWrap || isLong) ? (
-          <CopyTextButton
-            text={text}
-            title="Copy status to clipboard"
-          />
-        ) : null}
-        {rowCopyText ? (
-          <CopyTextButton
-            text={rowCopyText}
-            label="copy row"
-            title="Copy entire row to clipboard"
-          />
-        ) : null}
-        {onClear ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClear();
-            }}
-            disabled={clearBusy}
-            className="font-mono text-[8px] text-charcoal/30 hover:text-navy disabled:opacity-40"
-            title="Clear Start, End, Status, and this job's locks. Does not delete listings or cached stats."
-          >
-            {clearBusy ? "clearing…" : "clear"}
-          </button>
-        ) : null}
-      </div>
+          {expanded ? "less" : "…"}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -3680,6 +3683,53 @@ export default function AdminSyncTable({
                   (!incrementalOnEventBridge && scheduleBreached) ||
                   Boolean(statusText && statusText.includes("\n")));
               const cellPad = rowExpands ? TD_EXPAND : TD;
+              const rowCopyText = formatDashboardRowCopy({
+                order: orderLabel,
+                label: [row.label, rowPaused ? "Paused" : null]
+                  .filter(Boolean)
+                  .join(" · "),
+                action: !row.actionId
+                  ? "—"
+                  : isRunning
+                    ? "Syncing"
+                    : isWaiting
+                      ? "Queued"
+                      : "Sync",
+                paused: rowPaused,
+                frequency: jobSchedule
+                  ? frequencyLabel(jobSchedule.frequency)
+                  : (derivedScheduleHint ?? "—"),
+                scheduler: jobSchedule
+                  ? schedulerProviderLabel(resolveJobScheduler(jobSchedule))
+                  : "—",
+                start: timing.started
+                  ? [formatTimeOnly(timing.started), formatAgeAgo(timing.started, nowMs)]
+                      .filter((bit) => bit && bit !== "just now")
+                      .join(" · ")
+                  : "—",
+                startIso: timing.started,
+                end: timing.finished
+                  ? [
+                      incrementalPriorEnd ? "Prior" : null,
+                      formatTimeOnly(timing.finished),
+                      formatAgeAgo(timing.finished, nowMs),
+                    ]
+                      .filter((bit) => bit && bit !== "just now")
+                      .join(" · ")
+                  : "—",
+                endIso: timing.finished,
+                next: nextRunAt
+                  ? [
+                      formatAdminNextSyncAt(nextRunAt, now),
+                      scheduleBreached ? "Overdue" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : "—",
+                nextIso: nextRunAt,
+                status: statusText,
+                errors: rowError ?? hangNotice ?? null,
+              });
 
               return (
                 <tr
@@ -3726,28 +3776,41 @@ export default function AdminSyncTable({
                     }`}
                   >
                     {orderLabel != null && pauseJob ? (
-                      <div className="inline-flex items-center gap-1">
-                        <span
-                          className="inline-flex h-7 min-w-7 px-1 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
-                          title={`Sync all step ${orderLabel}`}
-                        >
-                          {orderLabel}
-                        </span>
-                        {isConfigure ? (
-                          <OrderReorderSpinner
-                            busy={scheduleSavingJob === "order"}
-                            canUp={orderIndex > 0}
-                            canDown={
-                              orderIndex >= 0 &&
-                              orderIndex < scheduleConfig.order.length - 1
-                            }
-                            onMove={(direction) =>
-                              void patchScheduleConfig({
-                                moveJobId: pauseJob,
-                                direction,
-                              })
-                            }
-                          />
+                      <div className="inline-flex flex-col items-center gap-0.5">
+                        <div className="inline-flex items-center gap-1">
+                          <span
+                            className="inline-flex h-7 min-w-7 px-1 items-center justify-center rounded-full border border-navy/15 bg-white font-mono text-xs font-bold tabular-nums text-navy"
+                            title={`Sync all step ${orderLabel}`}
+                          >
+                            {orderLabel}
+                          </span>
+                          {isConfigure ? (
+                            <OrderReorderSpinner
+                              busy={scheduleSavingJob === "order"}
+                              canUp={orderIndex > 0}
+                              canDown={
+                                orderIndex >= 0 &&
+                                orderIndex < scheduleConfig.order.length - 1
+                              }
+                              onMove={(direction) =>
+                                void patchScheduleConfig({
+                                  moveJobId: pauseJob,
+                                  direction,
+                                })
+                              }
+                            />
+                          ) : null}
+                        </div>
+                        {isDashboard ? (
+                          <div className="inline-flex items-center gap-0.5">
+                            <CopyRowIcon text={rowCopyText} />
+                            {row.actionId ? (
+                              <ClearRowIcon
+                                onClear={() => void clearRowState(row)}
+                                busy={clearingId === row.id}
+                              />
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     ) : (
@@ -3764,16 +3827,19 @@ export default function AdminSyncTable({
                           title={
                             jobSchedule &&
                             resolveJobScheduler(jobSchedule) === "eventbridge"
-                              ? "Sync now via EventBridge path (falls back to Netlify queue if needed)"
-                              : "Sync now via Netlify worker queue"
+                              ? "Sync via EventBridge path (falls back to Netlify queue if needed)"
+                              : jobSchedule &&
+                                  resolveJobScheduler(jobSchedule) === "railway"
+                                ? "Sync via Railway mls-sync"
+                                : "Sync via Netlify worker queue"
                           }
-                          className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
+                          className="font-mono text-[8px] tracking-[0.1em] uppercase rounded-full px-2 py-0.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
                         >
                           {isRunning
-                            ? "Syncing…"
+                            ? "Syncing"
                             : isWaiting
                               ? "Queued"
-                              : "Sync now"}
+                              : "Sync"}
                         </button>
                       ) : (
                         <span className="font-mono text-[10px] tracking-wide text-charcoal/30">—</span>
@@ -4270,86 +4336,17 @@ export default function AdminSyncTable({
                         );
                       })()}
                       <td className={cellPad}>
-                        <StatusCell
+                        <ClampLine
                           text={statusText}
-                          isRunning={
+                          className={
                             isRunning ||
                             syncAllRunning ||
                             incrementalRunningNow ||
-                            railwayInPull
-                          }
-                          isWaiting={isWaiting}
-                          allowWrap={
-                            rowExpands ||
-                            incrementalRunningNow ||
                             railwayInPull ||
-                            eventBridgeQueuedNoEnd
+                            isWaiting
+                              ? "font-mono text-gold uppercase tracking-wide"
+                              : "text-slate/80"
                           }
-                          onClear={
-                            row.actionId
-                              ? () => void clearRowState(row)
-                              : undefined
-                          }
-                          clearBusy={clearingId === row.id}
-                          rowCopyText={formatDashboardRowCopy({
-                            order: orderLabel,
-                            label: [
-                              row.label,
-                              rowPaused ? "Paused" : null,
-                            ]
-                              .filter(Boolean)
-                              .join(" · "),
-                            action: !row.actionId
-                              ? "—"
-                              : isRunning
-                                ? "Syncing"
-                                : isWaiting
-                                  ? "Queued"
-                                  : "Sync now",
-                            paused: rowPaused,
-                            frequency: jobSchedule
-                              ? frequencyLabel(jobSchedule.frequency)
-                              : (derivedScheduleHint ?? "—"),
-                            scheduler: jobSchedule
-                              ? schedulerProviderLabel(
-                                  resolveJobScheduler(jobSchedule),
-                                )
-                              : "—",
-                            start: timing.started
-                              ? [
-                                  formatTimeOnly(timing.started),
-                                  formatAgeAgo(timing.started, nowMs),
-                                ]
-                                  .filter(
-                                    (bit) => bit && bit !== "just now",
-                                  )
-                                  .join(" · ")
-                              : "—",
-                            startIso: timing.started,
-                            end: timing.finished
-                              ? [
-                                  incrementalPriorEnd ? "Prior" : null,
-                                  formatTimeOnly(timing.finished),
-                                  formatAgeAgo(timing.finished, nowMs),
-                                ]
-                                  .filter(
-                                    (bit) => bit && bit !== "just now",
-                                  )
-                                  .join(" · ")
-                              : "—",
-                            endIso: timing.finished,
-                            next: nextRunAt
-                              ? [
-                                  formatAdminNextSyncAt(nextRunAt, now),
-                                  scheduleBreached ? "Overdue" : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")
-                              : "—",
-                            nextIso: nextRunAt,
-                            status: statusText,
-                            errors: rowError ?? hangNotice ?? null,
-                          })}
                         />
                       </td>
                       <td
@@ -4357,18 +4354,12 @@ export default function AdminSyncTable({
                       >
                         {rowError || hangNotice ? (
                           <div className="space-y-1 min-w-0">
-                            <p
-                              className={`font-mono text-[9px] ${
-                                rowError ? "text-coral" : "text-rose-600/80"
-                              } ${
-                                rowExpands
-                                  ? "leading-snug break-words whitespace-pre-line"
-                                  : "truncate whitespace-nowrap"
-                              }`}
-                              title={rowError ?? hangNotice ?? undefined}
-                            >
-                              {rowError ?? hangNotice}
-                            </p>
+                            <ClampLine
+                              text={rowError ?? hangNotice ?? undefined}
+                              className={
+                                rowError ? "font-mono text-coral" : "font-mono text-rose-600/80"
+                              }
+                            />
                             {row.actionId &&
                             !isRunning &&
                             !isWaiting &&
@@ -4377,9 +4368,9 @@ export default function AdminSyncTable({
                                 type="button"
                                 onClick={() => runSync(row)}
                                 disabled={false}
-                                className="font-mono text-[9px] tracking-[0.1em] uppercase rounded-full px-2.5 py-1 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                                className="font-mono text-[8px] tracking-[0.1em] uppercase rounded-full px-2 py-0.5 border border-coral/40 text-coral bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                               >
-                                {pendingRetry ? "↺ Retry now" : "↺ Retry"}
+                                {pendingRetry ? "↺ Retry" : "↺ Retry"}
                               </button>
                             ) : null}
                           </div>

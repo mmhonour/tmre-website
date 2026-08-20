@@ -86,6 +86,7 @@ export type ParsedIntelligenceSearch = {
   status: 'all' | 'new' | 'reduced' | 'active' | null
   sort: string | null
   dir: 'asc' | 'desc' | null
+  view: 'large' | 'grid' | 'line' | null
   furnished: string | null
   minPrice: number | null
   maxPrice: number | null
@@ -113,6 +114,7 @@ export type IntelligenceShareState = {
   status?: 'all' | 'new' | 'reduced' | 'active'
   sort?: string
   dir?: 'asc' | 'desc'
+  view?: 'large' | 'grid' | 'line'
   furnished?: string | null
   minPrice?: number
   maxPrice?: number | null
@@ -168,6 +170,20 @@ const PROP_TO_SHORT: Record<'all' | 'homes' | 'multi' | 'condos', string> = {
   homes: 'h',
   multi: 'm',
   condos: 'co',
+}
+
+const VIEW_SHORT: Record<string, 'large' | 'grid' | 'line'> = {
+  lg: 'large',
+  g: 'grid',
+  l: 'line',
+  large: 'large',
+  grid: 'grid',
+  line: 'line',
+}
+const VIEW_TO_SHORT: Record<'large' | 'grid' | 'line', string> = {
+  large: 'lg',
+  grid: 'g',
+  line: 'l',
 }
 
 function parseRange(
@@ -228,11 +244,15 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
   else if (state.newConstruction === false) params.set('nc', '0')
   if (state.status && state.status !== 'all') params.set('st', state.status)
 
-  // Always encode sort + dir so shared links preserve the sharer's board order
-  // (omitting defaults let the recipient's cookie sort win).
+  // Always encode sort + dir + view so Back restores the board the visitor left
+  // (omitting defaults let the recipient's cookie win and wipe the sort).
   const sort = state.sort?.trim() || 'score'
   params.set('sort', sort)
   params.set('dir', state.dir === 'asc' ? 'a' : 'd')
+  const view = state.view?.trim()
+  if (view === 'large' || view === 'grid' || view === 'line') {
+    params.set('view', VIEW_TO_SHORT[view])
+  }
 
   if (state.furnished && state.furnished !== 'all') {
     params.set('furn', state.furnished)
@@ -461,6 +481,7 @@ function hasIntelligenceShareParams(searchParams: URLSearchParams): boolean {
     'status',
     'sort',
     'dir',
+    'view',
     'furn',
     'pmin',
     'pmax',
@@ -574,6 +595,8 @@ export function parseIntelligenceSearchParams(
       : dirRaw === 'd' || dirRaw === 'desc'
         ? 'desc'
         : null
+  const viewRaw = (searchParams.get('view') ?? '').trim().toLowerCase()
+  const view = VIEW_SHORT[viewRaw] ?? null
 
   const pmin = Number(searchParams.get('pmin'))
   const pmax = Number(searchParams.get('pmax'))
@@ -602,6 +625,7 @@ export function parseIntelligenceSearchParams(
     status,
     sort,
     dir,
+    view,
     furnished: searchParams.get('furn')?.trim() || null,
     minPrice: Number.isFinite(pmin) && pmin > 0 ? pmin : null,
     maxPrice: Number.isFinite(pmax) && pmax > 0 ? pmax : null,

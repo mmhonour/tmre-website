@@ -481,13 +481,13 @@ export default function AdminSyncMobileHeatmap({
                     type="button"
                     disabled={isRunning}
                     onClick={() => onSyncNow(row)}
-                    className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-navy/20 text-navy bg-white disabled:opacity-40"
+                    className="font-mono text-[8px] tracking-[0.1em] uppercase rounded-full px-2 py-0.5 border border-navy/20 text-navy bg-white disabled:opacity-40"
                   >
                     {isRunning
-                      ? "Running…"
+                      ? "Syncing"
                       : actionLabel
-                        ? `Sync now · ${actionLabel}`
-                        : "Sync now"}
+                        ? `Sync · ${actionLabel}`
+                        : "Sync"}
                   </button>
                 ) : null}
                 {pauseJob ? (
