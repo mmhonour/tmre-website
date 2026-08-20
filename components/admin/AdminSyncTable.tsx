@@ -1024,73 +1024,147 @@ function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming
   }
 }
 
+function CopyTextButton({
+  text,
+  label = "copy",
+  title = "Copy to clipboard",
+}: {
+  text: string;
+  label?: string;
+  title?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  if (!text.trim()) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        void navigator.clipboard.writeText(text);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1800);
+      }}
+      className="font-mono text-[8px] text-charcoal/30 hover:text-navy"
+      title={title}
+    >
+      {copied ? "✓ copied" : label}
+    </button>
+  );
+}
+
+function formatDashboardRowCopy(fields: {
+  order: string | number | null;
+  label: string;
+  action: string;
+  paused?: boolean;
+  frequency: string;
+  scheduler: string;
+  start: string;
+  startIso?: string | null;
+  end: string;
+  endIso?: string | null;
+  next: string;
+  nextIso?: string | null;
+  status?: string | null;
+  errors?: string | null;
+}): string {
+  const lines = [
+    fields.order != null ? `#${fields.order} ${fields.label}` : fields.label,
+    `Action: ${fields.action}`,
+    fields.paused ? "Paused: yes" : null,
+    `Frequency: ${fields.frequency}`,
+    `Scheduler: ${fields.scheduler}`,
+    `Start: ${fields.start}${fields.startIso ? ` (${fields.startIso})` : ""}`,
+    `End: ${fields.end}${fields.endIso ? ` (${fields.endIso})` : ""}`,
+    `Next: ${fields.next}${fields.nextIso ? ` (${fields.nextIso})` : ""}`,
+    fields.status ? `Status:\n${fields.status}` : null,
+    fields.errors ? `Errors:\n${fields.errors}` : null,
+  ];
+  return lines.filter((line): line is string => Boolean(line)).join("\n");
+}
+
 function StatusCell({
   text,
   isRunning,
   isWaiting = false,
   /** When false, clamp to a single line; when true, allow wrap (row auto-expanded). */
   allowWrap = false,
+  rowCopyText,
+  onClear,
+  clearBusy = false,
 }: {
   text: string | undefined;
   isRunning: boolean;
   isWaiting?: boolean;
   allowWrap?: boolean;
+  rowCopyText?: string;
+  onClear?: () => void;
+  clearBusy?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
 
-  if (!text) {
-    return <span className="font-mono text-[9px] text-charcoal/30">—</span>;
-  }
-
-  const isLong = text.length > 72 || text.includes("\n");
+  const isLong = Boolean(text && (text.length > 72 || text.includes("\n")));
   const emphasize = isRunning || isWaiting;
   const showFull = allowWrap || expanded;
 
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-
   return (
     <div className="min-w-0">
-      <p
-        className={`text-[9px] leading-snug ${
-          emphasize
-            ? "font-mono text-gold uppercase tracking-wide"
-            : "text-slate/80"
-        } ${
-          showFull
-            ? "break-words whitespace-pre-line"
-            : "truncate whitespace-nowrap"
-        }`}
-        title={!showFull ? text : undefined}
-      >
-        {text}
-      </p>
-      {allowWrap || isLong ? (
-        <div className="flex items-center gap-2 mt-0.5">
-          {isLong && !allowWrap ? (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="font-mono text-[8px] text-navy/40 hover:text-navy hover:underline underline-offset-1"
-            >
-              {expanded ? "less" : "more"}
-            </button>
-          ) : null}
+      {text ? (
+        <p
+          className={`text-[9px] leading-snug ${
+            emphasize
+              ? "font-mono text-gold uppercase tracking-wide"
+              : "text-slate/80"
+          } ${
+            showFull
+              ? "break-words whitespace-pre-line"
+              : "truncate whitespace-nowrap"
+          }`}
+          title={!showFull ? text : undefined}
+        >
+          {text}
+        </p>
+      ) : (
+        <span className="font-mono text-[9px] text-charcoal/30">—</span>
+      )}
+      <div className="flex items-center gap-2 mt-0.5">
+        {isLong && !allowWrap ? (
           <button
             type="button"
-            onClick={handleCopy}
-            className="font-mono text-[8px] text-charcoal/30 hover:text-navy"
-            title="Copy full status to clipboard"
+            onClick={() => setExpanded((v) => !v)}
+            className="font-mono text-[8px] text-navy/40 hover:text-navy hover:underline underline-offset-1"
           >
-            {copied ? "✓ copied" : "copy"}
+            {expanded ? "less" : "more"}
           </button>
-        </div>
-      ) : null}
+        ) : null}
+        {text && (allowWrap || isLong) ? (
+          <CopyTextButton
+            text={text}
+            title="Copy status to clipboard"
+          />
+        ) : null}
+        {rowCopyText ? (
+          <CopyTextButton
+            text={rowCopyText}
+            label="copy row"
+            title="Copy entire row to clipboard"
+          />
+        ) : null}
+        {onClear ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClear();
+            }}
+            disabled={clearBusy}
+            className="font-mono text-[8px] text-charcoal/30 hover:text-navy disabled:opacity-40"
+            title="Clear Start, End, Status, and this job's locks. Does not delete listings or cached stats."
+          >
+            {clearBusy ? "clearing…" : "clear"}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1645,6 +1719,7 @@ export default function AdminSyncTable({
       /* ignore */
     }
   }, [runTimings]);
+  const [clearingId, setClearingId] = useState<string | null>(null);
   const [syncAllSummary, setSyncAllSummary] = useState<string | null>(null);
   /** Shown under Sync all while a run is active; cleared when the run ends. */
   const [syncAllPlanNote, setSyncAllPlanNote] = useState<string | null>(null);
@@ -2432,6 +2507,71 @@ export default function AdminSyncTable({
       await executeSync(row);
     },
     [executeSync, replaceSyncQueue, clearPendingRetry],
+  );
+
+  const clearRowState = useCallback(
+    async (row: AdminSyncRow) => {
+      const actionId = row.actionId;
+      if (!actionId || clearingId) return;
+      const confirmed = window.confirm(
+        `Clear Start, End, Status, and locks for ${row.label}?\n\nDoes not delete listings or cached stats. Sync now will write a fresh run.`,
+      );
+      if (!confirmed) return;
+      setClearingId(row.id);
+      try {
+        const res = await fetch("/api/admin/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: actionId, reset: true }),
+        });
+        const body = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: string;
+        } | null;
+        if (!res.ok || body?.ok === false) {
+          setErrors((prev) => ({
+            ...prev,
+            [row.id]: body?.error ?? `Clear failed (HTTP ${res.status})`,
+          }));
+          return;
+        }
+        setErrors((prev) => ({ ...prev, [row.id]: undefined }));
+        setMessages((prev) => ({ ...prev, [row.id]: undefined }));
+        setDescriptions((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+        setFinalStatuses((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          try {
+            localStorage.setItem(
+              "admin-sync-final-statuses",
+              JSON.stringify(next),
+            );
+          } catch {
+            /* ignore */
+          }
+          return next;
+        });
+        setRunTimings((prev) => dropClientTiming(prev, row.id));
+        setRunSnapshot((prev) =>
+          prev && runLogMatchesRow(row, prev) ? null : prev,
+        );
+        clearPendingRetry(row.id);
+        await refreshStatus();
+      } catch (err) {
+        setErrors((prev) => ({
+          ...prev,
+          [row.id]:
+            err instanceof Error ? err.message : "Clear failed",
+        }));
+      } finally {
+        setClearingId(null);
+      }
+    },
+    [clearingId, clearPendingRetry, refreshStatus],
   );
 
   const executeSyncAll = useCallback(async () => {
@@ -3759,7 +3899,7 @@ export default function AdminSyncTable({
                   ) : null}
                   {isConfigure ? (
                     <td className={TD_EXPAND}>
-                      <p className="text-sm leading-snug text-slate">
+                      <p className="font-mono text-[9px] tracking-wide leading-snug text-charcoal/45">
                         {descriptionText}
                       </p>
                     </td>
@@ -4145,6 +4285,71 @@ export default function AdminSyncTable({
                             railwayInPull ||
                             eventBridgeQueuedNoEnd
                           }
+                          onClear={
+                            row.actionId
+                              ? () => void clearRowState(row)
+                              : undefined
+                          }
+                          clearBusy={clearingId === row.id}
+                          rowCopyText={formatDashboardRowCopy({
+                            order: orderLabel,
+                            label: [
+                              row.label,
+                              rowPaused ? "Paused" : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · "),
+                            action: !row.actionId
+                              ? "—"
+                              : isRunning
+                                ? "Syncing"
+                                : isWaiting
+                                  ? "Queued"
+                                  : "Sync now",
+                            paused: rowPaused,
+                            frequency: jobSchedule
+                              ? frequencyLabel(jobSchedule.frequency)
+                              : (derivedScheduleHint ?? "—"),
+                            scheduler: jobSchedule
+                              ? schedulerProviderLabel(
+                                  resolveJobScheduler(jobSchedule),
+                                )
+                              : "—",
+                            start: timing.started
+                              ? [
+                                  formatTimeOnly(timing.started),
+                                  formatAgeAgo(timing.started, nowMs),
+                                ]
+                                  .filter(
+                                    (bit) => bit && bit !== "just now",
+                                  )
+                                  .join(" · ")
+                              : "—",
+                            startIso: timing.started,
+                            end: timing.finished
+                              ? [
+                                  incrementalPriorEnd ? "Prior" : null,
+                                  formatTimeOnly(timing.finished),
+                                  formatAgeAgo(timing.finished, nowMs),
+                                ]
+                                  .filter(
+                                    (bit) => bit && bit !== "just now",
+                                  )
+                                  .join(" · ")
+                              : "—",
+                            endIso: timing.finished,
+                            next: nextRunAt
+                              ? [
+                                  formatAdminNextSyncAt(nextRunAt, now),
+                                  scheduleBreached ? "Overdue" : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")
+                              : "—",
+                            nextIso: nextRunAt,
+                            status: statusText,
+                            errors: rowError ?? hangNotice ?? null,
+                          })}
                         />
                       </td>
                       <td

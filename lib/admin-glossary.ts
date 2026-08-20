@@ -436,6 +436,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Precomputed in stats_cache for every town × For Sale|For Rental × All/Homes/Multi/Condos (plus All Towns). Formula: active count ÷ trailing 3-month average closings for that slice. Rebuilt with the stats cache; extra filters may adjust the numerator after listings load using the cached average — never recomputed as a page-blocking step.',
   },
   {
+    term: 'Clear (Sync dashboard)',
+    category: 'sync-admin',
+    definition:
+      'Operator control on a dashboard row: wipes that job’s Start, End, Status stamps, last-run summary, and its own locks so the next Sync now writes a fresh run you can watch. Does not delete listings or stats_cache payloads. Dirty-town marks stay, so a stats rebuild still has work to do. Incremental’s 36-hour lookback is unchanged.',
+  },
+  {
     term: 'refresh_in_progress / refresh lock',
     category: 'sync-admin',
     definition:

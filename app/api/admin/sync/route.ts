@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
   let statusScope: 'all' | 'active' | 'closed' | undefined
   let finalize = false
   let finalizeStep: string | undefined
+  let reset = false
   try {
     const body = (await req.json()) as {
       action?: string
@@ -130,8 +131,10 @@ export async function POST(req: NextRequest) {
       statusScope?: string
       finalize?: boolean
       finalizeStep?: string
+      reset?: boolean
     }
     action = body.action?.trim() ?? ''
+    reset = body.reset === true
     town = body.town?.trim()
     if (Array.isArray(body.towns)) {
       towns = body.towns
@@ -157,20 +160,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unknown sync action' }, { status: 400 })
   }
 
+  if (reset) {
+    if (!isAdminSyncActionId(action)) {
+      return NextResponse.json(
+        { error: 'Clear is per job — pick a row' },
+        { status: 400 },
+      )
+    }
+    const { resetAdminSyncJobState } = await import('@/lib/admin-sync-reset')
+    const result = await resetAdminSyncJobState(action)
+    return NextResponse.json({
+      ok: true,
+      reset: true,
+      action,
+      cleared: result.cleared,
+      releasedRefreshLock: result.releasedRefreshLock,
+      message: 'Dashboard row cleared — clocks and locks only',
+    })
+  }
+
   await ensureAdminListingPhotosReady()
   await ensurePostDeployFullResyncScheduled()
 
   const refresh = readListingsRefreshStatus()
   const chunkedFullResync =
     action === 'full-resync' && (Boolean(town) || finalize || Boolean(finalizeStep))
+  // Stats-cache Sync Now only queues a worker (own lock). Incremental holding
+  // the global refresh flag must not block the operator from queuing a rebuild.
   if (
     refresh.refreshing &&
     action !== 'publish-snapshot' &&
     action !== 'sync-all-caches' &&
+    action !== 'stats-cache' &&
     !chunkedFullResync
   ) {
+    const holder = refresh.refreshingKind?.trim() || 'unknown'
     return NextResponse.json(
-      { error: 'A database refresh is already in progress' },
+      {
+        error: `A database refresh is already in progress (${holder})`,
+      },
       { status: 409 },
     )
   }
