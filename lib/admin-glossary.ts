@@ -658,6 +658,24 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Always-on Node service (services/mls-sync) on Railway that pulls SmartMLS RETS and writes Neon on its own schedule (~30m) and via POST /run. Netlify is not in the pull path — the website only reads Neon End/heartbeat. Its job stops at the Neon write: the process sets `MLS_SYNC_SERVICE=1` at boot and `runIncrementalSyncListingsWork` reads that to force `postHooks: false`, so deal board / latest feeds / heroes / stats never warm inside this process no matter who asked for the run — Admin “Sync now” and the watchdog POST /run with their own `source`, and those runs stay just as lean. It instead queues a Side-work-only worker on Netlify to do that warm. Admin Configure → Incremental → Railway service. Env: MLS_SYNC_SERVICE_URL on Netlify; on Railway Variables: DATABASE_URL + RETS_* + SYNC_CRON_SECRET (+ optional MLS_SYNC_INTERVAL_MS, + NEXT_PUBLIC_SITE_URL so the warm handoff can find the site). RETS sessions close themselves — every call goes through the library’s auto-logout client, so there is no lingering login to clean up. Smoke: npm run smoke:incremental -- --mls=…. Build: Railpack + railpack.json (Node 20, npm install, skip Next) + railway.toml start/health — not a Netlify/Next deploy. If /health returns Railway’s 502 “Application failed to respond,” check deploy logs for Node OOM before assuming a bad PORT bind. Note the Admin pause / Next / “not due” gates do not apply to it: Railway counts as an explicit run and is its own clock. See Same-repo dual deploy (Netlify + Railway), Railpack, Node OOM, postHooks, Side-work-only.',
   },
   {
+    term: 'V8',
+    category: 'sync-admin',
+    definition:
+      'Google’s JavaScript engine — the part of Node that actually executes our code, the same engine inside Chrome. Not a Railway or Netlify thing: Railway is only the machine the Node process runs on, and swapping hosts does not change V8’s behaviour. It matters here because V8, not the host, sets the memory ceiling: it manages a garbage-collected “heap” for JavaScript objects with a hard cap (~512 MB–1.5 GB depending on `NODE_OPTIONS --max-old-space-size` and available RAM), and when a program needs more than the cap V8 aborts the whole process with `FATAL ERROR: … JavaScript heap out of memory` rather than slowing down. That is why loading every listing in every town into JavaScript objects to compute stats crashed mls-sync while Neon itself was fine — Postgres was happily serving the rows; V8 could not hold them. Two practical consequences: every row you SELECT costs heap (a JSONB column becomes a parsed object graph, typically several times the bytes on the wire), and aggregation done in SQL costs none of it because only the finished numbers cross into V8. See Node OOM, OOM, Postgres-side aggregation.',
+  },
+  {
+    term: 'Postgres-side aggregation',
+    category: 'sync-admin',
+    definition:
+      'Doing the counting, summing, averaging, and median work in SQL and returning only the results, instead of SELECTing rows and computing in Node. Database engines are built for exactly this: aggregates like count/sum/avg/percentile_cont are compiled C operating on the stored pages, they use indexes and parallel workers, and they never materialize the row set in V8’s heap. The stats cache originally computed everything in Node because there were only a handful of numbers over a few hundred listings; that stopped being true as towns and closed history grew, and the all-towns rollups (which read every Active and every Closed listing in the market) are what Node-OOMed the rebuild. Rule of thumb now: additive payloads (counts, price/vintage histograms, monthly closings) can be summed from the per-town payloads already in stats_cache, and non-additive ones (median price, average DOM) come from one SQL aggregate. Bespoke logic that is not set math — Goldilocks scoring, rental/sale classification heuristics — still belongs in Node; the reduction over many rows does not. See V8, Node OOM, stats_cache, Dirty town.',
+  },
+  {
+    term: 'Pool builder',
+    category: 'sync-admin',
+    definition:
+      'The step that reduces a set of listings to just the summary numbers a cached payload needs, kept separate from the step that formats the payload. A “pool” is one set of comparable values a single statistic is taken over: closed sale amounts, active list prices, DOM values, price÷sqft ratios, bed counts. The builder returns each pool as a count plus its median and mean (see MarketStatsPools in lib/stats-market-pools.ts) — never the listings themselves. Why it exists: there are two ways to fill those pools and only one right way to word and round the result. marketStatsPoolsFromListings() builds them from listings already in memory (one town), readMarketStatsPools() builds the same shape from a single Postgres aggregate over every town, and marketStatsFromPools() turns either one into the payload, including the hover explanations. That seam is what let the all-towns math move into Neon without touching a single number or tooltip on the page — and it is why market-stats:All no longer needs every listing in the market inside V8’s heap. When adding a stats value, ask which pool it summarizes and add it to the pool type; do not add a second formatter. See Postgres-side aggregation, V8, stats_cache, Seam.',
+  },
+  {
     term: 'OOM',
     category: 'sync-admin',
     definition:
@@ -680,6 +698,24 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'sync-admin',
     definition:
       'The switch on `syncIncrementalListings` that decides whether site caches warm in the same process that just pulled RETS. `true` (Netlify worker, Admin) runs the warm chain after the Neon upserts: latest town feeds, hero thumbnails, intelligence deal board, per-town stats cache. `false` stops at the Neon write and logs a `post-hooks-skip` step. It is the seam between “get the data” and “make the site fast,” and the reason the two now live in different hosts: Railway mls-sync sets it false so its heap only ever holds the pull, which is what ended the Node OOM crash loop. Netlify’s ≤30s scheduled fallback also sets it false for a different reason — no time. See Railway mls-sync, Node OOM, Side-work-only, Seam.',
+  },
+  {
+    term: 'Dirty town',
+    category: 'sync-admin',
+    definition:
+      'A town whose stats payloads are known to be out of date because an MLS write actually moved a number a dashboard reads. The incremental upsert compares the fields stats are built from — price, MLS status, status bucket, close price, close date, list date, DOM — and only a change there marks the town (`stats_dirty:<Town>` in sync_meta). Photo, remark, and agent-detail churn does not: the modified-since window re-fetches the same rows every cycle, and rebuilding on that is what put a heavy job on a schedule it never needed. Replaces the hourly TTL rebuild. See 24h stats backstop, stats_cache, DOM.',
+  },
+  {
+    term: '24h stats backstop',
+    category: 'sync-admin',
+    definition:
+      'Safety net for the dirty-town model: any town whose last successful rebuild (`stats_built:<Town>`) is over 24 hours old is rebuilt even with no marks. In practice it rarely fires, because DOM is one of the compared fields and the MLS increments it daily for every live listing — so a town with inventory marks itself once a day. The backstop covers the quiet case (no inventory, no writes) and a town that has never been built. See Dirty town.',
+  },
+  {
+    term: 'Unfinished-start cooldown',
+    category: 'sync-admin',
+    definition:
+      'Railway guard: when `last_stats_cache_started` has no later `last_stats_cache`, the previous rebuild died mid-flight — and an OOM takes the whole container, so nothing in memory survives to remember it. The sweep then waits 30 minutes before trying again. Without it, a fatal rebuild relaunches on every boot (every ~2.5 min during a crash loop) and starves the incremental pull. See OOM, Dirty town.',
   },
   {
     term: 'Side-work-only',

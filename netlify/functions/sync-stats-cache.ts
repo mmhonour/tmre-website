@@ -50,6 +50,13 @@ export default async function handler() {
      */
     const skipReason = await reasonToSkipStatsCacheRebuild()
     if (skipReason) return thinCronSkipped(skipReason)
+    // Don't spend a background invocation when no town changed — that hop is
+    // exactly what Netlify started refusing with HTTP 429.
+    const { statsTownsDueForRebuild } = await import('../../lib/stats-dirty-towns')
+    const due = await statsTownsDueForRebuild()
+    if (due.towns.length === 0) {
+      return thinCronSkipped('no dirty towns — nothing to rebuild')
+    }
     if (await isStatsCacheQueueBackedOff()) {
       return thinCronSkipped(
         'skipped — Netlify rate limited (HTTP 429), waiting to retry',

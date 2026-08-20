@@ -719,6 +719,10 @@ export type PanelStatus = {
     steps: { at: string; step: string; detail?: string }[];
   } | null;
   incrementalStepLogText?: string | null;
+  /** Last stats rebuild: which towns, why, entries written, how long ago. */
+  statsCacheLastRunStatus?: string | null;
+  /** Towns waiting on a rebuild (dirty / 24h backstop), or "all current". */
+  statsCacheQueueStatus?: string | null;
   latestFeedGeneratedAt?: string | null;
   latestFeedNewestMls?: string | null;
   latestFeedRowCount?: number | null;
@@ -3453,6 +3457,20 @@ export default function AdminSyncTable({
                     idleBits.push("overdue vs Netlify schedule");
                   }
                   return idleBits.join("\n");
+                }
+                /**
+                 * Stats cache rebuilds per dirty town, so Start/End alone hide
+                 * the two things the operator needs: what the last run covered
+                 * and what is still waiting.
+                 */
+                if (row.id === "stats-cache") {
+                  const lastRun =
+                    status?.statsCacheLastRunStatus?.trim() ||
+                    descriptions[row.id] ||
+                    finalStatuses[row.id] ||
+                    statusTextFromRunLog(row, runSnapshot);
+                  const queue = status?.statsCacheQueueStatus?.trim();
+                  return [lastRun, queue].filter(Boolean).join("\n");
                 }
                 const prior =
                   descriptions[row.id] ??

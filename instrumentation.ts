@@ -22,7 +22,9 @@ export async function register() {
   try {
     const { syncListingsSmart, syncIncrementalListings, syncAllTownListings } =
       await import('./lib/listings-sync')
-    const { rebuildStatsCacheIfStale, STATS_CACHE_TTL_MS } = await import('./lib/stats-cache')
+    const { rebuildStatsCacheIfStale, STATS_CACHE_SWEEP_MS } = await import(
+      './lib/stats-cache'
+    )
     const { LATEST_DB_REFRESH_MS } = await import('./lib/latest-refresh')
     const { hasLocalListingsCache } = await import('./lib/listings-store')
     const { getSyncMeta } = await import('./lib/db/sync-meta-store')
@@ -204,7 +206,7 @@ export async function register() {
     }
 
     const statsRefreshMs = Number(
-      process.env.STATS_CACHE_REFRESH_MS ?? String(STATS_CACHE_TTL_MS),
+      process.env.STATS_CACHE_REFRESH_MS ?? String(STATS_CACHE_SWEEP_MS),
     )
     if (Number.isFinite(statsRefreshMs) && statsRefreshMs >= 60_000) {
       const refreshStats = async () => {
@@ -223,15 +225,17 @@ export async function register() {
          * On Netlify the always-on Railway process owns this rebuild.
          */
         if (isServerlessRuntime()) return
-        // Stale-only: skip when last_stats_cache is within TTL (upsert rebuild, no wipe).
-        void rebuildStatsCacheIfStale(false).catch((err) => {
-          console.error('[stats-cache/instrumentation]', err)
-        })
+        // Dirty-driven: rebuilds the towns the sync flagged, else does nothing.
+        void rebuildStatsCacheIfStale(false, { trigger: 'local-sweep' }).catch(
+          (err) => {
+            console.error('[stats-cache/instrumentation]', err)
+          },
+        )
       }
       setTimeout(refreshStats, 20_000)
       setInterval(refreshStats, statsRefreshMs)
       console.info(
-        `[stats-cache] refresh scheduled every ${Math.round(statsRefreshMs / 60_000)} minutes`,
+        `[stats-cache] dirty-town sweep every ${Math.round(statsRefreshMs / 60_000)} minutes`,
       )
     }
 

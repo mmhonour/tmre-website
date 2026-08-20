@@ -996,7 +996,11 @@ async function runAdminSyncActionImpl(
           detail: queued.error ?? 'Could not reach background worker',
         }
       }
-      const result = await rebuildStatsCache({ trackRefresh: true, force: true })
+      const result = await rebuildStatsCache({
+        trackRefresh: true,
+        force: true,
+        trigger: 'admin-sync-now',
+      })
       const finishedAt = new Date().toISOString()
       if (result.skipped) {
         const why =
@@ -1578,6 +1582,27 @@ export async function readAdminSyncPanelStatus() {
   const visionAddressesLiveStatus =
     formatVisionAddressesLiveProgress(visionAddressesLive)
 
+  // Stats cache rebuilds per dirty town now, so the operator needs to see which
+  // towns went and why — Start/End alone cannot say that.
+  let statsCacheLastRunStatus: string | null = null
+  let statsCacheQueueStatus: string | null = null
+  try {
+    const {
+      formatStatsCacheLastRun,
+      formatStatsTownQueue,
+      readStatsCacheLastRun,
+      readStatsTownStatuses,
+    } = await import('@/lib/stats-dirty-towns')
+    const [lastRun, townStatuses] = await Promise.all([
+      readStatsCacheLastRun(),
+      readStatsTownStatuses(),
+    ])
+    statsCacheLastRunStatus = formatStatsCacheLastRun(lastRun)
+    statsCacheQueueStatus = formatStatsTownQueue(townStatuses)
+  } catch (err) {
+    console.error('[admin-sync] stats cache dirty-town read failed', err)
+  }
+
   return {
     stats,
     refresh,
@@ -1601,5 +1626,7 @@ export async function readAdminSyncPanelStatus() {
     incrementalUpsertHistory,
     visionAddressesLive,
     visionAddressesLiveStatus,
+    statsCacheLastRunStatus,
+    statsCacheQueueStatus,
   }
 }

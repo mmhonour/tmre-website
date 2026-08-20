@@ -1,10 +1,10 @@
 import {
   listingRowId,
-  readAllListingsFromDb,
   readListingScoresByIds,
   readListingsDbStats,
-  readListingsFromDb,
+  readStatsListingsFromDb,
 } from '@/lib/db/listings-repo'
+import { readMarketStatsPools } from '@/lib/db/stats-aggregates-repo'
 import {
   deleteSyncMetaDurable,
   getSyncMeta,
@@ -30,16 +30,31 @@ import {
   computeSalesByPrice,
   computeSalesByVintage,
   computeWentToContractThisWeekCounts,
+  marketStatsFromPools,
+  rollupActiveByPrice,
+  rollupActiveBySegmentPrice,
+  rollupAvgScoreByVintage,
+  rollupSalesByPrice,
+  rollupSalesByVintage,
   statsCacheKey,
   type ActiveByMonthByTownPayload,
+  type ActiveByPricePayload,
+  type ActiveBySegmentPricePayload,
   type AvgScoreByVintageByTownPayload,
   type AvgScoreByVintagePayload,
   type SalesByMonthByTownPayload,
+  type SalesByPricePayload,
+  type SalesByVintagePayload,
   type StatsCacheScope,
 } from '@/lib/stats-compute'
-import { listingToStatsRow, type StatsListingRow } from '@/lib/stats-listing-rows'
+import {
+  listingToStatsRow,
+  STATS_CLOSED_PERIOD_START,
+  type StatsListingRow,
+} from '@/lib/stats-listing-rows'
 import { STATS_MONTH_CHART_START_YEAR, statsMonthChartYears } from '@/lib/stats-month-years'
 import type { Listing } from '@/lib/rets'
+import type { StatsRebuildReason } from '@/lib/stats-dirty-towns'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 import { rebuildIntelligenceTownSnapshots } from '@/lib/intelligence-town-snapshot'
 import { refreshInterestingStat } from '@/lib/interesting-stat'
@@ -51,8 +66,9 @@ import {
 import { INVENTORY_SEGMENT_IDS } from '@/lib/inventory-segment-bands-shared'
 import type { PriceBucketDef } from '@/lib/price-buckets-shared'
 import {
+  finalizeMonthsSupplyCache,
   MONTHS_SUPPLY_INDEX_KEY,
-  rebuildMonthsSupplyCache,
+  writeMonthsSupplyForTown,
 } from '@/lib/months-supply-cache'
 import { rebuildMarketPulseClosedCache } from '@/lib/market-pulse-closed-cache'
 import {
@@ -60,8 +76,17 @@ import {
   type TableWriteStats,
 } from '@/lib/sqlite-sync-stats'
 
-/** Stats payloads are refreshed on this interval (1 hour). */
+/**
+ * Age at which a payload is *reported* old (Stats API meta, Admin readouts).
+ * Rebuilds are driven by dirty towns (lib/stats-dirty-towns.ts), not by this.
+ */
 export const STATS_CACHE_TTL_MS = 60 * 60 * 1000
+
+/**
+ * How often a host checks for dirty towns. The check is one small sync_meta
+ * read; it only turns into work when the incremental sync marked something.
+ */
+export const STATS_CACHE_SWEEP_MS = 10 * 60 * 1000
 
 /** sync_meta key — ISO start time while a stats_cache rebuild holds the lock. */
 export const STATS_CACHE_REBUILD_LOCK_KEY = 'stats_cache_rebuild_lock'
@@ -326,6 +351,10 @@ export function getStatsCacheAgeMs(): number | null {
   return Date.now() - ms
 }
 
+/**
+ * Age-only signal, kept for the "cache age" readouts (Stats API meta, Admin).
+ * No longer a rebuild trigger — rebuilds follow dirty towns, not the clock.
+ */
 export function isStatsCacheStale(): boolean {
   const age = getStatsCacheAgeMs()
   if (age == null) return true
@@ -480,7 +509,8 @@ export async function rebuildAvgScoreByVintageCache(): Promise<{
   }
 
   for (const town of TMRE_TOWNS) {
-    const active = await readListingsFromDb(town, 'Active', 500)
+    // Uncapped: All is rolled up from these town payloads.
+    const active = await readStatsListingsFromDb(town, 'Active')
     const scoredActive = await scoredActiveRows(active)
     for (const kind of LISTING_KINDS) {
       const payload = computeAvgScoreByVintage(scoredActive, town, kind)
@@ -493,16 +523,16 @@ export async function rebuildAvgScoreByVintageCache(): Promise<{
     }
   }
 
-  const allActive = await readAllListingsFromDb(TMRE_TOWNS, 'Active')
-  const allScored = await scoredActiveRows(allActive)
   for (const kind of LISTING_KINDS) {
     await writeStatsCache('avg-score-by-vintage-by-town', 'All', kind, {
       kind,
       towns: byTown[kind],
       generatedAt,
     })
+    // Counts and weighted averages combine, so All comes from the town payloads
+    // just computed — no second pass over every Active listing in the market.
     await writeStatsCache('avg-score-by-vintage', 'All', kind, {
-      ...computeAvgScoreByVintage(allScored, 'All', kind),
+      ...rollupAvgScoreByVintage(Object.values(byTown[kind]), 'All', kind),
       generatedAt,
     })
     written += 2
@@ -593,8 +623,6 @@ export function computeTownBundleFromListings(
     medianListings: buildMedianListingRows(closed, town, kind),
   }
 }
-
-type TownListingsMap = Record<TmreTown, { active: Listing[]; closed: Listing[] }>
 
 /** Upsert market scopes for one town; optionally fill by-town bundle maps. */
 type InventorySegmentForCache = {
@@ -772,62 +800,129 @@ async function refreshByTownBundlesFromTownCaches(generatedAt: string): Promise<
   )
 }
 
+/**
+ * Every town's cached payload for one scope + kind.
+ *
+ * Towns not rebuilt this cycle still have their previous row (stats_cache is
+ * upserted, never wiped), so a per-town rebuild can still roll up a complete
+ * All. A town missing entirely means the cache was never built for it, which
+ * statsCacheMissingRequiredEntries() escalates to a full rebuild — log it and
+ * roll up what exists rather than blocking the write.
+ */
+async function collectTownPayloads<T>(
+  scope: StatsCacheScope,
+  kind: ListingKind,
+): Promise<T[]> {
+  const parts: T[] = []
+  const missing: string[] = []
+  for (const town of TMRE_TOWNS) {
+    const payload = await readCachedJsonPayload<T>(statsCacheKey(scope, town, kind))
+    if (payload) parts.push(payload)
+    else missing.push(town)
+  }
+  if (missing.length > 0) {
+    console.warn(
+      `[stats-cache] ${scope}:All:${kind} rolled up without ${missing.join(', ')} — no cached payload`,
+    )
+  }
+  return parts
+}
+
+/**
+ * Write the All-towns payloads.
+ *
+ * Nothing here reads listings. The additive payloads are summed from the
+ * per-town rows this rebuild just wrote, and the one non-additive payload
+ * (market-stats, which carries a median and three means) comes from a single
+ * Postgres aggregate. Loading every Active and Closed listing in the market to
+ * reduce them in Node is what exhausted V8's heap on Railway; that cost grew
+ * with the market and did not belong in the process either way.
+ */
 async function writeAllAggregateStats(
   generatedAt: string,
-  saleBuckets: readonly PriceBucketDef[],
   inventorySegments: readonly InventorySegmentForCache[],
 ): Promise<number> {
   let written = 0
-  const [allClosed, allActive] = await Promise.all([
-    readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
-    readAllListingsFromDb(TMRE_TOWNS, 'Active'),
-  ])
-  const allScoredActive = await scoredActiveRows(allActive)
+  const periodEndYear = new Date().getFullYear()
+
   for (const kind of LISTING_KINDS) {
     // All-towns market stats: the only source for the Market Pulse avg-DOM
     // "All towns" bar (lib/market-digest.ts reads market-stats:All:{kind}).
+    const pools = await readMarketStatsPools({
+      towns: TMRE_TOWNS,
+      kind,
+      periodStartYear: STATS_CLOSED_PERIOD_START,
+      periodEndYear,
+    })
     await writeStatsCache('market-stats', 'All', kind, {
-      ...computeMarketStats(allActive, 'All', kind, allClosed),
+      ...marketStatsFromPools(pools, 'All', kind),
       generatedAt,
     })
     written += 1
 
-    await writeStatsCache('sales-by-vintage', 'All', kind, {
-      ...computeSalesByVintage(allClosed, 'All', kind),
-      generatedAt,
-    })
-    await writeStatsCache('sales-by-price', 'All', kind, {
-      ...computeSalesByPrice(allClosed, 'All', kind, saleBuckets),
-      generatedAt,
-    })
-    await writeStatsCache('active-by-price', 'All', kind, {
-      ...computeActiveByPrice(allActive, 'All', kind, saleBuckets),
-      generatedAt,
-    })
+    const vintageParts = await collectTownPayloads<SalesByVintagePayload>(
+      'sales-by-vintage',
+      kind,
+    )
+    if (vintageParts.length > 0) {
+      await writeStatsCache('sales-by-vintage', 'All', kind, {
+        ...rollupSalesByVintage(vintageParts, 'All', kind),
+        generatedAt,
+      })
+      written += 1
+    }
+
+    const salesPriceParts = await collectTownPayloads<SalesByPricePayload>(
+      'sales-by-price',
+      kind,
+    )
+    if (salesPriceParts.length > 0) {
+      await writeStatsCache('sales-by-price', 'All', kind, {
+        ...rollupSalesByPrice(salesPriceParts, 'All', kind),
+        generatedAt,
+      })
+      written += 1
+    }
+
+    const activePriceParts = await collectTownPayloads<ActiveByPricePayload>(
+      'active-by-price',
+      kind,
+    )
+    if (activePriceParts.length > 0) {
+      await writeStatsCache('active-by-price', 'All', kind, {
+        ...rollupActiveByPrice(activePriceParts, 'All', kind),
+        generatedAt,
+      })
+      written += 1
+    }
+
     if (kind === 'sale') {
       for (const segment of inventorySegments) {
-        await writeStatsCache(
-          inventorySegmentStatsScope(segment.id),
-          'All',
+        const scope = inventorySegmentStatsScope(segment.id)
+        const segmentParts = await collectTownPayloads<ActiveBySegmentPricePayload>(
+          scope,
           'sale',
-          {
-            ...computeActiveBySegmentPrice(
-              allActive,
-              'All',
-              segment,
-              saleBuckets,
-            ),
-            generatedAt,
-          },
         )
+        if (segmentParts.length === 0) continue
+        await writeStatsCache(scope, 'All', 'sale', {
+          ...rollupActiveBySegmentPrice(segmentParts, 'All'),
+          generatedAt,
+        })
         written += 1
       }
     }
-    await writeStatsCache('avg-score-by-vintage', 'All', kind, {
-      ...computeAvgScoreByVintage(allScoredActive, 'All', kind),
-      generatedAt,
-    })
-    written += 4
+
+    const scoreParts = await collectTownPayloads<AvgScoreByVintagePayload>(
+      'avg-score-by-vintage',
+      kind,
+    )
+    if (scoreParts.length > 0) {
+      await writeStatsCache('avg-score-by-vintage', 'All', kind, {
+        ...rollupAvgScoreByVintage(scoreParts, 'All', kind),
+        generatedAt,
+      })
+      written += 1
+    }
   }
   return written
 }
@@ -841,13 +936,61 @@ export type RebuildStatsResult = {
   skipReason?: RebuildStatsSkipReason
 }
 
+export type RebuildStatsOptions = {
+  trackRefresh?: boolean
+  force?: boolean
+  /** What asked for this rebuild — shown in Admin → Syncs. */
+  trigger?: string
+  /** Per-town reason from the dirty sweep, for the same panel. */
+  reasons?: Record<string, StatsRebuildReason>
+}
+
+/**
+ * Consume the dirty marks this rebuild covered and publish the "what ran and
+ * why" line the Sync dashboard reads. Best-effort: bookkeeping must never fail
+ * a rebuild that already wrote its payloads.
+ */
+async function finishStatsCacheRun(args: {
+  towns: readonly TmreTown[]
+  /** Rebuild start — marks newer than this stay dirty for the next sweep. */
+  consumedThrough: string
+  written: number
+  durationMs: number
+  trigger: string
+  reasons?: Record<string, StatsRebuildReason>
+  error?: string
+}): Promise<void> {
+  try {
+    const { clearStatsTownsDirty, recordStatsCacheRun } = await import(
+      '@/lib/stats-dirty-towns'
+    )
+    const at = new Date().toISOString()
+    const ok = args.written > 0 && !args.error
+    if (ok) {
+      await clearStatsTownsDirty(args.towns, args.consumedThrough, at)
+    }
+    await recordStatsCacheRun({
+      at,
+      towns: [...args.towns],
+      trigger: args.trigger,
+      reasons: args.reasons,
+      written: args.written,
+      durationMs: args.durationMs,
+      ok,
+      error: args.error,
+    })
+  } catch (err) {
+    console.error('[stats-cache] run bookkeeping failed', err)
+  }
+}
+
 /**
  * Recompute Stats API payloads from listings and upsert into stats_cache.
  * Does not clear existing rows — failed mid-rebuild leaves prior payloads intact.
  * Pass `force: true` (admin / worker heal) to steal a stuck rebuild lock immediately.
  */
 export async function rebuildStatsCache(
-  options: { trackRefresh?: boolean; force?: boolean } = {},
+  options: RebuildStatsOptions = {},
 ): Promise<RebuildStatsResult> {
   const trackRefresh = options.trackRefresh !== false
   const lockToken = await acquireStatsCacheRebuildLock(options.force === true)
@@ -889,18 +1032,19 @@ export async function rebuildStatsCache(
     const salesByMonthByTown = emptyKindTownMonthData()
     const activeByMonthByTown = emptyKindTownActiveMonthData()
     const avgScoreByVintageByTown = emptyKindTownAvgScoreData()
-    const townListingsForMonthsSupply = {} as TownListingsMap
 
     for (const town of TMRE_TOWNS) {
-      // Closed: no price-DESC cap. Norwalk alone has ~5k closed; a 2500
+      // No price-DESC caps here. Norwalk alone has ~5k closed; a 2500
       // high-price sample dropped nearly all recent mid-market closings and
-      // inflated months-supply (e.g. June 2026 ≈ 174).
+      // inflated months-supply (e.g. June 2026 ≈ 174). Active is uncapped for
+      // the same reason plus a new one: the All-towns payloads are now the sum
+      // of these town payloads, so a 500-row cap would quietly shrink the whole
+      // market's inventory count once a town outgrew it.
       const [active, closed, expired] = await Promise.all([
-        readListingsFromDb(town, 'Active', 500),
-        readListingsFromDb(town, 'Closed'),
-        readListingsFromDb(town, 'Expired'),
+        readStatsListingsFromDb(town, 'Active'),
+        readStatsListingsFromDb(town, 'Closed'),
+        readStatsListingsFromDb(town, 'Expired'),
       ])
-      townListingsForMonthsSupply[town] = { active, closed }
       written += await writeTownMarketStats(
         town,
         active,
@@ -915,6 +1059,9 @@ export async function rebuildStatsCache(
         },
         expired,
       )
+      // While this town's listings are hot — nothing is retained past the
+      // iteration, so peak heap is one town, not the whole market.
+      written += await writeMonthsSupplyForTown(town, active, closed, generatedAt)
     }
 
     written += await writeByTownBundles(
@@ -923,16 +1070,10 @@ export async function rebuildStatsCache(
       avgScoreByVintageByTown,
       generatedAt,
     )
-    written += await writeAllAggregateStats(
-      generatedAt,
-      saleBuckets,
-      inventorySegments,
-    )
+    written += await writeAllAggregateStats(generatedAt, inventorySegments)
 
     try {
-      const ms = await rebuildMonthsSupplyCache({
-        townListings: townListingsForMonthsSupply,
-      })
+      const ms = await finalizeMonthsSupplyCache(generatedAt)
       written += ms.written
     } catch (err) {
       console.error('[stats-cache] months-supply rebuild failed', err)
@@ -995,6 +1136,15 @@ export async function rebuildStatsCache(
       await setSyncMetaDurable('last_stats_cache', generatedAt)
     }
 
+    await finishStatsCacheRun({
+      towns: TMRE_TOWNS,
+      consumedThrough: startedAt,
+      written,
+      durationMs: Date.now() - t0,
+      trigger: options.trigger ?? 'all-towns',
+      reasons: options.reasons,
+    })
+
     return { written, durationMs: Date.now() - t0 }
   } finally {
     stopHeartbeat()
@@ -1009,7 +1159,7 @@ export async function rebuildStatsCache(
  */
 export async function rebuildStatsCacheForTowns(
   towns: readonly TmreTown[],
-  options: { trackRefresh?: boolean; force?: boolean } = {},
+  options: RebuildStatsOptions = {},
 ): Promise<RebuildStatsResult> {
   const unique = [...new Set(towns)]
   if (unique.length === 0) {
@@ -1055,15 +1205,13 @@ export async function rebuildStatsCacheForTowns(
           steps: s.steps.filter((b) => !b.hidden),
         }
       })
-    const townListingsForMonthsSupply = {} as TownListingsMap
-
     for (const town of unique) {
+      // Uncapped for the same reason as the full path: All is summed from these.
       const [active, closed, expired] = await Promise.all([
-        readListingsFromDb(town, 'Active', 500),
-        readListingsFromDb(town, 'Closed'),
-        readListingsFromDb(town, 'Expired'),
+        readStatsListingsFromDb(town, 'Active'),
+        readStatsListingsFromDb(town, 'Closed'),
+        readStatsListingsFromDb(town, 'Expired'),
       ])
-      townListingsForMonthsSupply[town] = { active, closed }
       written += await writeTownMarketStats(
         town,
         active,
@@ -1074,19 +1222,16 @@ export async function rebuildStatsCacheForTowns(
         undefined,
         expired,
       )
+      written += await writeMonthsSupplyForTown(town, active, closed, generatedAt)
     }
 
     written += await refreshByTownBundlesFromTownCaches(generatedAt)
-    written += await writeAllAggregateStats(
-      generatedAt,
-      saleBuckets,
-      inventorySegments,
-    )
+    written += await writeAllAggregateStats(generatedAt, inventorySegments)
 
     try {
-      const ms = await rebuildMonthsSupplyCache({
-        townListings: townListingsForMonthsSupply,
-      })
+      // The dirty towns were recomputed in the loop above; untouched towns keep
+      // their cached rows, and All is summed from all of them.
+      const ms = await finalizeMonthsSupplyCache(generatedAt)
       written += ms.written
     } catch (err) {
       console.error('[stats-cache] months-supply rebuild failed (per-town)', err)
@@ -1154,6 +1299,15 @@ export async function rebuildStatsCacheForTowns(
       await setSyncMetaDurable('last_stats_cache', generatedAt)
     }
 
+    await finishStatsCacheRun({
+      towns: unique,
+      consumedThrough: startedAt,
+      written,
+      durationMs: Date.now() - t0,
+      trigger: options.trigger ?? 'per-town',
+      reasons: options.reasons,
+    })
+
     return { written, durationMs: Date.now() - t0 }
   } finally {
     stopHeartbeat()
@@ -1170,18 +1324,44 @@ export async function rebuildStatsCacheForTown(
   return rebuildStatsCacheForTowns([town], options)
 }
 
-/** Rebuild stats cache when missing or older than STATS_CACHE_TTL_MS. */
-export async function rebuildStatsCacheIfStale(force = false): Promise<RebuildStatsResult> {
+/**
+ * Rebuild whatever is out of date: towns the sync marked dirty, towns past the
+ * 24h backstop, and the whole cache when required payloads are missing.
+ *
+ * `force: true` still rebuilds everything — that is the Admin button and the
+ * cache-miss self-heal in the Stats API routes. What is gone is the clock: a
+ * cache where no number moved is no longer "stale" just because an hour passed.
+ */
+export async function rebuildStatsCacheIfStale(
+  force = false,
+  options: Omit<RebuildStatsOptions, 'force'> = {},
+): Promise<RebuildStatsResult> {
   if (!(await hasLocalListingsCache())) {
     return { written: 0, durationMs: 0, skipped: true, skipReason: 'no-listings' }
   }
-  if (!force && !isStatsCacheStale() && !(await statsCacheMissingRequiredEntries())) {
-    const { statsCacheEntries } = await readListingsDbStats()
-    if (statsCacheEntries > 0) {
-      return { written: 0, durationMs: 0, skipped: true, skipReason: 'not-stale' }
-    }
+  if (force) {
+    return rebuildStatsCache({ ...options, force: true, trigger: options.trigger ?? 'forced' })
   }
-  return rebuildStatsCache({ force })
+
+  // Missing required keys is a broken cache, not a dirty town: rebuild all.
+  if (await statsCacheMissingRequiredEntries()) {
+    return rebuildStatsCache({ ...options, trigger: options.trigger ?? 'missing-entries' })
+  }
+  const { statsCacheEntries } = await readListingsDbStats()
+  if (statsCacheEntries === 0) {
+    return rebuildStatsCache({ ...options, trigger: options.trigger ?? 'empty-cache' })
+  }
+
+  const { statsTownsDueForRebuild } = await import('@/lib/stats-dirty-towns')
+  const { towns, reasons } = await statsTownsDueForRebuild()
+  if (towns.length === 0) {
+    return { written: 0, durationMs: 0, skipped: true, skipReason: 'not-stale' }
+  }
+  return rebuildStatsCacheForTowns(towns, {
+    ...options,
+    reasons,
+    trigger: options.trigger ?? 'dirty-towns',
+  })
 }
 
 /** Queue a stats cache rebuild without blocking the current request. */
@@ -1191,10 +1371,6 @@ export function scheduleStatsCacheRebuildIfStale(force = false): void {
   void (async () => {
     try {
       if (!(await hasLocalListingsCache())) return
-      if (!force && !isStatsCacheStale() && !(await statsCacheMissingRequiredEntries())) {
-        const { statsCacheEntries } = await readListingsDbStats()
-        if (statsCacheEntries > 0) return
-      }
       await rebuildStatsCacheIfStale(force)
     } catch (err) {
       console.error('[stats-cache] background rebuild failed', err)

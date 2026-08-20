@@ -31,6 +31,7 @@ import {
   STATS_CLOSED_PERIOD_START,
 } from '@/lib/stats-listing-rows'
 import { statsMonthChartYears } from '@/lib/stats-month-years'
+import type { MarketStatsPools } from '@/lib/stats-market-pools'
 import type { Listing } from '@/lib/rets'
 
 function closedKindPrice(l: Listing, kind: ListingKind): number | null {
@@ -202,16 +203,16 @@ function medianPriceCalcFor(
   city: string,
   kind: ListingKind,
   medianPrice: number | null,
-  closedPrices: number[],
-  activePrices: number[],
+  closedPriceCount: number,
+  activePriceCount: number,
   activeCount: number,
 ): StatsValueCalc | undefined {
   if (medianPrice == null) return undefined
   const period = periodLabel()
   const closedNoun =
     kind === 'rental' ? 'closed lease rents' : 'closed sale prices'
-  if (closedPrices.length > 0) {
-    const n = closedPrices.length
+  if (closedPriceCount > 0) {
+    const n = closedPriceCount
     return {
       summary: `Median of ${n.toLocaleString()} ${closedNoun} in ${city} (${period}).`,
       detail: [
@@ -229,7 +230,7 @@ function medianPriceCalcFor(
       },
     }
   }
-  const n = activePrices.length
+  const n = activePriceCount
   if (n === 0) return undefined
   return {
     summary: `Median of ${n.toLocaleString()} active list prices in ${city} (fallback — no closed prices in ${period}).`,
@@ -248,12 +249,18 @@ function medianPriceCalcFor(
   }
 }
 
-export function computeMarketStats(
+/**
+ * Reduce listings to the pools a market-stats payload needs.
+ *
+ * Only meaningful for a scope small enough to hold in memory — one town. The
+ * all-towns pools come from a single Postgres aggregate instead
+ * (readMarketStatsPools), which is why this returns pools rather than a payload.
+ */
+export function marketStatsPoolsFromListings(
   activeListings: Listing[],
-  city: string,
   kind: ListingKind,
   closedListings: Listing[] = [],
-): MarketStatsPayload {
+): MarketStatsPools {
   const filteredActive = filterListingsByKind(activeListings, kind)
   const closedInPeriod = filterListingsByKind(closedListings, kind).filter((l) =>
     inStatsClosedPeriod(closedListingTimestamp(l)),
@@ -274,12 +281,39 @@ export function computeMarketStats(
       : []
   const beds = filteredActive.map((l) => l.beds).filter((b): b is number => b != null && b > 0)
 
-  const medianPrice = median(closedPrices) ?? median(activePrices)
-  const pricePool = closedPrices.length > 0 ? closedPrices : activePrices
-  const averagePrice = mean(pricePool)
-  const avgDaysOnMarket = mean(doms)
-  const avgPricePerSqft = kind === 'sale' ? mean(ppsf) : null
-  const activeCount = filteredActive.length
+  return {
+    activeCount: filteredActive.length,
+    closedPriceCount: closedPrices.length,
+    closedPriceMedian: median(closedPrices),
+    closedPriceMean: mean(closedPrices),
+    activePriceCount: activePrices.length,
+    activePriceMedian: median(activePrices),
+    activePriceMean: mean(activePrices),
+    domCount: doms.length,
+    domMean: mean(doms),
+    ppsfCount: ppsf.length,
+    ppsfMean: mean(ppsf),
+    bedsMean: mean(beds),
+  }
+}
+
+/**
+ * Build the cached payload from pool summaries — the single formatter for both
+ * the per-town (in-memory) and all-towns (SQL aggregate) paths, so the two can
+ * never drift in wording or rounding.
+ */
+export function marketStatsFromPools(
+  pools: MarketStatsPools,
+  city: string,
+  kind: ListingKind,
+): MarketStatsPayload {
+  const hasClosed = pools.closedPriceCount > 0
+  const medianPrice = hasClosed ? pools.closedPriceMedian : pools.activePriceMedian
+  const averagePrice = hasClosed ? pools.closedPriceMean : pools.activePriceMean
+  const pricePoolSize = hasClosed ? pools.closedPriceCount : pools.activePriceCount
+  const avgDaysOnMarket = pools.domMean
+  const avgPricePerSqft = kind === 'sale' ? pools.ppsfMean : null
+  const activeCount = pools.activeCount
 
   return {
     city,
@@ -290,8 +324,8 @@ export function computeMarketStats(
       city,
       kind,
       medianPrice,
-      closedPrices,
-      activePrices,
+      pools.closedPriceCount,
+      pools.activePriceCount,
       activeCount,
     ),
     averagePrice,
@@ -299,21 +333,18 @@ export function computeMarketStats(
       averagePrice != null
         ? {
             summary: `Mean ${
-              closedPrices.length > 0 ? 'close' : 'list'
-            } price across ${pricePool.length.toLocaleString()} ${
+              hasClosed ? 'close' : 'list'
+            } price across ${pricePoolSize.toLocaleString()} ${
               kind === 'rental' ? 'rentals' : 'listings'
             } in ${city}.`,
             detail: [
-              closedPrices.length > 0
+              hasClosed
                 ? 'Same closed-period pool as median price (mean instead of median).'
                 : 'No closed prices in period — mean of active list prices.',
             ],
             inputs: {
-              source:
-                closedPrices.length > 0
-                  ? 'closed-price-mean'
-                  : 'active-list-price-mean',
-              sampleSize: pricePool.length,
+              source: hasClosed ? 'closed-price-mean' : 'active-list-price-mean',
+              sampleSize: pricePoolSize,
               city,
               kind,
               averagePrice,
@@ -324,15 +355,15 @@ export function computeMarketStats(
     avgDaysOnMarketCalc:
       avgDaysOnMarket != null
         ? {
-            summary: `Mean Days on Market across ${doms.length.toLocaleString()} active ${
+            summary: `Mean Days on Market across ${pools.domCount.toLocaleString()} active ${
               kind === 'rental' ? 'rentals' : 'listings'
             } in ${city} with a non-null DOM.`,
             detail: [
-              `Sum of DOM ÷ ${doms.length.toLocaleString()} (active ${kind} only; closed sales are excluded).`,
+              `Sum of DOM ÷ ${pools.domCount.toLocaleString()} (active ${kind} only; closed sales are excluded).`,
             ],
             inputs: {
               source: 'active-dom-mean',
-              sampleSize: doms.length,
+              sampleSize: pools.domCount,
               city,
               kind,
               avgDaysOnMarket,
@@ -343,20 +374,33 @@ export function computeMarketStats(
     avgPricePerSqftCalc:
       avgPricePerSqft != null
         ? {
-            summary: `Mean list $/sqft across ${ppsf.length.toLocaleString()} active sales in ${city} with price and sqft > 0.`,
+            summary: `Mean list $/sqft across ${pools.ppsfCount.toLocaleString()} active sales in ${city} with price and sqft > 0.`,
             detail: ['Each listing contributes price ÷ living area; then average those ratios.'],
             inputs: {
               source: 'active-ppsf-mean',
-              sampleSize: ppsf.length,
+              sampleSize: pools.ppsfCount,
               city,
               kind,
               avgPricePerSqft,
             },
           }
         : undefined,
-    avgBeds: mean(beds),
+    avgBeds: pools.bedsMean,
     sampleSize: activeCount,
   }
+}
+
+export function computeMarketStats(
+  activeListings: Listing[],
+  city: string,
+  kind: ListingKind,
+  closedListings: Listing[] = [],
+): MarketStatsPayload {
+  return marketStatsFromPools(
+    marketStatsPoolsFromListings(activeListings, kind, closedListings),
+    city,
+    kind,
+  )
 }
 
 export const CLOSED_THIS_WEEK_DAYS = 7
@@ -603,6 +647,16 @@ export function computeSalesByVintage(
     counts[classifyYearBuilt(l.yearBuilt)] += 1
   }
 
+  return salesByVintageFromCounts(counts, total, city, kind)
+}
+
+/** Assemble the payload from per-vintage counts (compute and rollup share this). */
+function salesByVintageFromCounts(
+  counts: Record<VintageBucketId, number>,
+  total: number,
+  city: string,
+  kind: ListingKind,
+): SalesByVintagePayload {
   const knownTotal = total - counts.unknown
   const period = `${STATS_CLOSED_PERIOD_START}–${CURRENT_YEAR}`
   const noun = kind === 'rental' ? 'closed leases' : 'closed sales'
@@ -1132,6 +1186,271 @@ export function computeActiveByLuxuryPrice(
     },
     saleBuckets,
   )
+}
+
+// ---------------------------------------------------------------------------
+// All-towns rollups
+//
+// Every payload below is additive: an all-towns histogram is the sum of the
+// per-town histograms, and the totals are the sums of the totals. So the "All"
+// scope is built by adding up the per-town payloads already sitting in
+// stats_cache instead of re-reading every listing in the market — which is what
+// used to exhaust V8's heap. Shares, top buckets, and the calc explainers are
+// recomputed here from the summed counts, using the same helpers the per-town
+// path uses, so the wording and rounding cannot drift.
+//
+// Non-additive values (median price, mean DOM) cannot be combined from parts and
+// come from a Postgres aggregate instead — see readMarketStatsPools().
+//
+// Callers must pass at least one part; an empty list yields a zeroed payload
+// with no buckets, which is a broken chart rather than an empty one.
+// ---------------------------------------------------------------------------
+
+function sumBy<T>(parts: readonly T[], pick: (part: T) => number): number {
+  return parts.reduce((total, part) => total + (pick(part) || 0), 0)
+}
+
+/**
+ * Bucket templates (first-seen order) plus summed counts across parts.
+ *
+ * Templates come from the parts rather than the current band config so labels,
+ * min, and max survive untouched. A town payload built before a band change
+ * contributes its old ids; those rows are rewritten by the next rebuild of that
+ * town, at which point the sum lines up again.
+ */
+function sumBuckets<T extends { id: string; count: number }>(
+  parts: readonly { buckets: readonly T[] }[],
+): { templates: T[]; counts: Map<string, number> } {
+  const templates: T[] = []
+  const seen = new Set<string>()
+  const counts = new Map<string, number>()
+  for (const part of parts) {
+    for (const bucket of part.buckets) {
+      if (!seen.has(bucket.id)) {
+        seen.add(bucket.id)
+        templates.push(bucket)
+      }
+      counts.set(bucket.id, (counts.get(bucket.id) ?? 0) + (bucket.count || 0))
+    }
+  }
+  return { templates, counts }
+}
+
+/** Sum per-town closed-vintage histograms into one scope. */
+export function rollupSalesByVintage(
+  parts: readonly SalesByVintagePayload[],
+  city: string,
+  kind: ListingKind,
+): SalesByVintagePayload {
+  const counts = emptyVintageCounts()
+  for (const part of parts) {
+    for (const bucket of part.buckets) {
+      if (bucket.id in counts) {
+        counts[bucket.id as VintageBucketId] += bucket.count || 0
+      }
+    }
+    counts.unknown += part.unknownYearBuilt || 0
+  }
+  return salesByVintageFromCounts(
+    counts,
+    sumBy(parts, (part) => part.totalSales),
+    city,
+    kind,
+  )
+}
+
+/** Sum per-town closed-price histograms into one scope. */
+export function rollupSalesByPrice(
+  parts: readonly SalesByPricePayload[],
+  city: string,
+  kind: ListingKind,
+): SalesByPricePayload {
+  const { templates, counts } = sumBuckets(parts)
+  const total = sumBy(parts, (part) => part.totalSales)
+  const knownTotal = sumBy(parts, (part) => part.knownPrice)
+  const period = parts[0]?.period ?? salesByPricePeriodLabel(null)
+  const noun = kind === 'rental' ? 'closed leases' : 'closed sales'
+
+  const buckets = templates.map((template) => {
+    const count = counts.get(template.id) ?? 0
+    const share = knownTotal > 0 ? count / knownTotal : 0
+    return {
+      id: template.id,
+      label: template.label,
+      count,
+      share,
+      calc: bucketCalc({
+        city,
+        kind,
+        period,
+        bandLabel: template.label,
+        count,
+        knownTotal,
+        total,
+        share,
+        noun,
+      }),
+    }
+  })
+  const ranked = [...buckets].sort((a, b) => b.count - a.count)
+
+  return {
+    city,
+    kind,
+    period,
+    totalSales: total,
+    knownPrice: knownTotal,
+    unknownPrice: sumBy(parts, (part) => part.unknownPrice),
+    buckets,
+    topBucket: ranked[0]?.count ? ranked[0] : null,
+  }
+}
+
+/** Sum per-town active-price histograms into one scope. */
+export function rollupActiveByPrice(
+  parts: readonly ActiveByPricePayload[],
+  city: string,
+  kind: ListingKind,
+): ActiveByPricePayload {
+  const { templates, counts } = sumBuckets(parts)
+  const total = sumBy(parts, (part) => part.totalActive)
+  const knownTotal = sumBy(parts, (part) => part.knownPrice)
+  const noun = kind === 'rental' ? 'active rentals' : 'active listings'
+
+  const buckets: ActiveByPriceBucket[] = templates.map((template) => {
+    const count = counts.get(template.id) ?? 0
+    const share = knownTotal > 0 ? count / knownTotal : 0
+    return {
+      id: template.id,
+      label: template.label,
+      min: template.min,
+      max: template.max,
+      count,
+      share,
+      calc: bucketCalc({
+        city,
+        kind,
+        period: 'active',
+        bandLabel: template.label,
+        count,
+        knownTotal,
+        total,
+        share,
+        noun,
+      }),
+    }
+  })
+  const ranked = [...buckets].sort((a, b) => b.count - a.count)
+
+  return {
+    city,
+    kind,
+    totalActive: total,
+    knownPrice: knownTotal,
+    unknownPrice: sumBy(parts, (part) => part.unknownPrice),
+    buckets,
+    topBucket: ranked[0]?.count ? ranked[0] : null,
+  }
+}
+
+/**
+ * Sum per-town inventory-segment histograms into one scope. Segment metadata
+ * (id, label, floor, ceiling, luxury bands) is identical across towns in a
+ * rebuild, so it is carried from the first part.
+ */
+export function rollupActiveBySegmentPrice(
+  parts: readonly ActiveBySegmentPricePayload[],
+  city: string,
+): ActiveBySegmentPricePayload {
+  const first = parts[0]
+  const { templates, counts } = sumBuckets(parts)
+  const segmentActive = sumBy(parts, (part) => part.segmentActive)
+  const buckets: ActiveByPriceBucket[] = templates.map((template) => {
+    const count = counts.get(template.id) ?? 0
+    return {
+      id: template.id,
+      label: template.label,
+      min: template.min,
+      max: template.max,
+      count,
+      // Segment shares are of the segment, not of all known-price actives.
+      share: segmentActive > 0 ? count / segmentActive : 0,
+    }
+  })
+  const ranked = [...buckets].sort((a, b) => b.count - a.count)
+  const outsideSegment = sumBy(parts, (part) => part.outsideSegment)
+
+  return {
+    city,
+    kind: 'sale',
+    segmentId: first?.segmentId ?? 'luxury',
+    segmentLabel: first?.segmentLabel ?? 'Luxury',
+    segmentMin: first?.segmentMin ?? LUXURY_PRICE_FLOOR,
+    segmentMax: first?.segmentMax ?? null,
+    totalActive: sumBy(parts, (part) => part.totalActive),
+    knownPrice: segmentActive,
+    unknownPrice: sumBy(parts, (part) => part.unknownPrice),
+    outsideSegment,
+    segmentActive,
+    belowLuxury: outsideSegment,
+    luxuryActive: segmentActive,
+    buckets,
+    topBucket: ranked[0]?.count ? ranked[0] : null,
+    luxuryBands: first?.luxuryBands ?? [],
+  }
+}
+
+/**
+ * Combine per-town Goldilocks-by-vintage averages into one scope.
+ *
+ * Counts are additive and each per-town average is weighted by its own count,
+ * so the result is the mean of the underlying scores to within the 1-decimal
+ * rounding the per-town payloads already carry.
+ */
+export function rollupAvgScoreByVintage(
+  parts: readonly AvgScoreByVintagePayload[],
+  city: string,
+  kind: ListingKind,
+): AvgScoreByVintagePayload {
+  const counts = emptyVintageCounts()
+  const weighted = emptyVintageCounts()
+  for (const part of parts) {
+    for (const bucket of part.buckets) {
+      if (!(bucket.id in counts)) continue
+      const count = bucket.count || 0
+      counts[bucket.id] += count
+      if (bucket.avgScore != null) weighted[bucket.id] += bucket.avgScore * count
+    }
+  }
+
+  const totalScored = sumBy(parts, (part) => part.totalScored)
+  const unknownYearBuilt = sumBy(parts, (part) => part.unknownYearBuilt)
+  const knownYearBuilt = totalScored - unknownYearBuilt
+  const buckets: AvgScoreByVintageBucket[] = VINTAGE_BUCKETS.map((b) => {
+    const id = b.id as Exclude<VintageBucketId, 'unknown'>
+    const count = counts[id]
+    return {
+      id,
+      label: b.label,
+      count,
+      avgScore: count > 0 ? Math.round((weighted[id] / count) * 10) / 10 : null,
+      share: knownYearBuilt > 0 ? count / knownYearBuilt : 0,
+    }
+  })
+  const ranked = [...buckets]
+    .filter((b) => b.count > 0 && b.avgScore != null)
+    .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))
+
+  return {
+    city,
+    kind,
+    statusBucket: 'Active',
+    totalScored,
+    knownYearBuilt,
+    unknownYearBuilt,
+    buckets,
+    bestValueBucket: ranked[0] ?? null,
+  }
 }
 
 export type StatsCacheScope =

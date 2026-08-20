@@ -1,6 +1,7 @@
 import {
   captureInventorySnapshot,
   countListings,
+  emptyIncrementalUpsertResult,
   readListingsDbStats,
   readListingsFromDb,
   recordSyncRun,
@@ -204,28 +205,29 @@ export async function syncTownListingsIncremental(
     const [marketUpsert, closedUpsert] = await Promise.all([
       pullActive
         ? upsertListingsIncremental(town, 'Active', marketListings)
-        : Promise.resolve({
-            count: 0,
-            inserted: 0,
-            updated: 0,
-            priceChangedIds: [] as string[],
-          }),
+        : Promise.resolve(emptyIncrementalUpsertResult()),
       pullClosed
         ? upsertListingsIncremental(town, 'Closed', closed)
-        : Promise.resolve({
-            count: 0,
-            inserted: 0,
-            updated: 0,
-            priceChangedIds: [] as string[],
-          }),
+        : Promise.resolve(emptyIncrementalUpsertResult()),
     ])
     const count = marketUpsert.count + closedUpsert.count
     const inserted = marketUpsert.inserted + closedUpsert.inserted
     const updated = marketUpsert.updated + closedUpsert.updated
+    const statsChanged = marketUpsert.statsChanged + closedUpsert.statsChanged
     const priceChangedIds = [
       ...marketUpsert.priceChangedIds,
       ...closedUpsert.priceChangedIds,
     ]
+
+    // The stats cache rebuilds off these marks instead of an hourly TTL.
+    if (statsChanged > 0) {
+      try {
+        const { markStatsTownsDirty } = await import('@/lib/stats-dirty-towns')
+        await markStatsTownsDirty([town])
+      } catch (err) {
+        console.error(`[listings-sync/incremental] ${town} dirty mark failed`, err)
+      }
+    }
 
     if (priceChangedIds.length > 0) {
       try {
@@ -756,6 +758,15 @@ export async function syncTownListings(
         } catch (err) {
           console.error(`[listings-sync] ${town} Active photo sync failed`, err)
         }
+      }
+    }
+    // A full-bucket replace always changes the inputs a stats payload reads.
+    if (count > 0) {
+      try {
+        const { markStatsTownsDirty } = await import('@/lib/stats-dirty-towns')
+        await markStatsTownsDirty([town])
+      } catch (err) {
+        console.error(`[listings-sync] ${town} dirty mark failed`, err)
       }
     }
     const finishedAt = new Date().toISOString()

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { fetchActiveListingsForCity, fetchClosedListingsForCity } from '@/lib/listings-store'
-import { readListingsFromDb } from '@/lib/db/listings-repo'
+import { readStatsListingsFromDb } from '@/lib/db/listings-repo'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import type {
@@ -400,7 +400,7 @@ async function salesPayloadForTown(town: TmreTown): Promise<SalesByMonthPayload 
 }
 
 async function loadTownDisplayListings(town: TmreTown): Promise<IntelligenceDisplayListing[]> {
-  const fromDb = await readListingsFromDb(town, 'Active', 500)
+  const fromDb = await readStatsListingsFromDb(town, 'Active', 500)
   if (fromDb.length > 0) {
     return fromDb
       .map((listing) => listingToDisplayRow(listing, town))
@@ -427,7 +427,7 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
   const wentToContractThisWeekByTown: Record<string, number> = {}
 
   for (const town of TMRE_TOWNS) {
-    const activeDb = await readListingsFromDb(town, 'Active', 500)
+    const activeDb = await readStatsListingsFromDb(town, 'Active', 500)
     const rows = filterIntelligenceListings(
       activeDb
         .map((listing) => listingToDisplayRow(listing, town))
@@ -452,7 +452,7 @@ export async function rebuildIntelligenceTownSnapshots(): Promise<{
     }
 
     try {
-      const closed = await readListingsFromDb(town, 'Closed', 2500)
+      const closed = await readStatsListingsFromDb(town, 'Closed', 2500)
       const salesPayload = computeSalesByMonth(closed, town, 'sale')
       if (!(town in monthlySales)) {
         const avg = avgMonthlySalesFromPayload(salesPayload.data)
@@ -564,7 +564,7 @@ export async function computeIntelligenceTownSnapshotLive(
 
   await Promise.all(
     TMRE_TOWNS.map(async (town) => {
-      const activeDb = await readListingsFromDb(town, 'Active', 500)
+      const activeDb = await readStatsListingsFromDb(town, 'Active', 500)
       const rows = filterIntelligenceListings(
         activeDb.length > 0
           ? activeDb
@@ -586,7 +586,7 @@ export async function computeIntelligenceTownSnapshotLive(
           return
         }
 
-        const closedDb = await readListingsFromDb(town, 'Closed', 2500)
+        const closedDb = await readStatsListingsFromDb(town, 'Closed', 2500)
         const closed =
           closedDb.length > 0
             ? closedDb

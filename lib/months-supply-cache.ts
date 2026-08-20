@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { readAllListingsFromDb, readListingsFromDb } from '@/lib/db/listings-repo'
+import { readStatsListingsFromDb } from '@/lib/db/listings-repo'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 import { closeFieldsFromListing } from '@/lib/listing-history'
 import { filterListingsByKind, LISTING_KINDS, type ListingKind } from '@/lib/listing-kind'
@@ -209,70 +209,111 @@ export async function readMonthsSupplyIndex(): Promise<MonthsSupplyIndexPayload 
 }
 
 /**
- * Precompute months supply for every town × sale|rental × property class.
- * Called from rebuildStatsCache after listings are available.
+ * Combine per-town months-supply payloads into one scope.
+ *
+ * Both inputs are additive: inventory is a count, and average monthly closings
+ * is a sum of closed counts ÷ 3, so the market average is the sum of the town
+ * averages. The ratio is then recomputed from those sums — averaging the towns'
+ * ratios would weight a seven-listing town the same as a seven-hundred one. A
+ * town whose average is null had no closings in the window, which contributes
+ * zero rather than making the market average unknown.
  */
-export async function rebuildMonthsSupplyCache(options?: {
-  /** Reuse already-loaded town listings to avoid extra DB reads. */
-  townListings?: Record<TmreTown, { active: Listing[]; closed: Listing[] }>
-}): Promise<{ written: number; durationMs: number }> {
-  const t0 = Date.now()
-  if (!(await hasLocalListingsCache())) {
-    return { written: 0, durationMs: 0 }
+export function rollupMonthsSupply(
+  parts: readonly MonthsSupplyPayload[],
+  city: string,
+  kind: ListingKind,
+  propertyClass: ListingPropertyClass,
+  generatedAt: string,
+): MonthsSupplyPayload {
+  const activeCount = parts.reduce((total, part) => total + (part.activeCount || 0), 0)
+  const closingParts = parts.filter((part) => part.avgMonthlyClosings != null)
+  const avgMonthlyClosings =
+    closingParts.length > 0
+      ? closingParts.reduce((total, part) => total + (part.avgMonthlyClosings ?? 0), 0)
+      : null
+  const monthsSupply = computeMonthsSupplyRatio(activeCount, avgMonthlyClosings)
+  const calcs = monthsSupplyValueCalcs({
+    city,
+    kind,
+    propertyClass,
+    activeCount,
+    avgMonthlyClosings,
+    monthsSupply,
+  })
+  return {
+    city,
+    kind,
+    propertyClass,
+    activeCount,
+    activeCountCalc: calcs.activeCountCalc,
+    avgMonthlyClosings,
+    monthsSupply,
+    monthsSupplyCalc: calcs.monthsSupplyCalc,
+    generatedAt,
   }
+}
 
-  const generatedAt = new Date().toISOString()
-  const entries: MonthsSupplyPayload[] = []
+/**
+ * Write one town's kind × property-class payloads.
+ *
+ * Called from inside the stats rebuild's town loop, while that town's listings
+ * are already in hand. Doing it there is the point: the previous version was
+ * handed every town's listings at once so it could concatenate them for the All
+ * row, which meant the whole market sat in the heap for the length of the
+ * rebuild.
+ */
+export async function writeMonthsSupplyForTown(
+  town: TmreTown,
+  active: readonly Listing[],
+  closed: readonly Listing[],
+  generatedAt: string,
+): Promise<number> {
   let written = 0
-
-  const byTown: Record<TmreTown, { active: Listing[]; closed: Listing[] }> =
-    options?.townListings ?? ({} as Record<TmreTown, { active: Listing[]; closed: Listing[] }>)
-
-  for (const town of TMRE_TOWNS) {
-    if (!byTown[town]) {
-      const [active, closed] = await Promise.all([
-        readListingsFromDb(town, 'Active', 500),
-        // Full closed set — price-DESC 2500 sample drops recent mid-market sales.
-        readListingsFromDb(town, 'Closed'),
-      ])
-      byTown[town] = { active, closed }
-    }
-    for (const kind of LISTING_KINDS) {
-      for (const propertyClass of LISTING_PROPERTY_CLASSES) {
-        const payload = computeMonthsSupplyPayload(
-          byTown[town].active,
-          byTown[town].closed,
-          town,
-          kind,
-          propertyClass,
-          generatedAt,
-        )
-        await writeStatsCacheRow(monthsSupplyCacheKey(town, kind, propertyClass), payload)
-        entries.push(payload)
-        written += 1
-      }
-    }
-  }
-
-  const [allActive, allClosed] = await Promise.all([
-    options?.townListings
-      ? Promise.resolve(TMRE_TOWNS.flatMap((t) => byTown[t].active))
-      : readAllListingsFromDb(TMRE_TOWNS, 'Active'),
-    options?.townListings
-      ? Promise.resolve(TMRE_TOWNS.flatMap((t) => byTown[t].closed))
-      : readAllListingsFromDb(TMRE_TOWNS, 'Closed'),
-  ])
-
   for (const kind of LISTING_KINDS) {
     for (const propertyClass of LISTING_PROPERTY_CLASSES) {
       const payload = computeMonthsSupplyPayload(
-        allActive,
-        allClosed,
-        'All',
+        active,
+        closed,
+        town,
         kind,
         propertyClass,
         generatedAt,
       )
+      await writeStatsCacheRow(monthsSupplyCacheKey(town, kind, propertyClass), payload)
+      written += 1
+    }
+  }
+  return written
+}
+
+/**
+ * Sum the cached town rows into the All rows and republish the index.
+ *
+ * Reads the town payloads back out of stats_cache rather than keeping them in
+ * memory, so it works the same whether one town or all seven were just
+ * recomputed — an untouched town's row is still current.
+ */
+export async function finalizeMonthsSupplyCache(
+  generatedAt: string,
+): Promise<{ written: number }> {
+  let written = 0
+  const entries: MonthsSupplyPayload[] = []
+
+  for (const kind of LISTING_KINDS) {
+    for (const propertyClass of LISTING_PROPERTY_CLASSES) {
+      const parts: MonthsSupplyPayload[] = []
+      for (const town of TMRE_TOWNS) {
+        const cached = await readMonthsSupplyCached(town, kind, propertyClass)
+        if (!cached) continue
+        parts.push(cached)
+        entries.push(cached)
+      }
+      if (parts.length < TMRE_TOWNS.length) {
+        console.warn(
+          `[months-supply-cache] All:${kind}:${propertyClass} rolled up from ${parts.length}/${TMRE_TOWNS.length} towns`,
+        )
+      }
+      const payload = rollupMonthsSupply(parts, 'All', kind, propertyClass, generatedAt)
       await writeStatsCacheRow(monthsSupplyCacheKey('All', kind, propertyClass), payload)
       entries.push(payload)
       written += 1
@@ -286,9 +327,45 @@ export async function rebuildMonthsSupplyCache(options?: {
   }
   await writeStatsCacheRow(MONTHS_SUPPLY_INDEX_KEY, index)
   written += 1
+  return { written }
+}
+
+/**
+ * Precompute months supply for `towns` (default: all), then the All rows.
+ *
+ * Standalone entry point — the stats rebuild instead calls
+ * writeMonthsSupplyForTown() per town and finalizeMonthsSupplyCache() once, so
+ * it never holds more than one town's listings at a time.
+ */
+export async function rebuildMonthsSupplyCache(options?: {
+  /** Towns to recompute; defaults to every town. */
+  towns?: readonly TmreTown[]
+}): Promise<{ written: number; durationMs: number }> {
+  const t0 = Date.now()
+  if (!(await hasLocalListingsCache())) {
+    return { written: 0, durationMs: 0 }
+  }
+
+  const generatedAt = new Date().toISOString()
+  const requested = options?.towns ? [...new Set(options.towns)] : []
+  const targets = requested.length > 0 ? requested : TMRE_TOWNS
+  let written = 0
+
+  for (const town of targets) {
+    const [active, closed] = await Promise.all([
+      // Uncapped: a price-DESC sample drops recent mid-market inventory, and the
+      // All row is the sum of these towns.
+      readStatsListingsFromDb(town, 'Active'),
+      readStatsListingsFromDb(town, 'Closed'),
+    ])
+    written += await writeMonthsSupplyForTown(town, active, closed, generatedAt)
+  }
+
+  const final = await finalizeMonthsSupplyCache(generatedAt)
+  written += final.written
 
   console.info(
-    `[months-supply-cache] rebuilt ${entries.length} combos (+ index) in ${Date.now() - t0}ms`,
+    `[months-supply-cache] rebuilt ${targets.length} town(s) + All (+ index) in ${Date.now() - t0}ms`,
   )
   return { written, durationMs: Date.now() - t0 }
 }

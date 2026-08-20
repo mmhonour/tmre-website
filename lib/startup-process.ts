@@ -353,7 +353,7 @@ export function describeStartupProcess(): {
       steps: [
         {
           id: "stats-first",
-          title: "First stale-check",
+          title: "First dirty-town check",
           timing: "+20s",
           detail: "Skipped while a listings refresh is in progress, or when Pause is checked on Stats cache.",
           status: "scheduled",
@@ -370,10 +370,10 @@ export function describeStartupProcess(): {
         },
         {
           id: "stats-interval",
-          title: "Periodic rebuild if stale",
-          timing: "usually every 60 min",
+          title: "Periodic dirty-town sweep",
+          timing: "usually every 10 min",
           detail:
-            "rebuildStatsCacheIfStale(false) — upsert-only when last_stats_cache is older than TTL (or required keys missing); skips while stats rebuild lock or listings refresh is held. Long-lived Node only: on Netlify this is off, because a request-scoped invocation cannot finish a rebuild but can freeze holding the lock. Who rebuilds is declared in Configure → Stats cache → Scheduler: Railway mls-sync (default; 10-min stale sweep + POST /stats) or Netlify cron (thin */30 → sync-stats-cache-worker). Exactly one host acts — each stands down when the radio names the other.",
+            "rebuildStatsCacheIfStale(false) — rebuilds only the towns the incremental sync marked dirty (stats_dirty:<Town> in sync_meta), plus any town whose last rebuild is over 24h old, plus the whole cache when required keys are missing. There is no hourly TTL trigger any more: an unchanged town is not rebuilt. Skips while the stats rebuild lock or a listings refresh is held. Long-lived Node only: on Netlify this is off, because a request-scoped invocation cannot finish a rebuild but can freeze holding the lock. Who rebuilds is declared in Configure → Stats cache → Scheduler: Railway mls-sync (default; 10-min dirty sweep + POST /stats) or Netlify cron (thin */30 → sync-stats-cache-worker, which also stands down when nothing is dirty). Exactly one host acts — each stands down when the radio names the other.",
           status: "active",
           statusLabel: "Running",
         },

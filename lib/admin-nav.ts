@@ -730,6 +730,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     panel: "overview",
   },
   {
+    id: "admin-stats-cache-architecture",
+    label: "Stats cache rebuild path",
+    tab: "syncs",
+    panel: "overview",
+  },
+  {
     id: "admin-netlify",
     label: "Netlify functions",
     tab: "syncs",

@@ -6,7 +6,7 @@ import {
   nextCpiSyncTarget,
   nextFomcSyncTarget,
 } from '@/lib/fed-event-sync-schedule'
-import { STATS_CACHE_TTL_MS } from '@/lib/stats-cache'
+import { STATS_CACHE_SWEEP_MS } from '@/lib/stats-cache'
 import type { AdminSyncPanelRowId } from '@/lib/admin-sync-schedule-format'
 import { applySyncNextOverride } from '@/lib/sync-next-override'
 import { SCHEDULED_SYNC_JOB_BY_ROW } from '@/lib/scheduled-sync-jobs'
@@ -293,10 +293,11 @@ function latestIntervalMs(): number {
   )
 }
 
+/** Next stats slot = next dirty-town check, not a guaranteed rebuild. */
 function statsRefreshIntervalMs(): number {
   return Math.max(
     60_000,
-    Number(process.env.STATS_CACHE_REFRESH_MS ?? String(STATS_CACHE_TTL_MS)),
+    Number(process.env.STATS_CACHE_REFRESH_MS ?? String(STATS_CACHE_SWEEP_MS)),
   )
 }
 

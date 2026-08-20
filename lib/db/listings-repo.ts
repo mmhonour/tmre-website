@@ -315,6 +315,54 @@ export type UpsertListingResult = {
   /** True when the row did not exist before this write. */
   inserted: boolean
   priceChanged: boolean
+  /**
+   * True when this write moved a value a stats payload is built from. Most
+   * upserts do not: the modified-since window re-fetches the same rows every
+   * cycle (~240 per run, 0 new), and photo/remark/agent churn changes nothing
+   * on a dashboard. Only this flag marks a town dirty.
+   */
+  statsChanged: boolean
+}
+
+/** Normalize a numeric column (pg returns numeric as string) for comparison. */
+function statsNumKey(value: number | string | null | undefined): string {
+  if (value == null) return ''
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? String(n) : ''
+}
+
+/** Normalize a timestamp (pg returns Date, listings carry ISO) for comparison. */
+function statsTimeKey(value: Date | string | null | undefined): string {
+  if (value == null) return ''
+  const ms = value instanceof Date ? value.getTime() : Date.parse(value)
+  return Number.isFinite(ms) ? String(ms) : ''
+}
+
+type StatsRelevantRow = {
+  price: number | string | null
+  mls_status: string | null
+  status_bucket: string | null
+  close_price: number | string | null
+  close_date: Date | string | null
+  list_date: Date | string | null
+  dom: number | null
+}
+
+/**
+ * The fields every stats payload is derived from. `dom` is in here deliberately:
+ * the MLS increments it daily on their side, so including it is what gives every
+ * town with inventory a once-a-day rebuild without a timer.
+ */
+function statsSignature(row: StatsRelevantRow): string {
+  return [
+    statsNumKey(row.price),
+    (row.mls_status ?? '').trim().toLowerCase(),
+    (row.status_bucket ?? '').trim(),
+    statsNumKey(row.close_price),
+    statsTimeKey(row.close_date),
+    statsTimeKey(row.list_date),
+    row.dom ?? '',
+  ].join('|')
 }
 
 /** Upsert a single listing without touching other rows in its town bucket. */
@@ -324,16 +372,26 @@ export async function upsertListing(
   statusBucket: string,
 ): Promise<UpsertListingResult> {
   const id = listingRowId(listing)
-  if (!id) return { upserted: false, inserted: false, priceChanged: false }
+  if (!id) {
+    return {
+      upserted: false,
+      inserted: false,
+      priceChanged: false,
+      statsChanged: false,
+    }
+  }
 
   await ensureListingPreviousStatusColumns()
   const syncedAt = new Date()
   const nextPrice = listing.price ?? null
   const nextStatus = listing.status ?? null
+  const { closeDate: nextCloseDate, closePrice: nextClosePrice } =
+    closeFieldsFromListing(listing)
 
   const { result, change } = await withTransaction(async (client) => {
-    const existing = await client.query<{ price: string | null; mls_status: string | null }>(
-      'SELECT price, mls_status FROM listings WHERE id = $1',
+    const existing = await client.query<StatsRelevantRow>(
+      `SELECT price, mls_status, status_bucket, close_price, close_date, list_date, dom
+         FROM listings WHERE id = $1`,
       [id],
     )
     const hadRow = existing.rows.length > 0
@@ -342,6 +400,20 @@ export async function upsertListing(
     const previousStatus = existing.rows[0]?.mls_status ?? null
     const priceChanged =
       hadRow && previousPrice != null && nextPrice != null && previousPrice !== nextPrice
+
+    // A new row always counts; an update only when a stats input actually moved.
+    const statsChanged =
+      !hadRow ||
+      statsSignature(existing.rows[0]) !==
+        statsSignature({
+          price: nextPrice,
+          mls_status: nextStatus,
+          status_bucket: statusBucket,
+          close_price: nextClosePrice,
+          close_date: nextCloseDate,
+          list_date: listing.listDate,
+          dom: listing.dom,
+        })
 
     const changeKind = hadRow
       ? classifyListingChange(
@@ -372,7 +444,7 @@ export async function upsertListing(
       : null
 
     return {
-      result: { upserted: true, inserted: !hadRow, priceChanged },
+      result: { upserted: true, inserted: !hadRow, priceChanged, statsChanged },
       change,
     }
   })
@@ -558,6 +630,21 @@ export type IncrementalUpsertResult = {
   inserted: number
   updated: number
   priceChangedIds: string[]
+  /** Rows whose write moved a stats input. > 0 means this town is dirty. */
+  statsChanged: number
+}
+
+const EMPTY_INCREMENTAL_UPSERT: IncrementalUpsertResult = {
+  count: 0,
+  inserted: 0,
+  updated: 0,
+  priceChangedIds: [],
+  statsChanged: 0,
+}
+
+/** Zeroed result for callers that skip a bucket. */
+export function emptyIncrementalUpsertResult(): IncrementalUpsertResult {
+  return { ...EMPTY_INCREMENTAL_UPSERT, priceChangedIds: [] }
 }
 
 /** Upsert changed listings without deleting the rest of the bucket (incremental sync). */
@@ -566,18 +653,15 @@ export async function upsertListingsIncremental(
   statusBucket: string,
   listings: Listing[],
 ): Promise<IncrementalUpsertResult> {
-  if (listings.length === 0) {
-    return { count: 0, inserted: 0, updated: 0, priceChangedIds: [] }
-  }
+  if (listings.length === 0) return emptyIncrementalUpsertResult()
 
   const rows = listings.filter((l) => listingMatchesStatusBucket(l, statusBucket))
-  if (rows.length === 0) {
-    return { count: 0, inserted: 0, updated: 0, priceChangedIds: [] }
-  }
+  if (rows.length === 0) return emptyIncrementalUpsertResult()
 
   let count = 0
   let inserted = 0
   let updated = 0
+  let statsChanged = 0
   const priceChangedIds: string[] = []
   for (const listing of rows) {
     const result = await upsertListing(listing, town, statusBucket)
@@ -585,12 +669,13 @@ export async function upsertListingsIncremental(
     count += 1
     if (result.inserted) inserted += 1
     else updated += 1
+    if (result.statsChanged) statsChanged += 1
     if (result.priceChanged) {
       const id = listingRowId(listing)
       if (id) priceChangedIds.push(id)
     }
   }
-  return { count, inserted, updated, priceChangedIds }
+  return { count, inserted, updated, priceChangedIds, statsChanged }
 }
 
 // ---------------------------------------------------------------------------
@@ -1590,6 +1675,53 @@ export async function readListingSuperlativesByMlsIds(
 // ---------------------------------------------------------------------------
 
 /** One town/bucket pool, priced high→low (nulls last). */
+/**
+ * Stats reads never render a listing, so they must not pay for `raw` — the full
+ * RETS record runs several KB per row, and seven towns of Closed inventory
+ * parsed into JS objects is what OOM-killed the Railway sync (476 MB heap,
+ * dying inside JSON.parse). Postgres extracts the few raw keys the stats math
+ * still consults and ships only those.
+ *
+ * Kept: close date/price, which ingest already resolved into columns using the
+ * same closeFieldsFromListing() a reader would call, so these are the resolved
+ * values rather than a re-derivation; mls_status for coalesceListingStatus();
+ * and the four hints isRentalListing() sniffs to separate rentals from sales.
+ * Dropped: property tax and furnished, which no stats payload reads.
+ */
+const STATS_LEAN_RAW_SQL = `jsonb_build_object(
+                'CloseDate', close_date,
+                'ClosePrice', close_price,
+                'StandardStatus', mls_status,
+                'PropertyType', raw->>'PropertyType',
+                'PropertySubType', raw->>'PropertySubType',
+                'TransactionType', raw->>'TransactionType',
+                'MRD_TYP', raw->>'MRD_TYP'
+              ) AS raw`
+
+/** Same rows as readListingsFromDb, without the `raw` payload. Stats only. */
+export async function readStatsListingsFromDb(
+  town: string,
+  statusBucket: string,
+  limit?: number,
+): Promise<Listing[]> {
+  const params: unknown[] = [town, statusBucket]
+  let sql = `SELECT data, ${STATS_LEAN_RAW_SQL} FROM listings
+              WHERE town = $1 AND status_bucket = $2
+              ORDER BY price DESC NULLS LAST`
+  if (limit != null) {
+    params.push(limit)
+    sql += ` LIMIT $3`
+  }
+  const rows = await query<ListingJsonRow>(sql, params)
+  return rows.map((row) => rowToListing(row))
+}
+
+// There is deliberately no all-towns stats read here. Loading every town's
+// listings into one array is what exhausted V8's heap during a rebuild, and it
+// gets worse with every town added. All-towns numbers now come from summing the
+// per-town payloads in stats_cache, or from an aggregate in
+// lib/db/stats-aggregates-repo.ts when they cannot be summed.
+
 export async function readListingsFromDb(
   town: string,
   statusBucket: string,

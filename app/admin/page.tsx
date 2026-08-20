@@ -165,6 +165,7 @@ import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
 import { describePostgresDatabase } from "@/lib/postgres-schema-diagram";
 import { describeRunningSqliteDatabases } from "@/lib/sqlite-schema-diagram";
 import { describeStartupProcess } from "@/lib/startup-process";
+import { describeStatsCacheArchitecture } from "@/lib/stats-cache-architecture";
 import { readAdminSyncPanelStatus } from "@/lib/admin-sync-actions";
 import { collectAdminDatabaseSyncStats } from "@/lib/sqlite-sync-stats";
 import { readAllTableActivity } from "@/lib/db/inventory-table-activity";
@@ -276,6 +277,8 @@ export default async function AdminPage() {
     lastEventbridgeIngressResult,
     lastMlsSyncHeartbeat,
     nextOverrides,
+    statsCacheLastRunStatus,
+    statsCacheQueueStatus,
   } = await readAdminSyncPanelStatus();
   const latestListingUpdate = await safe(
     "latest-mls-timestamp",
@@ -436,6 +439,7 @@ export default async function AdminPage() {
   const inventorySnapshot = await readInventorySnapshot();
   const listingsDbEmpty = stats.total === 0;
   const startupProcess = describeStartupProcess();
+  const statsCacheArchitecture = describeStatsCacheArchitecture();
 
   const rows: StatusRow[] = [
     {
@@ -507,7 +511,7 @@ export default async function AdminPage() {
       finishedAt: stats.lastStatsCache,
       sortMs: timestampSortMs(stats.lastStatsCache),
       detail:
-        "Market stats, sales-by-month, active-by-month, vintage, and price (own thin cron + worker)",
+        "Market stats, sales-by-month, active-by-month, vintage, and price. Rebuilds the towns the incremental sync changed (24h backstop per town); Sync now rebuilds all towns.",
       actionId: "stats-cache",
       nextRunAt: nextRuns["stats-cache"],
     },
@@ -634,6 +638,8 @@ export default async function AdminPage() {
     nextOverrides,
     scheduleHints,
     scheduleConfig,
+    statsCacheLastRunStatus,
+    statsCacheQueueStatus,
   };
 
   // Which Postgres this admin process is editing (Neon vs local). Site controls
@@ -960,6 +966,7 @@ export default async function AdminPage() {
         <AdminSyncsOverviewPanel
           startupLanes={startupProcess.lanes}
           startupContext={startupProcess.context}
+          statsCacheArchitecture={statsCacheArchitecture}
           pausedJobs={scheduledSyncPausedJobs}
           zipInventory={zipInventory}
           zipLastSyncAt={zipBoundariesSyncedAt}

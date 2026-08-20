@@ -7,5 +7,5 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- BEGIN:admin-diagrams -->
 # Admin diagrams
 
-When SQLite databases/schema ownership or the Node startup/sync schedule change, keep `/admin` current: live schema via `lib/sqlite-schema-diagram.ts`, startup lanes via `lib/startup-process.ts` (must mirror `instrumentation.ts` / Netlify sync). See `.cursor/rules/admin-diagrams.mdc`.
+When SQLite databases/schema ownership or the Node startup/sync schedule change, keep `/admin` current: live schema via `lib/sqlite-schema-diagram.ts`, startup lanes via `lib/startup-process.ts` (must mirror `instrumentation.ts` / Netlify sync), and the stats cache rebuild path via `lib/stats-cache-architecture.ts`. See `.cursor/rules/admin-diagrams.mdc`.
 <!-- END:admin-diagrams -->

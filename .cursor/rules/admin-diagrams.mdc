@@ -1,6 +1,6 @@
 ---
 description: Keep Admin SQLite schema + startup diagrams in sync with real DB/startup code
-globs: instrumentation.ts,lib/listings-db.ts,lib/listing-photos-db.ts,lib/sqlite-schema-diagram.ts,lib/startup-process.ts,netlify.toml,netlify/functions/sync-listings*.ts,app/admin/**
+globs: instrumentation.ts,lib/listings-db.ts,lib/listing-photos-db.ts,lib/sqlite-schema-diagram.ts,lib/startup-process.ts,lib/stats-cache.ts,lib/stats-dirty-towns.ts,lib/stats-cache-architecture.ts,netlify.toml,netlify/functions/sync-listings*.ts,netlify/functions/sync-stats-cache*.ts,services/mls-sync/server.ts,app/admin/**
 alwaysApply: false
 ---
 
@@ -29,6 +29,13 @@ The Admin page (`/admin`) shows two operational diagrams. When you change databa
 - Ownership lanes (keep current): **Lane 1** Railway mls-sync RETS→Neon only (`MLS_SYNC_SERVICE=1`, `postHooks:false`); **Lane 2** Neon End/heartbeat as inventory truth; **Lane 3** Netlify `sideWorkOnly` warm after handoff (or stale-read rebuild).
 - When Incremental queue/worker/watchdog/clock semantics change (`services/mls-sync/server.ts`, `netlify-sync-listings-work.ts`, `sync-listings*.ts`, `incremental-sync-watchdog.ts`, `incremental-sync-live*.ts`, Admin Start/End/Status), or EventBridge / Railway ownership (`eventbridge-sync-ingress.ts`, Configure Scheduler radio), update that source in the same change.
 
+## Stats cache rebuild path diagram (hand-maintained)
+
+- Syncs → Overview shows `describeStatsCacheArchitecture()` from `lib/stats-cache-architecture.ts`, rendered by `components/admin/AdminStatsCacheDiagram.tsx`.
+- Lanes (keep current): **1** what marks a town dirty (`statsChanged` in `lib/db/listings-repo.ts`, incl. `dom`); **2** what starts a rebuild (Railway sweep in `services/mls-sync/server.ts`, Netlify radio in `netlify/functions/sync-stats-cache*.ts`, retired TTL, unfinished-start cooldown); **3** how it computes (SQL column projection, one-town-at-a-time scope, additive rollups, the `readMarketStatsPools` aggregate, rebuild lock); **4** what the operator sees (mark consumption, `stats_cache_last_run`, Sync History row).
+- When the dirty signature, the backstop, the sweep cadence, the host radio, or the reporting keys change (`lib/stats-dirty-towns.ts`, `lib/stats-cache.ts`, `lib/db/listings-repo.ts`, `services/mls-sync/server.ts`, `netlify/functions/sync-stats-cache*.ts`), update that source in the same change.
+- Same for where the math runs: new all-towns payloads must be summed from the per-town rows (`rollup*` in `lib/stats-compute.ts`) or aggregated in SQL (`lib/db/stats-aggregates-repo.ts`). Nothing may load every town's listings into Node — that is the OOM this lane exists to document.
+
 ## Site architecture diagram (hand-maintained)
 
 - Architecture → Site architecture uses `lib/site-architecture.ts` + `components/admin/AdminSiteArchitecturePanel.tsx`.
@@ -39,5 +46,6 @@ The Admin page (`/admin`) shows two operational diagrams. When you change databa
 1. Schema or new DB? → `lib/sqlite-schema-diagram.ts` registers/opens correctly.
 2. Startup/cron/build sync changed? → `lib/startup-process.ts` matches behavior.
 3. Incremental hop / Dashboard clocks / EventBridge path changed? → `lib/incremental-sync-architecture.ts` matches behavior.
-4. New host/service on the site map? → `lib/site-architecture.ts` + `AdminSiteArchitecturePanel.tsx`.
-5. Spot-check `/admin` (after password unlock) shows the expected DBs and boot lanes.
+4. Stats cache trigger / dirty marks / hosts changed? → `lib/stats-cache-architecture.ts` matches behavior.
+5. New host/service on the site map? → `lib/site-architecture.ts` + `AdminSiteArchitecturePanel.tsx`.
+6. Spot-check `/admin` (after password unlock) shows the expected DBs and boot lanes.
