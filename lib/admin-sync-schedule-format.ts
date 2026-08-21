@@ -17,6 +17,16 @@ export type AdminSyncPanelRowId =
 /** Wall clocks on Admin Sync (Start / End / Next / schedules). */
 export const ADMIN_SYNC_TZ = 'America/New_York'
 
+/**
+ * How long a slot may sit unclaimed before Admin calls it overdue.
+ *
+ * Slots are claimed by sweeps, not at the instant they open: the Railway stats
+ * sweep ticks every 10m and Goldilocks every 5m, each gated on its Configure
+ * slot. Without this window the row turns red for the minutes between the slot
+ * opening and the next tick, on a job behaving exactly as designed.
+ */
+export const ADMIN_SYNC_SLOT_CLAIM_GRACE_MS = 15 * 60 * 1000
+
 /** Order column label — 3a/3b keep Goldilocks + Edge as one conceptual step pair. */
 export function adminSyncOrderDisplay(
   rowId: string,

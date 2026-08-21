@@ -8,6 +8,7 @@ import {
 } from "@/lib/admin-sync-types";
 import {
   adminSyncOrderDisplay,
+  ADMIN_SYNC_SLOT_CLAIM_GRACE_MS,
   formatAdminNextSyncAt,
   formatAdminNextSyncCountdown,
   formatAdminSyncTimeOnly,
@@ -112,11 +113,22 @@ function rowShellClass(visual: Visual): string {
   }
 }
 
+/**
+ * Live End first — `row.finishedAt` is a server-render prop that never updates,
+ * and Start already reads live, so preferring it paired a fresh Start with a
+ * stale End and read as a hang.
+ */
 function finishedForRow(
   row: HeatmapRow,
   status: HeatmapStatus | null,
 ): string | null {
-  if (row.finishedAt) return row.finishedAt;
+  return liveFinishedForRow(row, status) ?? row.finishedAt ?? null;
+}
+
+function liveFinishedForRow(
+  row: HeatmapRow,
+  status: HeatmapStatus | null,
+): string | null {
   if (!status) return null;
   switch (row.id) {
     case "full-resync":
@@ -317,7 +329,8 @@ export default function AdminSyncMobileHeatmap({
             ? status.nextRuns[row.id as AdminSyncPanelRowId] ?? null
             : null;
         const nextMs = parseIsoMs(nextRunAt);
-        const nextOverdue = nextMs != null && nowMs > nextMs;
+        const nextOverdue =
+          nextMs != null && nowMs > nextMs + ADMIN_SYNC_SLOT_CLAIM_GRACE_MS;
         const nextClock = nextRunAt
           ? nextOverdue
             ? formatAdminSyncTimeOnly(nextRunAt)

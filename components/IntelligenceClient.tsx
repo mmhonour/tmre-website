@@ -37,7 +37,7 @@ import type { VintageBucketId } from "@/lib/vintage-buckets";
 import DealOfTheDayFrame from "./DealOfTheDayFrame";
 import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
 import DealBoardStatusFilterPills from "@/components/intelligence/deal-board/DealBoardStatusFilterPills";
-import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
+import { DealBoardMapToggleButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import {
   dealBoardSortLabel,
   type DealBoardSortKey,
@@ -1871,6 +1871,11 @@ export default function IntelligenceClient({
     "stats",
   );
   const [miniGraphsHidden, setMiniGraphsHidden] = useState(false);
+  /**
+   * Mobile map: graphs start hidden and stay unmounted until "Show graphs" —
+   * the map owns the viewport, and the charts are not free to build.
+   */
+  const [mapGraphsRevealed, setMapGraphsRevealed] = useState(false);
   const [miniGraphsAutoHideSuspended, setMiniGraphsAutoHideSuspended] =
     useState(false);
   const setMiniGraphsHiddenPref = useCallback(
@@ -2095,6 +2100,11 @@ export default function IntelligenceClient({
       setMapOnPref("on");
     }
   }, [setMapOnPref]);
+
+  // Turning the map off ends the reveal, so the next map open starts graph-free.
+  useEffect(() => {
+    if (!showMap) setMapGraphsRevealed(false);
+  }, [showMap]);
 
   useEffect(() => {
     if (!showMap) return;
@@ -4124,6 +4134,15 @@ export default function IntelligenceClient({
     ],
   );
 
+  const graphsAvailable =
+    vintageChartListingRows.length > 0 || showPriceFilter;
+  /**
+   * Mobile map: graphs are opt-in, so the strip never mounts until asked for.
+   * Desktop keeps them, since the map sits beside / above the cards there.
+   */
+  const mapGraphsSuppressed = showMap && isMobileViewport && !mapGraphsRevealed;
+  const graphsHidden = mapGraphsSuppressed || miniGraphsHidden;
+
   /** Price / segment mini-graphs: all filters except price (so other bands stay clickable). */
   const priceMiniGraphListings = useMemo(
     () =>
@@ -5778,11 +5797,19 @@ export default function IntelligenceClient({
           */}
           <div className="flex flex-col">
             <div className="mb-0.5 flex items-center justify-between gap-3 order-2 lg:order-1">
-              {vintageChartListingRows.length > 0 || showPriceFilter ? (
+              {graphsAvailable ? (
                 <button
                   type="button"
                   className="font-mono text-[9px] tracking-[0.12em] uppercase text-navy/55 underline decoration-navy/25 underline-offset-2 transition-colors hover:text-navy hover:decoration-gold"
                   onClick={() => {
+                    if (mapGraphsSuppressed) {
+                      setMapGraphsRevealed(true);
+                      setMiniGraphsHiddenPref(false, {
+                        suspendAutoHide: true,
+                      });
+                      return;
+                    }
+                    if (showMap) setMapGraphsRevealed(false);
                     if (miniGraphsHidden) {
                       setMiniGraphsHiddenPref(false, {
                         suspendAutoHide: true,
@@ -5791,15 +5818,24 @@ export default function IntelligenceClient({
                       setMiniGraphsHiddenPref(true);
                     }
                   }}
-                  aria-pressed={miniGraphsHidden}
+                  aria-pressed={graphsHidden}
                 >
-                  {miniGraphsHidden ? "Show graphs" : "Hide graphs"}
+                  {graphsHidden ? "Show graphs" : "Hide graphs"}
                 </button>
               ) : (
                 <span />
               )}
               <div className="ml-auto inline-flex items-center gap-1.5">
                 <div className="inline-flex items-center gap-1.5 lg:hidden">
+                  {/* Map on: the toggle moves here, left of Sorted by, because the
+                      map fills the phone viewport and hides the board toolbar. */}
+                  {showMap ? (
+                    <DealBoardMapToggleButton
+                      mapOn={showMap}
+                      onToggle={() => setMapOnPref("off")}
+                      className="md:hidden"
+                    />
+                  ) : null}
                   <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
                     Sorted by:
                   </span>
@@ -5837,7 +5873,7 @@ export default function IntelligenceClient({
                 />
               </div>
             </div>
-            {vintageChartListingRows.length > 0 || showPriceFilter ? (
+            {graphsAvailable && !mapGraphsSuppressed ? (
               <div className="order-1 lg:order-2">
                 <IntelligenceMiniGraphsStrip
                   onInteractRef={miniGraphsInteractRef}
@@ -6050,10 +6086,6 @@ export default function IntelligenceClient({
                     setBoardStatusFilter(value);
                     setBoardPage(1);
                   }}
-                  boardView={boardView}
-                  onBoardViewChange={setBoardView}
-                  mapOn={showMap}
-                  onMapToggle={() => setMapOnPref(showMap ? "off" : "on")}
                   onResetSliders={resetSliders}
                   slidersCustomized={slidersCustomized}
                 />
@@ -8308,10 +8340,6 @@ function DealBoardMapMobileChrome({
   onPageChange,
   boardStatusFilter,
   onBoardStatusFilterChange,
-  boardView,
-  onBoardViewChange,
-  mapOn,
-  onMapToggle,
   onResetSliders,
   slidersCustomized,
 }: {
@@ -8323,10 +8351,6 @@ function DealBoardMapMobileChrome({
   onPageChange: (page: number) => void;
   boardStatusFilter: DealBoardStatusFilter;
   onBoardStatusFilterChange: (value: DealBoardStatusFilter) => void;
-  boardView: DealBoardCardView;
-  onBoardViewChange: (view: DealBoardCardView) => void;
-  mapOn: boolean;
-  onMapToggle: () => void;
   onResetSliders: () => void;
   slidersCustomized: boolean;
 }) {
@@ -8344,20 +8368,14 @@ function DealBoardMapMobileChrome({
               {totalCount.toLocaleString()}
             </span>
           </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <DealBoardViewPicker
-              view={boardView}
-              onChange={onBoardViewChange}
-              mapOn={mapOn}
-              onMapToggle={onMapToggle}
-            />
-            <FilterResetButton
-              onClick={onResetSliders}
-              disabled={!slidersCustomized}
-              label="Reset sliders"
-              tone="onLight"
-            />
-          </div>
+          {/* Card views (Large / Grid / Line) are pointless here — the map owns
+              the phone viewport. The Map toggle lives up in the Sorted-by row. */}
+          <FilterResetButton
+            onClick={onResetSliders}
+            disabled={!slidersCustomized}
+            label="Reset sliders"
+            tone="onLight"
+          />
         </div>
         {totalPages > 1 ? (
           <div

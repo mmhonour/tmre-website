@@ -16,6 +16,7 @@ import {
 import AdminSyncMobileHeatmap from "@/components/admin/AdminSyncMobileHeatmap";
 import type { AdminSyncPanelRowId } from "@/lib/admin-sync-schedule-format";
 import {
+  ADMIN_SYNC_SLOT_CLAIM_GRACE_MS as SCHEDULE_CLAIM_GRACE_MS,
   adminSyncCalendarDate,
   adminSyncOrderDisplay,
   formatAdminNextSyncAt,
@@ -957,15 +958,19 @@ async function readAdminSyncPostResponse(res: Response): Promise<AdminSyncPostBo
   return body;
 }
 
+/**
+ * Live Start / End from the poll. This has to win over `row.*`: those are props
+ * from the server render and never change again, so a tab left open (or a
+ * cached render) keeps showing the Start that was open at render time — which
+ * the hang check then reports as "Hung · no End" for as long as the tab lives.
+ */
 function timingForRow(row: AdminSyncRow, status: PanelStatus | null): SyncTiming {
-  if (row.startedAt != null || row.finishedAt != null) {
-    return { started: row.startedAt ?? null, finished: row.finishedAt ?? null };
-  }
+  const live = status ? liveTimingForRow(row, status) : null;
+  if (live && (live.started != null || live.finished != null)) return live;
+  return { started: row.startedAt ?? null, finished: row.finishedAt ?? null };
+}
 
-  if (!status) {
-    return { started: null, finished: null };
-  }
-
+function liveTimingForRow(row: AdminSyncRow, status: PanelStatus): SyncTiming {
   switch (row.id) {
     case "full-resync":
       return {
@@ -1435,19 +1440,15 @@ function isScheduleBreached(
   nowMs: number,
 ): boolean {
   const dueMs = parseIsoMs(nextRunAt);
-  if (dueMs == null || nowMs <= dueMs) return false;
+  if (dueMs == null || nowMs <= dueMs + SCHEDULE_CLAIM_GRACE_MS) return false;
   const finishedMs = parseIsoMs(finishedAt);
   if (finishedMs == null) return true;
   return finishedMs < dueMs;
 }
 
-/**
- * True when last End is older than the Configure cadence allows — even if Next
- * still shows a future wall-clock (daily/weekly Next ignores stale finishes).
- */
+/** True when last End is older than the Configure cadence allows. */
 function isFinishPastCadence(
   finishedAt: string | null,
-  nextRunAt: string | null,
   frequency: SyncScheduleFrequencyId | undefined,
   nowMs: number,
 ): boolean {
@@ -1455,23 +1456,22 @@ function isFinishPastCadence(
   if (finishedMs == null || !frequency) return false;
   const intervalMs = frequencyIntervalMs(frequency);
   if (intervalMs != null) {
-    return nowMs - finishedMs >= intervalMs + 60_000;
+    return nowMs - finishedMs >= intervalMs + SCHEDULE_CLAIM_GRACE_MS;
   }
-  // Calendar jobs: Next is the upcoming slot from *now*. The previous slot is
-  // roughly Next − one period; finishing before that means a missed run.
-  const nextMs = parseIsoMs(nextRunAt);
-  if (nextMs == null) return false;
+  // Calendar jobs: one whole period without an End. Inferring the missed slot
+  // from Next − period used to contradict Next itself — a daily job that
+  // finished 13h ago read Overdue beside a Next a day out. Next now surfaces an
+  // unserved past slot on its own, so this is only the long-silence backstop.
   const periodMs =
     frequency === "daily"
       ? 24 * 60 * 60_000
       : frequency === "weekly"
         ? 7 * 24 * 60 * 60_000
         : frequency === "monthly"
-          ? 30 * 24 * 60 * 60_000
+          ? 31 * 24 * 60 * 60_000
           : null;
   if (periodMs == null) return false;
-  const lastSlotMs = nextMs - periodMs;
-  return finishedMs < lastSlotMs - 60_000;
+  return nowMs - finishedMs >= periodMs + SCHEDULE_CLAIM_GRACE_MS;
 }
 
 function resolveSyncRowVisualStatus(options: {
@@ -3370,7 +3370,6 @@ export default function AdminSyncTable({
                 isScheduleBreached(nextRunAt, timing.finished, nowMs) ||
                 isFinishPastCadence(
                   timing.finished,
-                  nextRunAt,
                   jobSchedule?.frequency,
                   nowMs,
                 );

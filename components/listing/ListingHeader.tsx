@@ -149,11 +149,16 @@ export default function ListingHeader({
 
   const titleAndMeta = (
     <>
+      {/*
+        Three tracks: address (the only flexible one), score, price. The price
+        never shrinks below its own text, so it cannot ride over the score; when
+        the line genuinely runs out of room the price wraps to its own row.
+      */}
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-1 items-start gap-x-3">
-          <div className="min-w-0 max-w-[65%] shrink">
+        <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-3 gap-y-1.5">
+          <div className="min-w-[8.5rem] shrink basis-0 grow">
             <h1
-              className={`font-serif text-white leading-tight min-w-0 ${
+              className={`font-serif text-white leading-tight min-w-0 break-words ${
                 compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
               }`}
             >
@@ -189,9 +194,9 @@ export default function ListingHeader({
             />
           ) : null}
           {priceLabel ? (
-            <div className="flex min-w-0 flex-1 items-start justify-end">
+            <div className="ml-auto flex shrink-0 items-start justify-end">
               <span
-                className={`inline-flex items-start font-serif font-bold tabular-nums leading-none text-gold max-lg:pr-1 ${
+                className={`inline-flex shrink-0 items-start whitespace-nowrap font-serif font-bold tabular-nums leading-none text-gold max-lg:pr-1 ${
                   compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
                 }`}
                 aria-label={

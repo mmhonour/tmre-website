@@ -416,15 +416,24 @@ export function computeNaturalNextRunIso(
     return nextIntervalSlotEt(hour, minute, intervalMs, now).toISOString()
   }
   if (job.frequency === 'daily') {
+    // Same rule as interval: an unserved past slot is the run the operator is
+    // waiting on. Rolling straight to tomorrow hid today's miss behind a future
+    // clock while the row still read Overdue — Goldilocks on 21 Aug 2026.
+    const lastSlot = lastPastDailySlotEt(hour, minute, now)
+    const lastMs = parseIsoMs(lastFinishedIso)
+    if (lastMs == null || lastMs < lastSlot.getTime()) {
+      return lastSlot.toISOString()
+    }
     return nextDailyTimeEt(hour, minute, now).toISOString()
   }
   if (job.frequency === 'weekly') {
-    return nextWeekdayTimeEt(
-      resolveWeekdayEt(job),
-      hour,
-      minute,
-      now,
-    ).toISOString()
+    const weekdayEt = resolveWeekdayEt(job)
+    const lastSlot = lastPastWeekdaySlotEt(weekdayEt, hour, minute, now)
+    const lastMs = parseIsoMs(lastFinishedIso)
+    if (lastMs == null || lastMs < lastSlot.getTime()) {
+      return lastSlot.toISOString()
+    }
+    return nextWeekdayTimeEt(weekdayEt, hour, minute, now).toISOString()
   }
   if (job.frequency === 'event') {
     // Event-day jobs (FOMC / CPI) compute next run from calendars — callers

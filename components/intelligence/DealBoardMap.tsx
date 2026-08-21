@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
@@ -251,6 +252,39 @@ function MapControls({
   );
 }
 
+/**
+ * Pin preview. Hover-only on mouse (never eats clicks); on touch it is the tap
+ * target that opens the listing, since the first pin tap only opens this card.
+ */
+function PreviewCard({
+  href,
+  left,
+  top,
+  children,
+}: {
+  href?: string;
+  left: number;
+  top: number;
+  children: ReactNode;
+}) {
+  const className = `absolute z-30 w-[11.5rem] -translate-x-1/2 -translate-y-[calc(100%+10px)] overflow-hidden rounded-md border border-charcoal/10 bg-white shadow-lg ${
+    href ? "" : "pointer-events-none"
+  }`;
+  const style = { left, top };
+  if (!href) {
+    return (
+      <div className={className} style={style}>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <Link href={href} className={className} style={style} data-map-preview-anchor="">
+      {children}
+    </Link>
+  );
+}
+
 export default function DealBoardMap({
   listings,
   boundZips = [],
@@ -285,6 +319,12 @@ export default function DealBoardMap({
   } | null>(null);
   const pinchRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
+  /** Once the visitor pans / zooms, only a new search area may re-fit. */
+  const userMovedRef = useRef(false);
+  /** Area the last auto-fit was for, so paging within it keeps the viewport. */
+  const fitAreaRef = useRef<string | null>(null);
+  /** Touch: first tap opens the preview card, the card itself opens the listing. */
+  const [coarsePointer, setCoarsePointer] = useState(false);
 
   const [rings, setRings] = useState<Ring[]>([]);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
@@ -322,6 +362,14 @@ export default function DealBoardMap({
   const fitTarget = searchBounds ?? pinBounds;
 
   useEffect(() => {
+    const mq = window.matchMedia("(hover: none)");
+    const sync = () => setCoarsePointer(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
@@ -336,20 +384,28 @@ export default function DealBoardMap({
   const fit = useCallback(() => {
     if (size.width <= 0 || size.height <= 0) return;
     const next = fitBounds(fitTarget, size.width, size.height, placeable.length);
+    userMovedRef.current = false;
     setCenter(next.center);
     setZoom(next.zoom);
   }, [fitTarget, placeable.length, size.height, size.width]);
 
-  // Re-fit when the search area or filtered set changes, not on every pan.
+  const areaSignature = `${boundKey}:${rings.length}`;
+
+  // Re-fit when the search area or filtered set changes, not on every pan. A
+  // hand-adjusted viewport survives paging (groups 1–20 → 21–40) and filters;
+  // only a new search area, or the FIT control, overrides it.
   useEffect(() => {
     if (size.width <= 0 || size.height <= 0) return;
-    const signature = `${boundKey}:${rings.length}:${placeable.length}:${
+    const signature = `${areaSignature}:${placeable.length}:${
       placeable[0]?.key ?? ""
     }:${placeable[placeable.length - 1]?.key ?? ""}`;
     if (fitSignatureRef.current === signature) return;
+    const areaChanged = fitAreaRef.current !== areaSignature;
     fitSignatureRef.current = signature;
+    fitAreaRef.current = areaSignature;
+    if (userMovedRef.current && !areaChanged) return;
     fit();
-  }, [boundKey, fit, placeable, rings.length, size.height, size.width]);
+  }, [areaSignature, fit, placeable, size.height, size.width]);
 
   const viewport = useMemo(() => {
     if (size.width <= 0 || size.height <= 0) return null;
@@ -414,6 +470,7 @@ export default function DealBoardMap({
     (dxPx: number, dyPx: number, from: LonLat) => {
       const cx = lonToWorldX(from.lon, zoom) - dxPx;
       const cy = latToWorldY(from.lat, zoom) - dyPx;
+      userMovedRef.current = true;
       setCenter(clampCenter(worldToLonLat(cx, cy, zoom), searchBounds));
     },
     [searchBounds, zoom],
@@ -423,6 +480,7 @@ export default function DealBoardMap({
     (nextZoom: number, anchorX?: number, anchorY?: number) => {
       const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(nextZoom)));
       if (clamped === zoom) return;
+      userMovedRef.current = true;
       if (
         anchorX == null ||
         anchorY == null ||
@@ -526,10 +584,19 @@ export default function DealBoardMap({
     pinchRef.current.delete(e.pointerId);
     if (pinchRef.current.size < 2) pinchStartRef.current = null;
     const drag = dragRef.current;
+    const tapped = drag?.pointerId === e.pointerId && !drag.moved;
     if (drag?.pointerId === e.pointerId) {
       releaseDragCapture(e.currentTarget, e.pointerId);
       dragRef.current = null;
     }
+    // Touch: a tap on open map closes the preview card. Taps that land on a
+    // pin or on the card itself keep it (the card is the link to the listing).
+    if (!tapped || e.pointerType === "mouse" || activeKey == null) return;
+    const target = e.target;
+    if (target instanceof Element && target.closest("[data-map-preview-anchor]")) {
+      return;
+    }
+    onSelect?.(null);
   };
 
   useEffect(() => {
@@ -748,6 +815,7 @@ export default function DealBoardMap({
             </>
           );
           const hoverHandlers = {
+            "data-map-preview-anchor": "",
             onMouseEnter: () => {
               setHoverKey(pin.listing.key);
               onSelect?.(pin.listing.key);
@@ -762,7 +830,7 @@ export default function DealBoardMap({
               if (e.pointerType === "mouse") e.stopPropagation();
             },
           };
-          if (href) {
+          if (href && !coarsePointer) {
             return (
               <Link
                 key={pin.listing.key}
@@ -784,7 +852,11 @@ export default function DealBoardMap({
               style={pinStyle}
               aria-label={label}
               {...hoverHandlers}
-              onClick={() => onSelect?.(pin.listing.key)}
+              onClick={() =>
+                onSelect?.(
+                  activeKey === pin.listing.key ? null : pin.listing.key,
+                )
+              }
             >
               {pill}
             </button>
@@ -792,9 +864,10 @@ export default function DealBoardMap({
         })}
 
         {hovered && hoveredPin ? (
-          <div
-            className="pointer-events-none absolute z-30 w-[11.5rem] -translate-x-1/2 -translate-y-[calc(100%+10px)] overflow-hidden rounded-md border border-charcoal/10 bg-white shadow-lg"
-            style={{ left: hoveredPin.left, top: hoveredPin.top }}
+          <PreviewCard
+            href={coarsePointer ? hrefFor?.(hovered) : undefined}
+            left={hoveredPin.left}
+            top={hoveredPin.top}
           >
             {hovered.photoCount != null && hovered.photoCount > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -829,8 +902,13 @@ export default function DealBoardMap({
                   .filter(Boolean)
                   .join(" · ")}
               </p>
+              {coarsePointer ? (
+                <p className="mt-1 font-mono text-[8px] tracking-[0.14em] uppercase text-gold">
+                  Tap for the listing
+                </p>
+              ) : null}
             </div>
-          </div>
+          </PreviewCard>
         ) : null}
 
         <MapControls

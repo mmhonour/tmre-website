@@ -77,6 +77,34 @@ function DealBoardViewIcon({ mode }: { mode: DealBoardView }) {
   }
 }
 
+/** Standalone map layer toggle — used on its own in the mobile Sorted-by row. */
+export function DealBoardMapToggleButton({
+  mapOn,
+  onToggle,
+  className = "",
+}: {
+  mapOn: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-charcoal/[0.08] transition-colors ${
+        mapOn
+          ? "bg-navy text-white ring-1 ring-gold/40"
+          : "bg-white text-slate hover:bg-charcoal/[0.04] hover:text-navy"
+      } ${className}`}
+      aria-pressed={mapOn}
+      aria-label={DEAL_BOARD_VIEW_LABELS.map}
+      title={mapOn ? "Hide map" : "Show map"}
+    >
+      <DealBoardViewIcon mode="map" />
+    </button>
+  );
+}
+
 function viewButtonClass(active: boolean) {
   return `inline-flex h-6 w-6 items-center justify-center rounded transition-colors ${
     active
@@ -131,21 +159,8 @@ export default function DealBoardViewPicker({
           );
         })}
       </div>
-      {showMapToggle ? (
-        <button
-          type="button"
-          onClick={onMapToggle}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-md border border-charcoal/[0.08] transition-colors ${
-            mapOn
-              ? "bg-navy text-white ring-1 ring-gold/40"
-              : "bg-white text-slate hover:bg-charcoal/[0.04] hover:text-navy"
-          }`}
-          aria-pressed={mapOn}
-          aria-label={DEAL_BOARD_VIEW_LABELS.map}
-          title={mapOn ? "Hide map" : "Show map"}
-        >
-          <DealBoardViewIcon mode="map" />
-        </button>
+      {showMapToggle && onMapToggle ? (
+        <DealBoardMapToggleButton mapOn={mapOn} onToggle={onMapToggle} />
       ) : null}
     </div>
   );
