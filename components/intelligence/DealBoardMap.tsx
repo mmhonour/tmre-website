@@ -421,7 +421,7 @@ export default function DealBoardMap({
 
   const zoomAround = useCallback(
     (nextZoom: number, anchorX?: number, anchorY?: number) => {
-      const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom));
+      const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(nextZoom)));
       if (clamped === zoom) return;
       if (
         anchorX == null ||
@@ -432,7 +432,7 @@ export default function DealBoardMap({
         setZoom(clamped);
         return;
       }
-      // Keep the point under the cursor fixed across the zoom change.
+      // Keep the point under the cursor / pinch midpoint fixed.
       const offsetX = anchorX - size.width / 2;
       const offsetY = anchorY - size.height / 2;
       const anchorLonLat = worldToLonLat(
@@ -450,15 +450,34 @@ export default function DealBoardMap({
     [center.lat, center.lon, searchBounds, size.height, size.width, zoom],
   );
 
+  const zoomRef = useRef(zoom);
+  const zoomAroundRef = useRef(zoomAround);
+  zoomRef.current = zoom;
+  zoomAroundRef.current = zoomAround;
+
+  const releaseDragCapture = (target: HTMLDivElement, pointerId: number) => {
+    try {
+      if (target.hasPointerCapture(pointerId)) {
+        target.releasePointerCapture(pointerId);
+      }
+    } catch {
+      /* Safari can throw if the pointer already ended. */
+    }
+  };
+
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinchRef.current.size === 2) {
+    if (pinchRef.current.size >= 2) {
       const [a, b] = [...pinchRef.current.values()];
       pinchStartRef.current = {
         distance: Math.hypot(a.x - b.x, a.y - b.y),
         zoom,
       };
-      dragRef.current = null;
+      const drag = dragRef.current;
+      if (drag) {
+        releaseDragCapture(e.currentTarget, drag.pointerId);
+        dragRef.current = null;
+      }
       return;
     }
     dragRef.current = {
@@ -468,7 +487,8 @@ export default function DealBoardMap({
       startCenter: center,
       moved: false,
     };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // Capture only after we know this is a one-finger pan — a second finger
+    // must still be able to land for pinch-zoom on iOS.
   };
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -476,12 +496,12 @@ export default function DealBoardMap({
       pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     const pinchStart = pinchStartRef.current;
-    if (pinchStart && pinchRef.current.size === 2) {
+    if (pinchStart && pinchRef.current.size >= 2) {
       const [a, b] = [...pinchRef.current.values()];
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
       if (distance > 0 && pinchStart.distance > 0) {
         const steps = Math.log2(distance / pinchStart.distance);
-        zoomAround(Math.round(pinchStart.zoom + steps));
+        zoomAround(pinchStart.zoom + steps);
       }
       return;
     }
@@ -491,7 +511,14 @@ export default function DealBoardMap({
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
     if (!drag.moved && Math.hypot(dx, dy) < 3) return;
-    drag.moved = true;
+    if (!drag.moved) {
+      drag.moved = true;
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
     panBy(dx, dy, drag.startCenter);
   };
 
@@ -499,7 +526,10 @@ export default function DealBoardMap({
     pinchRef.current.delete(e.pointerId);
     if (pinchRef.current.size < 2) pinchStartRef.current = null;
     const drag = dragRef.current;
-    if (drag?.pointerId === e.pointerId) dragRef.current = null;
+    if (drag?.pointerId === e.pointerId) {
+      releaseDragCapture(e.currentTarget, e.pointerId);
+      dragRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -519,6 +549,67 @@ export default function DealBoardMap({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [zoom, zoomAround]);
+
+  // iOS Safari often never sends a second pointerdown. Native touches still
+  // fire, including when a finger starts on a pin, so pinch lives here.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const applyPinch = (touches: TouchList) => {
+      if (touches.length < 2) return;
+      const a = touches[0];
+      const b = touches[1];
+      const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      let start = pinchStartRef.current;
+      if (!start || start.distance <= 0) {
+        start = { distance, zoom: zoomRef.current };
+        pinchStartRef.current = start;
+      }
+      if (distance <= 0 || start.distance <= 0) return;
+      const rect = el.getBoundingClientRect();
+      const midX = (a.clientX + b.clientX) / 2 - rect.left;
+      const midY = (a.clientY + b.clientY) / 2 - rect.top;
+      zoomAroundRef.current(
+        start.zoom + Math.log2(distance / start.distance),
+        midX,
+        midY,
+      );
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length < 2) return;
+      e.preventDefault();
+      dragRef.current = null;
+      const a = e.touches[0];
+      const b = e.touches[1];
+      pinchStartRef.current = {
+        distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        zoom: zoomRef.current,
+      };
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length < 2) return;
+      e.preventDefault();
+      applyPinch(e.touches);
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinchStartRef.current = null;
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, []);
 
   const previewKey = hoverKey ?? activeKey ?? null;
   const hovered = useMemo(
@@ -580,6 +671,7 @@ export default function DealBoardMap({
       <div
         ref={containerRef}
         className={`relative w-full ${heightClass} touch-none select-none overflow-hidden rounded-lg border border-charcoal/[0.08] bg-[#e8e6df]`}
+        style={{ touchAction: "none" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={endPointer}
@@ -660,9 +752,14 @@ export default function DealBoardMap({
               setHoverKey(pin.listing.key);
               onSelect?.(pin.listing.key);
             },
-            onMouseLeave: () => setHoverKey(null),
+            onMouseLeave: () => {
+              setHoverKey(null);
+              onSelect?.(null);
+            },
             onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
-              e.stopPropagation();
+              // Mouse: don't start a map pan when clicking a pin. Touch must
+              // bubble so a second finger can pinch-zoom.
+              if (e.pointerType === "mouse") e.stopPropagation();
             },
           };
           if (href) {
@@ -743,7 +840,7 @@ export default function DealBoardMap({
           onFit={fit}
         />
 
-        <div className="pointer-events-none absolute bottom-1.5 right-2 z-20 rounded bg-white/85 px-1.5 py-0.5 font-mono text-[8px] tracking-wide text-charcoal/55">
+        <div className="pointer-events-none absolute bottom-1.5 right-2 z-20 hidden rounded bg-white/85 px-1.5 py-0.5 font-mono text-[8px] tracking-wide text-charcoal/55 md:block">
           {placeable.length} mapped
           {missingCoords > 0 ? ` · ${missingCoords} without coordinates` : ""}
         </div>

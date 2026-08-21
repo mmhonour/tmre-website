@@ -87,7 +87,9 @@ export type ParsedIntelligenceSearch = {
   sort: string | null
   dir: 'asc' | 'desc' | null
   view: 'large' | 'grid' | 'line' | 'map' | null
-  /** Desktop map arrangement when view is `map`. */
+  /** Map is a layer; not exclusive of Large / Grid / Line. */
+  mapOn: boolean
+  /** Desktop map arrangement when the map layer is on. */
   mapLayout: 'top' | 'side' | null
   furnished: string | null
   minPrice: number | null
@@ -117,6 +119,7 @@ export type IntelligenceShareState = {
   sort?: string
   dir?: 'asc' | 'desc'
   view?: 'large' | 'grid' | 'line' | 'map'
+  mapOn?: boolean
   mapLayout?: 'top' | 'side'
   furnished?: string | null
   minPrice?: number
@@ -263,15 +266,15 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
   params.set('sort', sort)
   params.set('dir', state.dir === 'asc' ? 'a' : 'd')
   const view = state.view?.trim()
-  if (
-    view === 'large' ||
-    view === 'grid' ||
-    view === 'line' ||
-    view === 'map'
-  ) {
+  if (view === 'large' || view === 'grid' || view === 'line') {
     params.set('view', VIEW_TO_SHORT[view])
-    // Layout only means something for the map, so it rides along with it.
-    if (view === 'map' && state.mapLayout === 'side') params.set('ml', 's')
+  } else if (view === 'map') {
+    params.set('view', VIEW_TO_SHORT.grid)
+  }
+  const mapOn = state.mapOn === true || view === 'map'
+  if (mapOn) {
+    params.set('map', '1')
+    if (state.mapLayout === 'side') params.set('ml', 's')
   }
 
   if (state.furnished && state.furnished !== 'all') {
@@ -462,6 +465,7 @@ export function intelligenceShareStateFromParsed(
     sort: parsed.sort ?? undefined,
     dir: parsed.dir ?? undefined,
     view: parsed.view ?? undefined,
+    mapOn: parsed.mapOn || parsed.view === 'map',
     mapLayout: parsed.mapLayout ?? undefined,
     furnished: parsed.furnished,
     minPrice: parsed.minPrice ?? undefined,
@@ -546,6 +550,8 @@ function hasIntelligenceShareParams(searchParams: URLSearchParams): boolean {
     'sort',
     'dir',
     'view',
+    'map',
+    'ml',
     'furn',
     'pmin',
     'pmax',
@@ -660,7 +666,12 @@ export function parseIntelligenceSearchParams(
         ? 'desc'
         : null
   const viewRaw = (searchParams.get('view') ?? '').trim().toLowerCase()
-  const view = VIEW_SHORT[viewRaw] ?? null
+  const viewParsed = VIEW_SHORT[viewRaw] ?? null
+  const mapOn =
+    searchParams.get('map') === '1' ||
+    searchParams.get('map') === 'on' ||
+    viewParsed === 'map'
+  const view = viewParsed === 'map' ? null : viewParsed
   const mapLayoutRaw = (searchParams.get('ml') ?? '').trim().toLowerCase()
   const mapLayout = MAP_LAYOUT_SHORT[mapLayoutRaw] ?? null
 
@@ -692,6 +703,7 @@ export function parseIntelligenceSearchParams(
     sort,
     dir,
     view,
+    mapOn,
     mapLayout,
     furnished: searchParams.get('furn')?.trim() || null,
     minPrice: Number.isFinite(pmin) && pmin > 0 ? pmin : null,

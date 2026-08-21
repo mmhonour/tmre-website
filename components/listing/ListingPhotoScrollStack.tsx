@@ -2,9 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, type MouseEvent } from "react";
+import ListingThumbImage from "@/components/ListingThumbImage";
 import ListingHeroPhoto from "@/components/listing/ListingHeroPhoto";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ListingPhotoCycleControls from "@/components/listing/ListingPhotoCycleControls";
+import {
+  ListingPhotoObfuscationOverlay,
+  listingPhotoObfuscationImgClass,
+  listingPhotoObfuscationSizeForThumb,
+} from "@/components/listing/ListingPhotoObfuscation";
 import { useListingPhotosMode } from "@/components/listing/ListingPhotosModeContext";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 
@@ -101,20 +107,60 @@ export default function ListingPhotoScrollStack({
     const canCycle = photoCount > 1;
     return (
       <div className="relative w-full">
-        <ListingHeroPhoto
-          url={listingPhotoProxyUrl(mlsId, activeIndex, { size: "full" })}
-          alt={`${altBase} · photo ${activeIndex + 1}`}
-          photoCount={photoCount}
-          photoIndex={activeIndex}
-          obfuscate={obfuscatePhotoIndex?.(activeIndex) ?? false}
-          priority
-          seamless
-        />
-        {canCycle ? (
-          <ListingPhotoCycleControls
-            onPrev={() => photosMode.cycle(-1)}
-            onNext={() => photosMode.cycle(1)}
+        <div className="relative">
+          <ListingHeroPhoto
+            url={listingPhotoProxyUrl(mlsId, activeIndex, { size: "full" })}
+            alt={`${altBase} · photo ${activeIndex + 1}`}
+            photoCount={photoCount}
+            photoIndex={activeIndex}
+            obfuscate={obfuscatePhotoIndex?.(activeIndex) ?? false}
+            priority
+            seamless
           />
+          {canCycle ? (
+            <ListingPhotoCycleControls
+              onPrev={() => photosMode.cycle(-1)}
+              onNext={() => photosMode.cycle(1)}
+            />
+          ) : null}
+          {canCycle ? (
+            <p className="pointer-events-none absolute bottom-2 left-2 z-10 rounded bg-black/55 px-2 py-0.5 font-mono text-[10px] tracking-[0.15em] uppercase text-white/90">
+              {activeIndex + 1} / {photoCount}
+            </p>
+          ) : null}
+        </div>
+        {canCycle ? (
+          <div className="grid grid-cols-6 sm:grid-cols-8 gap-0">
+            {Array.from({ length: photoCount }, (_, i) => {
+              const obfuscate = obfuscatePhotoIndex?.(i) ?? false;
+              return (
+                <button
+                  key={`${mlsId}-thumb-${i}`}
+                  type="button"
+                  onClick={() => photosMode.setPhotoIndex(i)}
+                  className={`relative aspect-square overflow-hidden transition-shadow ${
+                    i === activeIndex
+                      ? "z-10 ring-2 ring-inset ring-gold"
+                      : "hover:z-10 hover:ring-2 hover:ring-inset hover:ring-white/35"
+                  }`}
+                  aria-label={`Photo ${i + 1}`}
+                  aria-current={i === activeIndex ? "true" : undefined}
+                >
+                  <ListingThumbImage
+                    src={listingPhotoProxyUrl(mlsId, i)}
+                    priority={i < 8}
+                    className="absolute inset-0 block h-full w-full"
+                    imgClassName={listingPhotoObfuscationImgClass(
+                      obfuscate,
+                      "absolute inset-0 h-full w-full object-cover",
+                      listingPhotoObfuscationSizeForThumb(i),
+                    )}
+                  />
+                  {obfuscate ? <ListingPhotoObfuscationOverlay /> : null}
+                </button>
+              );
+            })}
+          </div>
         ) : null}
       </div>
     );

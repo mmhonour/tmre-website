@@ -120,6 +120,15 @@ export function SpotlightPageChrome({
             propertyType: display.propertyType,
           }),
           privacyMode: presentation.privacyMode,
+          adminAddress: {
+            city:
+              display.intelligenceListing.address.city ||
+              display.config.address.city,
+            state: display.config.address.state,
+            postalCode:
+              display.intelligenceListing.address.postalCode ||
+              display.config.address.postalCode,
+          },
         }}
         location={{
           latitude: presentation.mapLocation.latitude,

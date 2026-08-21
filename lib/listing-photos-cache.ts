@@ -78,7 +78,9 @@ export async function resolveListingPhotoUrls(
     if (storedIndices.length > 0) indexLookupId = id
   }
 
-  // After RETS/media sync, only expose photos that actually landed in the store.
+  // Stored indices are a cache hit, not the gallery size. Hero-warm often
+  // writes only photo 0; the Photos tab still needs one URL per MLS photo so
+  // the thumbnail strip can fetch the rest on demand.
   if (storedIndices.length > 0 && !options.forceRefresh) {
     const span = await listingPhotoStorageSpanAsync(indexLookupId)
     const freshRows = await countFreshListingPhotosAsync(
@@ -86,9 +88,15 @@ export async function resolveListingPhotoUrls(
       Math.max(span, storedIndices.length),
       listingPhotoSyncedAfter(LISTING_PHOTO_TTL_MS),
     )
+    const hint = photoCountHint ?? 0
+    const maxStored = Math.max(...storedIndices) + 1
+    const denseCount = Math.max(hint, maxStored, storedIndices.length)
+    const complete = storedIndices.length >= denseCount
     return {
       // Client URLs keep the request mlsId; the photo proxy remaps to cache id.
-      photos: buildListingPhotoProxyUrlsForIndices(id, storedIndices, sizeOpts),
+      photos: complete
+        ? buildListingPhotoProxyUrlsForIndices(id, storedIndices, sizeOpts)
+        : buildListingPhotoProxyUrls(id, denseCount, sizeOpts),
       cacheHit: freshRows >= storedIndices.length,
     }
   }

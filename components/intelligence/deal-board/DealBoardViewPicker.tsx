@@ -1,8 +1,11 @@
 "use client";
 
 import {
+  DEAL_BOARD_CARD_VIEW_VALUES,
   DEAL_BOARD_VIEW_LABELS,
   DEAL_BOARD_VIEW_VALUES,
+  dealBoardCardView,
+  type DealBoardCardView,
   type DealBoardView,
 } from "@/lib/deal-board-view";
 
@@ -74,43 +77,76 @@ function DealBoardViewIcon({ mode }: { mode: DealBoardView }) {
   }
 }
 
+function viewButtonClass(active: boolean) {
+  return `inline-flex h-6 w-6 items-center justify-center rounded transition-colors ${
+    active
+      ? "bg-navy text-white ring-1 ring-gold/40"
+      : "text-slate hover:bg-charcoal/[0.04] hover:text-navy"
+  }`;
+}
+
 export default function DealBoardViewPicker({
   view,
   onChange,
+  mapOn = false,
+  onMapToggle,
   options = DEAL_BOARD_VIEW_VALUES,
 }: {
   view: DealBoardView;
-  onChange: (view: DealBoardView) => void;
+  onChange: (view: DealBoardCardView) => void;
+  /** Desktop: Map is a layer, not a replacement for Large / Grid / Line. */
+  mapOn?: boolean;
+  onMapToggle?: () => void;
   /** Boards without a map panel pass DEAL_BOARD_CARD_VIEW_VALUES. */
   options?: readonly DealBoardView[];
 }) {
+  const cardView = dealBoardCardView(view);
+  const showMapToggle = options.includes("map") && onMapToggle != null;
+  const cardOptions = options.filter((mode): mode is DealBoardCardView =>
+    (DEAL_BOARD_CARD_VIEW_VALUES as readonly string[]).includes(mode),
+  );
+
   return (
-    <div
-      className="inline-flex rounded-md border border-charcoal/[0.08] bg-white p-0.5"
-      role="group"
-      aria-label="Board view"
-    >
-      {options.map((mode) => {
-        const active = view === mode;
-        const label = DEAL_BOARD_VIEW_LABELS[mode];
-        return (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => onChange(mode)}
-            className={`inline-flex h-6 w-6 items-center justify-center rounded transition-colors ${
-              active
-                ? "bg-navy text-white ring-1 ring-gold/40"
-                : "text-slate hover:bg-charcoal/[0.04] hover:text-navy"
-            }`}
-            aria-pressed={active}
-            aria-label={label}
-            title={label}
-          >
-            <DealBoardViewIcon mode={mode} />
-          </button>
-        );
-      })}
+    <div className="inline-flex items-center gap-1">
+      <div
+        className="inline-flex rounded-md border border-charcoal/[0.08] bg-white p-0.5"
+        role="group"
+        aria-label="Board card view"
+      >
+        {cardOptions.map((mode) => {
+          const active = cardView === mode;
+          const label = DEAL_BOARD_VIEW_LABELS[mode];
+          return (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onChange(mode)}
+              className={viewButtonClass(active)}
+              aria-pressed={active}
+              aria-label={label}
+              title={label}
+            >
+              <DealBoardViewIcon mode={mode} />
+            </button>
+          );
+        })}
+      </div>
+      {showMapToggle ? (
+        <button
+          type="button"
+          onClick={onMapToggle}
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-md border border-charcoal/[0.08] transition-colors ${
+            mapOn
+              ? "bg-navy text-white ring-1 ring-gold/40"
+              : "bg-white text-slate hover:bg-charcoal/[0.04] hover:text-navy"
+          }`}
+          aria-pressed={mapOn}
+          aria-label={DEAL_BOARD_VIEW_LABELS.map}
+          title={mapOn ? "Hide map" : "Show map"}
+        >
+          <DealBoardViewIcon mode="map" />
+        </button>
+      ) : null}
     </div>
   );
 }

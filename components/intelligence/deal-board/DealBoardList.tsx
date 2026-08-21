@@ -18,7 +18,7 @@ import type {
   DealBoardSortDir,
   DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
-import type { DealBoardView } from "@/lib/deal-board-view";
+import type { DealBoardCardView, DealBoardView } from "@/lib/deal-board-view";
 import {
   useEffect,
   useMemo,
@@ -62,12 +62,14 @@ export type DealBoardListProps = {
   sortDir: DealBoardSortDir;
   onSort: (key: DealBoardSortKey) => void;
   boardView: DealBoardView;
-  onBoardViewChange: (view: DealBoardView) => void;
+  onBoardViewChange: (view: DealBoardCardView) => void;
+  mapOn?: boolean;
+  onMapToggle?: () => void;
   /** Restrict the view picker — boards with no map panel omit "map". */
   viewOptions?: readonly DealBoardView[];
   /**
-   * Phone-only: drop the cards but keep the toolbar, so the Map view can own the
-   * screen without hiding the control that switches back out of it.
+   * Phone-only: drop the cards but keep the toolbar when the map owns the
+   * screen. Desktop keeps Large / Grid / Line visible with the map.
    */
   rowsHiddenBelowMd?: boolean;
   boardStatusFilter?: DealBoardStatusFilter;
@@ -90,6 +92,8 @@ export type DealBoardListProps = {
   sortFieldPickerInToolbar?: boolean;
   sortFieldDrawerOpen?: boolean;
   onSortFieldDrawerOpenChange?: (open: boolean) => void;
+  /** When filters pin under the nav, sit this toolbar just below them. */
+  toolbarStickyTopPx?: number;
 };
 
 export default function DealBoardList({
@@ -120,6 +124,8 @@ export default function DealBoardList({
   onSort,
   boardView,
   onBoardViewChange,
+  mapOn = false,
+  onMapToggle,
   viewOptions,
   rowsHiddenBelowMd = false,
   boardStatusFilter = "all",
@@ -133,6 +139,7 @@ export default function DealBoardList({
   sortFieldPickerInToolbar = true,
   sortFieldDrawerOpen,
   onSortFieldDrawerOpenChange,
+  toolbarStickyTopPx,
 }: DealBoardListProps) {
   const [showGridMeta, setShowGridMeta] = useState(false);
   const [showGridInsights, setShowGridInsights] = useState(false);
@@ -257,8 +264,6 @@ export default function DealBoardList({
         return renderGrid(rows);
       case "large":
         return renderLarge(rows);
-      // Map view keeps a card list alongside the map (desktop layouts A and C);
-      // the map panel itself is rendered by IntelligenceClient.
       case "map":
         return renderGrid(rows);
     }
@@ -341,6 +346,7 @@ export default function DealBoardList({
     <DealBoardStatusFilterPills
       value={boardStatusFilter}
       onChange={onBoardStatusFilterChange}
+      compact={mapOn}
     />
   ) : null;
 
@@ -370,6 +376,8 @@ export default function DealBoardList({
       <DealBoardViewPicker
         view={boardView}
         onChange={onBoardViewChange}
+        mapOn={mapOn}
+        onMapToggle={onMapToggle}
         options={viewOptions}
       />
       {onResetSliders ? (
@@ -396,11 +404,21 @@ export default function DealBoardList({
           <div className="min-w-0 shrink">
             {sortFieldPickerInToolbar ? sortControl : resultsSummary}
           </div>
-          {moreDataInsights}
+          {mapOn ? viewAndReset : moreDataInsights}
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 overflow-x-auto">{statusPills}</div>
-          {viewAndReset}
+        <div
+          className={`flex items-center gap-2 ${
+            mapOn ? "" : "justify-between"
+          }`}
+        >
+          <div
+            className={
+              mapOn ? "min-w-0 flex-1" : "min-w-0 overflow-x-auto"
+            }
+          >
+            {statusPills}
+          </div>
+          {mapOn ? null : viewAndReset}
         </div>
       </div>
 
@@ -412,7 +430,7 @@ export default function DealBoardList({
         </div>
         <div className="justify-self-center">{statusPills}</div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2.5 gap-y-1 justify-self-end">
-          {moreDataInsights}
+          {mapOn ? null : moreDataInsights}
           {viewAndReset}
         </div>
       </div>
@@ -434,7 +452,10 @@ export default function DealBoardList({
           </>
         ) : (
           <>
-            <div className="sticky top-20 z-30 rounded-t-2xl bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)]">
+            <div
+              className="sticky z-30 rounded-t-2xl bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)]"
+              style={{ top: toolbarStickyTopPx ?? 80 }}
+            >
               {resultsToolbar}
             </div>
             <div className={rowsHiddenBelowMd ? "hidden md:block" : undefined}>
@@ -476,7 +497,10 @@ export default function DealBoardList({
             </div>
           </>
         )}
-        {hasResults ? footer : null}
+        {hasResults && !mapOn ? footer : null}
+        {hasResults && mapOn ? (
+          <div className="hidden md:block">{footer}</div>
+        ) : null}
       </div>
     </>
   );

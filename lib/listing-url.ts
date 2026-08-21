@@ -158,6 +158,27 @@ export function listingPhotoProxyUrlAsFull(url: string): string {
   return url.includes("?") ? `${url}&size=full` : `${url}?size=full`;
 }
 
+/**
+ * Photos-tab URLs: keep a full MLS-count set even when the API only returned
+ * the warmed hero (or nothing). Thumbnails fetch missing slots on demand.
+ */
+export function listingGalleryPhotoUrls(
+  mlsId: string,
+  apiPhotos: readonly string[],
+  photoCount?: number | null,
+  cap = 60,
+): string[] {
+  const hint = Math.max(0, Math.floor(photoCount ?? 0));
+  const useApi =
+    apiPhotos.length > 1 && (hint <= 0 || apiPhotos.length >= hint);
+  const raw = useApi
+    ? [...apiPhotos]
+    : listingPhotoProxyUrlsFromCount(mlsId, Math.max(hint, apiPhotos.length), cap, {
+        size: "full",
+      });
+  return raw.map(listingPhotoProxyUrlAsFull);
+}
+
 /** Dense placeholder proxy URLs when the API returns an empty photos[] but MLS reports a count. */
 export function listingPhotoProxyUrlsFromCount(
   mlsId: string,

@@ -15,6 +15,9 @@ export const BOARD_MIN_VISIBLE = 10;
 /** Page size for the deal board (tiers apply per page, not the full filtered set). */
 export const BOARD_LISTING_LIMIT = 100;
 
+/** Map view groups — keep pins readable. */
+export const BOARD_MAP_LISTING_LIMIT = 20;
+
 export type BoardScoreTiers<T> = {
   top: T[];
   middle: T[];

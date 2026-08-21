@@ -71,6 +71,15 @@ type ListingHeaderProps = {
    * (mobile Overview moves those into the lower meta dock).
    */
   hideFactsOnMobile?: boolean;
+  /**
+   * Real city / state / zip for Admin when `privacyMode` blanks the public
+   * address (Spotlight). MLS # sits to the right of this zip.
+   */
+  adminAddress?: {
+    city?: string;
+    state?: string;
+    postalCode?: string;
+  } | null;
 };
 
 /**
@@ -93,7 +102,7 @@ export default function ListingHeader({
   price = null,
   priceIsClosed = false,
   bedBathSearchHref,
-  hideMarketMeta = false,
+  hideMarketMeta: _hideMarketMeta = false,
   privacyMode = false,
   goldilocksScore = null,
   goldilocksBreakdown = null,
@@ -109,8 +118,8 @@ export default function ListingHeader({
   parts = "full",
   shareHref = null,
   hideFactsOnMobile = false,
+  adminAddress = null,
 }: ListingHeaderProps & { className?: string; compact?: boolean }) {
-  const hideMeta = hideMarketMeta || privacyMode;
   const siteUnlocked = useSiteUnlocked();
   const [scoreOpen, setScoreOpen] = useState(false);
 
@@ -118,24 +127,29 @@ export default function ListingHeader({
   const showScore = goldilocksScore != null && goldilocksScore > 0;
   const priceLabel =
     price != null && price > 0 ? formatListingHeaderPrice(price) : null;
-  // Spotlight hides MLS from the public; Admin unlock reveals it with a label.
-  const showAdminMls = hideMeta && siteUnlocked && Boolean(mlsId.trim());
-  const showPublicMls = !hideMeta && Boolean(mlsId.trim());
+  const publicLocation =
+    !privacyMode && (address.city || address.postalCode) ? address : null;
+  const unlockedLocation =
+    siteUnlocked && adminAddress && (adminAddress.city || adminAddress.postalCode)
+      ? adminAddress
+      : siteUnlocked && !privacyMode
+        ? address
+        : null;
+  const location = publicLocation ?? unlockedLocation;
+  const locationText = location
+    ? [
+        location.city,
+        abbreviateUsState(location.state),
+        location.postalCode,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+  const showMls = siteUnlocked && Boolean(mlsId.trim());
 
   const titleAndMeta = (
     <>
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-        {showScore ? (
-          <ListingValueScoreBadge
-            score={goldilocksScore}
-            compact={compact}
-            onClick={
-              goldilocksBreakdown
-                ? () => setScoreOpen(true)
-                : undefined
-            }
-          />
-        ) : null}
         <div className="flex min-w-0 flex-1 items-start gap-x-3">
           <div className="min-w-0 max-w-[65%] shrink">
             <h1
@@ -145,35 +159,16 @@ export default function ListingHeader({
             >
               {title}
             </h1>
-            {(!privacyMode && (address.city || address.postalCode)) ||
-            showPublicMls ||
-            showAdminMls ||
-            shareHref ? (
+            {locationText || showMls || shareHref ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                {!privacyMode && (address.city || address.postalCode) ? (
+                {locationText || showMls ? (
                   <span className="font-mono text-[11px] sm:text-xs tracking-[0.12em] uppercase text-white/65">
-                    {[
-                      address.city,
-                      abbreviateUsState(address.state),
-                      address.postalCode,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  </span>
-                ) : null}
-                {showPublicMls ? (
-                  <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap">
-                    #{mlsId}
-                  </span>
-                ) : null}
-                {showAdminMls ? (
-                  <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="font-mono text-[9px] tracking-[0.14em] uppercase text-white/40 whitespace-nowrap">
-                      Admin visible only
-                    </span>
-                    <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold whitespace-nowrap">
-                      #{mlsId}
-                    </span>
+                    {locationText}
+                    {showMls ? (
+                      <span className="ml-2 tracking-[0.2em] text-gold whitespace-nowrap">
+                        #{mlsId}
+                      </span>
+                    ) : null}
                   </span>
                 ) : null}
                 {shareHref ? (
@@ -182,8 +177,19 @@ export default function ListingHeader({
               </div>
             ) : null}
           </div>
+          {showScore ? (
+            <ListingValueScoreBadge
+              score={goldilocksScore}
+              compact={compact}
+              onClick={
+                goldilocksBreakdown
+                  ? () => setScoreOpen(true)
+                  : undefined
+              }
+            />
+          ) : null}
           {priceLabel ? (
-            <div className="flex min-w-0 flex-1 items-start justify-center max-lg:justify-end">
+            <div className="flex min-w-0 flex-1 items-start justify-end">
               <span
                 className={`inline-flex items-start font-serif font-bold tabular-nums leading-none text-gold max-lg:pr-1 ${
                   compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"

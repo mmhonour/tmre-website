@@ -26,6 +26,9 @@ import {
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import ListingShareButton from "@/components/listing/ListingShareButton";
 import ListingPropertyFacts from "@/components/listing/ListingPropertyFacts";
+import ListingOverviewFactsSheet, {
+  type FactsSheetSection,
+} from "@/components/listing/ListingOverviewFactsSheet";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
@@ -275,16 +278,37 @@ export default function ListingHeroPanels({
   const [activeDeckCard, setActiveDeckCard] =
     useState<ListingDesktopDeckCardId | null>("remarks");
   const closeMobileDrawer = useCallback(() => setMobileDrawer(null), []);
+  const [factsSheetExpanded, setFactsSheetExpanded] = useState(false);
+  const [factsSheetSection, setFactsSheetSection] =
+    useState<FactsSheetSection | null>(null);
+
+  const toggleFactsSheet = useCallback((section: FactsSheetSection) => {
+    setFactsSheetExpanded((open) => {
+      if (open && factsSheetSection === section) {
+        setFactsSheetSection(null);
+        return false;
+      }
+      setMapVisible(false);
+      setMobileDrawer(null);
+      setPanelTab(null);
+      setFactsSheetSection(section);
+      return true;
+    });
+  }, [factsSheetSection]);
 
   const openMobileDrawer = useCallback((id: Exclude<MobileDrawerId, null>) => {
     setMapVisible(false);
     setPanelTab(null);
+    setFactsSheetExpanded(false);
+    setFactsSheetSection(null);
     setMobileDrawer(id);
   }, []);
 
   const openMobileMap = useCallback(() => {
     setMobileDrawer(null);
     setPanelTab(null);
+    setFactsSheetExpanded(false);
+    setFactsSheetSection(null);
     setMapVisible(true);
     const url = new URL(window.location.href);
     window.history.replaceState(
@@ -1000,37 +1024,23 @@ export default function ListingHeroPanels({
                 {
                   id: "insight" as const,
                   label: closedInsightCaveat ? "Insight*" : "Insight",
-                  active: mobileDrawer === "insight",
-                  controls: "listing-insight-drawer",
-                  onClick: () => {
-                    if (mobileDrawer === "insight") {
-                      closeMobileDrawer();
-                      return;
-                    }
-                    openMobileDrawer("insight");
-                  },
+                  active: factsSheetExpanded && factsSheetSection === "insight",
+                  controls: "listing-overview-facts-sheet",
+                  onClick: () => toggleFactsSheet("insight"),
                 },
                 {
                   id: "details" as const,
                   label: "Details",
-                  active: mobileDrawer === "details",
-                  controls: "listing-details-drawer",
-                  onClick: () => {
-                    if (mobileDrawer === "details") {
-                      closeMobileDrawer();
-                      return;
-                    }
-                    openMobileDrawer("details");
-                  },
+                  active: factsSheetExpanded && factsSheetSection === "details",
+                  controls: "listing-overview-facts-sheet",
+                  onClick: () => toggleFactsSheet("details"),
                 },
                 {
                   id: "if" as const,
                   label: "What if",
-                  active:
-                    panelTab === "if" ||
-                    (!useSlidePanel && subnav.active === "if"),
-                  controls: LISTING_SECTION_IDS.if,
-                  onClick: () => openMobileSectionPill("if"),
+                  active: factsSheetExpanded && factsSheetSection === "if",
+                  controls: "listing-overview-facts-sheet",
+                  onClick: () => toggleFactsSheet("if"),
                 },
                 {
                   id: "map" as const,
@@ -1307,23 +1317,53 @@ export default function ListingHeroPanels({
       ) : null}
 
       {showMobileMetaDock ? (
-        <div
-          className="pointer-events-none fixed inset-x-0 bottom-0 z-30 lg:hidden"
-          aria-label="Property facts"
-        >
-          <div className="pointer-events-auto border-t border-white/10 bg-[#1B2A4A]/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom,0px))] shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md">
-            <ListingPropertyFacts
-              propertyType={header.propertyType}
-              style={header.style}
-              beds={header.beds}
-              baths={header.baths}
-              sqft={header.sqft}
-              yearBuilt={header.yearBuilt}
-              bedBathSearchHref={header.bedBathSearchHref}
-              modificationTimestamp={header.modificationTimestamp}
-            />
-          </div>
-        </div>
+        <ListingOverviewFactsSheet
+          facts={{
+            propertyType: header.propertyType,
+            style: header.style,
+            beds: header.beds,
+            baths: header.baths,
+            sqft: header.sqft,
+            yearBuilt: header.yearBuilt,
+            bedBathSearchHref: header.bedBathSearchHref,
+            modificationTimestamp: header.modificationTimestamp,
+          }}
+          insight={
+            <>
+              {closedInsightCaveat ? (
+                <div className="mb-2 flex justify-start">
+                  <SpotlightClosedInsightLink className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold" />
+                </div>
+              ) : null}
+              {overviewInsight ? (
+                <ListingInsightCopy
+                  text={overviewInsight}
+                  className="text-left text-sm leading-relaxed text-white/80 break-words"
+                  medianHref={`#${LISTING_ANALYSIS_ID}`}
+                  onMedianClick={activateAnalysisFromMedian}
+                />
+              ) : (
+                <p className="text-sm text-white/50">No insight for this listing.</p>
+              )}
+            </>
+          }
+          details={detailsBlock}
+          ifProps={{
+            mlsId: subnav.mlsId,
+            addressHint: subnav.addressHint,
+            townHint: subnav.townHint,
+            routeBase: subnav.routeBase,
+            isRental:
+              header.isRental ??
+              isRentalListing({ propertyType: header.propertyType }),
+          }}
+          expanded={factsSheetExpanded}
+          onExpandedChange={(open) => {
+            setFactsSheetExpanded(open);
+            if (!open) setFactsSheetSection(null);
+          }}
+          focusSection={factsSheetSection}
+        />
       ) : null}
 
       {showMobileWhatIfMetaDock ? (

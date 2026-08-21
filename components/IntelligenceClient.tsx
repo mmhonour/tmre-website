@@ -36,22 +36,26 @@ import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
 import type { VintageBucketId } from "@/lib/vintage-buckets";
 import DealOfTheDayFrame from "./DealOfTheDayFrame";
 import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
+import DealBoardStatusFilterPills from "@/components/intelligence/deal-board/DealBoardStatusFilterPills";
+import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import {
   dealBoardSortLabel,
   type DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
 import type { DealBoardStatusFilter } from "@/components/intelligence/deal-board/deal-board-types";
 import {
+  DEAL_BOARD_CARD_VIEW_VALUES,
   DEAL_BOARD_MAP_LAYOUT_DEFAULT,
   DEAL_BOARD_MAP_LAYOUT_LABELS,
   DEAL_BOARD_MAP_LAYOUT_PREF_KEY,
   DEAL_BOARD_MAP_LAYOUT_VALUES,
+  DEAL_BOARD_MAP_ON_PREF_KEY,
   DEAL_BOARD_VIEW_DEFAULT,
   DEAL_BOARD_VIEW_PREF_KEY,
-  DEAL_BOARD_VIEW_VALUES,
+  dealBoardCardView,
   dealBoardViewDefaultForViewport,
+  type DealBoardCardView,
   type DealBoardMapLayout,
-  type DealBoardView,
 } from "@/lib/deal-board-view";
 import DealBoardMap from "@/components/intelligence/DealBoardMap";
 import {
@@ -153,6 +157,7 @@ import {
 import { readClientPref, writeClientPref } from "@/lib/client-prefs";
 import {
   BOARD_LISTING_LIMIT,
+  BOARD_MAP_LISTING_LIMIT,
   intelligenceMiddleTierEligible,
   planMiddleTierCollapse,
   splitBoardByScoreTier,
@@ -2058,13 +2063,19 @@ export default function IntelligenceClient({
     "desc",
     SORT_DIR_VALUES,
   );
-  const [boardView, setBoardView] = usePersistedFilter<DealBoardView>(
+  const [boardView, setBoardView] = usePersistedFilter<DealBoardCardView>(
     DEAL_BOARD_VIEW_PREF_KEY,
     DEAL_BOARD_VIEW_DEFAULT,
-    DEAL_BOARD_VIEW_VALUES,
+    DEAL_BOARD_CARD_VIEW_VALUES,
     false,
     dealBoardViewDefaultForViewport,
   );
+  const [mapOnPref, setMapOnPref] = usePersistedFilter(
+    DEAL_BOARD_MAP_ON_PREF_KEY,
+    "off",
+    ["on", "off"] as const,
+  );
+  const showMap = mapOnPref === "on";
   const [mapLayout, setMapLayout] = usePersistedFilter<DealBoardMapLayout>(
     DEAL_BOARD_MAP_LAYOUT_PREF_KEY,
     DEAL_BOARD_MAP_LAYOUT_DEFAULT,
@@ -2080,10 +2091,16 @@ export default function IntelligenceClient({
   }, [active, zip]);
 
   useEffect(() => {
-    if (boardView !== "map") return;
+    if (readClientPref(DEAL_BOARD_VIEW_PREF_KEY) === "map") {
+      setMapOnPref("on");
+    }
+  }, [setMapOnPref]);
+
+  useEffect(() => {
+    if (!showMap) return;
     if (active === "All") prefetchAllTownBoundaries();
     else prefetchTownBoundaries(active);
-  }, [active, boardView]);
+  }, [active, showMap]);
 
   // Persist unique filter combinations into the visitor search-history cookie
   // so /latest can offer them as alert criteria.
@@ -2516,11 +2533,13 @@ export default function IntelligenceClient({
     setSortKey(key);
     setSortDir(urlSearch.dir ?? "desc");
     if (
-      urlSearch.view &&
-      (DEAL_BOARD_VIEW_VALUES as readonly string[]).includes(urlSearch.view)
+      urlSearch.view === "large" ||
+      urlSearch.view === "grid" ||
+      urlSearch.view === "line"
     ) {
       setBoardView(urlSearch.view);
     }
+    if (urlSearch.mapOn) setMapOnPref("on");
     if (urlSearch.mapLayout) setMapLayout(urlSearch.mapLayout);
   }, [urlSearch, setSortKey, setSortDir, setBoardView, setMapLayout]);
 
@@ -3171,7 +3190,8 @@ export default function IntelligenceClient({
       status: boardStatusFilter,
       sort: sortKey,
       dir: sortDir,
-      view: boardView,
+      view: dealBoardCardView(boardView),
+      mapOn: showMap,
       mapLayout,
       furnished: furnishedFilter === "all" ? null : furnishedFilter,
       minPrice:
@@ -3205,6 +3225,7 @@ export default function IntelligenceClient({
       sortKey,
       sortDir,
       boardView,
+      showMap,
       mapLayout,
       furnishedFilter,
       showPriceFilter,
@@ -3325,10 +3346,11 @@ export default function IntelligenceClient({
     if (boardSortKey === "score") return rankedListings;
     return sortListings(listings, boardSortKey, boardSortDir);
   }, [listings, rankedListings, boardSortKey, boardSortDir]);
+  const boardPageSize = showMap ? BOARD_MAP_LISTING_LIMIT : BOARD_LISTING_LIMIT;
   const boardListings = useMemo(() => {
-    const start = (boardPage - 1) * BOARD_LISTING_LIMIT;
-    return boardSortedListings.slice(start, start + BOARD_LISTING_LIMIT);
-  }, [boardSortedListings, boardPage]);
+    const start = (boardPage - 1) * boardPageSize;
+    return boardSortedListings.slice(start, start + boardPageSize);
+  }, [boardSortedListings, boardPage, boardPageSize]);
 
   const boardPrefetchIds = useMemo(() => {
     // Display order for the current page so prefetch matches what the user sees.
@@ -3395,11 +3417,11 @@ export default function IntelligenceClient({
 
   const filteredCount = listings.length;
   const resultCount = boardListings.length;
-  const totalBoardPages = Math.max(1, Math.ceil(filteredCount / BOARD_LISTING_LIMIT));
+  const totalBoardPages = Math.max(1, Math.ceil(filteredCount / boardPageSize));
   const boardPageStart =
-    filteredCount === 0 ? 0 : (boardPage - 1) * BOARD_LISTING_LIMIT + 1;
-  const boardPageEnd = Math.min(boardPage * BOARD_LISTING_LIMIT, filteredCount);
-  const showBoardPagination = filteredCount > BOARD_LISTING_LIMIT;
+    filteredCount === 0 ? 0 : (boardPage - 1) * boardPageSize + 1;
+  const boardPageEnd = Math.min(boardPage * boardPageSize, filteredCount);
+  const showBoardPagination = filteredCount > boardPageSize;
 
   useEffect(() => {
     if (state !== "ready" || boardPrefetchIds.length === 0) return;
@@ -3562,7 +3584,7 @@ export default function IntelligenceClient({
       return;
     }
 
-    const targetPage = Math.floor(idx / BOARD_LISTING_LIMIT) + 1;
+    const targetPage = Math.floor(idx / boardPageSize) + 1;
     if (targetPage !== boardPage) {
       setBoardPage(targetPage);
       return;
@@ -3605,6 +3627,7 @@ export default function IntelligenceClient({
     state,
     boardSortedListings,
     boardPage,
+    boardPageSize,
     boardTiers.middle,
     effectiveMiddleTierExpanded,
   ]);
@@ -4601,13 +4624,15 @@ export default function IntelligenceClient({
   );
 
   const descriptorSentinelRef = useRef<HTMLDivElement>(null);
+  const pinnedDescriptorBarRef = useRef<HTMLDivElement>(null);
   const [descriptorsPinned, setDescriptorsPinned] = useState(false);
   /** Live header bottom — nav is taller than pt-20/24 (multi-line logo, badges). */
   const [navOffsetPx, setNavOffsetPx] = useState(96);
+  const [pinnedBarHeightPx, setPinnedBarHeightPx] = useState(0);
 
-  // Phone: pin descriptors under the nav once their in-flow row scrolls away.
-  // Desktop stays in-flow — padding clears the fixed header so peeks sit under
-  // the descriptor row instead of jumping into a sticky bar / blank gap.
+  // Pin descriptors under the nav once their in-flow row scrolls away —
+  // phone and desktop. Peeked pills/sliders portal into that bar so filters
+  // stay usable while the deal board scrolls.
   useEffect(() => {
     const sentinel = descriptorSentinelRef.current;
     if (!sentinel) {
@@ -4618,10 +4643,6 @@ export default function IntelligenceClient({
     const update = () => {
       const offset = header?.getBoundingClientRect().bottom ?? 96;
       setNavOffsetPx(offset);
-      if (window.matchMedia("(min-width: 1024px)").matches) {
-        setDescriptorsPinned(false);
-        return;
-      }
       const top = sentinel.getBoundingClientRect().top;
       setDescriptorsPinned(top < offset + 1);
     };
@@ -4649,6 +4670,21 @@ export default function IntelligenceClient({
     heroIntroDismissed,
     marketIntelChromeDismissed,
   ]);
+
+  useEffect(() => {
+    if (!descriptorsPinned) {
+      setPinnedBarHeightPx(0);
+      return;
+    }
+    const el = pinnedDescriptorBarRef.current;
+    if (!el) return;
+    const measure = () => setPinnedBarHeightPx(el.getBoundingClientRect().height);
+    measure();
+    const ro =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [descriptorsPinned, filterChromePeeks, exposedSliders, filtersExpanded]);
 
   /** Peeked pill / slider chrome portals into the pinned nav panel (phone). */
   const pinFilterChromeToNav = descriptorsPinned;
@@ -4866,16 +4902,21 @@ export default function IntelligenceClient({
     return `${base} border-transparent text-charcoal/40 hover:text-navy`;
   };
 
+  const boardToolbarStickyTopPx = descriptorsPinned
+    ? navOffsetPx + pinnedBarHeightPx
+    : undefined;
+
   const pinnedDescriptorBar =
     descriptorsPinned && typeof document !== "undefined" ? (
       <div
+        ref={pinnedDescriptorBarRef}
         className="fixed inset-x-0 z-40 max-h-[min(70vh,36rem)] overflow-y-auto border-b border-white/10 bg-[#1B2A4A]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md"
         style={{ top: navOffsetPx }}
         data-intel-slider-context-blurb-pinned
         data-intel-pinned-filter-panel
         onPointerDownCapture={() => bumpFilterPeekActivity()}
       >
-        <div className="mx-auto max-w-7xl px-6 lg:px-10 py-2">
+        <div className="mx-auto max-w-7xl xl:max-w-[90rem] px-6 lg:px-10 py-2">
           <p
             className={`flex flex-wrap items-baseline gap-x-2 w-full min-w-0 font-mono tracking-wide ${INTEL_DESCRIPTOR_IDLE_TEXT}`}
           >
@@ -5001,7 +5042,7 @@ export default function IntelligenceClient({
                 desktop (matches mobile).
               */}
               <div className="flex flex-col items-start min-w-0 w-full gap-1.5">
-              {/* Slider range labels; pin on scroll (phone). */}
+              {/* Slider range labels; pin under the nav on scroll. */}
               <div
                 className={`w-full min-w-0 ${
                   filterChromeCollapsed ? "order-5" : "order-4"
@@ -5959,14 +6000,14 @@ export default function IntelligenceClient({
           </div>
           <div
             className={
-              boardView === "map"
+              showMap
                 ? mapLayout === "side"
-                  ? "lg:flex lg:flex-row-reverse lg:items-start lg:gap-4"
-                  : "flex flex-col gap-4"
+                  ? "flex flex-col gap-2 lg:flex lg:flex-row-reverse lg:items-start lg:gap-4"
+                  : "flex flex-col gap-2 md:gap-4"
                 : "contents"
             }
           >
-            {boardView === "map" ? (
+            {showMap ? (
               <div
                 className={
                   mapLayout === "side"
@@ -5991,9 +6032,30 @@ export default function IntelligenceClient({
                   }
                   heightClass={
                     mapLayout === "side"
-                      ? "h-[70vh] lg:h-[calc(100dvh-6.5rem)]"
-                      : "h-[70vh] md:h-[26rem]"
+                      ? "h-[min(44vh,22rem)] md:h-[70vh] lg:h-[calc(100dvh-6.5rem)]"
+                      : "h-[min(44vh,22rem)] md:h-[26rem]"
                   }
+                />
+                <DealBoardMapMobileChrome
+                  page={boardPage}
+                  totalPages={totalBoardPages}
+                  pageStart={boardPageStart}
+                  pageEnd={boardPageEnd}
+                  totalCount={filteredCount}
+                  onPageChange={(page) => {
+                    setBoardPage(page);
+                  }}
+                  boardStatusFilter={boardStatusFilter}
+                  onBoardStatusFilterChange={(value) => {
+                    setBoardStatusFilter(value);
+                    setBoardPage(1);
+                  }}
+                  boardView={boardView}
+                  onBoardViewChange={setBoardView}
+                  mapOn={showMap}
+                  onMapToggle={() => setMapOnPref(showMap ? "off" : "on")}
+                  onResetSliders={resetSliders}
+                  slidersCustomized={slidersCustomized}
                 />
                 <div className="absolute right-2 top-2 z-20 hidden items-center gap-1 rounded-md border border-white/15 bg-navy/80 px-1 py-0.5 shadow-lg backdrop-blur-sm md:flex">
                   {DEAL_BOARD_MAP_LAYOUT_VALUES.map((option) => (
@@ -6015,7 +6077,7 @@ export default function IntelligenceClient({
               </div>
             ) : null}
             <div
-              className={boardView === "map" ? "min-w-0 flex-1" : "contents"}
+              className={showMap ? "hidden min-w-0 flex-1 md:block" : "contents"}
             >
           <DealBoardList
             topRows={boardTiers.top}
@@ -6057,7 +6119,7 @@ export default function IntelligenceClient({
               setDomBandMaxDays(null);
             }}
             onHoverListing={
-              boardView === "map" ? (key) => setMapActiveKey(key) : undefined
+              showMap ? (key) => setMapActiveKey(key) : undefined
             }
             onScoreClick={(listing) => {
               if (listing.scoreBreakdown) {
@@ -6075,9 +6137,12 @@ export default function IntelligenceClient({
             sortFieldPickerInToolbar={false}
             sortFieldDrawerOpen={sortFieldDrawerOpen}
             onSortFieldDrawerOpenChange={setSortFieldDrawerOpen}
+            toolbarStickyTopPx={boardToolbarStickyTopPx}
             boardView={boardView}
             onBoardViewChange={setBoardView}
-            rowsHiddenBelowMd={boardView === "map"}
+            mapOn={showMap}
+            onMapToggle={() => setMapOnPref(showMap ? "off" : "on")}
+            rowsHiddenBelowMd={showMap}
             boardStatusFilter={boardStatusFilter}
             onBoardStatusFilterChange={(value) => {
               setBoardStatusFilter(value);
@@ -6096,6 +6161,18 @@ export default function IntelligenceClient({
               ) : resultCount === 0 ? (
                 <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
                   No results match your filters
+                </p>
+              ) : showMap ? (
+                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                  Showing{" "}
+                  <span className="tabular-nums text-navy">
+                    {boardPageStart.toLocaleString()}–{boardPageEnd.toLocaleString()}
+                  </span>{" "}
+                  of{" "}
+                  <span className="tabular-nums text-navy">
+                    {filteredCount.toLocaleString()}
+                  </span>{" "}
+                  {filteredCount === 1 ? "listing" : "listings"}
                 </p>
               ) : (
                 <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
@@ -6122,17 +6199,19 @@ export default function IntelligenceClient({
             </div>
           </div>
           {showBoardPagination && (
-            <DealBoardPagination
-              page={boardPage}
-              totalPages={totalBoardPages}
-              pageStart={boardPageStart}
-              pageEnd={boardPageEnd}
-              totalCount={filteredCount}
-              onPageChange={(page) => {
-                setBoardPage(page);
-                scrollToBoard();
-              }}
-            />
+            <div className={showMap ? "hidden md:block" : undefined}>
+              <DealBoardPagination
+                page={boardPage}
+                totalPages={totalBoardPages}
+                pageStart={boardPageStart}
+                pageEnd={boardPageEnd}
+                totalCount={filteredCount}
+                onPageChange={(page) => {
+                  setBoardPage(page);
+                  scrollToBoard();
+                }}
+              />
+            </div>
           )}
             </div>{/* end deal board */}
 
@@ -8216,6 +8295,108 @@ function SnapshotCardBody({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function DealBoardMapMobileChrome({
+  page,
+  totalPages,
+  pageStart,
+  pageEnd,
+  totalCount,
+  onPageChange,
+  boardStatusFilter,
+  onBoardStatusFilterChange,
+  boardView,
+  onBoardViewChange,
+  mapOn,
+  onMapToggle,
+  onResetSliders,
+  slidersCustomized,
+}: {
+  page: number;
+  totalPages: number;
+  pageStart: number;
+  pageEnd: number;
+  totalCount: number;
+  onPageChange: (page: number) => void;
+  boardStatusFilter: DealBoardStatusFilter;
+  onBoardStatusFilterChange: (value: DealBoardStatusFilter) => void;
+  boardView: DealBoardCardView;
+  onBoardViewChange: (view: DealBoardCardView) => void;
+  mapOn: boolean;
+  onMapToggle: () => void;
+  onResetSliders: () => void;
+  slidersCustomized: boolean;
+}) {
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-20 md:hidden">
+      <div className="border-t border-charcoal/10 bg-white/95 px-2 py-1.5 backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+            Showing{" "}
+            <span className="tabular-nums text-navy">
+              {pageStart.toLocaleString()}–{pageEnd.toLocaleString()}
+            </span>{" "}
+            of{" "}
+            <span className="tabular-nums text-navy">
+              {totalCount.toLocaleString()}
+            </span>
+          </p>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <DealBoardViewPicker
+              view={boardView}
+              onChange={onBoardViewChange}
+              mapOn={mapOn}
+              onMapToggle={onMapToggle}
+            />
+            <FilterResetButton
+              onClick={onResetSliders}
+              disabled={!slidersCustomized}
+              label="Reset sliders"
+              tone="onLight"
+            />
+          </div>
+        </div>
+        {totalPages > 1 ? (
+          <div
+            className="mt-1 flex items-center gap-0.5 overflow-x-auto"
+            role="navigation"
+            aria-label="Listing groups"
+          >
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+              const isActive = pageNum === page;
+              const groupStart = (pageNum - 1) * BOARD_MAP_LISTING_LIMIT + 1;
+              const groupEnd = Math.min(pageNum * BOARD_MAP_LISTING_LIMIT, totalCount);
+              return (
+                <button
+                  key={pageNum}
+                  type="button"
+                  onClick={() => onPageChange(pageNum)}
+                  disabled={isActive}
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={`Listings ${groupStart}–${groupEnd}`}
+                  className={`inline-flex min-w-7 shrink-0 items-center justify-center rounded px-1.5 py-0.5 font-mono text-[9px] tabular-nums ${
+                    isActive
+                      ? "bg-navy text-white"
+                      : "text-slate hover:bg-charcoal/[0.06] hover:text-navy"
+                  }`}
+                >
+                  {groupStart}–{groupEnd}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <div className="mt-1">
+          <DealBoardStatusFilterPills
+            value={boardStatusFilter}
+            onChange={onBoardStatusFilterChange}
+            compact
+          />
+        </div>
+      </div>
     </div>
   );
 }
