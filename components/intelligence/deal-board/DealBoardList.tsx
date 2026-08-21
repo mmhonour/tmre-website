@@ -61,6 +61,13 @@ export type DealBoardListProps = {
   onSort: (key: DealBoardSortKey) => void;
   boardView: DealBoardView;
   onBoardViewChange: (view: DealBoardView) => void;
+  /** Restrict the view picker — boards with no map panel omit "map". */
+  viewOptions?: readonly DealBoardView[];
+  /**
+   * Phone-only: drop the cards but keep the toolbar, so the Map view can own the
+   * screen without hiding the control that switches back out of it.
+   */
+  rowsHiddenBelowMd?: boolean;
   boardStatusFilter?: DealBoardStatusFilter;
   onBoardStatusFilterChange?: (value: DealBoardStatusFilter) => void;
   /** Same handler as the Reset sliders control beside the filter sliders. */
@@ -110,6 +117,8 @@ export default function DealBoardList({
   onSort,
   boardView,
   onBoardViewChange,
+  viewOptions,
+  rowsHiddenBelowMd = false,
   boardStatusFilter = "all",
   onBoardStatusFilterChange,
   onResetSliders,
@@ -244,6 +253,10 @@ export default function DealBoardList({
         return renderGrid(rows);
       case "large":
         return renderLarge(rows);
+      // Map view keeps a card list alongside the map (desktop layouts A and C);
+      // the map panel itself is rendered by IntelligenceClient.
+      case "map":
+        return renderGrid(rows);
     }
   };
 
@@ -350,7 +363,11 @@ export default function DealBoardList({
 
   const viewAndReset = (
     <div className="flex shrink-0 items-center gap-x-2.5">
-      <DealBoardViewPicker view={boardView} onChange={onBoardViewChange} />
+      <DealBoardViewPicker
+        view={boardView}
+        onChange={onBoardViewChange}
+        options={viewOptions}
+      />
       {onResetSliders ? (
         <FilterResetButton
           onClick={onResetSliders}
@@ -416,7 +433,7 @@ export default function DealBoardList({
             <div className="sticky top-20 z-30 rounded-t-2xl bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)]">
               {resultsToolbar}
             </div>
-            <div>
+            <div className={rowsHiddenBelowMd ? "hidden md:block" : undefined}>
               {/*
                 Render consecutive listings in one CSS grid. Splitting top /
                 middle / bottom into separate grids restarted columns (e.g. 10

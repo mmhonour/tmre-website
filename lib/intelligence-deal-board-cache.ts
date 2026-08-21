@@ -63,6 +63,9 @@ export type IntelligenceBoardListing = {
   photoCount: number | null
   primaryPhotoIndex: number | null
   headline: string
+  /** MLS coordinates — Map board view only; null when the feed omits them. */
+  latitude: number | null
+  longitude: number | null
 }
 
 export type IntelligenceDealBoardTownMeta = {
@@ -79,7 +82,8 @@ export type IntelligenceDealBoardTownMeta = {
 }
 
 export type IntelligenceDealBoardPayload = {
-  version: 1
+  /** 2 added per-listing coordinates; v1 rows are discarded so pins appear. */
+  version: 2
   generatedAt: string
   towns: Record<TmreTown, IntelligenceBoardListing[]>
   meta: Record<TmreTown, IntelligenceDealBoardTownMeta>
@@ -252,6 +256,8 @@ function toBoardListing(
     photoCount: listing.photoCount ?? null,
     primaryPhotoIndex: null,
     headline: '',
+    latitude: listing.latitude ?? null,
+    longitude: listing.longitude ?? null,
   }
 }
 
@@ -344,7 +350,7 @@ export async function readIntelligenceDealBoardCache(): Promise<IntelligenceDeal
   if (!row?.payload) return null
   try {
     const parsed = JSON.parse(row.payload) as IntelligenceDealBoardPayload
-    if (parsed?.version !== 1 || !parsed.towns) return null
+    if (parsed?.version !== 2 || !parsed.towns) return null
     // Refresh closed / to-contract weekly counts from sales-by-month so they
     // track the latest stats_cache rebuild without waiting for a full board rewrite.
     const meta = {} as Record<TmreTown, IntelligenceDealBoardTownMeta>
@@ -399,7 +405,7 @@ export async function rebuildIntelligenceDealBoardCache(
 
   const generatedAt = new Date().toISOString()
   const payload: IntelligenceDealBoardPayload = {
-    version: 1,
+    version: 2,
     generatedAt,
     towns,
     meta,

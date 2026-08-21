@@ -20,9 +20,11 @@ import type {
 } from "@/components/intelligence/deal-board/deal-board-types";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 import {
+  DEAL_BOARD_CARD_VIEW_VALUES,
   DEAL_BOARD_VIEW_DEFAULT,
   DEAL_BOARD_VIEW_PREF_KEY,
   DEAL_BOARD_VIEW_VALUES,
+  dealBoardCardView,
   dealBoardViewDefaultForViewport,
   type DealBoardView,
 } from "@/lib/deal-board-view";
@@ -397,8 +399,9 @@ export default function LookeyClient() {
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleSort}
-                boardView={boardView}
+                boardView={dealBoardCardView(boardView)}
                 onBoardViewChange={setBoardView}
+                viewOptions={DEAL_BOARD_CARD_VIEW_VALUES}
                 boardStatusFilter={statusFilter}
                 onBoardStatusFilterChange={setStatusFilter}
                 scoreInfoButton={

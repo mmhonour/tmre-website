@@ -706,6 +706,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'The switch on `syncIncrementalListings` that decides whether site caches warm in the same process that just pulled RETS. `true` (Netlify worker, Admin) runs the warm chain after the Neon upserts: latest town feeds, hero thumbnails, intelligence deal board, per-town stats cache. `false` stops at the Neon write and logs a `post-hooks-skip` step. It is the seam between “get the data” and “make the site fast,” and the reason the two now live in different hosts: Railway mls-sync sets it false so its heap only ever holds the pull, which is what ended the Node OOM crash loop. Netlify’s ≤30s scheduled fallback also sets it false for a different reason — no time. See Railway mls-sync, Node OOM, Side-work-only, Seam.',
   },
   {
+    term: 'Slot (wall-clock grid)',
+    category: 'sync-admin',
+    definition:
+      'The fixed minute an interval job is allowed to run. Configure’s Start time is the phase and Frequency is the spacing, so an hourly job set to 5:24 PM ET runs at :24 of every hour — forever, whatever else happened. Jobs are deliberately staggered onto different minutes so they cannot collide and so Start alone tells you whether each one fired on time. The old model anchored the next run on “last finish + interval,” which let one manual Sync at 1:16 PM drag an hourly job onto 2:16, 3:16, … and destroyed both properties. Due-ness is now the same shape as the daily and weekly checks: the job is due when its last finish predates the most recent slot. See Overdue, Dirty town.',
+  },
+  {
     term: 'Dirty town',
     category: 'sync-admin',
     definition:

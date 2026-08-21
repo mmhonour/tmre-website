@@ -42,12 +42,18 @@ import {
 } from "@/components/intelligence/deal-board/deal-board-sort";
 import type { DealBoardStatusFilter } from "@/components/intelligence/deal-board/deal-board-types";
 import {
+  DEAL_BOARD_MAP_LAYOUT_DEFAULT,
+  DEAL_BOARD_MAP_LAYOUT_LABELS,
+  DEAL_BOARD_MAP_LAYOUT_PREF_KEY,
+  DEAL_BOARD_MAP_LAYOUT_VALUES,
   DEAL_BOARD_VIEW_DEFAULT,
   DEAL_BOARD_VIEW_PREF_KEY,
   DEAL_BOARD_VIEW_VALUES,
   dealBoardViewDefaultForViewport,
+  type DealBoardMapLayout,
   type DealBoardView,
 } from "@/lib/deal-board-view";
+import DealBoardMap from "@/components/intelligence/DealBoardMap";
 import {
   clearDealBoardFocus,
   dealBoardRowDomId,
@@ -666,6 +672,9 @@ type DisplayListing = {
   zip: string | null;
   photoCount?: number | null;
   primaryPhotoIndex?: number | null;
+  /** MLS coordinates for the Map board view; absent on non-cache paths. */
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type MetricTone = "up" | "down" | "flat";
@@ -1551,6 +1560,8 @@ type DealBoardApiListing = {
   headline?: string;
   photoCount?: number | null;
   primaryPhotoIndex?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type DealBoardApiResponse = {
@@ -1585,6 +1596,8 @@ function mapBoardCacheListing(row: DealBoardApiListing, town: TmreTown): Display
     zip: row.zip,
     photoCount: row.photoCount ?? null,
     primaryPhotoIndex: row.primaryPhotoIndex ?? null,
+    latitude: row.latitude ?? null,
+    longitude: row.longitude ?? null,
   };
 }
 
@@ -2052,6 +2065,13 @@ export default function IntelligenceClient({
     false,
     dealBoardViewDefaultForViewport,
   );
+  const [mapLayout, setMapLayout] = usePersistedFilter<DealBoardMapLayout>(
+    DEAL_BOARD_MAP_LAYOUT_PREF_KEY,
+    DEAL_BOARD_MAP_LAYOUT_DEFAULT,
+    DEAL_BOARD_MAP_LAYOUT_VALUES,
+  );
+  /** Pin ↔ card selection for the Map view. */
+  const [mapActiveKey, setMapActiveKey] = useState<string | null>(null);
 
   // Persist unique filter combinations into the visitor search-history cookie
   // so /latest can offer them as alert criteria.
@@ -2489,7 +2509,8 @@ export default function IntelligenceClient({
     ) {
       setBoardView(urlSearch.view);
     }
-  }, [urlSearch, setSortKey, setSortDir, setBoardView]);
+    if (urlSearch.mapLayout) setMapLayout(urlSearch.mapLayout);
+  }, [urlSearch, setSortKey, setSortDir, setBoardView, setMapLayout]);
 
   // Prefer cached months-supply avgs when property class / occupancy changes.
   useEffect(() => {
@@ -3139,6 +3160,7 @@ export default function IntelligenceClient({
       sort: sortKey,
       dir: sortDir,
       view: boardView,
+      mapLayout,
       furnished: furnishedFilter === "all" ? null : furnishedFilter,
       minPrice:
         showPriceFilter && priceFilterActive && minPrice > 0
@@ -3171,6 +3193,7 @@ export default function IntelligenceClient({
       sortKey,
       sortDir,
       boardView,
+      mapLayout,
       furnishedFilter,
       showPriceFilter,
       priceFilterActive,
@@ -5922,6 +5945,72 @@ export default function IntelligenceClient({
               </div>
             ) : null}
           </div>
+          <div
+            className={
+              boardView === "map"
+                ? mapLayout === "side"
+                  ? "lg:flex lg:items-start lg:gap-4"
+                  : "flex flex-col gap-4"
+                : "contents"
+            }
+          >
+            {boardView === "map" ? (
+              <div
+                className={
+                  mapLayout === "side"
+                    ? "lg:sticky lg:top-24 lg:w-[27rem] lg:shrink-0"
+                    : "w-full"
+                }
+              >
+                <DealBoardMap
+                  listings={boardListings}
+                  activeKey={mapActiveKey}
+                  onSelect={(key) => {
+                    setMapActiveKey(key);
+                    if (!key) return;
+                    // Desktop keeps the ranked cards on screen — jump to the row.
+                    document
+                      .getElementById(dealBoardRowDomId(key))
+                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                  hrefFor={(l) =>
+                    listingDetailHrefForListing({
+                      mlsId: l.key,
+                      listingKey:
+                        boardListings.find((r) => r.key === l.key)?.listingKey ??
+                        null,
+                      address: { street: l.address, full: l.address },
+                      city: l.city ?? null,
+                    })
+                  }
+                  heightClass={
+                    mapLayout === "side"
+                      ? "h-[70vh] md:h-[34rem]"
+                      : "h-[70vh] md:h-[26rem]"
+                  }
+                />
+                <div className="mt-1.5 hidden items-center justify-end gap-1 md:flex">
+                  {DEAL_BOARD_MAP_LAYOUT_VALUES.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setMapLayout(option)}
+                      aria-pressed={mapLayout === option}
+                      className={`rounded px-1.5 py-0.5 font-mono text-[9px] tracking-wide transition-colors ${
+                        mapLayout === option
+                          ? "bg-navy/[0.06] text-navy"
+                          : "text-charcoal/40 hover:text-navy"
+                      }`}
+                    >
+                      {DEAL_BOARD_MAP_LAYOUT_LABELS[option]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <div
+              className={boardView === "map" ? "min-w-0 flex-1" : "contents"}
+            >
           <DealBoardList
             topRows={boardTiers.top}
             middlePinnedRows={boardTiers.middlePinned}
@@ -5979,6 +6068,7 @@ export default function IntelligenceClient({
             onSortFieldDrawerOpenChange={setSortFieldDrawerOpen}
             boardView={boardView}
             onBoardViewChange={setBoardView}
+            rowsHiddenBelowMd={boardView === "map"}
             boardStatusFilter={boardStatusFilter}
             onBoardStatusFilterChange={(value) => {
               setBoardStatusFilter(value);
@@ -6020,6 +6110,8 @@ export default function IntelligenceClient({
               </div>
             }
           />
+            </div>
+          </div>
           {showBoardPagination && (
             <DealBoardPagination
               page={boardPage}

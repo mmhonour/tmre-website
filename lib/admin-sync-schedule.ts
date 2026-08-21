@@ -320,7 +320,46 @@ function nextMinuteCadenceSlot(intervalMinutes: number, from = new Date()): Date
   return slot
 }
 
-/** Next run from last finish + interval, or next cadence slot when overdue/never. */
+/**
+ * Most recent phase-aligned interval slot at or before `before`.
+ *
+ * Interval jobs keep a fixed wall-clock grid: Configure's Start time (ET) is the
+ * phase, so an hourly job set to 5:24 PM runs at :24 every hour, forever. That
+ * is deliberate — the jobs are staggered onto different minutes so they do not
+ * collide and so a glance at Start says whether each one fired on time.
+ *
+ * Anchoring on "last finish + interval" instead let one manual Sync drag the
+ * whole schedule onto a new minute (a 1:16 PM click moved an hourly job to
+ * 2:16, 3:16, …), which destroys both properties.
+ */
+export function lastPastIntervalSlotEt(
+  hour: number,
+  minute: number,
+  intervalMs: number,
+  before = new Date(),
+): Date {
+  const anchor = lastPastDailySlotEt(hour, minute, before)
+  const elapsed = before.getTime() - anchor.getTime()
+  if (elapsed <= 0 || intervalMs <= 0) return anchor
+  const steps = Math.floor(elapsed / intervalMs)
+  return new Date(anchor.getTime() + steps * intervalMs)
+}
+
+/** Next phase-aligned interval slot strictly after `from`. */
+export function nextIntervalSlotEt(
+  hour: number,
+  minute: number,
+  intervalMs: number,
+  from = new Date(),
+): Date {
+  const last = lastPastIntervalSlotEt(hour, minute, intervalMs, from)
+  let next = last.getTime() + intervalMs
+  // Guard the boundary: `last` can equal `from` when a slot lands exactly now.
+  while (next <= from.getTime()) next += intervalMs
+  return new Date(next)
+}
+
+/** @deprecated Next drifts with manual runs — use nextIntervalSlotEt. */
 export function nextIntervalStartFromLast(
   lastFinishedIso: string | null,
   intervalMs: number,
@@ -365,11 +404,16 @@ export function computeNaturalNextRunIso(
   const intervalMs = frequencyIntervalMs(job.frequency)
 
   if (intervalMs != null) {
-    return nextIntervalStartFromLast(
-      lastFinishedIso,
-      intervalMs,
-      now,
-    ).toISOString()
+    // Fixed wall-clock grid off Configure's Start time — a manual run must not
+    // move the next slot. When a slot has already passed unserved, show *that*
+    // slot: the row then reads "Next 4:24 PM · overdue", which is the miss the
+    // operator needs to see, instead of hiding it behind a future time.
+    const lastSlot = lastPastIntervalSlotEt(hour, minute, intervalMs, now)
+    const lastMs = parseIsoMs(lastFinishedIso)
+    if (lastMs == null || lastMs < lastSlot.getTime()) {
+      return lastSlot.toISOString()
+    }
+    return nextIntervalSlotEt(hour, minute, intervalMs, now).toISOString()
   }
   if (job.frequency === 'daily') {
     return nextDailyTimeEt(hour, minute, now).toISOString()
@@ -401,7 +445,9 @@ export function isJobDueBySchedule(
 
   if (intervalMs != null) {
     if (lastMs == null) return true
-    return isIntervalSyncOverdue(lastFinishedIso, intervalMs, now)
+    // Due when the last finish predates the most recent slot — same shape as the
+    // daily/weekly checks, so elapsed time never shifts the grid.
+    return lastMs < lastPastIntervalSlotEt(hour, minute, intervalMs, now).getTime()
   }
   if (job.frequency === 'daily') {
     if (lastMs == null) return true

@@ -83,6 +83,7 @@ export function schedulerProviderLabel(provider: SyncSchedulerProvider): string 
 export const RAILWAY_JOB_ENDPOINTS: Partial<Record<ScheduledSyncJobId, string>> = {
   incremental: '/run',
   'stats-cache': '/stats',
+  'listing-scores': '/scores',
 }
 
 /** Endpoint on the Railway service for this job, or null when unsupported. */

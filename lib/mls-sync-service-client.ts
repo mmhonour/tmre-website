@@ -139,5 +139,10 @@ export async function queueMlsSyncServiceJob(
   if (endpoint === '/stats') {
     return queueMlsSyncServiceStatsRebuild({ startedAt: body.startedAt })
   }
+  if (endpoint === '/scores') {
+    return postToMlsSyncService('/scores', {
+      startedAt: body.startedAt ?? new Date().toISOString(),
+    })
+  }
   return queueMlsSyncServiceRun(body)
 }

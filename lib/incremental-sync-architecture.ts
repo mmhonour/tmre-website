@@ -220,7 +220,7 @@ export function describeIncrementalSyncArchitecture(): {
       'Admin Incremental pink = process dead (Railway heartbeat ~45m) or End-broken on legacy Netlify/EB. STALE = process up, End not moving. Overdue Next is never row color. Evaluator: lib/incremental-sync-health.ts.',
       '202 Accepted / warm-handoff failed ≠ inventory loss. Trust End + listings rows; boards rebuild on stale read if the hop fails.',
       'Prefer Configure → Incremental → Railway. Avoid dual-fire with Netlify cron or EventBridge while mls-sync is the clock.',
-      'Admin Pause / Next / not-due do not stop Railway’s interval today — Railway is an explicit run. Policy gap tracked separately.',
+      'Railway now pulls on the Configure slot (Frequency + Start time as a wall-clock grid) and honours Pause and the scheduler radio: a deploy no longer re-phases the schedule. Backstop — if the schedule read fails, a pull still runs once End is older than 2× the interval.',
       'People / PTA migrations on main are inert until db:migrate runs against Neon — Netlify does not auto-migrate on deploy.',
     ],
   }

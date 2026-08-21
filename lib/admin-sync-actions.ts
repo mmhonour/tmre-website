@@ -68,6 +68,7 @@ import {
   saveAdminSyncTableStats,
 } from '@/lib/sqlite-sync-stats'
 import type { AdminSyncActionId, AdminSyncAllActionId } from '@/lib/admin-sync-types'
+import type { StatsCacheLastRun } from '@/lib/stats-dirty-towns'
 import {
   ADMIN_SYNC_ACTIONS,
   ADMIN_SYNC_ALL_SEQUENCE,
@@ -1481,6 +1482,15 @@ async function runAdminSyncAllExtraCaches(): Promise<AdminSyncActionResult[]> {
   return steps
 }
 
+/** The later of two ISO stamps; null only when neither parses. */
+function newerIso(a: string | null, b: string | null): string | null {
+  const aMs = a ? Date.parse(a) : Number.NaN
+  const bMs = b ? Date.parse(b) : Number.NaN
+  if (!Number.isFinite(aMs)) return Number.isFinite(bMs) ? b : null
+  if (!Number.isFinite(bMs)) return a
+  return aMs >= bMs ? a : b
+}
+
 export async function readAdminSyncPanelStatus() {
   // Cron / worker Lambdas stamp sync_meta on other instances. Re-hydrate so
   // Admin "Cron last fired", Start/End, and Next are not stuck on a stale
@@ -1497,6 +1507,39 @@ export async function readAdminSyncPanelStatus() {
   const healedEb = await healStaleEventBridgeQueuedIncremental()
 
   const stats = await readListingsDbStats()
+
+  // Stats cache writes its outcome twice: two loose sync_meta timestamps (the
+  // rebuild's own cooldown guard) and one summary record. Only the record is
+  // written by every host on every run, so Start / End / Next / Overdue read it
+  // and fall back to the loose keys when they happen to be newer.
+  const {
+    formatStatsCacheLastRun,
+    formatStatsTownQueue,
+    readStatsCacheLastRun,
+    readStatsTownStatuses,
+    statsCacheRunClocks,
+  } = await import('@/lib/stats-dirty-towns')
+  let statsCacheLastRunStatus: string | null = null
+  let statsCacheQueueStatus: string | null = null
+  let statsCacheRun: StatsCacheLastRun | null = null
+  try {
+    const [lastRun, townStatuses] = await Promise.all([
+      readStatsCacheLastRun(),
+      readStatsTownStatuses(),
+    ])
+    statsCacheRun = lastRun
+    statsCacheLastRunStatus = formatStatsCacheLastRun(lastRun)
+    statsCacheQueueStatus = formatStatsTownQueue(townStatuses)
+  } catch (err) {
+    console.error('[admin-sync] stats cache dirty-town read failed', err)
+  }
+  const statsClocks = statsCacheRunClocks(statsCacheRun)
+  stats.lastStatsCacheStarted = newerIso(
+    statsClocks.startedAt,
+    stats.lastStatsCacheStarted,
+  )
+  stats.lastStatsCache = newerIso(statsClocks.finishedAt, stats.lastStatsCache)
+
   const refresh = readListingsRefreshStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
@@ -1581,27 +1624,6 @@ export async function readAdminSyncPanelStatus() {
   const visionAddressesLive = readVisionAddressesLiveProgress()
   const visionAddressesLiveStatus =
     formatVisionAddressesLiveProgress(visionAddressesLive)
-
-  // Stats cache rebuilds per dirty town now, so the operator needs to see which
-  // towns went and why — Start/End alone cannot say that.
-  let statsCacheLastRunStatus: string | null = null
-  let statsCacheQueueStatus: string | null = null
-  try {
-    const {
-      formatStatsCacheLastRun,
-      formatStatsTownQueue,
-      readStatsCacheLastRun,
-      readStatsTownStatuses,
-    } = await import('@/lib/stats-dirty-towns')
-    const [lastRun, townStatuses] = await Promise.all([
-      readStatsCacheLastRun(),
-      readStatsTownStatuses(),
-    ])
-    statsCacheLastRunStatus = formatStatsCacheLastRun(lastRun)
-    statsCacheQueueStatus = formatStatsTownQueue(townStatuses)
-  } catch (err) {
-    console.error('[admin-sync] stats cache dirty-town read failed', err)
-  }
 
   return {
     stats,

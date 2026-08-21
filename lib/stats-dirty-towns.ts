@@ -206,6 +206,35 @@ export async function readStatsCacheLastRun(): Promise<StatsCacheLastRun | null>
   return parseStatsCacheLastRun(rows[0]?.value ?? null)
 }
 
+/**
+ * Start / End implied by the summary record.
+ *
+ * Every rebuild writes this row, whichever host ran it, so it is the only clock
+ * the dashboard can trust. The loose `last_stats_cache*` keys are the rebuild's
+ * own cooldown guard and can disagree with reality — a Railway sweep that
+ * recorded 162 entries while Start/End still read three hours old is what sent
+ * the row Overdue with a future Next on 20 Aug 2026.
+ *
+ * End is only stamped for a successful run: a failure must not paint the row
+ * green or advance Next.
+ */
+export function statsCacheRunClocks(run: StatsCacheLastRun | null): {
+  startedAt: string | null
+  finishedAt: string | null
+} {
+  if (!run) return { startedAt: null, finishedAt: null }
+  const endMs = Date.parse(run.at)
+  if (!Number.isFinite(endMs)) return { startedAt: null, finishedAt: null }
+  const durationMs =
+    typeof run.durationMs === 'number' && Number.isFinite(run.durationMs)
+      ? Math.max(0, run.durationMs)
+      : 0
+  return {
+    startedAt: new Date(endMs - durationMs).toISOString(),
+    finishedAt: run.ok ? run.at : null,
+  }
+}
+
 function agoLabel(iso: string | null, now = Date.now()): string {
   const ms = iso ? Date.parse(iso) : Number.NaN
   if (!Number.isFinite(ms)) return 'never'

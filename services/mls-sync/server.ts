@@ -44,6 +44,14 @@ const STATS_SWEEP_MS = 10 * 60 * 1000
 const STATS_SWEEP_DELAY_MS = 2 * 60 * 1000
 
 /**
+ * Goldilocks sweep cadence. Both sweeps only *check*; Configure's Start time is
+ * the wall-clock grid that decides whether a run is allowed, so a tighter check
+ * interval just means the job starts nearer its configured minute.
+ */
+const SCORES_SWEEP_MS = 5 * 60 * 1000
+const SCORES_SWEEP_DELAY_MS = 3 * 60 * 1000
+
+/**
  * How long to wait before retrying a rebuild whose start never finished. An OOM
  * takes the whole container with it, so without this the sweep would relaunch
  * the same fatal rebuild on every boot and starve the incremental pull.
@@ -70,6 +78,14 @@ let lastStatsOk: boolean | null = null
 let lastStatsWritten: number | null = null
 let lastStatsError: string | null = null
 let lastStatsPlan: StatsRebuildPlan | null = null
+
+let scoresInFlight: Promise<void> | null = null
+let lastScoresStartedAt: string | null = null
+let lastScoresFinishedAt: string | null = null
+let lastScoresOk: boolean | null = null
+let lastScoresScored: number | null = null
+let lastScoresError: string | null = null
+let lastScoresTrigger: string | null = null
 
 function readBearer(req: IncomingMessage): string | null {
   const h = req.headers.authorization?.trim() ?? ''
@@ -331,7 +347,17 @@ async function statsRebuildPlan(): Promise<StatsRebuildPlan | null> {
     return null
   }
 
-  const { statsTownsDueForRebuild } = await import('../../lib/stats-dirty-towns')
+  // Configure's Start time is a wall-clock grid, not "an hour after whatever ran
+  // last": the jobs are staggered onto separate minutes so they cannot collide
+  // and so Start reads as pass/fail at a glance. Dirtiness decides whether there
+  // is work; the slot decides when we are allowed to do it.
+  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
+  const { statsCacheRunClocks, readStatsCacheLastRun, statsTownsDueForRebuild } =
+    await import('../../lib/stats-dirty-towns')
+  const lastRun = await readStatsCacheLastRun().catch(() => null)
+  const lastStatsEnd = statsCacheRunClocks(lastRun).finishedAt ?? finishedAt
+  if (!isJobDueBySchedule(config.jobs['stats-cache'], lastStatsEnd)) return null
+
   const { towns, reasons } = await statsTownsDueForRebuild()
   if (towns.length === 0) return null
   return { towns, reasons, trigger: 'railway-sweep' }
@@ -364,6 +390,213 @@ function scheduleStatsSweep(): void {
   setInterval(run, STATS_SWEEP_MS)
   console.info(
     `[mls-sync] stats sweep every ${Math.round(STATS_SWEEP_MS / 60_000)}m (rebuilds dirty towns; 24h backstop per town)`,
+  )
+}
+
+/**
+ * Goldilocks / listing-scores rebuild, hosted here.
+ *
+ * Scores every Active listing against its town peer pool. One town at a time —
+ * the same discipline the stats rebuild needed, since holding several towns'
+ * inventory in one heap is what OOM-killed this container before.
+ */
+async function executeScoresRebuild(
+  startedAt: string,
+  trigger: string,
+): Promise<void> {
+  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
+  const { rebuildAllListingScores } = await import(
+    '../../lib/listing-scores-rebuild'
+  )
+  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
+
+  await hydrateSyncMetaStore()
+  const result = await rebuildAllListingScores()
+  const finishedAt = new Date().toISOString()
+  const failed = result.towns.filter((town) => !town.ok)
+  const ok = failed.length === 0 && result.totalScored > 0
+
+  lastScoresFinishedAt = finishedAt
+  lastScoresOk = ok
+  lastScoresScored = result.totalScored
+  lastScoresError = ok
+    ? null
+    : failed.length > 0
+      ? failed.map((town) => `${town.town}: ${town.error ?? 'failed'}`).join('; ')
+      : 'scored 0 listings'
+
+  console.info(
+    `[mls-sync] goldilocks rebuild scored=${result.totalScored} failed=${failed.length} in ${result.durationMs}ms`,
+  )
+
+  await recordDashboardSyncAudit({
+    startedAt,
+    finishedAt,
+    syncSuffix: 'goldilocks',
+    listingsCount: result.totalScored,
+    ok,
+    detail: ok
+      ? `Goldilocks rescored on Railway (${trigger}) — ${result.totalScored.toLocaleString()} listings`
+      : failed.length > 0
+        ? `Goldilocks failed on ${failed.length} town(s): ${lastScoresError}`
+        : 'Goldilocks scored 0 listings (check Active inventory)',
+  })
+}
+
+/** Never overlap Goldilocks with a RETS pull or a stats rebuild (heap). */
+function startScoresRebuild(
+  startedAt: string,
+  trigger: string,
+): {
+  accepted: boolean
+  alreadyRunning: boolean
+  otherJobInFlight: boolean
+} {
+  if (scoresInFlight) {
+    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
+  }
+  if (runInFlight || statsInFlight) {
+    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
+  }
+
+  lastScoresStartedAt = startedAt
+  lastScoresFinishedAt = null
+  lastScoresOk = null
+  lastScoresError = null
+  lastScoresScored = null
+  lastScoresTrigger = trigger
+  scoresInFlight = executeScoresRebuild(startedAt, trigger)
+    .catch((err) => {
+      lastScoresFinishedAt = new Date().toISOString()
+      lastScoresOk = false
+      lastScoresError = err instanceof Error ? err.message : String(err)
+      console.error('[mls-sync] goldilocks rebuild failed', err)
+    })
+    .finally(() => {
+      scoresInFlight = null
+    })
+  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
+}
+
+/** True when Configure points Goldilocks here and its slot has come round. */
+async function scoresRebuildIsDue(): Promise<boolean> {
+  const { readSyncScheduleConfigFresh } = await import(
+    '../../lib/sync-schedule-config'
+  )
+  const { resolveJobScheduler } = await import(
+    '../../lib/sync-schedule-config-shared'
+  )
+  const config = await readSyncScheduleConfigFresh()
+  if (resolveJobScheduler(config.jobs['listing-scores']) !== 'railway') {
+    return false
+  }
+
+  const { isScheduledSyncJobPausedFresh } = await import(
+    '../../lib/scheduled-sync-toggle'
+  )
+  if (await isScheduledSyncJobPausedFresh('listing-scores')) return false
+
+  const { getSyncMeta } = await import('../../lib/db/sync-meta')
+  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
+  const [startedAt, finishedAt] = await Promise.all([
+    getSyncMeta('last_listing_scores_started'),
+    getSyncMeta('last_listing_scores'),
+  ])
+  // Same restart guard the stats lane needs: a start with no later finish means
+  // the last attempt died mid-flight, so hold off rather than loop on it.
+  const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN
+  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
+  if (
+    Number.isFinite(startedMs) &&
+    (!Number.isFinite(finishedMs) || finishedMs < startedMs) &&
+    Date.now() - startedMs < STATS_RETRY_COOLDOWN_MS
+  ) {
+    return false
+  }
+
+  return isJobDueBySchedule(config.jobs['listing-scores'], finishedAt)
+}
+
+/**
+ * Should a RETS pull start now?
+ *
+ * Pulls land on Configure's wall-clock grid (Frequency + Start time), not
+ * "INTERVAL_MS after boot" — a deploy used to re-phase the whole schedule, which
+ * is exactly what made Start times untrustworthy as a pass/fail signal. The
+ * scheduler radio and Pause are honoured here too, so Railway stops pulling when
+ * Configure hands Incremental to another host.
+ *
+ * `liveness` is the backstop: if the config read fails or the grid ever wedges,
+ * a pull still happens once End is older than twice the interval. Stale listings
+ * are the one outcome worse than an off-minute pull.
+ */
+async function incrementalRunIsDue(): Promise<boolean> {
+  const { getSyncMeta } = await import('../../lib/db/sync-meta')
+  const finishedAt = await getSyncMeta('last_incremental_sync').catch(() => null)
+  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
+  const liveness =
+    !Number.isFinite(finishedMs) || Date.now() - finishedMs >= INTERVAL_MS * 2
+
+  try {
+    const { readSyncScheduleConfigFresh } = await import(
+      '../../lib/sync-schedule-config'
+    )
+    const { resolveJobScheduler } = await import(
+      '../../lib/sync-schedule-config-shared'
+    )
+    const config = await readSyncScheduleConfigFresh()
+    if (resolveJobScheduler(config.jobs.incremental) !== 'railway') return false
+
+    const { isScheduledSyncJobPausedFresh } = await import(
+      '../../lib/scheduled-sync-toggle'
+    )
+    if (await isScheduledSyncJobPausedFresh('incremental')) return false
+
+    const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
+    return isJobDueBySchedule(config.jobs.incremental, finishedAt)
+  } catch (err) {
+    console.warn(
+      `[mls-sync] schedule read failed — falling back to interval liveness (due=${liveness})`,
+      err,
+    )
+    return liveness
+  }
+}
+
+/** Minute tick that starts a pull at its configured slot. */
+function scheduleIncrementalSweep(): void {
+  const tick = async () => {
+    if (runInFlight || statsInFlight || scoresInFlight) return
+    if (!(await incrementalRunIsDue())) return
+    console.info('[mls-sync] incremental due — configured slot reached')
+    startRun({ startedAt: new Date().toISOString(), source: 'railway' })
+  }
+  const run = () => {
+    void tick().catch((err) => {
+      console.warn('[mls-sync] incremental sweep failed', err)
+    })
+  }
+  setTimeout(run, 15_000)
+  setInterval(run, 60_000)
+}
+
+/** Self-scheduled Goldilocks sweep — same reasoning as the stats sweep. */
+function scheduleScoresSweep(): void {
+  const tick = async () => {
+    if (runInFlight || statsInFlight || scoresInFlight) return
+    if (!(await scoresRebuildIsDue())) return
+    console.info('[mls-sync] goldilocks due — configured slot reached')
+    startScoresRebuild(new Date().toISOString(), 'railway-sweep')
+  }
+  const run = () => {
+    void tick().catch((err) => {
+      console.warn('[mls-sync] goldilocks sweep failed', err)
+    })
+  }
+  setTimeout(run, SCORES_SWEEP_DELAY_MS)
+  setInterval(run, SCORES_SWEEP_MS)
+  console.info(
+    `[mls-sync] goldilocks sweep every ${Math.round(SCORES_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
   )
 }
 
@@ -409,6 +642,16 @@ async function handleRequest(
         lastStatsPlan,
         last_stats_cache: await getSyncMeta('last_stats_cache'),
         towns: await readStatsTownStatusesSafe(),
+      },
+      goldilocks: {
+        inFlight: scoresInFlight != null,
+        lastScoresStartedAt,
+        lastScoresFinishedAt,
+        lastScoresOk,
+        lastScoresScored,
+        lastScoresError,
+        lastScoresTrigger,
+        last_listing_scores: await getSyncMeta('last_listing_scores'),
       },
       neon: {
         last_incremental_sync: end,
@@ -507,6 +750,41 @@ async function handleRequest(
     return
   }
 
+  if (req.method === 'POST' && path === '/scores') {
+    if (!assertAuth(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      return
+    }
+    const body = await readJson(req)
+    const startedAt =
+      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
+        ? body.startedAt
+        : new Date().toISOString()
+
+    const started = startScoresRebuild(startedAt, 'manual')
+    if (started.otherJobInFlight) {
+      sendJson(res, 409, {
+        ok: true,
+        accepted: false,
+        otherJobInFlight: true,
+        message:
+          'Incremental pull or stats rebuild in flight — Goldilocks deferred to next tick',
+      })
+      return
+    }
+
+    sendJson(res, 202, {
+      ok: true,
+      accepted: started.accepted,
+      alreadyRunning: started.alreadyRunning,
+      startedAt,
+      message: started.alreadyRunning
+        ? 'Goldilocks already running on mls-sync'
+        : 'Goldilocks accepted on mls-sync (Railway)',
+    })
+    return
+  }
+
   sendJson(res, 404, { ok: false, error: 'not found' })
 }
 
@@ -524,14 +802,11 @@ const server = createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.info(
-    `[mls-sync] listening on :${PORT} · interval ${Math.round(INTERVAL_MS / 60_000)}m · RETS→Neon (no Netlify pull)`,
+    `[mls-sync] listening on :${PORT} · pulls on the Configure slot (interval backstop ${Math.round(INTERVAL_MS / 60_000)}m) · RETS→Neon (no Netlify pull)`,
   )
-  // First pull shortly after boot (don’t wait a full interval).
-  const bootAt = new Date().toISOString()
-  startRun({ startedAt: bootAt, source: 'railway' })
-  setInterval(() => {
-    startRun({ startedAt: new Date().toISOString(), source: 'railway' })
-  }, INTERVAL_MS)
+  // No boot pull: a deploy must not re-phase the schedule. The sweep starts one
+  // within a minute if a slot is already owed.
+  scheduleIncrementalSweep()
   // Process-alive signal between pulls. In-run pulse already stamps ~60s;
   // skip while a pull is in flight so we do not double-write.
   setInterval(() => {
@@ -541,4 +816,5 @@ server.listen(PORT, () => {
     })
   }, 60_000)
   scheduleStatsSweep()
+  scheduleScoresSweep()
 })

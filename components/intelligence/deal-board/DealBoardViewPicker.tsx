@@ -57,15 +57,32 @@ function DealBoardViewIcon({ mode }: { mode: DealBoardView }) {
           <line x1="7.5" y1="12" x2="14" y2="12" strokeLinecap="round" />
         </svg>
       );
+    case "map":
+      return (
+        <svg
+          className={iconClass}
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden
+        >
+          <path d="M8 14s4.2-4.1 4.2-7A4.2 4.2 0 0 0 3.8 7c0 2.9 4.2 7 4.2 7Z" />
+          <circle cx="8" cy="6.8" r="1.4" />
+        </svg>
+      );
   }
 }
 
 export default function DealBoardViewPicker({
   view,
   onChange,
+  options = DEAL_BOARD_VIEW_VALUES,
 }: {
   view: DealBoardView;
   onChange: (view: DealBoardView) => void;
+  /** Boards without a map panel pass DEAL_BOARD_CARD_VIEW_VALUES. */
+  options?: readonly DealBoardView[];
 }) {
   return (
     <div
@@ -73,7 +90,7 @@ export default function DealBoardViewPicker({
       role="group"
       aria-label="Board view"
     >
-      {DEAL_BOARD_VIEW_VALUES.map((mode) => {
+      {options.map((mode) => {
         const active = view === mode;
         const label = DEAL_BOARD_VIEW_LABELS[mode];
         return (

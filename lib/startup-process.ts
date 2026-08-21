@@ -290,6 +290,22 @@ export function describeStartupProcess(): {
       ],
     },
     {
+      id: "goldilocks",
+      title: "Goldilocks scores",
+      subtitle: "Scheduled rescore of every Active listing",
+      steps: [
+        {
+          id: "goldilocks-scheduled",
+          title: "Rebuild on the Configure slot",
+          timing: "Configure → Goldilocks → Frequency / Start",
+          detail:
+            "rebuildAllListingScores(): scores every Active listing against its town peer pool, one town at a time, then refreshes avg-score-by-vintage. Who runs it is declared in Configure → Goldilocks → Scheduler: Railway mls-sync (5-min sweep that only fires at the configured wall-clock slot, plus POST /scores for Sync now) or Netlify cron (thin */30 → sync-listing-scores-worker). Exactly one host acts — each stands down when the radio names the other. Never overlaps the RETS pull or a stats rebuild in the Railway process (shared heap).",
+          status: "active",
+          statusLabel: "Running",
+        },
+      ],
+    },
+    {
       id: "edge-scores",
       title: "Listing edge scores",
       subtitle: "Weekly metadata scores for comparables ranking",
@@ -373,7 +389,7 @@ export function describeStartupProcess(): {
           title: "Periodic dirty-town sweep",
           timing: "usually every 10 min",
           detail:
-            "rebuildStatsCacheIfStale(false) — rebuilds only the towns the incremental sync marked dirty (stats_dirty:<Town> in sync_meta), plus any town whose last rebuild is over 24h old, plus the whole cache when required keys are missing. There is no hourly TTL trigger any more: an unchanged town is not rebuilt. Skips while the stats rebuild lock or a listings refresh is held. Long-lived Node only: on Netlify this is off, because a request-scoped invocation cannot finish a rebuild but can freeze holding the lock. Who rebuilds is declared in Configure → Stats cache → Scheduler: Railway mls-sync (default; 10-min dirty sweep + POST /stats) or Netlify cron (thin */30 → sync-stats-cache-worker, which also stands down when nothing is dirty). Exactly one host acts — each stands down when the radio names the other.",
+            "rebuildStatsCacheIfStale(false) — rebuilds only the towns the incremental sync marked dirty (stats_dirty:<Town> in sync_meta), plus any town whose last rebuild is over 24h old, plus the whole cache when required keys are missing. There is no hourly TTL trigger any more: an unchanged town is not rebuilt. Skips while the stats rebuild lock or a listings refresh is held. Long-lived Node only: on Netlify this is off, because a request-scoped invocation cannot finish a rebuild but can freeze holding the lock. Who rebuilds is declared in Configure → Stats cache → Scheduler: Railway mls-sync (default; 10-min dirty sweep + POST /stats) or Netlify cron (thin */30 → sync-stats-cache-worker, which also stands down when nothing is dirty). Exactly one host acts — each stands down when the radio names the other. The Railway sweep also honours Configure → Start time as a wall-clock grid: dirtiness says whether there is work, the slot says when it may run, so a manual Sync never drags the schedule onto a new minute.",
           status: "active",
           statusLabel: "Running",
         },
