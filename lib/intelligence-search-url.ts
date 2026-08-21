@@ -333,8 +333,8 @@ function formatSharePriceRangeLabel(
     }
     return `${formatSharePriceToken(minPrice!)}-${formatSharePriceToken(maxPrice!)}`
   }
-  if (hasMin) return `From${formatSharePriceToken(minPrice!)}`
-  return `Under${formatSharePriceToken(maxPrice!)}`
+  if (hasMin) return `From ${formatSharePriceToken(minPrice!)}`
+  return `Under ${formatSharePriceToken(maxPrice!)}`
 }
 
 function formatShareSqftRangeLabel(
@@ -344,9 +344,9 @@ function formatShareSqftRangeLabel(
   const hasMin = minSqft != null && minSqft > 0
   const hasMax = maxSqft != null && Number.isFinite(maxSqft)
   if (!hasMin && !hasMax) return null
-  if (hasMin && hasMax) return `${Math.round(minSqft!)}-${Math.round(maxSqft!)}Sqft`
-  if (hasMin) return `${Math.round(minSqft!)}+Sqft`
-  return `UpTo${Math.round(maxSqft!)}Sqft`
+  if (hasMin && hasMax) return `${Math.round(minSqft!)}-${Math.round(maxSqft!)} sqft`
+  if (hasMin) return `${Math.round(minSqft!)}+ sqft`
+  return `up to ${Math.round(maxSqft!)} sqft`
 }
 
 function formatShareCountRangeLabel(
@@ -358,21 +358,22 @@ function formatShareCountRangeLabel(
   if (min === max) return `${min}${unit}`
   if (min > 0 && max < 6) return `${min}-${max}${unit}`
   if (min > 0) return `${min}+${unit}`
-  return `UpTo${max}${unit}`
+  return `up to ${max}${unit}`
 }
+
+export const INTELLIGENCE_SHARE_TITLE_DEFAULT = 'Market Intelligence'
 
 /**
  * Human-readable share title for Intelligence.
- * No narrowed filters → `TMREMarketIntelligence`.
- * Otherwise compact PascalCase, e.g. `WestportRentals2-10KPriceDesc`.
+ * No narrowed filters → `Market Intelligence`.
+ * Otherwise spaced words, e.g. `Westport Rentals 3Bed+ 2Ba+ 7-12K`.
+ * Sort and board view stay out of the title — they are in the URL.
  */
 export function buildIntelligenceShareTitle(state: IntelligenceShareState): string {
   const parts: string[] = []
 
   const city = state.city?.trim()
-  if (city && city !== 'All') {
-    parts.push(city.replace(/\s+/g, ''))
-  }
+  if (city && city !== 'All') parts.push(city)
 
   const zip = state.zip?.trim()
   if (zip) parts.push(zip)
@@ -390,28 +391,28 @@ export function buildIntelligenceShareTitle(state: IntelligenceShareState): stri
   const beds = formatShareCountRangeLabel(
     state.bedsMin ?? 0,
     state.bedsMax ?? 6,
-    'Beds',
+    'Bed',
   )
   if (beds) parts.push(beds)
 
   const baths = formatShareCountRangeLabel(
     state.bathsMin ?? 0,
     state.bathsMax ?? 6,
-    'Baths',
+    'Ba',
   )
   if (baths) parts.push(baths)
 
   const vintage = formatShareCountRangeLabel(
     state.vintageMin ?? 0,
     state.vintageMax ?? 6,
-    'Vintage',
+    ' Vintage',
   )
   if (vintage) parts.push(vintage)
 
-  if (state.newConstruction === true) parts.push('NewConstruction')
-  else if (state.newConstruction === false) parts.push('NotNewConstruction')
+  if (state.newConstruction === true) parts.push('New construction')
+  else if (state.newConstruction === false) parts.push('Not new construction')
 
-  if (state.status === 'new') parts.push('NewListings')
+  if (state.status === 'new') parts.push('New listings')
   else if (state.status === 'reduced') parts.push('Reduced')
   else if (state.status === 'active') parts.push('Active')
 
@@ -423,36 +424,51 @@ export function buildIntelligenceShareTitle(state: IntelligenceShareState): stri
   const price = formatSharePriceRangeLabel(state.minPrice, state.maxPrice)
   if (price) parts.push(price)
 
-  const sort = state.sort?.trim() || 'score'
-  const dirAsc = state.dir === 'asc'
-  if (sort !== 'score' || dirAsc) {
-    const sortWord =
-      sort === 'price'
-        ? 'Price'
-        : sort === 'ppsf'
-          ? 'Ppsf'
-          : sort === 'sqft'
-            ? 'Sqft'
-            : sort === 'dom'
-              ? 'Dom'
-              : sort === 'year'
-                ? 'Year'
-                : sort === 'town'
-                  ? 'Town'
-                  : sort === 'beds'
-                    ? 'Beds'
-                    : sort === 'baths'
-                      ? 'Baths'
-                      : sort === 'status'
-                        ? 'Status'
-                        : 'Score'
-    parts.push(`${sortWord}${dirAsc ? 'Asc' : 'Desc'}`)
-  }
-
   const sqft = formatShareSqftRangeLabel(state.minSqft, state.maxSqft)
   if (sqft) parts.push(sqft)
 
-  return parts.length === 0 ? 'TMREMarketIntelligence' : parts.join('')
+  return parts.length === 0 ? INTELLIGENCE_SHARE_TITLE_DEFAULT : parts.join(' ')
+}
+
+/** One-line description for OG / Twitter cards. No I/O — string formatting only. */
+export function buildIntelligenceShareDescription(
+  state: IntelligenceShareState,
+): string {
+  const title = buildIntelligenceShareTitle(state)
+  if (title === INTELLIGENCE_SHARE_TITLE_DEFAULT) {
+    return 'Live deal board for Fairfield County, CT. Every listing scored against our proprietary deal model.'
+  }
+  return `${title}. Live TMRE deal board — every listing scored against our proprietary deal model.`
+}
+
+/** Map inbound URL parse → share state (metadata + title use the same path). */
+export function intelligenceShareStateFromParsed(
+  parsed: ParsedIntelligenceSearch,
+): IntelligenceShareState {
+  return {
+    city: parsed.city,
+    zip: parsed.zip,
+    tx: parsed.tx ?? undefined,
+    cls: parsed.cls ?? undefined,
+    property: parsed.property ?? undefined,
+    bedsMin: parsed.bedsMin ?? undefined,
+    bedsMax: parsed.bedsMax ?? undefined,
+    bathsMin: parsed.bathsMin ?? undefined,
+    bathsMax: parsed.bathsMax ?? undefined,
+    vintageMin: parsed.vintageMin ?? undefined,
+    vintageMax: parsed.vintageMax ?? undefined,
+    newConstruction: parsed.newConstruction,
+    status: parsed.status ?? undefined,
+    sort: parsed.sort ?? undefined,
+    dir: parsed.dir ?? undefined,
+    view: parsed.view ?? undefined,
+    mapLayout: parsed.mapLayout ?? undefined,
+    furnished: parsed.furnished,
+    minPrice: parsed.minPrice ?? undefined,
+    maxPrice: parsed.maxPrice,
+    minSqft: parsed.minSqft ?? undefined,
+    maxSqft: parsed.maxSqft,
+  }
 }
 
 export function intelligenceShareUrl(

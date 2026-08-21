@@ -9,6 +9,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
+import { listingPhotoProxyUrl } from "@/lib/listing-url";
 
 /**
  * Multi-pin map for the Intelligence deal board.
@@ -38,9 +40,18 @@ export type DealBoardMapListing = {
   sqft: number | null;
   latitude?: number | null;
   longitude?: number | null;
+  photoCount?: number | null;
+  primaryPhotoIndex?: number | null;
 };
 
 type LonLat = { lat: number; lon: number };
+type Ring = [number, number][];
+type GeoBounds = {
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+};
 
 type PlacedPin = {
   listing: DealBoardMapListing;
@@ -102,20 +113,29 @@ function pinPriceLabel(price: number, isRental: boolean): string {
   return `$${Math.round(price / 1000)}K`;
 }
 
-/**
- * Zoom that fits `pins` in a w×h panel, and the centre of their bounds. A single
- * pin (or a cluster inside one block) has no meaningful span, so it gets a
- * street-level default rather than MAX_ZOOM.
- */
-function fitViewport(
-  pins: readonly (DealBoardMapListing & { latitude: number; longitude: number })[],
-  width: number,
-  height: number,
-): { center: LonLat; zoom: number } {
-  if (pins.length === 0 || width <= 0 || height <= 0) {
-    return { center: FALLBACK_CENTER, zoom: FALLBACK_ZOOM };
+function boundsFromRings(rings: readonly Ring[]): GeoBounds | null {
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+  let any = false;
+  for (const ring of rings) {
+    for (const [lon, lat] of ring) {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      any = true;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+    }
   }
+  return any ? { minLat, maxLat, minLon, maxLon } : null;
+}
 
+function boundsFromPins(
+  pins: readonly (DealBoardMapListing & { latitude: number; longitude: number })[],
+): GeoBounds | null {
+  if (pins.length === 0) return null;
   let minLat = Infinity;
   let maxLat = -Infinity;
   let minLon = Infinity;
@@ -126,23 +146,63 @@ function fitViewport(
     if (pin.longitude < minLon) minLon = pin.longitude;
     if (pin.longitude > maxLon) maxLon = pin.longitude;
   }
+  return { minLat, maxLat, minLon, maxLon };
+}
+
+function clampCenter(center: LonLat, bounds: GeoBounds | null): LonLat {
+  if (!bounds) return center;
+  return {
+    lat: Math.min(bounds.maxLat, Math.max(bounds.minLat, center.lat)),
+    lon: Math.min(bounds.maxLon, Math.max(bounds.minLon, center.lon)),
+  };
+}
+
+/**
+ * Zoom that fits `bounds` in a w×h panel. A tiny span (one pin, one block)
+ * gets a street-level default rather than MAX_ZOOM.
+ */
+function fitBounds(
+  bounds: GeoBounds | null,
+  width: number,
+  height: number,
+  pinCount = 0,
+): { center: LonLat; zoom: number } {
+  if (!bounds || width <= 0 || height <= 0) {
+    return { center: FALLBACK_CENTER, zoom: FALLBACK_ZOOM };
+  }
 
   const center = {
-    lat: (minLat + maxLat) / 2,
-    lon: (minLon + maxLon) / 2,
+    lat: (bounds.minLat + bounds.maxLat) / 2,
+    lon: (bounds.minLon + bounds.maxLon) / 2,
   };
 
-  // Leave room for pin labels, which hang above and to the right of the anchor.
-  const padded = { w: Math.max(64, width - 96), h: Math.max(64, height - 96) };
+  const padded = { w: Math.max(64, width - 72), h: Math.max(64, height - 72) };
   for (let zoom = MAX_ZOOM; zoom > MIN_ZOOM; zoom--) {
     const spanX =
-      lonToWorldX(maxLon, zoom) - lonToWorldX(minLon, zoom);
-    const spanY = latToWorldY(minLat, zoom) - latToWorldY(maxLat, zoom);
+      lonToWorldX(bounds.maxLon, zoom) - lonToWorldX(bounds.minLon, zoom);
+    const spanY =
+      latToWorldY(bounds.minLat, zoom) - latToWorldY(bounds.maxLat, zoom);
     if (spanX <= padded.w && spanY <= padded.h) {
-      return { center, zoom: pins.length === 1 ? Math.min(zoom, 15) : zoom };
+      return { center, zoom: pinCount === 1 ? Math.min(zoom, 15) : zoom };
     }
   }
   return { center, zoom: MIN_ZOOM };
+}
+
+function ringToPath(
+  ring: Ring,
+  viewport: { left: number; top: number },
+  zoom: number,
+): string {
+  if (ring.length < 3) return "";
+  let d = "";
+  for (let i = 0; i < ring.length; i++) {
+    const [lon, lat] = ring[i];
+    const x = lonToWorldX(lon, zoom) - viewport.left;
+    const y = latToWorldY(lat, zoom) - viewport.top;
+    d += `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+  return `${d}Z`;
 }
 
 function MapControls({
@@ -181,8 +241,8 @@ function MapControls({
       <button
         type="button"
         onClick={onFit}
-        aria-label="Fit all listings"
-        title="Fit all listings"
+        aria-label="Fit search area"
+        title="Fit search area"
         className="flex h-7 w-7 items-center justify-center font-mono text-[9px] leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold"
       >
         FIT
@@ -193,22 +253,22 @@ function MapControls({
 
 export default function DealBoardMap({
   listings,
+  boundZips = [],
   activeKey,
   onSelect,
   hrefFor,
   className = "",
   heightClass = "h-[420px]",
-  showCallout = true,
 }: {
   listings: readonly DealBoardMapListing[];
+  /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
+  boundZips?: readonly string[];
   /** Highlighted pin — kept in sync with the card list selection. */
   activeKey?: string | null;
   onSelect?: (key: string | null) => void;
   hrefFor?: (listing: DealBoardMapListing) => string;
   className?: string;
   heightClass?: string;
-  /** Mobile shows a callout card for the tapped pin; desktop can defer to cards. */
-  showCallout?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -226,8 +286,40 @@ export default function DealBoardMap({
   const pinchRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
 
+  const [rings, setRings] = useState<Ring[]>([]);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+
   const placeable = useMemo(() => listings.filter(hasCoords), [listings]);
   const missingCoords = listings.length - placeable.length;
+  const boundKey = boundZips.join(",");
+
+  useEffect(() => {
+    if (!boundKey) {
+      setRings([]);
+      return;
+    }
+    let cancelled = false;
+    void loadZipBoundariesForZips(boundZips)
+      .then((byZip) => {
+        if (cancelled) return;
+        const next: Ring[] = [];
+        for (const zip of boundZips) {
+          const found = byZip.get(zip);
+          if (found) next.push(...found);
+        }
+        setRings(next);
+      })
+      .catch(() => {
+        if (!cancelled) setRings([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [boundKey, boundZips]);
+
+  const searchBounds = useMemo(() => boundsFromRings(rings), [rings]);
+  const pinBounds = useMemo(() => boundsFromPins(placeable), [placeable]);
+  const fitTarget = searchBounds ?? pinBounds;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -243,21 +335,21 @@ export default function DealBoardMap({
 
   const fit = useCallback(() => {
     if (size.width <= 0 || size.height <= 0) return;
-    const next = fitViewport(placeable, size.width, size.height);
+    const next = fitBounds(fitTarget, size.width, size.height, placeable.length);
     setCenter(next.center);
     setZoom(next.zoom);
-  }, [placeable, size.height, size.width]);
+  }, [fitTarget, placeable.length, size.height, size.width]);
 
-  // Re-fit when the filtered set changes identity (not on every pan/zoom).
+  // Re-fit when the search area or filtered set changes, not on every pan.
   useEffect(() => {
     if (size.width <= 0 || size.height <= 0) return;
-    const signature = `${placeable.length}:${placeable[0]?.key ?? ""}:${
-      placeable[placeable.length - 1]?.key ?? ""
-    }`;
+    const signature = `${boundKey}:${rings.length}:${placeable.length}:${
+      placeable[0]?.key ?? ""
+    }:${placeable[placeable.length - 1]?.key ?? ""}`;
     if (fitSignatureRef.current === signature) return;
     fitSignatureRef.current = signature;
     fit();
-  }, [fit, placeable, size.height, size.width]);
+  }, [boundKey, fit, placeable, rings.length, size.height, size.width]);
 
   const viewport = useMemo(() => {
     if (size.width <= 0 || size.height <= 0) return null;
@@ -312,19 +404,19 @@ export default function DealBoardMap({
     }
     // Selected pin renders last so its label is never covered.
     return placed.sort((a, b) => {
-      if (a.listing.key === activeKey) return 1;
-      if (b.listing.key === activeKey) return -1;
+      if (a.listing.key === activeKey || a.listing.key === hoverKey) return 1;
+      if (b.listing.key === activeKey || b.listing.key === hoverKey) return -1;
       return a.top - b.top;
     });
-  }, [activeKey, placeable, viewport, zoom]);
+  }, [activeKey, hoverKey, placeable, viewport, zoom]);
 
   const panBy = useCallback(
     (dxPx: number, dyPx: number, from: LonLat) => {
       const cx = lonToWorldX(from.lon, zoom) - dxPx;
       const cy = latToWorldY(from.lat, zoom) - dyPx;
-      setCenter(worldToLonLat(cx, cy, zoom));
+      setCenter(clampCenter(worldToLonLat(cx, cy, zoom), searchBounds));
     },
-    [zoom],
+    [searchBounds, zoom],
   );
 
   const zoomAround = useCallback(
@@ -350,10 +442,12 @@ export default function DealBoardMap({
       );
       const nextCenterX = lonToWorldX(anchorLonLat.lon, clamped) - offsetX;
       const nextCenterY = latToWorldY(anchorLonLat.lat, clamped) - offsetY;
-      setCenter(worldToLonLat(nextCenterX, nextCenterY, clamped));
+      setCenter(
+        clampCenter(worldToLonLat(nextCenterX, nextCenterY, clamped), searchBounds),
+      );
       setZoom(clamped);
     },
-    [center.lat, center.lon, size.height, size.width, zoom],
+    [center.lat, center.lon, searchBounds, size.height, size.width, zoom],
   );
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -426,10 +520,60 @@ export default function DealBoardMap({
     return () => el.removeEventListener("wheel", onWheel);
   }, [zoom, zoomAround]);
 
-  const active = useMemo(
-    () => placeable.find((l) => l.key === activeKey) ?? null,
-    [activeKey, placeable],
+  const previewKey = hoverKey ?? activeKey ?? null;
+  const hovered = useMemo(
+    () => placeable.find((l) => l.key === previewKey) ?? null,
+    [placeable, previewKey],
   );
+  const hoveredPin = useMemo(
+    () => pins.find((p) => p.listing.key === previewKey) ?? null,
+    [pins, previewKey],
+  );
+
+  const lastCenteredKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeKey || size.width <= 0 || size.height <= 0) {
+      if (!activeKey) lastCenteredKeyRef.current = null;
+      return;
+    }
+    if (lastCenteredKeyRef.current === activeKey) return;
+    const listing = placeable.find((l) => l.key === activeKey);
+    if (!listing) return;
+    const cx = lonToWorldX(center.lon, zoom);
+    const cy = latToWorldY(center.lat, zoom);
+    const left = lonToWorldX(listing.longitude, zoom) - (cx - size.width / 2);
+    const top = latToWorldY(listing.latitude, zoom) - (cy - size.height / 2);
+    const pad = 64;
+    const onScreen =
+      left >= pad &&
+      left <= size.width - pad &&
+      top >= pad &&
+      top <= size.height - pad;
+    lastCenteredKeyRef.current = activeKey;
+    if (onScreen) return;
+    setCenter(
+      clampCenter(
+        { lat: listing.latitude, lon: listing.longitude },
+        searchBounds,
+      ),
+    );
+  }, [
+    activeKey,
+    center.lat,
+    center.lon,
+    placeable,
+    searchBounds,
+    size.height,
+    size.width,
+    zoom,
+  ]);
+
+  const boundaryPaths = useMemo(() => {
+    if (!viewport || rings.length === 0) return [];
+    return rings
+      .map((ring) => ringToPath(ring, viewport, zoom))
+      .filter(Boolean);
+  }, [rings, viewport, zoom]);
 
   return (
     <div className={`relative ${className}`}>
@@ -457,29 +601,48 @@ export default function DealBoardMap({
           />
         ))}
 
+        {boundaryPaths.length > 0 && size.width > 0 ? (
+          <svg
+            className="pointer-events-none absolute inset-0 z-[5] h-full w-full"
+            viewBox={`0 0 ${size.width} ${size.height}`}
+            aria-hidden
+          >
+            <path
+              d={`M0 0H${size.width}V${size.height}H0Z ${boundaryPaths.join(" ")}`}
+              fill="rgba(26, 39, 68, 0.28)"
+              fillRule="evenodd"
+            />
+            {boundaryPaths.map((d, i) => (
+              <path
+                key={i}
+                d={d}
+                fill="none"
+                stroke="rgba(26, 39, 68, 0.85)"
+                strokeWidth="1.6"
+              />
+            ))}
+          </svg>
+        ) : null}
+
         {pins.map((pin) => {
-          const isActive = pin.listing.key === activeKey;
-          return (
-            <button
-              key={pin.listing.key}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect?.(isActive ? null : pin.listing.key);
-              }}
-              className="absolute z-10 -translate-x-1/2 -translate-y-full"
-              style={{ left: pin.left, top: pin.top }}
-              aria-label={`${pin.listing.address} — ${pinPriceLabel(
-                pin.listing.price,
-                pin.listing.isRental,
-              )}`}
-              aria-pressed={isActive}
-            >
+          const isActive =
+            pin.listing.key === activeKey || pin.listing.key === hoverKey;
+          const href = hrefFor?.(pin.listing);
+          const label = `${pin.listing.address} — ${pinPriceLabel(
+            pin.listing.price,
+            pin.listing.isRental,
+          )}`;
+          const pinClass = `absolute z-10 -translate-x-1/2 -translate-y-full origin-bottom transition-transform ${
+            isActive ? "z-20 scale-125" : ""
+          }`;
+          const pinStyle = { left: pin.left, top: pin.top };
+          const pill = (
+            <>
               <span
-                className={`block rounded-full border px-1.5 py-0.5 font-mono text-[10px] leading-none shadow-sm transition-colors ${
+                className={`block rounded-full border px-1.5 py-0.5 font-mono leading-none shadow-sm transition-colors ${
                   isActive
-                    ? "border-coral bg-coral text-white"
-                    : "border-navy/20 bg-white/95 text-navy hover:border-navy/50"
+                    ? "border-coral bg-coral text-[12px] text-white"
+                    : "border-navy/20 bg-white/95 text-[10px] text-navy hover:border-navy/50"
                 }`}
               >
                 {pinPriceLabel(pin.listing.price, pin.listing.isRental)}
@@ -490,9 +653,88 @@ export default function DealBoardMap({
                 }`}
                 aria-hidden
               />
+            </>
+          );
+          const hoverHandlers = {
+            onMouseEnter: () => {
+              setHoverKey(pin.listing.key);
+              onSelect?.(pin.listing.key);
+            },
+            onMouseLeave: () => setHoverKey(null),
+            onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+              e.stopPropagation();
+            },
+          };
+          if (href) {
+            return (
+              <Link
+                key={pin.listing.key}
+                href={href}
+                className={pinClass}
+                style={pinStyle}
+                aria-label={label}
+                {...hoverHandlers}
+              >
+                {pill}
+              </Link>
+            );
+          }
+          return (
+            <button
+              key={pin.listing.key}
+              type="button"
+              className={pinClass}
+              style={pinStyle}
+              aria-label={label}
+              {...hoverHandlers}
+              onClick={() => onSelect?.(pin.listing.key)}
+            >
+              {pill}
             </button>
           );
         })}
+
+        {hovered && hoveredPin ? (
+          <div
+            className="pointer-events-none absolute z-30 w-[11.5rem] -translate-x-1/2 -translate-y-[calc(100%+10px)] overflow-hidden rounded-md border border-charcoal/10 bg-white shadow-lg"
+            style={{ left: hoveredPin.left, top: hoveredPin.top }}
+          >
+            {hovered.photoCount != null && hovered.photoCount > 0 ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={listingPhotoProxyUrl(
+                  hovered.key,
+                  hovered.primaryPhotoIndex != null &&
+                    hovered.primaryPhotoIndex >= 0
+                    ? hovered.primaryPhotoIndex
+                    : 0,
+                )}
+                alt=""
+                className="h-20 w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-14 items-center justify-center bg-charcoal/[0.05] font-mono text-[9px] tracking-wide text-charcoal/40">
+                No photo
+              </div>
+            )}
+            <div className="px-2 py-1.5">
+              <p className="truncate font-serif text-[13px] leading-snug text-navy">
+                {hovered.address}
+              </p>
+              <p className="mt-0.5 truncate font-mono text-[9px] tracking-wide text-charcoal/55">
+                {[
+                  hovered.city,
+                  hovered.beds != null ? `${hovered.beds}bd` : null,
+                  hovered.baths != null ? `${hovered.baths}ba` : null,
+                  pinPriceLabel(hovered.price, hovered.isRental) +
+                    (hovered.isRental ? "/mo" : ""),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <MapControls
           zoom={zoom}
@@ -506,49 +748,6 @@ export default function DealBoardMap({
           {missingCoords > 0 ? ` · ${missingCoords} without coordinates` : ""}
         </div>
 
-        {showCallout && active ? (
-          <div className="absolute inset-x-2 bottom-2 z-30 rounded-lg border border-charcoal/10 bg-white/97 p-2.5 shadow-lg sm:inset-x-auto sm:left-1/2 sm:w-[19rem] sm:-translate-x-1/2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate font-serif text-sm text-navy">
-                  {active.address}
-                </p>
-                <p className="mt-0.5 font-mono text-[10px] tracking-wide text-charcoal/55">
-                  {[
-                    active.city,
-                    active.beds != null ? `${active.beds}bd` : null,
-                    active.baths != null ? `${active.baths}ba` : null,
-                    active.sqft ? `${active.sqft.toLocaleString()} sqft` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onSelect?.(null)}
-                aria-label="Close"
-                className="shrink-0 font-mono text-[10px] text-charcoal/40 hover:text-navy"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="mt-1.5 flex items-center justify-between gap-2">
-              <span className="font-mono text-xs text-navy">
-                {pinPriceLabel(active.price, active.isRental)}
-                {active.isRental ? "/mo" : ""}
-              </span>
-              {hrefFor ? (
-                <Link
-                  href={hrefFor(active)}
-                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-gold hover:text-navy"
-                >
-                  View listing →
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
   );

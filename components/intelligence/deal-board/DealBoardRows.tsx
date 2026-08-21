@@ -31,6 +31,19 @@ function dealBoardRowAnchorProps(mlsId: string) {
   } as const;
 }
 
+function dealBoardMapHoverProps(
+  listing: DealBoardListing,
+  isLive: boolean,
+  onHover?: (key: string | null) => void,
+) {
+  return {
+    ...listingHoverHandlers(isLive ? listing.key : null, {
+      onMouseEnter: () => onHover?.(listing.key),
+    }),
+    onMouseLeave: () => onHover?.(null),
+  };
+}
+
 function dealBoardPriceLabel(price: number) {
   return formatExactCompactPrice(price);
 }
@@ -106,6 +119,7 @@ export function DealBoardPhotoLedRow({
   photoPriority,
   onScoreClick,
   onStatusClick,
+  onHover,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
   const { ppsf, domType } = dealBoardPriceMeta(l);
@@ -114,7 +128,7 @@ export function DealBoardPhotoLedRow({
   return (
     <div
       {...dealBoardRowAnchorProps(l.key)}
-      {...listingHoverHandlers(isLive ? l.key : null)}
+      {...dealBoardMapHoverProps(l, isLive, onHover)}
       className="scroll-mt-36 flex gap-3 sm:gap-4 px-3 sm:px-4 py-2.5 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
     >
       <span
@@ -175,6 +189,7 @@ export function DealBoardPhotoLedLineRow({
   photoPriority,
   onScoreClick,
   onStatusClick,
+  onHover,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
   const { ppsf } = dealBoardPriceMeta(l);
@@ -192,7 +207,7 @@ export function DealBoardPhotoLedLineRow({
   return (
     <div
       {...dealBoardRowAnchorProps(l.key)}
-      {...listingHoverHandlers(isLive ? l.key : null)}
+      {...dealBoardMapHoverProps(l, isLive, onHover)}
       className="scroll-mt-36 flex items-start gap-1.5 px-3 sm:px-4 py-2 border-b border-charcoal/[0.08] last:border-0 hover:bg-gold/[0.04] transition-colors"
     >
       <span
@@ -297,6 +312,7 @@ export function DealBoardPhotoLedGridCard({
   photoPriority,
   onScoreClick,
   onStatusClick,
+  onHover,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
   const town = showTown ? listingTown(l) : null;
@@ -305,7 +321,7 @@ export function DealBoardPhotoLedGridCard({
   return (
     <div
       {...dealBoardRowAnchorProps(l.key)}
-      {...listingHoverHandlers(isLive ? l.key : null)}
+      {...dealBoardMapHoverProps(l, isLive, onHover)}
       className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-none border border-charcoal/[0.08] bg-white -mb-px -mr-px transition-colors hover:border-gold/25 hover:bg-gold/[0.03] hover:z-10"
     >
       <div className="relative">
@@ -413,6 +429,7 @@ export function DealBoardPhotoLedLargeCard({
   photoPriority,
   onScoreClick,
   onStatusClick,
+  onHover,
 }: DealBoardRowProps) {
   const rankColor = boardRankColor(scoreRank, rankTotal);
   const town = showTown ? listingTown(l) : null;
@@ -421,7 +438,7 @@ export function DealBoardPhotoLedLargeCard({
   return (
     <div
       {...dealBoardRowAnchorProps(l.key)}
-      {...listingHoverHandlers(isLive ? l.key : null)}
+      {...dealBoardMapHoverProps(l, isLive, onHover)}
       className="scroll-mt-36 group flex min-w-0 flex-col overflow-hidden rounded-none border border-charcoal/[0.08] bg-white -mb-px -mr-px transition-colors hover:border-gold/25 hover:bg-gold/[0.03] hover:z-10"
     >
       <div className="relative">

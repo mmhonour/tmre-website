@@ -58,6 +58,37 @@ function CopiedIcon({
   );
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Email / documents get a clickable sentence. Plain-text paste still gets
+ * the URL. The OS share sheet cannot take HTML — that path stays title + url.
+ */
+async function copyShareClipboard(url: string, title: string): Promise<void> {
+  const html = `<a href="${escapeHtml(url)}">${escapeHtml(title)}</a>`;
+  const ClipboardItemCtor = window.ClipboardItem;
+  if (ClipboardItemCtor && navigator.clipboard.write) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItemCtor({
+          "text/plain": new Blob([url], { type: "text/plain" }),
+          "text/html": new Blob([html], { type: "text/html" }),
+        }),
+      ]);
+      return;
+    } catch {
+      // Fall through to plain URL when the browser refuses HTML.
+    }
+  }
+  await navigator.clipboard.writeText(url);
+}
+
 /**
  * Share / Copy control that always uses the short canonical URL
  * (`/listings/{mlsId}` or `/spotlight`), even when the address bar still
@@ -136,7 +167,7 @@ export default function ListingShareButton({
     }
 
     try {
-      await navigator.clipboard.writeText(url);
+      await copyShareClipboard(url, shareTitle);
       markCopied();
     } catch {
       // Last resort for older browsers / denied clipboard.

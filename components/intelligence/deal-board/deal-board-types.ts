@@ -63,4 +63,6 @@ export type DealBoardRowProps = {
   photoPriority?: boolean;
   onScoreClick: (listing: DealBoardListing) => void;
   onStatusClick?: (listing: DealBoardListing) => void;
+  /** Map view: highlight the matching pin while this row is hovered. */
+  onHover?: (key: string | null) => void;
 };

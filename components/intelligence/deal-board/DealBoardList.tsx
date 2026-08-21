@@ -56,6 +56,8 @@ export type DealBoardListProps = {
   onResetFilters: () => void;
   onScoreClick: (listing: DealBoardListing) => void;
   onStatusClick: (listing: DealBoardListing) => void;
+  /** Map view: highlight / center the pin for the hovered card. */
+  onHoverListing?: (key: string | null) => void;
   sortKey: DealBoardSortKey;
   sortDir: DealBoardSortDir;
   onSort: (key: DealBoardSortKey) => void;
@@ -112,6 +114,7 @@ export default function DealBoardList({
   onResetFilters,
   onScoreClick,
   onStatusClick,
+  onHoverListing,
   sortKey,
   sortDir,
   onSort,
@@ -214,6 +217,7 @@ export default function DealBoardList({
     photoPriority: eagerPhotoKeys ? eagerPhotoKeys.has(l.key) : undefined,
     onScoreClick,
     onStatusClick,
+    onHover: onHoverListing,
   });
 
   const renderLine = (rows: DealBoardListing[]) =>

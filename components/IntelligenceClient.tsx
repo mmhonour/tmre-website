@@ -75,7 +75,7 @@ import ModalPortal, { MODAL_PANEL_CLASS } from "./ModalPortal";
 import TownFilterPills from "./TownFilterPills";
 import ZipFilterPills from "./ZipFilterPills";
 import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
-import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown } from "@/lib/tmre-towns";
+import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown, boundaryZipsForAllTowns, boundaryZipsForTown, hasZctaBoundary } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
 import { underContractStatusLabel } from "@/lib/listing-status";
@@ -2072,6 +2072,18 @@ export default function IntelligenceClient({
   );
   /** Pin ↔ card selection for the Map view. */
   const [mapActiveKey, setMapActiveKey] = useState<string | null>(null);
+  const mapBoundZips = useMemo(() => {
+    const zipNorm = zip?.trim() ?? "";
+    if (zipNorm && hasZctaBoundary(zipNorm)) return [zipNorm];
+    if (active === "All") return [...boundaryZipsForAllTowns()];
+    return [...boundaryZipsForTown(active)];
+  }, [active, zip]);
+
+  useEffect(() => {
+    if (boardView !== "map") return;
+    if (active === "All") prefetchAllTownBoundaries();
+    else prefetchTownBoundaries(active);
+  }, [active, boardView]);
 
   // Persist unique filter combinations into the visitor search-history cookie
   // so /latest can offer them as alert criteria.
@@ -5949,7 +5961,7 @@ export default function IntelligenceClient({
             className={
               boardView === "map"
                 ? mapLayout === "side"
-                  ? "lg:flex lg:items-start lg:gap-4"
+                  ? "lg:flex lg:flex-row-reverse lg:items-start lg:gap-4"
                   : "flex flex-col gap-4"
                 : "contents"
             }
@@ -5958,21 +5970,15 @@ export default function IntelligenceClient({
               <div
                 className={
                   mapLayout === "side"
-                    ? "lg:sticky lg:top-24 lg:w-[27rem] lg:shrink-0"
-                    : "w-full"
+                    ? "relative lg:sticky lg:top-24 lg:w-[min(48vw,40rem)] lg:shrink-0"
+                    : "relative w-full"
                 }
               >
                 <DealBoardMap
                   listings={boardListings}
+                  boundZips={mapBoundZips}
                   activeKey={mapActiveKey}
-                  onSelect={(key) => {
-                    setMapActiveKey(key);
-                    if (!key) return;
-                    // Desktop keeps the ranked cards on screen — jump to the row.
-                    document
-                      .getElementById(dealBoardRowDomId(key))
-                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  }}
+                  onSelect={(key) => setMapActiveKey(key)}
                   hrefFor={(l) =>
                     listingDetailHrefForListing({
                       mlsId: l.key,
@@ -5985,11 +5991,11 @@ export default function IntelligenceClient({
                   }
                   heightClass={
                     mapLayout === "side"
-                      ? "h-[70vh] md:h-[34rem]"
+                      ? "h-[70vh] lg:h-[calc(100dvh-6.5rem)]"
                       : "h-[70vh] md:h-[26rem]"
                   }
                 />
-                <div className="mt-1.5 hidden items-center justify-end gap-1 md:flex">
+                <div className="absolute right-2 top-2 z-20 hidden items-center gap-1 rounded-md border border-white/15 bg-navy/80 px-1 py-0.5 shadow-lg backdrop-blur-sm md:flex">
                   {DEAL_BOARD_MAP_LAYOUT_VALUES.map((option) => (
                     <button
                       key={option}
@@ -5998,8 +6004,8 @@ export default function IntelligenceClient({
                       aria-pressed={mapLayout === option}
                       className={`rounded px-1.5 py-0.5 font-mono text-[9px] tracking-wide transition-colors ${
                         mapLayout === option
-                          ? "bg-navy/[0.06] text-navy"
-                          : "text-charcoal/40 hover:text-navy"
+                          ? "bg-white/15 text-white"
+                          : "text-white/55 hover:text-gold"
                       }`}
                     >
                       {DEAL_BOARD_MAP_LAYOUT_LABELS[option]}
@@ -6050,6 +6056,9 @@ export default function IntelligenceClient({
               setDomBandMinDays(null);
               setDomBandMaxDays(null);
             }}
+            onHoverListing={
+              boardView === "map" ? (key) => setMapActiveKey(key) : undefined
+            }
             onScoreClick={(listing) => {
               if (listing.scoreBreakdown) {
                 setScoreBreakdownListing(listing as DisplayListing);
