@@ -234,6 +234,17 @@ interface Props {
   /** Other zips to show in grey behind the highlight (zip mode only). */
   contextZips?: readonly string[];
   anchorEl: HTMLElement | null;
+  /**
+   * Open under this element (the filter row) when the viewport allows, so the
+   * map never covers the pill or link that opened it.
+   */
+  placeBelowEl?: HTMLElement | null;
+  /** Makes towns in the map and footer clickable. */
+  onSelectTown?: (town: TmreTown) => void;
+  /** Pointer moved onto the map — owner should hold it open. */
+  onPointerStay?: () => void;
+  /** Pointer left the map — owner should dismiss. */
+  onPointerAway?: () => void;
   /** Fade out instead of vanishing (owner is dismissing us). */
   exiting?: boolean;
   /** Fires once the boundary has painted or definitively failed. */
@@ -246,6 +257,10 @@ export default function ZipBoundaryPopover({
   highlightAllTowns = false,
   contextZips = [],
   anchorEl,
+  placeBelowEl = null,
+  onSelectTown,
+  onPointerStay,
+  onPointerAway,
   exiting = false,
   onSettled,
 }: Props) {
@@ -307,6 +322,7 @@ export default function ZipBoundaryPopover({
 
   const [boundary, setBoundary] = useState<BoundaryState>({ status: "idle" });
   const [pos, setPos] = useState<{ top: number; left: number; placeAbove: boolean } | null>(null);
+  const [hoverTown, setHoverTown] = useState<TmreTown | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -318,15 +334,20 @@ export default function ZipBoundaryPopover({
       const rect = anchorEl.getBoundingClientRect();
       const popH = H + 48;
       const gap = 8;
-      // Always float above the link/pill so the map stacks over filter chrome
-      // instead of opening downward into the pill row. Clamp to the viewport top
-      // when space is tight (common on mobile sticky headers).
-      const top = Math.max(gap, rect.top - popH - gap);
+      // Preferred: clear of the pill row entirely, opening underneath the whole
+      // town/zip link list. Falls back to floating above the pill when the row
+      // sits too low for the map to fit below it.
+      const belowTop = placeBelowEl
+        ? placeBelowEl.getBoundingClientRect().bottom + gap
+        : null;
+      const placeBelow =
+        belowTop != null && belowTop + popH + gap <= window.innerHeight;
+      const top = placeBelow ? belowTop! : Math.max(gap, rect.top - popH - gap);
       const left = Math.min(
         Math.max(gap, rect.left + rect.width / 2 - W / 2),
         window.innerWidth - W - gap,
       );
-      setPos({ top, left, placeAbove: true });
+      setPos({ top, left, placeAbove: !placeBelow });
     };
     update();
     window.addEventListener("scroll", update, true);
@@ -335,7 +356,7 @@ export default function ZipBoundaryPopover({
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
-  }, [anchorEl]);
+  }, [anchorEl, placeBelowEl]);
 
   const onSettledRef = useRef(onSettled);
   useEffect(() => {
@@ -513,10 +534,27 @@ export default function ZipBoundaryPopover({
   const highlightLayers = layers.filter((l) => l.role === "highlight");
   const patternId = `zip-grid-${loadKey.replace(/[^a-z0-9]+/gi, "-")}`;
 
+  const interactive = Boolean(onSelectTown) && boundary.status === "ready";
+  /** One click target per town, pooling that town's zip polygons. */
+  const townHitAreas: { town: TmreTown; paths: string[] }[] = [];
+  if (interactive) {
+    const byTown = new Map<TmreTown, string[]>();
+    for (const layer of layers) {
+      const town = townForZip(layer.zip);
+      if (!town) continue;
+      const existing = byTown.get(town);
+      if (existing) existing.push(...layer.paths);
+      else byTown.set(town, [...layer.paths]);
+    }
+    for (const [town, paths] of byTown) townHitAreas.push({ town, paths });
+  }
+  const footerTowns = interactive ? borderingTowns : [];
+
   return createPortal(
     <div
       ref={popoverRef}
-      role="tooltip"
+      role={interactive ? "group" : "tooltip"}
+      aria-label={interactive ? "Town boundary map" : undefined}
       style={{
         top: pos.top,
         left: pos.left,
@@ -525,9 +563,18 @@ export default function ZipBoundaryPopover({
         zIndex: 11000,
         transitionDuration: "220ms",
       }}
-      className={`fixed pointer-events-none transition-opacity ease-out ${
-        exiting ? "opacity-0" : "opacity-100"
-      }`}
+      onMouseEnter={interactive ? onPointerStay : undefined}
+      onMouseLeave={
+        interactive
+          ? () => {
+              setHoverTown(null);
+              onPointerAway?.();
+            }
+          : undefined
+      }
+      className={`fixed transition-opacity ease-out ${
+        interactive ? "" : "pointer-events-none"
+      } ${exiting ? "opacity-0" : "opacity-100"}`}
     >
       <div className="rounded-2xl bg-white border border-charcoal/10 shadow-2xl shadow-black/25 overflow-hidden">
         <div className="relative bg-slate-50" style={{ height: H }}>
@@ -565,7 +612,12 @@ export default function ZipBoundaryPopover({
             </div>
           )}
           {boundary.status === "ready" && (
-            <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-hidden>
+            <svg
+              viewBox={`0 0 ${W} ${H}`}
+              width={W}
+              height={H}
+              aria-hidden={interactive ? undefined : true}
+            >
               <pattern id={patternId} width="14" height="14" patternUnits="userSpaceOnUse">
                 <circle cx="1" cy="1" r="0.6" fill="rgba(15,23,42,0.08)" />
               </pattern>
@@ -650,12 +702,63 @@ export default function ZipBoundaryPopover({
                   {zip}
                 </text>
               ))}
+
+              {townHitAreas.map(({ town, paths }) => (
+                <g
+                  key={`hit-${town}`}
+                  role="button"
+                  aria-label={`Filter to ${town}`}
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={() => setHoverTown(town)}
+                  onMouseLeave={() =>
+                    setHoverTown((current) => (current === town ? null : current))
+                  }
+                  onClick={() => onSelectTown?.(town)}
+                >
+                  <title>{town}</title>
+                  {paths.map((d, i) => (
+                    <path
+                      key={`hit-${town}-${i}`}
+                      d={d}
+                      fill={
+                        hoverTown === town
+                          ? "rgba(212,175,55,0.22)"
+                          : "transparent"
+                      }
+                      stroke={hoverTown === town ? "#B8941F" : "none"}
+                      strokeWidth={hoverTown === town ? 2.5 : 0}
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                </g>
+              ))}
             </svg>
           )}
         </div>
         <div className="px-3 py-2 border-t border-charcoal/[0.08] bg-white">
           {highlightTown || highlightAllTowns ? (
-            borderingTowns.length > 0 ? (
+            footerTowns.length > 0 ? (
+              <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                {footerTowns.map((town) => (
+                  <button
+                    key={town}
+                    type="button"
+                    onClick={() => onSelectTown?.(town)}
+                    onMouseEnter={() => setHoverTown(town)}
+                    onMouseLeave={() =>
+                      setHoverTown((current) => (current === town ? null : current))
+                    }
+                    className={`font-mono text-[8px] leading-snug tracking-[0.06em] underline-offset-2 transition-colors hover:underline ${
+                      hoverTown === town
+                        ? "text-navy underline"
+                        : "text-slate/55 hover:text-navy"
+                    }`}
+                  >
+                    {town}
+                  </button>
+                ))}
+              </div>
+            ) : borderingTowns.length > 0 ? (
               <p className="font-mono text-[8px] leading-snug tracking-[0.06em] text-slate/55 text-center">
                 {borderingTowns.join(" · ")}
               </p>

@@ -39,7 +39,6 @@ export default function DealBoardStatusFilterPills({
     >
       {STATUS_OPTIONS.map((opt) => {
         const selected = value === opt.value;
-        const label = compact && opt.value === "reduced" ? "Red." : opt.label;
         return (
           <button
             key={opt.value}
@@ -49,7 +48,7 @@ export default function DealBoardStatusFilterPills({
             aria-label={opt.label}
             className={`inline-flex items-center justify-center font-mono uppercase border rounded-full transition-all cursor-pointer hover:opacity-90 ${
               compact
-                ? "min-w-0 flex-1 px-1 py-px text-[8px] tracking-[0.08em]"
+                ? "min-w-0 flex-1 whitespace-nowrap px-1 py-px text-[8px] tracking-[0.08em]"
                 : "px-2 py-0.5 text-[9px] tracking-[0.12em]"
             } ${STATUS_PILL_CLASS[opt.value]} ${
               selected
@@ -61,7 +60,7 @@ export default function DealBoardStatusFilterPills({
                   : ""
             }`}
           >
-            {label}
+            {opt.label}
           </button>
         );
       })}

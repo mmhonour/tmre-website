@@ -1978,6 +1978,20 @@ export default function IntelligenceClient({
     typeof window !== "undefined" &&
     window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
+  /**
+   * Reactive twin of `prefersFineHover()`. The boundary map only accepts clicks
+   * on mouse pointers — on touch it must stay click-through so it never eats a
+   * tap meant for the page underneath.
+   */
+  const [fineHoverPointer, setFineHoverPointer] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const sync = () => setFineHoverPointer(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   const clearTownMapFlashTimer = () => {
     if (townMapFlashTimerRef.current) {
       clearTimeout(townMapFlashTimerRef.current);
@@ -2007,6 +2021,31 @@ export default function IntelligenceClient({
       setBoundaryMapExiting(false);
       boundaryMapFadeTimerRef.current = null;
     }, MAP_FADE_MS);
+  };
+
+  /** Pointer moved from a pill onto the boundary map — keep it on screen. */
+  const holdBoundaryMapOpen = () => {
+    if (townHoverClearTimer.current) {
+      clearTimeout(townHoverClearTimer.current);
+      townHoverClearTimer.current = null;
+    }
+    clearTownMapFlashTimer();
+    clearBoundaryMapFadeTimer();
+    setBoundaryMapExiting(false);
+  };
+
+  /** Pointer left the boundary map itself. */
+  const releaseBoundaryMap = () => {
+    if (townHoverClearTimer.current) {
+      clearTimeout(townHoverClearTimer.current);
+      townHoverClearTimer.current = null;
+    }
+    clearTownMapFlashTimer();
+    fadeClearBoundaryMaps(() => {
+      setHoveredTown(null);
+      setHoveredTownEl(null);
+      setFlashedTown(null);
+    });
   };
 
   const flashTownMapOnSelect = (city: TmreTown | "All") => {
@@ -2088,6 +2127,8 @@ export default function IntelligenceClient({
   );
   /** Pin ↔ card selection for the Map view. */
   const [mapActiveKey, setMapActiveKey] = useState<string | null>(null);
+  /** Phone: map takes the whole viewport, keeping its own pagination + pills. */
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const mapBoundZips = useMemo(() => {
     const zipNorm = zip?.trim() ?? "";
     if (zipNorm && hasZctaBoundary(zipNorm)) return [zipNorm];
@@ -2100,6 +2141,25 @@ export default function IntelligenceClient({
       setMapOnPref("on");
     }
   }, [setMapOnPref]);
+
+  // Full screen is a phone affordance and dies with the map or the breakpoint.
+  useEffect(() => {
+    if (!showMap || !isMobileViewport) setMapFullscreen(false);
+  }, [isMobileViewport, showMap]);
+
+  useEffect(() => {
+    if (!mapFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMapFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mapFullscreen]);
 
   // Turning the map off ends the reveal, so the next map open starts graph-free.
   useEffect(() => {
@@ -3748,8 +3808,13 @@ export default function IntelligenceClient({
     !isPeeking("towns");
   const showMobileTownPills = !mobileLocationChromeHidden;
   const showMobileZipPills = !mobileLocationChromeHidden;
+  /**
+   * Phone: the pill row is already a deliberate reveal, so "... more towns"
+   * only costs a second tap to see the towns. Show the list outright there.
+   */
+  const townLinksOpen = townLinksExpanded || isMobileViewport;
   const inlineTownZip =
-    showZipFilters && !townLinksExpanded && !zipLinksExpanded;
+    showZipFilters && !townLinksOpen && !zipLinksExpanded;
 
   function handleSort(key: DealBoardSortKey) {
     // Lookey-only column — Intelligence has no last-looked clock.
@@ -4570,6 +4635,34 @@ export default function IntelligenceClient({
     scrollToBoard();
   };
 
+  /** Town pill, town link, and boundary-map click all land here. */
+  const applyTownFilter = (city: IntelCity) => {
+    setActive(city);
+    setZip(null);
+    setMobileZipConfirmed(false);
+    setBoardStatusFilter("all");
+    setTownLinksExpanded(false);
+    setZipLinksExpanded(false);
+    if (city === "All") {
+      setExpandedSnapshotKeys(new Set());
+    }
+    if (isMobileViewport && city !== "All") {
+      setFilterChromeCollapsed(true);
+      setFilterChromePeeks(townHasMultipleZips(city) ? ["towns"] : []);
+    }
+    flashTownMapOnSelect(city);
+  };
+
+  /** Clicking a town inside the boundary map filters to it. */
+  const selectTownFromBoundaryMap = (town: TmreTown) => {
+    if (!(INTEL_CITIES as readonly string[]).includes(town)) return;
+    clearBoundaryMapFadeTimer();
+    setBoundaryMapExiting(false);
+    setHoveredTown(null);
+    setHoveredTownEl(null);
+    applyTownFilter(town as IntelCity);
+  };
+
   const selectTownListings = (
     town: string,
     statusFilter: BoardStatusFilter = "all",
@@ -5384,24 +5477,7 @@ export default function IntelligenceClient({
                             <TownFilterPills
                               towns={orderedCities}
                               selected={active}
-                              onSelect={(city) => {
-                                setActive(city);
-                                setZip(null);
-                                setMobileZipConfirmed(false);
-                                setBoardStatusFilter("all");
-                                setTownLinksExpanded(false);
-                                setZipLinksExpanded(false);
-                                if (city === "All") {
-                                  setExpandedSnapshotKeys(new Set());
-                                }
-                                if (isMobileViewport && city !== "All") {
-                                  setFilterChromeCollapsed(true);
-                                  setFilterChromePeeks(
-                                    townHasMultipleZips(city) ? ["towns"] : [],
-                                  );
-                                }
-                                flashTownMapOnSelect(city);
-                              }}
+                              onSelect={(city) => applyTownFilter(city)}
                               onTownMouseEnter={(town, el) => {
                                 if (!prefersFineHover()) return;
                                 if (townHoverClearTimer.current) {
@@ -5451,7 +5527,7 @@ export default function IntelligenceClient({
                               allLabel="All Towns"
                               appearance="zip"
                               layout="promoted"
-                              townLinksExpanded={townLinksExpanded}
+                              townLinksExpanded={townLinksOpen}
                               onTownLinksExpandedChange={setTownLinksExpanded}
                               size="compact"
                               className={
@@ -6046,14 +6122,23 @@ export default function IntelligenceClient({
             {showMap ? (
               <div
                 className={
-                  mapLayout === "side"
-                    ? "relative lg:sticky lg:top-24 lg:w-[min(48vw,40rem)] lg:shrink-0"
-                    : "relative w-full"
+                  mapFullscreen
+                    ? "fixed inset-0 z-[70] bg-navy"
+                    : mapLayout === "side"
+                      ? "relative lg:sticky lg:top-24 lg:w-[min(48vw,40rem)] lg:shrink-0"
+                      : "relative w-full"
                 }
               >
                 <DealBoardMap
                   listings={boardListings}
                   boundZips={mapBoundZips}
+                  scopeLabel={
+                    zip?.trim()
+                      ? zip.trim()
+                      : active === "All"
+                        ? "all towns"
+                        : active
+                  }
                   activeKey={mapActiveKey}
                   onSelect={(key) => setMapActiveKey(key)}
                   hrefFor={(l) =>
@@ -6067,10 +6152,14 @@ export default function IntelligenceClient({
                     })
                   }
                   heightClass={
-                    mapLayout === "side"
-                      ? "h-[min(44vh,22rem)] md:h-[70vh] lg:h-[calc(100dvh-6.5rem)]"
-                      : "h-[min(44vh,22rem)] md:h-[26rem]"
+                    mapFullscreen
+                      ? "h-[100dvh]"
+                      : mapLayout === "side"
+                        ? "h-[min(44vh,22rem)] md:h-[70vh] lg:h-[calc(100dvh-6.5rem)]"
+                        : "h-[min(44vh,22rem)] md:h-[26rem]"
                   }
+                  fullscreen={mapFullscreen}
+                  onFullscreenToggle={() => setMapFullscreen((on) => !on)}
                 />
                 <DealBoardMapMobileChrome
                   page={boardPage}
@@ -6088,6 +6177,7 @@ export default function IntelligenceClient({
                   }}
                   onResetSliders={resetSliders}
                   slidersCustomized={slidersCustomized}
+                  fullscreen={mapFullscreen}
                 />
                 <div className="absolute right-2 top-2 z-20 hidden items-center gap-1 rounded-md border border-white/15 bg-navy/80 px-1 py-0.5 shadow-lg backdrop-blur-sm md:flex">
                   {DEAL_BOARD_MAP_LAYOUT_VALUES.map((option) => (
@@ -6434,19 +6524,34 @@ export default function IntelligenceClient({
           <ZipBoundaryPopover
             highlightAllTowns
             anchorEl={hoveredTownEl}
+            placeBelowEl={townFilterAnchorRef.current}
+            onSelectTown={
+              fineHoverPointer ? selectTownFromBoundaryMap : undefined
+            }
+            onPointerStay={holdBoundaryMapOpen}
+            onPointerAway={releaseBoundaryMap}
             exiting={boundaryMapExiting}
           />
         ) : (
           <ZipBoundaryPopover
             highlightTown={hoveredTown}
             anchorEl={hoveredTownEl}
+            placeBelowEl={townFilterAnchorRef.current}
+            onSelectTown={
+              fineHoverPointer ? selectTownFromBoundaryMap : undefined
+            }
+            onPointerStay={holdBoundaryMapOpen}
+            onPointerAway={releaseBoundaryMap}
             exiting={boundaryMapExiting}
           />
         )
       ) : flashedTown && townFilterAnchorRef.current ? (
+        // Selection feedback only — stays click-through so it cannot swallow a
+        // click on the board while it fades.
         <ZipBoundaryPopover
           highlightTown={flashedTown}
           anchorEl={townFilterAnchorRef.current}
+          placeBelowEl={townFilterAnchorRef.current}
           exiting={boundaryMapExiting}
         />
       ) : null}
@@ -6455,6 +6560,7 @@ export default function IntelligenceClient({
           highlightZip={hoveredZip}
           contextZips={availableZips.filter((z) => z !== hoveredZip)}
           anchorEl={hoveredZipEl}
+          placeBelowEl={zipFilterAnchorRef.current}
           exiting={boundaryMapExiting}
         />
       ) : flashedZip && zipFilterAnchorRef.current ? (
@@ -6462,6 +6568,7 @@ export default function IntelligenceClient({
           highlightZip={flashedZip}
           contextZips={availableZips.filter((z) => z !== flashedZip)}
           anchorEl={zipFilterAnchorRef.current}
+          placeBelowEl={zipFilterAnchorRef.current}
           exiting={boundaryMapExiting}
         />
       ) : null}
@@ -8342,6 +8449,7 @@ function DealBoardMapMobileChrome({
   onBoardStatusFilterChange,
   onResetSliders,
   slidersCustomized,
+  fullscreen = false,
 }: {
   page: number;
   totalPages: number;
@@ -8353,10 +8461,19 @@ function DealBoardMapMobileChrome({
   onBoardStatusFilterChange: (value: DealBoardStatusFilter) => void;
   onResetSliders: () => void;
   slidersCustomized: boolean;
+  /** Full screen sits over the home bar, so the row needs the inset. */
+  fullscreen?: boolean;
 }) {
   return (
     <div className="absolute inset-x-0 bottom-0 z-20 md:hidden">
-      <div className="border-t border-charcoal/10 bg-white/95 px-2 py-1.5 backdrop-blur-sm">
+      <div
+        className="border-t border-charcoal/10 bg-white/95 px-2 py-1.5 backdrop-blur-sm"
+        style={
+          fullscreen
+            ? { paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }
+            : undefined
+        }
+      >
         <div className="flex items-center justify-between gap-2">
           <p className="min-w-0 truncate font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
             Showing{" "}

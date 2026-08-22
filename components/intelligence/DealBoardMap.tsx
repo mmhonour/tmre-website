@@ -28,6 +28,13 @@ const MAX_ZOOM = 17;
 /** Fairfield County fallback when no listing in the board has coordinates. */
 const FALLBACK_CENTER = { lat: 41.141, lon: -73.3579 };
 const FALLBACK_ZOOM = 11;
+/**
+ * Fit margins. A town boundary is framed edge-to-edge (its outline is the whole
+ * point of the default view); a pin-only fit keeps room for the price pills,
+ * which hang above and to the left of their anchor.
+ */
+const FIT_PAD_BOUNDARY = 4;
+const FIT_PAD_PINS = 36;
 
 export type DealBoardMapListing = {
   key: string;
@@ -158,15 +165,49 @@ function clampCenter(center: LonLat, bounds: GeoBounds | null): LonLat {
   };
 }
 
+function clampZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return FALLBACK_ZOOM;
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+}
+
+/** Geo coordinate under a point in the panel. */
+function screenToLonLat(
+  screenX: number,
+  screenY: number,
+  center: LonLat,
+  zoom: number,
+  size: { width: number; height: number },
+): LonLat {
+  const cx = lonToWorldX(center.lon, zoom) + (screenX - size.width / 2);
+  const cy = latToWorldY(center.lat, zoom) + (screenY - size.height / 2);
+  return worldToLonLat(cx, cy, zoom);
+}
+
+/** Centre that holds `anchor` under (screenX, screenY) at `zoom`. */
+function centerForAnchor(
+  anchor: LonLat,
+  screenX: number,
+  screenY: number,
+  zoom: number,
+  size: { width: number; height: number },
+): LonLat {
+  const cx = lonToWorldX(anchor.lon, zoom) - (screenX - size.width / 2);
+  const cy = latToWorldY(anchor.lat, zoom) - (screenY - size.height / 2);
+  return worldToLonLat(cx, cy, zoom);
+}
+
 /**
- * Zoom that fits `bounds` in a w×h panel. A tiny span (one pin, one block)
- * gets a street-level default rather than MAX_ZOOM.
+ * Zoom that fits `bounds` in a w×h panel. Fractional: the limiting axis lands
+ * on the panel edge instead of dropping to the next whole tile level, which
+ * used to waste up to half the panel. A tiny span (one pin, one block) gets a
+ * street-level default rather than MAX_ZOOM.
  */
 function fitBounds(
   bounds: GeoBounds | null,
   width: number,
   height: number,
   pinCount = 0,
+  pad = FIT_PAD_PINS,
 ): { center: LonLat; zoom: number } {
   if (!bounds || width <= 0 || height <= 0) {
     return { center: FALLBACK_CENTER, zoom: FALLBACK_ZOOM };
@@ -177,17 +218,16 @@ function fitBounds(
     lon: (bounds.minLon + bounds.maxLon) / 2,
   };
 
-  const padded = { w: Math.max(64, width - 72), h: Math.max(64, height - 72) };
-  for (let zoom = MAX_ZOOM; zoom > MIN_ZOOM; zoom--) {
-    const spanX =
-      lonToWorldX(bounds.maxLon, zoom) - lonToWorldX(bounds.minLon, zoom);
-    const spanY =
-      latToWorldY(bounds.minLat, zoom) - latToWorldY(bounds.maxLat, zoom);
-    if (spanX <= padded.w && spanY <= padded.h) {
-      return { center, zoom: pinCount === 1 ? Math.min(zoom, 15) : zoom };
-    }
-  }
-  return { center, zoom: MIN_ZOOM };
+  const availW = Math.max(32, width - pad * 2);
+  const availH = Math.max(32, height - pad * 2);
+  // Spans at zoom 0; world pixels scale by 2^zoom, so the fitting zoom is a
+  // straight log2 rather than a search over whole levels.
+  const spanX = lonToWorldX(bounds.maxLon, 0) - lonToWorldX(bounds.minLon, 0);
+  const spanY = latToWorldY(bounds.minLat, 0) - latToWorldY(bounds.maxLat, 0);
+  const zoomX = spanX > 0 ? Math.log2(availW / spanX) : MAX_ZOOM;
+  const zoomY = spanY > 0 ? Math.log2(availH / spanY) : MAX_ZOOM;
+  const zoom = clampZoom(Math.min(zoomX, zoomY));
+  return { center, zoom: pinCount === 1 ? Math.min(zoom, 15) : zoom };
 }
 
 function ringToPath(
@@ -210,43 +250,78 @@ function MapControls({
   zoom,
   onZoomIn,
   onZoomOut,
-  onFit,
+  onReset,
+  scopeLabel,
+  viewAdjusted,
 }: {
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
-  onFit: () => void;
+  onReset: () => void;
+  /** What the default view frames — the selected town, zip, or all towns. */
+  scopeLabel?: string;
+  viewAdjusted: boolean;
 }) {
+  const resetTitle = scopeLabel
+    ? `Reset view — ${scopeLabel} overview`
+    : "Reset view";
   return (
-    <div className="absolute left-2 top-2 z-20 flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
+    <div className="absolute left-2 top-2 z-20 flex flex-col items-start gap-1.5">
+      <div className="flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={onZoomIn}
+          disabled={zoom >= MAX_ZOOM - 0.001}
+          aria-label="Zoom in"
+          className="flex h-7 w-7 items-center justify-center font-mono text-sm leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          +
+        </button>
+        <div className="h-px bg-white/10" aria-hidden />
+        <button
+          type="button"
+          onClick={onZoomOut}
+          disabled={zoom <= MIN_ZOOM + 0.001}
+          aria-label="Zoom out"
+          className="flex h-7 w-7 items-center justify-center font-mono text-sm leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          −
+        </button>
+      </div>
       <button
         type="button"
-        onClick={onZoomIn}
-        disabled={zoom >= MAX_ZOOM}
-        aria-label="Zoom in"
-        className="flex h-7 w-7 items-center justify-center font-mono text-sm leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
+        onClick={onReset}
+        aria-label={resetTitle}
+        title={resetTitle}
+        className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[9px] leading-none tracking-[0.1em] uppercase shadow-lg backdrop-blur-sm transition-colors ${
+          viewAdjusted
+            ? "border-gold/60 bg-navy/85 text-gold hover:bg-navy"
+            : "border-white/15 bg-navy/80 text-white/70 hover:text-gold"
+        }`}
       >
-        +
-      </button>
-      <div className="h-px bg-white/10" aria-hidden />
-      <button
-        type="button"
-        onClick={onZoomOut}
-        disabled={zoom <= MIN_ZOOM}
-        aria-label="Zoom out"
-        className="flex h-7 w-7 items-center justify-center font-mono text-sm leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
-      >
-        −
-      </button>
-      <div className="h-px bg-white/10" aria-hidden />
-      <button
-        type="button"
-        onClick={onFit}
-        aria-label="Fit search area"
-        title="Fit search area"
-        className="flex h-7 w-7 items-center justify-center font-mono text-[9px] leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-gold"
-      >
-        FIT
+        <svg
+          viewBox="0 0 12 12"
+          width="9"
+          height="9"
+          aria-hidden
+          className="shrink-0"
+        >
+          <circle
+            cx="6"
+            cy="6"
+            r="3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+          />
+          <path
+            d="M6 0.5v2M6 9.5v2M0.5 6h2M9.5 6h2"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+        </svg>
+        Reset view
       </button>
     </div>
   );
@@ -288,21 +363,29 @@ function PreviewCard({
 export default function DealBoardMap({
   listings,
   boundZips = [],
+  scopeLabel,
   activeKey,
   onSelect,
   hrefFor,
   className = "",
   heightClass = "h-[420px]",
+  fullscreen = false,
+  onFullscreenToggle,
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
   boundZips?: readonly string[];
+  /** Names the default view for the reset control ("Westport", "all towns"). */
+  scopeLabel?: string;
   /** Highlighted pin — kept in sync with the card list selection. */
   activeKey?: string | null;
   onSelect?: (key: string | null) => void;
   hrefFor?: (listing: DealBoardMapListing) => string;
   className?: string;
   heightClass?: string;
+  /** Phone full-screen mode: square corners and an exit control. */
+  fullscreen?: boolean;
+  onFullscreenToggle?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -310,6 +393,7 @@ export default function DealBoardMap({
   const [zoom, setZoom] = useState(FALLBACK_ZOOM);
   /** Null until the first fit for a given filter result has been applied. */
   const fitSignatureRef = useRef<string | null>(null);
+  /** Mouse drag pan. Touch pans and pinches through the native handlers below. */
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -317,10 +401,25 @@ export default function DealBoardMap({
     startCenter: LonLat;
     moved: boolean;
   } | null>(null);
-  const pinchRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
+  /** Live two-finger gesture: pinch scale and midpoint pan share one anchor. */
+  const gestureRef = useRef<{
+    distance: number;
+    zoom: number;
+    anchor: LonLat;
+  } | null>(null);
+  /** Single-finger pan. `tapEligible` is false for a finger left over from a pinch. */
+  const panTouchRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    startCenter: LonLat;
+    moved: boolean;
+    tapEligible: boolean;
+  } | null>(null);
   /** Once the visitor pans / zooms, only a new search area may re-fit. */
   const userMovedRef = useRef(false);
+  /** Rendered twin of `userMovedRef`, so Reset view can advertise itself. */
+  const [viewAdjusted, setViewAdjusted] = useState(false);
   /** Area the last auto-fit was for, so paging within it keeps the viewport. */
   const fitAreaRef = useRef<string | null>(null);
   /** Touch: first tap opens the preview card, the card itself opens the listing. */
@@ -361,6 +460,20 @@ export default function DealBoardMap({
   const pinBounds = useMemo(() => boundsFromPins(placeable), [placeable]);
   const fitTarget = searchBounds ?? pinBounds;
 
+  // Gesture handlers run off refs so they never rebind mid-pinch.
+  const centerRef = useRef(center);
+  centerRef.current = center;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const searchBoundsRef = useRef(searchBounds);
+  searchBoundsRef.current = searchBounds;
+  const activeKeyRef = useRef(activeKey ?? null);
+  activeKeyRef.current = activeKey ?? null;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
   useEffect(() => {
     const mq = window.matchMedia("(hover: none)");
     const sync = () => setCoarsePointer(mq.matches);
@@ -383,22 +496,39 @@ export default function DealBoardMap({
 
   const fit = useCallback(() => {
     if (size.width <= 0 || size.height <= 0) return;
-    const next = fitBounds(fitTarget, size.width, size.height, placeable.length);
+    const next = fitBounds(
+      fitTarget,
+      size.width,
+      size.height,
+      placeable.length,
+      searchBounds ? FIT_PAD_BOUNDARY : FIT_PAD_PINS,
+    );
     userMovedRef.current = false;
+    setViewAdjusted(false);
     setCenter(next.center);
     setZoom(next.zoom);
-  }, [fitTarget, placeable.length, size.height, size.width]);
+  }, [fitTarget, placeable.length, searchBounds, size.height, size.width]);
+
+  /** Back to the default overview for the selected town(s), pin cleared. */
+  const resetView = useCallback(() => {
+    fit();
+    onSelectRef.current?.(null);
+  }, [fit]);
 
   const areaSignature = `${boundKey}:${rings.length}`;
 
-  // Re-fit when the search area or filtered set changes, not on every pan. A
-  // hand-adjusted viewport survives paging (groups 1–20 → 21–40) and filters;
-  // only a new search area, or the FIT control, overrides it.
+  // Re-fit when the search area, the filtered set, or the panel size changes,
+  // not on every pan. A hand-adjusted viewport survives paging (groups 1–20 →
+  // 21–40), filters, and resizes; only a new search area, or Reset view,
+  // overrides it. Panel size is in the signature so entering full screen
+  // re-frames the town instead of keeping the small panel's zoom.
   useEffect(() => {
     if (size.width <= 0 || size.height <= 0) return;
     const signature = `${areaSignature}:${placeable.length}:${
       placeable[0]?.key ?? ""
-    }:${placeable[placeable.length - 1]?.key ?? ""}`;
+    }:${placeable[placeable.length - 1]?.key ?? ""}:${Math.round(
+      size.width,
+    )}x${Math.round(size.height)}`;
     if (fitSignatureRef.current === signature) return;
     const areaChanged = fitAreaRef.current !== areaSignature;
     fitSignatureRef.current = signature;
@@ -417,29 +547,73 @@ export default function DealBoardMap({
     };
   }, [center.lat, center.lon, size.height, size.width, zoom]);
 
-  const tiles = useMemo(() => {
-    if (!viewport) return [];
-    const n = 2 ** zoom;
-    const firstCol = Math.floor(viewport.left / TILE_SIZE);
-    const lastCol = Math.floor((viewport.left + size.width) / TILE_SIZE);
-    const firstRow = Math.floor(viewport.top / TILE_SIZE);
-    const lastRow = Math.floor((viewport.top + size.height) / TILE_SIZE);
+  /** Whole tile level behind the fractional zoom, plus its scale factor. */
+  const tileZoom = clampZoom(Math.round(zoom));
 
-    const out: { key: string; src: string; left: number; top: number }[] = [];
-    for (let row = firstRow; row <= lastRow; row++) {
-      if (row < 0 || row >= n) continue;
-      for (let col = firstCol; col <= lastCol; col++) {
-        const x = ((col % n) + n) % n;
-        out.push({
-          key: `${zoom}/${x}/${row}`,
-          src: tileUrl(zoom, x, row),
-          left: col * TILE_SIZE - viewport.left,
-          top: row * TILE_SIZE - viewport.top,
-        });
+  /**
+   * Tiles for a whole zoom level, scaled into the current fractional viewport.
+   * Keys stay stable while the scale changes, so a pinch resizes the images the
+   * browser already has instead of refetching a whole level every frame.
+   */
+  const tilesFor = useCallback(
+    (level: number) => {
+      if (!viewport) return [];
+      const n = 2 ** level;
+      const tilePx = TILE_SIZE * 2 ** (zoom - level);
+      if (!Number.isFinite(tilePx) || tilePx <= 0) return [];
+      const firstCol = Math.floor(viewport.left / tilePx);
+      const lastCol = Math.floor((viewport.left + size.width) / tilePx);
+      const firstRow = Math.floor(viewport.top / tilePx);
+      const lastRow = Math.floor((viewport.top + size.height) / tilePx);
+
+      const out: {
+        key: string;
+        src: string;
+        left: number;
+        top: number;
+        size: number;
+      }[] = [];
+      for (let row = firstRow; row <= lastRow; row++) {
+        if (row < 0 || row >= n) continue;
+        for (let col = firstCol; col <= lastCol; col++) {
+          const x = ((col % n) + n) % n;
+          out.push({
+            key: `${level}/${x}/${row}`,
+            src: tileUrl(level, x, row),
+            left: col * tilePx - viewport.left,
+            top: row * tilePx - viewport.top,
+            // Half-pixel bleed: fractional tile sizes otherwise leave hairlines.
+            size: tilePx + 0.5,
+          });
+        }
       }
-    }
-    return out;
-  }, [size.height, size.width, viewport, zoom]);
+      return out;
+    },
+    [size.height, size.width, viewport, zoom],
+  );
+
+  const tiles = useMemo(() => tilesFor(tileZoom), [tilesFor, tileZoom]);
+
+  /**
+   * The level we just left, held briefly underneath. Crossing a level swaps
+   * every image at once, and without a backdrop that reads as a full-panel
+   * flash while the new level decodes.
+   */
+  const [underlayZoom, setUnderlayZoom] = useState<number | null>(null);
+  const lastTileZoomRef = useRef(tileZoom);
+  useEffect(() => {
+    if (lastTileZoomRef.current === tileZoom) return;
+    setUnderlayZoom(lastTileZoomRef.current);
+    lastTileZoomRef.current = tileZoom;
+    const timer = setTimeout(() => setUnderlayZoom(null), 600);
+    return () => clearTimeout(timer);
+  }, [tileZoom]);
+
+  const underlayTiles = useMemo(() => {
+    if (underlayZoom == null || underlayZoom === tileZoom) return [];
+    if (Math.abs(underlayZoom - zoom) > 2) return [];
+    return tilesFor(underlayZoom);
+  }, [tileZoom, tilesFor, underlayZoom, zoom]);
 
   const pins = useMemo<PlacedPin[]>(() => {
     if (!viewport) return [];
@@ -466,52 +640,63 @@ export default function DealBoardMap({
     });
   }, [activeKey, hoverKey, placeable, viewport, zoom]);
 
-  const panBy = useCallback(
-    (dxPx: number, dyPx: number, from: LonLat) => {
-      const cx = lonToWorldX(from.lon, zoom) - dxPx;
-      const cy = latToWorldY(from.lat, zoom) - dyPx;
+  const panBy = useCallback((dxPx: number, dyPx: number, from: LonLat) => {
+    const level = zoomRef.current;
+    const cx = lonToWorldX(from.lon, level) - dxPx;
+    const cy = latToWorldY(from.lat, level) - dyPx;
+    userMovedRef.current = true;
+    setViewAdjusted(true);
+    setCenter(clampCenter(worldToLonLat(cx, cy, level), searchBoundsRef.current));
+  }, []);
+
+  /** Move to `nextZoom` keeping `anchor` pinned under (screenX, screenY). */
+  const applyAnchoredView = useCallback(
+    (anchor: LonLat, screenX: number, screenY: number, nextZoom: number) => {
+      const panel = sizeRef.current;
+      if (panel.width <= 0 || panel.height <= 0) return;
+      const clamped = clampZoom(nextZoom);
       userMovedRef.current = true;
-      setCenter(clampCenter(worldToLonLat(cx, cy, zoom), searchBounds));
+      setViewAdjusted(true);
+      setCenter(
+        clampCenter(
+          centerForAnchor(anchor, screenX, screenY, clamped, panel),
+          searchBoundsRef.current,
+        ),
+      );
+      setZoom(clamped);
     },
-    [searchBounds, zoom],
+    [],
   );
 
   const zoomAround = useCallback(
     (nextZoom: number, anchorX?: number, anchorY?: number) => {
-      const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(nextZoom)));
-      if (clamped === zoom) return;
-      userMovedRef.current = true;
+      const panel = sizeRef.current;
+      const current = zoomRef.current;
+      const clamped = clampZoom(nextZoom);
+      if (Math.abs(clamped - current) < 0.001) return;
       if (
         anchorX == null ||
         anchorY == null ||
-        size.width <= 0 ||
-        size.height <= 0
+        panel.width <= 0 ||
+        panel.height <= 0
       ) {
+        userMovedRef.current = true;
+        setViewAdjusted(true);
         setZoom(clamped);
         return;
       }
       // Keep the point under the cursor / pinch midpoint fixed.
-      const offsetX = anchorX - size.width / 2;
-      const offsetY = anchorY - size.height / 2;
-      const anchorLonLat = worldToLonLat(
-        lonToWorldX(center.lon, zoom) + offsetX,
-        latToWorldY(center.lat, zoom) + offsetY,
-        zoom,
+      const anchor = screenToLonLat(
+        anchorX,
+        anchorY,
+        centerRef.current,
+        current,
+        panel,
       );
-      const nextCenterX = lonToWorldX(anchorLonLat.lon, clamped) - offsetX;
-      const nextCenterY = latToWorldY(anchorLonLat.lat, clamped) - offsetY;
-      setCenter(
-        clampCenter(worldToLonLat(nextCenterX, nextCenterY, clamped), searchBounds),
-      );
-      setZoom(clamped);
+      applyAnchoredView(anchor, anchorX, anchorY, clamped);
     },
-    [center.lat, center.lon, searchBounds, size.height, size.width, zoom],
+    [applyAnchoredView],
   );
-
-  const zoomRef = useRef(zoom);
-  const zoomAroundRef = useRef(zoomAround);
-  zoomRef.current = zoom;
-  zoomAroundRef.current = zoomAround;
 
   const releaseDragCapture = (target: HTMLDivElement, pointerId: number) => {
     try {
@@ -523,21 +708,11 @@ export default function DealBoardMap({
     }
   };
 
+  // Mouse and pen only. Touch runs through the native listeners below, which
+  // own panning and pinching together — two systems both moving the viewport is
+  // what made pinches jump and the panel strobe.
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinchRef.current.size >= 2) {
-      const [a, b] = [...pinchRef.current.values()];
-      pinchStartRef.current = {
-        distance: Math.hypot(a.x - b.x, a.y - b.y),
-        zoom,
-      };
-      const drag = dragRef.current;
-      if (drag) {
-        releaseDragCapture(e.currentTarget, drag.pointerId);
-        dragRef.current = null;
-      }
-      return;
-    }
+    if (e.pointerType === "touch") return;
     dragRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -545,25 +720,10 @@ export default function DealBoardMap({
       startCenter: center,
       moved: false,
     };
-    // Capture only after we know this is a one-finger pan — a second finger
-    // must still be able to land for pinch-zoom on iOS.
   };
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (pinchRef.current.has(e.pointerId)) {
-      pinchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    }
-    const pinchStart = pinchStartRef.current;
-    if (pinchStart && pinchRef.current.size >= 2) {
-      const [a, b] = [...pinchRef.current.values()];
-      const distance = Math.hypot(a.x - b.x, a.y - b.y);
-      if (distance > 0 && pinchStart.distance > 0) {
-        const steps = Math.log2(distance / pinchStart.distance);
-        zoomAround(pinchStart.zoom + steps);
-      }
-      return;
-    }
-
+    if (e.pointerType === "touch") return;
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
     const dx = e.clientX - drag.startX;
@@ -581,89 +741,173 @@ export default function DealBoardMap({
   };
 
   const endPointer = (e: ReactPointerEvent<HTMLDivElement>) => {
-    pinchRef.current.delete(e.pointerId);
-    if (pinchRef.current.size < 2) pinchStartRef.current = null;
+    if (e.pointerType === "touch") return;
     const drag = dragRef.current;
-    const tapped = drag?.pointerId === e.pointerId && !drag.moved;
     if (drag?.pointerId === e.pointerId) {
       releaseDragCapture(e.currentTarget, e.pointerId);
       dragRef.current = null;
     }
-    // Touch: a tap on open map closes the preview card. Taps that land on a
-    // pin or on the card itself keep it (the card is the link to the listing).
-    if (!tapped || e.pointerType === "mouse" || activeKey == null) return;
-    const target = e.target;
-    if (target instanceof Element && target.closest("[data-map-preview-anchor]")) {
-      return;
-    }
-    onSelect?.(null);
   };
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    // Non-passive so the page does not scroll while zooming the map.
+    // Non-passive so the page does not scroll while zooming the map. Trackpad
+    // pinch arrives as ctrl+wheel and gets the finer, continuous step.
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaY) < 1) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
+      const step = e.ctrlKey
+        ? Math.max(-1.5, Math.min(1.5, -e.deltaY * 0.01))
+        : e.deltaY < 0
+          ? 0.5
+          : -0.5;
       zoomAround(
-        zoom + (e.deltaY < 0 ? 1 : -1),
+        zoomRef.current + step,
         e.clientX - rect.left,
         e.clientY - rect.top,
       );
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoom, zoomAround]);
+  }, [zoomAround]);
 
-  // iOS Safari often never sends a second pointerdown. Native touches still
-  // fire, including when a finger starts on a pin, so pinch lives here.
+  /**
+   * Touch gestures, native because iOS Safari often never sends a second
+   * pointerdown. One finger pans; two fingers pinch *and* pan, since both fall
+   * out of holding the coordinate under the starting midpoint beneath the live
+   * midpoint. Two fingers moving in parallel therefore drag the map with no
+   * zoom change, which is how every other map behaves.
+   */
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const applyPinch = (touches: TouchList) => {
+    const panelPoint = (clientX: number, clientY: number) => {
+      const rect = el.getBoundingClientRect();
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    const captureGesture = (touches: TouchList) => {
       if (touches.length < 2) return;
       const a = touches[0];
       const b = touches[1];
-      const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      let start = pinchStartRef.current;
-      if (!start || start.distance <= 0) {
-        start = { distance, zoom: zoomRef.current };
-        pinchStartRef.current = start;
-      }
-      if (distance <= 0 || start.distance <= 0) return;
-      const rect = el.getBoundingClientRect();
-      const midX = (a.clientX + b.clientX) / 2 - rect.left;
-      const midY = (a.clientY + b.clientY) / 2 - rect.top;
-      zoomAroundRef.current(
-        start.zoom + Math.log2(distance / start.distance),
-        midX,
-        midY,
+      const mid = panelPoint(
+        (a.clientX + b.clientX) / 2,
+        (a.clientY + b.clientY) / 2,
       );
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length < 2) return;
-      e.preventDefault();
-      dragRef.current = null;
-      const a = e.touches[0];
-      const b = e.touches[1];
-      pinchStartRef.current = {
+      gestureRef.current = {
         distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
         zoom: zoomRef.current,
+        anchor: screenToLonLat(
+          mid.x,
+          mid.y,
+          centerRef.current,
+          zoomRef.current,
+          sizeRef.current,
+        ),
       };
     };
 
+    const capturePan = (touch: Touch, tapEligible: boolean) => {
+      panTouchRef.current = {
+        id: touch.identifier,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startCenter: centerRef.current,
+        moved: false,
+        tapEligible,
+      };
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        panTouchRef.current = null;
+        dragRef.current = null;
+        captureGesture(e.touches);
+        return;
+      }
+      // No preventDefault: a stationary finger must still produce the click a
+      // pin needs to open its preview card.
+      capturePan(e.touches[0], true);
+    };
+
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length < 2) return;
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        const gesture = gestureRef.current;
+        if (!gesture) {
+          captureGesture(e.touches);
+          return;
+        }
+        const a = e.touches[0];
+        const b = e.touches[1];
+        const distance = Math.hypot(
+          a.clientX - b.clientX,
+          a.clientY - b.clientY,
+        );
+        const mid = panelPoint(
+          (a.clientX + b.clientX) / 2,
+          (a.clientY + b.clientY) / 2,
+        );
+        const ratio =
+          gesture.distance > 0 && distance > 0
+            ? distance / gesture.distance
+            : 1;
+        applyAnchoredView(
+          gesture.anchor,
+          mid.x,
+          mid.y,
+          gesture.zoom + Math.log2(ratio),
+        );
+        return;
+      }
+
+      const pan = panTouchRef.current;
+      if (!pan) return;
+      let touch: Touch | null = null;
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === pan.id) touch = e.touches[i];
+      }
+      if (!touch) return;
+      const dx = touch.clientX - pan.startX;
+      const dy = touch.clientY - pan.startY;
+      if (!pan.moved && Math.hypot(dx, dy) < 4) return;
+      pan.moved = true;
       e.preventDefault();
-      applyPinch(e.touches);
+      panBy(dx, dy, pan.startCenter);
     };
 
     const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) pinchStartRef.current = null;
+      if (e.touches.length >= 2) {
+        captureGesture(e.touches);
+        return;
+      }
+      if (e.touches.length === 1) {
+        // Lifting one finger hands the map to the one still down instead of
+        // freezing until both are up.
+        gestureRef.current = null;
+        capturePan(e.touches[0], false);
+        return;
+      }
+      const pan = panTouchRef.current;
+      const tapped =
+        pan != null && pan.tapEligible && !pan.moved && gestureRef.current == null;
+      gestureRef.current = null;
+      panTouchRef.current = null;
+      // A tap on open map closes the preview card. Taps that land on a pin or
+      // on the card itself keep it (the card is the link to the listing).
+      if (!tapped || activeKeyRef.current == null) return;
+      const target = e.target;
+      if (
+        target instanceof Element &&
+        target.closest("[data-map-preview-anchor]")
+      ) {
+        return;
+      }
+      onSelectRef.current?.(null);
     };
 
     el.addEventListener("touchstart", onTouchStart, { passive: false });
@@ -676,7 +920,7 @@ export default function DealBoardMap({
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, []);
+  }, [applyAnchoredView, panBy]);
 
   const previewKey = hoverKey ?? activeKey ?? null;
   const hovered = useMemo(
@@ -737,7 +981,9 @@ export default function DealBoardMap({
     <div className={`relative ${className}`}>
       <div
         ref={containerRef}
-        className={`relative w-full ${heightClass} touch-none select-none overflow-hidden rounded-lg border border-charcoal/[0.08] bg-[#e8e6df]`}
+        className={`relative w-full ${heightClass} touch-none select-none overflow-hidden bg-[#e8e6df] ${
+          fullscreen ? "" : "rounded-lg border border-charcoal/[0.08]"
+        }`}
         style={{ touchAction: "none" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -746,6 +992,25 @@ export default function DealBoardMap({
         role="application"
         aria-label="Map of filtered listings"
       >
+        {underlayTiles.map((tile) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={`under-${tile.key}`}
+            src={tile.src}
+            alt=""
+            width={TILE_SIZE}
+            height={TILE_SIZE}
+            draggable={false}
+            className="pointer-events-none absolute"
+            style={{
+              left: tile.left,
+              top: tile.top,
+              width: tile.size,
+              height: tile.size,
+            }}
+          />
+        ))}
+
         {tiles.map((tile) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -755,8 +1020,14 @@ export default function DealBoardMap({
             width={TILE_SIZE}
             height={TILE_SIZE}
             draggable={false}
+            decoding="async"
             className="pointer-events-none absolute"
-            style={{ left: tile.left, top: tile.top }}
+            style={{
+              left: tile.left,
+              top: tile.top,
+              width: tile.size,
+              height: tile.size,
+            }}
           />
         ))}
 
@@ -913,10 +1184,51 @@ export default function DealBoardMap({
 
         <MapControls
           zoom={zoom}
-          onZoomIn={() => zoomAround(zoom + 1)}
-          onZoomOut={() => zoomAround(zoom - 1)}
-          onFit={fit}
+          // Snap to whole levels from a fractional zoom rather than adding 1 to
+          // a fraction, so the buttons always land somewhere predictable.
+          onZoomIn={() => zoomAround(Math.floor(zoom + 1))}
+          onZoomOut={() => zoomAround(Math.ceil(zoom - 1))}
+          onReset={resetView}
+          scopeLabel={scopeLabel}
+          viewAdjusted={viewAdjusted}
         />
+
+        {onFullscreenToggle ? (
+          <button
+            type="button"
+            onClick={onFullscreenToggle}
+            aria-pressed={fullscreen}
+            className="absolute right-2 top-2 z-30 inline-flex items-center gap-1 rounded-md border border-white/15 bg-navy/85 px-1.5 py-1 font-mono text-[9px] leading-none tracking-[0.1em] uppercase text-white/85 shadow-lg backdrop-blur-sm transition-colors hover:text-gold md:hidden"
+          >
+            {fullscreen ? (
+              <>
+                <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden>
+                  <path
+                    d="M2 2l8 8M10 2l-8 8"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                Exit
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden>
+                  <path
+                    d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Full screen
+              </>
+            )}
+          </button>
+        ) : null}
 
         <div className="pointer-events-none absolute bottom-1.5 right-2 z-20 hidden rounded bg-white/85 px-1.5 py-0.5 font-mono text-[8px] tracking-wide text-charcoal/55 md:block">
           {placeable.length} mapped
