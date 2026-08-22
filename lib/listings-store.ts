@@ -153,11 +153,20 @@ export async function hasLocalListingsCache(): Promise<boolean> {
   return hasListingsData()
 }
 
-/** HTTP headers for fast edge/browser caching when serving from SQLite. */
+/**
+ * HTTP headers for fast edge/browser caching when serving from Postgres.
+ *
+ * `Netlify-Vary: query` is required, not optional: Netlify's CDN leaves query
+ * parameters out of the cache key by default, so `public, s-maxage=…` on a route
+ * like `/api/listings?city=Westport` serves whichever town was cached first to
+ * every town. Callers of this helper key almost entirely off query params
+ * (`city`, `town`, `mlsId`, price bands…), so vary on all of them.
+ */
 export function listingCacheHeaders(source: ListingsSource): HeadersInit {
   if (source === 'db') {
     return {
       'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
+      'Netlify-Vary': 'query',
       'X-Listings-Source': 'db',
     }
   }

@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
       {
         headers: {
           'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900',
+          // Netlify's CDN drops query params from the cache key unless told
+          // otherwise — without this every town gets the first town's snapshot.
+          'Netlify-Vary': 'query',
         },
       },
     )

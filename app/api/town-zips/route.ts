@@ -44,6 +44,9 @@ export async function GET(req: NextRequest) {
         {
           headers: {
             'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900',
+            // Netlify's CDN drops query params from the cache key unless told
+            // otherwise — without this every zip/town gets the first response.
+            'Netlify-Vary': 'query',
           },
         },
       )
@@ -63,6 +66,7 @@ export async function GET(req: NextRequest) {
         {
           headers: {
             'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900',
+            'Netlify-Vary': 'query',
           },
         },
       )
