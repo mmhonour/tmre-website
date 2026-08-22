@@ -79,6 +79,7 @@ export default function ListingComparablesClient({
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    vision,
     state,
   } = useListingChrome<Listing>(mlsId);
   const activeTab =
@@ -211,6 +212,7 @@ export default function ListingComparablesClient({
           townHint: resolvedTown,
         }}
         listingRaw={listing.raw ?? null}
+        vision={vision}
         interest={
           !isClosed
             ? {

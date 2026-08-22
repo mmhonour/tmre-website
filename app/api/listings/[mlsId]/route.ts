@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { resolveMarketBandLabelForListing } from '@/lib/inventory-segment-bands-config'
 import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
+import { resolveListingVisionLink } from '@/lib/listing-vision-link'
 import { listingCacheHeaders, readListingFromDbByMlsId } from '@/lib/listings-store'
 import {
   listingRowId,
@@ -29,7 +30,7 @@ export async function GET(
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
-    const [photos, detailScore, edgeScoreRow, marketBandLabel] =
+    const [photos, detailScore, edgeScoreRow, marketBandLabel, vision] =
       await Promise.all([
       includePhotos
         ? resolveListingPhotoUrls(
@@ -42,6 +43,7 @@ export async function GET(
       scoreListingForDetailPage(listing),
       readListingEdgeScoreByMlsId(id),
       resolveMarketBandLabelForListing(listing),
+      resolveListingVisionLink(listing),
     ])
 
     // Persist so Latest / board caches stop showing 0.0 for listings that
@@ -80,6 +82,8 @@ export async function GET(
         edgeScoreBreakdown: edgeScoreRow?.breakdownJson
           ? (JSON.parse(edgeScoreRow.breakdownJson) as Record<string, unknown>)
           : null,
+        /** VGSI parcel pairing for the Admin panel; null outside Westport. */
+        vision,
         source: 'db',
       },
       { headers: listingCacheHeaders('db') },

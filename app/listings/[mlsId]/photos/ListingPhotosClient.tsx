@@ -21,6 +21,7 @@ import {
   type ListingScoreApiFields,
 } from "@/lib/listing-header-score-props";
 import { listingGalleryPhotoUrls } from "@/lib/listing-url";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 
 type Schools = {
   elementary: string | null;
@@ -60,6 +61,8 @@ type Listing = {
 type ApiResponse = ListingScoreApiFields & {
   listing: Listing;
   photos: string[];
+  /** VGSI parcel pairing for the Admin panel; null outside Westport. */
+  vision?: ListingVisionLink | null;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -251,6 +254,7 @@ export default function ListingPhotosClient({
           townHint,
         }}
         listingRaw={listing.raw ?? null}
+        vision={data.vision ?? null}
         interest={
           !isClosed
             ? {

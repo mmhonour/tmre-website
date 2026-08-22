@@ -7,6 +7,7 @@ import {
   type SpotlightMlsListing,
 } from "@/lib/spotlight-display";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import { useSpotlightPrivacy } from "@/hooks/useSpotlightPrivacy";
 import {
   spotlightEffectivePresentation,
@@ -42,6 +43,8 @@ type SpotlightFetchPayload = {
   pricePerSqft?: number | null;
   medianPpsfBand?: ListingScoreApiFields["medianPpsfBand"];
   marketBandLabel?: string | null;
+  /** VGSI parcel pairing for the Admin panel; null outside Westport. */
+  vision?: ListingVisionLink | null;
 };
 
 const spotlightFetchCache = new Map<string, SpotlightFetchPayload>();
@@ -74,6 +77,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   const [medianPpsfBand, setMedianPpsfBand] =
     useState<ListingScoreApiFields["medianPpsfBand"]>(null);
   const [marketBandLabel, setMarketBandLabel] = useState<string | null>(null);
+  const [vision, setVision] = useState<ListingVisionLink | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("ready");
   const [photosState, setPhotosState] = useState<
@@ -107,6 +111,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setPricePerSqft(null);
       setMedianPpsfBand(null);
       setMarketBandLabel(null);
+      setVision(null);
       setPhotos([]);
       lastPropertyTabRef.current = propertyTab;
     } else if (cached?.listing) {
@@ -118,6 +123,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setPricePerSqft(cached.pricePerSqft ?? null);
       setMedianPpsfBand(cached.medianPpsfBand ?? null);
       setMarketBandLabel(cached.marketBandLabel ?? null);
+      setVision(cached.vision ?? null);
       if (includePhotos && cached.photos) {
         setPhotos(cached.photos);
         setPhotosState("ready");
@@ -147,6 +153,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setPricePerSqft(peeked.pricePerSqft ?? null);
       setMedianPpsfBand(peeked.medianPpsfBand ?? null);
       setMarketBandLabel(peeked.marketBandLabel ?? null);
+      setVision(peeked.vision ?? null);
       if (includePhotos && peeked.photos) {
         setPhotos(peeked.photos);
         setPhotosState("ready");
@@ -169,6 +176,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
         setPricePerSqft(d.pricePerSqft ?? null);
         setMedianPpsfBand(d.medianPpsfBand ?? null);
         setMarketBandLabel(d.marketBandLabel ?? null);
+        setVision(d.vision ?? null);
         if (includePhotos) {
           setPhotos(d.photos ?? []);
           setPhotosState("ready");
@@ -188,8 +196,8 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   }, [includePhotos, propertyTab, orderRefreshNonce]);
 
   const display = useMemo(
-    () => buildSpotlightDisplay(config, mlsListing),
-    [config, mlsListing],
+    () => buildSpotlightDisplay(config, mlsListing, { vision }),
+    [config, mlsListing, vision],
   );
 
   const presentation = useMemo(
@@ -216,6 +224,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    vision,
     photos,
     photosState,
     privacy,

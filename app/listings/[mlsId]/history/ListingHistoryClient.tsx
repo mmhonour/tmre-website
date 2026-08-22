@@ -72,6 +72,7 @@ export default function ListingHistoryClient({
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    vision,
     state,
   } =
     useListingChrome<Listing>(mlsId);
@@ -190,6 +191,7 @@ export default function ListingHistoryClient({
           townHint,
         }}
         listingRaw={listing.raw ?? null}
+        vision={vision}
         interest={
           !isClosed
             ? {

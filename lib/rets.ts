@@ -96,6 +96,12 @@ export type Listing = {
    * from Postgres (`data` / `raw`), never live RETS.
    */
   assessedValue?: number | null
+  /**
+   * VGSI parcel id from the `listings.vision_pid` column — not an MLS field.
+   * Stamped by the Vision match stack (see `backfillVisionListingLinks`) and
+   * attached when a listing is read from Postgres; absent on RETS-only reads.
+   */
+  visionPid?: string | null
   schools: Schools
   raw: RawRetsRecord
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveMarketBandLabelForListing } from '@/lib/inventory-segment-bands-config'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
+import { resolveListingVisionLink } from '@/lib/listing-vision-link'
 import { spotlightApiCacheHeaders } from '@/lib/listings-store'
 import { resolveSpotlightListing } from '@/lib/spotlight-cache'
 import {
@@ -24,12 +25,13 @@ export async function GET(req: NextRequest) {
       propertyTab,
     })
 
-    const [detailScore, marketBandLabel] = listing
+    const [detailScore, marketBandLabel, vision] = listing
       ? await Promise.all([
           scoreListingForDetailPage(listing),
           resolveMarketBandLabelForListing(listing),
+          resolveListingVisionLink(listing),
         ])
-      : [null, null]
+      : [null, null, null]
 
     return NextResponse.json(
       {
@@ -42,6 +44,8 @@ export async function GET(req: NextRequest) {
         pricePerSqft: detailScore?.pricePerSqft ?? null,
         medianPpsfBand: detailScore?.medianPpsfBand ?? null,
         marketBandLabel,
+        /** VGSI parcel pairing for the Admin panel; null outside Westport. */
+        vision,
         source,
         spotlightCache: cacheHit,
         propertyTab,

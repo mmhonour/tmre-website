@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import {
   listingChromeApiUrl,
   loadTabJson,
@@ -10,6 +11,8 @@ import {
 
 export type ListingChromePayload<TListing> = ListingScoreApiFields & {
   listing: TListing;
+  /** VGSI parcel pairing for the Admin panel; null outside Westport. */
+  vision?: ListingVisionLink | null;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -50,6 +53,9 @@ export function useListingChrome<TListing>(mlsId: string) {
   const [marketBandLabel, setMarketBandLabel] = useState<string | null>(
     () => initial?.marketBandLabel ?? null,
   );
+  const [vision, setVision] = useState<ListingVisionLink | null>(
+    () => initial?.vision ?? null,
+  );
   const [state, setState] = useState<LoadState>(() =>
     initial?.listing ? "ready" : "loading",
   );
@@ -69,6 +75,7 @@ export function useListingChrome<TListing>(mlsId: string) {
       setPricePerSqft(cached.pricePerSqft ?? null);
       setMedianPpsfBand(cached.medianPpsfBand ?? null);
       setMarketBandLabel(cached.marketBandLabel ?? null);
+      setVision(cached.vision ?? null);
       setState("ready");
     } else {
       setListing(null);
@@ -80,6 +87,7 @@ export function useListingChrome<TListing>(mlsId: string) {
       setPricePerSqft(null);
       setMedianPpsfBand(null);
       setMarketBandLabel(null);
+      setVision(null);
       setState("loading");
     }
 
@@ -101,6 +109,7 @@ export function useListingChrome<TListing>(mlsId: string) {
         setPricePerSqft(d.pricePerSqft ?? null);
         setMedianPpsfBand(d.medianPpsfBand ?? null);
         setMarketBandLabel(d.marketBandLabel ?? null);
+        setVision(d.vision ?? null);
         setState("ready");
       })
       .catch(() => {
@@ -122,6 +131,7 @@ export function useListingChrome<TListing>(mlsId: string) {
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    vision,
     state,
   };
 }

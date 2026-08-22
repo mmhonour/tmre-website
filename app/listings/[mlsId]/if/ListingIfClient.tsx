@@ -74,6 +74,7 @@ export default function ListingIfClient({
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    vision,
     state,
   } =
     useListingChrome<Listing>(mlsId);
@@ -201,6 +202,7 @@ export default function ListingIfClient({
           townHint: resolvedTown,
         }}
         listingRaw={listing.raw ?? null}
+        vision={vision}
         interest={
           !isClosed
             ? {

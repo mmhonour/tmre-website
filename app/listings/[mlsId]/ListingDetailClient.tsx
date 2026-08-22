@@ -26,6 +26,7 @@ import {
   peekTabJson,
 } from "@/lib/tab-data-prefetch";
 import { listingPhotosHref } from "@/lib/listing-url";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import { isRentalListing } from "@/lib/listing-kind";
 
 type Schools = {
@@ -72,6 +73,8 @@ type Listing = {
 type ApiResponse = ListingScoreApiFields & {
   listing: Listing;
   photos: string[];
+  /** VGSI parcel pairing for the Admin panel; null outside Westport. */
+  vision?: ListingVisionLink | null;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -262,6 +265,7 @@ export default function ListingDetailClient({
           townHint,
         }}
         listingRaw={l.raw ?? null}
+        vision={data.vision ?? null}
         interest={
           !isClosed
             ? {

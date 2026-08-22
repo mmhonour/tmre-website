@@ -1076,14 +1076,26 @@ export type RecentlyUpdatedRow = {
   goldilocksScoredAt: string | null
 }
 
-type ListingJsonRow = { data: unknown; raw: unknown }
+type ListingJsonRow = {
+  data: unknown
+  raw: unknown
+  /** Only present on SELECTs that ask for it; see readListingByIdFromDb. */
+  vision_pid?: string | null
+}
 
 /** Reconstruct a full Listing from the split data/raw jsonb columns. */
 function rowToListing(row: ListingJsonRow): Listing {
   // `data` is NOT NULL in the schema, so it is always a serialized Listing object.
   const base = row.data as Listing
   const raw = (row.raw ?? {}) as RawRetsRecord
-  const listing = applyListingPropertyTax({ ...base, raw })
+  // The column wins over any copy of itself inside `data` — upserts never write
+  // vision_pid, the Vision match stack stamps the column directly. SELECTs that
+  // skip the column leave whatever `data` held rather than nulling it out.
+  const visionPid =
+    row.vision_pid === undefined
+      ? (base.visionPid ?? null)
+      : row.vision_pid?.trim() || null
+  const listing = applyListingPropertyTax({ ...base, raw, visionPid })
   const furnished = listingFurnished(listing)
   const withFurnished =
     furnished !== (listing.furnished ?? null)
@@ -2030,7 +2042,7 @@ export async function readListingByIdFromDb(id: string): Promise<Listing | null>
   const key = id.trim()
   if (!key) return null
   const row = await queryOne<ListingJsonRow>(
-    `SELECT data, raw FROM listings
+    `SELECT data, raw, vision_pid FROM listings
       WHERE id = $1 OR mls_id = $1 OR listing_key = $1
       LIMIT 1`,
     [key],

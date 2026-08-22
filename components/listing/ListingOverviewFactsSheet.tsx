@@ -39,6 +39,7 @@ function sheetMaxHeight(): number {
 export default function ListingOverviewFactsSheet({
   facts,
   insight,
+  history = null,
   details,
   ifProps,
   expanded,
@@ -47,6 +48,8 @@ export default function ListingOverviewFactsSheet({
 }: {
   facts: ListingPropertyFactsProps;
   insight: ReactNode;
+  /** Price / status history, kept under Insight as it was in the old drawer. */
+  history?: ReactNode;
   details: ReactNode;
   ifProps: {
     mlsId: string;
@@ -120,6 +123,13 @@ export default function ListingOverviewFactsSheet({
   const height = dragging ? dragHeightRef.current : settledHeight;
   /** Anything past the collapsed bar is revealed content, so unclip it. */
   const showBody = everOpened && (dragging || expanded);
+
+  const sectionList = history
+    ? "Insight · History · Details · What if"
+    : "Insight · Details · What if";
+  const sectionWords = history
+    ? "Insight, History, Details and What if"
+    : "Insight, Details and What if";
 
   const drag = useRef<{
     pointerId: number;
@@ -262,8 +272,8 @@ export default function ListingOverviewFactsSheet({
           aria-valuenow={expanded ? 100 : 0}
           aria-label={
             expanded
-              ? "Drag down to hide Insight, Details and What if"
-              : "Drag up for Insight, Details and What if"
+              ? `Drag down to hide ${sectionWords}`
+              : `Drag up for ${sectionWords}`
           }
           tabIndex={0}
           onKeyDown={(event) => {
@@ -281,9 +291,7 @@ export default function ListingOverviewFactsSheet({
         >
           <div className="mx-auto h-1 w-10 rounded-full bg-white/25" aria-hidden />
           <p className="mt-1 mb-1.5 text-center font-mono text-[8px] tracking-[0.16em] uppercase text-white/40">
-            {expanded
-              ? "Insight · Details · What if"
-              : "Drag up for Insight · Details · What if"}
+            {expanded ? sectionList : `Drag up for ${sectionList}`}
           </p>
           <ListingPropertyFacts {...facts} />
         </div>
@@ -303,6 +311,18 @@ export default function ListingOverviewFactsSheet({
               </p>
               {insight}
             </section>
+            {history ? (
+              <section
+                data-facts-section="history"
+                className="scroll-mt-2 mt-4 border-t border-white/10 pt-3"
+              >
+                <p className="mb-2 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                  History
+                </p>
+                {/* Fetches on first open, like What if — not on page load. */}
+                {everOpened ? history : null}
+              </section>
+            ) : null}
             <section
               data-facts-section="details"
               className="scroll-mt-2 mt-4 border-t border-white/10 pt-3"

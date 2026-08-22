@@ -3,6 +3,7 @@ import {
   formatMlsStatus,
   primaryListingPrice,
 } from "@/lib/listing-history";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import {
   SPOTLIGHT_LISTING,
   type SpotlightListingConfig,
@@ -171,6 +172,8 @@ export type SpotlightDisplay = {
     address: { city: string; postalCode?: string | null };
     raw?: Record<string, string>;
   };
+  /** VGSI parcel pairing for the Admin panel; null outside Westport. */
+  vision: ListingVisionLink | null;
 };
 
 function pickNumber(
@@ -220,6 +223,8 @@ function remarksFromListing(
 export function buildSpotlightDisplay(
   rawConfig: SpotlightListingConfig = SPOTLIGHT_LISTING,
   mls: SpotlightMlsListing | null = null,
+  /** Server-resolved extras that are not part of the MLS row. */
+  extras: { vision?: ListingVisionLink | null } = {},
 ): SpotlightDisplay {
   const config = spotlightEffectiveConfig(rawConfig, mls);
   const mlsId = mls?.mlsId?.trim() || config.mlsId?.trim() || config.id;
@@ -276,5 +281,6 @@ export function buildSpotlightDisplay(
       },
       raw: mls?.raw,
     },
+    vision: extras.vision ?? null,
   };
 }

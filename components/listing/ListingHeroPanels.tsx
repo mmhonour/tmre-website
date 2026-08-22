@@ -60,6 +60,7 @@ import {
   extractListingAgentContact,
   type ListingAgentContact,
 } from "@/lib/listing-agent-contact";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import { listingSectionHref, listingShareHref } from "@/lib/listing-url";
 import { SPOTLIGHT_SHARE_URL, spotlightSectionHref } from "@/lib/spotlight-url";
 import { useRouter } from "next/navigation";
@@ -71,7 +72,7 @@ import {
   type ReactNode,
 } from "react";
 
-type MobileDrawerId = "remarks" | "insight" | "details" | null;
+type MobileDrawerId = "remarks" | "details" | null;
 
 type MobileEdgePillId = "insight" | "details" | "if" | "map";
 
@@ -207,6 +208,8 @@ type ListingHeroPanelsProps = {
   interest?: ListingInterestProps | null;
   /** Opaque RETS row — Admin tab shows contacting / list agent when unlocked. */
   listingRaw?: Record<string, string> | null;
+  /** VGSI parcel pairing — Admin tab links the listing to its assessor record. */
+  vision?: ListingVisionLink | null;
 };
 
 export default function ListingHeroPanels({
@@ -224,6 +227,7 @@ export default function ListingHeroPanels({
   footer,
   interest = null,
   listingRaw = null,
+  vision = null,
 }: ListingHeroPanelsProps) {
   const router = useRouter();
   const siteUnlocked = useSiteUnlocked();
@@ -295,14 +299,6 @@ export default function ListingHeroPanels({
       return true;
     });
   }, [factsSheetSection]);
-
-  const openMobileDrawer = useCallback((id: Exclude<MobileDrawerId, null>) => {
-    setMapVisible(false);
-    setPanelTab(null);
-    setFactsSheetExpanded(false);
-    setFactsSheetSection(null);
-    setMobileDrawer(id);
-  }, []);
 
   const openMobileMap = useCallback(() => {
     setMobileDrawer(null);
@@ -379,9 +375,7 @@ export default function ListingHeroPanels({
       );
     }
     if (isDesktopLayout) {
-      setMobileDrawer((prev) =>
-        prev === "remarks" || prev === "insight" ? null : prev,
-      );
+      setMobileDrawer((prev) => (prev === "remarks" ? null : prev));
       // After remarks collapse, bring Analysis into view in the right column.
       window.requestAnimationFrame(() => {
         window.setTimeout(() => {
@@ -995,9 +989,9 @@ export default function ListingHeroPanels({
           Meta + tabs share one positioning context for the mobile edge pills.
           Insight is anchored just below the compact price (with a little
           clearance); Details → What if → Map move with it as one stack (price
-          is the anchor — not Map on the tabs row). History lives inside the
-          Insight drawer on mobile. What if / History / Map stay off the tab
-          strip (hideMobileEdgeTabs).
+          is the anchor — not Map on the tabs row). History lives under Insight
+          in the lower facts sheet on mobile. What if / History / Map stay off
+          the tab strip (hideMobileEdgeTabs).
         */}
         <div className="relative">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
@@ -1241,6 +1235,8 @@ export default function ListingHeroPanels({
                 "admin",
                 <ListingAdminAgentPanel
                   contact={adminAgentContact}
+                  vision={vision}
+                  mlsId={subnav.mlsId}
                   deckMode
                 />,
               )}
@@ -1347,6 +1343,13 @@ export default function ListingHeroPanels({
               )}
             </>
           }
+          history={
+            <ListingHistoryPanel
+              mlsId={subnav.mlsId}
+              townHint={subnav.townHint}
+              variant="page"
+            />
+          }
           details={detailsBlock}
           ifProps={{
             mlsId: subnav.mlsId,
@@ -1398,41 +1401,6 @@ export default function ListingHeroPanels({
       </ListingSideDrawer>
 
       <ListingSideDrawer
-        open={mobileDrawer === "insight" && !isDesktopLayout}
-        onClose={closeMobileDrawer}
-        title="Insight"
-      >
-        <div id="listing-insight-drawer" className="space-y-5">
-          {closedInsightCaveat ? (
-            <div className="flex justify-start">
-              <SpotlightClosedInsightLink className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold" />
-            </div>
-          ) : null}
-          {overviewInsight ? (
-            <ListingInsightCopy
-              text={overviewInsight}
-              className="text-left text-sm leading-relaxed text-white/80 break-words"
-              medianHref={`#${LISTING_ANALYSIS_ID}`}
-              onMedianClick={activateAnalysisFromMedian}
-            />
-          ) : null}
-          <section
-            className="space-y-3 border-t border-white/10 pt-4"
-            aria-label="History"
-          >
-            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-              History
-            </p>
-            <ListingHistoryPanel
-              mlsId={subnav.mlsId}
-              townHint={subnav.townHint}
-              variant="page"
-            />
-          </section>
-        </div>
-      </ListingSideDrawer>
-
-      <ListingSideDrawer
         open={mapVisible && !isDesktopLayout}
         onClose={() => {
           // SideDrawer calls onClose when crossing to lg — keep Location open
@@ -1455,7 +1423,11 @@ export default function ListingHeroPanels({
         }}
         title="Admin"
       >
-        <ListingAdminAgentPanel contact={adminAgentContact} />
+        <ListingAdminAgentPanel
+          contact={adminAgentContact}
+          vision={vision}
+          mlsId={subnav.mlsId}
+        />
       </ListingSideDrawer>
 
       <ListingSideDrawer
