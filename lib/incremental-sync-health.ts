@@ -13,13 +13,27 @@ export const INCREMENTAL_END_STALE_MS = 70 * 60 * 1000
 /** Watchdog / cron alias — same window as inventory stale. */
 export const INCREMENTAL_SYNC_STALE_MS = INCREMENTAL_END_STALE_MS
 
-/** In-pull: mls-sync pulses ~60s during executeIncremental. */
+/**
+ * @deprecated Heartbeat freshness cannot mean "in pull": mls-sync pulses every
+ * 60s while idle *and* every 60s during a pull, off the same key. Reading a
+ * fresh heartbeat as in-flight kept the Incremental row pulsing yellow the
+ * entire time the container was up. In-pull is the live breadcrumb or an open
+ * Start; the heartbeat only says the process is alive.
+ */
 export const RAILWAY_HEARTBEAT_RUNNING_MS = 3 * 60 * 1000
 /**
  * Process up: idle pulse ~60s, or last run finish before that ships.
  * Pink only when heartbeat is older than this.
  */
 export const RAILWAY_HEARTBEAT_ALIVE_MS = 45 * 60 * 1000
+
+/**
+ * How long an open Start may claim "in pull". A RETS pull across the seven
+ * towns runs minutes, so a Start still open well past that is a run that died
+ * before stamping End — the row should stop saying RUNNING and let the End age
+ * speak instead.
+ */
+export const INCREMENTAL_OPEN_START_IN_PULL_MS = 20 * 60 * 1000
 
 export type IncrementalHealthScheduler = 'railway' | 'eventbridge' | 'netlify'
 
@@ -55,7 +69,8 @@ export function evaluateIncrementalHealth(input: {
   liveInFlight?: boolean
 }): IncrementalHealth {
   const nowMs = input.nowMs ?? Date.now()
-  const openStartMaxMs = input.openStartMaxMs ?? RAILWAY_HEARTBEAT_ALIVE_MS
+  const openStartMaxMs =
+    input.openStartMaxMs ?? INCREMENTAL_OPEN_START_IN_PULL_MS
   const heartbeatMs = parseIsoMs(input.heartbeatAt)
   const finishedMs = parseIsoMs(input.finishedAt)
   const startedMs = parseIsoMs(input.startedAt)
@@ -73,15 +88,11 @@ export function evaluateIncrementalHealth(input: {
     (finishedMs == null || startedMs > finishedMs) &&
     nowMs - startedMs < openStartMaxMs
 
-  const heartbeatRunning =
-    heartbeatMs != null && nowMs - heartbeatMs < RAILWAY_HEARTBEAT_RUNNING_MS
   const heartbeatAlive =
     heartbeatMs != null && nowMs - heartbeatMs < RAILWAY_HEARTBEAT_ALIVE_MS
 
   const railway = input.scheduler === 'railway'
-  const inPull = Boolean(
-    input.liveInFlight || (railway && (heartbeatRunning || openStart)),
-  )
+  const inPull = Boolean(input.liveInFlight || (railway && openStart))
 
   let process: IncrementalProcessHealth = 'unknown'
   if (railway) {

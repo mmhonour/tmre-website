@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
     visionAddressesLiveStatus,
     statsCacheLastRunStatus,
     statsCacheQueueStatus,
+    statsCacheLastRunError,
   } = await readAdminSyncPanelStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
   const lastRefreshStarted = getSyncMeta('last_refresh_started_at')
@@ -105,6 +106,7 @@ export async function GET(req: NextRequest) {
     incrementalUpsertHistory,
     statsCacheLastRunStatus,
     statsCacheQueueStatus,
+    statsCacheLastRunError,
     rets,
     syncFailures: await readRecentSyncFailures(8),
     databaseStats: await collectAdminDatabaseSyncStats(),

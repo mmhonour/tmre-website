@@ -1517,7 +1517,7 @@ export async function readAdminSyncPanelStatus() {
     formatStatsTownQueue,
     readStatsCacheLastRun,
     readStatsTownStatuses,
-    statsCacheRunClocks,
+    statsCacheClocks,
   } = await import('@/lib/stats-dirty-towns')
   let statsCacheLastRunStatus: string | null = null
   let statsCacheQueueStatus: string | null = null
@@ -1533,12 +1533,14 @@ export async function readAdminSyncPanelStatus() {
   } catch (err) {
     console.error('[admin-sync] stats cache dirty-town read failed', err)
   }
-  const statsClocks = statsCacheRunClocks(statsCacheRun)
-  stats.lastStatsCacheStarted = newerIso(
-    statsClocks.startedAt,
+  const statsClocks = statsCacheClocks(
+    statsCacheRun,
     stats.lastStatsCacheStarted,
+    stats.lastStatsCache,
   )
-  stats.lastStatsCache = newerIso(statsClocks.finishedAt, stats.lastStatsCache)
+  stats.lastStatsCacheStarted = statsClocks.startedAt
+  stats.lastStatsCache = statsClocks.finishedAt
+  const statsCacheLastRunError = statsClocks.failure
 
   const refresh = readListingsRefreshStatus()
   const lastRefreshFinished = getSyncMeta('last_refresh_finished_at')
@@ -1650,5 +1652,6 @@ export async function readAdminSyncPanelStatus() {
     visionAddressesLiveStatus,
     statsCacheLastRunStatus,
     statsCacheQueueStatus,
+    statsCacheLastRunError,
   }
 }

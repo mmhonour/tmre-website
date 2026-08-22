@@ -235,6 +235,92 @@ export function statsCacheRunClocks(run: StatsCacheLastRun | null): {
   }
 }
 
+/** A rebuild runs minutes; a Start still open past this died or was skipped. */
+const STATS_OPEN_START_IN_FLIGHT_MS = 20 * 60 * 1000
+
+/**
+ * The one Start/End pair Admin should show for the stats cache.
+ *
+ * `last_stats_cache_started` is stamped by every attempt, `last_stats_cache`
+ * only when entries land — so an attempt that skipped (lock, no listings) or
+ * died leaves a Start permanently newer than End. Taking the newest of each key
+ * across sources paired that orphan Start with an older successful End, and the
+ * dashboard read the mismatch as a run that never ended: "Hung · no End since",
+ * red, for as long as no other attempt happened to succeed.
+ *
+ * So: the summary record is the pair, since every host writes it on every run.
+ * A loose Start newer than that record counts only while a rebuild could still
+ * plausibly be running; past that it is an ended attempt, and `ok` (not a
+ * missing End) is what says whether it worked.
+ */
+export function statsCacheClocks(
+  run: StatsCacheLastRun | null,
+  looseStartedAt: string | null,
+  looseFinishedAt: string | null,
+  now = Date.now(),
+): {
+  startedAt: string | null
+  finishedAt: string | null
+  inFlight: boolean
+  failure: string | null
+} {
+  const recordEndMs = run ? Date.parse(run.at) : Number.NaN
+  const hasRecord = Number.isFinite(recordEndMs)
+  const looseStartMs = looseStartedAt ? Date.parse(looseStartedAt) : Number.NaN
+  const looseEndMs = looseFinishedAt ? Date.parse(looseFinishedAt) : Number.NaN
+
+  const looseStartIsOpen =
+    Number.isFinite(looseStartMs) &&
+    (!Number.isFinite(looseEndMs) || looseStartMs > looseEndMs) &&
+    (!hasRecord || looseStartMs > recordEndMs)
+  if (looseStartIsOpen && now - looseStartMs < STATS_OPEN_START_IN_FLIGHT_MS) {
+    return {
+      startedAt: looseStartedAt,
+      finishedAt: null,
+      inFlight: true,
+      failure: null,
+    }
+  }
+
+  // A finished run newer than the record (record write lost) — take that pair
+  // whole rather than mixing it with the record's.
+  if (
+    Number.isFinite(looseEndMs) &&
+    (!hasRecord || looseEndMs > recordEndMs) &&
+    Number.isFinite(looseStartMs) &&
+    looseStartMs <= looseEndMs
+  ) {
+    return {
+      startedAt: looseStartedAt,
+      finishedAt: looseFinishedAt,
+      inFlight: false,
+      failure: null,
+    }
+  }
+
+  if (hasRecord && run) {
+    const durationMs =
+      typeof run.durationMs === 'number' && Number.isFinite(run.durationMs)
+        ? Math.max(0, run.durationMs)
+        : 0
+    return {
+      startedAt: new Date(recordEndMs - durationMs).toISOString(),
+      finishedAt: run.at,
+      inFlight: false,
+      failure: run.ok
+        ? null
+        : `Last rebuild failed — ${run.error ?? 'wrote 0 entries'}`,
+    }
+  }
+
+  return {
+    startedAt: looseStartedAt,
+    finishedAt: looseFinishedAt,
+    inFlight: false,
+    failure: null,
+  }
+}
+
 function agoLabel(iso: string | null, now = Date.now()): string {
   const ms = iso ? Date.parse(iso) : Number.NaN
   if (!Number.isFinite(ms)) return 'never'

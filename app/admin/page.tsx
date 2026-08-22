@@ -279,6 +279,7 @@ export default async function AdminPage() {
     nextOverrides,
     statsCacheLastRunStatus,
     statsCacheQueueStatus,
+    statsCacheLastRunError,
   } = await readAdminSyncPanelStatus();
   const latestListingUpdate = await safe(
     "latest-mls-timestamp",
@@ -640,6 +641,7 @@ export default async function AdminPage() {
     scheduleConfig,
     statsCacheLastRunStatus,
     statsCacheQueueStatus,
+    statsCacheLastRunError,
   };
 
   // Which Postgres this admin process is editing (Neon vs local). Site controls

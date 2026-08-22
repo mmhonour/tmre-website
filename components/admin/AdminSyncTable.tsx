@@ -31,6 +31,7 @@ import type { IncrementalSyncLiveProgress } from "@/lib/incremental-sync-live-sh
 import { formatIncrementalSyncLiveStatus } from "@/lib/incremental-sync-live-shared";
 import {
   INCREMENTAL_END_STALE_MS,
+  INCREMENTAL_OPEN_START_IN_PULL_MS,
   evaluateIncrementalHealth,
   formatRailwayHealthStrip,
   isMlsSyncDoorbellError,
@@ -724,6 +725,8 @@ export type PanelStatus = {
   statsCacheLastRunStatus?: string | null;
   /** Towns waiting on a rebuild (dirty / 24h backstop), or "all current". */
   statsCacheQueueStatus?: string | null;
+  /** Why the last recorded rebuild failed — red row with a reason, not a hang. */
+  statsCacheLastRunError?: string | null;
   latestFeedGeneratedAt?: string | null;
   latestFeedNewestMls?: string | null;
   latestFeedRowCount?: number | null;
@@ -879,14 +882,44 @@ function dropClientTiming(
   return next;
 }
 
+/**
+ * Client Start/End from a "Sync now" in this browser, or `undefined` once it
+ * stops meaning anything.
+ *
+ * These live in localStorage, so a click whose request died (Lambda timeout,
+ * closed tab, 429 from the background hop) leaves an Start with no End that
+ * outlives reloads and deploys — the row then reports itself Hung forever off a
+ * stamp Postgres never had. Drop it once the hang window passes, or as soon as
+ * the server records a finish that postdates it.
+ */
+function usableClientTiming(
+  client: SyncTiming | undefined,
+  server: SyncTiming,
+  nowMs: number,
+): SyncTiming | undefined {
+  if (!client) return undefined;
+  const clientStartMs = parseIsoMs(client.started);
+  const clientEndMs = parseIsoMs(client.finished);
+  const serverEndMs = parseIsoMs(server.finished);
+  if (clientEndMs == null) {
+    if (clientStartMs == null) return undefined;
+    if (nowMs - clientStartMs >= HANG_THRESHOLD_MS) return undefined;
+    if (serverEndMs != null && serverEndMs >= clientStartMs) return undefined;
+    return client;
+  }
+  if (serverEndMs != null && serverEndMs > clientEndMs) return undefined;
+  return client;
+}
+
 function timingWithLogFallback(
   row: AdminSyncRow,
   status: PanelStatus | null,
   runTimings: Partial<Record<string, SyncTiming>>,
   runSnapshot: SyncRunLogSnapshot | null,
+  nowMs: number,
 ): SyncTiming {
-  const client = runTimings[row.id];
   const server = timingForRow(row, status);
+  const client = usableClientTiming(runTimings[row.id], server, nowMs);
 
   // Incremental End lives in Neon. A failed Sync now used to freeze Start=End
   // in localStorage and hide later Railway finishes (pink "BROKEN" all day).
@@ -1418,12 +1451,16 @@ function isEventBridgeQueuedWithoutEnd(
   return endMs == null || endMs < ingressMs;
 }
 
-function isTimingInProgress(timing: SyncTiming, nowMs: number): boolean {
+function isTimingInProgress(
+  timing: SyncTiming,
+  nowMs: number,
+  maxOpenMs = HANG_THRESHOLD_MS,
+): boolean {
   const startedMs = parseIsoMs(timing.started);
   if (startedMs == null) return false;
   const finishedMs = parseIsoMs(timing.finished);
   if (finishedMs != null && finishedMs >= startedMs) return false;
-  return nowMs - startedMs < HANG_THRESHOLD_MS;
+  return nowMs - startedMs < maxOpenMs;
 }
 
 function isTimingHung(timing: SyncTiming, nowMs: number): boolean {
@@ -1824,7 +1861,16 @@ export default function AdminSyncTable({
     try {
       const rawTimings = localStorage.getItem(ADMIN_SYNC_RUN_TIMINGS_STORAGE_KEY);
       if (rawTimings) {
-        setRunTimings(JSON.parse(rawTimings) as Partial<Record<string, SyncTiming>>);
+        // A run cannot still be in flight from a previous session — keep only
+        // finished pairs so yesterday's dead click cannot read as Hung today.
+        const stored = JSON.parse(rawTimings) as Partial<
+          Record<string, SyncTiming>
+        >;
+        const settled: Partial<Record<string, SyncTiming>> = {};
+        for (const [rowId, timing] of Object.entries(stored)) {
+          if (timing?.finished) settled[rowId] = timing;
+        }
+        setRunTimings(settled);
       }
     } catch { /* ignore */ }
     storageHydratedRef.current = true;
@@ -3171,7 +3217,13 @@ export default function AdminSyncTable({
               const nowMsOuter = now.getTime();
               const fullResyncRow = rows.find((r) => r.id === "full-resync");
               const fullResyncTiming = fullResyncRow
-                ? timingWithLogFallback(fullResyncRow, status, runTimings, runSnapshot)
+                ? timingWithLogFallback(
+                    fullResyncRow,
+                    status,
+                    runTimings,
+                    runSnapshot,
+                    nowMsOuter,
+                  )
                 : null;
               const fullResyncInProgress =
                 runningId === "full-resync" ||
@@ -3184,7 +3236,13 @@ export default function AdminSyncTable({
                 if (runningId === "full-resync" && row.id === "full-resync") {
                   return true;
                 }
-                const timing = timingWithLogFallback(row, status, runTimings, runSnapshot);
+                const timing = timingWithLogFallback(
+                  row,
+                  status,
+                  runTimings,
+                  runSnapshot,
+                  nowMsOuter,
+                );
                 // Sync-all: pin the step currently in flight (started, no End yet).
                 if (
                   syncAllRunning &&
@@ -3247,9 +3305,18 @@ export default function AdminSyncTable({
                     pendingRetry.attemptsLeft,
                     nowMs,
                   )
-                : errors[row.id];
+                : (errors[row.id] ??
+                  (row.id === "stats-cache"
+                    ? (status?.statsCacheLastRunError ?? undefined)
+                    : undefined));
               const disabled = !row.actionId || isRunning || isWaiting;
-              const timing = timingWithLogFallback(row, status, runTimings, runSnapshot);
+              const timing = timingWithLogFallback(
+                row,
+                status,
+                runTimings,
+                runSnapshot,
+                nowMs,
+              );
               const showSingleTimestamp =
                 row.id === "latest-mls" ||
                 row.id === "property-addresses" ||
@@ -3266,10 +3333,16 @@ export default function AdminSyncTable({
                 Boolean(
                   status?.incrementalLiveStatus || status?.incrementalLive,
                 );
-              // Open Start without End (within hang window) = in flight even if
-              // the live breadcrumb was cleared — Postgres Start is the signal.
+              // Open Start without End = in flight even if the live breadcrumb
+              // was cleared — Postgres Start is the signal. Bounded by the pull
+              // window: a Start open longer than that is a dead run, not a pull.
               const incrementalOpenInFlight =
-                row.id === "incremental" && isTimingInProgress(timing, nowMs);
+                row.id === "incremental" &&
+                isTimingInProgress(
+                  timing,
+                  nowMs,
+                  INCREMENTAL_OPEN_START_IN_PULL_MS,
+                );
               const incrementalRunningNow =
                 incrementalLiveNow || incrementalOpenInFlight;
               const incrementalOnEventBridge =
@@ -3318,7 +3391,6 @@ export default function AdminSyncTable({
                       finishedAt: timing.finished,
                       startedAt: timing.started,
                       nowMs,
-                      openStartMaxMs: HANG_THRESHOLD_MS,
                       liveInFlight: incrementalRunningNow,
                     })
                   : null;
