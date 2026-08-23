@@ -84,6 +84,8 @@ export const RAILWAY_JOB_ENDPOINTS: Partial<Record<ScheduledSyncJobId, string>> 
   incremental: '/run',
   'stats-cache': '/stats',
   'listing-scores': '/scores',
+  'deal-of-the-day': '/deal-of-the-day',
+  'property-addresses': '/property-addresses',
 }
 
 /** Endpoint on the Railway service for this job, or null when unsupported. */
@@ -242,16 +244,21 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         scheduler: 'railway',
       },
       'deal-of-the-day': {
+        // Railway: scoring all seven towns then warming photos outruns a
+        // serverless slot, and the thin cron's background hop is being refused
+        // site-wide (HTTP 429). Flip to Netlify cron in Configure to go back.
         frequency: 'weekly',
         startTimeEt: '05:00',
         weekdayEt: 1,
-        scheduler: 'netlify',
+        scheduler: 'railway',
       },
       'property-addresses': {
+        // Railway: upserts one row per property across MLS + Vision recent
+        // sales, so the run is minutes of sequential writes, not seconds.
         frequency: 'weekly',
         startTimeEt: '01:00',
         weekdayEt: 1,
-        scheduler: 'netlify',
+        scheduler: 'railway',
       },
       'vision-addresses': {
         frequency: 'weekly',

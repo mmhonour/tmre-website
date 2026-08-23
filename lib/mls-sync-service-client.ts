@@ -136,13 +136,11 @@ export async function queueMlsSyncServiceJob(
       error: `Railway mls-sync does not host "${jobId}" — pick another scheduler in Configure`,
     }
   }
-  if (endpoint === '/stats') {
-    return queueMlsSyncServiceStatsRebuild({ startedAt: body.startedAt })
-  }
-  if (endpoint === '/scores') {
-    return postToMlsSyncService('/scores', {
-      startedAt: body.startedAt ?? new Date().toISOString(),
-    })
-  }
-  return queueMlsSyncServiceRun(body)
+  // Incremental is the only job that takes towns / status scope; every rebuild
+  // job takes just the start stamp. Route from the declared endpoint rather than
+  // falling through to /run, or a newly hosted job silently starts a RETS pull.
+  if (endpoint === '/run') return queueMlsSyncServiceRun(body)
+  return postToMlsSyncService(endpoint, {
+    startedAt: body.startedAt ?? new Date().toISOString(),
+  })
 }

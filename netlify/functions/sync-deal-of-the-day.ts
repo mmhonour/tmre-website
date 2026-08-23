@@ -7,7 +7,7 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfEventBridgeOwns,
+  thinCronSkipIfAnotherHostOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
@@ -20,7 +20,7 @@ export default async function handler() {
   try {
     await hydrateSyncMetaStore()
     {
-      const owned = await thinCronSkipIfEventBridgeOwns('deal-of-the-day')
+      const owned = await thinCronSkipIfAnotherHostOwns('deal-of-the-day')
       if (owned) return owned
     }
     if (await isScheduledSyncJobPausedFresh('deal-of-the-day')) {

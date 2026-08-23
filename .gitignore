@@ -39,6 +39,9 @@ data/visitors.json.*
 data/contacts.json
 data/leads.json
 
+# vendor reference PDFs parked in docs/ — licensed MLS material, keep local only
+docs/*.pdf
+
 # local dump / probe scratch (not for commit)
 .tmp-*
 .tmp

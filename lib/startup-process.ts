@@ -306,6 +306,31 @@ export function describeStartupProcess(): {
       ],
     },
     {
+      id: "deal-of-the-day",
+      title: "Deal of the Day cache",
+      subtitle: "42 picks · 7 towns × sale/rental × property class",
+      steps: [
+        {
+          id: "dotd-warm",
+          title: "Warm if the cache is empty",
+          timing: "+25s",
+          detail:
+            "rebuildDealOfTheDayCacheIfMissing(): fills the cache when there are listings but no picks (e.g. a fresh dev database). Skips while refresh_in_progress is set. Not the scheduled rebuild.",
+          status: "scheduled",
+          statusLabel: "Scheduled",
+        },
+        {
+          id: "dotd-scheduled",
+          title: "Rebuild on the Configure slot",
+          timing: "Configure → Deal of the Day → Frequency / Start",
+          detail:
+            "rebuildDealOfTheDayCache(): clears the deal-of-the-day prefix, rescores each town's Active inventory, writes 42 stats_cache payloads, then fills photo gaps. Who runs it is declared in Configure → Deal of the Day → Scheduler: Railway mls-sync (default; 10-min sweep that only fires at the configured wall-clock slot, plus POST /deal-of-the-day for Sync now) or Netlify cron (thin */30 → sync-deal-of-the-day-worker). Exactly one host acts — each stands down when the radio names the other. Never overlaps another Railway lane (shared heap). The Railway lane also stamps last_deal_of_the_day_cache on an empty run, so a Start cannot dangle without an End.",
+          status: "active",
+          statusLabel: "Running",
+        },
+      ],
+    },
+    {
       id: "edge-scores",
       title: "Listing edge scores",
       subtitle: "Weekly metadata scores for comparables ranking",
@@ -337,10 +362,10 @@ export function describeStartupProcess(): {
       steps: [
         {
           id: "property-address-weekly",
-          title: "Verify + enrich @ 1:00 AM Monday America/New_York",
-          timing: "weekly",
+          title: "Verify + enrich on the Configure slot",
+          timing: "Configure → Property addresses → Frequency / Start",
           detail:
-            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches. Skips when Pause is checked on Property address directory.",
+            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches. Who runs it is declared in Configure → Property addresses → Scheduler: Railway mls-sync (default; 10-min sweep that only fires at the configured wall-clock slot, plus POST /property-addresses for Sync now) or Netlify cron (thin */30 → sync-property-addresses-worker). Exactly one host acts — the Netlify thin cron and this process's own weekly timer both stand down when the radio names Railway. Never overlaps another Railway lane (shared heap). Skips when Pause is checked on Property address directory.",
           status: propertyAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: propertyAddressSyncEnabled ? "Armed" : "Disabled",
         },
@@ -457,7 +482,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Jobs with Configure Scheduler=EventBridge are skipped by Netlify thin crons; AWS hits eventbridge-sync-ingress instead.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Every one of these is gated on Configure → Scheduler: a job pointed at Railway or EventBridge makes its thin cron stand down (Railway's own sweep runs it; AWS hits eventbridge-sync-ingress). Incremental, Stats cache, Goldilocks, Deal of the Day and Property addresses default to Railway, so their thin crons normally do nothing but report who owns the job.`,
           status: "info",
           statusLabel: "Cron",
         },

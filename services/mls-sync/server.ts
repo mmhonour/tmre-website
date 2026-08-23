@@ -8,6 +8,13 @@
  *   - owns the stats_cache rebuild: self-scheduled dirty-town sweep + POST
  *     /stats. A full rebuild takes minutes, so no Netlify function can host it,
  *     and Netlify is refusing background invocations for the site (HTTP 429).
+ *   - owns Goldilocks scores (POST /scores), Deal of the Day (POST
+ *     /deal-of-the-day) and the property address directory (POST
+ *     /property-addresses) for the same reason: each runs for minutes.
+ *
+ * Which host owns a job is declared per job in Admin → Configure → Scheduler.
+ * The sweeps here honour that radio, so pointing a job back at Netlify cron
+ * makes this process stand down without a deploy.
  *
  * Start (repo root):
  *   npm run start:mls-sync
@@ -52,6 +59,24 @@ const SCORES_SWEEP_MS = 5 * 60 * 1000
 const SCORES_SWEEP_DELAY_MS = 3 * 60 * 1000
 
 /**
+ * Deal of the Day and the property-address directory are weekly, so a 10-minute
+ * check lands them within ten minutes of their Configure slot. Boot delays are
+ * staggered so a deploy does not fire every lane at once into one heap.
+ */
+const DOTD_SWEEP_MS = 10 * 60 * 1000
+const DOTD_SWEEP_DELAY_MS = 4 * 60 * 1000
+const ADDRESSES_SWEEP_MS = 10 * 60 * 1000
+const ADDRESSES_SWEEP_DELAY_MS = 5 * 60 * 1000
+
+/**
+ * Property-address attempt stamp, read only by this service. The dashboard shows
+ * that row as a single End timestamp, so the job has no public Start key to
+ * compare against — but the restart guard still needs to know an attempt died
+ * mid-flight, and an in-process flag does not survive the container going down.
+ */
+const ADDRESSES_ATTEMPT_KEY = 'property_addresses_railway_attempt'
+
+/**
  * How long to wait before retrying a rebuild whose start never finished. An OOM
  * takes the whole container with it, so without this the sweep would relaunch
  * the same fatal rebuild on every boot and starve the incremental pull.
@@ -86,6 +111,37 @@ let lastScoresOk: boolean | null = null
 let lastScoresScored: number | null = null
 let lastScoresError: string | null = null
 let lastScoresTrigger: string | null = null
+
+let dotdInFlight: Promise<void> | null = null
+let lastDotdStartedAt: string | null = null
+let lastDotdFinishedAt: string | null = null
+let lastDotdOk: boolean | null = null
+let lastDotdWritten: number | null = null
+let lastDotdError: string | null = null
+let lastDotdTrigger: string | null = null
+
+let addressesInFlight: Promise<void> | null = null
+let lastAddressesStartedAt: string | null = null
+let lastAddressesFinishedAt: string | null = null
+let lastAddressesOk: boolean | null = null
+let lastAddressesRows: number | null = null
+let lastAddressesError: string | null = null
+let lastAddressesTrigger: string | null = null
+
+/**
+ * Every lane in this process shares one heap, and holding two towns' inventory at
+ * once is what OOM-killed the container before. One job at a time, whichever
+ * asked first; the losing sweep just retries on its next tick.
+ */
+function anyJobInFlight(): boolean {
+  return (
+    runInFlight != null ||
+    statsInFlight != null ||
+    scoresInFlight != null ||
+    dotdInFlight != null ||
+    addressesInFlight != null
+  )
+}
 
 function readBearer(req: IncomingMessage): string | null {
   const h = req.headers.authorization?.trim() ?? ''
@@ -276,13 +332,13 @@ function startStatsRebuild(
 ): {
   accepted: boolean
   alreadyRunning: boolean
-  incrementalInFlight: boolean
+  otherJobInFlight: boolean
 } {
   if (statsInFlight) {
-    return { accepted: false, alreadyRunning: true, incrementalInFlight: false }
+    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
   }
-  if (runInFlight) {
-    return { accepted: false, alreadyRunning: false, incrementalInFlight: true }
+  if (anyJobInFlight()) {
+    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
   }
 
   lastStatsStartedAt = startedAt
@@ -301,7 +357,7 @@ function startStatsRebuild(
     .finally(() => {
       statsInFlight = null
     })
-  return { accepted: true, alreadyRunning: false, incrementalInFlight: false }
+  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
 }
 
 /**
@@ -372,7 +428,7 @@ async function statsRebuildPlan(): Promise<StatsRebuildPlan | null> {
  */
 function scheduleStatsSweep(): void {
   const tick = async () => {
-    if (runInFlight || statsInFlight) return
+    if (anyJobInFlight()) return
     const plan = await statsRebuildPlan()
     if (!plan) return
     const why = plan.towns
@@ -455,7 +511,7 @@ function startScoresRebuild(
   if (scoresInFlight) {
     return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
   }
-  if (runInFlight || statsInFlight) {
+  if (anyJobInFlight()) {
     return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
   }
 
@@ -518,6 +574,240 @@ async function scoresRebuildIsDue(): Promise<boolean> {
 }
 
 /**
+ * Deal of the Day rebuild, hosted here.
+ *
+ * Recomputes 42 picks (7 towns × sale/rental × property class) by scoring each
+ * town's Active inventory, then fills photo gaps. Minutes of work, so no
+ * serverless slot can finish one.
+ */
+async function executeDotdRebuild(
+  startedAt: string,
+  trigger: string,
+): Promise<void> {
+  const { hydrateSyncMetaStore, setSyncMetaDurable } = await import(
+    '../../lib/db/sync-meta-store'
+  )
+  const { rebuildDealOfTheDayCache } = await import(
+    '../../lib/deal-of-the-day-cache'
+  )
+  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
+
+  await hydrateSyncMetaStore()
+  const result = await rebuildDealOfTheDayCache()
+  const finishedAt = new Date().toISOString()
+  const ok = result.written > 0
+
+  lastDotdFinishedAt = finishedAt
+  lastDotdOk = ok
+  lastDotdWritten = result.written
+  lastDotdError = ok ? null : 'wrote 0 entries'
+
+  // rebuildDealOfTheDayCache() stamps its own finish key, but only on the path
+  // that writes entries: an empty-inventory run returns early having stamped
+  // Start alone. Stamp it here so a Start never dangles without an End, which is
+  // exactly the shape the dashboard reports as a hung job.
+  await setSyncMetaDurable('last_deal_of_the_day_cache', finishedAt)
+
+  console.info(
+    `[mls-sync] deal-of-the-day rebuild written=${result.written} in ${result.durationMs}ms`,
+  )
+
+  await recordDashboardSyncAudit({
+    startedAt,
+    finishedAt,
+    syncSuffix: 'deal-day',
+    listingsCount: result.written,
+    ok,
+    detail: ok
+      ? `Deal of the Day rebuilt on Railway (${trigger}) — ${result.written.toLocaleString()} entries`
+      : 'Deal of the Day rebuilt — 0 entries (check Active inventory)',
+  })
+}
+
+function startDotdRebuild(
+  startedAt: string,
+  trigger: string,
+): { accepted: boolean; alreadyRunning: boolean; otherJobInFlight: boolean } {
+  if (dotdInFlight) {
+    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
+  }
+  if (anyJobInFlight()) {
+    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
+  }
+
+  lastDotdStartedAt = startedAt
+  lastDotdFinishedAt = null
+  lastDotdOk = null
+  lastDotdError = null
+  lastDotdWritten = null
+  lastDotdTrigger = trigger
+  dotdInFlight = executeDotdRebuild(startedAt, trigger)
+    .catch((err) => {
+      lastDotdFinishedAt = new Date().toISOString()
+      lastDotdOk = false
+      lastDotdError = err instanceof Error ? err.message : String(err)
+      console.error('[mls-sync] deal-of-the-day rebuild failed', err)
+    })
+    .finally(() => {
+      dotdInFlight = null
+    })
+  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
+}
+
+/** True when Configure points Deal of the Day here and its slot has come round. */
+async function dotdRebuildIsDue(): Promise<boolean> {
+  const { readSyncScheduleConfigFresh } = await import(
+    '../../lib/sync-schedule-config'
+  )
+  const { resolveJobScheduler } = await import(
+    '../../lib/sync-schedule-config-shared'
+  )
+  const config = await readSyncScheduleConfigFresh()
+  if (resolveJobScheduler(config.jobs['deal-of-the-day']) !== 'railway') {
+    return false
+  }
+
+  const { isScheduledSyncJobPausedFresh } = await import(
+    '../../lib/scheduled-sync-toggle'
+  )
+  if (await isScheduledSyncJobPausedFresh('deal-of-the-day')) return false
+
+  const { getSyncMeta } = await import('../../lib/db/sync-meta')
+  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
+  const [startedAt, finishedAt] = await Promise.all([
+    getSyncMeta('last_deal_of_the_day_cache_started'),
+    getSyncMeta('last_deal_of_the_day_cache'),
+  ])
+  // Same restart guard as stats / Goldilocks: a start with no later finish means
+  // the last attempt died mid-flight, so hold off rather than loop on it.
+  const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN
+  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
+  if (
+    Number.isFinite(startedMs) &&
+    (!Number.isFinite(finishedMs) || finishedMs < startedMs) &&
+    Date.now() - startedMs < STATS_RETRY_COOLDOWN_MS
+  ) {
+    return false
+  }
+
+  return isJobDueBySchedule(config.jobs['deal-of-the-day'], finishedAt)
+}
+
+/**
+ * Property address directory sync, hosted here.
+ *
+ * One upsert per property across every town's MLS rows plus Vision recent sales,
+ * sequentially — long enough that a serverless slot cannot see it through.
+ */
+async function executeAddressesSync(
+  startedAt: string,
+  trigger: string,
+): Promise<void> {
+  const { hydrateSyncMetaStore, setSyncMetaDurable } = await import(
+    '../../lib/db/sync-meta-store'
+  )
+  const { syncPropertyAddresses } = await import(
+    '../../lib/property-address-sync'
+  )
+  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
+
+  await hydrateSyncMetaStore()
+  // Recorded before the work, so a container death mid-run leaves evidence the
+  // restart guard can see.
+  await setSyncMetaDurable(ADDRESSES_ATTEMPT_KEY, startedAt)
+  const result = await syncPropertyAddresses()
+  const finishedAt = new Date().toISOString()
+  const ok = result.ok && result.totalRows > 0
+
+  lastAddressesFinishedAt = finishedAt
+  lastAddressesOk = ok
+  lastAddressesRows = result.totalRows
+  lastAddressesError = ok ? null : 'verified 0 addresses'
+
+  console.info(
+    `[mls-sync] property addresses verified=${result.totalRows} (${result.mlsRows} MLS, ${result.assessorRows} assessor) in ${result.durationMs}ms`,
+  )
+
+  await recordDashboardSyncAudit({
+    startedAt,
+    finishedAt,
+    syncSuffix: 'addresses',
+    listingsCount: result.totalRows,
+    ok,
+    detail: ok
+      ? `Property addresses verified on Railway (${trigger}) — ${result.totalRows.toLocaleString()} rows (${result.mlsRows.toLocaleString()} MLS, ${result.assessorRows.toLocaleString()} assessor)`
+      : 'Property addresses verified — 0 rows (check listings inventory / Vision)',
+  })
+}
+
+function startAddressesSync(
+  startedAt: string,
+  trigger: string,
+): { accepted: boolean; alreadyRunning: boolean; otherJobInFlight: boolean } {
+  if (addressesInFlight) {
+    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
+  }
+  if (anyJobInFlight()) {
+    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
+  }
+
+  lastAddressesStartedAt = startedAt
+  lastAddressesFinishedAt = null
+  lastAddressesOk = null
+  lastAddressesError = null
+  lastAddressesRows = null
+  lastAddressesTrigger = trigger
+  addressesInFlight = executeAddressesSync(startedAt, trigger)
+    .catch((err) => {
+      lastAddressesFinishedAt = new Date().toISOString()
+      lastAddressesOk = false
+      lastAddressesError = err instanceof Error ? err.message : String(err)
+      console.error('[mls-sync] property address sync failed', err)
+    })
+    .finally(() => {
+      addressesInFlight = null
+    })
+  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
+}
+
+/** True when Configure points the address directory here and its slot is up. */
+async function addressesSyncIsDue(): Promise<boolean> {
+  const { readSyncScheduleConfigFresh } = await import(
+    '../../lib/sync-schedule-config'
+  )
+  const { resolveJobScheduler } = await import(
+    '../../lib/sync-schedule-config-shared'
+  )
+  const config = await readSyncScheduleConfigFresh()
+  if (resolveJobScheduler(config.jobs['property-addresses']) !== 'railway') {
+    return false
+  }
+
+  const { isScheduledSyncJobPausedFresh } = await import(
+    '../../lib/scheduled-sync-toggle'
+  )
+  if (await isScheduledSyncJobPausedFresh('property-addresses')) return false
+
+  const { getSyncMeta } = await import('../../lib/db/sync-meta')
+  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
+  const [attemptAt, finishedAt] = await Promise.all([
+    getSyncMeta(ADDRESSES_ATTEMPT_KEY),
+    getSyncMeta('property_addresses_synced_at'),
+  ])
+  const attemptMs = attemptAt ? Date.parse(attemptAt) : Number.NaN
+  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
+  if (
+    Number.isFinite(attemptMs) &&
+    (!Number.isFinite(finishedMs) || finishedMs < attemptMs) &&
+    Date.now() - attemptMs < STATS_RETRY_COOLDOWN_MS
+  ) {
+    return false
+  }
+
+  return isJobDueBySchedule(config.jobs['property-addresses'], finishedAt)
+}
+
+/**
  * Should a RETS pull start now?
  *
  * Pulls land on Configure's wall-clock grid (Frequency + Start time), not
@@ -566,7 +856,7 @@ async function incrementalRunIsDue(): Promise<boolean> {
 /** Minute tick that starts a pull at its configured slot. */
 function scheduleIncrementalSweep(): void {
   const tick = async () => {
-    if (runInFlight || statsInFlight || scoresInFlight) return
+    if (anyJobInFlight()) return
     if (!(await incrementalRunIsDue())) return
     console.info('[mls-sync] incremental due — configured slot reached')
     startRun({ startedAt: new Date().toISOString(), source: 'railway' })
@@ -583,7 +873,7 @@ function scheduleIncrementalSweep(): void {
 /** Self-scheduled Goldilocks sweep — same reasoning as the stats sweep. */
 function scheduleScoresSweep(): void {
   const tick = async () => {
-    if (runInFlight || statsInFlight || scoresInFlight) return
+    if (anyJobInFlight()) return
     if (!(await scoresRebuildIsDue())) return
     console.info('[mls-sync] goldilocks due — configured slot reached')
     startScoresRebuild(new Date().toISOString(), 'railway-sweep')
@@ -597,6 +887,46 @@ function scheduleScoresSweep(): void {
   setInterval(run, SCORES_SWEEP_MS)
   console.info(
     `[mls-sync] goldilocks sweep every ${Math.round(SCORES_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
+  )
+}
+
+/** Self-scheduled Deal of the Day sweep. */
+function scheduleDotdSweep(): void {
+  const tick = async () => {
+    if (anyJobInFlight()) return
+    if (!(await dotdRebuildIsDue())) return
+    console.info('[mls-sync] deal-of-the-day due — configured slot reached')
+    startDotdRebuild(new Date().toISOString(), 'railway-sweep')
+  }
+  const run = () => {
+    void tick().catch((err) => {
+      console.warn('[mls-sync] deal-of-the-day sweep failed', err)
+    })
+  }
+  setTimeout(run, DOTD_SWEEP_DELAY_MS)
+  setInterval(run, DOTD_SWEEP_MS)
+  console.info(
+    `[mls-sync] deal-of-the-day sweep every ${Math.round(DOTD_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
+  )
+}
+
+/** Self-scheduled property address directory sweep. */
+function scheduleAddressesSweep(): void {
+  const tick = async () => {
+    if (anyJobInFlight()) return
+    if (!(await addressesSyncIsDue())) return
+    console.info('[mls-sync] property addresses due — configured slot reached')
+    startAddressesSync(new Date().toISOString(), 'railway-sweep')
+  }
+  const run = () => {
+    void tick().catch((err) => {
+      console.warn('[mls-sync] property address sweep failed', err)
+    })
+  }
+  setTimeout(run, ADDRESSES_SWEEP_DELAY_MS)
+  setInterval(run, ADDRESSES_SWEEP_MS)
+  console.info(
+    `[mls-sync] property address sweep every ${Math.round(ADDRESSES_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
   )
 }
 
@@ -652,6 +982,30 @@ async function handleRequest(
         lastScoresError,
         lastScoresTrigger,
         last_listing_scores: await getSyncMeta('last_listing_scores'),
+      },
+      dealOfTheDay: {
+        inFlight: dotdInFlight != null,
+        lastDotdStartedAt,
+        lastDotdFinishedAt,
+        lastDotdOk,
+        lastDotdWritten,
+        lastDotdError,
+        lastDotdTrigger,
+        last_deal_of_the_day_cache: await getSyncMeta(
+          'last_deal_of_the_day_cache',
+        ),
+      },
+      propertyAddresses: {
+        inFlight: addressesInFlight != null,
+        lastAddressesStartedAt,
+        lastAddressesFinishedAt,
+        lastAddressesOk,
+        lastAddressesRows,
+        lastAddressesError,
+        lastAddressesTrigger,
+        property_addresses_synced_at: await getSyncMeta(
+          'property_addresses_synced_at',
+        ),
       },
       neon: {
         last_incremental_sync: end,
@@ -727,13 +1081,13 @@ async function handleRequest(
     }
 
     const started = startStatsRebuild(startedAt, plan)
-    if (started.incrementalInFlight) {
+    if (started.otherJobInFlight) {
       // 409 reads as "accepted, already busy" to the caller — next tick retries.
       sendJson(res, 409, {
         ok: true,
         accepted: false,
-        incrementalInFlight: true,
-        message: 'Incremental pull in flight — stats rebuild deferred to next tick',
+        otherJobInFlight: true,
+        message: 'Another job is in flight — stats rebuild deferred to next tick',
       })
       return
     }
@@ -767,8 +1121,7 @@ async function handleRequest(
         ok: true,
         accepted: false,
         otherJobInFlight: true,
-        message:
-          'Incremental pull or stats rebuild in flight — Goldilocks deferred to next tick',
+        message: 'Another job is in flight — Goldilocks deferred to next tick',
       })
       return
     }
@@ -781,6 +1134,76 @@ async function handleRequest(
       message: started.alreadyRunning
         ? 'Goldilocks already running on mls-sync'
         : 'Goldilocks accepted on mls-sync (Railway)',
+    })
+    return
+  }
+
+  if (req.method === 'POST' && path === '/deal-of-the-day') {
+    if (!assertAuth(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      return
+    }
+    const body = await readJson(req)
+    const startedAt =
+      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
+        ? body.startedAt
+        : new Date().toISOString()
+
+    const started = startDotdRebuild(startedAt, 'manual')
+    if (started.otherJobInFlight) {
+      sendJson(res, 409, {
+        ok: true,
+        accepted: false,
+        otherJobInFlight: true,
+        message:
+          'Another job is in flight — Deal of the Day deferred to next tick',
+      })
+      return
+    }
+
+    sendJson(res, 202, {
+      ok: true,
+      accepted: started.accepted,
+      alreadyRunning: started.alreadyRunning,
+      startedAt,
+      message: started.alreadyRunning
+        ? 'Deal of the Day already running on mls-sync'
+        : 'Deal of the Day accepted on mls-sync (Railway)',
+    })
+    return
+  }
+
+  if (req.method === 'POST' && path === '/property-addresses') {
+    if (!assertAuth(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      return
+    }
+    const body = await readJson(req)
+    const startedAt =
+      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
+        ? body.startedAt
+        : new Date().toISOString()
+
+    const started = startAddressesSync(startedAt, 'manual')
+    if (started.otherJobInFlight) {
+      sendJson(res, 409, {
+        ok: true,
+        accepted: false,
+        otherJobInFlight: true,
+        message:
+          'Another job is in flight — property addresses deferred to next tick',
+      })
+      return
+    }
+
+    sendJson(res, 202, {
+      ok: true,
+      accepted: started.accepted,
+      alreadyRunning: started.alreadyRunning,
+      startedAt,
+      message: started.alreadyRunning
+        ? 'Property addresses already running on mls-sync'
+        : 'Property addresses accepted on mls-sync (Railway)',
     })
     return
   }
@@ -817,4 +1240,6 @@ server.listen(PORT, () => {
   }, 60_000)
   scheduleStatsSweep()
   scheduleScoresSweep()
+  scheduleDotdSweep()
+  scheduleAddressesSweep()
 })

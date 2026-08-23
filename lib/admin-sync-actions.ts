@@ -1061,6 +1061,7 @@ async function runAdminSyncActionImpl(
             queueNetlifyDealOfTheDayRebuild(startedAt, {
               source: 'admin',
             }),
+          { railwayBody: { startedAt } },
         )
         try {
           const { recordSyncRun } = await import('@/lib/db/listings-repo')
@@ -1090,7 +1091,9 @@ async function runAdminSyncActionImpl(
             message:
               via === 'eventbridge'
                 ? 'Deal of the Day queued (EventBridge path) — End updates when rebuild finishes'
-                : 'Deal of the Day queued (background worker) — End updates when rebuild finishes',
+                : via === 'railway'
+                  ? 'Deal of the Day queued (Railway mls-sync) — End updates when rebuild finishes'
+                  : 'Deal of the Day queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
               : 'Queued on background worker.',
@@ -1120,6 +1123,57 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'property-addresses': {
+      // One upsert per property across every town plus Vision recent sales — too
+      // long for a request-scoped Lambda, so hand it to the declared host.
+      if (shouldQueueOnServerless(options)) {
+        const { queueNetlifyPropertyAddressSync } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const { queued, via } = await queueSyncNowPreferringScheduler(
+          'property-addresses',
+          () => queueNetlifyPropertyAddressSync(),
+          { railwayBody: { startedAt } },
+        )
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: queued.ok ? 'Queued/addresses' : 'Failed/addresses',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
+        if (queued.ok) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message: `Property addresses queued (${via === 'railway' ? 'Railway mls-sync' : 'background worker'}) — End updates when the sync finishes`,
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
+              : 'Queued on background worker.',
+          }
+        }
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          message: 'Property addresses queue failed',
+          detail: queued.error ?? 'Could not reach background worker',
+        }
+      }
       const { syncPropertyAddresses } = await import('@/lib/property-address-sync')
       const result = await syncPropertyAddresses()
       return {

@@ -52,7 +52,12 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
     'last_deal_of_the_day_cache',
     'last_deal_of_the_day_cache_started',
   ],
-  'property-addresses': ['property_addresses_synced_at'],
+  'property-addresses': [
+    'property_addresses_synced_at',
+    // Railway's restart guard (services/mls-sync/server.ts) — leaving it behind
+    // would hold the sweep off for its cooldown after a Reset.
+    'property_addresses_railway_attempt',
+  ],
   'vision-addresses': [
     'vision_addresses_synced_at',
     'vision_addresses_live',
