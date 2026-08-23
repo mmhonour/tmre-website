@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
@@ -230,6 +230,28 @@ function fmtDom(n: number | null | undefined): string {
   return `${Math.round(n)}d`;
 }
 
+/** Town minus All-towns. Positive means the town is higher than the market. */
+function fmtSignedDelta(
+  town: number | null | undefined,
+  all: number | null | undefined,
+  kind: "int" | "mos" | "dom",
+): string | null {
+  if (town == null || all == null || !Number.isFinite(town) || !Number.isFinite(all)) {
+    return null;
+  }
+  const raw = town - all;
+  if (kind === "mos") {
+    if (Math.abs(raw) < 0.05) return "even";
+    const abs = Math.abs(raw).toFixed(1);
+    return `${raw > 0 ? "+" : "−"}${abs} mo`;
+  }
+  const rounded = Math.round(raw);
+  if (rounded === 0) return "even";
+  const abs =
+    kind === "dom" ? `${Math.abs(rounded)}d` : String(Math.abs(rounded));
+  return `${rounded > 0 ? "+" : "−"}${abs}`;
+}
+
 function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || "—";
   if (city.toLowerCase() === "all") return "All towns";
@@ -345,6 +367,14 @@ function TownName({
         onClick={onAllTownsToggle}
         className={`${TOWN_NAME_CLASS} inline-flex items-baseline gap-1.5`}
       >
+        {!townsExpanded ? (
+          <span
+            className="font-mono text-[13px] no-underline text-[var(--mp-accent)] animate-intel-middle-tier-arrow-down"
+            aria-hidden
+          >
+            ↓
+          </span>
+        ) : null}
         <span
           key={shown}
           className={
@@ -722,6 +752,7 @@ function BarChart<Row extends { city: string }>({
           return (
             <li
               key={`${row.city}-${title}`}
+              data-mp-town={row.city}
               className="grid grid-cols-[4.75rem_1fr] items-center gap-1.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"
             >
               {onAllTownsToggle ? (
@@ -1053,7 +1084,11 @@ function CombinedMetricsChart({
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
           return (
-            <li key={`combined-${row.city}`} className="space-y-1">
+            <li
+              key={`combined-${row.city}`}
+              data-mp-town={row.city}
+              className="space-y-1"
+            >
               <TownName
                 city={row.city ?? label}
                 label={label}
@@ -1114,18 +1149,29 @@ function Kpi({
   kind,
   settle,
   salt,
+  compareCity = null,
+  compareValue = null,
 }: {
   label: string;
   final: number | null | undefined;
   kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
   salt: number;
+  /** Town currently under the floating strip. All-towns / null keeps market totals. */
+  compareCity?: string | null;
+  compareValue?: number | null;
 }) {
+  const comparing = Boolean(compareCity && !isAllTownsCity(compareCity));
+  const shownLabel =
+    comparing && kind === "mos" ? "Months Inventory" : label;
+  const value = comparing ? compareValue : final;
   const display =
-    kind === "mos"
-      ? settleMosDisplay(final, settle, salt)
-      : settleIntDisplay(final, settle, salt);
-  const empty = final == null && settle.phase === "done";
+    comparing
+      ? value
+      : kind === "mos"
+        ? settleMosDisplay(final, settle, salt)
+        : settleIntDisplay(final, settle, salt);
+  const empty = value == null && (comparing || settle.phase === "done");
   const text = empty
     ? "—"
     : kind === "mos"
@@ -1133,15 +1179,24 @@ function Kpi({
       : kind === "dom"
         ? fmtDom(display)
         : fmtActive(display);
+  const delta = comparing ? fmtSignedDelta(compareValue, final, kind) : null;
 
   return (
     <div className="rounded-lg border border-black/[0.08] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
       <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
-        {label}
+        {shownLabel}
       </p>
       <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight tabular-nums">
         {text}
       </p>
+      {comparing ? (
+        <p className="mt-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums leading-tight text-[var(--mp-muted-text)]">
+          {delta ?? "—"}
+          <span className="block tracking-[0.08em] uppercase">
+            vs All towns
+          </span>
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -1209,6 +1264,11 @@ export default function WeeklyBriefContent({
   );
   const [townsExpanded, setTownsExpanded] = useState(false);
   const [sortExplainOpen, setSortExplainOpen] = useState(false);
+  const kpiSentinelRef = useRef<HTMLDivElement>(null);
+  const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
+  const [kpisPinned, setKpisPinned] = useState(false);
+  const [navOffsetPx, setNavOffsetPx] = useState(96);
+  const [compareCity, setCompareCity] = useState<string | null>(null);
 
   useEffect(() => {
     if (!townsExpanded && chartLayout !== "stacked") {
@@ -1275,6 +1335,11 @@ export default function WeeklyBriefContent({
     return v != null && Number.isFinite(v) ? v : null;
   }, [domRows]);
 
+  const allTownsMos = lookbackDrivesMos
+    ? (inventoryRows.find((r) => isAllTownsCity(r.city))?.monthsSupply ?? null)
+    : (snapshot.market?.monthsSupply ?? null);
+  const allTownsActive = snapshot.market?.activeCount ?? null;
+
   const combinedRows = useMemo(() => {
     const built = buildCombinedTownRows(
       inventoryRows,
@@ -1296,6 +1361,63 @@ export default function WeeklyBriefContent({
       (r) => isAllTownsCity(r.city),
     );
   }, [inventoryRows, domRows, closedRows, priceRows, favorSort]);
+
+  const compareRow = useMemo(() => {
+    if (!compareCity || isAllTownsCity(compareCity)) return null;
+    const key = cityKey(compareCity);
+    return combinedRows.find((r) => cityKey(r.city) === key) ?? null;
+  }, [compareCity, combinedRows]);
+
+  useEffect(() => {
+    const sentinel = kpiSentinelRef.current;
+    if (!sentinel) {
+      setKpisPinned(false);
+      return;
+    }
+    const header = document.querySelector("header");
+    let raf = 0;
+    const update = () => {
+      const offset = header?.getBoundingClientRect().bottom ?? 96;
+      setNavOffsetPx(offset);
+      const top = sentinel.getBoundingClientRect().top;
+      const pinned = top < offset + 1;
+      setKpisPinned(pinned);
+      if (!pinned || !townsExpanded) {
+        setCompareCity(null);
+        return;
+      }
+      const barEl = pinnedKpiBarRef.current;
+      if (!barEl) {
+        raf = window.requestAnimationFrame(update);
+        return;
+      }
+      const scanY = barEl.getBoundingClientRect().bottom + 8;
+      const nodes = document.querySelectorAll<HTMLElement>("[data-mp-town]");
+      let next: string | null = null;
+      for (const el of nodes) {
+        const r = el.getBoundingClientRect();
+        if (r.top <= scanY) {
+          const city = el.dataset.mpTown ?? null;
+          if (city && !isAllTownsCity(city)) next = city;
+        }
+      }
+      setCompareCity(next);
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    const ro =
+      header && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(update)
+        : null;
+    if (header && ro) ro.observe(header);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      ro?.disconnect();
+    };
+  }, [townsExpanded, chartLayout, lookbackId]);
 
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
 
@@ -1329,6 +1451,43 @@ export default function WeeklyBriefContent({
     </p>
   );
 
+  const comparingTown =
+    compareRow && compareCity && !isAllTownsCity(compareCity)
+      ? cityLabel({ city: compareCity })
+      : null;
+
+  const kpiStrip = (
+    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      <Kpi
+        label="Market active"
+        final={allTownsActive}
+        kind="int"
+        settle={settle}
+        salt={1}
+        compareCity={comparingTown ? compareCity : null}
+        compareValue={compareRow?.activeCount ?? null}
+      />
+      <Kpi
+        label="All Town Months Inventory"
+        final={allTownsMos}
+        kind="mos"
+        settle={settle}
+        salt={2}
+        compareCity={comparingTown ? compareCity : null}
+        compareValue={compareRow?.monthsSupply ?? null}
+      />
+      <Kpi
+        label="Avg days on market"
+        final={allTownsAvgDom}
+        kind="dom"
+        settle={settle}
+        salt={3}
+        compareCity={comparingTown ? compareCity : null}
+        compareValue={compareRow?.avgDaysOnMarket ?? null}
+      />
+    </div>
+  );
+
   return (
     <article className="mx-auto max-w-2xl">
       <header className="rounded-t-2xl bg-[var(--mp-surface)] px-3 py-6 sm:px-8 sm:py-7">
@@ -1349,34 +1508,31 @@ export default function WeeklyBriefContent({
         </p>
       </header>
 
+      {kpisPinned ? (
+        <div
+          ref={pinnedKpiBarRef}
+          className="fixed inset-x-0 z-40 border-b border-black/[0.08] bg-[var(--mp-page-bg)]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.28)] backdrop-blur-md"
+          style={{ top: navOffsetPx }}
+          data-mp-kpi-pinned
+        >
+          <div className="mx-auto max-w-2xl px-3 py-2 sm:px-8">
+            {comparingTown ? (
+              <p className="mb-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-accent)]">
+                {comparingTown}
+                <span className="text-[var(--mp-muted-text)]"> vs All towns</span>
+              </p>
+            ) : null}
+            {kpiStrip}
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-8 shadow-sm shadow-black/5">
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <Kpi
-            label="Market active"
-            final={snapshot.market?.activeCount}
-            kind="int"
-            settle={settle}
-            salt={1}
-          />
-          <Kpi
-            label="All Town Months Inventory"
-            final={
-              lookbackDrivesMos
-                ? (inventoryRows.find((r) => isAllTownsCity(r.city))
-                    ?.monthsSupply ?? null)
-                : snapshot.market?.monthsSupply
-            }
-            kind="mos"
-            settle={settle}
-            salt={2}
-          />
-          <Kpi
-            label="Avg days on market"
-            final={allTownsAvgDom}
-            kind="dom"
-            settle={settle}
-            salt={3}
-          />
+        <div
+          ref={kpiSentinelRef}
+          className={kpisPinned ? "invisible" : undefined}
+        >
+          {kpiStrip}
         </div>
 
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
