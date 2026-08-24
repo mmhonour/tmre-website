@@ -13,6 +13,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 import ZipBoundaryPopover, {
@@ -2132,12 +2133,46 @@ export default function IntelligenceClient({
   const [mapActiveKey, setMapActiveKey] = useState<string | null>(null);
   /** Phone: map takes the whole viewport, keeping its own pagination + pills. */
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  const mapChromeRef = useRef<HTMLDivElement>(null);
+  const [mapFitInset, setMapFitInset] = useState({
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  });
   const mapBoundZips = useMemo(() => {
     const zipNorm = zip?.trim() ?? "";
     if (zipNorm && hasZctaBoundary(zipNorm)) return [zipNorm];
     if (active === "All") return [...boundaryZipsForAllTowns()];
     return [...boundaryZipsForTown(active)];
   }, [active, zip]);
+
+  // Phone chrome sits on the map; fit the town to the leftover rectangle so
+  // the outline touches the visible edge (regular + full screen).
+  useEffect(() => {
+    if (!showMap) {
+      setMapFitInset({ top: 0, right: 0, bottom: 0, left: 0 });
+      return;
+    }
+    const el = mapChromeRef.current;
+    const measure = () => {
+      const phone = window.matchMedia("(max-width: 767px)").matches;
+      const bottom =
+        phone && el ? Math.round(el.getBoundingClientRect().height) : 0;
+      setMapFitInset({ top: 0, right: 0, bottom, left: 0 });
+    };
+    measure();
+    const ro =
+      el && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(measure)
+        : null;
+    if (el && ro) ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [showMap, mapFullscreen, isMobileViewport]);
 
   useEffect(() => {
     if (readClientPref(DEAL_BOARD_VIEW_PREF_KEY) === "map") {
@@ -4114,6 +4149,23 @@ export default function IntelligenceClient({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  /** Reveal sliders still at default — the unused half of the descriptor line. */
+  function handleMoreFilters() {
+    const unused = availableIntelSliderKinds({
+      showPriceFilter,
+      cls,
+      showFurnished: tx !== "sale",
+    }).filter((kind) => !isSliderKindCustomized(kind));
+    if (unused.length === 0) {
+      handleEditFilters();
+      return;
+    }
+    bumpFilterPeekActivity();
+    if (filterChromeCollapsed) addFilterChromePeek("sliders");
+    setCollapsedSlidersOpen(true);
+    setExposedSliders(unused);
+  }
+
   const isPartialDescriptorPeek = isPartialSliderPeek(exposedSliders);
 
   const showFurnishedSlider = tx !== "sale";
@@ -4703,18 +4755,28 @@ export default function IntelligenceClient({
     />
   );
 
-  /** Edit all — immediately after the last descriptor (sqft / furnished). */
+  const availableSliderKinds = availableIntelSliderKinds({
+    showPriceFilter,
+    cls,
+    showFurnished: showFurnishedSlider,
+  });
+  const allSlidersCustomized =
+    availableSliderKinds.length > 0 &&
+    availableSliderKinds.every((kind) => isSliderKindCustomized(kind));
+
+  /** Edit all only when every available slider is off default; otherwise More filters. */
   const descriptorEditAllControl = (
     <>
       <IntelFilterDescriptorDot />
       <DescriptorEditAllControl
         active={descriptorSearchActive}
-        onClick={handleEditFilters}
+        label={allSlidersCustomized ? "Edit all" : "More filters"}
+        onClick={allSlidersCustomized ? handleEditFilters : handleMoreFilters}
       />
     </>
   );
 
-  /** Range labels — always available (including when pill chrome is minimized). */
+  /** Range labels — only sliders that are off their default. */
   const sliderDescriptorLabels = (
     <IntelSliderDescriptorLabels
       showPriceFilter={showPriceFilter}
@@ -4722,6 +4784,7 @@ export default function IntelligenceClient({
       showFurnished={showFurnishedSlider}
       furnishedFilter={furnishedFilter}
       furnishedSliderActive={furnishedSliderActive}
+      isSliderKindCustomized={isSliderKindCustomized}
       onDescriptorClick={handleDescriptorSliderClick}
       boardPriceSteps={boardPriceSteps}
       minPriceIndex={minPriceIndex}
@@ -6220,6 +6283,7 @@ export default function IntelligenceClient({
                         : "h-[min(44vh,22rem)] md:h-[26rem]"
                   }
                   fullscreen={mapFullscreen}
+                  fitInset={mapFitInset}
                   onFullscreenToggle={() => setMapFullscreen((on) => !on)}
                   onExitToGrid={() => {
                     setMapFullscreen(false);
@@ -6228,6 +6292,7 @@ export default function IntelligenceClient({
                   }}
                 />
                 <DealBoardMapMobileChrome
+                  rootRef={mapChromeRef}
                   page={boardPage}
                   totalPages={totalBoardPages}
                   pageStart={boardPageStart}
@@ -7096,21 +7161,28 @@ function DescriptorSearchControl({
 function DescriptorEditAllControl({
   active,
   onClick,
+  label,
 }: {
   active: boolean;
   onClick: () => void;
+  label: "Edit all" | "More filters";
 }) {
+  const editAll = label === "Edit all";
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label="Edit all filters — scroll to top and show filter controls"
-      title="Edit all filters"
+      aria-label={
+        editAll
+          ? "Edit all filters — scroll to top and show filter controls"
+          : "Show more filters still at their default"
+      }
+      title={label}
       className={`shrink-0 self-center font-mono font-bold tracking-[0.14em] uppercase text-gold leading-none origin-left transition-all duration-300 ease-out hover:text-gold-light underline-offset-2 hover:underline ${
         active ? "text-lg scale-110" : `${INTEL_DESCRIPTOR_IDLE_TEXT} scale-100`
       }`}
     >
-      Edit all
+      {label}
     </button>
   );
 }
@@ -7156,6 +7228,7 @@ type IntelSliderDescriptorLabelsProps = {
   showFurnished?: boolean;
   furnishedFilter?: FurnishedFilter;
   furnishedSliderActive?: boolean;
+  isSliderKindCustomized: (kind: IntelSliderKind) => boolean;
   onDescriptorClick: (kind: IntelSliderKind) => void;
   boardPriceSteps: readonly number[];
   minPriceIndex: number;
@@ -7183,6 +7256,7 @@ function IntelSliderDescriptorLabels({
   showFurnished = false,
   furnishedFilter = "all",
   furnishedSliderActive = false,
+  isSliderKindCustomized,
   onDescriptorClick,
   boardPriceSteps,
   minPriceIndex,
@@ -7203,68 +7277,99 @@ function IntelSliderDescriptorLabels({
   sqftSliderActive,
   withLeadingSeparator = false,
 }: IntelSliderDescriptorLabelsProps) {
-  if (!showPriceFilter && cls === "commercial" && !showFurnished) return null;
-
-  const leadingDot = withLeadingSeparator;
   const showResidentialSliders = cls !== "commercial";
+  const nodes: { kind: IntelSliderKind; node: ReactNode }[] = [];
+
+  if (showPriceFilter && isSliderKindCustomized("price")) {
+    nodes.push({
+      kind: "price",
+      node: (
+        <PriceRangeLabel
+          steps={boardPriceSteps}
+          minIndex={minPriceIndex}
+          maxIndex={maxPriceIndex}
+          active={priceSliderActive}
+          onClick={() => onDescriptorClick("price")}
+        />
+      ),
+    });
+  }
+  if (showResidentialSliders && isSliderKindCustomized("bed")) {
+    nodes.push({
+      kind: "bed",
+      node: (
+        <BedroomLabel
+          min={minBedrooms}
+          max={maxBedrooms}
+          active={bedSliderActive}
+          onClick={() => onDescriptorClick("bed")}
+        />
+      ),
+    });
+  }
+  if (showResidentialSliders && isSliderKindCustomized("bath")) {
+    nodes.push({
+      kind: "bath",
+      node: (
+        <BathroomLabel
+          min={minBathrooms}
+          max={maxBathrooms}
+          active={bathSliderActive}
+          onClick={() => onDescriptorClick("bath")}
+        />
+      ),
+    });
+  }
+  if (showResidentialSliders && isSliderKindCustomized("vintage")) {
+    nodes.push({
+      kind: "vintage",
+      node: (
+        <VintageLabel
+          min={minVintage}
+          max={maxVintage}
+          active={vintageSliderActive}
+          onClick={() => onDescriptorClick("vintage")}
+        />
+      ),
+    });
+  }
+  if (showResidentialSliders && isSliderKindCustomized("sqft")) {
+    nodes.push({
+      kind: "sqft",
+      node: (
+        <SqftRangeLabel
+          steps={boardSqftSteps}
+          minIndex={minSqftIndex}
+          maxIndex={maxSqftIndex}
+          active={sqftSliderActive}
+          onClick={() => onDescriptorClick("sqft")}
+        />
+      ),
+    });
+  }
+  if (showFurnished && isSliderKindCustomized("furnished")) {
+    nodes.push({
+      kind: "furnished",
+      node: (
+        <FurnishedLabel
+          value={furnishedFilter}
+          active={furnishedSliderActive}
+          onClick={() => onDescriptorClick("furnished")}
+        />
+      ),
+    });
+  }
+
+  if (nodes.length === 0) return null;
 
   return (
     <>
-      {leadingDot ? <IntelFilterDescriptorDot /> : null}
-      {showPriceFilter ? (
-        <PriceRangeLabel
-            steps={boardPriceSteps}
-            minIndex={minPriceIndex}
-            maxIndex={maxPriceIndex}
-            active={priceSliderActive}
-            onClick={() => onDescriptorClick("price")}
-          />
-      ) : null}
-      {showResidentialSliders ? (
-        <>
-          {showPriceFilter ? <IntelFilterDescriptorDot /> : null}
-          <BedroomLabel
-            min={minBedrooms}
-            max={maxBedrooms}
-            active={bedSliderActive}
-            onClick={() => onDescriptorClick("bed")}
-          />
-          <IntelFilterDescriptorDot />
-          <BathroomLabel
-            min={minBathrooms}
-            max={maxBathrooms}
-            active={bathSliderActive}
-            onClick={() => onDescriptorClick("bath")}
-          />
-          <IntelFilterDescriptorDot />
-          <VintageLabel
-            min={minVintage}
-            max={maxVintage}
-            active={vintageSliderActive}
-            onClick={() => onDescriptorClick("vintage")}
-          />
-          <IntelFilterDescriptorDot />
-          <SqftRangeLabel
-            steps={boardSqftSteps}
-            minIndex={minSqftIndex}
-            maxIndex={maxSqftIndex}
-            active={sqftSliderActive}
-            onClick={() => onDescriptorClick("sqft")}
-          />
-        </>
-      ) : null}
-      {showFurnished ? (
-        <>
-          {showPriceFilter || showResidentialSliders ? (
-            <IntelFilterDescriptorDot />
-          ) : null}
-          <FurnishedLabel
-            value={furnishedFilter}
-            active={furnishedSliderActive}
-            onClick={() => onDescriptorClick("furnished")}
-          />
-        </>
-      ) : null}
+      {nodes.map((item, i) => (
+        <Fragment key={item.kind}>
+          {withLeadingSeparator || i > 0 ? <IntelFilterDescriptorDot /> : null}
+          {item.node}
+        </Fragment>
+      ))}
     </>
   );
 }
@@ -8510,6 +8615,7 @@ function SnapshotCardBody({
 }
 
 function DealBoardMapMobileChrome({
+  rootRef,
   page,
   totalPages,
   pageStart,
@@ -8524,6 +8630,7 @@ function DealBoardMapMobileChrome({
   cardView,
   onExitToListings,
 }: {
+  rootRef?: Ref<HTMLDivElement>;
   page: number;
   totalPages: number;
   pageStart: number;
@@ -8540,7 +8647,10 @@ function DealBoardMapMobileChrome({
   onExitToListings: () => void;
 }) {
   return (
-    <div className="absolute inset-x-0 bottom-0 z-20 md:hidden">
+    <div
+      ref={rootRef}
+      className="absolute inset-x-0 bottom-0 z-20 md:hidden"
+    >
       <div
         className="border-t border-charcoal/10 bg-white/95 px-2 py-1.5 backdrop-blur-sm"
         style={

@@ -30,12 +30,30 @@ const MAX_ZOOM = 17;
 const FALLBACK_CENTER = { lat: 41.141, lon: -73.3579 };
 const FALLBACK_ZOOM = 11;
 /**
- * Fit margins. A town boundary is framed edge-to-edge (its outline is the whole
- * point of the default view); a pin-only fit keeps room for the price pills,
- * which hang above and to the left of their anchor.
+ * Fit margins. A town boundary is framed so its AABB touches the visible map
+ * (1px keeps the outline stroke on-canvas). A pin-only fit keeps room for the
+ * price pills, which hang above and to the left of their anchor.
  */
-const FIT_PAD_BOUNDARY = 4;
+const FIT_PAD_BOUNDARY = 1;
 const FIT_PAD_PINS = 36;
+
+type FitInset = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+const ZERO_FIT_INSET: FitInset = { top: 0, right: 0, bottom: 0, left: 0 };
+
+function normalizeFitInset(inset?: Partial<FitInset> | null): FitInset {
+  return {
+    top: Math.max(0, inset?.top ?? 0),
+    right: Math.max(0, inset?.right ?? 0),
+    bottom: Math.max(0, inset?.bottom ?? 0),
+    left: Math.max(0, inset?.left ?? 0),
+  };
+}
 
 export type DealBoardMapListing = {
   key: string;
@@ -209,18 +227,15 @@ function fitBounds(
   height: number,
   pinCount = 0,
   pad = FIT_PAD_PINS,
+  inset?: Partial<FitInset> | null,
 ): { center: LonLat; zoom: number } {
   if (!bounds || width <= 0 || height <= 0) {
     return { center: FALLBACK_CENTER, zoom: FALLBACK_ZOOM };
   }
 
-  const center = {
-    lat: (bounds.minLat + bounds.maxLat) / 2,
-    lon: (bounds.minLon + bounds.maxLon) / 2,
-  };
-
-  const availW = Math.max(32, width - pad * 2);
-  const availH = Math.max(32, height - pad * 2);
+  const box = normalizeFitInset(inset);
+  const availW = Math.max(32, width - pad * 2 - box.left - box.right);
+  const availH = Math.max(32, height - pad * 2 - box.top - box.bottom);
   // Spans at zoom 0; world pixels scale by 2^zoom, so the fitting zoom is a
   // straight log2 rather than a search over whole levels.
   const spanX = lonToWorldX(bounds.maxLon, 0) - lonToWorldX(bounds.minLon, 0);
@@ -228,7 +243,22 @@ function fitBounds(
   const zoomX = spanX > 0 ? Math.log2(availW / spanX) : MAX_ZOOM;
   const zoomY = spanY > 0 ? Math.log2(availH / spanY) : MAX_ZOOM;
   const zoom = clampZoom(Math.min(zoomX, zoomY));
-  return { center, zoom: pinCount === 1 ? Math.min(zoom, 15) : zoom };
+  const fittedZoom = pinCount === 1 ? Math.min(zoom, 15) : zoom;
+  const geoCenter = {
+    lat: (bounds.minLat + bounds.maxLat) / 2,
+    lon: (bounds.minLon + bounds.maxLon) / 2,
+  };
+  // Place the town in the visible rectangle (above mobile chrome, etc.).
+  const contentCx = box.left + pad + availW / 2;
+  const contentCy = box.top + pad + availH / 2;
+  const center = centerForAnchor(
+    geoCenter,
+    contentCx,
+    contentCy,
+    fittedZoom,
+    { width, height },
+  );
+  return { center, zoom: fittedZoom };
 }
 
 function ringToPath(
@@ -373,6 +403,7 @@ export default function DealBoardMap({
   fullscreen = false,
   onFullscreenToggle,
   onExitToGrid,
+  fitInset = ZERO_FIT_INSET,
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
@@ -390,6 +421,12 @@ export default function DealBoardMap({
   onFullscreenToggle?: () => void;
   /** Phone: leave the map and show the board in grid view. */
   onExitToGrid?: () => void;
+  /**
+   * Visible-map inset (px). Mobile chrome sits on the canvas; fitting the
+   * town to the leftover rectangle is what makes the outline touch the
+   * usable edge in regular and full-screen mode.
+   */
+  fitInset?: Partial<FitInset>;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -506,12 +543,13 @@ export default function DealBoardMap({
       size.height,
       placeable.length,
       searchBounds ? FIT_PAD_BOUNDARY : FIT_PAD_PINS,
+      searchBounds ? fitInset : ZERO_FIT_INSET,
     );
     userMovedRef.current = false;
     setViewAdjusted(false);
     setCenter(next.center);
     setZoom(next.zoom);
-  }, [fitTarget, placeable.length, searchBounds, size.height, size.width]);
+  }, [fitInset, fitTarget, placeable.length, searchBounds, size.height, size.width]);
 
   /** Back to the default overview for the selected town(s), pin cleared. */
   const resetView = useCallback(() => {
@@ -532,14 +570,14 @@ export default function DealBoardMap({
       placeable[0]?.key ?? ""
     }:${placeable[placeable.length - 1]?.key ?? ""}:${Math.round(
       size.width,
-    )}x${Math.round(size.height)}`;
+    )}x${Math.round(size.height)}:${Math.round(fitInset.top ?? 0)}/${Math.round(fitInset.bottom ?? 0)}`;
     if (fitSignatureRef.current === signature) return;
     const areaChanged = fitAreaRef.current !== areaSignature;
     fitSignatureRef.current = signature;
     fitAreaRef.current = areaSignature;
     if (userMovedRef.current && !areaChanged) return;
     fit();
-  }, [areaSignature, fit, placeable, size.height, size.width]);
+  }, [areaSignature, fit, fitInset, placeable, size.height, size.width]);
 
   const viewport = useMemo(() => {
     if (size.width <= 0 || size.height <= 0) return null;
