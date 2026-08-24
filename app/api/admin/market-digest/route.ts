@@ -10,6 +10,7 @@ import {
 } from '@/lib/market-digest-config'
 import { updateMarketDigestSchedule } from '@/lib/market-digest-schedule'
 import { sendMarketDigestEmail } from '@/lib/market-digest-notify'
+import { isServerlessRuntime } from '@/lib/runtime-host'
 import {
   isSyncScheduleWeekdayEt,
   normalizeStartTimeEt,
@@ -117,6 +118,38 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Building the snapshot (two-year closed-sales aggregate) outlives a
+    // synchronous Netlify function, so serverless hands off to the same
+    // background worker the Monday cron uses. stampWeek stays false — a test
+    // must not consume the weekly watermark.
+    if (isServerlessRuntime()) {
+      const { queueNetlifyMarketDigest } = await import(
+        '@/lib/netlify-sync-trigger'
+      )
+      const queued = await queueNetlifyMarketDigest({
+        source: 'admin',
+        force: true,
+        stampWeek: false,
+      })
+      const config = await payload()
+      if (!queued.ok) {
+        return NextResponse.json(
+          {
+            ...config,
+            error: `Could not queue the brief worker: ${queued.error ?? 'unknown'}`,
+          },
+          { status: 502 },
+        )
+      }
+      return NextResponse.json({
+        ...config,
+        ok: true,
+        queued: true,
+        to: config.email,
+        message: `Test brief queued on the background worker — ${config.email} should have it within a couple of minutes. Syncs → History logs the result under digest.`,
+      })
+    }
+
     const result = await sendMarketDigestEmail({ force: true })
     if (!result.ok) {
       return NextResponse.json(

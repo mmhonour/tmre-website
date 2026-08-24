@@ -20,6 +20,8 @@ import type {
 } from "@/lib/deal-of-the-day-carousel-types";
 
 export const DEAL_CAROUSEL_MS = 15_000;
+/** Hovering a carousel photo holds the current town for twice the rotation interval. */
+export const DEAL_CAROUSEL_HOVER_PAUSE_MS = DEAL_CAROUSEL_MS * 2;
 
 export type {
   DealCarouselListing,
@@ -675,6 +677,25 @@ export function useDealOfTheDayCarousel(options?: {
     setPaused((p) => !p);
   }, []);
 
+  const [hoverPauseUntil, setHoverPauseUntil] = useState<number | null>(null);
+
+  const pauseForPhotoHover = useCallback(() => {
+    setHoverPauseUntil(Date.now() + DEAL_CAROUSEL_HOVER_PAUSE_MS);
+  }, []);
+
+  useEffect(() => {
+    if (hoverPauseUntil == null) return;
+    const remaining = hoverPauseUntil - Date.now();
+    if (remaining <= 0) {
+      setHoverPauseUntil(null);
+      return;
+    }
+    const id = window.setTimeout(() => setHoverPauseUntil(null), remaining);
+    return () => window.clearTimeout(id);
+  }, [hoverPauseUntil]);
+
+  const hoverPaused = hoverPauseUntil != null;
+
   /** Instant town pick from the header list — no book-flip. */
   const selectTown = useCallback(
     (town: string) => {
@@ -690,15 +711,26 @@ export function useDealOfTheDayCarousel(options?: {
   );
 
   useEffect(() => {
-    if (!rotate || paused || tabHidden || carouselTowns.length <= 1) return;
+    if (!rotate || paused || hoverPaused || tabHidden || carouselTowns.length <= 1) {
+      return;
+    }
     const id = window.setInterval(goNext, DEAL_CAROUSEL_MS);
     return () => window.clearInterval(id);
-  }, [rotate, paused, tabHidden, carouselTowns.length, goNext, safeIndex]);
+  }, [
+    rotate,
+    paused,
+    hoverPaused,
+    tabHidden,
+    carouselTowns.length,
+    goNext,
+    safeIndex,
+  ]);
 
   return {
     loading: displayLoading,
     paused,
     togglePause,
+    pauseForPhotoHover,
     goNext,
     goPrev,
     selectTown,

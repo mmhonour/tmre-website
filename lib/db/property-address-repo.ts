@@ -134,7 +134,7 @@ export async function findPropertyAddressByNorm(
 export async function upsertPropertyAddress(
   draft: Omit<PropertyAddressRow, 'verifiedAt' | 'syncedAt'>,
   syncedAt: string,
-): Promise<void> {
+): Promise<{ inserted: boolean }> {
   await ensureTownPropertyAddressesTable()
   const byNorm = await findPropertyAddressByNorm(draft.town, draft.addressNorm)
   const propertyKey =
@@ -205,6 +205,7 @@ export async function upsertPropertyAddress(
       syncedAt,
     ],
   )
+  return { inserted: !existing && !byNorm }
 }
 
 let propertyAddressSearchIndexesEnsured = false

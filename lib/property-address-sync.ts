@@ -18,8 +18,23 @@ export type PropertyAddressSyncResult = {
   mlsRows: number
   assessorRows: number
   totalRows: number
+  /** Rows that did not exist in the directory before this run. */
+  newRows: number
   durationMs: number
   syncedAt: string
+}
+
+export function formatPropertyAddressNewCount(newRows: number): string {
+  return newRows === 1 ? '1 new' : `${newRows.toLocaleString()} new`
+}
+
+export function formatPropertyAddressSyncSummary(
+  result: Pick<
+    PropertyAddressSyncResult,
+    'mlsRows' | 'assessorRows' | 'totalRows' | 'newRows'
+  >,
+): string {
+  return `${result.totalRows.toLocaleString()} rows (${result.mlsRows.toLocaleString()} MLS, ${result.assessorRows.toLocaleString()} assessor, ${formatPropertyAddressNewCount(result.newRows)})`
 }
 
 function pickLatestListingPerProperty(
@@ -76,15 +91,18 @@ export async function syncPropertyAddresses(): Promise<PropertyAddressSyncResult
   await ensureTownPropertyAddressesTable()
 
   const mlsRows = await loadMlsPropertyRows()
+  let newRows = 0
   for (const row of mlsRows) {
     const draft = listingToPropertyAddressDraft(row.listing, row.town, row.listingId)
-    await upsertPropertyAddress(draft, syncedAt)
+    const { inserted } = await upsertPropertyAddress(draft, syncedAt)
+    if (inserted) newRows += 1
   }
 
   const assessorRows = await loadAssessorPropertyRows()
   for (const draft of assessorRows) {
     if (!draft) continue
-    await upsertPropertyAddress(draft, syncedAt)
+    const { inserted } = await upsertPropertyAddress(draft, syncedAt)
+    if (inserted) newRows += 1
   }
 
   const totalRows = await countPropertyAddresses()
@@ -93,13 +111,14 @@ export async function syncPropertyAddresses(): Promise<PropertyAddressSyncResult
     mlsRows: mlsRows.length,
     assessorRows: assessorRows.length,
     totalRows,
+    newRows,
     durationMs: Date.now() - started,
     syncedAt,
   }
 
   touchPropertyAddressSyncMeta(result)
   console.info(
-    `[property-address-sync] verified ${result.totalRows} addresses (${result.mlsRows} MLS, ${result.assessorRows} assessor) in ${result.durationMs}ms`,
+    `[property-address-sync] verified ${formatPropertyAddressSyncSummary(result)} in ${result.durationMs}ms`,
   )
 
   return result

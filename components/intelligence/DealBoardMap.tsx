@@ -12,6 +12,7 @@ import {
 } from "react";
 import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
+import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 
 /**
  * Multi-pin map for the Intelligence deal board.
@@ -371,6 +372,7 @@ export default function DealBoardMap({
   heightClass = "h-[420px]",
   fullscreen = false,
   onFullscreenToggle,
+  onExitToGrid,
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
@@ -386,6 +388,8 @@ export default function DealBoardMap({
   /** Phone full-screen mode: square corners and an exit control. */
   fullscreen?: boolean;
   onFullscreenToggle?: () => void;
+  /** Phone: leave the map and show the board in grid view. */
+  onExitToGrid?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -1193,41 +1197,54 @@ export default function DealBoardMap({
           viewAdjusted={viewAdjusted}
         />
 
-        {onFullscreenToggle ? (
-          <button
-            type="button"
-            onClick={onFullscreenToggle}
-            aria-pressed={fullscreen}
-            className="absolute right-2 top-2 z-30 inline-flex items-center gap-1 rounded-md border border-white/15 bg-navy/85 px-1.5 py-1 font-mono text-[9px] leading-none tracking-[0.1em] uppercase text-white/85 shadow-lg backdrop-blur-sm transition-colors hover:text-gold md:hidden"
-          >
-            {fullscreen ? (
-              <>
-                <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden>
-                  <path
-                    d="M2 2l8 8M10 2l-8 8"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                Exit
-              </>
-            ) : (
-              <>
-                <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden>
-                  <path
-                    d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Full screen
-              </>
-            )}
-          </button>
+        {onFullscreenToggle || onExitToGrid ? (
+          <div className="absolute right-2 top-2 z-30 flex flex-col items-stretch gap-1 md:hidden">
+            {onFullscreenToggle ? (
+              <button
+                type="button"
+                onClick={onFullscreenToggle}
+                aria-pressed={fullscreen}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-white/15 bg-navy/85 px-1.5 py-1 font-mono text-[9px] leading-none tracking-[0.1em] uppercase text-white/85 shadow-lg backdrop-blur-sm transition-colors hover:text-gold"
+              >
+                {fullscreen ? (
+                  <>
+                    <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden>
+                      <path
+                        d="M2 2l8 8M10 2l-8 8"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    Exit
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden>
+                      <path
+                        d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Full screen
+                  </>
+                )}
+              </button>
+            ) : null}
+            {onExitToGrid ? (
+              <DealBoardCardViewButton
+                view="grid"
+                onClick={onExitToGrid}
+                tone="onDark"
+                className="h-7 w-7 self-end"
+                label="Show grid view"
+              />
+            ) : null}
+          </div>
         ) : null}
 
         <div className="pointer-events-none absolute bottom-1.5 right-2 z-20 hidden rounded bg-white/85 px-1.5 py-0.5 font-mono text-[8px] tracking-wide text-charcoal/55 md:block">

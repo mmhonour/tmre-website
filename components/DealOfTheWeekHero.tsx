@@ -807,6 +807,7 @@ export default function DealOfTheWeekHero({
                       reveal={false}
                       priority
                       framed
+                      onPhotoHover={carousel.pauseForPhotoHover}
                       detailHref={detailHref}
                       photoDeck={
                         photosHref && l.mlsId && l.mlsId !== "—"
@@ -831,6 +832,7 @@ export default function DealOfTheWeekHero({
                           onTogglePause: carousel.togglePause,
                           onPrev: carousel.goPrev,
                           onNext: carousel.goNext,
+                          onPhotoHover: carousel.pauseForPhotoHover,
                           canStep: carousel.canNavigate,
                           townLabel: carousel.currentTown,
                           carouselIndex: carousel.carouselIndex,
@@ -943,6 +945,7 @@ type DealDayCarouselControls = {
   onTogglePause: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onPhotoHover?: () => void;
   canStep: boolean;
   townLabel: string | null;
   carouselIndex: number;
@@ -1167,16 +1170,7 @@ function DealCard({
   townLabel?: string | null;
   /** null/undefined = instant update (no book-flip). */
   slideDir?: "next" | "prev" | null;
-  carouselControls?: {
-    paused: boolean;
-    onTogglePause: () => void;
-    onPrev: () => void;
-    onNext: () => void;
-    canStep: boolean;
-    townLabel: string | null;
-    carouselIndex: number;
-    carouselTotal: number;
-  } | null;
+  carouselControls?: DealDayCarouselControls | null;
   transactionFilter?: "sale" | "rental";
   onTransactionFilterChange?: (value: "sale" | "rental") => void;
   propertyClass?: DealSalePropertyClass;
@@ -1317,6 +1311,7 @@ function DealCard({
                   loading={loading}
                   reveal={false}
                   priority
+                  onPhotoHover={carouselControls?.onPhotoHover}
                   photoDeck={
                     photosHref && mlsId
                       ? { mlsId, photoCount, photosHref, address, priority: true }
@@ -1585,6 +1580,7 @@ function PhotoBanner({
   photoDeck = null,
   detailHref = null,
   framed = false,
+  onPhotoHover,
 }: {
   src: string | null;
   alt: string;
@@ -1594,6 +1590,8 @@ function PhotoBanner({
   detailHref?: string | null;
   /** Day hero: rounded border + shadow on the main photo only. */
   framed?: boolean;
+  /** Holds town rotation for 2× the carousel interval. */
+  onPhotoHover?: () => void;
   photoDeck?: {
     mlsId: string;
     photoCount: number | null;
@@ -1613,6 +1611,7 @@ function PhotoBanner({
       } aspect-[16/9] bg-gradient-to-br from-navy-light to-navy-dark overflow-hidden ${
         photoDeck ? "" : frameClass
       }`}
+      onPointerEnter={onPhotoHover}
     >
       {src ? (
         <ListingThumbImage
@@ -1642,6 +1641,7 @@ function PhotoBanner({
           href={detailHref}
           className="absolute inset-0 z-[15] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
           aria-label={`View listing: ${alt}`}
+          onPointerEnter={onPhotoHover}
         />
       ) : null}
     </div>
@@ -1652,6 +1652,7 @@ function PhotoBanner({
     return (
       <div
         className={`flex w-full items-stretch overflow-hidden ${frameClass}`}
+        onPointerEnter={onPhotoHover}
       >
         {heroPhoto}
         <DealPhotoThumbnailDeck

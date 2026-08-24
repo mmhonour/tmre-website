@@ -1174,7 +1174,11 @@ async function runAdminSyncActionImpl(
           detail: queued.error ?? 'Could not reach background worker',
         }
       }
-      const { syncPropertyAddresses } = await import('@/lib/property-address-sync')
+      const {
+        formatPropertyAddressNewCount,
+        formatPropertyAddressSyncSummary,
+        syncPropertyAddresses,
+      } = await import('@/lib/property-address-sync')
       const result = await syncPropertyAddresses()
       return {
         ok: result.ok,
@@ -1183,8 +1187,8 @@ async function runAdminSyncActionImpl(
         finishedAt: result.syncedAt,
         durationMs: result.durationMs || Date.now() - t0,
         recordsFetched: result.totalRows,
-        message: `${result.totalRows.toLocaleString()} addresses synced`,
-        detail: `${result.mlsRows.toLocaleString()} MLS rows · ${result.assessorRows.toLocaleString()} assessor rows verified`,
+        message: `${result.totalRows.toLocaleString()} addresses synced · ${formatPropertyAddressNewCount(result.newRows)}`,
+        detail: formatPropertyAddressSyncSummary(result),
       }
     }
     case 'vision-addresses': {
@@ -1518,10 +1522,11 @@ async function runAdminSyncAllExtraCaches(): Promise<AdminSyncActionResult[]> {
   })
 
   await runStep('Property address directory', async () => {
-    const { syncPropertyAddresses } = await import('@/lib/property-address-sync')
+    const { formatPropertyAddressSyncSummary, syncPropertyAddresses } =
+      await import('@/lib/property-address-sync')
     const addresses = await syncPropertyAddresses()
     return {
-      message: `${addresses.totalRows.toLocaleString()} rows (${addresses.mlsRows.toLocaleString()} MLS, ${addresses.assessorRows.toLocaleString()} assessor)`,
+      message: formatPropertyAddressSyncSummary(addresses),
     }
   })
 

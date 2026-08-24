@@ -10,7 +10,7 @@ async function main() {
   console.info('[sync-property-addresses] starting weekly verify…')
   const result = await syncPropertyAddresses()
   console.info(
-    `[sync-property-addresses] done in ${result.durationMs}ms — ${result.totalRows} total (${result.mlsRows} MLS, ${result.assessorRows} assessor)`,
+    `[sync-property-addresses] done in ${result.durationMs}ms — ${result.totalRows} total (${result.mlsRows} MLS, ${result.assessorRows} assessor, ${result.newRows} new)`,
   )
   if (!result.ok) process.exitCode = 1
 }

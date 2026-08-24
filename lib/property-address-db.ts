@@ -24,6 +24,7 @@ export function touchPropertyAddressSyncMeta(stats: {
   mlsRows: number
   assessorRows: number
   totalRows: number
+  newRows: number
   durationMs: number
 }): void {
   const now = new Date().toISOString()

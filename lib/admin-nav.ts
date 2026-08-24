@@ -1092,6 +1092,10 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         href: "/api/admin/saved-search-alerts",
       },
       {
+        label: "POST /api/admin/saved-search-alerts",
+        detail: "Process due listing alerts now { force?: boolean }",
+      },
+      {
         label: "PATCH /api/admin/saved-search-alerts",
         detail: "Activate or disable a listing alert { id, active }",
       },

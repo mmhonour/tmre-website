@@ -3,11 +3,45 @@ import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   deleteSavedSearchAlert,
   listSavedSearchAlertsForAdmin,
+  processDueSavedSearchAlerts,
   setSavedSearchAlertActive,
 } from '@/lib/saved-search-alerts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+/** Process due alerts now (catch-up). Does not ignore cadence unless force. */
+export async function POST(req: NextRequest) {
+  if (!isAdminAuthorizedRequest(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  let force = false
+  try {
+    const body = (await req.json()) as { force?: unknown }
+    force = body.force === true
+  } catch {
+    force = false
+  }
+
+  try {
+    const result = await processDueSavedSearchAlerts({ force })
+    const alerts = await listSavedSearchAlertsForAdmin(200)
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      count: alerts.length,
+      duplicateCount: alerts.filter((a) => a.isDuplicate).length,
+      alerts,
+    })
+  } catch (err) {
+    console.error('[admin/saved-search-alerts] POST failed', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Process failed' },
+      { status: 502 },
+    )
+  }
+}
 
 export async function GET(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {

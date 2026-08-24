@@ -531,7 +531,9 @@ export async function runIncrementalSyncListingsWork(
     }
 
     // On Netlify the RETS path already ran postHooks (board/stats), so only
-    // digests remain. On Railway neither ran here — both belong to Netlify.
+    // digests remain. On Railway, board/stats stay on the Netlify hop — but
+    // listing alerts are cheap (SQL + Resend) and used to die when that hop
+    // 429'd. Run them here so last-notified does not freeze for weeks.
     let savedSearchAlerts: {
       checked: number
       sent: number
@@ -541,6 +543,14 @@ export async function runIncrementalSyncListingsWork(
     if (warmInProcess) {
       ;({ savedSearchAlerts } = await runSpotlightAndAlerts())
     } else {
+      try {
+        const { processDueSavedSearchAlerts } = await import(
+          '@/lib/saved-search-alerts'
+        )
+        savedSearchAlerts = await processDueSavedSearchAlerts()
+      } catch (err) {
+        console.warn('[sync-listings-work] saved-search alerts (railway) failed', err)
+      }
       warmHandoff = await handOffWarmToNetlify(
         result.finishedAt || new Date().toISOString(),
       )

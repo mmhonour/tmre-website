@@ -341,7 +341,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Saved search / listing alert',
     category: 'product',
     definition:
-      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries. Manage in Admin → Communications → Listing alerts (group by email, activate/disable/delete; duplicate = same email + same criteria fingerprint).',
+      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. Railway Incremental runs processDueSavedSearchAlerts after the Neon write; Netlify Lane 3 also runs it. Daily/weekly catch up after the scheduled ET time (not a 30-minute window). SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries. Manage in Admin → Communications → Listing alerts (Process now, group by email, activate/disable/delete; duplicate = same email + same criteria fingerprint).',
   },
 
   // —— Sync / admin ——

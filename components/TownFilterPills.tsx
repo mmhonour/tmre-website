@@ -37,8 +37,9 @@ type TownFilterPillsProps<T extends string> = {
   /** Match Intelligence zip filter row (mono, bordered, white All / gold selection). */
   appearance?: "default" | "zip";
   /**
-   * Intelligence hero: selection as left pill; remaining options behind "... more towns".
-   * All or a single town selected → active pill + "... more towns"; expanded → town links.
+   * Intelligence hero: collapsed = current selection as a pill + "... more towns".
+   * Expanded = only the towns not currently in view (links). The selected town
+   * stays in the descriptor line — do not repeat it as a pill.
    */
   layout?: "default" | "promoted";
   /** Promoted layout: town links hidden until "... more towns" is clicked. */
@@ -182,51 +183,52 @@ export default function TownFilterPills<T extends string>({
       </button>
     ) : null;
 
+    const selectedPill = allActive ? (
+      <button
+        type="button"
+        onClick={() => onSelect("All")}
+        onMouseEnter={(e) => handleAllMouseEnter(e.currentTarget)}
+        aria-pressed
+        className={filterPillZipButtonClass(true, true)}
+      >
+        {allLabel}
+        {counts?.All != null ? (
+          <TownCountBadge
+            count={counts.All}
+            active
+            compact={compact || zipAppearance}
+            theme={theme}
+          />
+        ) : null}
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={() => onSelect(selectedTown!)}
+        onMouseEnter={(e) => {
+          setHoveredTown(selectedTown!);
+          onTownMouseEnter?.(selectedTown!, e.currentTarget);
+        }}
+        aria-pressed
+        className={filterPillZipButtonClass(true, false)}
+      >
+        {selectedTown}
+        {counts?.[selectedTown!] != null ? (
+          <TownCountBadge
+            count={counts[selectedTown!]!}
+            active
+            compact={compact || zipAppearance}
+            theme={theme}
+          />
+        ) : null}
+      </button>
+    );
+
     const promotedInner = (
       <>
-        {allActive ? (
+        {showPromotedLinks ? null : (
           <>
-            <button
-              type="button"
-              onClick={() => onSelect("All")}
-              onMouseEnter={(e) => handleAllMouseEnter(e.currentTarget)}
-              aria-pressed
-              className={filterPillZipButtonClass(true, true)}
-            >
-              {allLabel}
-              {counts?.All != null ? (
-                <TownCountBadge
-                  count={counts.All}
-                  active
-                  compact={compact || zipAppearance}
-                  theme={theme}
-                />
-              ) : null}
-            </button>
-            {moreTownsButton}
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => onSelect(selectedTown!)}
-              onMouseEnter={(e) => {
-                setHoveredTown(selectedTown!);
-                onTownMouseEnter?.(selectedTown!, e.currentTarget);
-              }}
-              aria-pressed
-              className={filterPillZipButtonClass(true, false)}
-            >
-              {selectedTown}
-              {counts?.[selectedTown!] != null ? (
-                <TownCountBadge
-                  count={counts[selectedTown!]!}
-                  active
-                  compact={compact || zipAppearance}
-                  theme={theme}
-                />
-              ) : null}
-            </button>
+            {selectedPill}
             {moreTownsButton}
           </>
         )}

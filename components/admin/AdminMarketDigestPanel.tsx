@@ -14,9 +14,22 @@ import {
 import { adminSectionHref, adminSyncsHref } from "@/lib/admin-nav";
 import {
   SYNC_SCHEDULE_WEEKDAYS,
+  frequencyLabel,
+  resolveJobScheduler,
+  schedulerProviderLabel,
   weekdayEtLabel,
+  type SyncScheduleConfig,
   type SyncScheduleWeekdayEt,
 } from "@/lib/sync-schedule-config-shared";
+
+type PanelMessage = { text: string; tone: "ok" | "error" };
+
+/** Read-only mirror of the shared market-digest row on Syncs → Configure. */
+type DigestJobFacts = {
+  frequency: string;
+  scheduler: string;
+  nextRunAt: string | null;
+};
 
 function isValidEmail(value: string): boolean {
   const trimmed = value.trim();
@@ -99,7 +112,15 @@ export default function AdminMarketDigestPanel({
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [pauseSaving, setPauseSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<PanelMessage | null>(null);
+  const [jobFacts, setJobFacts] = useState<DigestJobFacts | null>(null);
+
+  const notify = useCallback((text: string) => {
+    setMessage({ text, tone: "ok" });
+  }, []);
+  const fail = useCallback((text: string) => {
+    setMessage({ text, tone: "error" });
+  }, []);
 
   const applyConfig = useCallback((body: MarketDigestConfig) => {
     setConfig(body);
@@ -139,19 +160,47 @@ export default function AdminMarketDigestPanel({
     }
   }, [applyConfig]);
 
+  /** Frequency / scheduler / Next are owned by Syncs → Configure — mirror them. */
+  const refreshJobFacts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/sync-schedule", {
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        scheduleConfig?: SyncScheduleConfig;
+        nextRuns?: Record<string, string | null>;
+      };
+      const job = body.scheduleConfig?.jobs["market-digest"];
+      if (!job) return;
+      setJobFacts({
+        frequency: frequencyLabel(job.frequency),
+        scheduler: schedulerProviderLabel(resolveJobScheduler(job)),
+        nextRunAt: body.nextRuns?.["market-digest"] ?? null,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Always re-read on mount, even with a server `initial`: the App Router can
+  // serve a cached RSC payload after a client navigation, which showed the
+  // pre-edit day/time/subject while Postgres already had the new values.
   useEffect(() => {
-    if (initial) return;
     void refreshFromServer();
-  }, [initial, refreshFromServer]);
+  }, [refreshFromServer]);
 
   useEffect(() => {
     void refreshPauseState();
-  }, [refreshPauseState]);
+    void refreshJobFacts();
+  }, [refreshPauseState, refreshJobFacts]);
 
   useEffect(() => {
     const onScheduleChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<{ source?: string }>).detail;
       void refreshPauseState();
+      // Next run shifts after our own save too, so this is not source-gated.
+      void refreshJobFacts();
       if (detail?.source === "market-digest") return;
       void refreshFromServer();
     };
@@ -159,7 +208,7 @@ export default function AdminMarketDigestPanel({
     return () => {
       window.removeEventListener(TMRE_SYNC_SCHEDULE_CHANGED, onScheduleChanged);
     };
-  }, [refreshFromServer, refreshPauseState]);
+  }, [refreshFromServer, refreshPauseState, refreshJobFacts]);
 
   const dirty =
     config != null &&
@@ -176,7 +225,7 @@ export default function AdminMarketDigestPanel({
   const save = async () => {
     const trimmed = email.trim();
     if (!isValidEmail(trimmed)) {
-      setMessage("Enter a valid email address");
+      fail("Enter a valid email address");
       return;
     }
     // While the Syncs job is paused, schedule stays off — email/subject can still save.
@@ -188,7 +237,7 @@ export default function AdminMarketDigestPanel({
       // Keep Syncs Pause aligned with Enabled (paused ⇔ !enabled).
       const pauseOk = await setMarketDigestJobPaused(!nextEnabled);
       if (!pauseOk) {
-        setMessage("Could not update the Syncs market-digest pause flag");
+        fail("Could not update the Syncs market-digest pause flag");
         return;
       }
       setJobPaused(!nextEnabled);
@@ -211,25 +260,25 @@ export default function AdminMarketDigestPanel({
         error?: string;
       };
       if (!res.ok) {
-        setMessage(body.error ?? "Save failed");
+        fail(body.error ?? "Save failed");
         return;
       }
       applyConfig(body);
       dispatchSyncScheduleChanged("market-digest");
       const day = weekdayEtLabel(body.weekdayEt);
       if (wasJobPaused && !body.enabled) {
-        setMessage(
+        notify(
           `Saved content — schedule still locked until Syncs market-digest is unpaused`,
         );
       } else {
-        setMessage(
+        notify(
           body.enabled
             ? `Saved — ${day} brief goes to ${body.email} at ${body.startTimeEt} ET (Syncs job running)`
             : `Saved — ${day} brief off (Syncs market-digest job paused)`,
         );
       }
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Save failed");
+      fail(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -243,7 +292,7 @@ export default function AdminMarketDigestPanel({
       const ok = await setMarketDigestJobPaused(false);
       setPauseSaving(false);
       if (!ok) {
-        setMessage(
+        fail(
           "Could not unpause the Syncs market-digest job — open Syncs → Dashboard and clear Pause there.",
         );
         return;
@@ -251,7 +300,7 @@ export default function AdminMarketDigestPanel({
       setJobPaused(false);
       setEnabled(true);
       dispatchSyncScheduleChanged("market-digest");
-      setMessage(
+      notify(
         "Syncs market-digest job unpaused — save to keep the brief enabled.",
       );
       return;
@@ -264,15 +313,27 @@ export default function AdminMarketDigestPanel({
     setMessage(null);
     try {
       const res = await fetch("/api/admin/market-digest", { method: "POST" });
-      const body = (await res.json()) as {
+      const raw = await res.text();
+      let body: {
         ok?: boolean;
         error?: string;
         to?: string;
         subject?: string;
         reason?: string;
+        queued?: boolean;
+        message?: string;
       } & Partial<MarketDigestConfig>;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        // Netlify returns an HTML error page when the function is killed.
+        fail(
+          `Send failed — server returned HTTP ${res.status} instead of JSON. Try Syncs → Dashboard → market-digest → Run.`,
+        );
+        return;
+      }
       if (!res.ok || !body.ok) {
-        setMessage(body.error ?? body.reason ?? "Send failed");
+        fail(body.error ?? body.reason ?? `Send failed (HTTP ${res.status})`);
         return;
       }
       if (body.email != null) {
@@ -296,11 +357,12 @@ export default function AdminMarketDigestPanel({
             : (body as MarketDigestConfig),
         );
       }
-      setMessage(
-        `Test sent to ${body.to ?? email}${body.subject ? ` — ${body.subject}` : ""}`,
+      notify(
+        body.message ??
+          `Test sent to ${body.to ?? email}${body.subject ? ` — ${body.subject}` : ""}`,
       );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Send failed");
+      fail(err instanceof Error ? err.message : "Send failed");
     } finally {
       setSending(false);
     }
@@ -351,8 +413,11 @@ export default function AdminMarketDigestPanel({
           ). <strong className="font-medium text-navy">Enabled</strong> is the
           same switch as Pause on Syncs for the{" "}
           <span className="font-mono text-[11px]">market-digest</span> job — a
-          paused job will not send. Send test now does not advance the weekly
-          watermark. Requires{" "}
+          paused job will not send. Send test now hands off to the same
+          background worker as the cron (the brief is too slow for a
+          request-time send) and does not advance the weekly watermark — watch
+          Syncs → History for the{" "}
+          <span className="font-mono text-[11px]">digest</span> row. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
         </p>
       </div>
@@ -378,6 +443,42 @@ export default function AdminMarketDigestPanel({
               arm day/time or turn Enabled on from here until that job is
               unpaused (or check Enabled below to unpause it, then Save).
             </p>
+          </div>
+        ) : null}
+
+        {jobFacts ? (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-charcoal/[0.08] bg-cream/30 px-3 py-2">
+            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40">
+              Shared sync job
+            </span>
+            <span className="font-mono text-[10px] text-charcoal/60">
+              <span className="text-charcoal/35 uppercase tracking-wide mr-1">
+                Frequency
+              </span>
+              {jobFacts.frequency}
+            </span>
+            <span className="font-mono text-[10px] text-charcoal/60">
+              <span className="text-charcoal/35 uppercase tracking-wide mr-1">
+                Scheduler
+              </span>
+              {jobFacts.scheduler}
+            </span>
+            <span className="font-mono text-[10px] text-charcoal/60">
+              <span className="text-charcoal/35 uppercase tracking-wide mr-1">
+                Next
+              </span>
+              {jobPaused
+                ? "paused"
+                : jobFacts.nextRunAt
+                  ? new Date(jobFacts.nextRunAt).toLocaleString()
+                  : "—"}
+            </span>
+            <a
+              href={adminSyncsHref("configure")}
+              className="font-mono text-[10px] text-navy underline-offset-2 hover:underline"
+            >
+              Edit on Syncs → Configure
+            </a>
           </div>
         ) : null}
 
@@ -517,7 +618,17 @@ export default function AdminMarketDigestPanel({
           </p>
         ) : null}
         {message ? (
-          <p className="font-mono text-[10px] text-sage">{message}</p>
+          <p
+            role="status"
+            aria-live="polite"
+            className={
+              message.tone === "error"
+                ? "rounded-lg border border-coral/40 bg-coral/[0.08] px-3 py-2 text-xs leading-snug text-navy"
+                : "rounded-lg border border-sage/40 bg-sage/[0.08] px-3 py-2 text-xs leading-snug text-navy"
+            }
+          >
+            {message.text}
+          </p>
         ) : null}
       </div>
     </div>

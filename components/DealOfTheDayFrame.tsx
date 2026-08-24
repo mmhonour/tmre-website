@@ -163,11 +163,13 @@ function DealPhoto({
   listing,
   isHero,
   layout,
+  onPhotoHover,
 }: {
   deal: DealCarouselPayload;
   listing: DealCarouselPayload["listing"];
   isHero: boolean;
   layout: "left" | "top-right";
+  onPhotoHover?: () => void;
 }) {
   const sizeClass = isHero ? "w-20 h-[3.75rem]" : "w-20 h-16";
   const positionClass =
@@ -208,6 +210,7 @@ function DealPhoto({
         href={listingDetailHrefForListing(listing)}
         aria-label={`View all photos for ${listing.address.street || listing.address.full}`}
         className={`${sizeClass} ${positionClass} rounded-lg overflow-hidden transition-all hover:border-gold/40 hover:ring-2 hover:ring-gold/20 ${frameClass}`}
+        onPointerEnter={onPhotoHover}
       >
         {photoInner}
       </Link>
@@ -215,7 +218,10 @@ function DealPhoto({
   }
 
   return (
-    <div className={`${sizeClass} ${positionClass} rounded-lg overflow-hidden ${frameClass}`}>
+    <div
+      className={`${sizeClass} ${positionClass} rounded-lg overflow-hidden ${frameClass}`}
+      onPointerEnter={onPhotoHover}
+    >
       {deal.photoUrl ? (
         <ListingThumbImage
           src={deal.photoUrl}
@@ -398,12 +404,14 @@ function DealContent({
   slideKey,
   isHero,
   onOpenBreakdown,
+  onPhotoHover,
 }: {
   deal: DealCarouselPayload;
   slideDir: "next" | "prev" | null;
   slideKey: string;
   isHero: boolean;
   onOpenBreakdown: () => void;
+  onPhotoHover?: () => void;
 }) {
   const l = deal.listing;
 
@@ -428,7 +436,13 @@ function DealContent({
       style={{ transformStyle: "preserve-3d" }}
     >
       {photoLayout === "left" ? (
-        <DealPhoto deal={deal} listing={l} isHero={isHero} layout="left" />
+        <DealPhoto
+          deal={deal}
+          listing={l}
+          isHero={isHero}
+          layout="left"
+          onPhotoHover={onPhotoHover}
+        />
       ) : null}
 
       <div className={`min-w-0 ${isHero ? "pr-[5.625rem]" : "flex-1"}`}>
@@ -480,7 +494,13 @@ function DealContent({
       </div>
 
       {photoLayout === "top-right" ? (
-        <DealPhoto deal={deal} listing={l} isHero={isHero} layout="top-right" />
+        <DealPhoto
+          deal={deal}
+          listing={l}
+          isHero={isHero}
+          layout="top-right"
+          onPhotoHover={onPhotoHover}
+        />
       ) : null}
     </div>
   );
@@ -537,6 +557,7 @@ export default function DealOfTheDayFrame({
     loading,
     paused,
     togglePause,
+    pauseForPhotoHover,
     goNext,
     goPrev,
     slideDir,
@@ -748,6 +769,7 @@ export default function DealOfTheDayFrame({
                   slideKey={`${currentTown}-${carouselIndex}`}
                   isHero={isHero}
                   onOpenBreakdown={openBreakdown}
+                  onPhotoHover={pauseForPhotoHover}
                 />
               )}
             </div>

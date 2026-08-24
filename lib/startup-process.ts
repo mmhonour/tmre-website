@@ -246,12 +246,12 @@ export function describeStartupProcess(): {
         },
         {
           id: "incremental-saved-search-alerts",
-          title: "Saved-search listing alerts (Lane 3)",
-          timing: "Netlify digests after handoff",
+          title: "Saved-search listing alerts",
+          timing: "Railway after Incremental · also Netlify Lane 3",
           detail:
-            "processDueSavedSearchAlerts(): email visitors when new Active listings match their cookie-derived criteria. Owned by Netlify Lane 3 — not the Railway puller.",
+            "processDueSavedSearchAlerts(): email visitors when new Active listings match their criteria. Railway runs this after the Neon write so a failed warm-handoff cannot freeze last-notified. Netlify sideWorkOnly still runs it too (per-listing delivery rows + ET day/week stamps prevent doubles). Daily/weekly catch up after the scheduled ET time — not a 30-minute window. Admin → Communications → Listing alerts → Process now.",
           status: latestSyncEnabled ? "scheduled" : "skipped",
-          statusLabel: latestSyncEnabled ? "Netlify warm" : "—",
+          statusLabel: latestSyncEnabled ? "Railway + Netlify" : "—",
         },
         {
           id: "incremental-town-feeds",
@@ -365,7 +365,7 @@ export function describeStartupProcess(): {
           title: "Verify + enrich on the Configure slot",
           timing: "Configure → Property addresses → Frequency / Start",
           detail:
-            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches. Who runs it is declared in Configure → Property addresses → Scheduler: Railway mls-sync (default; 10-min sweep that only fires at the configured wall-clock slot, plus POST /property-addresses for Sync now) or Netlify cron (thin */30 → sync-property-addresses-worker). Exactly one host acts — the Netlify thin cron and this process's own weekly timer both stand down when the radio names Railway. Never overlaps another Railway lane (shared heap). Skips when Pause is checked on Property address directory.",
+            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches. Who runs it is declared in Configure → Property addresses → Scheduler: Railway mls-sync (default; 10-min sweep that only fires at the configured wall-clock slot, plus POST /property-addresses for Sync now) or Netlify cron (thin */30 → sync-property-addresses-worker). Exactly one host acts — the Netlify thin cron and this process's own weekly timer both stand down when the radio names Railway. Never overlaps another Railway lane (shared heap). Sync now that arrives while Incremental/DOTD/etc. is running is kept (in memory and property_addresses_railway_pending) and started when that lane finishes — it is not dropped. Skips when Pause is checked on Property address directory.",
           status: propertyAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: propertyAddressSyncEnabled ? "Armed" : "Disabled",
         },

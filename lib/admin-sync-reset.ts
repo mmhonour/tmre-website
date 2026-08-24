@@ -57,6 +57,7 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
     // Railway's restart guard (services/mls-sync/server.ts) — leaving it behind
     // would hold the sweep off for its cooldown after a Reset.
     'property_addresses_railway_attempt',
+    'property_addresses_railway_pending',
   ],
   'vision-addresses': [
     'vision_addresses_synced_at',

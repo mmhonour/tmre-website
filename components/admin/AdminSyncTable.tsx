@@ -2031,8 +2031,9 @@ export default function AdminSyncTable({
     }
   }, []);
 
+  // Unconditional on mount — a cached RSC payload can carry a stale
+  // initialPausedJobs after Communications flipped market-digest Enabled.
   useEffect(() => {
-    if (initialPausedJobs) return;
     let cancelled = false;
     fetch("/api/admin/scheduled-sync", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -2044,7 +2045,7 @@ export default function AdminSyncTable({
     return () => {
       cancelled = true;
     };
-  }, [initialPausedJobs]);
+  }, []);
 
   const togglePausedJob = useCallback(
     async (jobId: ScheduledSyncJobId, next: boolean) => {
@@ -2148,6 +2149,15 @@ export default function AdminSyncTable({
     const onScheduleChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<{ source?: string }>).detail;
       if (detail?.source === "sync-dashboard") return;
+      // Communications → Enabled writes the market-digest Pause flag, so the
+      // Pause column has to re-read too — schedule config alone leaves the
+      // checkbox showing the pre-edit value until a full reload.
+      void fetch("/api/admin/scheduled-sync", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body: { jobs?: ScheduledSyncPausedJobs } | null) => {
+          if (body?.jobs) setPausedJobs(body.jobs);
+        })
+        .catch(() => {});
       void fetch("/api/admin/sync-schedule", { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then(
@@ -3965,11 +3975,9 @@ export default function AdminSyncTable({
                       ) : null}
                     </td>
                   ) : null}
-                  <td className={cellPad}>
+                  <td className={`${cellPad} min-w-0`}>
                     <p
-                      className={`font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/60 ${
-                        rowExpands ? "leading-snug" : "leading-none truncate"
-                      }`}
+                      className="font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/60 leading-snug whitespace-normal break-words"
                       title={row.label}
                     >
                       {row.label}

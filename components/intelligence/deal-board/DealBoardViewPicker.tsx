@@ -11,7 +11,7 @@ import {
 
 const iconClass = "h-3.5 w-3.5 shrink-0";
 
-function DealBoardViewIcon({ mode }: { mode: DealBoardView }) {
+export function DealBoardViewIcon({ mode }: { mode: DealBoardView }) {
   switch (mode) {
     case "large":
       return (
@@ -77,24 +77,60 @@ function DealBoardViewIcon({ mode }: { mode: DealBoardView }) {
   }
 }
 
+/** Leave map for the current card layout — sits left of the map pin on phones. */
+export function DealBoardCardViewButton({
+  view,
+  onClick,
+  className = "",
+  tone = "onLight",
+  label,
+}: {
+  view: DealBoardCardView;
+  onClick: () => void;
+  className?: string;
+  tone?: "onLight" | "onDark";
+  label?: string;
+}) {
+  const title = label ?? `Show ${DEAL_BOARD_VIEW_LABELS[view].toLowerCase()} view`;
+  const toneClass =
+    tone === "onDark"
+      ? "border-white/15 bg-navy/85 text-white/85 shadow-lg backdrop-blur-sm hover:text-gold"
+      : "border-charcoal/[0.08] bg-white text-slate hover:bg-charcoal/[0.04] hover:text-navy";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors ${toneClass} ${className}`}
+      aria-label={title}
+      title={title}
+    >
+      <DealBoardViewIcon mode={view} />
+    </button>
+  );
+}
+
 /** Standalone map layer toggle — used on its own in the mobile Sorted-by row. */
 export function DealBoardMapToggleButton({
   mapOn,
   onToggle,
   className = "",
+  tone = "onLight",
 }: {
   mapOn: boolean;
   onToggle: () => void;
   className?: string;
+  tone?: "onLight" | "onDark";
 }) {
+  const idle =
+    tone === "onDark"
+      ? "border-white/15 bg-navy/85 text-white/85 shadow-lg backdrop-blur-sm hover:text-gold"
+      : "border-charcoal/[0.08] bg-white text-slate hover:bg-charcoal/[0.04] hover:text-navy";
   return (
     <button
       type="button"
       onClick={onToggle}
-      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-charcoal/[0.08] transition-colors ${
-        mapOn
-          ? "bg-navy text-white ring-1 ring-gold/40"
-          : "bg-white text-slate hover:bg-charcoal/[0.04] hover:text-navy"
+      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors ${
+        mapOn ? "bg-navy text-white ring-1 ring-gold/40" : idle
       } ${className}`}
       aria-pressed={mapOn}
       aria-label={DEAL_BOARD_VIEW_LABELS.map}
@@ -160,7 +196,16 @@ export default function DealBoardViewPicker({
         })}
       </div>
       {showMapToggle && onMapToggle ? (
-        <DealBoardMapToggleButton mapOn={mapOn} onToggle={onMapToggle} />
+        <div className="inline-flex items-center gap-1">
+          {mapOn ? (
+            <DealBoardCardViewButton
+              view={cardView}
+              onClick={onMapToggle}
+              label="Show listings"
+            />
+          ) : null}
+          <DealBoardMapToggleButton mapOn={mapOn} onToggle={onMapToggle} />
+        </div>
       ) : null}
     </div>
   );

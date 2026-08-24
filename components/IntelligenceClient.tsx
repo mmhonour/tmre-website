@@ -37,7 +37,10 @@ import type { VintageBucketId } from "@/lib/vintage-buckets";
 import DealOfTheDayFrame from "./DealOfTheDayFrame";
 import DealBoardList from "@/components/intelligence/deal-board/DealBoardList";
 import DealBoardStatusFilterPills from "@/components/intelligence/deal-board/DealBoardStatusFilterPills";
-import { DealBoardMapToggleButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
+import {
+  DealBoardCardViewButton,
+  DealBoardMapToggleButton,
+} from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import {
   dealBoardSortLabel,
   type DealBoardSortKey,
@@ -4585,7 +4588,12 @@ export default function IntelligenceClient({
     if (isPeeking(key)) dropFilterChromePeek(key);
     else addFilterChromePeek(key);
   };
-  const peekTownPills = () => peekPills("towns");
+  const peekTownPills = () => {
+    peekPills("towns");
+    // Descriptor already names the current town — open the other towns, not
+    // a second copy of the selection as a pill.
+    setTownLinksExpanded(true);
+  };
   const peekClsPills = () => peekPills("cls");
   const peekTxPills = () => {
     const closingTx = !filterChromeCollapsed || isPeeking("tx");
@@ -4797,6 +4805,32 @@ export default function IntelligenceClient({
     ro?.observe(el);
     return () => ro?.disconnect();
   }, [descriptorsPinned, filterChromePeeks, exposedSliders, filtersExpanded]);
+
+  /**
+   * "Map on top" on desktop: the map pins under the nav and the cards scroll
+   * beneath it. Phones already run the map full-bleed with the cards hidden,
+   * and "Map beside" is its own sticky column, so neither pins here.
+   */
+  const stickyTopMapActive =
+    showMap && mapLayout === "top" && !mapFullscreen && !isMobileViewport;
+  const stickyTopMapRef = useRef<HTMLDivElement>(null);
+  const [stickyTopMapHeightPx, setStickyTopMapHeightPx] = useState(0);
+
+  useEffect(() => {
+    if (!stickyTopMapActive) {
+      setStickyTopMapHeightPx(0);
+      return;
+    }
+    const el = stickyTopMapRef.current;
+    if (!el) return;
+    const measure = () =>
+      setStickyTopMapHeightPx(el.getBoundingClientRect().height);
+    measure();
+    const ro =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [stickyTopMapActive]);
 
   /** Peeked pill / slider chrome portals into the pinned nav panel (phone). */
   const pinFilterChromeToNav = descriptorsPinned;
@@ -5014,9 +5048,14 @@ export default function IntelligenceClient({
     return `${base} border-transparent text-charcoal/40 hover:text-navy`;
   };
 
-  const boardToolbarStickyTopPx = descriptorsPinned
+  const boardStickyTopBasePx = descriptorsPinned
     ? navOffsetPx + pinnedBarHeightPx
     : undefined;
+  /** Matches DealBoardList's own `?? 80` fallback so map and toolbar agree. */
+  const stickyTopMapOffsetPx = boardStickyTopBasePx ?? 80;
+  const boardToolbarStickyTopPx = stickyTopMapActive
+    ? stickyTopMapOffsetPx + stickyTopMapHeightPx
+    : boardStickyTopBasePx;
 
   const pinnedDescriptorBar =
     descriptorsPinned && typeof document !== "undefined" ? (
@@ -5906,11 +5945,25 @@ export default function IntelligenceClient({
                   {/* Map on: the toggle moves here, left of Sorted by, because the
                       map fills the phone viewport and hides the board toolbar. */}
                   {showMap ? (
-                    <DealBoardMapToggleButton
-                      mapOn={showMap}
-                      onToggle={() => setMapOnPref("off")}
-                      className="md:hidden"
-                    />
+                    <>
+                      <DealBoardCardViewButton
+                        view={dealBoardCardView(boardView)}
+                        onClick={() => {
+                          setMapFullscreen(false);
+                          setMapOnPref("off");
+                        }}
+                        className="lg:hidden"
+                        label="Show listings"
+                      />
+                      <DealBoardMapToggleButton
+                        mapOn={showMap}
+                        onToggle={() => {
+                          setMapFullscreen(false);
+                          setMapOnPref("off");
+                        }}
+                        className="lg:hidden"
+                      />
+                    </>
                   ) : null}
                   <span className="shrink-0 font-mono text-[10px] tracking-[0.14em] uppercase text-navy/55">
                     Sorted by:
@@ -6121,12 +6174,20 @@ export default function IntelligenceClient({
           >
             {showMap ? (
               <div
+                ref={stickyTopMapRef}
                 className={
                   mapFullscreen
                     ? "fixed inset-0 z-[70] bg-navy"
                     : mapLayout === "side"
                       ? "relative lg:sticky lg:top-24 lg:w-[min(48vw,40rem)] lg:shrink-0"
-                      : "relative w-full"
+                      : stickyTopMapActive
+                        ? "sticky z-30 w-full"
+                        : "relative w-full"
+                }
+                style={
+                  stickyTopMapActive
+                    ? { top: stickyTopMapOffsetPx }
+                    : undefined
                 }
               >
                 <DealBoardMap
@@ -6160,6 +6221,11 @@ export default function IntelligenceClient({
                   }
                   fullscreen={mapFullscreen}
                   onFullscreenToggle={() => setMapFullscreen((on) => !on)}
+                  onExitToGrid={() => {
+                    setMapFullscreen(false);
+                    setMapOnPref("off");
+                    setBoardView("grid");
+                  }}
                 />
                 <DealBoardMapMobileChrome
                   page={boardPage}
@@ -6178,6 +6244,11 @@ export default function IntelligenceClient({
                   onResetSliders={resetSliders}
                   slidersCustomized={slidersCustomized}
                   fullscreen={mapFullscreen}
+                  cardView={dealBoardCardView(boardView)}
+                  onExitToListings={() => {
+                    setMapFullscreen(false);
+                    setMapOnPref("off");
+                  }}
                 />
                 <div className="absolute right-2 top-2 z-20 hidden items-center gap-1 rounded-md border border-white/15 bg-navy/80 px-1 py-0.5 shadow-lg backdrop-blur-sm md:flex">
                   {DEAL_BOARD_MAP_LAYOUT_VALUES.map((option) => (
@@ -8450,6 +8521,8 @@ function DealBoardMapMobileChrome({
   onResetSliders,
   slidersCustomized,
   fullscreen = false,
+  cardView,
+  onExitToListings,
 }: {
   page: number;
   totalPages: number;
@@ -8463,6 +8536,8 @@ function DealBoardMapMobileChrome({
   slidersCustomized: boolean;
   /** Full screen sits over the home bar, so the row needs the inset. */
   fullscreen?: boolean;
+  cardView: DealBoardCardView;
+  onExitToListings: () => void;
 }) {
   return (
     <div className="absolute inset-x-0 bottom-0 z-20 md:hidden">
@@ -8485,14 +8560,20 @@ function DealBoardMapMobileChrome({
               {totalCount.toLocaleString()}
             </span>
           </p>
-          {/* Card views (Large / Grid / Line) are pointless here — the map owns
-              the phone viewport. The Map toggle lives up in the Sorted-by row. */}
-          <FilterResetButton
-            onClick={onResetSliders}
-            disabled={!slidersCustomized}
-            label="Reset sliders"
-            tone="onLight"
-          />
+          <div className="flex shrink-0 items-center gap-1">
+            <DealBoardCardViewButton
+              view={cardView}
+              onClick={onExitToListings}
+              label="Show listings"
+            />
+            <DealBoardMapToggleButton mapOn onToggle={onExitToListings} />
+            <FilterResetButton
+              onClick={onResetSliders}
+              disabled={!slidersCustomized}
+              label="Reset sliders"
+              tone="onLight"
+            />
+          </div>
         </div>
         {totalPages > 1 ? (
           <div

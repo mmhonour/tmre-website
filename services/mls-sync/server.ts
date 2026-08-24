@@ -75,6 +75,8 @@ const ADDRESSES_SWEEP_DELAY_MS = 5 * 60 * 1000
  * mid-flight, and an in-process flag does not survive the container going down.
  */
 const ADDRESSES_ATTEMPT_KEY = 'property_addresses_railway_attempt'
+/** Sync now that arrived while another lane was running — survive a restart. */
+const ADDRESSES_PENDING_KEY = 'property_addresses_railway_pending'
 
 /**
  * How long to wait before retrying a rebuild whose start never finished. An OOM
@@ -128,10 +130,18 @@ let lastAddressesRows: number | null = null
 let lastAddressesError: string | null = null
 let lastAddressesTrigger: string | null = null
 
+type PendingRebuild = { startedAt: string; trigger: string }
+
+let pendingAddresses: PendingRebuild | null = null
+let pendingDotd: PendingRebuild | null = null
+let pendingScores: PendingRebuild | null = null
+let pendingStats: { startedAt: string; plan: StatsRebuildPlan } | null = null
+
 /**
  * Every lane in this process shares one heap, and holding two towns' inventory at
  * once is what OOM-killed the container before. One job at a time, whichever
- * asked first; the losing sweep just retries on its next tick.
+ * asked first; the losing Sync now is kept and started when the current lane
+ * finishes — 409 used to drop it while Admin still painted Queued.
  */
 function anyJobInFlight(): boolean {
   return (
@@ -141,6 +151,59 @@ function anyJobInFlight(): boolean {
     dotdInFlight != null ||
     addressesInFlight != null
   )
+}
+
+function persistAddressesPending(startedAt: string): void {
+  void import('../../lib/db/sync-meta-store')
+    .then(({ hydrateSyncMetaStore, setSyncMetaDurable }) =>
+      hydrateSyncMetaStore().then(() =>
+        setSyncMetaDurable(ADDRESSES_PENDING_KEY, startedAt),
+      ),
+    )
+    .catch((err) => {
+      console.warn('[mls-sync] could not persist property-addresses pending', err)
+    })
+}
+
+function clearAddressesPending(): void {
+  pendingAddresses = null
+  void import('../../lib/db/sync-meta-store')
+    .then(({ deleteSyncMetaDurable }) =>
+      deleteSyncMetaDurable(ADDRESSES_PENDING_KEY),
+    )
+    .catch(() => {})
+}
+
+/** Start the next Sync now that was parked while another lane ran. */
+function drainPendingJobs(): void {
+  if (anyJobInFlight()) return
+  if (pendingAddresses) {
+    const next = pendingAddresses
+    pendingAddresses = null
+    console.info('[mls-sync] starting queued property addresses')
+    startAddressesSync(next.startedAt, next.trigger)
+    return
+  }
+  if (pendingDotd) {
+    const next = pendingDotd
+    pendingDotd = null
+    console.info('[mls-sync] starting queued Deal of the Day')
+    startDotdRebuild(next.startedAt, next.trigger)
+    return
+  }
+  if (pendingScores) {
+    const next = pendingScores
+    pendingScores = null
+    console.info('[mls-sync] starting queued Goldilocks')
+    startScoresRebuild(next.startedAt, next.trigger)
+    return
+  }
+  if (pendingStats) {
+    const next = pendingStats
+    pendingStats = null
+    console.info('[mls-sync] starting queued stats rebuild')
+    startStatsRebuild(next.startedAt, next.plan)
+  }
 }
 
 function readBearer(req: IncomingMessage): string | null {
@@ -264,6 +327,7 @@ function startRun(options: {
     })
     .finally(() => {
       runInFlight = null
+      drainPendingJobs()
     })
   return { accepted: true, alreadyRunning: false }
 }
@@ -333,12 +397,20 @@ function startStatsRebuild(
   accepted: boolean
   alreadyRunning: boolean
   otherJobInFlight: boolean
+  queuedBehind?: boolean
 } {
   if (statsInFlight) {
     return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
   }
   if (anyJobInFlight()) {
-    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
+    pendingStats = { startedAt, plan }
+    console.info('[mls-sync] stats rebuild queued behind the current job')
+    return {
+      accepted: true,
+      alreadyRunning: false,
+      otherJobInFlight: false,
+      queuedBehind: true,
+    }
   }
 
   lastStatsStartedAt = startedAt
@@ -356,6 +428,7 @@ function startStatsRebuild(
     })
     .finally(() => {
       statsInFlight = null
+      drainPendingJobs()
     })
   return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
 }
@@ -507,12 +580,20 @@ function startScoresRebuild(
   accepted: boolean
   alreadyRunning: boolean
   otherJobInFlight: boolean
+  queuedBehind?: boolean
 } {
   if (scoresInFlight) {
     return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
   }
   if (anyJobInFlight()) {
-    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
+    pendingScores = { startedAt, trigger }
+    console.info('[mls-sync] Goldilocks queued behind the current job')
+    return {
+      accepted: true,
+      alreadyRunning: false,
+      otherJobInFlight: false,
+      queuedBehind: true,
+    }
   }
 
   lastScoresStartedAt = startedAt
@@ -530,6 +611,7 @@ function startScoresRebuild(
     })
     .finally(() => {
       scoresInFlight = null
+      drainPendingJobs()
     })
   return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
 }
@@ -627,12 +709,24 @@ async function executeDotdRebuild(
 function startDotdRebuild(
   startedAt: string,
   trigger: string,
-): { accepted: boolean; alreadyRunning: boolean; otherJobInFlight: boolean } {
+): {
+  accepted: boolean
+  alreadyRunning: boolean
+  otherJobInFlight: boolean
+  queuedBehind?: boolean
+} {
   if (dotdInFlight) {
     return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
   }
   if (anyJobInFlight()) {
-    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
+    pendingDotd = { startedAt, trigger }
+    console.info('[mls-sync] Deal of the Day queued behind the current job')
+    return {
+      accepted: true,
+      alreadyRunning: false,
+      otherJobInFlight: false,
+      queuedBehind: true,
+    }
   }
 
   lastDotdStartedAt = startedAt
@@ -650,6 +744,7 @@ function startDotdRebuild(
     })
     .finally(() => {
       dotdInFlight = null
+      drainPendingJobs()
     })
   return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
 }
@@ -706,12 +801,13 @@ async function executeAddressesSync(
   const { hydrateSyncMetaStore, setSyncMetaDurable } = await import(
     '../../lib/db/sync-meta-store'
   )
-  const { syncPropertyAddresses } = await import(
-    '../../lib/property-address-sync'
-  )
+  const { formatPropertyAddressSyncSummary, syncPropertyAddresses } =
+    await import('../../lib/property-address-sync')
   const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
 
   await hydrateSyncMetaStore()
+  clearAddressesPending()
+  console.info(`[mls-sync] property addresses starting (${trigger})`)
   // Recorded before the work, so a container death mid-run leaves evidence the
   // restart guard can see.
   await setSyncMetaDurable(ADDRESSES_ATTEMPT_KEY, startedAt)
@@ -725,7 +821,7 @@ async function executeAddressesSync(
   lastAddressesError = ok ? null : 'verified 0 addresses'
 
   console.info(
-    `[mls-sync] property addresses verified=${result.totalRows} (${result.mlsRows} MLS, ${result.assessorRows} assessor) in ${result.durationMs}ms`,
+    `[mls-sync] property addresses verified ${formatPropertyAddressSyncSummary(result)} in ${result.durationMs}ms`,
   )
 
   await recordDashboardSyncAudit({
@@ -735,7 +831,7 @@ async function executeAddressesSync(
     listingsCount: result.totalRows,
     ok,
     detail: ok
-      ? `Property addresses verified on Railway (${trigger}) — ${result.totalRows.toLocaleString()} rows (${result.mlsRows.toLocaleString()} MLS, ${result.assessorRows.toLocaleString()} assessor)`
+      ? `Property addresses verified on Railway (${trigger}) — ${formatPropertyAddressSyncSummary(result)}`
       : 'Property addresses verified — 0 rows (check listings inventory / Vision)',
   })
 }
@@ -743,12 +839,25 @@ async function executeAddressesSync(
 function startAddressesSync(
   startedAt: string,
   trigger: string,
-): { accepted: boolean; alreadyRunning: boolean; otherJobInFlight: boolean } {
+): {
+  accepted: boolean
+  alreadyRunning: boolean
+  otherJobInFlight: boolean
+  queuedBehind?: boolean
+} {
   if (addressesInFlight) {
     return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
   }
   if (anyJobInFlight()) {
-    return { accepted: false, alreadyRunning: false, otherJobInFlight: true }
+    pendingAddresses = { startedAt, trigger }
+    persistAddressesPending(startedAt)
+    console.info('[mls-sync] property addresses queued behind the current job')
+    return {
+      accepted: true,
+      alreadyRunning: false,
+      otherJobInFlight: false,
+      queuedBehind: true,
+    }
   }
 
   lastAddressesStartedAt = startedAt
@@ -766,6 +875,7 @@ function startAddressesSync(
     })
     .finally(() => {
       addressesInFlight = null
+      drainPendingJobs()
     })
   return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
 }
@@ -790,10 +900,17 @@ async function addressesSyncIsDue(): Promise<boolean> {
 
   const { getSyncMeta } = await import('../../lib/db/sync-meta')
   const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
-  const [attemptAt, finishedAt] = await Promise.all([
+  const [attemptAt, finishedAt, pendingAt] = await Promise.all([
     getSyncMeta(ADDRESSES_ATTEMPT_KEY),
     getSyncMeta('property_addresses_synced_at'),
+    getSyncMeta(ADDRESSES_PENDING_KEY),
   ])
+  if (pendingAt || pendingAddresses) {
+    if (!pendingAddresses && pendingAt) {
+      pendingAddresses = { startedAt: pendingAt, trigger: 'manual' }
+    }
+    return true
+  }
   const attemptMs = attemptAt ? Date.parse(attemptAt) : Number.NaN
   const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
   if (
@@ -915,8 +1032,15 @@ function scheduleAddressesSweep(): void {
   const tick = async () => {
     if (anyJobInFlight()) return
     if (!(await addressesSyncIsDue())) return
-    console.info('[mls-sync] property addresses due — configured slot reached')
-    startAddressesSync(new Date().toISOString(), 'railway-sweep')
+    const pending = pendingAddresses
+    const startedAt = pending?.startedAt ?? new Date().toISOString()
+    const trigger = pending?.trigger ?? 'railway-sweep'
+    console.info(
+      pending
+        ? '[mls-sync] property addresses due — Sync now was waiting'
+        : '[mls-sync] property addresses due — configured slot reached',
+    )
+    startAddressesSync(startedAt, trigger)
   }
   const run = () => {
     void tick().catch((err) => {
@@ -997,6 +1121,7 @@ async function handleRequest(
       },
       propertyAddresses: {
         inFlight: addressesInFlight != null,
+        pending: pendingAddresses != null,
         lastAddressesStartedAt,
         lastAddressesFinishedAt,
         lastAddressesOk,
@@ -1081,17 +1206,6 @@ async function handleRequest(
     }
 
     const started = startStatsRebuild(startedAt, plan)
-    if (started.otherJobInFlight) {
-      // 409 reads as "accepted, already busy" to the caller — next tick retries.
-      sendJson(res, 409, {
-        ok: true,
-        accepted: false,
-        otherJobInFlight: true,
-        message: 'Another job is in flight — stats rebuild deferred to next tick',
-      })
-      return
-    }
-
     sendJson(res, 202, {
       ok: true,
       accepted: started.accepted,
@@ -1099,7 +1213,9 @@ async function handleRequest(
       startedAt,
       message: started.alreadyRunning
         ? 'Stats rebuild already running on mls-sync'
-        : 'Stats rebuild accepted on mls-sync (Railway)',
+        : started.queuedBehind
+          ? 'Stats rebuild queued behind the current Railway job'
+          : 'Stats rebuild accepted on mls-sync (Railway)',
     })
     return
   }
@@ -1116,16 +1232,6 @@ async function handleRequest(
         : new Date().toISOString()
 
     const started = startScoresRebuild(startedAt, 'manual')
-    if (started.otherJobInFlight) {
-      sendJson(res, 409, {
-        ok: true,
-        accepted: false,
-        otherJobInFlight: true,
-        message: 'Another job is in flight — Goldilocks deferred to next tick',
-      })
-      return
-    }
-
     sendJson(res, 202, {
       ok: true,
       accepted: started.accepted,
@@ -1133,7 +1239,9 @@ async function handleRequest(
       startedAt,
       message: started.alreadyRunning
         ? 'Goldilocks already running on mls-sync'
-        : 'Goldilocks accepted on mls-sync (Railway)',
+        : started.queuedBehind
+          ? 'Goldilocks queued behind the current Railway job'
+          : 'Goldilocks accepted on mls-sync (Railway)',
     })
     return
   }
@@ -1150,17 +1258,6 @@ async function handleRequest(
         : new Date().toISOString()
 
     const started = startDotdRebuild(startedAt, 'manual')
-    if (started.otherJobInFlight) {
-      sendJson(res, 409, {
-        ok: true,
-        accepted: false,
-        otherJobInFlight: true,
-        message:
-          'Another job is in flight — Deal of the Day deferred to next tick',
-      })
-      return
-    }
-
     sendJson(res, 202, {
       ok: true,
       accepted: started.accepted,
@@ -1168,7 +1265,9 @@ async function handleRequest(
       startedAt,
       message: started.alreadyRunning
         ? 'Deal of the Day already running on mls-sync'
-        : 'Deal of the Day accepted on mls-sync (Railway)',
+        : started.queuedBehind
+          ? 'Deal of the Day queued behind the current Railway job'
+          : 'Deal of the Day accepted on mls-sync (Railway)',
     })
     return
   }
@@ -1185,25 +1284,17 @@ async function handleRequest(
         : new Date().toISOString()
 
     const started = startAddressesSync(startedAt, 'manual')
-    if (started.otherJobInFlight) {
-      sendJson(res, 409, {
-        ok: true,
-        accepted: false,
-        otherJobInFlight: true,
-        message:
-          'Another job is in flight — property addresses deferred to next tick',
-      })
-      return
-    }
-
     sendJson(res, 202, {
       ok: true,
       accepted: started.accepted,
       alreadyRunning: started.alreadyRunning,
       startedAt,
+      queuedBehind: started.queuedBehind === true,
       message: started.alreadyRunning
         ? 'Property addresses already running on mls-sync'
-        : 'Property addresses accepted on mls-sync (Railway)',
+        : started.queuedBehind
+          ? 'Property addresses queued behind the current Railway job — it starts when that job finishes'
+          : 'Property addresses accepted on mls-sync (Railway)',
     })
     return
   }

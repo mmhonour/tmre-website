@@ -88,6 +88,7 @@ export default function AdminListingAlertsPanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const groups = useMemo(() => groupAlerts(alerts), [alerts]);
@@ -123,6 +124,52 @@ export default function AdminListingAlertsPanel({
     if (initial) return;
     void load();
   }, [initial, load]);
+
+  async function processDue() {
+    setProcessing(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/saved-search-alerts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const raw = await res.text();
+      let body: {
+        ok?: boolean;
+        error?: string;
+        checked?: number;
+        sent?: number;
+        listings?: number;
+        alerts?: AdminListingAlertRow[];
+      };
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        setError(
+          `Process failed — server returned HTTP ${res.status} instead of JSON.`,
+        );
+        return;
+      }
+      if (!res.ok || !body.ok) {
+        setError(body.error ?? `Process failed (HTTP ${res.status})`);
+        return;
+      }
+      if (body.alerts) setAlerts(body.alerts);
+      const sent = body.sent ?? 0;
+      const listings = body.listings ?? 0;
+      setMessage(
+        sent > 0
+          ? `Sent ${sent} alert${sent === 1 ? "" : "s"} · ${listings} listing${listings === 1 ? "" : "s"} (checked ${body.checked ?? 0})`
+          : `No new matches to send (checked ${body.checked ?? 0} active alert${(body.checked ?? 0) === 1 ? "" : "s"})`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Process failed");
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   function toggleUser(key: string) {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -204,17 +251,29 @@ export default function AdminListingAlertsPanel({
             End-user alerts from Latest (Neon{" "}
             <span className="font-mono text-[11px]">saved_search_alerts</span>
             ). Grouped by email — expand to activate, disable, or delete.
-            Duplicates = same email + same search criteria.
+            Duplicates = same email + same search criteria. Last notified
+            updates when a digest actually goes out — Process now catches up
+            missed daily/weekly windows.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="shrink-0 bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors disabled:opacity-40"
-        >
-          {loading ? "Loading…" : "Refresh"}
-        </button>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void processDue()}
+            disabled={processing || loading}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-gold/40 text-navy bg-gold/10 hover:bg-gold/20 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            {processing ? "Processing…" : "Process now"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading || processing}
+            className="bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors disabled:opacity-40"
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {error ? (

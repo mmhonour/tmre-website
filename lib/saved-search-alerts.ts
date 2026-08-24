@@ -551,15 +551,101 @@ function parseHhmmToMinutes(hhmm: string): number {
   return Number(m[1]) * 60 + Number(m[2])
 }
 
-/** True when ET clock is within [scheduled, scheduled+window) minutes. */
-function isInScheduleWindow(
-  scheduledHhmm: string,
-  windowMinutes = 30,
+function etDayKey(d = new Date()): string {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = Object.fromEntries(
+    fmt.formatToParts(d).map((p) => [p.type, p.value]),
+  )
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+/** Calendar date of the most recent `weekdayEt` (0=Sun) in America/New_York. */
+function etWeekKey(weekdayEt: number, d = new Date()): string {
+  const targetWeekday = ((weekdayEt % 7) + 7) % 7
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  })
+  const parts = Object.fromEntries(
+    fmt
+      .formatToParts(d)
+      .filter((p) => p.type !== 'literal')
+      .map((p) => [p.type, p.value]),
+  )
+  const weekdayIndex: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  }
+  const wd = weekdayIndex[parts.weekday ?? ''] ?? 0
+  const daysFromTarget = (wd - targetWeekday + 7) % 7
+  const targetMs =
+    Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) -
+    daysFromTarget * 86_400_000
+  const target = new Date(targetMs)
+  const ty = target.getUTCFullYear()
+  const tm = String(target.getUTCMonth() + 1).padStart(2, '0')
+  const td = String(target.getUTCDate()).padStart(2, '0')
+  return `${ty}-${tm}-${td}`
+}
+
+function alreadyNotifiedEtDay(lastNotifiedAt: string | null): boolean {
+  if (!lastNotifiedAt) return false
+  const t = new Date(lastNotifiedAt)
+  if (Number.isNaN(t.getTime())) return false
+  return etDayKey(t) === etDayKey()
+}
+
+function alreadyNotifiedEtWeek(
+  lastNotifiedAt: string | null,
+  weekdayEt: number,
 ): boolean {
+  if (!lastNotifiedAt) return false
+  const t = new Date(lastNotifiedAt)
+  if (Number.isNaN(t.getTime())) return false
+  return etWeekKey(weekdayEt, t) === etWeekKey(weekdayEt)
+}
+
+function isAtOrAfterScheduled(scheduledHhmm: string): boolean {
   const target = parseHhmmToMinutes(scheduledHhmm)
   if (target < 0) return false
-  const { minutes: now } = etParts()
-  return now >= target && now < target + windowMinutes
+  return etParts().minutes >= target
+}
+
+/**
+ * Daily/weekly used to require the ET clock to sit inside a 30-minute window.
+ * Incremental (and its Netlify warm hop) often finished outside that window, so
+ * a whole day or week was skipped. Catch up: due once the scheduled time has
+ * passed, until a send lands on this ET day / week.
+ */
+function isCadenceDue(alert: SavedSearchAlert, force: boolean): boolean {
+  if (force) return true
+  if (alert.cadence === 'immediate') return true
+  if (alert.cadence === 'daily') {
+    if (!alert.dailyTimeEt) return false
+    if (alreadyNotifiedEtDay(alert.lastNotifiedAt)) return false
+    return isAtOrAfterScheduled(alert.dailyTimeEt)
+  }
+  if (alert.weeklyDay == null || !alert.weeklyTimeEt) return false
+  if (alreadyNotifiedEtWeek(alert.lastNotifiedAt, alert.weeklyDay)) return false
+  const { weekday } = etParts()
+  const daysFromSend = (weekday - alert.weeklyDay + 7) % 7
+  if (daysFromSend === 0 && !isAtOrAfterScheduled(alert.weeklyTimeEt)) {
+    return false
+  }
+  return true
 }
 
 async function markDelivered(
@@ -603,15 +689,20 @@ async function deliverAlert(
 }
 
 /**
- * Process due alerts after an MLS incremental sync.
+ * Process due alerts after an MLS incremental (or Admin Process now).
  * - immediate: any new matches since last notify / created
- * - daily / weekly: only when ET schedule window matches (cron is ~30 min)
+ * - daily / weekly: due once the ET send time has passed this day / week
+ *   (catch-up — no longer a 30-minute window that Incremental can miss)
  */
-export async function processDueSavedSearchAlerts(): Promise<{
+export async function processDueSavedSearchAlerts(opts?: {
+  /** Ignore cadence clocks — still dedupes per listing and uses last notify as since. */
+  force?: boolean
+}): Promise<{
   checked: number
   sent: number
   listings: number
 }> {
+  const force = opts?.force === true
   try {
     await ensureSavedSearchAlertTables()
   } catch (err) {
@@ -620,33 +711,12 @@ export async function processDueSavedSearchAlerts(): Promise<{
   }
 
   const alerts = await loadActiveAlerts()
-  const { weekday } = etParts()
   let sent = 0
   let listingCount = 0
 
   for (const alert of alerts) {
     try {
-      if (alert.cadence === 'daily') {
-        if (!alert.dailyTimeEt || !isInScheduleWindow(alert.dailyTimeEt)) continue
-      } else if (alert.cadence === 'weekly') {
-        if (
-          alert.weeklyDay == null ||
-          alert.weeklyDay !== weekday ||
-          !alert.weeklyTimeEt ||
-          !isInScheduleWindow(alert.weeklyTimeEt)
-        ) {
-          continue
-        }
-      }
-
-      // Daily/weekly: avoid double-sends inside the same 30-minute cron window.
-      // Immediate uses per-listing delivery rows for dedupe instead.
-      if (alert.cadence !== 'immediate' && alert.lastNotifiedAt) {
-        const ageMs = Date.now() - new Date(alert.lastNotifiedAt).getTime()
-        if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 35 * 60 * 1000) {
-          continue
-        }
-      }
+      if (!isCadenceDue(alert, force)) continue
 
       const since =
         alert.lastNotifiedAt ||
