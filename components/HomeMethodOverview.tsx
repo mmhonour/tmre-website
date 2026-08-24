@@ -10,6 +10,7 @@ import {
   type InterestingStatKind,
 } from "@/lib/interesting-stat-link";
 import { dealOfTheDayHref } from "@/lib/listing-url";
+import { isStrictlyActiveStatus } from "@/lib/listing-status";
 import { prefetchTabJson } from "@/lib/tab-data-prefetch";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
@@ -303,11 +304,23 @@ export default function HomeMethodOverview({
       deal:
         | {
             score?: { composite?: number };
-            listing?: { mlsId?: string; listingKey?: string | null };
+            listing?: {
+              mlsId?: string;
+              listingKey?: string | null;
+              status?: string | null;
+            };
           }
         | null
         | undefined,
     ): ScoreSample | null => {
+      const status = deal?.listing?.status;
+      if (
+        status != null &&
+        status.trim() !== "" &&
+        !isStrictlyActiveStatus(status)
+      ) {
+        return null;
+      }
       const score = deal?.score?.composite;
       const mlsId = deal?.listing?.mlsId?.trim();
       if (typeof score !== "number" || !mlsId) return null;
@@ -419,6 +432,7 @@ export default function HomeMethodOverview({
                   listing?: {
                     mlsId?: string;
                     listingKey?: string | null;
+                    status?: string | null;
                   };
                 }
               >

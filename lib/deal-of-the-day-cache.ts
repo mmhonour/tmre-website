@@ -6,7 +6,12 @@ import {
   readStatsCacheRow,
   writeStatsCacheRow,
 } from '@/lib/db/stats-cache-repo'
-import { fetchActiveListingsForCity, hasLocalListingsCache, isMarketListing } from '@/lib/listings-store'
+import {
+  fetchActiveListingsForCity,
+  hasLocalListingsCache,
+  isStrictlyActiveListing,
+  listingIsStrictlyActiveInDb,
+} from '@/lib/listings-store'
 import {
   dealListingPhotoUrl,
   pickDealOfTheDayFromBoardScored,
@@ -104,7 +109,19 @@ async function readDealOfTheDayCacheRow(
   const row = await readStatsCacheRow(dealOfTheDayCacheKey(scope, kind, propertyClass))
   if (!row) return null
   try {
-    return JSON.parse(row.payload) as DealOfTheDayResponse
+    const cached = JSON.parse(row.payload) as DealOfTheDayResponse
+    if (!(await listingIsStrictlyActiveInDb(cached.listing))) {
+      console.info(
+        '[deal-of-the-day-cache] skip stale pick',
+        scope,
+        kind,
+        propertyClass,
+        cached.listing?.mlsId,
+        cached.listing?.status,
+      )
+      return null
+    }
+    return cached
   } catch {
     return null
   }
@@ -206,7 +223,7 @@ async function cacheScopedKinds(
       if (!scoped.length) continue
 
       const payload = await pickDealOfTheDayFromBoardScored(scoped, boardScored)
-      if (!payload) continue
+      if (!payload || !isStrictlyActiveListing(payload.listing)) continue
 
       const response: DealOfTheDayResponse = {
         ...buildDealOfTheDayResponse(payload, town, kind, propertyClass),
@@ -274,7 +291,7 @@ export async function rebuildDealOfTheDayCache(): Promise<{
       SCORE_PEER_LIMIT,
     )
     const allListings = filterListingsToTmreTowns(peerPool)
-    const activeAll = allListings.filter(isMarketListing)
+    const activeAll = allListings.filter(isStrictlyActiveListing)
     if (!activeAll.length) continue
 
     const boardScored = await scoreActiveListingsForBoard(activeAll, peerPool)

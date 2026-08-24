@@ -30,6 +30,15 @@ import {
 import { splitSentences } from "@/lib/split-sentences";
 import { formatDealOfTheDayHeaderSubtitle } from "@/lib/deal-of-the-day-header";
 import { listingPropertyClassLabel } from "@/lib/listing-property-class";
+import { isStrictlyActiveStatus } from "@/lib/listing-status";
+
+function featuredDealListingIsActive(listing?: {
+  status?: string | null;
+}): boolean {
+  const status = listing?.status;
+  if (status == null || status.trim() === "") return true;
+  return isStrictlyActiveStatus(status);
+}
 
 const DEAL_PROPERTY_CLASS_VALUES = ["homes", "multi", "condos"] as const;
 type DealSalePropertyClass = (typeof DEAL_PROPERTY_CLASS_VALUES)[number];
@@ -95,6 +104,7 @@ type ApiResponse = {
   lotAcres?: number | null;
   listing: {
     mlsId: string;
+    status?: string | null;
     propertyType: string;
     style: string;
     address: { street: string; city: string; state: string; full: string };
@@ -149,6 +159,7 @@ const FALLBACK: ApiResponse = {
   lotAcres: 0.28,
   listing: {
     mlsId: "—",
+    status: "Active",
     propertyType: "Single Family",
     style: "Colonial",
     address: {
@@ -441,6 +452,7 @@ function mapDayDealToApi(deal: DealCarouselPayload): ApiResponse {
     photoUrl: deal.photoUrl,
     listing: {
       mlsId: l.mlsId,
+      status: l.status ?? null,
       propertyType: l.propertyType ?? "Single Family",
       style: l.style ?? "",
       address: {
@@ -576,6 +588,12 @@ export default function DealOfTheWeekHero({
       })
       .then((d) => {
         if (cancelled) return;
+        if (!featuredDealListingIsActive(d.listing)) {
+          setData(null);
+          setUsedFallback(false);
+          setLoading(false);
+          return;
+        }
         setData(d);
         setLoading(false);
         // Warm the hero image as soon as the API returns a local proxy URL.
@@ -602,7 +620,11 @@ export default function DealOfTheWeekHero({
   const dayEmpty = isDay && !carousel.loading && !dayShowing;
   // Day mode: never fall back to the hardcoded sample listing — that made
   // Homes/Multi/Condos pills look broken while the matching cache slice loaded.
-  const showing = isDay ? dayShowing : (data ?? FALLBACK);
+  const weekShowing =
+    data && featuredDealListingIsActive(data.listing) ? data : null;
+  const showing = isDay
+    ? dayShowing
+    : (weekShowing ?? (usedFallback || loading ? FALLBACK : null));
   const loadingState = isDay ? carousel.loading : loading;
   const slideDir = carousel.slideDir;
   const slideKey = isDay

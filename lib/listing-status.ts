@@ -29,6 +29,19 @@ export function isUnderContractStatus(
 }
 
 /**
+ * True only for MLS Active (code A). Featured homepage picks (DOTD / DOTW)
+ * must pass this — not Coming Soon, Under Contract, or Continue to Show.
+ */
+export function isStrictlyActiveStatus(
+  status: string | null | undefined,
+): boolean {
+  const s = status?.trim().toLowerCase() ?? "";
+  if (!s) return false;
+  if (isUnderContractStatus(status)) return false;
+  return s === "active" || s === "a";
+}
+
+/**
  * Short Intelligence-board pill label for under-contract MLS status, or null
  * when the listing is not under contract.
  */

@@ -8,7 +8,12 @@ import {
   type DealPickPayload,
 } from '@/lib/deal-pick'
 import { ensureDealPickPhotos } from '@/lib/deal-hero-photo-warm'
-import { fetchActiveListingsAcrossTowns, hasLocalListingsCache } from '@/lib/listings-store'
+import {
+  fetchActiveListingsAcrossTowns,
+  hasLocalListingsCache,
+  isStrictlyActiveListing,
+  listingIsStrictlyActiveInDb,
+} from '@/lib/listings-store'
 import { TMRE_MARKET_TOWNS } from '@/lib/rets'
 import { filterListingsToTmreTowns, TMRE_TOWNS } from '@/lib/tmre-towns'
 
@@ -25,7 +30,16 @@ export async function readDealOfTheWeekCache(): Promise<DealOfTheWeekResponse | 
   const row = await readStatsCacheRow(DEAL_OF_THE_WEEK_CACHE_KEY)
   if (!row?.payload) return null
   try {
-    return JSON.parse(row.payload) as DealOfTheWeekResponse
+    const cached = JSON.parse(row.payload) as DealOfTheWeekResponse
+    if (!(await listingIsStrictlyActiveInDb(cached.listing))) {
+      console.info(
+        '[deal-of-the-week-cache] skip stale pick',
+        cached.listing?.mlsId,
+        cached.listing?.status,
+      )
+      return null
+    }
+    return cached
   } catch {
     return null
   }
@@ -44,8 +58,8 @@ export async function rebuildDealOfTheWeekCache(): Promise<boolean> {
   )
   const listings = filterListingsToTmreTowns(rawListings)
   const payload = await computeTopDeal(listings)
-  if (!payload) {
-    console.warn('[deal-of-the-week-cache] no qualifying listing')
+  if (!payload || !isStrictlyActiveListing(payload.listing)) {
+    console.warn('[deal-of-the-week-cache] no qualifying Active listing')
     return false
   }
 

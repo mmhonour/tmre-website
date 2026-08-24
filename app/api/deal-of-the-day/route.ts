@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   fetchActiveListingsForCity,
   fetchListingByMlsId,
+  isStrictlyActiveListing,
   listingCacheHeaders,
   type ListingsSource,
 } from '@/lib/listings-store'
@@ -228,7 +229,7 @@ export async function GET(req: NextRequest) {
       ...(listingId || propertyClass === 'all' ? {} : { propertyClass }),
       ...(listingId ? { listingId } : {}),
     })
-    if (!payload) {
+    if (!payload || !isStrictlyActiveListing(payload.listing)) {
       return NextResponse.json(
         {
           error: `No active ${kind === 'sale' ? 'sales' : 'rentals'} (${propertyClass}) found`,

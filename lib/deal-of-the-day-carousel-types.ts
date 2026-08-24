@@ -5,6 +5,7 @@ import type { TmreTown } from '@/lib/tmre-towns'
 export type DealCarouselListing = {
   mlsId: string
   listingKey?: string
+  status?: string | null
   propertyType?: string
   style?: string
   address: { street: string; city: string; state?: string; full: string }

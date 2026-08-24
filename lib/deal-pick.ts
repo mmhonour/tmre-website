@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { Listing } from './rets'
-import { isMarketListing } from './listings-store'
+import { isMarketListing, isStrictlyActiveListing } from './listings-store'
 import { parseLotAcres } from './fixer-listings'
 import {
   buildInsight,
@@ -362,8 +362,8 @@ export async function computeTopDeal(
   opts?: { peerListings?: Listing[] },
 ): Promise<DealPickPayload | null> {
   const medians = cityMedianListPrices(listings)
-  const active = listings.filter(isMarketListing)
-  const peers = opts?.peerListings ?? active
+  const active = listings.filter(isStrictlyActiveListing)
+  const peers = opts?.peerListings ?? listings.filter(isMarketListing)
   const ranked = await scoreActiveListingsForBoard(active, peers)
   const winner = ranked[0]
   if (!winner) return null
@@ -399,7 +399,7 @@ export async function pickDealOfTheDayFromBoardScored(
   if (!scoped.length) return null
 
   const medians = cityMedianListPrices(scoped)
-  const active = scoped.filter(isMarketListing)
+  const active = scoped.filter(isStrictlyActiveListing)
   if (!active.length) return null
 
   const activeIds = new Set(
@@ -554,10 +554,10 @@ export async function computeDealOfTheDay(
   }
   if (!scoped.length) return null
 
-  const active = scoped.filter(isMarketListing)
+  const active = scoped.filter(isStrictlyActiveListing)
   if (!active.length) return null
 
-  const peers = opts?.peerListings ?? active
+  const peers = opts?.peerListings ?? scoped.filter(isMarketListing)
   const boardScored = await scoreActiveListingsForBoard(active, peers)
 
   return pickDealOfTheDayFromBoardScored(scoped, boardScored, {

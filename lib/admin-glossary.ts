@@ -1045,7 +1045,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Deal of the Day / Week',
     category: 'ui-tabs',
     definition:
-      'Featured high-score listing surfaces (homepage / Intelligence), backed by stats_cache payloads.',
+      'Featured high-score listing surfaces (homepage / Intelligence), backed by stats_cache payloads. Picks must be MLS Active — Under Contract, Continue to Show, and Coming Soon are excluded; a live mls_status check drops stale cached picks after Incremental.',
   },
   {
     term: 'Latest',

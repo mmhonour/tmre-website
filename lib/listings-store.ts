@@ -12,6 +12,7 @@ import {
   hasListingsData,
   readAllListingsFromDb,
   readListingByIdFromDb,
+  readListingMlsStatusById,
   readListingsFromDb,
 } from '@/lib/db/listings-repo'
 import {
@@ -37,11 +38,13 @@ import {
   type TmreTown,
 } from '@/lib/tmre-towns'
 import {
+  isStrictlyActiveStatus,
   isUnderContractStatus,
 } from '@/lib/listing-status'
 
 export {
   isUnderContractStatus,
+  isStrictlyActiveStatus,
   underContractStatusLabel,
 } from '@/lib/listing-status'
 
@@ -112,6 +115,34 @@ export function isClosedListing(l: Listing): boolean {
 
 export function isUnderContractListing(l: Listing): boolean {
   return isUnderContractStatus(l.status)
+}
+
+/** Featured deal picks — MLS Active only, not Coming Soon / UC / CTS. */
+export function isStrictlyActiveListing(l: { status?: string | null }): boolean {
+  return isStrictlyActiveStatus(l.status)
+}
+
+/**
+ * Live Postgres status for a cached deal pick. Snapshot "Active" can go stale
+ * after Incremental writes Under Contract — homepage must not keep showing it.
+ */
+export async function listingIsStrictlyActiveInDb(listing: {
+  mlsId?: string | null
+  listingKey?: string | null
+  status?: string | null
+}): Promise<boolean> {
+  if (
+    listing.status != null &&
+    listing.status.trim() !== '' &&
+    !isStrictlyActiveStatus(listing.status)
+  ) {
+    return false
+  }
+  const id = listing.mlsId?.trim() || listing.listingKey?.trim() || ''
+  if (!id) return false
+  const liveStatus = await readListingMlsStatusById(id)
+  if (liveStatus == null) return false
+  return isStrictlyActiveStatus(liveStatus)
 }
 
 /** @deprecated Use isMarketListing */

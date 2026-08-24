@@ -12,6 +12,7 @@ import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { prefetchDealCarouselImages, prefetchListingImages } from "@/lib/prefetch-listing-images";
 import { listingMatchesPropertyClass } from "@/lib/listing-property-class";
+import { isStrictlyActiveStatus } from "@/lib/listing-status";
 import type {
   DealCarouselDealsByTown,
   DealCarouselPayload,
@@ -61,6 +62,10 @@ function dealMatchesFilter(
   propertyClass: DealPropertyClassFilter,
 ): deal is DealCarouselPayload {
   if (!hasListing(deal)) return false;
+  const status = deal.listing.status;
+  if (status != null && status.trim() !== "" && !isStrictlyActiveStatus(status)) {
+    return false;
+  }
   if (kind === "rental" ? !dealLooksLikeRental(deal) : dealLooksLikeRental(deal)) {
     return false;
   }

@@ -2037,6 +2037,24 @@ export async function readAllListingsFromDb(
   return rows.map((row) => rowToListing(row))
 }
 
+/**
+ * Typed `mls_status` for a listing. Incremental writes this column even when
+ * the frozen `data` JSON on a deal-cache payload still says Active.
+ */
+export async function readListingMlsStatusById(
+  id: string,
+): Promise<string | null> {
+  const key = id.trim()
+  if (!key) return null
+  const row = await queryOne<{ mls_status: string | null }>(
+    `SELECT mls_status FROM listings
+      WHERE id = $1 OR mls_id = $1 OR listing_key = $1
+      LIMIT 1`,
+    [key],
+  )
+  return row?.mls_status ?? null
+}
+
 /** Single listing by row id, MLS id, or listing key. */
 export async function readListingByIdFromDb(id: string): Promise<Listing | null> {
   const key = id.trim()

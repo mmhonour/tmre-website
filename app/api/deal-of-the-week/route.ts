@@ -29,7 +29,9 @@ export async function GET() {
       {
         headers: {
           ...listingCacheHeaders(cached.source ?? 'db'),
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+          // Private: Incremental can flip a pick to Under Contract; do not
+          // keep serving the old featured listing from the CDN.
+          'Cache-Control': 'private, no-store',
         },
       },
     )

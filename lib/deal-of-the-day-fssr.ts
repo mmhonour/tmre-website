@@ -29,6 +29,7 @@ function toCarouselPayload(deal: DealOfTheDayResponse): DealCarouselPayload | nu
     listing: {
       mlsId: l.mlsId,
       listingKey: l.listingKey,
+      status: l.status,
       propertyType: l.propertyType,
       style: l.style,
       address: {
