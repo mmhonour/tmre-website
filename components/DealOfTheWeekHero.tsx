@@ -30,14 +30,13 @@ import {
 import { splitSentences } from "@/lib/split-sentences";
 import { formatDealOfTheDayHeaderSubtitle } from "@/lib/deal-of-the-day-header";
 import { listingPropertyClassLabel } from "@/lib/listing-property-class";
-import { isStrictlyActiveStatus } from "@/lib/listing-status";
+import { listingIsFeaturedDealEligible } from "@/lib/listing-status";
 
 function featuredDealListingIsActive(listing?: {
   status?: string | null;
+  raw?: Record<string, string> | null;
 }): boolean {
-  const status = listing?.status;
-  if (status == null || status.trim() === "") return true;
-  return isStrictlyActiveStatus(status);
+  return listingIsFeaturedDealEligible(listing);
 }
 
 const DEAL_PROPERTY_CLASS_VALUES = ["homes", "multi", "condos"] as const;
@@ -105,6 +104,7 @@ type ApiResponse = {
   listing: {
     mlsId: string;
     status?: string | null;
+    raw?: Record<string, string>;
     propertyType: string;
     style: string;
     address: { street: string; city: string; state: string; full: string };
@@ -453,6 +453,7 @@ function mapDayDealToApi(deal: DealCarouselPayload): ApiResponse {
     listing: {
       mlsId: l.mlsId,
       status: l.status ?? null,
+      ...(l.raw ? { raw: l.raw } : {}),
       propertyType: l.propertyType ?? "Single Family",
       style: l.style ?? "",
       address: {
@@ -583,11 +584,18 @@ export default function DealOfTheWeekHero({
     setLoading(true);
     fetch(apiPath)
       .then(async (r) => {
+        if (r.status === 404) {
+          if (cancelled) return null;
+          setData(null);
+          setUsedFallback(false);
+          setLoading(false);
+          return null;
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as ApiResponse;
       })
       .then((d) => {
-        if (cancelled) return;
+        if (cancelled || !d) return;
         if (!featuredDealListingIsActive(d.listing)) {
           setData(null);
           setUsedFallback(false);
@@ -605,8 +613,8 @@ export default function DealOfTheWeekHero({
       })
       .catch((err) => {
         if (cancelled) return;
-        console.error("[deal-of-the-week] fetch failed, using fallback", err);
-        setData(FALLBACK);
+        console.error("[deal-of-the-week] fetch failed", err);
+        setData(null);
         setUsedFallback(true);
         setLoading(false);
       });
@@ -622,10 +630,9 @@ export default function DealOfTheWeekHero({
   // Homes/Multi/Condos pills look broken while the matching cache slice loaded.
   const weekShowing =
     data && featuredDealListingIsActive(data.listing) ? data : null;
-  const showing = isDay
-    ? dayShowing
-    : (weekShowing ?? (usedFallback || loading ? FALLBACK : null));
+  const showing = isDay ? dayShowing : weekShowing;
   const loadingState = isDay ? carousel.loading : loading;
+  const weekEmpty = !isDay && !loadingState && !showing;
   const slideDir = carousel.slideDir;
   const slideKey = isDay
     ? `${dayTxFilter}-${dayPropertyClass}-${listingParam ?? "auto"}-${carousel.currentTown ?? "none"}-${carousel.carouselIndex}`
@@ -784,7 +791,11 @@ export default function DealOfTheWeekHero({
                 <>
                   {headlineLead}{" "}
                   <span className="italic gold-shimmer">
-                    {(data ?? FALLBACK).score.composite.toFixed(1)}.
+                    {showing
+                      ? `${showing.score.composite.toFixed(1)}.`
+                      : loadingState
+                        ? "…"
+                        : "—"}
                   </span>
                   <br />
                   <span className="italic text-white/85">One listing.</span>
@@ -894,7 +905,12 @@ export default function DealOfTheWeekHero({
             ) : (
               <div className="max-w-xl space-y-4">
                 <DealInsightCopy
-                  text={(showing ?? FALLBACK).insight}
+                  text={
+                    showing?.insight ??
+                    (loadingState
+                      ? `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, schools, and days on market. This week's pick is loading.`
+                      : "No qualifying Active listing right now. Under Contract and Continue to Show homes are not featured.")
+                  }
                   className={`${dealInsightCopyClass} animate-fade-up-delay-1`}
                 />
                 <DealSuperlatives words={superlatives} />
@@ -947,10 +963,21 @@ export default function DealOfTheWeekHero({
               lotAcres={showing?.lotAcres ?? null}
               dom={l?.dom ?? null}
               photoUrl={showing?.photoUrl ?? null}
-              schools={l?.schools ?? FALLBACK.listing.schools}
+              schools={
+                l?.schools ?? {
+                  elementary: null,
+                  middle: null,
+                  high: null,
+                  district: null,
+                }
+              }
               score={showing?.score ?? FALLBACK.score}
               loading={loadingState}
-              empty={dayEmpty || (isDay && !showing && !loadingState)}
+              empty={
+                dayEmpty ||
+                weekEmpty ||
+                (!showing && !loadingState)
+              }
               scoreExplains={!loadingState && Boolean(showing) && !(isDay && dayEmpty)}
               valueDealMode={mode === "day"}
               hidePhoto={isDay}

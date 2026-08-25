@@ -10,7 +10,7 @@ import {
   type InterestingStatKind,
 } from "@/lib/interesting-stat-link";
 import { dealOfTheDayHref } from "@/lib/listing-url";
-import { isStrictlyActiveStatus } from "@/lib/listing-status";
+import { listingIsFeaturedDealEligible } from "@/lib/listing-status";
 import { prefetchTabJson } from "@/lib/tab-data-prefetch";
 import { TMRE_TOWNS, type TmreTown } from "@/lib/tmre-towns";
 
@@ -308,17 +308,13 @@ export default function HomeMethodOverview({
               mlsId?: string;
               listingKey?: string | null;
               status?: string | null;
+              raw?: { StandardStatus?: unknown; MLSStatus?: unknown } | null;
             };
           }
         | null
         | undefined,
     ): ScoreSample | null => {
-      const status = deal?.listing?.status;
-      if (
-        status != null &&
-        status.trim() !== "" &&
-        !isStrictlyActiveStatus(status)
-      ) {
+      if (!listingIsFeaturedDealEligible(deal?.listing)) {
         return null;
       }
       const score = deal?.score?.composite;
@@ -433,6 +429,7 @@ export default function HomeMethodOverview({
                     mlsId?: string;
                     listingKey?: string | null;
                     status?: string | null;
+                    raw?: { StandardStatus?: unknown; MLSStatus?: unknown } | null;
                   };
                 }
               >

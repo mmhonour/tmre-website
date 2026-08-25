@@ -1081,6 +1081,8 @@ type ListingJsonRow = {
   raw: unknown
   /** Only present on SELECTs that ask for it; see readListingByIdFromDb. */
   vision_pid?: string | null
+  /** Typed Incremental column — data JSON can still say Active after UC. */
+  mls_status?: string | null
 }
 
 /** Reconstruct a full Listing from the split data/raw jsonb columns. */
@@ -1102,7 +1104,7 @@ function rowToListing(row: ListingJsonRow): Listing {
       ? { ...listing, furnished }
       : { ...listing, furnished: listing.furnished ?? null }
   const status = coalesceListingStatus(
-    withFurnished.status,
+    row.mls_status?.trim() || withFurnished.status,
     typeof raw.StandardStatus === 'string' ? raw.StandardStatus : null,
   )
   return status !== withFurnished.status
@@ -1740,7 +1742,7 @@ export async function readListingsFromDb(
   limit?: number,
 ): Promise<Listing[]> {
   const params: unknown[] = [town, statusBucket]
-  let sql = `SELECT data, raw FROM listings
+  let sql = `SELECT data, raw, mls_status FROM listings
               WHERE town = $1 AND status_bucket = $2
               ORDER BY price DESC NULLS LAST`
   if (limit != null) {
@@ -2029,7 +2031,7 @@ export async function readAllListingsFromDb(
 ): Promise<Listing[]> {
   if (towns.length === 0) return []
   const rows = await query<ListingJsonRow>(
-    `SELECT data, raw FROM listings
+    `SELECT data, raw, mls_status FROM listings
       WHERE status_bucket = $1 AND town = ANY($2::text[])
       ORDER BY price DESC NULLS LAST`,
     [statusBucket, [...towns]],
@@ -2060,7 +2062,7 @@ export async function readListingByIdFromDb(id: string): Promise<Listing | null>
   const key = id.trim()
   if (!key) return null
   const row = await queryOne<ListingJsonRow>(
-    `SELECT data, raw, vision_pid FROM listings
+    `SELECT data, raw, vision_pid, mls_status FROM listings
       WHERE id = $1 OR mls_id = $1 OR listing_key = $1
       LIMIT 1`,
     [key],

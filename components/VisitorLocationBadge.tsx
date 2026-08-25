@@ -4,22 +4,33 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useVisitorLocation } from '@/hooks/useVisitorLocation'
 import {
+  clearVisitorPostalOverride,
   dismissZipPillGlow,
   isZipPillGlowDismissed,
+  resetVisitorPostalToInferred,
   setVisitorPostalOverride,
   townFromPostal,
 } from '@/lib/visitor-location'
+
+const EMPTY_LOCATION = {
+  town: null as string | null,
+  postal: null as string | null,
+  confirmed: false,
+  cleared: false,
+}
 
 export default function VisitorLocationBadge({
   className = '',
 }: {
   className?: string
 }) {
-  const { location, refresh } = useVisitorLocation()
+  const { location: resolved, refresh } = useVisitorLocation()
+  const location = resolved ?? EMPTY_LOCATION
   const [glow, setGlow] = useState(false)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const [pos, setPos] = useState<{
     top: number
     left: number
@@ -47,7 +58,7 @@ export default function VisitorLocationBadge({
       const el = btnRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const popH = 210
+      const popH = 280
       const popW = 260
       const placeAbove = rect.top >= popH + 12
       const left = Math.min(
@@ -83,17 +94,17 @@ export default function VisitorLocationBadge({
     return () => document.removeEventListener('mousedown', onPointer)
   }, [open])
 
-  if (location == null) return null
-
-  const label = location.postal ?? location.town
+  const label = location.cleared ? 'ZIP' : (location.postal ?? location.town)
   const display = label ?? 'ZIP'
-  const title = location.town
-    ? location.postal
-      ? `${location.postal} · ${location.town}, CT`
-      : `${location.town}, CT`
-    : location.postal
-      ? `ZIP ${location.postal}`
-      : 'Set your ZIP'
+  const title = location.cleared
+    ? 'ZIP cleared — click to set, or reset to the detected ZIP'
+    : location.town
+      ? location.postal
+        ? `${location.postal} · ${location.town}, CT`
+        : `${location.town}, CT`
+      : location.postal
+        ? `ZIP ${location.postal}`
+        : 'Set your ZIP'
 
   const draftTown = townFromPostal(draft)
 
@@ -101,7 +112,7 @@ export default function VisitorLocationBadge({
     const el = btnRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const popH = 210
+    const popH = 280
     const popW = 260
     const placeAbove = rect.top >= popH + 12
     const left = Math.min(
@@ -118,7 +129,7 @@ export default function VisitorLocationBadge({
   function openPopover() {
     dismissZipPillGlow()
     setGlow(false)
-    setDraft(location?.postal ?? '')
+    setDraft(location.postal ?? '')
     setError(null)
     setOpen(true)
     requestAnimationFrame(() => {
@@ -132,6 +143,7 @@ export default function VisitorLocationBadge({
     setOpen(false)
     setPos(null)
     setError(null)
+    setBusy(false)
   }
 
   function saveZip(raw: string) {
@@ -143,6 +155,25 @@ export default function VisitorLocationBadge({
     setVisitorPostalOverride(digits)
     void refresh()
     closePopover()
+  }
+
+  function clearZip() {
+    clearVisitorPostalOverride()
+    void refresh()
+    closePopover()
+  }
+
+  async function resetZip() {
+    setBusy(true)
+    setError(null)
+    try {
+      await resetVisitorPostalToInferred()
+      await refresh()
+      closePopover()
+    } catch {
+      setBusy(false)
+      setError('Could not detect a ZIP — enter one or clear it')
+    }
   }
 
   return (
@@ -157,7 +188,7 @@ export default function VisitorLocationBadge({
         title={title}
         className={`visitor-zip-pill group relative inline-flex cursor-pointer rounded-full p-[1.5px] transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50 ${
           glow ? 'visitor-zip-pill--glow' : ''
-        } ${location.confirmed ? 'visitor-zip-pill--confirmed' : ''}`}
+        } ${location.confirmed && !location.cleared ? 'visitor-zip-pill--confirmed' : ''}`}
       >
         {glow ? <span className="visitor-zip-pill__ring" aria-hidden /> : null}
         <span className="relative z-[1] inline-flex items-center rounded-full border border-white/15 bg-navy-dark/95 px-2.5 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/80 group-hover:text-white">
@@ -171,7 +202,7 @@ export default function VisitorLocationBadge({
               ref={popRef}
               id={dialogId}
               role="dialog"
-              aria-label="Confirm your ZIP code"
+              aria-label="Change your ZIP code"
               className="fixed z-[80] w-[260px] rounded-xl border border-charcoal/10 bg-cream shadow-lg shadow-charcoal/15"
               style={
                 pos.placeAbove
@@ -187,9 +218,11 @@ export default function VisitorLocationBadge({
                   Your ZIP
                 </p>
                 <p className="mt-0.5 text-xs text-charcoal/60 leading-snug">
-                  {location.confirmed
-                    ? 'Update the ZIP we use to personalize towns and filters.'
-                    : 'Confirm or correct the ZIP we inferred for you.'}
+                  {location.cleared
+                    ? 'ZIP is cleared. Set one, or reset to the detected location.'
+                    : location.confirmed
+                      ? 'Change, clear, or reset the ZIP used for towns and filters.'
+                      : 'Confirm, change, clear, or reset the ZIP we inferred.'}
                 </p>
               </div>
               <form
@@ -239,6 +272,25 @@ export default function VisitorLocationBadge({
                     className="rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/55 hover:text-navy"
                   >
                     Cancel
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={clearZip}
+                    disabled={busy || (!location.postal && !location.cleared && !draft)}
+                    className="flex-1 rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/70 hover:text-navy disabled:opacity-40"
+                  >
+                    Clear ZIP
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void resetZip()}
+                    disabled={busy}
+                    title="Use the ZIP detected from your location"
+                    className="flex-1 rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/70 hover:text-navy disabled:opacity-40"
+                  >
+                    {busy ? 'Reset…' : 'Reset'}
                   </button>
                 </div>
               </form>

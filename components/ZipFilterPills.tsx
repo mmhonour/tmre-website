@@ -85,7 +85,7 @@ export default function ZipFilterPills({
   onSelect,
   counts,
   allCount,
-  allLabel = "All",
+  allLabel = "All zips",
   townName,
   zipLinksExpanded = false,
   onZipLinksExpandedChange,
@@ -96,13 +96,16 @@ export default function ZipFilterPills({
 }: ZipFilterPillsProps) {
   const allActive = selected === null;
   const selectedZip = allActive ? null : selected;
-  const showPromotedLinks = zipLinksExpanded;
+  // Town just chosen, no exclusive zip: list that town's zips (no All pill).
+  // Exclusive zip chosen: All zips becomes a link in "... more zips", like All Towns.
+  const showPromotedLinks = allActive || zipLinksExpanded;
 
   const moreZipsLabel = townName
     ? `... more zips for ${townName}`
     : "... more zips";
 
-  const moreZipsButton = !zipLinksExpanded ? (
+  const moreZipsButton =
+    !allActive && !zipLinksExpanded ? (
     <button
       type="button"
       aria-label={townName ? `Show more zip codes for ${townName}` : "Show more zip codes"}
@@ -138,20 +141,7 @@ export default function ZipFilterPills({
         className={filterPillPromotedContainerClass(promotedInline)}
         onMouseLeave={onZipMouseLeave}
       >
-        {allActive ? (
-          <>
-            <button
-              type="button"
-              onClick={(e) => onSelect(null, e.currentTarget)}
-              aria-pressed
-              className={filterPillZipButtonClass(true, true)}
-            >
-              {allLabel}
-              <ZipCountBadge count={allCount} active variant="pill" />
-            </button>
-            {moreZipsButton}
-          </>
-        ) : (
+        {allActive ? null : (
           <>
             <button
               type="button"

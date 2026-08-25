@@ -40,11 +40,13 @@ import {
 import {
   isStrictlyActiveStatus,
   isUnderContractStatus,
+  listingIsFeaturedDealEligible,
 } from '@/lib/listing-status'
 
 export {
   isUnderContractStatus,
   isStrictlyActiveStatus,
+  listingIsFeaturedDealEligible,
   underContractStatusLabel,
 } from '@/lib/listing-status'
 
@@ -118,28 +120,30 @@ export function isUnderContractListing(l: Listing): boolean {
 }
 
 /** Featured deal picks — MLS Active only, not Coming Soon / UC / CTS. */
-export function isStrictlyActiveListing(l: { status?: string | null }): boolean {
-  return isStrictlyActiveStatus(l.status)
+export function isStrictlyActiveListing(l: {
+  status?: string | null
+  raw?: { StandardStatus?: unknown; MLSStatus?: unknown } | null
+}): boolean {
+  return listingIsFeaturedDealEligible(l)
 }
 
 /**
  * Live Postgres status for a cached deal pick. Snapshot "Active" can go stale
  * after Incremental writes Under Contract — homepage must not keep showing it.
+ * Reads the full row so coalesced StandardStatus / mls_status can veto a
+ * frozen data JSON that still says Active.
  */
 export async function listingIsStrictlyActiveInDb(listing: {
   mlsId?: string | null
   listingKey?: string | null
   status?: string | null
+  raw?: { StandardStatus?: unknown; MLSStatus?: unknown } | null
 }): Promise<boolean> {
-  if (
-    listing.status != null &&
-    listing.status.trim() !== '' &&
-    !isStrictlyActiveStatus(listing.status)
-  ) {
-    return false
-  }
+  if (!listingIsFeaturedDealEligible(listing)) return false
   const id = listing.mlsId?.trim() || listing.listingKey?.trim() || ''
   if (!id) return false
+  const live = await readListingByIdFromDb(id)
+  if (live) return listingIsFeaturedDealEligible(live)
   const liveStatus = await readListingMlsStatusById(id)
   if (liveStatus == null) return false
   return isStrictlyActiveStatus(liveStatus)

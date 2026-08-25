@@ -1,5 +1,6 @@
 import type { Listing } from '@/lib/rets'
 import { isRentalListing } from '@/lib/listing-kind'
+import { isUnderContractStatus } from '@/lib/listing-status'
 
 export type ListingHistoryEvent = {
   date: string | null
@@ -28,6 +29,7 @@ const STATUS_LABELS: Record<string, string> = {
   CS: 'Coming Soon',
   H: 'Hold',
   T: 'Temp off market',
+  D: 'Under Contract',
 }
 
 function str(v: unknown): string {
@@ -60,8 +62,17 @@ function parseMs(iso: string | null | undefined): number {
 export function formatMlsStatus(status: string | null | undefined): string {
   const raw = str(status)
   if (!raw) return 'Unknown'
-  const code = raw.length === 1 ? raw.toUpperCase() : null
+  const upper = raw.toUpperCase()
+  const code = raw.length === 1 ? upper : null
   if (code && STATUS_LABELS[code]) return STATUS_LABELS[code]
+  if (upper === 'SH' || upper === 'UC-CTS' || upper === 'CTS') {
+    return 'Under Contract - Continue to Show'
+  }
+  if (upper === 'UC' || upper === 'AUC') return 'Under Contract'
+  if (/^active[\s_-]*under[\s_-]*contract$/i.test(raw)) return 'Under Contract'
+  if (/continue\s*to\s*show/i.test(raw)) {
+    return 'Under Contract - Continue to Show'
+  }
   if (/^active$/i.test(raw)) return 'Active'
   if (/^pending$/i.test(raw)) return 'Pending'
   if (/^closed$/i.test(raw)) return 'Closed'
@@ -89,6 +100,18 @@ export function coalesceListingStatus(
     standardLabel !== 'Unknown'
   ) {
     return standardLabel
+  }
+  // MLSStatus often stays Active after RESO StandardStatus moves to
+  // ActiveUnderContract / Pending / Continue to Show.
+  if (
+    standard &&
+    (isUnderContractStatus(standard) ||
+      standardLabel === 'Pending' ||
+      standardLabel === 'Closed' ||
+      standardLabel === 'Expired' ||
+      standardLabel === 'Withdrawn')
+  ) {
+    return standardLabel === 'Unknown' ? standard : standardLabel
   }
   return mls || standard
 }

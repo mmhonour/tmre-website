@@ -6,6 +6,7 @@ export type DealCarouselListing = {
   mlsId: string
   listingKey?: string
   status?: string | null
+  raw?: Record<string, string> | null
   propertyType?: string
   style?: string
   address: { street: string; city: string; state?: string; full: string }

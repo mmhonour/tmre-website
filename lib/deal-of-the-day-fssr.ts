@@ -11,6 +11,7 @@ import type {
   DealCarouselPayload,
   DealPropertyClassFilter,
 } from '@/lib/deal-of-the-day-carousel-types'
+import { listingIsFeaturedDealEligible } from '@/lib/listing-status'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 export type DealOfTheDayFssrSeed = {
@@ -20,9 +21,24 @@ export type DealOfTheDayFssrSeed = {
   generatedAt: string
 }
 
+function featuredDealRawSignals(
+  raw: { StandardStatus?: unknown; MLSStatus?: unknown } | null | undefined,
+): Record<string, string> | null {
+  if (!raw) return null
+  const next: Record<string, string> = {}
+  if (typeof raw.StandardStatus === 'string' && raw.StandardStatus.trim()) {
+    next.StandardStatus = raw.StandardStatus
+  }
+  if (typeof raw.MLSStatus === 'string' && raw.MLSStatus.trim()) {
+    next.MLSStatus = raw.MLSStatus
+  }
+  return Object.keys(next).length > 0 ? next : null
+}
+
 function toCarouselPayload(deal: DealOfTheDayResponse): DealCarouselPayload | null {
   const l = deal.listing
   if (!l?.mlsId && !l?.listingKey) return null
+  if (!listingIsFeaturedDealEligible(l)) return null
   return {
     score: deal.score,
     photoUrl: deal.photoUrl ?? null,
@@ -30,6 +46,7 @@ function toCarouselPayload(deal: DealOfTheDayResponse): DealCarouselPayload | nu
       mlsId: l.mlsId,
       listingKey: l.listingKey,
       status: l.status,
+      raw: featuredDealRawSignals(l.raw),
       propertyType: l.propertyType,
       style: l.style,
       address: {

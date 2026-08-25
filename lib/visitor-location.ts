@@ -5,9 +5,12 @@ export type VisitorLocation = {
   postal: string | null
   /** True when postal came from the user’s confirm/edit override. */
   confirmed?: boolean
+  /** True when the visitor cleared ZIP — do not fall back to IP inference. */
+  cleared?: boolean
 }
 
 const POSTAL_OVERRIDE_KEY = 'tmre_visitor_postal_override'
+const POSTAL_CLEARED_KEY = 'tmre_visitor_postal_cleared'
 const GLOW_DISMISSED_KEY = 'tmre_zip_pill_glow_dismissed'
 export const VISITOR_LOCATION_CHANGED_EVENT = 'tmre-visitor-location'
 
@@ -44,23 +47,65 @@ export function readVisitorPostalOverride(): string | null {
   }
 }
 
-/** Persist a confirmed ZIP (or clear). Updates in-memory cache + notifies listeners. */
-export function setVisitorPostalOverride(postal: string | null): VisitorLocation {
-  const nextPostal = normalizePostal(postal)
-  if (typeof window !== 'undefined') {
-    try {
-      if (nextPostal) window.localStorage.setItem(POSTAL_OVERRIDE_KEY, nextPostal)
-      else window.localStorage.removeItem(POSTAL_OVERRIDE_KEY)
-    } catch {
-      /* private mode */
-    }
+function readVisitorPostalCleared(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(POSTAL_CLEARED_KEY) === '1'
+  } catch {
+    return false
   }
+}
+
+function writePostalKeys(nextPostal: string | null, cleared: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (nextPostal) {
+      window.localStorage.setItem(POSTAL_OVERRIDE_KEY, nextPostal)
+      window.localStorage.removeItem(POSTAL_CLEARED_KEY)
+    } else {
+      window.localStorage.removeItem(POSTAL_OVERRIDE_KEY)
+      if (cleared) window.localStorage.setItem(POSTAL_CLEARED_KEY, '1')
+      else window.localStorage.removeItem(POSTAL_CLEARED_KEY)
+    }
+  } catch {
+    /* private mode */
+  }
+}
+
+/** Persist a confirmed ZIP. Updates in-memory cache + notifies listeners. */
+export function setVisitorPostalOverride(postal: string): VisitorLocation {
+  const nextPostal = normalizePostal(postal)
+  writePostalKeys(nextPostal, false)
   const next: VisitorLocation = {
     postal: nextPostal,
     town: townFromPostal(nextPostal),
     confirmed: Boolean(nextPostal),
+    cleared: false,
   }
   cached = next
+  notifyVisitorLocationChanged()
+  return next
+}
+
+/** Cancel the ZIP out — no override and no IP fallback until Reset. */
+export function clearVisitorPostalOverride(): VisitorLocation {
+  writePostalKeys(null, true)
+  const next: VisitorLocation = {
+    postal: null,
+    town: null,
+    confirmed: true,
+    cleared: true,
+  }
+  cached = next
+  notifyVisitorLocationChanged()
+  return next
+}
+
+/** Drop override + cleared flag, then re-resolve from IP /api/visitor-town. */
+export async function resetVisitorPostalToInferred(): Promise<VisitorLocation> {
+  writePostalKeys(null, false)
+  clearVisitorLocationCache()
+  const next = await fetchVisitorLocation()
   notifyVisitorLocationChanged()
   return next
 }
@@ -91,12 +136,18 @@ export function notifyVisitorLocationChanged(): void {
 export async function fetchVisitorLocation(): Promise<VisitorLocation> {
   if (cached !== undefined) return cached
 
+  if (readVisitorPostalCleared()) {
+    cached = { town: null, postal: null, confirmed: true, cleared: true }
+    return cached
+  }
+
   const override = readVisitorPostalOverride()
   if (override) {
     cached = {
       postal: override,
       town: townFromPostal(override),
       confirmed: true,
+      cleared: false,
     }
     return cached
   }
@@ -112,9 +163,9 @@ export async function fetchVisitorLocation(): Promise<VisitorLocation> {
     const town =
       (typeof data.town === 'string' && data.town.trim() ? data.town.trim() : null) ??
       townFromPostal(postal)
-    cached = { town, postal, confirmed: false }
+    cached = { town, postal, confirmed: false, cleared: false }
   } catch {
-    cached = { town: null, postal: null, confirmed: false }
+    cached = { town: null, postal: null, confirmed: false, cleared: false }
   }
   return cached
 }

@@ -270,6 +270,13 @@ export const KNOWN_BROWSER_STORAGE: readonly KnownBrowserStorageInfo[] = [
     category: "Header / location",
   },
   {
+    key: "tmre_visitor_postal_cleared",
+    kind: "localStorage",
+    purpose:
+      "Header ZIP pill — visitor cleared ZIP; do not fall back to IP inference until Reset",
+    category: "Header / location",
+  },
+  {
     key: "tmre_zip_pill_glow_dismissed",
     kind: "localStorage",
     purpose: "Header ZIP pill — hide the gold glow after first interaction",

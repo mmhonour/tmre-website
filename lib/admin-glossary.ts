@@ -1045,7 +1045,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Deal of the Day / Week',
     category: 'ui-tabs',
     definition:
-      'Featured high-score listing surfaces (homepage / Intelligence), backed by stats_cache payloads. Picks must be MLS Active — Under Contract, Continue to Show, and Coming Soon are excluded; a live mls_status check drops stale cached picks after Incremental.',
+      'Featured high-score listing surfaces (homepage / Intelligence), backed by stats_cache payloads. Picks must be MLS Active — Under Contract, Continue to Show, Coming Soon, and Pending are excluded. A live Postgres read (coalesced mls_status + RESO StandardStatus) drops stale cached picks after Incremental; MLSStatus staying Active while StandardStatus moved to UC/CTS used to leak through.',
   },
   {
     term: 'Latest',
@@ -1093,7 +1093,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'VisitorLocationBadge',
     category: 'ui-tabs',
     definition:
-      'Zip-code pill in the main header (left of the email icon). Rotating gold border glow until first click; click opens confirm/edit ZIP popover (localStorage override + visitor location refresh for personalization).',
+      'Zip-code pill in the main header (left of the email icon). Rotating gold border glow until first click; click opens confirm/edit ZIP popover — Save a ZIP, Clear ZIP (no personalization, no IP fallback), Reset (re-detect from /api/visitor-town), or Cancel the dialog. Override in tmre_visitor_postal_override; cleared flag in tmre_visitor_postal_cleared.',
   },
 
   // —— Finance ——

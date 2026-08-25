@@ -2938,7 +2938,7 @@ export default function IntelligenceClient({
     setZipLinksExpanded(false);
   }, [active]);
 
-  // Multi-zip towns on phone: expand zip choices until All / a zip is tapped.
+  // Multi-zip towns on phone: keep zip choices open until a zip is tapped.
   useEffect(() => {
     if (
       isMobileViewport &&
@@ -2968,7 +2968,7 @@ export default function IntelligenceClient({
     return () => window.clearTimeout(timer);
   }, [active, isMobileViewport]);
 
-  // Phone: keep location chrome peeked while a multi-zip town still needs All/zip.
+  // Phone: keep location chrome peeked while a multi-zip town still needs a zip.
   // Do not steal an intentional For Sale/Rentals (tx) or slider peek.
   useEffect(() => {
     if (
@@ -3835,8 +3835,8 @@ export default function IntelligenceClient({
     !mobileZipConfirmed;
   /**
    * Phone: hide town pills after a town is chosen, unless that town still needs
-   * a zip (All / specific). Hide zip pills once All or a zip is confirmed.
-   * Expanding filters or peeking towns via the descriptor reveals them again.
+   * a zip pick. Hide zip pills once a zip is confirmed. Expanding filters or
+   * peeking towns via the descriptor reveals them again.
    */
   const mobileLocationChromeHidden =
     isMobileViewport &&
@@ -4650,7 +4650,7 @@ export default function IntelligenceClient({
   const peekTxPills = () => {
     const closingTx = !filterChromeCollapsed || isPeeking("tx");
     peekPills("tx");
-    // Phone: a multi-zip town still needing All/zip keeps its pills in reach.
+    // Phone: a multi-zip town still needing a zip keeps its pills in reach.
     if (
       closingTx &&
       isMobileViewport &&
@@ -5660,7 +5660,7 @@ export default function IntelligenceClient({
                               }}
                               counts={zipCounts}
                               allCount={zipAllCount}
-                              allLabel={`Search all zips for ${active}`}
+                              allLabel="All zips"
                               townName={active}
                               zipLinksExpanded={zipLinksExpanded}
                               onZipLinksExpandedChange={setZipLinksExpanded}
@@ -5719,7 +5719,7 @@ export default function IntelligenceClient({
                             }}
                             counts={zipCounts}
                             allCount={zipAllCount}
-                            allLabel={`Search all zips for ${active}`}
+                            allLabel="All zips"
                             townName={active}
                             zipLinksExpanded={zipLinksExpanded}
                             onZipLinksExpandedChange={setZipLinksExpanded}
@@ -6779,18 +6779,15 @@ function ScoreInfoButton({ onInfoClick }: { onInfoClick: () => void }) {
 function SliderKindResetButton({
   kind,
   onReset,
-  customized,
   label,
 }: {
   kind: IntelSliderKind;
   onReset: (kind: IntelSliderKind) => void;
-  customized: boolean;
   label: string;
 }) {
   return (
     <FilterResetButton
       onClick={() => onReset(kind)}
-      disabled={!customized}
       label={label}
     />
   );
@@ -6865,11 +6862,12 @@ function BedBathVintageSqftRow({
   const showSqft = show("sqft");
   const showFurnish = showFurnished && show("furnished");
   const kindReset = (kind: IntelSliderKind, label: string) =>
-    showPerKindReset && onResetSliderKind && isSliderKindCustomized ? (
+    showPerKindReset &&
+    onResetSliderKind &&
+    isSliderKindCustomized?.(kind) ? (
       <SliderKindResetButton
         kind={kind}
         onReset={onResetSliderKind}
-        customized={isSliderKindCustomized(kind)}
         label={label}
       />
     ) : null;
@@ -7497,7 +7495,8 @@ function IntelFilterControlsRow({
   const showCommercialFurnished =
     cls === "commercial" && showFurnished && showKind("furnished");
   // Full set (mag glass / every descriptor) → one reset; partial peeks → per kind.
-  const showConsolidatedReset = visibleKinds === "all";
+  // Hide reset until a slider is dirty — a pristine track has nothing to undo.
+  const showConsolidatedReset = visibleKinds === "all" && slidersCustomized;
   const showPerKindReset = isPartialPeek;
 
   const sliderPanel = (
@@ -7523,11 +7522,10 @@ function IntelFilterControlsRow({
               onMaxIndexChange={onMaxPriceIndexChange}
               onActiveChange={onPriceSliderActiveChange}
             />
-            {showPerKindReset ? (
+            {showPerKindReset && isSliderKindCustomized("price") ? (
               <SliderKindResetButton
                 kind="price"
                 onReset={onResetSliderKind}
-                customized={isSliderKindCustomized("price")}
                 label="Reset price"
               />
             ) : null}
@@ -7536,7 +7534,6 @@ function IntelFilterControlsRow({
         {showConsolidatedReset ? (
         <FilterResetButton
           onClick={onResetSliders}
-          disabled={!slidersCustomized}
           label="Reset sliders"
         />
         ) : null}
@@ -7588,11 +7585,10 @@ function IntelFilterControlsRow({
           valueText={formatFurnishedFilterLabel(furnishedFilter)}
           showCenterLabelWhen={(index) => index === 0}
         />
-        {showPerKindReset ? (
+        {showPerKindReset && isSliderKindCustomized("furnished") ? (
           <SliderKindResetButton
             kind="furnished"
             onReset={onResetSliderKind}
-            customized={isSliderKindCustomized("furnished")}
             label="Reset furnished"
           />
         ) : null}
@@ -8677,12 +8673,13 @@ function DealBoardMapMobileChrome({
               label="Show listings"
             />
             <DealBoardMapToggleButton mapOn onToggle={onExitToListings} />
+            {slidersCustomized ? (
             <FilterResetButton
               onClick={onResetSliders}
-              disabled={!slidersCustomized}
               label="Reset sliders"
               tone="onLight"
             />
+            ) : null}
           </div>
         </div>
         {totalPages > 1 ? (

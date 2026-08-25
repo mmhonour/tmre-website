@@ -380,10 +380,9 @@ export default function DealBoardList({
         onMapToggle={onMapToggle}
         options={viewOptions}
       />
-      {onResetSliders ? (
+      {onResetSliders && slidersCustomized ? (
         <FilterResetButton
           onClick={onResetSliders}
-          disabled={!slidersCustomized}
           label="Reset sliders"
           tone="onLight"
         />
