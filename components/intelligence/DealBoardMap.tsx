@@ -73,6 +73,7 @@ export type DealBoardMapListing = {
 
 type LonLat = { lat: number; lon: number };
 type Ring = [number, number][];
+type ZipRings = { zip: string; rings: Ring[] };
 type GeoBounds = {
   minLat: number;
   maxLat: number;
@@ -394,6 +395,7 @@ function PreviewCard({
 export default function DealBoardMap({
   listings,
   boundZips = [],
+  highlightZip = null,
   scopeLabel,
   activeKey,
   onSelect,
@@ -408,6 +410,12 @@ export default function DealBoardMap({
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
   boundZips?: readonly string[];
+  /**
+   * Zip whose outline reads blue instead of navy — the pill being hovered on
+   * desktop, or the one just tapped. Drawn even when it sits outside the
+   * framed search, and never allowed to move the viewport.
+   */
+  highlightZip?: string | null;
   /** Names the default view for the reset control ("Westport", "all towns"). */
   scopeLabel?: string;
   /** Highlighted pin — kept in sync with the card list selection. */
@@ -466,37 +474,65 @@ export default function DealBoardMap({
   /** Touch: first tap opens the preview card, the card itself opens the listing. */
   const [coarsePointer, setCoarsePointer] = useState(false);
 
-  const [rings, setRings] = useState<Ring[]>([]);
+  /** Rings stay grouped by zip so one zip can be restyled on its own. */
+  const [zipRings, setZipRings] = useState<ZipRings[]>([]);
+  /** Hovered zip outside the framed search — drawn, but not part of the fit. */
+  const [extraRings, setExtraRings] = useState<ZipRings | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
 
   const placeable = useMemo(() => listings.filter(hasCoords), [listings]);
   const missingCoords = listings.length - placeable.length;
   const boundKey = boundZips.join(",");
+  const highlight = highlightZip?.trim() || null;
 
   useEffect(() => {
     if (!boundKey) {
-      setRings([]);
+      setZipRings([]);
       return;
     }
     let cancelled = false;
     void loadZipBoundariesForZips(boundZips)
       .then((byZip) => {
         if (cancelled) return;
-        const next: Ring[] = [];
+        const next: ZipRings[] = [];
         for (const zip of boundZips) {
           const found = byZip.get(zip);
-          if (found) next.push(...found);
+          if (found) next.push({ zip, rings: found });
         }
-        setRings(next);
+        setZipRings(next);
       })
       .catch(() => {
-        if (!cancelled) setRings([]);
+        if (!cancelled) setZipRings([]);
       });
     return () => {
       cancelled = true;
     };
   }, [boundKey, boundZips]);
 
+  useEffect(() => {
+    if (!highlight || boundZips.includes(highlight)) {
+      setExtraRings(null);
+      return;
+    }
+    let cancelled = false;
+    void loadZipBoundariesForZips([highlight])
+      .then((byZip) => {
+        if (cancelled) return;
+        const found = byZip.get(highlight);
+        setExtraRings(found ? { zip: highlight, rings: found } : null);
+      })
+      .catch(() => {
+        if (!cancelled) setExtraRings(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [highlight, boundKey, boundZips]);
+
+  const rings = useMemo(
+    () => zipRings.flatMap((entry) => entry.rings),
+    [zipRings],
+  );
   const searchBounds = useMemo(() => boundsFromRings(rings), [rings]);
   const pinBounds = useMemo(() => boundsFromPins(placeable), [placeable]);
   const fitTarget = searchBounds ?? pinBounds;
@@ -1012,7 +1048,21 @@ export default function DealBoardMap({
     zoom,
   ]);
 
-  const boundaryPaths = useMemo(() => {
+  const boundaryLayers = useMemo(() => {
+    if (!viewport) return [];
+    const source = extraRings ? [...zipRings, extraRings] : zipRings;
+    return source
+      .map((entry) => ({
+        zip: entry.zip,
+        paths: entry.rings
+          .map((ring) => ringToPath(ring, viewport, zoom))
+          .filter(Boolean),
+      }))
+      .filter((layer) => layer.paths.length > 0);
+  }, [zipRings, extraRings, viewport, zoom]);
+
+  /** Even-odd mask dims everything outside the framed search only. */
+  const maskPaths = useMemo(() => {
     if (!viewport || rings.length === 0) return [];
     return rings
       .map((ring) => ringToPath(ring, viewport, zoom))
@@ -1073,26 +1123,34 @@ export default function DealBoardMap({
           />
         ))}
 
-        {boundaryPaths.length > 0 && size.width > 0 ? (
+        {boundaryLayers.length > 0 && size.width > 0 ? (
           <svg
             className="pointer-events-none absolute inset-0 z-[5] h-full w-full"
             viewBox={`0 0 ${size.width} ${size.height}`}
             aria-hidden
           >
-            <path
-              d={`M0 0H${size.width}V${size.height}H0Z ${boundaryPaths.join(" ")}`}
-              fill="rgba(26, 39, 68, 0.28)"
-              fillRule="evenodd"
-            />
-            {boundaryPaths.map((d, i) => (
+            {maskPaths.length > 0 ? (
               <path
-                key={i}
-                d={d}
-                fill="none"
-                stroke="rgba(26, 39, 68, 0.85)"
-                strokeWidth="1.6"
+                d={`M0 0H${size.width}V${size.height}H0Z ${maskPaths.join(" ")}`}
+                fill="rgba(26, 39, 68, 0.28)"
+                fillRule="evenodd"
               />
-            ))}
+            ) : null}
+            {boundaryLayers.map((layer) => {
+              const lit = layer.zip === highlight;
+              return layer.paths.map((d, i) => (
+                <path
+                  key={`${layer.zip}-${i}`}
+                  d={d}
+                  fill={lit ? "rgba(74, 141, 183, 0.22)" : "none"}
+                  stroke={
+                    lit ? "rgba(74, 141, 183, 0.95)" : "rgba(26, 39, 68, 0.85)"
+                  }
+                  strokeWidth={lit ? 2.4 : 1.6}
+                  className="transition-[stroke,fill,stroke-width] duration-150 ease-out"
+                />
+              ));
+            })}
           </svg>
         ) : null}
 

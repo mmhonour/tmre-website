@@ -18,6 +18,18 @@ export function dealBoardReturnPath(mlsId: string): string {
   return `/intelligence#${dealBoardRowDomId(mlsId)}`;
 }
 
+/**
+ * The board exactly as it stands — filters, sort and view included, since
+ * Intelligence keeps its share query in the address bar. Client-only, and used
+ * when leaving the board so both Back and a shared link can rebuild this search.
+ */
+export function currentDealBoardReturnPath(mlsId: string): string {
+  if (typeof window === "undefined") return dealBoardReturnPath(mlsId);
+  const { pathname, search } = window.location;
+  if (pathname !== "/intelligence" || !search) return dealBoardReturnPath(mlsId);
+  return `${pathname}${search}#${dealBoardRowDomId(mlsId)}`;
+}
+
 export function parseDealBoardFocusHash(hash: string): string | null {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
   if (!raw.startsWith("deal-")) return null;

@@ -15,6 +15,8 @@ export type IntelligenceSnapshotFilters = {
   exactBeds: boolean;
   newConstructionFilter: string;
   furnishedFilter: string;
+  /** Under-contract rows are dropped from the pool unless this is on. */
+  underContract: boolean;
   minPrice: number;
   maxPrice: number | null;
 };
@@ -40,6 +42,7 @@ function filtersKey(filters: IntelligenceSnapshotFilters): string {
     filters.exactBeds ? "1" : "0",
     filters.newConstructionFilter,
     filters.furnishedFilter,
+    filters.underContract ? "1" : "0",
     filters.minPrice,
     filters.maxPrice ?? "",
   ].join("|");

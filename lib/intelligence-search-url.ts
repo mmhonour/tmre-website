@@ -92,10 +92,14 @@ export type ParsedIntelligenceSearch = {
   /** Desktop map arrangement when the map layer is on. */
   mapLayout: 'top' | 'side' | null
   furnished: string | null
+  /** Include plain "Under Contract" rows (Continue to Show always shows). */
+  underContract: boolean
   minPrice: number | null
   maxPrice: number | null
   minSqft: number | null
   maxSqft: number | null
+  /** Days-on-market band id from the DOM mini chart (`{tierId}:{min}-{max}`). */
+  domBand: string | null
   /** Clear cookie/memory minor filters not defined in the URL. */
   resetMinor: boolean
 }
@@ -122,10 +126,14 @@ export type IntelligenceShareState = {
   mapOn?: boolean
   mapLayout?: 'top' | 'side'
   furnished?: string | null
+  /** Include plain "Under Contract" rows (Continue to Show always shows). */
+  underContract?: boolean
   minPrice?: number
   maxPrice?: number | null
   minSqft?: number
   maxSqft?: number | null
+  /** Days-on-market band id from the DOM mini chart (`{tierId}:{min}-{max}`). */
+  domBand?: string | null
   /**
    * When true, Intelligence resets cookie/memory minor filters (beds, zip,
    * vintage, etc.) that are not explicitly present in the share URL.
@@ -280,6 +288,7 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
   if (state.furnished && state.furnished !== 'all') {
     params.set('furn', state.furnished)
   }
+  if (state.underContract) params.set('uc', '1')
 
   const hasMinPrice = state.minPrice != null && state.minPrice > 0
   const hasMaxPrice =
@@ -296,6 +305,9 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
   if (state.maxSqft != null && Number.isFinite(state.maxSqft)) {
     params.set('smax', String(Math.round(state.maxSqft)))
   }
+
+  const domBand = state.domBand?.trim()
+  if (domBand) params.set('dom', domBand)
 
   if (state.resetMinor) params.set('rst', '1')
 
@@ -424,6 +436,8 @@ export function buildIntelligenceShareTitle(state: IntelligenceShareState): stri
     parts.push(furn.charAt(0).toUpperCase() + furn.slice(1))
   }
 
+  if (state.underContract) parts.push('Incl. under contract')
+
   const price = formatSharePriceRangeLabel(state.minPrice, state.maxPrice)
   if (price) parts.push(price)
 
@@ -468,10 +482,12 @@ export function intelligenceShareStateFromParsed(
     mapOn: parsed.mapOn || parsed.view === 'map',
     mapLayout: parsed.mapLayout ?? undefined,
     furnished: parsed.furnished,
+    underContract: parsed.underContract,
     minPrice: parsed.minPrice ?? undefined,
     maxPrice: parsed.maxPrice,
     minSqft: parsed.minSqft ?? undefined,
     maxSqft: parsed.maxSqft,
+    domBand: parsed.domBand,
   }
 }
 
@@ -553,10 +569,12 @@ function hasIntelligenceShareParams(searchParams: URLSearchParams): boolean {
     'map',
     'ml',
     'furn',
+    'uc',
     'pmin',
     'pmax',
     'smin',
     'smax',
+    'dom',
     'rst',
   ]
   return keys.some((k) => searchParams.has(k))
@@ -706,10 +724,12 @@ export function parseIntelligenceSearchParams(
     mapOn,
     mapLayout,
     furnished: searchParams.get('furn')?.trim() || null,
+    underContract: searchParams.get('uc') === '1',
     minPrice: Number.isFinite(pmin) && pmin > 0 ? pmin : null,
     maxPrice: Number.isFinite(pmax) && pmax > 0 ? pmax : null,
     minSqft: Number.isFinite(smin) && smin > 0 ? smin : null,
     maxSqft: Number.isFinite(smax) && smax > 0 ? smax : null,
+    domBand: searchParams.get('dom')?.trim() || null,
     resetMinor: searchParams.get('rst') === '1',
   }
 }

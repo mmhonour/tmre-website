@@ -125,7 +125,15 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
     "Intelligence — furnished filter (rentals)",
     "intelligence",
   ),
+  tmre_intel_under_contract: pref(
+    "Intelligence — show under-contract listings (off by default; Continue to Show always shows)",
+    "intelligence",
+  ),
   tmre_intel_zip: pref("Intelligence — zip pill selection", "intelligence"),
+  tmre_intel_board: pref(
+    "Intelligence — share query string for the last board viewed (restores price, sqft and DOM band on \"Back to deal board\")",
+    "intelligence",
+  ),
   tmre_intel_board_status: pref(
     "Intelligence deal board — status filter (Active / New / Reduced / …)",
     "intelligence",

@@ -109,6 +109,55 @@ export function parseReturnFromSearchParams(
   return { href, label: labelForReturnPath(href) };
 }
 
+function parseStoredReturnNav(json: string | null | undefined): ReturnNav | null {
+  if (!json) return null;
+  try {
+    const stored = JSON.parse(json) as Partial<ReturnNav>;
+    if (
+      typeof stored.href !== "string" ||
+      !stored.href.startsWith("/") ||
+      typeof stored.label !== "string" ||
+      isListingPath(parseReturnHref(stored.href).pathname)
+    ) {
+      return null;
+    }
+    return { href: stored.href, label: stored.label };
+  } catch {
+    return null;
+  }
+}
+
+/** The return nav saved by whoever last left a real page for a listing. */
+export function readStoredReturnNav(): ReturnNav | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    return parseStoredReturnNav(
+      sessionStorage.getItem(LISTING_RETURN_STORAGE_KEY),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A link's `from=` names the page but is often built without its query state —
+ * a deal-board link knows the row, not the filters behind it. When the saved nav
+ * points at the same page and does carry a query, keep that query and the row
+ * anchor the link asked for.
+ */
+export function preferRicherReturnNav(
+  nav: ReturnNav,
+  stored: ReturnNav | null,
+): ReturnNav {
+  if (!stored) return nav;
+  const target = parseReturnHref(nav.href);
+  const saved = parseReturnHref(stored.href);
+  if (saved.pathname !== target.pathname) return nav;
+  if (!saved.search || target.search) return nav;
+  const href = `${saved.pathname}${saved.search}${target.hash || saved.hash}`;
+  return { href, label: labelForReturnPath(href) };
+}
+
 export function appendReturnToHref(href: string, returnPath: string): string {
   if (!returnPath || !isListingHref(href)) return href;
 
@@ -147,6 +196,8 @@ export function resolveReturnNav(opts: {
   referrer?: string | null;
   origin?: string | null;
 }): ReturnNav {
+  const stored = parseStoredReturnNav(opts.storedJson);
+
   // 1) Explicit ?from= on the listing URL (in-app links).
   if (opts.fromParam) {
     let href: string;
@@ -156,7 +207,10 @@ export function resolveReturnNav(opts: {
       href = opts.fromParam;
     }
     if (href.startsWith("/") && !isListingPath(parseReturnHref(href).pathname)) {
-      return { href, label: labelForReturnPath(href) };
+      return preferRicherReturnNav(
+        { href, label: labelForReturnPath(href) },
+        stored,
+      );
     }
   }
 
@@ -170,21 +224,7 @@ export function resolveReturnNav(opts: {
   }
 
   // 3) sessionStorage — listing→listing hops (referrer is another listing) or refresh.
-  if (opts.storedJson) {
-    try {
-      const stored = JSON.parse(opts.storedJson) as Partial<ReturnNav>;
-      if (
-        typeof stored.href === "string" &&
-        stored.href.startsWith("/") &&
-        typeof stored.label === "string" &&
-        !isListingPath(parseReturnHref(stored.href).pathname)
-      ) {
-        return { href: stored.href, label: stored.label };
-      }
-    } catch {
-      // ignore invalid sessionStorage payload
-    }
-  }
+  if (stored) return stored;
 
   // 4) External / empty referrer — default Deal board.
   return { ...DEFAULT_RETURN_NAV };

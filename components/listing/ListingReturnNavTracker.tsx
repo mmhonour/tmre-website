@@ -8,6 +8,8 @@ import {
   labelForReturnPath,
   parseReturnFromSearchParams,
   persistReturnNav,
+  preferRicherReturnNav,
+  readStoredReturnNav,
 } from "@/lib/listing-return-nav";
 
 function pathnameFromReturnHref(href: string): string {
@@ -51,7 +53,8 @@ export default function ListingReturnNavTracker() {
     if (isListingPath(pathname)) {
       const fromNav = parseReturnFromSearchParams(searchParams);
       if (fromNav) {
-        persistReturnNav(fromNav);
+        // Don't trade a saved search for a bare path naming the same page.
+        persistReturnNav(preferRicherReturnNav(fromNav, readStoredReturnNav()));
       } else if (
         prevPath &&
         !isListingPath(pathnameFromReturnHref(prevPath))

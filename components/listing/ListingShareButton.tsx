@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  appendReturnToHref,
+  DEFAULT_RETURN_NAV,
+  LISTING_RETURN_STORAGE_KEY,
+  resolveReturnNav,
+} from "@/lib/listing-return-nav";
 
 /**
  * Share-nodes glyph: three dots at the corners of a left-pointing triangle,
@@ -90,9 +96,10 @@ async function copyShareClipboard(url: string, title: string): Promise<void> {
 }
 
 /**
- * Share / Copy control that always uses the short canonical URL
- * (`/listings/{mlsId}` or `/spotlight`), even when the address bar still
- * shows address/city query params.
+ * Share / Copy control that uses the short canonical URL (`/listings/{mlsId}`
+ * or `/spotlight`) rather than whatever address/city params the address bar
+ * happens to show — plus a `from=` return path for listings, so the recipient's
+ * "Back to deal board" reproduces the search this listing was found in.
  */
 export default function ListingShareButton({
   href,
@@ -119,10 +126,32 @@ export default function ListingShareButton({
     };
   }, []);
 
+  /**
+   * Carry the search behind this listing into the shared link, so whoever opens
+   * it gets the sender's deal board — filters, sort and row — from Back. Only
+   * listing paths take a `from`; a bare default board is not worth sending.
+   */
+  const shareHref = () => {
+    let storedJson: string | null = null;
+    try {
+      storedJson = sessionStorage.getItem(LISTING_RETURN_STORAGE_KEY);
+    } catch {
+      // private mode / storage denied — fall back to the URL's own `from`
+    }
+    const nav = resolveReturnNav({
+      fromParam: new URLSearchParams(window.location.search).get("from"),
+      storedJson,
+      referrer: document.referrer || null,
+      origin: window.location.origin,
+    });
+    if (nav.href === DEFAULT_RETURN_NAV.href) return href;
+    return appendReturnToHref(href, nav.href);
+  };
+
   const absoluteUrl = () => {
     if (/^https?:\/\//i.test(href)) return href;
-    const path = href.startsWith("/") ? href : `/${href}`;
-    return `${window.location.origin}${path}`;
+    const path = shareHref();
+    return `${window.location.origin}${path.startsWith("/") ? path : `/${path}`}`;
   };
 
   /** Put this href in the address bar so OS share sheets that ignore `url` still send it. */

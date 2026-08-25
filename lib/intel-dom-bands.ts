@@ -75,6 +75,21 @@ export function flattenDomTiersToSequentialBands(
   return out
 }
 
+/** Read the day range back out of a band id (`{tierId}:{min}-{max|plus}`). */
+export function parseDomBandId(
+  id: string,
+): { minDays: number; maxDays: number | null } | null {
+  const range = id.trim().split(':').pop() ?? ''
+  const m = range.match(/^(\d+)-(\d+|plus)$/)
+  if (!m) return null
+  const minDays = Number(m[1])
+  if (!Number.isFinite(minDays)) return null
+  if (m[2] === 'plus') return { minDays, maxDays: null }
+  const maxDays = Number(m[2])
+  if (!Number.isFinite(maxDays)) return null
+  return { minDays, maxDays }
+}
+
 export function listingMatchesDomBand(
   dom: number | null | undefined,
   minDays: number,

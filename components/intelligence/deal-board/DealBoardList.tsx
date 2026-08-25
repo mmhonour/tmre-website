@@ -26,6 +26,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 /** When 100+ filtered results, mount/eager-load photos in batches of this size. */
 export const DEAL_BOARD_PHOTO_BATCH = 20;
@@ -61,6 +62,8 @@ export type DealBoardListProps = {
   sortKey: DealBoardSortKey;
   sortDir: DealBoardSortDir;
   onSort: (key: DealBoardSortKey) => void;
+  /** Sets field and direction together, for the sort drawer's per-field ↑ / ↓. */
+  onSortDir?: (key: DealBoardSortKey, dir: DealBoardSortDir) => void;
   boardView: DealBoardView;
   onBoardViewChange: (view: DealBoardCardView) => void;
   mapOn?: boolean;
@@ -94,6 +97,12 @@ export type DealBoardListProps = {
   onSortFieldDrawerOpenChange?: (open: boolean) => void;
   /** When filters pin under the nav, sit this toolbar just below them. */
   toolbarStickyTopPx?: number;
+  /**
+   * Desktop map layouts: render the results toolbar into this element instead of
+   * the card so it can span the full width above / beside the map. State the
+   * toolbar owns (more data / insights) stays here with the rows it drives.
+   */
+  toolbarHost?: HTMLElement | null;
 };
 
 export default function DealBoardList({
@@ -122,6 +131,7 @@ export default function DealBoardList({
   sortKey,
   sortDir,
   onSort,
+  onSortDir,
   boardView,
   onBoardViewChange,
   mapOn = false,
@@ -140,6 +150,7 @@ export default function DealBoardList({
   sortFieldDrawerOpen,
   onSortFieldDrawerOpenChange,
   toolbarStickyTopPx,
+  toolbarHost = null,
 }: DealBoardListProps) {
   const [showGridMeta, setShowGridMeta] = useState(false);
   const [showGridInsights, setShowGridInsights] = useState(false);
@@ -332,6 +343,7 @@ export default function DealBoardList({
       sortKey={sortKey}
       sortDir={sortDir}
       onSort={onSort}
+      onSortDir={onSortDir}
       showTown={showTown}
       showLookedSort={showLookedSort}
       scoreInfoButton={scoreInfoButton}
@@ -436,27 +448,32 @@ export default function DealBoardList({
     </div>
   );
 
+  const inlineToolbar = toolbarHost ? null : resultsToolbar;
+
   return (
     <>
+      {toolbarHost ? createPortal(resultsToolbar, toolbarHost) : null}
       <div className="rounded-2xl border border-charcoal/[0.08] bg-white">
         {loading ? (
           <>
-            {resultsToolbar}
+            {inlineToolbar}
             {loadingBlock}
           </>
         ) : !hasResults ? (
           <>
-            {resultsToolbar}
+            {inlineToolbar}
             {emptyBlock}
           </>
         ) : (
           <>
-            <div
-              className="sticky z-30 rounded-t-2xl bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)]"
-              style={{ top: toolbarStickyTopPx ?? 80 }}
-            >
-              {resultsToolbar}
-            </div>
+            {inlineToolbar ? (
+              <div
+                className="sticky z-30 rounded-t-2xl bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)]"
+                style={{ top: toolbarStickyTopPx ?? 80 }}
+              >
+                {inlineToolbar}
+              </div>
+            ) : null}
             <div className={rowsHiddenBelowMd ? "hidden md:block" : undefined}>
               {/*
                 Render consecutive listings in one CSS grid. Splitting top /

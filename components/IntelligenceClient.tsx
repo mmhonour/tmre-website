@@ -30,7 +30,7 @@ import IntelligencePriceBandMiniChart from "@/components/IntelligencePriceBandMi
 import IntelligenceLuxuryPriceBandMiniChart from "@/components/IntelligenceLuxuryPriceBandMiniChart";
 import IntelligenceDomBandMiniChart from "@/components/IntelligenceDomBandMiniChart";
 import IntelligenceMiniGraphsStrip from "@/components/IntelligenceMiniGraphsStrip";
-import { listingMatchesDomBand } from "@/lib/intel-dom-bands";
+import { listingMatchesDomBand, parseDomBandId } from "@/lib/intel-dom-bands";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import SnapshotCollapseToggle from "@/components/SnapshotCollapseToggle";
 import type { VintageListingRow } from "@/lib/intelligence-vintage-stats";
@@ -44,6 +44,7 @@ import {
 } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import {
   dealBoardSortLabel,
+  type DealBoardSortDir,
   type DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
 import type { DealBoardStatusFilter } from "@/components/intelligence/deal-board/deal-board-types";
@@ -64,6 +65,7 @@ import {
 import DealBoardMap from "@/components/intelligence/DealBoardMap";
 import {
   clearDealBoardFocus,
+  currentDealBoardReturnPath,
   dealBoardRowDomId,
   matchListingKeyFromFocusId,
   parseDealBoardFocusHash,
@@ -71,6 +73,7 @@ import {
   rememberDealBoardFocus,
   stampDealBoardHash,
 } from "@/lib/deal-board-focus";
+import { persistReturnNav } from "@/lib/listing-return-nav";
 import type { TownDescriptorStats } from "@/lib/intelligence-all-towns-descriptor";
 import {
   LISTING_FURNISHED_VALUES,
@@ -200,7 +203,22 @@ function furnishedFilterFromIndex(index: number): FurnishedFilter {
 function formatFurnishedFilterLabel(value: FurnishedFilter): string {
   return value === "all" ? "Any Furnished" : value;
 }
+
+/**
+ * SmartMLS splits under-agreement rows into "Under Contract" (D) and "Under
+ * Contract - Continue to Show" (SH). CTS sellers are still showing the home, so
+ * those rows are never filtered; plain under contract is off unless asked for.
+ */
+const UNDER_CONTRACT_PREF_VALUES = ["off", "on"] as const;
+type UnderContractPref = (typeof UNDER_CONTRACT_PREF_VALUES)[number];
+const UNDER_CONTRACT_PREF_KEY = "tmre_intel_under_contract";
 const STATS_EXPANDED_PREF = "tmre_intel_stats_expanded_towns";
+/**
+ * Share query string for the board the visitor last looked at. Restores the
+ * filters that live in memory rather than their own cookie (price, sqft, DOM
+ * band) when Intelligence is opened without params — e.g. "Back to deal board".
+ */
+const INTEL_BOARD_STATE_PREF_KEY = "tmre_intel_board";
 const FILTERS_EXPANDED_VALUES = ["true", "false"] as const;
 type FiltersExpandedPref = (typeof FILTERS_EXPANDED_VALUES)[number];
 type MinBedFilter = (typeof MIN_BED_VALUES)[number];
@@ -481,7 +499,14 @@ function dualSliderThumbValues(
 const DESCRIPTOR_ENLARGE_HOLD_MS = 10_000;
 /** Idle dismiss for filter peeks + Market Intelligence / triangle chrome. */
 const FILTER_PEEK_IDLE_MS = 30_000;
-type IntelSliderKind = "price" | "bed" | "bath" | "vintage" | "sqft" | "furnished";
+type IntelSliderKind =
+  | "price"
+  | "bed"
+  | "bath"
+  | "vintage"
+  | "sqft"
+  | "furnished"
+  | "undercontract";
 /** Descriptor peeks: accumulate kinds, or `"all"` (mag glass / every kind exposed). */
 type ExposedIntelSliders = "all" | IntelSliderKind[] | null;
 
@@ -499,6 +524,8 @@ function availableIntelSliderKinds(opts: {
     kinds.push("bed", "bath", "vintage", "sqft");
   }
   if (opts.showFurnished) kinds.push("furnished");
+  // Under contract applies to every class and transaction type.
+  kinds.push("undercontract");
   return kinds;
 }
 
@@ -830,6 +857,11 @@ function filterCountLabel(count: number, unit: "Bed" | "Bath", exact = false): s
 
 function listingTown(l: DisplayListing): string | null {
   return l.city ? normalizeTownName(l.city) : null;
+}
+
+/** True only for plain "Under Contract" — Continue to Show stays on the board. */
+function listingHiddenAsUnderContract(l: DisplayListing): boolean {
+  return underContractStatusLabel(l.contractStatus) === "Under Contract";
 }
 
 function listingPropertyType(l: DisplayListing): string {
@@ -1715,11 +1747,29 @@ export default function IntelligenceClient({
       intelligenceDescriptorSizeCssVars(descriptorSizes) as CSSProperties,
     [descriptorSizes],
   );
-  const urlSearch = useMemo(
+  const urlSearchParams = useMemo(
     () => parseIntelligenceSearchParams(searchParams),
     [searchParams],
   );
+  /**
+   * "Back to deal board" links to `/intelligence#deal-…` with no query string,
+   * so the board state saved on the way out stands in for the missing params.
+   * Anything in the address bar wins — a shared or deep link is explicit.
+   */
+  const [savedBoardSearch, setSavedBoardSearch] = useState<string | null>(null);
+  useEffect(() => {
+    if (urlSearchParams) return;
+    const stored = readClientPref(INTEL_BOARD_STATE_PREF_KEY);
+    if (stored) setSavedBoardSearch(stored);
+  }, [urlSearchParams]);
+  const urlSearch = useMemo(() => {
+    if (urlSearchParams) return urlSearchParams;
+    if (!savedBoardSearch) return null;
+    return parseIntelligenceSearchParams(new URLSearchParams(savedBoardSearch));
+  }, [urlSearchParams, savedBoardSearch]);
   const urlSearchAppliedRef = useRef(false);
+  /** Price / sqft / DOM band need the board ladders, so they land later. */
+  const urlPriceSqftAppliedRef = useRef(false);
 
   const [active, setActive] = usePersistedFilter<IntelCity>(
     "tmre_intel_city",
@@ -1792,6 +1842,8 @@ export default function IntelligenceClient({
   const [maxSqftIndex, setMaxSqftIndex] = useState(INTEL_SQFT_MAX_INDEX);
   const [sqftSliderActive, setSqftSliderActive] = useHeldSliderActive();
   const [furnishedSliderActive, setFurnishedSliderActive] = useHeldSliderActive();
+  const [underContractSliderActive, setUnderContractSliderActive] =
+    useHeldSliderActive();
   const sqftRangeCustomizedRef = useRef(false);
   const [collapsedSlidersOpen, setCollapsedSlidersOpen] = useState(false);
   /**
@@ -1813,6 +1865,13 @@ export default function IntelligenceClient({
     "all",
     FURNISHED_FILTER_VALUES,
   );
+  const [underContractPref, setUnderContractPref] =
+    usePersistedFilter<UnderContractPref>(
+      UNDER_CONTRACT_PREF_KEY,
+      "off",
+      UNDER_CONTRACT_PREF_VALUES,
+    );
+  const showUnderContract = underContractPref === "on";
   const [zip, setZip] = usePersistedNullableFilter("tmre_intel_zip");
   const [boardStatusFilter, setBoardStatusFilter] = usePersistedFilter<BoardStatusFilter>(
     "tmre_intel_board_status",
@@ -2500,6 +2559,7 @@ export default function IntelligenceClient({
       setMaxVintageFilter("6");
       setNewConstructionFilter("all");
       setFurnishedFilter("all");
+      setUnderContractPref("off");
       setBoardStatusFilter("all");
       setSortKey("score");
       setSortDir("desc");
@@ -2549,13 +2609,15 @@ export default function IntelligenceClient({
       if (urlSearch.furnished) {
         setFurnishedFilter(urlSearch.furnished as FurnishedFilter);
       }
+      if (urlSearch.underContract) setUnderContractPref("on");
       // Sort applied in a dedicated effect below so it wins over cookie hydration.
     }
-    // Keep a compact shareable URL in the address bar (no hex id).
+    // Keep a compact shareable URL in the address bar (no hex id). The #deal-…
+    // row anchor from "Back to deal board" has to survive the rewrite.
     window.history.replaceState(
       null,
       "",
-      buildIntelligenceShareHref({
+      `${buildIntelligenceShareHref({
         city: urlSearch.city,
         zip: urlSearch.resetMinor ? null : urlSearch.zip,
         tx: urlSearch.tx ?? undefined,
@@ -2591,6 +2653,7 @@ export default function IntelligenceClient({
           : (urlSearch.dir ?? "desc"),
         view: urlSearch.view ?? undefined,
         furnished: urlSearch.resetMinor ? null : urlSearch.furnished,
+        underContract: urlSearch.resetMinor ? false : urlSearch.underContract,
         minPrice: urlSearch.resetMinor
           ? undefined
           : (urlSearch.minPrice ?? undefined),
@@ -2603,7 +2666,8 @@ export default function IntelligenceClient({
         maxSqft: urlSearch.resetMinor
           ? undefined
           : (urlSearch.maxSqft ?? undefined),
-      }),
+        domBand: urlSearch.resetMinor ? null : urlSearch.domBand,
+      })}${window.location.hash}`,
     );
   }, [
     urlSearch,
@@ -2621,6 +2685,7 @@ export default function IntelligenceClient({
     setNewConstructionFilter,
     setBoardStatusFilter,
     setFurnishedFilter,
+    setUnderContractPref,
   ]);
 
   // Sort / view from the share URL must beat usePersistedFilter cookie hydration.
@@ -2826,9 +2891,25 @@ export default function IntelligenceClient({
   }, [tx]);
 
   const snapshot = MOCK_FALLBACK.find((d) => d.city === active) ?? null;
+  /**
+   * Board pool per town. Plain "Under Contract" rows are dropped here rather
+   * than inside filterBoardListings, so the board, town/zip counts, price and
+   * sqft ladders and snapshots all work from one universe of listings.
+   */
+  const poolByCity = useMemo(() => {
+    if (showUnderContract) return byCity;
+    const next = {} as Record<TmreTown, DisplayListing[] | null>;
+    for (const town of TMRE_TOWNS) {
+      const rows = byCity[town];
+      next[town] = rows
+        ? rows.filter((l) => !listingHiddenAsUnderContract(l))
+        : rows;
+    }
+    return next;
+  }, [byCity, showUnderContract]);
   const liveListings: DisplayListing[] = active === "All"
-    ? Object.values(byCity).flatMap((l) => l ?? [])
-    : (byCity[active] ?? []);
+    ? Object.values(poolByCity).flatMap((l) => l ?? [])
+    : (poolByCity[active] ?? []);
   const allListings: DisplayListing[] = active === "All"
     ? (liveListings.length > 0
         ? liveListings
@@ -2836,11 +2917,6 @@ export default function IntelligenceClient({
     : (liveListings.length > 0
         ? liveListings
         : (snapshot?.listings ?? []).map((l) => ({ ...l, city: active })));
-
-  useEffect(() => {
-    setSortKey("score");
-    setSortDir("desc");
-  }, [active]);
 
   const availableZips = useMemo(() => {
     const byZip = new Map<string, number[]>();
@@ -3302,6 +3378,7 @@ export default function IntelligenceClient({
       mapOn: showMap,
       mapLayout,
       furnished: furnishedFilter === "all" ? null : furnishedFilter,
+      underContract: showUnderContract,
       minPrice:
         showPriceFilter && priceFilterActive && minPrice > 0
           ? minPrice
@@ -3315,6 +3392,7 @@ export default function IntelligenceClient({
           : undefined,
       minSqft: sqftFilterActive ? minSqft : undefined,
       maxSqft: sqftFilterActive ? maxSqft : undefined,
+      domBand: activeDomBandId,
     }),
     [
       active,
@@ -3336,6 +3414,7 @@ export default function IntelligenceClient({
       showMap,
       mapLayout,
       furnishedFilter,
+      showUnderContract,
       showPriceFilter,
       priceFilterActive,
       minPrice,
@@ -3343,6 +3422,7 @@ export default function IntelligenceClient({
       sqftFilterActive,
       minSqft,
       maxSqft,
+      activeDomBandId,
     ],
   );
   const intelligenceShareHref = useMemo(
@@ -3355,31 +3435,51 @@ export default function IntelligenceClient({
   );
 
   // Keep the current board in the address bar so Back from a listing restores
-  // sort, view, and filters (replaceState updates this history entry).
+  // sort, view, and filters (replaceState updates this history entry), and save
+  // the same query string for return trips that arrive without one.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.location.pathname !== "/intelligence") return;
-    const next = intelligenceShareHref;
-    const current = `${window.location.pathname}${window.location.search}`;
+    // Hold the saved state until an inbound one has been applied, otherwise the
+    // first render's defaults overwrite the board we are about to restore.
+    if (!urlSearch || urlPriceSqftAppliedRef.current) {
+      writeClientPref(
+        INTEL_BOARD_STATE_PREF_KEY,
+        intelligenceShareHref.split("?")[1] ?? "",
+      );
+    }
+    // The #deal-… row anchor must survive; the focus restore below reads it.
+    const hash = window.location.hash;
+    const next = `${intelligenceShareHref}${hash}`;
+    const current = `${window.location.pathname}${window.location.search}${hash}`;
     if (current === next) return;
     window.history.replaceState(null, "", next);
-  }, [intelligenceShareHref]);
+  }, [intelligenceShareHref, urlSearch]);
 
-  // Apply price/sqft from the share URL once board step ladders are ready.
-  const urlPriceSqftAppliedRef = useRef(false);
+  // Apply price/sqft/DOM band from the share URL once board step ladders are
+  // ready — the ladders only exist after listings land, which is also after the
+  // filter-context effect above has stopped clearing these on hydration.
   useEffect(() => {
     if (!urlSearch || urlPriceSqftAppliedRef.current) return;
     const wantsPrice =
       urlSearch.minPrice != null || urlSearch.maxPrice != null;
     const wantsSqft = urlSearch.minSqft != null || urlSearch.maxSqft != null;
-    if (!wantsPrice && !wantsSqft) {
+    const domBand = urlSearch.domBand
+      ? parseDomBandId(urlSearch.domBand)
+      : null;
+    if (!wantsPrice && !wantsSqft && !domBand) {
       urlPriceSqftAppliedRef.current = true;
       return;
     }
-    if (wantsPrice && boardPriceSteps.length === 0) return;
+    if (boardPriceSteps.length === 0) return;
     if (wantsSqft && boardSqftSteps.length === 0) return;
 
     urlPriceSqftAppliedRef.current = true;
+    if (domBand) {
+      setActiveDomBandId(urlSearch.domBand);
+      setDomBandMinDays(domBand.minDays);
+      setDomBandMaxDays(domBand.maxDays);
+    }
     if (wantsPrice) {
       priceRangeCustomizedRef.current = true;
       if (urlSearch.minPrice != null) {
@@ -3407,7 +3507,7 @@ export default function IntelligenceClient({
   useEffect(() => {
     setMiddleTierExpanded(false);
     setBoardPage(1);
-  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionFilter, furnishedFilter, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex]);
+  }, [active, tx, cls, saleProperty, zip, boardStatusFilter, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, minVintage, maxVintage, newConstructionFilter, furnishedFilter, underContractPref, minPriceIndex, maxPriceIndex, minSqftIndex, maxSqftIndex]);
 
   // Sort changes only reset page — keep middle-tier state so we don't force a
   // full remount of ~100 photo cards when leaving score/desc.
@@ -3653,6 +3753,12 @@ export default function IntelligenceClient({
         boardPage,
         middleExpanded: effectiveMiddleTierExpanded,
       });
+      // The row link's `from=` only names the row. Record the whole search so
+      // Back — and anything shared from that listing — rebuilds these filters.
+      persistReturnNav({
+        href: currentDealBoardReturnPath(mlsId),
+        label: "Deal board",
+      });
     };
     root.addEventListener("click", onClickCapture, true);
     return () => root.removeEventListener("click", onClickCapture, true);
@@ -3749,7 +3855,7 @@ export default function IntelligenceClient({
     >;
     for (const town of TMRE_TOWNS) {
       const n = filterBoardListings(
-        byCity[town] ?? [],
+        poolByCity[town] ?? [],
         tx,
         cls,
         null,
@@ -3773,7 +3879,7 @@ export default function IntelligenceClient({
       all += n;
     }
     return { ...counts, All: all };
-  }, [byCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
+  }, [poolByCity, state, tx, cls, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft]);
 
   const { zipCounts, zipAllCount } = useMemo(() => {
     if (active === "All") {
@@ -3822,6 +3928,7 @@ export default function IntelligenceClient({
     sqftFilterActive ||
     newConstructionFilter !== "all" ||
     furnishedFilter !== "all" ||
+    showUnderContract ||
     zip != null ||
     boardStatusFilter !== "all" ||
     priceFilterActive ||
@@ -3869,13 +3976,21 @@ export default function IntelligenceClient({
     );
   }
 
+  /** Sort drawer ↑ / ↓: field and direction land in one action. */
+  function handleSortDir(key: DealBoardSortKey, dir: DealBoardSortDir) {
+    if (key === "looked") return;
+    setSortKey(key);
+    setSortDir(dir);
+  }
+
   const slidersCustomized =
     bedBathFilterActive(minBedrooms, maxBedrooms) ||
     bedBathFilterActive(minBathrooms, maxBathrooms) ||
     vintageFilterActive(minVintage, maxVintage) ||
     sqftFilterActive ||
     priceFilterActive ||
-    furnishedFilter !== "all";
+    furnishedFilter !== "all" ||
+    showUnderContract;
 
   function isSliderKindCustomized(kind: IntelSliderKind): boolean {
     switch (kind) {
@@ -3891,6 +4006,8 @@ export default function IntelligenceClient({
         return sqftFilterActive;
       case "furnished":
         return furnishedFilter !== "all";
+      case "undercontract":
+        return showUnderContract;
     }
   }
 
@@ -3927,6 +4044,9 @@ export default function IntelligenceClient({
       case "furnished":
         setFurnishedFilter("all");
         break;
+      case "undercontract":
+        setUnderContractPref("off");
+        break;
     }
     setBoardPage(1);
   }
@@ -3951,6 +4071,7 @@ export default function IntelligenceClient({
     setDomBandMaxDays(null);
     setBoardStatusFilter("all");
     setFurnishedFilter("all");
+    setUnderContractPref("off");
     setBoardPage(1);
   }
 
@@ -3962,6 +4083,7 @@ export default function IntelligenceClient({
     setVintageSliderActive(true);
     setSqftSliderActive(true);
     setFurnishedSliderActive(true);
+    setUnderContractSliderActive(true);
     // Release without `immediate` so each label stays enlarged for DESCRIPTOR_ENLARGE_HOLD_MS.
     setPriceSliderActive(false);
     setBedSliderActive(false);
@@ -3969,6 +4091,7 @@ export default function IntelligenceClient({
     setVintageSliderActive(false);
     setSqftSliderActive(false);
     setFurnishedSliderActive(false);
+    setUnderContractSliderActive(false);
   }
 
   /** Enlarge one slider descriptor (matching the filter being exposed). */
@@ -3998,6 +4121,9 @@ export default function IntelligenceClient({
       case "furnished":
         pulse(setFurnishedSliderActive);
         break;
+      case "undercontract":
+        pulse(setUnderContractSliderActive);
+        break;
     }
   }
 
@@ -4016,6 +4142,7 @@ export default function IntelligenceClient({
     setVintageSliderActive(false, { immediate: true });
     setSqftSliderActive(false, { immediate: true });
     setFurnishedSliderActive(false, { immediate: true });
+    setUnderContractSliderActive(false, { immediate: true });
   }
 
   /**
@@ -4055,6 +4182,7 @@ export default function IntelligenceClient({
       setVintageSliderActive(false, { immediate: true });
       setSqftSliderActive(false, { immediate: true });
       setFurnishedSliderActive(false, { immediate: true });
+      setUnderContractSliderActive(false, { immediate: true });
       // Peeks cleared → no filter chrome showing → keep triangle available.
       // If multi-zip still forces towns, hide MI above those pills instead.
       setMarketIntelChromeDismissed(townNeedsMobileZipPick);
@@ -4173,7 +4301,7 @@ export default function IntelligenceClient({
   const activeTownMonthsSupply = useMemo(() => {
     if (active === "All") return null;
     const count = filterBoardListings(
-      byCity[active] ?? [],
+      poolByCity[active] ?? [],
       tx,
       cls,
       zip,
@@ -4194,7 +4322,7 @@ export default function IntelligenceClient({
       maxSqft,
     ).length;
     return computeMonthsSupply(count, monthlySales[active]);
-  }, [active, byCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, monthlySales]);
+  }, [active, poolByCity, tx, cls, zip, boardStatusFilter, saleProperty, minBedrooms, maxBedrooms, minBathrooms, maxBathrooms, newConstructionFilter, furnishedFilter, minPrice, maxPrice, minVintage, maxVintage, minSqft, maxSqft, monthlySales]);
 
   const showVintageStats = listings.length > 0;
   const vintageStatsTitle =
@@ -4379,6 +4507,7 @@ export default function IntelligenceClient({
       exactBeds: false,
       newConstructionFilter,
       furnishedFilter,
+      underContract: showUnderContract,
       minPrice,
       maxPrice,
       minSqft,
@@ -4387,7 +4516,7 @@ export default function IntelligenceClient({
 
     const filterTown = (city: TmreTown) =>
       filterBoardListings(
-        byCity[city] ?? [],
+        poolByCity[city] ?? [],
         tx,
         cls,
         zip,
@@ -4479,7 +4608,7 @@ export default function IntelligenceClient({
     wentToContractThisWeekByTown,
     wentToContractThisWeekByTownZip,
     orderedCities,
-    byCity,
+    poolByCity,
     tx,
     cls,
     saleProperty,
@@ -4493,6 +4622,7 @@ export default function IntelligenceClient({
     maxVintage,
     newConstructionFilter,
     furnishedFilter,
+    showUnderContract,
     minPrice,
     maxPrice,
     minSqft,
@@ -4695,8 +4825,19 @@ export default function IntelligenceClient({
     scrollToBoard();
   };
 
+  /**
+   * Switching towns restarts at the default score sort. Kept in the click
+   * handlers (not an effect on `active`) so a remount — Back from a listing,
+   * where the town arrives from the cookie — keeps the visitor's sort.
+   */
+  const resetSortToDefault = () => {
+    setSortKey("score");
+    setSortDir("desc");
+  };
+
   /** Town pill, town link, and boundary-map click all land here. */
   const applyTownFilter = (city: IntelCity) => {
+    if (city !== active) resetSortToDefault();
     setActive(city);
     setZip(null);
     setMobileZipConfirmed(false);
@@ -4735,6 +4876,8 @@ export default function IntelligenceClient({
     if (statusFilter === "new") {
       setSortKey("dom");
       setSortDir("asc");
+    } else if (town !== active) {
+      resetSortToDefault();
     }
     scrollToBoard();
   };
@@ -4745,7 +4888,8 @@ export default function IntelligenceClient({
     bathSliderActive ||
     vintageSliderActive ||
     sqftSliderActive ||
-    furnishedSliderActive;
+    furnishedSliderActive ||
+    underContractSliderActive;
 
   /** Magnifying glass — leftmost on the descriptor line. */
   const descriptorSearchControl = (
@@ -4784,6 +4928,7 @@ export default function IntelligenceClient({
       showFurnished={showFurnishedSlider}
       furnishedFilter={furnishedFilter}
       furnishedSliderActive={furnishedSliderActive}
+      underContractSliderActive={underContractSliderActive}
       isSliderKindCustomized={isSliderKindCustomized}
       onDescriptorClick={handleDescriptorSliderClick}
       boardPriceSteps={boardPriceSteps}
@@ -4894,6 +5039,32 @@ export default function IntelligenceClient({
     ro?.observe(el);
     return () => ro?.disconnect();
   }, [stickyTopMapActive]);
+
+  /**
+   * Desktop map layouts: the results toolbar (count, sort, status pills, view /
+   * map icons, reset) leaves the listings card and spans the full width above
+   * the map — full-bleed for "Map on top", across both columns for "Map beside".
+   */
+  const hoistBoardToolbar = showMap && !mapFullscreen && !isMobileViewport;
+  const [boardToolbarHost, setBoardToolbarHost] =
+    useState<HTMLDivElement | null>(null);
+  const [boardToolbarHeightPx, setBoardToolbarHeightPx] = useState(0);
+
+  useEffect(() => {
+    if (!hoistBoardToolbar || !boardToolbarHost) {
+      setBoardToolbarHeightPx(0);
+      return;
+    }
+    const measure = () =>
+      setBoardToolbarHeightPx(
+        boardToolbarHost.getBoundingClientRect().height,
+      );
+    measure();
+    const ro =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(boardToolbarHost);
+    return () => ro?.disconnect();
+  }, [hoistBoardToolbar, boardToolbarHost]);
 
   /** Peeked pill / slider chrome portals into the pinned nav panel (phone). */
   const pinFilterChromeToNav = descriptorsPinned;
@@ -5115,9 +5286,12 @@ export default function IntelligenceClient({
     ? navOffsetPx + pinnedBarHeightPx
     : undefined;
   /** Matches DealBoardList's own `?? 80` fallback so map and toolbar agree. */
-  const stickyTopMapOffsetPx = boardStickyTopBasePx ?? 80;
+  const boardChromeStickyTopPx = boardStickyTopBasePx ?? 80;
+  /** Hoisted toolbar pins first, so the map pins directly beneath it. */
+  const stickyTopMapOffsetPx =
+    boardChromeStickyTopPx + (hoistBoardToolbar ? boardToolbarHeightPx : 0);
   const boardToolbarStickyTopPx = stickyTopMapActive
-    ? stickyTopMapOffsetPx + stickyTopMapHeightPx
+    ? boardChromeStickyTopPx + stickyTopMapHeightPx
     : boardStickyTopBasePx;
 
   const pinnedDescriptorBar =
@@ -5433,6 +5607,13 @@ export default function IntelligenceClient({
                   onFurnishedFilterChange={setFurnishedFilter}
                   onFurnishedSliderActiveChange={setFurnishedSliderActive}
                   furnishedSliderActive={furnishedSliderActive}
+                  underContractPref={underContractPref}
+                  onUnderContractPrefChange={(value) => {
+                    setUnderContractPref(value);
+                    // Enlarge the descriptor chip briefly, like a slider drag.
+                    setUnderContractSliderActive(true);
+                    setUnderContractSliderActive(false);
+                  }}
                   onResetSliders={resetSliders}
                   onResetSliderKind={resetSliderKind}
                   isSliderKindCustomized={isSliderKindCustomized}
@@ -6226,6 +6407,14 @@ export default function IntelligenceClient({
               </div>
             ) : null}
           </div>
+          <div className={showMap ? "flex flex-col gap-2 md:gap-3" : "contents"}>
+            {hoistBoardToolbar ? (
+              <div
+                ref={setBoardToolbarHost}
+                className="sticky z-30 overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-[0_4px_16px_-8px_rgba(26,35,50,0.18)] empty:hidden"
+                style={{ top: boardChromeStickyTopPx }}
+              />
+            ) : null}
           <div
             className={
               showMap
@@ -6242,15 +6431,19 @@ export default function IntelligenceClient({
                   mapFullscreen
                     ? "fixed inset-0 z-[70] bg-navy"
                     : mapLayout === "side"
-                      ? "relative lg:sticky lg:top-24 lg:w-[min(48vw,40rem)] lg:shrink-0"
+                      ? "relative lg:sticky lg:top-[var(--intel-map-top,6rem)] lg:w-[min(48vw,40rem)] lg:shrink-0"
                       : stickyTopMapActive
                         ? "sticky z-30 w-full"
                         : "relative w-full"
                 }
                 style={
-                  stickyTopMapActive
-                    ? { top: stickyTopMapOffsetPx }
-                    : undefined
+                  mapLayout === "side"
+                    ? ({
+                        "--intel-map-top": `${stickyTopMapOffsetPx}px`,
+                      } as CSSProperties)
+                    : stickyTopMapActive
+                      ? { top: stickyTopMapOffsetPx }
+                      : undefined
                 }
               >
                 <DealBoardMap
@@ -6263,6 +6456,9 @@ export default function IntelligenceClient({
                         ? "all towns"
                         : active
                   }
+                  // Desktop hover over a zip pill, or the flash a tap leaves
+                  // behind on touch, paints that zip's outline blue.
+                  highlightZip={hoveredZip ?? flashedZip}
                   activeKey={mapActiveKey}
                   onSelect={(key) => setMapActiveKey(key)}
                   hrefFor={(l) =>
@@ -6279,7 +6475,7 @@ export default function IntelligenceClient({
                     mapFullscreen
                       ? "h-[100dvh]"
                       : mapLayout === "side"
-                        ? "h-[min(44vh,22rem)] md:h-[70vh] lg:h-[calc(100dvh-6.5rem)]"
+                        ? "h-[min(44vh,22rem)] md:h-[70vh] lg:h-[calc(100dvh_-_var(--intel-map-top,6rem)_-_0.5rem)]"
                         : "h-[min(44vh,22rem)] md:h-[26rem]"
                   }
                   fullscreen={mapFullscreen}
@@ -6392,10 +6588,12 @@ export default function IntelligenceClient({
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={handleSort}
+            onSortDir={handleSortDir}
             sortFieldPickerInToolbar={false}
             sortFieldDrawerOpen={sortFieldDrawerOpen}
             onSortFieldDrawerOpenChange={setSortFieldDrawerOpen}
             toolbarStickyTopPx={boardToolbarStickyTopPx}
+            toolbarHost={hoistBoardToolbar ? boardToolbarHost : null}
             boardView={boardView}
             onBoardViewChange={setBoardView}
             mapOn={showMap}
@@ -6455,6 +6653,7 @@ export default function IntelligenceClient({
             }
           />
             </div>
+          </div>
           </div>
           {showBoardPagination && (
             <div className={showMap ? "hidden md:block" : undefined}>
@@ -6691,7 +6890,9 @@ export default function IntelligenceClient({
           exiting={boundaryMapExiting}
         />
       ) : null}
-      {hoveredZip && hoveredZipEl ? (
+      {/* With the board map open it carries the blue highlight itself, so the
+          floating mini-map would only compete with it. */}
+      {showMap ? null : hoveredZip && hoveredZipEl ? (
         <ZipBoundaryPopover
           highlightZip={hoveredZip}
           contextZips={availableZips.filter((z) => z !== hoveredZip)}
@@ -7220,12 +7421,35 @@ function FurnishedLabel({
   return <span className={className}>{label}</span>;
 }
 
+function UnderContractLabel({
+  active,
+  onClick,
+}: {
+  active: boolean;
+  onClick?: () => void;
+}) {
+  const interactive = onClick != null;
+  const className = descriptorLabelClass(active, interactive);
+  const label = "Incl. under contract";
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {label}
+      </button>
+    );
+  }
+
+  return <span className={className}>{label}</span>;
+}
+
 type IntelSliderDescriptorLabelsProps = {
   showPriceFilter: boolean;
   cls: ClsFilter;
   showFurnished?: boolean;
   furnishedFilter?: FurnishedFilter;
   furnishedSliderActive?: boolean;
+  underContractSliderActive?: boolean;
   isSliderKindCustomized: (kind: IntelSliderKind) => boolean;
   onDescriptorClick: (kind: IntelSliderKind) => void;
   boardPriceSteps: readonly number[];
@@ -7254,6 +7478,7 @@ function IntelSliderDescriptorLabels({
   showFurnished = false,
   furnishedFilter = "all",
   furnishedSliderActive = false,
+  underContractSliderActive = false,
   isSliderKindCustomized,
   onDescriptorClick,
   boardPriceSteps,
@@ -7357,6 +7582,17 @@ function IntelSliderDescriptorLabels({
       ),
     });
   }
+  if (isSliderKindCustomized("undercontract")) {
+    nodes.push({
+      kind: "undercontract",
+      node: (
+        <UnderContractLabel
+          active={underContractSliderActive}
+          onClick={() => onDescriptorClick("undercontract")}
+        />
+      ),
+    });
+  }
 
   if (nodes.length === 0) return null;
 
@@ -7415,6 +7651,8 @@ function IntelFilterControlsRow({
   onFurnishedFilterChange,
   onFurnishedSliderActiveChange,
   furnishedSliderActive,
+  underContractPref,
+  onUnderContractPrefChange,
   onResetSliders,
   onResetSliderKind,
   isSliderKindCustomized,
@@ -7462,13 +7700,13 @@ function IntelFilterControlsRow({
   onFurnishedFilterChange: (value: FurnishedFilter) => void;
   onFurnishedSliderActiveChange: (active: boolean) => void;
   furnishedSliderActive: boolean;
+  underContractPref: UnderContractPref;
+  onUnderContractPrefChange: (value: UnderContractPref) => void;
   onResetSliders: () => void;
   onResetSliderKind: (kind: IntelSliderKind) => void;
   isSliderKindCustomized: (kind: IntelSliderKind) => boolean;
   slidersCustomized: boolean;
 }) {
-  if (!showPriceFilter && cls === "commercial" && !showFurnished) return null;
-
   const rowClass = `flex flex-wrap items-start gap-2 w-full min-w-0 self-start font-mono text-xs tracking-wide ${
     filtersExpanded ? "mt-1.5" : "mt-1"
   }`;
@@ -7494,6 +7732,15 @@ function IntelFilterControlsRow({
       ));
   const showCommercialFurnished =
     cls === "commercial" && showFurnished && showKind("furnished");
+  const showUnderContractToggle = showKind("undercontract");
+  if (
+    !showPriceFilter &&
+    cls === "commercial" &&
+    !showFurnished &&
+    !showUnderContractToggle
+  ) {
+    return null;
+  }
   // Full set (mag glass / every descriptor) → one reset; partial peeks → per kind.
   // Hide reset until a slider is dirty — a pristine track has nothing to undo.
   const showConsolidatedReset = visibleKinds === "all" && slidersCustomized;
@@ -7592,6 +7839,26 @@ function IntelFilterControlsRow({
             label="Reset furnished"
           />
         ) : null}
+        </div>
+      ) : null}
+      {showUnderContractToggle ? (
+        <div className="flex items-center gap-1 shrink-0 w-fit">
+          <FilterGroup
+            label="Under contract"
+            value={underContractPref}
+            onChange={onUnderContractPrefChange}
+            options={[
+              { value: "off", label: "Hide" },
+              { value: "on", label: "Show" },
+            ]}
+          />
+          {showPerKindReset && isSliderKindCustomized("undercontract") ? (
+            <SliderKindResetButton
+              kind="undercontract"
+              onReset={onResetSliderKind}
+              label="Reset under contract"
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -8067,6 +8334,24 @@ function intelPriceDraftHasSuffix(raw: string): boolean {
   return /[kKmM]$/.test(raw.trim()) && raw.trim().length > 1;
 }
 
+/**
+ * Thousands separators once the whole-dollar part passes four digits, so a typed
+ * 1250000 reads as 1,250,000. K/M shorthand is already short — left alone.
+ */
+function groupIntelPriceDraft(draft: string): string {
+  const parts = draft.match(/^(\d*)(\.\d*)?$/);
+  if (!parts) return draft;
+  const digits = parts[1] ?? "";
+  if (digits.length <= 4) return draft;
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${grouped}${parts[2] ?? ""}`;
+}
+
+/** Sanitize a keystroke, then re-apply comma grouping for the display value. */
+function formatIntelPriceDraft(raw: string): string {
+  return groupIntelPriceDraft(sanitizeIntelPriceDraft(raw));
+}
+
 function PriceRangeInputs({
   steps,
   minIndex,
@@ -8131,7 +8416,14 @@ function PriceRangeInputs({
   const commitMinPrice = (raw: string, opts?: { blur?: boolean }) => {
     setMinDraft(null);
     const trimmed = raw.trim();
+    // Left empty → the visitor wants everything from the bottom of the board up.
     if (!trimmed) {
+      clearBoundNoteTimer();
+      setBoundNote(null);
+      if (lo !== 0) {
+        setSliderActive(true);
+        onMinIndexChange(0);
+      }
       if (opts?.blur !== false) blurBound("min");
       return;
     }
@@ -8171,7 +8463,14 @@ function PriceRangeInputs({
   const commitMaxPrice = (raw: string, opts?: { blur?: boolean }) => {
     setMaxDraft(null);
     const trimmed = raw.trim();
+    // Left empty → the visitor wants everything up to the top of the board.
     if (!trimmed) {
+      clearBoundNoteTimer();
+      setBoundNote(null);
+      if (hi !== maxStepIndex) {
+        setSliderActive(true);
+        onMaxIndexChange(maxStepIndex);
+      }
       if (opts?.blur !== false) blurBound("max");
       return;
     }
@@ -8208,6 +8507,18 @@ function PriceRangeInputs({
     if (opts?.blur !== false) blurBound("max");
   };
 
+  /**
+   * Tapping outside the sliders panel unmounts these inputs without firing a
+   * blur, so a typed amount would be dropped. Commit typed text on the way out;
+   * an untouched empty box is left alone — only tabbing off means "no bound".
+   */
+  const commitOnUnmountRef = useRef<() => void>(() => {});
+  commitOnUnmountRef.current = () => {
+    if (minDraft?.trim()) commitMinPrice(minDraft, { blur: false });
+    if (maxDraft?.trim()) commitMaxPrice(maxDraft, { blur: false });
+  };
+  useEffect(() => () => commitOnUnmountRef.current(), []);
+
   const applyMinWheel = (deltaY: number) => {
     if (disabled) return;
     const current =
@@ -8236,27 +8547,46 @@ function PriceRangeInputs({
     onMaxIndexChange(finalIndex);
   };
 
-  // Either bound focused → enlarge both upper and lower (same scale as before).
+  // Either bound focused → enlarge both upper and lower (same scale as before)
+  // and widen the pair, so a comma-grouped 1,250,000 is readable while typing.
   const priceInputsEnlarged = focusedBound != null;
-  const priceInputClass = [
-    "w-0 min-w-0 flex-1 rounded border border-white/20 bg-white/5 font-mono tabular-nums text-gold placeholder:text-white/30 focus:border-gold/50 focus:outline-none disabled:opacity-40 overflow-y-auto transition-[font-size,padding] duration-150",
-    priceInputsEnlarged
-      ? "px-1.5 py-1 text-[14px] leading-tight"
-      : "px-1 py-0.5 text-[9px]",
-  ].join(" ");
+  const priceInputClass = (bound: "min" | "max") =>
+    [
+      "w-0 min-w-0 rounded border border-white/20 bg-white/5 font-mono tabular-nums text-gold placeholder:text-white/30 focus:border-gold/50 focus:outline-none disabled:opacity-40 overflow-y-auto transition-[font-size,padding,flex-grow] duration-150",
+      priceInputsEnlarged
+        ? "px-1.5 py-1 text-[14px] leading-tight"
+        : "px-1 py-0.5 text-[9px]",
+      // The bound being typed into takes the larger share of a fixed pair width.
+      focusedBound === bound ? "flex-[2]" : "flex-1",
+    ].join(" ");
+  const priceInputHelp =
+    "Type dollars (commas added past 4 digits) or shorthand like 750k / 1.2m. Enter or K/M commits; leave empty to take the board's own bound. Scroll: $500K steps ($1M above $4M).";
 
   return (
-    <div className={`flex flex-col gap-0.5 ${INTEL_SLIDER_WIDTH_CLASS} shrink-0`}>
+    <div
+      className={`flex flex-col gap-0.5 shrink-0 transition-[width] duration-150 ${
+        priceInputsEnlarged
+          ? "w-[10rem] sm:w-[11rem]"
+          : INTEL_SLIDER_WIDTH_CLASS
+      }`}
+    >
       <div className="flex gap-1">
         <input
           ref={minInputRef}
           type="text"
-          inputMode="decimal"
+          // Letters must be reachable on phones for the K/M shorthand, which a
+          // numeric inputMode hides; the field sanitizes anything else away.
+          inputMode="text"
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          enterKeyHint="done"
           disabled={disabled}
           value={minDraft ?? formatIntelPriceStep(minPrice)}
           placeholder={formatIntelPriceStep(minPrice)}
           onChange={(e) => {
-            const next = sanitizeIntelPriceDraft(e.target.value);
+            const next = formatIntelPriceDraft(e.target.value);
             setMinDraft(next);
             if (intelPriceDraftHasSuffix(next)) {
               commitMinPrice(next);
@@ -8285,19 +8615,24 @@ function PriceRangeInputs({
             e.preventDefault();
             applyMinWheel(e.deltaY);
           }}
-          title="Type dollars, or a number ending in K/M (e.g. 750k, 1.2m). Enter or K/M commits. Scroll: $500K steps ($1M above $4M)."
+          title={priceInputHelp}
           aria-label="Minimum price amount"
-          className={priceInputClass}
+          className={priceInputClass("min")}
         />
         <input
           ref={maxInputRef}
           type="text"
-          inputMode="decimal"
+          inputMode="text"
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          enterKeyHint="done"
           disabled={disabled}
           value={maxDraft ?? formatIntelPriceStep(maxPrice)}
           placeholder={formatIntelPriceStep(maxPrice)}
           onChange={(e) => {
-            const next = sanitizeIntelPriceDraft(e.target.value);
+            const next = formatIntelPriceDraft(e.target.value);
             setMaxDraft(next);
             if (intelPriceDraftHasSuffix(next)) {
               commitMaxPrice(next);
@@ -8325,9 +8660,9 @@ function PriceRangeInputs({
             e.preventDefault();
             applyMaxWheel(e.deltaY);
           }}
-          title="Type dollars, or a number ending in K/M (e.g. 750k, 1.2m). Enter or K/M commits. Scroll: $500K steps ($1M above $4M)."
+          title={priceInputHelp}
           aria-label="Maximum price amount"
-          className={priceInputClass}
+          className={priceInputClass("max")}
         />
       </div>
       {boundNote ? (

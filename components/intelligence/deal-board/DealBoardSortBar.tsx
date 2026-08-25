@@ -5,48 +5,77 @@ import { useState, type ReactNode } from "react";
 import IntelSortDrawer from "@/components/intelligence/IntelSortDrawer";
 import {
   DEAL_BOARD_SORT_COLUMNS,
+  DEAL_BOARD_SORT_DIRS,
   dealBoardSortLabel,
   type DealBoardSortDir,
   type DealBoardSortKey,
 } from "@/components/intelligence/deal-board/deal-board-sort";
 
+/**
+ * Field row + its own ↑ / ↓. Tapping an arrow picks the field *and* the
+ * direction in one go, so ascending / descending is never a second trip out to
+ * the toolbar chip.
+ */
 function SortDrawerOption({
   label,
   sortKey,
   activeKey,
   direction,
   onSelect,
+  onSelectDir,
 }: {
   label: string;
   sortKey: DealBoardSortKey;
   activeKey: DealBoardSortKey;
   direction: DealBoardSortDir;
   onSelect: (key: DealBoardSortKey) => void;
+  onSelectDir: (key: DealBoardSortKey, dir: DealBoardSortDir) => void;
 }) {
   const active = activeKey === sortKey;
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(sortKey)}
-      aria-pressed={active}
-      className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
+    <div
+      className={`flex w-full items-stretch gap-1 rounded-xl border transition-colors ${
         active
           ? "border-navy/30 bg-navy text-white shadow-sm"
           : "border-charcoal/[0.08] bg-white text-navy hover:border-navy/25"
       }`}
     >
-      <span className="font-mono text-[11px] tracking-[0.14em] uppercase">
-        {label}
-      </span>
-      <span
-        className={`font-mono text-[13px] tabular-nums shrink-0 ${
-          active ? "text-gold" : "text-slate/40"
-        }`}
-        aria-hidden
+      <button
+        type="button"
+        onClick={() => onSelect(sortKey)}
+        aria-pressed={active}
+        className="flex min-w-0 flex-1 items-center rounded-l-xl px-3.5 py-3 text-left"
       >
-        {active ? (direction === "asc" ? "↑" : "↓") : "↕"}
+        <span className="font-mono text-[11px] tracking-[0.14em] uppercase">
+          {label}
+        </span>
+      </button>
+      <span className="flex shrink-0 items-center gap-0.5 pr-2">
+        {DEAL_BOARD_SORT_DIRS.map((dir) => {
+          const on = active && direction === dir;
+          const dirWord = dir === "asc" ? "ascending" : "descending";
+          return (
+            <button
+              key={dir}
+              type="button"
+              onClick={() => onSelectDir(sortKey, dir)}
+              aria-pressed={on}
+              aria-label={`Sort by ${label}, ${dirWord}`}
+              title={`${label} — ${dirWord}`}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg font-mono text-[13px] leading-none tabular-nums transition-colors ${
+                on
+                  ? "bg-gold text-navy"
+                  : active
+                    ? "text-white/55 hover:bg-white/15 hover:text-white"
+                    : "text-slate/45 hover:bg-navy/[0.06] hover:text-navy"
+              }`}
+            >
+              {dir === "asc" ? "↑" : "↓"}
+            </button>
+          );
+        })}
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -54,6 +83,7 @@ export default function DealBoardSortBar({
   sortKey,
   sortDir,
   onSort,
+  onSortDir,
   showTown,
   showLookedSort = false,
   scoreInfoButton,
@@ -70,6 +100,8 @@ export default function DealBoardSortBar({
   sortKey: DealBoardSortKey;
   sortDir: DealBoardSortDir;
   onSort: (key: DealBoardSortKey) => void;
+  /** Sets field and direction together, for the drawer's per-field ↑ / ↓. */
+  onSortDir?: (key: DealBoardSortKey, dir: DealBoardSortDir) => void;
   showTown: boolean;
   /** Lookey: include Last looked (cookie / localStorage viewedAt). */
   showLookedSort?: boolean;
@@ -102,6 +134,19 @@ export default function DealBoardSortBar({
     setDrawerOpen(false);
     window.requestAnimationFrame(() => {
       onSort(key);
+    });
+  };
+
+  const handleDrawerSortDir = (
+    key: DealBoardSortKey,
+    dir: DealBoardSortDir,
+  ) => {
+    setDrawerOpen(false);
+    window.requestAnimationFrame(() => {
+      // Without an explicit-direction handler, fall back to a plain field
+      // select (which applies that field's default direction).
+      if (onSortDir) onSortDir(key, dir);
+      else onSort(key);
     });
   };
 
@@ -180,9 +225,8 @@ export default function DealBoardSortBar({
     <IntelSortDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
       <div id="intel-sort-drawer" className="space-y-2">
         <p className="px-1 pb-1 text-xs text-slate leading-relaxed">
-          {fieldPickerInToolbar
-            ? "Tap a field to sort. Use ↑ / ↓ on the board toolbar for ascending / descending."
-            : "Tap a field to sort. Use the bold ↑ / ↓ next to Sorted by for ascending / descending."}
+          Tap a field to sort, or tap its ↑ / ↓ to set ascending / descending at
+          the same time.
         </p>
         {columns.map((col) => (
           <SortDrawerOption
@@ -192,6 +236,7 @@ export default function DealBoardSortBar({
             activeKey={sortKey}
             direction={sortDir}
             onSelect={handleDrawerSort}
+            onSelectDir={handleDrawerSortDir}
           />
         ))}
         <Link

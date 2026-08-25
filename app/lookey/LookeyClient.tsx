@@ -297,6 +297,12 @@ export default function LookeyClient() {
     setSortDir("desc");
   };
 
+  /** Sort drawer ↑ / ↓: field and direction land in one action. */
+  const handleSortDir = (key: DealBoardSortKey, dir: DealBoardSortDir) => {
+    setSortKey(key);
+    setSortDir(dir);
+  };
+
   const handleClear = () => {
     clearLookedAtListings();
     setEntries([]);
@@ -399,6 +405,7 @@ export default function LookeyClient() {
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleSort}
+                onSortDir={handleSortDir}
                 boardView={dealBoardCardView(boardView)}
                 onBoardViewChange={setBoardView}
                 viewOptions={DEAL_BOARD_CARD_VIEW_VALUES}
