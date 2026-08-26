@@ -2,14 +2,30 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
+import ListingHeader from "@/components/listing/ListingHeader";
+import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import { ListingBackLink } from "@/components/listing/ListingShell";
+import ListingSubnav from "@/components/listing/ListingSubnav";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
-import { formatMlsStatus, primaryListingPrice } from "@/lib/listing-history";
+import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
+import {
+  formatMlsStatus,
+  primaryListingPrice,
+  primaryListingPriceIsClosed,
+} from "@/lib/listing-history";
+import {
+  listingHeaderScoreProps,
+  type ListingScoreApiFields,
+} from "@/lib/listing-header-score-props";
+import { isRentalListing } from "@/lib/listing-kind";
 import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
 import { propertyTaxFromRaw } from "@/lib/listing-property-tax";
 import {
   listingDetailHref,
   listingPhotoProxyUrlsFromCount,
   listingPhotosHref,
+  listingShareHref,
 } from "@/lib/listing-url";
 import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
 
@@ -19,6 +35,7 @@ const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
 
 type Listing = {
   mlsId: string;
+  listingKey: string;
   status: string;
   propertyType: string;
   style: string;
@@ -36,6 +53,7 @@ type Listing = {
   sqft: number | null;
   yearBuilt: number | null;
   dom: number | null;
+  modificationTimestamp: string | null;
   photoCount: number | null;
   remarks: string | null;
   schools: {
@@ -47,7 +65,7 @@ type Listing = {
   raw: Record<string, string>;
 };
 
-type ApiResponse = { listing: Listing };
+type ApiResponse = ListingScoreApiFields & { listing: Listing };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
 
@@ -85,17 +103,6 @@ function ShowcaseMessage({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </section>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/65">
-        {label}
-      </div>
-      <div className="mt-1 text-lg text-white sm:text-xl">{value}</div>
-    </div>
   );
 }
 
@@ -243,28 +250,19 @@ export default function ListingShowcaseClient({
 
   const street = listing.address.street || listing.address.full || addressHint || "";
   const city = townHint || listing.address.city;
-  const cityLine = [city, listing.address.state, listing.address.postalCode]
-    .filter(Boolean)
-    .join(", ");
-  const price = fmtFullMoney(primaryListingPrice(listing));
   const status = formatMlsStatus(listing.status);
   const lotAcres = parseLotAcresFromRaw(listing.raw);
   const tax = propertyTaxFromRaw(listing.raw);
+  const insight = data?.insight?.trim() || null;
+  const isRental = isRentalListing(listing);
   const remarks =
     listing.remarks?.trim() ||
     REMARKS_KEYS.map((k) => listing.raw?.[k])
       .filter(Boolean)
       .join("\n\n");
 
-  const facts = [
-    listing.beds != null ? { label: "Beds", value: String(listing.beds) } : null,
-    listing.baths != null ? { label: "Baths", value: String(listing.baths) } : null,
-    listing.sqft ? { label: "Living area", value: `${listing.sqft.toLocaleString()} sqft` } : null,
-    fmtAcres(lotAcres) ? { label: "Lot", value: fmtAcres(lotAcres)! } : null,
-    listing.yearBuilt ? { label: "Built", value: String(listing.yearBuilt) } : null,
-  ].filter((f): f is { label: string; value: string } => f !== null);
-
   const detailRows = [
+    { label: "Lot", value: fmtAcres(lotAcres) ?? "—" },
     { label: "MLS #", value: listing.mlsId },
     { label: "Status", value: status },
     { label: "Type", value: listing.propertyType || "—" },
@@ -280,7 +278,7 @@ export default function ListingShowcaseClient({
 
   return (
     <div className="bg-navy-dark text-white">
-      <section className="relative h-[100dvh] w-full overflow-hidden">
+      <section className="relative min-h-[100dvh] w-full overflow-hidden">
         <ShowcasePhotoStage
           photos={photos}
           index={safeIndex}
@@ -293,36 +291,89 @@ export default function ListingShowcaseClient({
         <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
         <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
 
-        <div className="listing-showcase-type relative flex h-full flex-col justify-between px-6 pt-24 pb-10 sm:px-10 lg:px-16 lg:pt-28 lg:pb-14">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-gold backdrop-blur-sm">
-              {status}
-            </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/60">
-              MLS #{listing.mlsId}
-            </span>
+        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between gap-10 px-4 pt-20 pb-10 sm:px-8 lg:px-12 lg:pt-24 lg:pb-14">
+          {/*
+            Real listing chrome — same header, insight and tab strip as the
+            production Overview page, floated over the photo on a glass panel
+            so it stays readable without cropping the image.
+          */}
+          <div className="listing-showcase-chrome mx-auto w-full max-w-7xl rounded-2xl px-4 py-4 sm:px-6 sm:py-5">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <ListingBackLink className="mb-0" />
+              <span className="shrink-0">
+                <DealBoardStatusBadge status={status} size="sm" surface="listing" />
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+              <div className="min-w-0 flex-1">
+                <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                  Property Details
+                </p>
+                <ListingHeader
+                  parts="meta"
+                  mlsId={listing.mlsId}
+                  status={listing.status}
+                  address={listing.address}
+                  propertyType={listing.propertyType}
+                  style={listing.style}
+                  beds={listing.beds}
+                  baths={listing.baths}
+                  sqft={listing.sqft}
+                  yearBuilt={listing.yearBuilt}
+                  modificationTimestamp={listing.modificationTimestamp}
+                  price={primaryListingPrice(listing)}
+                  priceIsClosed={primaryListingPriceIsClosed(listing)}
+                  bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
+                  shareHref={listingShareHref(listing.mlsId)}
+                  compact
+                  {...listingHeaderScoreProps({
+                    goldilocksScore: data?.goldilocksScore,
+                    goldilocksBreakdown: data?.goldilocksBreakdown,
+                    insight,
+                    title: street,
+                    subtitle: city,
+                    propertyType: listing.propertyType,
+                  })}
+                />
+              </div>
+
+              {insight ? (
+                <aside
+                  className="min-w-0 sm:max-w-xs lg:max-w-sm"
+                  aria-label="Listing insight"
+                >
+                  <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold sm:text-center">
+                    Insight
+                  </p>
+                  <ListingInsightCopy
+                    text={insight}
+                    className="text-left text-[11px] leading-snug text-white/75 break-words"
+                  />
+                </aside>
+              ) : null}
+            </div>
+
+            <div className="mt-3">
+              <ListingSubnav
+                mlsId={listing.mlsId}
+                active="overview"
+                addressHint={street || addressHint}
+                townHint={city}
+                isRental={isRental}
+                compact
+              />
+            </div>
           </div>
 
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <h1 className="font-serif text-4xl leading-[1.05] sm:text-5xl lg:text-6xl">
-                {street}
-              </h1>
-              {cityLine ? (
-                <p className="mt-3 font-mono text-xs uppercase tracking-[0.25em] text-white/70">
-                  {cityLine}
-                </p>
-              ) : null}
-              {price ? (
-                <p className="mt-5 font-serif text-3xl text-gold sm:text-4xl">{price}</p>
-              ) : null}
-              {facts.length > 0 ? (
-                <div className="mt-7 flex flex-wrap gap-x-10 gap-y-5">
-                  {facts.map((f) => (
-                    <Fact key={f.label} label={f.label} value={f.value} />
-                  ))}
-                </div>
-              ) : null}
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-md">
+              <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/60">
+                Showcase view
+              </p>
+              <p className="mt-1 text-sm text-white/75">
+                {total} listing photo{total === 1 ? "" : "s"}, rotating automatically.
+              </p>
             </div>
 
             <div className="flex flex-col items-start gap-5 lg:items-end">

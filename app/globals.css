@@ -877,6 +877,17 @@ html.listing-split-test body {
   );
 }
 
+/* Glass panel carrying the real listing chrome (back link, header, score,
+   insight, tab strip) over the photo — keeps it readable without cropping
+   the image the way an opaque header bar would. */
+.listing-showcase-chrome {
+  background: rgba(13, 20, 36, 0.62);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+}
+
 /* Second line of defence for type sitting over a busy or blown-out photo. */
 .listing-showcase-type {
   text-shadow:
