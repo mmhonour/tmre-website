@@ -91,10 +91,10 @@ function ShowcaseMessage({ children }: { children: React.ReactNode }) {
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/65">
         {label}
       </div>
-      <div className="mt-1 text-lg text-white/95 sm:text-xl">{value}</div>
+      <div className="mt-1 text-lg text-white sm:text-xl">{value}</div>
     </div>
   );
 }
@@ -290,16 +290,10 @@ export default function ListingShowcaseClient({
         />
 
         {/* Scrims keep the overlaid type legible over any photo. */}
-        <div
-          className="absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-black/85"
-          aria-hidden
-        />
-        <div
-          className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent"
-          aria-hidden
-        />
+        <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
+        <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
 
-        <div className="relative flex h-full flex-col justify-between px-6 pt-24 pb-10 sm:px-10 lg:px-16 lg:pt-28 lg:pb-14">
+        <div className="listing-showcase-type relative flex h-full flex-col justify-between px-6 pt-24 pb-10 sm:px-10 lg:px-16 lg:pt-28 lg:pb-14">
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-gold backdrop-blur-sm">
               {status}

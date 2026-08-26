@@ -854,6 +854,36 @@ html.listing-split-test body {
   }
 }
 
+/* Listing photos are frequently near-white (kitchens, tile, snow, bright sky),
+   so the overlay needs a scrim that is already dark where the type sits rather
+   than only at the very edge of the frame. */
+.listing-showcase-scrim-bottom {
+  background: linear-gradient(
+    to top,
+    rgba(9, 14, 26, 0.9) 0%,
+    rgba(9, 14, 26, 0.78) 20%,
+    rgba(9, 14, 26, 0.45) 40%,
+    rgba(9, 14, 26, 0.12) 55%,
+    rgba(9, 14, 26, 0) 68%
+  );
+}
+
+.listing-showcase-scrim-top {
+  background: linear-gradient(
+    to bottom,
+    rgba(9, 14, 26, 0.65) 0%,
+    rgba(9, 14, 26, 0.25) 12%,
+    rgba(9, 14, 26, 0) 26%
+  );
+}
+
+/* Second line of defence for type sitting over a busy or blown-out photo. */
+.listing-showcase-type {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 2px 28px rgba(0, 0, 0, 0.45);
+}
+
 .listing-showcase-progress {
   transform-origin: left center;
   animation: listingShowcaseProgress var(--showcase-hold, 6500ms) linear forwards;
