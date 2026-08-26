@@ -14,24 +14,22 @@ import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
 import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
+  thinCronHandOffToQueue,
   thinCronResponse,
-  thinCronSkipIfAnotherHostOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
  * Thin stats-cache trigger (NO background).
  * Dense every-30m cron; Configure Frequency/Start gate the work.
- * Queues sync-stats-cache-worker — only while Configure says Netlify owns the
- * job. Default is Railway, whose always-on process can finish a full rebuild.
+ *
+ * A due rebuild goes on the sync queue for the always-on runner, which can
+ * outlast a serverless slot. This function only queues sync-stats-cache-worker
+ * when that row has been stranded long enough to prove the runner is gone.
  */
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfAnotherHostOwns('stats-cache')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('stats-cache')) {
       return thinCronSkipped('stats-cache scheduled sync paused by admin')
     }
@@ -43,11 +41,6 @@ export default async function handler() {
     if (shouldSkipScheduledJobNotDue('stats-cache')) {
       return thinCronSkipped('not due yet — Configure frequency / start time')
     }
-    /**
-     * Reaching here means Configure still says Netlify owns stats-cache — the
-     * provider guard above stands this cron down when Railway does. No
-     * cross-host fallback: one declared owner, and a visible failure otherwise.
-     */
     const skipReason = await reasonToSkipStatsCacheRebuild()
     if (skipReason) return thinCronSkipped(skipReason)
     // Don't spend a background invocation when no town changed — that hop is
@@ -56,6 +49,10 @@ export default async function handler() {
     const due = await statsTownsDueForRebuild()
     if (due.towns.length === 0) {
       return thinCronSkipped('no dirty towns — nothing to rebuild')
+    }
+    {
+      const handedOff = await thinCronHandOffToQueue('stats-cache')
+      if (handedOff) return handedOff
     }
     if (await isStatsCacheQueueBackedOff()) {
       return thinCronSkipped(

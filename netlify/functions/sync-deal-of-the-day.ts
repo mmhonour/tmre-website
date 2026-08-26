@@ -7,22 +7,20 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfAnotherHostOwns,
+  thinCronHandOffToQueue,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
  * Thin Deal of the Day trigger (NO background).
  * Dense every-30m cron; Configure Frequency/Start gate the work.
- * Queues sync-deal-of-the-day-worker.
+ *
+ * A due rebuild goes on the sync queue for the always-on runner; this function
+ * only queues sync-deal-of-the-day-worker when that row is stranded.
  */
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfAnotherHostOwns('deal-of-the-day')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('deal-of-the-day')) {
       return thinCronSkipped('deal-of-the-day scheduled sync paused by admin')
     }
@@ -33,6 +31,10 @@ export default async function handler() {
     }
     if (shouldSkipScheduledJobNotDue('deal-of-the-day')) {
       return thinCronSkipped('not due yet — Configure frequency / start time')
+    }
+    {
+      const handedOff = await thinCronHandOffToQueue('deal-of-the-day')
+      if (handedOff) return handedOff
     }
     const queued = await queueNetlifyDealOfTheDayRebuild()
     if (!queued.ok) {

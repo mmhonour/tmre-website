@@ -9,6 +9,11 @@ import {
   type ScheduledSyncJobId,
 } from '@/lib/scheduled-sync-jobs-shared'
 import type { AdminSyncActionId } from '@/lib/admin-sync-types'
+import {
+  clampJobBudgetMinutes,
+  defaultJobBudgetMinutes,
+  isSyncQueueRunnerJob,
+} from '@/lib/sync-queue-shared'
 
 export const SYNC_SCHEDULE_FREQUENCIES = [
   { id: '15m', label: '15 mins', intervalMs: 15 * 60 * 1000 },
@@ -41,68 +46,22 @@ export const SYNC_SCHEDULE_WEEKDAYS = [
 export type SyncScheduleWeekdayEt = (typeof SYNC_SCHEDULE_WEEKDAYS)[number]['id']
 
 /**
- * Which alarm clock is allowed to start this job.
- * - netlify: Netlify scheduled functions
- * - eventbridge: AWS EventBridge (legacy; Incremental should move to Railway)
- * - railway: always-on mls-sync service (RETS→Neon; Netlify only polls)
+ * Which host runs a job is no longer a setting.
+ *
+ * Configure used to carry a Scheduler radio per job (Netlify cron / EventBridge
+ * / Railway service) because each host decided for itself whether to stand down.
+ * The `sync_queue` table answers that instead: a due job is enqueued by whoever
+ * notices, the always-on runner claims it, and Netlify only steps in when a row
+ * has been stranded long enough to prove the runner is gone. Nothing to pick,
+ * so nothing to get wrong.
+ *
+ * `SYNC_QUEUE_RUNNER_JOBS` in lib/sync-queue-shared.ts is the declaration of
+ * which jobs go through the queue at all.
  */
-export const SYNC_SCHEDULER_PROVIDERS = [
-  'netlify',
-  'eventbridge',
-  'railway',
-] as const
-export type SyncSchedulerProvider = (typeof SYNC_SCHEDULER_PROVIDERS)[number]
-
-export function isSyncSchedulerProvider(
-  value: unknown,
-): value is SyncSchedulerProvider {
-  return (
-    typeof value === 'string' &&
-    (SYNC_SCHEDULER_PROVIDERS as readonly string[]).includes(value)
-  )
-}
-
-export function schedulerProviderLabel(provider: SyncSchedulerProvider): string {
-  switch (provider) {
-    case 'eventbridge':
-      return 'EventBridge'
-    case 'railway':
-      return 'Railway service'
-    case 'netlify':
-    default:
-      return 'Netlify cron'
-  }
-}
-
-/**
- * Jobs the always-on Railway mls-sync service can host, and the endpoint each
- * one uses. This is the declaration, not a guess: a job absent here cannot be
- * pointed at Railway — Configure hides the option and Sync now never invents a
- * route. Add a job only once the service actually exposes its endpoint.
- */
-export const RAILWAY_JOB_ENDPOINTS: Partial<Record<ScheduledSyncJobId, string>> = {
-  incremental: '/run',
-  'stats-cache': '/stats',
-  'listing-scores': '/scores',
-  'deal-of-the-day': '/deal-of-the-day',
-  'property-addresses': '/property-addresses',
-  'market-digest': '/market-digest',
-}
-
-/** Endpoint on the Railway service for this job, or null when unsupported. */
-export function railwayEndpointForJob(
-  jobId: ScheduledSyncJobId | string,
-): string | null {
-  return RAILWAY_JOB_ENDPOINTS[jobId as ScheduledSyncJobId] ?? null
-}
-
-/** Scheduler choices Configure should offer — Railway only where hosted. */
-export function schedulerProvidersForJob(
-  jobId: ScheduledSyncJobId | string,
-): readonly SyncSchedulerProvider[] {
-  return railwayEndpointForJob(jobId) != null
-    ? SYNC_SCHEDULER_PROVIDERS
-    : SYNC_SCHEDULER_PROVIDERS.filter((p) => p !== 'railway')
+export function syncJobHostLabel(jobId: ScheduledSyncJobId | string): string {
+  return isSyncQueueRunnerJob(jobId)
+    ? 'Sync runner (queue)'
+    : 'Netlify scheduled function'
 }
 
 export type SyncJobScheduleConfig = {
@@ -115,10 +74,29 @@ export type SyncJobScheduleConfig = {
    */
   weekdayEt?: SyncScheduleWeekdayEt
   /**
-   * Authoritative alarm: Netlify cron | EventBridge | Railway mls-sync service.
-   * Default netlify — migrate Incremental to railway via Admin Configure.
+   * Kill budget in minutes. The runner forks each job into its own child and
+   * kills it at this deadline, recording the run as `timeout` rather than
+   * leaving a Start with no End for someone to guess about later.
    */
-  scheduler?: SyncSchedulerProvider
+  budgetMinutes?: number
+}
+
+/** Minutes this job gets before the runner kills its child. */
+export function resolveJobBudgetMinutes(
+  jobId: ScheduledSyncJobId | string,
+  job?: Pick<SyncJobScheduleConfig, 'budgetMinutes'> | null,
+): number {
+  const configured = job?.budgetMinutes
+  return typeof configured === 'number' && Number.isFinite(configured)
+    ? clampJobBudgetMinutes(configured)
+    : defaultJobBudgetMinutes(jobId)
+}
+
+export function resolveJobBudgetMs(
+  jobId: ScheduledSyncJobId | string,
+  job?: Pick<SyncJobScheduleConfig, 'budgetMinutes'> | null,
+): number {
+  return resolveJobBudgetMinutes(jobId, job) * 60_000
 }
 
 export function isSyncScheduleWeekdayEt(
@@ -218,89 +196,59 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         frequency: 'weekly',
         startTimeEt: '05:00',
         weekdayEt: 1,
-        scheduler: 'netlify',
       },
       incremental: {
         frequency: '30m',
         startTimeEt: '00:00',
-        scheduler: 'netlify',
       },
       'listing-scores': {
         frequency: 'weekly',
         startTimeEt: '05:00',
         weekdayEt: 1,
-        scheduler: 'netlify',
       },
       'edge-scores': {
         frequency: 'weekly',
         startTimeEt: '05:00',
         weekdayEt: 1,
-        scheduler: 'netlify',
       },
       'stats-cache': {
-        // Railway: a full rebuild outlives any serverless slot. Flip to Netlify
-        // cron in Configure to use the background worker instead.
         frequency: '30m',
         startTimeEt: '00:00',
-        scheduler: 'railway',
       },
       'deal-of-the-day': {
-        // Railway: scoring all seven towns then warming photos outruns a
-        // serverless slot, and the thin cron's background hop is being refused
-        // site-wide (HTTP 429). Flip to Netlify cron in Configure to go back.
         frequency: 'weekly',
         startTimeEt: '05:00',
         weekdayEt: 1,
-        scheduler: 'railway',
       },
       'property-addresses': {
-        // Railway: upserts one row per property across MLS + Vision recent
-        // sales, so the run is minutes of sequential writes, not seconds.
         frequency: 'weekly',
         startTimeEt: '01:00',
         weekdayEt: 1,
-        scheduler: 'railway',
       },
       'vision-addresses': {
         frequency: 'weekly',
         startTimeEt: '01:30',
         weekdayEt: 1,
-        scheduler: 'netlify',
       },
       'zip-boundaries': {
         frequency: 'monthly',
         startTimeEt: '06:00',
-        scheduler: 'netlify',
       },
       'fomc-sync': {
         frequency: 'event',
         startTimeEt: '15:15',
-        scheduler: 'netlify',
       },
       'cpi-sync': {
         frequency: 'event',
         startTimeEt: '09:15',
-        scheduler: 'netlify',
       },
       'market-digest': {
-        // Railway: a weekly 08:00 ET slot needs a clock that is still awake to
-        // retry. Netlify's cron gave one attempt per week with no second chance,
-        // so any transient failure at that minute skipped the brief entirely.
-        // Flip to Netlify cron in Configure to use the background worker instead.
         frequency: 'weekly',
         startTimeEt: '08:00',
         weekdayEt: 1,
-        scheduler: 'railway',
       },
     },
   }
-}
-
-/** Resolved provider for a job (missing/legacy → netlify). */
-export function resolveJobScheduler(
-  job: Pick<SyncJobScheduleConfig, 'scheduler'> | null | undefined,
-): SyncSchedulerProvider {
-  return isSyncSchedulerProvider(job?.scheduler) ? job.scheduler : 'netlify'
 }
 
 export function orderNumberByJob(
@@ -388,12 +336,11 @@ export function mergeSyncScheduleConfig(
         } else if (frequency === 'weekly') {
           next.weekdayEt = resolveWeekdayEt(defaults.jobs[jobId])
         }
-        if (isSyncSchedulerProvider(row.scheduler)) {
-          next.scheduler = row.scheduler
-        } else if (isSyncSchedulerProvider(defaults.jobs[jobId]?.scheduler)) {
-          next.scheduler = defaults.jobs[jobId]!.scheduler
-        } else {
-          next.scheduler = 'netlify'
+        if (
+          typeof row.budgetMinutes === 'number' &&
+          Number.isFinite(row.budgetMinutes)
+        ) {
+          next.budgetMinutes = clampJobBudgetMinutes(row.budgetMinutes)
         }
         jobs[jobId] = next
       }

@@ -77,61 +77,70 @@ import {
 } from '@/lib/admin-sync-types'
 import { isScheduledSyncJobId, isFullResyncRetired, FULL_RESYNC_RETIRED_MESSAGE } from '@/lib/scheduled-sync-jobs-shared'
 import {
-  readSyncScheduleConfigFresh,
-  resolveJobScheduler,
-} from '@/lib/sync-schedule-config'
+  SYNC_QUEUE_PRIORITY_MANUAL,
+  isSyncQueueRunnerJob,
+} from '@/lib/sync-queue-shared'
 import type { NetlifyFunctionQueueResult } from '@/lib/netlify-sync-trigger'
 
 /**
- * Sync now handoff order:
- * 1) Railway mls-sync when Configure Scheduler is railway (Incremental)
- * 2) EventBridge dispatch when Configure says eventbridge
- * 3) Netlify admin background queue
+ * Sync now handoff.
+ *
+ * Runner jobs go on `sync_queue` at manual priority and the runner is poked so
+ * it drains without waiting for its next poll. Everything else still hands off
+ * to a Netlify background function.
+ *
+ * There is no host to choose any more: the queue row is the request, and
+ * whichever runner is alive claims it. Sync now that lands while something else
+ * is in flight waits its turn instead of being answered with a 409 the dashboard
+ * then painted as "Queued" for work nobody was holding.
  */
-async function queueSyncNowPreferringScheduler(
+async function queueSyncNowThroughQueue(
   jobId: string,
   adminQueue: () => Promise<NetlifyFunctionQueueResult>,
   opts?: {
-    allowEventBridge?: boolean
-    railwayBody?: {
-      startedAt: string
-      towns?: string[]
-      statusScope?: 'all' | 'active' | 'closed'
-    }
+    payload?: Record<string, unknown>
+    startedAt?: string
   },
 ): Promise<{
   queued: NetlifyFunctionQueueResult
-  via: 'railway' | 'eventbridge' | 'admin'
+  via: 'sync-queue' | 'admin'
+  /** Set when the row was already waiting or running — not a new request. */
+  queueNote?: string
 }> {
-  if (isScheduledSyncJobId(jobId)) {
-    const config = await readSyncScheduleConfigFresh()
-    const scheduler = resolveJobScheduler(config.jobs[jobId])
-
-    if (scheduler === 'railway') {
-      const { queueMlsSyncServiceJob } = await import(
+  if (isScheduledSyncJobId(jobId) && isSyncQueueRunnerJob(jobId)) {
+    const { enqueueSyncJob } = await import('@/lib/sync-queue')
+    const enqueued = await enqueueSyncJob({
+      jobId,
+      trigger: 'admin',
+      priority: SYNC_QUEUE_PRIORITY_MANUAL,
+      payload: opts?.payload,
+      requestedAt: opts?.startedAt,
+      ignoreCooldown: true,
+    })
+    if (enqueued.ok) {
+      // Best effort: the drain poll picks it up regardless.
+      const { pokeMlsSyncServiceQueue } = await import(
         '@/lib/mls-sync-service-client'
       )
-      // Declared host wins: no silent hop to Netlify if Railway cannot take it.
-      const queued = await queueMlsSyncServiceJob(jobId, {
-        startedAt: opts?.railwayBody?.startedAt,
-        source: 'admin',
-        towns: opts?.railwayBody?.towns,
-        statusScope: opts?.railwayBody?.statusScope,
-      })
-      return { queued, via: 'railway' }
-    }
-
-    const allowEventBridge = opts?.allowEventBridge !== false
-    if (allowEventBridge && scheduler === 'eventbridge') {
-      const { dispatchEventBridgeScheduledJob } = await import(
-        '@/lib/eventbridge-sync-dispatch'
-      )
-      const eb = await dispatchEventBridgeScheduledJob(jobId, {
-        fromAdminSyncNow: true,
-      })
-      if (eb.ok && eb.queue) {
-        return { queued: eb.queue, via: 'eventbridge' }
+      const poke = await pokeMlsSyncServiceQueue(jobId).catch(() => null)
+      return {
+        queued: {
+          ok: true,
+          status: enqueued.enqueued ? 202 : 200,
+          base: poke?.base ?? 'sync_queue',
+        },
+        via: 'sync-queue',
+        ...(enqueued.reason ? { queueNote: enqueued.reason } : {}),
       }
+    }
+    return {
+      queued: {
+        ok: false,
+        status: null,
+        base: 'sync_queue',
+        error: enqueued.reason ?? 'could not enqueue',
+      },
+      via: 'sync-queue',
     }
   }
 
@@ -596,10 +605,7 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyIncrementalSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        // Town/status scope is Admin-only — EventBridge schedule is all-towns.
-        const scoped =
-          scopedTowns.length > 0 || statusScope !== 'all'
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via, queueNote } = await queueSyncNowThroughQueue(
           'incremental',
           () =>
             queueNetlifyIncrementalSync(startedAt, {
@@ -608,20 +614,14 @@ async function runAdminSyncActionImpl(
               ...(statusScope !== 'all' ? { statusScope } : {}),
             }),
           {
-            allowEventBridge: !scoped,
-            railwayBody: {
-              startedAt,
+            startedAt,
+            payload: {
               ...(scopedTowns.length > 0 ? { towns: scopedTowns } : {}),
               ...(statusScope !== 'all' ? { statusScope } : {}),
             },
           },
         )
-        const queueSource =
-          via === 'eventbridge'
-            ? 'eventbridge'
-            : via === 'railway'
-              ? 'admin'
-              : 'admin'
+        const queueSource = 'admin'
         // Always write Sync history — queue ack alone never created town sync_runs,
         // which left "last run" stuck at the prior real RETS batch (e.g. 2:47pm).
         await recordIncrementalQueueAudit({
@@ -630,12 +630,8 @@ async function runAdminSyncActionImpl(
           queued: queued.ok,
           detail: queued.ok
             ? `${queued.base ?? 'site'} HTTP ${queued.status ?? '—'} · ${scopeLabel}${
-                via === 'railway'
-                  ? ' · via Railway mls-sync'
-                  : via === 'eventbridge'
-                    ? ' · via EventBridge'
-                    : ''
-              }`
+                via === 'sync-queue' ? ' · via sync queue' : ''
+              }${queueNote ? ` · ${queueNote}` : ''}`
             : queued.error ?? 'unknown queue error',
         })
         if (queued.ok) {
@@ -653,21 +649,13 @@ async function runAdminSyncActionImpl(
             statusScope,
           })
           await stampIncrementalQueuedStepLog(
-            via === 'railway'
-              ? 'railway-admin'
-              : via === 'eventbridge'
-                ? 'eventbridge-admin'
-                : 'admin-queue',
+            via === 'sync-queue' ? 'sync-queue-admin' : 'admin-queue',
             queued.base
               ? `${queued.base} HTTP ${queued.status ?? '—'} · ${scopeLabel}`
               : `background worker · ${scopeLabel}`,
           )
           const viaLabel =
-            via === 'railway'
-              ? 'Railway mls-sync'
-              : via === 'eventbridge'
-                ? 'EventBridge path'
-                : 'Netlify background worker'
+            via === 'sync-queue' ? 'sync queue' : 'Netlify background worker'
           return {
             ok: true,
             action,
@@ -675,12 +663,10 @@ async function runAdminSyncActionImpl(
             finishedAt: startedAt,
             durationMs: Date.now() - t0,
             backgroundQueued: true,
-            message: `Incremental queued for ${scopeLabel} (${viaLabel})`,
-            detail: queued.base
-              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}) · ${scopeLabel}${
-                  via === 'railway' ? ' · Railway' : via === 'eventbridge' ? ' · EventBridge' : ''
-                }. Dashboard Status updates when End moves in Neon.`
-              : `Queued on ${viaLabel} · ${scopeLabel}. Dashboard Status updates when End moves in Neon.`,
+            message: `Incremental queued for ${scopeLabel} (${viaLabel})${
+              queueNote ? ` — ${queueNote}` : ''
+            }`,
+            detail: `Queued on ${viaLabel} · ${scopeLabel}. Dashboard Status updates when End moves in Neon.`,
           }
         }
         const finishedAt = new Date().toISOString()
@@ -693,8 +679,8 @@ async function runAdminSyncActionImpl(
           message: 'Could not queue incremental sync',
           detail:
             queued.error ??
-            (via === 'railway'
-              ? 'Set MLS_SYNC_SERVICE_URL + SYNC_CRON_SECRET (Railway mls-sync).'
+            (via === 'sync-queue'
+              ? 'Could not write to sync_queue — check DATABASE_URL on this host.'
               : 'No site URL or worker rejected the queue. Check SYNC_CRON_SECRET / URL env and Netlify function logs.'),
         }
       }
@@ -732,7 +718,7 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyListingScoresSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via } = await queueSyncNowThroughQueue(
           'listing-scores',
           () =>
             queueNetlifyListingScoresSync(startedAt, {
@@ -765,8 +751,8 @@ async function runAdminSyncActionImpl(
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              via === 'eventbridge'
-                ? 'Goldilocks queued (EventBridge path) — End updates when rebuild finishes'
+              via === 'sync-queue'
+                ? 'Goldilocks queued on the sync runner — End updates when the rebuild finishes'
                 : 'Goldilocks queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
@@ -802,7 +788,7 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyListingEdgeScoreSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via } = await queueSyncNowThroughQueue(
           'edge-scores',
           () => queueNetlifyListingEdgeScoreSync(startedAt, { source: 'admin' }),
         )
@@ -831,9 +817,7 @@ async function runAdminSyncActionImpl(
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              via === 'eventbridge'
-                ? 'Edge scores queued (EventBridge path) — End updates when rebuild finishes'
-                : 'Edge scores queued (background worker) — End updates when rebuild finishes',
+              'Edge scores queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
               : 'Queued on background worker.',
@@ -899,7 +883,7 @@ async function runAdminSyncActionImpl(
         }
         const { queueNetlifyStatsCacheRebuild, isNetlifyQueueRateLimited } =
           await import('@/lib/netlify-sync-trigger')
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via } = await queueSyncNowThroughQueue(
           'stats-cache',
           () =>
             queueNetlifyStatsCacheRebuild(startedAt, {
@@ -932,11 +916,9 @@ async function runAdminSyncActionImpl(
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              via === 'railway'
-                ? 'Stats cache queued on Railway — End updates when rebuild finishes'
-                : via === 'eventbridge'
-                  ? 'Stats cache queued (EventBridge path) — End updates when rebuild finishes'
-                  : 'Stats cache queued (background worker) — End updates when rebuild finishes',
+              via === 'sync-queue'
+                ? 'Stats cache queued on the sync runner — End updates when the rebuild finishes'
+                : 'Stats cache queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Steals a stuck rebuild lock if needed.`
               : 'Queued on background worker. Steals a stuck rebuild lock if needed.',
@@ -1055,13 +1037,13 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyDealOfTheDayRebuild } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via } = await queueSyncNowThroughQueue(
           'deal-of-the-day',
           () =>
             queueNetlifyDealOfTheDayRebuild(startedAt, {
               source: 'admin',
             }),
-          { railwayBody: { startedAt } },
+          { startedAt },
         )
         try {
           const { recordSyncRun } = await import('@/lib/db/listings-repo')
@@ -1089,11 +1071,9 @@ async function runAdminSyncActionImpl(
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              via === 'eventbridge'
-                ? 'Deal of the Day queued (EventBridge path) — End updates when rebuild finishes'
-                : via === 'railway'
-                  ? 'Deal of the Day queued (Railway mls-sync) — End updates when rebuild finishes'
-                  : 'Deal of the Day queued (background worker) — End updates when rebuild finishes',
+              via === 'sync-queue'
+                ? 'Deal of the Day queued on the sync runner — End updates when the rebuild finishes'
+                : 'Deal of the Day queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
               : 'Queued on background worker.',
@@ -1129,10 +1109,10 @@ async function runAdminSyncActionImpl(
         const { queueNetlifyPropertyAddressSync } = await import(
           '@/lib/netlify-sync-trigger'
         )
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via } = await queueSyncNowThroughQueue(
           'property-addresses',
           () => queueNetlifyPropertyAddressSync(),
-          { railwayBody: { startedAt } },
+          { startedAt },
         )
         try {
           const { recordSyncRun } = await import('@/lib/db/listings-repo')
@@ -1158,7 +1138,7 @@ async function runAdminSyncActionImpl(
             finishedAt: startedAt,
             durationMs: Date.now() - t0,
             backgroundQueued: true,
-            message: `Property addresses queued (${via === 'railway' ? 'Railway mls-sync' : 'background worker'}) — End updates when the sync finishes`,
+            message: `Property addresses queued (${via === 'sync-queue' ? 'sync runner' : 'background worker'}) — End updates when the sync finishes`,
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
               : 'Queued on background worker.',
@@ -1236,7 +1216,7 @@ async function runAdminSyncActionImpl(
     case 'fomc-sync': {
       if (shouldQueueOnServerless(options)) {
         const { queueNetlifyFomcSync } = await import('@/lib/netlify-sync-trigger')
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via } = await queueSyncNowThroughQueue(
           'fomc-sync',
           () => queueNetlifyFomcSync({ source: 'admin' }),
         )
@@ -1248,9 +1228,7 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? via === 'eventbridge'
-              ? 'FOMC sync queued via EventBridge path'
-              : 'FOMC sync queued on Netlify background worker'
+            ? 'FOMC sync queued on Netlify background worker'
             : `FOMC sync queue failed: ${queued.error ?? 'unknown'}`,
         }
       }
@@ -1283,7 +1261,7 @@ async function runAdminSyncActionImpl(
     case 'cpi-sync': {
       if (shouldQueueOnServerless(options)) {
         const { queueNetlifyCpiSync } = await import('@/lib/netlify-sync-trigger')
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queued, via } = await queueSyncNowThroughQueue(
           'cpi-sync',
           () => queueNetlifyCpiSync({ source: 'admin' }),
         )
@@ -1295,9 +1273,7 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? via === 'eventbridge'
-              ? 'CPI sync queued via EventBridge path'
-              : 'CPI sync queued on Netlify background worker'
+            ? 'CPI sync queued on Netlify background worker'
             : `CPI sync queue failed: ${queued.error ?? 'unknown'}`,
         }
       }
@@ -1331,7 +1307,7 @@ async function runAdminSyncActionImpl(
       if (shouldQueueOnServerless(options)) {
         const { queueNetlifyMarketDigest, isNetlifyQueueRateLimited } =
           await import('@/lib/netlify-sync-trigger')
-        const first = await queueSyncNowPreferringScheduler(
+        const first = await queueSyncNowThroughQueue(
           'market-digest',
           () =>
             queueNetlifyMarketDigest({
@@ -1339,29 +1315,30 @@ async function runAdminSyncActionImpl(
               force: true,
               stampWeek: true,
             }),
-          { railwayBody: { startedAt } },
+          { startedAt },
         )
         let queued = first.queued
         let via = first.via
         // Netlify refusing background invokes site-wide (HTTP 429) is how a whole
         // week's brief went missing: the hop was declined, nothing sent, and the
-        // catch-up kept re-posting the same refusal. Hand it to the Railway host
-        // instead when one exists — the weekly watermark still blocks a double send.
+        // catch-up kept re-posting the same refusal. Put it on the queue instead —
+        // the weekly watermark still blocks a double send.
         if (
           !queued.ok &&
           via === 'admin' &&
           isNetlifyQueueRateLimited(queued)
         ) {
-          const { queueMlsSyncServiceJob } = await import(
-            '@/lib/mls-sync-service-client'
-          )
-          const fallback = await queueMlsSyncServiceJob('market-digest', {
-            startedAt,
-            source: 'admin',
+          const { enqueueSyncJob } = await import('@/lib/sync-queue')
+          const fallback = await enqueueSyncJob({
+            jobId: 'market-digest',
+            trigger: 'admin',
+            priority: SYNC_QUEUE_PRIORITY_MANUAL,
+            requestedAt: startedAt,
+            ignoreCooldown: true,
           })
           if (fallback.ok) {
-            queued = fallback
-            via = 'railway'
+            queued = { ok: true, status: 202, base: 'sync_queue' }
+            via = 'sync-queue'
           }
         }
         const finishedAt = new Date().toISOString()
@@ -1390,7 +1367,7 @@ async function runAdminSyncActionImpl(
             backgroundQueued: true,
             message: `Market brief queue failed: ${queued.error ?? 'unknown'}`,
             detail: isNetlifyQueueRateLimited(queued)
-              ? 'Netlify declined the background invoke (HTTP 429). Holding off for 30 min — set Scheduler to Railway in Configure to skip the hop entirely.'
+              ? 'Netlify declined the background invoke (HTTP 429). Holding off for 30 min — the sync queue skips the hop entirely once the runner is reachable.'
               : undefined,
           }
         }
@@ -1402,14 +1379,12 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message:
-            via === 'railway'
-              ? 'Monday market brief queued on the Railway mls-sync service'
-              : via === 'eventbridge'
-                ? 'Monday market brief queued via EventBridge path'
-                : 'Monday market brief queued on Netlify background worker',
+            via === 'sync-queue'
+              ? 'Monday market brief queued on the sync runner'
+              : 'Monday market brief queued on Netlify background worker',
           detail:
-            via === 'railway' && first.via === 'admin'
-              ? 'Netlify declined the background invoke (HTTP 429) — handed to Railway instead.'
+            via === 'sync-queue' && first.via === 'admin'
+              ? 'Netlify declined the background invoke (HTTP 429) — queued for the sync runner instead.'
               : undefined,
         }
       }

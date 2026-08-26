@@ -7,7 +7,6 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfEventBridgeOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
@@ -15,14 +14,13 @@ import {
  * Thin zip-boundary trigger (NO background).
  * Dense every-30m cron; Configure Frequency/Start time gate the work.
  * Queues sync-zip-boundaries-worker.
+ *
+ * Not a sync-queue job: the always-on runner only claims the long RETS/Neon
+ * rebuilds, so this one is Netlify's from cron to worker.
  */
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfEventBridgeOwns('zip-boundaries')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('zip-boundaries')) {
       return thinCronSkipped('zip-boundaries scheduled sync paused by admin')
     }

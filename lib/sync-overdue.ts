@@ -23,7 +23,7 @@ import {
   isScheduledJobDue,
   readSyncScheduleConfig,
 } from '@/lib/sync-schedule-config'
-import { resolveJobScheduler } from '@/lib/sync-schedule-config-shared'
+import { isSyncQueueRunnerJob } from '@/lib/sync-queue-shared'
 
 export type OverdueSyncJob = AdminSyncActionId
 
@@ -187,13 +187,14 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.add('cpi-sync')
   }
 
-  // Only catch the brief up when this process is the declared host. Every other
-  // lane writes to a database, so a stray catch-up is at worst wasted work; this
-  // one puts a real email in someone's inbox, and a developer's `next dev` is a
-  // long-lived Node process too — which is how the Monday brief has been going
-  // out from a laptop against a local watermark, invisible to production.
+  // Never catch the brief up from here. Every other lane writes to a database,
+  // so a stray catch-up is at worst wasted work; this one puts a real email in
+  // someone's inbox, and a developer's `next dev` is a long-lived Node process
+  // too — which is how the Monday brief has been going out from a laptop against
+  // a local watermark, invisible to production. The sync queue owns the send now,
+  // and only the runner claims it.
   if (
-    resolveJobScheduler(schedule.jobs['market-digest']) === 'netlify' &&
+    !isSyncQueueRunnerJob('market-digest') &&
     isScheduledJobDue('market-digest', now, schedule) &&
     // A refused worker hop stays refused for a while; retrying it every catch-up
     // pass only burned invokes and buried History under identical failures.
