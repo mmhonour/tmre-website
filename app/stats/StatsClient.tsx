@@ -935,7 +935,7 @@ export default function StatsClient() {
                 </StatsChartLazyMount>
               )}
 
-              <StatsChartLazyMount>
+              <StatsChartLazyMount eager={urlChart === "sales-by-vintage"}>
               <StatsChartPrintFrame
                 chartId="sales-by-vintage"
                 dataPanel={
@@ -954,7 +954,7 @@ export default function StatsClient() {
               </StatsChartPrintFrame>
               </StatsChartLazyMount>
 
-              <StatsChartLazyMount>
+              <StatsChartLazyMount eager={urlChart === "sales-by-price"}>
               <StatsChartPrintFrame
                 chartId="sales-by-price"
                 dataPanel={
@@ -1073,7 +1073,7 @@ export default function StatsClient() {
               )}
 
               {selectedCity === "All" && (
-                <StatsChartLazyMount>
+                <StatsChartLazyMount eager={urlChart === "median-by-town"}>
                 <StatsChartPrintFrame chartId="median-by-town" title={`${medianLabel} by town`}>
                   <MedianPriceBarChart
                     key={`median-bar-${statsKind}${chartVersionSuffix}`}
@@ -1087,7 +1087,7 @@ export default function StatsClient() {
               )}
 
               {selectedCity === "All" && (
-                <StatsChartLazyMount>
+                <StatsChartLazyMount eager={urlChart === "avg-dom"}>
                 <StatsChartPrintFrame
                   chartId="avg-dom"
                   title="Avg days on market — lower is faster"
@@ -1107,7 +1107,7 @@ export default function StatsClient() {
                * means anything next to its neighbours, and Market Pulse links
                * here per town, which would land on nothing if it were hidden.
                */}
-              <StatsChartLazyMount>
+              <StatsChartLazyMount eager={urlChart === "list-to-ask"}>
                 <StatsChartPrintFrame
                   chartId="list-to-ask"
                   title={statsListToAskTitle(statsKind)}
