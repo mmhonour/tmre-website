@@ -20,7 +20,7 @@ import {
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
 import {
-  buyerFriendlyScoreByCity,
+  marketPulseHeatByCity,
   sortRowsByBuyerFriendlyScore,
   unstackedFavorSortDir,
   type MarketPulseFavorSort,
@@ -937,7 +937,7 @@ function CombinedMetricsChart({
 
   const heatByCity = useMemo(
     () =>
-      buyerFriendlyScoreByCity(
+      marketPulseHeatByCity(
         rows,
         (r) => ({
           monthsSupply: r.monthsSupply,

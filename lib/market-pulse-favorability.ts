@@ -214,24 +214,45 @@ export function buyerFriendlyScore(
 }
 
 /**
- * Composite for every row, keyed by city. Towns are ranked against each other;
- * an All-towns row is ranked against those same towns on its level factors, so
- * the market reads on the one scale its towns do.
+ * Position on the seller (0) ↔ buyer (1) spectrum for every row, keyed by city.
+ *
+ * Towns are ranked against each other; an All-towns row is ranked against those
+ * same towns on its level factors, so the market reads on the one scale its
+ * towns do. The composite is an average of per-factor ranks, which bunches
+ * every town near the middle, so the readings are then stretched across the
+ * span the towns actually cover. Stretching is monotonic, so the order still
+ * matches the Seller / Buyer Friendly sort — it only spends the whole scale.
  */
-export function buyerFriendlyScoreByCity<T extends { city: string }>(
+export function marketPulseHeatByCity<T extends { city: string }>(
   rows: readonly T[],
   inputsOf: (row: T) => MarketPulseFavorInputs,
   isAllTowns: (row: T) => boolean,
 ): Map<string, number> {
   const peers = rows.filter((r) => !isAllTowns(r)).map(inputsOf)
-  const byCity = new Map<string, number>()
+  const raw = new Map<string, number>()
   for (const row of rows) {
     const score = buyerFriendlyScore(inputsOf(row), peers, {
       aggregate: isAllTowns(row),
     })
-    if (score != null) byCity.set(row.city, score)
+    if (score != null) raw.set(row.city, score)
   }
-  return byCity
+
+  const townScores = rows
+    .filter((r) => !isAllTowns(r))
+    .map((r) => raw.get(r.city))
+    .filter((s): s is number => s != null)
+  if (townScores.length === 0) return raw
+  const min = Math.min(...townScores)
+  const max = Math.max(...townScores)
+  if (max === min) {
+    return new Map([...raw.keys()].map((city) => [city, 0.5]))
+  }
+  return new Map(
+    [...raw].map(([city, score]) => [
+      city,
+      Math.max(0, Math.min(1, (score - min) / (max - min))),
+    ]),
+  )
 }
 
 /** Seller end first — the order a heat scale is drawn in. */

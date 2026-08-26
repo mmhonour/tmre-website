@@ -43,7 +43,7 @@ import {
   marketPulseAllTownsAvgDom,
 } from '@/lib/market-pulse-combined-rows'
 import {
-  buyerFriendlyScoreByCity,
+  marketPulseHeatByCity,
   marketPulseHeatLabel,
 } from '@/lib/market-pulse-favorability'
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
@@ -720,7 +720,7 @@ export function formatMarketDigestEmail(
   const stackedMetrics = marketPulseStackedMetrics(
     marketPulseLookbackChartLabel(DEFAULT_MARKET_PULSE_LOOKBACK_ID),
   )
-  const heatByCity = buyerFriendlyScoreByCity(
+  const heatByCity = marketPulseHeatByCity(
     combined,
     (r) => ({
       monthsSupply: r.monthsSupply,

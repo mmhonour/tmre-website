@@ -19,7 +19,7 @@ import {
 } from '@/lib/market-pulse-combined-rows'
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import {
-  buyerFriendlyScoreByCity,
+  marketPulseHeatByCity,
   marketPulseHeatBand,
   MARKET_PULSE_HEAT_BAND_IDS,
   type MarketPulseHeatBandId,
@@ -217,7 +217,7 @@ function stackedTownMetricsSection(
     ),
   )
   const priceMax = marketPulsePriceBarMax(rows)
-  const heatByCity = buyerFriendlyScoreByCity(
+  const heatByCity = marketPulseHeatByCity(
     rows,
     (r) => ({
       monthsSupply: r.monthsSupply,
