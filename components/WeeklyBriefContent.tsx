@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
+import MarketPulseHeatStrip from "@/components/MarketPulseHeatStrip";
 import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import { fmtMoney } from "@/lib/listing-history";
 import { type MarketDigestSnapshot } from "@/lib/market-digest-types";
@@ -19,6 +20,7 @@ import {
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
 import {
+  buyerFriendlyScoreByCity,
   sortRowsByBuyerFriendlyScore,
   unstackedFavorSortDir,
   type MarketPulseFavorSort,
@@ -906,6 +908,7 @@ function CombinedMetricsChart({
   closedBarMax = 0,
   townsExpanded,
   onAllTownsToggle,
+  scopeLabel,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
@@ -917,6 +920,8 @@ function CombinedMetricsChart({
   closedBarMax?: number;
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
+  /** Active tab scope for the heat strip tooltip, e.g. `sales` / `rentals`. */
+  scopeLabel: string;
 }) {
   const metrics = combinedMetrics(closedLookbackLabel);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
@@ -926,8 +931,28 @@ function CombinedMetricsChart({
       setBarScramble(null);
       return;
     }
-    setBarScramble(randomBarPercents(rows.length * metrics.length));
+    // One extra slot per row so the heat marker scrambles on its own number.
+    setBarScramble(randomBarPercents(rows.length * (metrics.length + 1)));
   }, [settle.phase, settle.tick, rows.length, metrics.length]);
+
+  const heatByCity = useMemo(
+    () =>
+      buyerFriendlyScoreByCity(
+        rows,
+        (r) => ({
+          monthsSupply: r.monthsSupply,
+          avgDaysOnMarket: r.avgDaysOnMarket,
+          closedCount: r.closedCount,
+          medianPrice: r.medianPrice,
+          priceDelta: r.priceDelta,
+          averagePrice: r.averagePrice,
+          saleToAskPct: r.saleToAskPct,
+        }),
+        (r) => isAllTownsCity(r.city),
+      ),
+    [rows],
+  );
+  const heatPeerCount = rows.filter((r) => !isAllTownsCity(r.city)).length;
 
   if (rows.length === 0) {
     return (
@@ -1124,21 +1149,40 @@ function CombinedMetricsChart({
         {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
+          const heat = heatByCity.get(row.city) ?? null;
           return (
             <li
               key={`combined-${row.city}`}
               data-mp-town={row.city}
               className="space-y-1"
             >
-              <TownName
-                city={row.city ?? label}
-                label={label}
-                href={href}
-                townsExpanded={townsExpanded}
-                onAllTownsToggle={onAllTownsToggle}
-                settle={settle}
-                rotateTownNames={rotateNames}
-              />
+              {/* Heat strip ends where the bar tracks do, so the two read as one chart. */}
+              <div
+                className={`flex min-w-0 items-center justify-between gap-3 ${BAR_EXTERIOR_LANE}`}
+              >
+                <TownName
+                  city={row.city ?? label}
+                  label={label}
+                  href={href}
+                  townsExpanded={townsExpanded}
+                  onAllTownsToggle={onAllTownsToggle}
+                  settle={settle}
+                  rotateTownNames={rotateNames}
+                />
+                {heat != null ? (
+                  <MarketPulseHeatStrip
+                    townLabel={label}
+                    pct={settleBarPercent(
+                      heat * 100,
+                      rows.length * metrics.length + rowIndex,
+                      settle,
+                      barScramble,
+                    )}
+                    peerCount={heatPeerCount}
+                    scopeLabel={scopeLabel}
+                  />
+                ) : null}
+              </div>
               <ul className="space-y-1.5">
                 {metrics.map((m, metricIndex) => {
                   if (m.id === "averagePrice" || m.id === "priceDelta") {
@@ -1602,6 +1646,7 @@ export default function WeeklyBriefContent({
             closedBarMax={closedBarMax}
             townsExpanded={townsExpanded}
             onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            scopeLabel={scopeLabel}
           />
         ) : (
           <>

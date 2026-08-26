@@ -13,10 +13,17 @@ import {
 } from '@/lib/market-pulse-defaults'
 import {
   defaultMarketPulseCombinedRows,
+  isAllTownsCity,
   marketPulseAllTownsAvgDom,
   type MarketPulseCombinedTownRow,
 } from '@/lib/market-pulse-combined-rows'
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
+import {
+  buyerFriendlyScoreByCity,
+  marketPulseHeatBand,
+  MARKET_PULSE_HEAT_BAND_IDS,
+  type MarketPulseHeatBandId,
+} from '@/lib/market-pulse-favorability'
 import {
   isMarketPulsePriceScaleMetric,
   marketPulseDeltaBarSpan,
@@ -41,6 +48,14 @@ const BAR_AVERAGE = '#8B6F4E'
 const BAR_DELTA = '#7A6A8A'
 const BAR_SALE_TO_ASK = '#4A7C8A'
 const WHITE = '#FFFFFF'
+/** Seller end → buyer end, one swatch per heat band. */
+const HEAT_SWATCHES: Record<MarketPulseHeatBandId, string> = {
+  'seller-hot': '#C45C4A',
+  'seller-warm': '#D08A63',
+  balanced: '#D8B45C',
+  'buyer-warm': '#7FA0A0',
+  'buyer-hot': '#4A7C8A',
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -115,6 +130,38 @@ function metricBarRow(
     </tr>`
 }
 
+/**
+ * Buyer / seller heat beside a town name. Mail clients drop CSS gradients, so
+ * the web strip's continuous scale becomes five swatches with the town's band
+ * raised and outlined.
+ */
+function heatStripCell(score: number): string {
+  const band = marketPulseHeatBand(score)
+  const caption =
+    band.id === 'balanced'
+      ? SLATE
+      : band.id.startsWith('seller')
+        ? BAR_CLOSED
+        : BAR_SALE_TO_ASK
+  const swatches = MARKET_PULSE_HEAT_BAND_IDS.map((id) => {
+    const active = id === band.id
+    const height = active ? 10 : 6
+    const border = active ? `border:1px solid ${NAVY};` : ''
+    return `<td width="13" bgcolor="${HEAT_SWATCHES[id]}" height="${height}" style="width:13px;height:${height}px;background-color:${HEAT_SWATCHES[id]};font-size:0;line-height:${height}px;mso-line-height-rule:exactly;${border}">&nbsp;</td>`
+  }).join('')
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+      <tr>
+        <td style="padding:0 8px 0 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${caption};white-space:nowrap;vertical-align:middle;">${escapeHtml(band.label)}</td>
+        <td style="vertical-align:middle;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;table-layout:fixed;">
+            <tr>${swatches}</tr>
+          </table>
+        </td>
+      </tr>
+    </table>`
+}
+
 type StackedMetric = {
   id: MarketPulseStackedMetricId
   label: string
@@ -170,6 +217,19 @@ function stackedTownMetricsSection(
     ),
   )
   const priceMax = marketPulsePriceBarMax(rows)
+  const heatByCity = buyerFriendlyScoreByCity(
+    rows,
+    (r) => ({
+      monthsSupply: r.monthsSupply,
+      avgDaysOnMarket: r.avgDaysOnMarket,
+      closedCount: r.closedCount,
+      medianPrice: r.medianPrice,
+      priceDelta: r.priceDelta,
+      averagePrice: r.averagePrice,
+      saleToAskPct: r.saleToAskPct,
+    }),
+    (r) => isAllTownsCity(r.city),
+  )
 
   const towns = rows
     .map((row) => {
@@ -200,9 +260,17 @@ function stackedTownMetricsSection(
           })
         })
         .join('')
+      const heat = heatByCity.get(row.city)
       return `
         <tr>
-          <td style="padding:14px 0 4px 0;font-family:Georgia,serif;font-size:15px;color:${NAVY};">${escapeHtml(cityLabel(row))}</td>
+          <td style="padding:14px 0 4px 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+              <tr>
+                <td style="font-family:Georgia,serif;font-size:15px;color:${NAVY};vertical-align:middle;">${escapeHtml(cityLabel(row))}</td>
+                <td align="right" style="text-align:right;vertical-align:middle;">${heat == null ? '' : heatStripCell(heat)}</td>
+              </tr>
+            </table>
+          </td>
         </tr>
         <tr>
           <td style="padding:0 0 8px 0;">
