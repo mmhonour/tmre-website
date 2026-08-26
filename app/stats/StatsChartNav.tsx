@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { scrollToStatsAnchor } from "./stats-scroll";
 
 export type StatsChartNavItem = {
   id: string;
@@ -34,8 +35,21 @@ export default function StatsChartNav({ items }: { items: StatsChartNavItem[] })
   if (items.length === 0) return null;
 
   const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
     setOpen(false);
+    // Charts below the fold are mounted by an intersection observer, so a jump
+    // to one that has never been on screen has nothing to aim at yet. Retry
+    // briefly rather than dropping the click.
+    let attempts = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(id);
+      if (el) {
+        scrollToStatsAnchor(el);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 12) window.setTimeout(tryScroll, 100);
+    };
+    tryScroll();
   };
 
   return (

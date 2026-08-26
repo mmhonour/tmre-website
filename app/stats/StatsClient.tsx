@@ -34,6 +34,11 @@ import PriceSalesByTownDataTable from "./PriceSalesByTownDataTable";
 import StatsChartNav from "./StatsChartNav";
 import StatsChartLazyMount from "./StatsChartLazyMount";
 import {
+  scrollToStatsAnchor,
+  STATS_SCROLL_MT,
+  useStatsScrollOffset,
+} from "./stats-scroll";
+import {
   statsActiveByMonthTitle,
   statsActiveByMonthTownTitle,
   statsByMonthTitle,
@@ -217,6 +222,8 @@ export default function StatsClient() {
   const deepLinkApplied = useRef(false);
   const chartScrollApplied = useRef(false);
 
+  useStatsScrollOffset();
+
   useEffect(() => {
     if (deepLinkApplied.current) return;
     const city = parseUrlTown(urlCity);
@@ -243,9 +250,14 @@ export default function StatsClient() {
     let attempts = 0;
     const tryScroll = () => {
       const el = document.getElementById(targetId);
-      if (el) {
+      // Aiming at a chart that is still a loading skeleton lands short once its
+      // title block appears, so hold out for the chart to report itself ready
+      // before the first scroll — but not forever, in case its data never comes.
+      const waiting =
+        el?.dataset.statsChartReady === "false" && attempts < 16;
+      if (el && !waiting) {
         chartScrollApplied.current = true;
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        scrollToStatsAnchor(el);
         el.classList.add("ring-2", "ring-gold/50", "ring-offset-2", "ring-offset-cream");
         window.setTimeout(() => {
           el.classList.remove(
@@ -307,7 +319,7 @@ export default function StatsClient() {
         : listingsLoadState === "ready" || listingsLoadState === "error";
     if (!ready) return;
     requestAnimationFrame(() => {
-      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (tableRef.current) scrollToStatsAnchor(tableRef.current);
     });
   }, [
     urlView,
@@ -365,7 +377,7 @@ export default function StatsClient() {
     setTableTown(town);
     if (town !== "All") setSelectedCity(town);
     requestAnimationFrame(() => {
-      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (tableRef.current) scrollToStatsAnchor(tableRef.current);
     });
   };
 
@@ -391,7 +403,7 @@ export default function StatsClient() {
       });
 
     requestAnimationFrame(() => {
-      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (tableRef.current) scrollToStatsAnchor(tableRef.current);
     });
   };
 
@@ -968,7 +980,7 @@ export default function StatsClient() {
               {selectedCity === "All" && (
                 <div
                   id="stats-chart-town-comparison"
-                  className="stats-comparison-table stats-print-screen-only scroll-mt-28"
+                  className={`stats-comparison-table stats-print-screen-only ${STATS_SCROLL_MT}`}
                 >
                   <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-4">
                     Side-by-side comparison
@@ -1084,7 +1096,10 @@ export default function StatsClient() {
                 </StatsChartLazyMount>
               )}
 
-              <div ref={tableRef} className="mt-16 pt-10 border-t border-charcoal/[0.08]">
+              <div
+                ref={tableRef}
+                className={`mt-16 pt-10 border-t border-charcoal/[0.08] ${STATS_SCROLL_MT}`}
+              >
                 {tableMode === "price-band" ? (
                   <MedianPriceListingsTable
                     rows={priceBandRows}
