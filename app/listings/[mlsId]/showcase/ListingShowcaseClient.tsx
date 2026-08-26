@@ -291,7 +291,7 @@ export default function ListingShowcaseClient({
         <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
         <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
 
-        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between gap-10 px-4 pt-20 pb-10 sm:px-8 lg:px-12 lg:pt-24 lg:pb-14">
+        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between gap-10 px-4 pt-24 pb-10 sm:px-8 lg:px-12 lg:pt-28 lg:pb-14">
           {/*
             Real listing chrome — same header, insight and tab strip as the
             production Overview page, floated over the photo on a glass panel
@@ -301,7 +301,9 @@ export default function ListingShowcaseClient({
             <div className="mb-2 flex items-start justify-between gap-3">
               <ListingBackLink className="mb-0" />
               <span className="shrink-0">
-                <DealBoardStatusBadge status={status} size="sm" surface="listing" />
+                {/* `photo` is the opaque variant — the tinted `listing` one is
+                    built for a solid navy panel, not an image backdrop. */}
+                <DealBoardStatusBadge status={status} size="sm" surface="photo" />
               </span>
             </div>
 
