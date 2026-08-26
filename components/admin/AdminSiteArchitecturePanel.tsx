@@ -321,7 +321,7 @@ export default function AdminSiteArchitecturePanel() {
                 label="Neon"
                 role="Lane 2 · inventory truth"
                 kind="core"
-                title="Neon Postgres — Lane 2 handoff. listings + sync_meta End/heartbeat. Shared by Netlify + local + Railway when DATABASE_URL points here. Website never needs Railway up to know what’s listed."
+                title="Neon Postgres — Lane 2 handoff. listings + sync_meta End/heartbeat, plus sync_queue, which is where every job request lands and where its outcome is recorded. Shared by Netlify + local + Railway when DATABASE_URL points here. Website never needs Railway up to know what’s listed."
               />
               <Box
                 id="rets"

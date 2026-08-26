@@ -1228,8 +1228,8 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? 'FOMC sync queued on Netlify background worker'
-            : `FOMC sync queue failed: ${queued.error ?? 'unknown'}`,
+            ? `FOMC sync queued (${via})`
+            : `FOMC sync queue failed (${via}): ${queued.error ?? 'unknown'}`,
         }
       }
       const { runFedFomcSync } = await import('@/lib/fed-fomc-sync')
@@ -1273,8 +1273,8 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? 'CPI sync queued on Netlify background worker'
-            : `CPI sync queue failed: ${queued.error ?? 'unknown'}`,
+            ? `CPI sync queued (${via})`
+            : `CPI sync queue failed (${via}): ${queued.error ?? 'unknown'}`,
         }
       }
       const { runCpiReleaseSync } = await import('@/lib/cpi-release-sync')

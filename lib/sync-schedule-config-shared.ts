@@ -336,13 +336,20 @@ export function mergeSyncScheduleConfig(
         } else if (frequency === 'weekly') {
           next.weekdayEt = resolveWeekdayEt(defaults.jobs[jobId])
         }
-        if (
-          typeof row.budgetMinutes === 'number' &&
-          Number.isFinite(row.budgetMinutes)
-        ) {
-          next.budgetMinutes = clampJobBudgetMinutes(row.budgetMinutes)
-        }
         jobs[jobId] = next
+      }
+      // The budget is read separately from the cadence gate above. A row that
+      // fails that gate falls back to the default cadence, which is safe;
+      // silently falling back to the default kill budget is not, because the
+      // number Admin shows would stop being the number the runner enforces.
+      if (
+        typeof row.budgetMinutes === 'number' &&
+        Number.isFinite(row.budgetMinutes)
+      ) {
+        jobs[jobId] = {
+          ...jobs[jobId],
+          budgetMinutes: clampJobBudgetMinutes(row.budgetMinutes),
+        }
       }
     }
   }

@@ -69,28 +69,28 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     role: "Next.js host, serverless functions, crons, Blobs",
     kind: "core",
     note:
-      "Lane 3: site-cache warm + digests (sideWorkOnly after Railway handoff). Not the preferred Incremental RETS puller — that is Railway mls-sync. DNS for the domain is the sibling Netlify DNS node.",
+      "Lane 3: site-cache warm + digests (sideWorkOnly after Railway handoff). Thin crons enqueue runner jobs onto sync_queue rather than pulling RETS themselves, and only rescue a stranded row when the Railway runner heartbeat is stale. DNS for the domain is the sibling Netlify DNS node.",
   },
   {
     id: "railway",
     label: "Railway mls-sync",
-    role: "Always-on Incremental RETS → Neon puller",
+    role: "Always-on sync_queue runner (claims jobs, forks a child per job)",
     kind: "core",
     note:
-      "Lane 1: RETS pull only (MLS_SYNC_SERVICE=1, postHooks:false). Lane 2 handoff is the Neon End/heartbeat write. Queues Netlify sideWorkOnly for Lane 3 warm.",
+      "Lane 1: claims sync_queue rows and forks job-child per job, so an OOM or a blown deadline kills only the child. RETS pull runs with MLS_SYNC_SERVICE=1, postHooks:false. Lane 2 handoff is the Neon End/heartbeat write. Queues Netlify sideWorkOnly for Lane 3 warm.",
   },
   {
     id: "eventbridge",
     label: "AWS EventBridge",
-    role: "Optional sync alarm clock (Scheduler)",
+    role: "Optional sync alarm clock",
     kind: "optional",
     note:
-      "Legacy side-by-side with Netlify cron. Prefer Configure → Incremental → Railway. Hits eventbridge-sync-ingress with SYNC_CRON_SECRET.",
+      "Legacy side-by-side with Netlify cron. Hits eventbridge-sync-ingress with SYNC_CRON_SECRET, which now enqueues onto sync_queue instead of dispatching a worker directly. The per-job Scheduler radio is gone — the runner owns execution.",
   },
   {
     id: "neon",
     label: "Neon Postgres",
-    role: "Listings, sync_meta, stats_cache, visitors, alerts",
+    role: "Listings, sync_meta, sync_queue, stats_cache, visitors, alerts",
     kind: "core",
     note:
       "Lane 2 handoff — inventory truth for Netlify + local. Shared when DATABASE_URL points here. Website never needs Railway up to know what’s listed.",
@@ -100,7 +100,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     label: "SmartMLS RETS",
     role: "MLS listings, photos metadata, history",
     kind: "core",
-    note: "Pulled by Railway mls-sync (preferred). Netlify worker RETS is legacy/fallback.",
+    note: "Pulled by the forked child the Railway mls-sync runner starts. Netlify worker RETS is the stranded-row rescue path only.",
   },
   {
     id: "r2",
@@ -179,6 +179,7 @@ export const SITE_ARCH_EDGES: SiteArchEdge[] = [
     to: "netlify",
     label: "HTTPS ingress (legacy jobs)",
   },
+  { from: "railway", to: "neon", label: "claim sync_queue → fork child" },
   { from: "railway", to: "rets", label: "Lane 1 RETS pull" },
   { from: "railway", to: "neon", label: "Lane 2 upsert · End · heartbeat" },
   {
@@ -186,6 +187,7 @@ export const SITE_ARCH_EDGES: SiteArchEdge[] = [
     to: "netlify",
     label: "Lane 3 warm handoff (sideWorkOnly)",
   },
+  { from: "netlify", to: "neon", label: "enqueue sync_queue (crons)" },
   { from: "netlify", to: "neon", label: "SQL · warm caches · digests" },
   { from: "netlify", to: "r2", label: "photos" },
   { from: "netlify", to: "blobs", label: "checkpoint" },

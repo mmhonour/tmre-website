@@ -403,7 +403,31 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Next override (spinner)',
     category: 'sync-admin',
     definition:
-      'Admin Syncs → Configure: Frequency picklist + Start time (ET) + per-job Scheduler radio (Netlify cron | EventBridge) persist in sync_meta (sync_schedule_config). Netlify wakes every 30m; handlers run only when due and only when Scheduler is Netlify. EventBridge jobs use eventbridge-sync-ingress instead. Next start is read-only (computed). Order ▲/▼ sets Sync all priority — Incremental is included. Dashboard shows Scheduler read-only; Next ▲/▼ still writes one-time sync_next_override_<job> (clears after a successful run).',
+      'Admin Syncs → Configure: Frequency picklist + Start time (ET) + per-job Budget (minutes) persist in sync_meta (sync_schedule_config). Netlify wakes every 30m; handlers check due, then enqueue onto sync_queue instead of picking a host. The per-job Scheduler radio is gone — the Railway runner claims whatever is queued, and Netlify only executes a row itself when the runner heartbeat proves it is gone. Next start is read-only (computed). Order ▲/▼ sets Sync all priority — Incremental is included. Dashboard shows a Queue column (running with budget left, queued with position + Cancel, or the last outcome); Next ▲/▼ still writes one-time sync_next_override_<job> (clears after a successful run).',
+  },
+  {
+    term: 'sync_queue',
+    category: 'sync-admin',
+    definition:
+      'Neon table (db/migrations/0022_sync_queue.sql) that is now the single front door for sync work. Admin Sync now, Netlify thin crons, EventBridge ingress, and the runner’s own sweeps all insert a row instead of poking a host, so a request that arrives while something else is running waits its turn rather than being dropped — the old failure mode of the five in-memory pending* slots. A row carries job_id, payload, priority (manual beats sweep), state (queued → running → done | failed | timeout | crashed | cancelled), deadline_at, heartbeat_at, and the exit code / signal when a child dies. Partial unique indexes keep one queued and one running row per job, so double-asking is free. Terminal rows stay a while for the Dashboard Queue column, then get pruned. See Job runner, Job child, Budget (sync job).',
+  },
+  {
+    term: 'Job runner (mls-sync)',
+    category: 'sync-admin',
+    definition:
+      'The loop inside the always-on Railway mls-sync service (services/mls-sync/job-runner.ts) that claims the next sync_queue row with SELECT … FOR UPDATE SKIP LOCKED, forks a child process to do the work, heartbeats while it runs, and writes the outcome back. It also reaps rows whose running process stopped heartbeating (crashed pod, redeploy mid-job) and applies a cooldown so a job that keeps crashing does not spin. Its heartbeat is what Netlify checks before deciding a queued row is stranded and running it itself.',
+  },
+  {
+    term: 'Job child (forked sync job)',
+    category: 'sync-admin',
+    definition:
+      'Every claimed job runs in its own forked Node process (services/mls-sync/job-child.ts), not inline in the runner. That buys three things the old in-process model could not: an out-of-memory kill takes down only the child, a job that hangs can actually be killed, and a blown deadline is recorded as an outcome instead of a mystery. The parent sends SIGTERM at the budget and escalates to SIGKILL if the child ignores it. MLS_SYNC_CHILD_MAX_OLD_SPACE_MB caps the child heap so a runaway job hits its own ceiling before the host’s.',
+  },
+  {
+    term: 'Budget (sync job)',
+    category: 'sync-admin',
+    definition:
+      'Per-job wall-clock ceiling in minutes, set on Admin → Syncs → Configure and stored in sync_schedule_config alongside Frequency and Start. It replaced the Scheduler radio in that column. When a forked child exceeds it the runner kills it and the sync_queue row lands on outcome `timeout` rather than sitting as running forever. The Dashboard Queue column counts the remaining budget down while a job runs.',
   },
   {
     term: 'Smart sync',
@@ -493,7 +517,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'EventBridge Scheduler',
     category: 'sync-admin',
     definition:
-      'AWS alarm clock that can start TMRE sync jobs instead of (or beside) Netlify cron. Admin → Syncs → Configure has a sticky per-job Scheduler radio (Netlify cron | EventBridge); Dashboard shows it read-only. When a job is on EventBridge, Netlify thin crons skip that job. AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`. Every ingress hit stamps EventBridge last fired + result on the Dashboard (including skips and 401). Full resync is retired and is not dispatched.',
+      'AWS alarm clock that can start TMRE sync jobs beside Netlify cron. There is no longer a per-job Scheduler radio choosing between them: AWS hits `/.netlify/functions/eventbridge-sync-ingress` with Bearer SYNC_CRON_SECRET and JSON `{ "job": "incremental" }`, and the ingress enqueues onto sync_queue exactly like a Netlify cron would. Running both clocks therefore double-asks and deduplicates rather than double-running. Every ingress hit still stamps EventBridge last fired + result on the Dashboard (including skips and 401). Full resync is retired and is not dispatched.',
   },
   {
     term: 'EventBridge event bus',
@@ -508,10 +532,10 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'AWS API that drops one custom event onto an EventBridge event bus (source, detail-type, detail JSON). In EventBridge Scheduler’s target picker it is the EventBridge choice for TMRE: Scheduler cannot POST straight to an external HTTPS URL, so the schedule uses PutEvents, then a bus Rule matches that event and invokes an API destination (our Netlify ingress). Different from the other Scheduler “EventBridge” / templated APIs (and from Lambda Invoke, SQS SendMessage, SNS Publish, Step Functions StartExecution, etc.): those call a concrete AWS resource you already own; PutEvents only publishes onto a bus and does nothing useful until a Rule + target (API destination) exist. Also different from classic EventBridge scheduled Rules, which can target an API destination in one hop without PutEvents. TMRE fields: source `tmre.sync`, detail-type `ScheduledSync`, detail `{ "job": "incremental" }`.',
   },
   {
-    term: 'Sync now (scheduler-aware)',
+    term: 'Sync now (queue-aware)',
     category: 'sync-admin',
     definition:
-      'Admin → Syncs → Dashboard Sync now button. Uses Configure Scheduler per job: when EventBridge, queues via the EventBridge dispatch path (source=eventbridge; same worker handoff AWS uses after ingress); on queue failure falls back to the Netlify admin queue. When Netlify, queues as admin directly. Scoped Incremental (town/status picker) always uses the admin queue. Does not call AWS PutEvents — that only happens from EventBridge Scheduler or the AWS Send events console. Watch Start/End after Sync now; message text says which path queued.',
+      'Admin → Syncs → Dashboard Sync now button. For any job the runner owns it inserts a sync_queue row at manual priority, so it jumps ahead of scheduled sweeps and the Queue column shows it as queued (with position) and then running (with budget left). Jobs the runner does not own still queue the old Netlify way. Scoped Incremental (town/status picker) always uses the admin queue path. Does not call AWS PutEvents — that only happens from EventBridge Scheduler or the AWS Send events console. Watch Start/End after Sync now; message text says which path queued.',
   },
   {
     term: 'EventBridge last fired',
@@ -523,7 +547,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Ingress (EventBridge)',
     category: 'sync-admin',
     definition:
-      'The HTTPS doorway from AWS into TMRE: Netlify function `eventbridge-sync-ingress` at `/.netlify/functions/eventbridge-sync-ingress`. EventBridge Scheduler cannot POST to an arbitrary URL by itself in the templated-target UI, so the usual path is Scheduler → PutEvents → bus Rule → API destination → this ingress. Ingress checks Bearer SYNC_CRON_SECRET, requires Configure Scheduler = EventBridge for that job, then queues sync-listings-worker with source=eventbridge. The worker must treat that source like Admin (bypass Configure “not due”) — EventBridge is the clock; re-checking due after queue was a Day-1 failure mode that left Dashboard on “queued — no End yet”. Not an AWS product name — “ingress” here means our receive endpoint.',
+      'The HTTPS doorway from AWS into TMRE: Netlify function `eventbridge-sync-ingress` at `/.netlify/functions/eventbridge-sync-ingress`. EventBridge Scheduler cannot POST to an arbitrary URL by itself in the templated-target UI, so the usual path is Scheduler → PutEvents → bus Rule → API destination → this ingress. Ingress checks Bearer SYNC_CRON_SECRET, then enqueues the job on sync_queue (falling back to the legacy sync-listings-worker handoff for jobs the runner does not own). Whatever executes must treat that source like Admin (bypass Configure “not due”) — EventBridge is the clock; re-checking due after queue was a Day-1 failure mode that left Dashboard on “queued — no End yet”. Not an AWS product name — “ingress” here means our receive endpoint.',
   },
   {
     term: 'Thin cron',
@@ -631,7 +655,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Smoke test (sync)',
     category: 'sync-admin',
     definition:
-      'Go-live check after changing Incremental scheduler (e.g. to EventBridge): within one cycle, (1) End moves to minutes ago, (2) a known brand-new MLS# from SmartMLS appears in Neon//latest. AWS “last fired” alone is not a pass. CLI: `npm run smoke:incremental -- --mls=24196609,24196740` (optional `--max-age-min=70`, `--require-eb`). Exit 0 only when End is fresh and every MLS# is in Neon. Fail either check → do not call the cutover successful.',
+      'Go-live check after changing how Incremental is driven (new clock, new runner deploy): within one cycle, (1) End moves to minutes ago, (2) a known brand-new MLS# from SmartMLS appears in Neon//latest. AWS “last fired” alone is not a pass. CLI: `npm run smoke:incremental -- --mls=24196609,24196740` (optional `--max-age-min=70`, `--require-eb`). Exit 0 only when End is fresh and every MLS# is in Neon. Fail either check → do not call the cutover successful.',
   },
   {
     term: 'Background worker (*-worker)',
@@ -649,7 +673,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'sync-listings-worker',
     category: 'sync-admin',
     definition:
-      'Legacy Incremental puller: Netlify background Lambda at /.netlify/functions/sync-listings-worker. Being replaced by Railway mls-sync for Incremental. A 202 “queued” only meant the wake was accepted; success is End + rows in listings. Prefer Railway service (scheduler radio).',
+      'Legacy Incremental puller: Netlify background Lambda at /.netlify/functions/sync-listings-worker. Superseded by the Railway mls-sync runner, which claims sync_queue and forks a child per job. A 202 “queued” only meant the wake was accepted; success is End + rows in listings. This path now only runs when a queued row has gone unclaimed long enough to prove the runner is gone.',
   },
   {
     term: 'Same-repo dual deploy (Netlify + Railway)',
@@ -739,7 +763,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'MLS_SYNC_SERVICE_URL',
     category: 'sync-admin',
     definition:
-      'Netlify env var: public base URL of the Railway mls-sync service (no trailing slash). Prefer `https://…up.railway.app`. Host-only values are accepted and normalized to https. Admin Sync now and the Incremental watchdog POST /run here when Incremental Scheduler is Railway.',
+      'Netlify env var: public base URL of the Railway mls-sync service (no trailing slash). Prefer `https://…up.railway.app`. Host-only values are accepted and normalized to https. Used to poke the runner to drain sync_queue immediately after something is enqueued, rather than waiting for its next poll. Enqueueing works without it; the job just starts a little later.',
   },
   {
     term: 'Railpack',
@@ -897,7 +921,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Edge scores',
     category: 'sync-admin',
     definition:
-      'Sync Dashboard step 3b — rebuild of listing_edge_scores. Own Configure Frequency / Start / Pause / Scheduler (job id `edge-scores`), own End stamp `last_listing_edge_scores`, and Netlify thin cron `sync-listing-edge-scores` → `sync-listing-edge-scores-worker`. Uncoupled from Goldilocks (3a / `listing-scores` / `last_listing_scores`). Also runs as a full-resync finalize step. See Edge score, Thin cron, Goldilocks score.',
+      'Sync Dashboard step 3b — rebuild of listing_edge_scores. Own Configure Frequency / Start / Pause / Budget (job id `edge-scores`), own End stamp `last_listing_edge_scores`, and Netlify thin cron `sync-listing-edge-scores` → `sync-listing-edge-scores-worker`. Uncoupled from Goldilocks (3a / `listing-scores` / `last_listing_scores`). Also runs as a full-resync finalize step. See Edge score, Thin cron, Goldilocks score.',
   },
   {
     term: 'Superlatives',
