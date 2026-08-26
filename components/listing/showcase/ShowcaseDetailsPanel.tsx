@@ -212,12 +212,15 @@ export default function ShowcaseDetailsPanel({
             {/* `variant="hero"` fills its parent, so the height has to come
                 from here or the map collapses to nothing. */}
             <div className="h-[20rem] w-full overflow-hidden rounded-xl sm:h-[26rem]">
+              {/* `seamless` drops the component's own frame — otherwise its
+                  border plus the navy backing reads as a heavy blue edge. */}
               <ListingLocationMap
                 latitude={listing.latitude}
                 longitude={listing.longitude}
                 addressQuery={mapsQuery}
                 variant="hero"
                 hideLabel
+                seamless
               />
             </div>
           </Section>

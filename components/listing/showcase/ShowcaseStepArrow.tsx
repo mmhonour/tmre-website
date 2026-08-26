@@ -2,7 +2,9 @@
 
 /**
  * The Intelligence sort direction glyph (`DealBoardSortBar` uses ↑ / ↓ in a
- * rounded mono button), turned sideways for stepping through photos.
+ * rounded mono button), turned sideways for stepping through photos. Weighted
+ * and given a hard offset shadow so it reads as a raised control over busy
+ * photography rather than a hairline character.
  */
 export default function ShowcaseStepArrow({
   direction,
@@ -20,7 +22,7 @@ export default function ShowcaseStepArrow({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`inline-flex h-11 w-11 items-center justify-center rounded-lg font-mono text-[22px] leading-none text-white/70 transition-colors hover:bg-white/15 hover:text-white ${className}`}
+      className={`listing-showcase-arrow inline-flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold leading-none text-white transition-colors hover:bg-white/15 ${className}`}
     >
       {direction === "prev" ? "←" : "→"}
     </button>

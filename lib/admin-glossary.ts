@@ -120,6 +120,30 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Heredoc syntax as used in bash (`<<\'EOF\'` … `EOF`). Same concept as Heredoc — multi-line literal fed to a command or captured with `$(cat <<\'EOF\' …)`. Preferred in Linux/macOS/Git Bash scripts; agents often paste this form for commit messages. Does not work in Windows PowerShell (use a here-string + `git commit -F` instead).',
   },
   {
+    term: 'Full bleed',
+    category: 'ui-tabs',
+    definition:
+      'Borrowed from print, where ink runs off the trimmed edge of the page instead of stopping at a margin. In the UI it means an image spanning the entire width with no gutter; combined with filling the viewport height (100dvh) it becomes a full-screen hero, and when photos rotate through it, a hero slideshow. Three parts make one work: cover (CSS object-fit: cover, which fills the frame by cropping the overflow rather than distorting the photo), the scrim (a stage/film-lighting term for the gradient laid over the photo so overlaid text stays readable — listing photography is often near-white, so the scrim has to be dark where the type actually sits, not only at the frame edge), and the Ken Burns effect (the slow drift and zoom on a still photo, named after the documentary filmmaker). Used on the listing showcase mockup at /listings/[mlsId]/showcase. See Ken Burns effect, Scrim, Showcase (listing).',
+  },
+  {
+    term: 'Scrim',
+    category: 'ui-tabs',
+    definition:
+      'The gradient overlay between a photo and the text on top of it, named after the theatrical gauze that softens a stage light. Needed because listing photos vary wildly in brightness — a white kitchen or snow-covered exterior will swallow white type that reads fine over a dusk shot. A single edge-anchored gradient is usually not enough: the ramp has to already be dark at the height where the type sits. See Full bleed.',
+  },
+  {
+    term: 'Ken Burns effect',
+    category: 'ui-tabs',
+    definition:
+      'Slowly panning and zooming across a still image so it feels alive, named after the documentary filmmaker who made the technique a signature. Implemented here as a long CSS transform animation on the active photo layer, disabled under prefers-reduced-motion. See Full bleed.',
+  },
+  {
+    term: 'Showcase (listing)',
+    category: 'ui-tabs',
+    definition:
+      'Alternate listing layout mockup at /listings/[mlsId]/showcase — a full-bleed rotating photo filling the viewport, with a floating rail of pills (Insight, Details, Comps, What if, Map) over the photo and the production listing chrome (back link, status, header, score, insight, tab strip) in a panel below. Reuses ListingHeader, ListingSubnav, ListingHistoryPanel, ListingIfPageContent and ListingLocationMap rather than reimplementing them. Not linked from navigation and marked noindex; /listings/[mlsId] remains the production detail page. See Full bleed.',
+  },
+  {
     term: 'UI kit (tab styles)',
     category: 'ui-tabs',
     definition:

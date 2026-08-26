@@ -877,6 +877,18 @@ html.listing-split-test body {
   );
 }
 
+/* Photo step arrows — stacked shadows give the glyph edge weight so it reads
+   as a raised control against any photo underneath it. */
+.listing-showcase-arrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.55),
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    0 3px 6px rgba(0, 0, 0, 0.6);
+  -webkit-text-stroke: 1.25px currentColor;
+  paint-order: stroke fill;
+}
+
 /* Second line of defence for type sitting over a busy or blown-out photo. */
 .listing-showcase-type {
   text-shadow:
