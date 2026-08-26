@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
@@ -10,7 +11,7 @@ import ListingOverviewFactsSheet, {
   type FactsSheetSection,
 } from "@/components/listing/ListingOverviewFactsSheet";
 import { ListingBackLink } from "@/components/listing/ListingShell";
-import ListingSubnav from "@/components/listing/ListingSubnav";
+import ListingSubnav, { type ListingTab } from "@/components/listing/ListingSubnav";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import {
@@ -151,6 +152,7 @@ export default function ListingShowcaseClient({
   addressHint?: string | null;
   townHint?: string | null;
 }) {
+  const router = useRouter();
   const [data, setData] = useState<ApiResponse | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -325,6 +327,23 @@ export default function ListingShowcaseClient({
     { id: "if", label: "What if" },
   ];
 
+  /**
+   * Without an `onTabSelect`, the subnav falls into hash-jump mode: every
+   * content tab resolves to the Overview route plus an in-page anchor, which
+   * this page has no sections for. Sending each tab to its own route keeps the
+   * strip landing on a page that renders from the top.
+   */
+  const goToTab = (tab: ListingTab) => {
+    if (tab === "overview") {
+      document
+        .getElementById(DETAILS_SECTION_ID)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (tab === "admin") return;
+    router.push(listingSectionHref(listing.mlsId, tab, street, city));
+  };
+
   return (
     <div className="bg-navy-dark text-white">
       <section className="relative min-h-[100dvh] w-full overflow-hidden">
@@ -489,6 +508,8 @@ export default function ListingShowcaseClient({
                 isRental={isRental}
                 compact
                 hideMobileEdgeTabs
+                onTabSelect={goToTab}
+                onMapToggle={() => goToTab("map")}
               />
             </div>
 
