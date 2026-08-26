@@ -45,22 +45,31 @@ export function useStatsScrollOffset(): void {
   }, []);
 }
 
+/** Document-relative top, which only moves when layout does — not when we scroll. */
+function documentTop(el: HTMLElement): number {
+  return el.getBoundingClientRect().top + window.scrollY;
+}
+
 /**
  * Scroll a chart (or table) to just below the header.
  *
- * Charts show a short loading skeleton and only grow their title block once
- * their own request lands, so a single scroll fired at click time aims at a
- * box that is about to get taller and leaves the heading tucked under the
- * header. Re-aim while the target keeps resizing, and give up the moment the
- * visitor scrolls for themselves so we never fight them for the page.
+ * A single scroll fired at click time lands short. The target is a loading
+ * skeleton that grows a title block when its own request returns, and every
+ * chart above it is doing the same, so the thing we aimed at keeps sliding
+ * down the document after we have stopped moving. Re-aim whenever the target's
+ * document position shifts, and give up the moment the visitor scrolls for
+ * themselves so we never fight them for the page.
  */
-export function scrollToStatsAnchor(el: HTMLElement, settleMs = 2500): void {
+export function scrollToStatsAnchor(el: HTMLElement, settleMs = 4000): void {
   let done = false;
+  let lastTop = documentTop(el);
 
   const aim = () => {
-    const top =
-      el.getBoundingClientRect().top + window.scrollY - statsScrollOffsetPx();
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    lastTop = documentTop(el);
+    window.scrollTo({
+      top: Math.max(0, lastTop - statsScrollOffsetPx()),
+      behavior: "smooth",
+    });
   };
 
   const stop = () => {
@@ -76,17 +85,13 @@ export function scrollToStatsAnchor(el: HTMLElement, settleMs = 2500): void {
   aim();
 
   const startedAt = Date.now();
-  let lastHeight = el.offsetHeight;
   const settle = () => {
     if (done) return;
     if (Date.now() - startedAt > settleMs) {
       stop();
       return;
     }
-    if (el.offsetHeight !== lastHeight) {
-      lastHeight = el.offsetHeight;
-      aim();
-    }
+    if (Math.abs(documentTop(el) - lastTop) > 2) aim();
     window.setTimeout(settle, 150);
   };
   window.setTimeout(settle, 150);
