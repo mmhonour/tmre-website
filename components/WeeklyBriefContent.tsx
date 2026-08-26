@@ -195,49 +195,74 @@ function ClosedLookbackSlider({
   const current = marketPulseLookbackChartLabel(lookbackId);
   const lastIndex = MARKET_PULSE_LOOKBACK_OPTIONS.length - 1;
   return (
-    <div className="flex h-40 w-8 shrink-0 flex-col items-center gap-1">
+    <div className="flex h-56 w-16 shrink-0 flex-col gap-1 sm:w-20">
       <span className="[font-family:var(--mp-mono-font)] text-[8px] font-semibold tracking-[0.16em] uppercase text-[var(--mp-text)]">
         Lookback
       </span>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center">
-        <div
-          className="pointer-events-none absolute inset-y-1 left-1/2 z-0 w-px -translate-x-1/2 bg-black/15"
-          aria-hidden
-        />
-        <div className="absolute inset-y-1 right-0 z-0 flex flex-col justify-between">
-          {[...MARKET_PULSE_LOOKBACK_OPTIONS].reverse().map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              tabIndex={-1}
-              aria-label={opt.label}
-              onClick={() => onChange(opt.id)}
-              className={`pointer-events-auto h-1.5 w-1.5 shrink-0 rounded-full ${
-                opt.id === lookbackId
-                  ? "bg-[var(--mp-accent)]"
-                  : "bg-[var(--mp-text)]/25"
-              }`}
-            />
-          ))}
+      <div className="relative flex min-h-0 flex-1 items-stretch">
+        <div className="relative flex w-3 shrink-0 items-center justify-center">
+          <div
+            className="pointer-events-none absolute inset-y-1 left-1/2 z-0 w-px -translate-x-1/2 bg-black/15"
+            aria-hidden
+          />
+          <input
+            type="range"
+            min={0}
+            max={lastIndex}
+            step={1}
+            value={index}
+            aria-label="Lookback"
+            aria-valuetext={`${current}${pending ? " loading" : ""}`}
+            onChange={(e) =>
+              onChange(marketPulseLookbackIdAt(Number(e.target.value)))
+            }
+            className="mp-lookback-slider-vert relative z-[1] cursor-pointer appearance-none bg-transparent"
+          />
         </div>
-        <input
-          type="range"
-          min={0}
-          max={lastIndex}
-          step={1}
-          value={index}
-          aria-label="Lookback"
-          aria-valuetext={`${current}${pending ? " loading" : ""}`}
-          onChange={(e) =>
-            onChange(marketPulseLookbackIdAt(Number(e.target.value)))
-          }
-          className="mp-lookback-slider-vert relative z-[1] cursor-pointer appearance-none bg-transparent"
-        />
+        {/*
+         * Each notch is pinned to its own share of the rail rather than laid out
+         * in a column, so the enlarged selected label grows around its tick
+         * instead of shoving its neighbours off the mark they name. Ticks sit
+         * beside the rail, not over it, so they never swallow a thumb drag.
+         */}
+        <div className="relative min-w-0 flex-1">
+          <div className="absolute inset-x-0 inset-y-1">
+            {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt, i) => {
+              const selected = opt.id === lookbackId;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  tabIndex={-1}
+                  aria-label={opt.label}
+                  onClick={() => onChange(opt.id)}
+                  style={{ top: `${100 - (i / lastIndex) * 100}%` }}
+                  className="absolute left-0 flex -translate-y-1/2 items-center gap-1 whitespace-nowrap"
+                >
+                  <span
+                    aria-hidden
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      selected
+                        ? "bg-[var(--mp-accent)]"
+                        : "bg-[var(--mp-text)]/25"
+                    }`}
+                  />
+                  <span
+                    className={`[font-family:var(--mp-mono-font)] tabular-nums leading-none uppercase ${
+                      selected
+                        ? "text-[16px] text-[var(--mp-accent)]"
+                        : "text-[8px] text-[var(--mp-muted-text)] hover:text-[var(--mp-text)]"
+                    }`}
+                  >
+                    {opt.label}
+                    {selected && pending ? "…" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
-      <span className="[font-family:var(--mp-mono-font)] text-[8px] tabular-nums uppercase text-[var(--mp-muted-text)]">
-        {current}
-        {pending ? "…" : ""}
-      </span>
     </div>
   );
 }
@@ -1633,9 +1658,11 @@ export default function WeeklyBriefContent({
           />
         </div>
 
+        {/* Heading sits above the split so the slider starts level with All towns. */}
+        <div className="space-y-6">
+        {townMetricsHeading}
         <div className="flex items-start gap-2 sm:gap-3">
           <div className="min-w-0 flex-1 space-y-6">
-        {townMetricsHeading}
         {chartLayout === "stacked" || !townsExpanded ? (
           <CombinedMetricsChart
             rows={combinedRows}
@@ -1849,6 +1876,7 @@ export default function WeeklyBriefContent({
               pending={closedPending}
             />
           ) : null}
+        </div>
         </div>
 
         {deal ? (
