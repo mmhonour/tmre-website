@@ -102,6 +102,17 @@ function parseUrlTown(value: string | null): Town | null {
   return TOWN_LIST.find((t) => t.toLowerCase() === value.toLowerCase()) ?? null;
 }
 
+/**
+ * Like {@link parseUrlTown} but accepts All, which several charts are built
+ * around. Without it a `?city=All` link leaves whichever town the visitor last
+ * had saved in place, and an All-only chart never renders for the jump to find.
+ */
+function parseUrlCity(value: string | null): StatsCity | null {
+  if (!value) return null;
+  if (value.toLowerCase() === "all") return "All";
+  return parseUrlTown(value);
+}
+
 type TopVintage = {
   label: string;
   count: number;
@@ -231,7 +242,7 @@ export default function StatsClient() {
 
   useEffect(() => {
     if (deepLinkApplied.current) return;
-    const city = parseUrlTown(urlCity);
+    const city = parseUrlCity(urlCity);
     if (city) {
       setSelectedCity(city);
       setTableTown(city);
