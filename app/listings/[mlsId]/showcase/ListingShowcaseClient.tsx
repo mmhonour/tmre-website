@@ -32,6 +32,7 @@ import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
 const HOLD_MS = 6500;
 const MAX_PHOTOS = 40;
 const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
+const DETAILS_SECTION_ID = "listing-showcase-details";
 
 type Listing = {
   mlsId: string;
@@ -291,92 +292,20 @@ export default function ListingShowcaseClient({
         <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
         <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
 
-        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between gap-10 px-4 pt-24 pb-10 sm:px-8 lg:px-12 lg:pt-28 lg:pb-14">
-          {/*
-            Real listing chrome — same header, insight and tab strip as the
-            production Overview page, floated over the photo on a glass panel
-            so it stays readable without cropping the image.
-          */}
-          <div className="listing-showcase-chrome mx-auto w-full max-w-7xl rounded-2xl px-4 py-4 sm:px-6 sm:py-5">
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <ListingBackLink className="mb-0" />
-              <span className="shrink-0">
-                {/* `photo` is the opaque variant — the tinted `listing` one is
-                    built for a solid navy panel, not an image backdrop. */}
-                <DealBoardStatusBadge status={status} size="sm" surface="photo" />
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-              <div className="min-w-0 flex-1">
-                <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-                  Property Details
-                </p>
-                <ListingHeader
-                  parts="meta"
-                  mlsId={listing.mlsId}
-                  status={listing.status}
-                  address={listing.address}
-                  propertyType={listing.propertyType}
-                  style={listing.style}
-                  beds={listing.beds}
-                  baths={listing.baths}
-                  sqft={listing.sqft}
-                  yearBuilt={listing.yearBuilt}
-                  modificationTimestamp={listing.modificationTimestamp}
-                  price={primaryListingPrice(listing)}
-                  priceIsClosed={primaryListingPriceIsClosed(listing)}
-                  bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
-                  shareHref={listingShareHref(listing.mlsId)}
-                  compact
-                  {...listingHeaderScoreProps({
-                    goldilocksScore: data?.goldilocksScore,
-                    goldilocksBreakdown: data?.goldilocksBreakdown,
-                    insight,
-                    title: street,
-                    subtitle: city,
-                    propertyType: listing.propertyType,
-                  })}
-                />
-              </div>
-
-              {insight ? (
-                <aside
-                  className="min-w-0 sm:max-w-xs lg:max-w-sm"
-                  aria-label="Listing insight"
-                >
-                  <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold sm:text-center">
-                    Insight
-                  </p>
-                  <ListingInsightCopy
-                    text={insight}
-                    className="text-left text-[11px] leading-snug text-white/75 break-words"
-                  />
-                </aside>
-              ) : null}
-            </div>
-
-            <div className="mt-3">
-              <ListingSubnav
-                mlsId={listing.mlsId}
-                active="overview"
-                addressHint={street || addressHint}
-                townHint={city}
-                isRental={isRental}
-                compact
-              />
-            </div>
-          </div>
-
+        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-end px-4 pb-10 sm:px-8 lg:px-12 lg:pb-14">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-md">
-              <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/60">
-                Showcase view
-              </p>
-              <p className="mt-1 text-sm text-white/75">
-                {total} listing photo{total === 1 ? "" : "s"}, rotating automatically.
-              </p>
-            </div>
+            <a
+              href={`#${DETAILS_SECTION_ID}`}
+              className="group max-w-md font-mono text-[10px] uppercase tracking-[0.25em] text-white/70 transition-colors hover:text-gold"
+            >
+              Scroll for details
+              <span
+                aria-hidden
+                className="ml-2 inline-block transition-transform group-hover:translate-y-0.5"
+              >
+                ↓
+              </span>
+            </a>
 
             <div className="flex flex-col items-start gap-5 lg:items-end">
               <div className="flex items-center gap-3">
@@ -431,41 +360,112 @@ export default function ListingShowcaseClient({
         </div>
       </section>
 
-      <section className="navy-gradient relative border-t border-white/10 px-6 py-20 sm:px-10 lg:px-16">
+      <section
+        id={DETAILS_SECTION_ID}
+        className="navy-gradient relative scroll-mt-20 border-t border-white/10 px-4 py-12 sm:px-8 lg:px-12 lg:py-16"
+      >
         <div className="absolute inset-0 hero-grid opacity-20" aria-hidden />
-        <div className="relative mx-auto grid max-w-6xl gap-14 lg:grid-cols-[1.4fr_1fr]">
-          <div>
-            <h2 className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold">
-              About this property
-            </h2>
-            {remarks ? (
-              <p className="mt-6 whitespace-pre-line text-base leading-relaxed text-white/80">
-                {remarks}
-              </p>
-            ) : (
-              <p className="mt-6 text-base text-white/50">
-                No public remarks on this listing.
-              </p>
-            )}
+        <div className="relative mx-auto w-full max-w-7xl">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <ListingBackLink className="mb-0" />
+            <span className="shrink-0">
+              <DealBoardStatusBadge status={status} size="sm" surface="listing" />
+            </span>
           </div>
 
-          <div>
-            <h2 className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold">
-              Features &amp; amenities
-            </h2>
-            <dl className="mt-6 divide-y divide-white/10 border-y border-white/10">
-              {detailRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-baseline justify-between gap-6 py-3"
-                >
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
-                    {row.label}
-                  </dt>
-                  <dd className="text-right text-sm text-white/90">{row.value}</dd>
-                </div>
-              ))}
-            </dl>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+            <div className="min-w-0 flex-1">
+              <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                Property Details
+              </p>
+              <ListingHeader
+                parts="meta"
+                mlsId={listing.mlsId}
+                status={listing.status}
+                address={listing.address}
+                propertyType={listing.propertyType}
+                style={listing.style}
+                beds={listing.beds}
+                baths={listing.baths}
+                sqft={listing.sqft}
+                yearBuilt={listing.yearBuilt}
+                modificationTimestamp={listing.modificationTimestamp}
+                price={primaryListingPrice(listing)}
+                priceIsClosed={primaryListingPriceIsClosed(listing)}
+                bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
+                shareHref={listingShareHref(listing.mlsId)}
+                compact
+                {...listingHeaderScoreProps({
+                  goldilocksScore: data?.goldilocksScore,
+                  goldilocksBreakdown: data?.goldilocksBreakdown,
+                  insight,
+                  title: street,
+                  subtitle: city,
+                  propertyType: listing.propertyType,
+                })}
+              />
+            </div>
+
+            {insight ? (
+              <aside className="min-w-0 sm:max-w-xs lg:max-w-sm" aria-label="Listing insight">
+                <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold sm:text-center">
+                  Insight
+                </p>
+                <ListingInsightCopy
+                  text={insight}
+                  className="text-left text-[11px] leading-snug text-white/70 break-words"
+                />
+              </aside>
+            ) : null}
+          </div>
+
+          <div className="mt-3">
+            <ListingSubnav
+              mlsId={listing.mlsId}
+              active="overview"
+              addressHint={street || addressHint}
+              townHint={city}
+              isRental={isRental}
+              compact
+            />
+          </div>
+
+          {/*
+            Overview body. The public remarks are what "About this property"
+            used to repeat, so that heading is gone — this is the Overview tab
+            content, not a second copy of it.
+          */}
+          <div className="mt-8 grid gap-12 lg:grid-cols-[1.4fr_1fr]">
+            <div>
+              {remarks ? (
+                <p className="whitespace-pre-line text-base leading-relaxed text-white/80">
+                  {remarks}
+                </p>
+              ) : (
+                <p className="text-base text-white/50">
+                  No public remarks on this listing.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <h2 className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold">
+                Features &amp; amenities
+              </h2>
+              <dl className="mt-5 divide-y divide-white/10 border-y border-white/10">
+                {detailRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-baseline justify-between gap-6 py-3"
+                  >
+                    <dt className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
+                      {row.label}
+                    </dt>
+                    <dd className="text-right text-sm text-white/90">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           </div>
         </div>
       </section>
