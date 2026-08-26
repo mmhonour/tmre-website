@@ -60,7 +60,7 @@ function documentTop(el: HTMLElement): number {
  * document position shifts, and give up the moment the visitor scrolls for
  * themselves so we never fight them for the page.
  */
-export function scrollToStatsAnchor(el: HTMLElement, settleMs = 4000): void {
+export function scrollToStatsAnchor(el: HTMLElement, watchMs = 6000): void {
   let done = false;
   let lastTop = documentTop(el);
 
@@ -72,22 +72,28 @@ export function scrollToStatsAnchor(el: HTMLElement, settleMs = 4000): void {
     });
   };
 
+  // Any deliberate input hands the page back: scrolling, typing, or reaching
+  // for a control such as Show data, which would move the target underneath us.
   const stop = () => {
     done = true;
-    window.removeEventListener("wheel", stop);
-    window.removeEventListener("touchmove", stop);
-    window.removeEventListener("keydown", stop);
+    for (const event of ["wheel", "touchmove", "keydown", "pointerdown"]) {
+      window.removeEventListener(event, stop);
+    }
   };
   window.addEventListener("wheel", stop, { passive: true });
   window.addEventListener("touchmove", stop, { passive: true });
   window.addEventListener("keydown", stop);
+  window.addEventListener("pointerdown", stop, { passive: true });
 
   aim();
 
+  // Charts fetch in parallel and land at their own pace, so watch for the whole
+  // window rather than stopping at the first quiet moment. Re-aiming when
+  // nothing has moved costs nothing.
   const startedAt = Date.now();
   const settle = () => {
     if (done) return;
-    if (Date.now() - startedAt > settleMs) {
+    if (Date.now() - startedAt > watchMs) {
       stop();
       return;
     }
