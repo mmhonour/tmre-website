@@ -521,26 +521,9 @@ export async function readStrandedSyncQueueItem(
 }
 
 /**
- * Claim one specific stranded row for a named runner (the Netlify rescue path).
- * Returns null when someone else got there first.
+ * Note: the Netlify rescue path deliberately does *not* claim the row it is
+ * about to run — it clears it (`clearSyncQueueForJob`) and runs the job with
+ * nothing on the queue. A serverless function cannot heartbeat for the length
+ * of a pull, so a row left at `running` on its behalf would be reaped as
+ * `crashed` after five minutes and free the unique index for a duplicate.
  */
-export async function claimStrandedSyncQueueItem(input: {
-  id: number
-  runner: string
-  budgetMs: number
-}): Promise<SyncQueueItem | null> {
-  await ensureSyncQueueTable()
-  const row = await queryOne<SyncQueueRow>(
-    `UPDATE sync_queue
-        SET state = 'running',
-            claimed_at = now(),
-            claimed_by = $2,
-            heartbeat_at = now(),
-            deadline_at = now() + ($3::bigint * interval '1 millisecond'),
-            attempts = attempts + 1
-      WHERE id = $1 AND state = 'queued'
-      RETURNING ${SELECT_COLUMNS}`,
-    [input.id, input.runner, String(Math.max(60_000, input.budgetMs))],
-  )
-  return row ? mapRow(row) : null
-}

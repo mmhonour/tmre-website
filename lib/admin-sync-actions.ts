@@ -213,6 +213,15 @@ export type AdminSyncActionOptions = {
    * here. Do not re-queue. Admin HTTP on Netlify must leave this unset.
    */
   executeInProcess?: boolean
+  /**
+   * Market brief only: push past the once-per-week watermark.
+   *
+   * Defaults to true, because every caller before the queue was an operator
+   * pressing Sync now. A scheduled sweep must pass false — it enqueues on a
+   * cadence, and the watermark is the only thing standing between that cadence
+   * and a second Monday email to the whole list.
+   */
+  force?: boolean
 }
 
 function shouldQueueOnServerless(options: AdminSyncActionOptions): boolean {
@@ -1315,7 +1324,9 @@ async function runAdminSyncActionImpl(
               force: true,
               stampWeek: true,
             }),
-          { startedAt },
+          // Say so on the row rather than leaning on the child's default: an
+          // operator pressing Sync now means past the weekly watermark.
+          { startedAt, payload: { force: true } },
         )
         let queued = first.queued
         let via = first.via
@@ -1389,11 +1400,12 @@ async function runAdminSyncActionImpl(
         }
       }
       const { sendMarketDigestEmail } = await import('@/lib/market-digest-notify')
+      const force = options.force !== false
       const result = await sendMarketDigestEmail({
-        force: true,
+        force,
         stampWeek: true,
         startedAt,
-        trigger: 'admin-sync-now',
+        trigger: force ? 'admin-sync-now' : 'sync-queue-sweep',
       })
       const finishedAt = new Date().toISOString()
       return {
