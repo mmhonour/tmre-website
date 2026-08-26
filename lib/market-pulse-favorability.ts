@@ -5,7 +5,8 @@
  *
  * Live factors today (buyer-friendly direction):
  *   Months supply larger, avg DOM larger, closed smaller,
- *   median smaller, delta smaller, average smaller.
+ *   median smaller, delta smaller, average smaller,
+ *   list-to-ask smaller.
  * Seller Friendly is the reverse of each.
  *
  * Planned (catalogue on Town stats / most current year we have):
@@ -58,6 +59,8 @@ export type MarketPulseFavorInputs = {
   medianPrice?: number | null | undefined
   priceDelta?: number | null | undefined
   averagePrice?: number | null | undefined
+  /** Close ÷ original ask as a percent — above 100 means closing over ask. */
+  saleToAskPct?: number | null | undefined
   /** Planned: active ÷ homes in town. */
   inventoryPerHome?: number | null | undefined
   /** Planned: closed trailing 24 months ÷ homes in town. */
@@ -71,6 +74,7 @@ export type MarketPulseFavorFactorId =
   | 'medianPrice'
   | 'priceDelta'
   | 'averagePrice'
+  | 'saleToAskPct'
   | 'inventoryPerHome'
   | 'closed24moPerHome'
 
@@ -124,6 +128,14 @@ export const MARKET_PULSE_FAVOR_FACTORS: {
     notes: 'Lower average → more buyer friendly.',
   },
   {
+    id: 'saleToAskPct',
+    label: 'List to ask',
+    status: 'live',
+    buyerDirection: 'higher',
+    notes:
+      'Closing further under the first ask → more buyer friendly; at or over ask → seller.',
+  },
+  {
     id: 'inventoryPerHome',
     label: 'Inventory per home',
     status: 'planned',
@@ -161,6 +173,7 @@ export function buyerFriendlyScore(
     { of: (i) => finiteOrNull(i.medianPrice), buyerHigher: false },
     { of: (i) => finiteOrNull(i.priceDelta), buyerHigher: false },
     { of: (i) => finiteOrNull(i.averagePrice), buyerHigher: false },
+    { of: (i) => finiteOrNull(i.saleToAskPct), buyerHigher: false },
     { of: (i) => finiteOrNull(i.inventoryPerHome), buyerHigher: true },
     { of: (i) => finiteOrNull(i.closed24moPerHome), buyerHigher: true },
   ]

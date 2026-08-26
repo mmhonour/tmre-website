@@ -72,15 +72,23 @@ type MetricValueKind = "int" | "mos" | "dom" | "money";
 const BAR_VALUE_ON_FILL = "text-[#F6F1E8]";
 const BAR_VALUE_ON_EMPTY = "text-[var(--mp-text)]";
 
+/**
+ * Rough share of the track the 10px mono percent needs. The overlay is placed
+ * off the fill, which is itself a percentage, so the reserve has to be one too.
+ */
+const ASIDE_SPAN_PCT = 16;
+/** The dollar value right-aligns across the whole track and must stay clear. */
+const VALUE_SPAN_PCT = 14;
+
 function BarValueOverlay({
   value,
-  asideLeft,
+  aside,
   leftPct,
   widthPct,
   colorClass,
 }: {
   value: ReactNode;
-  asideLeft?: ReactNode;
+  aside?: ReactNode;
   leftPct: number;
   widthPct: number;
   colorClass?: string;
@@ -93,28 +101,38 @@ function BarValueOverlay({
   const valueColor =
     colorClass ?? (fillRight >= 95 ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
   /**
-   * Aside (Delta %) hugs the outside of the fill's left edge so it reads against
-   * the bar it describes. A fill starting near the track edge leaves no room, so
-   * it moves just inside the fill instead of overflowing the track.
+   * The aside (Delta % / List to ask %) reads against the bar it describes, so it
+   * follows the fill's right edge. Three placements, in order of preference:
+   * outside that edge on the track; centred on the fill in cream once the bar
+   * runs too near the dollar value to leave a gap; and back to the fill's left
+   * edge when the fill is also too narrow to hold the text — which is where a
+   * Delta span pinned to the top of the price axis ends up.
    */
-  const asideInsideFill = fillLeft < 14;
+  const placement =
+    100 - fillRight >= ASIDE_SPAN_PCT + VALUE_SPAN_PCT
+      ? "right"
+      : widthPct >= ASIDE_SPAN_PCT
+        ? "inside"
+        : "left";
+
+  const asideClass =
+    placement === "right"
+      ? `justify-start pl-1 ${BAR_VALUE_ON_EMPTY}`
+      : placement === "inside"
+        ? `justify-center ${BAR_VALUE_ON_FILL}`
+        : `justify-end pr-1 ${BAR_VALUE_ON_EMPTY}`;
+  const asideStyle =
+    placement === "right"
+      ? { left: `${fillRight}%`, right: 0 }
+      : placement === "inside"
+        ? { left: `${fillLeft}%`, right: `${100 - fillRight}%` }
+        : { left: 0, right: `${100 - fillLeft}%` };
 
   return (
     <>
-      {asideLeft ? (
-        <span
-          className={`${base} ${
-            asideInsideFill
-              ? `justify-start pl-1 ${BAR_VALUE_ON_FILL}`
-              : `justify-end pr-1 ${BAR_VALUE_ON_EMPTY}`
-          }`}
-          style={
-            asideInsideFill
-              ? { left: `${fillLeft}%`, right: 0 }
-              : { left: 0, right: `${100 - fillLeft}%` }
-          }
-        >
-          {asideLeft}
+      {aside ? (
+        <span className={`${base} ${asideClass}`} style={asideStyle}>
+          {aside}
         </span>
       ) : null}
       <span className={`${base} inset-x-0 justify-end pr-1 ${valueColor}`}>
@@ -518,7 +536,7 @@ function BarChart<Row extends { city: string }>({
   /** Sort key when it differs from bar width (e.g. signed delta vs abs). */
   sortValueOf?: (row: Row) => number | null;
   formatValue?: (row: Row, display: number | null, index: number) => string;
-  /** Percent (or other) shown next to the town, not beside the dollar amount. */
+  /** Percent (or other) shown against the bar itself, not beside the dollar amount. */
   formatValueAside?: (row: Row, index: number) => string;
   /** Title “Delta” is a link with the mean-vs-median popup. */
   explainDelta?: boolean;
@@ -739,7 +757,7 @@ function BarChart<Row extends { city: string }>({
                 </div>
                 <BarValueOverlay
                   value={valueText}
-                  asideLeft={
+                  aside={
                     formatValueAside ? formatValueAside(row, index) : undefined
                   }
                   leftPct={aligned.leftPct}
@@ -968,6 +986,10 @@ function CombinedMetricsChart({
           ? formatPriceDeltaK(deltaDollars)
           : formatMetricValue(m.valueKind, display);
     const calc = m.calcOf(row);
+    // The bar overlay carries the ratio here, so the web label stays plain.
+    // labelOf still holds it for the email and text digest, which have no overlay.
+    const stackedLabel =
+      m.id === "saleToAsk" ? m.label : (m.labelOf?.(row) ?? m.label);
     return (
       <li
         key={m.id}
@@ -981,7 +1003,7 @@ function CombinedMetricsChart({
           </span>
         ) : (
           <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
-            {m.labelOf?.(row) ?? m.label}
+            {stackedLabel}
           </span>
         )}
         <div className="relative h-4 rounded-sm bg-black/10 overflow-visible">
@@ -1003,10 +1025,12 @@ function CombinedMetricsChart({
                   )
                 : valueText
             }
-            asideLeft={
+            aside={
               m.id === "priceDelta"
                 ? formatPriceDeltaPct(deltaPct)
-                : undefined
+                : m.id === "saleToAsk"
+                  ? formatSaleToAskPct(row.saleToAskPct)
+                  : undefined
             }
             leftPct={aligned.leftPct}
             widthPct={aligned.widthPct}
@@ -1313,6 +1337,7 @@ export default function WeeklyBriefContent({
         medianPrice: r.medianPrice,
         priceDelta: r.priceDelta,
         averagePrice: r.averagePrice,
+        saleToAskPct: r.saleToAskPct,
       }),
       favorSort,
       (r) => isAllTownsCity(r.city),

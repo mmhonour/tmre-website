@@ -118,6 +118,7 @@ export function defaultMarketPulseCombinedRows(
       medianPrice: r.medianPrice,
       priceDelta: r.priceDelta,
       averagePrice: r.averagePrice,
+      saleToAskPct: r.saleToAskPct,
     }),
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
     (r) => isAllTownsCity(r.city),
