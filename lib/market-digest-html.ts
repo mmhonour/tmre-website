@@ -39,6 +39,7 @@ const BAR_CLOSED = '#C45C4A'
 const BAR_MEDIAN = '#6B7C9B'
 const BAR_AVERAGE = '#8B6F4E'
 const BAR_DELTA = '#7A6A8A'
+const BAR_SALE_TO_ASK = '#4A7C8A'
 const WHITE = '#FFFFFF'
 
 function escapeHtml(value: string): string {
@@ -131,6 +132,7 @@ const EMAIL_STACKED_BAR_COLOR: Record<MarketPulseStackedMetricId, string> = {
   medianPrice: BAR_MEDIAN,
   averagePrice: BAR_AVERAGE,
   priceDelta: BAR_DELTA,
+  saleToAsk: BAR_SALE_TO_ASK,
 }
 
 function stackedTownMetricsSection(

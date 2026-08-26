@@ -10,6 +10,7 @@ import {
   setSyncMeta,
   tryAcquireTimedLock,
 } from '@/lib/db/sync-meta-store'
+import { marketDigestQueueBackoffUntil } from '@/lib/market-digest-config'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import {
@@ -22,6 +23,7 @@ import {
   isScheduledJobDue,
   readSyncScheduleConfig,
 } from '@/lib/sync-schedule-config'
+import { resolveJobScheduler } from '@/lib/sync-schedule-config-shared'
 
 export type OverdueSyncJob = AdminSyncActionId
 
@@ -185,7 +187,18 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.add('cpi-sync')
   }
 
-  if (isScheduledJobDue('market-digest', now, schedule)) {
+  // Only catch the brief up when this process is the declared host. Every other
+  // lane writes to a database, so a stray catch-up is at worst wasted work; this
+  // one puts a real email in someone's inbox, and a developer's `next dev` is a
+  // long-lived Node process too — which is how the Monday brief has been going
+  // out from a laptop against a local watermark, invisible to production.
+  if (
+    resolveJobScheduler(schedule.jobs['market-digest']) === 'netlify' &&
+    isScheduledJobDue('market-digest', now, schedule) &&
+    // A refused worker hop stays refused for a while; retrying it every catch-up
+    // pass only burned invokes and buried History under identical failures.
+    !marketDigestQueueBackoffUntil(now.getTime())
+  ) {
     overdue.add('market-digest')
   }
 

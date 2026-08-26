@@ -69,6 +69,16 @@ const ADDRESSES_SWEEP_MS = 10 * 60 * 1000
 const ADDRESSES_SWEEP_DELAY_MS = 5 * 60 * 1000
 
 /**
+ * Monday brief sweep. The point of hosting the digest here is the retry: a
+ * five-minute check lands the send within five minutes of its Configure slot and
+ * keeps checking for the rest of the day if the first attempt fails. Netlify's
+ * weekly cron gave it one attempt and no second chance, so a queue 502 or a
+ * Resend blip at that minute lost the whole week with nothing to look at.
+ */
+const DIGEST_SWEEP_MS = 5 * 60 * 1000
+const DIGEST_SWEEP_DELAY_MS = 6 * 60 * 1000
+
+/**
  * Property-address attempt stamp, read only by this service. The dashboard shows
  * that row as a single End timestamp, so the job has no public Start key to
  * compare against — but the restart guard still needs to know an attempt died
@@ -130,11 +140,20 @@ let lastAddressesRows: number | null = null
 let lastAddressesError: string | null = null
 let lastAddressesTrigger: string | null = null
 
+let digestInFlight: Promise<void> | null = null
+let lastDigestStartedAt: string | null = null
+let lastDigestFinishedAt: string | null = null
+let lastDigestOk: boolean | null = null
+let lastDigestDetail: string | null = null
+let lastDigestError: string | null = null
+let lastDigestTrigger: string | null = null
+
 type PendingRebuild = { startedAt: string; trigger: string }
 
 let pendingAddresses: PendingRebuild | null = null
 let pendingDotd: PendingRebuild | null = null
 let pendingScores: PendingRebuild | null = null
+let pendingDigest: PendingRebuild | null = null
 let pendingStats: { startedAt: string; plan: StatsRebuildPlan } | null = null
 
 /**
@@ -149,7 +168,8 @@ function anyJobInFlight(): boolean {
     statsInFlight != null ||
     scoresInFlight != null ||
     dotdInFlight != null ||
-    addressesInFlight != null
+    addressesInFlight != null ||
+    digestInFlight != null
   )
 }
 
@@ -177,6 +197,15 @@ function clearAddressesPending(): void {
 /** Start the next Sync now that was parked while another lane ran. */
 function drainPendingJobs(): void {
   if (anyJobInFlight()) return
+  // Digest first: seconds of work against an already-built stats cache, and the
+  // only lane whose value depends on landing near a wall-clock time.
+  if (pendingDigest) {
+    const next = pendingDigest
+    pendingDigest = null
+    console.info('[mls-sync] starting queued market digest')
+    startDigestSend(next.startedAt, next.trigger)
+    return
+  }
   if (pendingAddresses) {
     const next = pendingAddresses
     pendingAddresses = null
@@ -1054,6 +1083,168 @@ function scheduleAddressesSweep(): void {
   )
 }
 
+/**
+ * Monday market brief send, hosted here.
+ *
+ * Seconds of work — read the stats cache, format, hand to Resend — so this lane
+ * exists for the clock, not the runtime. `sendMarketDigestEmail` owns the week
+ * watermark, the durable attempt/result stamps, and the History row, so both
+ * hosts record a send identically and neither can send twice.
+ */
+async function executeDigestSend(
+  startedAt: string,
+  trigger: string,
+  opts: { force: boolean; stampWeek: boolean },
+): Promise<void> {
+  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
+  const { sendMarketDigestEmail } = await import('../../lib/market-digest-notify')
+
+  await hydrateSyncMetaStore()
+  console.info(`[mls-sync] market digest starting (${trigger})`)
+  const result = await sendMarketDigestEmail({
+    force: opts.force,
+    stampWeek: opts.stampWeek,
+    startedAt,
+    trigger: `railway-${trigger}`,
+  })
+  const finishedAt = new Date().toISOString()
+
+  lastDigestFinishedAt = finishedAt
+  lastDigestOk = result.ok && !result.skipped
+  lastDigestError = result.ok ? null : (result.reason ?? 'market digest failed')
+  lastDigestDetail = result.skipped
+    ? `skipped — ${result.reason ?? 'no reason given'}`
+    : result.ok
+      ? `sent to ${result.to ?? 'recipient'} (week ${result.weekKey ?? 'unknown'})`
+      : (result.reason ?? 'market digest failed')
+
+  console.info(`[mls-sync] market digest ${lastDigestDetail}`)
+}
+
+function startDigestSend(
+  startedAt: string,
+  trigger: string,
+  opts: { force: boolean; stampWeek: boolean } = { force: false, stampWeek: true },
+): {
+  accepted: boolean
+  alreadyRunning: boolean
+  queuedBehind?: boolean
+} {
+  if (digestInFlight) {
+    return { accepted: false, alreadyRunning: true }
+  }
+  if (anyJobInFlight()) {
+    pendingDigest = { startedAt, trigger }
+    console.info('[mls-sync] market digest queued behind the current job')
+    return { accepted: true, alreadyRunning: false, queuedBehind: true }
+  }
+
+  lastDigestStartedAt = startedAt
+  lastDigestFinishedAt = null
+  lastDigestOk = null
+  lastDigestError = null
+  lastDigestDetail = null
+  lastDigestTrigger = trigger
+  digestInFlight = executeDigestSend(startedAt, trigger, opts)
+    .catch((err) => {
+      lastDigestFinishedAt = new Date().toISOString()
+      lastDigestOk = false
+      lastDigestError = err instanceof Error ? err.message : String(err)
+      console.error('[mls-sync] market digest failed', err)
+    })
+    .finally(() => {
+      digestInFlight = null
+      drainPendingJobs()
+    })
+  return { accepted: true, alreadyRunning: false }
+}
+
+/**
+ * True when Configure points the brief here and its weekly slot has come round.
+ *
+ * No mid-flight restart guard: the send takes a durable 20-minute lock of its own
+ * and refuses to send twice for one ET week, so retrying after a container death
+ * is the behaviour we want rather than something to hold off.
+ */
+async function marketDigestIsDue(): Promise<boolean> {
+  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
+  await hydrateSyncMetaStore()
+
+  const { readSyncScheduleConfigFresh } = await import(
+    '../../lib/sync-schedule-config'
+  )
+  const { resolveJobScheduler } = await import(
+    '../../lib/sync-schedule-config-shared'
+  )
+  const config = await readSyncScheduleConfigFresh()
+  if (resolveJobScheduler(config.jobs['market-digest']) !== 'railway') {
+    return false
+  }
+
+  const { isScheduledSyncJobPausedFresh } = await import(
+    '../../lib/scheduled-sync-toggle'
+  )
+  if (await isScheduledSyncJobPausedFresh('market-digest')) return false
+
+  const { shouldDeferScheduledJob } = await import('../../lib/sync-next-override')
+  if (shouldDeferScheduledJob('market-digest')) return false
+
+  const { isMarketDigestAlreadySentThisWeek } = await import(
+    '../../lib/market-digest-config'
+  )
+  if (await isMarketDigestAlreadySentThisWeek()) return false
+
+  const { getSyncMeta } = await import('../../lib/db/sync-meta')
+  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
+  const lastSentAt = await getSyncMeta('market_digest_last_sent_at')
+  return isJobDueBySchedule(config.jobs['market-digest'], lastSentAt)
+}
+
+/** Self-scheduled Monday brief sweep. */
+function scheduleDigestSweep(): void {
+  const tick = async () => {
+    if (anyJobInFlight()) return
+    if (!(await marketDigestIsDue())) return
+    console.info('[mls-sync] market digest due — configured slot reached')
+    startDigestSend(new Date().toISOString(), 'railway-sweep', {
+      force: false,
+      stampWeek: true,
+    })
+  }
+  const run = () => {
+    void tick().catch((err) => {
+      console.warn('[mls-sync] market digest sweep failed', err)
+    })
+  }
+  setTimeout(run, DIGEST_SWEEP_DELAY_MS)
+  setInterval(run, DIGEST_SWEEP_MS)
+  console.info(
+    `[mls-sync] market digest sweep every ${Math.round(DIGEST_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
+  )
+  // Said at boot, not at 08:00 on the one morning of the week that matters.
+  if (!process.env.RESEND_API_KEY?.trim()) {
+    console.error(
+      '[mls-sync] RESEND_API_KEY is not set on this service — if Configure points the Monday brief here, every send will skip with "RESEND_API_KEY not set"',
+    )
+  }
+}
+
+/** Configured owner of the brief, for /health. Never fails the probe. */
+async function resolvedDigestSchedulerSafe(): Promise<string | null> {
+  try {
+    const { readSyncScheduleConfigFresh } = await import(
+      '../../lib/sync-schedule-config'
+    )
+    const { resolveJobScheduler } = await import(
+      '../../lib/sync-schedule-config-shared'
+    )
+    const config = await readSyncScheduleConfigFresh()
+    return resolveJobScheduler(config.jobs['market-digest'])
+  } catch {
+    return null
+  }
+}
+
 /** Per-town dirty / last-built rows for /health. Never fails the probe. */
 async function readStatsTownStatusesSafe(): Promise<unknown> {
   try {
@@ -1131,6 +1322,31 @@ async function handleRequest(
         property_addresses_synced_at: await getSyncMeta(
           'property_addresses_synced_at',
         ),
+      },
+      marketDigest: {
+        // Owner + key readiness answer "will Monday work?" before Monday. Health
+        // used to report only the stamps, so a box that could never reach Resend
+        // still looked fine and the miss only surfaced as another silent week.
+        scheduler: await resolvedDigestSchedulerSafe(),
+        resendConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
+        inFlight: digestInFlight != null,
+        pending: pendingDigest != null,
+        lastDigestStartedAt,
+        lastDigestFinishedAt,
+        lastDigestOk,
+        lastDigestDetail,
+        lastDigestError,
+        lastDigestTrigger,
+        market_digest_last_sent_at: await getSyncMeta(
+          'market_digest_last_sent_at',
+        ),
+        market_digest_last_week_key: await getSyncMeta(
+          'market_digest_last_week_key',
+        ),
+        market_digest_last_attempt_at: await getSyncMeta(
+          'market_digest_last_attempt_at',
+        ),
+        market_digest_last_result: await getSyncMeta('market_digest_last_result'),
       },
       neon: {
         last_incremental_sync: end,
@@ -1299,6 +1515,40 @@ async function handleRequest(
     return
   }
 
+  if (req.method === 'POST' && path === '/market-digest') {
+    if (!assertAuth(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' })
+      return
+    }
+    const body = await readJson(req)
+    const startedAt =
+      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
+        ? body.startedAt
+        : new Date().toISOString()
+
+    // Only Admin and the watchdog POST here, so an inbound request means someone
+    // asked for the brief now: force past the week watermark and advance it, the
+    // same contract as Admin Syncs Run on Netlify. `stampWeek: false` is the
+    // Admin "Send test" case, which must not consume this week's send.
+    const force = body.force === false ? false : true
+    const stampWeek = body.stampWeek === false ? false : true
+
+    const started = startDigestSend(startedAt, 'manual', { force, stampWeek })
+    sendJson(res, 202, {
+      ok: true,
+      accepted: started.accepted,
+      alreadyRunning: started.alreadyRunning,
+      startedAt,
+      queuedBehind: started.queuedBehind === true,
+      message: started.alreadyRunning
+        ? 'Market digest already sending on mls-sync'
+        : started.queuedBehind
+          ? 'Market digest queued behind the current Railway job — it sends when that job finishes'
+          : 'Market digest accepted on mls-sync (Railway)',
+    })
+    return
+  }
+
   sendJson(res, 404, { ok: false, error: 'not found' })
 }
 
@@ -1333,4 +1583,5 @@ server.listen(PORT, () => {
   scheduleScoresSweep()
   scheduleDotdSweep()
   scheduleAddressesSweep()
+  scheduleDigestSweep()
 })

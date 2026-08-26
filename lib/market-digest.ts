@@ -232,12 +232,24 @@ async function priceByTownFromStats(
             ? market.averagePrice
             : null
         if (median == null && average == null) return null
+        const saleToAskPct =
+          market.saleToAskPct != null && Number.isFinite(market.saleToAskPct)
+            ? market.saleToAskPct
+            : null
+        const saleToAskDollars =
+          market.saleToAskDollars != null &&
+          Number.isFinite(market.saleToAskDollars)
+            ? market.saleToAskDollars
+            : null
         const row: MarketDigestPriceTownCount = {
           city: String(city),
           medianPrice: median,
           averagePrice: average,
           medianPriceCalc: market.medianPriceCalc,
           averagePriceCalc: market.averagePriceCalc,
+          saleToAskPct,
+          saleToAskDollars,
+          saleToAskCalc: market.saleToAskCalc,
         }
         return row
       }),

@@ -37,8 +37,42 @@ export const MARKET_DIGEST_EMAIL_KEY = 'market_digest_email'
 export const MARKET_DIGEST_ENABLED_KEY = 'market_digest_enabled'
 export const MARKET_DIGEST_LAST_SENT_KEY = 'market_digest_last_sent_at'
 export const MARKET_DIGEST_LAST_WEEK_KEY = 'market_digest_last_week_key'
+/**
+ * Every attempt stamps these two, whatever the outcome and whichever host ran it.
+ * The week watermark only moves on a real send, so on its own it cannot tell an
+ * operator whether a quiet week means "sent", "skipped for a reason", or "the
+ * alarm never went off" — which is exactly how the brief went missing unnoticed.
+ */
+export const MARKET_DIGEST_LAST_ATTEMPT_KEY = 'market_digest_last_attempt_at'
+export const MARKET_DIGEST_LAST_RESULT_KEY = 'market_digest_last_result'
 export const MARKET_DIGEST_SUBJECT_KEY = 'market_digest_subject_template'
 export const MARKET_DIGEST_INCLUDE_SOCIAL_KEY = 'market_digest_include_social'
+/**
+ * Set when Netlify refuses the background worker hop (HTTP 429). Without it the
+ * missed-sync catch-up re-posted the same refused hop every minute for the whole
+ * day: no brief, and a Sync History full of identical "queue failed" rows.
+ */
+export const MARKET_DIGEST_QUEUE_BACKOFF_KEY = 'market_digest_queue_backoff_until'
+/** One thin-cron window — the next scheduled tick gets a clean attempt. */
+export const MARKET_DIGEST_QUEUE_BACKOFF_MS = 30 * 60_000
+
+export async function stampMarketDigestQueueBackoff(
+  now = Date.now(),
+): Promise<void> {
+  await setSyncMetaDurable(
+    MARKET_DIGEST_QUEUE_BACKOFF_KEY,
+    new Date(now + MARKET_DIGEST_QUEUE_BACKOFF_MS).toISOString(),
+  ).catch(() => {})
+}
+
+/** ISO stamp while a refused worker hop is still cooling off, else null. */
+export function marketDigestQueueBackoffUntil(now = Date.now()): string | null {
+  const raw = getSyncMeta(MARKET_DIGEST_QUEUE_BACKOFF_KEY)
+  if (!raw) return null
+  const until = Date.parse(raw)
+  if (!Number.isFinite(until) || until <= now) return null
+  return raw
+}
 
 const SUBJECT_MAX = 200
 

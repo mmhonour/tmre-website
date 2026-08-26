@@ -24,12 +24,17 @@ export type MarketPulseCombinedTownRow = {
   priceDelta: number | null
   /** (Average − median) / median × 100. */
   priceDeltaPct: number | null
+  /** Close ÷ original ask, as a percent (97.4 = closed 2.6% under first ask). */
+  saleToAskPct: number | null
+  /** Average dollar gap against the first ask (negative = under ask). */
+  saleToAskDollars: number | null
   activeCountCalc?: StatsValueCalc
   monthsSupplyCalc?: StatsValueCalc
   avgDaysOnMarketCalc?: StatsValueCalc
   closedCalc?: StatsValueCalc
   medianPriceCalc?: StatsValueCalc
   averagePriceCalc?: StatsValueCalc
+  saleToAskCalc?: StatsValueCalc
 }
 
 function cityKey(city: string): string {
@@ -81,12 +86,15 @@ export function buildMarketPulseCombinedTownRows(
       averagePrice: price?.averagePrice ?? null,
       priceDelta: delta.dollars,
       priceDeltaPct: delta.pct,
+      saleToAskPct: price?.saleToAskPct ?? null,
+      saleToAskDollars: price?.saleToAskDollars ?? null,
       activeCountCalc: row.activeCountCalc,
       monthsSupplyCalc: row.monthsSupplyCalc,
       avgDaysOnMarketCalc: dom?.avgDaysOnMarketCalc,
       closedCalc: closed?.calc,
       medianPriceCalc: price?.medianPriceCalc,
       averagePriceCalc: price?.averagePriceCalc,
+      saleToAskCalc: price?.saleToAskCalc,
     }
   })
 }

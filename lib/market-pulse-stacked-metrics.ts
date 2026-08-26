@@ -18,6 +18,7 @@ export const MARKET_PULSE_STACKED_METRIC_IDS = [
   'medianPrice',
   'priceDelta',
   'averagePrice',
+  'saleToAsk',
 ] as const
 
 export type MarketPulseStackedMetricId =
@@ -50,6 +51,12 @@ function fmtDom(n: number | null | undefined): string {
 
 function absOrNull(n: number | null | undefined): number | null {
   return n != null && Number.isFinite(n) ? Math.abs(n) : null
+}
+
+/** Close ÷ original ask as a level, e.g. `97.4%`. */
+export function formatSaleToAskPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return 'n/a'
+  return `${n.toFixed(1)}%`
 }
 
 /** Default stacked metrics (page load + email). `closedLookbackLabel` e.g. `12 mos`. */
@@ -103,6 +110,15 @@ export function marketPulseStackedMetrics(
       label: 'Average',
       barValueOf: (r) => r.averagePrice,
       format: (r) => formatMarketPulseMoney(r.averagePrice),
+    },
+    {
+      id: 'saleToAsk',
+      label: 'List to ask',
+      labelOf: (r) => `List to ask ${formatSaleToAskPct(r.saleToAskPct)}`,
+      // Percentages cluster in the high 90s, so the bar tracks the dollar gap
+      // (which separates towns) and the label carries the ratio.
+      barValueOf: (r) => absOrNull(r.saleToAskDollars),
+      format: (r) => formatPriceDeltaK(r.saleToAskDollars),
     },
   ]
 }

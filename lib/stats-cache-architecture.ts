@@ -69,7 +69,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Railway mls-sync',
             source: 'lib/db/listings-repo.ts → upsertListing',
             detail:
-              'Each write already reads the existing row. It now compares the fields a stats payload is built from — price, MLS status, status bucket, close price, close date, list date, and DOM — and returns statsChanged. Photo, remark, and agent churn changes nothing, so a re-fetched-but-identical row does not trigger a rebuild.',
+              'Each write already reads the existing row. It now compares the fields a stats payload is built from — price, MLS status, status bucket, close price, original list price, close date, list date, and DOM — and returns statsChanged. Photo, remark, and agent churn changes nothing, so a re-fetched-but-identical row does not trigger a rebuild.',
             status: 'live',
             statusLabel: 'Live',
           },

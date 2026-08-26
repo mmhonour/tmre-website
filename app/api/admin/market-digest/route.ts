@@ -150,7 +150,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const result = await sendMarketDigestEmail({ force: true })
+    const result = await sendMarketDigestEmail({
+      force: true,
+      trigger: 'admin-test',
+    })
     if (!result.ok) {
       return NextResponse.json(
         { error: result.reason ?? 'Send failed', ...result },

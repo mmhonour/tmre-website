@@ -482,7 +482,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Every one of these is gated on Configure → Scheduler: a job pointed at Railway or EventBridge makes its thin cron stand down (Railway's own sweep runs it; AWS hits eventbridge-sync-ingress). Incremental, Stats cache, Goldilocks, Deal of the Day and Property addresses default to Railway, so their thin crons normally do nothing but report who owns the job.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Every one of these is gated on Configure → Scheduler: a job pointed at Railway or EventBridge makes its thin cron stand down (Railway's own sweep runs it; AWS hits eventbridge-sync-ingress). Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses and the Monday market brief default to Railway, so their thin crons normally do nothing but report who owns the job.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -536,14 +536,14 @@ export function describeStartupProcess(): {
   lanes.push({
     id: "market-digest",
     title: "Monday market brief",
-    subtitle: "Months supply + inventory email (Netlify cron + Admin Syncs)",
+    subtitle: "Months supply + inventory email (Railway sweep + Admin Syncs)",
     steps: [
       {
         id: "market-digest-cron",
         title: "Send Monday market digest",
-        timing: "Every 30m → weekly Mon ~8am ET (Configure)",
+        timing: "5-min sweep → weekly Mon ~8am ET (Configure)",
         detail:
-          "netlify/functions/market-digest → market-digest-worker → sendMarketDigestEmail(). Pause/Run/schedule on Admin → Syncs; recipient/subject/social on Communications → Monday market brief.",
+          "sendMarketDigestEmail(). Who runs it is declared in Configure → Monday market brief → Scheduler: Railway mls-sync (default; 5-min sweep that only fires at the configured wall-clock slot, plus POST /market-digest for Sync now) or Netlify cron (thin */30 → market-digest-worker). Exactly one host acts — each stands down when the radio names the other. Railway is the default because a weekly Netlify cron gave the send one attempt and no retry: a queue 502 or Resend blip at that minute skipped the whole week. Every attempt from either host stamps market_digest_last_attempt_at / market_digest_last_result and writes a Syncs History row, so a skip is visible instead of silent. Pause/Run/Reset on Admin → Syncs; recipient/subject/social on Communications → Monday market brief.",
         status: "scheduled",
         statusLabel: "Cron",
       },

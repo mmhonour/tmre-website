@@ -86,6 +86,7 @@ export const RAILWAY_JOB_ENDPOINTS: Partial<Record<ScheduledSyncJobId, string>> 
   'listing-scores': '/scores',
   'deal-of-the-day': '/deal-of-the-day',
   'property-addresses': '/property-addresses',
+  'market-digest': '/market-digest',
 }
 
 /** Endpoint on the Railway service for this job, or null when unsupported. */
@@ -282,10 +283,14 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         scheduler: 'netlify',
       },
       'market-digest': {
+        // Railway: a weekly 08:00 ET slot needs a clock that is still awake to
+        // retry. Netlify's cron gave one attempt per week with no second chance,
+        // so any transient failure at that minute skipped the brief entirely.
+        // Flip to Netlify cron in Configure to use the background worker instead.
         frequency: 'weekly',
         startTimeEt: '08:00',
         weekdayEt: 1,
-        scheduler: 'netlify',
+        scheduler: 'railway',
       },
     },
   }

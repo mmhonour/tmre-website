@@ -6,13 +6,12 @@ import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import { fmtMoney } from "@/lib/listing-history";
-import {
-  type MarketDigestClosedTownCount,
-  type MarketDigestDomTownCount,
-  type MarketDigestPriceTownCount,
-  type MarketDigestSnapshot,
-} from "@/lib/market-digest-types";
+import { type MarketDigestSnapshot } from "@/lib/market-digest-types";
 import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
+import {
+  buildMarketPulseCombinedTownRows,
+  type MarketPulseCombinedTownRow,
+} from "@/lib/market-pulse-combined-rows";
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
@@ -32,6 +31,7 @@ import {
   PRICE_DELTA_EXPLAIN,
 } from "@/lib/market-pulse-price-delta";
 import {
+  formatSaleToAskPct,
   isMarketPulsePriceScaleMetric,
   marketPulseDeltaBarSpan,
   marketPulsePriceBarMax,
@@ -132,6 +132,7 @@ const METRIC_COLORS = {
   medianPrice: "bg-[var(--mp-median-bar,#6B7C9B)]",
   averagePrice: "bg-[var(--mp-average-bar,#8B6F4E)]",
   priceDelta: "bg-[var(--mp-delta-bar,#7A6A8A)]",
+  saleToAsk: "bg-[var(--mp-sale-to-ask-bar,#4A7C8A)]",
 } as const;
 
 function ClosedLookbackSlider({
@@ -461,64 +462,13 @@ function sortRowsByMetricValue<Row extends { city: string }>(
   return [...all, ...rest];
 }
 
-type CombinedTownRow = {
-  city: string;
-  activeCount: number | null;
-  monthsSupply: number | null;
-  avgDaysOnMarket: number | null;
-  closedCount: number | null;
-  medianPrice: number | null;
-  averagePrice: number | null;
-  priceDelta: number | null;
-  priceDeltaPct: number | null;
-  activeCountCalc?: StatsValueCalc;
-  monthsSupplyCalc?: StatsValueCalc;
-  avgDaysOnMarketCalc?: StatsValueCalc;
-  closedCalc?: StatsValueCalc;
-  medianPriceCalc?: StatsValueCalc;
-  averagePriceCalc?: StatsValueCalc;
-};
+/**
+ * Same row the email builds from — kept as an alias rather than a second local
+ * shape so a new cached metric cannot reach one surface and miss the other.
+ */
+type CombinedTownRow = MarketPulseCombinedTownRow;
 
-function buildCombinedTownRows(
-  inventory: MonthsSupplyPayload[],
-  domRows: MarketDigestDomTownCount[],
-  closedRows: MarketDigestClosedTownCount[],
-  priceRows: MarketDigestPriceTownCount[],
-): CombinedTownRow[] {
-  const domBy = new Map(
-    domRows.map((r) => [cityKey(r.city), r] as const),
-  );
-  const closedBy = new Map(
-    closedRows.map((r) => [cityKey(r.city), r] as const),
-  );
-  const priceBy = new Map(
-    priceRows.map((r) => [cityKey(r.city), r] as const),
-  );
-  return inventory.map((row) => {
-    const key = cityKey(row.city);
-    const dom = domBy.get(key);
-    const closed = closedBy.get(key);
-    const price = priceBy.get(key);
-    const delta = meanMinusMedian(price?.averagePrice, price?.medianPrice);
-    return {
-      city: row.city,
-      activeCount: row.activeCount ?? null,
-      monthsSupply: row.monthsSupply ?? null,
-      avgDaysOnMarket: dom?.avgDaysOnMarket ?? null,
-      closedCount: closed?.count ?? null,
-      medianPrice: price?.medianPrice ?? null,
-      averagePrice: price?.averagePrice ?? null,
-      priceDelta: delta.dollars,
-      priceDeltaPct: delta.pct,
-      activeCountCalc: row.activeCountCalc,
-      monthsSupplyCalc: row.monthsSupplyCalc,
-      avgDaysOnMarketCalc: dom?.avgDaysOnMarketCalc,
-      closedCalc: closed?.calc,
-      medianPriceCalc: price?.medianPriceCalc,
-      averagePriceCalc: price?.averagePriceCalc,
-    };
-  });
-}
+const buildCombinedTownRows = buildMarketPulseCombinedTownRows;
 
 function formatMetricValue(
   kind: MetricValueKind,
@@ -867,6 +817,11 @@ function combinedMetrics(closedLookbackLabel: string) {
         ],
       }),
     },
+    saleToAsk: {
+      barClassName: METRIC_COLORS.saleToAsk,
+      valueKind: "int",
+      calcOf: (r) => r.saleToAskCalc,
+    },
   };
 
   return marketPulseStackedMetrics(closedLookbackLabel).map((m) => ({
@@ -993,7 +948,9 @@ function CombinedMetricsChart({
     const deltaDollars =
       m.id === "priceDelta"
         ? settleSignedNumber(row.priceDelta, settle, scrambleIndex, 0)
-        : null;
+        : m.id === "saleToAsk"
+          ? settleSignedNumber(row.saleToAskDollars, settle, scrambleIndex, 0)
+          : null;
     const deltaPct =
       m.id === "priceDelta"
         ? settleSignedNumber(row.priceDeltaPct, settle, scrambleIndex + 19, 1)
@@ -1007,7 +964,7 @@ function CombinedMetricsChart({
     const valueText =
       closedCountText != null
         ? formatClosedCountWithLookback(closedLookbackLabel, closedCountText)
-        : m.id === "priceDelta"
+        : m.id === "priceDelta" || m.id === "saleToAsk"
           ? formatPriceDeltaK(deltaDollars)
           : formatMetricValue(m.valueKind, display);
     const calc = m.calcOf(row);
@@ -1024,7 +981,7 @@ function CombinedMetricsChart({
           </span>
         ) : (
           <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
-            {m.label}
+            {m.labelOf?.(row) ?? m.label}
           </span>
         )}
         <div className="relative h-4 rounded-sm bg-black/10 overflow-visible">
@@ -1719,6 +1676,35 @@ export default function WeeklyBriefContent({
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.averagePriceCalc}
           scaleMax={priceBarMax}
+        />
+
+        <BarChart
+          title="List to ask"
+          rows={priceRows}
+          valueOf={(r) =>
+            r.saleToAskDollars == null ? null : Math.abs(r.saleToAskDollars)
+          }
+          sortValueOf={(r) => r.saleToAskPct ?? null}
+          formatValue={(r, _display, index) =>
+            formatPriceDeltaK(
+              settleSignedNumber(r.saleToAskDollars, settle, index, 0),
+            )
+          }
+          formatValueAside={(r, index) =>
+            formatSaleToAskPct(
+              settleSignedNumber(r.saleToAskPct, settle, index + 19, 1),
+            )
+          }
+          valueKind="int"
+          sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "saleToAsk")}
+          barClassName={METRIC_COLORS.saleToAsk}
+          emptyMessage="No close-vs-original-ask pool yet — run a stats rebuild."
+          townHref={townHref}
+          settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+          calcOf={(r) => r.saleToAskCalc}
         />
           </>
         )}

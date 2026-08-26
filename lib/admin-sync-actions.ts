@@ -1329,10 +1329,9 @@ async function runAdminSyncActionImpl(
     }
     case 'market-digest': {
       if (shouldQueueOnServerless(options)) {
-        const { queueNetlifyMarketDigest } = await import(
-          '@/lib/netlify-sync-trigger'
-        )
-        const { queued, via } = await queueSyncNowPreferringScheduler(
+        const { queueNetlifyMarketDigest, isNetlifyQueueRateLimited } =
+          await import('@/lib/netlify-sync-trigger')
+        const first = await queueSyncNowPreferringScheduler(
           'market-digest',
           () =>
             queueNetlifyMarketDigest({
@@ -1340,25 +1339,86 @@ async function runAdminSyncActionImpl(
               force: true,
               stampWeek: true,
             }),
+          { railwayBody: { startedAt } },
         )
+        let queued = first.queued
+        let via = first.via
+        // Netlify refusing background invokes site-wide (HTTP 429) is how a whole
+        // week's brief went missing: the hop was declined, nothing sent, and the
+        // catch-up kept re-posting the same refusal. Hand it to the Railway host
+        // instead when one exists — the weekly watermark still blocks a double send.
+        if (
+          !queued.ok &&
+          via === 'admin' &&
+          isNetlifyQueueRateLimited(queued)
+        ) {
+          const { queueMlsSyncServiceJob } = await import(
+            '@/lib/mls-sync-service-client'
+          )
+          const fallback = await queueMlsSyncServiceJob('market-digest', {
+            startedAt,
+            source: 'admin',
+          })
+          if (fallback.ok) {
+            queued = fallback
+            via = 'railway'
+          }
+        }
+        const finishedAt = new Date().toISOString()
+        if (!queued.ok) {
+          const reason = `worker handoff refused — ${queued.error ?? 'unknown'}`
+          const { recordMarketDigestHandoffFailure } = await import(
+            '@/lib/market-digest-notify'
+          )
+          await recordMarketDigestHandoffFailure({
+            startedAt,
+            trigger: `admin-${via}`,
+            reason,
+          })
+          if (isNetlifyQueueRateLimited(queued)) {
+            const { stampMarketDigestQueueBackoff } = await import(
+              '@/lib/market-digest-config'
+            )
+            await stampMarketDigestQueueBackoff()
+          }
+          return {
+            ok: false,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message: `Market brief queue failed: ${queued.error ?? 'unknown'}`,
+            detail: isNetlifyQueueRateLimited(queued)
+              ? 'Netlify declined the background invoke (HTTP 429). Holding off for 30 min — set Scheduler to Railway in Configure to skip the hop entirely.'
+              : undefined,
+          }
+        }
         return {
-          ok: queued.ok,
+          ok: true,
           action,
           startedAt,
-          finishedAt: new Date().toISOString(),
+          finishedAt,
           durationMs: Date.now() - t0,
           backgroundQueued: true,
-          message: queued.ok
-            ? via === 'eventbridge'
-              ? 'Monday market brief queued via EventBridge path'
-              : 'Monday market brief queued on Netlify background worker'
-            : `Market brief queue failed: ${queued.error ?? 'unknown'}`,
+          message:
+            via === 'railway'
+              ? 'Monday market brief queued on the Railway mls-sync service'
+              : via === 'eventbridge'
+                ? 'Monday market brief queued via EventBridge path'
+                : 'Monday market brief queued on Netlify background worker',
+          detail:
+            via === 'railway' && first.via === 'admin'
+              ? 'Netlify declined the background invoke (HTTP 429) — handed to Railway instead.'
+              : undefined,
         }
       }
       const { sendMarketDigestEmail } = await import('@/lib/market-digest-notify')
       const result = await sendMarketDigestEmail({
         force: true,
         stampWeek: true,
+        startedAt,
+        trigger: 'admin-sync-now',
       })
       const finishedAt = new Date().toISOString()
       return {

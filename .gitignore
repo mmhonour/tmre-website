@@ -70,6 +70,7 @@ r2.env
 
 # typescript
 *.tsbuildinfo
+.eslintcache
 next-env.d.ts
 
 # Local Netlify folder

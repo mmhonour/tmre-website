@@ -23,6 +23,7 @@ export type MarketPulseUnstackedMetricId =
   | 'medianPrice'
   | 'averagePrice'
   | 'priceDelta'
+  | 'saleToAsk'
 
 /** Seller-friendly direction per unstacked chart (buyer is the reverse). */
 const SELLER_UNSTACKED_DIR: Record<MarketPulseUnstackedMetricId, 'asc' | 'desc'> =
@@ -34,6 +35,8 @@ const SELLER_UNSTACKED_DIR: Record<MarketPulseUnstackedMetricId, 'asc' | 'desc'>
     medianPrice: 'desc',
     averagePrice: 'desc',
     priceDelta: 'desc',
+    // Closing nearer (or above) the first ask is the seller-friendly end.
+    saleToAsk: 'desc',
   }
 
 /** Per-chart ASC/DESC when unstacked + Seller/Buyer Friendly. Null = snapshot order. */

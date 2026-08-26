@@ -45,6 +45,11 @@ export type MarketDigestPriceTownCount = {
   averagePrice: number | null
   medianPriceCalc?: StatsValueCalc
   averagePriceCalc?: StatsValueCalc
+  /** Close ÷ original ask as a percent, precomputed at stats rebuild. */
+  saleToAskPct?: number | null
+  /** Average dollar gap on the same pool (negative = closed under ask). */
+  saleToAskDollars?: number | null
+  saleToAskCalc?: StatsValueCalc
 }
 
 export type MarketDigestCategorySlice = {

@@ -101,9 +101,12 @@ export async function readMarketStatsPools(args: {
     ppsf_count: string | number
     ppsf_mean: string | null
     beds_mean: string | null
+    sale_to_ask_count: string | number
+    sale_to_ask_closed_sum: string | null
+    sale_to_ask_original_sum: string | null
   }>(
     `WITH scoped AS (
-       SELECT status_bucket, price, close_price, dom, sqft, beds,
+       SELECT status_bucket, price, close_price, original_list_price, dom, sqft, beds,
               ${CLOSED_AT_SQL} AS closed_at,
               ${LISTING_KIND_HAY_SQL} AS kind_hay
          FROM listings
@@ -117,7 +120,8 @@ export async function readMarketStatsPools(args: {
        SELECT price, dom, sqft, beds FROM of_kind WHERE status_bucket = 'Active'
      ),
      closed AS (
-       SELECT COALESCE(close_price, price) AS amount
+       SELECT COALESCE(close_price, price) AS amount,
+              original_list_price
          FROM of_kind
         WHERE status_bucket = 'Closed'
           AND closed_at IS NOT NULL
@@ -125,6 +129,13 @@ export async function readMarketStatsPools(args: {
      ),
      closed_priced AS (
        SELECT amount FROM closed WHERE amount > 0
+     ),
+     -- Sale to original ask: sums, so All towns divides one total by the other
+     -- rather than averaging seven town percentages.
+     closed_vs_ask AS (
+       SELECT amount, original_list_price
+         FROM closed
+        WHERE amount > 0 AND original_list_price > 0
      ),
      active_priced AS (
        SELECT price FROM active WHERE price > 0
@@ -143,7 +154,11 @@ export async function readMarketStatsPools(args: {
        (SELECT avg(dom) FROM active WHERE dom >= 0) AS dom_mean,
        (SELECT count(*) FROM active WHERE price > 0 AND sqft > 0) AS ppsf_count,
        (SELECT avg(price / sqft) FROM active WHERE price > 0 AND sqft > 0) AS ppsf_mean,
-       (SELECT avg(beds) FROM active WHERE beds > 0) AS beds_mean`,
+       (SELECT avg(beds) FROM active WHERE beds > 0) AS beds_mean,
+       (SELECT count(*) FROM closed_vs_ask) AS sale_to_ask_count,
+       (SELECT sum(amount) FROM closed_vs_ask) AS sale_to_ask_closed_sum,
+       (SELECT sum(original_list_price) FROM closed_vs_ask)
+         AS sale_to_ask_original_sum`,
     [towns, args.periodStartYear, args.periodEndYear],
   )
 
@@ -162,5 +177,8 @@ export async function readMarketStatsPools(args: {
     ppsfCount: int(row.ppsf_count),
     ppsfMean: num(row.ppsf_mean),
     bedsMean: num(row.beds_mean),
+    saleToAskCount: int(row.sale_to_ask_count),
+    saleToAskClosedSum: num(row.sale_to_ask_closed_sum) ?? 0,
+    saleToAskOriginalSum: num(row.sale_to_ask_original_sum) ?? 0,
   }
 }

@@ -41,9 +41,20 @@ export default async function handler() {
     if (await isMarketDigestAlreadySentThisWeek()) {
       return thinCronSkipped('already sent for this ET week — once-per-week watermark')
     }
+    const startedAt = new Date().toISOString()
     const queued = await queueNetlifyMarketDigest()
     if (!queued.ok) {
       console.warn(`[netlify/market-digest] worker queue failed: ${queued.error}`)
+      // A console warning dies with the invocation. Stamp it where /admin and the
+      // digest diagnostic look, or a refused hop reads as a week that never ran.
+      const { recordMarketDigestHandoffFailure } = await import(
+        '../../lib/market-digest-notify'
+      )
+      await recordMarketDigestHandoffFailure({
+        startedAt,
+        trigger: 'netlify-cron',
+        reason: `worker handoff refused — ${queued.error ?? 'unknown'}`,
+      }).catch(() => {})
     }
     return thinCronResponse(queued)
   } catch (err) {

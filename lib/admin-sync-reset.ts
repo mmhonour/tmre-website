@@ -69,7 +69,18 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
   ],
   'fomc-sync': ['fomc_last_synced_at'],
   'cpi-sync': ['cpi_last_synced_at'],
-  'market-digest': ['market_digest_last_sent_at'],
+  'market-digest': [
+    'market_digest_last_sent_at',
+    // The week watermark is what actually blocks a send. Clearing only the
+    // last-sent stamp made the job look due while the dedupe still refused it,
+    // so Reset appeared to work and the brief stayed stuck for the week.
+    'market_digest_last_week_key',
+    'market_digest_send_lock',
+    'market_digest_last_attempt_at',
+    'market_digest_last_result',
+    // Otherwise Reset leaves a live 429 cool-off holding the catch-up back.
+    'market_digest_queue_backoff_until',
+  ],
   'full-resync': ['last_full_sync', 'last_full_sync_started'],
 }
 

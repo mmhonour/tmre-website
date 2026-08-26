@@ -28,6 +28,18 @@ export type MarketStatsPools = {
   ppsfCount: number
   ppsfMean: number | null
   bedsMean: number | null
+  /**
+   * Closed sales in the stats closed period carrying both a close price and an
+   * original list price > 0 — what sellers actually got against what they first
+   * asked.
+   *
+   * Sums rather than a ready-made percentage, because a ratio cannot be summed:
+   * All towns is Σclose ÷ Σoriginal over the bigger pool, so a $6M sale weighs
+   * what it should and averaging seven town percentages never happens.
+   */
+  saleToAskCount: number
+  saleToAskClosedSum: number
+  saleToAskOriginalSum: number
 }
 
 export const EMPTY_MARKET_STATS_POOLS: MarketStatsPools = {
@@ -43,4 +55,7 @@ export const EMPTY_MARKET_STATS_POOLS: MarketStatsPools = {
   ppsfCount: 0,
   ppsfMean: null,
   bedsMean: null,
+  saleToAskCount: 0,
+  saleToAskClosedSum: 0,
+  saleToAskOriginalSum: 0,
 }
