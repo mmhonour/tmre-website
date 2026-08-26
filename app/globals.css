@@ -828,3 +828,57 @@ html.listing-split-test body {
     box-shadow: 0 0 0 1.5px #c8a951;
   }
 }
+
+/* Full-bleed listing showcase — crossfading photo stage (/listings/[mlsId]/showcase) */
+.listing-showcase-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.06);
+  transition: opacity 1200ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.listing-showcase-layer--drift {
+  animation: listingShowcaseDrift 30s ease-in-out infinite alternate;
+}
+
+@keyframes listingShowcaseDrift {
+  from {
+    transform: scale(1.04) translate3d(-1.2%, 0.9%, 0);
+  }
+  to {
+    transform: scale(1.16) translate3d(1.2%, -0.9%, 0);
+  }
+}
+
+.listing-showcase-progress {
+  transform-origin: left center;
+  animation: listingShowcaseProgress var(--showcase-hold, 6500ms) linear forwards;
+}
+
+@keyframes listingShowcaseProgress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listing-showcase-layer {
+    transition-duration: 250ms;
+  }
+
+  .listing-showcase-layer--drift {
+    animation: none;
+  }
+
+  .listing-showcase-progress {
+    animation: none;
+    transform: scaleX(1);
+  }
+}
