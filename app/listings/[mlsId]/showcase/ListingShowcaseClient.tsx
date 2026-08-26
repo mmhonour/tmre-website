@@ -17,6 +17,7 @@ import {
   listingDetailHref,
   listingPhotoProxyUrlsFromCount,
   listingPhotosHref,
+  listingSectionHref,
 } from "@/lib/listing-url";
 import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
 
@@ -214,6 +215,11 @@ export default function ListingShowcaseClient({
   const tax = propertyTaxFromRaw(listing.raw);
   const insight = data?.insight?.trim() || null;
   const isRental = isRentalListing(listing);
+  const mapsQuery =
+    listing.address.full?.trim() ||
+    [street, city, listing.address.state, listing.address.postalCode]
+      .filter(Boolean)
+      .join(", ");
   const remarks =
     listing.remarks?.trim() ||
     REMARKS_KEYS.map((k) => listing.raw?.[k])
@@ -254,13 +260,17 @@ export default function ListingShowcaseClient({
           direction="prev"
           label="Previous photo"
           onClick={() => step(-1)}
+          className="absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-6"
         />
-        <ShowcaseStepArrow
-          direction="next"
-          label="Next photo"
-          onClick={() => step(1)}
+        <ShowcaseSectionRail
+          insight={insight}
+          detailRows={detailRows}
+          latitude={listing.latitude}
+          longitude={listing.longitude}
+          addressQuery={mapsQuery}
+          compsHref={listingSectionHref(listing.mlsId, "comparables", street, city)}
+          onNext={() => step(1)}
         />
-        <ShowcaseSectionRail />
 
         <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-end px-4 pb-10 sm:px-8 lg:px-12 lg:pb-14">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">

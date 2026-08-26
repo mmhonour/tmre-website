@@ -209,13 +209,17 @@ export default function ShowcaseDetailsPanel({
           </Section>
 
           <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
-            <ListingLocationMap
-              latitude={listing.latitude}
-              longitude={listing.longitude}
-              addressQuery={mapsQuery}
-              variant="hero"
-              hideLabel
-            />
+            {/* `variant="hero"` fills its parent, so the height has to come
+                from here or the map collapses to nothing. */}
+            <div className="h-[20rem] w-full overflow-hidden rounded-xl sm:h-[26rem]">
+              <ListingLocationMap
+                latitude={listing.latitude}
+                longitude={listing.longitude}
+                addressQuery={mapsQuery}
+                variant="hero"
+                hideLabel
+              />
+            </div>
           </Section>
         </div>
       </div>
