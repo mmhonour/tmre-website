@@ -65,3 +65,9 @@ export function statsMonthsSupplyByMonthTownTitle(kind: StatsKind): string {
 export function statsClosePriceLabel(kind: StatsKind): string {
   return kind === 'rental' ? 'Lease rent' : 'Close price'
 }
+
+export function statsListToAskTitle(kind: StatsKind): string {
+  return kind === 'rental'
+    ? 'List to ask · rentals · by town'
+    : 'List to ask · by town'
+}

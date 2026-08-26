@@ -31,6 +31,7 @@ import ActiveByTownView from "./ActiveByTownView";
 import SalesByTownDataTable from "./SalesByTownDataTable";
 import VintageSalesDataTable from "./VintageSalesDataTable";
 import PriceSalesByTownDataTable from "./PriceSalesByTownDataTable";
+import ListToAskByTownDataTable from "./ListToAskByTownDataTable";
 import StatsChartNav from "./StatsChartNav";
 import StatsChartLazyMount from "./StatsChartLazyMount";
 import {
@@ -46,6 +47,7 @@ import {
   statsByPriceTitle,
   statsByPriceTownTitle,
   statsByVintageTitle,
+  statsListToAskTitle,
   statsMonthsSupplyByMonthTitle,
   statsMonthsSupplyByMonthTownTitle,
 } from "./stats-labels";
@@ -67,6 +69,9 @@ const PriceSalesByTownChart = dynamic(() => import("./PriceSalesByTownChart"), {
   ssr: false,
 });
 const MedianPriceBarChart = dynamic(() => import("./MedianPriceBarChart"), { ssr: false });
+const ListToAskByTownChart = dynamic(() => import("./ListToAskByTownChart"), {
+  ssr: false,
+});
 const AvgDomLineChart = dynamic(() => import("./AvgDomLineChart"), { ssr: false });
 
 export type { StatsCity, StatsKind, Town } from "./stats-towns";
@@ -580,6 +585,7 @@ export default function StatsClient() {
             ? statsByPriceTownTitle(statsKind)
             : statsByPriceTitle(statsKind),
       },
+      { id: "stats-chart-list-to-ask", label: statsListToAskTitle(statsKind) },
     );
     if (selectedCity === "All") {
       items.push(
@@ -1095,6 +1101,30 @@ export default function StatsClient() {
                 </StatsChartPrintFrame>
                 </StatsChartLazyMount>
               )}
+
+              {/*
+               * Shown for every town selection, not just All: the metric only
+               * means anything next to its neighbours, and Market Pulse links
+               * here per town, which would land on nothing if it were hidden.
+               */}
+              <StatsChartLazyMount>
+                <StatsChartPrintFrame
+                  chartId="list-to-ask"
+                  title={statsListToAskTitle(statsKind)}
+                  dataPanel={
+                    <ListToAskByTownDataTable
+                      key={`list-to-ask-data-${statsKind}${chartVersionSuffix}`}
+                      kind={statsKind}
+                    />
+                  }
+                >
+                  <ListToAskByTownChart
+                    key={`list-to-ask-${statsKind}${chartVersionSuffix}`}
+                    kind={statsKind}
+                    selectedCity={selectedCity}
+                  />
+                </StatsChartPrintFrame>
+              </StatsChartLazyMount>
 
               <div
                 ref={tableRef}
