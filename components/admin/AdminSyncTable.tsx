@@ -33,9 +33,8 @@ import {
   INCREMENTAL_END_STALE_MS,
   INCREMENTAL_OPEN_START_IN_PULL_MS,
   evaluateIncrementalHealth,
-  formatRailwayHealthStrip,
+  formatRunnerHealthStrip,
   isMlsSyncDoorbellError,
-  type IncrementalHealthScheduler,
 } from "@/lib/incremental-sync-health";
 import { SCHEDULED_SYNC_JOB_BY_ROW } from "@/lib/scheduled-sync-jobs";
 import {
@@ -55,16 +54,24 @@ import {
   frequencyIntervalMs,
   frequencyLabel,
   orderNumberByRow,
-  resolveJobScheduler,
+  resolveJobBudgetMinutes,
   resolveWeekdayEt,
-  schedulerProviderLabel,
-  schedulerProvidersForJob,
   syncAllClientStepsFromConfig,
+  syncJobHostLabel,
   type SyncScheduleConfig,
   type SyncScheduleFrequencyId,
   type SyncScheduleWeekdayEt,
-  type SyncSchedulerProvider,
 } from "@/lib/sync-schedule-config-shared";
+import {
+  SYNC_JOB_BUDGET_MAX_MINUTES,
+  SYNC_JOB_BUDGET_MIN_MINUTES,
+  emptySyncQueueSnapshot,
+  isSyncQueueRunnerJob,
+  syncQueueBudgetRemainingMs,
+  syncQueueOutcomeLabel,
+  syncQueuePositionForJob,
+  type SyncQueueSnapshot,
+} from "@/lib/sync-queue-shared";
 import {
   TMRE_SYNC_SCHEDULE_CHANGED,
   dispatchSyncScheduleChanged,
@@ -83,7 +90,7 @@ function emptyPausedJobs(): ScheduledSyncPausedJobs {
 }
 
 /** Client FIFO of Sync now / Sync all clicks while another job is in flight. */
-type SyncQueueItem =
+type ClickQueueItem =
   | {
       kind: "action";
       rowId: string;
@@ -678,8 +685,10 @@ export type PanelStatus = {
   lastEventbridgeIngressAt?: string | null;
   /** Outcome line: queued / skipped: … / unauthorized · HTTP n. */
   lastEventbridgeIngressResult?: string | null;
-  /** Railway mls-sync process heartbeat (Neon). */
+  /** Sync runner process heartbeat (Neon). */
   lastMlsSyncHeartbeat?: string | null;
+  /** Durable `sync_queue` — what is waiting, what is running, how the last runs ended. */
+  syncQueue?: SyncQueueSnapshot;
   propertyAddressesSyncedAt?: string | null;
   visionAddressesSyncedAt?: string | null;
   /** Temporal Vision GIS parcel progress (CLI / Admin / worker). */
@@ -1148,7 +1157,8 @@ function formatDashboardRowCopy(fields: {
   action: string;
   paused?: boolean;
   frequency: string;
-  scheduler: string;
+  runsOn: string;
+  queue: string;
   start: string;
   startIso?: string | null;
   end: string;
@@ -1163,7 +1173,8 @@ function formatDashboardRowCopy(fields: {
     `Action: ${fields.action}`,
     fields.paused ? "Paused: yes" : null,
     `Frequency: ${fields.frequency}`,
-    `Scheduler: ${fields.scheduler}`,
+    `Runs on: ${fields.runsOn}`,
+    `Queue: ${fields.queue}`,
     `Start: ${fields.start}${fields.startIso ? ` (${fields.startIso})` : ""}`,
     `End: ${fields.end}${fields.endIso ? ` (${fields.endIso})` : ""}`,
     `Next: ${fields.next}${fields.nextIso ? ` (${fields.nextIso})` : ""}`,
@@ -1437,20 +1448,6 @@ function isOrphanIncrementalStart(
   return nowMs - startMs >= HANG_THRESHOLD_MS;
 }
 
-/** AWS accepted a queue but End never landed after that ingress. */
-function isEventBridgeQueuedWithoutEnd(
-  ingressAt: string | null | undefined,
-  ingressResult: string | null | undefined,
-  finishedAt: string | null | undefined,
-): boolean {
-  const ingressMs = parseIsoMs(ingressAt);
-  if (ingressMs == null) return false;
-  const result = ingressResult?.trim() ?? "";
-  if (!/^queued\b/i.test(result)) return false;
-  const endMs = parseIsoMs(finishedAt);
-  return endMs == null || endMs < ingressMs;
-}
-
 function isTimingInProgress(
   timing: SyncTiming,
   nowMs: number,
@@ -1524,8 +1521,9 @@ function resolveSyncRowVisualStatus(options: {
   error?: string;
   nowMs: number;
   /**
-   * EventBridge Incremental: ignore open Start hang (AWS owns the alarm; a
-   * stale Start without End is Status text, not a Netlify Hung row).
+   * Runner-owned jobs: ignore open Start hang. The queue row and its deadline
+   * are the authority on a wedged run, so a stale Start without End is Status
+   * text here, not a Hung row.
    */
   ignoreTimingHang?: boolean;
   /** Explicit problem (e.g. AWS queued with no End after the hang window). */
@@ -1684,9 +1682,11 @@ export default function AdminSyncTable({
   );
   const [scheduleSavingJob, setScheduleSavingJob] =
     useState<ScheduledSyncJobId | "order" | null>(null);
+  const [queueActionId, setQueueActionId] = useState<number | null>(null);
   const scheduleConfig =
     status?.scheduleConfig ?? defaultSyncScheduleConfig();
   const orderByRow = orderNumberByRow(scheduleConfig);
+  const syncQueue = status?.syncQueue ?? emptySyncQueueSnapshot();
   const [pendingRetries, setPendingRetries] = useState<
     Partial<Record<string, PendingSyncRetry>>
   >({});
@@ -1706,8 +1706,8 @@ export default function AdminSyncTable({
   const incrementalStatusScopeRef = useRef(incrementalStatusScope);
   incrementalStatusScopeRef.current = incrementalStatusScope;
   /** FIFO of Sync now / Sync all clicks while another job is running. */
-  const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
-  const syncQueueRef = useRef<SyncQueueItem[]>([]);
+  const [clickQueue, setClickQueue] = useState<ClickQueueItem[]>([]);
+  const clickQueueRef = useRef<ClickQueueItem[]>([]);
   const runningLabelRef = useRef<string | null>(null);
   const runningIdRef = useRef<AdminSyncActionId | "sync-all-caches" | null>(null);
   const [messages, setMessages] = useState<Partial<Record<string, string>>>({});
@@ -1764,11 +1764,11 @@ export default function AdminSyncTable({
   /** Shown under Sync all while a run is active; cleared when the run ends. */
   const [syncAllPlanNote, setSyncAllPlanNote] = useState<string | null>(null);
 
-  const replaceSyncQueue = useCallback(
-    (next: SyncQueueItem[] | ((prev: SyncQueueItem[]) => SyncQueueItem[])) => {
-      setSyncQueue((prev) => {
+  const replaceClickQueue = useCallback(
+    (next: ClickQueueItem[] | ((prev: ClickQueueItem[]) => ClickQueueItem[])) => {
+      setClickQueue((prev) => {
         const resolved = typeof next === "function" ? next(prev) : next;
-        syncQueueRef.current = resolved;
+        clickQueueRef.current = resolved;
         return resolved;
       });
     },
@@ -1785,7 +1785,7 @@ export default function AdminSyncTable({
   );
 
   const refreshWaitingStatuses = useCallback((blockerLabel: string) => {
-    const queued = syncQueueRef.current;
+    const queued = clickQueueRef.current;
     if (queued.length === 0) return;
     setDescriptions((prev) => {
       const next = { ...prev };
@@ -2016,6 +2016,37 @@ export default function AdminSyncTable({
     return () => window.clearInterval(id);
   }, [refreshing, runningId, hasPendingRetries]);
 
+  /**
+   * Drop a waiting row. A running one belongs to the child the runner forked,
+   * so the API records the intent and lets the deadline do the killing rather
+   * than orphaning a process nobody is watching.
+   */
+  const cancelQueueItem = useCallback(async (id: number) => {
+    setQueueActionId(id);
+    try {
+      const res = await fetch("/api/admin/sync-queue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "cancel", id }),
+      });
+      const body = (await res.json()) as {
+        queue?: SyncQueueSnapshot;
+        error?: string;
+      };
+      if (!res.ok) {
+        console.warn("[admin sync-queue]", body.error ?? res.status);
+        return;
+      }
+      if (body.queue) {
+        setStatus((prev) => (prev ? { ...prev, syncQueue: body.queue } : prev));
+      }
+    } catch (err) {
+      console.warn("[admin sync-queue]", err);
+    } finally {
+      setQueueActionId(null);
+    }
+  }, []);
+
   const refreshStatus = useCallback(async () => {
     const res = await fetch("/api/admin/sync", { cache: "no-store" });
     if (!res.ok) return;
@@ -2084,7 +2115,7 @@ export default function AdminSyncTable({
         | { jobId: ScheduledSyncJobId; frequency: SyncScheduleFrequencyId }
         | { jobId: ScheduledSyncJobId; startTimeEt: string }
         | { jobId: ScheduledSyncJobId; weekdayEt: SyncScheduleWeekdayEt }
-        | { jobId: ScheduledSyncJobId; scheduler: SyncSchedulerProvider }
+        | { jobId: ScheduledSyncJobId; budgetMinutes: number }
         | { moveJobId: ScheduledSyncJobId; direction: "up" | "down" },
     ) => {
       const savingKey =
@@ -2246,13 +2277,13 @@ export default function AdminSyncTable({
     return () => window.clearInterval(id);
   }, [refreshStatus, refreshing, runningId, incrementalInFlight]);
 
-  const drainSyncQueueRef = useRef<() => void>(() => {});
+  const drainClickQueueRef = useRef<() => void>(() => {});
 
   const finishRunningJob = useCallback(() => {
     setRunningJob(null, null);
     void refreshStatus();
     // Defer drain so runningIdRef is cleared before the next job starts.
-    queueMicrotask(() => drainSyncQueueRef.current());
+    queueMicrotask(() => drainClickQueueRef.current());
   }, [setRunningJob, refreshStatus]);
 
   const executeSync = useCallback(
@@ -2542,7 +2573,7 @@ export default function AdminSyncTable({
         (runningIdRef.current === "full-resync" && actionId === "full-resync");
       if (alreadyRunning) return;
 
-      const alreadyQueued = syncQueueRef.current.some(
+      const alreadyQueued = clickQueueRef.current.some(
         (item) => item.kind === "action" && item.rowId === row.id,
       );
       if (alreadyQueued) return;
@@ -2551,7 +2582,7 @@ export default function AdminSyncTable({
         clearPendingRetry(row.id);
         syncAttemptCountRef.current[row.id] = 0;
         const blocker = runningLabelRef.current ?? "current sync";
-        replaceSyncQueue((prev) => [
+        replaceClickQueue((prev) => [
           ...prev,
           { kind: "action", rowId: row.id, actionId, label: actionLabel },
         ]);
@@ -2565,7 +2596,7 @@ export default function AdminSyncTable({
 
       await executeSync(row);
     },
-    [executeSync, replaceSyncQueue, clearPendingRetry],
+    [executeSync, replaceClickQueue, clearPendingRetry],
   );
 
   const clearRowState = useCallback(
@@ -2940,38 +2971,38 @@ export default function AdminSyncTable({
 
   const runSyncAll = useCallback(() => {
     if (runningIdRef.current === "sync-all-caches") return;
-    if (syncQueueRef.current.some((item) => item.kind === "sync-all")) return;
+    if (clickQueueRef.current.some((item) => item.kind === "sync-all")) return;
 
     if (runningIdRef.current != null) {
       const blocker = runningLabelRef.current ?? "current sync";
-      replaceSyncQueue((prev) => [...prev, { kind: "sync-all" }]);
+      replaceClickQueue((prev) => [...prev, { kind: "sync-all" }]);
       setSyncAllPlanNote(formatWaitingStatus(blocker));
       return;
     }
 
     void executeSyncAll();
-  }, [executeSyncAll, replaceSyncQueue]);
+  }, [executeSyncAll, replaceClickQueue]);
 
-  drainSyncQueueRef.current = () => {
+  drainClickQueueRef.current = () => {
     if (runningIdRef.current != null) return;
-    const next = syncQueueRef.current[0];
+    const next = clickQueueRef.current[0];
     if (!next) return;
-    replaceSyncQueue((prev) => prev.slice(1));
+    replaceClickQueue((prev) => prev.slice(1));
     if (next.kind === "sync-all") {
       void executeSyncAll();
       return;
     }
     const row = rows.find((r) => r.id === next.rowId);
     if (!row?.actionId) {
-      queueMicrotask(() => drainSyncQueueRef.current());
+      queueMicrotask(() => drainClickQueueRef.current());
       return;
     }
     void executeSync(row);
   };
 
-  const syncAllQueued = syncQueue.some((item) => item.kind === "sync-all");
+  const syncAllQueued = clickQueue.some((item) => item.kind === "sync-all");
   const queuedRowIds = new Set(
-    syncQueue.filter((item) => item.kind === "action").map((item) => item.rowId),
+    clickQueue.filter((item) => item.kind === "action").map((item) => item.rowId),
   );
   const syncAllRunning = runningId === "sync-all-caches";
   const rets = status?.rets;
@@ -3005,11 +3036,12 @@ export default function AdminSyncTable({
           {isDashboard ? (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-xl">
-                Tap Sync now (or Sync all). Sync now follows each job’s Configure
-                Scheduler: EventBridge path when that radio is selected, otherwise
-                Netlify queue (EventBridge falls back to Netlify if the queue fails).
-                Running jobs stay on top. Pause and schedule edits live under
-                Configure. Incremental fills Postgres; the{" "}
+                Tap Sync now (or Sync all). Long jobs go onto the shared
+                sync_queue ahead of the scheduled sweeps and the runner forks a
+                child for each one; the Queue column shows where a job sits and
+                how much of its budget is left. Everything else still runs on a
+                Netlify function. Running jobs stay on top. Pause, cadence, and
+                budgets live under Configure. Incremental fills Postgres; the{" "}
                 <a
                   href="#admin-latest-page"
                   className="text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
@@ -3027,16 +3059,16 @@ export default function AdminSyncTable({
           ) : (
             <>
               <p className="text-xs text-slate leading-relaxed max-w-2xl">
-                Pause skips Sync all and cron. Scheduler radio picks the alarm:
-                Netlify cron, EventBridge (legacy), or Railway mls-sync
-                (Incremental RETS→Neon — recommended). Frequency and Start time
-                (ET) apply to Netlify/EB; Railway uses its own interval. Next
-                start is read-only for Netlify/EB.
+                Pause skips Sync all and cron. Frequency and Start time (ET) say
+                when a job becomes due; Budget says how long a run may take
+                before the runner kills its child and records a timeout instead
+                of leaving a Start with no End. Next start is read-only.
               </p>
               <p className="font-mono text-[9px] text-charcoal/45 leading-snug max-w-2xl">
-                Set Incremental → Railway after deploying mls-sync; Netlify/EB
-                stop pulling. Dashboard polls Neon End for peace of mind. Decommission
-                AWS EventBridge schedules for Incremental once smoke passes.
+                There is no host to pick. A due job is enqueued on sync_queue by
+                whoever notices, the always-on runner claims it and runs it in a
+                forked child, and a Netlify function only steps in when a row
+                has sat unclaimed long enough to prove the runner is gone.
               </p>
             </>
           )}
@@ -3160,17 +3192,17 @@ export default function AdminSyncTable({
               {isConfigure ? (
                 <th
                   className={TH}
-                  title="Authoritative alarm clock — Netlify cron or AWS EventBridge"
+                  title="Minutes a run gets before the runner kills its child and records a timeout"
                 >
-                  Scheduler
+                  Budget
                 </th>
               ) : null}
               {isDashboard ? (
                 <th
                   className={TH}
-                  title="Authoritative alarm from Configure (read-only)"
+                  title="Place in the durable sync_queue — queued, running with time left, or how the last run ended"
                 >
-                  Scheduler
+                  Queue
                 </th>
               ) : null}
               {isConfigure ? (
@@ -3355,14 +3387,13 @@ export default function AdminSyncTable({
                 );
               const incrementalRunningNow =
                 incrementalLiveNow || incrementalOpenInFlight;
-              const incrementalOnEventBridge =
-                row.id === "incremental" &&
-                jobSchedule != null &&
-                resolveJobScheduler(jobSchedule) === "eventbridge";
-              const incrementalOnRailway =
-                row.id === "incremental" &&
-                jobSchedule != null &&
-                resolveJobScheduler(jobSchedule) === "railway";
+              // Who runs this job is now a fact about the queue, not a radio:
+              // anything in SYNC_QUEUE_RUNNER_JOBS belongs to the sync runner.
+              const runnerOwned = pauseJob
+                ? isSyncQueueRunnerJob(pauseJob)
+                : false;
+              const incrementalOnRunner =
+                row.id === "incremental" && runnerOwned;
               const orphanIncrementalStart =
                 row.id === "incremental" &&
                 isOrphanIncrementalStart(
@@ -3371,32 +3402,10 @@ export default function AdminSyncTable({
                   incrementalRunningNow,
                   nowMs,
                 );
-              const eventBridgeQueuedNoEnd =
-                incrementalOnEventBridge &&
-                !incrementalRunningNow &&
-                isEventBridgeQueuedWithoutEnd(
-                  status?.lastEventbridgeIngressAt,
-                  status?.lastEventbridgeIngressResult,
-                  timing.finished,
-                );
-              const eventBridgeQueuedStale =
-                eventBridgeQueuedNoEnd &&
-                (() => {
-                  const ingressMs = parseIsoMs(status?.lastEventbridgeIngressAt);
-                  return (
-                    ingressMs != null && nowMs - ingressMs >= HANG_THRESHOLD_MS
-                  );
-                })();
-              const incrementalScheduler: IncrementalHealthScheduler =
-                incrementalOnRailway
-                  ? "railway"
-                  : incrementalOnEventBridge
-                    ? "eventbridge"
-                    : "netlify";
               const incrementalHealth =
                 row.id === "incremental"
                   ? evaluateIncrementalHealth({
-                      scheduler: incrementalScheduler,
+                      host: incrementalOnRunner ? "runner" : "netlify",
                       heartbeatAt: status?.lastMlsSyncHeartbeat,
                       finishedAt: timing.finished,
                       startedAt: timing.started,
@@ -3407,15 +3416,15 @@ export default function AdminSyncTable({
               const incrementalEndBroken = Boolean(
                 incrementalHealth?.inventoryStale && !incrementalRunningNow,
               );
-              const railwayHeartbeatAlive = Boolean(
-                incrementalOnRailway && incrementalHealth?.processAlive,
+              const runnerHeartbeatAlive = Boolean(
+                incrementalOnRunner && incrementalHealth?.processAlive,
               );
-              const railwayInPull = Boolean(
-                incrementalOnRailway && incrementalHealth?.inPull,
+              const runnerInPull = Boolean(
+                incrementalOnRunner && incrementalHealth?.inPull,
               );
               const doorbellErrorOnly =
-                incrementalOnRailway &&
-                railwayHeartbeatAlive &&
+                incrementalOnRunner &&
+                runnerHeartbeatAlive &&
                 isMlsSyncDoorbellError(rowError);
               // Configure is schedule/setup only — no live status colors.
               const visualResolved = isConfigure
@@ -3429,22 +3438,21 @@ export default function AdminSyncTable({
                     isRunning:
                       isRunning ||
                       isWaiting ||
-                      railwayInPull,
+                      runnerInPull,
                     syncAllRunning,
                     fullResyncInProgress,
                     error: doorbellErrorOnly ? undefined : rowError,
                     nowMs,
-                    ignoreTimingHang:
-                      incrementalOnEventBridge || incrementalOnRailway,
-                    forceAlert: incrementalOnRailway
+                    ignoreTimingHang: runnerOwned,
+                    forceAlert: incrementalOnRunner
                       ? incrementalHealth?.process === "dead"
-                      : incrementalEndBroken || eventBridgeQueuedStale,
+                      : incrementalEndBroken,
                   });
-              // Stale End with a live Railway process is not success — keep the
+              // Stale End with a live runner process is not success — keep the
               // row uncolored (STALE in Status) instead of sage green.
               const visual =
                 visualResolved === "ok" &&
-                incrementalOnRailway &&
+                incrementalOnRunner &&
                 incrementalEndBroken
                   ? ("idle" as const)
                   : visualResolved;
@@ -3461,8 +3469,7 @@ export default function AdminSyncTable({
               // about a Postgres value we did not read.
               const rowHung =
                 !incrementalRunningNow &&
-                !incrementalOnEventBridge &&
-                !incrementalOnRailway &&
+                !runnerOwned &&
                 (isTimingHung(timing, nowMs) ||
                   (row.id === "refresh-finished" &&
                     Boolean(status?.refreshing)));
@@ -3503,12 +3510,83 @@ export default function AdminSyncTable({
                     return s != null && (e == null || s > e);
                   })());
 
-              /** One glance line for AWS hits — shown on Dashboard Status when idle. */
-              const eventbridgePulseLine = (() => {
-                if (!incrementalOnEventBridge) return null;
-                if (!status?.lastEventbridgeIngressAt) {
-                  return "AWS: never fired";
+              /**
+               * This row's place in the durable queue.
+               *
+               * `sync_queue` is the only thing that knows a job was asked for
+               * but has not started, so Dashboard reads it rather than
+               * inferring intent from an ingress timestamp.
+               */
+              const queueJobId = runnerOwned && pauseJob ? pauseJob : null;
+              const queueRunning = queueJobId
+                ? (syncQueue.running.find((item) => item.jobId === queueJobId) ??
+                  null)
+                : null;
+              const queueWaiting = queueJobId
+                ? (syncQueue.waiting.find((item) => item.jobId === queueJobId) ??
+                  null)
+                : null;
+              const queuePosition = queueJobId
+                ? syncQueuePositionForJob(syncQueue, queueJobId)
+                : null;
+              const queueRecent = queueJobId
+                ? (syncQueue.recent.find((item) => item.jobId === queueJobId) ??
+                  null)
+                : null;
+              /** Minutes left on the running child before the runner kills it. */
+              const queueBudgetLeft = (() => {
+                if (!queueRunning) return null;
+                const remainingMs = syncQueueBudgetRemainingMs(
+                  queueRunning,
+                  nowMs,
+                );
+                if (remainingMs == null) return null;
+                return remainingMs >= 0
+                  ? `${Math.max(1, Math.round(remainingMs / 60_000))}m left`
+                  : "over budget";
+              })();
+              const queueLine = (() => {
+                if (!queueJobId) return null;
+                if (queueRunning) {
+                  return [
+                    "Queue: running",
+                    queueBudgetLeft,
+                    syncQueue.runnerStale ? "runner silent" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
                 }
+                if (queueWaiting) {
+                  return [
+                    `Queue: waiting${queuePosition ? ` #${queuePosition}` : ""}`,
+                    `asked ${
+                      formatAgeAgo(queueWaiting.requestedAt, nowMs) ?? "just now"
+                    }`,
+                    syncQueue.runnerStale
+                      ? "runner silent — Netlify will rescue it"
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                }
+                if (queueRecent?.outcome && queueRecent.outcome !== "done") {
+                  return [
+                    `Queue: ${syncQueueOutcomeLabel(queueRecent.outcome)}`,
+                    queueRecent.finishedAt
+                      ? (formatAgeAgo(queueRecent.finishedAt, nowMs) ?? null)
+                      : null,
+                    queueRecent.detail,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                }
+                return null;
+              })();
+
+              /** One glance line for AWS hits — the ingress still enqueues. */
+              const eventbridgePulseLine = (() => {
+                if (row.id !== "incremental") return null;
+                if (!status?.lastEventbridgeIngressAt) return null;
                 const when =
                   formatAgeAgo(status.lastEventbridgeIngressAt, nowMs) ??
                   formatTimestamp(status.lastEventbridgeIngressAt);
@@ -3518,11 +3596,11 @@ export default function AdminSyncTable({
                 return result ? `AWS ${when} · ${result}` : `AWS ${when}`;
               })();
 
-              /** Railway mls-sync heartbeat — peace of mind when Scheduler is Railway. */
-              const railwayPulseLine = (() => {
-                if (!incrementalOnRailway) return null;
+              /** Sync runner heartbeat — peace of mind that the process is up. */
+              const runnerPulseLine = (() => {
+                if (!incrementalOnRunner) return null;
                 if (!status?.lastMlsSyncHeartbeat) {
-                  return "Railway: no heartbeat yet";
+                  return "Runner: no heartbeat yet";
                 }
                 const when =
                   formatAgeAgo(status.lastMlsSyncHeartbeat, nowMs) ??
@@ -3530,9 +3608,9 @@ export default function AdminSyncTable({
                 return `heartbeat ${when}`;
               })();
 
-              /** Single truth strip when Incremental Scheduler = Railway. */
-              const railwayTruthStrip = (() => {
-                if (!incrementalOnRailway || !incrementalHealth) return null;
+              /** Single truth strip for the runner-owned Incremental row. */
+              const runnerTruthStrip = (() => {
+                if (!incrementalOnRunner || !incrementalHealth) return null;
                 const heartbeatLabel = status?.lastMlsSyncHeartbeat
                   ? `heartbeat ${
                       formatAgeAgo(status.lastMlsSyncHeartbeat, nowMs) ??
@@ -3543,7 +3621,7 @@ export default function AdminSyncTable({
                   ? formatAgeAgo(timing.finished, nowMs) ??
                     formatTimestamp(timing.finished)
                   : "missing";
-                return formatRailwayHealthStrip({
+                return formatRunnerHealthStrip({
                   health: incrementalHealth,
                   heartbeatLabel,
                   endLabel,
@@ -3575,11 +3653,13 @@ export default function AdminSyncTable({
                   isRunning ||
                   syncAllRunning ||
                   incrementalRunningNow ||
-                  railwayInPull ||
+                  runnerInPull ||
                   visionLiveFresh
                 ) {
-                  if (row.id === "incremental" && railwayTruthStrip) {
-                    return railwayTruthStrip;
+                  if (row.id === "incremental" && runnerTruthStrip) {
+                    return [runnerTruthStrip, queueLine]
+                      .filter(Boolean)
+                      .join("\n");
                   }
                   const live =
                     status?.incrementalLiveStatus ??
@@ -3601,17 +3681,22 @@ export default function AdminSyncTable({
                     } else {
                       bits.push("last End missing");
                     }
-                    if (railwayPulseLine) bits.push(`Railway ${railwayPulseLine}`);
-                    else if (incrementalOnRailway) {
-                      bits.push("Railway: no heartbeat yet");
+                    if (runnerPulseLine) bits.push(`Runner ${runnerPulseLine}`);
+                    else if (incrementalOnRunner) {
+                      bits.push("Runner: no heartbeat yet");
                     }
+                    if (queueLine) bits.push(queueLine);
                     return bits.join("\n");
                   }
                   return live ?? "Running…";
                 }
                 // Prefer durable server truth over localStorage “Queued…” leftovers.
                 if (row.id === "incremental") {
-                  if (railwayTruthStrip) return railwayTruthStrip;
+                  if (runnerTruthStrip) {
+                    return [runnerTruthStrip, queueLine]
+                      .filter(Boolean)
+                      .join("\n");
+                  }
 
                   const upsertLabel =
                     status?.lastIncrementalUpsertsLabel?.trim() || null;
@@ -3629,17 +3714,6 @@ export default function AdminSyncTable({
                       ? "Upserts: — (last End had no count recorded)"
                       : "Upserts: — (waiting for a finished pull)";
 
-                  if (eventBridgeQueuedNoEnd) {
-                    const when =
-                      formatAgeAgo(status?.lastEventbridgeIngressAt, nowMs) ??
-                      "recently";
-                    return [
-                      upsertLine,
-                      eventBridgeQueuedStale
-                        ? `BROKEN · AWS ${when}: queued with no End (stale — Sync now)`
-                        : `Not running · AWS ${when}: queued — waiting for End`,
-                    ].join("\n");
-                  }
                   const idleBits: string[] = [upsertLine];
                   if (!timing.finished) {
                     idleBits.push(
@@ -3658,11 +3732,11 @@ export default function AdminSyncTable({
                       formatDateShort(timing.finished);
                     idleBits.push(`Idle · ended ${age}`);
                   }
+                  if (queueLine) idleBits.push(queueLine);
                   if (eventbridgePulseLine) idleBits.push(eventbridgePulseLine);
                   if (
                     !upsertLabel &&
-                    !incrementalOnEventBridge &&
-                    !incrementalOnRailway &&
+                    !runnerOwned &&
                     status?.incrementalStepLog?.summary
                   ) {
                     const src = status.incrementalStepLog.source
@@ -3672,12 +3746,7 @@ export default function AdminSyncTable({
                       `${src}${status.incrementalStepLog.summary}`,
                     );
                   }
-                  if (
-                    !incrementalOnEventBridge &&
-                    !incrementalOnRailway &&
-                    scheduleBreached &&
-                    timing.finished
-                  ) {
+                  if (!runnerOwned && scheduleBreached && timing.finished) {
                     idleBits.push("overdue vs Netlify schedule");
                   }
                   return idleBits.join("\n");
@@ -3693,8 +3762,10 @@ export default function AdminSyncTable({
                     descriptions[row.id] ||
                     finalStatuses[row.id] ||
                     statusTextFromRunLog(row, runSnapshot);
-                  const queue = status?.statsCacheQueueStatus?.trim();
-                  return [lastRun, queue].filter(Boolean).join("\n");
+                  const townQueue = status?.statsCacheQueueStatus?.trim();
+                  return [lastRun, townQueue, queueLine]
+                    .filter(Boolean)
+                    .join("\n");
                 }
                 const prior =
                   descriptions[row.id] ??
@@ -3705,51 +3776,32 @@ export default function AdminSyncTable({
                     formatAgeAgo(timing.finished, nowMs) ??
                     formatDateShort(timing.finished);
                   // Keep prior detail when short; don't bury it under "overdue".
-                  if (prior && prior.length <= 48) {
-                    return `${prior} · overdue (${age})`;
-                  }
-                  return prior
-                    ? `Overdue — last End ${age}`
-                    : `Overdue — last End ${age} (expected run missed)`;
+                  const overdue =
+                    prior && prior.length <= 48
+                      ? `${prior} · overdue (${age})`
+                      : prior
+                        ? `Overdue — last End ${age}`
+                        : `Overdue — last End ${age} (expected run missed)`;
+                  return [overdue, queueLine].filter(Boolean).join("\n");
                 }
-                return prior;
+                return [prior, queueLine].filter(Boolean).join("\n") || prior;
               })();
 
               const descriptionText =
                 row.id === "incremental"
                   ? isConfigure
                     ? "Modified-since RETS pull across all towns"
-                    : incrementalOnEventBridge
-                      ? `Modified-since RETS pull (EventBridge)${
-                          status?.lastEventbridgeIngressAt
-                            ? ` · last fired ${
-                                formatAgeAgo(
-                                  status.lastEventbridgeIngressAt,
-                                  nowMs,
-                                ) ??
-                                formatTimestamp(status.lastEventbridgeIngressAt)
-                              }${
-                                humanizeEventBridgeIngressResult(
-                                  status.lastEventbridgeIngressResult,
-                                )
-                                  ? ` · ${humanizeEventBridgeIngressResult(
-                                      status.lastEventbridgeIngressResult,
-                                    )}`
-                                  : ""
-                              }`
-                            : " · last fired: never"
-                        }`
-                      : `Modified-since RETS pull (every 30 minutes)${
-                          status?.lastIncrementalCronTick
-                            ? ` · Cron last fired ${
-                                formatAgeAgo(
-                                  status.lastIncrementalCronTick,
-                                  nowMs,
-                                ) ??
-                                formatTimestamp(status.lastIncrementalCronTick)
-                              }`
-                            : " · Cron last fired: never (no Netlify */30 tick yet — Sync now does not stamp the scheduler)"
-                        }`
+                    : `Modified-since RETS pull${
+                        status?.lastIncrementalCronTick
+                          ? ` · Cron last fired ${
+                              formatAgeAgo(
+                                status.lastIncrementalCronTick,
+                                nowMs,
+                              ) ??
+                              formatTimestamp(status.lastIncrementalCronTick)
+                            }`
+                          : " · Cron last fired: never (no Netlify */30 tick yet — Sync now enqueues without stamping the cron)"
+                      }`
                   : (row.detail ?? "");
 
               // Compact single-line rows unless status/error needs room to wrap.
@@ -3760,8 +3812,8 @@ export default function AdminSyncTable({
                   isRunning ||
                   isWaiting ||
                   incrementalRunningNow ||
-                  eventBridgeQueuedNoEnd ||
-                  (!incrementalOnEventBridge && scheduleBreached) ||
+                  Boolean(queueWaiting) ||
+                  scheduleBreached ||
                   Boolean(statusText && statusText.includes("\n")));
               const cellPad = rowExpands ? TD_EXPAND : TD;
               const rowCopyText = formatDashboardRowCopy({
@@ -3780,9 +3832,8 @@ export default function AdminSyncTable({
                 frequency: jobSchedule
                   ? frequencyLabel(jobSchedule.frequency)
                   : (derivedScheduleHint ?? "—"),
-                scheduler: jobSchedule
-                  ? schedulerProviderLabel(resolveJobScheduler(jobSchedule))
-                  : "—",
+                runsOn: pauseJob ? syncJobHostLabel(pauseJob) : "—",
+                queue: queueLine ?? (queueJobId ? "Queue: idle" : "—"),
                 start: timing.started
                   ? [formatTimeOnly(timing.started), formatAgeAgo(timing.started, nowMs)]
                       .filter((bit) => bit && bit !== "just now")
@@ -3906,13 +3957,9 @@ export default function AdminSyncTable({
                           onClick={() => runSync(row)}
                           disabled={disabled}
                           title={
-                            jobSchedule &&
-                            resolveJobScheduler(jobSchedule) === "eventbridge"
-                              ? "Sync via EventBridge path (falls back to Netlify queue if needed)"
-                              : jobSchedule &&
-                                  resolveJobScheduler(jobSchedule) === "railway"
-                                ? "Sync via Railway mls-sync"
-                                : "Sync via Netlify worker queue"
+                            runnerOwned
+                              ? "Enqueue on sync_queue ahead of the sweeps — the runner forks a child for it"
+                              : "Sync via Netlify worker queue"
                           }
                           className="font-mono text-[8px] tracking-[0.1em] uppercase rounded-full px-2 py-0.5 border border-navy/20 text-navy bg-white hover:bg-cream/80 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap"
                         >
@@ -4030,16 +4077,75 @@ export default function AdminSyncTable({
                   ) : null}
                   {isDashboard ? (
                     <td className={cellPad}>
-                      <p
-                        className="font-mono text-[10px] tracking-wide text-navy/80 leading-snug"
-                        title="Set under Configure — sticky per job"
-                      >
-                        {jobSchedule
-                          ? schedulerProviderLabel(
-                              resolveJobScheduler(jobSchedule),
-                            )
-                          : "—"}
-                      </p>
+                      {queueJobId ? (
+                        <div className="flex flex-col items-start gap-0.5 min-w-0">
+                          <span
+                            className={`font-mono text-[10px] tracking-wide leading-snug ${
+                              queueRunning
+                                ? "text-gold"
+                                : queueWaiting
+                                  ? "text-navy"
+                                  : queueRecent?.outcome &&
+                                      queueRecent.outcome !== "done"
+                                    ? "text-coral"
+                                    : "text-navy/60"
+                            }`}
+                            title={
+                              queueRunning
+                                ? `Claimed by ${queueRunning.claimedBy ?? "the runner"} — killed at ${
+                                    queueRunning.deadlineAt
+                                      ? formatTimestamp(queueRunning.deadlineAt)
+                                      : "its deadline"
+                                  }`
+                                : queueWaiting
+                                  ? `Asked by ${queueWaiting.trigger} at ${formatTimestamp(queueWaiting.requestedAt)}`
+                                  : (queueRecent?.detail ??
+                                    "Nothing waiting for this job")
+                            }
+                          >
+                            {queueRunning
+                              ? (queueBudgetLeft ?? "Running")
+                              : queueWaiting
+                                ? `Queued${queuePosition ? ` #${queuePosition}` : ""}`
+                                : queueRecent
+                                  ? syncQueueOutcomeLabel(queueRecent.outcome)
+                                  : "Idle"}
+                          </span>
+                          {queueWaiting ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void cancelQueueItem(queueWaiting.id)
+                              }
+                              disabled={queueActionId === queueWaiting.id}
+                              className="font-mono text-[8px] tracking-[0.1em] uppercase text-charcoal/45 hover:text-coral underline-offset-2 hover:underline disabled:opacity-40"
+                            >
+                              {queueActionId === queueWaiting.id
+                                ? "Cancelling…"
+                                : "Cancel"}
+                            </button>
+                          ) : null}
+                          {syncQueue.runnerStale ? (
+                            <span
+                              className="font-mono text-[8px] tracking-wide text-coral/80"
+                              title={
+                                syncQueue.runnerHeartbeatAt
+                                  ? `Last runner heartbeat ${formatTimestamp(syncQueue.runnerHeartbeatAt)}`
+                                  : "The runner has never checked in"
+                              }
+                            >
+                              runner silent
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p
+                          className="font-mono text-[10px] tracking-wide text-charcoal/40 leading-snug"
+                          title="Netlify scheduled function owns this job end to end"
+                        >
+                          Netlify
+                        </p>
+                      )}
                     </td>
                   ) : null}
                   {isConfigure ? (
@@ -4086,39 +4192,47 @@ export default function AdminSyncTable({
                   {isConfigure ? (
                     <td className={TD_EXPAND}>
                       {jobSchedule && pauseJob ? (
-                        <div
-                          className="flex flex-col gap-1 min-w-0"
-                          role="radiogroup"
-                          aria-label={`Scheduler for ${row.label}`}
-                        >
-                          {schedulerProvidersForJob(pauseJob).map((provider) => {
-                            const selected =
-                              resolveJobScheduler(jobSchedule) === provider;
-                            return (
-                              <label
-                                key={provider}
-                                className={`inline-flex items-center gap-1.5 font-mono text-[10px] tracking-wide cursor-pointer ${
-                                  selected ? "text-navy" : "text-charcoal/55"
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name={`scheduler-${pauseJob}`}
-                                  value={provider}
-                                  checked={selected}
-                                  disabled={scheduleSavingJob === pauseJob}
-                                  className="accent-navy"
-                                  onChange={() =>
-                                    void patchScheduleConfig({
-                                      jobId: pauseJob,
-                                      scheduler: provider,
-                                    })
-                                  }
-                                />
-                                {schedulerProviderLabel(provider)}
-                              </label>
-                            );
-                          })}
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min={SYNC_JOB_BUDGET_MIN_MINUTES}
+                              max={SYNC_JOB_BUDGET_MAX_MINUTES}
+                              step={5}
+                              defaultValue={resolveJobBudgetMinutes(
+                                pauseJob,
+                                jobSchedule,
+                              )}
+                              key={`budget-${pauseJob}-${resolveJobBudgetMinutes(pauseJob, jobSchedule)}`}
+                              disabled={scheduleSavingJob === pauseJob}
+                              aria-label={`Kill budget in minutes for ${row.label}`}
+                              className="w-16 rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] tabular-nums text-navy disabled:opacity-40"
+                              onBlur={(e) => {
+                                const next = Number(e.target.value);
+                                const current = resolveJobBudgetMinutes(
+                                  pauseJob,
+                                  jobSchedule,
+                                );
+                                if (!Number.isFinite(next) || next === current) {
+                                  e.target.value = String(current);
+                                  return;
+                                }
+                                void patchScheduleConfig({
+                                  jobId: pauseJob,
+                                  budgetMinutes: next,
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                            />
+                            <span className="font-mono text-[10px] tracking-wide text-charcoal/45">
+                              min
+                            </span>
+                          </div>
+                          <span className="font-mono text-[9px] tracking-wide leading-snug text-charcoal/40">
+                            {syncJobHostLabel(pauseJob)}
+                          </span>
                         </div>
                       ) : (
                         <span className="font-mono text-[10px] tracking-wide text-charcoal/30">
@@ -4267,9 +4381,9 @@ export default function AdminSyncTable({
                         if (isPostDeployNext) {
                           nextStatusText = "Post-deploy";
                           nextStatusClass = "text-gold";
-                        } else if (incrementalOnEventBridge) {
-                          // Real wall clock below; label who owns the alarm.
-                          nextStatusText = "AWS";
+                        } else if (queueWaiting) {
+                          // Real wall clock below; say it is already asked for.
+                          nextStatusText = "Queued";
                           nextStatusClass = "text-navy/55";
                         } else if (scheduleBreached) {
                           nextStatusText = "Overdue";
@@ -4369,8 +4483,8 @@ export default function AdminSyncTable({
                                 <span
                                   className={`min-w-0 font-mono text-[10px] tabular-nums leading-snug break-words font-semibold ${nextTimeClass}`}
                                   title={
-                                    incrementalOnEventBridge
-                                      ? "Next cadence from Configure Frequency, anchored on last AWS EventBridge fire (Postgres)"
+                                    queueWaiting
+                                      ? "Already on sync_queue — this is the cadence, not the wait"
                                       : nextStatusText
                                         ? `${nextTimeText} (${nextStatusText})`
                                         : nextTimeText
@@ -4389,9 +4503,7 @@ export default function AdminSyncTable({
                                     </span>
                                   ) : null}
                                 </span>
-                                {nextJobId &&
-                                !isPostDeployNext &&
-                                !incrementalOnEventBridge ? (
+                                {nextJobId && !isPostDeployNext ? (
                                   <NextOverrideSpinner
                                     jobId={nextJobId}
                                     busy={nextSavingJob === nextJobId}
@@ -4421,7 +4533,7 @@ export default function AdminSyncTable({
                             isRunning ||
                             syncAllRunning ||
                             incrementalRunningNow ||
-                            railwayInPull ||
+                            runnerInPull ||
                             isWaiting
                               ? "font-mono text-gold uppercase tracking-wide"
                               : "text-slate/80"

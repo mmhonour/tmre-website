@@ -22,13 +22,13 @@ import {
 import {
   frequencyLabel,
   orderNumberByRow,
-  resolveJobScheduler,
+  resolveJobBudgetMinutes,
   resolveWeekdayEt,
-  schedulerProviderLabel,
   SYNC_SCHEDULE_WEEKDAYS,
   type SyncJobScheduleConfig,
   type SyncScheduleConfig,
 } from "@/lib/sync-schedule-config-shared";
+import { isSyncQueueRunnerJob } from "@/lib/sync-queue-shared";
 
 type HeatmapRow = {
   id: string;
@@ -217,24 +217,26 @@ function formatRunElapsed(
 }
 
 function formatFrequencyLine(
+  jobId: string | null | undefined,
   job: SyncJobScheduleConfig | null | undefined,
 ): string | null {
   if (!job) return null;
   const freq = frequencyLabel(job.frequency);
-  const scheduler = schedulerProviderLabel(resolveJobScheduler(job));
+  const budget = jobId ? `kill at ${resolveJobBudgetMinutes(jobId, job)}m` : null;
+  const tail = [budget].filter(Boolean).join(" · ");
   if (job.frequency === "weekly") {
     const day =
       SYNC_SCHEDULE_WEEKDAYS[resolveWeekdayEt(job)]?.short ?? "Mon";
-    return `${freq} · ${day} ${job.startTimeEt} ET · ${scheduler}`;
+    return `${freq} · ${day} ${job.startTimeEt} ET${tail ? ` · ${tail}` : ""}`;
   }
   if (
     job.frequency === "daily" ||
     job.frequency === "monthly" ||
     job.frequency === "event"
   ) {
-    return `${freq} · ${job.startTimeEt} ET · ${scheduler}`;
+    return `${freq} · ${job.startTimeEt} ET${tail ? ` · ${tail}` : ""}`;
   }
-  return `${freq} · ${scheduler}`;
+  return tail ? `${freq} · ${tail}` : freq;
 }
 
 export default function AdminSyncMobileHeatmap({
@@ -285,9 +287,7 @@ export default function AdminSyncMobileHeatmap({
         const incrementalHealth =
           row.id === "incremental"
             ? evaluateIncrementalHealth({
-                scheduler: resolveJobScheduler(
-                  scheduleConfig.jobs.incremental,
-                ),
+                host: isSyncQueueRunnerJob("incremental") ? "runner" : "netlify",
                 heartbeatAt: status?.lastMlsSyncHeartbeat,
                 finishedAt: finished,
                 nowMs,
@@ -339,7 +339,7 @@ export default function AdminSyncMobileHeatmap({
         const nextCountdown = nextRunAt
           ? formatAdminNextSyncCountdown(nextRunAt, nowDate)
           : null;
-        const freqLine = formatFrequencyLine(jobSchedule);
+        const freqLine = formatFrequencyLine(pauseJob, jobSchedule);
         const actionLabel =
           row.actionId != null
             ? ADMIN_SYNC_ACTIONS[row.actionId as AdminSyncActionId]?.label
