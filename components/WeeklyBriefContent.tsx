@@ -194,8 +194,10 @@ function ClosedLookbackSlider({
   const index = marketPulseLookbackIndex(lookbackId);
   const current = marketPulseLookbackChartLabel(lookbackId);
   const lastIndex = MARKET_PULSE_LOOKBACK_OPTIONS.length - 1;
+  // The selected label is centred on its tick and so overhangs the rail by half
+  // its height at either end; the gap below keeps the top one off the caption.
   return (
-    <div className="flex h-56 w-16 shrink-0 flex-col gap-1 sm:w-20">
+    <div className="flex h-56 w-[4.75rem] shrink-0 flex-col gap-2 sm:w-20">
       <span className="[font-family:var(--mp-mono-font)] text-[8px] font-semibold tracking-[0.16em] uppercase text-[var(--mp-text)]">
         Lookback
       </span>
